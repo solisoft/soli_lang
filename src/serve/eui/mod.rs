@@ -54,6 +54,38 @@ pub const RESYNC_EVENT: &str = "__eui_resync";
 /// thread-local — it holds interpreter values — so nobody else can.
 pub const FORGET_EVENT: &str = "__eui_forget";
 
+/// Components whose socket needs a session cookie: `router_eui(component,
+/// handler, view, {"session": "required"})`.
+static EUI_SESSION_REQUIRED: Mutex<Option<std::collections::HashSet<String>>> = Mutex::new(None);
+
+/// Refuse the upgrade for `component` unless the request carries a session.
+pub fn require_session(component: &str) {
+    let mut g = EUI_SESSION_REQUIRED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    g.get_or_insert_with(Default::default)
+        .insert(component.to_string());
+}
+
+/// True when `router_eui` declared this component needs a session.
+pub fn session_required(component: &str) -> bool {
+    let g = EUI_SESSION_REQUIRED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    g.as_ref().is_some_and(|set| set.contains(component))
+}
+
+/// A handler answered `{"close": reason}`. The worker's answer to the
+/// socket is a `Result<(), String>` shared with LiveView, so the close rides
+/// in the error string behind this mark; [`close_reason`] reads it back.
+const CLOSE_MARK: &str = "\u{0}eui-close:";
+
+/// The reason behind a close the handler asked for, or `None` for an
+/// ordinary error.
+pub fn close_reason(err: &str) -> Option<&str> {
+    err.strip_prefix(CLOSE_MARK)
+}
+
 /// The worker side of [`FORGET_EVENT`].
 pub fn forget_on_worker(liveview_id: &str) {
     tree::forget_session(liveview_id);
@@ -201,6 +233,20 @@ pub fn handle_eui_event(
             Ok(Value::Null) => {}
             Ok(result @ Value::Hash(_)) => {
                 let unwrapped = unwrap_handler_return(value_to_json(&result));
+                if let Some(reason) = unwrapped.close {
+                    // The handler will not have this client: say why, with
+                    // the code the spec gives a refusal, and end the session
+                    // without rendering anything for it.
+                    send_frame(
+                        instance,
+                        &Frame::Error {
+                            code: 403,
+                            message: reason.clone(),
+                        },
+                        std::time::Instant::now() + SEND_PATIENCE,
+                    );
+                    return Err(format!("{CLOSE_MARK}{reason}"));
+                }
                 if let Some(state) = unwrapped.state {
                     instance.state = state;
                 }
@@ -322,6 +368,15 @@ pub fn handle_eui_event(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_close_is_told_apart_from_an_error() {
+        assert_eq!(
+            close_reason(&format!("{CLOSE_MARK}not you")),
+            Some("not you")
+        );
+        assert_eq!(close_reason("EUI: view 'x' failed: boom"), None);
+    }
 
     #[test]
     fn a_reader_that_never_drains_is_closed_not_skipped() {

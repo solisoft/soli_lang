@@ -724,10 +724,43 @@ pub fn register_router_builtins(env: &mut Environment) {
     #[cfg(feature = "eui")]
     env.define(
         "router_eui".to_string(),
-        Value::NativeFunction(NativeFunction::new("router_eui", Some(3), |args| {
+        Value::NativeFunction(NativeFunction::new("router_eui", None, |args| {
+            if !(3..=4).contains(&args.len()) {
+                return Err(
+                    "router_eui(component, handler, view, options?) takes 3 or 4 arguments"
+                        .to_string(),
+                );
+            }
             let component = args[0].to_string();
             let handler = args[1].to_string();
             let view = args[2].to_string();
+            // {"session": "required"}: refuse the socket to a client with
+            // no session cookie, before `connect` runs as nobody.
+            if let Some(options) = args.get(3) {
+                let Value::Hash(options) = options else {
+                    return Err("router_eui: options must be a hash".to_string());
+                };
+                for (key, value) in options.borrow().iter() {
+                    let key = match key {
+                        crate::interpreter::value::HashKey::String(s) => s.to_string(),
+                        other => format!("{other:?}"),
+                    };
+                    match (key.as_str(), value.to_string().as_str()) {
+                        ("session", "required") => {
+                            crate::serve::eui::require_session(&component)
+                        }
+                        ("session", "optional") => {}
+                        ("session", other) => {
+                            return Err(format!(
+                                "router_eui: session must be \"required\" or \"optional\", got \"{other}\""
+                            ))
+                        }
+                        (other, _) => {
+                            return Err(format!("router_eui: unknown option '{other}'"))
+                        }
+                    }
+                }
+            }
             crate::live::socket::register_liveview_route(&component, &handler);
             crate::serve::eui::register_view(&component, &view);
             Ok(Value::Null)

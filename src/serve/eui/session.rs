@@ -123,7 +123,9 @@ pub fn upgrade(
         } else {
             serde_json::json!({"viewport": viewport_json(&hello.viewport)})
         };
-        post(
+        // A `connect` that closes never ran for this client: there is no
+        // `disconnect` to post on the way out.
+        let connected = post(
             &lv_event_tx,
             &liveview_id,
             &component,
@@ -152,8 +154,12 @@ pub fn upgrade(
             let _ = ws_write.close().await;
         });
 
-        // 5. Client frames in.
+        // 5. Client frames in — unless `connect` closed the session, in
+        //    which case the Error frame is on its way and this is over.
         while let Some(Ok(msg)) = ws_read.next().await {
+            if !connected {
+                break;
+            }
             let bytes = match msg {
                 Message::Binary(b) => b,
                 Message::Close(_) => break,
@@ -200,7 +206,7 @@ pub fn upgrade(
                         )));
                         break;
                     };
-                    post(
+                    if !post(
                         &lv_event_tx,
                         &liveview_id,
                         &component,
@@ -208,10 +214,13 @@ pub fn upgrade(
                         params,
                         &session_id,
                     )
-                    .await;
+                    .await
+                    {
+                        break;
+                    }
                 }
                 Frame::Resync => {
-                    post(
+                    if !post(
                         &lv_event_tx,
                         &liveview_id,
                         &component,
@@ -219,13 +228,16 @@ pub fn upgrade(
                         serde_json::json!({}),
                         &session_id,
                     )
-                    .await;
+                    .await
+                    {
+                        break;
+                    }
                 }
                 Frame::Ping(n) => {
                     let _ = sender.try_send(Ok(Message::Binary(Frame::Pong(n).encode())));
                 }
                 Frame::Viewport(v) => {
-                    post(
+                    if !post(
                         &lv_event_tx,
                         &liveview_id,
                         &component,
@@ -233,7 +245,10 @@ pub fn upgrade(
                         serde_json::json!({"viewport": viewport_json(&v)}),
                         &session_id,
                     )
-                    .await;
+                    .await
+                    {
+                        break;
+                    }
                 }
                 Frame::Ack { .. } | Frame::Pong(_) => {}
                 Frame::Error { code, message } => {
@@ -259,15 +274,17 @@ pub fn upgrade(
         // device it borrowed. The post is awaited like any other event,
         // so the handler runs to its end; a component with no
         // `disconnect` branch simply returns its state unchanged.
-        post(
-            &lv_event_tx,
-            &liveview_id,
-            &component,
-            "disconnect",
-            serde_json::json!({}),
-            &session_id,
-        )
-        .await;
+        if connected {
+            post(
+                &lv_event_tx,
+                &liveview_id,
+                &component,
+                "disconnect",
+                serde_json::json!({}),
+                &session_id,
+            )
+            .await;
+        }
 
         // Detached, not dropped: the state stays for `DETACHED_GRACE` so a
         // reconnect can resync, then the reaper takes it. Without the detach
@@ -276,7 +293,17 @@ pub fn upgrade(
         if LIVE_REGISTRY.drop_sender(&liveview_id, &sender) {
             LIVE_REGISTRY.detach(&liveview_id);
         }
-        write_task.abort();
+        // Let what is queued — an Error frame saying why — reach the client
+        // before the socket goes; a client that has stopped reading gets
+        // two seconds, then the writer is dropped.
+        sender.close();
+        let mut write_task = write_task;
+        if tokio::time::timeout(std::time::Duration::from_secs(2), &mut write_task)
+            .await
+            .is_err()
+        {
+            write_task.abort();
+        }
         super::drop_encoder(&liveview_id);
         // The memo lives on the worker this session was pinned to; ask it.
         // Fire and forget: a saturated queue means the worker's own sweep
@@ -313,7 +340,8 @@ fn validate(liveview_id: &str, e: &EventFrame) -> Option<(String, serde_json::Va
 }
 
 /// Post an event to the session's worker and wait for it to be handled, so
-/// that events from one socket are applied in order.
+/// that events from one socket are applied in order. `false` when the
+/// handler closed the session: the socket has been told why and stops.
 ///
 /// The worker is the one the session is pinned to (`lv_sender_for`): every
 /// frame of a session renders on the same thread, where the memo and the
@@ -326,7 +354,7 @@ async fn post(
     event: &str,
     params: serde_json::Value,
     session_id: &str,
-) {
+) -> bool {
     let (response_tx, response_rx) = oneshot::channel();
     let data = LiveViewEventData {
         liveview_id: liveview_id.to_string(),
@@ -340,7 +368,7 @@ async fn post(
         super::super::lv_sender_for(liveview_id, component).unwrap_or_else(|| lv_event_tx.clone());
     if tx.try_send(data).is_err() {
         eprintln!("[EUI] worker pool saturated; dropping event {event}");
-        return;
+        return true;
     }
     match tokio::time::timeout(std::time::Duration::from_secs(30), response_rx).await {
         Ok(Ok(Ok(()))) => {
@@ -348,10 +376,17 @@ async fn post(
                 eprintln!("[EUI trace] {component} {event}: handled");
             }
         }
-        Ok(Ok(Err(e))) => eprintln!("[EUI] {component} {event}: {e}"),
+        Ok(Ok(Err(e))) => {
+            if let Some(reason) = super::close_reason(&e) {
+                eprintln!("[EUI] {component} {event}: closed by the handler: {reason}");
+                return false;
+            }
+            eprintln!("[EUI] {component} {event}: {e}");
+        }
         Ok(Err(_)) => eprintln!("[EUI] {component} {event}: worker dropped the response"),
         Err(_) => eprintln!("[EUI] {component} {event}: timed out"),
     }
+    true
 }
 
 /// The client's viewport as the application sees it, in `params`.

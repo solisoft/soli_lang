@@ -3117,6 +3117,16 @@ async fn handle_hyper_request(
                 .get("cookie")
                 .map(|v| v.to_str().unwrap_or(""));
             let session_id = extract_live_session_id(cookies);
+            // `router_eui(..., {"session": "required"})`: no session cookie,
+            // no socket. A cookie-less upgrade gets a synthetic `sess-*` id
+            // and would run `connect` as nobody; a component that declared
+            // it needs someone is refused before that.
+            if eui::session_required(&component) && session_id.starts_with("sess-") {
+                return Ok(Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .body(full(Bytes::from("this component needs a session")))
+                    .unwrap());
+            }
             // Same registry as LiveView, same reaper — an application that
             // only ever serves EUI used to keep every instance it ever made.
             start_liveview_reaper();
@@ -5565,6 +5575,11 @@ struct LiveHandlerReturn {
     live: Option<String>,
     /// Phoenix-style `update:` hash merged onto state after the handler.
     update: Option<serde_json::Value>,
+    /// `{"close": reason}`: end the session. An EUI `connect` that finds no
+    /// user, or no right to this component, says so here — the socket is
+    /// the only place a component can be refused, since no middleware runs
+    /// for an upgrade.
+    close: Option<String>,
 }
 
 /// Unwrap the handler return value. The wrapped form
@@ -5592,6 +5607,7 @@ fn unwrap_handler_return(json: serde_json::Value) -> LiveHandlerReturn {
                 patch: None,
                 live: None,
                 update: None,
+                close: None,
             }
         }
     };
@@ -5603,6 +5619,9 @@ fn unwrap_handler_return(json: serde_json::Value) -> LiveHandlerReturn {
     let has_patch = map.contains_key("patch");
     let has_live = map.contains_key("live");
     let has_update = map.get("update").is_some_and(|v| v.is_object());
+    let has_close = map
+        .get("close")
+        .is_some_and(|v| !matches!(v, serde_json::Value::Null | serde_json::Value::Bool(false)));
 
     // Bare shape: the whole hash is the new state.
     if !has_state_obj
@@ -5612,6 +5631,7 @@ fn unwrap_handler_return(json: serde_json::Value) -> LiveHandlerReturn {
         && !has_patch
         && !has_live
         && !has_update
+        && !has_close
     {
         return LiveHandlerReturn {
             state: Some(serde_json::Value::Object(map)),
@@ -5622,6 +5642,7 @@ fn unwrap_handler_return(json: serde_json::Value) -> LiveHandlerReturn {
             patch: None,
             live: None,
             update: None,
+            close: None,
         };
     }
 
@@ -5646,6 +5667,17 @@ fn unwrap_handler_return(json: serde_json::Value) -> LiveHandlerReturn {
     } else {
         None
     };
+    // `close: true` closes with no particular reason; a string is the reason
+    // the client is shown; `false`/`null` is not a close at all.
+    let close = if has_close {
+        map.remove("close").map(|v| match v {
+            serde_json::Value::String(reason) => reason,
+            serde_json::Value::Bool(true) => "closed".to_string(),
+            other => other.to_string(),
+        })
+    } else {
+        None
+    };
     LiveHandlerReturn {
         state,
         tick,
@@ -5655,6 +5687,7 @@ fn unwrap_handler_return(json: serde_json::Value) -> LiveHandlerReturn {
         patch,
         live,
         update,
+        close,
     }
 }
 
@@ -9602,6 +9635,22 @@ mod tests {
         let got = unwrap_handler_return(json.clone());
         assert_eq!(got.state, Some(json));
         assert_eq!(got.tick, None);
+    }
+
+    #[test]
+    fn unwrap_close_is_a_close_and_keeps_the_state() {
+        let got = unwrap_handler_return(serde_json::json!({ "close": "not you" }));
+        assert_eq!(got.close.as_deref(), Some("not you"));
+        assert_eq!(got.state, None, "a close is not a state");
+        let got = unwrap_handler_return(serde_json::json!({ "close": true }));
+        assert_eq!(got.close.as_deref(), Some("closed"));
+        // `false` and `null` are not closes: the hash is a bare state.
+        let got = unwrap_handler_return(serde_json::json!({ "close": false, "n": 1 }));
+        assert_eq!(got.close, None);
+        assert_eq!(
+            got.state,
+            Some(serde_json::json!({ "close": false, "n": 1 }))
+        );
     }
 
     #[test]
