@@ -420,13 +420,25 @@ mod tests {
 
     #[test]
     fn a_reader_that_drains_gets_every_frame() {
+        // Room for one frame and three to send, so the sender waits for
+        // room at least twice: that is the path under test.
         let (tx, rx) = async_channel::bounded::<Result<Message, tungstenite::Error>>(1);
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        // A second receiver, held here and never read from. Without it the
+        // channel counts as closed the moment the draining thread has its
+        // three frames and drops its own — and `is_closed` below would be
+        // reading that, not whether the sender gave the socket up. In the
+        // server the socket's receiver outlives every send the same way.
+        let still_open = rx.clone();
+        // A minute, because the deadline is not what this tests: a machine
+        // busy enough that the reading thread waits seconds to be
+        // scheduled must not read as a sender giving up on it. What a
+        // deadline does to a reader that never drains is the test above.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
         let drain = std::thread::spawn(move || {
-            let mut got = 0;
-            while rx.recv_blocking().is_ok() {
-                got += 1;
-                if got == 3 {
+            let mut got = Vec::new();
+            while let Ok(Ok(Message::Binary(bytes))) = rx.recv_blocking() {
+                got.push(bytes[0]);
+                if got.len() == 3 {
                     break;
                 }
             }
@@ -435,7 +447,8 @@ mod tests {
         for n in 0..3u8 {
             send_or_close(&tx, vec![n], deadline);
         }
-        assert!(!tx.is_closed());
-        assert_eq!(drain.join().unwrap(), 3);
+        assert_eq!(drain.join().unwrap(), vec![0, 1, 2], "in order, none lost");
+        assert!(!tx.is_closed(), "a draining reader is never given up on");
+        drop(still_open);
     }
 }
