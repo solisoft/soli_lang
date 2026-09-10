@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-09-10
+
 ### Security
 
 * **security(i18n):** the active locale no longer carries from one visitor to the next. `CURRENT_LOCALE` is a thread-local and workers are reused, and nothing in the request path ever reset it — a controller that did not call `set_locale` rendered in whatever language the previous request on that worker had asked for. It was a write-side bug too: `Model#save` / `#update` store pending translations into the slot named by the current locale, so one visitor's edit could be persisted under another's language. A request now begins with a locale resolved for it — session `locale`, else a `locale` cookie, else `Accept-Language` matched against the locales in `config/locales/`, else `SOLI_DEFAULT_LOCALE` — and it is restored when the request ends. Realtime frames (LiveView, EUI) resolve it from the socket's session the same way
@@ -11,9 +13,11 @@
 * **fix(i18n):** plurals follow CLDR. The suffix was chosen by a locale-independent `0 → _zero`, `1 → _one`, else `_other`, applied to every language on earth. French has no zero category — 0 and 1 are both `one` — so a French page with a correct `fr.yml` asked for `items_zero`, missed it, and rendered the **English** string; Russian and Polish could not reach `_few` or `_many` at all, and Japanese was given singular/plural it does not have. Categories are now per language (`_zero`/`_one`/`_two`/`_few`/`_many`/`_other`), with hand-written rules for the languages the docs ship and `one`/`other` for the rest. A `_zero` key is still honoured for a count of 0 in any language, and a category a file does not declare falls back to `_other` in the same locale before another locale is consulted
 * **fix(i18n):** `t()` translates. It returned its own argument — `t("welcome.title")` rendered the literal `welcome.title` — while the views documentation gives it as *the* way to translate; only `I18n.translate` worked. It now looks the key up in the current locale, interpolates a values hash, and escapes interpolated values for a key promising HTML. A missing key still renders as itself, so an untranslated string is visible rather than blank
 * **fix(i18n):** the fallback locale is the application's choice. `"en"` was hard-coded in six places with no way to change it, so an app whose primary language was not English fell back to a language it might not ship. `SOLI_DEFAULT_LOCALE` and `I18n.set_default_locale(...)` now set it; it is still `en` by default
+* **fix(eui):** an event naming a handler the tree no longer offers is ignored rather than fatal. `validate` looks the event up in the tree the encoder last sent, and ended the session with 300 when it was missing — but usually that is a race, not an attack: a handler a render removed is still in the client's tree for the one round trip the new tree takes to arrive, and anything the pointer does in that window arrives naming it
 
 ### Added
 
+* **feat(scaffold):** `soli new <app> --eui` starts an application with a native window as well as a web page. It writes the EUI widget catalogue as `app/controllers/eui_builders.sl` — 150 plain-Soli functions, the reference catalogue the EUI spec (03 §4) states a contract for — a first component beside it (a counter, its handler and its view) and the `router_eui` line in `config/routes.sl`. Reaching the catalogue previously meant copying 3 200 lines out of the EUI repository's sample by hand. The flag is refused alongside `--template`, which decides for itself what an application holds, and refused by a build without the `eui` feature, which could not serve what it wrote
 * **feat(i18n):** `I18n.set_default_locale(locale)` and `I18n.default_locale()`, and the `SOLI_DEFAULT_LOCALE` environment variable
 
 ## [2.1.1] - 2026-09-10

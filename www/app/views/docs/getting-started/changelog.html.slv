@@ -20,9 +20,13 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-1-1" class="text-amber-400 hover:underline">v2.1.1</a>.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-1-2" class="text-amber-400 hover:underline">v2.1.2</a>.</p>
+    </section>
 
-        <h3 id="unreleased-auth-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+    <section id="v2-1-2" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.1.2 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-10</span></h2>
+
+        <h3 id="v2-1-2-auth-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">The locale no longer carries from one visitor to the next.</strong> The active locale lives in a thread-local, workers are reused between requests, and nothing in the request path reset it &mdash; so a controller that did not call <code class="text-cyan-400">set_locale</code> rendered in whatever language the <em>previous</em> request on that worker had asked for.
                 <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
@@ -33,7 +37,7 @@
             </li>
         </ul>
 
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <h3 id="v2-1-2-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Plurals follow CLDR, so French no longer renders English.</strong> The suffix was picked by a locale-independent ladder &mdash; <code class="text-cyan-400">0 &rarr; _zero</code>, <code class="text-cyan-400">1 &rarr; _one</code>, else <code class="text-cyan-400">_other</code> &mdash; applied to every language.
                 <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
@@ -44,10 +48,18 @@
             </li>
             <li><strong class="text-white"><code class="text-cyan-400">t()</code> translates.</strong> It returned its own argument &mdash; <code class="text-cyan-400">t("welcome.title")</code> rendered the literal <code>welcome.title</code> &mdash; while the views documentation gives it as <em>the</em> way to translate; only <code class="text-cyan-400">I18n.translate</code> ever worked. It now resolves the key in the current locale, interpolates a values hash, and escapes interpolated values for a key promising HTML. A missing key still renders as itself, so an untranslated string is visible rather than blank.</li>
             <li><strong class="text-white">The fallback locale is yours to choose.</strong> <code class="text-cyan-400">"en"</code> was hard-coded in six places with no way to change it, so an application whose primary language was not English fell back to one it might not even ship. <code class="text-cyan-400">SOLI_DEFAULT_LOCALE</code> and <code class="text-cyan-400">I18n.set_default_locale(...)</code> now set it; it remains <code class="text-cyan-400">en</code> by default.</li>
+            <li><strong class="text-white">An event for a handler the tree no longer offers is ignored, not fatal.</strong> The server looks every event up in the tree the encoder last sent, and ended the session with a 300 when it was not there. Usually that is a race rather than an attack: a handler a render removed is still in the client's tree for the one round trip the new tree takes to arrive, and whatever the pointer does in that window arrives naming it.</li>
         </ul>
 
-        <h3 id="unreleased-added" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Added</h3>
+        <h3 id="v2-1-2-added" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Added</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">soli new &lt;app&gt; --eui</code> starts an application with a native window as well as a web page.</strong> It writes the EUI widget catalogue as <code class="text-cyan-400">app/controllers/eui_builders.sl</code> &mdash; 150 plain-Soli functions, from buttons to date pickers to charts &mdash; a first component beside it (a counter: its handler, its view), and the <code class="text-cyan-400">router_eui</code> line in <code class="text-cyan-400">config/routes.sl</code>.
+                <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
+                    <li><strong class="text-white">There was no other way to get the catalogue.</strong> The EUI spec calls it the reference catalogue and states a contract for it, but it shipped only inside that repository's sample application: reaching it meant copying 3 200 lines out of an example by hand.</li>
+                    <li><strong class="text-white">Nothing there is native.</strong> Every widget is a function over the fourteen primitives the client knows, so the catalogue is yours to read, change and add to &mdash; and a new widget needs no new client.</li>
+                    <li>Refused alongside <code class="text-cyan-400">--template</code>, which decides for itself what an application holds, and refused by a build without the <code class="text-cyan-400">eui</code> feature, which could not serve what it wrote.</li>
+                </ul>
+            </li>
             <li><strong class="text-white"><code class="text-cyan-400">I18n.set_default_locale(locale)</code> and <code class="text-cyan-400">I18n.default_locale()</code>,</strong> with the <code class="text-cyan-400">SOLI_DEFAULT_LOCALE</code> environment variable. See <a href="/docs/core-concepts/i18n#which-locale" class="text-amber-400 hover:underline">Which locale a request runs in</a>.</li>
         </ul>
     </section>
