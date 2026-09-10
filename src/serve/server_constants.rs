@@ -139,6 +139,27 @@ pub fn using_production_worker_default(workers: usize) -> bool {
 /// An explicit `SOLI_WS_WORKERS` overrides this and is always honored.
 pub const MIN_WORKERS_FOR_REALTIME_SPLIT: usize = 4;
 
+/// How many realtime workers a pool of this size gets by default.
+///
+/// A quarter of the pool, and never more than one thread short of leaving
+/// HTTP something to run on. It used to be exactly one at every size, which
+/// made the realtime side single-threaded on any machine: every WebSocket,
+/// LiveView and EUI frame in the process queued behind the one before it,
+/// however many cores were idle beside it. A quarter parallelises that
+/// across sessions — they are held apart by the per-LiveView frame lock, so
+/// two frames of *one* session still serialise and cannot race — while
+/// leaving the majority of the pool on HTTP, which is what most Soli
+/// applications are actually serving.
+///
+/// Below `MIN_WORKERS_FOR_REALTIME_SPLIT` the answer is none: see there for
+/// why reserving on a small pool costs more than it buys.
+fn default_realtime_workers(num_workers: usize) -> usize {
+    if num_workers < MIN_WORKERS_FOR_REALTIME_SPLIT {
+        return 0;
+    }
+    (num_workers / 4).max(1)
+}
+
 /// Split a worker pool into (http_workers, realtime_workers).
 ///
 /// `explicit_rt` is the parsed `SOLI_WS_WORKERS` value when the operator set
@@ -147,8 +168,7 @@ pub const MIN_WORKERS_FOR_REALTIME_SPLIT: usize = 4;
 /// least `MIN_WORKERS_FOR_REALTIME_SPLIT`. A result of 0 realtime workers means
 /// the split collapses and every worker drains both channels.
 pub fn realtime_worker_split(num_workers: usize, explicit_rt: Option<usize>) -> (usize, usize) {
-    let requested =
-        explicit_rt.unwrap_or(usize::from(num_workers >= MIN_WORKERS_FOR_REALTIME_SPLIT));
+    let requested = explicit_rt.unwrap_or_else(|| default_realtime_workers(num_workers));
     // Never starve HTTP: at least one worker must keep serving requests.
     let rt = requested.min(num_workers.saturating_sub(1));
     (num_workers - rt, rt)
@@ -535,10 +555,25 @@ mod tests {
     }
 
     #[test]
-    fn pools_at_the_threshold_reserve_one_realtime_worker() {
+    fn the_realtime_side_grows_with_the_pool() {
+        // It was one at every size, which left the realtime side
+        // single-threaded on a machine with cores to spare: every EUI frame
+        // in the process queued behind the one before it. A quarter of the
+        // pool, so the majority still serves HTTP.
         assert_eq!(realtime_worker_split(4, None), (3, 1));
-        assert_eq!(realtime_worker_split(8, None), (7, 1));
-        assert_eq!(realtime_worker_split(16, None), (15, 1));
+        assert_eq!(realtime_worker_split(8, None), (6, 2));
+        assert_eq!(realtime_worker_split(16, None), (12, 4));
+        assert_eq!(realtime_worker_split(32, None), (24, 8));
+    }
+
+    #[test]
+    fn http_always_keeps_a_worker() {
+        // Whatever the arithmetic says, something has to serve requests.
+        for n in 4..64 {
+            let (http, _) = realtime_worker_split(n, None);
+            assert!(http >= 1, "{n} workers left HTTP with none");
+        }
+        assert_eq!(realtime_worker_split(2, Some(9)), (1, 1));
     }
 
     #[test]

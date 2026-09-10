@@ -298,6 +298,40 @@ pub fn set_tokio_handle(handle: tokio::runtime::Handle) {
 /// Process-wide LiveView event sender. Set once during server startup and
 /// read by `handle_liveview_event` when it needs to spawn a per-instance
 /// tick task that posts back into the worker queue.
+/// One private LiveView event queue per realtime worker, for the sessions
+/// that must land on the same thread every time.
+///
+/// `LV_EVENT_TX` is one queue every realtime worker drains, so a session's
+/// frames run on whichever worker gets there first. Each worker is its own
+/// interpreter: the objects an application keeps between renders — and the
+/// EUI memo that keeps a rendered card by the identity of the object it came
+/// from — live on one thread, so a session that moves between workers finds
+/// them cold. An EUI session is pinned to one worker by hashing its id;
+/// these are the queues, in realtime-worker order, and `lv_sender_for`
+/// picks one.
+static PINNED_LV_TX: std::sync::OnceLock<Vec<channel::Sender<LiveViewEventData>>> =
+    std::sync::OnceLock::new();
+
+/// The queue for one LiveView instance's events: its pinned worker's for an
+/// EUI component, the shared queue for everything else.
+pub(crate) fn lv_sender_for(
+    liveview_id: &str,
+    component: &str,
+) -> Option<channel::Sender<LiveViewEventData>> {
+    #[cfg(feature = "eui")]
+    if eui::is_eui_component(component) {
+        if let Some(queues) = PINNED_LV_TX.get().filter(|q| !q.is_empty()) {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            liveview_id.hash(&mut hasher);
+            let index = (hasher.finish() % queues.len() as u64) as usize;
+            return Some(queues[index].clone());
+        }
+    }
+    let _ = (liveview_id, component);
+    LV_EVENT_TX.get().cloned()
+}
+
 static LV_EVENT_TX: std::sync::OnceLock<channel::Sender<LiveViewEventData>> =
     std::sync::OnceLock::new();
 use crate::interpreter::builtins::controller::controller::ControllerInfo;
@@ -2064,6 +2098,21 @@ fn run_hyper_server_worker_pool(
         }
     }
 
+    // The pinned queues (see `PINNED_LV_TX`): one per realtime worker, in
+    // realtime-worker order. With no split every worker is a realtime one.
+    let num_pinned = if split_realtime {
+        num_rt_workers
+    } else {
+        num_workers
+    };
+    let pinned_lv: Vec<(
+        channel::Sender<LiveViewEventData>,
+        channel::Receiver<LiveViewEventData>,
+    )> = (0..num_pinned)
+        .map(|_| channel::bounded(capacity_per_worker))
+        .collect();
+    let _ = PINNED_LV_TX.set(pinned_lv.iter().map(|(tx, _)| tx.clone()).collect());
+
     for i in 0..num_workers {
         // Role for this worker. When the pool isn't split, every worker drains
         // all channels (prior behavior). Otherwise the first `num_http_workers`
@@ -2075,6 +2124,14 @@ fn run_hyper_server_worker_pool(
         } else {
             (false, true, "rt-worker")
         };
+        let pinned_lv_rx = realtime_enabled.then(|| {
+            let ordinal = if split_realtime {
+                i - num_http_workers
+            } else {
+                i
+            };
+            pinned_lv[ordinal].1.clone()
+        });
         // Every worker shares the one queue (clones of the same receiver),
         // competing to pull whichever request is next.
         let work_rx = worker_queues.get_receiver(i);
@@ -2111,6 +2168,7 @@ fn run_hyper_server_worker_pool(
                 let helpers_dir = helpers_dir.clone();
                 let ws_event_rx = ws_event_rx.clone();
                 let lv_event_rx = lv_event_rx.clone();
+                let pinned_lv_rx = pinned_lv_rx.clone();
                 let ws_registry = ws_registry.clone();
                 let reload_tx = reload_tx.clone();
                 let worker_routes = worker_routes.clone();
@@ -2134,6 +2192,7 @@ fn run_hyper_server_worker_pool(
                         helpers_dir,
                         ws_event_rx,
                         lv_event_rx,
+                        pinned_lv_rx,
                         ws_registry,
                         reload_tx,
                         &mut interpreter,
@@ -2229,6 +2288,9 @@ fn worker_loop(
     helpers_dir: PathBuf,
     ws_event_rx: channel::Receiver<WebSocketEventData>,
     lv_event_rx: channel::Receiver<LiveViewEventData>,
+    // This worker's own LiveView queue (see `PINNED_LV_TX`); `None` on an
+    // HTTP-only worker.
+    pinned_lv_rx: Option<channel::Receiver<LiveViewEventData>>,
     ws_registry: Arc<WebSocketRegistry>,
     _reload_tx: Option<broadcast::Sender<()>>,
     interpreter: &mut Interpreter,
@@ -2403,6 +2465,7 @@ fn worker_loop(
     let mut ws_event_rx_inner = realtime_enabled.then_some(ws_event_rx);
     let ws_registry_inner = realtime_enabled.then_some(ws_registry);
     let mut lv_event_rx_inner = realtime_enabled.then_some(lv_event_rx);
+    let mut pinned_lv_rx_inner = pinned_lv_rx.filter(|_| realtime_enabled);
 
     // Track last seen hot reload versions
     let mut last_generation = hot_reload_versions.generation.load(Ordering::Acquire);
@@ -2650,6 +2713,18 @@ fn worker_loop(
                 }
             }
         }
+        if let Some(ref mut rx) = pinned_lv_rx_inner {
+            match rx.try_recv() {
+                Ok(data) => {
+                    let result = handle_liveview_event_caught(interpreter, &data);
+                    let _ = data.response_tx.send(result);
+                }
+                Err(channel::TryRecvError::Empty) => {}
+                Err(channel::TryRecvError::Disconnected) => {
+                    pinned_lv_rx_inner = None;
+                }
+            }
+        }
 
         // Batch process HTTP requests using try_recv for non-blocking drain
         // (HTTP workers only; realtime workers never touch the request queue).
@@ -2680,6 +2755,7 @@ fn worker_loop(
                 .filter(|_| ws_registry_inner.is_some())
                 .map(|rx| sel.recv(rx));
             let lv_idx = lv_event_rx_inner.as_ref().map(|rx| sel.recv(rx));
+            let pinned_idx = pinned_lv_rx_inner.as_ref().map(|rx| sel.recv(rx));
 
             let result = if dev_mode {
                 // Dev mode: use timeout so we periodically check hot reload versions
@@ -2727,6 +2803,13 @@ fn worker_loop(
                     }
                 } else if Some(idx) == lv_idx {
                     if let Some(ref rx) = lv_event_rx_inner {
+                        if let Ok(data) = oper.recv(rx) {
+                            let result = handle_liveview_event_caught(interpreter, &data);
+                            let _ = data.response_tx.send(result);
+                        }
+                    }
+                } else if Some(idx) == pinned_idx {
+                    if let Some(ref rx) = pinned_lv_rx_inner {
                         if let Ok(data) = oper.recv(rx) {
                             let result = handle_liveview_event_caught(interpreter, &data);
                             let _ = data.response_tx.send(result);
@@ -5159,6 +5242,15 @@ fn handle_liveview_event(
     // as the only identity available, which is no identity at all. A synthetic
     // `sess-<uuid>` handle (a cookie-less socket) is not a session and is not
     // installed; those handlers see no user, which is the truth.
+    // A session that has gone lets go of what this worker kept for it. The
+    // memo is thread-local, so this has to run here, on the worker the
+    // session was pinned to — not on the socket task that noticed the close.
+    #[cfg(feature = "eui")]
+    if data.event == eui::FORGET_EVENT {
+        eui::forget_on_worker(&data.liveview_id);
+        return Ok(());
+    }
+
     let socket_session = data
         .sender_session
         .as_deref()
@@ -5675,7 +5767,7 @@ fn apply_tick_interval(instance: &mut crate::live::view::LiveViewInstance, reque
         return;
     }
 
-    let Some(tx) = LV_EVENT_TX.get().cloned() else {
+    let Some(tx) = lv_sender_for(&instance.id, &instance.component) else {
         eprintln!("[LiveView] tick scheduling unavailable: lv_event_tx not initialized");
         return;
     };
@@ -5725,10 +5817,13 @@ fn apply_tick_interval(instance: &mut crate::live::view::LiveViewInstance, reque
 /// is empty. Called from `crate::live::live_query::notify_change`. No-op before
 /// the bus is initialized (e.g. non-server processes) or when realtime is off.
 pub(crate) fn enqueue_live_query_changed(subscribers: Vec<(String, String)>) {
-    let Some(tx) = LV_EVENT_TX.get() else {
+    if LV_EVENT_TX.get().is_none() {
         return;
-    };
+    }
     for (liveview_id, component) in subscribers {
+        let Some(tx) = lv_sender_for(&liveview_id, &component) else {
+            continue;
+        };
         let (response_tx, _response_rx) = oneshot::channel();
         // try_send: a backed-up worker drops this wake rather than block the
         // write path; the next write catches up.

@@ -273,6 +273,20 @@ pub fn upgrade(
         }
         write_task.abort();
         super::drop_encoder(&liveview_id);
+        // The memo lives on the worker this session was pinned to; ask it.
+        // Fire and forget: a saturated queue means the worker's own sweep
+        // finds the encoder gone and drops the memo on its next render.
+        let (response_tx, _) = oneshot::channel();
+        if let Some(tx) = super::super::lv_sender_for(&liveview_id, &component) {
+            let _ = tx.try_send(LiveViewEventData {
+                liveview_id: liveview_id.clone(),
+                component: component.clone(),
+                event: super::FORGET_EVENT.to_string(),
+                params: serde_json::json!({}),
+                sender_session: None,
+                response_tx,
+            });
+        }
     });
 
     Ok(box_full(response))
@@ -293,8 +307,13 @@ fn validate(liveview_id: &str, e: &EventFrame) -> Option<(String, serde_json::Va
     })
 }
 
-/// Post an event to the worker pool and wait for it to be handled, so that
-/// events from one socket are applied in order.
+/// Post an event to the session's worker and wait for it to be handled, so
+/// that events from one socket are applied in order.
+///
+/// The worker is the one the session is pinned to (`lv_sender_for`): every
+/// frame of a session renders on the same thread, where the memo and the
+/// application's own kept objects are. The shared queue is the fallback for
+/// a process that has no pinned queues, such as a test.
 async fn post(
     lv_event_tx: &crossbeam::channel::Sender<LiveViewEventData>,
     liveview_id: &str,
@@ -312,7 +331,9 @@ async fn post(
         sender_session: Some(session_id.to_string()),
         response_tx,
     };
-    if lv_event_tx.try_send(data).is_err() {
+    let tx =
+        super::super::lv_sender_for(liveview_id, component).unwrap_or_else(|| lv_event_tx.clone());
+    if tx.try_send(data).is_err() {
         eprintln!("[EUI] worker pool saturated; dropping event {event}");
         return;
     }

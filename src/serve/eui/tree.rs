@@ -146,25 +146,68 @@ impl Encoder {
     }
 }
 
+/// One kept subtree: the frozen nodes, the view value they came from — pinned,
+/// so its address cannot be reused by another object while the entry lives —
+/// the render that last saw it, and the keyed subtrees directly inside it.
+struct MemoEntry {
+    /// Held, never read: it keeps the view object alive so its address —
+    /// the entry's key — cannot be handed to another object.
+    _pin: Value,
+    tree: Arc<TNode>,
+    seen: u32,
+    /// Identities of the keyed nodes nested in this one. A kept subtree is
+    /// never walked, so its inner entries are not seen by the render that
+    /// keeps it; they stay alive through this list instead, and are warm
+    /// when the outer node finally changes.
+    children: Vec<usize>,
+}
+
 /// One session's kept subtrees, by the address of the view value each came
-/// from — with that value pinned, so the address cannot be reused by
-/// another object while the entry lives. Values are `Rc`, so this lives on
-/// the thread that evaluates the view; a render on another thread simply
-/// misses, which is safe.
+/// from. Values are `Rc`, so this lives on the thread that evaluates the
+/// view — which is the same thread every render, the session being pinned
+/// to one realtime worker (`serve::lv_sender_for`). A render on another
+/// thread simply misses, which is safe.
 #[derive(Default)]
 struct Memo {
-    entries: HashMap<usize, (Value, Arc<TNode>, u32)>,
+    entries: HashMap<usize, MemoEntry>,
 }
 
 thread_local! {
     static MEMOS: RefCell<HashMap<String, Memo>> = RefCell::new(HashMap::new());
+    /// Renders since this thread last swept its memos for dead sessions.
+    static SWEEP: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
+
+/// Renders between two sweeps of the memos for sessions that have gone.
+const SWEEP_EVERY: u32 = 256;
 
 fn with_memo<R>(session: &str, f: impl FnOnce(&mut Memo) -> R) -> R {
-    MEMOS.with(|m| f(m.borrow_mut().entry(session.to_owned()).or_default()))
+    // The socket asks the worker to forget a session on close; this is the
+    // backstop for the ask that did not arrive (a saturated queue, a worker
+    // that restarted). The encoder is dropped on the socket's side, so an
+    // entry with no encoder belongs to a session that is over.
+    let due = SWEEP.with(|n| {
+        let next = n.get().wrapping_add(1);
+        n.set(next);
+        next % SWEEP_EVERY == 0
+    });
+    MEMOS.with(|m| {
+        let mut memos = m.borrow_mut();
+        if due {
+            memos.retain(|id, _| id == session || super::has_encoder(id));
+        }
+        f(memos.entry(session.to_owned()).or_default())
+    })
 }
 
-/// Drop a session's memo when the session goes.
+/// How many subtrees this thread keeps for a session.
+#[cfg(test)]
+fn memo_entries(session: &str) -> usize {
+    MEMOS.with(|m| m.borrow().get(session).map_or(0, |memo| memo.entries.len()))
+}
+
+/// Drop a session's memo when the session goes. Runs on the session's
+/// worker: the socket posts `FORGET_EVENT` there.
 pub fn forget_session(session: &str) {
     MEMOS.with(|m| {
         m.borrow_mut().remove(session);
@@ -495,7 +538,26 @@ impl Encoder {
             let session = self.session.clone();
             with_memo(&session, |memo| {
                 freeze(&mut tree, memo, &mut pins, generation);
-                memo.entries.retain(|_, (_, _, seen)| *seen == generation);
+                // Keep what this render saw, and everything nested in it:
+                // a kept subtree's inner keyed nodes were not walked, so they
+                // were not seen, but they are still on the screen.
+                let mut keep: std::collections::HashSet<usize> = memo
+                    .entries
+                    .iter()
+                    .filter(|(_, e)| e.seen == generation)
+                    .map(|(id, _)| *id)
+                    .collect();
+                let mut stack: Vec<usize> = keep.iter().copied().collect();
+                while let Some(id) = stack.pop() {
+                    if let Some(entry) = memo.entries.get(&id) {
+                        for child in &entry.children {
+                            if keep.insert(*child) {
+                                stack.push(*child);
+                            }
+                        }
+                    }
+                }
+                memo.entries.retain(|id, _| keep.contains(id));
             });
         }
         self.prev = Some(tree);
@@ -585,9 +647,9 @@ impl Encoder {
         if keyed && !self.session.is_empty() {
             let generation = self.generation;
             let kept = with_memo(&self.session, |memo| {
-                memo.entries.get_mut(&identity).map(|(_, arc, seen)| {
-                    *seen = generation;
-                    Arc::clone(arc)
+                memo.entries.get_mut(&identity).map(|entry| {
+                    entry.seen = generation;
+                    Arc::clone(&entry.tree)
                 })
             });
             if let Some(arc) = kept {
@@ -1200,8 +1262,23 @@ fn freeze(node: &mut TNode, memo: &mut Memo, pins: &mut HashMap<usize, Value>, g
                         size: 0,
                     },
                 ));
-                memo.entries
-                    .insert(arc.identity, (pin, Arc::clone(&arc), generation));
+                let children = arc
+                    .children
+                    .iter()
+                    .filter_map(|c| match c {
+                        Child::Kept(k) if k.identity != 0 => Some(k.identity),
+                        _ => None,
+                    })
+                    .collect();
+                memo.entries.insert(
+                    arc.identity,
+                    MemoEntry {
+                        _pin: pin,
+                        tree: Arc::clone(&arc),
+                        seen: generation,
+                        children,
+                    },
+                );
                 *child = Child::Kept(arc);
             }
         }
@@ -1321,5 +1398,78 @@ mod tests {
             {"k": "box", "c": [{"k": "text", "key": "row", "t": "b"}]}
         ]});
         assert!(enc.render(&tree, false).is_ok());
+    }
+
+    fn s(x: &str) -> Value {
+        Value::String(x.into())
+    }
+
+    fn h(pairs: Vec<(&str, Value)>) -> Value {
+        let mut map = crate::interpreter::value::HashPairs::default();
+        for (k, v) in pairs {
+            map.insert(HashKey::String(k.into()), v);
+        }
+        Value::Hash(Rc::new(RefCell::new(map)))
+    }
+
+    fn list(items: Vec<Value>) -> Value {
+        Value::Array(Rc::new(RefCell::new(items)))
+    }
+
+    #[test]
+    fn keyed_rows_inside_a_kept_card_stay_warm() {
+        let row_a = h(vec![("k", s("text")), ("key", s("a")), ("t", s("a"))]);
+        let row_b = h(vec![("k", s("text")), ("key", s("b")), ("t", s("b"))]);
+        let card = h(vec![
+            ("k", s("box")),
+            ("key", s("card")),
+            ("c", list(vec![row_a.clone(), row_b.clone()])),
+        ]);
+        let root = |card: &Value| h(vec![("k", s("box")), ("c", list(vec![card.clone()]))]);
+        let mut enc = Encoder::default();
+        enc.render_value("warm", &root(&card), false).unwrap();
+        assert_eq!(memo_entries("warm"), 3, "card and both rows are kept");
+        // The card is the same object: kept whole, its rows never walked —
+        // and still kept, because the card keeps them.
+        enc.render_value("warm", &root(&card), false).unwrap();
+        assert_eq!(memo_entries("warm"), 3);
+        // A new card object with the same rows: the rows are hits.
+        let card2 = h(vec![
+            ("k", s("box")),
+            ("key", s("card")),
+            ("c", list(vec![row_a.clone(), row_b.clone()])),
+        ]);
+        let batches = enc.render_value("warm", &root(&card2), false).unwrap();
+        assert_eq!(memo_entries("warm"), 3);
+        let ops: usize = batches.iter().map(|b| b.ops.len()).sum();
+        assert_eq!(ops, 0, "nothing changed on the screen");
+        forget_session("warm");
+        assert_eq!(memo_entries("warm"), 0);
+    }
+
+    #[test]
+    fn a_session_with_no_encoder_is_swept() {
+        // The root is never kept — only children are — so the keyed node is
+        // one level down.
+        let node = || {
+            h(vec![
+                ("k", s("box")),
+                (
+                    "c",
+                    list(vec![h(vec![("k", s("box")), ("key", s("only"))])]),
+                ),
+            ])
+        };
+        let mut gone = Encoder::default();
+        gone.render_value("gone", &node(), false).unwrap();
+        assert_eq!(memo_entries("gone"), 1);
+        // Neither session has an encoder in the registry; the sweep keeps
+        // the one it is rendering for and drops the other.
+        let mut live = Encoder::default();
+        for _ in 0..SWEEP_EVERY {
+            live.render_value("live", &node(), false).unwrap();
+        }
+        assert_eq!(memo_entries("gone"), 0);
+        assert_eq!(memo_entries("live"), 1);
     }
 }

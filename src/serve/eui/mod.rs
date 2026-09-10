@@ -35,11 +35,35 @@ use super::{json_to_value, unwrap_handler_return, value_to_json, LiveViewEventDa
 static EUI_VIEWS: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 
 /// Per-instance encoder state: tables, node ids, the previous tree.
-static EUI_ENCODERS: Mutex<Option<HashMap<String, tree::Encoder>>> = Mutex::new(None);
+///
+/// A lock per instance inside a lock over the map, rather than one lock held
+/// across the encode. The outer one is taken only to look an instance up, so
+/// two sessions encoding at the same time — which they now do, the realtime
+/// pool having more than one thread in it — do not queue behind each other.
+/// Two frames of the *same* session still cannot overlap, and are already
+/// held apart before they get here by the per-LiveView frame lock.
+type EncoderCell = std::sync::Arc<Mutex<tree::Encoder>>;
+static EUI_ENCODERS: Mutex<Option<HashMap<String, EncoderCell>>> = Mutex::new(None);
 
 /// The synthetic event the socket posts when the client asks for a resync:
 /// the handler is not run, the tree is re-sent whole.
 pub const RESYNC_EVENT: &str = "__eui_resync";
+
+/// The synthetic event the socket posts to the session's worker once the
+/// session is gone, so the worker drops what it kept for it. The memo is
+/// thread-local — it holds interpreter values — so nobody else can.
+pub const FORGET_EVENT: &str = "__eui_forget";
+
+/// The worker side of [`FORGET_EVENT`].
+pub fn forget_on_worker(liveview_id: &str) {
+    tree::forget_session(liveview_id);
+}
+
+/// True while the instance's encoder is still around: the session is live.
+pub fn has_encoder(liveview_id: &str) -> bool {
+    let g = EUI_ENCODERS.lock().unwrap_or_else(|e| e.into_inner());
+    g.as_ref().is_some_and(|m| m.contains_key(liveview_id))
+}
 
 /// Register a component's view action.
 pub fn register_view(component: &str, view: &str) {
@@ -61,14 +85,20 @@ fn view_action(component: &str) -> Option<String> {
 
 /// Run `f` against the instance's encoder, creating it on first use.
 pub fn with_encoder<T>(liveview_id: &str, f: impl FnOnce(&mut tree::Encoder) -> T) -> T {
-    let mut g = EUI_ENCODERS.lock().unwrap_or_else(|e| e.into_inner());
-    let map = g.get_or_insert_with(HashMap::new);
-    f(map.entry(liveview_id.to_string()).or_default())
+    let cell = {
+        let mut g = EUI_ENCODERS.lock().unwrap_or_else(|e| e.into_inner());
+        let map = g.get_or_insert_with(HashMap::new);
+        std::sync::Arc::clone(map.entry(liveview_id.to_string()).or_default())
+    };
+    // The map is unlocked here: the encode below is this instance's own.
+    let mut encoder = cell.lock().unwrap_or_else(|e| e.into_inner());
+    f(&mut encoder)
 }
 
-/// Forget an instance's encoder when its socket is gone for good.
+/// Forget an instance's encoder when its socket is gone for good. The memo
+/// is not touched here: it lives on the session's worker thread, and this
+/// runs on the socket's task — the socket posts [`FORGET_EVENT`] for that.
 pub fn drop_encoder(liveview_id: &str) {
-    tree::forget_session(liveview_id);
     stats::forget(liveview_id);
     let mut g = EUI_ENCODERS.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(map) = g.as_mut() {
