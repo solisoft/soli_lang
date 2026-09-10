@@ -5607,6 +5607,22 @@ struct LiveHandlerReturn {
     close: Option<String>,
 }
 
+/// True when a handler's hash is the new state itself — none of the
+/// wrapper keys (`state` as an object, `stream`, `js`, `redirect`, `patch`,
+/// `live`, `update` as an object, a truthy `close`) is present.
+pub(crate) fn handler_return_is_bare(map: &serde_json::Map<String, serde_json::Value>) -> bool {
+    !(map.get("state").is_some_and(|v| v.is_object())
+        || map.contains_key("stream")
+        || map.contains_key("js")
+        || map.contains_key("redirect")
+        || map.contains_key("patch")
+        || map.contains_key("live")
+        || map.get("update").is_some_and(|v| v.is_object())
+        || map.get("close").is_some_and(|v| {
+            !matches!(v, serde_json::Value::Null | serde_json::Value::Bool(false))
+        }))
+}
+
 /// Unwrap the handler return value. The wrapped form
 /// `{ "state": {...}, "tick_interval": N, "stream": {...}, "redirect": "/x",
 ///    "patch": "/y", "js": [...] }` yields the inner state (or `None` to keep
@@ -5638,26 +5654,13 @@ fn unwrap_handler_return(json: serde_json::Value) -> LiveHandlerReturn {
     };
 
     let has_state_obj = map.get("state").is_some_and(|v| v.is_object());
-    let has_stream = map.contains_key("stream");
-    let has_js = map.contains_key("js");
-    let has_redirect = map.contains_key("redirect");
-    let has_patch = map.contains_key("patch");
-    let has_live = map.contains_key("live");
     let has_update = map.get("update").is_some_and(|v| v.is_object());
     let has_close = map
         .get("close")
         .is_some_and(|v| !matches!(v, serde_json::Value::Null | serde_json::Value::Bool(false)));
 
     // Bare shape: the whole hash is the new state.
-    if !has_state_obj
-        && !has_stream
-        && !has_js
-        && !has_redirect
-        && !has_patch
-        && !has_live
-        && !has_update
-        && !has_close
-    {
+    if handler_return_is_bare(&map) {
         return LiveHandlerReturn {
             state: Some(serde_json::Value::Object(map)),
             tick: None,

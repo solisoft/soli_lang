@@ -29,7 +29,9 @@ use crate::live::view::{LiveViewInstance, LIVE_REGISTRY};
 use crate::span::Span;
 
 use self::stats::Stats;
-use super::{json_to_value, unwrap_handler_return, value_to_json, LiveViewEventData};
+use super::{
+    handler_return_is_bare, json_to_value, unwrap_handler_return, value_to_json, LiveViewEventData,
+};
 
 /// `component -> view action`, filled by `router_eui`.
 static EUI_VIEWS: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
@@ -231,6 +233,11 @@ pub fn handle_eui_event(
         }
     }
 
+    // The state as the view will see it. A handler that returned the bare
+    // state hash — the common shape — hands its own value on to the view,
+    // instead of that value going to JSON for the instance and back to a
+    // value for the view: two deep copies of the whole state per event.
+    let mut state_for_view: Option<Value> = None;
     if data.event != RESYNC_EVENT {
         let handler_name = crate::live::socket::get_liveview_handler(&component)
             .ok_or_else(|| format!("EUI: no handler for component '{component}'"))?;
@@ -246,7 +253,9 @@ pub fn handle_eui_event(
         match interpreter.call_value(handler, vec![event_value], Span::default()) {
             Ok(Value::Null) => {}
             Ok(result @ Value::Hash(_)) => {
-                let unwrapped = unwrap_handler_return(value_to_json(&result));
+                let json = value_to_json(&result);
+                let bare = json.as_object().is_some_and(handler_return_is_bare);
+                let unwrapped = unwrap_handler_return(json);
                 if let Some(reason) = unwrapped.close {
                     // The handler will not have this client: say why, with
                     // the code the spec gives a refusal, and end the session
@@ -263,6 +272,9 @@ pub fn handle_eui_event(
                 }
                 if let Some(state) = unwrapped.state {
                     instance.state = state;
+                    if bare {
+                        state_for_view = Some(result);
+                    }
                 }
                 if let Some(update) = unwrapped.update {
                     if let (Some(dst), Some(src)) =
@@ -288,7 +300,7 @@ pub fn handle_eui_event(
     let view_name = view_action(&component)
         .ok_or_else(|| format!("EUI: no view for component '{component}'"))?;
     let view = resolve(interpreter, &view_name)?;
-    let state_value = json_to_value(&instance.state);
+    let state_value = state_for_view.unwrap_or_else(|| json_to_value(&instance.state));
     let t_view = std::time::Instant::now();
     // Which session the view is being called for, so `eui_stats()` inside it
     // can hand back that session's last render and no one else's.
