@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-09-10
+
+
 ### Added
 
 * **feat(eui):** `eui_stats()` — what the previous render of the session cost, for an application's own dev bar: the view and the encode in milliseconds, the ops and bytes that went on the wire, the batch's seq, the node count and the four tables a session interns (atoms, styles, colours, chunks). Empty outside `--dev` and before the first render, so a view can compose `dev_bar(eui_stats())` unconditionally and ship it. The EUI window has no document to splice a bar into, so the bar is a widget the application places; nothing the client knows (frame time, memory) is in it — spec 08 says the window reports nothing beyond its viewport, and a dev bar is not a reason to change that

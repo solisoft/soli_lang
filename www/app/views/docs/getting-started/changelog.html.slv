@@ -20,9 +20,13 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-1-0" class="text-amber-400 hover:underline">v2.1.0</a>.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Nothing on <code class="text-cyan-400">main</code> since <a href="#v2-1-1" class="text-amber-400 hover:underline">v2.1.1</a> yet.</p>
+    </section>
 
-        <h3 id="unreleased-added" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Added</h3>
+    <section id="v2-1-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.1.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-10</span></h2>
+
+        <h3 id="v2-1-1-added" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Added</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">A dev bar for EUI, from <code class="text-cyan-400">eui_stats()</code>.</strong> An EUI window has no document to splice a bar into, so the bar is a widget the application places &mdash; an <code class="text-cyan-400">overlay</code> pinned to the bottom &mdash; and this builtin is where it gets its numbers: the <em>previous</em> render's, which is what a bar reports. What it counts is what EUI costs and nothing else: the view and the encode in milliseconds, the ops and the bytes that went on the wire, the seq, the node count, and the four tables a session interns once. It answers with an empty hash outside <code class="text-cyan-400">--dev</code> and before the first render, so a view can compose <code class="text-cyan-400">dev_bar(eui_stats())</code> unconditionally and ship it: what is not measured draws nothing.
                 <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
@@ -32,7 +36,7 @@
             </li>
         </ul>
 
-        <h3 id="unreleased-build" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Build</h3>
+        <h3 id="v2-1-1-build" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Build</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">EUI is now part of the default feature set.</strong> <a href="#v2-1-0" class="text-amber-400 hover:underline">v2.1.0</a> shipped it behind <code class="text-cyan-400">--features eui</code> and said the default build contained none of it; that is no longer true. A stock <code class="text-cyan-400">cargo build --release</code> or <code class="text-cyan-400">cargo install --path . --locked</code> now has <code class="text-cyan-400">router_eui</code>, <code class="text-cyan-400">eui_capabilities</code> and the <code class="text-cyan-400">/_eui/session/&lt;component&gt;</code> socket, so an app whose <code class="text-cyan-400">routes.sl</code> calls <code class="text-cyan-400">router_eui</code> no longer fails to boot with <code>Undefined variable 'router_eui'</code> on a binary installed the ordinary way.
                 <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
@@ -43,7 +47,7 @@
             </li>
         </ul>
 
-        <h3 id="unreleased-auth-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <h3 id="v2-1-1-auth-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">An EUI component is only reachable over its own socket.</strong> <code class="text-cyan-400">router_eui</code> registers the handler in the registry the JSON LiveView socket reads, and the worker dispatches on the component name, so <code class="text-cyan-400">/live/socket/&lt;eui component&gt;</code> reached an EUI handler with an event name and a <code class="text-cyan-400">params</code>/<code class="text-cyan-400">props</code> hash of the client's own writing &mdash; the check that every binary-socket event is validated against the tree the client was last sent never ran. It answers 404 now.</li>
             <li><strong class="text-white"><code class="text-cyan-400">connect</code> can refuse a client.</strong> No middleware runs for a WebSocket upgrade, and there was no way to say no: whatever <code class="text-cyan-400">connect</code> returned, the view was rendered and sent. A handler may now return <code class="text-cyan-400">{"close": reason}</code> from <code class="text-cyan-400">connect</code> or any later event &mdash; the client gets an <code class="text-cyan-400">Error</code> frame (403) with the reason and the session ends &mdash; and <code class="text-cyan-400">router_eui(component, handler, view, {"session": "required"})</code> refuses a cookie-less upgrade with 401 before any handler runs. See <a href="/docs/core-concepts/eui#who-may-connect" class="text-amber-400 hover:underline">Who may connect</a>.</li>
@@ -54,7 +58,7 @@
             <li><strong class="text-white">The server enforces the client's limits before sending.</strong> Tree depth, node count, inline text length and the atom/style/colour/chunk table ceilings are refused with a reason the view author can read; the client used to refuse the batch silently, and a deep tree could run a worker off its native stack.</li>
         </ul>
 
-        <h3 id="unreleased-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
+        <h3 id="v2-1-1-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Each EUI session is pinned to one realtime worker, and the realtime side is a quarter of the pool.</strong> It was one thread at every size, so every EUI frame in the process queued behind the one before it. Growing it exposed what the memo assumed: it keeps a rendered card by the identity of the view object it came from &mdash; an interpreter value, so it lives on one thread &mdash; and a session landing on whichever worker was free found it cold three times in four. Pinned by session id, the memo hits every render; keyed rows inside a kept card stay warm; and the memo is freed when the session ends &mdash; it was cleared on the wrong thread, and every closed session's last tree stayed resident for the life of the process. A closed EUI session is now detached and reaped after <code class="text-cyan-400">DETACHED_GRACE</code> like a LiveView one.</li>
             <li><strong class="text-white">A slow reader closes; it does not silently lose batches.</strong> A render of more than 32 frames &mdash; a list of thirty thousand rows &mdash; or a client a little behind dropped whatever did not fit its queue, and the client kept a tree the server had moved on from. The worker waits up to two seconds for room, then closes the socket and the client resyncs. <code class="text-cyan-400">Error</code> frames now say when the session is really over: 503 (queue full), 504 (no answer in thirty seconds), 500 (worker gone).</li>
@@ -62,7 +66,7 @@
             <li><strong class="text-white">Assets by handle.</strong> An asset GET is a refcount, not a copy of up to 16 MiB; the store evicts the least recently used instead of refusing forever at 256 MiB; an image node no longer costs three syscalls per render; the manifest is signed once per capability mask; the publisher key is created private and the scaffold's <code class="text-cyan-400">.gitignore</code> names it.</li>
         </ul>
 
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <h3 id="v2-1-1-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">An EUI local handler was thrown away whenever its style id happened to be 32 or 64.</strong> The widget kept working through the server &mdash; a hover that waits for the round trip, a toggle that flickers &mdash; but the local chunk never ran, and the only sign was one line on the window's stderr: <code>malformed chunk: code does not end in return or jump</code>.
                 <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
