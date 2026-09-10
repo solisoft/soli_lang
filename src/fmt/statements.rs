@@ -180,7 +180,31 @@ impl Printer<'_> {
                 // same StmtKind::If as block `if cond ... end`. Inspect the
                 // source bytes at the statement's start to recover the form.
                 if let Some(kw) = detect_postfix_if_kind(self.source, stmt.span.start_usize()) {
-                    self.print_postfix_if(condition, then_branch, kw, true);
+                    if postfix_payload_breaks(then_branch) {
+                        // The source said postfix, but the value wraps — so
+                        // print the block form the *next* pass would produce
+                        // anyway. See `postfix_payload_breaks`.
+                        match kw {
+                            PostfixIfKind::If => {
+                                self.print_if(condition, then_branch, None);
+                            }
+                            PostfixIfKind::Unless => {
+                                // Postfix `unless` desugars to `If { !cond }`;
+                                // recover the raw condition for the block form.
+                                let cond = match &condition.kind {
+                                    ExprKind::Unary {
+                                        operator: crate::ast::expr::UnaryOp::Not,
+                                        operand,
+                                    } => operand.as_ref(),
+                                    _ => condition,
+                                };
+                                self.print_unless(cond, then_branch, None);
+                            }
+                        }
+                        self.maybe_blank_line_after_guard(then_branch, None);
+                    } else {
+                        self.print_postfix_if(condition, then_branch, kw, true);
+                    }
                 } else if let Some(inner) = self.guard_clause_to_rewrite(
                     stmt,
                     condition,
@@ -1147,6 +1171,25 @@ fn stmt_layout_span(s: &Stmt) -> crate::span::Span {
             s.span.merge(&expr_layout_span(e))
         }
         _ => s.span,
+    }
+}
+
+/// True when a postfix guard's payload would be printed across lines.
+///
+/// Postfix `expr if cond` puts the keyword *after* the value, so a value that
+/// wraps strands the `if` on the line following the closing delimiter. That
+/// still parses, but [`detect_postfix_if_kind`] only scans the statement's
+/// first line, so the next fmt pass no longer recognises the postfix and
+/// expands it to a block `if` — `fmt(fmt(x)) != fmt(x)`.
+///
+/// `guard_clause_to_rewrite` already refuses to *create* one of these via
+/// [`expr_likely_breaks`]; this applies the same policy to a postfix that was
+/// already written that way in the source, so pass 1 emits what pass 2 would.
+pub(super) fn postfix_payload_breaks(then_branch: &Stmt) -> bool {
+    match &then_branch.kind {
+        StmtKind::Expression(e) | StmtKind::Throw(e) => expr_likely_breaks(e),
+        StmtKind::Return(Some(e)) => expr_likely_breaks(e),
+        _ => false,
     }
 }
 

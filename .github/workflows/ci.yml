@@ -367,8 +367,17 @@ jobs:
         run: cargo test --locked --test browser_driver_test
 
       # The framework's frontend, against a real Soli server.
+      # Two invocations on purpose. Test servers run in production mode so
+      # specs exercise the bytecode VM that serves production; the dev bar
+      # only exists under `--dev`, so its spec gets a dev server of its own
+      # and the rest keep their VM coverage.
       - name: Run browser specs
         run: cargo run --locked -- test tests-e2e/browser/specs --browser --no-coverage
+
+      - name: Run dev-mode browser specs
+        env:
+          SOLI_TEST_SERVER_DEV: "1"
+        run: cargo run --locked -- test tests-e2e/browser/dev-specs --browser --no-coverage
 
   # Validate that the tagged + PDF/A output is genuinely conformant, using the
   # veraPDF reference validator. Guards the "accessible + archival" claim: the

@@ -314,6 +314,47 @@ fn postfix_unless_preserved() {
     );
 }
 
+/// A postfix guard whose value wraps must not flip to a block `if` on the
+/// second pass.
+///
+/// `detect_postfix_if_kind` only scans the statement's first line, so once the
+/// printer wrapped the value the trailing `if` was invisible to the next pass,
+/// which expanded it to a block — `fmt(fmt(x)) != fmt(x)`. Found by
+/// `fmt_corpus_test` on the EUI builder catalogue, where it blocked a release.
+///
+/// The formatter now prints the block form on the *first* pass, matching the
+/// policy `guard_clause_to_rewrite` already applied when creating a guard.
+#[test]
+fn postfix_guard_with_a_wrapping_value_is_idempotent() {
+    let src = concat!(
+        "def icon(name, glyph, size)\n",
+        "  return text(glyph, {\"size\": control_text_size(size), \"weight\": \"bold\"}) if name.nil?\n",
+        "  return null\n",
+        "end\n",
+    );
+    assert_idempotent(src);
+
+    // And it settles on the block form rather than a stranded `if`.
+    let once = format_source(src).expect("format_source failed");
+    assert!(
+        once.contains("if name.nil?\n"),
+        "expected a block guard, got:\n{once}"
+    );
+    assert!(
+        !once.contains(") if name.nil?"),
+        "a wrapped value must not strand the postfix keyword:\n{once}"
+    );
+}
+
+/// The short form still stays postfix — the fix must not expand every guard.
+#[test]
+fn postfix_guard_that_fits_stays_postfix() {
+    assert_fmt(
+        "def f(x)\n  return 1 if x.nil?\n  return 2\nend\n",
+        "def f(x)\n  return 1 if x.nil?\n  return 2\nend\n",
+    );
+}
+
 #[test]
 fn postfix_unless_strips_synthetic_not() {
     // Parser desugars `expr unless cond` to `If { !cond, then: expr }`.

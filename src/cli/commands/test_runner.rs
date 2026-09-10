@@ -643,11 +643,24 @@ pub fn run_test(
             // `SOLI_FAIL_ON_VM_DEMOTION` could not see it, because there was
             // no VM to demote from.
             //
-            // Nothing is lost by dropping it: hot reload is pointless for a
-            // process that lives one run and watches files nobody edits, and
-            // the per-request dev instrumentation — the AQL log behind
-            // `dev_queries()`, the render-time headers, the dev-bar request
-            // snapshots — is work no spec asked for.
+            // Nothing is lost by dropping it for an ordinary suite: hot reload
+            // is pointless for a process that lives one run and watches files
+            // nobody edits, and the per-request dev instrumentation — the AQL
+            // log behind `dev_queries()`, the render-time headers, the dev-bar
+            // request snapshots — is work most specs never look at.
+            //
+            // A spec that tests a *dev-only* feature is the exception, and
+            // there is exactly one: `tests-e2e/browser/specs/dev_bar_spec.sl`
+            // covers the dev bar, which `serve` only injects under `--dev`.
+            // Dropping the flag left it asserting against a page that no
+            // longer had a bar, and the red browser job blocked a release.
+            // `SOLI_TEST_SERVER_DEV=1` puts the flag back for such a run —
+            // run those specs in their own invocation so the rest of the
+            // suite keeps its VM coverage.
+            let dev_server = matches!(
+                std::env::var("SOLI_TEST_SERVER_DEV").as_deref(),
+                Ok("1") | Ok("true") | Ok("yes")
+            );
             let mut cmd = std::process::Command::new(&exe);
             cmd.arg("serve")
                 .arg(&app_dir)
@@ -685,6 +698,9 @@ pub fn run_test(
                         .map(std::process::Stdio::from)
                         .unwrap_or(std::process::Stdio::null()),
                 );
+            if dev_server {
+                cmd.arg("--dev");
+            }
             if enable_coverage {
                 cmd.env("SOLI_COVERAGE_ENABLED", "1");
                 if let Some(ref token) = coverage_token {

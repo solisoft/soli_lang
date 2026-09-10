@@ -2,8 +2,14 @@
 #
 # The bar is roughly a thousand lines of inline JavaScript — panel toggles,
 # a flame chart, a request list, a keybinding — that ships to every developer
-# running `soli serve --dev` and had no test of any kind. The test runner
-# starts its server with --dev, so the bar is present on every fixture page.
+# running `soli serve --dev` and had no test of any kind.
+#
+# The bar only exists under `--dev`, and test servers otherwise run in
+# production mode so specs exercise the bytecode VM that serves production.
+# That is why this file lives in `dev-specs/` rather than `specs/`: CI runs
+# this directory in its own invocation with `SOLI_TEST_SERVER_DEV=1`, which
+# puts `--dev` back for that server only. Running it from `specs/` asserts
+# against a page with no bar.
 
 describe("dev bar", fn() {
     test("is injected into dev-mode pages", fn() {
