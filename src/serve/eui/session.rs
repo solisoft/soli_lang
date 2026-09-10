@@ -145,6 +145,11 @@ pub fn upgrade(
                     Err(_) => break,
                 }
             }
+            // The queue was closed on us — a worker gave this socket up as
+            // one that does not drain (`SEND_PATIENCE`) — or the write
+            // failed. Say goodbye properly, so the reader side sees the
+            // close and the session is torn down instead of half-open.
+            let _ = ws_write.close().await;
         });
 
         // 5. Client frames in.

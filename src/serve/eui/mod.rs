@@ -106,16 +106,55 @@ pub fn drop_encoder(liveview_id: &str) {
     }
 }
 
+/// How long one render waits on a socket that is not draining its frames
+/// before giving the socket up.
+///
+/// The socket's queue holds 32 frames. A render that streams more than that
+/// — a list of thirty thousand rows is a few dozen batches — used to lose
+/// every batch past the queue's end, silently: the client kept a tree the
+/// server had moved on from, and every later patch was against nodes it
+/// had never been sent. The worker now waits for room, and if the reader
+/// still cannot keep up it closes the queue, which closes the socket: the
+/// client reconnects and resyncs, which is the honest outcome for a reader
+/// that has fallen this far behind. The wait is bounded because the worker
+/// holds this session's frame lock the while.
+const SEND_PATIENCE: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// Send a frame to every socket attached to an instance: encode once, send to
 /// each, and say how many bytes that was — the one number a dev bar cannot
-/// work out for itself.
-fn send_frame(instance: &LiveViewInstance, frame: &Frame) -> usize {
+/// work out for itself. `deadline` is the render's, shared by all its frames.
+fn send_frame(instance: &LiveViewInstance, frame: &Frame, deadline: std::time::Instant) -> usize {
     let bytes = frame.encode();
     let size = bytes.len();
     for sender in &instance.senders {
-        let _ = sender.try_send(Ok(Message::Binary(bytes.clone())));
+        send_or_close(sender, bytes.clone(), deadline);
     }
     size
+}
+
+/// Queue one frame on one socket, waiting for room until `deadline`; past
+/// it, close the socket rather than skip the frame.
+fn send_or_close(
+    sender: &async_channel::Sender<Result<Message, tungstenite::Error>>,
+    bytes: Vec<u8>,
+    deadline: std::time::Instant,
+) {
+    let mut message = Ok(Message::Binary(bytes));
+    loop {
+        match sender.try_send(message) {
+            Ok(()) => return,
+            Err(async_channel::TrySendError::Closed(_)) => return,
+            Err(async_channel::TrySendError::Full(back)) => {
+                if std::time::Instant::now() >= deadline {
+                    eprintln!("[EUI] a socket is not draining its frames; closing it");
+                    sender.close();
+                    return;
+                }
+                message = back;
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+    }
 }
 
 fn resolve(interpreter: &Interpreter, action: &str) -> Result<Value, String> {
@@ -223,6 +262,7 @@ pub fn handle_eui_event(
                     code: 400,
                     message: e.clone(),
                 },
+                std::time::Instant::now() + SEND_PATIENCE,
             );
             return Err(e);
         }
@@ -258,6 +298,7 @@ pub fn handle_eui_event(
         chunks: tables[3],
         ..Stats::default()
     };
+    let deadline = std::time::Instant::now() + SEND_PATIENCE;
     for batch in batches {
         if std::env::var("EUI_TRACE").is_ok() {
             eprintln!(
@@ -269,11 +310,51 @@ pub fn handle_eui_event(
         }
         sent.ops += batch.ops.len();
         sent.seq = batch.seq;
-        sent.bytes += send_frame(instance, &Frame::Batch(batch));
+        sent.bytes += send_frame(instance, &Frame::Batch(batch), deadline);
     }
     // What this render cost, for the next one to draw. A dev bar reports the
     // work behind what is on the screen, so it is always one render behind —
     // which is the only honest thing it could be.
     stats::record(&instance.id, sent);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_reader_that_never_drains_is_closed_not_skipped() {
+        let (tx, rx) = async_channel::bounded::<Result<Message, tungstenite::Error>>(1);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(20);
+        send_or_close(&tx, vec![1], deadline);
+        assert_eq!(rx.len(), 1, "the first frame fits");
+        send_or_close(&tx, vec![2], deadline);
+        assert!(
+            tx.is_closed(),
+            "the second could not be queued in time: closed"
+        );
+        assert_eq!(rx.len(), 1, "and nothing was dropped on the floor");
+    }
+
+    #[test]
+    fn a_reader_that_drains_gets_every_frame() {
+        let (tx, rx) = async_channel::bounded::<Result<Message, tungstenite::Error>>(1);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let drain = std::thread::spawn(move || {
+            let mut got = 0;
+            while let Ok(_) = rx.recv_blocking() {
+                got += 1;
+                if got == 3 {
+                    break;
+                }
+            }
+            got
+        });
+        for n in 0..3u8 {
+            send_or_close(&tx, vec![n], deadline);
+        }
+        assert!(!tx.is_closed());
+        assert_eq!(drain.join().unwrap(), 3);
+    }
 }
