@@ -6,8 +6,9 @@ that is already resolved, as compact binary patches; a Rust client applies
 them, lays out, and draws on the GPU. A counter costs a few megabytes of RAM
 and no CPU at idle, because there is no document engine to keep running.
 
-It is **optional**: a `soli` built with `cargo build --features eui` has it,
-the default build does not, and nothing else changes either way.
+It is **on by default**: `eui` is part of the default feature set, so a
+stock `cargo build --release` / `cargo install --path . --locked` has it.
+Drop it with `--no-default-features` when you want a slimmer binary.
 
 ## A component is a LiveView component
 
@@ -59,6 +60,66 @@ functions returning hashes — nothing native. Each node is:
 The server turns that into nodes, interns every atom and every distinct style
 once per session, diffs against the tree it last sent, and encodes the patch.
 
+## Who may connect
+
+No middleware runs for a WebSocket upgrade — an `auth` middleware guarding
+`/admin/*` says nothing about `/_eui/session/admin_panel`. The socket is
+gated in two places, and both are yours to write:
+
+```soli
+# config/routes.sl — no session cookie, no socket (401 before any handler runs)
+router_eui("admin_panel", "admin#panel", "admin#panel_view", {"session": "required"})
+```
+
+```soli
+# The handler: `connect` sees the session and may refuse the client.
+def panel(event_data)
+  user = current_user()
+  return {"close": "sign in first"} if user.nil?
+  return {"close": "not an admin"} unless user["role"] == "admin"
+  ...
+end
+```
+
+`{"close": reason}` — from `connect` or any later event — sends the client an
+`Error` frame (code 403) with the reason and ends the session; nothing is
+rendered for it. A `connect` that closed never ran for that client, so no
+`disconnect` follows. Without `{"session": "required"}` a cookie-less client
+gets a synthetic session and `connect` runs as nobody: fine for a public
+board, wrong for anything else.
+
+An EUI component is reachable only over its own socket. `/live/socket/<component>`
+answers 404 for it, so the JSON LiveView socket cannot be used to call its
+handler with an event name and `params` of the client's choosing.
+
+## Limits, budgets and back-pressure
+
+What the client would refuse, the server refuses first, with a reason the
+view's author can act on — a tree nested past 256, more than a million nodes,
+a text over 4 KiB, or a session that has interned more atoms, styles, colours
+or chunks than the protocol allows (a key or a style derived from data grows
+the table with every new value). Such a render fails with `Error` code 400 and
+the session ends, since every later render would fail the same way.
+
+Sockets are admitted against `SOLI_WS_MAX_CONNECTIONS` and
+`SOLI_WS_MAX_CONNECTIONS_PER_IP`, like every other socket; a client has ten
+seconds to say Hello; the server pings every thirty seconds and closes after
+two go unanswered. Inbound frames are charged against the `/ws/*` budget
+(`SOLI_WS_MAX_MESSAGES_PER_SEC`), a `Resync` twenty at a time — it re-sends
+the whole tree. A reader that stops draining its frames is closed after two
+seconds rather than have batches skipped: the client reconnects and resyncs,
+and a session is never left with a tree the server no longer has.
+
+An `Error` frame ends the session on both sides, so it is sent only when the
+session really is over: 503 when the worker queue could not take the event,
+504 when the handler did not answer in thirty seconds, 500 when the worker
+went away. A handler that raised is none of those — the state is unchanged,
+the screen still right — and stays a log line.
+
+Each EUI session is pinned to one realtime worker (see `SOLI_WS_WORKERS`), so
+its renders run on the thread that holds its kept subtrees and the
+application's own per-worker objects.
+
 ## Style is roles, not CSS
 
 There is no cascade and no selector. A style is a hash of the protocol's own
@@ -107,11 +168,15 @@ trusted, and authorisation is never local.
 avatar("public/images/avatar.png", 32)
 ```
 
-The path is a file in the application. Soli hashes it (BLAKE3), sends the
-hash in the tree, and serves the bytes at `GET /_eui/asset/<hash>` with a
-one-year immutable cache header — the same bytes for every session and every
-client, so a CDN can hold them and nothing on the path can substitute them.
-A path that resolves outside the application is refused before it is read.
+The path is a file in the application, under `public/` or `app/assets/`.
+Soli hashes it (BLAKE3), sends the hash in the tree, and serves the bytes at
+`GET /_eui/asset/<hash>` with a one-year immutable cache header — the same
+bytes for every session and every client, so a CDN can hold them and nothing
+on the path can substitute them. The endpoint needs no session: anyone with
+the hash gets the bytes, which is right for an image and why a path outside
+those two directories — `config/`, `.env`, the publisher key — is refused
+before it is read. A `src` is a server path; never build one from client
+data.
 
 ## Keyed lists and virtualisation
 
@@ -879,8 +944,8 @@ with_state({"count": s["count"]}, column({}, children))
 ## Running it
 
 ```sh
-cargo build --features eui
-./target/debug/soli serve path/to/app --port 5011
+cargo build --release
+./target/release/soli serve path/to/app --port 5011
 # the client, from the eui repository:
 EUI_ALLOW_INSECURE_LOOPBACK=1 eui ws://127.0.0.1:5011/_eui/session/counter
 ```

@@ -9,7 +9,7 @@
     </div>
 
     <div class="rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-5 mb-12">
-        <p class="text-gray-300 text-sm leading-relaxed"><strong class="text-indigo-300">Optional, and off by default.</strong> A <code class="text-cyan-400">soli</code> built with <code class="text-cyan-400">cargo build --features eui</code> has it; the default build contains none of it. The protocol, the client and its own documentation live in the <code class="text-cyan-400">eui</code> repository. This page covers what changed in Soli.</p>
+        <p class="text-gray-300 text-sm leading-relaxed"><strong class="text-indigo-300">On by default.</strong> <code class="text-cyan-400">eui</code> is part of the default feature set, so a stock <code class="text-cyan-400">cargo build --release</code> or <code class="text-cyan-400">cargo install --path . --locked</code> has it; drop it with <code class="text-cyan-400">--no-default-features</code> for a slimmer binary. The protocol, the client and its own documentation live in the <code class="text-cyan-400">eui</code> repository. This page covers what changed in Soli.</p>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">A component is a Live View component</h2>
@@ -58,6 +58,36 @@ end</code></pre>
         </div>
     </div>
 
+    <h2 id="who-may-connect" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Who may connect</h2>
+    <p class="text-gray-400 mb-6">No middleware runs for a WebSocket upgrade &mdash; an <code class="text-cyan-400">auth</code> middleware guarding <code class="text-cyan-400">/admin/*</code> says nothing about <code class="text-cyan-400">/_eui/session/admin_panel</code>. The socket is gated in two places, and both are yours to write.</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># No session cookie, no socket: 401 before any handler runs.
+router_eui("admin_panel", "admin#panel", "admin#panel_view", {"session": "required"})</code></pre>
+        </div>
+    </div>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/admin_controller.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># `connect` sees the session and may refuse the client.
+def panel(event_data)
+  user = current_user()
+  return {"close": "sign in first"} if user.nil?
+  return {"close": "not an admin"} unless user["role"] == "admin"
+  ...
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4"><code class="text-cyan-400">{"close": reason}</code> &mdash; from <code class="text-cyan-400">connect</code> or any later event &mdash; sends the client an <code class="text-cyan-400">Error</code> frame (code 403) with the reason and ends the session; nothing is rendered for it. A <code class="text-cyan-400">connect</code> that closed never ran for that client, so no <code class="text-cyan-400">disconnect</code> follows. Without <code class="text-cyan-400">{"session": "required"}</code> a cookie-less client gets a synthetic session and <code class="text-cyan-400">connect</code> runs as nobody: fine for a public board, wrong for anything else.</p>
+    <p class="text-gray-400 mb-12">An EUI component is reachable only over its own socket. <code class="text-cyan-400">/live/socket/&lt;component&gt;</code> answers 404 for it, so the JSON LiveView socket cannot be used to call its handler with an event name and <code class="text-cyan-400">params</code> of the client's choosing.</p>
+
+    <h2 id="limits-and-back-pressure" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Limits, budgets and back-pressure</h2>
+    <p class="text-gray-400 mb-4">What the client would refuse, the server refuses first, with a reason the view's author can act on &mdash; a tree nested past 256, more than a million nodes, a text over 4 KiB, or a session that has interned more atoms, styles, colours or chunks than the protocol allows (a key or a style derived from data grows the table with every new value). Such a render fails with <code class="text-cyan-400">Error</code> code 400 and the session ends, since every later render would fail the same way.</p>
+    <p class="text-gray-400 mb-4">Sockets are admitted against <code class="text-cyan-400">SOLI_WS_MAX_CONNECTIONS</code> and <code class="text-cyan-400">SOLI_WS_MAX_CONNECTIONS_PER_IP</code>, like every other socket; a client has ten seconds to say Hello; the server pings every thirty seconds and closes after two go unanswered. Inbound frames are charged against the <code class="text-cyan-400">/ws/*</code> budget (<code class="text-cyan-400">SOLI_WS_MAX_MESSAGES_PER_SEC</code>), a <code class="text-cyan-400">Resync</code> twenty at a time &mdash; it re-sends the whole tree. A reader that stops draining its frames is closed after two seconds rather than have batches skipped: the client reconnects and resyncs, and a session is never left with a tree the server no longer has.</p>
+    <p class="text-gray-400 mb-4">An <code class="text-cyan-400">Error</code> frame ends the session on both sides, so it is sent only when the session really is over: 503 when the worker queue could not take the event, 504 when the handler did not answer in thirty seconds, 500 when the worker went away. A handler that raised is none of those &mdash; the state is unchanged, the screen still right &mdash; and stays a log line.</p>
+    <p class="text-gray-400 mb-12">Each EUI session is pinned to one realtime worker (see <code class="text-cyan-400">SOLI_WS_WORKERS</code>), so its renders run on the thread that holds its kept subtrees and the application's own per-worker objects.</p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Style is roles, not CSS</h2>
     <p class="text-gray-400 mb-6">There is no cascade and no selector. A style is a hash of the protocol's own vocabulary &mdash; <code class="text-cyan-400">display</code>, <code class="text-cyan-400">gap</code>, <code class="text-cyan-400">pad</code>, <code class="text-cyan-400">bg</code>, <code class="text-cyan-400">fg</code>, <code class="text-cyan-400">size</code>, <code class="text-cyan-400">weight</code>, <code class="text-cyan-400">radius</code>, <code class="text-cyan-400">width</code>, <code class="text-cyan-400">align</code> &mdash; and colours are <strong class="text-white">roles</strong>: <code class="text-cyan-400">"accent.base"</code>, <code class="text-cyan-400">"text.muted"</code>. The client resolves roles against the viewer's light or dark mode, density and font scale, so the same view is right in dark mode without the server knowing. A literal <code class="text-cyan-400">"#RRGGBB"</code> is available for a brand mark and wrong for a surface.</p>
 
@@ -87,7 +117,7 @@ id = params["props"]["id"]</code></pre>
 <pre><code class="language-soli text-sm">avatar("public/images/avatar.png", 32)</code></pre>
         </div>
     </div>
-    <p class="text-gray-400 mb-12">The path is a file in the application. Soli hashes it (BLAKE3), sends the hash in the tree, and serves the bytes at <code class="text-cyan-400">GET /_eui/asset/&lt;hash&gt;</code> with a one-year immutable cache header &mdash; the same bytes for every session, so a CDN can hold them and nothing on the path can substitute them. A path that resolves outside the application is refused before it is read.</p>
+    <p class="text-gray-400 mb-12">The path is a file in the application, under <code class="text-cyan-400">public/</code> or <code class="text-cyan-400">app/assets/</code>. Soli hashes it (BLAKE3), sends the hash in the tree, and serves the bytes at <code class="text-cyan-400">GET /_eui/asset/&lt;hash&gt;</code> with a one-year immutable cache header &mdash; the same bytes for every session, so a CDN can hold them and nothing on the path can substitute them. The endpoint needs no session: anyone with the hash gets the bytes, which is right for an image and why a path outside those two directories &mdash; <code class="text-cyan-400">config/</code>, <code class="text-cyan-400">.env</code>, the publisher key &mdash; is refused before it is read. A <code class="text-cyan-400">src</code> is a server path; never build one from client data.</p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Keyed lists and virtualisation</h2>
     <p class="text-gray-400 mb-12">Give repeated children a key (<code class="text-cyan-400">keyed(id, row(...))</code>) and a re-sort becomes <code class="text-cyan-400">MoveChild</code> ops rather than a rebuild. A <code class="text-cyan-400">list</code> with an item height is virtualised on the client: it lays out only the rows it can see, so ten thousand rows cost about what fifty do.</p>
@@ -1278,8 +1308,8 @@ id = params["props"]["id"]</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Running it</h2>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm">cargo build --features eui
-./target/debug/soli serve path/to/app --port 5011
+<pre><code class="language-bash text-sm">cargo build --release
+./target/release/soli serve path/to/app --port 5011
 # the client, from the eui repository:
 EUI_ALLOW_INSECURE_LOOPBACK=1 eui ws://127.0.0.1:5011/_eui/session/counter</code></pre>
         </div>

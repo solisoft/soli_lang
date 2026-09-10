@@ -251,8 +251,10 @@ locale tables) — with the size of that app. The levers, cheapest first:
 | `cloud` | on | `S3` and the `s3` attachment service (Rusoto) |
 | `mail` | on | `Mailer`, `Imap`, `Pop3` |
 | `lsp` | on | `soli lsp`, the language server (`tower-lsp`) |
+| `eui` | on | EUI components — `router_eui`, `eui_capabilities`, `eui_stats` and the `/_eui` session endpoint (`eui-proto`, `blake3`, `ring`) |
 | `sql` | off | Alias for `postgres` + `mysql` + `sqlite` |
 | `solidb-driver` | off | Native SoliDB TCP driver (needs `solidb-client`) |
+| `eui-desktop` | off | `soli desktop build --eui` — the native EUI window (`eui-client`, winit, wgpu) |
 | `full` | off | Default set + `solidb-driver` |
 
 SoliDB (HTTP) and the rest of the runtime always stay linked. A SoliDB-only install without PASETO or SQL clients:

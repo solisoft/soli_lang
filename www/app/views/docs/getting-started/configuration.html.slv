@@ -246,8 +246,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 OTEL_SERVICE_NAME=myapp s
                     <tr><td class="py-3 px-4"><code>postgres</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4">PostgreSQL document adapter + client pool</td></tr>
                     <tr><td class="py-3 px-4"><code>mysql</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4">MySQL / MariaDB document adapter + client pool</td></tr>
                     <tr><td class="py-3 px-4"><code>sqlite</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4">SQLite document adapter (bundled client &mdash; no system library needed)</td></tr>
+                    <tr><td class="py-3 px-4"><code>eui</code></td><td class="py-3 px-4">on</td><td class="py-3 px-4">EUI components &mdash; <code>router_eui</code>, <code>eui_capabilities</code>, the <code>/_eui</code> session endpoint</td></tr>
                     <tr><td class="py-3 px-4"><code>sql</code></td><td class="py-3 px-4">off</td><td class="py-3 px-4">Alias for <code>postgres</code> + <code>mysql</code> + <code>sqlite</code></td></tr>
                     <tr><td class="py-3 px-4"><code>solidb-driver</code></td><td class="py-3 px-4">off</td><td class="py-3 px-4">Native SoliDB TCP driver</td></tr>
+                    <tr><td class="py-3 px-4"><code>eui-desktop</code></td><td class="py-3 px-4">off</td><td class="py-3 px-4"><code>soli desktop build --eui</code> &mdash; the native EUI window</td></tr>
                     <tr><td class="py-3 px-4"><code>full</code></td><td class="py-3 px-4">off</td><td class="py-3 px-4">Default set + <code>solidb-driver</code></td></tr>
                 </tbody>
             </table>
