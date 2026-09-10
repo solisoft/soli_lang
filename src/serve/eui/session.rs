@@ -270,7 +270,12 @@ pub fn upgrade(
                             e.node, e.event, e.name
                         );
                     }
-                    let Some((name, params)) = validate(&liveview_id, &e) else {
+                    // The encoder lock is a plain mutex a worker may be
+                    // holding through a whole render of this session — a
+                    // tick, a second tab — so it is not taken on the
+                    // reactor thread.
+                    let checked = tokio::task::block_in_place(|| validate(&liveview_id, &e));
+                    let Some((name, params)) = checked else {
                         let _ = sender.try_send(Ok(Message::Binary(
                             Frame::Error {
                                 code: 300,
@@ -434,12 +439,12 @@ fn welcome_session(session_id: &str) -> [u8; 16] {
 /// the server-side event name and the params the handler receives.
 fn validate(liveview_id: &str, e: &EventFrame) -> Option<(String, serde_json::Value)> {
     with_encoder(liveview_id, |enc| {
-        let name = enc.handler_name(e.node, e.event)?;
+        let (name, props) = enc.event_target(e.node, e.event)?;
         let params = serde_json::json!({
             "node": e.node,
             "kind": tree::event_name(e.event),
             "payload": tree::wire_to_json(enc, &e.payload),
-            "props": enc.props_of(e.node),
+            "props": props,
         });
         Some((name, params))
     })

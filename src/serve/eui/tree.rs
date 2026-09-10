@@ -115,9 +115,13 @@ impl From<TNode> for Child {
 }
 
 /// One session's tables and previous tree.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Encoder {
     atoms: HashMap<String, u32>,
+    /// The atoms again, by id — ids are dense and 1-based, so `atoms_by_id[id]`
+    /// is the string, and the reverse lookup every event needs is a index
+    /// rather than a walk of the whole table.
+    atoms_by_id: Vec<String>,
     styles: HashMap<[u8; 64], u32>,
     colors: HashMap<u32, u32>,
     chunks: HashMap<Vec<u8>, u32>,
@@ -238,6 +242,10 @@ impl Encoder {
         }
         let id = self.atoms.len() as u32 + 1;
         self.atoms.insert(s.to_string(), id);
+        if self.atoms_by_id.is_empty() {
+            self.atoms_by_id.push(String::new()); // id 0 is "no atom"
+        }
+        self.atoms_by_id.push(s.to_string());
         self.pending.push(Op::DefAtom {
             id,
             value: s.to_string(),
@@ -246,10 +254,10 @@ impl Encoder {
     }
 
     fn atom_name(&self, id: u32) -> Option<&str> {
-        self.atoms
-            .iter()
-            .find(|(_, v)| **v == id)
-            .map(|(k, _)| k.as_str())
+        if id == 0 {
+            return None;
+        }
+        self.atoms_by_id.get(id as usize).map(String::as_str)
     }
 
     fn color_literal(&mut self, rgba: u32) -> ColorRef {
@@ -593,8 +601,32 @@ impl Encoder {
     /// The server-side name of the handler for `(node, event)` in the tree
     /// the client last received — `None` if the client is making it up.
     pub fn handler_name(&self, node: u32, event: EventKind) -> Option<String> {
-        let tree = self.prev.as_ref()?;
-        let found = find(tree, node)?;
+        let found = find(self.prev.as_ref()?, node)?;
+        self.handler_of(found, event)
+    }
+
+    /// A node's props with atom names resolved, as JSON, for the handler's
+    /// `params["props"]`. This is how a row in a list says which row it is.
+    pub fn props_of(&self, node: u32) -> serde_json::Map<String, Json> {
+        match self.prev.as_ref().and_then(|tree| find(tree, node)) {
+            Some(found) => self.props_json(found),
+            None => serde_json::Map::new(),
+        }
+    }
+
+    /// [`handler_name`] and [`props_of`] for one event, from one walk of
+    /// the tree: what `validate` needs, at the cost of one lookup.
+    pub fn event_target(
+        &self,
+        node: u32,
+        event: EventKind,
+    ) -> Option<(String, serde_json::Map<String, Json>)> {
+        let found = find(self.prev.as_ref()?, node)?;
+        let name = self.handler_of(found, event)?;
+        Some((name, self.props_json(found)))
+    }
+
+    fn handler_of(&self, found: &TNode, event: EventKind) -> Option<String> {
         let atom = found
             .handlers
             .iter()
@@ -606,16 +638,8 @@ impl Encoder {
         self.atom_name(atom).map(str::to_owned)
     }
 
-    /// A node's props with atom names resolved, as JSON, for the handler's
-    /// `params["props"]`. This is how a row in a list says which row it is.
-    pub fn props_of(&self, node: u32) -> serde_json::Map<String, Json> {
+    fn props_json(&self, found: &TNode) -> serde_json::Map<String, Json> {
         let mut out = serde_json::Map::new();
-        let Some(tree) = self.prev.as_ref() else {
-            return out;
-        };
-        let Some(found) = find(tree, node) else {
-            return out;
-        };
         for (atom, value) in &found.props {
             if let Some(name) = self.atom_name(*atom) {
                 out.insert(name.to_string(), wire_to_json(self, value));
@@ -1378,6 +1402,39 @@ fn find(node: &TNode, id: u32) -> Option<&TNode> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn an_atom_is_found_by_its_id() {
+        let mut enc = Encoder::default();
+        let a = enc.atom("alpha");
+        let b = enc.atom("beta");
+        assert_eq!(enc.atom("alpha"), a, "interned once");
+        assert_eq!(enc.atom_name(a), Some("alpha"));
+        assert_eq!(enc.atom_name(b), Some("beta"));
+        assert_eq!(enc.atom_name(0), None);
+        assert_eq!(enc.atom_name(99), None);
+    }
+
+    #[test]
+    fn an_event_resolves_against_the_last_tree_in_one_lookup() {
+        let mut enc = Encoder::default();
+        let tree = json!({"k": "box", "c": [
+            {"k": "box", "key": "row-7", "p": {"id": 7}, "on": {"click": "pick"}}
+        ]});
+        enc.render(&tree, false).unwrap();
+        let row = enc.prev.as_ref().unwrap().children[0].id;
+        let (name, props) = enc.event_target(row, EventKind::Click).unwrap();
+        assert_eq!(name, "pick");
+        assert_eq!(props.get("id"), Some(&json!(7)));
+        assert!(
+            enc.event_target(row, EventKind::Change).is_none(),
+            "no such handler"
+        );
+        assert!(
+            enc.event_target(9999, EventKind::Click).is_none(),
+            "no such node"
+        );
+    }
 
     #[test]
     fn a_key_repeated_among_siblings_is_refused() {

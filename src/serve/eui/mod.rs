@@ -412,7 +412,7 @@ mod tests {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         let drain = std::thread::spawn(move || {
             let mut got = 0;
-            while let Ok(_) = rx.recv_blocking() {
+            while rx.recv_blocking().is_ok() {
                 got += 1;
                 if got == 3 {
                     break;

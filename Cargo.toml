@@ -50,6 +50,7 @@ default = [
     "cloud",
     "lsp",
     "mail",
+    "eui",
 ]
 # Kitchen-sink alias (default set + native SoliDB driver).
 full = [
@@ -66,6 +67,7 @@ full = [
     "cloud",
     "lsp",
     "mail",
+    "eui",
     "solidb-driver",
 ]
 embedding = []
@@ -454,6 +456,11 @@ harness = false
 [[bench]]
 name = "array_string_paths"
 harness = false
+
+[[bench]]
+name = "eui_render"
+harness = false
+required-features = ["eui"]
 
 [[bench]]
 name = "hash_get_set"
