@@ -635,10 +635,22 @@ pub fn run_test(
             // runner worker — extra hyper threads were dead weight that
             // contended for cores during the suite.
             let log_path = format!("/tmp/soli_test_server_w{}.log", i);
+            // Production mode, deliberately. A test server used to run with
+            // `--dev`, which meant a suite never once exercised the bytecode
+            // VM — `serve` only builds one when `!dev_mode`, so every spec
+            // ran on the tree-walking interpreter while production ran on
+            // the VM. A handler the VM refuses passed every spec, and
+            // `SOLI_FAIL_ON_VM_DEMOTION` could not see it, because there was
+            // no VM to demote from.
+            //
+            // Nothing is lost by dropping it: hot reload is pointless for a
+            // process that lives one run and watches files nobody edits, and
+            // the per-request dev instrumentation — the AQL log behind
+            // `dev_queries()`, the render-time headers, the dev-bar request
+            // snapshots — is work no spec asked for.
             let mut cmd = std::process::Command::new(&exe);
             cmd.arg("serve")
                 .arg(&app_dir)
-                .arg("--dev")
                 .arg("--port")
                 .arg(port.to_string())
                 .arg("--workers")
