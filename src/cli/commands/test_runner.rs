@@ -536,6 +536,11 @@ pub fn run_test(
     println!();
 
     let worker_databases = worker_database_names(num_workers, &base_test_database());
+    // Collect this app's stranded worker databases before setting up: a run
+    // that was interrupted, or one made with more workers than this one,
+    // leaves `{stem}_w{N}` databases nothing will ever reuse. The post-suite
+    // drop cannot catch those — it only knows the names of the run it ends.
+    sweep_orphaned_worker_databases(&worker_databases);
     ensure_test_databases(&worker_databases);
 
     #[derive(Clone)]
@@ -1716,6 +1721,96 @@ fn drop_test_databases(db_names: &[String]) {
 /// `DELETE /_api/database/<name>`. A 404 counts as success — the database was
 /// never created (a suite that ran no DB-backed spec) or a previous teardown
 /// already removed it.
+/// This app's worker databases that no run will reuse, out of `all` — every
+/// database the server holds — given the `current` run's names.
+///
+/// Only `{stem}_w{N}{suffix}` names built from *this* run's own base are
+/// candidates, so a sweep can never reach another application's data however
+/// the server is shared. The base database itself is never a candidate:
+/// `ensure_test_databases` resets it, and it is the one name a developer may
+/// deliberately have pointed something else at.
+fn orphaned_worker_databases(all: &[String], current: &[String]) -> Vec<String> {
+    let Some(base) = current.first() else {
+        return Vec::new();
+    };
+    let suffix = if base.ends_with("_test") {
+        "_test"
+    } else if base.ends_with("_spec") {
+        "_spec"
+    } else {
+        return Vec::new();
+    };
+    let prefix = format!("{}_w", &base[..base.len() - suffix.len()]);
+    all.iter()
+        .filter(|name| {
+            // Long enough to hold a worker number between the two ends.
+            name.len() > prefix.len() + suffix.len()
+                && name.starts_with(&prefix)
+                && name.ends_with(suffix)
+                && name[prefix.len()..name.len() - suffix.len()]
+                    .chars()
+                    .all(|c| c.is_ascii_digit())
+                && !current.iter().any(|in_use| in_use == *name)
+        })
+        .cloned()
+        .collect()
+}
+
+/// Every database the server holds, or `None` when it cannot be asked — no
+/// server, no credentials, an answer that will not parse. A sweep that
+/// cannot see the list simply does not happen: it is a tidy-up, never a
+/// precondition for running the suite.
+fn list_databases(host: &str, auth_header: &Option<String>) -> Option<Vec<String>> {
+    let agent = solilang::interpreter::builtins::http_class::ureq_agent();
+    let mut req = agent.get(&format!("{}/_api/databases", host));
+    if let Some(auth) = auth_header {
+        req = req.set("Authorization", auth);
+    }
+    let body: serde_json::Value = req.call().ok()?.into_json().ok()?;
+    Some(
+        body.get("databases")?
+            .as_array()?
+            .iter()
+            .filter_map(|name| name.as_str().map(str::to_owned))
+            .collect(),
+    )
+}
+
+/// Drop this app's stranded worker databases from earlier runs.
+///
+/// The post-suite drop only knows the databases of the run it is ending, so
+/// it cannot collect what an interrupted run left behind, nor the extra
+/// workers of a run made with a wider `--jobs`. Left alone they accumulate:
+/// one SoliDB dev instance reached 117 abandoned databases and 7.8 GB,
+/// holding every SST file open and burning half a core on compaction that
+/// never caught up. Sweeping at the *start* of a run rather than the end is
+/// what makes the cleanup survive a `Ctrl-C`, a timeout, or a panic.
+fn sweep_orphaned_worker_databases(current: &[String]) {
+    let host = test_db_host();
+    let auth_header = test_db_auth_header();
+    let Some(all) = list_databases(&host, &auth_header) else {
+        return;
+    };
+    let orphans = orphaned_worker_databases(&all, current);
+    if orphans.is_empty() {
+        return;
+    }
+    let started = std::time::Instant::now();
+    let errors: Vec<String> = orphans
+        .iter()
+        .filter_map(|database| drop_database(&host, &auth_header, database).err())
+        .collect();
+    if errors.is_empty() {
+        println!(
+            "Swept {} stranded worker database(s) from an earlier run ({}ms)",
+            orphans.len(),
+            started.elapsed().as_millis()
+        );
+    } else if let Some(first) = errors.iter().find(|err| !is_missing_credentials(err)) {
+        println!("⚠ sweep had {} error(s); first: {}", errors.len(), first);
+    }
+}
+
 fn drop_database(host: &str, auth_header: &Option<String>, database: &str) -> Result<(), String> {
     let agent = solilang::interpreter::builtins::http_class::ureq_agent();
     let url = format!("{}/_api/database/{}", host, database);
@@ -2043,6 +2138,62 @@ mod tests {
     #[test]
     fn worker_database_names_single_bare_default() {
         assert_eq!(worker_database_names(1, "default"), vec!["default_spec"]);
+    }
+
+    /// The sweep issues irreversible drops, so what it will and will not
+    /// name is pinned here rather than left to the filter's shape.
+    #[test]
+    fn the_sweep_only_claims_this_apps_stranded_workers() {
+        let all = vec![
+            // This app, a run of 4 workers; this run uses 2.
+            "myapp_test".to_string(),
+            "myapp_w1_test".to_string(),
+            "myapp_w2_test".to_string(),
+            "myapp_w3_test".to_string(),
+            // Another application's worker databases.
+            "other_test".to_string(),
+            "other_w1_test".to_string(),
+            // Real data, one of which merely starts the same way.
+            "myapp".to_string(),
+            "myapp_production".to_string(),
+            "spirit".to_string(),
+        ];
+        let current = vec!["myapp_test".to_string(), "myapp_w1_test".to_string()];
+        let mut orphans = orphaned_worker_databases(&all, &current);
+        orphans.sort();
+        assert_eq!(orphans, vec!["myapp_w2_test", "myapp_w3_test"]);
+    }
+
+    #[test]
+    fn the_sweep_never_claims_the_base_or_a_lookalike() {
+        let current = vec!["myapp_test".to_string()];
+        let all = vec![
+            // The base itself: reset, never dropped.
+            "myapp_test".to_string(),
+            // `_w` with no number, and a number that is not one.
+            "myapp_w_test".to_string(),
+            "myapp_wx_test".to_string(),
+            "myapp_w1x_test".to_string(),
+            // The right shape, the wrong suffix.
+            "myapp_w1_spec".to_string(),
+            "myapp_w1".to_string(),
+            // A different application whose name extends this one.
+            "myapp_extra_w1_test".to_string(),
+        ];
+        assert!(
+            orphaned_worker_databases(&all, &current).is_empty(),
+            "{:?}",
+            orphaned_worker_databases(&all, &current)
+        );
+    }
+
+    #[test]
+    fn the_sweep_does_nothing_without_a_suffixed_base() {
+        // `worker_database_names` always produces a suffix, but the sweep is
+        // handed its output and must not act on anything else.
+        let all = vec!["myapp_w1_test".to_string()];
+        assert!(orphaned_worker_databases(&all, &["myapp".to_string()]).is_empty());
+        assert!(orphaned_worker_databases(&all, &[]).is_empty());
     }
 
     #[test]
