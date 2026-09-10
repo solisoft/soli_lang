@@ -41,6 +41,10 @@ const MAX_UNANSWERED_PINGS: u32 = 2;
 /// again — the most expensive thing a two-byte frame can ask for.
 const RESYNC_COST: f64 = 20.0;
 
+/// How long the socket waits for the worker to answer one event before
+/// it gives the session up as one it can no longer describe.
+const HANDLER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// A client string on its way into the log: control bytes out, length
 /// bounded — a client must not get to write our log lines.
 fn printable(s: &str) -> String {
@@ -158,6 +162,7 @@ pub fn upgrade(
         // `disconnect` to post on the way out.
         let connected = post(
             &lv_event_tx,
+            &sender,
             &liveview_id,
             &component,
             first,
@@ -277,6 +282,7 @@ pub fn upgrade(
                     };
                     if !post(
                         &lv_event_tx,
+                        &sender,
                         &liveview_id,
                         &component,
                         &name,
@@ -301,6 +307,7 @@ pub fn upgrade(
                     }
                     if !post(
                         &lv_event_tx,
+                        &sender,
                         &liveview_id,
                         &component,
                         RESYNC_EVENT,
@@ -318,6 +325,7 @@ pub fn upgrade(
                 Frame::Viewport(v) => {
                     if !post(
                         &lv_event_tx,
+                        &sender,
                         &liveview_id,
                         &component,
                         "viewport",
@@ -357,6 +365,7 @@ pub fn upgrade(
         if connected {
             post(
                 &lv_event_tx,
+                &sender,
                 &liveview_id,
                 &component,
                 "disconnect",
@@ -446,6 +455,7 @@ fn validate(liveview_id: &str, e: &EventFrame) -> Option<(String, serde_json::Va
 /// a process that has no pinned queues, such as a test.
 async fn post(
     lv_event_tx: &crossbeam::channel::Sender<LiveViewEventData>,
+    sender: &WsSender,
     liveview_id: &str,
     component: &str,
     event: &str,
@@ -463,11 +473,26 @@ async fn post(
     };
     let tx =
         super::super::lv_sender_for(liveview_id, component).unwrap_or_else(|| lv_event_tx.clone());
+    // An Error frame ends the session on both sides (spec 01 §4), so it
+    // is sent only when the session really is over: the server could not
+    // take the event, or cannot say what became of it. A handler that
+    // raised is neither — the state is unchanged, the screen still right,
+    // and the next click works — so that stays a log line.
+    let fail = |code: u32, message: &str| {
+        let _ = sender.try_send(Ok(Message::Binary(
+            Frame::Error {
+                code,
+                message: message.into(),
+            }
+            .encode(),
+        )));
+        false
+    };
     if tx.try_send(data).is_err() {
-        eprintln!("[EUI] worker pool saturated; dropping event {event}");
-        return true;
+        eprintln!("[EUI] {component} {event}: worker pool saturated; closing the session");
+        return fail(503, "server busy");
     }
-    match tokio::time::timeout(std::time::Duration::from_secs(30), response_rx).await {
+    match tokio::time::timeout(HANDLER_TIMEOUT, response_rx).await {
         Ok(Ok(Ok(()))) => {
             if trace() {
                 eprintln!("[EUI trace] {component} {event}: handled");
@@ -480,8 +505,17 @@ async fn post(
             }
             eprintln!("[EUI] {component} {event}: {e}");
         }
-        Ok(Err(_)) => eprintln!("[EUI] {component} {event}: worker dropped the response"),
-        Err(_) => eprintln!("[EUI] {component} {event}: timed out"),
+        Ok(Err(_)) => {
+            eprintln!("[EUI] {component} {event}: the worker went away; closing the session");
+            return fail(500, "the handler did not answer");
+        }
+        Err(_) => {
+            eprintln!(
+                "[EUI] {component} {event}: no answer in {}s; closing the session",
+                HANDLER_TIMEOUT.as_secs()
+            );
+            return fail(504, "the handler took too long");
+        }
     }
     true
 }
