@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+* **fix(uploads):** an attachment download no longer costs ~29x its own size in RAM. `AttachmentsController#show` ended with `"body": Base64.decode(b64)`, and `Base64.decode` on bytes that are not valid UTF-8 returns a Soli array of one 16-byte `Value::Int` per byte — precisely the blowup SEC-031 removed on the ingest side, reintroduced on egress. It now answers with `"body_base64"`, which the response layer already understood and decodes once, straight to bytes. Measured on a 16 MiB round trip through a real server, one worker: peak RSS growth 468 MiB before, 118 MiB after. The image-transform branch and its failure fallback took the same route and are fixed with it. An app that overrode `AttachmentsController#show` and copied the old shape should switch to `body_base64` too
+* **fix(uploads):** an upload is no longer copied five times on the way in. The body was collected by hyper, copied into a `Vec<u8>`, copied again into the multipart parser, copied a third time per part, and *also* retained whole in `RequestData.body_bytes` — a field marked `#[allow(dead_code)]` that nothing in the tree ever read, carried across the worker queue on every upload. The body is now a refcounted `Bytes` moved into the parser, parts borrow from it, the dead field is gone, and the attachment store borrows the base64 payload instead of copying it before decoding. `file["data"]` is unchanged: still the same eagerly materialised base64 string, so no app has to migrate. With the download fix, a 16 MiB round trip goes from 468 MiB to 102 MiB of peak RSS growth
+
+### Added
+
+* **feat(serve):** `SOLI_MAX_INFLIGHT_BODY_BYTES` bounds the *sum* of request-body bytes buffered at once. `SOLI_MAX_BODY_SIZE` only ever bounded one request, and bodies are buffered on the async side gated by `SOLI_MAX_CONNECTIONS` (20 000 by default), after which each parsed request waits in a worker queue of `workers x 64` entries still holding its payload — gigabytes of upload resident before a single handler runs. A request now reserves its share before any bytes are buffered and returns it when the request ends, on every path including a worker panic; over the ceiling the server answers `503` with `Retry-After`. Defaults to 16x the per-request cap (128 MiB), so small-payload apps never meet it; `0` disables it
+
 
 ## [2.2.0] - 2026-09-11
 
