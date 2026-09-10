@@ -20,29 +20,21 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-1-2" class="text-amber-400 hover:underline">v2.1.2</a>.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-2-0" class="text-amber-400 hover:underline">v2.2.0</a>.</p>
 
-        <h3 id="unreleased-orm" class="text-xl font-semibold text-white mb-4 scroll-mt-24">ORM / database</h3>
+    </section>
+
+    <section id="v2-2-0" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.2.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-11</span></h2>
+
+        <h3 id="v2-2-0-orm" class="text-xl font-semibold text-white mb-4 scroll-mt-24">ORM / database</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Batch iteration: <code class="text-cyan-400">find_each</code> and <code class="text-cyan-400">in_batches</code></strong> walk a whole collection holding one batch in memory instead of materialising every row &mdash; <code class="text-cyan-400">User.where(&lbrace; "active": true &rbrace;).find_each(fn(user) &lbrace; ... &rbrace;, &lbrace; "batch_size": 500 &rbrace;)</code>. Until now a data-correction command or a score computation over a whole scope was bounded by RAM rather than by anything the author chose, and <code class="text-cyan-400">.each</code> was no escape hatch: it materialises first, then iterates. Paging is by key (<code>FILTER doc._key &gt; &lt;last key seen&gt;</code>, sorted by <code>_key</code>), not <code>LIMIT offset, n</code> &mdash; offset paging degrades as the offset grows and skips or repeats rows when the collection is written to mid-scan, which is exactly what a long correction job does to the collection it is correcting. Deleting or updating inside the block is therefore safe. Both spellings work from the class and from a chain, on SoliDB and the SQL adapters, and <code class="text-cyan-400">find_in_batches</code> is an alias.
                 <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
                     <li>Clauses keyset paging cannot serve are <em>refused</em>, not silently ignored: <code class="text-cyan-400">.order</code>, <code class="text-cyan-400">.limit</code>, <code class="text-cyan-400">.offset</code>, <code class="text-cyan-400">.pluck</code>, the aggregate and grouping modes, <code class="text-cyan-400">.similar</code>, and calling one inside <code class="text-cyan-400">grouped(...)</code>. A dropped clause in a correction run is a wrong run that still reports success.</li>
                     <li><code class="text-cyan-400">batch_size</code> defaults to 1000 and is capped at 10,000.</li>
                 </ul>
-                See <a href="/docs/database/query-builder#batch-iteration" class="text-amber-400 hover:underline">Batch Iteration</a>.
-            </li>
-        </ul>
-
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
-        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
-            <li><strong class="text-white">A read of more than 1000 rows no longer silently loses its tail.</strong> SoliDB returns a query result one cursor batch at a time (1000 rows by default), setting <code>has_more</code> and a cursor id when more remain; the ORM's read path took the first batch and never followed the cursor. Every <code class="text-cyan-400">Model.all</code>, unbounded <code class="text-cyan-400">.where</code>, <code class="text-cyan-400">grouped &lbrace;&rbrace;</code> flush and SDBQL literal was capped at 1000 rows with no error &mdash; a correction script over 5000 rows processed 1000 and reported success. It presented as intermittent, because a query-cache hit returns the whole set with <code>has_more: false</code>: the same query gave 5000 rows warm and 1000 cold. The cursor is now drained to completion, as the <code class="text-cyan-400">db.*</code> client already did. A single-batch read is unchanged and pays nothing.</li>
-        </ul>
-    </section>
-
-    <section id="v2-1-2" class="mb-16 scroll-mt-24">
-        <h2 class="text-3xl font-bold text-white mb-4">v2.1.2 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-10</span></h2>
-
-        <h3 id="v2-1-2-auth-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <h3 id="v2-2-0-auth-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">The locale no longer carries from one visitor to the next.</strong> The active locale lives in a thread-local, workers are reused between requests, and nothing in the request path reset it &mdash; so a controller that did not call <code class="text-cyan-400">set_locale</code> rendered in whatever language the <em>previous</em> request on that worker had asked for.
                 <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
@@ -53,8 +45,9 @@
             </li>
         </ul>
 
-        <h3 id="v2-1-2-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <h3 id="v2-2-0-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A read of more than 1000 rows no longer silently loses its tail.</strong> SoliDB returns a query result one cursor batch at a time (1000 rows by default), setting <code>has_more</code> and a cursor id when more remain; the ORM's read path took the first batch and never followed the cursor. Every <code class="text-cyan-400">Model.all</code>, unbounded <code class="text-cyan-400">.where</code>, <code class="text-cyan-400">grouped &lbrace;&rbrace;</code> flush and SDBQL literal was capped at 1000 rows with no error &mdash; a correction script over 5000 rows processed 1000 and reported success. It presented as intermittent, because a query-cache hit returns the whole set with <code>has_more: false</code>: the same query gave 5000 rows warm and 1000 cold. The cursor is now drained to completion, as the <code class="text-cyan-400">db.*</code> client already did. A single-batch read is unchanged and pays nothing.</li>
             <li><strong class="text-white">Plurals follow CLDR, so French no longer renders English.</strong> The suffix was picked by a locale-independent ladder &mdash; <code class="text-cyan-400">0 &rarr; _zero</code>, <code class="text-cyan-400">1 &rarr; _one</code>, else <code class="text-cyan-400">_other</code> &mdash; applied to every language.
                 <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
                     <li><strong class="text-white">French has no zero category:</strong> 0 and 1 are both <code class="text-cyan-400">one</code> (&laquo;&nbsp;0 article&nbsp;&raquo;). A French page with a <em>correct</em> <code class="text-cyan-400">fr.yml</code> therefore asked for <code class="text-cyan-400">items_zero</code>, did not find it, and fell back to the <strong class="text-white">English</strong> string. The repository's own test asserted that as the expected result.</li>
@@ -76,7 +69,7 @@
             <li><strong class="text-white">A killed runner takes its test servers with it.</strong> The guard that stops them covers every way a suite can <em>finish</em> and none of the ways it can be <em>killed</em>, so an escalated <code class="text-cyan-400">Ctrl-C</code> left <code class="text-cyan-400">soli serve</code> children adopted by init &mdash; three were found alive six hours later, still holding database connections and re-creating their <code class="text-cyan-400">_test</code> databases the moment anything dropped them. The kernel is now asked for the guarantee instead.</li>
         </ul>
 
-        <h3 id="v2-1-2-added" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Added</h3>
+        <h3 id="v2-2-0-added" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Added</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">soli new &lt;app&gt; --eui</code> starts an application with a native window as well as a web page.</strong> It writes the EUI widget catalogue as <code class="text-cyan-400">app/controllers/eui_builders.sl</code> &mdash; 150 plain-Soli functions, from buttons to date pickers to charts &mdash; a first component beside it (a counter: its handler, its view), and the <code class="text-cyan-400">router_eui</code> line in <code class="text-cyan-400">config/routes.sl</code>.
                 <ul class="list-disc list-inside mt-2 space-y-1 ml-4">
