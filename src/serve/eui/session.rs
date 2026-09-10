@@ -110,9 +110,12 @@ pub fn upgrade(
                 .await;
             return;
         };
-        let mut session_bytes = [0u8; 16];
-        let raw = session_id.as_bytes();
-        session_bytes[..raw.len().min(16)].copy_from_slice(&raw[..raw.len().min(16)]);
+        // The session the Welcome names is a handle, not the cookie: the
+        // LiveView socket learned not to hand the raw session id to the
+        // client (`live::socket::session_handle`), and this frame used to
+        // carry its first sixteen bytes. A synthetic `sess-*` id names no
+        // session and goes as it is.
+        let session_bytes = welcome_session(&session_id);
         if ws_write
             .send(Message::Binary(
                 Frame::Welcome(Welcome {
@@ -401,6 +404,23 @@ pub fn upgrade(
     Ok(box_full(response))
 }
 
+/// The sixteen bytes a Welcome names the session by: a SHA-256 of the
+/// session id for a real one, so the value the cookie's `HttpOnly` flag
+/// keeps from page scripts is not on the socket; the synthetic `sess-*`
+/// id of a cookie-less socket as it is, since it names nothing.
+fn welcome_session(session_id: &str) -> [u8; 16] {
+    let mut out = [0u8; 16];
+    if session_id.starts_with("sess-") {
+        let raw = session_id.as_bytes();
+        let n = raw.len().min(16);
+        out[..n].copy_from_slice(&raw[..n]);
+    } else {
+        use sha2::{Digest, Sha256};
+        out.copy_from_slice(&Sha256::digest(session_id.as_bytes())[..16]);
+    }
+    out
+}
+
 /// Check an event against the tree the client was last sent; on success,
 /// the server-side event name and the params the handler receives.
 fn validate(liveview_id: &str, e: &EventFrame) -> Option<(String, serde_json::Value)> {
@@ -476,4 +496,20 @@ fn viewport_json(v: &eui_proto::Viewport) -> serde_json::Value {
         "density": match v.density { eui_proto::Density::Compact => "compact", eui_proto::Density::Cozy => "cozy", eui_proto::Density::Comfortable => "comfortable" },
         "font_scale": f64::from(v.font_scale) / 100.0
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_welcome_never_carries_the_cookie() {
+        let cookie = "3f2b7c1e-9a4d-4e8f-b6c0-1d2e3f4a5b6c";
+        let bytes = welcome_session(cookie);
+        assert!(!cookie.as_bytes().starts_with(&bytes));
+        assert_eq!(bytes, welcome_session(cookie), "stable per session");
+        assert_ne!(bytes, welcome_session("another-session"));
+        // A synthetic id names no session and is passed through.
+        assert!(welcome_session("sess-abc").starts_with(b"sess-abc"));
+    }
 }
