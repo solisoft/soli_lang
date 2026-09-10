@@ -264,7 +264,13 @@ pub fn upgrade(
         )
         .await;
 
-        LIVE_REGISTRY.drop_sender(&liveview_id, &sender);
+        // Detached, not dropped: the state stays for `DETACHED_GRACE` so a
+        // reconnect can resync, then the reaper takes it. Without the detach
+        // an instance lived to the hour-long idle timeout — and only if a
+        // LiveView socket had ever started the reaper at all.
+        if LIVE_REGISTRY.drop_sender(&liveview_id, &sender) {
+            LIVE_REGISTRY.detach(&liveview_id);
+        }
         write_task.abort();
         super::drop_encoder(&liveview_id);
     });

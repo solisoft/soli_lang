@@ -3034,6 +3034,9 @@ async fn handle_hyper_request(
                 .get("cookie")
                 .map(|v| v.to_str().unwrap_or(""));
             let session_id = extract_live_session_id(cookies);
+            // Same registry as LiveView, same reaper — an application that
+            // only ever serves EUI used to keep every instance it ever made.
+            start_liveview_reaper();
             return eui::session::upgrade(req, component, session_id, lv_event_tx.clone());
         }
 
