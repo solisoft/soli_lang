@@ -5,7 +5,7 @@
 //! the path can substitute content. The store is process-wide and bounded.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
@@ -71,20 +71,38 @@ pub fn get(hash: &Hash) -> Option<Arc<Vec<u8>>> {
     with_store(|s| s.by_hash.get(hash).cloned())
 }
 
+/// Where an asset may come from, relative to the app root. A `src` is a
+/// path the view wrote, and a view writes what its data says —
+/// `avatar(user["photo"], 40)` — so the path is not trusted past these.
+/// Everything under them is served to anyone who has the hash, session or
+/// not, which is right for an image and wrong for `config/`, `.env` or the
+/// publisher key next to them.
+pub const ASSET_DIRS: [&str; 2] = ["public", "app/assets"];
+
 /// Store a file from the application, by a path relative to the app root.
-/// The resolved path MUST stay inside the root; anything else is refused
-/// before it is read. Re-reads when the file's mtime changes.
+/// The resolved path MUST be inside one of [`ASSET_DIRS`]; anything else is
+/// refused before it is read. Re-reads when the file's mtime changes.
 pub fn from_file(rel: &str) -> Result<Hash, String> {
-    let root = get_app_root()
+    from_file_in(&get_app_root(), rel)
+}
+
+/// [`from_file`] against an explicit application root.
+pub fn from_file_in(app_root: &Path, rel: &str) -> Result<Hash, String> {
+    let root = app_root
         .canonicalize()
         .map_err(|e| format!("EUI: app root: {e}"))?;
     let path = root
         .join(rel)
         .canonicalize()
         .map_err(|_| format!("EUI: asset '{rel}' not found"))?;
-    if !path.starts_with(&root) {
+    let allowed = ASSET_DIRS
+        .iter()
+        .map(|dir| root.join(dir))
+        .any(|dir| path.starts_with(&dir) && path != dir);
+    if !allowed {
         return Err(format!(
-            "EUI: asset '{rel}' resolves outside the application"
+            "EUI: asset '{rel}' is outside {} — an asset is served to anyone with its hash",
+            ASSET_DIRS.join("/ and ")
         ));
     }
     let mtime = std::fs::metadata(&path)
@@ -130,5 +148,51 @@ pub fn respond(hex: &str) -> Response<ResponseBody> {
             .header(header::CACHE_CONTROL, "no-store")
             .body(full(Bytes::from("no such asset")))
             .unwrap_or_else(|_| Response::new(full(Bytes::new()))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn app_root() -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "soli-eui-assets-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(root.join("public/images")).unwrap();
+        std::fs::create_dir_all(root.join("app/assets")).unwrap();
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::write(root.join("public/images/a.png"), b"png").unwrap();
+        std::fs::write(root.join("app/assets/b.png"), b"png2").unwrap();
+        std::fs::write(root.join("config/eui_publisher.pkcs8"), b"secret").unwrap();
+        std::fs::write(root.join("notes.txt"), b"root").unwrap();
+        root
+    }
+
+    #[test]
+    fn only_the_asset_directories_are_served() {
+        let root = app_root();
+        assert!(from_file_in(&root, "public/images/a.png").is_ok());
+        assert!(from_file_in(&root, "app/assets/b.png").is_ok());
+        for refused in [
+            "config/eui_publisher.pkcs8",
+            "notes.txt",
+            "public/../config/eui_publisher.pkcs8",
+            "public",
+        ] {
+            let err = from_file_in(&root, refused).unwrap_err();
+            assert!(err.contains("outside"), "{refused}: {err}");
+        }
+        let outside = root.join("../soli-eui-assets-outside.png");
+        let err = from_file_in(&root, outside.to_str().unwrap()).unwrap_err();
+        assert!(
+            err.contains("not found") || err.contains("outside"),
+            "{err}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
