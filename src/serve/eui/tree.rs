@@ -250,6 +250,101 @@ fn count_nodes(t: &TNode) -> usize {
 /// to apply — one frame's worth.
 pub const MAX_OPS_PER_BATCH: usize = 1000;
 
+/// The weight of one batch, roughly its bytes on the wire: a node counts
+/// [`NODE_WEIGHT`] plus its text. The client refuses a frame over 8 MiB,
+/// and a first render or a resync used to be one op however big the tree;
+/// a tree of a few hundred thousand cards could never be mounted at all.
+pub const MAX_BATCH_WEIGHT: usize = 2 * 1024 * 1024;
+
+/// What a node costs on the wire before its text: kind, ids, style, key,
+/// the prop and handler slices, the child count, and the props themselves,
+/// generously.
+const NODE_WEIGHT: usize = 48;
+
+fn subtree_weight(t: &Subtree) -> usize {
+    t.nodes
+        .iter()
+        .map(|n| {
+            NODE_WEIGHT
+                + match &n.text {
+                    Some(TextRef::Inline(s)) => s.len(),
+                    _ => 0,
+                }
+        })
+        .sum::<usize>()
+        + t.props.len() * 16
+}
+
+fn op_weight(op: &Op) -> usize {
+    match op {
+        Op::Mount(t) | Op::Replace { subtree: t, .. } | Op::InsertChild { subtree: t, .. } => {
+            subtree_weight(t)
+        }
+        Op::DefAtom { value, .. } => 8 + value.len(),
+        Op::DefChunkBytes { bytes, .. } => 8 + bytes.len(),
+        Op::SetText {
+            text: TextRef::Inline(s),
+            ..
+        } => 8 + s.len(),
+        _ => 16,
+    }
+}
+
+/// The weight of a tree that has not been flattened: the same measure as
+/// [`subtree_weight`], off the nodes.
+fn tree_weight(n: &TNode) -> usize {
+    NODE_WEIGHT
+        + match &n.text {
+            Some(TextRef::Inline(s)) => s.len(),
+            _ => 0,
+        }
+        + n.props.len() * 16
+        + n.children
+            .iter()
+            .map(|c| tree_weight(c.node()))
+            .sum::<usize>()
+}
+
+/// A whole tree as ops: one `Mount` when it fits a batch, else the root
+/// mounted bare and its children inserted one by one — and a child that is
+/// itself too big goes the same way, so no single op outweighs a batch and
+/// a tree of any size the client accepts can be sent.
+fn mount_ops(tree: &TNode) -> Vec<Op> {
+    let mut ops = Vec::new();
+    if tree_weight(tree) <= MAX_BATCH_WEIGHT {
+        ops.push(Op::Mount(flatten(tree)));
+        return ops;
+    }
+    let mut bare = tree.clone();
+    let children = std::mem::take(&mut bare.children);
+    ops.push(Op::Mount(flatten(&bare)));
+    for (index, child) in children.iter().enumerate() {
+        insert_ops(tree.id, index as u32, child.node(), &mut ops);
+    }
+    ops
+}
+
+fn insert_ops(parent: u32, index: u32, node: &TNode, ops: &mut Vec<Op>) {
+    if tree_weight(node) <= MAX_BATCH_WEIGHT {
+        ops.push(Op::InsertChild {
+            parent,
+            index,
+            subtree: flatten(node),
+        });
+        return;
+    }
+    let mut bare = node.clone();
+    let children = std::mem::take(&mut bare.children);
+    ops.push(Op::InsertChild {
+        parent,
+        index,
+        subtree: flatten(&bare),
+    });
+    for (i, child) in children.iter().enumerate() {
+        insert_ops(node.id, i as u32, child.node(), ops);
+    }
+}
+
 impl Encoder {
     /// Intern a string, emitting its definition on first use.
     pub fn atom(&mut self, s: &str) -> u32 {
@@ -586,7 +681,7 @@ impl Encoder {
             }
             _ => {
                 assign_fresh_ids(self, &mut tree);
-                vec![Op::Mount(flatten(&tree))]
+                mount_ops(&tree)
             }
         };
         // Keyed nodes converted this render are frozen behind an Arc, so the
@@ -624,26 +719,29 @@ impl Encoder {
         // A big update streams: every prefix of the op list is valid on its
         // own (definitions come first, ops apply in order), so a batch of
         // thousands of inserts goes out in slices the client paints between.
-        // The first slice is on screen long before the last is encoded.
+        // The first slice is on screen long before the last is encoded. A
+        // slice is bounded by ops and by weight — an insert of a whole
+        // subtree is one op and most of a frame.
         let mut batches = Vec::new();
-        if all.len() <= MAX_OPS_PER_BATCH {
-            self.seq += 1;
-            batches.push(Batch {
-                seq: self.seq,
-                ops: all,
-            });
-        } else {
-            let mut rest = all;
-            while !rest.is_empty() {
-                let take = rest.len().min(MAX_OPS_PER_BATCH);
-                let tail = rest.split_off(take);
+        let mut ops = Vec::new();
+        let mut weight = 0usize;
+        for op in all {
+            let w = op_weight(&op);
+            if !ops.is_empty() && (ops.len() >= MAX_OPS_PER_BATCH || weight + w > MAX_BATCH_WEIGHT)
+            {
                 self.seq += 1;
                 batches.push(Batch {
                     seq: self.seq,
-                    ops: rest,
+                    ops: std::mem::take(&mut ops),
                 });
-                rest = tail;
+                weight = 0;
             }
+            weight += w;
+            ops.push(op);
+        }
+        if !ops.is_empty() || batches.is_empty() {
+            self.seq += 1;
+            batches.push(Batch { seq: self.seq, ops });
         }
         Ok(batches)
     }
@@ -1748,6 +1846,52 @@ mod tests {
         }
         let err = enc.render(&json!({"k": "box"}), false).unwrap_err();
         assert!(err.contains("colours"), "{err}");
+    }
+
+    #[test]
+    fn a_tree_too_big_for_one_frame_is_mounted_in_pieces() {
+        // Rows of 4 KiB of text: a few hundred outweigh a batch.
+        let rows: Vec<Json> = (0..1200)
+            .map(|i| json!({"k": "text", "key": format!("r{i}"), "t": "x".repeat(4000)}))
+            .collect();
+        let tree = json!({"k": "scroll", "c": [{"k": "box", "c": rows}]});
+        let mut enc = Encoder::default();
+        let batches = enc.render(&tree, false).unwrap();
+        assert!(batches.len() > 1, "{} batch(es)", batches.len());
+        let mut nodes = 0;
+        for b in &batches {
+            let w: usize = b.ops.iter().map(op_weight).sum();
+            assert!(
+                w <= MAX_BATCH_WEIGHT + 4096 + NODE_WEIGHT,
+                "batch weighs {w}"
+            );
+            for op in &b.ops {
+                if let Op::Mount(t) | Op::InsertChild { subtree: t, .. } = op {
+                    nodes += t.nodes.len();
+                }
+            }
+        }
+        assert_eq!(nodes, 1202, "every node is sent exactly once");
+        // One Mount, and it comes before any insert — the atoms the rows
+        // interned come first of all, a thousand of them to a batch.
+        let flat: Vec<&Op> = batches.iter().flat_map(|b| b.ops.iter()).collect();
+        let mount_at = flat
+            .iter()
+            .position(|op| matches!(op, Op::Mount(_)))
+            .unwrap();
+        assert_eq!(
+            flat.iter().filter(|op| matches!(op, Op::Mount(_))).count(),
+            1
+        );
+        let first_insert = flat
+            .iter()
+            .position(|op| matches!(op, Op::InsertChild { .. }))
+            .unwrap();
+        assert!(mount_at < first_insert);
+        // The seqs are consecutive.
+        for (i, b) in batches.iter().enumerate() {
+            assert_eq!(b.seq, i as u64 + 1);
+        }
     }
 
     #[test]
