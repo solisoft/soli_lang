@@ -198,14 +198,20 @@ fn diff_keyed(enc: &mut Encoder, parent: u32, old: &[Child], new: &mut [Child], 
                 } else {
                     live.iter().position(|id| *id == o.id).unwrap_or(target)
                 };
-                if from != target {
+                // `target` can run past `live` only when a key is repeated
+                // among siblings — every copy matches the same old child.
+                // The converter refuses that tree before it gets here; the
+                // clamp is what keeps a worker alive if anything else ever
+                // produces the shape, since `Vec::insert` past the end panics.
+                let to = target.min(live.len());
+                if from != to {
                     ops.push(Op::MoveChild {
                         parent,
                         from: from as u32,
-                        to: target as u32,
+                        to: to as u32,
                     });
                     let id = live.remove(from);
-                    live.insert(target, id);
+                    live.insert(to.min(live.len()), id);
                 }
                 // The same kept node on both sides: nothing to compare.
                 if !o.same_kept(child) {
@@ -215,12 +221,13 @@ fn diff_keyed(enc: &mut Encoder, parent: u32, old: &[Child], new: &mut [Child], 
             None => {
                 let node = child.node_mut();
                 assign_fresh_ids(enc, node);
+                let at = target.min(live.len());
                 ops.push(Op::InsertChild {
                     parent,
-                    index: target as u32,
+                    index: at as u32,
                     subtree: flatten(node),
                 });
-                live.insert(target, node.id);
+                live.insert(at, node.id);
             }
         }
     }
@@ -286,6 +293,24 @@ mod tests {
         for (o, n) in old.children.iter().zip(new.children.iter()) {
             assert_eq!(o.id, n.id);
         }
+    }
+
+    #[test]
+    fn a_repeated_key_among_siblings_does_not_panic() {
+        // Both new children match the one old child by key. At the second,
+        // `live` has already been emptied by the first move and the target
+        // index is past its end — `Vec::insert` used to panic here, and the
+        // panic took the realtime worker with it.
+        let mut enc = Encoder::default();
+        let mut old = parent(vec![leaf(NodeKind::Box, Some("x"), "a")]);
+        assign_fresh_ids(&mut enc, &mut old);
+        let mut new = parent(vec![
+            leaf(NodeKind::Box, Some("x"), "b"),
+            leaf(NodeKind::Box, Some("x"), "c"),
+        ]);
+        let mut ops = Vec::new();
+        diff(&mut enc, &old, &mut new, &mut ops);
+        assert!(!ops.is_empty());
     }
 
     #[test]

@@ -2641,7 +2641,7 @@ fn worker_loop(
         if let Some(ref mut rx) = lv_event_rx_inner {
             match rx.try_recv() {
                 Ok(data) => {
-                    let result = handle_liveview_event(interpreter, &data);
+                    let result = handle_liveview_event_caught(interpreter, &data);
                     let _ = data.response_tx.send(result);
                 }
                 Err(channel::TryRecvError::Empty) => {}
@@ -2728,7 +2728,7 @@ fn worker_loop(
                 } else if Some(idx) == lv_idx {
                     if let Some(ref rx) = lv_event_rx_inner {
                         if let Ok(data) = oper.recv(rx) {
-                            let result = handle_liveview_event(interpreter, &data);
+                            let result = handle_liveview_event_caught(interpreter, &data);
                             let _ = data.response_tx.send(result);
                         }
                     }
@@ -5108,6 +5108,37 @@ fn apply_live_updates(
             Err(e) => {
                 eprintln!("[LiveView] child update {name} failed: {e}");
             }
+        }
+    }
+}
+
+/// `handle_liveview_event` behind the guard HTTP handlers already have.
+///
+/// A panic in a handler or in the EUI encoder used to unwind out of the
+/// worker loop, where the catch-all rebuilds the interpreter and reloads the
+/// whole application — every event in flight on that worker lost with it,
+/// and a client that can provoke the panic (a keyed list with two rows of one
+/// key was enough) could keep the realtime side restarting. Now it fails this
+/// one event and answers the socket; the frame lock and the encoder lock are
+/// poisoned by the unwind and both are taken with `into_inner`, and an encoder
+/// left mid-render simply re-mounts on its next frame.
+fn handle_liveview_event_caught(
+    interpreter: &mut Interpreter,
+    data: &LiveViewEventData,
+) -> Result<(), String> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        handle_liveview_event(interpreter, data)
+    })) {
+        Ok(result) => result,
+        Err(_) => {
+            crate::metrics::Metrics::global()
+                .handler_panics_total
+                .fetch_add(1, Ordering::Relaxed);
+            eprintln!(
+                "[LiveView] handler panicked on {} {:?} — event dropped (worker survived)",
+                data.component, data.event
+            );
+            Err(format!("handler panicked on event '{}'", data.event))
         }
     }
 }

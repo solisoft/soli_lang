@@ -623,6 +623,7 @@ impl Encoder {
         if node.kind.is_leaf() && !node.children.is_empty() {
             return Err(format!("EUI: a {:?} node cannot have children", node.kind));
         }
+        refuse_repeated_keys(&node)?;
         if keyed && !self.session.is_empty() {
             node.identity = identity;
             pins.insert(identity, v.clone());
@@ -644,6 +645,7 @@ impl Encoder {
         if node.kind.is_leaf() && !node.children.is_empty() {
             return Err(format!("EUI: a {:?} node cannot have children", node.kind));
         }
+        refuse_repeated_keys(&node)?;
         Ok(node)
     }
 
@@ -1269,9 +1271,55 @@ pub fn wire_to_json(enc: &Encoder, v: &WireValue) -> Json {
     }
 }
 
+/// A key names one child among its siblings; two children sharing one would
+/// both match the same old node in the diff, and the diff would then move a
+/// child to an index its parent does not have. Said here, where the view
+/// author can act on it, as the error every other malformed tree gets.
+fn refuse_repeated_keys(node: &TNode) -> Result<(), String> {
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for child in &node.children {
+        if let Some(key) = child.key.as_deref() {
+            if !seen.insert(key) {
+                return Err(format!(
+                    "EUI: key '{key}' is used by two children of one {:?} node",
+                    node.kind
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn find(node: &TNode, id: u32) -> Option<&TNode> {
     if node.id == id {
         return Some(node);
     }
     node.children.iter().find_map(|c| find(c.node(), id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_key_repeated_among_siblings_is_refused() {
+        let mut enc = Encoder::default();
+        let tree = json!({"k": "box", "c": [
+            {"k": "text", "key": "row", "t": "a"},
+            {"k": "text", "key": "row", "t": "b"}
+        ]});
+        let err = enc.render(&tree, false).unwrap_err();
+        assert!(err.contains("key 'row'"), "{err}");
+    }
+
+    #[test]
+    fn the_same_key_under_different_parents_is_fine() {
+        let mut enc = Encoder::default();
+        let tree = json!({"k": "box", "c": [
+            {"k": "box", "c": [{"k": "text", "key": "row", "t": "a"}]},
+            {"k": "box", "c": [{"k": "text", "key": "row", "t": "b"}]}
+        ]});
+        assert!(enc.render(&tree, false).is_ok());
+    }
 }
