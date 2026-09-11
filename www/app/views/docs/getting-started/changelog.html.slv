@@ -22,6 +22,16 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-2-0" class="text-amber-400 hover:underline">v2.2.0</a>.</p>
 
+        <h3 id="unreleased-eui" class="text-xl font-semibold text-white mb-4 scroll-mt-24">EUI</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">eui_wake(component)</code> renders every other live session of a component, now.</strong> A window learned what someone else had done only when its own <code class="text-cyan-400">wake</code> clock next fired &mdash; up to a whole period late, and a render per period per window spent finding out that nothing had happened. Nothing in the protocol required that: a <code class="text-cyan-400">Batch</code> is server&rarr;client, so a server that knows something changed can simply say so. Call it where the change is written, not on a timer.</li>
+            <li><strong class="text-white">Chart colour roles.</strong> <code class="text-cyan-400">series.1</code>&ndash;<code class="text-cyan-400">series.5</code> join the theme's role table, so a chart names a categorical series instead of hard-coding a hex. A view using one was previously refused with <code>EUI: unknown colour role 'series.1'</code>.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">scroll_to</code> on a node</strong> &mdash; a server-driven render can move a scroll position, not just describe one.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">position: "pointer"</code></strong> places a node where the pointer is, rather than in the flow or a stack.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">location</code> and <code class="text-cyan-400">nfc_tag</code> events.</strong> The client compiles the code behind them only for a phone &mdash; a desktop has no tag reader and no positioning it can reach &mdash; the same way file dialogs are excluded on a phone.</li>
+            <li><strong class="text-white">The scaffolded builder catalogue grew by ~650 lines</strong>, including the chart builders that use the new series roles.</li>
+        </ul>
+
         <h3 id="unreleased-tooling" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Tooling</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">soli fmt</code> is idempotent again on a postfix guard whose value wraps.</strong> Formatting <code class="text-cyan-400">return text(glyph, &lbrace; ... &rbrace;) if name.nil?</code> broke the value across lines, which stranded the trailing <code class="text-cyan-400">if</code> where the next pass could not see it &mdash; so a second <code class="text-cyan-400">soli fmt</code> rewrote the guard into a block <code class="text-cyan-400">if</code>. The formatter now emits the block form on the first pass, matching the rule it already applied when creating a guard, so <code class="text-cyan-400">fmt(fmt(x)) == fmt(x)</code>. A short guard still stays postfix.</li>
