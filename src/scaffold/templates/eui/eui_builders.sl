@@ -125,18 +125,59 @@ def video(src, props, style, on)
   picture
 end
 
-def input(value, on_change)
-  {
-    "k": "input",
-    "t": value,
-    "s": {
-      "pad": [2, 3, 2, 3],
-      "border": 1,
-      "border_color": "border.default",
-      "radius": 2
-    },
-    "on": {"change": on_change}
+# `o` narrows a field without its caller having to reach into the hash
+# afterwards: `style` is merged over the resting style, `props` is the
+# identity and the semantics the handler and the screen reader read back,
+# `key` names the node, and `on` adds handlers beside `change`.
+#
+# `change` is not one per keystroke. The client sends it when the field is
+# left or `Enter` is pressed, and only when the value differs from the one
+# the server sent, so a field is never judged while it is still being typed
+# into. A view that does want every letter asks for `text_input` in `o`.
+def input(value, on_change, o = {})
+  editable("input", value, on_change, o)
+end
+
+# One line of body text at cozy density, in px. It is a floor for an empty
+# textarea and nothing else: the client scales text with the viewer's font
+# scale and the box grows with its content, so nothing is laid out from this.
+TEXT_LINE_PX = 22
+
+# The multi-line field, and the only editable kind the client has besides
+# `input`. The same node in every respect but that kind, and the kind is what
+# makes the client wrap the text, put the caret on the line the pointer
+# landed on, and keep `Enter` for a newline instead of a submit.
+#
+# `o["rows"]` is a floor, not a ceiling: the box is at least that many lines
+# tall and grows with what is typed into it, because a textarea that starts
+# scrolling at three lines hides the paragraph it was asked to hold.
+def textarea(value, on_change, o = {})
+  rows = o["rows"] ?? 3
+  editable("textarea", value, on_change, o.merge({
+    "style": {"min_height": rows * TEXT_LINE_PX}.merge(o["style"] ?? {})
+  }))
+end
+
+# What both of them are. The border is reserved at rest and only coloured
+# later, for the reason `button_variant` gives below: a border that appears
+# when a value goes wrong would shove every field under it sideways.
+def editable(kind, value, on_change, o)
+  base = {
+    "pad": [2, 3, 2, 3],
+    "border": 1,
+    "border_color": "border.default",
+    "radius": 2
   }
+  n = {
+    "k": kind,
+    "t": value ?? "",
+    "s": base.merge(o["style"] ?? {}),
+    "on": {"change": on_change}.merge(o["on"] ?? {})
+  }
+  n["key"] = o["key"] unless (o["key"] ?? "") == ""
+  props = o["props"] ?? {}
+  n["p"] = props if props.keys().length() > 0
+  n
 end
 
 # The primary button: accent roles, so it follows the viewer into dark mode
@@ -506,6 +547,26 @@ def button_variant(label, on_click, bg, fg)
   }
 end
 
+# A link is a button that goes somewhere rather than doing something, so it
+# is text in the accent colour and not a box: a row of links must not read
+# as a row of buttons, because what they promise is different. It declares
+# the `link` role, which is what a screen reader announces it by — the
+# colour is not available to everyone, and on its own it says nothing.
+#
+# It is `text_link` and not `link` because `breadcrumb` below keeps a local
+# of that name, and a local in this language is visible to what comes after
+# it: defining `link` as a function meant the first breadcrumb drawn
+# replaced it with a hash, and every later call said so.
+def text_link(label, on_click, props = {})
+  {
+    "k": "text",
+    "t": label,
+    "s": {"fg": "accent.base", "cursor": "pointer"},
+    "on": {"click": on_click},
+    "p": {"role": "link", "label": label}.merge(props)
+  }
+end
+
 def secondary_button(label, on_click)
   button_variant(label, on_click, "surface.sunken", "text.default")
 end
@@ -624,6 +685,86 @@ def switch(label, on, on_toggle, props, o = {})
       text(label, {"size": control_text_size(size), "fg": disabled ? "text.disabled" : "text.default"})
     ]
   })
+end
+
+# A radio is a checkbox that cannot be unticked and knows about its
+# neighbours: choosing one is choosing away from the others. So the *group*
+# owns the value — there is no `checked` argument that a caller could set on
+# two of them at once — and each button carries only what it stands for, in
+# `props`, which is what comes back as `params["props"]`.
+#
+# The mark is a ring with a dot in it rather than a box with a tick, because
+# the shape is the only thing that says "one of these" before the pointer is
+# anywhere near it.
+def radio(label, selected, on_pick, props, o = {})
+  size = o["size"] ?? "md"
+  box = checkbox_box_px(size)
+  disabled = o["disabled"] == true
+  mark = {
+    "k": "box",
+    "s": {
+      "width": box,
+      "height": box,
+      "radius": 4,
+      "border": 2,
+      "border_color": disabled ? "border.subtle" : (selected ? "accent.base" : "border.strong"),
+      "bg": "none",
+      "display": "row",
+      "justify": "center",
+      "align": "center",
+      "transition": "fast"
+    },
+    "c": selected ? [node(
+      "box",
+      {
+        "width": box - 8,
+        "height": box - 8,
+        "radius": 4,
+        "bg": disabled ? "text.disabled" : "accent.base"
+      },
+      []
+    )] : []
+  }
+  control({
+    "key": o["key"] ?? ("rd:" + (props["group"] ?? "").to_s + ":" + (props["value"] ?? label).to_s),
+    "size": size,
+    "shape": {"justify": "start", "border": 0, "radius": 1, "min_width": 0, "pad": [1, 2, 1, 2]},
+    "on": {"click": on_pick},
+    "props": props,
+    "disabled": disabled,
+    "a11y": {
+      "role": "radio",
+      "checked": selected,
+      "label": o["name"] ?? label
+    },
+    "c": [
+      mark,
+      text(label, {
+        "size": control_text_size(size),
+        "fg": disabled ? "text.disabled" : "text.default"
+      })
+    ]
+  })
+end
+
+# The group is what a screen reader is told about — `radio_group` is a role
+# the client knows — and it is what makes the keys unique: every button in a
+# group takes the group's name, so two groups of "Yes"/"No" on one page do
+# not restyle each other. `o["direction"]` is `"column"` unless a row is
+# asked for; three short options read better on one line.
+def radio_group(options, value, on_pick, o = {})
+  name = o["name"] ?? "radio"
+  size = o["size"] ?? "md"
+  disabled = o["disabled"] == true
+  buttons = options.map(fn(opt) {
+    radio(opt, opt == value, on_pick, {"value": opt, "group": name}, {"size": size, "disabled": disabled})
+  })
+  group = (o["direction"] ?? "column") == "row" ? row(
+    {"gap": 4, "align": "center", "wrap": "wrap"},
+    buttons
+  ) : column({"gap": 1}, buttons)
+  group["p"] = {"role": "radio_group", "label": o["label"] ?? name}
+  group
 end
 
 def badge(label, tone)
@@ -1257,7 +1398,7 @@ def grid_cell(row_id, col, value, selected, editing, open, on_select, on_change,
   col_id = col["id"]
   props = {"row": row_id, "col": col_id}
   key = "cell:" + str(row_id) + ":" + col_id
-  editable = grid_col_editable(col)
+  can_edit = grid_col_editable(col)
   align = grid_col_align(col)
   choices = col["options"] ?? []
   # The keyed node is always a box. Swapping it for an `input` is a kind
@@ -1276,7 +1417,7 @@ def grid_cell(row_id, col, value, selected, editing, open, on_select, on_change,
     tone = value == "Paid" ? "success" : (value == "Open" ? "warning" : "info")
     inner = badge(value, tone)
   end
-  if editing == true && editable == true && choices.length() > 0
+  if editing == true && can_edit == true && choices.length() > 0
     head = row(
       {
         "align": "center",
@@ -1318,7 +1459,7 @@ def grid_cell(row_id, col, value, selected, editing, open, on_select, on_change,
       [head].concat(picks)
     ) : head
   end
-  if editing == true && editable == true && choices.length() == 0
+  if editing == true && can_edit == true && choices.length() == 0
     inner = {
       "k": "input",
       "t": value,
@@ -1340,7 +1481,7 @@ def grid_cell(row_id, col, value, selected, editing, open, on_select, on_change,
     }
   end
   cursor = "pointer"
-  cursor = "text" if editable == true && choices.length() == 0
+  cursor = "text" if can_edit == true && choices.length() == 0
   base = {
     "display": "row",
     "justify": align,
@@ -2219,7 +2360,7 @@ def select_sized(options, value, open, on_toggle, on_pick, min_width, grow)
       {"fg": "text.muted", "width": 14, "height": 14}
     )]
   }
-  dropdown(anchor, options.map(fn(o) { select_option(o, o == value, on_pick, min_width) }), open)
+  dropdown(anchor, options.map(fn(o) { select_option(o, o == value, on_pick, min_width) }), open, DROPDOWN_MAX_PX)
 end
 
 def select_option(label, selected, on_pick, min_width)
@@ -2238,6 +2379,13 @@ def select_option(label, selected, on_pick, min_width)
   }
 end
 
+# How tall a list of options is allowed to get before it scrolls instead of
+# running on. Eight rows or so: enough that a short list never scrolls, few
+# enough that a long one does not bury the page it hangs over. A panel that
+# is not a list of options — a calendar, say — passes no ceiling and is
+# bounded by the window alone.
+DROPDOWN_MAX_PX = 280
+
 # A popover that opens under its anchor rather than over it.
 # An open list floats: it is an `overlay`, so it paints in the top layer
 # and no card or scroller clips it, and it is `absolute` in a `stack`, so
@@ -2245,9 +2393,24 @@ end
 # lands is the client's business (04 §5): under the anchor when the window
 # has room, over it when it has not, and never past an edge. The top
 # margin is the gap it keeps.
-def dropdown(anchor, content, open)
+#
+# The content lives in a `scroll`, which is what makes a long panel usable.
+# A scroll is as tall as its content when the room is indefinite and no
+# taller than the room when it is not (04 §7), and the client measures a
+# popover against the window (04 §5) — so three options still make a
+# three-option panel, and a panel that would not fit the window scrolls
+# inside it instead. `max_px` lowers that ceiling further, which a list of
+# options wants and a calendar does not.
+#
+# Without the scroll a long panel simply grew past the bottom of the
+# window. The client clamps it back inside, so the options that did not fit
+# were unreachable, and the wheel over them found the page's scroller and
+# moved the page behind instead.
+def dropdown(anchor, content, open, max_px = 0)
   return anchor unless open
 
+  pane = {"gap": 0}
+  pane["max_height"] = max_px if max_px > 0
   stack({"gap": 0}, [
     anchor,
     {
@@ -2264,7 +2427,7 @@ def dropdown(anchor, content, open)
         "display": "column",
         "z": 5
       },
-      "c": content
+      "c": [scroll(pane, content)]
     }
   ])
 end
@@ -2502,6 +2665,30 @@ def date_picker(month, value, on_pick, on_nav)
   )
 end
 
+# Two selects, twenty-four hours and sixty minutes, so the clock cannot hold
+# anything but HH:MM — there is no free text to parse and no "25:61" to
+# reject. Both selects are the server's to open, like every other one.
+def time_select(time, hour_open, min_open, on_hour_toggle, on_min_toggle, on_hour, on_min)
+  bits = (time ?? "00:00").split(":")
+  hour = bits[0]
+  minute = "00"
+  minute = bits[1] if bits.length() > 1
+  hours = range(0, 24).map(fn(h) { two_digits(h) })
+  minutes = range(0, 60).map(fn(m) { two_digits(m) })
+  row(
+    {
+      "gap": 2,
+      "align": "center",
+      "width": "100%"
+    },
+    [
+      select_sized(hours, hour, hour_open, on_hour_toggle, on_hour, 64, true),
+      text(":", {"weight": "bold"}),
+      select_sized(minutes, minute, min_open, on_min_toggle, on_min, 64, true)
+    ]
+  )
+end
+
 # A date and a time: the calendar plus hour and minute selects, so the
 # clock cannot hold anything but HH:MM.
 def datetime_picker(
@@ -2517,28 +2704,11 @@ def datetime_picker(
   on_hour,
   on_min
 )
-  bits = (time ?? "00:00").split(":")
-  hour = bits[0]
-  minute = "00"
-  minute = bits[1] if bits.length() > 1
-  hours = range(0, 24).map(fn(h) { two_digits(h) })
-  minutes = range(0, 60).map(fn(m) { two_digits(m) })
   clock_column = column(
     {"gap": 1, "width": "100%"},
     [
       muted("Time"),
-      row(
-        {
-          "gap": 2,
-          "align": "center",
-          "width": "100%"
-        },
-        [
-          select_sized(hours, hour, hour_open, on_hour_toggle, on_hour, 64, true),
-          text(":", {"weight": "bold"}),
-          select_sized(minutes, minute, min_open, on_min_toggle, on_min, 64, true)
-        ]
-      )
+      time_select(time, hour_open, min_open, on_hour_toggle, on_min_toggle, on_hour, on_min)
     ]
   )
   column(
@@ -2561,6 +2731,398 @@ def date_range_picker(month, start, finish, on_pick, on_nav)
   column(
     {"gap": 2, "width": "100%"},
     [calendar(month, ends, start, finish, on_pick, on_nav), muted(caption)]
+  )
+end
+
+# ---- Fields ----------------------------------------------------------------
+#
+# `field` above is a label over an input, which is all a text field ever
+# needed. A *typed* field is the same three parts — a label, a control, and a
+# line underneath — with the type choosing the control and judging what ends
+# up in it.
+#
+# The client has no types. An `input` is an `input`, and 03 §3 is not growing
+# an `email` kind so that a phone can pick a keyboard; the type lives here, on
+# the server, which is where the value was going anyway. What that costs is
+# the keyboard hint. What it buys is that "valid" means whatever this
+# application means by it, written in Soli, next to the handler that stores
+# the value — and that a field can be told it is wrong by something no
+# client-side type could know, like a mailer that bounced.
+#
+# A value is judged when it arrives, and `change` arrives on blur or on Enter
+# (never per keystroke), so a field is never red while it is still being typed
+# into. An empty field is not wrong, it is empty: `o["required"]` is what says
+# otherwise.
+#
+# Every field below takes the same options:
+#
+#   hint       a muted line under the control, while there is nothing wrong
+#   error      what is wrong with this value, from the server. Shown instead
+#              of the hint, and colours the control. It wins over the type's
+#              own verdict, because it knows more than a shape does
+#   required   the field is required — said in its props, and complained
+#              about once `submitted` says the person has had their turn
+#   submitted  the form has been sent: empty required fields may now speak
+#   invalid    the wrong look, with no message of the caller's own
+#   complaint  what to say instead of the type's own sentence
+#   width      the control's width; "100%" by default
+#   name       what the field is called to a screen reader, if not `label`
+
+FIELD_DIGITS = "0123456789"
+
+# One local part, one "@", one domain with a dot in it, and nothing blank on
+# either side of a separator. That is the whole of what a field can honestly
+# check: the only test of an address is a message sent to it, and a pattern
+# that claims more turns real addresses away — quoted local parts,
+# plus-addressing and IDN domains are all legal, and none of them are this
+# function's business.
+def email_valid?(value)
+  address = (value ?? "").strip()
+  return false if address == "" || address.includes?(" ")
+
+  halves = address.split("@")
+  return false unless halves.length() == 2
+  return false if halves[0] == ""
+
+  labels = halves[1].split(".")
+  return false if labels.length() < 2
+
+  labels.filter(fn(part) { part == "" }).length() == 0
+end
+
+# An optional sign, digits, and at most one point. No exponent and no
+# thousands separator: a field that takes "1e3" has to explain itself, and a
+# field that takes "1,000" has to know whose comma it is.
+def number_valid?(value)
+  glyphs = (value ?? "").strip().chars()
+  span = glyphs.length()
+  return false if span == 0
+
+  i = ["-", "+"].includes?(glyphs[0]) ? 1 : 0
+  digits = 0
+  points = 0
+  while i < span
+    glyph = glyphs[i]
+    if glyph == "."
+      points = points + 1
+    elsif FIELD_DIGITS.includes?(glyph)
+      digits = digits + 1
+    else
+      return false
+    end
+    i = i + 1
+  end
+  digits > 0 && points < 2
+end
+
+# A number, and inside the bounds the caller gave — either of which may be
+# absent, which is what an options hash hands over.
+def number_within?(value, min, max)
+  return false unless number_valid?(value)
+
+  n = float((value ?? "").strip())
+  return false unless min.nil? || n >= float(str(min))
+  return false unless max.nil? || n <= float(str(max))
+  true
+end
+
+# An ISO day, "YYYY-MM-DD" — the shape the calendar engine speaks, and the one
+# that sorts correctly as a string.
+def iso_day?(value)
+  day = (value ?? "").strip()
+  bits = day.split("-")
+  return false unless bits.length() == 3
+  return false unless bits[0].chars().length() == 4 && bits[1].chars().length() == 2 && bits[2].chars().length() == 2
+
+  bits.filter(fn(part) { !number_valid?(part) }).length() == 0
+end
+
+# What the − and + buttons mean, for the handler that owns the value. The
+# clamp is the one `number_within?` judges by, so a stepper cannot walk a
+# field into an error nobody typed; an unreadable value steps from the floor,
+# because "" + 1 has to be something.
+def number_stepped(value, delta, o)
+  step = float(str(o["step"] ?? 1))
+  at = number_valid?(value) ? float((value ?? "").strip()) : float(str(o["min"] ?? 0))
+  n = at + step * delta
+  n = float(str(o["min"])) if !o["min"].nil? && n < float(str(o["min"]))
+  n = float(str(o["max"])) if !o["max"].nil? && n > float(str(o["max"]))
+  number_text(n)
+end
+
+# A number as a field holds it: "3", not "3.0", unless there is a fraction to
+# keep.
+def number_text(n)
+  whole = int(n)
+  n == float(str(whole)) ? str(whole) : str(n)
+end
+
+# What is wrong with this value, as a sentence, or "" when nothing is.
+#
+# An empty required field is not wrong yet. A form that opens already
+# shouting at the person who has not typed in it is a form that has decided
+# they were going to get it wrong; `o["submitted"]` is what says they have
+# had their turn, and until then a required field says so in its props and
+# stays quiet on the glass. A value that is *there* and malformed is a
+# different matter — that one is judged the moment it arrives.
+def field_error(value, judge, complaint, o)
+  given = o["error"] ?? ""
+  return given if given != ""
+
+  said = (value ?? "").strip()
+  return o["missing"] ?? "Required" if said == "" && o["required"] == true && o["submitted"] == true
+  return "" if said == ""
+
+  judge(said) ? "" : (o["complaint"] ?? complaint)
+end
+
+def field_bad(error, o)
+  error != "" || o["invalid"] == true
+end
+
+# The line under a control: what is wrong with the value, or the hint that was
+# there before anything was wrong with it. Never both — a field that explains
+# itself twice is a field nobody reads.
+def field_note(o)
+  error = o["error"] ?? ""
+  return [text(error, {"size": 1, "fg": "danger.base"})] if error != ""
+
+  hint = o["hint"] ?? ""
+  hint == "" ? [] : [muted(hint)]
+end
+
+def field_shell(label, control, o)
+  head = (label ?? "") == "" ? [] : [muted(label)]
+  column({"gap": 1, "width": "100%"}, head.concat([control]).concat(field_note(o)))
+end
+
+# The style every field control shares. It fills its column unless a width was
+# asked for, and it goes danger when what is in it is wrong — a *colour*, over
+# a border the resting style already reserved, so a field that turns red does
+# not move the fields under it.
+def field_style(bad, o)
+  base = {"width": o["width"] ?? "100%"}
+  base = base.merge({"border_color": "danger.base"}) if bad
+  base.merge(o["style"] ?? {})
+end
+
+# What the field says about itself. The client reads `label`, `description`,
+# `required` and `invalid` by name (03 §4), so a wrong value is announced as
+# wrong rather than only painted that way, and the sentence a sighted person
+# reads under the field is the one a screen reader is given.
+def field_props(label, error, bad, o)
+  props = {"label": o["name"] ?? label}
+  note = error != "" ? error : (o["hint"] ?? "")
+  props["description"] = note if note != ""
+  props["invalid"] = true if bad
+  props["required"] = true if o["required"] == true
+  props
+end
+
+# A line of anything. It judges nothing on its own; `o["error"]` and
+# `o["required"]` are the only ways it goes wrong.
+def text_field(label, value, on_change, o = {})
+  error = field_error(value, fn(said) { true }, "", o)
+  bad = field_bad(error, o)
+  field_shell(
+    label,
+    input(value, on_change, {
+      "style": field_style(bad, o),
+      "props": field_props(label, error, bad, o)
+    }),
+    o.merge({"error": error})
+  )
+end
+
+def email_field(label, value, on_change, o = {})
+  error = field_error(value, fn(said) { email_valid?(said) }, "That does not look like an email address", o)
+  bad = field_bad(error, o)
+  field_shell(
+    label,
+    input(value, on_change, {
+      "style": field_style(bad, o),
+      "props": field_props(label, error, bad, o)
+    }),
+    o.merge({"error": error})
+  )
+end
+
+# `o["min"]`, `o["max"]` and `o["step"]` are the bounds and the stride;
+# `o["on_step"]` adds the two buttons and names the event they send, with the
+# direction in `params["props"]["delta"]`. The handler does the arithmetic —
+# `number_stepped` is it — because the value is the server's, and a widget
+# that stepped it locally would be guessing at what the server would have
+# stored.
+def number_field(label, value, on_change, o = {})
+  error = field_error(value, fn(said) { number_within?(said, o["min"], o["max"]) }, number_complaint(o), o)
+  bad = field_bad(error, o)
+  step = o["on_step"] ?? ""
+  props = field_props(label, error, bad, o)
+  props["role"] = "spin_button" if step != ""
+  props["value_now"] = value unless (value ?? "") == ""
+  props["value_min"] = str(o["min"]) unless o["min"].nil?
+  props["value_max"] = str(o["max"]) unless o["max"].nil?
+  box = input(value, on_change, {
+    "style": field_style(bad, o).merge(step == "" ? {} : {"width": "auto", "grow": 1}),
+    "props": props
+  })
+  field_shell(
+    label,
+    step == "" ? box : row(
+      {"gap": 2, "align": "center", "width": o["width"] ?? "100%"},
+      [
+        box,
+        icon_button("−", step, {"delta": -1}, {"icon": "minus", "name": "Less", "size": "sm", "key": "nf-:" + label}),
+        icon_button("+", step, {"delta": 1}, {"icon": "plus", "name": "More", "size": "sm", "key": "nf+:" + label})
+      ]
+    ),
+    o.merge({"error": error})
+  )
+end
+
+# "A number", or the bounds, because "invalid" tells nobody what to type
+# instead.
+def number_complaint(o)
+  return "Between " + str(o["min"]) + " and " + str(o["max"]) unless o["min"].nil? || o["max"].nil?
+  return str(o["min"]) + " or more" unless o["min"].nil?
+  return str(o["max"]) + " or less" unless o["max"].nil?
+
+  "Numbers only"
+end
+
+# The multi-line one. `o["rows"]` is the floor the empty box keeps.
+def textarea_field(label, value, on_change, o = {})
+  error = field_error(value, fn(said) { true }, "", o)
+  bad = field_bad(error, o)
+  field_shell(
+    label,
+    textarea(value, on_change, {
+      "rows": o["rows"] ?? 3,
+      "style": field_style(bad, o),
+      "props": field_props(label, error, bad, o)
+    }),
+    o.merge({"error": error})
+  )
+end
+
+# ---- Fields that open a calendar -------------------------------------------
+#
+# A value that is picked rather than typed. The panel is the same calendar
+# `date_picker` draws; what changes is where it is. `dropdown` puts it in an
+# `overlay`, absolutely placed against the anchor, so the card holding the
+# form neither grows by a calendar's height when one opens nor clips one when
+# the form scrolls — and where it actually lands (under the anchor when the
+# window has room, over it when it has not, never past an edge) is the
+# client's to decide, not the server's.
+#
+# The server owns `open`, exactly as it owns a select's. The anchor toggles
+# it; what a picked day does to it is the handler's business, and the three
+# fields disagree on purpose — a day closes a date field, and a range stays
+# open until it has both of its ends.
+#
+# These take one options hash rather than eleven arguments:
+#
+#   label / hint / error / width / disabled   as every field above
+#   value | start + finish   the ISO day, or the two ends of the range
+#   time                     "HH:MM", for `datetime_field`
+#   month                    the "YYYY-MM" the calendar is showing
+#   open                     whether the panel is down
+#   on_toggle                the anchor was clicked
+#   on_pick                  a day, as params["props"]["date"]
+#   on_nav                   a month, as params["props"]["delta"]
+#   placeholder              what the anchor says while nothing is picked
+#   on_hour_toggle / on_min_toggle / on_hour / on_min / hour_open / min_open
+#                            the two clock selects, for `datetime_field`
+
+# The floating panel's own width. A calendar is seven columns of a fixed day
+# cell and an overlay has no parent to take a width from, so the panel states
+# one rather than collapsing onto the widest thing inside it.
+PICKER_PANEL_PX = 268
+
+def picker_panel(children)
+  column({"gap": 3, "width": PICKER_PANEL_PX}, children)
+end
+
+def picker_field(o, caption, empty, make)
+  label = o["label"] ?? ""
+  open = o["open"] == true
+  bad = field_bad(o["error"] ?? "", o)
+  anchor = control({
+    "key": "pk:" + (o["key"] ?? label).to_s,
+    "tone": "neutral",
+    "shape": {
+      "justify": "start",
+      "gap": 2,
+      "width": o["width"] ?? "100%",
+      "bg": "surface.raised",
+      "border_color": bad ? "danger.base" : "border.default"
+    },
+    "on": {"click": o["on_toggle"]},
+    "disabled": o["disabled"] == true,
+    "a11y": {
+      "role": "combo_box",
+      "label": label,
+      "expanded": open
+    },
+    "c": [
+      text(caption, {"grow": 1, "fg": empty ? "text.muted" : "text.default"}),
+      icon("calendar", {"fg": "text.muted", "width": 16, "height": 16})
+    ]
+  })
+  # `make` is a thunk, not a node: building a calendar for a panel nobody has
+  # opened is a month of day cells thrown away on every render, and a `month`
+  # the caller has not filled in yet is not an error until it is shown.
+  field_shell(label, open ? dropdown(anchor, [make()], true) : anchor, o)
+end
+
+def date_field(o)
+  day = o["value"] ?? ""
+  picker_field(
+    o,
+    day.present? ? day : (o["placeholder"] ?? "Pick a day"),
+    !day.present?,
+    fn() { picker_panel([calendar(o["month"], day.present? ? [day] : [], "", "", o["on_pick"], o["on_nav"])]) }
+  )
+end
+
+def datetime_field(o)
+  day = o["value"] ?? ""
+  time = o["time"] ?? "00:00"
+  picker_field(
+    o,
+    day.present? ? day + " " + time : (o["placeholder"] ?? "Pick a day and a time"),
+    !day.present?,
+    fn() { picker_panel([
+      calendar(o["month"], day.present? ? [day] : [], "", "", o["on_pick"], o["on_nav"]),
+      column(
+        {"gap": 1, "width": "100%"},
+        [
+          muted("Time"),
+          time_select(
+            time,
+            o["hour_open"] == true,
+            o["min_open"] == true,
+            o["on_hour_toggle"],
+            o["on_min_toggle"],
+            o["on_hour"],
+            o["on_min"]
+          )
+        ]
+      )
+    ]) }
+  )
+end
+
+def date_range_field(o)
+  start = o["start"] ?? ""
+  finish = o["finish"] ?? ""
+  ends = [start, finish].filter(fn(day) { day.present? })
+  caption = finish.present? ? start + " → " + finish : (start.present? ? start + " → …" : (o["placeholder"] ?? "Pick two days"))
+  picker_field(
+    o,
+    caption,
+    ends.length() == 0,
+    fn() { picker_panel([calendar(o["month"], ends, start, finish, o["on_pick"], o["on_nav"])]) }
   )
 end
 
@@ -2721,10 +3283,18 @@ def flatten_points(points)
   flat
 end
 
-# The four roles a chart spends, in order.
+# The five roles a chart spends, in order and never cycled. Past the fifth
+# there is no sixth hue to reach for — a generated one is indistinguishable
+# from one already here to a reader with a colour vision deficiency — so the
+# tail goes to the de-emphasis ink and the chart is expected to name it
+# "other", facet, or drop it.
 def chart_role(i)
-  roles = ["accent.base", "info.base", "success.base", "warning.base"]
-  roles[i % 4]
+  roles = ["series.1", "series.2", "series.3", "series.4", "series.5"]
+  if i >= roles.length()
+    "text.muted"
+  else
+    roles[i]
+  end
 end
 
 # ---- Answering the pointer -------------------------------------------------

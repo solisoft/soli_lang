@@ -264,8 +264,20 @@ impl<C: Ctx> Compiler<'_, C> {
             }
             Some(Tok::Ident(k)) | Some(Tok::Str(k)) => {
                 // <key>.text = expr | <key>.style = @name
+                //
+                // `self` is atom 0 and not the node's own key. A key baked
+                // into the source would make the compile depend on it, and
+                // the compile is cached on (source, key, styles) — so a
+                // keyed node with a local handler would be one interned
+                // chunk *per key*, even with byte-identical source. A list
+                // with a hover on its rows would then end the session after
+                // four thousand of them ("interned more than 4095 chunks").
+                // Atom 0 is free: an unkeyed node is never entered in the
+                // client's key map, so nothing else can answer to it.
+                let mut here = false;
                 let key = if k == "self" {
-                    self.ctx.self_key().ok_or("`self` needs a keyed node")?
+                    here = true;
+                    String::new()
                 } else {
                     k
                 };
@@ -275,7 +287,7 @@ impl<C: Ctx> Compiler<'_, C> {
                     _ => return Err("expected .text or .style".into()),
                 };
                 self.expect("=")?;
-                let key_atom = self.ctx.atom(&key);
+                let key_atom = if here { 0 } else { self.ctx.atom(&key) };
                 match what.as_str() {
                     "text" => {
                         self.expr()?;
@@ -558,9 +570,18 @@ mod tests {
         // Ends with a return, contains both set_style ops and one emit.
         assert_eq!(*bytes.last().unwrap(), 0x40);
         assert_eq!(bytes.iter().filter(|b| **b == 0x33).count(), 2);
+        // `self` interns nothing now — it compiles to atom 0, resolved by
+        // the client against the node the handler is on — so `ping` is the
+        // second atom this chunk asks for, not the third.
         assert!(
-            bytes.windows(2).any(|w| w == [0x32, 3]),
-            "emit atom 3 = ping (n=1, me=2)"
+            bytes.windows(2).any(|w| w == [0x32, 2]),
+            "emit atom 2 = ping (n=1); `self` is atom 0 and interns nothing"
+        );
+        // And every `set_style` names node 0, which is what makes the chunk
+        // independent of the key it sits on.
+        assert!(
+            bytes.windows(2).filter(|w| w[0] == 0x33).all(|w| w[1] == 0),
+            "self is node 0"
         );
     }
 

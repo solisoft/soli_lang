@@ -824,6 +824,38 @@ pub fn register_router_builtins(env: &mut Environment) {
         })),
     );
 
+    // eui_wake(component) — render every other live session of an EUI
+    // component, now.
+    //
+    // A window sees what someone else did when its own `wake` clock next
+    // fires (06 §1.1) — up to a whole period late, and a period of renders
+    // spent finding out that nothing happened. This is the other half: the
+    // socket is bidirectional, a `Batch` is S→C, and a server that knows
+    // something changed can simply say so. Call it where the change is
+    // written, not on a timer.
+    //
+    // The session that calls it is left out: it is already rendering, and its
+    // batch is on its way. Returns how many others were woken — each of those
+    // is a render, so this belongs where something changed for *other people*
+    // and not on every keystroke.
+    //
+    // The event name is the application's own, the one its `wake` handler
+    // already answers: `eui_wake("chat")` posts `tick`, and
+    // `eui_wake("chat", "arrived")` posts that instead.
+    #[cfg(feature = "eui")]
+    env.define(
+        "eui_wake".to_string(),
+        Value::NativeFunction(NativeFunction::new("eui_wake", None, |args| {
+            let Some(component) = args.first().map(Value::to_string) else {
+                return Err("eui_wake() expects a component name, e.g. eui_wake(\"chat\")".into());
+            };
+            let event = args.get(1).map_or_else(|| "tick".to_string(), Value::to_string);
+            let here = crate::serve::eui::stats::current_session();
+            let woken = crate::serve::eui::wake_component(&component, &event, here.as_deref());
+            Ok(Value::Int(woken as i64))
+        })),
+    );
+
     // live_rooms(component, ...) — declare components that may be mounted in a
     // shared room via `?room=<name>` / `data-live-room`.
     //

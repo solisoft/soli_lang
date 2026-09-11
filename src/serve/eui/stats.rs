@@ -77,6 +77,15 @@ pub fn record(session: &str, mut stats: Stats) {
     map.insert(session.to_owned(), stats);
 }
 
+/// Which session this thread is rendering, if it is rendering one.
+///
+/// The same thread-local `eui_stats()` reads, under its own name: `eui_wake`
+/// wants the session's *identity* rather than its numbers, so that a handler
+/// waking its component can leave out the window it is already answering.
+pub fn current_session() -> Option<String> {
+    CURRENT.with(|c| c.borrow().clone())
+}
+
 /// The last render of the session this thread is rendering, if any.
 pub fn current() -> Option<Stats> {
     let session = CURRENT.with(|c| c.borrow().clone())?;

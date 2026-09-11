@@ -45,6 +45,84 @@ const RESYNC_COST: f64 = 20.0;
 /// it gives the session up as one it can no longer describe.
 const HANDLER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// A file the person picked, on its way to disk (EUI 01 §6, 10 §5).
+///
+/// The budget is "two chunks, whatever the file weighs", so nothing here
+/// keeps the file: each chunk is written as it arrives and forgotten. What
+/// is held is what the next chunk has to be checked against.
+struct Upload {
+    /// The name the person's machine gave it — never a path (03 §3.2).
+    name: String,
+    /// What the `file_pick` said it weighs.
+    size: u64,
+    /// The chunk index that must come next; a gap ends the session.
+    next_seq: u32,
+    /// What has actually landed, which is what the ceiling is checked
+    /// against — the announced size is the client's word, not a fact.
+    written: u64,
+    /// Where it is going, relative to the application root, because that is
+    /// the shape every path in a Soli view already has.
+    rel: String,
+    /// Where it is going, in full.
+    path: PathBuf,
+    file: std::fs::File,
+}
+
+/// The largest upload this server will take when the view's `pick` named no
+/// ceiling of its own. The client enforces the node's `max` before it sends
+/// anything (10 §5); this is the same number again on the side that writes
+/// the disk, because a client is not a thing to be trusted about sizes.
+const UPLOAD_CEILING: u64 = eui_proto::limits::DEFAULT_UPLOAD_BYTES;
+
+/// Where a session's uploads land: under the application, so the view can
+/// name what it was given the way it names everything else, and under one
+/// directory per session so what the session leaves behind can go with it.
+fn upload_dir(session_id: &str) -> PathBuf {
+    crate::live::component::get_app_root()
+        .join("tmp/eui-uploads")
+        .join(short_session(session_id))
+}
+
+/// A session id reduced to something that is safe as a directory name and
+/// still tells two sessions apart.
+fn short_session(session_id: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(session_id.as_bytes())[..8]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// A client-supplied filename reduced to a leaf this server is willing to
+/// create. The client already sends a basename (03 §3.2), and this is the
+/// second time that is checked, on the side that does the writing: no
+/// separators, no `..`, no dot-file, no empty name, and bounded.
+fn safe_leaf(name: &str) -> String {
+    // The last segment first, and both separators, because the name comes
+    // from the person's machine and not from this one. Mapping a `/` to a
+    // dash instead would keep the whole path in the filename — harmless,
+    // since there is no separator left to walk, but it would name a file
+    // `-..-etc-passwd` and leave the next reader wondering.
+    let name = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    let leaf: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .take(96)
+        .collect();
+    let leaf = leaf.trim_matches('.').to_string();
+    if leaf.is_empty() {
+        "file".to_string()
+    } else {
+        leaf
+    }
+}
+
 /// A client string on its way into the log: control bytes out, length
 /// bounded — a client must not get to write our log lines.
 fn printable(s: &str) -> String {
@@ -95,24 +173,42 @@ pub fn upgrade(
         //    application with `connect`, and again as `viewport` whenever
         //    the client reports a change: a view that wants to be
         //    responsive keeps it in its state.
+        //    Why the opening frame was refused is worth saying. "expected
+        //    Hello" on its own names the symptom of every skew there can
+        //    be, and the commonest one by far — a client built against a
+        //    newer EUI than the `eui-proto` this binary was compiled with,
+        //    whose `Hello` this decoder cannot read — looks exactly like a
+        //    client that said nothing at all.
         let hello = match tokio::time::timeout(HELLO_TIMEOUT, ws_read.next()).await {
             Ok(Some(Ok(Message::Binary(b)))) => match Frame::decode(&b) {
-                Ok(Frame::Hello(h)) if h.version >= 1 => Some(h),
-                _ => None,
+                Ok(Frame::Hello(h)) if h.version >= 1 => Ok(h),
+                Ok(Frame::Hello(h)) => Err(format!("the client's Hello names protocol version {}", h.version)),
+                Ok(_) => Err("the first frame was not a Hello".to_string()),
+                Err(e) => Err(format!(
+                    "the opening frame did not decode ({e}); a client built against a newer EUI than this server sends a Hello this one cannot read — rebuild soli against the same protocol"
+                )),
             },
-            _ => None,
+            Ok(Some(Ok(Message::Text(_)))) => Err("the client sent a text frame; an EUI session is binary only".to_string()),
+            Ok(Some(Ok(_))) => Err("the first frame was not binary".to_string()),
+            Ok(Some(Err(e))) => Err(format!("the socket failed before Hello: {e}")),
+            Ok(None) => Err("the socket closed before Hello".to_string()),
+            Err(_) => Err(format!("nothing arrived within {HELLO_TIMEOUT:?} of the socket opening")),
         };
-        let Some(hello) = hello else {
-            let _ = ws_write
-                .send(Message::Binary(
-                    Frame::Error {
-                        code: 1,
-                        message: "expected Hello".into(),
-                    }
-                    .encode(),
-                ))
-                .await;
-            return;
+        let hello = match hello {
+            Ok(h) => h,
+            Err(why) => {
+                eprintln!("[EUI] refusing the session: {}", printable(&why));
+                let _ = ws_write
+                    .send(Message::Binary(
+                        Frame::Error {
+                            code: 1,
+                            message: format!("expected Hello: {why}"),
+                        }
+                        .encode(),
+                    ))
+                    .await;
+                return;
+            }
         };
         // The session the Welcome names is a handle, not the cookie: the
         // LiveView socket learned not to hand the raw session id to the
@@ -207,6 +303,12 @@ pub fn upgrade(
         let mut heartbeat = tokio::time::interval(HEARTBEAT);
         heartbeat.tick().await; // the first tick is immediate
         let mut unanswered_pings: u32 = 0;
+        // Uploads this session has announced and not yet finished. An
+        // `Upload` for an id that is not in here is refused: the spec says a
+        // server MUST NOT accept one it has not seen announced (01 §6), and
+        // that is the whole of what keeps a socket from writing files
+        // nobody offered it.
+        let mut uploads: std::collections::HashMap<u32, Upload> = std::collections::HashMap::new();
         loop {
             if !connected {
                 break;
@@ -307,6 +409,17 @@ pub fn upgrade(
                         }
                         continue;
                     };
+                    // A `file_pick` is the announcement the chunks that
+                    // follow are checked against (01 §6). The file is
+                    // opened now, before the application has said anything
+                    // about it, because the client is already streaming:
+                    // there is no round trip between the pick and the
+                    // first chunk in which to ask permission.
+                    if e.event == eui_proto::EventKind::FilePick {
+                        if let Err(why) = announce(&mut uploads, &params, &session_id, &component) {
+                            eprintln!("[EUI] {component} file_pick: {}", printable(&why));
+                        }
+                    }
                     if !post(
                         &lv_event_tx,
                         &sender,
@@ -380,22 +493,52 @@ pub fn upgrade(
                     )));
                     break;
                 }
-                // EUI 01 §6. A file only ever leaves a client for a node
-                // that declared `pick`, and nothing here can declare one
-                // yet (`tree::event_kind` takes neither file event), so an
-                // upload on this session did not come from a tree this
-                // server sent.
-                Frame::Upload(_) => {
-                    let _ = sender.try_send(Ok(Message::Binary(
-                        Frame::Error {
-                            code: 302,
-                            message: "this server takes no uploads".into(),
+                // EUI 01 §6. The chunks of a file the person picked, each
+                // written as it arrives — the budget for an upload is two
+                // chunks however big the file is (10 §5), so nothing is
+                // held. What ends the session is what the spec says ends
+                // it: an id nobody announced, or a gap in `seq`.
+                Frame::Upload(t) => {
+                    match take_chunk(&mut uploads, t) {
+                        Chunk::More => {}
+                        Chunk::Refused { code, why } => {
+                            eprintln!("[EUI] {component}: refusing an upload: {}", printable(&why));
+                            let _ = sender.try_send(Ok(Message::Binary(
+                                Frame::Error { code, message: why }.encode(),
+                            )));
+                            break;
                         }
-                        .encode(),
-                    )));
-                    break;
+                        // Whole or abandoned, the application hears one
+                        // event either way, because a file that never
+                        // arrives is a thing a view has to be able to say
+                        // out loud instead of leaving a spinner turning.
+                        Chunk::Done(params) => {
+                            if !post(
+                                &lv_event_tx,
+                                &sender,
+                                &liveview_id,
+                                &component,
+                                "file_upload",
+                                params,
+                                &session_id,
+                            )
+                            .await
+                            {
+                                break;
+                            }
+                        }
+                    }
                 }
             }
+        }
+
+        // A transfer belongs to its session and does not survive it
+        // (01 §6). What the application wanted to keep it has already
+        // copied somewhere it owns; the rest goes with the socket.
+        uploads.clear();
+        let spool = upload_dir(&session_id);
+        if spool.exists() {
+            let _ = std::fs::remove_dir_all(&spool);
         }
 
         // The window is gone. The application hears about it before the
@@ -470,6 +613,184 @@ fn welcome_session(session_id: &str) -> [u8; 16] {
         out.copy_from_slice(&Sha256::digest(session_id.as_bytes())[..16]);
     }
     out
+}
+
+/// What one `Upload` frame amounted to.
+enum Chunk {
+    /// Written; more are owed.
+    More,
+    /// The transfer ended — whole, or abandoned — and this is the
+    /// `file_upload` the application is owed.
+    Done(serde_json::Value),
+    /// The frame was one this session may not take, and the session ends.
+    Refused { code: u32, why: String },
+}
+
+/// Open the file a `file_pick` announced, so the chunks that follow have
+/// somewhere to go. The payload is `[id, name, size]` (06 §1).
+fn announce(
+    uploads: &mut std::collections::HashMap<u32, Upload>,
+    params: &serde_json::Value,
+    session_id: &str,
+    component: &str,
+) -> Result<(), String> {
+    let payload = params
+        .get("payload")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("a file_pick carries [id, name, size]")?;
+    let id = payload
+        .first()
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|n| u32::try_from(n).ok())
+        .ok_or("a file_pick names an upload id")?;
+    let name = payload
+        .get(1)
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("file");
+    let size = payload
+        .get(2)
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    if size > UPLOAD_CEILING {
+        return Err(format!(
+            "{name} is {size} bytes; this server takes {UPLOAD_CEILING}"
+        ));
+    }
+    // One directory per session, and the id in the leaf: two files of the
+    // same name picked in one session are two files, and neither is the
+    // other's overwrite.
+    let dir = upload_dir(session_id);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let leaf = format!("{id}-{}", safe_leaf(name));
+    let path = dir.join(&leaf);
+    let file = std::fs::File::create(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let rel = format!("tmp/eui-uploads/{}/{leaf}", short_session(session_id));
+    if trace() {
+        eprintln!("[EUI trace] {component} file_pick: {name} ({size} B) -> {rel}");
+    }
+    uploads.insert(
+        id,
+        Upload {
+            name: name.to_string(),
+            size,
+            next_seq: 0,
+            written: 0,
+            rel,
+            path,
+            file,
+        },
+    );
+    Ok(())
+}
+
+/// One `Upload` frame against the transfer it names.
+fn take_chunk(
+    uploads: &mut std::collections::HashMap<u32, Upload>,
+    t: eui_proto::Transfer,
+) -> Chunk {
+    use std::io::Write;
+    let Some(up) = uploads.get_mut(&t.id) else {
+        // Either a client inventing ids, or one still streaming a file this
+        // server already gave up on. Both are the session's end: the spec
+        // allows nothing to be written for an id that was not announced.
+        return Chunk::Refused {
+            code: 302,
+            why: format!("upload {} was never announced", t.id),
+        };
+    };
+    if t.flag == eui_proto::Chunked::Abort {
+        let why = String::from_utf8_lossy(&t.bytes)
+            .chars()
+            .take(256)
+            .collect::<String>();
+        let done = finish(uploads, t.id, Some(&why));
+        return Chunk::Done(done);
+    }
+    if t.seq != up.next_seq {
+        return Chunk::Refused {
+            code: 302,
+            why: format!(
+                "upload {} jumped from chunk {} to {}",
+                t.id, up.next_seq, t.seq
+            ),
+        };
+    }
+    if t.bytes.len() > eui_proto::limits::MAX_TRANSFER_CHUNK_BYTES {
+        return Chunk::Refused {
+            code: 302,
+            why: format!("upload {} sent a {} byte chunk", t.id, t.bytes.len()),
+        };
+    }
+    let landing = up.written.saturating_add(t.bytes.len() as u64);
+    // The announced size is the client's word; this is the fact. A file
+    // that outgrows what it said it was is abandoned rather than refused,
+    // because the person did pick something and deserves to be told.
+    if landing > UPLOAD_CEILING || landing > up.size.max(1) {
+        let why = format!("it is longer than the {} bytes it announced", up.size);
+        return Chunk::Done(finish(uploads, t.id, Some(&why)));
+    }
+    if let Err(e) = up.file.write_all(&t.bytes) {
+        let why = format!("{e}");
+        return Chunk::Done(finish(uploads, t.id, Some(&why)));
+    }
+    up.written = landing;
+    up.next_seq = up.next_seq.saturating_add(1);
+    if t.flag == eui_proto::Chunked::Last {
+        return Chunk::Done(finish(uploads, t.id, None));
+    }
+    Chunk::More
+}
+
+/// Close a transfer and say what the application gets. `why` is the reason
+/// it did not finish, and what a view shows instead of the file.
+///
+/// The answer is shaped like every other event's: the facts go under
+/// `payload`, beside the `kind` that names them. A server-posted event that
+/// put its fields at the top level instead would make a handler need to know
+/// *which* events came from the server — and the one that did read
+/// `params["payload"]` like all the others and found nothing, so every
+/// attachment arrived without a file.
+fn finish(
+    uploads: &mut std::collections::HashMap<u32, Upload>,
+    id: u32,
+    why: Option<&str>,
+) -> serde_json::Value {
+    use std::io::Write;
+    let Some(mut up) = uploads.remove(&id) else {
+        return serde_json::json!({"upload": id, "error": "no such upload"});
+    };
+    let _ = up.file.flush();
+    drop(up.file);
+    if let Some(why) = why {
+        // 01 §6: everything already received is discarded. A half-written
+        // file left on disk is a file some view would eventually show.
+        let _ = std::fs::remove_file(&up.path);
+        return serde_json::json!({
+            "kind": "file_upload",
+            "payload": {
+                "upload": id,
+                "name": up.name,
+                "size": up.size,
+                "path": "",
+                "error": why,
+            },
+        });
+    }
+    // The path is relative to the application root, which is what `image`,
+    // `File` and the rest of a view's vocabulary already speak. It lives in
+    // the session's own directory, so a view that wants to keep the file
+    // has to copy it somewhere it owns — a file is not an asset (01 §6),
+    // and promoting one is the application's decision, not this server's.
+    serde_json::json!({
+        "kind": "file_upload",
+        "payload": {
+            "upload": id,
+            "name": up.name,
+            "size": up.written,
+            "path": up.rel,
+            "error": "",
+        },
+    })
 }
 
 /// Check an event against the tree the client was last sent; on success,
@@ -587,5 +908,145 @@ mod tests {
         assert_ne!(bytes, welcome_session("another-session"));
         // A synthetic id names no session and is passed through.
         assert!(welcome_session("sess-abc").starts_with(b"sess-abc"));
+    }
+
+    #[test]
+    fn a_filename_from_a_client_is_reduced_to_a_leaf() {
+        assert_eq!(safe_leaf("notes.txt"), "notes.txt");
+        assert_eq!(safe_leaf("../../etc/passwd"), "passwd");
+        assert_eq!(safe_leaf("/absolute"), "absolute");
+        assert_eq!(safe_leaf(r"C:\Users\x\report.pdf"), "report.pdf");
+        assert_eq!(safe_leaf(".."), "file");
+        assert_eq!(safe_leaf(""), "file");
+        assert_eq!(safe_leaf(".hidden"), "hidden");
+        assert_eq!(safe_leaf("a").len(), 1);
+        assert!(safe_leaf(&"x".repeat(500)).len() <= 96);
+    }
+
+    /// A transfer built by hand, so the state machine can be exercised
+    /// without a socket.
+    fn spool(dir: &std::path::Path, id: u32, size: u64) -> std::collections::HashMap<u32, Upload> {
+        std::fs::create_dir_all(dir).unwrap();
+        let path = dir.join(format!("{id}-f"));
+        let file = std::fs::File::create(&path).unwrap();
+        let mut m = std::collections::HashMap::new();
+        m.insert(
+            id,
+            Upload {
+                name: "f".into(),
+                size,
+                next_seq: 0,
+                written: 0,
+                rel: format!("tmp/eui-uploads/t/{id}-f"),
+                path,
+                file,
+            },
+        );
+        m
+    }
+
+    fn chunk(id: u32, seq: u32, flag: eui_proto::Chunked, bytes: &[u8]) -> eui_proto::Transfer {
+        eui_proto::Transfer {
+            id,
+            seq,
+            flag,
+            bytes: bytes.to_vec(),
+        }
+    }
+
+    #[test]
+    fn a_whole_transfer_lands_and_says_where() {
+        let dir = std::env::temp_dir().join("eui-upload-test-whole");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut ups = spool(&dir, 7, 6);
+        assert!(matches!(
+            take_chunk(&mut ups, chunk(7, 0, eui_proto::Chunked::More, b"abc")),
+            Chunk::More
+        ));
+        let Chunk::Done(params) =
+            take_chunk(&mut ups, chunk(7, 1, eui_proto::Chunked::Last, b"def"))
+        else {
+            panic!("the last chunk did not finish the transfer");
+        };
+        // Shaped like every other event: the facts under `payload`, so a
+        // handler reads this one exactly as it reads a click. They used to
+        // sit at the top level, and the one handler that read
+        // `params["payload"]` like all the others found nothing — so every
+        // attachment arrived without a file.
+        assert_eq!(params["kind"], "file_upload");
+        assert_eq!(params["payload"]["error"], "");
+        assert_eq!(params["payload"]["size"], 6);
+        assert!(
+            params["payload"]["path"]
+                .as_str()
+                .is_some_and(|p| p.contains("7-f")),
+            "a finished upload says where it landed: {params}"
+        );
+        assert_eq!(std::fs::read(dir.join("7-f")).unwrap(), b"abcdef");
+        // The transfer is over; a further chunk names an id nobody knows.
+        assert!(matches!(
+            take_chunk(&mut ups, chunk(7, 2, eui_proto::Chunked::Last, b"g")),
+            Chunk::Refused { code: 302, .. }
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_gap_in_the_sequence_ends_the_session_and_an_abort_only_ends_the_file() {
+        let dir = std::env::temp_dir().join("eui-upload-test-gap");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let mut ups = spool(&dir, 1, 100);
+        assert!(matches!(
+            take_chunk(&mut ups, chunk(1, 3, eui_proto::Chunked::More, b"x")),
+            Chunk::Refused { code: 302, .. }
+        ));
+
+        // An abort is the person's file going away, not the socket's.
+        let mut ups = spool(&dir, 2, 100);
+        take_chunk(&mut ups, chunk(2, 0, eui_proto::Chunked::More, b"partial"));
+        let Chunk::Done(params) = take_chunk(
+            &mut ups,
+            chunk(2, 1, eui_proto::Chunked::Abort, b"the disk went away"),
+        ) else {
+            panic!("an abort must still tell the application");
+        };
+        assert_eq!(params["payload"]["error"], "the disk went away");
+        assert_eq!(
+            params["payload"]["path"], "",
+            "an abandoned file has no path"
+        );
+        // 01 §6: what arrived is discarded.
+        assert!(!dir.join("2-f").exists());
+
+        // An id that was never announced is refused outright.
+        let mut ups = spool(&dir, 3, 100);
+        assert!(matches!(
+            take_chunk(&mut ups, chunk(99, 0, eui_proto::Chunked::Last, b"x")),
+            Chunk::Refused { code: 302, .. }
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_file_longer_than_it_announced_is_abandoned_not_written() {
+        let dir = std::env::temp_dir().join("eui-upload-test-long");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut ups = spool(&dir, 4, 4);
+        let Chunk::Done(params) = take_chunk(
+            &mut ups,
+            chunk(4, 0, eui_proto::Chunked::Last, b"far too much"),
+        ) else {
+            panic!("an overlong file must end its transfer");
+        };
+        assert!(
+            params["payload"]["error"]
+                .as_str()
+                .unwrap()
+                .contains("announced"),
+            "{params}"
+        );
+        assert!(!dir.join("4-f").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

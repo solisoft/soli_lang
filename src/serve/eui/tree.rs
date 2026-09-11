@@ -52,6 +52,11 @@ pub struct TNode {
     pub text: Option<TextRef>,
     /// `(name atom, value)`.
     pub props: Vec<(u32, WireValue)>,
+    /// Where this node's view asked it to be scrolled, in pixels (EUI 04
+    /// §7). It is not a prop: the client has no `scroll_to` to set, and a
+    /// scroll is a thing done to a node once, not a state it carries. The
+    /// diff turns a change of this into `Op::ScrollTo` and nothing else.
+    pub scroll_to: Option<(i64, i64)>,
     /// `(event, handler)`.
     pub handlers: Vec<(EventKind, Handler)>,
     /// Children in order.
@@ -313,15 +318,34 @@ fn mount_ops(tree: &TNode) -> Vec<Op> {
     let mut ops = Vec::new();
     if tree_weight(tree) <= MAX_BATCH_WEIGHT {
         ops.push(Op::Mount(flatten(tree)));
+        scroll_ops(tree, &mut ops);
         return ops;
     }
     let mut bare = tree.clone();
     let children = std::mem::take(&mut bare.children);
     ops.push(Op::Mount(flatten(&bare)));
+    scroll_ops(&bare, &mut ops);
     for (index, child) in children.iter().enumerate() {
         insert_ops(tree.id, index as u32, child.node(), &mut ops);
     }
     ops
+}
+
+/// `Op::ScrollTo` for every node in a freshly sent subtree that asked to be
+/// scrolled. A mount arrives at the top of its scroller, so a list that
+/// opens at its foot has to say so on the way in as well as on every render
+/// after — and the op must come *after* the subtree that it names.
+pub fn scroll_ops(node: &TNode, ops: &mut Vec<Op>) {
+    if let Some((x, y)) = node.scroll_to {
+        ops.push(Op::ScrollTo {
+            node: node.id,
+            x,
+            y,
+        });
+    }
+    for child in &node.children {
+        scroll_ops(child.node(), ops);
+    }
 }
 
 fn insert_ops(parent: u32, index: u32, node: &TNode, ops: &mut Vec<Op>) {
@@ -331,6 +355,7 @@ fn insert_ops(parent: u32, index: u32, node: &TNode, ops: &mut Vec<Op>) {
             index,
             subtree: flatten(node),
         });
+        scroll_ops(node, ops);
         return;
     }
     let mut bare = node.clone();
@@ -340,6 +365,7 @@ fn insert_ops(parent: u32, index: u32, node: &TNode, ops: &mut Vec<Op>) {
         index,
         subtree: flatten(&bare),
     });
+    scroll_ops(&bare, ops);
     for (i, child) in children.iter().enumerate() {
         insert_ops(node.id, i as u32, child.node(), ops);
     }
@@ -739,10 +765,19 @@ impl Encoder {
             weight += w;
             ops.push(op);
         }
-        if !ops.is_empty() || batches.is_empty() {
+        if !ops.is_empty() {
             self.seq += 1;
             batches.push(Batch { seq: self.seq, ops });
         }
+        // A render that changed nothing sends nothing.
+        //
+        // An empty batch used to go out anyway, and it is not free on either
+        // end: the client applies it, and applying *any* batch puts back
+        // every style a local handler had previewed and relights whatever
+        // the pointer is over (06 §6). On a page with no clock nobody
+        // noticed. On a page that carries a `wake` — the clock in this very
+        // demo, a progress bar, a messenger — it meant the whole screen was
+        // restyled once a tick forever, which reads as a flicker and is one.
         Ok(batches)
     }
 
@@ -898,15 +933,15 @@ impl Encoder {
             Some(other) => Some(self.text_of(other.to_string(), intern)?),
             None => None,
         };
-        let props = match obj.get("p").and_then(Json::as_object) {
+        let (props, scroll_to) = match obj.get("p").and_then(Json::as_object) {
             Some(p) => self.props_from(kind, p)?,
-            None => Vec::new(),
+            None => (Vec::new(), None),
         };
         let handlers = match obj.get("on").and_then(Json::as_object) {
             Some(on) => self.handlers_from(on, &key)?,
             None => Vec::new(),
         };
-        Ok(self.node(kind, style, key, text, props, handlers))
+        Ok(self.node(kind, style, key, text, props, scroll_to, handlers))
     }
 
     /// [`convert_shallow`] straight off the view's hash: the scalar fields
@@ -937,13 +972,13 @@ impl Encoder {
             Some(Value::String(s)) => Some(self.text_of(s.to_string(), intern)?),
             Some(other) => Some(self.text_of(other.to_string(), intern)?),
         };
-        let props = match field("p") {
-            None => Vec::new(),
+        let (props, scroll_to) = match field("p") {
+            None => (Vec::new(), None),
             Some(p) => {
                 let json = crate::interpreter::value::value_to_json(p)?;
                 match json.as_object() {
                     Some(p) => self.props_from(kind, p)?,
-                    None => Vec::new(),
+                    None => (Vec::new(), None),
                 }
             }
         };
@@ -957,9 +992,10 @@ impl Encoder {
                 }
             }
         };
-        Ok(self.node(kind, style, key, text, props, handlers))
+        Ok(self.node(kind, style, key, text, props, scroll_to, handlers))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn node(
         &mut self,
         kind: NodeKind,
@@ -967,6 +1003,7 @@ impl Encoder {
         key: Option<String>,
         text: Option<TextRef>,
         props: Vec<(u32, WireValue)>,
+        scroll_to: Option<(i64, i64)>,
         handlers: Vec<(EventKind, Handler)>,
     ) -> TNode {
         let key_atom = match &key {
@@ -981,6 +1018,7 @@ impl Encoder {
             key_atom,
             text,
             props,
+            scroll_to,
             handlers,
             children: Vec::new(),
             identity: 0,
@@ -1028,13 +1066,27 @@ impl Encoder {
         })
     }
 
+    /// The props on the wire, and — separately — where the view asked this
+    /// node to be scrolled.
+    ///
+    /// `scroll_to` is the one name in `p` that never reaches the client as a
+    /// prop. It is an instruction, not a state: `Op::ScrollTo` (04 §7) moves
+    /// the node once, and a client that was handed it as a prop would have
+    /// nothing to do with it. Taking it out here is what lets a view say
+    /// where a list should sit without the diff learning a special case
+    /// about prop names.
     fn props_from(
         &mut self,
         kind: NodeKind,
         p: &serde_json::Map<String, Json>,
-    ) -> Result<Vec<(u32, WireValue)>, String> {
+    ) -> Result<NodeProps, String> {
         let mut props = Vec::with_capacity(p.len());
+        let mut scroll_to = None;
         for (name, v) in p {
+            if name == "scroll_to" {
+                scroll_to = Some(scroll_offset(kind, v)?);
+                continue;
+            }
             let atom = self.atom(name);
             // An image's `src` is a file in the application; it goes on
             // the wire as the hash of its bytes, served from /_eui/asset.
@@ -1052,7 +1104,7 @@ impl Encoder {
             };
             props.push((atom, value));
         }
-        Ok(props)
+        Ok((props, scroll_to))
     }
 
     fn handlers_from(
@@ -1078,11 +1130,19 @@ impl Encoder {
                     let chunk = match spec.get("local") {
                         Some(Json::String(src)) => {
                             // What the compile depends on, all of it: the
-                            // source, the node's own key (`self`), and the
-                            // ids the declared styles resolved to.
+                            // source and the ids the declared styles
+                            // resolved to.
+                            //
+                            // The node's own key used to be in here too,
+                            // because `self` was compiled to it. It is atom
+                            // 0 now and resolved by the client, so two nodes
+                            // with the same source and the same styles share
+                            // one chunk however they are keyed — which is
+                            // what lets a list of four thousand rows carry a
+                            // hover at all. The table holds 4 095.
                             let mut declared_ids: Vec<(&String, &u32)> = declared.iter().collect();
                             declared_ids.sort();
-                            let cache_key = format!("{src}\u{0}{key:?}\u{0}{declared_ids:?}");
+                            let cache_key = format!("{src}\u{0}{declared_ids:?}");
                             match self.local_cache.get(&cache_key) {
                                 Some(id) => *id,
                                 None => {
@@ -1322,7 +1382,7 @@ impl Encoder {
                 "position" => {
                     r.position = enum_of(
                         v,
-                        &[("flow", Position::Flow), ("absolute", Position::Absolute)],
+                        &[("flow", Position::Flow), ("absolute", Position::Absolute), ("pointer", Position::Pointer)],
                     )?
                 }
                 "z" => r.z = u8_of(v)?,
@@ -1502,6 +1562,45 @@ fn edges_of(v: &Json) -> Result<[u8; 4], String> {
     }
 }
 
+/// What a node's `p` hash amounts to: the props that go on the wire, and
+/// the one that does not.
+type NodeProps = (Vec<(u32, WireValue)>, Option<(i64, i64)>);
+
+/// `scroll_to: [x, y]`, in pixels, on a node that can be scrolled.
+///
+/// Only a scroller and a windowed list have an offset to set; the client
+/// answers `Op::ScrollTo` on anything else with `NotScrollable`, which ends
+/// the session (01 §4). Saying so here costs the view a clear error instead
+/// of a window that closes.
+///
+/// The offsets are absolute, because that is what the op carries. There is
+/// deliberately no "end" here: a view that wants the foot of a list knows
+/// its own row heights and the height it was given, so it can say where the
+/// foot is, and a sentinel would only move that arithmetic somewhere it has
+/// less to work with.
+fn scroll_offset(kind: NodeKind, v: &Json) -> Result<(i64, i64), String> {
+    if !matches!(kind, NodeKind::Scroll | NodeKind::List) {
+        return Err(format!(
+            "EUI: scroll_to is for a scroll or a list, not a {kind:?}"
+        ));
+    }
+    let pair = v
+        .as_array()
+        .filter(|a| a.len() == 2)
+        .ok_or_else(|| format!("EUI: a scroll_to is [x, y] in pixels, got {v}"))?;
+    let axis = |i: usize| -> Result<i64, String> {
+        let n = pair
+            .get(i)
+            .and_then(Json::as_f64)
+            .ok_or_else(|| format!("EUI: a scroll_to is [x, y] in pixels, got {v}"))?;
+        // A view that computes an offset from row heights can land on a
+        // fraction or, on an empty list, on something nonsensical. Rounding
+        // and clamping here keeps `as i32` from being a silent wrap.
+        Ok(n.round().clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i64)
+    };
+    Ok((axis(0)?, axis(1)?))
+}
+
 fn event_kind(name: &str) -> Option<EventKind> {
     Some(match name {
         "click" => EventKind::Click,
@@ -1529,6 +1628,8 @@ fn event_kind(name: &str) -> Option<EventKind> {
         "ended" => EventKind::Ended,
         "time_update" => EventKind::TimeUpdate,
         "wake" => EventKind::Wake,
+        "file_pick" => EventKind::FilePick,
+        "file_save" => EventKind::FileSave,
         _ => return None,
     })
 }
@@ -1572,7 +1673,7 @@ pub fn event_name(kind: EventKind) -> &'static str {
 }
 
 /// `spec/05-theme.md` §1, by name.
-const ROLES: [&str; 28] = [
+const ROLES: [&str; 33] = [
     "surface.base",
     "surface.raised",
     "surface.sunken",
@@ -1601,6 +1702,11 @@ const ROLES: [&str; 28] = [
     "border.default",
     "border.strong",
     "focus.ring",
+    "series.1",
+    "series.2",
+    "series.3",
+    "series.4",
+    "series.5",
 ];
 
 fn role_id(name: &str) -> Option<u16> {
@@ -1637,6 +1743,7 @@ fn freeze(node: &mut TNode, memo: &mut Memo, pins: &mut HashMap<usize, Value>, g
                         key_atom: 0,
                         text: None,
                         props: Vec::new(),
+                        scroll_to: None,
                         handlers: Vec::new(),
                         children: Vec::new(),
                         identity: 0,
@@ -1816,7 +1923,7 @@ mod tests {
     }
 
     #[test]
-    fn a_local_handler_is_compiled_once_per_source() {
+    fn a_local_handler_is_compiled_once_per_source_however_it_is_keyed() {
         let mut enc = Encoder::default();
         let tree = || {
             json!({"k": "box", "c": [
@@ -1825,10 +1932,29 @@ mod tests {
             ]})
         };
         enc.render(&tree(), false).unwrap();
-        assert_eq!(enc.local_cache.len(), 2, "keyed by source and by self key");
+        // One compile, not one per key. This is the whole reason a list can
+        // carry a hover: the table holds 4 095 chunks, and a source compiled
+        // per key would spend one on every row.
+        assert_eq!(enc.local_cache.len(), 1, "keyed by source and styles alone");
         assert_eq!(enc.chunks.len(), 1, "the bytes are the same chunk");
         enc.render(&tree(), false).unwrap();
-        assert_eq!(enc.local_cache.len(), 2);
+        assert_eq!(enc.local_cache.len(), 1);
+    }
+
+    #[test]
+    fn a_hover_on_four_thousand_rows_is_one_chunk() {
+        let mut enc = Encoder::default();
+        let rows: Vec<Json> = (0..4000)
+            .map(|i| {
+                json!({
+                    "k": "box",
+                    "key": format!("row-{i}"),
+                    "on": {"pointer_enter": {"local": "self.style = @lit", "styles": {"lit": {"bg": "surface.raised"}}}}
+                })
+            })
+            .collect();
+        enc.render(&json!({"k": "box", "c": rows}), false).unwrap();
+        assert_eq!(enc.chunks.len(), 1, "one chunk for the whole list");
     }
 
     #[test]
@@ -1899,6 +2025,67 @@ mod tests {
         for (i, b) in batches.iter().enumerate() {
             assert_eq!(b.seq, i as u64 + 1);
         }
+    }
+
+    #[test]
+    fn a_render_that_changed_nothing_sends_nothing() {
+        let mut enc = Encoder::default();
+        let tree = json!({"k": "box", "c": [{"k": "text", "t": "steady"}]});
+        let first = enc.render(&tree, false).unwrap();
+        assert!(!first.is_empty(), "the first render mounts the tree");
+
+        // The same tree again. A page that carries a `wake` renders on every
+        // tick whether or not anything moved; a batch for one of those is
+        // bytes on the wire and, on the client, a full restore of every
+        // locally previewed style.
+        let again = enc.render(&tree, false).unwrap();
+        assert!(again.is_empty(), "{again:?}");
+
+        // A change still goes out.
+        let moved = json!({"k": "box", "c": [{"k": "text", "t": "moved"}]});
+        assert!(!enc.render(&moved, false).unwrap().is_empty());
+    }
+
+    #[test]
+    fn scroll_to_is_not_a_prop_and_is_refused_on_what_cannot_scroll() {
+        let mut enc = Encoder::default();
+        // On a list it is an instruction, and the client is never handed a
+        // prop by that name.
+        let batches = enc
+            .render(
+                &json!({"k": "list", "p": {"scroll_to": [0, 640], "count": 3}}),
+                false,
+            )
+            .unwrap();
+        let ops: Vec<&Op> = batches.iter().flat_map(|b| b.ops.iter()).collect();
+        assert!(
+            ops.iter()
+                .any(|op| matches!(op, Op::ScrollTo { x: 0, y: 640, .. })),
+            "{ops:?}"
+        );
+        assert!(
+            !ops.iter().any(|op| matches!(
+                op,
+                Op::DefAtom { value, .. } if value == "scroll_to"
+            )),
+            "scroll_to reached the wire as a prop: {ops:?}"
+        );
+
+        // On a box it would end the session with NotScrollable, so it is
+        // refused here, where there is somewhere to say why.
+        let mut enc = Encoder::default();
+        let err = enc
+            .render(&json!({"k": "box", "p": {"scroll_to": [0, 10]}}), false)
+            .unwrap_err();
+        assert!(err.contains("scroll_to"), "{err}");
+    }
+
+    #[test]
+    fn the_two_file_events_are_names_a_view_may_use() {
+        // Without these the client opens no dialog at all: it wants the
+        // `pick` prop *and* a server handler for the matching event.
+        assert!(event_kind("file_pick").is_some());
+        assert!(event_kind("file_save").is_some());
     }
 
     #[test]

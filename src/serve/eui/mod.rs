@@ -120,6 +120,79 @@ pub fn is_eui_component(component: &str) -> bool {
     g.as_ref().is_some_and(|m| m.contains_key(component))
 }
 
+/// Render every live session of a component, now, because something the
+/// server knows changed.
+///
+/// Spec 06 §1.1 gives an application one clock and it belongs to the client:
+/// a node carrying `wake` is sent an event on a period, and the server can
+/// answer no faster than that period. That is the right answer for watching
+/// something that expires — a presence that goes stale, a countdown — and the
+/// wrong one for something that *happened*: a message written in one window
+/// reaches the next one after up to a whole period, and every window pays a
+/// render a period to find out that nothing did.
+///
+/// The socket is bidirectional and a `Batch` is already S→C (01 §3): nothing
+/// in the protocol ties one to an `Event`, and the client applies whatever
+/// arrives. What was missing was the trigger, and the machinery for it was
+/// all here — the send side is a queue drained by its own task, a rendered
+/// batch goes to the instance's senders rather than back along the event, and
+/// the worker a session is pinned to is `lv_sender_for`'s to find. So this is
+/// that trigger and nothing more: one synthetic event per session, posted to
+/// the worker that owns it, which then runs the handler and the view exactly
+/// as a client's event would.
+///
+/// `except` is the session that asked — the one already rendering, whose own
+/// batch is on its way. Waking it would render it twice for one change.
+///
+/// Returns how many sessions were told. Each is a render, so a caller that
+/// wakes a busy component on every keystroke has moved the cost rather than
+/// removed it: this is for the moments that change what other people see.
+///
+/// A worker whose queue is full drops the wake rather than blocking on it,
+/// and that is the right failure: the window's own clock still brings it
+/// round, a little later, which is exactly where it was before this existed.
+///
+/// A handler that *writes* when it is woken wakes everyone else in turn, who
+/// write, and so on: that is a loop, and dropping wakes at a full queue only
+/// slows it down. Wake for what was written; do not write for what was woken.
+pub fn wake_component(component: &str, event: &str, except: Option<&str>) -> usize {
+    if !is_eui_component(component) {
+        return 0;
+    }
+    let mut woken = 0;
+    for (id, session) in LIVE_REGISTRY.attached_of_component(component) {
+        if except.is_some_and(|self_id| self_id == id) {
+            continue;
+        }
+        let Some(tx) = super::lv_sender_for(&id, component) else {
+            continue;
+        };
+        // Fire and forget. The oneshot's other end is dropped here: a
+        // server-side wake has nobody to report to, and a worker that
+        // answers a closed channel is not an error — the socket path uses
+        // the reply only to decide whether to close the session, and a
+        // session is not closed because a wake was not taken.
+        let (response_tx, _) = tokio::sync::oneshot::channel();
+        if tx
+            .try_send(LiveViewEventData {
+                liveview_id: id.clone(),
+                component: component.to_string(),
+                event: event.to_string(),
+                params: serde_json::json!({}),
+                // As the window's own person: a render woken from outside is
+                // still that session's render, and a handler that asks who is
+                // looking must not get a different answer for it.
+                sender_session: Some(session),
+                response_tx,
+            })
+            .is_ok()
+        {
+            woken += 1;
+        }
+    }
+    woken
+}
+
 fn view_action(component: &str) -> Option<String> {
     let g = EUI_VIEWS.lock().unwrap_or_else(|e| e.into_inner());
     g.as_ref().and_then(|m| m.get(component).cloned())
@@ -237,6 +310,12 @@ pub fn handle_eui_event(
     // state hash — the common shape — hands its own value on to the view,
     // instead of that value going to JSON for the instance and back to a
     // value for the view: two deep copies of the whole state per event.
+    // Which session this thread is working for, from here rather than from
+    // just before the view: `eui_stats()` is read in a view, but `eui_wake()`
+    // is called from a handler, and it needs to know which window is already
+    // being answered so it can leave that one out.
+    let _current = stats::Current::enter(instance.id.clone());
+
     let mut state_for_view: Option<Value> = None;
     if data.event != RESYNC_EVENT {
         let handler_name = crate::live::socket::get_liveview_handler(&component)
@@ -302,9 +381,6 @@ pub fn handle_eui_event(
     let view = resolve(interpreter, &view_name)?;
     let state_value = state_for_view.unwrap_or_else(|| json_to_value(&instance.state));
     let t_view = std::time::Instant::now();
-    // Which session the view is being called for, so `eui_stats()` inside it
-    // can hand back that session's last render and no one else's.
-    let _current = stats::Current::enter(instance.id.clone());
     let tree_value = interpreter
         .call_value(view, vec![state_value], Span::default())
         .map_err(|e| format!("EUI: view '{view_name}' failed: {e}"))?;

@@ -238,6 +238,26 @@ impl LiveRegistry {
         views.get(id).cloned()
     }
 
+    /// Every attached instance of a component, as `(id, session)`.
+    ///
+    /// What a server-originated render needs and all it needs: who to render,
+    /// and as whom. Ids and sessions are cloned out under the lock rather than
+    /// the instances themselves — a caller holding a whole instance would be
+    /// holding a deep copy of its state and its last tree, and would be
+    /// tempted to render from it instead of from the registry's own copy.
+    ///
+    /// Detached instances are skipped: their socket is gone and the grace
+    /// window is only there so a refresh can reclaim the state. Rendering into
+    /// one writes a batch nobody is listening for.
+    pub fn attached_of_component(&self, component: &str) -> Vec<(LiveViewId, String)> {
+        let views = self.views.lock().unwrap_or_else(|e| e.into_inner());
+        views
+            .values()
+            .filter(|v| v.component == component && v.detached_at.is_none())
+            .map(|v| (v.id.clone(), v.session_id.clone()))
+            .collect()
+    }
+
     /// Drop instances whose socket has been closed longer than
     /// [`DETACHED_GRACE`], plus any that idled past the session timeout.
     pub fn cleanup(&self) {

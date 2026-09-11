@@ -8,7 +8,7 @@
 use eui_proto::{Op, Value as WireValue};
 use std::collections::HashMap;
 
-use super::tree::{assign_fresh_ids, flatten, Child, Encoder, TNode};
+use super::tree::{assign_fresh_ids, flatten, scroll_ops, Child, Encoder, TNode};
 
 /// Diff `old` against `new`, assigning ids into `new`, appending ops.
 pub fn diff(enc: &mut Encoder, old: &TNode, new: &mut TNode, ops: &mut Vec<Op>) {
@@ -18,6 +18,7 @@ pub fn diff(enc: &mut Encoder, old: &TNode, new: &mut TNode, ops: &mut Vec<Op>) 
             node: old.id,
             subtree: flatten(new),
         });
+        scroll_ops(new, ops);
         return;
     }
     new.id = old.id;
@@ -49,6 +50,16 @@ pub fn diff(enc: &mut Encoder, old: &TNode, new: &mut TNode, ops: &mut Vec<Op>) 
                 prop: *name,
                 value: value.clone(),
             });
+        }
+    }
+    // A scroll is done, not held: the op goes out when the view names an
+    // offset it did not name last time, and a view that keeps naming the
+    // same one is a view that means "stay there", which costs nothing. It
+    // follows that a list which wants to stay at its foot as rows arrive
+    // says a *different* number each render, because the foot has moved.
+    if new.scroll_to.is_some() && old.scroll_to != new.scroll_to {
+        if let Some((x, y)) = new.scroll_to {
+            ops.push(Op::ScrollTo { node: id, x, y });
         }
     }
     for (name, _) in &old.props {
@@ -122,6 +133,7 @@ fn diff_positional(
             index: i as u32,
             subtree: flatten(node),
         });
+        scroll_ops(node, ops);
     }
 }
 
@@ -292,6 +304,7 @@ fn diff_keyed(enc: &mut Encoder, parent: u32, old: &[Child], new: &mut [Child], 
                     index: placed as u32,
                     subtree: flatten(node),
                 });
+                scroll_ops(node, ops);
                 placed += 1;
             }
         }
@@ -312,6 +325,7 @@ mod tests {
             key_atom: 0,
             text: Some(TextRef::Inline(text.to_owned())),
             props: vec![],
+            scroll_to: None,
             handlers: vec![],
             children: vec![],
             identity: 0,
@@ -327,11 +341,69 @@ mod tests {
             key_atom: 0,
             text: None,
             props: vec![],
+            scroll_to: None,
             handlers: vec![],
             children: children.into_iter().map(Child::Fresh).collect(),
             identity: 0,
             size: 0,
         }
+    }
+
+    fn scroller(to: Option<(i64, i64)>) -> TNode {
+        let mut n = parent(vec![leaf(NodeKind::Text, Some("row"), "a")]);
+        n.kind = NodeKind::List;
+        n.scroll_to = to;
+        n
+    }
+
+    #[test]
+    fn a_list_that_names_a_new_offset_is_scrolled_and_a_list_that_repeats_one_is_not() {
+        let mut enc = Encoder::default();
+        let mut old = scroller(Some((0, 400)));
+        assign_fresh_ids(&mut enc, &mut old);
+
+        // The same offset again means "stay there", and costs nothing.
+        let mut same = scroller(Some((0, 400)));
+        let mut ops = Vec::new();
+        diff(&mut enc, &old, &mut same, &mut ops);
+        assert!(ops.is_empty(), "{ops:?}");
+
+        // A different one is the op.
+        let mut moved = scroller(Some((0, 920)));
+        let mut ops = Vec::new();
+        diff(&mut enc, &old, &mut moved, &mut ops);
+        assert_eq!(ops.len(), 1, "{ops:?}");
+        assert!(matches!(&ops[0], Op::ScrollTo { node, x: 0, y: 920 } if *node == old.id));
+    }
+
+    #[test]
+    fn a_list_that_stops_asking_is_left_where_it_is() {
+        let mut enc = Encoder::default();
+        let mut old = scroller(Some((0, 400)));
+        assign_fresh_ids(&mut enc, &mut old);
+        let mut new = scroller(None);
+        let mut ops = Vec::new();
+        diff(&mut enc, &old, &mut new, &mut ops);
+        // Nothing: a view that has stopped naming an offset is not a view
+        // asking for the top, and scrolling it back would fight the person.
+        assert!(ops.is_empty(), "{ops:?}");
+    }
+
+    #[test]
+    fn a_scroll_arrives_with_the_subtree_it_names() {
+        let mut enc = Encoder::default();
+        let mut old = parent(vec![]);
+        assign_fresh_ids(&mut enc, &mut old);
+        let mut new = parent(vec![]);
+        new.children.push(Child::Fresh(scroller(Some((0, 1200)))));
+        let mut ops = Vec::new();
+        diff(&mut enc, &old, &mut new, &mut ops);
+        // The order matters: the client cannot scroll a node it has not
+        // been given yet.
+        assert_eq!(ops.len(), 2, "{ops:?}");
+        assert!(matches!(&ops[0], Op::InsertChild { .. }));
+        let inserted = new.children[0].id;
+        assert!(matches!(&ops[1], Op::ScrollTo { node, x: 0, y: 1200 } if *node == inserted));
     }
 
     #[test]
