@@ -849,7 +849,9 @@ pub fn register_router_builtins(env: &mut Environment) {
             let Some(component) = args.first().map(Value::to_string) else {
                 return Err("eui_wake() expects a component name, e.g. eui_wake(\"chat\")".into());
             };
-            let event = args.get(1).map_or_else(|| "tick".to_string(), Value::to_string);
+            let event = args
+                .get(1)
+                .map_or_else(|| "tick".to_string(), Value::to_string);
             let here = crate::serve::eui::stats::current_session();
             let woken = crate::serve::eui::wake_component(&component, &event, here.as_deref());
             Ok(Value::Int(woken as i64))

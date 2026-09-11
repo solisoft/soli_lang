@@ -1382,7 +1382,11 @@ impl Encoder {
                 "position" => {
                     r.position = enum_of(
                         v,
-                        &[("flow", Position::Flow), ("absolute", Position::Absolute), ("pointer", Position::Pointer)],
+                        &[
+                            ("flow", Position::Flow),
+                            ("absolute", Position::Absolute),
+                            ("pointer", Position::Pointer),
+                        ],
                     )?
                 }
                 "z" => r.z = u8_of(v)?,
