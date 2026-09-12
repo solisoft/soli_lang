@@ -17,7 +17,7 @@
         <a href="#w-media" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Media</a>
         <a href="#w-theme-and-responsiveness" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Theme and responsiveness</a>
     </div>
-    <h3 id="w-layout-and-containers" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Layout and containers</h3>
+    <h2 id="w-layout-and-containers" class="text-2xl font-bold text-white mt-12 mb-6 scroll-mt-24">Layout and containers</h2>
     <p class="text-gray-400 mb-8">Every container takes a style hash and a list of children. <code>column</code>, <code>row</code> and <code>stack</code> are the same <code>box</code> primitive with a different <code>display</code>.</p>
     <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
         <div class="px-5 py-3 border-b border-white/5">
@@ -331,7 +331,7 @@
 <p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:274</code></p>
 </div>
     </div>
-    <h3 id="w-overlays-and-structure" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Overlays and structure</h3>
+    <h2 id="w-overlays-and-structure" class="text-2xl font-bold text-white mt-12 mb-6 scroll-mt-24">Overlays and structure</h2>
     <p class="text-gray-400 mb-8">Anything that floats uses the <code>overlay</code> primitive, which paints after its siblings. Open and closed is <strong>your state</strong> &mdash; the client holds none of it.</p>
     <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
         <div class="px-5 py-3 border-b border-white/5">
@@ -465,7 +465,7 @@
             </div>
         </div>
     </div>
-    <h3 id="w-navigation" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Navigation</h3>
+    <h2 id="w-navigation" class="text-2xl font-bold text-white mt-12 mb-6 scroll-mt-24">Navigation</h2>
     <p class="text-gray-400 mb-8">Navigation is application state, not a URL: a click is an event and your handler decides what the next tree is.</p>
     <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
         <div class="px-5 py-3 border-b border-white/5">
@@ -552,7 +552,7 @@
             </div>
         </div>
     </div>
-    <h3 id="w-theme-and-responsiveness" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Theme and responsiveness</h3>
+    <h2 id="w-theme-and-responsiveness" class="text-2xl font-bold text-white mt-12 mb-6 scroll-mt-24">Theme and responsiveness</h2>
     <p class="text-gray-400 mb-8">The client resolves roles against light or dark mode, density and font scale. The server never learns which.</p>
     <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
         <div class="px-5 py-3 border-b border-white/5">
@@ -596,32 +596,5 @@
             </div>
         </div>
     </div>
-
-    <h2 class="text-2xl font-bold text-white mb-6">Running it</h2>
-    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
-        <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm">cargo build --release
-./target/release/soli serve path/to/app --port 5011
-# the client, from the eui repository:
-EUI_ALLOW_INSECURE_LOOPBACK=1 eui ws://127.0.0.1:5011/_eui/session/counter</code></pre>
-        </div>
-    </div>
-    <p class="text-gray-400 mb-12">A deployment sits behind TLS; the client refuses anything but <code class="text-cyan-400">wss://</code> outside a debug build on loopback.</p>
-
-    <h2 class="text-2xl font-bold text-white mb-6">The manifest</h2>
-    <p class="text-gray-400 mb-12">With the feature on, every app also answers <code class="text-cyan-400">GET /.well-known/eui</code> with a signed manifest. The signing key is generated the first time it is needed, into <code class="text-cyan-400">config/eui_publisher.pkcs8</code>; a client pins the public half on its first visit and refuses a different key afterwards, so keep the file with the app's secrets and out of version control. <code class="text-cyan-400">eui_capabilities("clipboard.read")</code> in <code class="text-cyan-400">config/routes.sl</code> lists what the manifest asks the client for; nothing is granted by asking &mdash; the person allows each capability on their side (<code class="text-cyan-400">eui &lt;url&gt; --allow clipboard.read</code>).</p>
-
-    <h2 class="text-2xl font-bold text-white mb-6">Opening an application</h2>
-    <p class="text-gray-400 mb-12">The standalone client is <code class="text-cyan-400">eui &lt;wss://host/_eui/session/app&gt;</code>. A soli built with <code class="text-cyan-400">--features eui-desktop</code> also opens one itself with <code class="text-cyan-400">soli eui &lt;url&gt; [--allow clipboard.read]</code>, and packages an app to open in its own window with <code class="text-cyan-400">soli desktop build --eui &lt;component&gt;</code> &mdash; see <a href="/docs/development-tools/desktop#eui-window" class="text-amber-400 hover:underline">Desktop Apps</a>.</p>
-
-    <h2 class="text-2xl font-bold text-white mb-6">What changed in Soli</h2>
-    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-12"><table class="w-full text-left text-sm"><tbody class="text-gray-400 divide-y divide-white/10">
-<tr><td class="py-3 px-4 text-white font-medium w-56"><code class="text-cyan-400">Cargo.toml</code></td><td class="py-3 px-4">Optional <code class="text-cyan-400">eui-proto</code> dependency; feature <code class="text-cyan-400">eui</code>, not in the default set</td></tr>
-<tr><td class="py-3 px-4 text-white font-medium"><code class="text-cyan-400">src/serve/mod.rs</code></td><td class="py-3 px-4">Three <code class="text-cyan-400">#[cfg(feature = "eui")]</code> insertions: the module, the socket branch, an early return for EUI components in the worker</td></tr>
-<tr><td class="py-3 px-4 text-white font-medium"><code class="text-cyan-400">builtins/router.rs</code></td><td class="py-3 px-4"><code class="text-cyan-400">router_eui(component, handler, view)</code></td></tr>
-<tr><td class="py-3 px-4 text-white font-medium"><code class="text-cyan-400">src/serve/eui/</code></td><td class="py-3 px-4">New: tree conversion with interned atoms and styles, the tree diff, the session socket, the local-handler assembler</td></tr>
-<tr><td class="py-3 px-4 text-white font-medium">Untouched</td><td class="py-3 px-4"><code class="text-cyan-400">live/</code>, <code class="text-cyan-400">template/</code>, <code class="text-cyan-400">vm/</code>, <code class="text-cyan-400">interpreter/</code></td></tr>
-</tbody></table></div>
-</div>
 
 </div>

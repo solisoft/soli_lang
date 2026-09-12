@@ -2,8 +2,35 @@
     <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">Assets, lists and scrolling</h1>
     <p class="text-gray-400 mb-6">Images travel as assets the client caches by hash, long lists are keyed so the differ can move rows instead of rebuilding them, and a view can move a scroll position as well as describe one.</p>
 
+    <h2 id="images-and-assets" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Images and assets</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6"><div class="p-4 overflow-x-auto"><pre><code class="language-soli text-sm">avatar("public/images/avatar.png", 32)</code></pre></div></div>
+    <p class="text-gray-400 mb-6">The path is a file in the application, under <code>public/</code> or <code>app/assets/</code>. Soli hashes it (BLAKE3), sends the hash in the tree, and serves the bytes at <code class="text-cyan-400">GET /_eui/asset/&lt;hash&gt;</code> with a one-year immutable cache header &mdash; the same bytes for every session and every client, so a CDN can hold them and nothing on the path can substitute them.</p>
+    <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-amber-400 mb-2">A <code>src</code> is a server path</h4>
+        <p class="text-amber-200/80 text-sm">The endpoint needs no session: anyone with the hash gets the bytes, which is right for an image and why a path outside those two directories &mdash; <code>config/</code>, <code>.env</code>, the publisher key &mdash; is refused before it is read. Never build a <code>src</code> from client data.</p>
+    </div>
+
+    <h2 id="keyed-lists" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Keyed lists and virtualisation</h2>
+    <p class="text-gray-400 mb-6">Give repeated children a key (<code class="text-cyan-400">keyed(id, row(...))</code>) and a re-sort becomes <code>MoveChild</code> ops rather than a rebuild. A <code class="text-cyan-400">list</code> with an item height is virtualised on the client: it lays out only the rows it can see, so ten thousand rows cost about what fifty do.</p>
+
+    <h3 class="text-xl font-semibold text-white mt-10 mb-3">Moving pictures</h3>
+    <p class="text-gray-400 mb-6"><code class="text-cyan-400">video(path, props, style, handlers)</code> puts a GIF or an animated WebP in the tree (EUI spec 03 &sect;8). It sizes itself to its frames; <code>playing</code>, <code>loop</code> and <code>position</code> say what it should be doing, and <code>ended</code> comes back. The client decodes it in its sandboxed worker and advances it on its own clock, waking exactly when the next frame is due.</p>
+
+    <h3 class="text-xl font-semibold text-white mt-10 mb-3">The viewport</h3>
+    <p class="text-gray-400 mb-6">The client's viewport &mdash; width, height, scale, mode, density, font scale &mdash; reaches the handler as <code class="text-cyan-400">params["viewport"]</code> with the <code>connect</code> event, and again as a <code>viewport</code> event whenever it changes. A view that keeps it in state can lay itself out by width: the <code>counter-app</code> music player collapses its sidebar to a rail under 900&nbsp;px and drops it under 640.</p>
+
+    <h3 class="text-xl font-semibold text-white mt-10 mb-3">Windowed lists</h3>
+    <p class="text-gray-400 mb-6">A <code class="text-cyan-400">list</code> can be windowed (EUI spec 04 &sect;7.1): give it <code>count</code>, <code>heights</code> (or rely on <code>item_height</code>) and a <code>window</code> handler, and hand it only the children in view, each carrying a <code>row</code> prop. The client lays out and scrolls the whole extent, asks <code>window</code> with <code>[first, last]</code> when the rows in view change, and your handler stores that range so the next view builds those rows and no others. A feed of forty thousand posts then costs the server one window of cards &mdash; <code>counter-app</code>'s feed is written this way, with <code class="text-cyan-400">list_window</code>.</p>
+
+    <h3 class="text-xl font-semibold text-white mt-10 mb-3">Memoising a keyed child</h3>
+    <p class="text-gray-400 mb-6">A keyed child is also what the server memoises. When the view returns, for a keyed node, <strong class="text-white">the same hash object it returned last time</strong>, Soli keeps the converted subtree and skips it in the diff &mdash; it is neither walked nor compared. Build repeated children once, keep them in a cache keyed by whatever they depend on, and return the cached value; a change to one card in a feed of ten thousand then costs one card.</p>
+    <div class="my-8 p-6 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-blue-400 mb-2">The cache contract</h4>
+        <p class="text-blue-200/80 text-sm">A value handed back unchanged is assumed unchanged, so never mutate a node hash after returning it &mdash; build a new one instead. Unkeyed and freshly built nodes are converted and diffed as before.</p>
+    </div>
+
     <h2 id="scroll-to" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Moving the scroll position</h2>
     <p class="text-gray-400 mb-6">A node may carry <code class="text-cyan-400">scroll_to</code> &mdash; a pair of pixel offsets &mdash; and the differ emits a <code>ScrollTo</code> op for it. That is the direction the protocol previously lacked: a view could describe a scroll position but never move one, so &ldquo;jump to the newest message&rdquo; had to be faked by rebuilding the list.</p>
-    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6"><div class="p-4 overflow-x-auto"><pre><code class="language-soli text-sm">scroll(&lbrace;"scroll_to": [0, 99999]&rbrace;, messages.map(fn(m) message_row(m)))</code></pre></div></div>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6"><div class="p-4 overflow-x-auto"><pre><code class="language-soli text-sm">scroll({"scroll_to": [0, 99999]}, messages.map(fn(m) message_row(m)))</code></pre></div></div>
     <p class="text-gray-400 mb-6">It is an instruction, not state: the client scrolls when the op arrives, and the viewer may scroll away again afterwards.</p>
 </div>
