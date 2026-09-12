@@ -20,9 +20,13 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-2-0" class="text-amber-400 hover:underline">v2.2.0</a>.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-2-1" class="text-amber-400 hover:underline">v2.2.1</a>.</p>
 
-        <h3 id="unreleased-eui" class="text-xl font-semibold text-white mb-4 scroll-mt-24">EUI</h3>
+    </section>
+
+    <section id="v2-2-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.2.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-12</span></h2>
+        <h3 id="v2-2-1-eui" class="text-xl font-semibold text-white mb-4 scroll-mt-24">EUI</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">eui_wake(component)</code> renders every other live session of a component, now.</strong> A window learned what someone else had done only when its own <code class="text-cyan-400">wake</code> clock next fired &mdash; up to a whole period late, and a render per period per window spent finding out that nothing had happened. Nothing in the protocol required that: a <code class="text-cyan-400">Batch</code> is server&rarr;client, so a server that knows something changed can simply say so. Call it where the change is written, not on a timer.</li>
             <li><strong class="text-white">Chart colour roles.</strong> <code class="text-cyan-400">series.1</code>&ndash;<code class="text-cyan-400">series.5</code> join the theme's role table, so a chart names a categorical series instead of hard-coding a hex. A view using one was previously refused with <code>EUI: unknown colour role 'series.1'</code>.</li>
@@ -32,13 +36,13 @@
             <li><strong class="text-white">The scaffolded builder catalogue grew by ~650 lines</strong>, including the chart builders that use the new series roles.</li>
         </ul>
 
-        <h3 id="unreleased-tooling" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Tooling</h3>
+        <h3 id="v2-2-1-tooling" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Tooling</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">soli fmt</code> is idempotent again on a postfix guard whose value wraps.</strong> Formatting <code class="text-cyan-400">return text(glyph, &lbrace; ... &rbrace;) if name.nil?</code> broke the value across lines, which stranded the trailing <code class="text-cyan-400">if</code> where the next pass could not see it &mdash; so a second <code class="text-cyan-400">soli fmt</code> rewrote the guard into a block <code class="text-cyan-400">if</code>. The formatter now emits the block form on the first pass, matching the rule it already applied when creating a guard, so <code class="text-cyan-400">fmt(fmt(x)) == fmt(x)</code>. A short guard still stays postfix.</li>
             <li><strong class="text-white"><code class="text-cyan-400">SOLI_TEST_SERVER_DEV=1</code> gives a spec run a dev-mode server.</strong> <code class="text-cyan-400">soli test</code> starts its servers in production mode so specs exercise the same bytecode VM that serves production. A spec covering a <em>dev-only</em> feature &mdash; the dev bar, which <code class="text-cyan-400">serve</code> only injects under <code class="text-cyan-400">--dev</code> &mdash; needs the flag back; set this for that run and keep the rest of the suite on the VM.</li>
         </ul>
 
-        <h3 id="unreleased-uploads" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Uploads</h3>
+        <h3 id="v2-2-1-uploads" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Uploads</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">An attachment download no longer costs ~29&times; its own size in RAM.</strong> <code class="text-cyan-400">AttachmentsController#show</code> ended with <code class="text-cyan-400">"body": Base64.decode(b64)</code>, and <code class="text-cyan-400">Base64.decode</code> on bytes that are not valid UTF-8 returns a Soli array of one 16-byte integer per byte &mdash; precisely the blowup removed from the ingest side, reintroduced on egress. It now answers with <code class="text-cyan-400">"body_base64"</code>, which the response layer already understood and decodes once, straight to bytes. Measured on a 16&nbsp;MiB round trip through a real server: peak RSS growth 468&nbsp;MiB before, 118&nbsp;MiB after. If you overrode <code class="text-cyan-400">AttachmentsController#show</code> and copied the old shape, switch to <code class="text-cyan-400">body_base64</code> too.</li>
             <li><strong class="text-white">An upload is no longer copied five times on the way in.</strong> The body was collected, copied into a buffer, copied again into the multipart parser, copied a third time per part, and also retained whole in a request field nothing ever read &mdash; carried across the worker queue on every upload. The body is now refcounted and moved into the parser, and parts borrow from it. <code class="text-cyan-400">file["data"]</code> is unchanged, still the same base64 string, so nothing to migrate. With the download fix a 16&nbsp;MiB round trip goes from 468&nbsp;MiB to 102&nbsp;MiB of peak RSS growth.</li>

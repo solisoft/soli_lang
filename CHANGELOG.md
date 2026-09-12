@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-09-12
+
 ### Fixed
 
 * **fix(fmt):** `soli fmt` is idempotent again on a postfix guard whose value wraps. `detect_postfix_if_kind` only scans a statement's first line, so once the printer broke `return text(glyph, {...}) if name.nil?` across lines the trailing `if` was invisible to the next pass, which expanded it to a block `if` — `fmt(fmt(x)) != fmt(x)`. `guard_clause_to_rewrite` already refused to *create* a multi-line postfix; the same policy now applies to one that was already written that way, so the first pass emits the block form the second pass would have produced. Caught by `fmt_corpus_test` on the EUI builder catalogue, where it failed the `test` job and, with it, blocked the v2.2.0 release
@@ -19,7 +21,6 @@
 * **feat(eui):** `location` and `nfc_tag` event kinds (wire `0x1C` / `0x1D`), named in both directions by `event_kind` / `event_name`. The client compiles the code behind them only for a phone — a desktop has no tag reader and no positioning it can reach — the same way file dialogs are phone-excluded
 * **feat(eui):** the scaffolded builder catalogue grows by ~650 lines, including the chart builders that consume the new series roles
 * **feat(eui):** `eui_wake(component)` renders every other live session of an EUI component, now. A window learned what someone else did only when its own `wake` clock next fired (06 §1.1) — up to a whole period late, and a render per period per window spent finding out that nothing had happened. Nothing in the protocol required that: `Batch` is S→C, a client applies whatever arrives, and the machinery was already here — the send side is a queue drained by its own task, a rendered batch goes to the instance's senders rather than back along the event, and `lv_sender_for` knows the worker a session is pinned to. So this posts one synthetic event per session to that worker, which runs the handler and the view exactly as a client's event would; the session that called it is left out, being already mid-render. The event name is the application's own — `eui_wake("chat")` posts `tick`, `eui_wake("chat", "arrived")` posts that. Measured on Atrium with two windows, one writing and the other only listening, its clock never advanced and not one frame sent by it: the line reached the other window in 282 ms of a debug build against 930 ms on the clock alone. The clock is still what watches things that go stale on their own — a presence that decays, an "is typing" that expires — since nobody moves a counter when a timestamp quietly stops being true
-
 
 ## [2.2.0] - 2026-09-11
 
