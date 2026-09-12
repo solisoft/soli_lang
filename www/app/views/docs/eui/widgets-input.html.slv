@@ -1,0 +1,610 @@
+<div class="max-w-4xl">
+    <h3 id="w-actions" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Actions</h3>
+    <p class="text-gray-400 mb-8">Every button is a <code>box</code> with a <code>click</code> handler and a text child &mdash; there is no button primitive. The variants differ only in their style roles.</p>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">button(label, on_click)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The primary action. <code>on_click</code> names a server event.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">button("Save", "save")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#6366f1;color:#fff">Save</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">secondary_button(label, on_click)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A raised surface rather than the accent role.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">secondary_button("Cancel", "cancel")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#2a2933;color:#e5e7eb;border-color:rgba(255,255,255,.12)">Cancel</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">danger_button(label, on_click)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The <code>danger</code> role, for destructive actions.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">danger_button("Delete account", "destroy")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#dc2626;color:#fff">Delete account</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">ghost_button(label, on_click)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Text only until hovered. For tertiary actions in dense toolbars.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">ghost_button("Dismiss", "dismiss")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:transparent;color:#c7d2fe">Dismiss</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">button_variant(label, on_click, bg, fg)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The builder the others call. Reach for it when you need a role pair the variants do not cover.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">button_variant("Publish", "publish", "success.base", "success.on")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#16a34a;color:#fff">Publish</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">icon_button(label, on_click, props)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A square button holding a single glyph. <code>props</code> ride back on the event.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">icon_button("✕", "close", {"id": row["id"]})</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#2a2933;color:#e5e7eb;padding:7px 10px">✕</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">loading_button(label, on_click, key)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Swaps to a spinner while the round trip is in flight, keyed so the diff replaces only the label.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">loading_button("Import", "import", "import-btn")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#6366f1;color:#fff;opacity:.8"><span style="display:inline-block;width:11px;height:11px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%"></span>Import</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">local_button(label, program, after)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Runs a verified bytecode program on the client <em>before</em> the round trip, then sends <code>after</code>. This is what makes a counter feel instant.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">local_button("+", "state.count += 1", "increment")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#6366f1;color:#fff;padding:7px 16px">+</span></div>
+            </div>
+        </div>
+    </div>
+    <h3 id="w-input" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Input</h3>
+    <p class="text-gray-400 mb-8">Editable fields are the <code>input</code> and <code>textarea</code> primitives; everything else is composed. A field reports its value through the event it names.</p>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">input(value, on_change)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A single-line field. The event fires per keystroke with the value in <code>params</code>.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">input(state["email"], "email_changed")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:220px"><div style="background:#1f1e26;border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:8px 10px;color:#e5e7eb;font:13px system-ui">alice@example.com</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">sized_input(value, on_change, width)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The same field at a fixed width, for inline and grid editing.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">sized_input(cell, "cell_changed", 120)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <span class="text-gray-600 text-xs italic">no visual &mdash; behaviour only</span>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">field(label, value, on_change)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A labelled input &mdash; <code>labelled</code> plus <code>input</code>.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">field("Email", state["email"], "email_changed")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:220px"><div style="color:#9ca3af;font:12px system-ui;margin-bottom:5px">Email</div><div style="background:#1f1e26;border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:8px 10px;color:#e5e7eb;font:13px system-ui">alice@example.com</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">form(children, submit_label, on_submit)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Fields plus a submit button. There is no browser form post &mdash; submit is an ordinary event.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">form([
+  field("Name", s["name"], "name_changed"),
+  field("Email", s["email"], "email_changed")
+], "Create", "create")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:220px"><div style="color:#9ca3af;font:12px system-ui;margin-bottom:4px">Name</div><div style="background:#1f1e26;border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:7px 10px;color:#e5e7eb;font:13px system-ui;margin-bottom:9px">Alice</div><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#6366f1;color:#fff">Create</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">checkbox(label, checked, on_toggle, props)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A box, a tick and a label. <code>props</code> is how a row says which row it is.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">checkbox(item["title"], item["done"], "toggle", {"id": item["id"]})</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:200px;display:flex;align-items:center;gap:9px"><span style="width:16px;height:16px;border-radius:4px;background:#6366f1;color:#fff;font:11px system-ui;display:inline-flex;align-items:center;justify-content:center">✓</span><span style="color:#e5e7eb;font:13px system-ui">Ship the release</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">switch(label, on, on_toggle, props)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A checkbox that reads as a setting rather than a selection.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">switch("Email alerts", s["alerts"], "toggle_alerts", {})</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:200px;display:flex;align-items:center;gap:9px"><span style="width:32px;height:18px;border-radius:9px;background:#6366f1;position:relative;display:inline-block"><span style="position:absolute;right:2px;top:2px;width:14px;height:14px;border-radius:7px;background:#fff"></span></span><span style="color:#e5e7eb;font:13px system-ui">Email alerts</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">slider(value, min, max, on_set)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A track, a filled portion and a thumb, driven by pointer events.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">slider(s["volume"], 0, 100, "set_volume")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;width:200px"><div style="height:4px;border-radius:2px;background:#33323d;position:relative"><div style="width:62%;height:4px;border-radius:2px;background:#6366f1"></div><span style="position:absolute;left:calc(62% - 7px);top:-5px;width:14px;height:14px;border-radius:7px;background:#fff"></span></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">select(options, value, open, on_toggle, on_pick)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A closed trigger plus, when <code>open</code>, an <code>overlay</code> of options. Open state lives in your state, not the client.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">select(["Draft", "Live"], s["status"], s["open"], "toggle", "pick")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:200px"><div style="background:#1f1e26;border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:7px 10px;color:#e5e7eb;font:13px system-ui;display:flex;justify-content:space-between">Live<span style="color:#9ca3af;font:12px system-ui">▾</span></div><div style="margin-top:4px;background:#1f1e26;border:1px solid rgba(255,255,255,.12);border-radius:7px;overflow:hidden"><div style="color:#e5e7eb;font:13px system-ui;padding:6px 10px">Draft</div><div style="color:#e5e7eb;font:13px system-ui;padding:6px 10px;background:#6366f1;color:#fff">Live</div></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">select_sized(options, value, open, on_toggle, on_pick, min_width, grow)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The same control with explicit width behaviour, for toolbars and grids.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">select_sized(cols, v, open, "t", "p", 140, false)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <span class="text-gray-600 text-xs italic">no visual &mdash; behaviour only</span>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">dropdown(anchor, content, open)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Any node as the trigger, any tree as the panel. <code>select</code> is one use of it.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">dropdown(icon_button("⋯", "toggle", {}), menu(items, "pick"), s["open"])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <span class="text-gray-600 text-xs italic">no visual &mdash; behaviour only</span>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">textarea(value, on_change, o = {})</code>
+            <p class="text-gray-400 text-sm mt-1.5">The multi-line field, and the only editable kind the client has besides `input`. The same node in every respect but that kind, and the kind is what makes the client wrap the text, put the caret on the line the pointer landed on, and keep `Enter` for a newline instead of a submit.  `o["rows"]` is a f</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">textarea(state["draft"].to_s, "draft", {</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/chat_controller.sl:2702</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">radio(label, selected, on_pick, props, o = {})</code>
+            <p class="text-gray-400 text-sm mt-1.5">A radio is a checkbox that cannot be unticked and knows about its neighbours: choosing one is choosing away from the others. So the *group* owns the value — there is no `checked` argument that a caller could set on two of them at once — and each button carries only what it stands for, in `props`, wh</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">radio(opt, opt == value, on_pick, {"value": opt, "group": name}, {"size": size, "disabled": disabled})</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `radio_group`):760</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">radio_group(options, value, on_pick, o = {})</code>
+            <p class="text-gray-400 text-sm mt-1.5">The group is what a screen reader is told about — `radio_group` is a role the client knows — and it is what makes the keys unique: every button in a group takes the group's name, so two groups of "Yes"/"No" on one page do not restyle each other. `o["direction"]` is `"column"` unless a row is asked f</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">radio_group(</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:1312</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">select_option(label, selected, on_pick, min_width)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">dropdown(anchor, options.map(fn(o) { select_option(o, o == value, on_pick, min_width) }), open, DROPDOWN_MAX_PX)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `select_sized`):2363</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">number_stepped(value, delta, o)</code>
+            <p class="text-gray-400 text-sm mt-1.5">What the − and + buttons mean, for the handler that owns the value. The clamp is the one `number_within?` judges by, so a stepper cannot walk a field into an error nobody typed; an unreadable value steps from the floor, because "" + 1 has to be something.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">set_key(state, key, number_stepped(state[key], props["delta"], o))</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:2230</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">number_text(n)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A number as a field holds it: "3", not "3.0", unless there is a fraction to keep.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">number_text(n)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `number_stepped`):2850</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">field_error(value, judge, complaint, o)</code>
+            <p class="text-gray-400 text-sm mt-1.5">What is wrong with this value, as a sentence, or "" when nothing is.  An empty required field is not wrong yet. A form that opens already shouting at the person who has not typed in it is a form that has decided they were going to get it wrong; `o["submitted"]` is what says they have had their turn,</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">error = field_error(value, fn(said) { true }, "", o)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `text_field`):2925</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">field_bad(error, o)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">bad = field_bad(error, o)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `text_field`):2926</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">field_note(o)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The line under a control: what is wrong with the value, or the hint that was there before anything was wrong with it. Never both — a field that explains itself twice is a field nobody reads.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">column({"gap": 1, "width": "100%"}, head.concat([control]).concat(field_note(o)))</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `field_shell`):2896</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">field_shell(label, control, o)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">field_shell(</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `text_field`):2927</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">field_style(bad, o)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The style every field control shares. It fills its column unless a width was asked for, and it goes danger when what is in it is wrong — a *colour*, over a border the resting style already reserved, so a field that turns red does not move the fields under it.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">"style": field_style(bad, o),</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `text_field`):2930</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">field_props(label, error, bad, o)</code>
+            <p class="text-gray-400 text-sm mt-1.5">What the field says about itself. The client reads `label`, `description`, `required` and `invalid` by name (03 §4), so a wrong value is announced as wrong rather than only painted that way, and the sentence a sighted person reads under the field is the one a screen reader is given.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">"props": field_props(label, error, bad, o)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `text_field`):2931</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">text_field(label, value, on_change, o = {})</code>
+            <p class="text-gray-400 text-sm mt-1.5">A line of anything. It judges nothing on its own; `o["error"]` and `o["required"]` are the only ways it goes wrong.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">text_field("Reference", state["nf_ref"], "nf_ref", {</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:1472</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">email_field(label, value, on_change, o = {})</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">email_field("Contact", state["nf_email"], "nf_email", {</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:1478</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">number_field(label, value, on_change, o = {})</code>
+            <p class="text-gray-400 text-sm mt-1.5">`o["min"]`, `o["max"]` and `o["step"]` are the bounds and the stride; `o["on_step"]` adds the two buttons and names the event they send, with the direction in `params["props"]["delta"]`. The handler does the arithmetic — `number_stepped` is it — because the value is the server's, and a widget that s</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">number_field("Quantity", state["nf_qty"], "nf_qty", {</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:1483</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">number_complaint(o)</code>
+            <p class="text-gray-400 text-sm mt-1.5">"A number", or the bounds, because "invalid" tells nobody what to type instead.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">error = field_error(value, fn(said) { number_within?(said, o["min"], o["max"]) }, number_complaint(o), o)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `number_field`):2957</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">textarea_field(label, value, on_change, o = {})</code>
+            <p class="text-gray-400 text-sm mt-1.5">The multi-line one. `o["rows"]` is the floor the empty box keeps.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">textarea_field("Notes", state["nf_notes"], "nf_notes", {</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:1516</code></p>
+</div>
+    </div>
+    <h3 id="w-dates" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Dates</h3>
+    <p class="text-gray-400 mb-8">One calendar engine, three selections. The month shown is state you hold, so navigation is an ordinary event.</p>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">calendar(month, selected, range_start, range_end, on_pick, on_nav)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The month grid itself. Pass a range to shade the days between.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">calendar(s["month"], s["day"], null, null, "pick", "nav")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:212px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="color:#9ca3af;font:12px system-ui">‹</span><span style="color:#fff;font:600 13px system-ui">March 2026</span><span style="color:#9ca3af;font:12px system-ui">›</span></div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px"><span style="color:#9ca3af;font:12px system-ui;text-align:center;font-size:10px">M</span><span style="color:#9ca3af;font:12px system-ui;text-align:center;font-size:10px">T</span><span style="color:#9ca3af;font:12px system-ui;text-align:center;font-size:10px">W</span><span style="color:#9ca3af;font:12px system-ui;text-align:center;font-size:10px">T</span><span style="color:#9ca3af;font:12px system-ui;text-align:center;font-size:10px">F</span><span style="color:#9ca3af;font:12px system-ui;text-align:center;font-size:10px">S</span><span style="color:#9ca3af;font:12px system-ui;text-align:center;font-size:10px">S</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">11</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">12</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">13</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">14</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">15</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">16</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;background:#6366f1;color:#fff">17</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">18</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">19</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">20</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">21</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">22</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">23</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">24</span></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">date_picker(month, value, on_pick, on_nav)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A field that opens the calendar.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">date_picker(s["month"], s["due"], "pick", "nav")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:200px"><div style="background:#1f1e26;border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:8px 10px;color:#e5e7eb;font:13px system-ui;display:flex;justify-content:space-between">2026-03-17<span style="color:#9ca3af;font:12px system-ui">▾</span></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">datetime_picker(month, value, hour, minute, on_pick, on_nav, on_time)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The calendar plus hour and minute fields, emitting one ISO value.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">datetime_picker(s["month"], s["at"], s["h"], s["m"],
+                "pick", "nav", "time")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:200px"><div style="background:#1f1e26;border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:8px 10px;color:#e5e7eb;font:13px system-ui">2026-03-17 14:30</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">date_range_picker(month, start, finish, on_pick, on_nav)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The same grid collecting two dates; the days between are shaded as you move.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">date_range_picker(s["month"], s["from"], s["to"], "pick", "nav")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:212px"><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px"><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">9</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">10</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">11</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;background:#6366f1;color:#fff">12</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;background:rgba(99,102,241,.25);color:#e5e7eb">13</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;background:rgba(99,102,241,.25);color:#e5e7eb">14</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;background:rgba(99,102,241,.25);color:#e5e7eb">15</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;background:rgba(99,102,241,.25);color:#e5e7eb">16</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;background:rgba(99,102,241,.25);color:#e5e7eb">17</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;background:rgba(99,102,241,.25);color:#e5e7eb">18</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;background:#6366f1;color:#fff">19</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">20</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">21</span><span style="text-align:center;font:12px system-ui;padding:3px 0;border-radius:5px;color:#d1d5db">22</span></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">month_label(month)</code>
+            <p class="text-gray-400 text-sm mt-1.5">One engine, three pickers. `month` is "YYYY-MM"; days are ISO "YYYY-MM-DD" strings, which compare correctly as strings.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">month_label(month),</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `calendar`):2619</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">month_shift(month, delta)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">return set_key(state, name + "_month", month_shift(state[name + "_month"], props["delta"])) if event == name + "_nav"</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:2217</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">weekday_index(day)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">blanks = range(0, weekday_index(first_day)).map(fn(i) { day_blank() })</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `calendar`):2608</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">two_digits(n)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">iso = month + "-" + two_digits(d)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `calendar`):2610</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">icon_or_glyph(glyph, name, size)</code>
+            <p class="text-gray-400 text-sm mt-1.5">An icon button draws a named icon when it is given one, and the character it was handed when it is not. The catalogue is mid-move from the second to the first, and both have to work while it is.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">"c": [icon_or_glyph(glyph, o["icon"], size)]</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `icon_button`):2549</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">day_cell(iso, label, selected, in_range, on_pick)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">day_cell(iso, str(d), selected.includes?(iso), shaded, on_pick)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `calendar`):2612</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">time_select(time, hour_open, min_open, on_hour_toggle, on_min_toggle, on_hour, on_min)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Two selects, twenty-four hours and sixty minutes, so the clock cannot hold anything but HH:MM — there is no free text to parse and no "25:61" to reject. Both selects are the server's to open, like every other one.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">time_select(time, hour_open, min_open, on_hour_toggle, on_min_toggle, on_hour, on_min)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `datetime_picker`):2711</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">picker_panel(children)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">fn() { picker_panel([calendar(o["month"], day.present? ? [day] : [], "", "", o["on_pick"], o["on_nav"])]) }</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `date_field`):3084</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">picker_field(o, caption, empty, make)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">picker_field(</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `date_field`):3080</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">date_field(o)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">date_field({</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:1490</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">datetime_field(o)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">datetime_field({</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:1500</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">date_range_field(o)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">[date_range_field({</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:1295</code></p>
+</div>
+    </div>
+</div>

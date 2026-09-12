@@ -1,0 +1,37 @@
+<div class="max-w-4xl">
+    <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">Styling</h1>
+    <p class="text-gray-400 mb-6">There is no cascade and no selector. A style is a hash of the protocol's own vocabulary &mdash; <code>display</code>, <code>gap</code>, <code>pad</code>, <code>bg</code>, <code>fg</code>, <code>size</code>, <code>weight</code>, <code>radius</code>, <code>width</code>, <code>align</code>, <code>justify</code>, <code>cursor</code>, <code>position</code> &mdash; and colours are <strong class="text-white">roles</strong>.</p>
+
+    <h2 id="roles" class="text-2xl font-bold text-white mb-6 scroll-mt-24">The colour roles</h2>
+    <p class="text-gray-400 mb-6">There are <strong class="text-white">33</strong>. The client resolves a role against the viewer's light or dark mode, density and font scale, so the same view is right in both without the server knowing which one it is. A literal <code>"#RRGGBB"</code> is available for a brand mark and wrong for a surface.</p>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead><tr class="border-b border-white/10"><th class="text-left py-3 px-4 text-gray-400 font-semibold">Roles</th><th class="text-left py-3 px-4 text-gray-400 font-semibold">For</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-3 px-4"><code class="text-amber-300">surface.base</code> <code class="text-amber-300">surface.raised</code> <code class="text-amber-300">surface.sunken</code> <code class="text-amber-300">surface.overlay</code></td><td class="py-3 px-4 text-gray-400">Backgrounds, from the page itself to an overlay.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">text.default</code> <code class="text-amber-300">text.muted</code> <code class="text-amber-300">text.inverted</code> <code class="text-amber-300">text.disabled</code></td><td class="py-3 px-4 text-gray-400">Foreground text, including disabled and inverted.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">accent.base</code> <code class="text-amber-300">accent.hover</code> <code class="text-amber-300">accent.active</code> <code class="text-amber-300">accent.on</code></td><td class="py-3 px-4 text-gray-400">The application's own colour, and its interaction states.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">success.base</code> <code class="text-amber-300">success.subtle</code> <code class="text-amber-300">success.on</code></td><td class="py-3 px-4 text-gray-400">An outcome that went well.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">warning.base</code> <code class="text-amber-300">warning.subtle</code> <code class="text-amber-300">warning.on</code></td><td class="py-3 px-4 text-gray-400">Something the viewer should look at.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">danger.base</code> <code class="text-amber-300">danger.subtle</code> <code class="text-amber-300">danger.on</code></td><td class="py-3 px-4 text-gray-400">Destruction, or an error.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">info.base</code> <code class="text-amber-300">info.subtle</code> <code class="text-amber-300">info.on</code></td><td class="py-3 px-4 text-gray-400">Neutral information.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">border.subtle</code> <code class="text-amber-300">border.default</code> <code class="text-amber-300">border.strong</code></td><td class="py-3 px-4 text-gray-400">Rules and outlines, by weight.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">focus.ring</code></td><td class="py-3 px-4 text-gray-400">The keyboard focus ring.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">series.1</code> <code class="text-amber-300">series.2</code> <code class="text-amber-300">series.3</code> <code class="text-amber-300">series.4</code> <code class="text-amber-300">series.5</code></td><td class="py-3 px-4 text-gray-400">The categorical series of a chart, in fixed order.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-6">The <code class="text-cyan-400">series.*</code> family exists so a chart names a categorical series rather than hard-coding a hex, and so two charts agree on which colour the second series is. A view naming a role that does not exist is refused &mdash; <code>EUI: unknown colour role 'series.9'</code> &mdash; rather than quietly drawn in a default.</p>
+
+    <h2 id="placement" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Placement</h2>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead><tr class="border-b border-white/10"><th class="text-left py-3 px-4 text-gray-400 font-semibold">position</th><th class="text-left py-3 px-4 text-gray-400 font-semibold">Meaning</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-3 px-4"><code class="text-amber-300">"flow"</code></td><td class="py-3 px-4 text-gray-400">The default &mdash; laid out in the parent's flow.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">"stack"</code></td><td class="py-3 px-4 text-gray-400">Positioned within a <code>stack</code> parent, so siblings overlap.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">"pointer"</code></td><td class="py-3 px-4 text-gray-400">Placed where the pointer is &mdash; a context menu, or a tooltip that follows the cursor.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>

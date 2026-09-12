@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Docs
+
+* **docs(eui):** the EUI reference is its own section. One page of 979 markdown lines (1 333 rendered) became eight under `/docs/eui/*` — overview, styling, events, assets, and the catalogue split across layout, input, content and internals — with a sidebar group of its own and `/docs/core-concepts/eui` redirecting so existing links still land. The reference had not been touched since the 10th and described none of the cycle's work: the 33 colour roles are now tabulated (the `series.*` family included), all 29 event kinds are listed with what fires them, and `eui_wake`, `scroll_to` and `position: "pointer"` are documented. The catalogue grew from 79 entries to 175 — every builder in `eui_builders.sl`, each with its signature and a **real** call site quoted from the demo app or the catalogue itself rather than an invented sample. Helpers are marked as implementation detail, and `control_px` is noted as defined-but-never-called
+
 ## [2.2.1] - 2026-09-12
 
 ### Fixed

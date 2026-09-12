@@ -1,0 +1,171 @@
+<div class="max-w-4xl">
+    <h2 id="w-internals" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Internal helpers</h2>
+    <p class="text-gray-400 mb-8">The functions the catalogue calls on itself. They are documented so the file reads end to end, not because they are API &mdash; copy <code>eui_builders.sl</code> into your application and they are yours to rename.</p>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">node(kind, style, children)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">return node("box", flat, children)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/tracker_controller.sl:852</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">editable(kind, value, on_change, o)</code>
+            <p class="text-gray-400 text-sm mt-1.5">What both of them are. The border is reserved at rest and only coloured later, for the reason `button_variant` gives below: a border that appears when a value goes wrong would shove every field under it sideways. Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">editable("input", value, on_change, o)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `input`):138</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">space_px(ix, density)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">inner = erp_content_px(lay) - 2 * space_px(lay["wide"] ? 6 : 4, lay["density"]) - 2 * space_px(5, lay["density"])</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:808</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">bp_px(name)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">width &gt;= bp_px(name)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `bp_min`):235</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">bp_min(width, name)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">wide = bp_min(w, "md")</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/tracker_controller.sl:1358</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">restyle(n, patch)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Narrowing a widget after it is built only reaches its resting style: the hover and pressed styles are declared inside the local handlers, where a `n["s"]["pad"] = …` cannot see them. The pointer then snaps the node back to the catalogue's geometry, which is the same layout shift as a border that onl Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">return restyle(</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/tracker_controller.sl:928</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">size_spec(size)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">m = size_spec(size)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `control_metrics`):383</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">control_metrics(size)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Box geometry only. The text scale is not here: `size` styles a text node, and only `fg` inherits, so a label takes its size from `control_text_size`. Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">base = control_metrics(size).merge({</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `control`):482</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">control_text_size(size)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">"size": control_text_size(size),</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `checkbox`):634</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">checkbox_box_px(size)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">box = checkbox_box_px(size)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `checkbox`):592</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">control_px(size, density)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412]"><p class="text-gray-500 text-sm">Defined but never called in the catalogue &mdash; dead code as it stands.</p></div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">tone_resting(tone, lit)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">base = base.merge(tone_resting(tone, lit))</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `control`):491</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">a11y_props(o)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The semantics a widget declares about itself. Props are a generic bag the client already reads by name, so these cost no wire change and an older client ignores them; what they buy is a checkbox that reaches a screen reader as a checkbox rather than as a button named by its label. Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">props = a11y_props(o)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `control`):503</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">stateful(base, tone, on)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Wire the four pointer events onto an already-final resting style. `base` must be the style the node actually carries — the deltas are merged over it, so whatever the caller changed is already inside every state. Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">built["on"] = here ? {"click": "go_room"} : stateful(resting, {</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/chat_controller.sl:1590</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">control(o)</code>
+            <p class="text-gray-400 text-sm mt-1.5">One options hash, so a widget gains a capability without its callers changing:  key       required and unique. 07 §3 names a node by key and the arena's key map is flat, so a duplicate silently restyles someone else. kind      "box" by default. tone      a TONES name; "quiet" by default. size      " Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">control({</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `checkbox`):619</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">lazy(id, shown, placeholder, make)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A dialog is a stack: a dimming overlay, then the panel, centred. A region of the tree that is built only when something asks for it.  `make` is a thunk — `fn() { ... }` — and it is not called at all unless `id` is in `shown`. That is the whole mechanism: an unopened modal, an unselected tab and a co Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">[lazy("forecast", shown, placeholder, fn() { erp_forecast_body(state, lay) })]</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:1194</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chip_remove(on_remove, props, label)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The × that drops a chip. A button carries its hover and press styles with it, so reusing one here and narrowing only the live style let the × jump back to a button's padding under the pointer. This one is a fixed box: what changes on hover is the colour, which 03 §5 animates without ever running lay Internal to the catalogue &mdash; it composes part of a widget rather than being called from a view. Documented so the file reads end to end; treat it as implementation detail.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">parts = parts.concat([chip_remove(on_remove, props, label)]) if on_remove.present?</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `chip`):1742</code></p>
+</div>
+    </div>
+</div>

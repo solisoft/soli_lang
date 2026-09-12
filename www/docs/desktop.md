@@ -48,7 +48,7 @@ stashed at boot).
 ## A native window instead of a browser
 
 With a soli built with `--features eui-desktop`, an app that has EUI
-components (see [EUI](/docs/core-concepts/eui)) can be packaged to open one
+components (see [EUI](/docs/eui/overview)) can be packaged to open one
 of them in its own window — no browser, no HTML:
 
 ```bash

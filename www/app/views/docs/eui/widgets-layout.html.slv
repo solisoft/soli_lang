@@ -1,0 +1,627 @@
+<div class="max-w-4xl">
+    <h2 id="widget-catalogue" class="text-2xl font-bold text-white mb-6 scroll-mt-24">The widget catalogue</h2>
+    <p class="text-gray-400 mb-4">There is no widget primitive. The protocol can express <strong class="text-white">sixteen node kinds</strong> and nothing else &mdash; a button is a <code class="text-cyan-400">box</code> with a click handler and a text child. Everything below is composed from those kinds by <strong class="text-white">ordinary Soli functions that return hashes</strong>, which is why adding a widget is a library change and never a new client.</p>
+    <div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 mb-8"><p class="text-gray-300 text-sm leading-relaxed"><strong class="text-amber-300">Where these live.</strong> The catalogue is not yet shipped as a Soli library: it is a single file, <code class="text-cyan-400">app/controllers/eui_builders.sl</code>, in the <code class="text-cyan-400">counter-app</code> example of the <a href="https://github.com/solisoft/eui" class="text-amber-400 hover:underline">eui repository</a>. Copy it into your application and edit it &mdash; that is the intended use, and it is why a widget you disagree with is yours to change.</p></div>
+    <p class="text-gray-400 mb-6">Every preview below is an <em>approximation drawn in HTML</em>, because the real thing is painted on the GPU by a native client and cannot render in a browser. Treat them as a sketch of the shape, not of the pixels.</p>
+    <div class="flex flex-wrap gap-2 mb-12">
+        <a href="#w-layout-and-containers" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Layout and containers</a>
+        <a href="#w-typography" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Typography</a>
+        <a href="#w-actions" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Actions</a>
+        <a href="#w-input" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Input</a>
+        <a href="#w-dates" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Dates</a>
+        <a href="#w-feedback-and-status" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Feedback and status</a>
+        <a href="#w-overlays-and-structure" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Overlays and structure</a>
+        <a href="#w-navigation" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Navigation</a>
+        <a href="#w-data-display" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Data display</a>
+        <a href="#w-charts-and-canvas" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Charts and canvas</a>
+        <a href="#w-media" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Media</a>
+        <a href="#w-theme-and-responsiveness" class="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-gray-300 hover:text-white hover:border-indigo-400/40">Theme and responsiveness</a>
+    </div>
+    <h3 id="w-layout-and-containers" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Layout and containers</h3>
+    <p class="text-gray-400 mb-8">Every container takes a style hash and a list of children. <code>column</code>, <code>row</code> and <code>stack</code> are the same <code>box</code> primitive with a different <code>display</code>.</p>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">column(style, children)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A <code>box</code> that stacks children vertically. The workhorse.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">column({"gap": 3, "pad": 4}, [
+  text("First", {}),
+  text("Second", {})
+])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;width:180px"><span style="color:#e5e7eb;font:13px system-ui">First</span><span style="color:#e5e7eb;font:13px system-ui">Second</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">row(style, children)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Horizontal flow. Pair with <code>spacer()</code> to push the tail to the right.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">row({"gap": 2, "align": "center"}, [
+  text("Label", {}),
+  spacer(),
+  button("Go", "go")
+])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;display:flex;align-items:center;gap:8px;width:240px"><span style="color:#e5e7eb;font:13px system-ui">Label</span><span style="flex:1"></span><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#6366f1;color:#fff">Go</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">stack(style, children)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Children painted on top of one another, in order. The base for badges on avatars and overlay content.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">stack({}, [
+  avatar(src, 40),
+  badge("3", "danger")
+])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:120px"><div style="position:relative;width:40px;height:40px"><div style="width:40px;height:40px;border-radius:20px;background:#3f3f52"></div><span style="position:absolute;top:-4px;right:-6px;background:#dc2626;color:#fff;font:600 10px system-ui;padding:2px 6px;border-radius:9px">3</span></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">card(style, children)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A raised surface: padding, radius and a border from the theme roles.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">card({}, [
+  h2("Billing"),
+  muted("Next invoice on the 1st")
+])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;width:220px"><div style="color:#fff;font:600 15px system-ui;margin-bottom:4px">Billing</div><div style="color:#9ca3af;font:12px system-ui">Next invoice on the 1st</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">scroll(style, children)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A clipping viewport. Children lay out fully; only the visible part is painted.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">scroll({"height": 200}, rows)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px;width:200px;height:84px;overflow:hidden;position:relative"><div style="color:#e5e7eb;font:13px system-ui;line-height:22px">Row one<br>Row two<br>Row three<br>Row four</div><div style="position:absolute;right:4px;top:8px;width:3px;height:34px;border-radius:2px;background:#4b5563"></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">list(style, item_height, children)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A <code>scroll</code> that <strong>virtualises</strong>: with a fixed <code>item_height</code> only the visible window is laid out. Use it past a few hundred rows.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">list({"height": 400}, 32, rows)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:0;width:200px;height:84px;overflow:hidden"><div style="color:#e5e7eb;font:13px system-ui;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,.05)">Item 1</div><div style="color:#e5e7eb;font:13px system-ui;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,.05)">Item 2</div><div style="color:#e5e7eb;font:13px system-ui;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,.05)">Item 3</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">list_window(style, item_height, count, heights, children, on_window)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Virtualisation where the server holds the data: the client reports the visible range through <code>on_window</code> and you send only those rows. <code>heights</code> allows variable row heights.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">list_window({"height": 400}, 32, total, heights,
+            visible_rows, "window")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <span class="text-gray-600 text-xs italic">no visual &mdash; behaviour only</span>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">tile(basis, node)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Wraps a node with a flex basis, for grid-like rows that wrap.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">row({"gap": 3, "wrap": true}, cards.map(fn(c) tile(240, c)))</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <span class="text-gray-600 text-xs italic">no visual &mdash; behaviour only</span>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">labelled(title, child)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A caption above any node. The building block behind <code>field</code>.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">labelled("Region", select(regions, value, open, "t", "pick"))</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:200px"><div style="color:#9ca3af;font:12px system-ui;margin-bottom:5px">Region</div><div style="color:#e5e7eb;font:13px system-ui;background:#1f1e26;border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:7px 10px">eu-west-1</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">spacer()</code>
+            <p class="text-gray-400 text-sm mt-1.5">Flexible empty space. Inert: no text, props or handlers.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">row({}, [text("Left", {}), spacer(), text("Right", {})])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;display:flex;width:220px"><span style="color:#e5e7eb;font:13px system-ui">Left</span><span style="flex:1"></span><span style="color:#e5e7eb;font:13px system-ui">Right</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">divider()</code>
+            <p class="text-gray-400 text-sm mt-1.5">A hairline rule. Inert.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">column({"gap": 3}, [h2("Members"), divider(), rows])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:200px"><div style="color:#e5e7eb;font:13px system-ui;margin-bottom:10px">Members</div><div style="height:1px;background:rgba(255,255,255,.1)"></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">keyed(key, node)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Gives a node a stable identity so the diff moves it instead of rebuilding it. Required on any list whose rows reorder.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">items.map(fn(i) keyed(i["id"], row_for(i)))</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <span class="text-gray-600 text-xs italic">no visual &mdash; behaviour only</span>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">pane_px(name)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">px &gt;= pane_px(name)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `pane_min`):1128</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">pane_bp(px)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">badge(pane_bp(px), tone)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:864</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">pane_min(px, name)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">roomy = pane_min(px, "md")</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:860</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">split_span(extent, bar)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The room the two panels share, once the divider has taken its own.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">span = split_span(extent, bar)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `split_sizes`):1144</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">split_sizes(extent, fraction, min_a, min_b, bar)</code>
+            <p class="text-gray-400 text-sm mt-1.5">`fraction` is per mille — an integer, so it survives a round trip through state and a local handler's props without ever being a float. Both conversions round rather than truncate, which is what makes the trip exact: a divider dropped at a pixel and rebuilt from its fraction lands on the same pixel,</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">sizes = split_sizes(extent, fraction, min_a, min_b, bar)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `split_pane`):1244</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">split_at(extent, at, min_a, min_b, bar)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The pointer's position along the axis becomes the fraction the divider sits at. Clamped to both minimums, so a drag that runs past a panel's floor stops there rather than inverting the pair — and the clamp lives here, once, instead of in every application that draws a split.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">state[name] = split_at(extent, at, min_a, min_b, bar)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `split_drag`):1288</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">split_panel(build, px, across: Bool, cross)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">split_panel(o["a"], sizes[0], across, cross),</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `split_pane`):1258</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">split_divider(key, across: Bool, bar, cross, fraction, on_drag, dragging: Bool, label)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The divider is not a `control`: it is a separator, its press has to reach the server as well as restyle locally, and `control` would put its own `pointer_down` over the top of that. It is keyed so the local chunk can name it, and it holds `key_down`, which is what puts it in the Tab order — so a spl</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">split_divider(key + ":bar", across, bar, cross, fraction, on_drag, o["dragging"] == true, o["label"]),</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `split_pane`):1259</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">split_pane(o)</code>
+            <p class="text-gray-400 text-sm mt-1.5">key       required; the divider is keyed from it dir       "row" | "column" size      the container's extent along the split axis, in px cross     the extent across it; "100%" if absent fraction  per mille, 0..1000 min_a / min_b   the smallest each panel may become, in px bar       the divider's thi</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">split_pane({</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:825</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">split_drag(state, params, name, dir, extent, min_a, min_b, bar)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The four events a split sends, folded into a component's state. `name` is the state key holding the fraction; `name + "_drag"` holds whether a drag is in flight. An application writes one line in its handler and is done. One `pointer_move` while the divider is held: the point along the axis is where</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">state = split_drag(state, params, name, dir, extent, min_a, min_b, bar)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `split_event`):1319</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">split_keys(state, params, name, dir, step)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The keyboard's half of the same divider: an arrow moves it by a step, Home puts it back in the middle, and the result is held inside the thousandths the fraction is measured in.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">state = split_keys(state, params, name, dir, step)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `split_event`):1321</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">split_event(state, params, name, dir, extent, min_a, min_b, bar)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">"split_x" =&gt; split_event(state, params, "split_x", "row", gallery_split_extent(state), 220, 260, 6),</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:2500</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">table_row(key, values, widths)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">table_row(i, [</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:274</code></p>
+</div>
+    </div>
+    <h3 id="w-overlays-and-structure" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Overlays and structure</h3>
+    <p class="text-gray-400 mb-8">Anything that floats uses the <code>overlay</code> primitive, which paints after its siblings. Open and closed is <strong>your state</strong> &mdash; the client holds none of it.</p>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">dialog(title, body_children, actions)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A modal over a scrim. <code>actions</code> is a list of buttons.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">dialog("Delete project?",
+       [muted("This cannot be undone.")],
+       [secondary_button("Cancel", "close"),
+        danger_button("Delete", "destroy")])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:250px;background:#111016"><div style="background:#1f1e26;border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:13px"><div style="color:#fff;font:600 14px system-ui;margin-bottom:5px">Delete project?</div><div style="color:#9ca3af;font:12px system-ui;margin-bottom:11px">This cannot be undone.</div><div style="display:flex;gap:7px;justify-content:flex-end"><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#2a2933;color:#e5e7eb">Cancel</span><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#dc2626;color:#fff">Delete</span></div></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">sheet(side, children)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A panel anchored to an edge &mdash; <code>"left"</code>, <code>"right"</code>, <code>"bottom"</code>.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">sheet("right", [h2("Filters"), filter_controls])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:0;width:230px;height:96px;display:flex;background:#111016;overflow:hidden"><div style="flex:1"></div><div style="width:120px;background:#1f1e26;border-left:1px solid rgba(255,255,255,.12);padding:11px"><div style="color:#fff;font:600 13px system-ui">Filters</div></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">drawer(children)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A left sheet, the navigation case, at one argument.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">drawer(sidebar(links, active, "go"))</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <span class="text-gray-600 text-xs italic">no visual &mdash; behaviour only</span>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">popover(anchor, content, open)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A panel positioned against a node rather than the viewport.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">popover(button("Share", "toggle"), share_panel, s["open"])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <span class="text-gray-600 text-xs italic">no visual &mdash; behaviour only</span>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">menu(items, on_pick)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A list of choices in an overlay. Each item carries its own id back.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">menu([{"id": "dup", "label": "Duplicate"},
+      {"id": "del", "label": "Delete"}], "pick")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:170px"><div style="background:#1f1e26;border:1px solid rgba(255,255,255,.12);border-radius:7px;overflow:hidden"><div style="color:#e5e7eb;font:13px system-ui;padding:7px 11px">Duplicate</div><div style="color:#e5e7eb;font:13px system-ui;padding:7px 11px;background:rgba(255,255,255,.05)">Delete</div></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">tabs(names, active, on_select)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A row of labels with the active one underlined.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">tabs(["Overview", "Usage", "Billing"], s["tab"], "select_tab")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:250px"><div style="display:flex;gap:16px;border-bottom:1px solid rgba(255,255,255,.1)"><span style="color:#fff;font:500 13px system-ui;padding-bottom:7px;border-bottom:2px solid #6366f1">Overview</span><span style="color:#9ca3af;font:12px system-ui;padding-bottom:7px">Usage</span><span style="color:#9ca3af;font:12px system-ui;padding-bottom:7px">Billing</span></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">accordion(sections, open_id, on_toggle)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Sections that expand one at a time.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">accordion([{"id": "a", "title": "General", "body": general}],
+          s["open"], "toggle_section")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:210px"><div style="display:flex;justify-content:space-between;color:#e5e7eb;font:13px system-ui;padding-bottom:7px">General<span style="color:#9ca3af;font:12px system-ui">▾</span></div><div style="color:#9ca3af;font:12px system-ui;padding-bottom:9px">Name, region, tags</div><div style="height:1px;background:rgba(255,255,255,.08);margin-bottom:7px"></div><div style="display:flex;justify-content:space-between;color:#e5e7eb;font:13px system-ui">Advanced<span style="color:#9ca3af;font:12px system-ui">›</span></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">stepper(steps, current)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Progress through a sequence. Display only.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">stepper(["Account", "Plan", "Payment"], 1)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;width:250px;display:flex;align-items:center;gap:7px"><span style="width:19px;height:19px;border-radius:10px;background:#6366f1;color:#fff;font:600 11px system-ui;display:inline-flex;align-items:center;justify-content:center">✓</span><span style="flex:1;height:2px;background:#6366f1"></span><span style="width:19px;height:19px;border-radius:10px;background:#6366f1;color:#fff;font:600 11px system-ui;display:inline-flex;align-items:center;justify-content:center">2</span><span style="flex:1;height:2px;background:#33323d"></span><span style="width:19px;height:19px;border-radius:10px;background:#33323d;color:#9ca3af;font:600 11px system-ui;display:inline-flex;align-items:center;justify-content:center">3</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">toolbar(children)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A dense row on a raised surface, for actions above a table or canvas.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">toolbar([icon_button("＋", "add", {}), icon_button("⟳", "refresh", {}),
+         spacer(), select_sized(views, v, o, "t", "p", 120, false)])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px;width:230px;display:flex;align-items:center;gap:6px;background:#1c1b23"><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#2a2933;color:#e5e7eb;padding:5px 9px">＋</span><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#2a2933;color:#e5e7eb;padding:5px 9px">⟳</span><span style="flex:1"></span><span style="color:#9ca3af;font:12px system-ui">All ▾</span></div>
+            </div>
+        </div>
+    </div>
+    <h3 id="w-navigation" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Navigation</h3>
+    <p class="text-gray-400 mb-8">Navigation is application state, not a URL: a click is an event and your handler decides what the next tree is.</p>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">navbar(brand, links, active, on_go)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A top bar with a brand and a link row.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">navbar("Acme", ["Home", "Docs", "Pricing"], s["page"], "go")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 12px;width:260px;display:flex;align-items:center;gap:14px;background:#1c1b23"><span style="color:#fff;font:700 13px system-ui">Acme</span><span style="color:#fff;font:500 12px system-ui">Home</span><span style="color:#9ca3af;font:12px system-ui">Docs</span><span style="color:#9ca3af;font:12px system-ui">Pricing</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">sidebar(links, active, on_go)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A vertical nav column with the active entry highlighted.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">sidebar(["Inbox", "Sent", "Drafts"], s["box"], "go")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:9px;width:150px"><div style="color:#e5e7eb;font:13px system-ui;padding:6px 9px;border-radius:6px;background:#6366f1;color:#fff">Inbox</div><div style="color:#9ca3af;font:12px system-ui;padding:6px 9px">Sent</div><div style="color:#9ca3af;font:12px system-ui;padding:6px 9px">Drafts</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">breadcrumb(crumbs, on_go)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A trail. The last entry is the current place and is not a link.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">breadcrumb([{"id": "root", "label": "Projects"},
+            {"id": "p1", "label": "Acme"}], "go")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:220px;display:flex;gap:7px;align-items:center"><span style="color:#a5b4fc;font:12px system-ui">Projects</span><span style="color:#9ca3af;font:12px system-ui">/</span><span style="color:#e5e7eb;font:13px system-ui">Acme</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">pagination(page, pages, on_page)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Previous, page numbers, next. Emits the page it wants.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">pagination(s["page"], total_pages, "go_page")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;display:flex;gap:5px;align-items:center"><span style="color:#9ca3af;font:12px system-ui;padding:4px 7px">‹</span><span style="background:#6366f1;color:#fff;font:600 12px system-ui;padding:4px 9px;border-radius:6px">1</span><span style="color:#9ca3af;font:12px system-ui;padding:4px 8px">2</span><span style="color:#9ca3af;font:12px system-ui;padding:4px 8px">3</span><span style="color:#9ca3af;font:12px system-ui;padding:4px 7px">›</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">segmented(options, selected, on_select)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Mutually exclusive options in one control. Fewer than five, or use <code>select</code>.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">segmented(["Day", "Week", "Month"], s["range"], "set_range")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><div style="display:inline-flex;background:#1f1e26;border-radius:8px;padding:3px;gap:2px"><span style="color:#9ca3af;font:12px system-ui;padding:4px 11px">Day</span><span style="background:#2f2e3a;color:#fff;font:500 12px system-ui;padding:4px 11px;border-radius:6px">Week</span><span style="color:#9ca3af;font:12px system-ui;padding:4px 11px">Month</span></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">tree_view(nodes, open_ids, on_toggle, depth)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A nested, collapsible tree. Recursive: it calls itself at <code>depth + 1</code>.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">tree_view(files, s["open"], "toggle_node", 0)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:180px"><div style="color:#e5e7eb;font:13px system-ui">▾ src</div><div style="color:#e5e7eb;font:13px system-ui;padding-left:15px">▾ serve</div><div style="color:#9ca3af;font:12px system-ui;padding-left:30px">mod.rs</div><div style="color:#9ca3af;font:12px system-ui;padding-left:15px">main.rs</div></div>
+            </div>
+        </div>
+    </div>
+    <h3 id="w-theme-and-responsiveness" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Theme and responsiveness</h3>
+    <p class="text-gray-400 mb-8">The client resolves roles against light or dark mode, density and font scale. The server never learns which.</p>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">theme_toggle()</code>
+            <p class="text-gray-400 text-sm mt-1.5">Flips the client's mode locally &mdash; <code>theme.toggle()</code> in a local handler, so no round trip and no server state.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">row({}, [spacer(), theme_toggle()])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#2a2933;color:#e5e7eb;padding:6px 10px">◐</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">bp(width) · bp_min(width, name) · bp_px(name)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Breakpoint helpers. The viewport reaches the handler, so the tree you build <em>is</em> the responsive answer &mdash; there is no media query.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">cols = bp(params["viewport"]["w"]) == "sm" ? 1 : 3</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <span class="text-gray-600 text-xs italic">no visual &mdash; behaviour only</span>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">with_state(state, root)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Attaches the state a local handler may read and write, at the root of the tree.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">with_state({"count": s["count"]}, column({}, children))</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <span class="text-gray-600 text-xs italic">no visual &mdash; behaviour only</span>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Running it</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">cargo build --release
+./target/release/soli serve path/to/app --port 5011
+# the client, from the eui repository:
+EUI_ALLOW_INSECURE_LOOPBACK=1 eui ws://127.0.0.1:5011/_eui/session/counter</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">A deployment sits behind TLS; the client refuses anything but <code class="text-cyan-400">wss://</code> outside a debug build on loopback.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">The manifest</h2>
+    <p class="text-gray-400 mb-12">With the feature on, every app also answers <code class="text-cyan-400">GET /.well-known/eui</code> with a signed manifest. The signing key is generated the first time it is needed, into <code class="text-cyan-400">config/eui_publisher.pkcs8</code>; a client pins the public half on its first visit and refuses a different key afterwards, so keep the file with the app's secrets and out of version control. <code class="text-cyan-400">eui_capabilities("clipboard.read")</code> in <code class="text-cyan-400">config/routes.sl</code> lists what the manifest asks the client for; nothing is granted by asking &mdash; the person allows each capability on their side (<code class="text-cyan-400">eui &lt;url&gt; --allow clipboard.read</code>).</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Opening an application</h2>
+    <p class="text-gray-400 mb-12">The standalone client is <code class="text-cyan-400">eui &lt;wss://host/_eui/session/app&gt;</code>. A soli built with <code class="text-cyan-400">--features eui-desktop</code> also opens one itself with <code class="text-cyan-400">soli eui &lt;url&gt; [--allow clipboard.read]</code>, and packages an app to open in its own window with <code class="text-cyan-400">soli desktop build --eui &lt;component&gt;</code> &mdash; see <a href="/docs/development-tools/desktop#eui-window" class="text-amber-400 hover:underline">Desktop Apps</a>.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">What changed in Soli</h2>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-12"><table class="w-full text-left text-sm"><tbody class="text-gray-400 divide-y divide-white/10">
+<tr><td class="py-3 px-4 text-white font-medium w-56"><code class="text-cyan-400">Cargo.toml</code></td><td class="py-3 px-4">Optional <code class="text-cyan-400">eui-proto</code> dependency; feature <code class="text-cyan-400">eui</code>, not in the default set</td></tr>
+<tr><td class="py-3 px-4 text-white font-medium"><code class="text-cyan-400">src/serve/mod.rs</code></td><td class="py-3 px-4">Three <code class="text-cyan-400">#[cfg(feature = "eui")]</code> insertions: the module, the socket branch, an early return for EUI components in the worker</td></tr>
+<tr><td class="py-3 px-4 text-white font-medium"><code class="text-cyan-400">builtins/router.rs</code></td><td class="py-3 px-4"><code class="text-cyan-400">router_eui(component, handler, view)</code></td></tr>
+<tr><td class="py-3 px-4 text-white font-medium"><code class="text-cyan-400">src/serve/eui/</code></td><td class="py-3 px-4">New: tree conversion with interned atoms and styles, the tree diff, the session socket, the local-handler assembler</td></tr>
+<tr><td class="py-3 px-4 text-white font-medium">Untouched</td><td class="py-3 px-4"><code class="text-cyan-400">live/</code>, <code class="text-cyan-400">template/</code>, <code class="text-cyan-400">vm/</code>, <code class="text-cyan-400">interpreter/</code></td></tr>
+</tbody></table></div>
+</div>
+
+</div>

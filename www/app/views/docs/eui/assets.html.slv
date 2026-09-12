@@ -1,0 +1,9 @@
+<div class="max-w-4xl">
+    <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">Assets, lists and scrolling</h1>
+    <p class="text-gray-400 mb-6">Images travel as assets the client caches by hash, long lists are keyed so the differ can move rows instead of rebuilding them, and a view can move a scroll position as well as describe one.</p>
+
+    <h2 id="scroll-to" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Moving the scroll position</h2>
+    <p class="text-gray-400 mb-6">A node may carry <code class="text-cyan-400">scroll_to</code> &mdash; a pair of pixel offsets &mdash; and the differ emits a <code>ScrollTo</code> op for it. That is the direction the protocol previously lacked: a view could describe a scroll position but never move one, so &ldquo;jump to the newest message&rdquo; had to be faked by rebuilding the list.</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6"><div class="p-4 overflow-x-auto"><pre><code class="language-soli text-sm">scroll(&lbrace;"scroll_to": [0, 99999]&rbrace;, messages.map(fn(m) message_row(m)))</code></pre></div></div>
+    <p class="text-gray-400 mb-6">It is an instruction, not state: the client scrolls when the op arrives, and the viewer may scroll away again afterwards.</p>
+</div>

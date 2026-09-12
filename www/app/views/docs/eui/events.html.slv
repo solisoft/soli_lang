@@ -1,0 +1,53 @@
+<div class="max-w-4xl">
+    <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">Events</h1>
+    <p class="text-gray-400 mb-6"><code>"on": &lbrace;"click": "toggle"&rbrace;</code> names a server event. When it fires, the handler's <code>params</code> carry the node id, the event kind, its payload, and &mdash; because the server kept the tree &mdash; the node's <code>props</code>. An event on a node with no such handler in the tree the client was sent is refused and ends the session.</p>
+
+    <h2 id="kinds" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Every event kind</h2>
+    <p class="text-gray-400 mb-6">29 of them. A kind the view has not declared cannot arrive.</p>
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead><tr class="border-b border-white/10"><th class="text-left py-3 px-4 text-gray-400 font-semibold">Kind</th><th class="text-left py-3 px-4 text-gray-400 font-semibold">Fires when</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-3 px-4"><code class="text-amber-300">click</code></td><td class="py-3 px-4 text-gray-400">A press and release on the node.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">double_click</code></td><td class="py-3 px-4 text-gray-400">Two clicks inside the double-click interval.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">pointer_down</code></td><td class="py-3 px-4 text-gray-400">The pointer went down on the node.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">pointer_up</code></td><td class="py-3 px-4 text-gray-400">And came back up.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">pointer_move</code></td><td class="py-3 px-4 text-gray-400">The pointer moved while over the node.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">pointer_enter</code></td><td class="py-3 px-4 text-gray-400">The pointer entered the node.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">pointer_leave</code></td><td class="py-3 px-4 text-gray-400">The pointer left it.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">key_down</code></td><td class="py-3 px-4 text-gray-400">A key went down while the node had focus.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">key_up</code></td><td class="py-3 px-4 text-gray-400">And came back up.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">text_input</code></td><td class="py-3 px-4 text-gray-400">Text was typed or composed into the node.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">focus</code></td><td class="py-3 px-4 text-gray-400">The node took keyboard focus.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">blur</code></td><td class="py-3 px-4 text-gray-400">It lost focus.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">change</code></td><td class="py-3 px-4 text-gray-400">A field's value settled.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">submit</code></td><td class="py-3 px-4 text-gray-400">A form-shaped group was submitted.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">scroll</code></td><td class="py-3 px-4 text-gray-400">The node was scrolled.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">resize</code></td><td class="py-3 px-4 text-gray-400">The node's box changed size.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">context_menu</code></td><td class="py-3 px-4 text-gray-400">The secondary button, or its platform equivalent.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">drag_start</code></td><td class="py-3 px-4 text-gray-400">A drag began on the node.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">drag_over</code></td><td class="py-3 px-4 text-gray-400">A drag passed over it.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">drop</code></td><td class="py-3 px-4 text-gray-400">A drag was released on it.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">long_press</code></td><td class="py-3 px-4 text-gray-400">A press held past the platform threshold.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">window</code></td><td class="py-3 px-4 text-gray-400">The window itself changed &mdash; moved, resized, closed.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">ended</code></td><td class="py-3 px-4 text-gray-400">Media finished playing.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">time_update</code></td><td class="py-3 px-4 text-gray-400">Media playback advanced.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">wake</code></td><td class="py-3 px-4 text-gray-400">The session's own clock fired.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">file_pick</code></td><td class="py-3 px-4 text-gray-400">A file dialog returned a choice.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">file_save</code></td><td class="py-3 px-4 text-gray-400">A save dialog returned a destination.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">location</code></td><td class="py-3 px-4 text-gray-400">A position fix from the device. Phone only.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">nfc_tag</code></td><td class="py-3 px-4 text-gray-400">An NFC tag came within range. Phone only.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-6"><code class="text-cyan-400">file_pick</code>, <code class="text-cyan-400">file_save</code>, <code class="text-cyan-400">location</code> and <code class="text-cyan-400">nfc_tag</code> are answered by the client, and the last two are compiled only for a phone: a desktop has no tag reader and no positioning it can reach.</p>
+
+    <h2 id="waking" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Waking a session</h2>
+    <p class="text-gray-400 mb-6">A component may ask to be woken on a clock &mdash; the <code class="text-cyan-400">wake</code> event. On its own that makes every window a poller: it learns what someone else did only when its own clock next fires, and spends a render per period discovering that nothing happened.</p>
+    <p class="text-gray-400 mb-6"><code class="text-cyan-400">eui_wake(component)</code> is the other half &mdash; it renders every <em>other</em> live session of a component immediately, from wherever the change was written.</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6"><div class="p-4 overflow-x-auto"><pre><code class="language-soli text-sm">def send(state, params)
+  Message.create(&lbrace; "room": state["room"], "body": params["value"] &rbrace;)
+  eui_wake("chat")        # every other window showing this component, now
+  state
+end</code></pre></div></div>
+</div>

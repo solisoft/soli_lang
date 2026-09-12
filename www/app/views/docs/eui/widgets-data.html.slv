@@ -1,0 +1,766 @@
+<div class="max-w-4xl">
+    <h3 id="w-typography" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Typography</h3>
+    <p class="text-gray-400 mb-8">Text is a leaf primitive; these are conventional sizes and roles on top of it.</p>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">text(content, style)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A run of text, wrapped to its box. <code>line_clamp</code> truncates.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">text("Hello", {"size": 3, "weight": "semibold"})</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:180px"><span style="color:#e5e7eb;font:600 15px system-ui">Hello</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">h1(content) · h2(content)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Heading sizes from the theme scale.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">column({"gap": 2}, [h1("Dashboard"), h2("This week")])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:200px"><div style="color:#fff;font:700 20px system-ui">Dashboard</div><div style="color:#fff;font:600 15px system-ui;margin-top:6px">This week</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">muted(content)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Secondary text in the <code>text.muted</code> role.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">muted("Last synced 3 minutes ago")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:220px"><span style="color:#9ca3af;font:12px system-ui">Last synced 3 minutes ago</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">code_block(code)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Monospaced text on a sunken surface.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">code_block("soli serve . --port 3000")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:230px"><div style="background:#0f0e13;border-radius:7px;padding:9px 11px;color:#a5b4fc;font:12px ui-monospace,monospace">soli serve . --port 3000</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">stat(label, value, hint)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A figure with its caption. The unit of a dashboard.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">stat("Requests", "1.4M", "+12% this week")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;width:160px"><div style="color:#9ca3af;font:12px system-ui">Requests</div><div style="color:#fff;font:700 24px system-ui;margin:2px 0">1.4M</div><div style="color:#4ade80;font:12px system-ui">+12% this week</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">icon(name, style)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A named vector icon, stroked by the client from its own table. The name is a prop, not text: an icon is not a character, so it takes `fg` like a label but is never shaped, never falls back to a symbols face, and never reaches a screen reader as the glyph it happens to resemble. With no size of its o</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">"c": lit ? [icon(</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `checkbox`):610</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">h2(content)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">h2("Split panes"),</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:823</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">icon_box_px(size)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">box = icon_box_px(size)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `icon_button`):2535</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">text_link(label, on_click, props = {})</code>
+            <p class="text-gray-400 text-sm mt-1.5">A link is a button that goes somewhere rather than doing something, so it is text in the accent colour and not a box: a row of links must not read as a row of buttons, because what they promise is different. It declares the `link` role, which is what a screen reader announces it by — the colour is n</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">[text_link(part["sku"], "inv_pick", {"sku": part["sku"]}), muted(part["warehouse"])]</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:1824</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">code_viewer(code, opts)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A read-only code viewer with line numbers and scrolling. Displays code in a monospace font with a pinned gutter (line numbers stay visible while scrolling horizontally). Gutter/code lines stay pixel-aligned because both use the same font_size, which determines line-height. `opts` may include {"langu</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">out = out.concat([code_viewer(code, {</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/markdown_builders.sl:307</code></p>
+</div>
+    </div>
+    <h3 id="w-media" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Media</h3>
+    <p class="text-gray-400 mb-8">Images, sound and video are referenced by <strong>BLAKE3 hash</strong>, never by path. The client asks for a hash it does not have; an asset is immutable, so it is fetched once and cached forever.</p>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">image(src, width, height)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A raster asset by content hash.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">image(asset("logo.png"), 120, 40)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><div style="width:120px;height:40px;border-radius:6px;background:linear-gradient(135deg,#334155,#475569)"></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">audio(src, props, on)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Draws nothing, plays. Control it with props and events.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">audio(asset("chime.ogg"), {"autoplay": true}, {})</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <span class="text-gray-600 text-xs italic">no visual &mdash; behaviour only</span>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">video(src, props, style, on)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Decoded in the sandboxed worker. GIF and animated WebP arrive through the same node.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">video(asset("demo.webm"), {"loop": true}, {"radius": 2}, {})</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><div style="width:150px;height:84px;border-radius:7px;background:#0f0e13;display:flex;align-items:center;justify-content:center;color:#6366f1;font:20px system-ui">▶</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">media_scrubber(width, at, duration, on_seek, props)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A seek bar for an audio or video node.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">media_scrubber(200, s["at"], s["len"], "seek", {})</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;width:200px"><div style="height:4px;border-radius:2px;background:#33323d"><div style="width:40%;height:4px;border-radius:2px;background:#6366f1"></div></div><div style="display:flex;justify-content:space-between;margin-top:6px;color:#9ca3af;font:12px system-ui"><span>1:12</span><span>3:04</span></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">text_interned(content, style)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A text whose content repeats across many nodes: interned as an atom, so the wire carries it once per session.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">text_interned("☻", {"size": 1}),</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/chat_controller.sl:1754</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">post_avatar(post, size)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A face when there is one, a coloured initial when there is not: a real timeline brings pictures, the sample brings letters, and the card treats them the same.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">post_avatar(post, 40),</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `post_card`):3801</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">post_action(glyph, count, on_click, props, active)</code>
+            <p class="text-gray-400 text-sm mt-1.5">One action under a post: a glyph and a count, clickable, carrying the post id so one handler serves every post.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">post_action("↩", post["replies"], "noop", {"id": post["id"]}, false),</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `post_card`):3782</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">media_clock(ms)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">muted(media_clock(state["video_at"] ?? 0) + " / 0:01")</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:346</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">media_button(on, event, props)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A play/pause button of the size these cards use.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">media_button(playing, "video", {}),</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:344</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">post_media(post, play)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">picture = post_media(post, play)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `post_card`):3778</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">post_card(post, liked, play, height)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">built = keyed(i, post_card(post, liked, play, feed_card_height(post)))</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:2875</code></p>
+</div>
+    </div>
+    <h3 id="w-data-display" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Data display</h3>
+    <p class="text-gray-400 mb-8">Tables are composed rows, not a primitive. Past a few hundred, put them in a <code>list</code> so only the visible window lays out.</p>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">table_header(labels, widths) · table_row(key, values, widths)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A fixed-width table. <code>widths</code> is shared between the two so columns line up.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">column({}, [
+  table_header(["Name", "Plan"], [140, 80]),
+  rows.map(fn(r) table_row(r["id"], [r["name"], r["plan"]], [140, 80]))
+])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:0;width:230px;overflow:hidden"><div style="display:flex;padding:7px 11px;background:#1c1b23;color:#9ca3af;font:12px system-ui;font-weight:600"><span style="width:130px">Name</span><span>Plan</span></div><div style="display:flex;padding:7px 11px;color:#e5e7eb;font:13px system-ui;border-top:1px solid rgba(255,255,255,.06)"><span style="width:130px">Alice</span><span style="color:#9ca3af;font:12px system-ui">Pro</span></div><div style="display:flex;padding:7px 11px;color:#e5e7eb;font:13px system-ui;border-top:1px solid rgba(255,255,255,.06)"><span style="width:130px">Bob</span><span style="color:#9ca3af;font:12px system-ui">Free</span></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">data_grid(columns, rows, selected, editing, sort, on_select, on_sort, on_change, on_key)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A sortable, inline-editable grid: cell selection, keyboard movement and per-column editability. The largest thing in the catalogue, and still plain Soli.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">data_grid(columns, rows, s["sel"], s["edit"], s["sort"],
+          "select", "sort", "change", "key")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:0;width:240px;overflow:hidden"><div style="display:flex;padding:6px 10px;background:#1c1b23;color:#9ca3af;font:12px system-ui;font-weight:600"><span style="width:96px">Name ▴</span><span style="width:56px">Qty</span><span>Price</span></div><div style="display:flex;padding:6px 10px;color:#e5e7eb;font:13px system-ui;border-top:1px solid rgba(255,255,255,.06)"><span style="width:96px">Widget</span><span style="width:56px">12</span><span>€9.00</span></div><div style="display:flex;padding:6px 10px;color:#e5e7eb;font:13px system-ui;border-top:1px solid rgba(255,255,255,.06);background:rgba(99,102,241,.12)"><span style="width:96px">Gadget</span><span style="width:56px"><span style="background:#0f0e13;border:1px solid #6366f1;border-radius:4px;padding:0 4px">7</span></span><span>€14.50</span></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">avatar(src, size)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A circular image by content hash.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">avatar(user["photo"], 40)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><div style="width:40px;height:40px;border-radius:20px;background:linear-gradient(135deg,#6366f1,#a855f7)"></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">initial_avatar(letter, tone, size)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The fallback when there is no photo: a letter on a toned disc, no asset to fetch.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">initial_avatar("A", "accent", 40)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><div style="width:40px;height:40px;border-radius:20px;background:#6366f1;color:#fff;font:600 16px system-ui;display:flex;align-items:center;justify-content:center">A</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">grid_sort_rows(rows, col, dir)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">state["grid_rows"] = grid_sort_rows(state["grid_rows"], col, dir)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:545</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">grid_col_editable(col)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">return grid_col_editable(col) if col["id"] == id</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:443</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">grid_col_align(col)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">align = grid_col_align(col)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `grid_cell`):1402</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">grid_cell(row_id, col, value, selected, editing, open, on_select, on_change, on_key)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">grid_cell(</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `grid_row`):1516</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">grid_row(record, columns, selected, editing, on_select, on_change, on_key)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">body = rows.map(fn(r) { grid_row(r, columns, selected, editing, on_select, on_change, on_key) })</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `data_grid`):1599</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">grid_header(columns, sort, on_sort)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">[grid_header(columns, sort, on_sort), inner]</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `data_grid`):1617</code></p>
+</div>
+    </div>
+    <h3 id="w-feedback-and-status" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Feedback and status</h3>
+    <p class="text-gray-400 mb-8">Small, composed pieces that tell the person what happened. Tones are role names &mdash; <code>info</code>, <code>success</code>, <code>warning</code>, <code>danger</code> &mdash; not colours.</p>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">badge(label, tone)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A small pill for counts and states.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">row({"gap": 2}, [badge("Live", "success"), badge("3", "danger")])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;display:flex;gap:7px"><span style="background:rgba(22,163,74,.18);color:#4ade80;font:600 11px system-ui;padding:3px 9px;border-radius:9px">Live</span><span style="background:rgba(220,38,38,.18);color:#f87171;font:600 11px system-ui;padding:3px 9px;border-radius:9px">3</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chip(label, on_remove, props)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A removable tag. Omit <code>on_remove</code> for a static one.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">chip("rust", "remove_tag", {"tag": "rust"})</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><span style="display:inline-flex;align-items:center;gap:6px;background:#2a2933;color:#e5e7eb;font:12px system-ui;padding:4px 8px;border-radius:7px">rust <span style="color:#9ca3af;font:12px system-ui">✕</span></span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">spinner() · spinner_sized(size)</code>
+            <p class="text-gray-400 text-sm mt-1.5">An indeterminate wait, animated by the client's <code>spin</code> style key &mdash; no round trip per frame.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">spinner_sized(20)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px"><span style="display:inline-block;width:20px;height:20px;border:2px solid rgba(255,255,255,.15);border-top-color:#6366f1;border-radius:50%"></span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">progress(fraction)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A determinate bar. <code>fraction</code> is 0.0 to 1.0.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">progress(uploaded / total)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;width:200px"><div style="height:6px;border-radius:3px;background:#33323d"><div style="width:68%;height:6px;border-radius:3px;background:#6366f1"></div></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">skeleton(width, height)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A placeholder block while data loads. Keeps the layout from jumping.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">column({"gap": 2}, [skeleton(180, 12), skeleton(120, 12)])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:200px"><div style="width:160px;height:11px;border-radius:5px;background:#2c2b35;margin-bottom:7px"></div><div style="width:110px;height:11px;border-radius:5px;background:#2c2b35"></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">toast(message, tone)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A transient message in an <code>overlay</code>, so it paints above the flow.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">toast("Saved", "success")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:220px"><div style="background:#1f1e26;border:1px solid rgba(74,222,128,.3);border-left:3px solid #4ade80;border-radius:7px;padding:9px 11px;color:#e5e7eb;font:13px system-ui">Saved</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">banner(message, tone, action_label, on_action)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A persistent strip in the flow, optionally carrying one action.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">banner("Your trial ends Friday", "warning", "Upgrade", "upgrade")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:250px"><div style="background:rgba(234,179,8,.12);border:1px solid rgba(234,179,8,.3);border-radius:7px;padding:9px 11px;display:flex;align-items:center;gap:8px"><span style="color:#fde68a;font:12px system-ui;flex:1">Your trial ends Friday</span><span style="color:#fbbf24;font:600 12px system-ui">Upgrade</span></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">empty_state(title, body, action_label, on_action)</code>
+            <p class="text-gray-400 text-sm mt-1.5">What a list shows when it has nothing. Worth building once.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">empty_state("No invoices", "They will appear here once billed.",
+            "Create one", "new_invoice")</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:18px 12px;width:230px;text-align:center"><div style="color:#fff;font:600 14px system-ui">No invoices</div><div style="color:#9ca3af;font:12px system-ui;margin:5px 0 10px">They will appear here once billed.</div><span style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font:500 13px system-ui;border:1px solid transparent;background:#6366f1;color:#fff">Create one</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">tooltip(content)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A hint in an <code>overlay</code>. Pair it with a hover style key so it costs no round trip.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">stack({}, [icon_button("?", "noop", {}), tooltip("Read-only")])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><span style="background:#0f0e13;border:1px solid rgba(255,255,255,.1);color:#e5e7eb;font:12px system-ui;padding:5px 9px;border-radius:6px">Read-only</span></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">spinner_sized(size)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">"c": chat_ready ? [text(chat_said, {"size": 0, "clamp": 1, "fg": "text.default"}), text_interned("→", {"size": 1, "fg": "accent.base"})] : [spinner_sized(14), text(chat_said, {"size": 0, "fg": "text.muted"})]</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/chat_controller.sl:2844</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">alert(title, message, on_close, opts)</code>
+            <p class="text-gray-400 text-sm mt-1.5">An alert: one thing to say and nothing to decide, so one button. The handler fires on the button, not on the backdrop — a dialog that closes when the pointer slips is a dialog that loses what it was asking.  `opts`: {"ok": "Got it"}</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">layers = layers.concat([alert(</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:2608</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">confirm(title, message, on_confirm, on_cancel, opts)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A confirm: a question with two answers. The affirmative sits last, where the eye ends up, and wears `danger` when it destroys something — the button should say what it will do before the sentence above it is read.  `opts`: {"ok": "Delete", "cancel": "Keep", "danger": true}</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">layers = layers.concat([confirm(</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:2593</code></p>
+</div>
+    </div>
+    <h3 id="w-charts-and-canvas" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Charts and canvas</h3>
+    <p class="text-gray-400 mb-8">All four charts are one <code>canvas</code> node whose <code>paths</code> prop is a list of <code>[kind, colour, numbers…]</code>. The server resolves the colour before encoding, so the client never parses a string while painting.</p>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">canvas(width, height, paths)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The primitive underneath. Path kinds cover polylines, rectangles, areas, circles and arcs.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">canvas(200, 60, [["line", "accent.base", 0,50, 40,20, 80,35]])</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <span class="text-gray-600 text-xs italic">no visual &mdash; behaviour only</span>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_line(values, w, h)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A polyline over a faint grid, scaled to the maximum.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">chart_line([4, 9, 6, 12, 8, 15], 200, 60)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><svg width="200" height="60"><line x1="0" y1="20" x2="200" y2="20" stroke="rgba(255,255,255,.06)"/><line x1="0" y1="40" x2="200" y2="40" stroke="rgba(255,255,255,.06)"/><polyline points="4,48 42,26 80,38 118,14 156,30 194,6" fill="none" stroke="#6366f1" stroke-width="2"/></svg></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_area(values, w, h)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The same line, closed to the baseline and filled.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">chart_area([4, 9, 6, 12, 8, 15], 200, 60)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><svg width="200" height="60"><polygon points="4,48 42,26 80,38 118,14 156,30 194,6 194,60 4,60" fill="rgba(99,102,241,.25)"/><polyline points="4,48 42,26 80,38 118,14 156,30 194,6" fill="none" stroke="#6366f1" stroke-width="2"/></svg></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_bar(values, w, h)</code>
+            <p class="text-gray-400 text-sm mt-1.5">One rectangle per value, gap derived from the count.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">chart_bar([4, 9, 6, 12, 8, 15], 200, 60)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><svg width="200" height="60"><rect x="4" y="45.6" width="24" height="14.4" rx="3" fill="#6366f1"/><rect x="37" y="27.6" width="24" height="32.4" rx="3" fill="#6366f1"/><rect x="70" y="38.4" width="24" height="21.6" rx="3" fill="#6366f1"/><rect x="103" y="16.799999999999997" width="24" height="43.2" rx="3" fill="#6366f1"/><rect x="136" y="31.2" width="24" height="28.8" rx="3" fill="#6366f1"/><rect x="169" y="6.0" width="24" height="54.0" rx="3" fill="#6366f1"/></svg></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_donut(parts, w, h)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Arcs from a list of <code>[label, value]</code> pairs, each in its own role.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-0">
+            <div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">chart_donut([["Pro", 60], ["Free", 30], ["Trial", 10]], 80, 80)</code></pre>
+            </div>
+            <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
+                <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px"><svg width="80" height="80" viewBox="0 0 80 80"><circle cx="40" cy="40" r="28" fill="none" stroke="#6366f1" stroke-width="14" stroke-dasharray="105 71" transform="rotate(-90 40 40)"/><circle cx="40" cy="40" r="28" fill="none" stroke="#a855f7" stroke-width="14" stroke-dasharray="53 123" stroke-dashoffset="-105" transform="rotate(-90 40 40)"/><circle cx="40" cy="40" r="28" fill="none" stroke="#f472b6" stroke-width="14" stroke-dasharray="18 158" stroke-dashoffset="-158" transform="rotate(-90 40 40)"/></svg></div>
+            </div>
+        </div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_max(values)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">top = chart_max(values)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `chart_points`):3259</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_points(values, w, h)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A series scaled into `w × h` with 4 px of breathing room, as [x, y] pairs.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">points = chart_points(values, w, h)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `chart_line`):3417</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_grid(w, h)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Four hairlines, so a series has something to be read against.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">drawing = canvas(w, h, chart_grid(w, h).concat([line]).concat(dots))</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `chart_line`):3426</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">flatten_points(points)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">line = [0, sounding ? skin["inst"] : skin["dim"], 1].concat(flatten_points(points))</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/tracker_controller.sl:1066</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_role(i)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The five roles a chart spends, in order and never cycled. Past the fifth there is no sixth hue to reach for — a generated one is indistinguishable from one already here to a reader with a colour vision deficiency — so the tail goes to the de-emphasis ink and the chart is expected to name it "other",</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">swatch = {"k": "box", "s": {"width": 10, "height": 10, "radius": 4, "bg": chart_role(i)}}</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `chart_donut_legend_row`):3474</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_wash_style(width, lit)</code>
+            <p class="text-gray-400 text-sm mt-1.5">One column of the plot, behind the drawing. `lit` is the state under the pointer; the width is in the record because the handler has to declare the same box it is repointing, not a narrower one.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">"styles": {"lit": chart_wash_style(width, true), "shown": chart_chip_style(true)}</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `chart_band`):3382</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_chip_style(shown)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The tooltip: a chip that is always there and is transparent until the pointer is in its band. Fading one in costs no layout; mounting one would.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">"styles": {"lit": chart_wash_style(width, true), "shown": chart_chip_style(true)}</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `chart_band`):3382</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_quoted(s)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A string as the local language's source will read it back: a chunk's `set_text` takes a literal, and a literal wants its quotes.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">says = "dv_" + id + ".text = " + chart_quoted(reading) + "; dl_" + id + ".text = " + chart_quoted(label)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `chart_donut_legend_row`):3472</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_spans(centres, w)</code>
+            <p class="text-gray-400 text-sm mt-1.5">Where the bands meet: the midpoint between neighbouring marks, rounded once so the columns still add up to the plot's width — a band per mark, from the left edge of the plot to its right.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">spans = chart_spans(points.map(fn(p) { p[0] }), w)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `chart_line`):3427</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_band(id, i, width, label)</code>
+            <p class="text-gray-400 text-sm mt-1.5">One band: an invisible box over its share of the plot, carrying the chip and the two handlers that light the pair.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">bands = range(0, count).map(fn(i) { chart_band(id, i, spans[i], labels[i]) })</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `chart_layers`):3401</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_layers(id, spans, labels, w, h, drawing)</code>
+            <p class="text-gray-400 text-sm mt-1.5">The three layers, stacked on the plot the drawing was scaled into. The strips are the plot itself — `w − 8` by `h − 8`, centred — so a band sits exactly over the marks `chart_points` placed.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">chart_layers(id, spans, chart_labels(values), w, h, drawing)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `chart_line`):3428</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_labels(values)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">chart_layers(id, spans, chart_labels(values), w, h, drawing)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `chart_line`):3428</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">chart_donut_legend_row(id, i, part, label, total)</code>
+            <p class="text-gray-400 text-sm mt-1.5">A donut has no bands: an arc is not a box, and a quadrant is not an arc. Its legend is the thing under the pointer instead, and what it shows is the reading in the hole — one `set_text` for the number, one for the name, which is what a chunk is for (07 §1).</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">chart_donut_legend_row(id, j, parts[j], labels[j] ?? ("Part " + str(j + 1)), total)</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `chart_donut`):3523</code></p>
+</div>
+    </div>
+    <h3 id="w-dev-bar" class="text-xl font-semibold text-white mt-12 mb-3 scroll-mt-24">Dev bar</h3>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">dev_figure(label, value, tone)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">dev_figure("event", stats["event"].blank? ? "—" : stats["event"], "accent.base"),</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `dev_bar`):3180</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">dev_wire_tone(ops)</code>
+            <p class="text-gray-400 text-sm mt-1.5">How heavy the last patch was, as a colour: a render that sends a few ops is what the design is for, and one that sends the tree is worth noticing.</p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">dev_figure("ops", str(stats["ops"]), dev_wire_tone(stats["ops"])),</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>eui_builders.sl (inside `dev_bar`):3183</code></p>
+</div>
+    </div>
+    <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
+        <div class="px-5 py-3 border-b border-white/5">
+            <code class="text-cyan-400 text-sm font-semibold">dev_bar(stats, shown = true)</code>
+            <p class="text-gray-400 text-sm mt-1.5"><em>No description in the source.</em></p>
+        </div>
+<div class="p-4 bg-[#171412] overflow-x-auto">
+<pre><code class="language-soli text-sm">layers = layers.concat([dev_bar(eui_stats(), state["devbar"] ?? true)])</code></pre>
+<p class="text-gray-500 text-xs mt-3">Real use &mdash; <code>app/controllers/live_controller.sl:2615</code></p>
+</div>
+    </div>
+</div>

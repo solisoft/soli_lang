@@ -83,8 +83,43 @@ def core_concepts_liveview
   render_docs("docs/core-concepts/liveview", "Live View", "core_concepts", "liveview")
 end
 
+# The EUI reference outgrew one page and moved to its own section.
+# Kept so existing links — and the deep links other docs pages carry —
+# still land somewhere useful.
 def core_concepts_eui
-  render_docs("docs/core-concepts/eui", "EUI", "core_concepts", "eui")
+  redirect("/docs/eui/overview")
+end
+
+def eui_overview
+  render_docs("docs/eui/overview", "EUI", "eui", "overview")
+end
+
+def eui_styling
+  render_docs("docs/eui/styling", "EUI — Styling", "eui", "styling")
+end
+
+def eui_events
+  render_docs("docs/eui/events", "EUI — Events", "eui", "events")
+end
+
+def eui_assets
+  render_docs("docs/eui/assets", "EUI — Assets", "eui", "assets")
+end
+
+def eui_widgets_layout
+  render_docs("docs/eui/widgets-layout", "EUI — Widgets: Layout", "eui", "widgets-layout")
+end
+
+def eui_widgets_input
+  render_docs("docs/eui/widgets-input", "EUI — Widgets: Input", "eui", "widgets-input")
+end
+
+def eui_widgets_data
+  render_docs("docs/eui/widgets-data", "EUI — Widgets: Content", "eui", "widgets-data")
+end
+
+def eui_widgets_internals
+  render_docs("docs/eui/widgets-internals", "EUI — Widgets: Internals", "eui", "widgets-internals")
 end
 
 def core_concepts_client_interactivity
