@@ -161,23 +161,95 @@ end
 # What both of them are. The border is reserved at rest and only coloured
 # later, for the reason `button_variant` gives below: a border that appears
 # when a value goes wrong would shove every field under it sideways.
+#
+# The background is `surface.sunken` because a field with none of its own is
+# the colour of the card it sits on — nothing says where the box is until
+# something has been typed into it. `sunken` is the role that means inset,
+# and 05 §3 resolves it away from the surface in **both** palettes (0.955
+# against 0.985 in light, 0.15 against 0.19 in dark), so one word here is a
+# correct contrast in every mode and the server still sends no colour.
 def editable(kind, value, on_change, o)
   base = {
     "pad": [2, 3, 2, 3],
     "border": 1,
     "border_color": "border.default",
-    "radius": 2
+    "radius": 2,
+    "bg": "surface.sunken",
+    "transition": "fast"
   }
+  style = base.merge(o["style"] ?? {})
+  key = o["key"].to_s
+  key = editable_key(on_change, o) if key.blank?
   n = {
     "k": kind,
     "t": value ?? "",
-    "s": base.merge(o["style"] ?? {}),
+    "s": style,
     "on": {"change": on_change}.merge(o["on"] ?? {})
   }
-  n["key"] = o["key"] unless (o["key"] ?? "") == ""
+  unless key.blank?
+    n["key"] = key
+    n["on"] = editable_states(style, key, n["on"])
+  end
   props = o["props"] ?? {}
   n["p"] = props if props.keys().length() > 0
   n
+end
+
+# A name for a field nobody named. A local handler reaches its own node by
+# key (07 §1), so a field without one can have no states at all; the event it
+# sends and the label it carries are what tell two fields apart, and a field
+# with neither is one this cannot help.
+def editable_key(on_change, o)
+  label = (o["props"] ?? {})["label"].to_s
+  said = on_change.to_s
+  return "" if said.blank? && label.blank?
+
+  "ed:" + said + ":" + label
+end
+
+# Hover and focus, both local (07 §6): the client repoints the node at a
+# style the session already holds, so neither waits for a round trip.
+#
+# Focus earns its keep more than hover does. The client draws its ring for
+# *keyboard* focus alone (03 §3), so a field clicked into had nothing to say
+# it was the one taking the keystrokes, and a form of eight fields looked the
+# same whichever one was live.
+#
+# `state.field_focus` is why leaving is a question and not a reset: a pointer
+# that wanders off a field someone is still typing into must not take the
+# focused look with it. Focus writes this field's key there and blur clears
+# it, and a chunk may read a root prop — so `pointer_leave` asks who holds
+# focus before it decides what to go back to.
+#
+# A handler the caller already put on one of these four is kept, and runs
+# *after* the chunk (`then`, 07 §6): a combobox needs its `blur` and its look
+# at once. One that is itself local is left alone — two chunks on one event
+# is the caller's business, not this function's.
+def editable_states(style, key, on)
+  bad = style["border_color"] == "danger.base"
+  hover = style.merge({"bg": "surface.base"})
+  focus = style.merge({"bg": "surface.base"})
+  hover["border_color"] = "border.strong" unless bad
+  focus["border_color"] = "accent.base" unless bad
+  styles = {"base": style, "hover": hover, "focus": focus}
+  mine = "\"" + key + "\""
+  held = "if state.field_focus == " + mine
+  states = {
+    "pointer_enter": {"local": held + " { self.style = @focus } else { self.style = @hover }", "styles": styles},
+    "pointer_leave": {"local": held + " { self.style = @focus } else { self.style = @base }", "styles": styles},
+    "focus": {"local": "state.field_focus = " + mine + "; self.style = @focus", "styles": styles},
+    "blur": {"local": "state.field_focus = \"\"; self.style = @base", "styles": styles}
+  }
+  out = on.merge({})
+  for name in states.keys()
+    said = out[name]
+    if said.nil?
+      out[name] = states[name]
+    elsif said.to_s == said
+      out[name] = states[name].merge({"then": said})
+    end
+  end
+  out
 end
 
 # The primary button: accent roles, so it follows the viewer into dark mode
@@ -579,25 +651,21 @@ def ghost_button(label, on_click)
   button_variant(label, on_click, "none", "accent.base")
 end
 
-# A checkbox is a small box whose fill says its state, plus a label. `props`
-# travel back with the click so the handler knows which item it was.
-#
-# The row is the hit target and the mark is a child of it: a mark that changed
-# size under the pointer would shove its own label sideways, so the pointer
-# washes the row and leaves the mark alone. `checked` is not handed to
-# `control` as selection — the mark already says the state, and a second
-# background saying it as well reads as a bug.
-def checkbox(label, checked, on_toggle, props, o = {})
-  size = o["size"] ?? "md"
+# The tick itself, without the row around it. It draws and nothing else: no
+# handler, no key, no role. That is what lets it sit inside a node whose own
+# role is a leaf — `option`, say — where a real `checkbox` would be dropped
+# from the accessibility tree while still taking the click (06 §2 gives the
+# nearest handler on the path the event, and that would be the mark, not the
+# row). Whatever holds it says the state; this only shows it.
+def check_mark(checked, mixed, disabled, size)
   box = checkbox_box_px(size)
-  disabled = o["disabled"] == true
-  mixed = o["indeterminate"] == true
   lit = checked || mixed
-  mark = {
+  {
     "k": "box",
     "s": {
       "width": box,
       "height": box,
+      "shrink": 0,
       "radius": 1,
       "border": 2,
       "border_color": disabled ? "border.subtle" : (lit ? "accent.base" : "border.strong"),
@@ -616,6 +684,29 @@ def checkbox(label, checked, on_toggle, props, o = {})
       }
     )] : []
   }
+end
+
+# A checkbox is a small box whose fill says its state, plus a label. `props`
+# travel back with the click so the handler knows which item it was.
+#
+# The row is the hit target and the mark is a child of it: a mark that changed
+# size under the pointer would shove its own label sideways, so the pointer
+# washes the row and leaves the mark alone. `checked` is not handed to
+# `control` as selection — the mark already says the state, and a second
+# background saying it as well reads as a bug.
+def checkbox(label, checked, on_toggle, props, o = {})
+  size = o["size"] ?? "md"
+  disabled = o["disabled"] == true
+  mixed = o["indeterminate"] == true
+  mark = check_mark(checked, mixed, disabled, size)
+  # A checkbox with no label is a bare tick — a header's select-all, say, where
+  # the count beside it is a node of its own and must not be swallowed into the
+  # tick's name. Don't leave an empty text node for the gap to push away from.
+  kids = [mark]
+  kids = kids.concat([text(label, {
+    "size": control_text_size(size),
+    "fg": disabled ? "text.disabled" : (checked ? "text.muted" : "text.default")
+  })]) unless label.blank?
   control({
     "key": o["key"] ?? ("cb:" + (props["id"] ?? label).to_s),
     "size": size,
@@ -628,13 +719,7 @@ def checkbox(label, checked, on_toggle, props, o = {})
       "checked": mixed ? "mixed" : checked,
       "label": o["name"] ?? label
     },
-    "c": [
-      mark,
-      text(label, {
-        "size": control_text_size(size),
-        "fg": disabled ? "text.disabled" : (checked ? "text.muted" : "text.default")
-      })
-    ]
+    "c": kids
   })
 end
 
@@ -2152,7 +2237,19 @@ def navbar(brand, links, active, on_go)
   )
 end
 
-def sidebar(links, active, on_go)
+# A sidebar: one row per destination, and the one you are on marked.
+#
+# `icons` names an icon per link — `{"Orders": "doc"}` — and a link without
+# one still gets the width, so the labels of a part-iconed menu line up with
+# each other instead of stepping in and out.
+#
+# The row you are on is marked three ways, because one is not enough: a
+# filled ground for the eye scanning the column, a weight and a colour for
+# the eye reading it, and a bar down the leading edge that survives both a
+# colour blindness and the high-contrast palette. The bar is a box inside
+# the row rather than a border on it, so nothing shifts by two pixels as the
+# selection moves.
+def sidebar(links, active, on_go, icons = {})
   column(
     {
       "gap": 1,
@@ -2163,20 +2260,38 @@ def sidebar(links, active, on_go)
       "border_color": "border.subtle"
     },
     links.map(fn(l) {
+      here = l == active
+      mark = {"k": "box", "s": {
+        "width": 2,
+        "height": 16,
+        "radius": 1,
+        "shrink": 0,
+        "bg": here ? "accent.base" : "none"
+      }}
+      glyph = icon(icons[l] ?? "dot", {
+        "width": 16,
+        "height": 16,
+        "shrink": 0,
+        "fg": here ? "accent.base" : "text.muted"
+      })
       {
         "k": "box",
         "s": {
-          "pad": [1, 2, 1, 2],
-          "radius": 1,
-          "bg": l == active ? "surface.sunken" : "none",
-          "cursor": "pointer"
+          "display": "row",
+          "align": "center",
+          "gap": 2,
+          "pad": [2, 3, 2, 2],
+          "radius": 2,
+          "bg": here ? "surface.sunken" : "none",
+          "cursor": "pointer",
+          "transition": "fast"
         },
         "on": {"click": on_go},
-        "p": {"path": l},
-        "c": [text(l, l == active ? {
+        "p": {"path": l, "label": l, "current": here},
+        "c": [mark, glyph, text(l, here ? {
           "weight": "semibold",
           "fg": "accent.base"
-        } : {})]
+        } : {"fg": "text.default"})]
       }
     })
   )
@@ -2338,6 +2453,10 @@ def select(options, value, open, on_toggle, on_pick)
 end
 
 def select_sized(options, value, open, on_toggle, on_pick, min_width, grow)
+  # The same surface as the box you type into, for the same reason: a select
+  # the colour of the card it sits on reads as a label until it is clicked.
+  # The hover is the neutral tone's, so a select and a button answer the
+  # pointer with the same two colours.
   s = {
     "display": "row",
     "align": "center",
@@ -2347,14 +2466,16 @@ def select_sized(options, value, open, on_toggle, on_pick, min_width, grow)
     "border": 1,
     "border_color": "border.default",
     "radius": 2,
-    "bg": "surface.raised",
-    "cursor": "pointer"
+    "bg": "surface.sunken",
+    "cursor": "pointer",
+    "transition": "fast"
   }
   s["grow"] = 1 if grow
   anchor = {
     "k": "box",
+    "key": "sel:" + on_toggle.to_s,
     "s": s,
-    "on": {"click": on_toggle},
+    "on": stateful(s, TONES["neutral"], {"click": on_toggle}),
     "c": [text(value, {"grow": 1}), icon(
       "chevron_down",
       {"fg": "text.muted", "width": 14, "height": 14}
@@ -2430,6 +2551,475 @@ def dropdown(anchor, content, open, max_px = 0)
       "c": [scroll(pane, content)]
     }
   ])
+end
+
+# ---- Multi-selection --------------------------------------------------------
+# A selection is `{"ids": [...], "all": Bool, "scope": Str}`, and the flag is
+# the whole design:
+#
+#   all == false   `ids` are what is chosen.
+#   all == true    everything is chosen *except* `ids`.
+#
+# The second reading is what makes "select all" free over a windowed list. A
+# selection held as a list of ids would put ten thousand strings into the
+# session state and re-serialise them on every event; held as one boolean plus
+# the handful of rows someone unticked afterwards, it costs nothing and answers
+# for rows the server has never sent. An application spends it the same way:
+# `all: true` goes into the query as `NOT IN (ids)`, not as an enumeration.
+#
+# `selection_toggle` is one body with two meanings — add-or-remove in `ids` is
+# "choose" under the first reading and "except" under the second — and that
+# symmetry is the reason for the shape rather than a happy accident.
+#
+# `scope` is what stops the flag lying. "All" is always relative to the query
+# that was on screen when it was clicked; select every unpaid order, clear the
+# filter, and without a scope token "all" silently means every order there is.
+# The caller puts whatever names its query in there and compares it.
+#
+# Every field is read with `??` and `== true`, never `||`: in Soli `false` and
+# `0` are truthy, so `sel["all"] || false` is a bug that survives testing.
+def selection(ids = [], scope = "")
+  {"ids": ids, "all": false, "scope": scope}
+end
+
+def selection_scope(sel)
+  (sel ?? {})["scope"] ?? ""
+end
+
+# Everything, as one boolean. The exception list starts empty.
+def selection_all(sel)
+  {"ids": [], "all": true, "scope": selection_scope(sel)}
+end
+
+def selection_none(sel)
+  {"ids": [], "all": false, "scope": selection_scope(sel)}
+end
+
+# A selection is only meaningful for the query it was made in. Hand this the
+# token naming the current query and it answers with the selection, or with an
+# empty one when the query has moved on underneath it.
+def selection_scoped(sel, scope)
+  return selection([], scope) if sel.nil? || selection_scope(sel) != scope
+
+  sel
+end
+
+def selection_ids_of(sel)
+  (sel ?? {})["ids"] ?? []
+end
+
+def selection_all?(sel)
+  (sel ?? {})["all"] == true
+end
+
+def selection_has?(sel, id)
+  inside = selection_ids_of(sel).includes?(id)
+  return !inside if selection_all?(sel)
+
+  inside
+end
+
+# `concat` appends to the array it is called on and hands it back, so
+# `ids.concat([id])` would grow the selection this one was derived from — the
+# caller's, and anything else still holding that array. `kept` is fresh out of
+# `filter`, so appending to it touches nobody, and the filter is doing double
+# duty as the copy.
+def selection_toggle(sel, id)
+  ids = selection_ids_of(sel)
+  kept = ids.filter(fn(x) { x != id })
+  return {"ids": kept, "all": selection_all?(sel), "scope": selection_scope(sel)} if kept.length() < ids.length()
+
+  {"ids": kept.concat([id]), "all": selection_all?(sel), "scope": selection_scope(sel)}
+end
+
+def selection_count(sel, total)
+  held = selection_ids_of(sel).length()
+  return held unless selection_all?(sel)
+  return 0 if held > total
+
+  total - held
+end
+
+def selection_empty?(sel, total)
+  selection_count(sel, total) == 0
+end
+
+# What the header's tick should say: "none", "all", or "some" — which is the
+# `"mixed"` third state of 03 §6.1, and which `checkbox` already draws as a
+# minus when it is given `indeterminate`.
+def selection_mark(sel, total)
+  count = selection_count(sel, total)
+  return "none" if count == 0
+  return "all" if count >= total
+
+  "some"
+end
+
+# `selection_has?` walks the id list, which is right for a list of twenty and
+# wrong for a window of thirty rows re-asked on every scroll. Build the index
+# once per render and read it per row.
+#
+# The index stores `true` and holds nothing else. A `false` entry would read
+# correctly through `selection_in?` and still be counted by `.keys().length()`,
+# so a count taken from the hash would start lying the first time someone
+# ticked a row and unticked it again.
+def selection_index(sel)
+  index = {}
+  for id in selection_ids_of(sel)
+    index[id] = true
+  end
+  index
+end
+
+def selection_in?(index, sel, id)
+  inside = index[id] == true
+  return !inside if selection_all?(sel)
+
+  inside
+end
+
+# The chosen ids, spelled out. Only for a list short enough that the server
+# already holds every row — a windowed list must push `all` into its query
+# instead, which is the whole point of the flag.
+def selection_ids(sel, every)
+  return selection_ids_of(sel) unless selection_all?(sel)
+
+  every.filter(fn(id) { !selection_ids_of(sel).includes?(id) })
+end
+
+# Ten thousand reads as 10 000, not as 10000. A count this widget shows sits
+# beside figures the application wrote itself, and one of them grouped and the
+# other not looks like a bug rather than a choice.
+def grouped_number(n)
+  gn_chars = str(n).chars()
+  gn_out = ""
+  gn_i = 0
+  while gn_i < gn_chars.length()
+    gn_left = gn_chars.length() - gn_i
+    gn_out = gn_out + " " if gn_i > 0 && gn_left % 3 == 0
+    gn_out = gn_out + gn_chars[gn_i]
+    gn_i = gn_i + 1
+  end
+  gn_out
+end
+
+# What the header says. Not "3 selected" on its own: the total is what makes
+# "select all" mean anything, and over a windowed list it is the only number
+# saying how much is out there at all.
+def multi_select_count_text(sel, total)
+  msc_count = selection_count(sel, total)
+  return "None selected" if msc_count == 0
+  return "All " + grouped_number(total) + " selected" if msc_count >= total
+
+  grouped_number(msc_count) + " of " + grouped_number(total) + " selected"
+end
+
+# The tri-state tick, the count, and a way back to nothing.
+#
+# The tick is a real `checkbox` — it is a control in its own right, it is not
+# inside a row, and `indeterminate` already gives it the `"mixed"` third state
+# of 03 §6.1. Its visible label is empty and its accessible name comes from
+# `name`, because the count beside it is a separate node and must not become
+# part of the tick's name.
+#
+# The count keeps its node whatever it says. A live region that is removed and
+# re-added is an insertion rather than a change, and an insertion is not
+# reliably announced — so the node is always there and only its text moves.
+def multi_select_header(sel, total, o)
+  msh_mark = selection_mark(sel, total)
+  msh_parts = []
+  msh_parts = msh_parts.concat([checkbox("", msh_mark == "all", o["on_all"], {}, {
+    "key": o["key"] + ":all",
+    "size": o["size"] ?? "sm",
+    "indeterminate": msh_mark == "some",
+    "name": o["all_label"] ?? "Select every row"
+  })]) if o["on_all"].present?
+  msh_parts = msh_parts.concat([{
+    "k": "box",
+    "s": {"display": "row", "align": "center", "grow": 1},
+    "p": {"role": "status", "live": "polite"},
+    "c": [muted(multi_select_count_text(sel, total))]
+  }])
+  msh_parts = msh_parts.concat([text_link("Clear", o["on_clear"], {})]) if o["on_clear"].present? && msh_mark != "none"
+  row({"gap": 2, "align": "center", "width": "100%"}, msh_parts)
+end
+
+# One row, and it is one `control` with one click handler.
+#
+# The tick inside it is `check_mark` and not `checkbox`, deliberately. The
+# row's role is `option`, which 03 §6 rule 1 makes a leaf: a real checkbox in
+# there would be dropped from the accessibility tree while hit-testing still
+# handed it the click (06 §2 gives the event to the nearest handler on the
+# path, which would be the mark and not the row). One handler per row is also
+# one Tab stop per row, which is what a list forty rows long wants.
+#
+# Selected is said by a 3 px rule down the left edge and by the tick, and not
+# by a background. `control` folds `selected` into the *resting* colours before
+# the hover delta is taken, and the quiet tone's selected wash and its hover
+# wash are both `surface.sunken` — so a selected row under the pointer would
+# lose the only thing saying it was selected. A border width reserved at rest
+# and merely coloured when chosen is the same trick `button_variant` uses
+# below: layout has nothing to do, and hover has nothing to take away. So
+# `selected` is not handed to `control` at all.
+#
+# `a11y.selected` is, and it is present even when false. `control`'s own
+# `selected` is purely visual — `a11y_props` promotes only `disabled`,
+# `loading` and `read_only` — and to an assistive technology an absent
+# `selected` means "not selectable" where `false` means "selectable, not
+# selected". Leave it off the unticked rows and the list reads as though only
+# the chosen ones were ever there.
+def multi_select_row(item, chosen, on_toggle, pos, total, o)
+  msr_size = o["size"] ?? "sm"
+  msr_on = chosen == true
+  msr_off = item["disabled"] == true
+  msr_body = [check_mark(msr_on, false, msr_off, msr_size)]
+  if o["row"].nil?
+    msr_body = msr_body.concat([text(item["label"], {
+      "size": control_text_size(msr_size),
+      "grow": 1,
+      "weight": msr_on ? "semibold" : "regular",
+      "fg": msr_off ? "text.disabled" : "text.default"
+    })])
+  else
+    msr_make = o["row"]
+    msr_body = msr_body.concat(msr_make(item, msr_on))
+  end
+  # `id` is what comes back as `params["props"]["id"]` and is what the
+  # selection is keyed by. `row` is the absolute index a windowed list needs
+  # (04 §7.1): a child without one is not laid out at all. Two numbers, two
+  # jobs — and a selection keyed by the second would name a different record
+  # the moment the list is sorted or filtered.
+  msr_props = {"id": item["id"]}
+  msr_props["row"] = item["row"] unless item["row"].nil?
+  control({
+    "key": o["key"] + ":row:" + item["id"].to_s,
+    "size": msr_size,
+    "tone": "quiet",
+    "shape": {
+      "justify": "start",
+      "align": "center",
+      "width": "100%",
+      "min_width": 0,
+      "gap": 2,
+      "radius": 1,
+      "pad": [1, 2, 1, 2],
+      "border": [0, 0, 0, 3],
+      "border_color": msr_on ? "accent.base" : "none"
+    }.merge(o["row_shape"] ?? {}),
+    "on": {"click": on_toggle},
+    "props": msr_props,
+    "disabled": msr_off,
+    "a11y": {
+      "role": "option",
+      "selected": msr_on,
+      "label": item["name"] ?? item["label"],
+      "pos_in_set": pos,
+      "set_size": total
+    },
+    "c": msr_body
+  })
+end
+
+# The container's own semantics. `list_box` is not a leaf role, so it keeps its
+# rows; `multi_selectable` is not in the client's atom table and reaches no
+# assistive technology today, but 03 §6.1 requires a client to ignore a prop it
+# does not understand, so it costs nothing and is right the day the client
+# grows it.
+def multi_select_semantics(o)
+  msm_props = {"role": "list_box", "orientation": "vertical", "multi_selectable": true}
+  msm_props["label"] = o["label"] unless o["label"].blank?
+  msm_props
+end
+
+# Header, rule, whatever the caller wants standing above the rows, then the
+# rows. `head` is for a caption that belongs to the list and must not scroll
+# with it — a row of column names, say: the same argument `data_grid` makes for
+# keeping its header outside the scroller, and version 1 has no sticky.
+def multi_select_shell(sel, total, o, body)
+  mss_parts = [multi_select_header(sel, total, o), divider()]
+  mss_parts = mss_parts.concat(o["head"]) unless o["head"].nil?
+  mss_parts = mss_parts.concat([body])
+  column({"gap": 0, "width": "100%"}, mss_parts)
+end
+
+# A list of rows, all of them present, each one tickable.
+#
+# `items` are `{"id", "label"}` hashes, optionally `"name"` (the accessible
+# name, when the label alone would not do) and `"disabled"`. `o` carries:
+#
+#   key       required, and the prefix for every key inside. The arena's key
+#             map is flat and first-wins, so two of these over the same ids
+#             would otherwise make each other's rows unreachable.
+#   label     the list's accessible name.
+#   size      "sm" by default; a list is denser than a form.
+#   total     when the caller knows of more rows than it passed.
+#   on_all    the header's tri-state tick. Without it there is no header tick.
+#   on_clear  a way back to nothing, shown only when something is chosen.
+#   height    px; present means the rows scroll inside it.
+#   empty     what stands there when there is nothing to choose from.
+#   row       fn(item, chosen) -> children, for a row that is more than a
+#             label: a bar, a badge, a second line.
+#   row_shape extra resting style for every row; the caller wins. Pin a
+#             `height` here when the rows are windowed, so what is measured is
+#             what `heights` promised.
+#   head      nodes between the rule and the rows, outside the scroller.
+def multi_select_list(items, sel, on_toggle, o = {})
+  throw "multi_select_list: o[\"key\"] names every node inside it" if o["key"].blank?
+
+  msl_total = o["total"] ?? items.length()
+  return multi_select_shell(sel, msl_total, o, column(
+    {"pad": 6, "align": "center", "width": "100%"},
+    [muted(o["empty"] ?? "Nothing to choose from")]
+  )) if items.length() == 0
+
+  msl_index = selection_index(sel)
+  msl_rows = range(0, items.length()).map(fn(i) {
+    multi_select_row(items[i], selection_in?(msl_index, sel, items[i]["id"]), on_toggle, i + 1, msl_total, o)
+  })
+  msl_body = scroll({"width": "100%", "gap": 0}, msl_rows)
+  msl_body["s"]["height"] = o["height"] unless o["height"].nil?
+  msl_body["p"] = multi_select_semantics(o)
+  multi_select_shell(sel, msl_total, o, msl_body)
+end
+
+# The same widget over rows the server does not hold (04 §7.1). `make` is
+# `fn(i)` returning the item for absolute row `i` — a pure function of the
+# index, as `erp_product` already is — and only the rows in `window` are built.
+#
+# `o` additionally carries `count`'s companions: `heights`, `item_height` and
+# `on_window`. Two things this must not get wrong, and neither says so:
+#
+#   `set_size` is `count` and never the window's length. 03 §6.1 is explicit
+#   that it counts what virtualisation left out, and the client already honours
+#   it — so an assistive technology says "12 of 10 000" only if we send the
+#   10 000.
+#
+#   A row must not change height when it is ticked. Row tops come from
+#   `heights`, but a row that is present is measured at its content size and
+#   drawn at that top — so a row that grows when chosen overlaps the one below
+#   it, with no clamp and no warning, and the scrollbar comes up short.
+def multi_select_window(make, count, window, sel, on_toggle, o = {})
+  throw "multi_select_window: o[\"key\"] names every node inside it" if o["key"].blank?
+
+  msw_win = window ?? [0, 0]
+  msw_first = msw_win[0] ?? 0
+  msw_last = msw_win[1] ?? 0
+  msw_last = count - 1 if msw_last > count - 1
+  msw_index = selection_index(sel)
+  msw_rows = []
+  msw_rows = range(msw_first, msw_last + 1).map(fn(i) {
+    msw_item = make(i)
+    msw_item["row"] = i
+    multi_select_row(msw_item, selection_in?(msw_index, sel, msw_item["id"]), on_toggle, i + 1, count, o)
+  }) if msw_first <= msw_last
+  msw_body = list_window(
+    {"width": "100%"},
+    o["item_height"] ?? 28,
+    count,
+    o["heights"],
+    msw_rows,
+    o["on_window"]
+  )
+  msw_body["s"]["height"] = o["height"] unless o["height"].nil?
+  # `list_window` writes `p` whole, so this merges. Assigning would drop
+  # `count`, `heights` and `item_height`, and the list would quietly become an
+  # ordinary virtualised one of the thirty rows it happens to be holding.
+  msw_body["p"] = msw_body["p"].merge(multi_select_semantics(o))
+  multi_select_shell(sel, count, o, msw_body)
+end
+
+# What the anchor shows: a chip per chosen option, capped, then how many more.
+#
+# Each chip's × sends the same `on_pick` with the same id, because removing a
+# chip *is* toggling that option off — one handler, one meaning, and the panel
+# never has to be open for it. `chip_remove` keys itself from `props["id"]`, so
+# every chip must carry one: hand them all the same props and they share a key,
+# and the arena's key map is flat and first-wins, so all but the first become
+# unreachable.
+def multi_select_chips(options, sel, on_pick, o)
+  msp_chosen = options.filter(fn(opt) { selection_has?(sel, opt["id"]) })
+  return [text(o["placeholder"] ?? "Choose…", {"fg": "text.muted", "grow": 1})] if msp_chosen.length() == 0
+
+  msp_max = o["max_chips"] ?? 3
+  msp_show = msp_chosen.length() > msp_max ? msp_max : msp_chosen.length()
+  msp_parts = range(0, msp_show).map(fn(i) {
+    chip(msp_chosen[i]["label"], on_pick, {"id": msp_chosen[i]["id"]})
+  })
+  msp_parts = msp_parts.concat([
+    muted("+" + str(msp_chosen.length() - msp_show))
+  ]) if msp_chosen.length() > msp_show
+  msp_parts
+end
+
+# The field itself. `combo_box` is not one of §6 rule 1's leaf roles, so the
+# chips and their × stay visible to an assistive technology rather than being
+# flattened into the anchor's name.
+def multi_select_anchor(options, sel, open, on_toggle, on_pick, o)
+  msa_style = {
+    "display": "row",
+    "align": "center",
+    "gap": 1,
+    "pad": [1, 2, 1, 2],
+    "min_width": o["min_width"] ?? 200,
+    "border": 1,
+    "border_color": "border.default",
+    "radius": 2,
+    "bg": "surface.sunken",
+    "cursor": "pointer",
+    "transition": "fast"
+  }
+  msa_style["grow"] = 1 if o["grow"] == true
+  msa_kids = multi_select_chips(options, sel, on_pick, o)
+  msa_kids = msa_kids.concat([
+    spacer(),
+    icon("chevron_down", {"fg": "text.muted", "width": 14, "height": 14})
+  ])
+  {
+    "k": "box",
+    "key": o["key"] + ":anchor",
+    "s": msa_style,
+    "p": {"role": "combo_box", "expanded": open == true, "label": o["label"] ?? "Choose"},
+    "on": stateful(msa_style, TONES["neutral"], {"click": on_toggle}),
+    "c": msa_kids
+  }
+end
+
+# Several of something, chosen in a panel, shown as chips.
+#
+# The panel stays open as options are ticked. That is the one behavioural
+# difference from `select`, and it is not in the widget: the caller's `on_pick`
+# toggles the selection and leaves `open` alone, where `select`'s closes it.
+#
+# Its rows are the same `multi_select_row` the listbox uses — that is the whole
+# of what the two widgets share, and it is enough that a tick means the same
+# thing in both.
+#
+# `options` are `{"id", "label"}` hashes. Do not hand it thousands: a panel is
+# capped at `DROPDOWN_MAX_PX` and a virtualised one inside an overlay would
+# need its own window and a scroll to restore on reopen — which is a combo box
+# with a search field in it, and a different widget.
+def multi_select(options, sel, open, on_toggle, on_pick, o = {})
+  throw "multi_select: o[\"key\"] names every node inside it" if o["key"].blank?
+
+  msd_anchor = multi_select_anchor(options, sel, open, on_toggle, on_pick, o)
+  return msd_anchor unless open == true
+
+  # A row is `width: 100%` in a list, and inside an absolutely positioned
+  # overlay that resolves against the window rather than against the panel —
+  # so a three-option panel came out eleven hundred pixels wide. In here the
+  # rows ask for the anchor's width and the panel takes its size from them,
+  # which is what lets the client place it under the anchor at all (04 §5).
+  msd_opts = o.merge({
+    "row_shape": {"width": "auto", "min_width": o["min_width"] ?? 200}.merge(o["row_shape"] ?? {})
+  })
+  msd_index = selection_index(sel)
+  msd_rows = range(0, options.length()).map(fn(i) {
+    msd_on = selection_in?(msd_index, sel, options[i]["id"])
+    multi_select_row(options[i], msd_on, on_pick, i + 1, options.length(), msd_opts)
+  })
+  msd_panel = column({"gap": 0}, msd_rows)
+  msd_panel["p"] = multi_select_semantics(o)
+  dropdown(msd_anchor, [msd_panel], true, DROPDOWN_MAX_PX)
 end
 
 # ---- Slider ----------------------------------------------------------------
@@ -3054,7 +3644,10 @@ def picker_field(o, caption, empty, make)
       "justify": "start",
       "gap": 2,
       "width": o["width"] ?? "100%",
-      "bg": "surface.raised",
+      # No `bg`: the neutral tone rests on `surface.sunken` and hovers to
+      # `surface.raised`, which is what every other field does now. Naming
+      # `raised` here made the resting state the hover state, so a date field
+      # sat flat on its card and answered the pointer with nothing.
       "border_color": bad ? "danger.base" : "border.default"
     },
     "on": {"click": o["on_toggle"]},
@@ -3275,6 +3868,139 @@ def chart_grid(w, h)
   ] })
 end
 
+# ---- Axes ------------------------------------------------------------------
+#
+# A chart without numbers on it asks the reader to take the shape on trust.
+# The hairlines were already there; these put the readings they stand for
+# beside them, and the categories under the marks, so "up and to the right"
+# becomes "from four to nine".
+#
+# Four readings, because `chart_grid` draws four hairlines: the top of the
+# scale, the bottom, and the two thirds between. They are rounded to whole
+# numbers — a tick label is a landmark, not a measurement, and the chip under
+# the pointer is where an exact figure belongs.
+
+CHART_TICKS = 4
+
+# `int` truncates towards zero, which rounds −20.5 to −20 and turns a
+# symmetric axis into a crooked one: −20, −6, 7, 21 where the reader was
+# promised the same reach either side. Round away from zero instead.
+def chart_round(v)
+  v >= 0 ? int(v + 0.5) : 0 - int(0 - v + 0.5)
+end
+
+# The `1.0` is load-bearing: `/` on two whole numbers is whole division, so a
+# reach of 21 over four gaps stepped −21, −11, 0, 10, 21 — a symmetric axis
+# that was a unit crooked on one side, from a truncation three operations
+# before the rounding.
+def chart_scale_ticks(low, high)
+  range(0, CHART_TICKS).map(fn(i) { chart_round(high - (high - low) * i * 1.0 / (CHART_TICKS - 1)) })
+end
+
+# Wide enough for the longest of them. Text is measured by the client and the
+# server never sees a glyph, so this is an estimate — seven pixels a character
+# at the smallest step, plus a little air — and it is an estimate the plot can
+# afford to have wrong by a pixel.
+def chart_gutter(ticks)
+  n = 1
+  for v in ticks
+    n = str(v).length() if str(v).length() > n
+  end
+  8 + n * 7
+end
+
+# The column of readings. Each sits in a band as deep as the gap between two
+# hairlines with its text at the top, so a label's first line lands on the
+# line it belongs to; the last has no band under it and simply ends there.
+def chart_y_axis(ticks, h, gutter)
+  band = (h - 8) / (CHART_TICKS - 1)
+  column(
+    {"width": gutter, "height": h, "pad": [0, 1, 0, 0]},
+    range(0, CHART_TICKS).map(fn(i) {
+      {
+        "k": "box",
+        "s": {
+          "display": "row",
+          "justify": "end",
+          "align": "start",
+          "width": "100%",
+          "height": i < CHART_TICKS - 1 ? band : "auto",
+          "shrink": 0
+        },
+        "c": [text(str(ticks[i]), {"size": 0, "fg": "text.muted"})]
+      }
+    })
+  )
+end
+
+# The categories, one cell a band, centred under the marks the bands cover.
+# For a bar chart that is exactly where the bar is; `chart_x_axis_points` is
+# the other case.
+def chart_x_axis_bands(labels, spans)
+  row(
+    {"gap": 0},
+    range(0, spans.length()).map(fn(i) {
+      {
+        "k": "box",
+        "s": {"display": "row", "justify": "center", "width": spans[i], "shrink": 0, "overflow": "clip"},
+        "c": [text(labels[i] ?? "", {"size": 0, "fg": "text.muted", "clamp": 1})]
+      }
+    })
+  )
+end
+
+# A line's marks sit on the edges of the plot rather than in the middle of a
+# slot, so its labels are spread between the ends instead of centred in cells:
+# the first hugs the left edge, the last the right, and the rest fall where
+# the marks do.
+def chart_x_axis_points(labels, w)
+  row(
+    {"gap": 0, "justify": "between", "width": int(w - 8)},
+    labels.map(fn(l) { text(l, {"size": 0, "fg": "text.muted"}) })
+  )
+end
+
+# Readings along the bottom of a chart whose rows are the categories — a
+# ranked bar, a Gantt, a dumbbell. `chart_grid_v` puts its hairlines at the
+# same divisions, so the labels land on them.
+def chart_value_axis(low, high, w, divisions)
+  row(
+    {"gap": 0, "justify": "between", "width": int(w - 8)},
+    range(0, divisions + 1).map(fn(i) {
+      text(str(chart_round(low + (high - low) * i * 1.0 / divisions)), {"size": 0, "fg": "text.muted"})
+    })
+  )
+end
+
+# The plot with its two axes around it: readings down the left, categories
+# along the bottom. The height the caller gave is the whole thing, so the
+# plot is that less the row of labels — `chart_plot_h` is what a builder
+# scales its marks into, and `chart_plot_w` what it draws them across.
+
+CHART_AXIS_H = 15
+
+def chart_plot_h(h)
+  h - CHART_AXIS_H
+end
+
+def chart_framed(ticks, x_axis, w, h, gutter, layers)
+  row(
+    {"gap": 0, "align": "start"},
+    [
+      chart_y_axis(ticks, h, gutter),
+      column({"gap": 0, "align": "center", "width": w}, [layers, x_axis])
+    ]
+  )
+end
+
+# The labels a chart falls back on when the caller passed none: the ordinal of
+# each mark, which is at least a count.
+def chart_x_labels(labels, count)
+  return labels if labels.length() >= count
+
+  range(0, count).map(fn(i) { str(i + 1) })
+end
+
 def flatten_points(points)
   flat = []
   for p in points
@@ -3324,22 +4050,60 @@ def chart_wash_style(width, lit)
   }
 end
 
-# The tooltip: a chip that is always there and is transparent until the
-# pointer is in its band. Fading one in costs no layout; mounting one would.
-def chart_chip_style(shown)
-  {
+# The tooltip is an `overlay`, and that is the whole of the fix. A chip that
+# lives inside its band is measured against the band, a band is thirty pixels
+# wide, and anything longer than a bare number came back as four wrapped lines
+# sitting on top of the marks it was describing. An absolute `overlay` child
+# of a `stack` is a popover (04 §5): measured against the *window*, clipped by
+# no ancestor. It takes the width its text asks for and hangs over the card's
+# edge if that is what the reading needs.
+#
+# `position: pointer` is what puts it under the hand. An anchored popover
+# hangs off its stack's first in-flow child, and a band is the full height of
+# the plot, so a chip anchored to one sat at the foot of the chart wherever in
+# the column the pointer actually was. A chunk cannot help: it has no access
+# to the pointer, by design (07 §1). Only the client knows where the hand is,
+# so the client places it — above the cursor and centred on it, dropping below
+# only when there is no room over it (04 §5).
+#
+# One chip a chart, then, rather than one a band: since it no longer hangs off
+# anything, the band's handler has only to write the reading into it.
+#
+# Hidden is `display: none` and not `opacity: 0`, because the top layer is
+# hit-tested first and asks nothing about opacity: an invisible chip left in
+# the layout would quietly eat every hover that landed under it. The cost is
+# the fade, which is a fair price for the legend underneath still working.
+def chart_tip_style(shown)
+  shown ? {
     "bg": "surface.overlay",
     "fg": "text.default",
     "border": 1,
     "border_color": "border.subtle",
     "radius": 2,
-    "shadow": 1,
+    "shadow": 2,
     "pad": [1, 2, 1, 2],
-    "size": 0,
-    "weight": "semibold",
-    "opacity": shown ? 255 : 0,
-    "transition": "fast"
+    "position": "pointer",
+    "margin": [2, 0, 0, 0],
+    "z": 5
+  } : {"display": "none", "position": "pointer"}
+end
+
+def chart_tip(id)
+  {
+    "k": "overlay",
+    "key": "tip_" + id,
+    "s": chart_tip_style(false),
+    "c": [keyed("tt_" + id, text(" ", {"size": 0, "weight": "semibold"}))]
   }
+end
+
+# What a band says to show itself, and what it says to put the chip away.
+def chart_tip_show(id, label)
+  "tip_" + id + ".style = @shown; tt_" + id + ".text = " + chart_quoted(label)
+end
+
+def chart_tip_hide(id)
+  "tip_" + id + ".style = @hidden"
 end
 
 # A string as the local language's source will read it back: a chunk's
@@ -3365,28 +4129,19 @@ end
 # the two handlers that light the pair.
 def chart_band(id, i, width, label)
   wash_key = "cw_" + id + "_" + str(i)
-  chip_key = "ct_" + id + "_" + str(i)
   {
     "k": "box",
-    "s": {
-      "display": "column",
-      "justify": "start",
-      "align": "center",
-      "pad": [1, 0, 0, 0],
-      "width": width,
-      "height": "100%"
-    },
+    "s": {"width": width, "height": "100%"},
     "on": {
       "pointer_enter": {
-        "local": wash_key + ".style = @lit; " + chip_key + ".style = @shown",
-        "styles": {"lit": chart_wash_style(width, true), "shown": chart_chip_style(true)}
+        "local": wash_key + ".style = @lit; " + chart_tip_show(id, label),
+        "styles": {"lit": chart_wash_style(width, true), "shown": chart_tip_style(true)}
       },
       "pointer_leave": {
-        "local": wash_key + ".style = @rest; " + chip_key + ".style = @hidden",
-        "styles": {"rest": chart_wash_style(width, false), "hidden": chart_chip_style(false)}
+        "local": wash_key + ".style = @rest; " + chart_tip_hide(id),
+        "styles": {"rest": chart_wash_style(width, false), "hidden": chart_tip_style(false)}
       }
-    },
-    "c": [keyed(chip_key, text(label, chart_chip_style(false)))]
+    }
   }
 end
 
@@ -3404,7 +4159,8 @@ def chart_layers(id, spans, labels, w, h, drawing)
     [
       row({"width": int(w - 8), "height": int(h - 8)}, washes),
       drawing,
-      row({"width": int(w - 8), "height": int(h - 8)}, bands)
+      row({"width": int(w - 8), "height": int(h - 8)}, bands),
+      chart_tip(id)
     ]
   )
 end
@@ -3413,42 +4169,292 @@ def chart_labels(values)
   values.map(fn(v) { str(v) })
 end
 
-def chart_line(id, values, w, h)
-  points = chart_points(values, w, h)
-  line = [0, "accent.base", 2].concat(flatten_points(points))
+# The chip a single-series mark shows: the category and the reading, because
+# the chip is now the only place an exact figure lives.
+def chart_point_chips(names, values)
+  range(0, values.length()).map(fn(i) { (names[i] ?? str(i + 1)) + " · " + str(values[i]) })
+end
+
+def chart_line(id, values, w, h, labels = [])
+  top = chart_max(values)
+  ticks = chart_scale_ticks(0, top)
+  gutter = chart_gutter(ticks)
+  pw = w - gutter
+  ph = chart_plot_h(h)
+  names = chart_x_labels(labels, values.length())
+  points = chart_points(values, pw, ph)
+  line = [0, "series.1", 2].concat(flatten_points(points))
   dots = points.map(fn(p) { [
     3,
-    "accent.base",
+    "series.1",
     p[0],
     p[1],
     3
   ] })
-  drawing = canvas(w, h, chart_grid(w, h).concat([line]).concat(dots))
-  spans = chart_spans(points.map(fn(p) { p[0] }), w)
-  chart_layers(id, spans, chart_labels(values), w, h, drawing)
+  drawing = canvas(pw, ph, chart_grid(pw, ph).concat([line]).concat(dots))
+  spans = chart_spans(points.map(fn(p) { p[0] }), pw)
+  layers = chart_layers(id, spans, chart_point_chips(names, values), pw, ph, drawing)
+  chart_framed(ticks, chart_x_axis_points(names, pw), pw, ph, gutter, layers)
 end
 
-def chart_area(id, values, w, h)
-  points = chart_points(values, w, h)
-  flat = flatten_points(points)
-  area = [2, "info.subtle", h - 4].concat(flat)
-  line = [0, "info.base", 2].concat(flat)
-  drawing = canvas(w, h, chart_grid(w, h).concat([area, line]))
-  spans = chart_spans(points.map(fn(p) { p[0] }), w)
-  chart_layers(id, spans, chart_labels(values), w, h, drawing)
-end
-
-def chart_bar(id, values, w, h)
+def chart_area(id, values, w, h, labels = [])
   top = chart_max(values)
+  ticks = chart_scale_ticks(0, top)
+  gutter = chart_gutter(ticks)
+  pw = w - gutter
+  ph = chart_plot_h(h)
+  names = chart_x_labels(labels, values.length())
+  points = chart_points(values, pw, ph)
+  flat = flatten_points(points)
+  # The wash under the line is a border role rather than a tinted status one:
+  # `info.subtle` was doing the job, and borrowing a status colour for a chart
+  # is the thing the series roles exist to stop. `border.subtle` is the theme's
+  # one step off the surface and it steps the same distance in both modes —
+  # `surface.sunken` does not, and in dark mode it draws a hole rather than a
+  # wash.
+  area = [2, "border.subtle", ph - 4].concat(flat)
+  line = [0, "series.1", 2].concat(flat)
+  drawing = canvas(pw, ph, chart_grid(pw, ph).concat([area, line]))
+  spans = chart_spans(points.map(fn(p) { p[0] }), pw)
+  layers = chart_layers(id, spans, chart_point_chips(names, values), pw, ph, drawing)
+  chart_framed(ticks, chart_x_axis_points(names, pw), pw, ph, gutter, layers)
+end
+
+def chart_bar(id, values, w, h, labels = [])
+  top = chart_max(values)
+  ticks = chart_scale_ticks(0, top)
+  gutter = chart_gutter(ticks)
+  pw = w - gutter
+  ph = chart_plot_h(h)
   count = values.length()
-  slot = (w - 8) / count
+  names = chart_x_labels(labels, count)
+  slot = (pw - 8) / count
   bars = range(0, count).map(fn(i) {
-    bar_h = (h - 8) * values[i] / top;
-    [1, "accent.base", 4 + i * slot + slot / 8, h - 4 - bar_h, slot - slot / 4, bar_h, 1]
+    bar_h = (ph - 8) * values[i] / top;
+    [1, "series.1", 4 + i * slot + slot / 8, ph - 4 - bar_h, slot - slot / 4, bar_h, 1]
   })
-  drawing = canvas(w, h, chart_grid(w, h).concat(bars))
+  drawing = canvas(pw, ph, chart_grid(pw, ph).concat(bars))
   centres = range(0, count).map(fn(i) { 4 + i * slot + slot / 2 })
-  chart_layers(id, chart_spans(centres, w), chart_labels(values), w, h, drawing)
+  spans = chart_spans(centres, pw)
+  layers = chart_layers(id, spans, chart_point_chips(names, values), pw, ph, drawing)
+  chart_framed(ticks, chart_x_axis_bands(names, spans), pw, ph, gutter, layers)
+end
+
+# ---- Candlesticks ----------------------------------------------------------
+#
+# A price is four numbers a session, not one: `[open, high, low, close]`. The
+# scale is the extent of the lows and highs rather than 0 to the top, because
+# a price that moves 3 % about 400 is a flat smudge against a zero baseline.
+def chart_extent(bars)
+  return [0, 1] if bars.length() == 0
+
+  low = bars[0][2]
+  high = bars[0][1]
+  for b in bars
+    low = b[2] if b[2] < low
+    high = b[1] if b[1] > high
+  end
+  high > low ? [low, high] : [low - 1, high + 1]
+end
+
+# Where a price sits in the plot: the top of the extent at the top of the box.
+def chart_price_y(value, extent, h)
+  4 + (h - 8) * (extent[1] - value) / (extent[1] - extent[0])
+end
+
+# One session is two rectangles: a hairline wick from high to low, and a body
+# from open to close — `success` when the close is above the open, `danger`
+# when it is under. A body that rounds to nothing is still drawn a pixel tall,
+# so a session that opened and closed at the same price is a line, not a gap.
+def chart_candle_paths(bars, w, h)
+  extent = chart_extent(bars)
+  count = bars.length()
+  slot = (w - 8) / count
+  body_w = slot * 5 / 8
+  body_w = 3 if body_w < 3
+  paths = []
+  for i in range(0, count)
+    b = bars[i]
+    tone = b[3] >= b[0] ? "success.base" : "danger.base"
+    cx = 4 + i * slot + slot / 2
+    y_high = chart_price_y(b[1], extent, h)
+    y_low = chart_price_y(b[2], extent, h)
+    y_open = chart_price_y(b[0], extent, h)
+    y_close = chart_price_y(b[3], extent, h)
+    y_top = y_open < y_close ? y_open : y_close
+    body_h = (y_open < y_close ? y_close : y_open) - y_top
+    body_h = 1 if body_h < 1
+    paths = paths.concat([[1, tone, cx, y_high, 1, y_low - y_high, 0]])
+    paths = paths.concat([[1, tone, cx - body_w / 2, y_top, body_w, body_h, 1]])
+  end
+  paths
+end
+
+# The chip a session shows: its close, and what the session did to it.
+def chart_candle_label(b)
+  delta = b[3] - b[0]
+  str(b[3]) + (delta >= 0 ? " +" + str(delta) : " " + str(delta))
+end
+
+# A candlestick chart. `bars` is a list of `[open, high, low, close]`, oldest
+# first; the bands are the sessions, so it hovers like every other chart here.
+def chart_candle(id, bars, w, h, labels = [])
+  count = bars.length()
+  # 03 §1.1: a chart with no series still shows its grid.
+  return canvas(w, h, chart_grid(w, h)) if count == 0
+
+  # The one scale here that does not start at zero: a price axis is an extent,
+  # so its readings run from the lowest low to the highest high.
+  extent = chart_extent(bars)
+  ticks = chart_scale_ticks(extent[0], extent[1])
+  gutter = chart_gutter(ticks)
+  pw = w - gutter
+  ph = chart_plot_h(h)
+  names = chart_x_labels(labels, count)
+  slot = (pw - 8) / count
+  drawing = canvas(pw, ph, chart_grid(pw, ph).concat(chart_candle_paths(bars, pw, ph)))
+  centres = range(0, count).map(fn(i) { 4 + i * slot + slot / 2 })
+  chips = range(0, count).map(fn(i) { names[i] + " · " + chart_candle_label(bars[i]) })
+  spans = chart_spans(centres, pw)
+  layers = chart_layers(id, spans, chips, pw, ph, drawing)
+  chart_framed(ticks, chart_x_axis_bands(names, spans), pw, ph, gutter, layers)
+end
+
+# ---- Gantt -----------------------------------------------------------------
+#
+# A task is `{"label": …, "start": …, "span": …}`, counted in whatever unit the
+# caller counts in — days, here. The rows are the tasks and the axis is the
+# time, so this is the one chart whose bands run across rather than down: a
+# column of washes and a column of bands, not a row of each.
+
+# Where the plan ends, which is where the axis ends.
+def chart_gantt_end(tasks)
+  last = 1
+  for t in tasks
+    last = t["start"] + t["span"] if t["start"] + t["span"] > last
+  end
+  last
+end
+
+# Hairlines down rather than across: on a time axis the divisions are dates.
+def chart_grid_v(w, h, divisions)
+  range(0, divisions + 1).map(fn(i) {
+    x = 4 + (w - 8) * i / divisions;
+    [0, "border.subtle", 1, x, 4, x, h - 4]
+  })
+end
+
+# One rounded bar a row, in the four `base` roles, three fifths of the row
+# tall. A task shorter than two pixels is still two pixels: a milestone is a
+# task of no span, and it has to be visible.
+def chart_gantt_bars(tasks, w, h)
+  total = chart_gantt_end(tasks)
+  count = tasks.length()
+  row_h = (h - 8) / count
+  bar_h = row_h * 3 / 5
+  bar_h = 6 if bar_h < 6
+  range(0, count).map(fn(i) {
+    x0 = 4 + (w - 8) * tasks[i]["start"] / total;
+    x1 = 4 + (w - 8) * (tasks[i]["start"] + tasks[i]["span"]) / total;
+    x1 = x1 - x0 < 2 ? x0 + 2 : x1;
+    [1, chart_role(i), x0, 4 + i * row_h + (row_h - bar_h) / 2, x1 - x0, bar_h, 1]
+  })
+end
+
+# The row equivalents of `chart_wash_style` and `chart_band`: full width and a
+# height, and the chip sits at the end of the row rather than over the mark.
+def chart_row_wash_style(height, lit)
+  {
+    "width": "100%",
+    "height": height,
+    "radius": 2,
+    "bg": lit ? "surface.sunken" : "none",
+    "transition": "fast"
+  }
+end
+
+def chart_row_band(id, i, height, label)
+  wash_key = "cw_" + id + "_" + str(i)
+  {
+    "k": "box",
+    "s": {"width": "100%", "height": height},
+    "on": {
+      "pointer_enter": {
+        "local": wash_key + ".style = @lit; " + chart_tip_show(id, label),
+        "styles": {"lit": chart_row_wash_style(height, true), "shown": chart_tip_style(true)}
+      },
+      "pointer_leave": {
+        "local": wash_key + ".style = @rest; " + chart_tip_hide(id),
+        "styles": {"rest": chart_row_wash_style(height, false), "hidden": chart_tip_style(false)}
+      }
+    }
+  }
+end
+
+def chart_row_layers(id, heights, labels, w, h, drawing)
+  count = heights.length()
+  washes = range(0, count).map(fn(i) {
+    keyed("cw_" + id + "_" + str(i), {"k": "box", "s": chart_row_wash_style(heights[i], false)})
+  })
+  bands = range(0, count).map(fn(i) { chart_row_band(id, i, heights[i], labels[i]) })
+  stack(
+    {"width": w, "height": h, "justify": "center", "align": "center"},
+    [
+      column({"width": int(w - 8), "height": int(h - 8)}, washes),
+      drawing,
+      column({"width": int(w - 8), "height": int(h - 8)}, bands),
+      chart_tip(id)
+    ]
+  )
+end
+
+# The names beside the plot, one row each, ranged against it so that a short
+# name and a long one both end where the bars begin. The box clips: a task
+# called something long is cut off rather than widening the gutter the plot
+# was measured against.
+def chart_gantt_names(tasks, gutter, row_h, h)
+  rows = range(0, tasks.length()).map(fn(i) {
+    row(
+      {"width": gutter, "height": row_h, "justify": "end", "align": "center", "overflow": "clip"},
+      [text(tasks[i]["label"], {"size": 1, "fg": "text.muted"})]
+    )
+  })
+  stack(
+    {"width": gutter, "height": h, "justify": "center", "align": "center"},
+    [column({"width": gutter, "height": int(h - 8)}, rows)]
+  )
+end
+
+# A Gantt chart: the names in a gutter on the left, the bars in a plot on the
+# right, and a band over each row saying when it runs.
+def chart_gantt(id, tasks, w, h)
+  count = tasks.length()
+  return canvas(w, h, chart_grid_v(w, h, 4)) if count == 0
+
+  gutter = w * 3 / 10
+  gutter = 72 if gutter < 72
+  gutter = 140 if gutter > 140
+  plot_w = w - gutter - 8
+  ph = chart_plot_h(h)
+  row_h = (ph - 8) / count
+  drawing = canvas(plot_w, ph, chart_grid_v(plot_w, ph, CHART_TICKS - 1).concat(chart_gantt_bars(tasks, plot_w, ph)))
+  heights = range(0, count).map(fn(i) { row_h })
+  labels = range(0, count).map(fn(i) {
+    str(tasks[i]["start"]) + " → " + str(tasks[i]["start"] + tasks[i]["span"]) + " · " + str(tasks[i]["span"]) + " d"
+  })
+  row(
+    {"gap": 2, "width": w, "align": "start"},
+    [
+      column({"gap": 0, "width": gutter}, [chart_gantt_names(tasks, gutter, row_h, ph), {"k": "box", "s": {"height": CHART_AXIS_H}}]),
+      column(
+        {"gap": 0, "align": "center", "width": plot_w},
+        [
+          chart_row_layers(id, heights, labels, plot_w, ph, drawing),
+          chart_value_axis(0, chart_gantt_end(tasks), plot_w, CHART_TICKS - 1)
+        ]
+      )
+    ]
+  )
 end
 
 # A donut has no bands: an arc is not a box, and a quadrant is not an arc. Its
@@ -3528,6 +4534,614 @@ def chart_donut(id, parts, labels, w, h)
     [canvas(w, h, arcs), hole]
   )
   column({"gap": 3, "width": "100%", "align": "center"}, [wheel, legend])
+end
+
+# ---- More than one series --------------------------------------------------
+#
+# Every chart above draws one series, and one series needs no legend: the
+# title names it. Two or more is a different job — the reader has to tell
+# them apart — and that job has a rule attached. Identity is never carried by
+# colour alone: each of these forms ships a legend, and the ones with four
+# series or fewer are direct-labelled on top of it, so a reader who cannot
+# separate two of the hues still reads the chart correctly.
+#
+# The scale is shared. Two measures of different cell_px go in two charts, never
+# in one with two axes: a second y-scale lets the author decide which line
+# looks higher, which is not a decision a chart is allowed to make.
+
+# The key to a multi-series chart: a swatch and a name per series, in the same
+# fixed order the marks were drawn in.
+def chart_legend(names)
+  {
+    "k": "box",
+    "s": {"display": "row", "wrap": "wrap", "gap": 3, "width": "100%", "align": "center", "justify": "center"},
+    "c": range(0, names.length()).map(fn(i) {
+      row(
+        {"gap": 1, "align": "center"},
+        [
+          {"k": "box", "s": {"width": 10, "height": 10, "radius": 4, "bg": chart_role(i), "shrink": 0}},
+          text(names[i], {"size": 0, "fg": "text.muted"})
+        ]
+      )
+    })
+  }
+end
+
+# The top of a shared scale: the largest value anywhere in the set, so the
+# series are read against each other and not each against itself.
+def chart_rows_max(sets)
+  top = 0
+  for r in sets
+    for v in r
+      top = v if v > top
+    end
+  end
+  top > 0 ? top : 1
+end
+
+# How many marks across — the longest series decides, and a short one simply
+# stops early rather than being stretched to fit.
+def chart_rows_count(sets)
+  count = 0
+  for r in sets
+    count = r.length() if r.length() > count
+  end
+  count
+end
+
+# The chip over a band names every series at that x, because a tooltip that
+# says only a number leaves the reader to guess which line they are on.
+def chart_rows_labels(sets, names, count)
+  range(0, count).map(fn(i) {
+    parts = [];
+    for j in range(0, sets.length())
+      parts = parts.concat([(names[j] ?? ("Series " + str(j + 1))) + " " + str(sets[j][i] ?? 0)])
+    end
+    parts.join(" · ")
+  })
+end
+
+# ---- Multi-line ------------------------------------------------------------
+#
+# Trend over time for several series. The markers are discs with a ring of the
+# card's own surface behind them, which is what keeps two lines legible where
+# they cross: the one drawn later interrupts the one drawn first instead of
+# blending into it.
+def chart_multi_line(id, sets, names, w, h, x_labels = [])
+  top = chart_rows_max(sets)
+  count = chart_rows_count(sets)
+  ticks = chart_scale_ticks(0, top)
+  gutter = chart_gutter(ticks)
+  pw = w - gutter
+  ph = chart_plot_h(h)
+  cats = chart_x_labels(x_labels, count)
+  step = count > 1 ? (pw - 8) / (count - 1) : 0
+  paths = chart_grid(pw, ph)
+  centres = range(0, count).map(fn(i) { 4 + i * step })
+  for j in range(0, sets.length())
+    vals = sets[j]
+    points = range(0, vals.length()).map(fn(i) { [4 + i * step, 4 + (ph - 8) * (top - vals[i]) / top] })
+    paths = paths.concat([[0, chart_role(j), 2].concat(flatten_points(points))])
+    for p in points
+      paths = paths.concat([[3, "surface.raised", p[0], p[1], 5]])
+      paths = paths.concat([[3, chart_role(j), p[0], p[1], 3]])
+    end
+  end
+  drawing = canvas(pw, ph, paths)
+  parts = chart_rows_labels(sets, names, count)
+  chips = range(0, count).map(fn(i) { cats[i] + " · " + parts[i] })
+  layers = chart_layers(id, chart_spans(centres, pw), chips, pw, ph, drawing)
+  column(
+    {"gap": 2, "width": w},
+    [chart_framed(ticks, chart_x_axis_points(cats, pw), pw, ph, gutter, layers), chart_legend(names)]
+  )
+end
+
+# ---- Grouped bar -----------------------------------------------------------
+#
+# Compare the series within each category, and the categories with each other.
+# A 2 px gap of the card's surface separates neighbouring bars, so the eye
+# reads two marks rather than one two-tone mark.
+def chart_grouped_bar(id, sets, names, labels, w, h)
+  top = chart_rows_max(sets)
+  count = chart_rows_count(sets)
+  depth = sets.length()
+  ticks = chart_scale_ticks(0, top)
+  gutter = chart_gutter(ticks)
+  pw = w - gutter
+  ph = chart_plot_h(h)
+  cats = chart_x_labels(labels, count)
+  slot = (pw - 8) / count
+  inner = slot * 3 / 4
+  bar_w = (inner - (depth - 1) * 2) / depth
+  bar_w = 2 if bar_w < 2
+  bars = []
+  for i in range(0, count)
+    left = 4 + i * slot + (slot - inner) / 2;
+    for j in range(0, depth)
+      v = sets[j][i] ?? 0;
+      bar_h = (ph - 8) * v / top;
+      bar_h = 2 if bar_h < 2;
+      bars = bars.concat([[1, chart_role(j), left + j * (bar_w + 2), ph - 4 - bar_h, bar_w, bar_h, 1]])
+    end
+  end
+  drawing = canvas(pw, ph, chart_grid(pw, ph).concat(bars))
+  centres = range(0, count).map(fn(i) { 4 + i * slot + slot / 2 })
+  parts = chart_rows_labels(sets, names, count)
+  chips = range(0, count).map(fn(i) { cats[i] + " · " + parts[i] })
+  spans = chart_spans(centres, pw)
+  layers = chart_layers(id, spans, chips, pw, ph, drawing)
+  column(
+    {"gap": 2, "width": w},
+    [chart_framed(ticks, chart_x_axis_bands(cats, spans), pw, ph, gutter, layers), chart_legend(names)]
+  )
+end
+
+# ---- Stacked bar -----------------------------------------------------------
+#
+# Part-to-whole, one column a category. The scale is the largest *total*, not
+# the largest part, and the 2 px between segments is the same surface gap the
+# grouped bars use — without it a stack of five reads as one striped block.
+def chart_stack_totals(sets, count)
+  range(0, count).map(fn(i) {
+    total = 0;
+    for r in sets
+      total = total + (r[i] ?? 0)
+    end
+    total
+  })
+end
+
+def chart_stacked_bar(id, sets, names, labels, w, h)
+  count = chart_rows_count(sets)
+  totals = chart_stack_totals(sets, count)
+  top = chart_max(totals)
+  ticks = chart_scale_ticks(0, top)
+  gutter = chart_gutter(ticks)
+  pw = w - gutter
+  ph = chart_plot_h(h)
+  cats = chart_x_labels(labels, count)
+  slot = (pw - 8) / count
+  bar_w = slot * 3 / 5
+  bars = []
+  for i in range(0, count)
+    x = 4 + i * slot + (slot - bar_w) / 2;
+    y = ph - 4;
+    for j in range(0, sets.length())
+      v = sets[j][i] ?? 0;
+      seg = (ph - 8) * v / top;
+      if seg > 0
+        seg = 2 if seg < 2;
+        bars = bars.concat([[1, chart_role(j), x, y - seg, bar_w, seg, 1]]);
+        y = y - seg - 2
+      end
+    end
+  end
+  drawing = canvas(pw, ph, chart_grid(pw, ph).concat(bars))
+  centres = range(0, count).map(fn(i) { 4 + i * slot + slot / 2 })
+  parts = chart_rows_labels(sets, names, count)
+  chips = range(0, count).map(fn(i) {
+    cats[i] + " · " + str(totals[i]) + " (" + parts[i] + ")"
+  })
+  spans = chart_spans(centres, pw)
+  layers = chart_layers(id, spans, chips, pw, ph, drawing)
+  column(
+    {"gap": 2, "width": w},
+    [chart_framed(ticks, chart_x_axis_bands(cats, spans), pw, ph, gutter, layers), chart_legend(names)]
+  )
+end
+
+# ---- Ranked bar ------------------------------------------------------------
+#
+# Magnitude, low to high, for categories whose names are words rather than
+# dates. It goes horizontal for the same reason a table does: a name has room
+# to be read, and a rotated label is a label nobody reads. One hue throughout,
+# because the job here is cell_px and not identity — colouring each row
+# differently would say the sets are different kinds of thing.
+def chart_ranked_sorted(items)
+  left = items
+  out = []
+  while left.length() > 0
+    best = 0
+    for i in range(1, left.length())
+      best = i if left[i]["value"] > left[best]["value"]
+    end
+    out = out.concat([left[best]])
+    rest = []
+    for i in range(0, left.length())
+      rest = rest.concat([left[i]]) if i != best
+    end
+    left = rest
+  end
+  out
+end
+
+def chart_ranked_bar(id, items, w, h)
+  ranked = chart_ranked_sorted(items)
+  count = ranked.length()
+  return muted("nothing to rank") if count == 0
+
+  gutter = w / 3
+  gutter = 72 if gutter < 72
+  gutter = 160 if gutter > 160
+  plot_w = w - gutter - 8
+  ph = chart_plot_h(h)
+  row_h = (ph - 8) / count
+  bar_h = row_h * 3 / 5
+  bar_h = 6 if bar_h < 6
+  top = chart_max(ranked.map(fn(it) { it["value"] }))
+  bars = range(0, count).map(fn(i) {
+    bw = (plot_w - 8) * ranked[i]["value"] / top;
+    bw = 2 if bw < 2;
+    [1, "series.1", 4, 4 + i * row_h + (row_h - bar_h) / 2, bw, bar_h, 1]
+  })
+  drawing = canvas(plot_w, ph, chart_grid_v(plot_w, ph, CHART_TICKS - 1).concat(bars))
+  names = column(
+    {"gap": 0, "width": gutter},
+    range(0, count).map(fn(i) {
+      {
+        "k": "box",
+        "s": {"display": "row", "align": "center", "justify": "end", "height": row_h, "width": "100%"},
+        "c": [text(ranked[i]["label"], {"size": 0, "fg": "text.muted", "clamp": 1})]
+      }
+    })
+  )
+  heights = range(0, count).map(fn(i) { row_h })
+  labels = range(0, count).map(fn(i) { ranked[i]["label"] + " · " + str(ranked[i]["value"]) })
+  row(
+    {"gap": 2, "width": w, "align": "start"},
+    [
+      column({"gap": 0, "width": gutter}, [names, {"k": "box", "s": {"height": CHART_AXIS_H}}]),
+      column(
+        {"gap": 0, "align": "center", "width": plot_w},
+        [chart_row_layers(id, heights, labels, plot_w, ph, drawing), chart_value_axis(0, top, plot_w, CHART_TICKS - 1)]
+      )
+    ]
+  )
+end
+
+# ---- Diverging bar ---------------------------------------------------------
+#
+# Distance from a baseline, which is a different question from cell_px: the
+# reader wants the sign first and the amount second. Two hues either side of a
+# neutral zero, never a ramp through a third.
+#
+# The obvious pair is red against green, and it is measurably the wrong one:
+# this theme's `danger.base` and `success.base` sit ΔE 0.9 apart under
+# simulated deuteranopia in light mode and 1.1 in dark — to something like one
+# man in twelve they are the same colour, and a chart whose whole point is the
+# sign then says nothing at all. Red against `series.1` measures 16.7 and
+# 19.5 instead, so under-target keeps the red a reader expects and over-target
+# takes the blue.
+#
+# Even that is not enough on its own. Every row carries its signed number in
+# text beside the bar, because a sign is exactly the kind of thing a reader
+# must never be asked to infer from a hue.
+def chart_diverging_extent(items)
+  reach = 0
+  for it in items
+    v = it["value"] < 0 ? 0 - it["value"] : it["value"]
+    reach = v if v > reach
+  end
+  reach > 0 ? reach : 1
+end
+
+def chart_diverging_bar(id, items, w, h)
+  count = items.length()
+  return muted("nothing to compare") if count == 0
+
+  gutter = w / 4
+  gutter = 64 if gutter < 64
+  gutter = 140 if gutter > 140
+  plot_w = w - gutter - 48
+  ph = chart_plot_h(h)
+  row_h = (ph - 8) / count
+  bar_h = row_h * 3 / 5
+  bar_h = 6 if bar_h < 6
+  reach = chart_diverging_extent(items)
+  mid = plot_w / 2
+  # Four divisions rather than three, so the middle hairline falls on the
+  # zero rule and the axis has a 0 on it: an odd number of gaps puts the
+  # centre of a diverging chart between two labels, which is the one place it
+  # must not be.
+  rules = chart_grid_v(plot_w, ph, 4)
+  zero = [0, "border.strong", 1, mid, 4, mid, ph - 4]
+  bars = range(0, count).map(fn(i) {
+    v = items[i]["value"];
+    span = (mid - 6) * (v < 0 ? 0 - v : v) / reach;
+    span = 2 if span < 2;
+    y = 4 + i * row_h + (row_h - bar_h) / 2;
+    v < 0 ? [1, "danger.base", mid - span, y, span, bar_h, 1] : [1, "series.1", mid, y, span, bar_h, 1]
+  })
+  drawing = canvas(plot_w, ph, rules.concat([zero]).concat(bars))
+  names = column(
+    {"gap": 0, "width": gutter},
+    range(0, count).map(fn(i) {
+      {
+        "k": "box",
+        "s": {"display": "row", "align": "center", "justify": "end", "height": row_h, "width": "100%"},
+        "c": [text(items[i]["label"], {"size": 0, "fg": "text.muted", "clamp": 1})]
+      }
+    })
+  )
+  heights = range(0, count).map(fn(i) { row_h })
+  labels = range(0, count).map(fn(i) {
+    items[i]["label"] + " " + chart_signed(items[i]["value"])
+  })
+  # The signed number, always on, past the end of the plot: a bar that reaches
+  # left and a bar that reaches right put their readings in the same column,
+  # so the numbers are a column a reader can run down.
+  readings = column(
+    {"gap": 0, "width": 38},
+    range(0, count).map(fn(i) {
+      {
+        "k": "box",
+        "s": {"display": "row", "align": "center", "justify": "start", "height": row_h, "width": "100%"},
+        "c": [text(chart_signed(items[i]["value"]), {"size": 0, "weight": "semibold"})]
+      }
+    })
+  )
+  # The axis of a diverging chart is symmetric about its rule: the same reach
+  # either side, so a bar left and a bar right of the same length are the same
+  # number and the eye can be trusted with the comparison.
+  plot = row(
+    {"gap": 2, "width": w, "align": "start"},
+    [
+      column({"gap": 0, "width": gutter}, [names, {"k": "box", "s": {"height": CHART_AXIS_H}}]),
+      column(
+        {"gap": 0, "align": "center", "width": plot_w},
+        [chart_row_layers(id, heights, labels, plot_w, ph, drawing), chart_value_axis(0 - reach, reach, plot_w, 4)]
+      ),
+      readings
+    ]
+  )
+  column({"gap": 2, "width": w}, [plot, chart_legend_poles("Over target", "Under target")])
+end
+
+# A number that says which way it went before it says how far.
+def chart_signed(v)
+  v > 0 ? ("+" + str(v)) : str(v)
+end
+
+# The diverging chart's key: two swatches and two words, because the hues
+# group the rows and only the words say what the grouping means.
+def chart_legend_poles(over, under)
+  row(
+    {"gap": 3, "align": "center", "justify": "center", "width": "100%"},
+    [
+      row(
+        {"gap": 1, "align": "center"},
+        [{"k": "box", "s": {"width": 10, "height": 10, "radius": 4, "bg": "series.1", "shrink": 0}}, text(over, {"size": 0, "fg": "text.muted"})]
+      ),
+      row(
+        {"gap": 1, "align": "center"},
+        [{"k": "box", "s": {"width": 10, "height": 10, "radius": 4, "bg": "danger.base", "shrink": 0}}, text(under, {"size": 0, "fg": "text.muted"})]
+      )
+    ]
+  )
+end
+
+# ---- Heatmap ---------------------------------------------------------------
+#
+# Magnitude over a grid — a week by an hour, a region by a month. This one is
+# boxes rather than a canvas, and that is the point: a cell is a box, so the
+# client hit-tests it for free and the sequential ramp is one role at varying
+# opacity instead of a family of baked colours. More is denser, in one hue.
+#
+# The role is `accent.base` rather than `series.1`, and the reason is the dark
+# mode. A sequential ramp is only as good as the distance between its ends,
+# and the far end has to travel away from the surface in *both* modes: accent
+# is the one role the theme moves for the mode, sitting around L 0.50 on white
+# and L 0.70 on near-black, where `series.1` holds still at 0.50 and leaves a
+# dark-mode ramp with barely a third of the range it has in light. The near
+# end runs almost to nothing, because a cell with no load in it should read as
+# an empty cell and not as a pale one.
+def chart_heat_max(grid)
+  top = 0
+  for r in grid
+    for v in r
+      top = v if v > top
+    end
+  end
+  top > 0 ? top : 1
+end
+
+def chart_heat_cell_style(alpha, cell_px)
+  {
+    "width": cell_px,
+    "height": cell_px,
+    "radius": 2,
+    "bg": "accent.base",
+    "opacity": alpha,
+    "transition": "fast",
+    "shrink": 0
+  }
+end
+
+# A cell lights by going opaque, and carries its own chip the way a band does:
+# the reading belongs under the cell the hand is on, not in a line at the foot
+# of the grid where the reader has to look away from what they are pointing at.
+def chart_heat_cell(id, r, c, value, alpha, cell_px, label)
+  key = "hc_" + id + "_" + str(r) + "_" + str(c)
+  {
+    "k": "box",
+    "key": key,
+    "s": chart_heat_cell_style(alpha, cell_px),
+    "on": {
+      "pointer_enter": {
+        "local": "self.style = @lit; " + chart_tip_show(id, label),
+        "styles": {
+          "lit": chart_heat_cell_style(255, cell_px).merge({"border": 1, "border_color": "text.default"}),
+          "shown": chart_tip_style(true)
+        }
+      },
+      "pointer_leave": {
+        "local": "self.style = @rest; " + chart_tip_hide(id),
+        "styles": {"rest": chart_heat_cell_style(alpha, cell_px), "hidden": chart_tip_style(false)}
+      }
+    }
+  }
+end
+
+def chart_heatmap(id, grid, col_labels, row_labels, w, h)
+  row_count = grid.length()
+  return muted("nothing to map") if row_count == 0
+
+  cols = grid[0].length()
+  top = chart_heat_max(grid)
+  # A cell is a square with a ceiling on it. Without the ceiling a five-column
+  # grid in a wide card draws five slabs, and a slab reads as a bar chart lying
+  # down: what the reader is meant to take in at a glance is the *pattern*, and
+  # a pattern needs the whole grid inside one look.
+  gutter = 72
+  cell_px = (w - gutter - (cols - 1) * 2) / cols
+  cell_px = 10 if cell_px < 10
+  cell_px = 34 if cell_px > 34
+  body = column(
+    {"gap": 2, "align": "start"},
+    range(0, row_count).map(fn(r) {
+      row(
+        {"gap": 2, "align": "center"},
+        [{
+          "k": "box",
+          "s": {"display": "row", "justify": "end", "align": "center", "width": gutter - 2},
+          "c": [text(row_labels[r] ?? str(r + 1), {"size": 0, "fg": "text.muted"})]
+        }].concat(range(0, cols).map(fn(c) {
+          v = grid[r][c] ?? 0;
+          chart_heat_cell(
+            id,
+            r,
+            c,
+            v,
+            int(24 + 231 * v / top),
+            cell_px,
+            (row_labels[r] ?? str(r + 1)) + " " + (col_labels[c] ?? str(c + 1)) + " · " + str(v)
+          )
+        }))
+      )
+    })
+  )
+  heads = row(
+    {"gap": 2, "align": "center"},
+    [{"k": "box", "s": {"width": gutter - 2}}].concat(range(0, cols).map(fn(c) {
+      {
+        "k": "box",
+        "s": {"width": cell_px, "display": "row", "justify": "center", "shrink": 0},
+        "c": [text(col_labels[c] ?? str(c + 1), {"size": 0, "fg": "text.muted"})]
+      }
+    }))
+  )
+  # The grid is a `stack` so the chip has one to live in: a popover is an
+  # absolute overlay child of a stack, whatever it is that places it.
+  stack({"width": w, "justify": "start", "align": "start"}, [column({"gap": 2, "width": w, "align": "start"}, [heads, body]), chart_tip(id)])
+end
+
+# ---- Dumbbell --------------------------------------------------------------
+#
+# Before and after, per item. Not two bars side by side: what the reader is
+# after is the distance, and a line between two dots draws the distance
+# itself. The "before" dot is the de-emphasis grey and the "after" dot is the
+# series hue, because the story is where things ended up.
+
+# The dumbbell's key. "Before" is the de-emphasis ink and "after" is the
+# series hue, because the story is where things ended up — and both are named,
+# because which end is which is not something a reader works out from a
+# colour.
+def chart_legend_pair(before, after)
+  row(
+    {"gap": 3, "align": "center", "justify": "center", "width": "100%"},
+    [
+      row(
+        {"gap": 1, "align": "center"},
+        [{"k": "box", "s": {"width": 10, "height": 10, "radius": 4, "bg": "text.muted", "shrink": 0}}, text(before, {"size": 0, "fg": "text.muted"})]
+      ),
+      row(
+        {"gap": 1, "align": "center"},
+        [{"k": "box", "s": {"width": 10, "height": 10, "radius": 4, "bg": "series.1", "shrink": 0}}, text(after, {"size": 0, "fg": "text.muted"})]
+      )
+    ]
+  )
+end
+
+def chart_dumbbell(id, items, w, h)
+  count = items.length()
+  return muted("nothing to compare") if count == 0
+
+  gutter = w / 4
+  gutter = 64 if gutter < 64
+  gutter = 140 if gutter > 140
+  plot_w = w - gutter - 8
+  ph = chart_plot_h(h)
+  row_h = (ph - 8) / count
+  top = 0
+  for it in items
+    top = it["from"] if it["from"] > top
+    top = it["to"] if it["to"] > top
+  end
+  top = 1 if top <= 0
+  # Hairlines down the plot, because a distance without a scale behind it is
+  # only a picture of a distance: four divisions is enough for the eye to see
+  # that one bar is twice another without the chart growing an axis.
+  paths = chart_grid_v(plot_w, ph, CHART_TICKS - 1)
+  for i in range(0, count)
+    y = 4 + i * row_h + row_h / 2;
+    x0 = 8 + (plot_w - 20) * items[i]["from"] / top;
+    x1 = 8 + (plot_w - 20) * items[i]["to"] / top;
+    paths = paths.concat([[0, "border.strong", 3, x0, y, x1, y]]);
+    paths = paths.concat([[3, "surface.raised", x0, y, 7]]);
+    paths = paths.concat([[3, "text.muted", x0, y, 5]]);
+    paths = paths.concat([[3, "surface.raised", x1, y, 7]]);
+    paths = paths.concat([[3, "series.1", x1, y, 5]])
+  end
+  drawing = canvas(plot_w, ph, paths)
+  names = column(
+    {"gap": 0, "width": gutter},
+    range(0, count).map(fn(i) {
+      {
+        "k": "box",
+        "s": {"display": "row", "align": "center", "justify": "end", "height": row_h, "width": "100%"},
+        "c": [text(items[i]["label"], {"size": 0, "fg": "text.muted", "clamp": 1})]
+      }
+    })
+  )
+  heights = range(0, count).map(fn(i) { row_h })
+  labels = range(0, count).map(fn(i) {
+    items[i]["label"] + " · " + str(items[i]["from"]) + " → " + str(items[i]["to"])
+  })
+  plot = row(
+    {"gap": 2, "width": w, "align": "start"},
+    [
+      column({"gap": 0, "width": gutter}, [names, {"k": "box", "s": {"height": CHART_AXIS_H}}]),
+      column(
+        {"gap": 0, "align": "center", "width": plot_w},
+        [chart_row_layers(id, heights, labels, plot_w, ph, drawing), chart_value_axis(0, top, plot_w, CHART_TICKS - 1)]
+      )
+    ]
+  )
+  column({"gap": 2, "width": w}, [plot, chart_legend_pair("Before", "After")])
+end
+
+# ---- Sparkline -------------------------------------------------------------
+#
+# A trend beside a headline number, with no axis, no grid and no labels: it
+# says "and it has been going this way", which is all the room allows. A
+# single bar chart of one value is not a chart; a number with a sparkline is.
+def chart_sparkline(vals, w, h)
+  points = chart_points(vals, w, h)
+  canvas(w, h, [[0, "series.1", 2].concat(flatten_points(points))])
+end
+
+# `stat` with the shape of the last few periods under the number.
+def stat_spark(label, value, hint, vals, w)
+  card(
+    {"gap": 1, "width": "100%"},
+    [
+      muted(label),
+      text(value, {"size": 6, "weight": "bold"}),
+      chart_sparkline(vals, w, 28),
+      text(hint, {"fg": "text.muted", "size": 0})
+    ]
+  )
 end
 
 # ---- Feed ------------------------------------------------------------------
