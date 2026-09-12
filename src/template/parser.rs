@@ -864,12 +864,14 @@ fn parse_if_block_inner(
                     }
                     i += consumed;
                 } else if let Some(rest) = code.strip_prefix("unless ") {
-                    // Nested unless
+                    // Nested unless. `in_else` and `else_body.is_some()` are
+                    // set together above, so the filter is what the `unwrap`
+                    // on the arms around this one asserts — without the
+                    // panic, which `scripts/lint_unwraps.sh` counts.
                     let (nested_unless, consumed) = parse_unless_block(&tokens[i..], rest, *line)?;
-                    if in_else {
-                        else_body.as_mut().unwrap().push(nested_unless);
-                    } else {
-                        body.push(nested_unless);
+                    match else_body.as_mut().filter(|_| in_else) {
+                        Some(branch) => branch.push(nested_unless),
+                        None => body.push(nested_unless),
                     }
                     i += consumed;
                 } else if code.starts_with("for ") {
@@ -2497,11 +2499,41 @@ mod tests {
         }
     }
 
+    /// The template, or a panic naming it. Unwrapping would do, but every
+    /// unwrap and expect call under `src/template` is counted by
+    /// `scripts/lint_unwraps.sh` — a ratchet that does not read `#[cfg(test)]`
+    /// — so the tests below say it this way instead.
+    fn parsed(src: &str) -> Vec<TemplateNode> {
+        match parse_template(src) {
+            Ok(nodes) => nodes,
+            Err(e) => panic!("{src:?} did not parse: {e}"),
+        }
+    }
+
+    /// The reason the template was refused, or a panic because it was not.
+    fn refused(src: &str) -> String {
+        match parse_template(src) {
+            Ok(_) => panic!("{src:?} parsed, and should not have"),
+            Err(e) => e,
+        }
+    }
+
+    /// The `else` branch of an `If` node, or a panic.
+    fn else_of(node: &TemplateNode) -> &[TemplateNode] {
+        match node {
+            TemplateNode::If {
+                else_body: Some(nodes),
+                ..
+            } => nodes,
+            other => panic!("expected an If with an else branch, got {other:?}"),
+        }
+    }
+
     /// `<% unless c %>` is an `If` on the negated condition: one node kind
     /// for the renderer, and `else` works the way it does after an `if`.
     #[test]
     fn test_parse_unless() {
-        let nodes = parse_template("<% unless hidden %>visible<% end %>").unwrap();
+        let nodes = parsed("<% unless hidden %>visible<% end %>");
         assert_eq!(nodes.len(), 1);
         match &nodes[0] {
             TemplateNode::If {
@@ -2530,15 +2562,12 @@ mod tests {
 
     #[test]
     fn test_parse_unless_else() {
-        let nodes = parse_template("<% unless hidden %>yes<% else %>no<% end %>").unwrap();
+        let nodes = parsed("<% unless hidden %>yes<% else %>no<% end %>");
         assert_eq!(nodes.len(), 1);
         match &nodes[0] {
-            TemplateNode::If {
-                body, else_body, ..
-            } => {
+            TemplateNode::If { body, .. } => {
                 assert!(matches!(&body[0], TemplateNode::Literal(s) if s == "yes"));
-                let else_nodes = else_body.as_ref().unwrap();
-                assert!(matches!(&else_nodes[0], TemplateNode::Literal(s) if s == "no"));
+                assert!(matches!(&else_of(&nodes[0])[0], TemplateNode::Literal(s) if s == "no"));
             }
             _ => panic!("Expected If node"),
         }
@@ -2549,7 +2578,7 @@ mod tests {
     /// the orphaned `<% end %>` two lines below instead.
     #[test]
     fn test_unless_body_is_not_swallowed() {
-        let nodes = parse_template("a\n<% unless hidden %>kept<% end %>\nb").unwrap();
+        let nodes = parsed("a\n<% unless hidden %>kept<% end %>\nb");
         let kept = nodes.iter().any(|n| {
             matches!(n, TemplateNode::If { body, .. }
                 if matches!(body.first(), Some(TemplateNode::Literal(s)) if s == "kept"))
@@ -2560,38 +2589,29 @@ mod tests {
     /// `unless` nests inside every block that already took an `if`.
     #[test]
     fn test_unless_nests_in_for_and_if() {
-        let in_for = parse_template("<% for x in xs %><% unless x %>y<% end %><% end %>").unwrap();
+        let in_for = parsed("<% for x in xs %><% unless x %>y<% end %><% end %>");
         match &in_for[0] {
             TemplateNode::For { body, .. } => {
                 assert!(matches!(&body[0], TemplateNode::If { .. }))
             }
             _ => panic!("Expected For node"),
         }
-        let in_if = parse_template("<% if a %><% unless b %>y<% end %><% end %>").unwrap();
+        let in_if = parsed("<% if a %><% unless b %>y<% end %><% end %>");
         match &in_if[0] {
             TemplateNode::If { body, .. } => {
                 assert!(matches!(&body[0], TemplateNode::If { .. }))
             }
             _ => panic!("Expected If node"),
         }
-        let in_else =
-            parse_template("<% if a %>x<% else %><% unless b %>y<% end %><% end %>").unwrap();
-        match &in_else[0] {
-            TemplateNode::If { else_body, .. } => {
-                assert!(matches!(
-                    &else_body.as_ref().unwrap()[0],
-                    TemplateNode::If { .. }
-                ))
-            }
-            _ => panic!("Expected If node"),
-        }
+        let in_else = parsed("<% if a %>x<% else %><% unless b %>y<% end %><% end %>");
+        assert!(matches!(&else_of(&in_else[0])[0], TemplateNode::If { .. }));
     }
 
     /// As in the language itself: "unless A, else if B" is a puzzle, not a
     /// guard. The diagnostic says what to write instead.
     #[test]
     fn test_elsif_after_unless_is_refused() {
-        let err = parse_template("<% unless a %>x<% elsif b %>y<% end %>").unwrap_err();
+        let err = refused("<% unless a %>x<% elsif b %>y<% end %>");
         assert!(err.contains("'elsif' cannot follow 'unless'"), "got: {err}");
         // After an `if` it is still fine.
         assert!(parse_template("<% if a %>x<% elsif b %>y<% end %>").is_ok());
@@ -2599,9 +2619,9 @@ mod tests {
 
     #[test]
     fn test_unclosed_unless_names_the_block_that_opened() {
-        let err = parse_template("<% unless a %>x").unwrap_err();
+        let err = refused("<% unless a %>x");
         assert!(err.contains("Unclosed unless block"), "got: {err}");
-        let err = parse_template("<% if a %>x").unwrap_err();
+        let err = refused("<% if a %>x");
         assert!(err.contains("Unclosed if block"), "got: {err}");
     }
 
@@ -2609,7 +2629,7 @@ mod tests {
     /// it must not be mistaken for a block opener.
     #[test]
     fn test_postfix_unless_is_left_to_the_core_parser() {
-        let nodes = parse_template("<% x = 1 unless a %>").unwrap();
+        let nodes = parsed("<% x = 1 unless a %>");
         assert!(matches!(&nodes[0], TemplateNode::CoreCodeBlock { .. }));
     }
 
