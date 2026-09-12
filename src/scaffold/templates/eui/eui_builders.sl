@@ -468,6 +468,20 @@ def checkbox_box_px(size)
   size_spec(size)["mark"]
 end
 
+# What a field stands at. The client gives a real `input` a floor of one
+# control (04, `place`: "an editable field is at least one control tall"), and
+# gives a box built to look like one no way to ask for the same — so a
+# `select`, a date field and a `multi_select` all came out four pixels under
+# the text field beside them. This is that floor, said on the server.
+#
+# It is exact rather than approximate: the theme scales `control` by density
+# and by nothing else, which is what `control_px` already reproduces. Density
+# reaches the view in `params["viewport"]`, and a caller that does not pass it
+# gets the cozy default, which is what it was before.
+def field_height(o)
+  control_px("md", o["density"] ?? "cozy")
+end
+
 def control_px(size, density)
   ix = size == "sm" ? 0 : (size == "lg" ? 2 : 1)
   factor = 1.0
@@ -2448,11 +2462,11 @@ end
 # A closed select is its anchor; open, a dropdown lists the options below it.
 # The server owns `open`: the anchor toggles it, an option picks and closes.
 # The anchor has a click handler, so Tab reaches it and Enter opens it.
-def select(options, value, open, on_toggle, on_pick)
-  select_sized(options, value, open, on_toggle, on_pick, 160, false)
+def select(options, value, open, on_toggle, on_pick, o = {})
+  select_sized(options, value, open, on_toggle, on_pick, 160, false, o)
 end
 
-def select_sized(options, value, open, on_toggle, on_pick, min_width, grow)
+def select_sized(options, value, open, on_toggle, on_pick, min_width, grow, o = {})
   # The same surface as the box you type into, for the same reason: a select
   # the colour of the card it sits on reads as a label until it is clicked.
   # The hover is the neutral tone's, so a select and a button answer the
@@ -2463,6 +2477,7 @@ def select_sized(options, value, open, on_toggle, on_pick, min_width, grow)
     "gap": 2,
     "pad": [2, 3, 2, 3],
     "min_width": min_width,
+    "min_height": field_height(o),
     "border": 1,
     "border_color": "border.default",
     "radius": 2,
@@ -2966,6 +2981,7 @@ def multi_select_anchor(options, sel, open, on_toggle, on_pick, o)
     "gap": 0,
     "pad": [2, 3, 2, 3],
     "min_width": o["min_width"] ?? 200,
+    "min_height": field_height(o),
     "border": 1,
     "border_color": "border.default",
     "radius": 2,
@@ -3657,6 +3673,7 @@ def picker_field(o, caption, empty, make)
       "justify": "start",
       "gap": 2,
       "width": o["width"] ?? "100%",
+      "min_height": field_height(o),
       # No `bg`: the neutral tone rests on `surface.sunken` and hovers to
       # `surface.raised`, which is what every other field does now. Naming
       # `raised` here made the resting state the hover state, so a date field
