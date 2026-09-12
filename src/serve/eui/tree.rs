@@ -1634,6 +1634,7 @@ fn event_kind(name: &str) -> Option<EventKind> {
         "wake" => EventKind::Wake,
         "file_pick" => EventKind::FilePick,
         "file_save" => EventKind::FileSave,
+        "file_drag" => EventKind::FileDrag,
         "location" => EventKind::Location,
         "nfc_tag" => EventKind::NfcTag,
         _ => return None,
@@ -1675,6 +1676,7 @@ pub fn event_name(kind: EventKind) -> &'static str {
         // because the wire has them, not because this server answers them.
         EventKind::FilePick => "file_pick",
         EventKind::FileSave => "file_save",
+        EventKind::FileDrag => "file_drag",
         EventKind::Location => "location",
         EventKind::NfcTag => "nfc_tag",
     }
