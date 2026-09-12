@@ -78,7 +78,16 @@ content; reach for `<%- %>` only when you can prove the value is trusted.
 <% if @posts.length() == 0 %>
   <p>No posts yet.</p>
 <% end %>
+
+<% unless @posts.length() == 0 %>
+  <a href="/posts/new">Write another</a>
+<% end %>
 ```
+
+`unless` is a block too, with `else` but no `elsif` — write the `if` the other
+way round for a second condition. Postfix `unless` works in a code tag
+(`<% flash = "" unless flash %>`) but not in an output tag: `<%= x unless c %>`
+is not an expression.
 
 `<% xs.each do |x| %> ... <% end %>` does **NOT** work inside ERB. The
 template engine only recognises `for x in xs` / `for x, i in xs` as the loop
@@ -402,8 +411,8 @@ app/views/
 - One template per action; pull cross-cutting markup into a partial.
 - Keep logic out of templates. If a `<% %>` block grows past a few lines,
   move it to a helper or a controller `@field`.
-- Always close your tags. `<% if %>` needs `<% end %>`; `<% for %>` needs
-  `<% end %>`.
+- Always close your tags. `<% if %>` needs `<% end %>`; so do `<% unless %>`
+  and `<% for %>`.
 
 ## Do / Don't
 

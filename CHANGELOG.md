@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+* **feat(template):** `<% unless cond %> … <% end %>` is a block in an ERB template. `parse_tokens` dispatched on five block openers — `if`, `for`, `content_for`, `form_with` and a component — and sent everything else to the language parser as a statement complete in its own tag. A block-form `unless` there does not insist on its `end` (`unless_statement` leaves `else_branch` `None` when neither `End` nor `Else` follows), so `<% unless c %>` parsed as an *empty* `unless`: the body was dropped without a word, and the template's own `<% end %>` then failed with `Unexpected 'end' outside of block`, pointing two lines below the mistake. It is now a real block everywhere an `if` already was — top level, and nested inside `if`/`else`, `for`, `content_for`, `form_with`, a component and a component slot — compiled as an `If` node on the negated condition, so the renderer learns no second node kind. `else` follows it; `elsif` is refused with a diagnostic naming the fix, as it is after an `unless` in the language itself. Postfix `unless` in a code tag (`<% x = 1 unless c %>`) is untouched and still belongs to the language parser
+
 ### Docs
 
 * **docs(eui):** the EUI reference is its own section. One page of 979 markdown lines (1 333 rendered) became eight under `/docs/eui/*` — overview, styling, events, assets, and the catalogue split across layout, input, content and internals — with a sidebar group of its own and `/docs/core-concepts/eui` redirecting so existing links still land. The reference had not been touched since the 10th and described none of the cycle's work: the 33 colour roles are now tabulated (the `series.*` family included), all 29 event kinds are listed with what fires them, and `eui_wake`, `scroll_to` and `position: "pointer"` are documented. The catalogue grew from 79 entries to 175 — every builder in `eui_builders.sl`, each with its signature and a **real** call site quoted from the demo app or the catalogue itself rather than an invented sample. Helpers are marked as implementation detail, and `control_px` is noted as defined-but-never-called

@@ -3,7 +3,7 @@
 //! Parses templates with syntax like:
 //! - `<%= expr %>` - HTML-escaped output
 //! - `<%- expr %>` - Raw/unescaped output
-//! - `<% code %>` - Control flow (if, for, end, else, elsif)
+//! - `<% code %>` - Control flow (if, unless, for, end, else, elsif)
 //! - `<%= yield %>` - Layout content insertion point
 //!
 //! `<%== expr %>` was removed in SEC-023 — it decoded HTML entities and
@@ -697,6 +697,11 @@ fn parse_tokens(tokens: &[Token]) -> Result<Vec<TemplateNode>, String> {
                     let (if_node, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     nodes.push(if_node);
                     i += consumed;
+                } else if let Some(rest) = code.strip_prefix("unless ") {
+                    // Parse unless block
+                    let (unless_node, consumed) = parse_unless_block(&tokens[i..], rest, *line)?;
+                    nodes.push(unless_node);
+                    i += consumed;
                 } else if code.starts_with("for ") {
                     // Parse for loop
                     let (for_node, consumed) = parse_for_block(&tokens[i..], *line)?;
@@ -747,8 +752,49 @@ fn parse_if_block(
     condition: crate::ast::expr::Expr,
     if_line: usize,
 ) -> Result<(TemplateNode, usize), String> {
+    parse_conditional_block(tokens, condition, if_line, "if")
+}
+
+/// `<% unless cond %> … <% else %> … <% end %>`.
+///
+/// The same block as `if` on the inverted condition, so the renderer sees one
+/// node kind and nothing downstream has to learn a second one. `elsif` is
+/// refused, as it is after an `unless` in the language itself: "unless A, else
+/// if B" reads as a puzzle rather than a guard.
+///
+/// Without this, `<% unless … %>` fell through to the core parser as a
+/// statement complete in its own tag — and since a block-form `unless` there
+/// does not insist on its `end`, it parsed as an *empty* one, silently. The
+/// template's `<% end %>` then arrived with no block open, and the error named
+/// that line rather than this one.
+fn parse_unless_block(
+    tokens: &[Token],
+    rest: &str,
+    unless_line: usize,
+) -> Result<(TemplateNode, usize), String> {
+    let condition = parse_core_expr(rest.trim(), unless_line)?;
+    let span = condition.span;
+    let negated = crate::ast::expr::Expr::new(
+        crate::ast::expr::ExprKind::Unary {
+            operator: crate::ast::expr::UnaryOp::Not,
+            operand: Box::new(condition),
+        },
+        span,
+    );
+    parse_conditional_block(tokens, negated, unless_line, "unless")
+}
+
+/// The body of an `if` or an `unless`, up to its `end`. `keyword` is the one
+/// that opened it: it names the block in a diagnostic, and says whether
+/// `elsif` may close a branch of it.
+fn parse_conditional_block(
+    tokens: &[Token],
+    condition: crate::ast::expr::Expr,
+    if_line: usize,
+    keyword: &str,
+) -> Result<(TemplateNode, usize), String> {
     enter_template_block(if_line)?;
-    let result = parse_if_block_inner(tokens, condition, if_line);
+    let result = parse_if_block_inner(tokens, condition, if_line, keyword);
     exit_template_block();
     result
 }
@@ -757,6 +803,7 @@ fn parse_if_block_inner(
     tokens: &[Token],
     condition: crate::ast::expr::Expr,
     if_line: usize,
+    keyword: &str,
 ) -> Result<(TemplateNode, usize), String> {
     let mut body = Vec::new();
     let mut else_body = None;
@@ -783,6 +830,13 @@ fn parse_if_block_inner(
                     else_body = Some(Vec::new());
                     i += 1;
                 } else if let Some(rest) = code.strip_prefix("elsif ") {
+                    if keyword != "if" {
+                        return Err(format!(
+                            "'elsif' cannot follow 'unless' at line {} - use 'if' with the \
+                             condition written the other way round",
+                            line
+                        ));
+                    }
                     // Handle elsif as nested if in else
                     let elsif_condition = parse_core_expr(rest.trim(), *line)?;
                     let (elsif_node, consumed) =
@@ -807,6 +861,15 @@ fn parse_if_block_inner(
                         else_body.as_mut().unwrap().push(nested_if);
                     } else {
                         body.push(nested_if);
+                    }
+                    i += consumed;
+                } else if let Some(rest) = code.strip_prefix("unless ") {
+                    // Nested unless
+                    let (nested_unless, consumed) = parse_unless_block(&tokens[i..], rest, *line)?;
+                    if in_else {
+                        else_body.as_mut().unwrap().push(nested_unless);
+                    } else {
+                        body.push(nested_unless);
                     }
                     i += consumed;
                 } else if code.starts_with("for ") {
@@ -870,8 +933,8 @@ fn parse_if_block_inner(
     }
 
     Err(format!(
-        "Unclosed if block at line {} - missing 'end'",
-        if_line
+        "Unclosed {} block at line {} - missing 'end'",
+        keyword, if_line
     ))
 }
 
@@ -924,6 +987,11 @@ fn parse_for_block_inner(
                     let condition = parse_core_expr(rest.trim(), *line)?;
                     let (nested_if, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     body.push(nested_if);
+                    i += consumed;
+                } else if let Some(rest) = code.strip_prefix("unless ") {
+                    // Nested unless
+                    let (nested_unless, consumed) = parse_unless_block(&tokens[i..], rest, *line)?;
+                    body.push(nested_unless);
                     i += consumed;
                 } else if code.starts_with("for ") {
                     // Nested for
@@ -1226,6 +1294,10 @@ fn parse_form_with_block_inner(
                     let (nested_if, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     body.push(nested_if);
                     i += consumed;
+                } else if let Some(rest) = code.strip_prefix("unless ") {
+                    let (nested_unless, consumed) = parse_unless_block(&tokens[i..], rest, *line)?;
+                    body.push(nested_unless);
+                    i += consumed;
                 } else if code.starts_with("for ") {
                     let (nested_for, consumed) = parse_for_block(&tokens[i..], *line)?;
                     body.push(nested_for);
@@ -1373,6 +1445,10 @@ fn parse_component_block_inner(
                     let (nested_if, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     body.push(nested_if);
                     i += consumed;
+                } else if let Some(rest) = code.strip_prefix("unless ") {
+                    let (nested_unless, consumed) = parse_unless_block(&tokens[i..], rest, *line)?;
+                    body.push(nested_unless);
+                    i += consumed;
                 } else if code.starts_with("for ") {
                     let (nested_for, consumed) = parse_for_block(&tokens[i..], *line)?;
                     body.push(nested_for);
@@ -1446,6 +1522,10 @@ fn parse_slot_block(
                     let condition = parse_core_expr(rest.trim(), *line)?;
                     let (nested_if, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     body.push(nested_if);
+                    i += consumed;
+                } else if let Some(rest) = code.strip_prefix("unless ") {
+                    let (nested_unless, consumed) = parse_unless_block(&tokens[i..], rest, *line)?;
+                    body.push(nested_unless);
                     i += consumed;
                 } else if code.starts_with("for ") {
                     let (nested_for, consumed) = parse_for_block(&tokens[i..], *line)?;
@@ -1553,6 +1633,10 @@ fn parse_content_for_block_inner(
                     let condition = parse_core_expr(rest.trim(), *line)?;
                     let (nested_if, consumed) = parse_if_block(&tokens[i..], condition, *line)?;
                     body.push(nested_if);
+                    i += consumed;
+                } else if let Some(rest) = code.strip_prefix("unless ") {
+                    let (nested_unless, consumed) = parse_unless_block(&tokens[i..], rest, *line)?;
+                    body.push(nested_unless);
                     i += consumed;
                 } else if code.starts_with("for ") {
                     let (nested_for, consumed) = parse_for_block(&tokens[i..], *line)?;
@@ -2411,6 +2495,122 @@ mod tests {
             }
             _ => panic!("Expected If node"),
         }
+    }
+
+    /// `<% unless c %>` is an `If` on the negated condition: one node kind
+    /// for the renderer, and `else` works the way it does after an `if`.
+    #[test]
+    fn test_parse_unless() {
+        let nodes = parse_template("<% unless hidden %>visible<% end %>").unwrap();
+        assert_eq!(nodes.len(), 1);
+        match &nodes[0] {
+            TemplateNode::If {
+                condition,
+                body,
+                else_body,
+                line,
+            } => {
+                match &condition.kind {
+                    crate::ast::expr::ExprKind::Unary { operator, operand } => {
+                        assert_eq!(*operator, crate::ast::expr::UnaryOp::Not);
+                        assert!(
+                            matches!(&operand.kind, crate::ast::expr::ExprKind::Variable(n) if n == "hidden")
+                        );
+                    }
+                    other => panic!("expected the condition negated, got {other:?}"),
+                }
+                assert_eq!(body.len(), 1);
+                assert!(matches!(&body[0], TemplateNode::Literal(s) if s == "visible"));
+                assert!(else_body.is_none());
+                assert_eq!(*line, 1);
+            }
+            _ => panic!("Expected If node"),
+        }
+    }
+
+    #[test]
+    fn test_parse_unless_else() {
+        let nodes = parse_template("<% unless hidden %>yes<% else %>no<% end %>").unwrap();
+        assert_eq!(nodes.len(), 1);
+        match &nodes[0] {
+            TemplateNode::If {
+                body, else_body, ..
+            } => {
+                assert!(matches!(&body[0], TemplateNode::Literal(s) if s == "yes"));
+                let else_nodes = else_body.as_ref().unwrap();
+                assert!(matches!(&else_nodes[0], TemplateNode::Literal(s) if s == "no"));
+            }
+            _ => panic!("Expected If node"),
+        }
+    }
+
+    /// The whole point of the change: the tag used to fall through to the
+    /// core parser as a complete, empty-bodied `unless`, and the error named
+    /// the orphaned `<% end %>` two lines below instead.
+    #[test]
+    fn test_unless_body_is_not_swallowed() {
+        let nodes = parse_template("a\n<% unless hidden %>kept<% end %>\nb").unwrap();
+        let kept = nodes.iter().any(|n| {
+            matches!(n, TemplateNode::If { body, .. }
+                if matches!(body.first(), Some(TemplateNode::Literal(s)) if s == "kept"))
+        });
+        assert!(kept, "the unless body must be in the tree: {nodes:?}");
+    }
+
+    /// `unless` nests inside every block that already took an `if`.
+    #[test]
+    fn test_unless_nests_in_for_and_if() {
+        let in_for = parse_template("<% for x in xs %><% unless x %>y<% end %><% end %>").unwrap();
+        match &in_for[0] {
+            TemplateNode::For { body, .. } => {
+                assert!(matches!(&body[0], TemplateNode::If { .. }))
+            }
+            _ => panic!("Expected For node"),
+        }
+        let in_if = parse_template("<% if a %><% unless b %>y<% end %><% end %>").unwrap();
+        match &in_if[0] {
+            TemplateNode::If { body, .. } => {
+                assert!(matches!(&body[0], TemplateNode::If { .. }))
+            }
+            _ => panic!("Expected If node"),
+        }
+        let in_else =
+            parse_template("<% if a %>x<% else %><% unless b %>y<% end %><% end %>").unwrap();
+        match &in_else[0] {
+            TemplateNode::If { else_body, .. } => {
+                assert!(matches!(
+                    &else_body.as_ref().unwrap()[0],
+                    TemplateNode::If { .. }
+                ))
+            }
+            _ => panic!("Expected If node"),
+        }
+    }
+
+    /// As in the language itself: "unless A, else if B" is a puzzle, not a
+    /// guard. The diagnostic says what to write instead.
+    #[test]
+    fn test_elsif_after_unless_is_refused() {
+        let err = parse_template("<% unless a %>x<% elsif b %>y<% end %>").unwrap_err();
+        assert!(err.contains("'elsif' cannot follow 'unless'"), "got: {err}");
+        // After an `if` it is still fine.
+        assert!(parse_template("<% if a %>x<% elsif b %>y<% end %>").is_ok());
+    }
+
+    #[test]
+    fn test_unclosed_unless_names_the_block_that_opened() {
+        let err = parse_template("<% unless a %>x").unwrap_err();
+        assert!(err.contains("Unclosed unless block"), "got: {err}");
+        let err = parse_template("<% if a %>x").unwrap_err();
+        assert!(err.contains("Unclosed if block"), "got: {err}");
+    }
+
+    /// A postfix `unless` in a code tag is a statement the core parser owns;
+    /// it must not be mistaken for a block opener.
+    #[test]
+    fn test_postfix_unless_is_left_to_the_core_parser() {
+        let nodes = parse_template("<% x = 1 unless a %>").unwrap();
+        assert!(matches!(&nodes[0], TemplateNode::CoreCodeBlock { .. }));
     }
 
     /// SEC-023: `<%==` must also be rejected when wrapped in control flow.

@@ -59,6 +59,27 @@ Controller instance fields are exposed as bare locals, but you can also referenc
 <% end %>
 ```
 
+`unless` is a block here too — the guard form, for the branch you want when a
+condition is *not* met, without writing `if !(...)`:
+
+```erb
+<% unless cart.empty? %>
+  <a href="/checkout">Checkout</a>
+<% end %>
+
+<% unless user.confirmed %>
+  <p>Confirm your address.</p>
+<% else %>
+  <p>You're all set.</p>
+<% end %>
+```
+
+`else` follows an `unless`; `elsif` does not — "unless A, else if B" reads as a
+puzzle rather than a guard, so the template refuses it and asks for an `if`
+written the other way round. Postfix `unless` works inside a code tag
+(`<% flash = "" unless flash %>`) but not inside an output tag: `<%= x unless c %>`
+is not an expression. Use a block, or `<%= c ? "" : x %>`.
+
 ### Helper Functions
 
 Templates have access to several built-in helper functions:
