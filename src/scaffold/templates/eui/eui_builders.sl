@@ -2938,7 +2938,7 @@ end
 # unreachable.
 def multi_select_chips(options, sel, on_pick, o)
   msp_chosen = options.filter(fn(opt) { selection_has?(sel, opt["id"]) })
-  return [text(o["placeholder"] ?? "Choose…", {"fg": "text.muted", "grow": 1})] if msp_chosen.length() == 0
+  return text(o["placeholder"] ?? "Choose…", {"fg": "text.muted", "grow": 1}) if msp_chosen.length() == 0
 
   msp_max = o["max_chips"] ?? 3
   msp_show = msp_chosen.length() > msp_max ? msp_max : msp_chosen.length()
@@ -2948,18 +2948,23 @@ def multi_select_chips(options, sel, on_pick, o)
   msp_parts = msp_parts.concat([
     muted("+" + str(msp_chosen.length() - msp_show))
   ]) if msp_chosen.length() > msp_show
-  msp_parts
+  # Their own row, with their own gap: the anchor's is 0, so that the sizer
+  # text beside them costs nothing, and the chips would otherwise touch.
+  row({"gap": 1, "align": "center", "grow": 1, "shrink": 1, "min_width": 0}, msp_parts)
 end
 
 # The field itself. `combo_box` is not one of §6 rule 1's leaf roles, so the
 # chips and their × stay visible to an assistive technology rather than being
 # flattened into the anchor's name.
 def multi_select_anchor(options, sel, open, on_toggle, on_pick, o)
+  # The same shell as `select_sized`'s anchor, down to the padding: these two
+  # stand side by side in a form and a field four pixels shorter than the one
+  # beside it reads as a mistake.
   msa_style = {
     "display": "row",
     "align": "center",
-    "gap": 1,
-    "pad": [1, 2, 1, 2],
+    "gap": 0,
+    "pad": [2, 3, 2, 3],
     "min_width": o["min_width"] ?? 200,
     "border": 1,
     "border_color": "border.default",
@@ -2969,11 +2974,19 @@ def multi_select_anchor(options, sel, open, on_toggle, on_pick, o)
     "transition": "fast"
   }
   msa_style["grow"] = 1 if o["grow"] == true
-  msa_kids = multi_select_chips(options, sel, on_pick, o)
-  msa_kids = msa_kids.concat([
-    spacer(),
-    icon("chevron_down", {"fg": "text.muted", "width": 14, "height": 14})
-  ])
+  # A select is as tall as the line of text in it. This one holds chips, which
+  # are shorter, so it would stand two pixels under its neighbour when
+  # something is chosen and four when nothing is — and it would *change* height
+  # as the first chip appeared. An empty text node has no width and a full
+  # line's height, so it fixes the box to a select's without pinning a pixel
+  # count that the viewer's font scale would then be wrong about. The gap is 0
+  # for its sake: a zero-width child still takes one, and the chips would sit a
+  # gap further in than the select's value beside them.
+  msa_kids = [
+    text("", {}),
+    multi_select_chips(options, sel, on_pick, o),
+    icon("chevron_down", {"fg": "text.muted", "width": 14, "height": 14, "margin": [0, 0, 0, 2]})
+  ]
   {
     "k": "box",
     "key": o["key"] + ":anchor",
