@@ -11,7 +11,7 @@
 //! table; Soli only reads its shape.
 
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::Arc;
 
 /// A column's type, reduced to the set Soli can round-trip.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -242,12 +242,16 @@ pub fn build_schema(
 
 // ---------- cache ----------
 
-type Cache = RwLock<HashMap<(String, String), Arc<TableSchema>>>;
+type Cache = HashMap<(String, String), Arc<TableSchema>>;
 
-fn cache() -> &'static Cache {
-    static CACHE: OnceLock<Cache> = OnceLock::new();
-    CACHE.get_or_init(|| RwLock::new(HashMap::new()))
-}
+/// Introspected table shapes, per application.
+///
+/// Keyed by (connection name, table), and both halves collide readily between
+/// two applications: `primary` and `users` are the obvious names. Shared, one
+/// application would be handed the other's column set — and column mode builds
+/// its SQL from exactly that.
+static CACHE: crate::serve::tenant::TenantValue<Cache> =
+    crate::serve::tenant::TenantValue::new(HashMap::new);
 
 /// Schema for `table` on the **active** connection, introspecting on first use.
 ///
@@ -258,16 +262,12 @@ pub fn get_schema(table: &str) -> Result<Arc<TableSchema>, String> {
     let connection = super::registry::active_connection_name();
     let key = (connection.clone(), table.to_string());
 
-    if let Ok(map) = cache().read() {
-        if let Some(found) = map.get(&key) {
-            return Ok(found.clone());
-        }
+    if let Some(found) = CACHE.read(|map| map.get(&key).cloned()) {
+        return Ok(found);
     }
 
     let schema = Arc::new(introspect(&connection, table)?);
-    if let Ok(mut map) = cache().write() {
-        map.insert(key, schema.clone());
-    }
+    CACHE.write(|map| map.insert(key, schema.clone()));
     Ok(schema)
 }
 
@@ -279,18 +279,14 @@ pub fn get_schema(table: &str) -> Result<Arc<TableSchema>, String> {
 /// until restart.
 pub fn invalidate_schema(table: &str) {
     let connection = super::registry::active_connection_name();
-    if let Ok(mut map) = cache().write() {
-        map.remove(&(connection, table.to_string()));
-    }
+    CACHE.write(|map| map.remove(&(connection, table.to_string())));
 }
 
 /// Drop every cached schema. Called on hot reload and when tests swap the
 /// connection registry, so a changed table (or a different database) is
 /// re-introspected rather than answered from a stale entry.
 pub fn clear_schema_cache() {
-    if let Ok(mut map) = cache().write() {
-        map.clear();
-    }
+    CACHE.write(|map| map.clear());
 }
 
 /// Introspect on the active connection, dispatching per adapter.

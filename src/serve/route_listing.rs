@@ -337,7 +337,7 @@ middleware("auth", fn() {
 
     #[test]
     fn collects_websocket_routes() {
-        // WEBSOCKET_ROUTES is a process-global registry (unlike the
+        // The WebSocket routes are a per-application registry (unlike the
         // thread-local HTTP table), so assert containment of a unique path,
         // never exact equality.
         let app = write_app(r#"websocket("/ws/route_listing_test_x9z", "chat#handle");"#);
