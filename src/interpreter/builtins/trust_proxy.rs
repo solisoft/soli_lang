@@ -13,6 +13,7 @@ use std::sync::Once;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
+use crate::serve::tenant::TenantValue;
 
 pub(crate) static TRUST_PROXY_ENABLED: AtomicBool = AtomicBool::new(false);
 static ENV_INIT: Once = Once::new();
@@ -101,19 +102,24 @@ fn parse_trusted_proxy_entry(raw: &str) -> Option<TrustedProxyEntry> {
     })
 }
 
-static TRUSTED_PROXIES: std::sync::OnceLock<Vec<TrustedProxyEntry>> = std::sync::OnceLock::new();
+/// The hops whose `X-Forwarded-*` headers this application trusts.
+///
+/// Per application, not per process: `SOLI_TRUSTED_PROXIES` is one app's
+/// deployment topology. A co-hosted app sitting behind a different proxy — or
+/// behind none — must not inherit the list, or it would honour forwarded
+/// headers from a client that reached it directly.
+static TRUSTED_PROXIES: TenantValue<Vec<TrustedProxyEntry>> =
+    TenantValue::new(read_trusted_proxies);
 
-fn trusted_proxies() -> &'static Vec<TrustedProxyEntry> {
-    TRUSTED_PROXIES.get_or_init(|| {
-        std::env::var("SOLI_TRUSTED_PROXIES")
-            .ok()
-            .map(|raw| {
-                raw.split(',')
-                    .filter_map(parse_trusted_proxy_entry)
-                    .collect()
-            })
-            .unwrap_or_default()
-    })
+fn read_trusted_proxies() -> Vec<TrustedProxyEntry> {
+    std::env::var("SOLI_TRUSTED_PROXIES")
+        .ok()
+        .map(|raw| {
+            raw.split(',')
+                .filter_map(parse_trusted_proxy_entry)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Whether the server should honor `X-Forwarded-Proto` / `X-Forwarded-Host`
@@ -142,15 +148,16 @@ pub fn is_trust_proxy_enabled() -> bool {
     // proxy that rewrites them; with the list set, a client that reaches the
     // app directly is not trusted even though the flag is on. Unset (the
     // default) keeps the previous all-or-nothing behaviour.
-    let trusted = trusted_proxies();
-    if trusted.is_empty() {
-        return true;
-    }
-    CURRENT_PEER_IP.with(|c| match *c.borrow() {
-        // No peer recorded: not an HTTP request path (a job, a script, a test),
-        // where there are no inbound forwarded headers to distrust.
-        None => true,
-        Some(peer) => trusted.iter().any(|entry| entry.contains(peer)),
+    TRUSTED_PROXIES.read(|trusted| {
+        if trusted.is_empty() {
+            return true;
+        }
+        CURRENT_PEER_IP.with(|c| match *c.borrow() {
+            // No peer recorded: not an HTTP request path (a job, a script, a
+            // test), where there are no inbound forwarded headers to distrust.
+            None => true,
+            Some(peer) => trusted.iter().any(|entry| entry.contains(peer)),
+        })
     })
 }
 
