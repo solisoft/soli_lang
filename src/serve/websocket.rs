@@ -970,54 +970,55 @@ pub struct WebSocketRoute {
     pub handler_name: String,
 }
 
-// Use lazy_static with Mutex for thread-safe access from both main thread and tokio threads
-lazy_static::lazy_static! {
-    pub static ref WEBSOCKET_ROUTES: std::sync::Mutex<Vec<WebSocketRoute>> = std::sync::Mutex::new(Vec::new());
-}
+/// WebSocket routes declared by the application on this thread.
+///
+/// Per application: `/chat` in one app and `/chat` in another are different
+/// endpoints, and this is what decides whose handler an upgrade reaches.
+/// Written on the main thread at boot and read from tokio threads, which is
+/// what the lock is for.
+static WEBSOCKET_ROUTES: crate::serve::tenant::TenantValue<Vec<WebSocketRoute>> =
+    crate::serve::tenant::TenantValue::new(Vec::new);
 
 /// Register a WebSocket route.
 /// Only stores path and handler_name (both thread-safe strings).
 /// The actual handler Value is looked up from CONTROLLERS registry when events are processed.
 pub fn register_websocket_route(path: &str, handler_name: &str) {
-    let mut routes = WEBSOCKET_ROUTES.lock().unwrap();
-    routes.push(WebSocketRoute {
-        path_pattern: path.to_string(),
-        handler_name: handler_name.to_string(),
+    WEBSOCKET_ROUTES.write(|routes| {
+        routes.push(WebSocketRoute {
+            path_pattern: path.to_string(),
+            handler_name: handler_name.to_string(),
+        });
     });
 }
 
 /// Get all WebSocket routes.
 pub fn get_websocket_routes() -> Vec<WebSocketRoute> {
-    WEBSOCKET_ROUTES.lock().unwrap().clone()
+    WEBSOCKET_ROUTES.read(|routes| routes.clone())
 }
 
 /// Match a path against WebSocket routes.
 pub fn match_websocket_route(path: &str) -> Option<WebSocketRoute> {
-    let routes = WEBSOCKET_ROUTES.lock().unwrap();
-    for route in routes.iter() {
-        if route.path_pattern == path {
-            return Some(route.clone());
-        }
-    }
-    None
+    WEBSOCKET_ROUTES.read(|routes| {
+        routes
+            .iter()
+            .find(|route| route.path_pattern == path)
+            .cloned()
+    })
 }
 
 /// Clear all WebSocket routes.
 pub fn clear_websocket_routes() {
-    let mut routes = WEBSOCKET_ROUTES.lock().unwrap();
-    routes.clear();
+    WEBSOCKET_ROUTES.write(|routes| routes.clear());
 }
 
 /// Take all WebSocket routes (consumes and returns them).
 pub fn take_websocket_routes() -> Vec<WebSocketRoute> {
-    let mut routes = WEBSOCKET_ROUTES.lock().unwrap();
-    std::mem::take(&mut *routes)
+    WEBSOCKET_ROUTES.write(std::mem::take)
 }
 
 /// Restore WebSocket routes from a previous state.
 pub fn restore_websocket_routes(routes: Vec<WebSocketRoute>) {
-    let mut ws_routes = WEBSOCKET_ROUTES.lock().unwrap();
-    *ws_routes = routes;
+    WEBSOCKET_ROUTES.write(|ws_routes| *ws_routes = routes);
 }
 
 /// The WebSocket registry for the application on this thread.

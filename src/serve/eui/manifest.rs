@@ -7,8 +7,6 @@
 //! so losing this file means every existing user must re-pin. Commit it to
 //! nothing public.
 
-use std::sync::OnceLock;
-
 use bytes::Bytes;
 use eui_proto::Manifest;
 use hyper::{header, Response, StatusCode};
@@ -37,9 +35,33 @@ pub fn request_capabilities(names: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn key_pair() -> Result<&'static Ed25519KeyPair, String> {
-    static KEY: OnceLock<Result<Ed25519KeyPair, String>> = OnceLock::new();
-    KEY.get_or_init(|| {
+/// This application's Ed25519 publisher key, loaded (or generated) on first use.
+///
+/// Per application, and this one is a *private key*: it is read from that
+/// application's `config/eui_publisher.pkcs8`, and clients pin the public half.
+/// A process-wide key would have signed every co-hosted application's manifest
+/// with whichever one booted first — so a client that pinned one publisher
+/// would silently accept manifests from another.
+///
+/// Held as an `Arc` because `Ed25519KeyPair` is neither `Clone` nor lendable
+/// out of the lock it lives in.
+static KEY: TenantValue<std::sync::Arc<Result<Ed25519KeyPair, String>>> =
+    TenantValue::new(load_key_pair);
+
+fn key_pair() -> Result<std::sync::Arc<Result<Ed25519KeyPair, String>>, String> {
+    let key = KEY.read(std::sync::Arc::clone);
+    match key.as_ref() {
+        Ok(_) => Ok(key),
+        Err(e) => Err(e.clone()),
+    }
+}
+
+fn load_key_pair() -> std::sync::Arc<Result<Ed25519KeyPair, String>> {
+    std::sync::Arc::new(read_or_generate_key())
+}
+
+fn read_or_generate_key() -> Result<Ed25519KeyPair, String> {
+    {
         // A desktop artifact points this at its per-install state directory:
         // the developer's key must never travel inside a bundle.
         let path = std::env::var_os("SOLI_EUI_KEY")
@@ -81,9 +103,7 @@ fn key_pair() -> Result<&'static Ed25519KeyPair, String> {
         };
         Ed25519KeyPair::from_pkcs8(&pkcs8)
             .map_err(|_| format!("EUI: {} is not an Ed25519 PKCS#8 key", path.display()))
-    })
-    .as_ref()
-    .map_err(Clone::clone)
+    }
 }
 
 /// The manifest bytes, signed — once per capability mask. Every request
@@ -105,6 +125,7 @@ pub fn bytes() -> Result<Vec<u8>, String> {
 
 fn sign(capabilities: u32) -> Result<Vec<u8>, String> {
     let key = key_pair()?;
+    let key = key.as_ref().as_ref().map_err(Clone::clone)?;
     let root = get_app_root();
     let app_id = root
         .canonicalize()

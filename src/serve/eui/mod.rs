@@ -26,6 +26,7 @@ use tungstenite::Message;
 use crate::interpreter::value::Value;
 use crate::interpreter::Interpreter;
 use crate::live::view::{live_registry, LiveViewInstance};
+use crate::serve::tenant::TenantValue;
 use crate::span::Span;
 
 use self::stats::Stats;
@@ -33,8 +34,10 @@ use super::{
     handler_return_is_bare, json_to_value, unwrap_handler_return, value_to_json, LiveViewEventData,
 };
 
-/// `component -> view action`, filled by `router_eui`.
-static EUI_VIEWS: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+/// `component -> view action`, filled by `router_eui`. Per application: two
+/// apps may both register a component called `counter`, and this is what
+/// decides whose view renders it.
+static EUI_VIEWS: TenantValue<HashMap<String, String>> = TenantValue::new(HashMap::new);
 
 /// Per-instance encoder state: tables, node ids, the previous tree.
 ///
@@ -45,7 +48,10 @@ static EUI_VIEWS: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 /// Two frames of the *same* session still cannot overlap, and are already
 /// held apart before they get here by the per-LiveView frame lock.
 type EncoderCell = std::sync::Arc<Mutex<tree::Encoder>>;
-static EUI_ENCODERS: Mutex<Option<HashMap<String, EncoderCell>>> = Mutex::new(None);
+/// Per application as well as per instance: the keys are session ids minted by
+/// one application, and an encoder holds that session's interned tables and
+/// previous tree.
+static EUI_ENCODERS: TenantValue<HashMap<String, EncoderCell>> = TenantValue::new(HashMap::new);
 
 /// The synthetic event the socket posts when the client asks for a resync:
 /// the handler is not run, the tree is re-sent whole.
@@ -58,23 +64,19 @@ pub const FORGET_EVENT: &str = "__eui_forget";
 
 /// Components whose socket needs a session cookie: `router_eui(component,
 /// handler, view, {"session": "required"})`.
-static EUI_SESSION_REQUIRED: Mutex<Option<std::collections::HashSet<String>>> = Mutex::new(None);
+/// Per application: whether a component's socket needs a session cookie is one
+/// app's policy, and refusing the upgrade is a security decision.
+static EUI_SESSION_REQUIRED: TenantValue<std::collections::HashSet<String>> =
+    TenantValue::new(std::collections::HashSet::new);
 
 /// Refuse the upgrade for `component` unless the request carries a session.
 pub fn require_session(component: &str) {
-    let mut g = EUI_SESSION_REQUIRED
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    g.get_or_insert_with(Default::default)
-        .insert(component.to_string());
+    EUI_SESSION_REQUIRED.write(|set| set.insert(component.to_string()));
 }
 
 /// True when `router_eui` declared this component needs a session.
 pub fn session_required(component: &str) -> bool {
-    let g = EUI_SESSION_REQUIRED
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    g.as_ref().is_some_and(|set| set.contains(component))
+    EUI_SESSION_REQUIRED.read(|set| set.contains(component))
 }
 
 /// A handler answered `{"close": reason}`. The worker's answer to the
@@ -103,21 +105,17 @@ pub fn forget_on_worker(liveview_id: &str) {
 
 /// True while the instance's encoder is still around: the session is live.
 pub fn has_encoder(liveview_id: &str) -> bool {
-    let g = EUI_ENCODERS.lock().unwrap_or_else(|e| e.into_inner());
-    g.as_ref().is_some_and(|m| m.contains_key(liveview_id))
+    EUI_ENCODERS.read(|m| m.contains_key(liveview_id))
 }
 
 /// Register a component's view action.
 pub fn register_view(component: &str, view: &str) {
-    let mut g = EUI_VIEWS.lock().unwrap_or_else(|e| e.into_inner());
-    g.get_or_insert_with(HashMap::new)
-        .insert(component.to_string(), view.to_string());
+    EUI_VIEWS.write(|m| m.insert(component.to_string(), view.to_string()));
 }
 
 /// True when `router_eui` registered this component.
 pub fn is_eui_component(component: &str) -> bool {
-    let g = EUI_VIEWS.lock().unwrap_or_else(|e| e.into_inner());
-    g.as_ref().is_some_and(|m| m.contains_key(component))
+    EUI_VIEWS.read(|m| m.contains_key(component))
 }
 
 /// Render every live session of a component, now, because something the
@@ -194,17 +192,13 @@ pub fn wake_component(component: &str, event: &str, except: Option<&str>) -> usi
 }
 
 fn view_action(component: &str) -> Option<String> {
-    let g = EUI_VIEWS.lock().unwrap_or_else(|e| e.into_inner());
-    g.as_ref().and_then(|m| m.get(component).cloned())
+    EUI_VIEWS.read(|m| m.get(component).cloned())
 }
 
 /// Run `f` against the instance's encoder, creating it on first use.
 pub fn with_encoder<T>(liveview_id: &str, f: impl FnOnce(&mut tree::Encoder) -> T) -> T {
-    let cell = {
-        let mut g = EUI_ENCODERS.lock().unwrap_or_else(|e| e.into_inner());
-        let map = g.get_or_insert_with(HashMap::new);
-        std::sync::Arc::clone(map.entry(liveview_id.to_string()).or_default())
-    };
+    let cell = EUI_ENCODERS
+        .write(|map| std::sync::Arc::clone(map.entry(liveview_id.to_string()).or_default()));
     // The map is unlocked here: the encode below is this instance's own.
     let mut encoder = cell.lock().unwrap_or_else(|e| e.into_inner());
     f(&mut encoder)
@@ -215,10 +209,7 @@ pub fn with_encoder<T>(liveview_id: &str, f: impl FnOnce(&mut tree::Encoder) -> 
 /// runs on the socket's task — the socket posts [`FORGET_EVENT`] for that.
 pub fn drop_encoder(liveview_id: &str) {
     stats::forget(liveview_id);
-    let mut g = EUI_ENCODERS.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(map) = g.as_mut() {
-        map.remove(liveview_id);
-    }
+    EUI_ENCODERS.write(|map| map.remove(liveview_id));
 }
 
 /// How long one render waits on a socket that is not draining its frames
