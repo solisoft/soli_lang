@@ -84,6 +84,14 @@ Mount-time state — the app root, the jails, the views directory, the model and
 
 `tests/tenant_isolation_test.rs` is the acceptance criterion. It mounts two applications on one thread and asserts each sees only its own root, jail and collections; that a worker thread pinned to a tenant reads what the mounting thread wrote (which is why this state is in the process-wide registry rather than a `thread_local!`); and that the primary tenant is untouched by the others, which is what makes the whole conversion a no-op for `soli serve`.
 
+### The request path's tenant bundle
+
+`handle_hyper_request` used to take seven separate per-application arguments — the worker queue, the reload channel, the public dir, the asset cache, the two realtime senders, the dev flag. They are now one `TenantRuntime`, destructured at the top of the function so its 1400-line body is unchanged.
+
+That is the shape a host needs: picking which application serves a request becomes one lookup against one value from the `Host` header, not seven parallel maps. With a single application there is exactly one `TenantRuntime` (`TenantId::PRIMARY`) and nothing about the request path changes.
+
+Its `tenant` field is not read on the request path yet, and that is deliberate: worker threads are pinned to their tenant, so choosing the queue already chooses the tenant. A host that ever shared one worker pool between applications would bind from that field instead.
+
 ### Deliberately left alone
 
 Three, each for a reason worth reading before "finishing" them:
