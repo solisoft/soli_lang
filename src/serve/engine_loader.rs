@@ -6,7 +6,6 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
 
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::model::EngineContextGuard;
@@ -17,6 +16,7 @@ use crate::serve::app_loader::{
     controller_key_from_path, execute_file as interp_execute_file, sort_controllers_by_dependency,
 };
 use crate::serve::router::{derive_routes_from_controller, to_pascal_case_controller};
+use crate::serve::tenant::TenantValue;
 use crate::serve::FileTracker;
 use crate::span::Span;
 
@@ -40,30 +40,32 @@ pub struct EngineMount {
     pub mounted_at: String,
 }
 
-lazy_static::lazy_static! {
-    static ref MOUNTED_ENGINES: RwLock<HashMap<String, Engine>> = RwLock::new(HashMap::new());
-}
+/// Engines mounted by the application on this thread.
+///
+/// Per application, not per process: which engines are mounted, and at which
+/// prefix, is a property of one app's `config`. A co-hosted app must not
+/// resolve a view or a route through an engine it never mounted.
+static MOUNTED_ENGINES: TenantValue<HashMap<String, Engine>> = TenantValue::new(HashMap::new);
 
 pub fn get_mounted_engine(name: &str) -> Option<Engine> {
-    MOUNTED_ENGINES.read().unwrap().get(name).cloned()
+    MOUNTED_ENGINES.read(|engines| engines.get(name).cloned())
 }
 
 pub fn get_all_mounted_engines() -> Vec<Engine> {
-    MOUNTED_ENGINES.read().unwrap().values().cloned().collect()
+    MOUNTED_ENGINES.read(|engines| engines.values().cloned().collect())
 }
 
 pub fn is_engine_name(name: &str) -> bool {
-    MOUNTED_ENGINES.read().unwrap().contains_key(name)
+    MOUNTED_ENGINES.read(|engines| engines.contains_key(name))
 }
 
 pub fn get_engine_for_path(path: &str) -> Option<Engine> {
-    let engines = MOUNTED_ENGINES.read().unwrap();
-    for engine in engines.values() {
-        if path.starts_with(&engine.mounted_at) {
-            return Some(engine.clone());
-        }
-    }
-    None
+    MOUNTED_ENGINES.read(|engines| {
+        engines
+            .values()
+            .find(|engine| path.starts_with(&engine.mounted_at))
+            .cloned()
+    })
 }
 
 pub fn strip_engine_path(path: &str) -> String {
@@ -251,20 +253,20 @@ fn extract_engine_dependencies(source: &str) -> Result<Vec<String>, String> {
 pub fn mount_engines(app_path: &Path, config: &EngineConfig) -> Result<(), String> {
     let discovered = discover_engines(app_path)?;
 
-    let mut mounted = MOUNTED_ENGINES.write().unwrap();
-
-    for mount in &config.engines {
-        if let Some(mut engine) = discovered.iter().find(|e| e.name == mount.name).cloned() {
-            engine.mounted_at = mount.mounted_at.clone();
-            mounted.insert(engine.name.clone(), engine);
-            println!("  Mounted engine '{}' at {}", mount.name, mount.mounted_at);
-        } else {
-            eprintln!(
-                "  Warning: Engine '{}' not found in engines/ directory",
-                mount.name
-            );
+    MOUNTED_ENGINES.write(|mounted| {
+        for mount in &config.engines {
+            if let Some(mut engine) = discovered.iter().find(|e| e.name == mount.name).cloned() {
+                engine.mounted_at = mount.mounted_at.clone();
+                mounted.insert(engine.name.clone(), engine);
+                println!("  Mounted engine '{}' at {}", mount.name, mount.mounted_at);
+            } else {
+                eprintln!(
+                    "  Warning: Engine '{}' not found in engines/ directory",
+                    mount.name
+                );
+            }
         }
-    }
+    });
 
     Ok(())
 }
@@ -899,8 +901,7 @@ pub(crate) fn lock_engine_context_for_test() -> std::sync::MutexGuard<'static, (
 
 pub fn reset_engine_context() {
     crate::interpreter::builtins::model::set_model_engine_context(None);
-    let mut mounted = MOUNTED_ENGINES.write().unwrap();
-    mounted.clear();
+    MOUNTED_ENGINES.write(|mounted| mounted.clear());
 }
 
 #[cfg(test)]

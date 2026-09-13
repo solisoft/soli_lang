@@ -26,7 +26,6 @@
 //! return `null`, indistinguishable from an absent cookie.
 
 use std::cell::RefCell;
-use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -34,6 +33,8 @@ use base64::Engine as _;
 use hkdf::Hkdf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+
+use crate::serve::tenant::TenantCell;
 use sha2::Sha256;
 
 use super::crypto::{
@@ -248,7 +249,12 @@ impl CookieJar {
 // Derived jar, cached against the secret string it came from — NOT a OnceLock,
 // because `session_configure({"secret": ...})` and per-test secrets can change
 // the secret at runtime and the jar must follow.
-static JAR_CACHE: RwLock<Option<(String, CookieJar)>> = RwLock::new(None);
+//
+// Per application, not per process: the jar holds the keys that sign and
+// encrypt cookies, derived from that application's `SOLI_SESSION_SECRET`. Two
+// applications sharing one cache would mean either could mint a cookie the
+// other trusts.
+static JAR_CACHE: TenantCell<(String, CookieJar)> = TenantCell::new();
 
 /// The jar for the currently-configured session secret, deriving (and
 /// caching) it on first use. Errs when no secret is configured.
@@ -262,13 +268,13 @@ pub(crate) fn current_jar() -> Result<CookieJar, String> {
 }
 
 fn jar_for_secret(secret: &str) -> Result<CookieJar, String> {
-    if let Some((cached_secret, jar)) = JAR_CACHE.read().unwrap().as_ref() {
+    if let Some((cached_secret, jar)) = JAR_CACHE.get() {
         if cached_secret == secret {
-            return Ok(jar.clone());
+            return Ok(jar);
         }
     }
     let jar = CookieJar::new(secret)?;
-    *JAR_CACHE.write().unwrap() = Some((secret.to_string(), jar.clone()));
+    JAR_CACHE.set((secret.to_string(), jar.clone()));
     Ok(jar)
 }
 

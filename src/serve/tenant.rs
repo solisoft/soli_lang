@@ -229,6 +229,217 @@ pub fn bind_current(id: TenantId) {
 }
 
 // ---------------------------------------------------------------------------
+// Per-tenant replacements for a process-global singleton
+// ---------------------------------------------------------------------------
+
+/// A value that used to be one per process and is now one per application.
+///
+/// Most of the singletons still to convert are a `Mutex<Option<T>>`, a
+/// `OnceLock<T>` or a `Mutex<HashMap<..>>` declared next to the code that uses
+/// them. Hanging each one off [`Tenant`] would mean a field, two accessors and
+/// a `use` per global, and would collect two dozen unrelated locks in one
+/// struct. This keeps each global where it is and changes only what it is:
+///
+/// ```ignore
+/// static MAILER_CONFIG: Mutex<Option<MailerConfig>> = Mutex::new(None);
+/// // becomes
+/// static MAILER_CONFIG: TenantCell<MailerConfig> = TenantCell::new();
+/// ```
+///
+/// Call sites keep their shape — `get()`, `set()`, `get_or_init()` — and
+/// silently address the tenant the calling thread is serving. With one
+/// application that is always [`TenantId::PRIMARY`], so the map holds a single
+/// entry and behaviour is unchanged.
+///
+/// `T` must be `Send + Sync`: this is read from any thread serving the tenant.
+/// Anything `Rc`-based belongs in a [`TenantLocal`] instead.
+pub struct TenantCell<T> {
+    slots: RwLock<Option<std::collections::HashMap<TenantId, T>>>,
+}
+
+impl<T: Clone> Default for TenantCell<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: Clone> TenantCell<T> {
+    /// `const` so it can replace a `Mutex::new(None)` in a `static` directly,
+    /// without dragging in `LazyLock` at every call site.
+    pub const fn new() -> Self {
+        Self {
+            slots: RwLock::new(None),
+        }
+    }
+
+    /// This tenant's value, or `None` if it never set one.
+    pub fn get(&self) -> Option<T> {
+        self.slots
+            .read()
+            .ok()
+            .and_then(|slots| slots.as_ref()?.get(&current_id()).cloned())
+    }
+
+    /// Replace this tenant's value.
+    pub fn set(&self, value: T) {
+        if let Ok(mut slots) = self.slots.write() {
+            slots
+                .get_or_insert_with(Default::default)
+                .insert(current_id(), value);
+        }
+    }
+
+    /// Install a value only if this tenant has none — the `OnceLock::set`
+    /// shape. Returns whether it was installed.
+    pub fn set_once(&self, value: T) -> bool {
+        match self.slots.write() {
+            Ok(mut slots) => {
+                let map = slots.get_or_insert_with(Default::default);
+                match map.entry(current_id()) {
+                    std::collections::hash_map::Entry::Occupied(_) => false,
+                    std::collections::hash_map::Entry::Vacant(slot) => {
+                        slot.insert(value);
+                        true
+                    }
+                }
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// This tenant's value, creating it on first use.
+    pub fn get_or_init(&self, init: impl FnOnce() -> T) -> T {
+        if let Some(existing) = self.get() {
+            return existing;
+        }
+        // `init` runs outside the write lock: it may itself touch the tenant
+        // registry, and re-entering this lock would deadlock.
+        let value = init();
+        match self.slots.write() {
+            Ok(mut slots) => slots
+                .get_or_insert_with(Default::default)
+                .entry(current_id())
+                .or_insert(value)
+                .clone(),
+            Err(_) => value,
+        }
+    }
+
+    /// Drop this tenant's value, so the next `get_or_init` rebuilds it. Used by
+    /// hot reload, and by a tenant going to sleep.
+    pub fn clear(&self) {
+        if let Ok(mut slots) = self.slots.write() {
+            if let Some(map) = slots.as_mut() {
+                map.remove(&current_id());
+            }
+        }
+    }
+}
+
+/// A value that used to be one per process, where every application needs its
+/// own and there is an obvious way to build a fresh one.
+///
+/// [`TenantCell`] models `Mutex<Option<T>>` — a slot that may be empty.
+/// This models the other common shape, `lazy_static! { RwLock<T> }`: a value
+/// that always exists because it can be constructed on demand, and that callers
+/// mutate in place. The constructor is part of the declaration, so it replaces
+/// `lazy_static!` outright and stays `const`:
+///
+/// ```ignore
+/// lazy_static! { static ref MAILER_CONFIG: RwLock<MailerConfig> =
+///     RwLock::new(MailerConfig::from_env()); }
+/// // becomes
+/// static MAILER_CONFIG: TenantValue<MailerConfig> =
+///     TenantValue::new(MailerConfig::from_env);
+/// ```
+///
+/// `read`/`write` take a closure rather than returning a guard: the value lives
+/// inside a map inside the lock, and stable Rust has no way to hand out a guard
+/// borrowed into it. In exchange the lock is always released.
+pub struct TenantValue<T: 'static> {
+    init: fn() -> T,
+    slots: RwLock<Option<std::collections::HashMap<TenantId, T>>>,
+}
+
+impl<T: 'static> TenantValue<T> {
+    pub const fn new(init: fn() -> T) -> Self {
+        Self {
+            init,
+            slots: RwLock::new(None),
+        }
+    }
+
+    /// Read this tenant's value, building it on first use.
+    pub fn read<R>(&self, f: impl FnOnce(&T) -> R) -> R {
+        // Fast path: a shared lock, which is what almost every call wants.
+        if let Ok(slots) = self.slots.read() {
+            if let Some(value) = slots.as_ref().and_then(|m| m.get(&current_id())) {
+                return f(value);
+            }
+        }
+        self.write(|value| f(value))
+    }
+
+    /// Mutate this tenant's value, building it on first use.
+    pub fn write<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+        let id = current_id();
+        let mut slots = self.slots.write().unwrap_or_else(|e| e.into_inner());
+        let map = slots.get_or_insert_with(Default::default);
+        f(map.entry(id).or_insert_with(self.init))
+    }
+
+    /// Drop this tenant's value, so the next access rebuilds it.
+    pub fn reset(&self) {
+        if let Ok(mut slots) = self.slots.write() {
+            if let Some(map) = slots.as_mut() {
+                map.remove(&current_id());
+            }
+        }
+    }
+}
+
+/// The thread-confined counterpart of [`TenantCell`], for anything `Rc`-based:
+/// interpreters, `Rc<Class>` registries, view helpers, parsed handler caches.
+///
+/// Those cannot live in the process-wide registry at all — they are not `Send`
+/// — so they stay in a `thread_local!`. What changes is that the slot is keyed
+/// by tenant instead of holding one unkeyed value, so a thread that ever serves
+/// two applications keeps their classes apart. Worker threads are pinned, so in
+/// practice the map holds one entry.
+///
+/// Declare it inside a `thread_local!` exactly as the `RefCell` it replaces.
+pub struct TenantLocal<T> {
+    slots: std::cell::RefCell<std::collections::HashMap<TenantId, T>>,
+}
+
+impl<T> Default for TenantLocal<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> TenantLocal<T> {
+    pub fn new() -> Self {
+        Self {
+            slots: std::cell::RefCell::new(std::collections::HashMap::new()),
+        }
+    }
+
+    /// Run `f` against this tenant's value on this thread, creating it on first
+    /// use.
+    pub fn with<R>(&self, init: impl FnOnce() -> T, f: impl FnOnce(&mut T) -> R) -> R {
+        let id = current_id();
+        let mut slots = self.slots.borrow_mut();
+        f(slots.entry(id).or_insert_with(init))
+    }
+
+    /// Drop this tenant's value on this thread.
+    pub fn clear(&self) {
+        self.slots.borrow_mut().remove(&current_id());
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Convenience wrappers for the app root
 // ---------------------------------------------------------------------------
 
