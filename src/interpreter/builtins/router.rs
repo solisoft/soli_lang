@@ -824,6 +824,68 @@ pub fn register_router_builtins(env: &mut Environment) {
         })),
     );
 
+    // eui_asset(data) — put bytes in the asset store and name them.
+    //
+    // A picture a view wants to draw does not have to be a file. `src` takes
+    // a path under `public/` or `app/assets/` because that is where a view's
+    // own pictures live, but an attachment stored in SoliDB or S3 has no path
+    // and never should: promoting one back onto the server's disk just to
+    // show it undoes the storage choice. This hands the bytes to the same
+    // content-addressed store `from_file` fills and answers with the name the
+    // client asks for them by — `{"asset": "<64 hex>"}`, which `src` takes in
+    // place of a path.
+    //
+    // A String is read as base64 (the form `read_upload`, `uploaded_file_at`
+    // and `Image.to_buffer` all speak); an array is read as raw bytes.
+    //
+    // Call it on every render rather than remembering what it answered. The
+    // store is an LRU (256 MiB) and eviction is silent: a hash kept from an
+    // earlier render can name bytes that are no longer there, and the client
+    // gets a 404 and a hole where the picture was, with nothing logged. A
+    // second `put` of bytes already held is a hash and a map touch.
+    #[cfg(feature = "eui")]
+    env.define(
+        "eui_asset".to_string(),
+        Value::NativeFunction(NativeFunction::new("eui_asset", Some(1), |args| {
+            let bytes: Vec<u8> = match &args[0] {
+                Value::String(b64) => {
+                    use base64::Engine;
+                    base64::engine::general_purpose::STANDARD
+                        .decode(b64.trim())
+                        .map_err(|e| format!("eui_asset() data is not base64: {e}"))?
+                }
+                Value::Array(items) => items
+                    .borrow()
+                    .iter()
+                    .map(|v| match v {
+                        Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+                        other => Err(format!(
+                            "eui_asset() expects bytes (0-255), got {}",
+                            other.type_name()
+                        )),
+                    })
+                    .collect::<Result<Vec<u8>, String>>()?,
+                Value::Null => return Err("eui_asset() was given nothing to store".to_string()),
+                other => {
+                    return Err(format!(
+                        "eui_asset() expects base64 or an array of bytes, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let hash = crate::serve::eui::assets::put(bytes)?;
+            let mut hex = String::with_capacity(64);
+            for b in hash.iter() {
+                use std::fmt::Write;
+                let _ = write!(hex, "{b:02x}");
+            }
+            Ok(crate::interpreter::value::hash_from_pairs([(
+                "asset",
+                Value::String(hex.into()),
+            )]))
+        })),
+    );
+
     // eui_wake(component) — render every other live session of an EUI
     // component, now.
     //

@@ -337,6 +337,11 @@ pub const MIME_TYPES: &[(&str, &str)] = &[
     ("map", "application/json"),
     ("htm", "text/html"),
     ("txt", "text/plain; charset=utf-8"),
+    // A log is text, and saying so is what lets one be attached: an uploader's
+    // allow-list matches the type this table returns, and the fallback for an
+    // extension it does not know is `application/octet-stream` — which no
+    // allow-list worth having contains.
+    ("log", "text/plain; charset=utf-8"),
     ("xml", "application/xml"),
     ("m4a", "audio/mp4"),
     ("oga", "audio/ogg"),

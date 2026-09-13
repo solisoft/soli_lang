@@ -1090,11 +1090,27 @@ impl Encoder {
             let atom = self.atom(name);
             // An image's `src` is a file in the application; it goes on
             // the wire as the hash of its bytes, served from /_eui/asset.
+            //
+            // Or it is already in the store and names itself:
+            // `{"asset": "<64 hex>"}`, what `eui_asset` answers, which is how
+            // bytes that have no file — an attachment in SoliDB or S3 — reach
+            // a window. An object and not an `"asset:<hex>"` string because a
+            // path is only rejected after it is resolved, so `asset:foo.png`
+            // under `public/` is a name a file may legally have and a prefix
+            // would be ambiguous with it.
             let value = if matches!(kind, NodeKind::Image | NodeKind::Audio | NodeKind::Video)
                 && name == "src"
             {
                 match v {
                     Json::String(path) => WireValue::Asset(super::assets::from_file(path)?),
+                    Json::Object(o) if o.len() == 1 => {
+                        let hex = o.get("asset").and_then(Json::as_str).ok_or_else(|| {
+                            format!("EUI: a src object must be {{\"asset\": \"<hash>\"}}, got {v}")
+                        })?;
+                        WireValue::Asset(super::assets::parse_hex(hex).ok_or_else(|| {
+                            format!("EUI: a src asset must be 64 hex characters, got '{hex}'")
+                        })?)
+                    }
                     other => return Err(format!("EUI: a src must be a path, got {other}")),
                 }
             } else if kind == NodeKind::Canvas && name == "paths" {
@@ -1876,6 +1892,57 @@ fn find(node: &TNode, id: u32) -> Option<&TNode> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_src_names_bytes_in_the_store_as_well_as_a_file() {
+        // Bytes that were never a file — an attachment out of SoliDB or S3 —
+        // reach a window by the name the store gave them. Anything else in a
+        // `src` has to say so plainly, because the alternative is a window
+        // drawing a hole with nothing logged.
+        let hash = super::super::assets::put(b"not a file, just bytes".to_vec()).unwrap();
+        let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+
+        let mut enc = Encoder::default();
+        let tree = json!({"k": "box", "c": [
+            {"k": "image", "key": "kept", "p": {"src": {"asset": hex.clone()}}}
+        ]});
+        enc.render(&tree, false).unwrap();
+
+        let src = enc.atom("src");
+        let node = &enc.prev.as_ref().unwrap().children[0];
+        let drawn = node
+            .node()
+            .props
+            .iter()
+            .find(|(a, _)| *a == src)
+            .unwrap()
+            .1
+            .clone();
+        assert_eq!(
+            wire_to_json(&enc, &drawn),
+            json!(hex),
+            "the src is the asset it was given, not a path lookup"
+        );
+
+        let bad = |p: Json| {
+            Encoder::default()
+                .render(
+                    &json!({"k": "box", "c": [{"k": "image", "key": "x", "p": {"src": p}}]}),
+                    false,
+                )
+                .unwrap_err()
+        };
+        assert!(
+            bad(json!({"asset": &hex[..63]})).contains("64 hex"),
+            "a short hash is refused, not padded"
+        );
+        assert!(bad(json!({"asset": "z".repeat(64)})).contains("64 hex"));
+        assert!(bad(json!({"path": &hex})).contains("asset"));
+        assert!(
+            bad(json!(7)).contains("must be a path"),
+            "everything else still answers as before"
+        );
+    }
 
     #[test]
     fn an_atom_is_found_by_its_id() {

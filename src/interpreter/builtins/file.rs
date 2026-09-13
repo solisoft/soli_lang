@@ -39,7 +39,7 @@ use std::sync::OnceLock;
 use glob::Pattern;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
 
 /// Process-wide filesystem jail. `None` means jail is disabled (CLI /
 /// REPL / test runner). When `Some(path)`, every path that flows
@@ -542,6 +542,96 @@ fn define_standalone_file_builtins(env: &mut Environment, policy: FsPolicy) {
             },
         )),
     );
+
+    // uploaded_file_at(path) or uploaded_file_at(path, name) - read a file
+    // from disk into the hash the uploader API takes.
+    //
+    // This is the bridge an EUI view needs. A picked file arrives as a path
+    // into the session's spool (`serve::eui::session`), while `attach_upload`
+    // wants what a multipart POST produces: `{name, filename, content_type,
+    // size, data}` with `data` base64. Without this the only way across is
+    // `Base64.encode(slurp(path, "binary"))`, and that intermediate array is
+    // one 16-byte `Value::Int` per byte — the ~16x blow-up SEC-031 removed
+    // from the multipart path, reintroduced for the whole call. Encoding here
+    // peaks at bytes + base64, the same 2.33x a real upload already pays.
+    //
+    // `name` overrides the leaf for the stored filename and the content type,
+    // because the spool's leaf is prefixed with the transfer id and the name
+    // the person chose is the one worth keeping.
+    env.define(
+        "uploaded_file_at".to_string(),
+        Value::NativeFunction(NativeFunction::new("uploaded_file_at", None, move |args| {
+            let (path, name) = match args {
+                [Value::String(path)] => (path.clone(), None),
+                [Value::String(path), Value::String(name)] => (path.clone(), Some(name.clone())),
+                _ => {
+                    return Err(
+                        "uploaded_file_at() expects (path) or (path, name) as strings".to_string(),
+                    )
+                }
+            };
+            let resolved = resolve(&path, "uploaded_file_at")?;
+            let bytes = read_to_bytes_policy(&resolved, follow)
+                .map_err(|e| format!("uploaded_file_at() failed to read {}: {}", path, e))?;
+            let filename = match &name {
+                Some(n) if !n.is_empty() => n.to_string(),
+                _ => resolved
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("file")
+                    .to_string(),
+            };
+            let content_type =
+                crate::serve::server_constants::get_mime_type(Path::new(&filename)).to_string();
+
+            let mut file: HashPairs = HashPairs::default();
+            file.insert(
+                HashKey::String("name".into()),
+                Value::String(filename.clone().into()),
+            );
+            file.insert(
+                HashKey::String("filename".into()),
+                Value::String(filename.into()),
+            );
+            file.insert(
+                HashKey::String("content_type".into()),
+                Value::String(content_type.into()),
+            );
+            file.insert(
+                HashKey::String("size".into()),
+                Value::Int(bytes.len() as i64),
+            );
+            use base64::Engine;
+            file.insert(
+                HashKey::String("data".into()),
+                Value::String(
+                    base64::engine::general_purpose::STANDARD
+                        .encode(&bytes)
+                        .into(),
+                ),
+            );
+            Ok(Value::Hash(Rc::new(RefCell::new(file))))
+        })),
+    );
+
+    // content_type_for(name) - the MIME type a filename implies.
+    //
+    // The same table the static file server answers with
+    // (`serve::server_constants::get_mime_type`), which until now was
+    // reachable only from Rust — so every application that needed to know
+    // whether it was holding a picture hand-rolled an extension map.
+    env.define(
+        "content_type_for".to_string(),
+        Value::NativeFunction(NativeFunction::new("content_type_for", Some(1), |args| {
+            let name = match &args[0] {
+                Value::String(s) => s.clone(),
+                _ => return Err("content_type_for() expects a string name".to_string()),
+            };
+            Ok(Value::String(
+                crate::serve::server_constants::get_mime_type(Path::new(&*name)).into(),
+            ))
+        })),
+    );
 }
 
 /// Register either the `File` (jailed + nofollow) or `Trusted`
@@ -988,6 +1078,118 @@ mod tests {
     //! awkward to mutate from tests, so we exercise the pure helper
     //! `resolve_with_jail` and pass the jail in explicitly.
     use super::*;
+
+    /// Call a registered standalone builtin by name.
+    fn native(name: &str, args: &[Value]) -> Result<Value, String> {
+        let mut env = Environment::new();
+        register_file_builtins(&mut env);
+        match env.get(name) {
+            Some(Value::NativeFunction(f)) => (f.func)(args),
+            _ => panic!("{name} is not registered"),
+        }
+    }
+
+    fn field(v: &Value, key: &str) -> Value {
+        match v {
+            Value::Hash(h) => h
+                .borrow()
+                .get(&HashKey::String(key.into()))
+                .cloned()
+                .unwrap_or(Value::Null),
+            _ => panic!("not a hash"),
+        }
+    }
+
+    #[test]
+    fn a_file_on_disk_becomes_the_hash_the_uploaders_take() {
+        // The bytes matter more than the shape: a picked file is a PNG or a
+        // recording, and the read/write pair through a Soli string mangles
+        // anything that is not UTF-8. Byte 0x89 leading a PNG is exactly the
+        // case that used to come back as "could not be kept".
+        let dir = tempfile::tempdir().unwrap();
+        let png = dir.path().join("holiday.PNG");
+        let bytes: Vec<u8> = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00];
+        std::fs::write(&png, &bytes).unwrap();
+
+        let file = native(
+            "uploaded_file_at",
+            &[Value::String(png.to_str().unwrap().into())],
+        )
+        .unwrap();
+        assert_eq!(
+            field(&file, "filename"),
+            Value::String("holiday.PNG".into())
+        );
+        assert_eq!(field(&file, "name"), Value::String("holiday.PNG".into()));
+        assert_eq!(
+            field(&file, "content_type"),
+            Value::String("image/png".into()),
+            "the extension is matched however it is cased"
+        );
+        assert_eq!(field(&file, "size"), Value::Int(bytes.len() as i64));
+
+        use base64::Engine;
+        let Value::String(data) = field(&file, "data") else {
+            panic!("data is not a string")
+        };
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(&*data)
+                .unwrap(),
+            bytes,
+            "byte for byte, including the ones that are not text"
+        );
+    }
+
+    #[test]
+    fn the_name_someone_chose_outranks_the_leaf_on_disk() {
+        // The spool's leaf carries the transfer id (`2-holiday.png`), which
+        // is the server's business and not a filename worth storing.
+        let dir = tempfile::tempdir().unwrap();
+        let spooled = dir.path().join("2-holiday.bin");
+        std::fs::write(&spooled, b"x").unwrap();
+        let file = native(
+            "uploaded_file_at",
+            &[
+                Value::String(spooled.to_str().unwrap().into()),
+                Value::String("holiday.jpg".into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            field(&file, "filename"),
+            Value::String("holiday.jpg".into())
+        );
+        assert_eq!(
+            field(&file, "content_type"),
+            Value::String("image/jpeg".into()),
+            "the type follows the chosen name, not the spooled leaf"
+        );
+
+        let missing = native(
+            "uploaded_file_at",
+            &[Value::String(
+                dir.path().join("gone").to_str().unwrap().into(),
+            )],
+        );
+        assert!(missing.unwrap_err().contains("failed to read"));
+    }
+
+    #[test]
+    fn a_name_says_what_kind_of_file_it_is() {
+        let ct = |n: &str| native("content_type_for", &[Value::String(n.into())]).unwrap();
+        assert_eq!(ct("a/b/c.png"), Value::String("image/png".into()));
+        assert_eq!(ct("report.PDF"), Value::String("application/pdf".into()));
+        assert_eq!(
+            ct("mystery.zzz"),
+            Value::String("application/octet-stream".into()),
+            "an unknown extension is not a failure"
+        );
+        assert_eq!(
+            ct("noextension"),
+            Value::String("application/octet-stream".into())
+        );
+    }
 
     #[test]
     fn no_jail_passes_paths_through_unchanged() {

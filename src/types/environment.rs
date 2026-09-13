@@ -914,6 +914,25 @@ impl TypeEnvironment {
             },
         );
 
+        // uploaded_file_at(path, name?) -> Hash — a file on disk in the shape
+        // the uploader API takes ({name, filename, content_type, size, data}).
+        self.functions.insert(
+            "uploaded_file_at".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::Any],
+                return_type: Box::new(Type::Any),
+            },
+        );
+
+        // content_type_for(name) -> String — the MIME type a filename implies.
+        self.functions.insert(
+            "content_type_for".to_string(),
+            Type::Function {
+                params: vec![Type::String],
+                return_type: Box::new(Type::String),
+            },
+        );
+
         // pdf_render(template_json, data_json, options?) -> String (base64 PDF)
         self.functions.insert(
             "pdf_render".to_string(),

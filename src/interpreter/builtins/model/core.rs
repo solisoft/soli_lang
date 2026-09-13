@@ -7013,8 +7013,12 @@ pub fn register_model_builtins(env: &mut Environment) {
                     match args.first() {
                         Some(Value::String(s)) => s.clone(),
                         Some(Value::Class(c)) => c.name.clone().into(),
+                        // A record answers for its own class, so a caller
+                        // holding one does not have to remember whether the
+                        // helper wanted the instance or the class.
+                        Some(Value::Instance(i)) => i.borrow().class.name.clone().into(),
                         _ => return Err(
-                            "model_uploader_config(class_name, field) expects a class or string"
+                            "model_uploader_config(class_name, field) expects a class, a record or a string"
                                 .to_string(),
                         ),
                     };

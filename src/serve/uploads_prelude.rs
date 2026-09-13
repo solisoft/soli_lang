@@ -151,6 +151,41 @@ def detach_upload(model: Any, field_name: String, blob_id: Any = null) -> Bool
     true
 end
 
+# Read an attachment's bytes back, whichever service holds them.
+#
+# `attach_upload` already knows the disk/s3-vs-solidb switch and so does
+# `AttachmentsController#show`, but neither is reachable from code that is not
+# answering an HTTP request — and `<field>_url` is a URL, which is no use to a
+# caller that wants the bytes. An EUI view is exactly that caller: it has to
+# hand real bytes to `eui_asset` before a window can draw them. Without this
+# every application re-implements the switch, and "choose your storage" stops
+# being true the moment anything reads a file back.
+#
+# `owner` is the class, the record, or the class name. Answers `null` for a
+# blob that is not there, which is the shape a caller already has to handle:
+# a record can outlive its attachment.
+def read_upload(owner: Any, field_name: String, blob_id: Any = null) -> Any
+    return null if blob_id.nil?
+    config = model_uploader_config(owner, field_name)
+    return null if config.nil?
+
+    service = config["service"] || "solidb"
+    if service == "disk" || service == "s3"
+        return read_attachment(config, blob_id)
+    end
+
+    client = __soli_resolve_solidb_client()
+    data = solidb_get_blob(client, config["collection"], blob_id)
+    return null if data.nil?
+    meta = solidb_get_blob_metadata(client, config["collection"], blob_id) ?? {}
+    {
+        "filename":     meta["filename"] ?? "file",
+        "content_type": meta["content_type"] ?? "application/octet-stream",
+        "size":         meta["size"] ?? 0,
+        "data":         data
+    }
+end
+
 def detach_all_uploads(model: Any)
     fields = model_uploader_fields(model.class)
     for field in fields

@@ -770,6 +770,7 @@ fn finish(
             "payload": {
                 "upload": id,
                 "name": up.name,
+                "content_type": content_type_of(&up.name),
                 "size": up.size,
                 "path": "",
                 "error": why,
@@ -786,11 +787,24 @@ fn finish(
         "payload": {
             "upload": id,
             "name": up.name,
+            "content_type": content_type_of(&up.name),
             "size": up.written,
             "path": up.rel,
             "error": "",
         },
     })
+}
+
+/// What the name says the file is.
+///
+/// The client sends a name and bytes, never a content type (03 §3.2), and
+/// `attach_upload` checks one against the uploader's allow-list — so without
+/// this every view had to hand-roll an extension map before it could store
+/// what someone attached. It is the same table the static file server
+/// answers with, and the same one `uploaded_file_at` derives, so a view that
+/// reads this key and one that re-derives it later agree.
+fn content_type_of(name: &str) -> &'static str {
+    crate::serve::server_constants::get_mime_type(std::path::Path::new(name))
 }
 
 /// Check an event against the tree the client was last sent; on success,
