@@ -50,35 +50,38 @@ pub struct UploaderConfig {
 /// Register an uploader on a class. Called from the `uploader(...)` native
 /// when the class body is executed.
 pub fn register_uploader(class_name: &str, config: UploaderConfig) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    let metadata = registry.entry(class_name.to_string()).or_default();
-    if let Some(slot) = metadata
-        .uploaders
-        .iter_mut()
-        .find(|u| u.name == config.name)
-    {
-        *slot = config;
-    } else {
-        metadata.uploaders.push(config);
-    }
+    MODEL_REGISTRY.write(|registry| {
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        if let Some(slot) = metadata
+            .uploaders
+            .iter_mut()
+            .find(|u| u.name == config.name)
+        {
+            *slot = config;
+        } else {
+            metadata.uploaders.push(config);
+        }
+    })
 }
 
 /// Get one uploader config by field name.
 pub fn get_uploader(class_name: &str, field: &str) -> Option<UploaderConfig> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .and_then(|m| m.uploaders.iter().find(|u| u.name == field).cloned())
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .and_then(|m| m.uploaders.iter().find(|u| u.name == field).cloned())
+    })
 }
 
 /// Get every uploader config on a class. Used by the `before_delete` cleanup
 /// path and by the `AttachmentsController` to enumerate files.
 pub fn get_uploaders(class_name: &str) -> Vec<UploaderConfig> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.uploaders.clone())
-        .unwrap_or_default()
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| m.uploaders.clone())
+            .unwrap_or_default()
+    })
 }
 
 /// Read a string-valued field from an Instance — convenience for native

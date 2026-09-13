@@ -370,17 +370,42 @@ impl<T: 'static> TenantValue<T> {
     }
 
     /// Read this tenant's value, building it on first use.
+    ///
+    /// `f` always runs under the *read* lock, never the write lock — including
+    /// on the very first access, which is why this creates the entry and then
+    /// retries rather than calling `f` from inside `write`. Some of the values
+    /// behind this are re-entrant: resolving a model's collection name reads
+    /// the model registry again, from inside a closure that is already reading
+    /// it. A second read guard is what that did before and still does; running
+    /// `f` under a write guard would deadlock it instead.
     pub fn read<R>(&self, f: impl FnOnce(&T) -> R) -> R {
-        // Fast path: a shared lock, which is what almost every call wants.
-        if let Ok(slots) = self.slots.read() {
-            if let Some(value) = slots.as_ref().and_then(|m| m.get(&current_id())) {
-                return f(value);
+        let mut f = Some(f);
+        loop {
+            if let Ok(slots) = self.slots.read() {
+                if let Some(value) = slots.as_ref().and_then(|m| m.get(&current_id())) {
+                    return (f.take().expect("the loop returns on the first hit"))(value);
+                }
             }
+            self.ensure();
         }
-        self.write(|value| f(value))
+    }
+
+    /// Make sure this tenant has a value, holding the write lock only for as
+    /// long as the insert takes.
+    fn ensure(&self) {
+        let id = current_id();
+        let mut slots = self.slots.write().unwrap_or_else(|e| e.into_inner());
+        slots
+            .get_or_insert_with(Default::default)
+            .entry(id)
+            .or_insert_with(self.init);
     }
 
     /// Mutate this tenant's value, building it on first use.
+    ///
+    /// Unlike [`read`](Self::read), `f` runs under the write lock — the same
+    /// as the `RwLock::write()` guard this replaces, so a closure that
+    /// re-enters the same value deadlocks exactly as it would have before.
     pub fn write<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
         let id = current_id();
         let mut slots = self.slots.write().unwrap_or_else(|e| e.into_inner());
@@ -543,6 +568,31 @@ mod tests {
             tenant.image_jail(),
             Some(PathBuf::from("/srv/images/public"))
         );
+    }
+
+    #[test]
+    fn a_first_read_does_not_hold_the_write_lock() {
+        // The model registry resolves a collection name from inside a closure
+        // that is already reading the registry, so `read` must hand `f` a read
+        // guard even on the access that creates the value. Under a write guard
+        // this deadlocks — so the assertion is made on a thread with a
+        // deadline, to fail the test rather than hang the suite.
+        static REENTRANT: TenantValue<u32> = TenantValue::new(|| 7);
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let id = register(PathBuf::from("/srv/reentrant"));
+            bind_current(id);
+            // Nothing has touched REENTRANT for this tenant yet, so the outer
+            // call is the one that creates it.
+            let doubled = REENTRANT.read(|outer| *outer + REENTRANT.read(|inner| *inner));
+            let _ = tx.send(doubled);
+        });
+
+        match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+            Ok(value) => assert_eq!(value, 14),
+            Err(_) => panic!("a re-entrant read deadlocked: `f` ran under the write lock"),
+        }
     }
 
     #[test]

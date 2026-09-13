@@ -65,13 +65,26 @@ Three helpers, so a singleton keeps its shape and changes only what it is. Each 
 
 ### Done, and left
 
-Converted: the app root (was `live::component::APP_ROOT`); the `File` and `Image` jails (were `OnceLock`s); `VIEWS_DIR`, `PUBLIC_DIR` and `TEMPLATE_CACHE` (`init_templates` was first-caller-wins, so a second application would have rendered the first one's views); `JAR_CACHE`; `MOUNTED_ENGINES`; `MAILER_CONFIG`; `TRUSTED_PROXIES`; `RATE_LIMIT_STORE`; `SOLIKV_CONFIG` with its `RESP_POOL`; `CONTROLLER_REGISTRY`; and `SECURITY_HEADERS_CONFIG` with `SECURITY_HEADERS_ENABLED`.
+Converted: the app root (was `live::component::APP_ROOT`); the `File` and `Image` jails (were `OnceLock`s); `VIEWS_DIR`, `PUBLIC_DIR` and `TEMPLATE_CACHE` (`init_templates` was first-caller-wins, so a second application would have rendered the first one's views); `JAR_CACHE`; `MOUNTED_ENGINES`; `MAILER_CONFIG`; `TRUSTED_PROXIES`; `RATE_LIMIT_STORE`; `SOLIKV_CONFIG` with its `RESP_POOL`; `CONTROLLER_REGISTRY`; `SECURITY_HEADERS_CONFIG` with `SECURITY_HEADERS_ENABLED`; and `MODEL_REGISTRY` with the four `COLLECTION_*` maps beside it.
 
-Four of those are security properties rather than tidiness. A shared jail in a two-application process would let either resolve paths under the other's root. `JAR_CACHE` holds the keys that sign and encrypt cookies, derived from that application's `SOLI_SESSION_SECRET` — shared, either application could mint a cookie the other trusts. `MAILER_CONFIG` holds one app's SMTP credentials and `from` address; shared, a co-hosted app would send through them, and `Mailer.configure` in one would reconfigure the other. `TRUSTED_PROXIES` is one app's deployment topology — a co-hosted app behind a different proxy, or behind none, would inherit the list and honour `X-Forwarded-*` from a client that reached it directly.
+Several of those are security properties rather than tidiness:
 
-Still process-global, and each one a collision if a second application were added: `MODEL_REGISTRY` and the `COLLECTION_*` maps beside it, the mixin hooks, and the `ROUTES` thread-local. `.env` is loaded with `std::env::set_var`, which is process-wide too.
+| Global | What sharing it would mean |
+|---|---|
+| `FILE_JAIL` / `IMAGE_JAIL` | either application resolves paths under the other's root |
+| `JAR_CACHE` | it holds the keys that sign and encrypt cookies, derived from that app's `SOLI_SESSION_SECRET` — either app could mint a cookie the other trusts |
+| `MAILER_CONFIG` | a co-hosted app sends through the other's SMTP credentials and `from` address |
+| `TRUSTED_PROXIES` | an app behind a different proxy, or behind none, inherits the list and honours `X-Forwarded-*` from a client that reached it directly |
+| `SECURITY_HEADERS_*` | `set_csp(...)` in one rewrites the other's policy; `disable_security_headers()` strips the baseline from both |
+| `MODEL_REGISTRY` | two apps routinely declare a model of the same name — one would get the other's validations, callbacks, relations, encrypted fields and connection routing |
 
-Shareable as-is, because they are read-only or content-addressed: `REGEX_CACHE`, `SYMBOL_TABLE`, `HIDDEN_CLASS_REGISTRY`, `INLINE_CACHE`, `MODULE_CACHE`, and the `&'static [MethodDef]` tables. One caveat: `SYMBOL_TABLE` interns with `Box::leak`, so a process that loads and unloads applications would grow without bound.
+### Deliberately left alone
+
+Three, each for a reason worth reading before "finishing" them:
+
+* **`mixin_registry::HOOKS`** cannot be keyed per application on its own. The only reason a cache-hit thread finds anything there is that some *other* thread registered it, and `compiled_cache::MODULE_CACHE` is keyed by source text, not by application. Key the hooks per tenant and the second app to compile an identical module gets a cache hit, registers nothing under its own id, and silently loses every `included do`. Fixing it properly means keying both by something content-derived — a change to the compile cache.
+* **`server::ROUTES`** holds `Vec<Value>` for middleware, so it is `Rc`-based and can only ever be a `TenantLocal`, never a `Tenant` field. Under the rule that worker threads serve one application for life, a thread-local already *is* per application, and keying it would put a hash lookup on the route index for every request. What the rule does not cover is boot — see the note in `builtins/server.rs`.
+* **`.env`** is loaded with `std::env::set_var`, which is process-wide whatever the tenant registry does. Routing it per application means every `std::env::var` read in the tree consults the tenant first — hundreds of sites, and a decision about what a library call inside an app should see. It belongs with the host that actually loads two `.env` files, not before it.
 
 ## Measuring memory
 

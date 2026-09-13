@@ -210,12 +210,13 @@ impl ValidationError {
 /// uniqueness checks issue N+1 identical SDBQL queries per save —
 /// dominant cost in `soli test` for app-style controller suites.
 pub fn register_validation(class_name: &str, rule: ValidationRule) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    let metadata = registry.entry(class_name.to_string()).or_default();
-    if metadata.validations.iter().any(|r| r == &rule) {
-        return;
-    }
-    metadata.validations.push(rule);
+    MODEL_REGISTRY.write(|registry| {
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        if metadata.validations.iter().any(|r| r == &rule) {
+            return;
+        }
+        metadata.validations.push(rule);
+    })
 }
 
 /// Register a rule together with its `if:`/`unless:` closures. The rule goes
@@ -462,17 +463,18 @@ pub fn build_constraint_errors(err: &str) -> Option<Vec<ValidationError>> {
 
 /// Fields with `validates uniqueness: true` registered on `class_name`.
 pub fn unique_validation_fields(class_name: &str) -> Vec<String> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| {
-            m.validations
-                .iter()
-                .filter(|r| r.uniqueness)
-                .map(|r| r.field.clone())
-                .collect()
-        })
-        .unwrap_or_default()
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| {
+                m.validations
+                    .iter()
+                    .filter(|r| r.uniqueness)
+                    .map(|r| r.field.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    })
 }
 
 /// Build `_errors` entries for a unique-violation insert/update error. We
@@ -576,12 +578,13 @@ fn lookup_field(data: &Value, field: &str) -> Option<Value> {
 /// first — which costs a read, and is only worth paying when there is something
 /// to validate.
 pub fn class_has_validations(class_name: &str) -> bool {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| !m.validations.is_empty())
-        .unwrap_or(false)
-        || !custom_validators_for(class_name).is_empty()
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| !m.validations.is_empty())
+            .unwrap_or(false)
+            || !custom_validators_for(class_name).is_empty()
+    })
 }
 
 pub fn run_validations(
@@ -592,13 +595,12 @@ pub fn run_validations(
     // Clone the rules out so no MODEL_REGISTRY lock is held during the run:
     // uniqueness talks to the database and if:/unless: conditions execute
     // user closures, either of which may re-enter the registry.
-    let rules: Vec<ValidationRule> = {
-        let registry = MODEL_REGISTRY.read().unwrap();
+    let rules: Vec<ValidationRule> = MODEL_REGISTRY.read(|registry| {
         registry
             .get(class_name)
             .map(|m| m.validations.clone())
             .unwrap_or_default()
-    };
+    });
 
     if !matches!(data, Value::Hash(_)) {
         return Ok(vec![ValidationError::new("_base", "Data must be a hash")]);
