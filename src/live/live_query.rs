@@ -20,9 +20,10 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
 
 use serde_json::Value as Json;
+
+use crate::serve::tenant::TenantValue;
 
 /// A flat field→value equality filter (the `bind_vars` of a hash-form query).
 /// `None` means "not decomposable — wake unconditionally".
@@ -45,8 +46,10 @@ const MAX_MATCHERS: usize = 16;
 
 /// `collection` → (`liveview_id` → `Sub`). The inner map de-dupes by liveview so
 /// re-subscribing on every render (the normal case) stays idempotent.
-static SUBSCRIPTIONS: LazyLock<Mutex<HashMap<String, HashMap<String, Sub>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+/// Per application: the ids are its LiveViews and the collections are its
+/// models. A shared table would wake one app's views on another's writes.
+static SUBSCRIPTIONS: TenantValue<HashMap<String, HashMap<String, Sub>>> =
+    TenantValue::new(HashMap::new);
 
 thread_local! {
     /// The LiveView currently rendering on this worker thread, as
@@ -86,31 +89,33 @@ pub fn subscribe(collection: &str, matcher: Matcher) {
     let Some((liveview_id, component)) = CURRENT_LIVEVIEW.with(|c| c.borrow().clone()) else {
         return;
     };
-    let mut subs = SUBSCRIPTIONS.lock().unwrap();
-    let sub = subs
-        .entry(collection.to_string())
-        .or_default()
-        .entry(liveview_id)
-        .or_insert_with(|| Sub {
-            component,
-            matchers: Vec::new(),
-        });
-    if !sub.matchers.contains(&matcher) {
-        if sub.matchers.len() >= MAX_MATCHERS {
-            sub.matchers.remove(0);
+    SUBSCRIPTIONS.write(|subs| {
+        let sub = subs
+            .entry(collection.to_string())
+            .or_default()
+            .entry(liveview_id)
+            .or_insert_with(|| Sub {
+                component,
+                matchers: Vec::new(),
+            });
+        if !sub.matchers.contains(&matcher) {
+            if sub.matchers.len() >= MAX_MATCHERS {
+                sub.matchers.remove(0);
+            }
+            sub.matchers.push(matcher);
         }
-        sub.matchers.push(matcher);
-    }
+    });
 }
 
 /// Drop a LiveView from every collection it subscribed to. Called when a
 /// LiveView disconnects or is reaped, so a stale id can't keep waking.
 pub fn unsubscribe_all(liveview_id: &str) {
-    let mut subs = SUBSCRIPTIONS.lock().unwrap();
-    for members in subs.values_mut() {
-        members.remove(liveview_id);
-    }
-    subs.retain(|_, members| !members.is_empty());
+    SUBSCRIPTIONS.write(|subs| {
+        for members in subs.values_mut() {
+            members.remove(liveview_id);
+        }
+        subs.retain(|_, members| !members.is_empty());
+    });
 }
 
 /// Numeric-aware scalar equality between a document field and a matcher value.
@@ -149,15 +154,16 @@ pub(crate) fn subscribers_to_wake(
     collection: &str,
     changed: Option<&Json>,
 ) -> Vec<(String, String)> {
-    let subs = SUBSCRIPTIONS.lock().unwrap();
-    let Some(members) = subs.get(collection) else {
-        return Vec::new();
-    };
-    members
-        .iter()
-        .filter(|(_, sub)| sub.matchers.iter().any(|m| matcher_wakes(m, changed)))
-        .map(|(id, sub)| (id.clone(), sub.component.clone()))
-        .collect()
+    SUBSCRIPTIONS.read(|subs| {
+        let Some(members) = subs.get(collection) else {
+            return Vec::new();
+        };
+        members
+            .iter()
+            .filter(|(_, sub)| sub.matchers.iter().any(|m| matcher_wakes(m, changed)))
+            .map(|(id, sub)| (id.clone(), sub.component.clone()))
+            .collect()
+    })
 }
 
 /// Wake the LiveViews subscribed to `collection` whose live query matches the

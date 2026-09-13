@@ -25,7 +25,7 @@ use tungstenite::Message;
 
 use crate::interpreter::value::Value;
 use crate::interpreter::Interpreter;
-use crate::live::view::{LiveViewInstance, LIVE_REGISTRY};
+use crate::live::view::{live_registry, LiveViewInstance};
 use crate::span::Span;
 
 use self::stats::Stats;
@@ -160,7 +160,7 @@ pub fn wake_component(component: &str, event: &str, except: Option<&str>) -> usi
         return 0;
     }
     let mut woken = 0;
-    for (id, session) in LIVE_REGISTRY.attached_of_component(component) {
+    for (id, session) in live_registry().attached_of_component(component) {
         if except.is_some_and(|self_id| self_id == id) {
             continue;
         }
@@ -424,7 +424,7 @@ pub fn handle_eui_event(
     }
 
     instance.touch();
-    if !LIVE_REGISTRY.commit(instance) {
+    if !live_registry().commit(instance) {
         if trace() {
             eprintln!(
                 "[EUI trace] worker: commit refused (socket gone?) for {}",

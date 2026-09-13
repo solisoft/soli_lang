@@ -11,35 +11,37 @@
 //! grow without limit. Dev-only: nothing writes here unless `--dev` is on.
 
 use std::collections::VecDeque;
-use std::sync::{Mutex, OnceLock};
 
 use crate::serve::dev_bar::DevBarContext;
+use crate::serve::tenant::TenantValue;
 
 /// Max snapshots retained. A page plus its handful of XHR/HTMx calls fits many
 /// times over; older requests age out.
 const CAP: usize = 64;
 
-fn store() -> &'static Mutex<VecDeque<(String, DevBarContext)>> {
-    static STORE: OnceLock<Mutex<VecDeque<(String, DevBarContext)>>> = OnceLock::new();
-    STORE.get_or_init(|| Mutex::new(VecDeque::with_capacity(CAP)))
-}
+/// Per application: a snapshot carries that request's queries, HTTP calls and
+/// timings, and the dev bar of one app must not list another's traffic.
+static STORE: TenantValue<VecDeque<(String, DevBarContext)>> =
+    TenantValue::new(|| VecDeque::with_capacity(CAP));
 
 /// Record a request's snapshot, evicting the oldest once at capacity.
 pub fn put(id: String, ctx: DevBarContext) {
-    let mut q = store().lock().unwrap();
-    if q.len() >= CAP {
-        q.pop_front();
-    }
-    q.push_back((id, ctx));
+    STORE.write(|q| {
+        if q.len() >= CAP {
+            q.pop_front();
+        }
+        q.push_back((id, ctx));
+    });
 }
 
 /// Fetch a stored snapshot by request id (clone; `None` if aged out / unknown).
 pub fn get(id: &str) -> Option<DevBarContext> {
-    let q = store().lock().unwrap();
-    q.iter()
-        .rev()
-        .find(|(rid, _)| rid == id)
-        .map(|(_, ctx)| ctx.clone())
+    STORE.read(|q| {
+        q.iter()
+            .rev()
+            .find(|(rid, _)| rid == id)
+            .map(|(_, ctx)| ctx.clone())
+    })
 }
 
 /// The raw wire fields of a captured request, enough to re-dispatch it through
@@ -56,27 +58,29 @@ pub struct RawRequest {
     pub peer_ip: String,
 }
 
-fn raw_store() -> &'static Mutex<VecDeque<(String, RawRequest)>> {
-    static STORE: OnceLock<Mutex<VecDeque<(String, RawRequest)>>> = OnceLock::new();
-    STORE.get_or_init(|| Mutex::new(VecDeque::with_capacity(CAP)))
-}
+/// Per application, like [`STORE`]: replaying a captured request re-dispatches
+/// it through the worker path, and that has to be its own application's.
+static RAW_STORE: TenantValue<VecDeque<(String, RawRequest)>> =
+    TenantValue::new(|| VecDeque::with_capacity(CAP));
 
 /// Record a request's raw fields for later replay, evicting the oldest at capacity.
 pub fn put_raw(id: String, raw: RawRequest) {
-    let mut q = raw_store().lock().unwrap();
-    if q.len() >= CAP {
-        q.pop_front();
-    }
-    q.push_back((id, raw));
+    RAW_STORE.write(|q| {
+        if q.len() >= CAP {
+            q.pop_front();
+        }
+        q.push_back((id, raw));
+    });
 }
 
 /// Fetch a captured raw request by id (clone; `None` if aged out / unknown).
 pub fn get_raw(id: &str) -> Option<RawRequest> {
-    let q = raw_store().lock().unwrap();
-    q.iter()
-        .rev()
-        .find(|(rid, _)| rid == id)
-        .map(|(_, raw)| raw.clone())
+    RAW_STORE.read(|q| {
+        q.iter()
+            .rev()
+            .find(|(rid, _)| rid == id)
+            .map(|(_, raw)| raw.clone())
+    })
 }
 
 #[cfg(test)]

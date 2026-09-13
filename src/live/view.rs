@@ -408,9 +408,23 @@ impl LiveRegistry {
     }
 }
 
-/// Global LiveView registry.
-pub static LIVE_REGISTRY: std::sync::LazyLock<LiveRegistry> =
-    std::sync::LazyLock::new(LiveRegistry::new);
+/// The LiveView registry for the application on this thread.
+///
+/// Per application: it holds live instances keyed by a session id, their
+/// sockets and their per-instance frame locks. Shared between two co-hosted
+/// applications, an id minted by one would resolve in the other, and a frame
+/// lock meant to serialise one session's renders would serialise across
+/// applications.
+///
+/// Behind an `Arc` so `live_registry()` hands out a handle instead of forcing
+/// every one of its ~45 call sites through a closure.
+static LIVE_REGISTRY_CELL: crate::serve::tenant::TenantValue<std::sync::Arc<LiveRegistry>> =
+    crate::serve::tenant::TenantValue::new(|| std::sync::Arc::new(LiveRegistry::new()));
+
+/// This application's LiveView registry.
+pub fn live_registry() -> std::sync::Arc<LiveRegistry> {
+    LIVE_REGISTRY_CELL.read(std::sync::Arc::clone)
+}
 
 #[cfg(test)]
 mod tests {

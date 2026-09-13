@@ -8,8 +8,10 @@ use uuid::Uuid;
 use serde_json::json;
 use tungstenite::Message;
 
+use crate::serve::tenant::TenantValue;
+
 use crate::live::component::{render_component, render_error_html};
-use crate::live::view::{LiveViewInstance, ServerMessage, LIVE_REGISTRY};
+use crate::live::view::{live_registry, LiveViewInstance, ServerMessage};
 
 /// A LiveView route with its handler reference.
 #[derive(Clone, Debug)]
@@ -21,43 +23,55 @@ pub struct LiveViewRoute {
 }
 
 // Global registry of LiveView routes
-lazy_static::lazy_static! {
-    pub static ref LIVEVIEW_ROUTES: std::sync::Mutex<HashMap<String, LiveViewRoute>> = std::sync::Mutex::new(HashMap::new());
-    /// Per-instance tick task abort handles, keyed by liveview_id.
-    /// Lets us cancel/replace a running tick when the handler asks for a new
-    /// interval, when the WS connection closes, or when the instance expires.
-    pub static ref LIVEVIEW_TICK_TASKS: std::sync::Mutex<HashMap<String, tokio::task::AbortHandle>> = std::sync::Mutex::new(HashMap::new());
+/// LiveView routes declared by the application on this thread — `router_live`
+/// is per application, and two apps may both name a component `counter`.
+static LIVEVIEW_ROUTES: TenantValue<HashMap<String, LiveViewRoute>> =
+    TenantValue::new(HashMap::new);
+
+/// Per-instance tick task abort handles, keyed by liveview_id.
+/// Lets us cancel/replace a running tick when the handler asks for a new
+/// interval, when the WS connection closes, or when the instance expires.
+/// Per application, like the instances they tick.
+static LIVEVIEW_TICK_TASKS: TenantValue<HashMap<String, tokio::task::AbortHandle>> =
+    TenantValue::new(HashMap::new);
+
+/// Whether a tick task is currently installed for this instance.
+pub fn has_tick_task(liveview_id: &str) -> bool {
+    LIVEVIEW_TICK_TASKS.read(|tasks| tasks.contains_key(liveview_id))
 }
 
 /// Install (or replace) the tick task for a LiveView instance. Aborts any
 /// previously-installed task for the same `liveview_id`.
 pub fn set_tick_task(liveview_id: &str, handle: tokio::task::AbortHandle) {
-    let mut tasks = LIVEVIEW_TICK_TASKS.lock().unwrap();
-    if let Some(old) = tasks.insert(liveview_id.to_string(), handle) {
-        old.abort();
-    }
+    LIVEVIEW_TICK_TASKS.write(|tasks| {
+        if let Some(old) = tasks.insert(liveview_id.to_string(), handle) {
+            old.abort();
+        }
+    });
 }
 
 /// Cancel and remove the tick task for a LiveView instance, if any.
 pub fn cancel_tick_task(liveview_id: &str) {
-    let mut tasks = LIVEVIEW_TICK_TASKS.lock().unwrap();
-    if let Some(old) = tasks.remove(liveview_id) {
-        old.abort();
-    }
+    LIVEVIEW_TICK_TASKS.write(|tasks| {
+        if let Some(old) = tasks.remove(liveview_id) {
+            old.abort();
+        }
+    });
 }
 
 /// Register a LiveView route.
 /// `component` is the component name (e.g., "counter")
 /// `handler_name` is "controller#action" (e.g., "live#counter")
 pub fn register_liveview_route(component: &str, handler_name: &str) {
-    let mut routes = LIVEVIEW_ROUTES.lock().unwrap();
-    routes.insert(
-        component.to_string(),
-        LiveViewRoute {
-            component: component.to_string(),
-            handler_name: handler_name.to_string(),
-        },
-    );
+    LIVEVIEW_ROUTES.write(|routes| {
+        routes.insert(
+            component.to_string(),
+            LiveViewRoute {
+                component: component.to_string(),
+                handler_name: handler_name.to_string(),
+            },
+        );
+    });
 }
 
 /// Components that may be mounted in a shared room.
@@ -68,46 +82,34 @@ pub fn register_liveview_route(component: &str, handler_name: &str) {
 /// meant to be shared hands its full current markup — and the right to drive
 /// its events — to anyone who guesses the name. Rooms are therefore opt-in per
 /// component.
-static ROOM_COMPONENTS: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
-    std::sync::Mutex::new(None);
-
-fn room_components() -> std::sync::MutexGuard<'static, Option<std::collections::HashSet<String>>> {
-    match ROOM_COMPONENTS.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    }
-}
+/// Per application: `live_rooms("desk")` is one app's declaration, and rooms
+/// are opt-in precisely so a component is not shareable by accident.
+static ROOM_COMPONENTS: TenantValue<std::collections::HashSet<String>> =
+    TenantValue::new(std::collections::HashSet::new);
 
 /// Declare a component room-shareable (`live_rooms("desk")` in `routes.sl`).
 pub fn register_room_component(component: &str) {
-    let mut guard = room_components();
-    guard
-        .get_or_insert_with(std::collections::HashSet::new)
-        .insert(component.to_string());
+    ROOM_COMPONENTS.write(|set| set.insert(component.to_string()));
 }
 
 /// Forget every room declaration (hot reload re-runs `routes.sl`).
 pub fn clear_room_components() {
-    *room_components() = None;
+    ROOM_COMPONENTS.write(|set| set.clear());
 }
 
 /// May this component be mounted in a shared room?
 pub fn is_room_component(component: &str) -> bool {
-    room_components()
-        .as_ref()
-        .is_some_and(|set| set.contains(component))
+    ROOM_COMPONENTS.read(|set| set.contains(component))
 }
 
 /// Get the handler for a LiveView component.
 pub fn get_liveview_handler(component: &str) -> Option<String> {
-    let routes = LIVEVIEW_ROUTES.lock().unwrap();
-    routes.get(component).map(|r| r.handler_name.clone())
+    LIVEVIEW_ROUTES.read(|routes| routes.get(component).map(|r| r.handler_name.clone()))
 }
 
 /// Clear all LiveView routes (for hot reload).
 pub fn clear_liveview_routes() {
-    let mut routes = LIVEVIEW_ROUTES.lock().unwrap();
-    routes.clear();
+    LIVEVIEW_ROUTES.write(|routes| routes.clear());
 }
 
 /// Extract session ID from request cookies. SEC-077: delegates to the shared
@@ -284,7 +286,7 @@ pub fn handle_live_connection(
     // Checking and then registering as two steps let two concurrent sockets both
     // register, and the loser's socket was orphaned — open but no longer in the
     // registry, so it never saw another update.
-    match LIVE_REGISTRY.attach_or_register(instance.clone(), sender.clone()) {
+    match live_registry().attach_or_register(instance.clone(), sender.clone()) {
         Some(prev) => {
             // Already mounted: keep its state and send its current HTML to this
             // connection only.
@@ -315,7 +317,7 @@ pub fn handle_event(
     event: String,
     _params: serde_json::Value,
 ) -> Result<(), String> {
-    let mut instance = LIVE_REGISTRY
+    let mut instance = live_registry()
         .get(liveview_id)
         .ok_or("LiveView not found".to_string())?;
 
@@ -435,10 +437,10 @@ pub fn handle_event(
     // Update last_html and save instance back to registry
     instance.last_html = new_html;
     instance.touch();
-    LIVE_REGISTRY.update(instance);
+    live_registry().update(instance);
 
     // Send patch to client
-    let _ = LIVE_REGISTRY.send(
+    let _ = live_registry().send(
         liveview_id,
         ServerMessage::Patch {
             liveview_id: liveview_id.to_string(),
@@ -451,13 +453,13 @@ pub fn handle_event(
 
 /// Clean up expired LiveViews.
 pub fn cleanup() {
-    LIVE_REGISTRY.cleanup();
+    live_registry().cleanup();
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::live::view::LIVE_REGISTRY;
+    use crate::live::view::live_registry;
 
     #[test]
     fn reconnect_reuses_in_flight_state() {
@@ -466,13 +468,13 @@ mod tests {
         let sender = Arc::new(tx);
         handle_live_connection("counter".into(), session.clone(), sender.clone(), None);
         let id = format!("{session}:counter");
-        let mut inst = LIVE_REGISTRY.get(&id).expect("first connect");
+        let mut inst = live_registry().get(&id).expect("first connect");
         inst.state["count"] = json!(7);
         inst.state["typed"] = json!("kept");
-        LIVE_REGISTRY.update(inst);
+        live_registry().update(inst);
 
         handle_live_connection("counter".into(), session, sender, None);
-        let again = LIVE_REGISTRY.get(&id).expect("reconnect");
+        let again = live_registry().get(&id).expect("reconnect");
         assert_eq!(again.state["count"], 7);
         assert_eq!(again.state["typed"], "kept");
     }
@@ -485,7 +487,7 @@ mod tests {
         handle_live_connection("counter".into(), session.clone(), Arc::new(tx_a), None);
         let id = liveview_instance_id(&session, "counter", None);
         handle_live_connection("counter".into(), session, Arc::new(tx_b), None);
-        let inst = LIVE_REGISTRY.get(&id).expect("shared instance");
+        let inst = live_registry().get(&id).expect("shared instance");
         assert_eq!(inst.senders.len(), 2, "both tabs stay attached");
         drop(rx_a);
         drop(rx_b);
@@ -500,7 +502,7 @@ mod tests {
         handle_live_connection("desk".into(), "sess-b".into(), Arc::new(tx_b), room);
         let id = liveview_instance_id("sess-a", "desk", Some("field-desk"));
         assert_eq!(id, "room:field-desk:desk");
-        let inst = LIVE_REGISTRY.get(&id).expect("shared room");
+        let inst = live_registry().get(&id).expect("shared room");
         assert_eq!(inst.senders.len(), 2, "both sessions stay attached");
         drop(rx_a);
         drop(rx_b);
