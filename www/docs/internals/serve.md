@@ -106,6 +106,22 @@ That is the shape a host needs: picking which application serves a request becom
 
 Its `tenant` field is not read on the request path yet, and that is deliberate: worker threads are pinned to their tenant, so choosing the queue already chooses the tenant. A host that ever shared one worker pool between applications would bind from that field instead.
 
+### The realtime, policy and staging state
+
+A second sweep, after the database layer, over what a *request* reaches rather than what boot writes. All of it was process-global and all of it is per application now:
+
+| Global | What sharing it would mean |
+|---|---|
+| `cors::CORS_RULES` | one app's allowed origins apply to the other's `/api/*` — the whole thing CORS exists to decide |
+| `csrf::CSRF_SKIP_PATTERNS` | `skip_csrf("/webhooks/*")` in one app disables the CSRF barrier on another's `/webhooks/*` |
+| `live::upload` store and chunks | user-uploaded bytes, keyed by a server-minted id, in one shared map |
+| `background_jobs::BG_SENDER` | a pool thread builds its interpreter from *its* app's models and talks to *its* database, so a second app's jobs would run against the first one's everything |
+| `LV_EVENT_TX`, `PINNED_LV_TX` | an app's EUI sessions rendered by workers that never loaded its code |
+
+The last three were `OnceLock`s, so the failure mode was not a race — it was deterministic and silent: whichever application booted second simply got the first one's.
+
+One thing that had to survive the conversion: `put_chunk` assembled a finished file, dropped the chunk lock explicitly, *then* called `put`, which takes the store lock. Wrapping the body in a closure would have nested the two and fixed a lock order this file deliberately does not have. It now returns what it assembled and calls `put` after the closure.
+
 ### Deliberately left alone
 
 Three, each for a reason worth reading before "finishing" them:

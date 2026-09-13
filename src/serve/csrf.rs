@@ -20,23 +20,22 @@ use super::{cors, header_str, websocket_request_authority, RequestData};
 /// matching runs). Each entry is a path pattern; `*` suffix means "any
 /// path that starts with this prefix".
 ///
-/// `RwLock` so writes from the boot phase don't block the request hot
-/// path's reads.
-static CSRF_SKIP_PATTERNS: std::sync::RwLock<Vec<String>> = std::sync::RwLock::new(Vec::new());
+/// Per application: `skip_csrf("/webhooks/*")` in one app must not disable the
+/// CSRF barrier on another's `/webhooks/*`.
+static CSRF_SKIP_PATTERNS: crate::serve::tenant::TenantValue<Vec<String>> =
+    crate::serve::tenant::TenantValue::new(Vec::new);
 
 pub fn register_csrf_skip_pattern(pattern: String) {
-    if let Ok(mut guard) = CSRF_SKIP_PATTERNS.write() {
-        if !guard.iter().any(|p| p == &pattern) {
-            guard.push(pattern);
+    CSRF_SKIP_PATTERNS.write(|patterns| {
+        if !patterns.iter().any(|p| p == &pattern) {
+            patterns.push(pattern);
         }
-    }
+    });
 }
 
 #[cfg(test)]
 pub(crate) fn clear_csrf_skip_patterns() {
-    if let Ok(mut guard) = CSRF_SKIP_PATTERNS.write() {
-        guard.clear();
-    }
+    CSRF_SKIP_PATTERNS.write(|patterns| patterns.clear());
 }
 
 /// Match a request path against one `skip_csrf` pattern.
@@ -58,12 +57,11 @@ fn path_matches_csrf_skip(path: &str, pattern: &str) -> bool {
 }
 
 fn csrf_skipped_by_app(path: &str) -> bool {
-    let Ok(guard) = CSRF_SKIP_PATTERNS.read() else {
-        return false;
-    };
-    guard
-        .iter()
-        .any(|pattern| path_matches_csrf_skip(path, pattern))
+    CSRF_SKIP_PATTERNS.read(|patterns| {
+        patterns
+            .iter()
+            .any(|pattern| path_matches_csrf_skip(path, pattern))
+    })
 }
 
 /// Framework-served endpoints that are exempt from both CSRF barriers.

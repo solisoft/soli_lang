@@ -15,11 +15,12 @@
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use std::thread;
 use std::time::Instant;
 
 use crossbeam::channel;
+
+use crate::serve::tenant::TenantCell;
 
 use super::app_loader::{load_jobs_in_worker, load_models};
 use super::set_tokio_handle;
@@ -44,7 +45,13 @@ struct BackgroundJob {
 
 /// Set once when the pool starts. `enqueue` returns `false` while unset so
 /// callers fall back to running the job inline (pool disabled / not serving).
-static BG_SENDER: OnceLock<channel::Sender<BackgroundJob>> = OnceLock::new();
+///
+/// Per application: a pool thread builds its own interpreter from *its*
+/// application's models, services and mailers, and talks to that application's
+/// database. Shared, a second application's jobs would be handed to the first
+/// one's pool — and because this was a `OnceLock`, that is exactly what would
+/// have happened, silently, to whichever application booted second.
+static BG_SENDER: TenantCell<channel::Sender<BackgroundJob>> = TenantCell::new();
 
 /// Everything a pool thread needs to build its own interpreter — the same
 /// job-relevant subset a web worker loads (models/services/policies/mailers/
@@ -119,8 +126,8 @@ pub fn start_pool(config: PoolConfig) {
         return;
     }
     let (tx, rx) = channel::unbounded::<BackgroundJob>();
-    if BG_SENDER.set(tx).is_err() {
-        // Already started — leave the existing pool in place.
+    if !BG_SENDER.set_once(tx) {
+        // Already started for this application — leave its pool in place.
         return;
     }
 

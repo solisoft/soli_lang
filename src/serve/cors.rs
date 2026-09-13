@@ -22,7 +22,7 @@
 //! opt-in than `skip_csrf`, since the origin is checked against the
 //! declared list.
 
-use std::sync::RwLock;
+use crate::serve::tenant::TenantValue;
 
 #[derive(Clone, Debug)]
 pub struct CorsRule {
@@ -52,28 +52,30 @@ pub struct CorsDecision {
     pub preflight: Option<Vec<(String, String)>>,
 }
 
-/// Registered rules. RwLock: writes happen at boot / routes hot-reload,
-/// reads on the request hot path.
-static CORS_RULES: RwLock<Vec<CorsRule>> = RwLock::new(Vec::new());
+/// Registered rules, per application.
+///
+/// `cors("/api/*", { "origins": [...] })` is one application's policy about who
+/// may call it from a browser. Shared across a process serving two, one app's
+/// allowed origins would apply to the other's `/api/*` — which is the whole
+/// thing CORS exists to decide.
+static CORS_RULES: TenantValue<Vec<CorsRule>> = TenantValue::new(Vec::new);
 
 /// Register (or update) the rule for a path pattern. Keyed by pattern so a
 /// routes hot-reload re-running `cors(...)` picks up config edits instead
 /// of stacking duplicates.
 pub fn register_cors_rule(rule: CorsRule) {
-    if let Ok(mut guard) = CORS_RULES.write() {
-        if let Some(existing) = guard.iter_mut().find(|r| r.pattern == rule.pattern) {
+    CORS_RULES.write(|rules| {
+        if let Some(existing) = rules.iter_mut().find(|r| r.pattern == rule.pattern) {
             *existing = rule;
         } else {
-            guard.push(rule);
+            rules.push(rule);
         }
-    }
+    });
 }
 
 #[cfg(test)]
 pub fn clear_cors_rules() {
-    if let Ok(mut guard) = CORS_RULES.write() {
-        guard.clear();
-    }
+    CORS_RULES.write(|rules| rules.clear());
 }
 
 /// Same pattern semantics as `skip_csrf`: exact match, `/prefix/*` (which
@@ -89,11 +91,12 @@ fn pattern_matches(pattern: &str, path: &str) -> bool {
 }
 
 fn rule_for_path(path: &str) -> Option<CorsRule> {
-    let guard = CORS_RULES.read().ok()?;
-    guard
-        .iter()
-        .find(|r| pattern_matches(&r.pattern, path))
-        .cloned()
+    CORS_RULES.read(|rules| {
+        rules
+            .iter()
+            .find(|r| pattern_matches(&r.pattern, path))
+            .cloned()
+    })
 }
 
 fn origin_allowed(rule: &CorsRule, origin: &str) -> bool {
