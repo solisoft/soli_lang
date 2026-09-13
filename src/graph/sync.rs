@@ -787,11 +787,8 @@ fn store_manifest(client: &SoliDBClient, files: &HashMap<String, String>) -> Res
 /// database override. Auth priority mirrors `crud.rs`: JWT > API key > basic.
 /// Shared by the write path and the query path.
 pub(crate) fn connect(database: Option<&str>) -> Result<(SoliDBClient, String), String> {
-    let host = format!(
-        "{}{}",
-        db_config::DB_CONFIG.scheme,
-        db_config::DB_CONFIG.host
-    );
+    let (scheme, db_host) = db_config::db_scheme_and_host();
+    let host = format!("{}{}", scheme, db_host);
     let database = database
         .map(str::to_string)
         .unwrap_or_else(db_config::get_database_name);
@@ -801,7 +798,7 @@ pub(crate) fn connect(database: Option<&str>) -> Result<(SoliDBClient, String), 
     if let Some(jwt) = db_config::get_jwt_token() {
         client = client.with_jwt_token(&jwt);
     } else if let Some(key) = db_config::get_api_key() {
-        client = client.with_api_key(key);
+        client = client.with_api_key(&key);
     } else if let (Ok(user), Ok(pass)) = (
         std::env::var("SOLIDB_USERNAME"),
         std::env::var("SOLIDB_PASSWORD"),

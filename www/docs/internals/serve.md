@@ -65,9 +65,13 @@ Three helpers, so a singleton keeps its shape and changes only what it is. Each 
 
 ### Done, and left
 
-Converted: the app root (was `live::component::APP_ROOT`); the `File` and `Image` jails (were `OnceLock`s); `VIEWS_DIR`, `PUBLIC_DIR` and `TEMPLATE_CACHE` (`init_templates` was first-caller-wins, so a second application would have rendered the first one's views); `JAR_CACHE`; `MOUNTED_ENGINES`; `MAILER_CONFIG`; `TRUSTED_PROXIES`; `RATE_LIMIT_STORE`; `SOLIKV_CONFIG` with its `RESP_POOL`; `CONTROLLER_REGISTRY`; `SECURITY_HEADERS_CONFIG` with `SECURITY_HEADERS_ENABLED`; and `MODEL_REGISTRY` with the four `COLLECTION_*` maps beside it.
+Converted: the app root (was `live::component::APP_ROOT`); the `File` and `Image` jails (were `OnceLock`s); `VIEWS_DIR`, `PUBLIC_DIR` and `TEMPLATE_CACHE` (`init_templates` was first-caller-wins, so a second application would have rendered the first one's views); `JAR_CACHE`; `MOUNTED_ENGINES`; `MAILER_CONFIG`; `TRUSTED_PROXIES`; `RATE_LIMIT_STORE`; `SOLIKV_CONFIG` with its `RESP_POOL`; `CONTROLLER_REGISTRY`; `SECURITY_HEADERS_CONFIG` with `SECURITY_HEADERS_ENABLED`; `MODEL_REGISTRY` with the four `COLLECTION_*` maps beside it; and the whole database layer — `db::registry`, `db::config`, `CACHED_DB_CONFIG`, `DB_CONFIG` and the JWT state.
 
-Several of those are security properties rather than tidiness:
+The database layer went with them, and it is the one that mattered most. `db::registry` (which connections exist and which is default), `db::config` (the default adapter and URL), `CACHED_DB_CONFIG` (SoliDB cursor URL, database name, API key, basic auth) and the JWT state were all process-global — and the first three were `OnceLock`s, so the *first* application to boot would have frozen them for every application after it. Not with an error: silently, each later application reading and writing the first one's data with the first one's credentials. Nothing else on this page comes close.
+
+The JWT state is now one per-application struct rather than three globals, because its three parts move together: a token belongs to one application's credentials, and a backoff recorded after *its* login failed must not make another application skip its own login.
+
+Several of the others are security properties rather than tidiness:
 
 | Global | What sharing it would mean |
 |---|---|

@@ -50,8 +50,6 @@ pub use sql_compile::{
     ExistsFilter, GroupAgg, ListQuery, ListQueryParts, SoftDeleteMode as SqlSoftDeleteMode, SqlAgg,
 };
 
-use std::sync::OnceLock;
-
 /// Skip a test that needs a live SQL server — or fail, when the environment
 /// says one must be there.
 ///
@@ -110,18 +108,22 @@ pub fn adapter_feature_enabled(adapter: Adapter) -> bool {
     }
 }
 
-/// Process-wide adapter config for the **default** connection (compat).
-pub fn config() -> &'static AdapterConfig {
-    static CFG: OnceLock<AdapterConfig> = OnceLock::new();
-    CFG.get_or_init(|| {
-        let reg = registry();
-        let spec = reg.default_spec();
-        AdapterConfig {
-            adapter: spec.adapter,
-            database_url: spec.url.clone(),
-            pool_size: spec.pool_size,
-        }
-    })
+/// Adapter config for this application's **default** connection (compat).
+///
+/// Returns an owned value rather than the `&'static` it used to: it was a
+/// process-wide `OnceLock` derived from `registry()`, so in a process serving
+/// two applications it would have frozen the first one's adapter and database
+/// URL for every application that followed. Nothing in the tree calls it today,
+/// which is precisely why it is worth fixing now rather than discovering it
+/// from a query that went to the wrong database.
+pub fn config() -> AdapterConfig {
+    let reg = registry();
+    let spec = reg.default_spec();
+    AdapterConfig {
+        adapter: spec.adapter,
+        database_url: spec.url.clone(),
+        pool_size: spec.pool_size,
+    }
 }
 
 /// Capabilities of the **active** (or default) connection.

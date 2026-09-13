@@ -43,7 +43,7 @@ use serde_json::Value;
 use solidb_client::SoliDBClient;
 
 use crate::interpreter::builtins::http_class::block_on_db;
-use crate::interpreter::builtins::model::db_config::{get_database_name, DB_CONFIG};
+use crate::interpreter::builtins::model::db_config::{db_scheme_and_host, get_database_name};
 
 /// Connections per worker. Matches the reqwest pool the HTTP path holds, so the
 /// two transports place the same load on the server and the comparison is about
@@ -101,10 +101,11 @@ fn no_query_cache() -> bool {
 /// uses. The driver speaks raw TCP, so the scheme is dropped — and a TLS host is
 /// refused rather than silently downgraded to plaintext.
 fn driver_addr() -> Result<String, String> {
-    if DB_CONFIG.scheme.starts_with("https") {
+    let (scheme, host) = db_scheme_and_host();
+    if scheme.starts_with("https") {
         return Err("SOLI_DB_DRIVER does not support TLS hosts; refusing to downgrade".into());
     }
-    Ok(DB_CONFIG.host.clone())
+    Ok(host)
 }
 
 /// Authenticate every pooled socket, matching the credentials the HTTP model

@@ -482,7 +482,7 @@ fn upload_blob_to_solidb(
     // SOLIDB_USERNAME/PASSWORD login) > basic auth fallback.
     use crate::interpreter::builtins::model::core::{get_api_key, get_jwt_token};
     if let Some(api_key) = get_api_key() {
-        client = client.with_api_key(api_key);
+        client = client.with_api_key(&api_key);
     } else if let Some(jwt) = get_jwt_token() {
         client = client.with_jwt_token(&jwt);
     } else if let (Ok(user), Ok(pass)) = (
