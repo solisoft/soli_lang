@@ -34,11 +34,12 @@ use std::cell::RefCell;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::rc::Rc;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock};
+
+use crate::serve::tenant::TenantValue;
 use std::time::Duration;
 
 use base64::Engine;
-use lazy_static::lazy_static;
 use mail_builder::headers::address::Address;
 use mail_builder::headers::date::Date;
 use mail_builder::MessageBuilder;
@@ -126,9 +127,12 @@ impl MailerConfig {
     }
 }
 
-lazy_static! {
-    static ref MAILER_CONFIG: RwLock<MailerConfig> = RwLock::new(MailerConfig::from_env());
-}
+/// SMTP settings for the application on this thread.
+///
+/// Per application, not per process: these are one app's credentials and its
+/// `from` address. A co-hosted app must not send through them, and
+/// `Mailer.configure` in one must not reconfigure the other.
+static MAILER_CONFIG: TenantValue<MailerConfig> = TenantValue::new(MailerConfig::from_env);
 
 thread_local! {
     // Captured mail in `test` delivery mode, for `Mailer.deliveries()`. Thread-
@@ -620,49 +624,47 @@ fn mailer_configure(args: &[Value]) -> Result<Value, String> {
         return Err("Mailer.configure expects a Hash of options".to_string());
     };
     let opts = opts.borrow();
-    let mut cfg = MAILER_CONFIG
-        .write()
-        .map_err(|e| format!("mailer config lock poisoned: {e}"))?;
-
-    if let Some(dm) = hash_get(&opts, "delivery_method").and_then(|v| as_string(&v)) {
-        cfg.delivery_method = match dm.as_str() {
-            "test" => DeliveryMethod::Test,
-            "logger" => DeliveryMethod::Logger,
-            "smtp" => DeliveryMethod::Smtp,
-            other => return Err(format!("unknown delivery_method: {other}")),
-        };
-    }
-    if let Some(host) = hash_get(&opts, "host").and_then(|v| as_string(&v)) {
-        cfg.host = host;
-    }
-    if let Some(Value::Int(port)) = opts.get(&HashKey::String("port".into())) {
-        if *port < 1 || *port > 65535 {
-            return Err(format!("port {port} out of range 1..65535"));
+    MAILER_CONFIG.write(|cfg| {
+        if let Some(dm) = hash_get(&opts, "delivery_method").and_then(|v| as_string(&v)) {
+            cfg.delivery_method = match dm.as_str() {
+                "test" => DeliveryMethod::Test,
+                "logger" => DeliveryMethod::Logger,
+                "smtp" => DeliveryMethod::Smtp,
+                other => return Err(format!("unknown delivery_method: {other}")),
+            };
         }
-        cfg.port = *port as u16;
-    }
-    if let Some(user) = hash_get(&opts, "user").and_then(|v| as_string(&v)) {
-        cfg.user = Some(user);
-    }
-    if let Some(pass) = hash_get(&opts, "pass").and_then(|v| as_string(&v)) {
-        cfg.pass = Some(pass);
-    }
-    if let Some(tls) = hash_get(&opts, "tls").and_then(|v| as_string(&v)) {
-        cfg.tls = match tls.as_str() {
-            "tls" => TlsMode::Tls,
-            "starttls" => TlsMode::Starttls,
-            "none" => TlsMode::None,
-            "auto" => TlsMode::Auto,
-            other => return Err(format!("unknown tls mode: {other}")),
-        };
-    }
-    if let Some(from) = hash_get(&opts, "from").and_then(|v| as_string(&v)) {
-        cfg.from = Some(from);
-    }
-    if let Some(domain) = hash_get(&opts, "domain").and_then(|v| as_string(&v)) {
-        cfg.domain = domain;
-    }
-    Ok(Value::Null)
+        if let Some(host) = hash_get(&opts, "host").and_then(|v| as_string(&v)) {
+            cfg.host = host;
+        }
+        if let Some(Value::Int(port)) = opts.get(&HashKey::String("port".into())) {
+            if *port < 1 || *port > 65535 {
+                return Err(format!("port {port} out of range 1..65535"));
+            }
+            cfg.port = *port as u16;
+        }
+        if let Some(user) = hash_get(&opts, "user").and_then(|v| as_string(&v)) {
+            cfg.user = Some(user);
+        }
+        if let Some(pass) = hash_get(&opts, "pass").and_then(|v| as_string(&v)) {
+            cfg.pass = Some(pass);
+        }
+        if let Some(tls) = hash_get(&opts, "tls").and_then(|v| as_string(&v)) {
+            cfg.tls = match tls.as_str() {
+                "tls" => TlsMode::Tls,
+                "starttls" => TlsMode::Starttls,
+                "none" => TlsMode::None,
+                "auto" => TlsMode::Auto,
+                other => return Err(format!("unknown tls mode: {other}")),
+            };
+        }
+        if let Some(from) = hash_get(&opts, "from").and_then(|v| as_string(&v)) {
+            cfg.from = Some(from);
+        }
+        if let Some(domain) = hash_get(&opts, "domain").and_then(|v| as_string(&v)) {
+            cfg.domain = domain;
+        }
+        Ok(Value::Null)
+    })
 }
 
 /// `__mailer_deliver(mail_hash)` — send (or capture) a fully-rendered mail.
@@ -670,10 +672,7 @@ fn mailer_deliver(args: &[Value]) -> Result<Value, String> {
     let Some(Value::Hash(mail)) = args.first() else {
         return Err("Mailer.deliver expects a Hash".to_string());
     };
-    let cfg = MAILER_CONFIG
-        .read()
-        .map_err(|e| format!("mailer config lock poisoned: {e}"))?
-        .clone();
+    let cfg = MAILER_CONFIG.read(|c| c.clone());
 
     match cfg.delivery_method {
         DeliveryMethod::Test => {
@@ -824,7 +823,7 @@ fn mail_render(args: &[Value]) -> Result<Value, String> {
     };
 
     // Assemble the rendered mail hash.
-    let cfg_from = MAILER_CONFIG.read().ok().and_then(|c| c.from.clone());
+    let cfg_from = MAILER_CONFIG.read(|c| c.from.clone());
     let from = hash_get(&opts, "from")
         .and_then(|v| as_string(&v))
         .or(cfg_from);
@@ -906,10 +905,7 @@ pub fn register_mailer_builtins(env: &mut Environment) {
 /// silently dropped.
 pub(crate) fn mail_enqueue(args: &[Value]) -> Result<Value, String> {
     let mail = args.first().cloned().unwrap_or(Value::Null);
-    let method = MAILER_CONFIG
-        .read()
-        .map(|c| c.delivery_method)
-        .unwrap_or(DeliveryMethod::Smtp);
+    let method = MAILER_CONFIG.read(|c| c.delivery_method);
 
     if matches!(method, DeliveryMethod::Test | DeliveryMethod::Logger) {
         return mailer_deliver(&[mail]);
