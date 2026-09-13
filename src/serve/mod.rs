@@ -1398,13 +1398,16 @@ fn run_hyper_server_worker_pool(
                             }
                             let result = handle_hyper_request(
                                 req,
-                                request_tx,
-                                reload_tx,
-                                public_dir,
-                                asset_cache,
-                                ws_event_tx,
-                                lv_event_tx,
-                                dev_mode,
+                                TenantRuntime {
+                                    tenant: tenant::TenantId::PRIMARY,
+                                    request_tx,
+                                    reload_tx,
+                                    public_dir,
+                                    asset_cache,
+                                    ws_event_tx,
+                                    lv_event_tx,
+                                    dev_mode,
+                                },
                                 peer_addr,
                             )
                             .await;
@@ -2916,8 +2919,24 @@ use file_upload::parse_multipart_body;
 
 /// Handle a hyper request
 #[allow(clippy::too_many_arguments)]
-async fn handle_hyper_request(
-    mut req: Request<Incoming>,
+/// Everything the request path needs that belongs to one served application.
+///
+/// Bundled rather than passed as seven arguments because the point of the
+/// tenant work is that a process can serve more than one application: a host
+/// picks *which* bundle from the `Host` header, and that has to be one lookup
+/// against one value, not seven parallel maps. With a single application there
+/// is exactly one of these and nothing about the request path changes.
+///
+/// Everything in it is cheap to clone — an `Arc`, a crossbeam `Sender`, a
+/// `broadcast::Sender` — because it is cloned per connection and again per
+/// request.
+#[derive(Clone)]
+struct TenantRuntime {
+    /// Which application this serves. Not read on the request path yet: worker
+    /// threads are pinned to their tenant, so picking the queue already picks
+    /// the tenant. A host that ever shares a worker pool would bind from here.
+    #[allow(dead_code)]
+    tenant: tenant::TenantId,
     request_tx: WorkerSender,
     reload_tx: Option<broadcast::Sender<()>>,
     public_dir: Arc<PathBuf>,
@@ -2925,8 +2944,25 @@ async fn handle_hyper_request(
     ws_event_tx: channel::Sender<WebSocketEventData>,
     lv_event_tx: channel::Sender<LiveViewEventData>,
     dev_mode: bool,
+}
+
+async fn handle_hyper_request(
+    mut req: Request<Incoming>,
+    runtime: TenantRuntime,
     peer_addr: SocketAddr,
 ) -> Result<Response<ResponseBody>, hyper::Error> {
+    // Destructured rather than accessed through `runtime.` throughout: the body
+    // below is long, and every one of these names already meant exactly this.
+    let TenantRuntime {
+        tenant: _tenant,
+        request_tx,
+        reload_tx,
+        public_dir,
+        asset_cache,
+        ws_event_tx,
+        lv_event_tx,
+        dev_mode,
+    } = runtime;
     let method: Cow<'static, str> = match *req.method() {
         hyper::Method::GET => Cow::Borrowed("GET"),
         hyper::Method::POST => Cow::Borrowed("POST"),
