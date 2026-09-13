@@ -535,6 +535,40 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt
 ```
 
+### On a workstation with `rbuild`, compile remotely
+
+If `rbuild` is on `PATH`, prefer it for anything that produces a binary: it
+rsyncs the working tree — uncommitted changes included — to the dedicated build
+server, runs cargo there on twelve cores, and pulls only the executables back.
+Everywhere else (CI runners, a fresh clone, another machine) `rbuild` is absent
+and the plain cargo commands above are the right ones.
+
+```bash
+rbuild lang                                  # replaces cargo build --release
+rbuild check lang                            # replaces the fmt + clippy gate
+rbuild test lang --profile ci --test <name>  # replaces cargo test
+```
+
+The binary lands in `target/remote/release/soli` and is linked into
+`Work/soli/bin/`, which is first on `PATH` — so `soli` already means the build
+you just made. Two things follow:
+
+- **`cargo build` here rebuilds from an empty `target/`.** The local trees were
+  deleted when compilation moved off this machine; only `target/remote/`
+  survives. That is minutes of work for a result `rbuild lang` produces in
+  about eighty seconds.
+- **The remote release binary is not the manifest's.** The server overrides
+  `lto` to `thin` and `codegen-units` to 16 to use all its cores, and a
+  `[profile.*]` table in a cargo config outranks `Cargo.toml` key by key. It
+  costs a few percent. Benchmark with `rbuild --faithful lang`, which restores
+  `lto = "fat"` and `codegen-units = 1` for that build.
+
+`lang` patches `eui-proto`/`eui-client` to the sibling `../eui` checkout through
+the untracked `.cargo/config.toml`. Cargo does not warn about a stale sibling —
+it compiles the old code and fails later, here, on enum variants that do not
+exist. `rbuild` pushes patched siblings before the project itself, so this is
+handled; a manual sync is not.
+
 The Postgres and MySQL adapter tests skip when no server answers, and a skipped
 test still reports `ok`. Point them at a server and set `SOLI_REQUIRE_DB=1` to
 turn a would-be skip into a failure — this is what CI does, with both databases
@@ -554,6 +588,18 @@ After making changes to the Rust interpreter, deploy the new `soli` binary local
 cargo install --path . --locked   # rebuild + install the `soli` binary into ~/.cargo/bin
 pdev                              # restart the local Soli dev server with the new binary
 ```
+
+With `rbuild` on `PATH` the first line has a faster equivalent that does not
+rebuild locally from nothing:
+
+```bash
+rbuild lang     # `soli` on PATH is now the new binary, via Work/soli/bin/
+pdev
+```
+
+`rbuild --install lang` additionally overwrites `~/.cargo/bin/soli`. Reach for
+it only when something must resolve the binary without `Work/soli/bin` on its
+`PATH` — a systemd unit, or a launcher started from a minimal environment.
 
 Run both whenever a change in `src/` needs to be exercised through a running Soli app (dev bar, builtins, server behavior, etc.).
 
