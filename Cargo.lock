@@ -1467,7 +1467,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -2474,7 +2474,7 @@ dependencies = [
 [[package]]
 name = "eui-audio"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=c5f19f3#c5f19f3860a0c6d999604e7645c72ce00321075b"
+source = "git+https://github.com/solisoft/eui?rev=eece118#eece11823a0641d75653ef8721e8fb12cd1b3df6"
 dependencies = [
  "eui-proto",
  "symphonia",
@@ -2483,7 +2483,7 @@ dependencies = [
 [[package]]
 name = "eui-client"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=c5f19f3#c5f19f3860a0c6d999604e7645c72ce00321075b"
+source = "git+https://github.com/solisoft/eui?rev=eece118#eece11823a0641d75653ef8721e8fb12cd1b3df6"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -2526,7 +2526,7 @@ dependencies = [
 [[package]]
 name = "eui-layout"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=c5f19f3#c5f19f3860a0c6d999604e7645c72ce00321075b"
+source = "git+https://github.com/solisoft/eui?rev=eece118#eece11823a0641d75653ef8721e8fb12cd1b3df6"
 dependencies = [
  "eui-proto",
  "eui-theme",
@@ -2536,12 +2536,12 @@ dependencies = [
 [[package]]
 name = "eui-proto"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=c5f19f3#c5f19f3860a0c6d999604e7645c72ce00321075b"
+source = "git+https://github.com/solisoft/eui?rev=eece118#eece11823a0641d75653ef8721e8fb12cd1b3df6"
 
 [[package]]
 name = "eui-render"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=c5f19f3#c5f19f3860a0c6d999604e7645c72ce00321075b"
+source = "git+https://github.com/solisoft/eui?rev=eece118#eece11823a0641d75653ef8721e8fb12cd1b3df6"
 dependencies = [
  "bytemuck",
  "eui-layout",
@@ -2556,7 +2556,7 @@ dependencies = [
 [[package]]
 name = "eui-text"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=c5f19f3#c5f19f3860a0c6d999604e7645c72ce00321075b"
+source = "git+https://github.com/solisoft/eui?rev=eece118#eece11823a0641d75653ef8721e8fb12cd1b3df6"
 dependencies = [
  "cosmic-text",
  "eui-layout",
@@ -2566,7 +2566,7 @@ dependencies = [
 [[package]]
 name = "eui-theme"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=c5f19f3#c5f19f3860a0c6d999604e7645c72ce00321075b"
+source = "git+https://github.com/solisoft/eui?rev=eece118#eece11823a0641d75653ef8721e8fb12cd1b3df6"
 dependencies = [
  "eui-proto",
 ]
@@ -2574,7 +2574,7 @@ dependencies = [
 [[package]]
 name = "eui-tree"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=c5f19f3#c5f19f3860a0c6d999604e7645c72ce00321075b"
+source = "git+https://github.com/solisoft/eui?rev=eece118#eece11823a0641d75653ef8721e8fb12cd1b3df6"
 dependencies = [
  "eui-proto",
 ]
@@ -2582,7 +2582,7 @@ dependencies = [
 [[package]]
 name = "eui-video"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=c5f19f3#c5f19f3860a0c6d999604e7645c72ce00321075b"
+source = "git+https://github.com/solisoft/eui?rev=eece118#eece11823a0641d75653ef8721e8fb12cd1b3df6"
 dependencies = [
  "gif 0.13.3",
  "image-webp",
@@ -2591,7 +2591,7 @@ dependencies = [
 [[package]]
 name = "eui-vm"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=c5f19f3#c5f19f3860a0c6d999604e7645c72ce00321075b"
+source = "git+https://github.com/solisoft/eui?rev=eece118#eece11823a0641d75653ef8721e8fb12cd1b3df6"
 dependencies = [
  "eui-proto",
 ]
@@ -5533,7 +5533,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -9821,7 +9821,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
