@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
+use crate::serve::tenant::TenantCell;
+
 /// One named connection after parsing / env expansion.
 #[derive(Clone, Debug)]
 pub struct ConnectionSpec {
@@ -74,12 +76,24 @@ impl ConnectionRegistry {
     }
 }
 
-static REGISTRY: OnceLock<ConnectionRegistry> = OnceLock::new();
-static REGISTRY_OVERRIDE: Mutex<Option<ConnectionRegistry>> = Mutex::new(None);
+/// The connections the application on this thread talks to.
+///
+/// **Per application, and the most consequential of them.** A process serving
+/// two applications shares nothing that decides *which database a query goes
+/// to* — and because this used to be a `OnceLock`, the first application to
+/// boot would have won permanently and silently: no error, no warning, the
+/// second application simply reading and writing the first one's data with the
+/// first one's credentials.
+static REGISTRY: TenantCell<ConnectionRegistry> = TenantCell::new();
+
+/// An explicitly installed registry, which wins over the lazily loaded one.
+/// Also per application, or a test installing an override would redirect every
+/// other application in the process.
+static REGISTRY_OVERRIDE: TenantCell<ConnectionRegistry> = TenantCell::new();
 
 /// Install a registry for tests (or reload).
 pub fn set_registry_for_tests(reg: ConnectionRegistry) {
-    *REGISTRY_OVERRIDE.lock().unwrap() = Some(reg);
+    REGISTRY_OVERRIDE.set(reg);
 }
 
 /// Serializes tests that install a registry override. The override is
@@ -93,33 +107,31 @@ pub fn registry_test_lock() -> &'static Mutex<()> {
 }
 
 pub fn clear_registry_override() {
-    *REGISTRY_OVERRIDE.lock().unwrap() = None;
+    REGISTRY_OVERRIDE.clear();
 }
 
-/// Process registry: test override, else OnceLock from env/file (first call).
+/// This application's registry: test override, else loaded from env/file on
+/// first use.
 pub fn registry() -> ConnectionRegistry {
-    if let Some(r) = REGISTRY_OVERRIDE.lock().unwrap().clone() {
+    if let Some(r) = REGISTRY_OVERRIDE.get() {
         return r;
     }
-    REGISTRY
-        .get_or_init(|| {
-            load_registry(None).unwrap_or_else(|e| {
-                eprintln!("[WARN] database config: {}", e.message());
-                env_only_primary().expect("solidb default always works")
-            })
+    REGISTRY.get_or_init(|| {
+        load_registry(None).unwrap_or_else(|e| {
+            eprintln!("[WARN] database config: {}", e.message());
+            env_only_primary().expect("solidb default always works")
         })
-        .clone()
+    })
 }
 
 /// Force-load registry from an app path (e.g. serve boot). Safe to call once.
 pub fn init_from_app_path(app: &Path) -> Result<ConnectionRegistry, DbError> {
     let reg = load_registry(Some(app))?;
-    // Prefer explicit init over empty OnceLock; store override for this process
-    // when OnceLock already set from tests/early access.
-    if REGISTRY.get().is_none() {
-        let _ = REGISTRY.set(reg.clone());
-    } else {
-        *REGISTRY_OVERRIDE.lock().unwrap() = Some(reg.clone());
+    // Prefer filling the empty slot; fall back to the override when something
+    // already loaded a registry for this application (a test, or an early
+    // access before boot).
+    if !REGISTRY.set_once(reg.clone()) {
+        REGISTRY_OVERRIDE.set(reg.clone());
     }
     Ok(reg)
 }

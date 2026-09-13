@@ -350,7 +350,7 @@ pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String
     if crate::db::is_sql() {
         return crate::db::sql::begin_transaction(isolation_level);
     }
-    let host = super::core::DB_CONFIG.host.clone();
+    let host = super::db_config::db_host();
     let database = get_database_name().to_string();
     // SEC-027: use the configured scheme; was forcing http:// regardless.
     let url = db_url(&format!("/_api/database/{}/transaction/begin", database));

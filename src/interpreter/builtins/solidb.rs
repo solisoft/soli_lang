@@ -195,11 +195,8 @@ fn targets_orm_endpoint(host: &str, database: &str) -> bool {
     let Ok(client) = SoliDBClient::connect(host) else {
         return false;
     };
-    let orm = format!(
-        "{}{}",
-        crate::interpreter::builtins::model::DB_CONFIG.scheme,
-        crate::interpreter::builtins::model::DB_CONFIG.host
-    );
+    let (scheme, host) = crate::interpreter::builtins::model::db_scheme_and_host();
+    let orm = format!("{}{}", scheme, host);
     client.base_url().trim_end_matches('/') == orm.trim_end_matches('/')
 }
 

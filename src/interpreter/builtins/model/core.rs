@@ -8,9 +8,9 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, Function, NativeFunction, SoliStr, Value};
 
 pub use super::db_config::{
-    db_url, force_refresh_jwt_token, get_api_key, get_basic_auth, get_cursor_url,
-    get_database_name, get_jwt_token, init_db_config, init_jwt_token, resolve_api_key,
-    resolve_basic_auth, DbConfig, DB_CONFIG,
+    db_host, db_scheme_and_host, db_url, force_refresh_jwt_token, get_api_key, get_basic_auth,
+    get_cursor_url, get_database_name, get_jwt_token, init_db_config, init_jwt_token,
+    resolve_api_key, resolve_basic_auth, with_soli_db_config, DbConfig,
 };
 pub use super::engine_context::{
     get_model_engine_context, set_model_engine_context, EngineContextGuard,

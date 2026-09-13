@@ -1,8 +1,6 @@
+use crate::serve::tenant::TenantValue;
 use std::cell::RefCell;
-use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-use lazy_static::lazy_static;
 
 thread_local! {
     /// Per-thread DB name override. When set, replaces the cached
@@ -109,31 +107,49 @@ struct CachedJwt {
     exp_epoch: u64,
 }
 
-static JWT_CACHE: Mutex<Option<CachedJwt>> = Mutex::new(None);
+/// The database login state for the application on this thread: its token, its
+/// login backoff, and whether it has already consumed an inherited `SOLIDB_JWT`.
+///
+/// One struct rather than three globals because they are read and written
+/// together on every `get_jwt_token`, and because per-application they must
+/// move together: a token belongs to one application's credentials, and a
+/// backoff after *its* login failed must not make another application skip its
+/// own login.
+#[derive(Default)]
+struct JwtState {
+    cache: Option<CachedJwt>,
+    /// Epoch seconds of the last failed `/auth/login` attempt (0 = none).
+    /// SolidB rate-limits logins per client IP (20/min); a process whose login
+    /// fails once used to retry on EVERY query, which kept the shared
+    /// 127.0.0.1 bucket full and poisoned every other local process — a
+    /// self-sustaining 400 storm under `soli test --jobs N`. Back off instead:
+    /// after a failure we serve the basic-auth fallback for
+    /// `JWT_LOGIN_BACKOFF_SECS` before trying to log in again.
+    last_failure_epoch: u64,
+    /// `SOLIDB_JWT` (a token minted by a parent process, e.g. the test runner
+    /// minting ONE token for all its test-server children) is consumed at most
+    /// once: after `force_refresh_jwt_token()` we must do a real login, not
+    /// re-seed the same possibly-revoked token in a loop.
+    env_consumed: bool,
+}
+
+static JWT_STATE: TenantValue<JwtState> = TenantValue::new(JwtState::default);
 
 /// Refresh `JWT_REFRESH_LEEWAY_SECS` seconds before the token expires, so a
 /// long request that crosses the boundary doesn't 401 mid-flight.
 const JWT_REFRESH_LEEWAY_SECS: u64 = 60;
 
-/// Epoch seconds of the last failed `/auth/login` attempt (0 = none).
-/// SolidB rate-limits logins per client IP (20/min); a process whose login
-/// fails once used to retry on EVERY query, which kept the shared
-/// 127.0.0.1 bucket full and poisoned every other local process — a
-/// self-sustaining 400 storm under `soli test --jobs N`. Back off instead:
-/// after a failure we serve the basic-auth fallback for
-/// `JWT_LOGIN_BACKOFF_SECS` before trying to log in again.
-static LAST_LOGIN_FAILURE_EPOCH: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
 const JWT_LOGIN_BACKOFF_SECS: u64 = 30;
 
-/// `SOLIDB_JWT` (a token minted by a parent process, e.g. the test runner
-/// minting ONE token for all its test-server children) is consumed at most
-/// once: after `force_refresh_jwt_token()` we must do a real login, not
-/// re-seed the same possibly-revoked token in a loop.
-static ENV_JWT_CONSUMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Cached DB config - initialized on first use.
-static CACHED_DB_CONFIG: OnceLock<CachedDbConfig> = OnceLock::new();
+/// SoliDB host, database, API key and basic auth for the application on this
+/// thread, resolved from its environment on first use.
+///
+/// Per application, and emphatically so: these are the credentials a query is
+/// signed with and the database it lands in. As a process-wide `OnceLock` the
+/// first application to boot would have frozen them for every application after
+/// it — silently, with no error, each one reading and writing the first one's
+/// data.
+static CACHED_DB_CONFIG: TenantValue<CachedDbConfig> = TenantValue::new(db_config_from_env);
 
 struct CachedDbConfig {
     cursor_url: String,
@@ -142,9 +158,29 @@ struct CachedDbConfig {
     basic_auth: Option<String>,
 }
 
-lazy_static! {
-    /// Cached DB configuration (for username/password which are less likely to change).
-    pub static ref DB_CONFIG: DbConfig = DbConfig::from_env();
+/// Scheme, host and credentials for this application's database.
+///
+/// Per application for the same reason as `CACHED_DB_CONFIG`: it is read from
+/// that application's environment, and every request signed with it goes to the
+/// host it names.
+static DB_CONFIG: TenantValue<DbConfig> = TenantValue::new(DbConfig::from_env);
+
+/// Read this application's database configuration.
+///
+/// Replaces the `lazy_static` deref (`DB_CONFIG.host`) that used to be a
+/// process-wide value: keep the closure short, it runs under a read lock.
+pub fn with_soli_db_config<R>(f: impl FnOnce(&DbConfig) -> R) -> R {
+    DB_CONFIG.read(f)
+}
+
+/// This application's SoliDB scheme (`http://` / `https://`) and host.
+pub fn db_scheme_and_host() -> (String, String) {
+    DB_CONFIG.read(|cfg| (cfg.scheme.clone(), cfg.host.clone()))
+}
+
+/// This application's SoliDB host, without the scheme.
+pub fn db_host() -> String {
+    DB_CONFIG.read(|cfg| cfg.host.clone())
 }
 
 pub fn init_jwt_token() {
@@ -257,50 +293,52 @@ fn needs_jwt_refresh(cache: Option<&CachedJwt>, now: u64) -> bool {
 /// fall back to) — callers in `crud.rs` then drop to API key or basic
 /// auth.
 pub fn get_jwt_token() -> Option<String> {
-    use std::sync::atomic::Ordering;
-
-    let mut cache = JWT_CACHE.lock().ok()?;
     let now = now_epoch();
-
-    // Seed from SOLIDB_JWT once: a parent process (the test runner) mints
-    // one token and hands it to all children so N parallel boots don't
-    // make N `/auth/login` calls from the same IP.
-    if cache.is_none() && !ENV_JWT_CONSUMED.swap(true, Ordering::Relaxed) {
-        if let Ok(token) = std::env::var("SOLIDB_JWT") {
-            if !token.is_empty() {
-                let exp_epoch = jwt_exp(&token);
-                if exp_epoch == 0 || exp_epoch > now + JWT_REFRESH_LEEWAY_SECS {
-                    *cache = Some(CachedJwt { token, exp_epoch });
+    // The whole operation runs under one write lock, as it did under the
+    // mutex this replaces: seeding, refreshing and recording a failure have to
+    // be one step or two threads both decide to log in.
+    JWT_STATE.write(|state| {
+        // Seed from SOLIDB_JWT once: a parent process (the test runner) mints
+        // one token and hands it to all children so N parallel boots don't
+        // make N `/auth/login` calls from the same IP.
+        if state.cache.is_none() && !std::mem::replace(&mut state.env_consumed, true) {
+            if let Ok(token) = std::env::var("SOLIDB_JWT") {
+                if !token.is_empty() {
+                    let exp_epoch = jwt_exp(&token);
+                    if exp_epoch == 0 || exp_epoch > now + JWT_REFRESH_LEEWAY_SECS {
+                        state.cache = Some(CachedJwt { token, exp_epoch });
+                    }
                 }
             }
         }
-    }
 
-    if needs_jwt_refresh(cache.as_ref(), now) {
-        let last_failure = LAST_LOGIN_FAILURE_EPOCH.load(Ordering::Relaxed);
-        if last_failure != 0 && now < last_failure + JWT_LOGIN_BACKOFF_SECS {
-            // Recent login failure → don't hammer /auth/login on every
-            // query (that's what keeps SolidB's per-IP rate limit bucket
-            // full). Serve the old token if there is one, else fall back.
-            return cache.as_ref().map(|e| e.token.clone());
-        }
-        if let Some(fresh) = login_for_token() {
-            LAST_LOGIN_FAILURE_EPOCH.store(0, Ordering::Relaxed);
-            *cache = Some(fresh);
-        } else {
-            // Remember the failure so the next JWT_LOGIN_BACKOFF_SECS of
-            // queries go straight to the basic-auth fallback instead of
-            // retrying the login each time.
-            LAST_LOGIN_FAILURE_EPOCH.store(now, Ordering::Relaxed);
-            if cache.is_none() {
-                return None;
+        if needs_jwt_refresh(state.cache.as_ref(), now) {
+            let last_failure = state.last_failure_epoch;
+            if last_failure != 0 && now < last_failure + JWT_LOGIN_BACKOFF_SECS {
+                // Recent login failure → don't hammer /auth/login on every
+                // query (that's what keeps SolidB's per-IP rate limit bucket
+                // full). Serve the old token if there is one, else fall back.
+                return state.cache.as_ref().map(|e| e.token.clone());
             }
-            // Else: we have an old token and the refresh failed. Keep
-            // serving the old one; the 401-retry path will trigger
-            // `force_refresh_jwt_token()` on the next failed request.
+            // `login_for_token` talks to SoliDB and reads the connection
+            // registry — both other locks, neither this one.
+            if let Some(fresh) = login_for_token() {
+                state.last_failure_epoch = 0;
+                state.cache = Some(fresh);
+            } else {
+                // Remember the failure so the next JWT_LOGIN_BACKOFF_SECS of
+                // queries go straight to the basic-auth fallback instead of
+                // retrying the login each time.
+                state.last_failure_epoch = now;
+                // No previous token to fall back on: give up and let the
+                // caller drop to API key or basic auth. With one, keep serving
+                // it — the 401-retry path will trigger
+                // `force_refresh_jwt_token()` on the next failed request.
+                state.cache.as_ref()?;
+            }
         }
-    }
-    cache.as_ref().map(|e| e.token.clone())
+        state.cache.as_ref().map(|e| e.token.clone())
+    })
 }
 
 /// Drop the cached JWT so the next `get_jwt_token()` call re-logs in.
@@ -308,17 +346,24 @@ pub fn get_jwt_token() -> Option<String> {
 /// when a request comes back unauthorised despite carrying what we
 /// believed was a valid token (clock skew, server-side revocation, etc.).
 pub fn force_refresh_jwt_token() {
-    if let Ok(mut cache) = JWT_CACHE.lock() {
-        *cache = None;
-    }
+    JWT_STATE.write(|state| state.cache = None);
 }
 
 pub fn init_db_config() {
-    let _ = get_db_config();
+    with_db_config(|_| ());
 }
 
-fn get_db_config() -> &'static CachedDbConfig {
-    CACHED_DB_CONFIG.get_or_init(|| {
+/// Read this application's cached SoliDB config.
+///
+/// Takes a closure rather than returning `&'static CachedDbConfig`: the value
+/// now lives inside a map inside a lock, and stable Rust cannot lend a guard
+/// into it.
+fn with_db_config<R>(f: impl FnOnce(&CachedDbConfig) -> R) -> R {
+    CACHED_DB_CONFIG.read(f)
+}
+
+fn db_config_from_env() -> CachedDbConfig {
+    {
         let raw =
             std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
         let (scheme, host) = parse_solidb_host(&raw);
@@ -347,14 +392,14 @@ fn get_db_config() -> &'static CachedDbConfig {
             api_key,
             basic_auth,
         }
-    })
+    }
 }
 
 pub fn get_database_name() -> String {
     if let Some(name) = override_database() {
         return name;
     }
-    get_db_config().database.clone()
+    with_db_config(|cfg| cfg.database.clone())
 }
 
 /// Cursor endpoint for the current query.
@@ -375,20 +420,20 @@ pub fn get_cursor_url() -> String {
     if let Some(name) = override_database() {
         // SEC-027: per-thread DB-name override still uses the same
         // scheme `DbConfig::from_env` picked, not a hard-coded http://.
-        return format!(
-            "{}{}/_api/database/{}/cursor",
-            DB_CONFIG.scheme, DB_CONFIG.host, name
-        );
+        let (scheme, host) = db_scheme_and_host();
+        return format!("{}{}/_api/database/{}/cursor", scheme, host, name);
     }
-    get_db_config().cursor_url.clone()
+    with_db_config(|cfg| cfg.cursor_url.clone())
 }
 
-pub fn get_api_key() -> Option<&'static str> {
-    get_db_config().api_key.as_deref().filter(|k| !k.is_empty())
+/// Owned rather than `&'static str`: a per-application value cannot be lent
+/// out of the lock it lives in.
+pub fn get_api_key() -> Option<String> {
+    with_db_config(|cfg| cfg.api_key.clone().filter(|k| !k.is_empty()))
 }
 
-pub fn get_basic_auth() -> Option<&'static str> {
-    get_db_config().basic_auth.as_deref()
+pub fn get_basic_auth() -> Option<String> {
+    with_db_config(|cfg| cfg.basic_auth.clone())
 }
 
 /// API key from env, or from the active `config/database.toml` connection.
@@ -426,7 +471,7 @@ pub fn resolve_basic_auth() -> Option<String> {
 /// Same local-dev default as the native driver: `admin`/`admin` on loopback
 /// when nothing is configured. Remote hosts never get this fallback.
 fn loopback_dev_credentials() -> Option<(String, String)> {
-    if is_loopback_db_host(&DB_CONFIG.host) {
+    if is_loopback_db_host(&db_host()) {
         Some(("admin".into(), "admin".into()))
     } else {
         None
@@ -435,10 +480,11 @@ fn loopback_dev_credentials() -> Option<(String, String)> {
 
 /// SEC-027: build a SoliDB URL using the configured scheme + host.
 /// `path` is appended verbatim (e.g. `/_api/database/{db}/cursor`).
-/// Use this instead of `format!("http://{}{}", DB_CONFIG.host, path)`,
-/// which forces plaintext HTTP regardless of the operator's intent.
+/// Use this instead of `format!("http://{}{}", db_host(), path)`, which forces
+/// plaintext HTTP regardless of the operator's intent.
 pub fn db_url(path: &str) -> String {
-    format!("{}{}{}", DB_CONFIG.scheme, DB_CONFIG.host, path)
+    let (scheme, host) = db_scheme_and_host();
+    format!("{}{}{}", scheme, host, path)
 }
 
 /// Spawn a periodic keep-warm ping against the model DB on the server's
@@ -511,7 +557,7 @@ pub fn spawn_db_keep_warm(handle: &tokio::runtime::Handle) {
                         eprintln!(
                             "{} DB keep-warm: connection to {} recovered",
                             crate::serve::log_timestamp(),
-                            DB_CONFIG.host
+                            db_host()
                         );
                     }
                     was_ok = true;
@@ -521,7 +567,7 @@ pub fn spawn_db_keep_warm(handle: &tokio::runtime::Handle) {
                         eprintln!(
                             "{} DB keep-warm: ping to {} failed ({}); will retry every {}s silently",
                             crate::serve::log_timestamp(),
-                            DB_CONFIG.host,
+                            db_host(),
                             e,
                             interval_secs
                         );
@@ -712,30 +758,36 @@ mod tests {
         // Seed the cache, force-refresh, observe empty. This is the
         // path the 401-retry uses to recover from a server-side
         // revocation that beat the leeway window.
-        {
-            let mut cache = JWT_CACHE.lock().unwrap();
-            *cache = Some(CachedJwt {
-                token: "stale".to_string(),
-                exp_epoch: u64::MAX,
-            });
-        }
+        swap_jwt(Some(CachedJwt {
+            token: "stale".to_string(),
+            exp_epoch: u64::MAX,
+        }));
         force_refresh_jwt_token();
-        let cache = JWT_CACHE.lock().unwrap();
-        assert!(cache.is_none());
+        assert!(peek_jwt().is_none());
     }
 
     // ---- End-to-end: cache → expiry → re-login regression --------------
     //
-    // These tests touch SOLIDB_* env vars and the process-global
-    // JWT_CACHE, so they must run serially. Pattern mirrors
-    // `serve::mod::ENV_TEST_LOCK`.
-    /// Serialises the tests that touch `JWT_CACHE` or the `SOLIDB_*` env vars.
+    // These tests touch SOLIDB_* env vars and the tenant's JWT state, and
+    // every test here runs on the primary tenant, so they must run serially.
+    // Pattern mirrors `serve::mod::ENV_TEST_LOCK`.
+    /// Read this tenant's cached JWT, for the tests that inspect it.
+    fn peek_jwt() -> Option<CachedJwt> {
+        JWT_STATE.read(|state| state.cache.clone())
+    }
+
+    /// Install (or clear) this tenant's cached JWT, returning the previous one.
+    fn swap_jwt(next: Option<CachedJwt>) -> Option<CachedJwt> {
+        JWT_STATE.write(|state| std::mem::replace(&mut state.cache, next))
+    }
+
+    /// Serialises the tests that touch the JWT state or the `SOLIDB_*` env vars.
     ///
     /// Both are process-global and cargo runs these on parallel threads. Taken
     /// poison-tolerantly on purpose: one of these tests spawns a stub server,
     /// and when that fails the panic used to poison the mutex and turn a single
     /// failure into three — two of them in tests that were working.
-    static JWT_E2E_LOCK: Mutex<()> = Mutex::new(());
+    static JWT_E2E_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// Build a JWT-shaped string `header.payload.sig` whose decoded
     /// payload is `{"exp": <exp_epoch>}`. The header and signature are
@@ -877,7 +929,7 @@ mod tests {
         let _guard = JWT_E2E_LOCK.lock().unwrap_or_else(|p| p.into_inner());
 
         // Fresh cache for the test, restored on the way out.
-        let saved = JWT_CACHE.lock().unwrap().take();
+        let saved = swap_jwt(None);
 
         // Two distinguishable tokens — different exp claims so the JWT
         // strings themselves differ. Both far enough in the future that
@@ -899,20 +951,19 @@ mod tests {
         std::env::set_var("SOLIDB_PASSWORD", "test-pass");
 
         let first = get_jwt_token().expect("first login should succeed via stub");
-        let exp_after_first = JWT_CACHE.lock().unwrap().as_ref().unwrap().exp_epoch;
+        let exp_after_first = peek_jwt().expect("a token must be cached").exp_epoch;
 
         // Force the cached entry into the leeway window. The fix uses
         // `needs_jwt_refresh` to detect this and re-login; the old
         // `OnceLock` cache had no way to express this state at all.
-        {
-            let mut cache = JWT_CACHE.lock().unwrap();
-            if let Some(entry) = cache.as_mut() {
+        JWT_STATE.write(|state| {
+            if let Some(entry) = state.cache.as_mut() {
                 entry.exp_epoch = now_epoch() + JWT_REFRESH_LEEWAY_SECS / 2;
             }
-        }
+        });
 
         let second = get_jwt_token().expect("second call should re-login via stub");
-        let exp_after_second = JWT_CACHE.lock().unwrap().as_ref().unwrap().exp_epoch;
+        let exp_after_second = peek_jwt().expect("a token must be cached").exp_epoch;
 
         // Restore env + cache before assertions so test failure doesn't
         // leak state into other tests in the same process.
@@ -928,7 +979,7 @@ mod tests {
             Some(v) => std::env::set_var("SOLIDB_PASSWORD", v),
             None => std::env::remove_var("SOLIDB_PASSWORD"),
         }
-        *JWT_CACHE.lock().unwrap() = saved;
+        swap_jwt(saved);
 
         assert_eq!(
             exp_after_first, fresh_exp_a,
@@ -960,7 +1011,7 @@ mod tests {
     #[test]
     fn get_jwt_token_does_not_refresh_when_cache_is_fresh() {
         let _guard = JWT_E2E_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let saved = JWT_CACHE.lock().unwrap().take();
+        let saved = swap_jwt(None);
 
         // Stub serves token-1 first, then would serve token-2 — if the
         // second call somehow re-logs in, we'll see the swap.
@@ -976,9 +1027,9 @@ mod tests {
         std::env::set_var("SOLIDB_PASSWORD", "test-pass");
 
         let first = get_jwt_token().expect("first call hits stub");
-        let exp_after_first = JWT_CACHE.lock().unwrap().as_ref().unwrap().exp_epoch;
+        let exp_after_first = peek_jwt().expect("a token must be cached").exp_epoch;
         let second = get_jwt_token().expect("second call should reuse cache");
-        let exp_after_second = JWT_CACHE.lock().unwrap().as_ref().unwrap().exp_epoch;
+        let exp_after_second = peek_jwt().expect("a token must be cached").exp_epoch;
 
         match prev_host {
             Some(v) => std::env::set_var("SOLIDB_HOST", v),
@@ -992,7 +1043,7 @@ mod tests {
             Some(v) => std::env::set_var("SOLIDB_PASSWORD", v),
             None => std::env::remove_var("SOLIDB_PASSWORD"),
         }
-        *JWT_CACHE.lock().unwrap() = saved;
+        swap_jwt(saved);
 
         // Exactly one login should have reached the stub: the second call is
         // served from cache. Asserting the count says *why* the tokens match,
