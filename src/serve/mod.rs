@@ -39,6 +39,7 @@ pub mod span_log;
 pub mod template_warnings;
 pub mod tenant;
 mod uploads_prelude;
+pub mod vhost;
 pub mod view_log;
 pub mod websocket;
 
@@ -1301,6 +1302,21 @@ fn run_hyper_server_worker_pool(
             // drains instead of truncating.
             spawn_drain_on_signal();
 
+            // One application, so the router is a single fallback entry that
+            // answers every `Host`. A host serving several would build this
+            // with `Router::new()` and one `insert` per mounted application;
+            // nothing else in the request path would differ.
+            let router = Arc::new(vhost::Router::single(TenantRuntime {
+                tenant: tenant::TenantId::PRIMARY,
+                request_tx: worker_queues_for_tokio.get_sender(),
+                reload_tx: reload_tx_for_tokio.clone(),
+                public_dir: public_dir_arc.clone(),
+                asset_cache: asset_cache_for_tokio.clone(),
+                ws_event_tx: ws_event_tx.clone(),
+                lv_event_tx: lv_event_tx.clone(),
+                dev_mode: dev_mode_for_tokio,
+            }));
+
             loop {
                 // The accept loop deliberately keeps running during a drain.
                 // Breaking out would return from the enclosing `block_on`,
@@ -1334,14 +1350,8 @@ fn run_hyper_server_worker_pool(
                 };
 
                 let io = TokioIo::new(stream);
-                let request_tx = worker_queues_for_tokio.get_sender();
-                let reload_tx = reload_tx_for_tokio.clone();
-                let public_dir = public_dir_arc.clone(); // Arc clone is cheap
-                let asset_cache = asset_cache_for_tokio.clone(); // Arc clone is cheap
+                let router = router.clone(); // Arc clone is cheap
                 let _ws_registry = ws_registry_for_tokio.clone();
-                let ws_event_tx = ws_event_tx.clone(); // crossbeam Sender is cheap to clone
-                let lv_event_tx = lv_event_tx.clone(); // LiveView event sender
-                let dev_mode = dev_mode_for_tokio;
 
                 tokio::spawn(async move {
                     // Held for the whole connection so the drain knows when the
@@ -1351,12 +1361,7 @@ fn run_hyper_server_worker_pool(
                     // Released when this connection ends, however it ends.
                     let _connection_permit = connection_permit;
                     let service = service_fn(move |req| {
-                        let request_tx = request_tx.clone();
-                        let reload_tx = reload_tx.clone();
-                        let public_dir = public_dir.clone(); // Arc clone is cheap
-                        let asset_cache = asset_cache.clone(); // Arc clone is cheap
-                        let ws_event_tx = ws_event_tx.clone();
-                        let lv_event_tx = lv_event_tx.clone();
+                        let router = router.clone(); // Arc clone is cheap
 
                         async move {
                             // Draining: refuse new work, but let the probes
@@ -1396,21 +1401,28 @@ fn run_hyper_server_worker_pool(
                                     .body(full(Bytes::new()))
                                     .unwrap_or_else(|_| Response::new(full(Bytes::new()))));
                             }
-                            let result = handle_hyper_request(
-                                req,
-                                TenantRuntime {
-                                    tenant: tenant::TenantId::PRIMARY,
-                                    request_tx,
-                                    reload_tx,
-                                    public_dir,
-                                    asset_cache,
-                                    ws_event_tx,
-                                    lv_event_tx,
-                                    dev_mode,
-                                },
-                                peer_addr,
-                            )
-                            .await;
+                            // Which application serves this. `Host` first, and
+                            // the URI authority behind it: an HTTP/2 request
+                            // carries `:authority` instead, which hyper leaves
+                            // in the URI rather than synthesising a header.
+                            let host = req
+                                .headers()
+                                .get(hyper::header::HOST)
+                                .and_then(|value| value.to_str().ok())
+                                .map(|value| value.to_string())
+                                .or_else(|| req.uri().host().map(|h| h.to_string()));
+                            let Some(runtime) = router.resolve(host.as_deref()).cloned() else {
+                                // No application claims this host and there is
+                                // no fallback. 421 is the answer that tells a
+                                // client it reached the wrong server, rather
+                                // than handing it whichever app is first.
+                                return Ok(Response::builder()
+                                    .status(StatusCode::MISDIRECTED_REQUEST)
+                                    .header("Server", "soliMVC")
+                                    .body(full(Bytes::from("Misdirected request")))
+                                    .unwrap());
+                            };
+                            let result = handle_hyper_request(req, runtime, peer_addr).await;
                             match (result, cors_decision) {
                                 (Ok(mut response), Some(decision)) => {
                                     for (key, value) in decision.response_headers {
