@@ -579,14 +579,11 @@ fn current_request_query_param(name: &str) -> Option<String> {
 /// controller-wide `this.layout = "..."` default. `None` when the class isn't
 /// registered or declared no layout.
 fn registered_layout_for_class(class_name: &str) -> Option<String> {
-    let registry = crate::interpreter::builtins::controller::registry::CONTROLLER_REGISTRY
-        .read()
-        .ok()?;
-    let info = registry.get_by_name(class_name)?;
-    // Resolve against the in-flight action so per-action `this.layout(...)`
-    // rules win over the controller-wide default.
+    // Resolved before the closure: `current_action_name` reads a different
+    // thread-local, and the registry lock is held for the lookup only.
     let action = crate::interpreter::builtins::current_action_name();
-    info.layout_for(&action)
+    crate::interpreter::builtins::controller::registry::CONTROLLER_REGISTRY
+        .read(|registry| registry.get_by_name(class_name)?.layout_for(&action))
 }
 
 /// Resolve the registered layout for an explicit controller instance.

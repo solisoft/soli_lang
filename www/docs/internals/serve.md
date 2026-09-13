@@ -65,11 +65,11 @@ Three helpers, so a singleton keeps its shape and changes only what it is. Each 
 
 ### Done, and left
 
-Converted: the app root (was `live::component::APP_ROOT`); the `File` and `Image` jails (were `OnceLock`s); `VIEWS_DIR`, `PUBLIC_DIR` and `TEMPLATE_CACHE` (`init_templates` was first-caller-wins, so a second application would have rendered the first one's views); `JAR_CACHE`; `MOUNTED_ENGINES`; `MAILER_CONFIG`; `TRUSTED_PROXIES`; and `RATE_LIMIT_STORE`.
+Converted: the app root (was `live::component::APP_ROOT`); the `File` and `Image` jails (were `OnceLock`s); `VIEWS_DIR`, `PUBLIC_DIR` and `TEMPLATE_CACHE` (`init_templates` was first-caller-wins, so a second application would have rendered the first one's views); `JAR_CACHE`; `MOUNTED_ENGINES`; `MAILER_CONFIG`; `TRUSTED_PROXIES`; `RATE_LIMIT_STORE`; `SOLIKV_CONFIG` with its `RESP_POOL`; and `CONTROLLER_REGISTRY`.
 
 Four of those are security properties rather than tidiness. A shared jail in a two-application process would let either resolve paths under the other's root. `JAR_CACHE` holds the keys that sign and encrypt cookies, derived from that application's `SOLI_SESSION_SECRET` — shared, either application could mint a cookie the other trusts. `MAILER_CONFIG` holds one app's SMTP credentials and `from` address; shared, a co-hosted app would send through them, and `Mailer.configure` in one would reconfigure the other. `TRUSTED_PROXIES` is one app's deployment topology — a co-hosted app behind a different proxy, or behind none, would inherit the list and honour `X-Forwarded-*` from a client that reached it directly.
 
-Still process-global, and each one a collision if a second application were added: `MODEL_REGISTRY` and the `COLLECTION_*` maps beside it, `CONTROLLER_REGISTRY`, `SOLIKV_CONFIG`, `SECURITY_HEADERS_CONFIG`, the mixin hooks, and the `ROUTES` thread-local. `.env` is loaded with `std::env::set_var`, which is process-wide too.
+Still process-global, and each one a collision if a second application were added: `MODEL_REGISTRY` and the `COLLECTION_*` maps beside it, `SECURITY_HEADERS_CONFIG`, the mixin hooks, and the `ROUTES` thread-local. `.env` is loaded with `std::env::set_var`, which is process-wide too.
 
 Shareable as-is, because they are read-only or content-addressed: `REGEX_CACHE`, `SYMBOL_TABLE`, `HIDDEN_CLASS_REGISTRY`, `INLINE_CACHE`, `MODULE_CACHE`, and the `&'static [MethodDef]` tables. One caveat: `SYMBOL_TABLE` interns with `Box::leak`, so a process that loads and unloads applications would grow without bound.
 

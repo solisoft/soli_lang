@@ -6719,13 +6719,15 @@ fn controller_has_hooks(controller_key: &str) -> bool {
         drop(cached);
 
         // Build cache from registry (once per thread)
-        let registry = CONTROLLER_REGISTRY.read().unwrap();
-        let mut set = std::collections::HashSet::new();
-        for (key, info) in registry.all().iter().map(|i| (&i.class_name, i)) {
-            if !info.before_actions.is_empty() || !info.after_actions.is_empty() {
-                set.insert(key.clone());
+        let set = CONTROLLER_REGISTRY.read(|registry| {
+            let mut set = std::collections::HashSet::new();
+            for (key, info) in registry.all().iter().map(|i| (&i.class_name, i)) {
+                if !info.before_actions.is_empty() || !info.after_actions.is_empty() {
+                    set.insert(key.clone());
+                }
             }
-        }
+            set
+        });
         let has_hooks = set.contains(controller_key);
         *cache.borrow_mut() = Some(set);
         has_hooks
@@ -6782,8 +6784,7 @@ fn call_oop_controller_action(
 
     // Only read controller info from registry if controller has hooks (avoids RwLock per request)
     let controller_info = if controller_has_hooks(controller_key) {
-        let registry = CONTROLLER_REGISTRY.read().unwrap();
-        registry.get(controller_key).cloned()
+        CONTROLLER_REGISTRY.read(|registry| registry.get(controller_key).cloned())
     } else {
         None
     };

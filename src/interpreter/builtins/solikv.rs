@@ -1,5 +1,5 @@
 use super::resp::{RespPool, RespValue};
-use std::sync::{OnceLock, RwLock};
+use crate::serve::tenant::TenantValue;
 
 const DEFAULT_TTL_SECONDS: u64 = 3600;
 const DEFAULT_RESP_PORT: u16 = 6380;
@@ -12,40 +12,54 @@ pub(crate) struct SolikvConfig {
     auth_token: Option<String>,
 }
 
-static SOLIKV_CONFIG: OnceLock<RwLock<SolikvConfig>> = OnceLock::new();
-static RESP_POOL: OnceLock<RwLock<RespPool>> = OnceLock::new();
+/// SoliKV / Redis connection settings for the application on this thread.
+///
+/// Per application, not per process: `SOLIKV_RESP_HOST` and `SOLIKV_TOKEN` name
+/// one app's cache, and `Cache.configure` / `KV.configure` repoint it at
+/// runtime. Shared, one application's `Cache.clear()` would reach into the
+/// other's store — and `solikv_configure` in one would silently redirect the
+/// other's traffic to a host it never named.
+static SOLIKV_CONFIG: TenantValue<SolikvConfig> = TenantValue::new(solikv_config_from_env);
 
-pub(crate) fn get_solikv_config() -> &'static RwLock<SolikvConfig> {
-    SOLIKV_CONFIG.get_or_init(|| {
-        let resp_host = std::env::var("SOLIKV_RESP_HOST")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "localhost".to_string());
-        let resp_port = std::env::var("SOLIKV_RESP_PORT")
-            .ok()
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(DEFAULT_RESP_PORT);
-        let auth_token = std::env::var("SOLIKV_TOKEN").ok().filter(|t| !t.is_empty());
+/// Connections to that application's SoliKV, and so per application too: a
+/// shared pool would hold sockets to whichever host was configured first.
+static RESP_POOL: TenantValue<RespPool> = TenantValue::new(resp_pool_from_config);
 
-        RwLock::new(SolikvConfig {
-            prefix: "soli:cache:".to_string(),
-            default_ttl: DEFAULT_TTL_SECONDS,
-            resp_host,
-            resp_port,
-            auth_token,
-        })
-    })
+fn solikv_config_from_env() -> SolikvConfig {
+    let resp_host = std::env::var("SOLIKV_RESP_HOST")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "localhost".to_string());
+    let resp_port = std::env::var("SOLIKV_RESP_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_RESP_PORT);
+    let auth_token = std::env::var("SOLIKV_TOKEN").ok().filter(|t| !t.is_empty());
+
+    SolikvConfig {
+        prefix: "soli:cache:".to_string(),
+        default_ttl: DEFAULT_TTL_SECONDS,
+        resp_host,
+        resp_port,
+        auth_token,
+    }
 }
 
-fn get_resp_pool() -> &'static RwLock<RespPool> {
-    RESP_POOL.get_or_init(|| {
-        let cfg = get_solikv_config().read().unwrap();
-        RwLock::new(RespPool::new(
-            cfg.resp_host.clone(),
-            cfg.resp_port,
-            cfg.auth_token.clone(),
-        ))
-    })
+fn resp_pool_from_config() -> RespPool {
+    // Reads a different `TenantValue`, so no lock is held twice.
+    let (host, port, token) =
+        with_solikv_config(|cfg| (cfg.resp_host.clone(), cfg.resp_port, cfg.auth_token.clone()));
+    RespPool::new(host, port, token)
+}
+
+/// Read this application's SoliKV settings.
+///
+/// Replaces the `&'static RwLock<SolikvConfig>` this used to hand out: a
+/// per-application value lives inside a map inside a lock, which stable Rust
+/// cannot lend a guard into. Keep the closure short — it runs under a read
+/// lock.
+pub(crate) fn with_solikv_config<R>(f: impl FnOnce(&SolikvConfig) -> R) -> R {
+    SOLIKV_CONFIG.read(f)
 }
 
 /// Execute a RESP command and return the raw RespValue.
@@ -53,15 +67,11 @@ pub(crate) fn resp_cmd(args: &[&str]) -> Result<RespValue, String> {
     // Fast path when neither the dev bar nor the prod KV log is collecting:
     // a single relaxed atomic load, then straight through to the pool.
     if !super::kv_log::is_enabled() {
-        let pool = get_resp_pool().read().map_err(|e| e.to_string())?;
-        return pool.execute(args);
+        return RESP_POOL.read(|pool| pool.execute(args));
     }
 
     let start = std::time::Instant::now();
-    let result = {
-        let pool = get_resp_pool().read().map_err(|e| e.to_string())?;
-        pool.execute(args)
-    };
+    let result = RESP_POOL.read(|pool| pool.execute(args));
     let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
 
     // Record the verb + key only — never the value (args[2..]), which may
@@ -112,18 +122,14 @@ pub(crate) fn solikv_del(key: &str) -> Result<i64, String> {
 
 /// Reconfigure the connection. Called by Cache.configure() / KV.configure().
 pub(crate) fn solikv_configure(host: &str, token: Option<String>) {
-    // Update config
-    if let Ok(mut cfg) = get_solikv_config().write() {
+    let port = SOLIKV_CONFIG.write(|cfg| {
         cfg.resp_host = host.to_string();
         cfg.auth_token = token.clone();
-    }
+        cfg.resp_port
+    });
 
-    // Replace the pool with a new one pointing to the new host
-    if let Ok(mut pool) = get_resp_pool().write() {
-        let port = get_solikv_config()
-            .read()
-            .map(|c| c.resp_port)
-            .unwrap_or(DEFAULT_RESP_PORT);
-        *pool = RespPool::new(host.to_string(), port, token);
-    }
+    // Replace the pool with a new one pointing to the new host. Read outside
+    // the write below: they are different locks, but nesting them would fix an
+    // order this file would then have to keep.
+    RESP_POOL.write(|pool| *pool = RespPool::new(host.to_string(), port, token));
 }
