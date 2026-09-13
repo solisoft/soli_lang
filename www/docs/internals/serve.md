@@ -78,6 +78,12 @@ Several of those are security properties rather than tidiness:
 | `SECURITY_HEADERS_*` | `set_csp(...)` in one rewrites the other's policy; `disable_security_headers()` strips the baseline from both |
 | `MODEL_REGISTRY` | two apps routinely declare a model of the same name — one would get the other's validations, callbacks, relations, encrypted fields and connection routing |
 
+### Mounting a second application
+
+Mount-time state — the app root, the jails, the views directory, the model and controller registries — is written to whichever tenant the *calling thread* is bound to. A host mounting a second application from the thread that booted the first would overwrite it, so mounting runs under `tenant::scoped(id, || …)`, which binds for the duration and restores the previous binding afterwards. It restores on panic too: a mount that fails halfway must not leave the thread pointing at a half-built tenant.
+
+`tests/tenant_isolation_test.rs` is the acceptance criterion. It mounts two applications on one thread and asserts each sees only its own root, jail and collections; that a worker thread pinned to a tenant reads what the mounting thread wrote (which is why this state is in the process-wide registry rather than a `thread_local!`); and that the primary tenant is untouched by the others, which is what makes the whole conversion a no-op for `soli serve`.
+
 ### Deliberately left alone
 
 Three, each for a reason worth reading before "finishing" them:

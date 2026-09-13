@@ -464,6 +464,32 @@ impl<T> TenantLocal<T> {
     }
 }
 
+/// Serve `id` for the duration of `f`, then put back whatever this thread was
+/// serving before.
+///
+/// Mounting an application writes to its tenant — the app root, the jails, the
+/// views directory, the model and controller registries — and every one of
+/// those writes lands on whichever tenant the *calling thread* is bound to. A
+/// host that mounts a second application from the thread that booted the first
+/// would otherwise overwrite it. This is the seam that makes mounting from any
+/// thread correct.
+///
+/// The binding is restored even if `f` panics, so a failed mount cannot leave
+/// the thread pointing at a half-built tenant.
+pub fn scoped<R>(id: TenantId, f: impl FnOnce() -> R) -> R {
+    let previous = CURRENT.with(|cell| cell.borrow().clone());
+    bind_current(id);
+    struct Restore(Option<Arc<Tenant>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let previous = self.0.take();
+            CURRENT.with(|cell| *cell.borrow_mut() = previous);
+        }
+    }
+    let _restore = Restore(previous);
+    f()
+}
+
 // ---------------------------------------------------------------------------
 // Convenience wrappers for the app root
 // ---------------------------------------------------------------------------
@@ -593,6 +619,30 @@ mod tests {
             Ok(value) => assert_eq!(value, 14),
             Err(_) => panic!("a re-entrant read deadlocked: `f` ran under the write lock"),
         }
+    }
+
+    #[test]
+    fn scoped_restores_the_previous_binding_even_on_panic() {
+        let a = register(PathBuf::from("/srv/scoped-a"));
+        let b = register(PathBuf::from("/srv/scoped-b"));
+        std::thread::spawn(move || {
+            bind_current(a);
+            assert_eq!(current_id(), a);
+            let panicked = std::panic::catch_unwind(|| {
+                scoped(b, || {
+                    assert_eq!(current_id(), b);
+                    panic!("a mount that fails halfway");
+                })
+            });
+            assert!(panicked.is_err(), "the panic must propagate");
+            assert_eq!(
+                current_id(),
+                a,
+                "a failed mount must not leave the thread on the half-built tenant"
+            );
+        })
+        .join()
+        .expect("the outer thread must not panic");
     }
 
     #[test]
