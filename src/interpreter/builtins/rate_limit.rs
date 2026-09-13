@@ -1,15 +1,18 @@
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, HashPairs, Instance, NativeFunction, Value};
-use lazy_static::lazy_static;
+use crate::serve::tenant::TenantValue;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
-lazy_static! {
-    static ref RATE_LIMIT_STORE: RwLock<RateLimitStore> = RwLock::new(RateLimitStore::new());
-}
+/// Rate-limit buckets for the application on this thread.
+///
+/// Per application, not per process: buckets are keyed by whatever the app
+/// throttles on (an IP, a user, a route name). Shared, one application's
+/// traffic would spend another's budget, and a key that collides between two
+/// apps — `"login"`, say — would throttle them jointly.
+static RATE_LIMIT_STORE: TenantValue<RateLimitStore> = TenantValue::new(RateLimitStore::new);
 
 /// Cap on distinct rate-limit keys. Without this, an attacker minting a
 /// fresh key per request (rotating IP spoof, random token, …) grows the
@@ -201,11 +204,10 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                     return Ok(Value::Bool(true));
                 }
 
-                let mut store = RATE_LIMIT_STORE
-                    .write()
-                    .map_err(|e| format!("Rate limiter error: {}", e))?;
-                let bucket = store.get_or_create(&key, limit, Duration::from_secs(window));
-                let (allowed, _, _) = bucket.is_allowed();
+                let allowed = RATE_LIMIT_STORE.write(|store| {
+                    let bucket = store.get_or_create(&key, limit, Duration::from_secs(window));
+                    bucket.is_allowed().0
+                });
                 Ok(Value::Bool(allowed))
             },
         )),
@@ -238,11 +240,10 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                     _ => return Err("RateLimiter instance missing window".to_string()),
                 };
 
-                let mut store = RATE_LIMIT_STORE
-                    .write()
-                    .map_err(|e| format!("Rate limiter error: {}", e))?;
-                let bucket = store.get_or_create(&key, limit, Duration::from_secs(window));
-                let (_, _, wait_time) = bucket.is_allowed();
+                let wait_time = RATE_LIMIT_STORE.write(|store| {
+                    let bucket = store.get_or_create(&key, limit, Duration::from_secs(window));
+                    bucket.is_allowed().2
+                });
                 Ok(Value::Int(wait_time.as_secs() as i64))
             },
         )),
@@ -268,11 +269,8 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                 _ => return Err("RateLimiter instance missing window".to_string()),
             };
 
-            let store = RATE_LIMIT_STORE
-                .read()
-                .map_err(|e| format!("Rate limiter error: {}", e))?;
-            let (allowed, remaining, reset) =
-                store.status(&key, limit, Duration::from_secs(window));
+            let (allowed, remaining, reset) = RATE_LIMIT_STORE
+                .read(|store| store.status(&key, limit, Duration::from_secs(window)));
 
             let mut result: HashPairs = HashPairs::default();
             result.insert(HashKey::String("allowed".into()), Value::Bool(allowed));
@@ -320,10 +318,8 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                             Some(Value::Int(i)) => i as u64,
                             _ => return Err("RateLimiter instance missing window".to_string()),
                         };
-                        let store = RATE_LIMIT_STORE
-                            .read()
-                            .map_err(|e| format!("Rate limiter error: {}", e))?;
-                        let (_, rem, _) = store.status(&key, limit, Duration::from_secs(window));
+                        let (_, rem, _) = RATE_LIMIT_STORE
+                            .read(|store| store.status(&key, limit, Duration::from_secs(window)));
                         rem
                     }
                 };
@@ -338,11 +334,8 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                             Some(Value::Int(i)) => i as u64,
                             _ => return Err("RateLimiter instance missing window".to_string()),
                         };
-                        let store = RATE_LIMIT_STORE
-                            .read()
-                            .map_err(|e| format!("Rate limiter error: {}", e))?;
-                        let (_, _, reset_time) =
-                            store.status(&key, limit, Duration::from_secs(window));
+                        let (_, _, reset_time) = RATE_LIMIT_STORE
+                            .read(|store| store.status(&key, limit, Duration::from_secs(window)));
                         reset_time.as_secs() as i64
                     }
                 };
@@ -378,10 +371,7 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                 _ => return Err("RateLimiter instance missing key".to_string()),
             };
 
-            let mut store = RATE_LIMIT_STORE
-                .write()
-                .map_err(|e| format!("Rate limiter error: {}", e))?;
-            store.buckets.remove(&*key);
+            RATE_LIMIT_STORE.write(|store| store.buckets.remove(&*key));
             Ok(Value::Bool(true))
         })),
     );
@@ -394,10 +384,7 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
             "RateLimiter.reset_all",
             Some(0),
             |_args| {
-                let mut store = RATE_LIMIT_STORE
-                    .write()
-                    .map_err(|e| format!("Rate limiter error: {}", e))?;
-                store.buckets.clear();
+                RATE_LIMIT_STORE.write(|store| store.buckets.clear());
                 Ok(Value::Bool(true))
             },
         )),
@@ -409,10 +396,7 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
             "RateLimiter.cleanup",
             Some(0),
             |_args| {
-                let mut store = RATE_LIMIT_STORE
-                    .write()
-                    .map_err(|e| format!("Rate limiter error: {}", e))?;
-                store.cleanup();
+                RATE_LIMIT_STORE.write(|store| store.cleanup());
                 Ok(Value::Bool(true))
             },
         )),
