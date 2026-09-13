@@ -222,7 +222,26 @@ its next query, which is the fresh-connect cost the ping avoids elsewhere.
 holds its own copy of the parsed app plus the full builtin surface (`Rc`-based
 values can't be shared across threads). So baseline RSS scales with the worker
 count, and — for apps with lots of code or large in-memory data (e.g. i18n
-locale tables) — with the size of that app. The levers, cheapest first:
+locale tables) — with the size of that app.
+
+Within a worker the builtin surface is built **once** and shared as the
+enclosing scope of the interpreter's globals, the template engine's environment
+and the view helpers' closure; those three used to be separate full registries.
+Do not expect that to show up in your RSS — a registry turns out to be a few
+hundred KB, so removing two of them per thread sits below the noise of an
+ordinary measurement. The levers below are what actually move the number.
+
+Measuring it at all takes more care than it looks. `ps -o rss=` cannot separate
+a process's own heap from the file-backed pages every `soli` process shares;
+`Pss_Anon` from `/proc/<pid>/smaps_rollup` can, but counts only *resident*
+pages, so on a swapping machine a process reads as smaller the more pressure
+the box is under — add `SwapPss`. Transparent huge pages move anonymous RSS by
+tens of MiB between identical runs, so take a median of several. And compare
+two binaries by alternating them in one session, never by lining up two sweeps
+taken minutes apart: machine drift lands entirely on whichever ran later.
+`scripts/mem-probe.sh` in the repository does all of this, `--ab` included.
+
+The levers, cheapest first:
 
 | Lever | Effect |
 |-------|--------|

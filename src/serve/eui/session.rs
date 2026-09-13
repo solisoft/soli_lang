@@ -78,7 +78,7 @@ const UPLOAD_CEILING: u64 = eui_proto::limits::DEFAULT_UPLOAD_BYTES;
 /// name what it was given the way it names everything else, and under one
 /// directory per session so what the session leaves behind can go with it.
 fn upload_dir(session_id: &str) -> PathBuf {
-    crate::live::component::get_app_root()
+    crate::serve::tenant::app_root()
         .join("tmp/eui-uploads")
         .join(short_session(session_id))
 }

@@ -545,9 +545,7 @@ fn resolve_font_dir(dir: PathBuf) -> PathBuf {
         Ok(resolved) => resolved,
         Err(message) => {
             eprintln!("[WARN] ignoring font directory {raw:?}: {message}");
-            crate::interpreter::builtins::file::jail_root()
-                .map(|root| root.to_path_buf())
-                .unwrap_or(dir)
+            crate::interpreter::builtins::file::jail_root().unwrap_or(dir)
         }
     }
 }

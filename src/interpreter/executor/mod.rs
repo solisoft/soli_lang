@@ -113,12 +113,17 @@ impl Interpreter {
         interp
     }
 
-    /// Create an interpreter for serve mode (skips test builtins to save memory).
+    /// Create an interpreter for serve mode.
+    ///
+    /// The globals are a child scope of the thread's shared builtins registry
+    /// (`child_of_serve_builtins`) rather than a registry of their own: the
+    /// template engine and the view helpers on this thread need the same five
+    /// hundred bindings, and building them once instead of three times is what
+    /// keeps baseline RSS from climbing with the worker count. Anything the
+    /// application defines lands in this child and shadows the shared scope, so
+    /// one worker's app can never be seen by another's.
     pub fn new_for_serve() -> Self {
-        let globals = Rc::new(RefCell::new(Environment::with_builtins_capacity()));
-        register_builtins(&mut globals.borrow_mut(), false);
-        crate::interpreter::builtins::retry::register_retry_class(&globals)
-            .expect("retry stdlib must evaluate");
+        let globals = crate::interpreter::builtins::child_of_serve_builtins();
 
         Self {
             environment: globals,
@@ -890,6 +895,38 @@ mod return_type_enforcement_tests {
         interpreter.interpret(&program).map_err(|e| e.to_string())
     }
 
+    /// Run `source` on a thread with a realistic stack, for the two tests that
+    /// deliberately recurse to [`MAX_CALL_DEPTH`].
+    ///
+    /// libtest gives each test a 2 MiB thread. Nothing in Soli runs interpreted
+    /// code on a stack that small: `soli run` uses the process's main thread
+    /// (8 MiB by default) and every serve/job worker is spawned with
+    /// `server_constants::worker_stack_bytes()`, 64 MiB. The depth cap is sized
+    /// against *those* contexts, and it holds in them — the release binary
+    /// answers unbounded recursion with `call stack too deep (256 frames)` and
+    /// exits 70, on both the tree-walker and the VM.
+    ///
+    /// On libtest's own thread it does not, and cannot be made to: with
+    /// `debug_assertions` off the cap is 256 frames, and a build without fat
+    /// LTO — `[profile.ci]` sets `lto = false`, which is what CI runs — has
+    /// larger frames than the LTO'd release build the number was measured
+    /// against. The overflow aborts the process without unwinding, so it took
+    /// the whole test binary with it and every test after these two went
+    /// unreported.
+    ///
+    /// Giving the thread a worker-sized stack tests what the name claims — that
+    /// the *cap* stops the recursion, before the stack does — instead of
+    /// measuring libtest's default.
+    fn run_on_worker_sized_stack(source: &'static str) -> Result<(), String> {
+        std::thread::Builder::new()
+            .name("deep-recursion-test".into())
+            .stack_size(crate::serve::server_constants::worker_stack_bytes())
+            .spawn(move || run(source))
+            .expect("spawning the test thread must succeed")
+            .join()
+            .expect("the interpreter must return an error, not overflow the stack")
+    }
+
     /// Infinite recursion through the tree-walking interpreter must yield a
     /// catchable error, never a native stack overflow (which aborts without
     /// unwinding).
@@ -901,7 +938,7 @@ mod return_type_enforcement_tests {
             }
             loop_forever();
         "#;
-        let err = run(source).expect_err("unbounded recursion must error");
+        let err = run_on_worker_sized_stack(source).expect_err("unbounded recursion must error");
         assert!(err.contains("too deep"), "unexpected error: {err}");
     }
 
@@ -916,7 +953,8 @@ mod return_type_enforcement_tests {
             }
             Rec();
         "#;
-        let err = run(source).expect_err("unbounded constructor recursion must error");
+        let err = run_on_worker_sized_stack(source)
+            .expect_err("unbounded constructor recursion must error");
         assert!(err.contains("too deep"), "unexpected error: {err}");
     }
 

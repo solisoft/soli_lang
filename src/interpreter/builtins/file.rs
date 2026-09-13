@@ -34,37 +34,39 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::OnceLock;
 
 use glob::Pattern;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
 
-/// Process-wide filesystem jail. `None` means jail is disabled (CLI /
-/// REPL / test runner). When `Some(path)`, every path that flows
-/// through the `File`/standalone-function builtins must resolve to a
-/// location under that path, with `..` segments rejected after
-/// canonicalisation. The server installs this once at startup.
-static FILE_JAIL: OnceLock<PathBuf> = OnceLock::new();
-
-/// Install the filesystem jail. Idempotent on first call; subsequent
-/// calls are no-ops because changing the jail mid-run would create a
-/// race window where in-flight requests use the old root.
+/// Install the filesystem jail for the application on this thread.
+///
+/// `None` means jail is disabled (CLI / REPL / test runner). When set, every
+/// path that flows through the `File`/standalone-function builtins must resolve
+/// to a location under that path, with `..` segments rejected after
+/// canonicalisation. The server installs it once at startup.
+///
+/// The jail lives on the [`Tenant`](crate::serve::tenant::Tenant) rather than
+/// in a process-wide `OnceLock`, because a process serving two applications
+/// must not let either resolve paths under the other's root — sharing one jail
+/// would be a cross-application read. It keeps the `OnceLock`'s first-write-wins
+/// semantics: changing a jail mid-run would leave in-flight requests resolving
+/// against the old root.
 pub fn set_file_jail(path: PathBuf) {
-    let _ = FILE_JAIL.set(path);
+    crate::serve::tenant::current().set_file_jail(path);
 }
 
 /// Internal accessor — `None` means "no jail enforced".
-fn current_jail() -> Option<&'static Path> {
-    FILE_JAIL.get().map(|p| p.as_path())
+fn current_jail() -> Option<PathBuf> {
+    crate::serve::tenant::current().file_jail()
 }
 
 /// The app-root jail directory, if one is installed. Other builtins that
 /// resolve their own relative paths (e.g. the PDF builtin's font directories)
 /// use this so their paths line up with `slurp`/`File` rather than the process
 /// CWD.
-pub fn jail_root() -> Option<&'static Path> {
+pub fn jail_root() -> Option<PathBuf> {
     current_jail()
 }
 
@@ -81,7 +83,7 @@ pub fn jail_root() -> Option<&'static Path> {
 ///     Otherwise the call is rejected with `"<op>() path … escapes the
 ///     app-root jail"`.
 fn resolve_path(path: &str, op: &str) -> Result<PathBuf, String> {
-    resolve_with_jail(path, op, current_jail())
+    resolve_with_jail(path, op, current_jail().as_deref())
 }
 
 /// Resolve a read-only path through the same jail the `File` builtins use.
@@ -93,7 +95,7 @@ fn resolve_path(path: &str, op: &str) -> Result<PathBuf, String> {
 /// features, so a build without either has none.
 #[cfg_attr(not(any(feature = "office", feature = "pdf")), allow(dead_code))]
 pub(crate) fn resolve_readable_path(path: &str, op: &str) -> Result<PathBuf, String> {
-    resolve_with_jail(path, op, current_jail())
+    resolve_with_jail(path, op, current_jail().as_deref())
 }
 
 /// Pure helper exposed for unit tests — same logic as `resolve_path` but

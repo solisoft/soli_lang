@@ -2,8 +2,6 @@
 
 use serde_json::json;
 use serde_json::Value as JsonValue;
-use std::path::PathBuf;
-use std::sync::Mutex;
 
 use crate::interpreter::builtins::template::inject_template_helpers;
 use crate::interpreter::value::{json_to_value_ref, value_to_json, HashKey, NativeFunction, Value};
@@ -12,25 +10,7 @@ use crate::template::parser::parse_template;
 use crate::template::renderer::render_nodes;
 use uuid::Uuid;
 
-lazy_static::lazy_static! {
-    /// Global app root directory for LiveView template resolution.
-    pub static ref APP_ROOT: Mutex<PathBuf> = Mutex::new(PathBuf::from("."));
-}
-
-/// Set the app root directory for LiveView templates.
-pub fn set_app_root(path: PathBuf) {
-    if let Ok(mut root) = APP_ROOT.lock() {
-        *root = path;
-    }
-}
-
-/// Get the app root directory.
-pub fn get_app_root() -> PathBuf {
-    APP_ROOT
-        .lock()
-        .map(|r| r.clone())
-        .unwrap_or_else(|_| PathBuf::from("."))
-}
+use crate::serve::tenant::app_root as get_app_root;
 
 /// Component state wrapper.
 #[derive(Clone, Default)]
@@ -267,6 +247,7 @@ pub(crate) fn with_app_root_lock<T>(f: impl FnOnce() -> T) -> T {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::serve::tenant::set_app_root;
     use serde_json::json;
 
     /// The browser-visible error must not disclose server paths, and must not
@@ -276,7 +257,7 @@ mod tests {
         with_app_root_lock(|| {
             let dir = tempdir().unwrap();
             fs::create_dir_all(dir.path().join("app/views/live")).unwrap();
-            set_app_root(dir.path().to_path_buf());
+            set_app_root(dir.path());
 
             let missing = render_component("no_such_component", &json!({})).unwrap_err();
             assert!(
@@ -312,7 +293,7 @@ mod tests {
             // And a real component to confirm the legitimate path still works.
             fs::write(live.join("ok.html.slv"), "<h1>ok</h1>").unwrap();
 
-            set_app_root(dir.path().to_path_buf());
+            set_app_root(dir.path());
 
             // Sanity: the legitimate name still renders.
             assert!(render_component("ok", &json!({})).is_ok());
@@ -360,7 +341,7 @@ mod tests {
                 r#"<span id="r"><%= m %></span>"#,
             )
             .unwrap();
-            set_app_root(dir.path().to_path_buf());
+            set_app_root(dir.path());
 
             let html = render_component("board", &json!({ "n": 1, "m": 2 })).unwrap();
             assert!(

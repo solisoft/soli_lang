@@ -240,7 +240,23 @@ mod tests {
         registry::registry_test_lock()
     }
 
+    /// A registry whose single SoliDB connection points where the environment
+    /// says SoliDB is.
+    ///
+    /// It used to hard-code `http://localhost:6745` / `default`, which are the
+    /// *fallbacks* `ensure_runtime_ready` uses when `SOLIDB_HOST` and
+    /// `SOLIDB_DATABASE` are unset — not the values it compares against when
+    /// they are. So on any machine that actually configures SoliDB somewhere
+    /// else (CI's disposable instance answers on another port), the connection
+    /// read as a mismatch and `solidb_default_is_ready` failed on a matter of
+    /// test setup, while `solidb_connection_pointing_elsewhere_errors` passed
+    /// for the wrong reason — its *primary* connection was the mismatch, not
+    /// the `analytics` one it means to test. Reading the same env with the same
+    /// defaults makes both assert what they claim.
     fn solidb_primary() -> ConnectionRegistry {
+        let env_host =
+            std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+        let env_db = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
         let mut connections = HashMap::new();
         connections.insert(
             "primary".into(),
@@ -248,8 +264,8 @@ mod tests {
                 name: "primary".into(),
                 adapter: Adapter::Solidb,
                 url: None,
-                solidb_host: Some("http://localhost:6745".into()),
-                solidb_database: Some("default".into()),
+                solidb_host: Some(env_host),
+                solidb_database: Some(env_db),
                 solidb_username: None,
                 solidb_password: None,
                 solidb_api_key: None,

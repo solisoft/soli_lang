@@ -12,7 +12,7 @@ use std::time::{Instant, SystemTime};
 use bytes::Bytes;
 use hyper::{header, Response, StatusCode};
 
-use crate::live::component::get_app_root;
+use crate::serve::tenant::app_root as get_app_root;
 
 use super::super::{full, ResponseBody};
 

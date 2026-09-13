@@ -3,7 +3,8 @@
 use serde_json::json;
 use std::path::PathBuf;
 
-use solilang::live::component::{get_app_root, set_app_root, ComponentInstance, ComponentState};
+use solilang::live::component::{ComponentInstance, ComponentState};
+use solilang::serve::tenant::{app_root as get_app_root, set_app_root};
 
 #[test]
 fn component_state_get_returns_null_for_missing_key() {
