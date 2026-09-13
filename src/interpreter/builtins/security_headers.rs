@@ -1,20 +1,23 @@
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
-use lazy_static::lazy_static;
+use crate::serve::tenant::TenantValue;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::RwLock;
 
-lazy_static! {
-    static ref SECURITY_HEADERS_CONFIG: RwLock<SecurityHeadersConfig> =
-        RwLock::new(SecurityHeadersConfig::default());
-    /// SEC-056: default to ON. New projects previously had to call
-    /// `enable_security_headers()` explicitly to get any baseline
-    /// hardening; that's the wrong default for a web framework. Dev
-    /// mode flips this back off at boot in
-    /// `serve_folder_with_options_and_workers`.
-    static ref SECURITY_HEADERS_ENABLED: RwLock<bool> = RwLock::new(true);
-}
+/// The headers this application sends, and whether it sends them.
+///
+/// Per application, not per process: a CSP, an HSTS policy and a frame policy
+/// belong to one app's threat model. Shared, `set_csp(...)` in one would
+/// rewrite the other's policy, and `disable_security_headers()` in one would
+/// strip the baseline from both.
+static SECURITY_HEADERS_CONFIG: TenantValue<SecurityHeadersConfig> =
+    TenantValue::new(SecurityHeadersConfig::default);
+
+/// SEC-056: default to ON. New projects previously had to call
+/// `enable_security_headers()` explicitly to get any baseline hardening;
+/// that's the wrong default for a web framework. Dev mode flips this back off
+/// at boot in `serve_folder_with_options_and_workers`.
+static SECURITY_HEADERS_ENABLED: TenantValue<bool> = TenantValue::new(|| true);
 
 /// Global version counter incremented on every config change.
 /// Thread-local caches compare against this to detect staleness.
@@ -67,10 +70,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             "enable_security_headers",
             Some(0),
             |_args| {
-                let mut enabled = SECURITY_HEADERS_ENABLED
-                    .write()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
-                *enabled = true;
+                SECURITY_HEADERS_ENABLED.write(|enabled| *enabled = true);
                 invalidate_security_headers_cache();
                 Ok(Value::Bool(true))
             },
@@ -83,10 +83,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             "disable_security_headers",
             Some(0),
             |_args| {
-                let mut enabled = SECURITY_HEADERS_ENABLED
-                    .write()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
-                *enabled = false;
+                SECURITY_HEADERS_ENABLED.write(|enabled| *enabled = false);
                 invalidate_security_headers_cache();
                 Ok(Value::Bool(true))
             },
@@ -99,10 +96,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             "security_headers_enabled",
             Some(0),
             |_args| {
-                let enabled = SECURITY_HEADERS_ENABLED
-                    .read()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
-                Ok(Value::Bool(*enabled))
+                Ok(Value::Bool(
+                    SECURITY_HEADERS_ENABLED.read(|enabled| *enabled),
+                ))
             },
         )),
     );
@@ -121,14 +117,13 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             };
             let report_only = args.get(1).map(|v| v.is_truthy()).unwrap_or(false);
 
-            let mut config = SECURITY_HEADERS_CONFIG
-                .write()
-                .map_err(|e| format!("Security headers error: {}", e))?;
-            if report_only {
-                config.csp_report_only = Some(policy.to_string());
-            } else {
-                config.csp = Some(policy.to_string());
-            }
+            SECURITY_HEADERS_CONFIG.write(|config| {
+                if report_only {
+                    config.csp_report_only = Some(policy.to_string());
+                } else {
+                    config.csp = Some(policy.to_string());
+                }
+            });
             invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
@@ -151,10 +146,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     })
                     .collect();
                 let policy = format!("default-src {}", sources.join(" "));
-                let mut config = SECURITY_HEADERS_CONFIG
-                    .write()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
-                config.csp = Some(policy);
+                SECURITY_HEADERS_CONFIG.write(|config| {
+                    config.csp = Some(policy);
+                });
                 invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
@@ -175,10 +169,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 })
                 .collect();
             let policy = format!("script-src {}", sources.join(" "));
-            let mut config = SECURITY_HEADERS_CONFIG
-                .write()
-                .map_err(|e| format!("Security headers error: {}", e))?;
-            config.csp = Some(policy);
+            SECURITY_HEADERS_CONFIG.write(|config| {
+                config.csp = Some(policy);
+            });
             invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
@@ -198,10 +191,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                 })
                 .collect();
             let policy = format!("style-src {}", sources.join(" "));
-            let mut config = SECURITY_HEADERS_CONFIG
-                .write()
-                .map_err(|e| format!("Security headers error: {}", e))?;
-            config.csp = Some(policy);
+            SECURITY_HEADERS_CONFIG.write(|config| {
+                config.csp = Some(policy);
+            });
             invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
@@ -222,13 +214,12 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             let include_subdomains = args.get(1).map(|v| v.is_truthy()).unwrap_or(true);
             let preload = args.get(2).map(|v| v.is_truthy()).unwrap_or(false);
 
-            let mut config = SECURITY_HEADERS_CONFIG
-                .write()
-                .map_err(|e| format!("Security headers error: {}", e))?;
-            config.hsts = Some(HstsConfig {
-                max_age,
-                include_subdomains,
-                preload,
+            SECURITY_HEADERS_CONFIG.write(|config| {
+                config.hsts = Some(HstsConfig {
+                    max_age,
+                    include_subdomains,
+                    preload,
+                });
             });
             invalidate_security_headers_cache();
             Ok(Value::Null)
@@ -241,10 +232,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             "prevent_clickjacking",
             Some(0),
             |_args| {
-                let mut config = SECURITY_HEADERS_CONFIG
-                    .write()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
-                config.x_frame_options = Some("DENY".to_string());
+                SECURITY_HEADERS_CONFIG.write(|config| {
+                    config.x_frame_options = Some("DENY".to_string());
+                });
                 invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
@@ -257,10 +247,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             "allow_same_origin_frames",
             Some(0),
             |_args| {
-                let mut config = SECURITY_HEADERS_CONFIG
-                    .write()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
-                config.x_frame_options = Some("SAMEORIGIN".to_string());
+                SECURITY_HEADERS_CONFIG.write(|config| {
+                    config.x_frame_options = Some("SAMEORIGIN".to_string());
+                });
                 invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
@@ -279,10 +268,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            let mut config = SECURITY_HEADERS_CONFIG
-                .write()
-                .map_err(|e| format!("Security headers error: {}", e))?;
-            config.xss_protection = Some(format!("1; mode={}", mode));
+            SECURITY_HEADERS_CONFIG.write(|config| {
+                config.xss_protection = Some(format!("1; mode={}", mode));
+            });
             invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
@@ -294,10 +282,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             "set_content_type_options",
             Some(0),
             |_args| {
-                let mut config = SECURITY_HEADERS_CONFIG
-                    .write()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
-                config.x_content_type_options = true;
+                SECURITY_HEADERS_CONFIG.write(|config| {
+                    config.x_content_type_options = true;
+                });
                 invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
@@ -319,10 +306,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                         ))
                     }
                 };
-                let mut config = SECURITY_HEADERS_CONFIG
-                    .write()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
-                config.referrer_policy = Some(policy.to_string());
+                SECURITY_HEADERS_CONFIG.write(|config| {
+                    config.referrer_policy = Some(policy.to_string());
+                });
                 invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
@@ -344,10 +330,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                         ))
                     }
                 };
-                let mut config = SECURITY_HEADERS_CONFIG
-                    .write()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
-                config.permissions_policy = Some(policy.to_string());
+                SECURITY_HEADERS_CONFIG.write(|config| {
+                    config.permissions_policy = Some(policy.to_string());
+                });
                 invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
@@ -366,10 +351,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            let mut config = SECURITY_HEADERS_CONFIG
-                .write()
-                .map_err(|e| format!("Security headers error: {}", e))?;
-            config.cross_origin_embedder_policy = Some(policy.to_string());
+            SECURITY_HEADERS_CONFIG.write(|config| {
+                config.cross_origin_embedder_policy = Some(policy.to_string());
+            });
             invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
@@ -387,10 +371,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            let mut config = SECURITY_HEADERS_CONFIG
-                .write()
-                .map_err(|e| format!("Security headers error: {}", e))?;
-            config.cross_origin_opener_policy = Some(policy.to_string());
+            SECURITY_HEADERS_CONFIG.write(|config| {
+                config.cross_origin_opener_policy = Some(policy.to_string());
+            });
             invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
@@ -408,10 +391,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
                     ))
                 }
             };
-            let mut config = SECURITY_HEADERS_CONFIG
-                .write()
-                .map_err(|e| format!("Security headers error: {}", e))?;
-            config.cross_origin_resource_policy = Some(policy.to_string());
+            SECURITY_HEADERS_CONFIG.write(|config| {
+                config.cross_origin_resource_policy = Some(policy.to_string());
+            });
             invalidate_security_headers_cache();
             Ok(Value::Null)
         })),
@@ -420,22 +402,21 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
     env.define(
         "secure_headers".to_string(),
         Value::NativeFunction(NativeFunction::new("secure_headers", Some(0), |_args| {
-            let mut config = SECURITY_HEADERS_CONFIG
-                .write()
-                .map_err(|e| format!("Security headers error: {}", e))?;
-            config.x_frame_options = Some("SAMEORIGIN".to_string());
-            config.x_content_type_options = true;
-            config.referrer_policy = Some("strict-origin-when-cross-origin".to_string());
-            config.permissions_policy =
-                Some("geolocation=(), microphone=(), camera=()".to_string());
-            // SEC-056: HSTS in the standard preset (was previously only
-            // in `secure_headers_strict`). 1-year max-age + includeSubDomains
-            // is the operator-friendly baseline RFC 6797 recommends; bump
-            // to preload-eligible later by upgrading to `_strict`.
-            config.hsts = Some(HstsConfig {
-                max_age: 31_536_000,
-                include_subdomains: true,
-                preload: false,
+            SECURITY_HEADERS_CONFIG.write(|config| {
+                config.x_frame_options = Some("SAMEORIGIN".to_string());
+                config.x_content_type_options = true;
+                config.referrer_policy = Some("strict-origin-when-cross-origin".to_string());
+                config.permissions_policy =
+                    Some("geolocation=(), microphone=(), camera=()".to_string());
+                // SEC-056: HSTS in the standard preset (was previously only
+                // in `secure_headers_strict`). 1-year max-age + includeSubDomains
+                // is the operator-friendly baseline RFC 6797 recommends; bump
+                // to preload-eligible later by upgrading to `_strict`.
+                config.hsts = Some(HstsConfig {
+                    max_age: 31_536_000,
+                    include_subdomains: true,
+                    preload: false,
+                });
             });
             invalidate_security_headers_cache();
             Ok(Value::Null)
@@ -448,11 +429,10 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             "secure_headers_basic",
             Some(0),
             |_args| {
-                let mut config = SECURITY_HEADERS_CONFIG
-                    .write()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
-                config.x_frame_options = Some("SAMEORIGIN".to_string());
-                config.x_content_type_options = true;
+                SECURITY_HEADERS_CONFIG.write(|config| {
+                    config.x_frame_options = Some("SAMEORIGIN".to_string());
+                    config.x_content_type_options = true;
+                });
                 invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
@@ -465,24 +445,23 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             "secure_headers_strict",
             Some(0),
             |_args| {
-                let mut config = SECURITY_HEADERS_CONFIG
-                    .write()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
-                config.csp = Some(
-                    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
-                        .to_string(),
-                );
-                config.hsts = Some(HstsConfig {
-                    max_age: 31536000,
-                    include_subdomains: true,
-                    preload: false,
+                SECURITY_HEADERS_CONFIG.write(|config| {
+                    config.csp = Some(
+                        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+                            .to_string(),
+                    );
+                    config.hsts = Some(HstsConfig {
+                        max_age: 31536000,
+                        include_subdomains: true,
+                        preload: false,
+                    });
+                    config.x_frame_options = Some("DENY".to_string());
+                    config.x_content_type_options = true;
+                    config.referrer_policy = Some("strict-origin".to_string());
+                    config.permissions_policy =
+                        Some("geolocation=(), microphone=(), camera=()".to_string());
+                    config.cross_origin_embedder_policy = Some("require-corp".to_string());
                 });
-                config.x_frame_options = Some("DENY".to_string());
-                config.x_content_type_options = true;
-                config.referrer_policy = Some("strict-origin".to_string());
-                config.permissions_policy =
-                    Some("geolocation=(), microphone=(), camera=()".to_string());
-                config.cross_origin_embedder_policy = Some("require-corp".to_string());
                 invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
@@ -495,11 +474,10 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             "secure_headers_api",
             Some(0),
             |_args| {
-                let mut config = SECURITY_HEADERS_CONFIG
-                    .write()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
-                config.x_content_type_options = true;
-                config.referrer_policy = Some("strict-origin".to_string());
+                SECURITY_HEADERS_CONFIG.write(|config| {
+                    config.x_content_type_options = true;
+                    config.referrer_policy = Some("strict-origin".to_string());
+                });
                 invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
@@ -512,10 +490,9 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             "reset_security_headers",
             Some(0),
             |_args| {
-                let mut config = SECURITY_HEADERS_CONFIG
-                    .write()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
-                *config = SecurityHeadersConfig::default();
+                SECURITY_HEADERS_CONFIG.write(|config| {
+                    *config = SecurityHeadersConfig::default();
+                });
                 invalidate_security_headers_cache();
                 Ok(Value::Null)
             },
@@ -528,9 +505,7 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
             "get_security_headers",
             Some(0),
             |_args| {
-                let config = SECURITY_HEADERS_CONFIG
-                    .read()
-                    .map_err(|e| format!("Security headers error: {}", e))?;
+                let config = SECURITY_HEADERS_CONFIG.read(|config| config.clone());
                 let mut headers: HashPairs = HashPairs::default();
 
                 if let Some(ref csp) = config.csp {
@@ -634,19 +609,11 @@ pub fn get_security_headers() -> Vec<(String, String)> {
 
 /// Build the security headers Vec from global RwLock state.
 fn build_security_headers_vec() -> Vec<(String, String)> {
-    let enabled = match SECURITY_HEADERS_ENABLED.read() {
-        Ok(guard) => *guard,
-        Err(_) => return Vec::new(),
-    };
-
-    if !enabled {
+    if !SECURITY_HEADERS_ENABLED.read(|enabled| *enabled) {
         return Vec::new();
     }
 
-    let config = match SECURITY_HEADERS_CONFIG.read() {
-        Ok(guard) => guard.clone(),
-        Err(_) => return Vec::new(),
-    };
+    let config = SECURITY_HEADERS_CONFIG.read(|config| config.clone());
 
     let mut headers: Vec<(String, String)> = Vec::new();
 
@@ -720,8 +687,8 @@ fn build_security_headers_vec() -> Vec<(String, String)> {
 /// inline scripts and the dev REPL aren't second-guessed by a CSP that
 /// the operator didn't actually configure).
 pub fn set_security_headers_enabled(enabled: bool) {
-    if let Ok(mut guard) = SECURITY_HEADERS_ENABLED.write() {
-        *guard = enabled;
+    {
+        SECURITY_HEADERS_ENABLED.write(|guard| *guard = enabled);
         invalidate_security_headers_cache();
     }
 }
@@ -735,11 +702,8 @@ pub fn security_headers_enabled() -> bool {
             return !cached.1.is_empty();
         }
         drop(cached);
-        // Fall back to RwLock read
-        match SECURITY_HEADERS_ENABLED.read() {
-            Ok(guard) => *guard,
-            Err(_) => false,
-        }
+        // Fall back to the shared value
+        SECURITY_HEADERS_ENABLED.read(|enabled| *enabled)
     })
 }
 
@@ -754,12 +718,8 @@ mod tests {
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn reset() {
-        if let Ok(mut cfg) = SECURITY_HEADERS_CONFIG.write() {
-            *cfg = SecurityHeadersConfig::default();
-        }
-        if let Ok(mut enabled) = SECURITY_HEADERS_ENABLED.write() {
-            *enabled = true;
-        }
+        SECURITY_HEADERS_CONFIG.write(|cfg| *cfg = SecurityHeadersConfig::default());
+        SECURITY_HEADERS_ENABLED.write(|enabled| *enabled = true);
         invalidate_security_headers_cache();
     }
 
@@ -828,16 +788,17 @@ mod tests {
 
         // Mimic the `secure_headers()` builtin body.
         {
-            let mut config = SECURITY_HEADERS_CONFIG.write().unwrap();
-            config.x_frame_options = Some("SAMEORIGIN".to_string());
-            config.x_content_type_options = true;
-            config.referrer_policy = Some("strict-origin-when-cross-origin".to_string());
-            config.permissions_policy =
-                Some("geolocation=(), microphone=(), camera=()".to_string());
-            config.hsts = Some(HstsConfig {
-                max_age: 31_536_000,
-                include_subdomains: true,
-                preload: false,
+            SECURITY_HEADERS_CONFIG.write(|config| {
+                config.x_frame_options = Some("SAMEORIGIN".to_string());
+                config.x_content_type_options = true;
+                config.referrer_policy = Some("strict-origin-when-cross-origin".to_string());
+                config.permissions_policy =
+                    Some("geolocation=(), microphone=(), camera=()".to_string());
+                config.hsts = Some(HstsConfig {
+                    max_age: 31_536_000,
+                    include_subdomains: true,
+                    preload: false,
+                });
             });
             invalidate_security_headers_cache();
         }
