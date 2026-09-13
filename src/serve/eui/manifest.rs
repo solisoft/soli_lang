@@ -7,7 +7,7 @@
 //! so losing this file means every existing user must re-pin. Commit it to
 //! nothing public.
 
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 
 use bytes::Bytes;
 use eui_proto::Manifest;
@@ -16,11 +16,14 @@ use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
 use crate::serve::full;
-use crate::serve::tenant::app_root as get_app_root;
+use crate::serve::tenant::{app_root as get_app_root, TenantValue};
 use crate::serve::ResponseBody;
 
 /// Capabilities the application requests, set by `eui_capabilities(...)`.
-static CAPABILITIES: Mutex<u32> = Mutex::new(0);
+///
+/// Per application: this is what one app asks the client's user to grant it.
+/// Shared, a co-hosted app would inherit permissions it never requested.
+static CAPABILITIES: TenantValue<u32> = TenantValue::new(|| 0);
 
 /// `eui_capabilities("clipboard.read", ...)`: what the manifest asks for.
 /// The client grants only what the person allows on top of this.
@@ -30,7 +33,7 @@ pub fn request_capabilities(names: &[String]) -> Result<(), String> {
         mask |= eui_proto::caps::from_name(n)
             .ok_or_else(|| format!("eui_capabilities: unknown capability '{n}'"))?;
     }
-    *CAPABILITIES.lock().unwrap_or_else(|e| e.into_inner()) |= mask;
+    CAPABILITIES.write(|caps| *caps |= mask);
     Ok(())
 }
 
@@ -86,15 +89,17 @@ fn key_pair() -> Result<&'static Ed25519KeyPair, String> {
 /// The manifest bytes, signed — once per capability mask. Every request
 /// used to resolve the root and sign again.
 pub fn bytes() -> Result<Vec<u8>, String> {
-    static SIGNED: Mutex<Option<(u32, Vec<u8>)>> = Mutex::new(None);
-    let capabilities = *CAPABILITIES.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((mask, bytes)) = SIGNED.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
-        if *mask == capabilities {
-            return Ok(bytes.clone());
+    /// The signed manifest, cached against the capability mask it was signed
+    /// for. Per application, like the mask itself.
+    static SIGNED: TenantValue<Option<(u32, Vec<u8>)>> = TenantValue::new(|| None);
+    let capabilities = CAPABILITIES.read(|caps| *caps);
+    if let Some((mask, bytes)) = SIGNED.read(|signed| signed.clone()) {
+        if mask == capabilities {
+            return Ok(bytes);
         }
     }
     let bytes = sign(capabilities)?;
-    *SIGNED.lock().unwrap_or_else(|e| e.into_inner()) = Some((capabilities, bytes.clone()));
+    SIGNED.write(|signed| *signed = Some((capabilities, bytes.clone())));
     Ok(bytes)
 }
 

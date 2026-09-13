@@ -3465,11 +3465,11 @@ async fn handle_hyper_request(
                                                 &liveview_id_owned,
                                             ) {
                                                 use crate::live::view::{
-                                                    ServerMessage, LIVE_REGISTRY,
+                                                    live_registry, ServerMessage,
                                                 };
                                                 let id = liveview_id_owned.clone();
-                                                if let Some(instance) = LIVE_REGISTRY.get(&id) {
-                                                    let _ = LIVE_REGISTRY.send(
+                                                if let Some(instance) = live_registry().get(&id) {
+                                                    let _ = live_registry().send(
                                                         &id,
                                                         ServerMessage::Render {
                                                             html: instance.last_html,
@@ -3491,9 +3491,9 @@ async fn handle_hyper_request(
 
                 write_task.abort();
                 // Other tabs may still be attached to this instance.
-                if crate::live::view::LIVE_REGISTRY.drop_sender(&liveview_id, &tx_arc) {
+                if crate::live::view::live_registry().drop_sender(&liveview_id, &tx_arc) {
                     crate::live::socket::cancel_tick_task(&liveview_id);
-                    crate::live::view::LIVE_REGISTRY.detach(&liveview_id);
+                    crate::live::view::live_registry().detach(&liveview_id);
                 }
             });
 
@@ -5257,7 +5257,7 @@ fn report_liveview_handler_error(
     } else {
         "LiveView handler error".to_string()
     };
-    let _ = crate::live::view::LIVE_REGISTRY.send(
+    let _ = crate::live::view::live_registry().send(
         liveview_id,
         crate::live::view::ServerMessage::Error { message },
     );
@@ -5292,7 +5292,7 @@ fn start_liveview_reaper() {
         let mut ticker = tokio::time::interval(std::time::Duration::from_secs(30));
         loop {
             ticker.tick().await;
-            crate::live::view::LIVE_REGISTRY.cleanup();
+            crate::live::view::live_registry().cleanup();
         }
     });
 }
@@ -5418,7 +5418,7 @@ fn handle_liveview_event(
     data: &LiveViewEventData,
 ) -> Result<(), String> {
     use crate::interpreter::value::Value;
-    use crate::live::view::LIVE_REGISTRY;
+    use crate::live::view::live_registry;
 
     // Run the handler as the socket's user. `set_current_session_id` was only
     // called on the HTTP path, so `session_get` and `get_current_user()`
@@ -5461,11 +5461,11 @@ fn handle_liveview_event(
     // different workers; without this they both read the same state, both render
     // from it, and the slower one overwrites the other's state and regresses
     // `last_html` — the client then gets a diff against markup it never saw.
-    let frame_lock = LIVE_REGISTRY.frame_lock(&data.liveview_id);
+    let frame_lock = live_registry().frame_lock(&data.liveview_id);
     let _frame = frame_lock.lock().unwrap_or_else(|e| e.into_inner());
 
     // Get the LiveView instance
-    let mut instance = LIVE_REGISTRY
+    let mut instance = live_registry()
         .get(&data.liveview_id)
         .ok_or_else(|| format!("LiveView not found: {}", data.liveview_id))?;
 
@@ -5641,8 +5641,8 @@ fn handle_liveview_event(
                         let unwrapped = unwrap_handler_return(json);
 
                         if let Some(url) = unwrapped.redirect.as_deref() {
-                            use crate::live::view::LIVE_REGISTRY;
-                            let _ = LIVE_REGISTRY.send(
+                            use crate::live::view::live_registry;
+                            let _ = live_registry().send(
                                 &instance.id,
                                 crate::live::view::ServerMessage::Redirect {
                                     url: url.to_string(),
@@ -5656,27 +5656,27 @@ fn handle_liveview_event(
                             apply_live_updates(interpreter, &mut instance, unwrapped.update);
                             apply_tick_interval(&mut instance, unwrapped.tick);
                             instance.touch();
-                            LIVE_REGISTRY.commit(&instance);
+                            live_registry().commit(&instance);
                             return Ok(());
                         }
 
                         if let Some(cmds) = unwrapped.js {
-                            use crate::live::view::LIVE_REGISTRY;
-                            let _ = LIVE_REGISTRY
+                            use crate::live::view::live_registry;
+                            let _ = live_registry()
                                 .send(&instance.id, crate::live::view::ServerMessage::Js { cmds });
                         }
 
                         if let Some((url, replace)) = unwrapped.patch {
-                            use crate::live::view::LIVE_REGISTRY;
-                            let _ = LIVE_REGISTRY.send(
+                            use crate::live::view::live_registry;
+                            let _ = live_registry().send(
                                 &instance.id,
                                 crate::live::view::ServerMessage::Url { url, replace },
                             );
                         }
 
                         if let Some(url) = unwrapped.live {
-                            use crate::live::view::LIVE_REGISTRY;
-                            let _ = LIVE_REGISTRY
+                            use crate::live::view::live_registry;
+                            let _ = live_registry()
                                 .send(&instance.id, crate::live::view::ServerMessage::Live { url });
                             if let Some(state) = unwrapped.state {
                                 adopt_live_state(&mut instance, state);
@@ -5684,7 +5684,7 @@ fn handle_liveview_event(
                             apply_live_updates(interpreter, &mut instance, unwrapped.update);
                             apply_tick_interval(&mut instance, unwrapped.tick);
                             instance.touch();
-                            LIVE_REGISTRY.commit(&instance);
+                            live_registry().commit(&instance);
                             return Ok(());
                         }
 
@@ -5704,8 +5704,8 @@ fn handle_liveview_event(
                         if let Some(stream_val) = unwrapped.stream {
                             let ops = build_stream_ops(&stream_val);
                             if !ops.is_empty() {
-                                use crate::live::view::LIVE_REGISTRY;
-                                let _ = LIVE_REGISTRY.send(
+                                use crate::live::view::live_registry;
+                                let _ = live_registry().send(
                                     &instance.id,
                                     crate::live::view::ServerMessage::Stream {
                                         liveview_id: instance.id.clone(),
@@ -5983,10 +5983,7 @@ fn apply_tick_interval(instance: &mut crate::live::view::LiveViewInstance, reque
     // After a reconnect the instance still remembers its interval while the task
     // was aborted at disconnect — treating that as unchanged silently stops a
     // ticking view for good.
-    let tick_running = crate::live::socket::LIVEVIEW_TICK_TASKS
-        .lock()
-        .map(|tasks| tasks.contains_key(&instance.id))
-        .unwrap_or(false);
+    let tick_running = crate::live::socket::has_tick_task(&instance.id);
     if instance.tick_interval_ms == Some(requested) && tick_running {
         return;
     }
@@ -6103,7 +6100,7 @@ fn render_and_send_patch(
     instance: &mut crate::live::view::LiveViewInstance,
 ) -> Result<(), String> {
     use crate::live::component::render_component;
-    use crate::live::view::{ServerMessage, LIVE_REGISTRY};
+    use crate::live::view::{live_registry, ServerMessage};
 
     // Render new HTML
     let new_html = render_component(component, &instance.state)?;
@@ -6117,12 +6114,12 @@ fn render_and_send_patch(
     let liveview_id = instance.id.clone();
     instance.last_html = new_html;
     instance.touch();
-    if !LIVE_REGISTRY.commit(instance) {
+    if !live_registry().commit(instance) {
         return Ok(());
     }
 
     // Send patch to client
-    let _ = LIVE_REGISTRY.send(
+    let _ = live_registry().send(
         &liveview_id,
         ServerMessage::Patch {
             liveview_id: liveview_id.to_string(),

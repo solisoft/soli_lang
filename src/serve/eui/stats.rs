@@ -15,7 +15,8 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Mutex;
+
+use crate::serve::tenant::TenantValue;
 
 /// One session's last render.
 #[derive(Clone, Debug, Default)]
@@ -36,7 +37,11 @@ pub struct Stats {
     pub renders: u64,
 }
 
-static STATS: Mutex<Option<HashMap<String, Stats>>> = Mutex::new(None);
+/// Render statistics, keyed by session, for the application on this thread.
+///
+/// Per application: the session ids are its own, and `eui_stats()` reading
+/// another app's numbers would be a small but real leak of its traffic.
+static STATS: TenantValue<HashMap<String, Stats>> = TenantValue::new(HashMap::new);
 
 thread_local! {
     /// Which session this thread is rendering, so `eui_stats()` called from
@@ -69,12 +74,12 @@ impl Drop for Current {
 
 /// Keep what a render cost. `renders` counts up from whatever was there.
 pub fn record(session: &str, mut stats: Stats) {
-    let mut guard = STATS.lock().unwrap_or_else(|e| e.into_inner());
-    let map = guard.get_or_insert_with(HashMap::new);
-    stats.renders = map
-        .get(session)
-        .map_or(1, |old| old.renders.saturating_add(1));
-    map.insert(session.to_owned(), stats);
+    STATS.write(|map| {
+        stats.renders = map
+            .get(session)
+            .map_or(1, |old| old.renders.saturating_add(1));
+        map.insert(session.to_owned(), stats);
+    });
 }
 
 /// Which session this thread is rendering, if it is rendering one.
@@ -89,14 +94,10 @@ pub fn current_session() -> Option<String> {
 /// The last render of the session this thread is rendering, if any.
 pub fn current() -> Option<Stats> {
     let session = CURRENT.with(|c| c.borrow().clone())?;
-    let guard = STATS.lock().unwrap_or_else(|e| e.into_inner());
-    guard.as_ref()?.get(&session).cloned()
+    STATS.read(|map| map.get(&session).cloned())
 }
 
 /// A session that has gone: its numbers go with it.
 pub fn forget(session: &str) {
-    let mut guard = STATS.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(map) = guard.as_mut() {
-        map.remove(session);
-    }
+    STATS.write(|map| map.remove(session));
 }

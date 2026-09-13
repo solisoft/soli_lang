@@ -117,8 +117,16 @@ A second sweep, after the database layer, over what a *request* reaches rather t
 | `live::upload` store and chunks | user-uploaded bytes, keyed by a server-minted id, in one shared map |
 | `background_jobs::BG_SENDER` | a pool thread builds its interpreter from *its* app's models and talks to *its* database, so a second app's jobs would run against the first one's everything |
 | `LV_EVENT_TX`, `PINNED_LV_TX` | an app's EUI sessions rendered by workers that never loaded its code |
+| `live::view` registry | live instances keyed by session id, their sockets, and the per-instance frame locks meant to serialise *one* session's renders |
+| `websocket` registry | live sockets and the rooms they joined — two apps both using a room called `"lobby"` would broadcast into each other's |
+| `live_query::SUBSCRIPTIONS` | one app's views woken by another's model writes |
+| `socket::LIVEVIEW_ROUTES`, `LIVEVIEW_TICK_TASKS`, `ROOM_COMPONENTS` | two apps may both name a component `counter`, and rooms are opt-in precisely so nothing is shareable by accident |
+| `eui::manifest` capabilities and signature | what one app asks the viewer to grant it; a co-hosted app would inherit permissions it never requested |
+| `eui::stats`, `dev_store` | one app's dev bar listing another's traffic, and its replay button re-dispatching another's request |
 
-The last three were `OnceLock`s, so the failure mode was not a race — it was deterministic and silent: whichever application booted second simply got the first one's.
+Several were `OnceLock`s, so the failure mode was not a race — it was deterministic and silent: whichever application booted second simply got the first one's.
+
+The two registries are held as `Arc`s behind their `TenantValue` (`live_registry()`, `get_ws_registry()`), so their ~45 call sites keep a handle rather than each going through a closure.
 
 One thing that had to survive the conversion: `put_chunk` assembled a finished file, dropped the chunk lock explicitly, *then* called `put`, which takes the store lock. Wrapping the body in a closure would have nested the two and fixed a lock order this file deliberately does not have. It now returns what it assembled and calls `put` after the closure.
 

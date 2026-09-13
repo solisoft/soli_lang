@@ -1,7 +1,7 @@
 //! The `/_eui/session/<component>` socket.
 //!
 //! Mirrors the LiveView socket: one hyper-tungstenite upgrade, one instance in
-//! `LIVE_REGISTRY`, events posted to the worker channel. The differences are
+//! the LiveView registry, events posted to the worker channel. The differences are
 //! the wire — binary EUI frames, decoded and validated here — and that a
 //! client event is checked against the tree the client was last sent before
 //! it becomes a handler call (`spec/06-events.md` §4).
@@ -18,7 +18,7 @@ use tokio::sync::oneshot;
 use tungstenite::Message;
 
 use crate::live::liveview_instance_id;
-use crate::live::view::{LiveViewInstance, LIVE_REGISTRY};
+use crate::live::view::{live_registry, LiveViewInstance};
 
 use super::super::{box_full, default_websocket_config, full, LiveViewEventData, ResponseBody};
 use super::{trace, tree, with_encoder, RESYNC_EVENT};
@@ -250,7 +250,7 @@ pub fn upgrade(
         );
         instance.id = liveview_instance_id(&session_id, &component, None);
         let liveview_id = instance.id.clone();
-        let already = LIVE_REGISTRY
+        let already = live_registry()
             .attach_or_register(instance, sender.clone())
             .is_some();
 
@@ -564,8 +564,8 @@ pub fn upgrade(
         // reconnect can resync, then the reaper takes it. Without the detach
         // an instance lived to the hour-long idle timeout — and only if a
         // LiveView socket had ever started the reaper at all.
-        if LIVE_REGISTRY.drop_sender(&liveview_id, &sender) {
-            LIVE_REGISTRY.detach(&liveview_id);
+        if live_registry().drop_sender(&liveview_id, &sender) {
+            live_registry().detach(&liveview_id);
         }
         // Let what is queued — an Error frame saying why — reach the client
         // before the socket goes; a client that has stopped reading gets

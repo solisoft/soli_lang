@@ -1020,14 +1020,18 @@ pub fn restore_websocket_routes(routes: Vec<WebSocketRoute>) {
     *ws_routes = routes;
 }
 
-// Global WebSocket registry for use from tokio threads
-lazy_static::lazy_static! {
-    pub static ref GLOBAL_WS_REGISTRY: std::sync::Arc<WebSocketRegistry> = std::sync::Arc::new(WebSocketRegistry::new());
-}
+/// The WebSocket registry for the application on this thread.
+///
+/// Per application: it holds live sockets and the rooms they joined, and room
+/// names are chosen by application code. Two co-hosted apps both using a room
+/// called `"lobby"` would broadcast into each other's — and `ws_broadcast`
+/// would reach sockets belonging to an application that never opened them.
+static WS_REGISTRY: crate::serve::tenant::TenantValue<std::sync::Arc<WebSocketRegistry>> =
+    crate::serve::tenant::TenantValue::new(|| std::sync::Arc::new(WebSocketRegistry::new()));
 
-/// Get the global WebSocket registry.
+/// Get this application's WebSocket registry.
 pub fn get_ws_registry() -> std::sync::Arc<WebSocketRegistry> {
-    GLOBAL_WS_REGISTRY.clone()
+    WS_REGISTRY.read(std::sync::Arc::clone)
 }
 
 // Global tokio runtime handle, initialized once during server startup.
