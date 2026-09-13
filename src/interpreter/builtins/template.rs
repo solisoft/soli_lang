@@ -7,7 +7,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
+
+use crate::serve::tenant::TenantCell;
 use std::time::SystemTime;
 
 use std::path::Path;
@@ -22,9 +24,11 @@ use crate::interpreter::value::{
 };
 use crate::template::{html_response, TemplateCache};
 
-// Process-global template cache, shared across all worker threads so a template
-// parsed by one worker is visible to the others.
-static TEMPLATE_CACHE: OnceLock<Arc<TemplateCache>> = OnceLock::new();
+// The template cache, shared across all worker threads serving an application
+// so a template parsed by one worker is visible to the others — and *only*
+// those workers: it is keyed by tenant, because a cache holding one
+// application's parsed views must not answer another's `render`.
+static TEMPLATE_CACHE: TenantCell<Arc<TemplateCache>> = TenantCell::new();
 
 // Thread-local view context for debugging (stores the data passed to render())
 thread_local! {
@@ -296,22 +300,21 @@ pub fn clear_view_debug_context() {
     set_view_debug_context(None);
 }
 
-// Global views directory for initialization
-static VIEWS_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+// Views directory, per application: `render("posts/index")` resolves against
+// the tenant's own views, never a co-hosted application's.
+static VIEWS_DIR: TenantCell<PathBuf> = TenantCell::new();
 
-// Global public directory for public_path() helper
-static PUBLIC_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+// Public directory for the public_path() helper, per application for the same
+// reason.
+static PUBLIC_DIR: TenantCell<PathBuf> = TenantCell::new();
 
 /// Initialize the template system with the views directory.
 pub fn init_templates(views_dir: PathBuf) {
-    // Store views dir globally
-    if let Ok(mut dir) = VIEWS_DIR.lock() {
-        *dir = Some(views_dir.clone());
-    }
+    VIEWS_DIR.set(views_dir.clone());
 
-    // Install the shared cache (first call wins; subsequent inits are no-ops
-    // unless the views dir changed — in that case we fall back to clear()).
-    let _ = TEMPLATE_CACHE.set(Arc::new(TemplateCache::new(views_dir)));
+    // Install the cache (first call wins for this tenant; a later init with a
+    // different views dir falls back to clear()).
+    TEMPLATE_CACHE.set_once(Arc::new(TemplateCache::new(views_dir)));
     if let Some(tc) = TEMPLATE_CACHE.get() {
         tc.clear();
     }
@@ -319,9 +322,7 @@ pub fn init_templates(views_dir: PathBuf) {
 
 /// Initialize the public directory for public_path() helper.
 pub fn init_public_dir(public_dir: PathBuf) {
-    if let Ok(mut dir) = PUBLIC_DIR.lock() {
-        *dir = Some(public_dir);
-    }
+    PUBLIC_DIR.set(public_dir);
 }
 
 /// Clear the template cache (for hot reload).
@@ -342,19 +343,12 @@ pub fn templates_have_changes() -> bool {
 /// Get the template cache, initializing if necessary.
 pub fn get_template_cache() -> Result<Arc<TemplateCache>, String> {
     if let Some(tc) = TEMPLATE_CACHE.get() {
-        return Ok(Arc::clone(tc));
+        return Ok(tc);
     }
 
-    // Try to initialize from global views dir
-    if let Ok(dir_guard) = VIEWS_DIR.lock() {
-        if let Some(views_dir) = dir_guard.as_ref() {
-            let views_dir_clone = views_dir.clone();
-            drop(dir_guard);
-            let _ = TEMPLATE_CACHE.set(Arc::new(TemplateCache::new(views_dir_clone)));
-            if let Some(tc) = TEMPLATE_CACHE.get() {
-                return Ok(Arc::clone(tc));
-            }
-        }
+    // Not installed yet on this tenant — build it from its views dir.
+    if let Some(views_dir) = VIEWS_DIR.get() {
+        return Ok(TEMPLATE_CACHE.get_or_init(|| Arc::new(TemplateCache::new(views_dir))));
     }
 
     Err("Template system not initialized. Call init_templates() first.".to_string())
@@ -785,11 +779,7 @@ pub fn register_static_template_helpers(env: &mut Environment) {
                     ))
                 }
             };
-            let public_dir = match PUBLIC_DIR.lock() {
-                Ok(dir_guard) => dir_guard.clone(),
-                _ => None,
-            };
-            let public_dir = public_dir.unwrap_or_else(|| PathBuf::from("public"));
+            let public_dir = PUBLIC_DIR.get().unwrap_or_else(|| PathBuf::from("public"));
             let full_path = public_dir.join(&*path);
             match get_file_mtime_cached(&full_path) {
                 Ok(mtime) => {

@@ -48,12 +48,28 @@ Which state goes where is not a matter of taste:
 
 | Kind | Where | Examples |
 |---|---|---|
-| `Send + Sync` | `Tenant`, in the process registry | app root, file jail, image jail |
+| `Send + Sync` | the process registry, via the helpers below | app root, jails, template cache, mounted engines |
 | `Rc`-based, thread-confined | a `thread_local!` **keyed by `TenantId`** | interpreters, `Rc<Class>` model registries, view helpers, the parsed handler cache |
 
-Moved so far: the app root (was `live::component::APP_ROOT`) and the `File` / `Image` jails (were `OnceLock`s in `builtins/file.rs` and `builtins/image.rs`). The jails matter most: one shared jail in a two-application process would let either resolve paths under the other's root. They keep their first-write-wins semantics, because swapping a jail mid-run would leave in-flight requests resolving against the old root.
+### Converting a global
 
-Still process-global, and each one a collision if a second application were added: the template cache with `VIEWS_DIR` / `PUBLIC_DIR`, the controller and model registries, `MOUNTED_ENGINES`, `MAILER_CONFIG`, `SOLIKV_CONFIG`, `TRUSTED_PROXIES`, `RATE_LIMIT_STORE`, `SECURITY_HEADERS_CONFIG`, `JAR_CACHE`, the mixin hooks, and the `ROUTES` thread-local. `.env` is loaded with `std::env::set_var`, which is process-wide too.
+Three helpers, so a singleton keeps its shape and changes only what it is. Each addresses the tenant the calling thread is serving, so with one application the map holds a single entry and behaviour is unchanged.
+
+| Was | Becomes | API |
+|---|---|---|
+| `Mutex<Option<T>>`, `OnceLock<T>` | `TenantCell<T>` | `get` / `set` / `set_once` / `get_or_init` / `clear` |
+| `lazy_static! { RwLock<T> }` | `TenantValue<T>` | `read(\|v\| …)` / `write(\|v\| …)` / `reset` — the constructor is part of the declaration, so it replaces `lazy_static!` outright and stays `const` |
+| `thread_local! { RefCell<T> }` holding `Rc` values | `TenantLocal<T>` | `with(init, \|v\| …)` / `clear` |
+
+`read`/`write` take a closure rather than returning a guard: the value lives inside a map inside the lock, and stable Rust has no way to hand out a guard borrowed into it (`parking_lot`'s mapped guards would, but it is not a direct dependency). In exchange the lock is always released.
+
+### Done, and left
+
+Converted: the app root (was `live::component::APP_ROOT`); the `File` and `Image` jails (were `OnceLock`s); `VIEWS_DIR`, `PUBLIC_DIR` and `TEMPLATE_CACHE` (`init_templates` was first-caller-wins, so a second application would have rendered the first one's views); `JAR_CACHE`; and `MOUNTED_ENGINES`.
+
+Two of those are security properties rather than tidiness. A shared jail in a two-application process would let either resolve paths under the other's root. `JAR_CACHE` holds the keys that sign and encrypt cookies, derived from that application's `SOLI_SESSION_SECRET` — shared, either application could mint a cookie the other trusts.
+
+Still process-global, and each one a collision if a second application were added: `MODEL_REGISTRY` and the `COLLECTION_*` maps beside it, `CONTROLLER_REGISTRY`, `MAILER_CONFIG`, `SOLIKV_CONFIG`, `TRUSTED_PROXIES`, `RATE_LIMIT_STORE`, `SECURITY_HEADERS_CONFIG`, the mixin hooks, and the `ROUTES` thread-local. `.env` is loaded with `std::env::set_var`, which is process-wide too.
 
 Shareable as-is, because they are read-only or content-addressed: `REGEX_CACHE`, `SYMBOL_TABLE`, `HIDDEN_CLASS_REGISTRY`, `INLINE_CACHE`, `MODULE_CACHE`, and the `&'static [MethodDef]` tables. One caveat: `SYMBOL_TABLE` interns with `Box::leak`, so a process that loads and unloads applications would grow without bound.
 
