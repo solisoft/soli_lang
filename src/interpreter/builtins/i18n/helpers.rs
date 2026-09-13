@@ -5,8 +5,9 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+
+use crate::serve::tenant::{TenantCell, TenantValue};
 use std::path::Path;
-use std::sync::RwLock;
 
 // Thread-local storage for the current locale (shared with mod.rs)
 //
@@ -24,34 +25,29 @@ thread_local! {
 /// The locale a request starts from, and the one a lookup falls back to when
 /// the active locale has no entry.
 ///
-/// Process-wide, because it is the application's choice and every worker
-/// shares it: `SOLI_DEFAULT_LOCALE` at boot, or `I18n.set_default_locale`.
-/// It was the literal `"en"`, in six places, with no way to change it.
-static DEFAULT_LOCALE: RwLock<Option<String>> = RwLock::new(None);
+/// Per application, and shared by every worker serving it: `SOLI_DEFAULT_LOCALE`
+/// at boot, or `I18n.set_default_locale`. It was the literal `"en"`, in six
+/// places, with no way to change it — and then one process-wide value, which
+/// a second application booting in the process would have overwritten.
+static DEFAULT_LOCALE: TenantCell<String> = TenantCell::new();
 
 /// The fallback locale. `"en"` until the application says otherwise.
 pub fn default_locale() -> String {
-    DEFAULT_LOCALE
-        .read()
-        .ok()
-        .and_then(|g| g.clone())
-        .unwrap_or_else(|| "en".to_string())
+    DEFAULT_LOCALE.get().unwrap_or_else(|| "en".to_string())
 }
 
 /// Set the locale a request starts from and lookups fall back to.
 pub fn set_default_locale(locale: &str) {
-    if let Ok(mut g) = DEFAULT_LOCALE.write() {
-        *g = Some(locale.to_string());
-    }
+    DEFAULT_LOCALE.set(locale.to_string());
 }
 
 /// The locales that have translations loaded, for content negotiation.
 pub fn available_locales() -> Vec<String> {
-    TRANSLATIONS
-        .read()
-        .ok()
-        .and_then(|g| g.as_ref().map(|m| m.keys().cloned().collect()))
-        .unwrap_or_default()
+    TRANSLATIONS.read(|g| {
+        g.as_ref()
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default()
+    })
 }
 
 /// The best match for an `Accept-Language` header among `available`.
@@ -102,11 +98,14 @@ pub fn negotiate(header: &str, available: &[String]) -> Option<String> {
     None
 }
 
-/// Process-wide store of translations loaded from `config/locales/*.yml` at boot.
+/// Translations loaded from this application's `config/locales/*.yml` at boot.
 /// Keyed by locale name (top-level YAML key, e.g. `"en"`); values are the parsed
-/// YAML subtree under that key. `serde_yaml::Value` is `Send + Sync`, so a single
-/// global serves all worker threads.
-static TRANSLATIONS: RwLock<Option<HashMap<String, serde_yaml::Value>>> = RwLock::new(None);
+/// YAML subtree under that key. `serde_yaml::Value` is `Send + Sync`, so one
+/// store serves every worker of the application — and only those: the store
+/// is on the render path, and a process-wide one would have `t()` in one
+/// application's views rendering another's strings.
+static TRANSLATIONS: TenantValue<Option<HashMap<String, serde_yaml::Value>>> =
+    TenantValue::new(|| None);
 
 /// Get the current locale — the default until a request installs one.
 pub fn get_locale() -> String {
@@ -188,7 +187,7 @@ pub fn load_locales_from_config_dir(config_dir: &Path) -> usize {
     }
 
     let count = store.len();
-    *TRANSLATIONS.write().unwrap() = Some(store);
+    TRANSLATIONS.write(|g| *g = Some(store));
     count
 }
 
@@ -215,16 +214,17 @@ fn merge_yaml(dst: &mut serde_yaml::Value, src: serde_yaml::Value) {
 /// default locale if the active one has no entry. Returns `None` if no
 /// locale resolves or the terminal node is not a string.
 pub fn lookup_translation(locale: &str, key: &str) -> Option<String> {
-    let guard = TRANSLATIONS.read().unwrap();
-    let store = guard.as_ref()?;
-    if let Some(s) = lookup_in(store, locale, key) {
-        return Some(s);
-    }
-    let fallback = default_locale();
-    if locale != fallback {
-        return lookup_in(store, &fallback, key);
-    }
-    None
+    TRANSLATIONS.read(|guard| {
+        let store = guard.as_ref()?;
+        if let Some(s) = lookup_in(store, locale, key) {
+            return Some(s);
+        }
+        let fallback = default_locale();
+        if locale != fallback {
+            return lookup_in(store, &fallback, key);
+        }
+        None
+    })
 }
 
 /// A CLDR plural category. Which ones a language uses is the language's
@@ -381,9 +381,10 @@ pub fn lookup_plural(locale: &str, key: &str, n: i64) -> Option<String> {
 
 /// A lookup in exactly one locale, with no fallback.
 fn lookup_exact(locale: &str, key: &str) -> Option<String> {
-    let guard = TRANSLATIONS.read().unwrap();
-    let store = guard.as_ref()?;
-    lookup_in(store, locale, key)
+    TRANSLATIONS.read(|guard| {
+        let store = guard.as_ref()?;
+        lookup_in(store, locale, key)
+    })
 }
 
 fn lookup_in(

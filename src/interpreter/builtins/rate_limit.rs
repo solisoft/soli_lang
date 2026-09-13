@@ -747,8 +747,7 @@ mod tests {
         // Trust-proxy OFF: XFF is ignored, remote_addr wins.
         // SEC-030 attack scenario: client rotates `X-Forwarded-For: <random>` per
         // request; without the gate, the limiter is bypassed.
-        super::super::trust_proxy::TRUST_PROXY_ENABLED
-            .store(false, std::sync::atomic::Ordering::Relaxed);
+        super::super::trust_proxy::TRUST_PROXY_ENABLED.write(|on| *on = false);
         assert_eq!(
             extract_client_ip(&make_req(Some("1.1.1.1"), Some("203.0.113.5"))),
             Some("203.0.113.5".to_string()),
@@ -765,8 +764,7 @@ mod tests {
 
         // Trust-proxy ON: take the rightmost XFF entry — the address the
         // trusted proxy chose to record.
-        super::super::trust_proxy::TRUST_PROXY_ENABLED
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        super::super::trust_proxy::TRUST_PROXY_ENABLED.write(|on| *on = true);
         assert_eq!(
             extract_client_ip(&make_req(Some("1.2.3.4"), Some("203.0.113.5"))),
             Some("1.2.3.4".to_string()),
@@ -791,8 +789,7 @@ mod tests {
         );
 
         // Restore.
-        super::super::trust_proxy::TRUST_PROXY_ENABLED
-            .store(prev, std::sync::atomic::Ordering::Relaxed);
+        super::super::trust_proxy::TRUST_PROXY_ENABLED.write(|on| *on = prev);
     }
 }
 

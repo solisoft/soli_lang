@@ -8,15 +8,27 @@
 //! call `enable_trust_proxy()` after confirming their deployment terminates
 //! and rewrites these headers at a trusted proxy hop.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Once;
-
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 use crate::serve::tenant::TenantValue;
 
-pub(crate) static TRUST_PROXY_ENABLED: AtomicBool = AtomicBool::new(false);
-static ENV_INIT: Once = Once::new();
+/// Whether this application honours `X-Forwarded-*` at all.
+///
+/// Per application, like the `TRUSTED_PROXIES` list it gates — and it has to
+/// be, because the gate is the *lenient* half: with the list empty,
+/// `is_trust_proxy_enabled` answers whatever this flag says. A process-wide
+/// flag flipped by one application's `trust_proxy(true)` would have made a
+/// co-hosted application, reached directly by clients, trust attacker-supplied
+/// `X-Forwarded-For` / `-Proto` / `-Host` on every request.
+///
+/// Seeded from `SOLI_TRUST_PROXY` on first use, so a deployment can flip the
+/// startup default without editing app code; `enable_trust_proxy()` /
+/// `disable_trust_proxy()` override it at runtime.
+pub(crate) static TRUST_PROXY_ENABLED: TenantValue<bool> = TenantValue::new(trust_proxy_from_env);
+
+fn trust_proxy_from_env() -> bool {
+    parse_trust_proxy_env(std::env::var("SOLI_TRUST_PROXY").ok().as_deref())
+}
 
 thread_local! {
     /// Peer address of the request this worker thread is handling, set by the
@@ -135,11 +147,9 @@ pub fn is_trust_proxy_enabled() -> bool {
     // form post was rejected with "Origin <public host> does not match request
     // authority <backend>", with no way to fix it from the environment.
     //
-    // `Once` makes this free after the first call, and `enable_trust_proxy()`
-    // / `disable_trust_proxy()` still override at runtime.
-    init_from_env();
-
-    if !TRUST_PROXY_ENABLED.load(Ordering::Relaxed) {
+    // The flag seeds itself from the environment on first use, and
+    // `enable_trust_proxy()` / `disable_trust_proxy()` override at runtime.
+    if !TRUST_PROXY_ENABLED.read(|on| *on) {
         return false;
     }
 
@@ -164,7 +174,7 @@ pub fn is_trust_proxy_enabled() -> bool {
 /// Parse a `SOLI_TRUST_PROXY` value. Truthy values (`1`, `true`, `yes`,
 /// case-insensitive) flip the gate on. Anything else (including missing or
 /// empty) leaves it off. Factored out so tests can exercise the parser
-/// without racing on `std::env::var` or the `Once`-protected init.
+/// without racing on `std::env::var`.
 fn parse_trust_proxy_env(raw: Option<&str>) -> bool {
     match raw {
         Some(s) => matches!(s.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"),
@@ -172,28 +182,14 @@ fn parse_trust_proxy_env(raw: Option<&str>) -> bool {
     }
 }
 
-/// Read `SOLI_TRUST_PROXY` once and seed the flag from it. `enable_trust_proxy()`
-/// / `disable_trust_proxy()` still override at runtime — env just sets the
-/// startup default so deployments can flip the flag without editing app code.
-fn init_from_env() {
-    ENV_INIT.call_once(|| {
-        let raw = std::env::var("SOLI_TRUST_PROXY").ok();
-        if parse_trust_proxy_env(raw.as_deref()) {
-            TRUST_PROXY_ENABLED.store(true, Ordering::Relaxed);
-        }
-    });
-}
-
 pub fn register_trust_proxy_builtins(env: &mut Environment) {
-    init_from_env();
-
     env.define(
         "enable_trust_proxy".to_string(),
         Value::NativeFunction(NativeFunction::new(
             "enable_trust_proxy",
             Some(0),
             |_args| {
-                TRUST_PROXY_ENABLED.store(true, Ordering::Relaxed);
+                TRUST_PROXY_ENABLED.write(|on| *on = true);
                 Ok(Value::Bool(true))
             },
         )),
@@ -205,7 +201,7 @@ pub fn register_trust_proxy_builtins(env: &mut Environment) {
             "disable_trust_proxy",
             Some(0),
             |_args| {
-                TRUST_PROXY_ENABLED.store(false, Ordering::Relaxed);
+                TRUST_PROXY_ENABLED.write(|on| *on = false);
                 Ok(Value::Bool(true))
             },
         )),
@@ -232,13 +228,13 @@ mod tests {
     fn trust_proxy_toggle_round_trip() {
         // Default state is off, regardless of test ordering: explicitly
         // disable first so we don't depend on which test ran before us.
-        TRUST_PROXY_ENABLED.store(false, Ordering::Relaxed);
+        TRUST_PROXY_ENABLED.write(|on| *on = false);
         assert!(!is_trust_proxy_enabled());
 
-        TRUST_PROXY_ENABLED.store(true, Ordering::Relaxed);
+        TRUST_PROXY_ENABLED.write(|on| *on = true);
         assert!(is_trust_proxy_enabled());
 
-        TRUST_PROXY_ENABLED.store(false, Ordering::Relaxed);
+        TRUST_PROXY_ENABLED.write(|on| *on = false);
         assert!(!is_trust_proxy_enabled());
     }
 

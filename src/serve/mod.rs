@@ -315,7 +315,7 @@ pub fn set_tokio_handle(handle: tokio::runtime::Handle) {
 /// its workers hold its interpreters. A `OnceLock` here meant the second
 /// application to boot silently kept the first one's queues, so its EUI
 /// sessions would have been rendered by workers that had never loaded its code.
-static PINNED_LV_TX: TenantCell<Vec<channel::Sender<LiveViewEventData>>> = TenantCell::new();
+static PINNED_LV_TX: TenantCell<Arc<Vec<channel::Sender<LiveViewEventData>>>> = TenantCell::new();
 
 /// The queue for one LiveView instance's events: its pinned worker's for an
 /// EUI component, the shared queue for everything else.
@@ -1390,9 +1390,8 @@ fn run_hyper_server_worker_pool(
                                 .headers()
                                 .get(hyper::header::HOST)
                                 .and_then(|value| value.to_str().ok())
-                                .map(|value| value.to_string())
-                                .or_else(|| req.uri().host().map(|h| h.to_string()));
-                            let Some(runtime) = router.resolve(host.as_deref()).cloned() else {
+                                .or_else(|| req.uri().host());
+                            let Some(runtime) = router.resolve(host).cloned() else {
                                 // No application claims this host and there is
                                 // no fallback. 421 is the answer that tells a
                                 // client it reached the wrong server, rather
@@ -2168,7 +2167,9 @@ fn run_hyper_server_worker_pool(
     )> = (0..num_pinned)
         .map(|_| channel::bounded(capacity_per_worker))
         .collect();
-    PINNED_LV_TX.set_once(pinned_lv.iter().map(|(tx, _)| tx.clone()).collect());
+    PINNED_LV_TX.set_once(Arc::new(
+        pinned_lv.iter().map(|(tx, _)| tx.clone()).collect(),
+    ));
 
     for i in 0..num_workers {
         // Role for this worker. When the pool isn't split, every worker drains
@@ -2212,7 +2213,13 @@ fn run_hyper_server_worker_pool(
         let builder = thread::Builder::new()
             .name(format!("{}-{}", role_label, i))
             .stack_size(server_constants::worker_stack_bytes());
+        // A worker serves the application that spawned it, for its whole life.
+        // This is the binding every `TenantValue` on the worker path relies on,
+        // and thread-locals do not cross `spawn`, so it is made explicit here
+        // rather than assumed.
+        let worker_tenant = tenant::current_id();
         let handler = builder.spawn(move || {
+            tenant::bind_current(worker_tenant);
             // Set tokio runtime handle for this worker thread (used by HTTP builtins)
             set_tokio_handle(runtime_handle.clone());
 
@@ -2989,6 +2996,8 @@ async fn handle_hyper_request(
     // Destructured rather than accessed through `runtime.` throughout: the body
     // below is long, and every one of these names already meant exactly this.
     let TenantRuntime {
+        // Not read here: the request future is already scoped to it, and the
+        // spawns below inherit it through `tenant::spawn`.
         tenant: _tenant,
         request_tx,
         reload_tx,
@@ -3316,7 +3325,7 @@ async fn handle_hyper_request(
             let room = room.clone();
             let lv_event_tx = lv_event_tx.clone();
 
-            tokio::spawn(async move {
+            tenant::spawn(async move {
                 let _slot = slot;
                 let stream = match websocket.await {
                     Ok(ws) => ws,
@@ -3359,7 +3368,7 @@ async fn handle_hyper_request(
                 let (mut ws_write, mut ws_read) = stream.split();
 
                 // Spawn task to forward messages from channel to WebSocket
-                let write_task = tokio::spawn(async move {
+                let write_task = tenant::spawn(async move {
                     while let Ok(msg_result) = rx.recv().await {
                         match msg_result {
                             Ok(msg) => {
@@ -4720,7 +4729,7 @@ async fn handle_websocket_upgrade(
     let ws_event_tx = ws_event_tx.clone();
     let path = path.clone();
 
-    tokio::spawn(async move {
+    tenant::spawn(async move {
         // Held for the life of the connection; dropping it frees the slot on
         // every exit path below, handshake failure included.
         let _connection_slot = connection_slot;
@@ -4766,7 +4775,7 @@ async fn handle_websocket_upgrade(
         let mut rate_limiter = crate::serve::websocket::WsRateLimiter::from_config();
 
         // Spawn task to forward messages from channel to WebSocket
-        let write_task = tokio::spawn(async move {
+        let write_task = tenant::spawn(async move {
             while let Some(msg_result) = ws_rx.recv().await {
                 match msg_result {
                     Ok(msg) => {
@@ -5302,11 +5311,14 @@ fn addressed_to_this_socket(claimed: Option<&str>, own: &str) -> bool {
 /// Reap LiveView instances whose socket closed (or that idled out). Started on
 /// the first LiveView upgrade; `cleanup` is cheap and runs off the hot path.
 fn start_liveview_reaper() {
-    static STARTED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-    if STARTED.set(()).is_err() {
+    // One reaper per application: it sweeps that application's LiveView
+    // registry, and runs as that tenant so it finds it. A process-wide
+    // `OnceLock` here meant no second application could ever get a reaper.
+    static STARTED: TenantCell<()> = TenantCell::new();
+    if !STARTED.set_once(()) {
         return;
     }
-    tokio::spawn(async move {
+    tenant::spawn(async move {
         let mut ticker = tokio::time::interval(std::time::Duration::from_secs(30));
         loop {
             ticker.tick().await;
@@ -10171,8 +10183,7 @@ mod tests {
         // this test and restore it on the way out.
         let _g = csrf_lock();
         let prev_trust = crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled();
-        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED.write(|on| *on = true);
 
         let mut headers = hyper::HeaderMap::new();
         headers.insert(header::HOST, "127.0.0.1:5011".parse().unwrap());
@@ -10181,8 +10192,7 @@ mod tests {
 
         assert!(websocket_origin_allowed(&headers));
 
-        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED
-            .store(prev_trust, std::sync::atomic::Ordering::Relaxed);
+        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED.write(|on| *on = prev_trust);
     }
 
     #[test]
@@ -10679,8 +10689,7 @@ mod tests {
         let prev_trust = crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled();
 
         // Trust-proxy OFF: the real Host wins, the attacker's XFH is ignored.
-        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED
-            .store(false, std::sync::atomic::Ordering::Relaxed);
+        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED.write(|on| *on = false);
         let h = make_headers(&[("host", "example.com"), ("x-forwarded-host", "evil.test")]);
         assert_eq!(
             websocket_request_authority(&h),
@@ -10705,8 +10714,7 @@ mod tests {
 
         // Trust-proxy ON: XFH is honored, since the operator has stated
         // the deployment terminates that header at a trusted proxy hop.
-        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED.write(|on| *on = true);
         let h = make_headers(&[
             ("host", "example.com"),
             ("x-forwarded-host", "app.example.com"),
@@ -10717,8 +10725,7 @@ mod tests {
         );
 
         // Restore.
-        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED
-            .store(prev_trust, std::sync::atomic::Ordering::Relaxed);
+        crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED.write(|on| *on = prev_trust);
     }
 
     // --- form method override + CSRF token verification -------------------

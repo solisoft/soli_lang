@@ -206,13 +206,19 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
 
     let mut count = 0;
 
-    // The helpers' closure encloses the thread's shared builtins registry, so
-    // a helper can call session_get / session_set / redirect / render / JSON /
-    // HTTP / Model / argon2_hash / Retry.with_backoff / …  Without a builtins
-    // scope behind it, any such call fails with "Undefined variable" at render
-    // time. It used to build a registry of its own, a third full copy on every
-    // worker thread; sharing costs nothing, because nothing writes to it.
-    let helper_env = crate::interpreter::builtins::child_of_serve_builtins();
+    // Register the full builtin suite into the helpers' closure so helper
+    // functions can call session_get / session_set / redirect / render /
+    // JSON / HTTP / Model / argon2_hash / …  Without this, a helper that
+    // references any builtin fails with "Undefined variable" at render time.
+    // `include_test_builtins: false` — helpers never run under `soli test`.
+    let helper_env = Rc::new(RefCell::new(Environment::new()));
+    crate::interpreter::builtins::register_builtins(&mut helper_env.borrow_mut(), false);
+    // Retry is evaluated Soli, so `register_builtins` (which takes `&mut
+    // Environment`) cannot carry it — register it against the Rc, or a helper
+    // calling `Retry.with_backoff(...)` fails with "Undefined variable".
+    if let Err(e) = crate::interpreter::builtins::retry::register_retry_class(&helper_env) {
+        eprintln!("[WARN] Retry stdlib failed to load for helpers: {}", e);
+    }
 
     let entries = std::fs::read_dir(helpers_dir)
         .map_err(|e| format!("Failed to read helpers directory: {}", e))?;

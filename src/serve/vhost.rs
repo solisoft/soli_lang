@@ -106,6 +106,12 @@ impl<T> Router<T> {
     /// The application serving this request, or `None` if no application claims
     /// the host and there is no fallback — a 421 Misdirected Request.
     pub(crate) fn resolve(&self, host_header: Option<&str>) -> Option<&T> {
+        // A single-application server has nothing to look up, and this runs
+        // on every request: skip the lowercase allocation and the hash probe
+        // that could only ever answer the fallback.
+        if self.by_host.is_empty() {
+            return self.fallback.as_ref();
+        }
         host_header
             .and_then(normalize_host)
             .and_then(|key| self.by_host.get(&key))

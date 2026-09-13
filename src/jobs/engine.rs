@@ -98,7 +98,12 @@ pub fn start(pool_slots: usize, runtime_handle: tokio::runtime::Handle, dev_mode
     let poll_ms = cfg.poll_ms;
     let lease_secs = cfg.lease_secs;
     let builder = std::thread::Builder::new().name("jobs-poller".to_string());
+    // The poller reads and writes the queue of the application that started
+    // it; bound for the life of the thread, since thread-locals do not cross
+    // `spawn`.
+    let tenant = crate::serve::tenant::current_id();
     let spawned = builder.spawn(move || {
+        crate::serve::tenant::bind_current(tenant);
         crate::serve::set_tokio_handle(runtime_handle);
         run_poller(cfg)
     });
@@ -180,9 +185,11 @@ fn spawn_webhook_delivery(job: JobDoc) {
     // `job` moves into the closure, and a failed `spawn` drops it with the
     // closure — so keep a copy for the failure path below.
     let unspawned = job.clone();
+    let tenant = crate::serve::tenant::current_id();
     let spawned = std::thread::Builder::new()
         .name("soli-webhook".to_string())
         .spawn(move || {
+            crate::serve::tenant::bind_current(tenant);
             let error = deliver_webhook(&job).err();
             report_outcome(&job, error.as_deref());
             mark_finished(&job.key);

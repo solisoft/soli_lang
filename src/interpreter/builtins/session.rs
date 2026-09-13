@@ -2109,11 +2109,6 @@ mod tests {
         assert!(cookie.contains(&format!("session_id={resolved}")));
     }
 
-    /// This tenant's session config, for the tests that save and restore it.
-    fn peek_config() -> SessionConfig {
-        SESSION_CONFIG.read(|cfg| cfg.clone())
-    }
-
     /// Install this tenant's session config outright.
     fn put_config(next: SessionConfig) {
         SESSION_CONFIG.write(|cfg| *cfg = next);
@@ -2136,7 +2131,7 @@ mod tests {
     #[test]
     fn session_ttl_threads_through_to_cookie_and_store() {
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let prev = peek_config();
+        let prev = get_session_config();
         SESSION_CONFIG.write(|cfg| cfg.ttl = 300);
         let cookie = create_session_cookie("abc", false);
         assert!(
@@ -2171,7 +2166,7 @@ mod tests {
     #[test]
     fn samesite_lax_omits_secure_on_plain_http() {
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let prev = peek_config();
+        let prev = get_session_config();
         SESSION_CONFIG.write(|cfg| cfg.same_site = SameSite::Lax);
         let cookie = create_session_cookie("abc", false);
         assert!(cookie.contains("SameSite=Lax"), "{}", cookie);
@@ -2182,7 +2177,7 @@ mod tests {
     #[test]
     fn samesite_strict_omits_secure_on_plain_http() {
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let prev = peek_config();
+        let prev = get_session_config();
         SESSION_CONFIG.write(|cfg| cfg.same_site = SameSite::Strict);
         let cookie = create_session_cookie("abc", false);
         assert!(cookie.contains("SameSite=Strict"), "{}", cookie);
@@ -2196,7 +2191,7 @@ mod tests {
         // every modern browser; emit Secure regardless of the caller's
         // scheme detection so the cookie stays useful.
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let prev = peek_config();
+        let prev = get_session_config();
         SESSION_CONFIG.write(|cfg| cfg.same_site = SameSite::None);
         let cookie = create_session_cookie("abc", false);
         assert!(cookie.contains("SameSite=None"), "{}", cookie);
@@ -2213,7 +2208,7 @@ mod tests {
         // The auto-Secure for SameSite=None must not double up the flag
         // when the caller already detected HTTPS.
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let prev = peek_config();
+        let prev = get_session_config();
         SESSION_CONFIG.write(|cfg| cfg.same_site = SameSite::None);
         let cookie = create_session_cookie("abc", true);
         assert_eq!(
@@ -2234,7 +2229,7 @@ mod tests {
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
 
         // Snapshot and rebuild the default store so the test starts clean.
-        let prev_cfg = peek_config();
+        let prev_cfg = get_session_config();
         configure_session(prev_cfg.clone()).expect("reset to default config");
 
         let store_before = get_current_store();
@@ -2271,7 +2266,7 @@ mod tests {
     fn cookie_driver_round_trips_session_through_sealed_cookie() {
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let env = fresh_env();
-        let prev_cfg = peek_config();
+        let prev_cfg = get_session_config();
         let mut cfg = prev_cfg.clone();
         cfg.driver = SessionDriver::Cookie;
         cfg.secret = Some("0123456789abcdef0123456789abcdef".to_string());

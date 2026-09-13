@@ -25,13 +25,12 @@
 //!   from any thread serving that tenant.
 //! - **Confined to one thread** — anything built out of `Rc`: interpreters,
 //!   `Rc<Class>` model registries, view helpers, the parsed handler cache.
-//!   Those stay in a `thread_local!`, but keyed by [`TenantId`] rather than
-//!   holding a single unkeyed value.
+//!   Those stay in a plain `thread_local!`.
 //!
-//! Worker threads are pinned to one tenant, so the current tenant is fixed
-//! when the thread starts rather than looked up per request, and a keyed
-//! `thread_local!` holds exactly one entry in practice. Keying it anyway is
-//! what makes the design correct if a thread ever drains work for two.
+//! Worker threads are bound to one tenant for life (`bind_current` at thread
+//! start), so the current tenant is fixed rather than looked up per request,
+//! and a thread-local already is per application. The HTTP side is not
+//! thread-bound — see `TASK_TENANT`.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, RwLock};
@@ -202,6 +201,21 @@ pub fn task_scope<F: std::future::Future>(
     TASK_TENANT.scope(id, future)
 }
 
+/// `tokio::spawn`, carrying the current tenant into the new task.
+///
+/// A task-local does not cross `tokio::spawn`: a task spawned from inside a
+/// [`task_scope`]d future starts unbound and falls back to `PRIMARY`. Every
+/// spawn on the request path — the WebSocket, EUI and LiveView upgrades, their
+/// writer tasks, the LiveView reaper — goes through this instead, so the new
+/// task serves the same application as the request that spawned it.
+pub fn spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(task_scope(current_id(), future))
+}
+
 /// The tenant bound to the current tokio task, if this code runs inside one
 /// that was started through [`task_scope`].
 #[inline]
@@ -298,7 +312,8 @@ pub fn bind_current(id: TenantId) {
 /// entry and behaviour is unchanged.
 ///
 /// `T` must be `Send + Sync`: this is read from any thread serving the tenant.
-/// Anything `Rc`-based belongs in a [`TenantLocal`] instead.
+/// Anything `Rc`-based stays in a `thread_local!`: worker threads serve one
+/// application for life, so a thread-local already is per application.
 pub struct TenantCell<T> {
     slots: RwLock<Option<std::collections::HashMap<TenantId, T>>>,
 }
@@ -368,10 +383,9 @@ impl<T: Clone> TenantCell<T> {
     /// Drop this tenant's value, so the next `get_or_init` rebuilds it. Used by
     /// hot reload, and by a tenant going to sleep.
     pub fn clear(&self) {
-        if let Ok(mut slots) = self.slots.write() {
-            if let Some(map) = slots.as_mut() {
-                map.remove(&current_id());
-            }
+        let mut slots = self.slots.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(map) = slots.as_mut() {
+            map.remove(&current_id());
         }
     }
 }
@@ -393,12 +407,19 @@ impl<T: Clone> TenantCell<T> {
 ///     TenantValue::new(MailerConfig::from_env);
 /// ```
 ///
+/// **One lock per tenant**, not one lock over all of them. The outer lock only
+/// guards the map of slots and is held for a lookup; each slot carries its own
+/// `RwLock`, so a closure that blocks under `write` — the database JWT login
+/// does, for up to its network timeout — stalls that tenant alone, exactly as
+/// the process-wide mutex it replaced stalled the one application it served.
+/// A shared lock coupled tenants the rest of this module keeps apart.
+///
 /// `read`/`write` take a closure rather than returning a guard: the value lives
-/// inside a map inside the lock, and stable Rust has no way to hand out a guard
+/// inside a map inside a lock, and stable Rust has no way to hand out a guard
 /// borrowed into it. In exchange the lock is always released.
 pub struct TenantValue<T: 'static> {
     init: fn() -> T,
-    slots: RwLock<Option<std::collections::HashMap<TenantId, T>>>,
+    slots: RwLock<Option<std::collections::HashMap<TenantId, Arc<RwLock<T>>>>>,
 }
 
 impl<T: 'static> TenantValue<T> {
@@ -409,102 +430,57 @@ impl<T: 'static> TenantValue<T> {
         }
     }
 
-    /// Read this tenant's value, building it on first use.
+    /// This tenant's slot, created on first use.
     ///
-    /// `f` always runs under the *read* lock, never the write lock — including
-    /// on the very first access, which is why this creates the entry and then
-    /// retries rather than calling `f` from inside `write`. Some of the values
-    /// behind this are re-entrant: resolving a model's collection name reads
-    /// the model registry again, from inside a closure that is already reading
-    /// it. A second read guard is what that did before and still does; running
-    /// `f` under a write guard would deadlock it instead.
-    pub fn read<R>(&self, f: impl FnOnce(&T) -> R) -> R {
-        let mut f = Some(f);
-        loop {
-            // Poison-tolerant, and it has to be: this loop retries until the
-            // read succeeds, so a poisoned lock that is treated as "no value"
-            // would spin forever — `ensure` inserts, the read keeps failing,
-            // and the thread never returns. The value is a plain map; a writer
-            // that panicked mid-closure leaves an entry, not a torn lock.
+    /// `init` runs outside every lock: it may read another `TenantValue`, the
+    /// filesystem (the EUI publisher key) or the network, and none of that
+    /// belongs under a lock other tenants wait on. Two threads racing to build
+    /// the same slot both run `init`; the first insert wins and the other value
+    /// is dropped, which is the price of not holding a lock across it.
+    fn slot(&self) -> Arc<RwLock<T>> {
+        let id = current_id();
+        {
+            // Poison-tolerant, like every lock in this file: see `read`.
             let slots = self.slots.read().unwrap_or_else(|e| e.into_inner());
-            if let Some(value) = slots.as_ref().and_then(|m| m.get(&current_id())) {
-                return (f.take().expect("the loop returns on the first hit"))(value);
+            if let Some(slot) = slots.as_ref().and_then(|m| m.get(&id)) {
+                return Arc::clone(slot);
             }
-            drop(slots);
-            self.ensure();
         }
+        let fresh = Arc::new(RwLock::new((self.init)()));
+        let mut slots = self.slots.write().unwrap_or_else(|e| e.into_inner());
+        Arc::clone(
+            slots
+                .get_or_insert_with(Default::default)
+                .entry(id)
+                .or_insert(fresh),
+        )
     }
 
-    /// Make sure this tenant has a value, holding the write lock only for as
-    /// long as the insert takes.
-    fn ensure(&self) {
-        let id = current_id();
-        let mut slots = self.slots.write().unwrap_or_else(|e| e.into_inner());
-        slots
-            .get_or_insert_with(Default::default)
-            .entry(id)
-            .or_insert_with(self.init);
+    /// Read this tenant's value, building it on first use.
+    ///
+    /// `f` runs under the slot's *read* lock, so a value that reads itself back
+    /// from inside `f` — resolving a model's collection name reads the model
+    /// registry again — takes a second read guard, as it did under the
+    /// `lazy_static` this replaced. Poison is tolerated: a poisoned lock read
+    /// as "absent" would spin `slot`, a jail read as "none" would lift a
+    /// security boundary, and the value is a plain map that a panicking writer
+    /// leaves with an entry, not torn.
+    pub fn read<R>(&self, f: impl FnOnce(&T) -> R) -> R {
+        let slot = self.slot();
+        let guard = slot.read().unwrap_or_else(|e| e.into_inner());
+        f(&guard)
     }
 
     /// Mutate this tenant's value, building it on first use.
     ///
-    /// Unlike [`read`](Self::read), `f` runs under the write lock — the same
-    /// as the `RwLock::write()` guard this replaces, so a closure that
-    /// re-enters the same value deadlocks exactly as it would have before.
+    /// `f` runs under the slot's write lock — the same as the `RwLock::write()`
+    /// guard this replaces, so a closure that re-enters the same value
+    /// deadlocks exactly as it would have before, and a closure that blocks
+    /// blocks this tenant only.
     pub fn write<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
-        let id = current_id();
-        let mut slots = self.slots.write().unwrap_or_else(|e| e.into_inner());
-        let map = slots.get_or_insert_with(Default::default);
-        f(map.entry(id).or_insert_with(self.init))
-    }
-
-    /// Drop this tenant's value, so the next access rebuilds it.
-    pub fn reset(&self) {
-        let mut slots = self.slots.write().unwrap_or_else(|e| e.into_inner());
-        if let Some(map) = slots.as_mut() {
-            map.remove(&current_id());
-        }
-    }
-}
-
-/// The thread-confined counterpart of [`TenantCell`], for anything `Rc`-based:
-/// interpreters, `Rc<Class>` registries, view helpers, parsed handler caches.
-///
-/// Those cannot live in the process-wide registry at all — they are not `Send`
-/// — so they stay in a `thread_local!`. What changes is that the slot is keyed
-/// by tenant instead of holding one unkeyed value, so a thread that ever serves
-/// two applications keeps their classes apart. Worker threads are pinned, so in
-/// practice the map holds one entry.
-///
-/// Declare it inside a `thread_local!` exactly as the `RefCell` it replaces.
-pub struct TenantLocal<T> {
-    slots: std::cell::RefCell<std::collections::HashMap<TenantId, T>>,
-}
-
-impl<T> Default for TenantLocal<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<T> TenantLocal<T> {
-    pub fn new() -> Self {
-        Self {
-            slots: std::cell::RefCell::new(std::collections::HashMap::new()),
-        }
-    }
-
-    /// Run `f` against this tenant's value on this thread, creating it on first
-    /// use.
-    pub fn with<R>(&self, init: impl FnOnce() -> T, f: impl FnOnce(&mut T) -> R) -> R {
-        let id = current_id();
-        let mut slots = self.slots.borrow_mut();
-        f(slots.entry(id).or_insert_with(init))
-    }
-
-    /// Drop this tenant's value on this thread.
-    pub fn clear(&self) {
-        self.slots.borrow_mut().remove(&current_id());
+        let slot = self.slot();
+        let mut guard = slot.write().unwrap_or_else(|e| e.into_inner());
+        f(&mut guard)
     }
 }
 
@@ -531,7 +507,12 @@ pub fn scoped<R>(id: TenantId, f: impl FnOnce() -> R) -> R {
         }
     }
     let _restore = Restore(previous);
-    f()
+    // The task-local is consulted *before* the thread-local, so binding only
+    // the latter would be silently ignored inside a `task_scope`d future — a
+    // host mounting an application from a request handler would write every
+    // mount-time value onto the request's tenant. `sync_scope` restores the
+    // previous task binding on its own way out, unwinding included.
+    TASK_TENANT.sync_scope(id, f)
 }
 
 // ---------------------------------------------------------------------------
@@ -637,6 +618,71 @@ mod tests {
         assert_eq!(
             tenant.image_jail(),
             Some(PathBuf::from("/srv/images/public"))
+        );
+    }
+
+    #[test]
+    fn a_blocked_writer_on_one_tenant_does_not_stall_another() {
+        // The database JWT login runs under `write` and can block on the
+        // network for its full timeout. One lock over every tenant's slot made
+        // that stall every other tenant's reads; a lock per slot does not.
+        static COUPLED: TenantValue<u32> = TenantValue::new(|| 0);
+        let a = register(PathBuf::from("/srv/slow"));
+        let b = register(PathBuf::from("/srv/fast"));
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let (held_tx, held_rx) = std::sync::mpsc::channel::<()>();
+        let slow = std::thread::spawn(move || {
+            bind_current(a);
+            COUPLED.write(|v| {
+                let _ = held_tx.send(());
+                let _ = release_rx.recv_timeout(std::time::Duration::from_secs(10));
+                *v = 1;
+            });
+        });
+        held_rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("the slow writer must take its lock");
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<u32>();
+        std::thread::spawn(move || {
+            bind_current(b);
+            let _ = done_tx.send(COUPLED.read(|v| *v));
+        });
+        match done_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(value) => assert_eq!(value, 0, "tenant b sees its own, untouched value"),
+            Err(_) => panic!("a read on tenant b waited on tenant a's writer"),
+        }
+        let _ = release_tx.send(());
+        slow.join().expect("the slow writer must finish");
+    }
+
+    #[test]
+    fn scoped_binds_the_task_local_too() {
+        // Inside a task scope the task-local wins, so `scoped` must set it or a
+        // mount performed from a request handler would land on the wrong
+        // tenant with nothing reporting it.
+        let request = register(PathBuf::from("/srv/request"));
+        let mounted = register(PathBuf::from("/srv/mounted"));
+        std::thread::spawn(move || {
+            TASK_TENANT.sync_scope(request, || {
+                assert_eq!(current_id(), request);
+                scoped(mounted, || {
+                    assert_eq!(
+                        current_id(),
+                        mounted,
+                        "scoped must override the task binding"
+                    );
+                    set_app_root("/srv/mounted-root");
+                });
+                assert_eq!(current_id(), request, "and restore it afterwards");
+                assert_eq!(app_root(), PathBuf::from("/srv/request"));
+            });
+        })
+        .join()
+        .expect("must not panic");
+        assert_eq!(
+            get(mounted).expect("registered").root(),
+            PathBuf::from("/srv/mounted-root"),
+            "the mount landed on the tenant it was scoped to"
         );
     }
 

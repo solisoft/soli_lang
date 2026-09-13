@@ -140,7 +140,15 @@ pub fn start_pool(config: PoolConfig) {
         let builder = thread::Builder::new()
             .name(format!("bg-job-{}", id))
             .stack_size(crate::serve::server_constants::worker_stack_bytes());
-        if let Err(e) = builder.spawn(move || run_pool_worker(id, rx, config)) {
+        // A pool thread serves the application that started the pool, for its
+        // whole life: it builds its interpreter from that app's models and
+        // mailers and talks to that app's database. Bound before anything
+        // else runs on the thread — thread-locals do not cross `spawn`.
+        let tenant = crate::serve::tenant::current_id();
+        if let Err(e) = builder.spawn(move || {
+            crate::serve::tenant::bind_current(tenant);
+            run_pool_worker(id, rx, config)
+        }) {
             eprintln!("Failed to spawn background job worker {}: {}", id, e);
         }
     }

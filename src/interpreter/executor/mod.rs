@@ -113,17 +113,20 @@ impl Interpreter {
         interp
     }
 
-    /// Create an interpreter for serve mode.
+    /// Create an interpreter for serve mode (skips test builtins to save memory).
     ///
-    /// The globals are a child scope of the thread's shared builtins registry
-    /// (`child_of_serve_builtins`) rather than a registry of their own: the
-    /// template engine and the view helpers on this thread need the same five
-    /// hundred bindings, and building them once instead of three times is what
-    /// keeps baseline RSS from climbing with the worker count. Anything the
-    /// application defines lands in this child and shadows the shared scope, so
-    /// one worker's app can never be seen by another's.
+    /// Its own registry, deliberately. Sharing one builtins root per thread
+    /// between this, the template engine and the view helpers was tried and
+    /// reverted: it measured as no RSS win (a registry is a few hundred KB),
+    /// and it changed behaviour in two ways a separate registry never did — a
+    /// bare `logger = …` inside a function created a short-lived local instead
+    /// of updating the global, and `Model.define_method(…)` mutated a
+    /// `Rc<Class>` that outlived the interpreter and so survived a hot reload.
     pub fn new_for_serve() -> Self {
-        let globals = crate::interpreter::builtins::child_of_serve_builtins();
+        let globals = Rc::new(RefCell::new(Environment::with_builtins_capacity()));
+        register_builtins(&mut globals.borrow_mut(), false);
+        crate::interpreter::builtins::retry::register_retry_class(&globals)
+            .expect("retry stdlib must evaluate");
 
         Self {
             environment: globals,

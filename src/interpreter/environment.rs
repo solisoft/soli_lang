@@ -30,14 +30,6 @@ pub struct Environment {
     values: AHashMap<String, Value>,
     consts: AHashMap<String, Value>,
     enclosing: Option<Rc<RefCell<Environment>>>,
-    /// A sealed scope refuses `assign`, answering `NotFound` so the caller
-    /// defines the name in its own scope instead — shadowing rather than
-    /// mutating. Set on the shared builtins root, which sits at the end of
-    /// every environment chain on a worker thread: without it, `print = 42` in
-    /// application code would walk the chain and overwrite the registry that
-    /// the template engine and the view helpers resolve through too, and the
-    /// change would outlive the interpreter that made it.
-    sealed: bool,
     /// Optional data hash for template rendering.
     /// Checked during get() before walking the enclosing chain.
     /// Avoids copying all data fields into the HashMap.
@@ -51,7 +43,6 @@ impl Environment {
             consts: AHashMap::new(),
             enclosing: None,
             data_hash: None,
-            sealed: false,
         }
     }
 
@@ -63,7 +54,6 @@ impl Environment {
             consts: AHashMap::new(),
             enclosing: None,
             data_hash: None,
-            sealed: false,
         }
     }
 
@@ -73,7 +63,6 @@ impl Environment {
             consts: AHashMap::new(),
             enclosing: Some(enclosing),
             data_hash: None,
-            sealed: false,
         }
     }
 
@@ -89,7 +78,6 @@ impl Environment {
             consts: AHashMap::new(),
             enclosing: Some(enclosing),
             data_hash: Some(data_hash),
-            sealed: false,
         }
     }
 
@@ -185,15 +173,6 @@ impl Environment {
     /// Assign to an existing variable, searching up the scope chain.
     /// Returns false if the variable is const.
     pub fn assign(&mut self, name: &str, value: Value) -> AssignResult {
-        // A sealed scope is read-only from below. Answering `NotFound` — not
-        // an error — makes the caller define the name in its own scope, which
-        // is what a separate registry per consumer used to give it: an
-        // override that is local to the interpreter that made it and dies
-        // with it, instead of one that leaks into every environment sharing
-        // this root and survives a hot reload.
-        if self.sealed {
-            return AssignResult::NotFound;
-        }
         if !self.consts.is_empty() && self.consts.contains_key(name) {
             return AssignResult::IsConst;
         }
@@ -237,11 +216,6 @@ impl Environment {
         // Always define in local scope - this is for loop variables
         self.values.insert(name.to_string(), value);
         true
-    }
-
-    /// Make this scope read-only from below: see [`assign`](Self::assign).
-    pub fn seal(&mut self) {
-        self.sealed = true;
     }
 
     /// Get the enclosing environment.

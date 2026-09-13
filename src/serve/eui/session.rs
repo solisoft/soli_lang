@@ -158,7 +158,7 @@ pub fn upgrade(
             }
         };
 
-    tokio::spawn(async move {
+    crate::serve::tenant::spawn(async move {
         let _slot = slot;
         let stream = match websocket.await {
             Ok(ws) => ws,
@@ -276,7 +276,7 @@ pub fn upgrade(
         .await;
 
         // 4. Server frames out.
-        let write_task = tokio::spawn(async move {
+        let write_task = crate::serve::tenant::spawn(async move {
             while let Ok(msg) = rx.recv().await {
                 match msg {
                     Ok(m) => {
