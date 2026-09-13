@@ -14,6 +14,21 @@
 //!
 //! Records are keyed by module name. `Stmt` is `Send + Sync`, so the map can be
 //! shared across threads directly.
+//!
+//! **Deliberately not per-tenant**, unlike the other registries that moved
+//! behind `serve::tenant`. It cannot be keyed per application on its own: the
+//! only reason a cache-hit thread finds anything here is that some *other*
+//! thread registered it, and `MODULE_CACHE` is keyed by source text, not by
+//! application. Key this map per tenant and the second application to compile
+//! an identical module gets a cache hit, registers nothing under its own id,
+//! and silently loses every `included do` / `class_methods do` on it — the
+//! exact bug the first bullet above records.
+//!
+//! The hazard it leaves is narrower but real: two co-hosted applications that
+//! each declare a *differently bodied* concern of the same name would share one
+//! record. Fixing that means keying both this map and `MODULE_CACHE` by
+//! something content-derived, which is a change to the compile cache, not to
+//! this file.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};

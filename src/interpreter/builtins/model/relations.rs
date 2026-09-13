@@ -516,28 +516,31 @@ pub fn reject_polymorphic_relation(op: &str, relation: &RelationDef) -> Result<(
 
 /// Register a relation for a model class in the MODEL_REGISTRY.
 pub fn register_relation(class_name: &str, relation: RelationDef) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    let metadata = registry.entry(class_name.to_string()).or_default();
-    metadata.relations.push(relation);
+    MODEL_REGISTRY.write(|registry| {
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        metadata.relations.push(relation);
+    })
 }
 
 /// Get all relations for a model class.
 pub fn get_relations(class_name: &str) -> Vec<RelationDef> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.relations.clone())
-        .unwrap_or_default()
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| m.relations.clone())
+            .unwrap_or_default()
+    })
 }
 
 /// Get a specific relation by name for a model class.
 pub fn get_relation(class_name: &str, relation_name: &str) -> Option<RelationDef> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry.get(class_name).and_then(|m| {
-        m.relations
-            .iter()
-            .find(|r| r.name == relation_name)
-            .cloned()
+    MODEL_REGISTRY.read(|registry| {
+        registry.get(class_name).and_then(|m| {
+            m.relations
+                .iter()
+                .find(|r| r.name == relation_name)
+                .cloned()
+        })
     })
 }
 

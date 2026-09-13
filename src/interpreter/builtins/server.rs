@@ -48,6 +48,21 @@ pub struct WorkerRoute {
 
 // Route registry stored in thread-local storage.
 // Routes contain handler names that are looked up in each worker's interpreter.
+//
+// Left as a plain thread-local rather than moved behind `serve::tenant`, on
+// purpose. `Route` holds `Vec<Value>` for its middleware, and `Value` is
+// `Rc`-based, so this can never live in the process-wide tenant registry — it
+// would have to become a `TenantLocal`. Under the pinning rule that worker
+// threads serve one application for their whole life, a thread-local *is* per
+// application, and keying it would add a hash lookup to the route index on
+// every request for no behavioural gain.
+//
+// What that rule does not cover is boot: a host that mounted two applications
+// from one thread would have the second overwrite the first here. It is
+// harmless today — the boot interpreter populates this, the worker routes are
+// extracted from it immediately, and the interpreter is dropped — but a host
+// that mounts tenants concurrently has to either keep mounting serialised or
+// make this a `TenantLocal` then.
 thread_local! {
     pub static ROUTES: RefCell<Vec<Route>> = const { RefCell::new(Vec::new()) };
     // Method-indexed route cache for O(1) method lookup + O(m) route search

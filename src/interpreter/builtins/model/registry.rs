@@ -1,9 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::RwLock;
-
-use lazy_static::lazy_static;
 
 use super::callbacks::ModelCallbacks;
 use super::relations::RelationDef;
@@ -11,6 +8,7 @@ use super::state_machine::StateMachineDef;
 use super::uploaders::UploaderConfig;
 use super::validation::ValidationRule;
 use crate::interpreter::value::Class;
+use crate::serve::tenant::TenantValue;
 
 /// A model field bound to an enum type via `enum_field`: (field name, enum class).
 type EnumFieldBinding = (String, Rc<Class>);
@@ -128,54 +126,50 @@ pub struct ModelMetadata {
     pub table_mapping: Option<String>,
 }
 
-lazy_static! {
-    /// Global registry mapping class names to their metadata.
-    pub static ref MODEL_REGISTRY: RwLock<HashMap<String, ModelMetadata>> =
-        RwLock::new(HashMap::new());
+/// Registry mapping class names to their metadata, for the application on this
+/// thread.
+///
+/// Per application, not per process: two apps routinely declare a model of the
+/// same name, and a shared registry would hand one app the other's validations,
+/// callbacks, relations, encrypted fields and connection routing. Collection
+/// names collide just as readily, which is why the four maps below are keyed
+/// per application too.
+pub static MODEL_REGISTRY: TenantValue<HashMap<String, ModelMetadata>> =
+    TenantValue::new(HashMap::new);
 
-    /// Collection name -> encrypted field names. Keyed by collection so the DB
-    /// write layer (exec_insert/exec_update) can encrypt without a class handle.
-    static ref ENCRYPTED_COLLECTIONS: RwLock<HashMap<String, Vec<String>>> =
-        RwLock::new(HashMap::new());
+/// Collection name -> encrypted field names. Keyed by collection so the DB
+/// write layer (exec_insert/exec_update) can encrypt without a class handle.
+static ENCRYPTED_COLLECTIONS: TenantValue<HashMap<String, Vec<String>>> =
+    TenantValue::new(HashMap::new);
 
-    /// Collection name -> SolidB collection type ("edge", "timeseries", ...).
-    /// Keyed by collection so the auto-create path (try_create_collection_once)
-    /// can send the right `type` without a class handle.
-    static ref COLLECTION_TYPES: RwLock<HashMap<String, String>> =
-        RwLock::new(HashMap::new());
+/// Collection name -> SolidB collection type ("edge", "timeseries", ...).
+/// Keyed by collection so the auto-create path (try_create_collection_once)
+/// can send the right `type` without a class handle.
+static COLLECTION_TYPES: TenantValue<HashMap<String, String>> = TenantValue::new(HashMap::new);
 
-    /// Collection name -> database connection name (for multi-DB routing).
-    static ref COLLECTION_CONNECTIONS: RwLock<HashMap<String, String>> =
-        RwLock::new(HashMap::new());
+/// Collection name -> database connection name (for multi-DB routing).
+static COLLECTION_CONNECTIONS: TenantValue<HashMap<String, String>> =
+    TenantValue::new(HashMap::new);
 
-    /// Collection name -> physical table, for column-aware models. Keyed by
-    /// collection so the CRUD paths can look it up without a class handle,
-    /// mirroring COLLECTION_CONNECTIONS.
-    static ref COLLECTION_TABLES: RwLock<HashMap<String, String>> =
-        RwLock::new(HashMap::new());
-}
+/// Collection name -> physical table, for column-aware models. Keyed by
+/// collection so the CRUD paths can look it up without a class handle,
+/// mirroring COLLECTION_CONNECTIONS.
+static COLLECTION_TABLES: TenantValue<HashMap<String, String>> = TenantValue::new(HashMap::new);
 
 /// Record the SolidB collection type declared for a collection (via the
 /// `edge`/`timeseries` class-body DSL). Re-declaring overwrites.
 pub fn register_collection_type(collection: &str, ctype: &str) {
-    COLLECTION_TYPES
-        .write()
-        .unwrap()
-        .insert(collection.to_string(), ctype.to_string());
+    COLLECTION_TYPES.write(|c| c.insert(collection.to_string(), ctype.to_string()));
 }
 
 /// Bind a model (and its collection) to a named database connection.
 pub fn register_connection(class_name: &str, connection: &str) {
     let collection = crate::interpreter::builtins::model::class_name_to_collection(class_name);
-    {
-        let mut registry = MODEL_REGISTRY.write().unwrap();
+    MODEL_REGISTRY.write(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         metadata.connection_name = Some(connection.to_string());
-    }
-    COLLECTION_CONNECTIONS
-        .write()
-        .unwrap()
-        .insert(collection, connection.to_string());
+    });
+    COLLECTION_CONNECTIONS.write(|c| c.insert(collection, connection.to_string()));
 }
 
 /// Bind a model (and its collection) to an existing physical table, putting it
@@ -183,20 +177,16 @@ pub fn register_connection(class_name: &str, connection: &str) {
 /// declaration order inside the class body does not matter.
 pub fn register_table_mapping(class_name: &str, table: &str) {
     let collection = crate::interpreter::builtins::model::class_name_to_collection(class_name);
-    {
-        let mut registry = MODEL_REGISTRY.write().unwrap();
+    MODEL_REGISTRY.write(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         metadata.table_mapping = Some(table.to_string());
-    }
-    COLLECTION_TABLES
-        .write()
-        .unwrap()
-        .insert(collection, table.to_string());
+    });
+    COLLECTION_TABLES.write(|c| c.insert(collection, table.to_string()));
 }
 
 /// Physical table for a collection, when its model declared `table "name"`.
 pub fn get_table_mapping(collection: &str) -> Option<String> {
-    COLLECTION_TABLES.read().unwrap().get(collection).cloned()
+    COLLECTION_TABLES.read(|c| c.get(collection).cloned())
 }
 
 /// Every declared column-aware model as `(class, collection, table)`, plus the
@@ -215,43 +205,43 @@ pub struct ColumnModelDecl {
 /// Declared column-aware models, for the boot sweep that introspects and
 /// validates them before serving traffic.
 pub fn all_column_models() -> Vec<ColumnModelDecl> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    let types = COLLECTION_TYPES.read().unwrap();
-    registry
-        .iter()
-        .filter_map(|(class_name, metadata)| {
-            let table = metadata.table_mapping.clone()?;
-            let collection =
-                crate::interpreter::builtins::model::class_name_to_collection(class_name);
-            Some(ColumnModelDecl {
-                class_name: class_name.clone(),
-                soft_delete: metadata.soft_delete,
-                encrypted_fields: metadata.encrypted_fields.clone(),
-                is_sti_subclass: is_sti_subclass(class_name),
-                collection_type: types.get(&collection).cloned(),
-                collection,
-                table,
+    // The collection types are read out first: holding both locks across the
+    // sweep is what the guards used to do, but `class_name_to_collection` below
+    // re-enters the registry, and one nested lock is enough to reason about.
+    let types = COLLECTION_TYPES.read(|types| types.clone());
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .iter()
+            .filter_map(|(class_name, metadata)| {
+                let table = metadata.table_mapping.clone()?;
+                let collection =
+                    crate::interpreter::builtins::model::class_name_to_collection(class_name);
+                Some(ColumnModelDecl {
+                    class_name: class_name.clone(),
+                    soft_delete: metadata.soft_delete,
+                    encrypted_fields: metadata.encrypted_fields.clone(),
+                    is_sti_subclass: is_sti_subclass(class_name),
+                    collection_type: types.get(&collection).cloned(),
+                    collection,
+                    table,
+                })
             })
-        })
-        .collect()
+            .collect()
+    })
 }
 
 /// Connection name for a model class, if declared.
 pub fn get_connection_for_class(class_name: &str) -> Option<String> {
-    MODEL_REGISTRY
-        .read()
-        .unwrap()
-        .get(class_name)
-        .and_then(|m| m.connection_name.clone())
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .and_then(|m| m.connection_name.clone())
+    })
 }
 
 /// Connection name for a collection (from any model that registered it).
 pub fn get_connection_for_collection(collection: &str) -> Option<String> {
-    COLLECTION_CONNECTIONS
-        .read()
-        .unwrap()
-        .get(collection)
-        .cloned()
+    COLLECTION_CONNECTIONS.read(|c| c.get(collection).cloned())
 }
 
 /// Run `f` with the model's database connection active (multi-DB routing).
@@ -278,33 +268,33 @@ pub fn effective_connection_name(class_name: &str) -> String {
 
 /// The declared SolidB collection type for a collection, if any.
 pub fn get_collection_type(collection: &str) -> Option<String> {
-    COLLECTION_TYPES.read().unwrap().get(collection).cloned()
+    COLLECTION_TYPES.read(|c| c.get(collection).cloned())
 }
 
 /// Register an encrypted field for a model (by class) and its collection.
 pub fn register_encryption(class_name: &str, collection: &str, field: &str) {
-    {
-        let mut registry = MODEL_REGISTRY.write().unwrap();
+    MODEL_REGISTRY.write(|registry| {
         let metadata = registry.entry(class_name.to_string()).or_default();
         if !metadata.encrypted_fields.iter().any(|s| s == field) {
             metadata.encrypted_fields.push(field.to_string());
         }
-    }
-    let mut cols = ENCRYPTED_COLLECTIONS.write().unwrap();
-    let fields = cols.entry(collection.to_string()).or_default();
-    if !fields.iter().any(|s| s == field) {
-        fields.push(field.to_string());
-    }
+    });
+    ENCRYPTED_COLLECTIONS.write(|cols| {
+        let fields = cols.entry(collection.to_string()).or_default();
+        if !fields.iter().any(|s| s == field) {
+            fields.push(field.to_string());
+        }
+    });
 }
 
 /// Encrypted field names for a model class (used to decrypt on load).
 pub fn get_encrypted_fields(class_name: &str) -> Vec<String> {
-    MODEL_REGISTRY
-        .read()
-        .unwrap()
-        .get(class_name)
-        .map(|m| m.encrypted_fields.clone())
-        .unwrap_or_default()
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| m.encrypted_fields.clone())
+            .unwrap_or_default()
+    })
 }
 
 /// Encrypt the declared `encrypts` fields of `document` in place (string values
@@ -314,12 +304,9 @@ pub fn encrypt_document_fields(
     collection: &str,
     document: &mut serde_json::Value,
 ) -> Result<(), String> {
-    let fields = {
-        let cols = ENCRYPTED_COLLECTIONS.read().unwrap();
-        match cols.get(collection) {
-            Some(f) if !f.is_empty() => f.clone(),
-            _ => return Ok(()),
-        }
+    let fields = match ENCRYPTED_COLLECTIONS.read(|cols| cols.get(collection).cloned()) {
+        Some(f) if !f.is_empty() => f,
+        _ => return Ok(()),
     };
     if let Some(obj) = document.as_object_mut() {
         for field in &fields {
@@ -363,54 +350,58 @@ pub fn get_enum_fields(class_name: &str) -> Vec<EnumFieldBinding> {
 /// Register (or replace, by field) a state machine declared on a model class.
 /// Re-declaring the same field overwrites the prior machine.
 pub fn set_state_machine(class_name: &str, def: StateMachineDef) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    let metadata = registry.entry(class_name.to_string()).or_default();
-    metadata.state_machines.retain(|m| m.field != def.field);
-    metadata.state_machines.push(def);
+    MODEL_REGISTRY.write(|registry| {
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        metadata.state_machines.retain(|m| m.field != def.field);
+        metadata.state_machines.push(def);
+    })
 }
 
 /// All state machines declared on a model class.
 pub fn get_state_machines(class_name: &str) -> Vec<StateMachineDef> {
-    MODEL_REGISTRY
-        .read()
-        .unwrap()
-        .get(class_name)
-        .map(|m| m.state_machines.clone())
-        .unwrap_or_default()
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| m.state_machines.clone())
+            .unwrap_or_default()
+    })
 }
 
 pub fn register_translation(class_name: &str, field_name: &str) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    let metadata = registry.entry(class_name.to_string()).or_default();
-    if !metadata.translated_fields.iter().any(|s| s == field_name) {
-        metadata.translated_fields.push(field_name.to_string());
-    }
+    MODEL_REGISTRY.write(|registry| {
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        if !metadata.translated_fields.iter().any(|s| s == field_name) {
+            metadata.translated_fields.push(field_name.to_string());
+        }
+    })
 }
 
 pub fn get_translated_fields(class_name: &str) -> Vec<String> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.translated_fields.clone())
-        .unwrap_or_default()
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| m.translated_fields.clone())
+            .unwrap_or_default()
+    })
 }
 
 pub fn is_translated_field(class_name: &str, field_name: &str) -> bool {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.translated_fields.iter().any(|s| s == field_name))
-        .unwrap_or(false)
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| m.translated_fields.iter().any(|s| s == field_name))
+            .unwrap_or(false)
+    })
 }
 
 pub fn get_or_create_metadata(class_name: &str) -> ModelMetadata {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry.get(class_name).cloned().unwrap_or_default()
+    MODEL_REGISTRY.read(|registry| registry.get(class_name).cloned().unwrap_or_default())
 }
 
 pub fn update_metadata(class_name: &str, metadata: ModelMetadata) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    registry.insert(class_name.to_string(), metadata);
+    MODEL_REGISTRY.write(|registry| {
+        registry.insert(class_name.to_string(), metadata);
+    })
 }
 
 /// Declare the whitelist of attributes accepted by mass-assign on this
@@ -418,9 +409,10 @@ pub fn update_metadata(class_name: &str, metadata: ModelMetadata) {
 /// last declaration wins). Pass an empty list to lock down the model
 /// completely (`Model.create({...})` will then drop every key).
 pub fn register_accessible_attributes(class_name: &str, fields: Vec<String>) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    let metadata = registry.entry(class_name.to_string()).or_default();
-    metadata.accessible_attributes = Some(fields);
+    MODEL_REGISTRY.write(|registry| {
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        metadata.accessible_attributes = Some(fields);
+    })
 }
 
 /// `None` means the model never called `attr_accessible(...)` and falls
@@ -428,118 +420,129 @@ pub fn register_accessible_attributes(class_name: &str, fields: Vec<String>) {
 /// list is fine — it's typically a handful of strings, so cloning beats
 /// keeping a long-lived read lock across the filter loop.
 pub fn get_accessible_attributes(class_name: &str) -> Option<Vec<String>> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .and_then(|m| m.accessible_attributes.clone())
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .and_then(|m| m.accessible_attributes.clone())
+    })
 }
 
 pub fn is_soft_delete(class_name: &str) -> bool {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.soft_delete)
-        .unwrap_or(false)
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| m.soft_delete)
+            .unwrap_or(false)
+    })
 }
 
 /// The `edge` declaration on a model class, if any.
 pub fn get_edge_spec(class_name: &str) -> Option<EdgeSpec> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry.get(class_name).and_then(|m| m.edge.clone())
+    MODEL_REGISTRY.read(|registry| registry.get(class_name).and_then(|m| m.edge.clone()))
 }
 
 pub fn is_edge_model(class_name: &str) -> bool {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.edge.is_some())
-        .unwrap_or(false)
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| m.edge.is_some())
+            .unwrap_or(false)
+    })
 }
 
 /// The `timeseries` declaration on a model class, if any.
 pub fn get_timeseries_spec(class_name: &str) -> Option<TimeseriesSpec> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry.get(class_name).and_then(|m| m.timeseries.clone())
+    MODEL_REGISTRY.read(|registry| registry.get(class_name).and_then(|m| m.timeseries.clone()))
 }
 
 /// Mark a model as columnar (the `columnar` DSL). Keeps any columns already
 /// declared; sets/replaces the compression option.
 pub fn set_columnar(class_name: &str, compression: Option<String>) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    let metadata = registry.entry(class_name.to_string()).or_default();
-    let schema = metadata.columnar.get_or_insert_with(Default::default);
-    schema.compression = compression;
+    MODEL_REGISTRY.write(|registry| {
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        let schema = metadata.columnar.get_or_insert_with(Default::default);
+        schema.compression = compression;
+    })
 }
 
 /// Add (or replace, by name) a `column` declaration on a columnar model.
 pub fn add_columnar_column(class_name: &str, def: ColumnarColumnDef) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    let metadata = registry.entry(class_name.to_string()).or_default();
-    let schema = metadata.columnar.get_or_insert_with(Default::default);
-    schema.columns.retain(|c| c.name != def.name);
-    schema.columns.push(def);
+    MODEL_REGISTRY.write(|registry| {
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        let schema = metadata.columnar.get_or_insert_with(Default::default);
+        schema.columns.retain(|c| c.name != def.name);
+        schema.columns.push(def);
+    })
 }
 
 /// Register (replace-by-name) a vector index declaration.
 pub fn add_vector_index(class_name: &str, def: VectorIndexDef) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    let metadata = registry.entry(class_name.to_string()).or_default();
-    metadata.vector_indexes.retain(|d| d.name != def.name);
-    metadata.vector_indexes.push(def);
+    MODEL_REGISTRY.write(|registry| {
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        metadata.vector_indexes.retain(|d| d.name != def.name);
+        metadata.vector_indexes.push(def);
+    })
 }
 
 /// The declared vector index covering `field`, if any.
 pub fn get_vector_index_for_field(class_name: &str, field: &str) -> Option<VectorIndexDef> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .and_then(|m| m.vector_indexes.iter().find(|d| d.field == field).cloned())
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .and_then(|m| m.vector_indexes.iter().find(|d| d.field == field).cloned())
+    })
 }
 
 /// All declared vector indexes for a class.
 pub fn get_vector_indexes(class_name: &str) -> Vec<VectorIndexDef> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.vector_indexes.clone())
-        .unwrap_or_default()
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| m.vector_indexes.clone())
+            .unwrap_or_default()
+    })
 }
 
 pub fn add_fulltext_index(class_name: &str, def: FulltextIndexDef) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    let metadata = registry.entry(class_name.to_string()).or_default();
-    metadata.fulltext_indexes.retain(|d| d.name != def.name);
-    metadata.fulltext_indexes.push(def);
+    MODEL_REGISTRY.write(|registry| {
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        metadata.fulltext_indexes.retain(|d| d.name != def.name);
+        metadata.fulltext_indexes.push(def);
+    })
 }
 
 pub fn get_fulltext_indexes(class_name: &str) -> Vec<FulltextIndexDef> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.fulltext_indexes.clone())
-        .unwrap_or_default()
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| m.fulltext_indexes.clone())
+            .unwrap_or_default()
+    })
 }
 
 pub fn add_geo_index(class_name: &str, def: GeoIndexDef) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    let metadata = registry.entry(class_name.to_string()).or_default();
-    metadata.geo_indexes.retain(|d| d.name != def.name);
-    metadata.geo_indexes.push(def);
+    MODEL_REGISTRY.write(|registry| {
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        metadata.geo_indexes.retain(|d| d.name != def.name);
+        metadata.geo_indexes.push(def);
+    })
 }
 
 pub fn get_geo_indexes(class_name: &str) -> Vec<GeoIndexDef> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.geo_indexes.clone())
-        .unwrap_or_default()
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| m.geo_indexes.clone())
+            .unwrap_or_default()
+    })
 }
 
 pub fn add_secondary_index(class_name: &str, def: SecondaryIndexDef) {
-    let mut registry = MODEL_REGISTRY.write().unwrap();
-    let metadata = registry.entry(class_name.to_string()).or_default();
-    metadata.secondary_indexes.retain(|d| d.name != def.name);
-    metadata.secondary_indexes.push(def);
+    MODEL_REGISTRY.write(|registry| {
+        let metadata = registry.entry(class_name.to_string()).or_default();
+        metadata.secondary_indexes.retain(|d| d.name != def.name);
+        metadata.secondary_indexes.push(def);
+    })
 }
 
 /// Snapshot of every model's declared indexes, keyed by collection — the
@@ -552,46 +555,50 @@ pub fn all_declared_indexes() -> Vec<(
     Vec<FulltextIndexDef>,
     Vec<GeoIndexDef>,
 )> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .iter()
-        .filter(|(_, m)| {
-            !m.secondary_indexes.is_empty()
-                || !m.vector_indexes.is_empty()
-                || !m.fulltext_indexes.is_empty()
-                || !m.geo_indexes.is_empty()
-        })
-        .map(|(class_name, m)| {
-            (
-                crate::interpreter::builtins::model::class_name_to_collection(class_name),
-                m.secondary_indexes.clone(),
-                m.vector_indexes.clone(),
-                m.fulltext_indexes.clone(),
-                m.geo_indexes.clone(),
-            )
-        })
-        .collect()
+    // `class_name_to_collection` reads the registry again, from inside this
+    // closure — a nested read, exactly as it was under the old guard.
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .iter()
+            .filter(|(_, m)| {
+                !m.secondary_indexes.is_empty()
+                    || !m.vector_indexes.is_empty()
+                    || !m.fulltext_indexes.is_empty()
+                    || !m.geo_indexes.is_empty()
+            })
+            .map(|(class_name, m)| {
+                (
+                    crate::interpreter::builtins::model::class_name_to_collection(class_name),
+                    m.secondary_indexes.clone(),
+                    m.vector_indexes.clone(),
+                    m.fulltext_indexes.clone(),
+                    m.geo_indexes.clone(),
+                )
+            })
+            .collect()
+    })
 }
 
 pub fn is_columnar_model(class_name: &str) -> bool {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.columnar.is_some())
-        .unwrap_or(false)
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| m.columnar.is_some())
+            .unwrap_or(false)
+    })
 }
 
 pub fn get_columnar_schema(class_name: &str) -> Option<ColumnarSchemaDef> {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry.get(class_name).and_then(|m| m.columnar.clone())
+    MODEL_REGISTRY.read(|registry| registry.get(class_name).and_then(|m| m.columnar.clone()))
 }
 
 pub fn is_timeseries_model(class_name: &str) -> bool {
-    let registry = MODEL_REGISTRY.read().unwrap();
-    registry
-        .get(class_name)
-        .map(|m| m.timeseries.is_some())
-        .unwrap_or(false)
+    MODEL_REGISTRY.read(|registry| {
+        registry
+            .get(class_name)
+            .map(|m| m.timeseries.is_some())
+            .unwrap_or(false)
+    })
 }
 
 thread_local! {
@@ -670,15 +677,14 @@ pub fn register_model_class(class_name: &str, class: Rc<Class>) {
                 .insert(class_name.to_string(), parent.name.clone());
         });
 
-        let parent_meta = MODEL_REGISTRY.read().unwrap().get(&parent.name).cloned();
+        // Read released before `copy_rule_conditions`, which re-enters the
+        // registry to write the child's rules.
+        let parent_meta = MODEL_REGISTRY.read(|registry| registry.get(&parent.name).cloned());
         if let Some(meta) = parent_meta {
             super::validation::copy_rule_conditions(&parent.name, class_name, &meta.validations);
-            MODEL_REGISTRY
-                .write()
-                .unwrap()
-                .insert(class_name.to_string(), meta);
+            MODEL_REGISTRY.write(|registry| registry.insert(class_name.to_string(), meta));
         } else {
-            MODEL_REGISTRY.write().unwrap().remove(class_name);
+            MODEL_REGISTRY.write(|registry| registry.remove(class_name));
         }
         super::scopes::copy_scopes(&parent.name, class_name);
         super::callbacks::copy_closure_callbacks(&parent.name, class_name);
@@ -710,9 +716,9 @@ pub fn clear_model_classes() {
 
 /// Clear all model registries (MODEL_REGISTRY and MODEL_CLASSES). Used during hot reload.
 pub fn clear_all_model_registries() {
-    MODEL_REGISTRY.write().unwrap().clear();
-    COLLECTION_TYPES.write().unwrap().clear();
-    COLLECTION_TABLES.write().unwrap().clear();
+    MODEL_REGISTRY.write(|registry| registry.clear());
+    COLLECTION_TYPES.write(|c| c.clear());
+    COLLECTION_TABLES.write(|c| c.clear());
     // Cached table shapes belong to the mappings just dropped.
     crate::db::introspect::clear_schema_cache();
     ENUM_FIELDS.with(|fields| fields.borrow_mut().clear());
