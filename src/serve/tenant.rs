@@ -90,7 +90,10 @@ impl Tenant {
     /// Read a jail, cloning it out: unlike the `OnceLock` this replaces, a
     /// per-tenant jail cannot hand out a `&'static Path`.
     fn read_jail(lock: &RwLock<Option<PathBuf>>) -> Option<PathBuf> {
-        lock.read().ok().and_then(|j| j.clone())
+        // Poison-tolerant: a jail that read as "none" after a panic elsewhere
+        // would lift a security boundary, which is the one failure this value
+        // must never have.
+        lock.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// Install a jail, first write wins.
@@ -100,10 +103,9 @@ impl Tenant {
     /// resolving against the old root. Ignoring a second write keeps that
     /// window closed.
     fn set_jail_once(lock: &RwLock<Option<PathBuf>>, path: PathBuf) {
-        if let Ok(mut jail) = lock.write() {
-            if jail.is_none() {
-                *jail = Some(path);
-            }
+        let mut jail = lock.write().unwrap_or_else(|e| e.into_inner());
+        if jail.is_none() {
+            *jail = Some(path);
         }
     }
 
@@ -115,22 +117,18 @@ impl Tenant {
 
     /// The directory this application is served from.
     ///
-    /// Falls back to `.` if the lock was poisoned by a panicking writer, which
-    /// is what the global this replaced did: a poisoned lock must not take
-    /// down request handling on top of whatever already panicked.
+    /// Poison-tolerant rather than falling back to `.`: after a panic
+    /// elsewhere, `.` would resolve views and assets against the process's
+    /// working directory instead of the application's — a wrong answer that
+    /// looks like a right one.
     pub fn root(&self) -> PathBuf {
-        self.root
-            .read()
-            .map(|r| r.clone())
-            .unwrap_or_else(|_| PathBuf::from("."))
+        self.root.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// Point this tenant at a directory. Called once when the server boots,
     /// and by tests that render against a scratch directory.
     pub fn set_root(&self, path: PathBuf) {
-        if let Ok(mut root) = self.root.write() {
-            *root = path;
-        }
+        *self.root.write().unwrap_or_else(|e| e.into_inner()) = path;
     }
 
     /// This application's filesystem jail, or `None` when none is enforced.
@@ -173,6 +171,44 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
+tokio::task_local! {
+    /// The tenant a tokio *task* is serving.
+    ///
+    /// Worker threads are pinned and use the thread-local above. The HTTP side
+    /// is not: a request future runs on whichever tokio thread polls it next,
+    /// and moves between them at every `.await`. A thread-local binding is
+    /// therefore meaningless there — the thread that starts a request is not
+    /// the one that finishes it — while everything the request path consults
+    /// before handing off to a worker (CORS rules, CSRF exemptions, the cookie
+    /// jar, the session config, the dev-bar store) is keyed by tenant. This
+    /// binding travels with the future instead, and `current_id` consults it
+    /// first.
+    ///
+    /// It does not cross `tokio::spawn`: a task spawned from a scoped request
+    /// starts unbound. The WebSocket, EUI and LiveView upgrades spawn such
+    /// tasks and still have to be handed their tenant explicitly — see the
+    /// step-4 notes in `www/docs/internals/serve.md`.
+    static TASK_TENANT: TenantId;
+}
+
+/// Run `future` as tenant `id`, for every thread it is polled on.
+///
+/// The async counterpart of [`scoped`]. Use it around a request future once
+/// the `Host` header has said which application it belongs to.
+pub fn task_scope<F: std::future::Future>(
+    id: TenantId,
+    future: F,
+) -> tokio::task::futures::TaskLocalFuture<TenantId, F> {
+    TASK_TENANT.scope(id, future)
+}
+
+/// The tenant bound to the current tokio task, if this code runs inside one
+/// that was started through [`task_scope`].
+#[inline]
+fn task_tenant() -> Option<TenantId> {
+    TASK_TENANT.try_with(|id| *id).ok()
+}
+
 /// Register another application and return its id.
 ///
 /// A single-application server never calls this: [`TenantId::PRIMARY`] exists
@@ -199,6 +235,12 @@ pub fn get(id: TenantId) -> Option<Arc<Tenant>> {
 /// [`TenantId::PRIMARY`] — which is every thread in a single-application
 /// server, and the reason this conversion changes no behavior there.
 pub fn current() -> Arc<Tenant> {
+    // Task binding first: on a tokio thread the thread-local is either unset or
+    // a stale cache from an earlier, unrelated request, and must not shadow the
+    // tenant this task was scoped to.
+    if let Some(id) = task_tenant() {
+        return get(id).unwrap_or_else(|| panic!("{id} is not registered"));
+    }
     CURRENT.with(|cell| {
         if let Some(tenant) = cell.borrow().as_ref() {
             return tenant.clone();
@@ -209,8 +251,12 @@ pub fn current() -> Arc<Tenant> {
     })
 }
 
-/// The id of the tenant this thread is serving, without cloning the `Arc`.
+/// The id of the tenant this thread (or tokio task) is serving, without
+/// cloning the `Arc`.
 pub fn current_id() -> TenantId {
+    if let Some(id) = task_tenant() {
+        return id;
+    }
     CURRENT.with(|cell| {
         cell.borrow()
             .as_ref()
@@ -274,36 +320,32 @@ impl<T: Clone> TenantCell<T> {
 
     /// This tenant's value, or `None` if it never set one.
     pub fn get(&self) -> Option<T> {
-        self.slots
-            .read()
-            .ok()
-            .and_then(|slots| slots.as_ref()?.get(&current_id()).cloned())
+        // Poison-tolerant throughout this type, for the same reason as
+        // `TenantValue::read`: a value that reads as absent after a panic would
+        // make `set_once` re-install and `get_or_init` rebuild what is there.
+        let slots = self.slots.read().unwrap_or_else(|e| e.into_inner());
+        slots.as_ref()?.get(&current_id()).cloned()
     }
 
     /// Replace this tenant's value.
     pub fn set(&self, value: T) {
-        if let Ok(mut slots) = self.slots.write() {
-            slots
-                .get_or_insert_with(Default::default)
-                .insert(current_id(), value);
-        }
+        let mut slots = self.slots.write().unwrap_or_else(|e| e.into_inner());
+        slots
+            .get_or_insert_with(Default::default)
+            .insert(current_id(), value);
     }
 
     /// Install a value only if this tenant has none — the `OnceLock::set`
     /// shape. Returns whether it was installed.
     pub fn set_once(&self, value: T) -> bool {
-        match self.slots.write() {
-            Ok(mut slots) => {
-                let map = slots.get_or_insert_with(Default::default);
-                match map.entry(current_id()) {
-                    std::collections::hash_map::Entry::Occupied(_) => false,
-                    std::collections::hash_map::Entry::Vacant(slot) => {
-                        slot.insert(value);
-                        true
-                    }
-                }
+        let mut slots = self.slots.write().unwrap_or_else(|e| e.into_inner());
+        let map = slots.get_or_insert_with(Default::default);
+        match map.entry(current_id()) {
+            std::collections::hash_map::Entry::Occupied(_) => false,
+            std::collections::hash_map::Entry::Vacant(slot) => {
+                slot.insert(value);
+                true
             }
-            Err(_) => false,
         }
     }
 
@@ -315,14 +357,12 @@ impl<T: Clone> TenantCell<T> {
         // `init` runs outside the write lock: it may itself touch the tenant
         // registry, and re-entering this lock would deadlock.
         let value = init();
-        match self.slots.write() {
-            Ok(mut slots) => slots
-                .get_or_insert_with(Default::default)
-                .entry(current_id())
-                .or_insert(value)
-                .clone(),
-            Err(_) => value,
-        }
+        let mut slots = self.slots.write().unwrap_or_else(|e| e.into_inner());
+        slots
+            .get_or_insert_with(Default::default)
+            .entry(current_id())
+            .or_insert(value)
+            .clone()
     }
 
     /// Drop this tenant's value, so the next `get_or_init` rebuilds it. Used by
@@ -381,11 +421,16 @@ impl<T: 'static> TenantValue<T> {
     pub fn read<R>(&self, f: impl FnOnce(&T) -> R) -> R {
         let mut f = Some(f);
         loop {
-            if let Ok(slots) = self.slots.read() {
-                if let Some(value) = slots.as_ref().and_then(|m| m.get(&current_id())) {
-                    return (f.take().expect("the loop returns on the first hit"))(value);
-                }
+            // Poison-tolerant, and it has to be: this loop retries until the
+            // read succeeds, so a poisoned lock that is treated as "no value"
+            // would spin forever — `ensure` inserts, the read keeps failing,
+            // and the thread never returns. The value is a plain map; a writer
+            // that panicked mid-closure leaves an entry, not a torn lock.
+            let slots = self.slots.read().unwrap_or_else(|e| e.into_inner());
+            if let Some(value) = slots.as_ref().and_then(|m| m.get(&current_id())) {
+                return (f.take().expect("the loop returns on the first hit"))(value);
             }
+            drop(slots);
             self.ensure();
         }
     }
@@ -415,10 +460,9 @@ impl<T: 'static> TenantValue<T> {
 
     /// Drop this tenant's value, so the next access rebuilds it.
     pub fn reset(&self) {
-        if let Ok(mut slots) = self.slots.write() {
-            if let Some(map) = slots.as_mut() {
-                map.remove(&current_id());
-            }
+        let mut slots = self.slots.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(map) = slots.as_mut() {
+            map.remove(&current_id());
         }
     }
 }
@@ -643,6 +687,46 @@ mod tests {
         })
         .join()
         .expect("the outer thread must not panic");
+    }
+
+    #[test]
+    fn a_poisoned_value_is_still_readable_rather_than_spinning() {
+        // A closure that panics under `write` poisons the lock. `read` retries
+        // until it finds the value, so treating poison as "absent" would loop
+        // forever — hence the deadline thread rather than a plain assertion.
+        static POISONED: TenantValue<u32> = TenantValue::new(|| 1);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let id = register(PathBuf::from("/srv/poison"));
+            bind_current(id);
+            let _ = std::panic::catch_unwind(|| {
+                POISONED.write(|v| {
+                    *v = 2;
+                    panic!("writer dies holding the lock");
+                })
+            });
+            let _ = tx.send(POISONED.read(|v| *v));
+        });
+        match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+            Ok(value) => assert_eq!(value, 2, "the write that completed before the panic stands"),
+            Err(_) => panic!("read spun forever on a poisoned lock"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_task_scope_binds_the_tenant_across_await_points() {
+        let id = register(PathBuf::from("/srv/task"));
+        task_scope(id, async move {
+            assert_eq!(current_id(), id);
+            // Yield so the future is re-polled — on a multi-thread runtime,
+            // possibly on another thread. The binding must still be there.
+            tokio::task::yield_now().await;
+            assert_eq!(current_id(), id);
+            assert_eq!(app_root(), PathBuf::from("/srv/task"));
+        })
+        .await;
+        // Outside the scope, the task falls back like any unbound thread.
+        assert_eq!(current_id(), TenantId::PRIMARY);
     }
 
     #[test]
