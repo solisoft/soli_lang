@@ -10,18 +10,22 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::RwLock;
 
 use super::controller::{AfterAction, BeforeAction, ControllerAction, ControllerInfo, LayoutRule};
 use crate::interpreter::builtins::template as template_module;
 use crate::interpreter::value::{Instance, Value};
 use crate::interpreter::Interpreter;
+use crate::serve::tenant::TenantValue;
 
 // Global registry of all controllers.
 // Uses RwLock to allow concurrent reads (most operations) while only blocking for writes.
-lazy_static::lazy_static! {
-    pub static ref CONTROLLER_REGISTRY: RwLock<ControllerRegistry> = RwLock::new(ControllerRegistry::new());
-}
+/// Controllers registered by the application on this thread.
+///
+/// Per application, not per process: a registry naming one app's controllers
+/// would otherwise answer another's layout lookups and before/after-action
+/// resolution, and `scan_controllers` in one would overwrite the other.
+pub static CONTROLLER_REGISTRY: TenantValue<ControllerRegistry> =
+    TenantValue::new(ControllerRegistry::new);
 
 // Thread-local controller instances for current request.
 thread_local! {
@@ -97,91 +101,92 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
     // time into the bundle metadata; register from there instead.
     if let Some(meta) = crate::bundle::bundle_meta() {
         if meta.protected {
-            let mut registry = CONTROLLER_REGISTRY.write().unwrap();
-            for info in &meta.controllers {
-                registry.register(info.clone());
-            }
-            resolve_controller_inheritance(&mut registry, &meta.controller_superclasses);
+            CONTROLLER_REGISTRY.write(|registry| {
+                for info in &meta.controllers {
+                    registry.register(info.clone());
+                }
+                resolve_controller_inheritance(registry, &meta.controller_superclasses);
+            });
             return Ok(());
         }
     }
 
-    let mut registry = CONTROLLER_REGISTRY.write().unwrap();
+    CONTROLLER_REGISTRY.write(|registry| {
+        if !controllers_dir.exists() {
+            return Ok(());
+        }
 
-    if !controllers_dir.exists() {
-        return Ok(());
-    }
+        // Track superclass relationships for inheritance resolution
+        let mut superclass_map: HashMap<String, String> = HashMap::new(); // class_name -> parent_class_name
 
-    // Track superclass relationships for inheritance resolution
-    let mut superclass_map: HashMap<String, String> = HashMap::new(); // class_name -> parent_class_name
+        fn walk(
+            dir: &Path,
+            root: &Path,
+            registry: &mut ControllerRegistry,
+            superclass_map: &mut HashMap<String, String>,
+        ) -> Result<(), String> {
+            for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+                let entry = entry.map_err(|e| e.to_string())?;
+                let path = entry.path();
 
-    fn walk(
-        dir: &Path,
-        root: &Path,
-        registry: &mut ControllerRegistry,
-        superclass_map: &mut HashMap<String, String>,
-    ) -> Result<(), String> {
-        for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, root, registry, superclass_map)?;
+                    continue;
+                }
 
-            if path.is_dir() {
-                walk(&path, root, registry, superclass_map)?;
-                continue;
-            }
+                if path.is_file() && path.extension().is_some_and(|ext| ext == "sl") {
+                    if let Some(file_name) = path.file_stem().and_then(|n| n.to_str()) {
+                        // Skip non-controller files
+                        if !file_name.ends_with("_controller") {
+                            continue;
+                        }
 
-            if path.is_file() && path.extension().is_some_and(|ext| ext == "sl") {
-                if let Some(file_name) = path.file_stem().and_then(|n| n.to_str()) {
-                    // Skip non-controller files
-                    if !file_name.ends_with("_controller") {
-                        continue;
-                    }
+                        // Build the registry key from the path relative to the
+                        // controllers root, using `/` separators — matching the
+                        // route handler key (e.g. `admin/categories`). Deriving
+                        // the key from the class name instead produced
+                        // `admin_categories`, which silently broke before_action
+                        // lookups for any controller in a subdirectory.
+                        let route_key = relative_route_key(&path, root);
 
-                    // Build the registry key from the path relative to the
-                    // controllers root, using `/` separators — matching the
-                    // route handler key (e.g. `admin/categories`). Deriving
-                    // the key from the class name instead produced
-                    // `admin_categories`, which silently broke before_action
-                    // lookups for any controller in a subdirectory.
-                    let route_key = relative_route_key(&path, root);
-
-                    match parse_controller_file(&path, file_name, &route_key) {
-                        Ok(info) => {
-                            if let Ok(source) = std::fs::read_to_string(&path) {
-                                if let Some(parent) = extract_superclass_name(&source) {
-                                    if parent != "Controller" {
-                                        superclass_map.insert(info.name.clone(), parent);
+                        match parse_controller_file(&path, file_name, &route_key) {
+                            Ok(info) => {
+                                if let Ok(source) = std::fs::read_to_string(&path) {
+                                    if let Some(parent) = extract_superclass_name(&source) {
+                                        if parent != "Controller" {
+                                            superclass_map.insert(info.name.clone(), parent);
+                                        }
                                     }
                                 }
-                            }
 
-                            registry.register(info);
-                        }
-                        Err(e) => {
-                            eprintln!(
-                                "Warning: Failed to parse controller {}: {}",
-                                path.display(),
-                                e
-                            );
+                                registry.register(info);
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "Warning: Failed to parse controller {}: {}",
+                                    path.display(),
+                                    e
+                                );
+                            }
                         }
                     }
                 }
             }
+            Ok(())
         }
+
+        walk(
+            controllers_dir,
+            controllers_dir,
+            registry,
+            &mut superclass_map,
+        )?;
+
+        // Inherit before/after actions and layout from parent controllers
+        resolve_controller_inheritance(registry, &superclass_map);
+
         Ok(())
-    }
-
-    walk(
-        controllers_dir,
-        controllers_dir,
-        &mut registry,
-        &mut superclass_map,
-    )?;
-
-    // Inherit before/after actions and layout from parent controllers
-    resolve_controller_inheritance(&mut registry, &superclass_map);
-
-    Ok(())
+    })
 }
 
 /// Resolve inheritance: copy before/after actions and layout from parent controllers

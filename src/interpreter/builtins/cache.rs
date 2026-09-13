@@ -1,13 +1,11 @@
 use super::solikv::{
-    get_solikv_config, solikv_cmd, solikv_configure, solikv_del, solikv_get, solikv_set,
+    solikv_cmd, solikv_configure, solikv_del, solikv_get, solikv_set, with_solikv_config,
 };
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{stringify_to_string, Class, Instance, NativeFunction, Value};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-
-const DEFAULT_TTL_SECONDS: u64 = 3600;
 
 /// Cache keys are scoped to the current per-thread SoliDB database so
 /// concurrent `soli test --jobs N` workers (each writing to its own
@@ -20,13 +18,15 @@ fn cache_scope() -> String {
 }
 
 fn prefixed_key(key: &str) -> String {
-    let cfg = get_solikv_config().read().unwrap();
-    format!("{}{}:{}", cfg.prefix, cache_scope(), key)
+    // `cache_scope()` reaches into the database config, so it is resolved
+    // before the closure rather than under the SoliKV read lock.
+    let scope = cache_scope();
+    with_solikv_config(|cfg| format!("{}{}:{}", cfg.prefix, scope, key))
 }
 
 fn strip_prefix(full_key: &str) -> String {
-    let cfg = get_solikv_config().read().unwrap();
-    let scope_prefix = format!("{}{}:", cfg.prefix, cache_scope());
+    let scope = cache_scope();
+    let scope_prefix = with_solikv_config(|cfg| format!("{}{}:", cfg.prefix, scope));
     full_key
         .strip_prefix(scope_prefix.as_str())
         .unwrap_or(full_key)
@@ -35,12 +35,7 @@ fn strip_prefix(full_key: &str) -> String {
 
 pub(crate) fn cache_set_impl(key: &str, value: &Value, ttl: Option<u64>) -> Result<Value, String> {
     let pkey = prefixed_key(key);
-    let ttl = ttl.unwrap_or_else(|| {
-        get_solikv_config()
-            .read()
-            .map(|c| c.default_ttl)
-            .unwrap_or(DEFAULT_TTL_SECONDS)
-    });
+    let ttl = ttl.unwrap_or_else(|| with_solikv_config(|cfg| cfg.default_ttl));
 
     let json_str = stringify_to_string(value)
         .map_err(|e| format!("Cache.set() failed to serialize value: {}", e))?;
@@ -73,11 +68,11 @@ fn cache_delete_impl(key: &str) -> Result<Value, String> {
 
 fn cache_clear_impl() -> Result<Value, String> {
     let pattern = {
-        let cfg = get_solikv_config().read().map_err(|e| e.to_string())?;
         // Scope-aware: clear only this worker's DB keys, not every
         // parallel worker's. Otherwise one worker's `Cache.clear()`
         // would wipe siblings mid-suite under `soli test --jobs N`.
-        format!("{}{}:*", cfg.prefix, cache_scope())
+        let scope = cache_scope();
+        with_solikv_config(|cfg| format!("{}{}:*", cfg.prefix, scope))
     };
     let keys_result = solikv_cmd(&["KEYS", &pattern])?;
 
@@ -93,8 +88,8 @@ fn cache_clear_impl() -> Result<Value, String> {
 
 fn cache_keys_impl() -> Result<Value, String> {
     let pattern = {
-        let cfg = get_solikv_config().read().map_err(|e| e.to_string())?;
-        format!("{}{}:*", cfg.prefix, cache_scope())
+        let scope = cache_scope();
+        with_solikv_config(|cfg| format!("{}{}:*", cfg.prefix, scope))
     };
     let keys_result = solikv_cmd(&["KEYS", &pattern])?;
 
@@ -111,8 +106,8 @@ fn cache_keys_impl() -> Result<Value, String> {
 
 fn cache_size_impl() -> Result<Value, String> {
     let pattern = {
-        let cfg = get_solikv_config().read().map_err(|e| e.to_string())?;
-        format!("{}{}:*", cfg.prefix, cache_scope())
+        let scope = cache_scope();
+        with_solikv_config(|cfg| format!("{}{}:*", cfg.prefix, scope))
     };
     let keys_result = solikv_cmd(&["KEYS", &pattern])?;
     let count = keys_result.as_array().map(|a| a.len()).unwrap_or(0);
