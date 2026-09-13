@@ -84,6 +84,16 @@ Mount-time state — the app root, the jails, the views directory, the model and
 
 `tests/tenant_isolation_test.rs` is the acceptance criterion. It mounts two applications on one thread and asserts each sees only its own root, jail and collections; that a worker thread pinned to a tenant reads what the mounting thread wrote (which is why this state is in the process-wide registry rather than a `thread_local!`); and that the primary tenant is untouched by the others, which is what makes the whole conversion a no-op for `soli serve`.
 
+### Which application serves a request
+
+`src/serve/vhost.rs`. A process serving one application answers everything with it; a process serving several picks by `Host` header, which is the only thing a client says about which site it meant.
+
+`Router::single(runtime)` is what `soli serve` builds: a single fallback entry that answers every host, and no host at all — which is why adding the router changed nothing for a single-application server. A host serving several builds `Router::new()` and one `insert` per mounted application; a request whose host nobody claims gets **421 Misdirected Request** rather than whichever application happens to be first.
+
+The header parsing is the part with traps, and it is tested on its own: `Host` is case-insensitive, a port is not part of the site (`example.com:8443` is `example.com`), `example.com.` is the fully-qualified spelling of the same name, and an IPv6 literal has colons *inside* its brackets — the naive `split(':').next()` turns `[::1]:8080` into `[`. A host claimed twice is reported to the caller rather than silently reassigned, because which application lost would otherwise depend on mount order.
+
+HTTP/2 carries `:authority` rather than a `Host` header, and hyper leaves it in the URI, so the lookup falls back to the URI authority.
+
 ### The request path's tenant bundle
 
 `handle_hyper_request` used to take seven separate per-application arguments — the worker queue, the reload channel, the public dir, the asset cache, the two realtime senders, the dev flag. They are now one `TenantRuntime`, destructured at the top of the function so its 1400-line body is unchanged.
