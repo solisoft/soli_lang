@@ -28,25 +28,21 @@ File: `src/serve/mod.rs`. Read it top-to-bottom once; it is the map.
 
 `src/serve/engine_loader.rs` copies builtin globals into the VM. A handler the compiler refuses is demoted to the interpreter (`SOLI_ENGINE_LOG=1` logs it).
 
-## Builtins, once per thread
+## Builtins: one registry per consumer, on purpose
 
-`register_builtins` defines ~500 bindings, ~100 of them classes, and none of it depends on the application. A worker thread used to build that registry three times over and keep all three alive: the interpreter's globals, the template engine's environment (`src/template/core_eval.rs`), and the view helpers' closure (`load_view_helpers`).
+A worker thread builds the builtin registry three times — for the interpreter's globals, the template engine's environment (`src/template/core_eval.rs`), and the view helpers' closure (`load_view_helpers`). Sharing one root between the three, with the others as child scopes, was tried and **reverted**. It measured as no RSS win (a registry is a few hundred KB; five alternating A/B pairs at `SOLI_WORKERS=16` put the difference at 0.4 MiB against a ±12 MiB spread) and it changed behaviour in two ways separate registries never did: a bare `logger = …` inside a function created a short-lived local instead of updating the global, because the shared root had to be sealed against writes; and `Model.define_method(…)` mutated an `Rc<Class>` that outlived the interpreter, so a hot reload kept a method the developer had deleted. Three cheap registries that die with their interpreter are the right shape.
 
-`builtins::serve_builtins_root()` now holds one registry per thread, and `child_of_serve_builtins()` hands out a fresh scope enclosing it. Each consumer keeps its own child `Environment` for what it adds on top — template helpers, named routes, the form builder — and resolution falls through. A binding the application defines lands in the child and shadows the shared scope, which is the ordering the separate registries had.
-
-Two things follow. The registry holds `Rc` values, so it is per *thread*, not per process: nothing is shared across workers. And test-only builtins are deliberately absent — they belong to `Interpreter::new`, the `soli run` / `soli test` path, which owns its environment outright. The template engine used to register them unconditionally, so `visit` and `assert_eq` resolved inside a served view.
-
-The root is **sealed** once built: `Environment::assign` on a sealed scope answers `NotFound`, so an application that writes `print = …` defines `print` in its own child scope and shadows the builtin there. Without the seal, `assign` walked the chain and rewrote the shared registry — the template engine and the view helpers on that thread saw the override, and so did the next interpreter built on that thread after a hot reload or a worker restart, since the root outlives them. Sealing restores exactly what separate registries gave each consumer: an override that is local and dies with the interpreter that made it. Verified on a served app: a controller that hijacks `str` renders its own version while the view in the same request still renders the real one.
-
-Don't expect this to move RSS; a registry is a few hundred KB. See [Measuring memory](#measuring-memory).
+One thing from that attempt stays: the template engine no longer registers the test-only builtins. It called `register_builtins(env, true)` unconditionally, so `visit`, `click`, `assert_eq`, the factories and the mock-HTTP helpers resolved inside every rendered view in production — names `register_builtins` refuses everywhere else in serve mode precisely because leaking them into a served app is a hazard.
 
 ## Tenants
 
 `src/serve/tenant.rs` is the seam that per-application state moves behind, so a process can eventually serve more than one app.
 
-A `Tenant` owns what belongs to one application; the process holds a registry of them; each thread knows which one it is serving, and worker threads are pinned, so the current tenant is fixed when the thread starts rather than looked up per request. With a single application the registry holds exactly one tenant (`TenantId::PRIMARY`) and every thread falls back to it, so nothing observable changes.
+A `Tenant` owns what belongs to one application; the process holds a registry of them; each thread knows which one it is serving, and worker threads are bound to one tenant for life — every spawn on the worker side (the HTTP workers in `serve/mod.rs`, the `background_jobs` pool threads, the `jobs` poller and webhook threads) captures `tenant::current_id()` and calls `bind_current` first thing, since thread-locals do not cross `spawn`. So the current tenant is fixed when the thread starts rather than looked up per request. With a single application the registry holds exactly one tenant (`TenantId::PRIMARY`) and every thread falls back to it, so nothing observable changes.
 
 The HTTP side is different. A request future runs on whichever tokio thread polls it next and moves between them at every `.await`, so a thread-local binding is meaningless there — the thread that starts a request is not the one that finishes it. Yet everything the request path consults before handing off to a worker is keyed by tenant: the CORS rules, the CSRF exemptions, the cookie jar, the session config, the dev-bar store. So the request future is scoped with `tenant::task_scope(id, …)` — a tokio task-local that travels with the future — as soon as the `Host` header has said which application it belongs to, and `current_id()` consults that binding before the thread-local. `cors::evaluate` runs *inside* the scope for that reason, after the host is resolved rather than before.
+
+A task-local does not cross `tokio::spawn`, so every spawn on the request path — the WebSocket, EUI and LiveView upgrades, their writer tasks, the per-application LiveView reaper — goes through `tenant::spawn`, which re-scopes the new task to the spawning one's tenant. `scoped()` sets the task-local as well as the thread-local, so a mount performed from inside a request handler lands on the tenant it names rather than the request's.
 
 **Lock poisoning** is tolerated throughout `tenant.rs`, on purpose. `TenantValue::read` retries until the value is found, so a poisoned lock treated as "absent" would spin forever; a jail that read as "none" after a panic elsewhere would lift a security boundary; an app root that fell back to `.` would resolve views against the process's working directory. The values are plain maps — a writer that panicked mid-closure leaves an entry, not a torn lock — so `into_inner` is the safe answer everywhere.
 
@@ -64,14 +60,13 @@ Three helpers, so a singleton keeps its shape and changes only what it is. Each 
 | Was | Becomes | API |
 |---|---|---|
 | `Mutex<Option<T>>`, `OnceLock<T>` | `TenantCell<T>` | `get` / `set` / `set_once` / `get_or_init` / `clear` |
-| `lazy_static! { RwLock<T> }` | `TenantValue<T>` | `read(\|v\| …)` / `write(\|v\| …)` / `reset` — the constructor is part of the declaration, so it replaces `lazy_static!` outright and stays `const` |
-| `thread_local! { RefCell<T> }` holding `Rc` values | `TenantLocal<T>` | `with(init, \|v\| …)` / `clear` |
+| `lazy_static! { RwLock<T> }` | `TenantValue<T>` | `read(\|v\| …)` / `write(\|v\| …)` — the constructor is part of the declaration, so it replaces `lazy_static!` outright and stays `const`. **One lock per tenant**: a closure that blocks under `write` (the database JWT login does, for its network timeout) stalls that tenant alone |
 
-`read`/`write` take a closure rather than returning a guard: the value lives inside a map inside the lock, and stable Rust has no way to hand out a guard borrowed into it (`parking_lot`'s mapped guards would, but it is not a direct dependency). In exchange the lock is always released.
+`read`/`write` take a closure rather than returning a guard: the value lives inside a map inside the lock, and stable Rust has no way to hand out a guard borrowed into it (`parking_lot`'s mapped guards would, but it is not a direct dependency). In exchange the lock is always released. Anything `Rc`-based stays in a plain `thread_local!`: a bound worker thread already is per application.
 
 ### Done, and left
 
-Converted: the app root (was `live::component::APP_ROOT`); the `File` and `Image` jails (were `OnceLock`s); `VIEWS_DIR`, `PUBLIC_DIR` and `TEMPLATE_CACHE` (`init_templates` was first-caller-wins, so a second application would have rendered the first one's views); `JAR_CACHE`; `MOUNTED_ENGINES`; `MAILER_CONFIG`; `TRUSTED_PROXIES`; `RATE_LIMIT_STORE`; `SOLIKV_CONFIG` with its `RESP_POOL`; `CONTROLLER_REGISTRY`; `SECURITY_HEADERS_CONFIG` with `SECURITY_HEADERS_ENABLED`; `MODEL_REGISTRY` with the four `COLLECTION_*` maps beside it; and the whole database layer — `db::registry`, `db::config`, `CACHED_DB_CONFIG`, `DB_CONFIG` and the JWT state.
+Converted: the app root (was `live::component::APP_ROOT`); the `File` and `Image` jails (were `OnceLock`s); `VIEWS_DIR`, `PUBLIC_DIR` and `TEMPLATE_CACHE` (`init_templates` was first-caller-wins, so a second application would have rendered the first one's views); `JAR_CACHE`; `MOUNTED_ENGINES`; `MAILER_CONFIG`; `TRUSTED_PROXIES`; `RATE_LIMIT_STORE`; `SOLIKV_CONFIG` with its `RESP_POOL`; `CONTROLLER_REGISTRY`; `SECURITY_HEADERS_CONFIG` with `SECURITY_HEADERS_ENABLED`; `MODEL_REGISTRY` with the four `COLLECTION_*` maps beside it; and the whole database layer — `db::registry`, `db::config`, `CACHED_DB_CONFIG`, `DB_CONFIG` and the JWT state; the `TRUST_PROXY_ENABLED` gate (the lenient half of the trusted-proxies check — process-wide, one app's `trust_proxy(true)` made a co-hosted app trust attacker-supplied `X-Forwarded-*`); and the i18n store with its default locale, which sit on the render path.
 
 The database layer went with them, and it is the one that mattered most. `db::registry` (which connections exist and which is default), `db::config` (the default adapter and URL), `CACHED_DB_CONFIG` (SoliDB cursor URL, database name, API key, basic auth) and the JWT state were all process-global — and the first three were `OnceLock`s, so the *first* application to boot would have frozen them for every application after it. Not with an error: silently, each later application reading and writing the first one's data with the first one's credentials. Nothing else on this page comes close.
 
@@ -141,7 +136,7 @@ One thing that had to survive the conversion: `put_chunk` assembled a finished f
 Four, each for a reason worth reading before "finishing" them:
 
 * **`mixin_registry::HOOKS`** cannot be keyed per application on its own. The only reason a cache-hit thread finds anything there is that some *other* thread registered it, and `compiled_cache::MODULE_CACHE` is keyed by source text, not by application. Key the hooks per tenant and the second app to compile an identical module gets a cache hit, registers nothing under its own id, and silently loses every `included do`. Fixing it properly means keying both by something content-derived — a change to the compile cache.
-* **`server::ROUTES`** holds `Vec<Value>` for middleware, so it is `Rc`-based and can only ever be a `TenantLocal`, never a `Tenant` field. Under the rule that worker threads serve one application for life, a thread-local already *is* per application, and keying it would put a hash lookup on the route index for every request. What the rule does not cover is boot — see the note in `builtins/server.rs`.
+* **`server::ROUTES`** holds `Vec<Value>` for middleware, so it is `Rc`-based and can only ever live in a `thread_local!`, never in a `Tenant` field. Under the rule that worker threads serve one application for life, a thread-local already *is* per application, and keying it would put a hash lookup on the route index for every request. What the rule does not cover is boot — see the note in `builtins/server.rs`.
 * **SQL connection pools** (`db/{postgres,mysql,sqlite}.rs`) are keyed by connection name **and URL**. Two applications pointing a connection called `primary` at different databases already get different pools, and when the URL matches, sharing the pool is the point.
 * **`serve/eui/assets.rs`** is content-addressed and bounded: the same bytes uploaded by two applications are one entry, which is the cross-tenant sharing step 6 wants, not a leak.
 
@@ -149,12 +144,11 @@ Four, each for a reason worth reading before "finishing" them:
 
 Not globals, but gaps a multi-application host has to close before it is correct:
 
-* **Spawned realtime tasks.** A tokio task-local does not cross `tokio::spawn`, so the tasks the WebSocket, EUI and LiveView upgrades spawn — and the tick tasks after them — start unbound and fall back to `PRIMARY`. Right for one application; a host must hand each spawn its tenant, in the shape `tokio::spawn(tenant::task_scope(id, fut))`.
 * **`.env`.** `load_env_files` uses `std::env::set_var`, which is process-wide whatever the tenant registry does. Routing it per application means every `std::env::var` read in the tree consults the tenant first — hundreds of sites, and a decision about what a library call inside an app should see. It belongs with the host that actually loads two `.env` files, not before it.
 
 ### Still process-global
 
-Known, not yet converted. None is on the request-auth or data path; each is its own small pass:
+Known, not yet converted. None decides which database a query goes to or which application answers a request; each is its own small pass:
 
 | Where | What it is |
 |---|---|
@@ -167,6 +161,9 @@ Known, not yet converted. None is on the request-auth or data path; each is its 
 | `jobs/mod.rs`, `jobs/engine.rs` | the job engine's config, node id and in-flight list |
 | `bundle.rs` | the bundle metadata of a protected build |
 | `interpreter/symbol.rs` | the interner, which leaks by design — see the hibernation note under step 5 of the plan |
+| `serve/mod.rs` `GLOBAL_VFS` | the protected-bundle filesystem, `OnceLock` first-caller-wins — two bundled apps in one process would read the first one's bundle |
+| `jobs/store.rs` `INDEXED` | "queue indexes exist" bit keyed by connection *name* only, so two apps both calling theirs `primary` share it |
+| `template.rs` `DEV_MODE`, `session.rs` `SESSION_READY` | one dev flag and one readiness flag for the process; `/up` reports every tenant ready once any store warms |
 
 Everything else that looked like a candidate is a `thread_local!`, and a worker thread serves one application for life.
 

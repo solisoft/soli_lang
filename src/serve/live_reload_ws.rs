@@ -55,8 +55,9 @@ pub async fn handle_live_reload_websocket(
         }
     };
 
-    // Spawn a task to handle the WebSocket connection
-    tokio::spawn(async move {
+    // Spawn a task to handle the WebSocket connection, as the tenant that
+    // accepted the upgrade.
+    crate::serve::tenant::spawn(async move {
         // Wait for the WebSocket handshake to complete
         let stream = match websocket.await {
             Ok(ws) => ws,
