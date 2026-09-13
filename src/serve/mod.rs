@@ -1382,30 +1382,6 @@ fn run_hyper_server_worker_pool(
                                     .body(full(Bytes::from("Server shutting down")))
                                     .unwrap());
                             }
-                            // Built-in CORS (`cors("/api/*", {...})` in
-                            // config/routes.sl). Wraps the whole handler so
-                            // every response of a CORS-managed path —
-                            // buffered, streamed, static, or error — carries
-                            // the allow headers, and preflights are answered
-                            // before routing.
-                            let cors_decision = cors::evaluate(
-                                req.method().as_str(),
-                                req.uri().path(),
-                                req.headers(),
-                            );
-                            if let Some(preflight) =
-                                cors_decision.as_ref().and_then(|d| d.preflight.as_ref())
-                            {
-                                let mut builder = Response::builder()
-                                    .status(StatusCode::NO_CONTENT)
-                                    .header("Server", "soliMVC");
-                                for (key, value) in preflight {
-                                    builder = add_header_checked(builder, key, value);
-                                }
-                                return Ok(builder
-                                    .body(full(Bytes::new()))
-                                    .unwrap_or_else(|_| Response::new(full(Bytes::new()))));
-                            }
                             // Which application serves this. `Host` first, and
                             // the URI authority behind it: an HTTP/2 request
                             // carries `:authority` instead, which hyper leaves
@@ -1427,7 +1403,50 @@ fn run_hyper_server_worker_pool(
                                     .body(full(Bytes::from("Misdirected request")))
                                     .unwrap());
                             };
-                            let result = handle_hyper_request(req, runtime, peer_addr).await;
+                            // Everything from here runs as that tenant, on
+                            // every thread this future is polled on: the CORS
+                            // and CSRF policies, the cookie jar, the session
+                            // config and the dev-bar store are all keyed by it,
+                            // and a thread-local binding does not survive an
+                            // `.await`.
+                            let tenant_id = runtime.tenant;
+                            let (result, cors_decision) =
+                                tenant::task_scope(tenant_id, async move {
+                                    // Built-in CORS (`cors("/api/*", {...})` in
+                                    // config/routes.sl). Wraps the whole handler so
+                                    // every response of a CORS-managed path —
+                                    // buffered, streamed, static, or error — carries
+                                    // the allow headers, and preflights are answered
+                                    // before routing.
+                                    let cors_decision = cors::evaluate(
+                                        req.method().as_str(),
+                                        req.uri().path(),
+                                        req.headers(),
+                                    );
+                                    if let Some(preflight) =
+                                        cors_decision.as_ref().and_then(|d| d.preflight.as_ref())
+                                    {
+                                        let mut builder = Response::builder()
+                                            .status(StatusCode::NO_CONTENT)
+                                            .header("Server", "soliMVC");
+                                        for (key, value) in preflight {
+                                            builder = add_header_checked(builder, key, value);
+                                        }
+                                        let preflight_response = Ok(builder
+                                            .body(full(Bytes::new()))
+                                            .unwrap_or_else(|_| Response::new(full(Bytes::new()))));
+                                        // A preflight carries no allow headers of
+                                        // its own beyond the ones just added.
+                                        return (preflight_response, None);
+                                    }
+                                    let result =
+                                        handle_hyper_request(req, runtime, peer_addr).await;
+                                    // The decision leaves the scope with the result:
+                                    // the allow headers are stamped on the response
+                                    // below, outside it.
+                                    (result, cors_decision)
+                                })
+                                .await;
                             match (result, cors_decision) {
                                 (Ok(mut response), Some(decision)) => {
                                     for (key, value) in decision.response_headers {
@@ -2949,10 +2968,9 @@ use file_upload::parse_multipart_body;
 /// request.
 #[derive(Clone)]
 struct TenantRuntime {
-    /// Which application this serves. Not read on the request path yet: worker
-    /// threads are pinned to their tenant, so picking the queue already picks
-    /// the tenant. A host that ever shares a worker pool would bind from here.
-    #[allow(dead_code)]
+    /// Which application this serves. The request future is scoped to it
+    /// (`tenant::task_scope`) before any tenant-keyed state is consulted; the
+    /// worker side needs no such thing, its threads being pinned.
     tenant: tenant::TenantId,
     request_tx: WorkerSender,
     reload_tx: Option<broadcast::Sender<()>>,

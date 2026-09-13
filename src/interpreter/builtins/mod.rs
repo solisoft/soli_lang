@@ -274,6 +274,10 @@ pub fn serve_builtins_root() -> Rc<RefCell<Environment>> {
         if let Err(e) = retry::register_retry_class(&root) {
             eprintln!("[WARN] Retry stdlib failed to load: {}", e);
         }
+        // Sealed after the last registration: from here on, an assignment to
+        // a builtin name from any child shadows it there instead of rewriting
+        // this shared registry.
+        root.borrow_mut().seal();
         *cell.borrow_mut() = Some(root.clone());
         root
     })
