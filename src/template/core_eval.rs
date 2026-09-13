@@ -33,29 +33,38 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
     BUILTINS_RC.with(|cell| {
         let mut opt = cell.borrow_mut();
         if opt.is_none() {
-            let mut env = Environment::with_builtins_capacity();
-            crate::interpreter::builtins::register_builtins(&mut env, true);
-            crate::interpreter::builtins::template::register_static_template_helpers(&mut env);
-            crate::interpreter::builtins::template::inject_helpers_into_env(&mut env);
-            // Mirror the worker's main env: views need `<name>_path` /
-            // `<name>_url` helpers too. Without this, calls like
-            // `admin_path()` in a `.html.slv` template fall through to the
-            // lenient-undefined path and crash as "not callable".
-            crate::interpreter::builtins::named_routes::register_named_route_helpers(&mut env);
-            let env_rc = Rc::new(RefCell::new(env));
+            // A child of the thread's shared builtins registry, not a registry
+            // of its own: the five hundred bindings `register_builtins` builds
+            // are identical to the ones the worker's interpreter already holds,
+            // and a second copy per thread cost megabytes for nothing. What
+            // follows — template helpers, named routes, the form builder — is
+            // genuinely template-only and stays in this child.
+            //
+            // The test-only builtins this used to register are gone with it.
+            // `visit`, `click`, `assert_eq` and friends have no business
+            // resolving inside a view, and `register_builtins` already refuses
+            // them everywhere else in serve mode.
+            let env_rc = crate::interpreter::builtins::child_of_serve_builtins();
+            {
+                let mut env = env_rc.borrow_mut();
+                crate::interpreter::builtins::template::register_static_template_helpers(&mut env);
+                crate::interpreter::builtins::template::inject_helpers_into_env(&mut env);
+                // Mirror the worker's main env: views need `<name>_path` /
+                // `<name>_url` helpers too. Without this, calls like
+                // `admin_path()` in a `.html.slv` template fall through to the
+                // lenient-undefined path and crash as "not callable".
+                crate::interpreter::builtins::named_routes::register_named_route_helpers(&mut env);
+            }
             // Form builder layer (form_with / csrf_field / button_to) is
-            // pure Soli evaluated into the shared env — its class methods
-            // close over env_rc, which is why it registers after wrapping.
+            // pure Soli evaluated into this env — its class methods close over
+            // env_rc, which is why it registers once the borrow above is
+            // released rather than while it is held.
             if let Err(e) = crate::interpreter::builtins::template::register_form_builder(&env_rc) {
                 eprintln!("[WARN] template form builder failed to load: {}", e);
             }
-            // Retry is pure Soli too, so it needs the wrapped env like the form
-            // builder. It was wired only into the `Interpreter::*` constructors,
-            // so every other class from `register_builtins` resolved in a view
-            // while `Retry.with_backoff(...)` raised "Undefined variable".
-            if let Err(e) = crate::interpreter::builtins::retry::register_retry_class(&env_rc) {
-                eprintln!("[WARN] Retry stdlib failed to load: {}", e);
-            }
+            // Retry needs no registration here: it is evaluated once into the
+            // shared builtins root, which this env encloses, so
+            // `Retry.with_backoff(...)` resolves in a view through the chain.
             *opt = Some(env_rc);
         }
         opt.as_ref().unwrap().clone()

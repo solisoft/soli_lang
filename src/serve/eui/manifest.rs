@@ -15,8 +15,8 @@ use hyper::{header, Response, StatusCode};
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
-use crate::live::component::get_app_root;
 use crate::serve::full;
+use crate::serve::tenant::app_root as get_app_root;
 use crate::serve::ResponseBody;
 
 /// Capabilities the application requests, set by `eui_capabilities(...)`.

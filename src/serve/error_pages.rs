@@ -135,7 +135,7 @@ pub(super) fn render_error_page(
     }
 
     let mut source_files: HashMap<String, String> = HashMap::new();
-    let app_root = crate::live::component::get_app_root();
+    let app_root = crate::serve::tenant::app_root();
     static SOURCE_FILE_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(
             r"([./a-zA-Z0-9_@-]+(?:\.html\.slv|\.slv|\.html\.md|\.md|\.html\.erb|\.erb|\.sl)):(\d+)",

@@ -37,6 +37,7 @@ pub mod server_constants;
 pub mod shutdown;
 pub mod span_log;
 pub mod template_warnings;
+pub mod tenant;
 mod uploads_prelude;
 pub mod view_log;
 pub mod websocket;
@@ -705,7 +706,7 @@ pub fn serve_folder_with_options_and_hooks(
     println!("Starting MVC server from {}", folder.display());
 
     // Set the app root for LiveView template resolution
-    crate::live::component::set_app_root(folder.to_path_buf());
+    crate::serve::tenant::set_app_root(folder);
 
     // SEC-006: enable the filesystem jail for the `File` builtins so a
     // controller calling `File.read(req["params"]["path"])` cannot reach
@@ -9213,7 +9214,7 @@ async fn handle_dev_source(
     }
 
     // Try to read the file - resolve relative to app root
-    let app_root = crate::live::component::get_app_root();
+    let app_root = crate::serve::tenant::app_root();
     let joined = app_root.join(&file);
 
     // Canonicalize and verify the path is within app_root
@@ -9334,7 +9335,7 @@ fn execute_repl_code(
 
     // Load models into REPL session on first use
     if !*session.models_loaded.borrow() {
-        let app_root = crate::live::component::get_app_root();
+        let app_root = crate::serve::tenant::app_root();
         let models_dir = app_root.join("app/models");
         if models_dir.exists() {
             if let Err(e) = load_models(&mut interpreter, &models_dir) {

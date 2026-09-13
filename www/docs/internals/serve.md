@@ -14,7 +14,7 @@ File: `src/serve/mod.rs`. Read it top-to-bottom once; it is the map.
 4. **`load_env_files`** — `.env` then `.env.{APP_ENV}`.
 5. **`check_production_boot(dev_mode)`** — production refuses to start without `SOLI_APP_HOSTS` and a 32+ char `SOLI_SESSION_SECRET`. `--dev` skips this. (`server_constants.rs`)
 6. **DB** — `db::init_from_app_path`, `ensure_runtime_ready`.
-7. **Jail** — `File` and `Image` rooted at the app directory.
+7. **Jail** — `File` and `Image` rooted at the app directory, on the [tenant](#tenants) rather than in a process-wide `OnceLock`.
 8. **Boot interpreter** — `Interpreter::new_for_serve()`, load models, controllers, routes, middleware. Then that interpreter is **dropped**; workers get their own copies.
 9. **Worker pool** — Hyper + tokio; each worker owns an engine (VM in production, interpreter in `--dev`).
 10. **Accept loop** — CSRF, static files, router, handler, `finish_response`.
@@ -27,6 +27,46 @@ File: `src/serve/mod.rs`. Read it top-to-bottom once; it is the map.
 | production | Bytecode `Vm` after `warm_vm_handlers` |
 
 `src/serve/engine_loader.rs` copies builtin globals into the VM. A handler the compiler refuses is demoted to the interpreter (`SOLI_ENGINE_LOG=1` logs it).
+
+## Builtins, once per thread
+
+`register_builtins` defines ~500 bindings, ~100 of them classes, and none of it depends on the application. A worker thread used to build that registry three times over and keep all three alive: the interpreter's globals, the template engine's environment (`src/template/core_eval.rs`), and the view helpers' closure (`load_view_helpers`).
+
+`builtins::serve_builtins_root()` now holds one registry per thread, and `child_of_serve_builtins()` hands out a fresh scope enclosing it. Each consumer keeps its own child `Environment` for what it adds on top — template helpers, named routes, the form builder — and resolution falls through. A binding the application defines lands in the child and shadows the shared scope, which is the ordering the separate registries had.
+
+Two things follow. The registry holds `Rc` values, so it is per *thread*, not per process: nothing is shared across workers. And test-only builtins are deliberately absent — they belong to `Interpreter::new`, the `soli run` / `soli test` path, which owns its environment outright. The template engine used to register them unconditionally, so `visit` and `assert_eq` resolved inside a served view.
+
+Don't expect this to move RSS; a registry is a few hundred KB. See [Measuring memory](#measuring-memory).
+
+## Tenants
+
+`src/serve/tenant.rs` is the seam that per-application state moves behind, so a process can eventually serve more than one app.
+
+A `Tenant` owns what belongs to one application; the process holds a registry of them; each thread knows which one it is serving, and worker threads are pinned, so the current tenant is fixed when the thread starts rather than looked up per request. With a single application the registry holds exactly one tenant (`TenantId::PRIMARY`) and every thread falls back to it, so nothing observable changes.
+
+Which state goes where is not a matter of taste:
+
+| Kind | Where | Examples |
+|---|---|---|
+| `Send + Sync` | `Tenant`, in the process registry | app root, file jail, image jail |
+| `Rc`-based, thread-confined | a `thread_local!` **keyed by `TenantId`** | interpreters, `Rc<Class>` model registries, view helpers, the parsed handler cache |
+
+Moved so far: the app root (was `live::component::APP_ROOT`) and the `File` / `Image` jails (were `OnceLock`s in `builtins/file.rs` and `builtins/image.rs`). The jails matter most: one shared jail in a two-application process would let either resolve paths under the other's root. They keep their first-write-wins semantics, because swapping a jail mid-run would leave in-flight requests resolving against the old root.
+
+Still process-global, and each one a collision if a second application were added: the template cache with `VIEWS_DIR` / `PUBLIC_DIR`, the controller and model registries, `MOUNTED_ENGINES`, `MAILER_CONFIG`, `SOLIKV_CONFIG`, `TRUSTED_PROXIES`, `RATE_LIMIT_STORE`, `SECURITY_HEADERS_CONFIG`, `JAR_CACHE`, the mixin hooks, and the `ROUTES` thread-local. `.env` is loaded with `std::env::set_var`, which is process-wide too.
+
+Shareable as-is, because they are read-only or content-addressed: `REGEX_CACHE`, `SYMBOL_TABLE`, `HIDDEN_CLASS_REGISTRY`, `INLINE_CACHE`, `MODULE_CACHE`, and the `&'static [MethodDef]` tables. One caveat: `SYMBOL_TABLE` interns with `Box::leak`, so a process that loads and unloads applications would grow without bound.
+
+## Measuring memory
+
+`scripts/mem-probe.sh`. Four things will otherwise give you a number that is confidently wrong:
+
+* `ps -o rss=` cannot separate a process's own heap from the file-backed pages every `soli` process shares.
+* `Pss_Anon` can, but counts only **resident** pages — on a swapping machine a process reads as *smaller* the more pressure the box is under. Add `SwapPss`.
+* mimalloc's default purge delay leaves the one-time boot-parse churn mapped. Sample with `MIMALLOC_PURGE_DELAY=0`.
+* Transparent huge pages get collapsed and split on khugepaged's schedule, which moved anonymous RSS by tens of MiB between otherwise identical runs. Take a median of several, and read the range.
+
+And compare two binaries by **alternating them in one session** (`--ab OLD NEW <app> [workers]`), never by lining up two sweeps taken minutes apart: machine drift lands entirely on whichever ran later. That mistake is what first made the shared-builtins change look like a 30% win; a proper A/B put it at 0.4 MiB against a ±12 MiB spread.
 
 ## Request path (happy path)
 
@@ -88,6 +128,7 @@ No `.env`, no DB, no controllers. Templates in that folder **are** code — only
 | `worker_pool.rs` | Channels, 504 timeout |
 | `shutdown.rs` | SIGTERM drain; compile_error on panic=abort |
 | `env_loader.rs` | dotenv |
+| `tenant.rs` | Per-application state; app root and the `File`/`Image` jails |
 | `websocket.rs` | WS upgrade + rooms |
 | `dev_bar.rs` | `--dev` overlay |
 | `cors.rs` | `cors("/api/*", …)` |

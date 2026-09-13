@@ -27,16 +27,18 @@ use image::{DynamicImage, ImageFormat, ImageReader};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-static IMAGE_JAIL: OnceLock<PathBuf> = OnceLock::new();
-
 /// SEC-063: set a jail root for Image paths. Paths outside the jail are rejected.
-/// Idempotent on first call.
+/// First write wins.
+///
+/// Per-application rather than process-wide, for the same reason the `File`
+/// jail is: two applications in one process must not resolve image paths under
+/// each other's root.
 pub fn set_image_jail(path: PathBuf) {
-    let _ = IMAGE_JAIL.set(path);
+    crate::serve::tenant::current().set_image_jail(path);
 }
 
-fn current_image_jail() -> Option<&'static PathBuf> {
-    IMAGE_JAIL.get()
+fn current_image_jail() -> Option<PathBuf> {
+    crate::serve::tenant::current().image_jail()
 }
 
 /// SEC-063: validate a user-supplied path against the image jail, and
@@ -64,7 +66,7 @@ fn validate_image_path(path: &str, op: &str) -> Result<PathBuf, String> {
         jail.join(path)
     };
 
-    let canonical_jail = std::fs::canonicalize(jail)
+    let canonical_jail = std::fs::canonicalize(&jail)
         .map_err(|e| format!("{}() image jail {:?} is not accessible: {}", op, jail, e))?;
 
     let canonical_path = match std::fs::canonicalize(&candidate) {

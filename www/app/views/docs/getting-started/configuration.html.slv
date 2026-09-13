@@ -212,7 +212,16 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 OTEL_SERVICE_NAME=myapp s
 
         <h3 id="keeping-memory-low" class="text-xl font-bold text-white mt-8 mb-4 scroll-mt-24">Keeping memory low</h3>
         <p class="text-gray-400 mb-4">
-            <code>soli serve</code> runs a pool of worker <strong class="text-white">threads</strong> in one process, and each worker holds its own copy of the parsed app plus the full builtin surface (<code>Rc</code>-based values can&rsquo;t be shared across threads). So baseline RSS scales with the worker count and &mdash; for apps with lots of code or large in-memory data such as i18n locale tables &mdash; with the size of that app. The levers, cheapest first:
+            <code>soli serve</code> runs a pool of worker <strong class="text-white">threads</strong> in one process, and each worker holds its own copy of the parsed app plus the full builtin surface (<code>Rc</code>-based values can&rsquo;t be shared across threads). So baseline RSS scales with the worker count and &mdash; for apps with lots of code or large in-memory data such as i18n locale tables &mdash; with the size of that app.
+        </p>
+        <p class="text-gray-400 mb-4">
+            Within a worker the builtin surface is built <strong class="text-white">once</strong> and shared as the enclosing scope of the interpreter&rsquo;s globals, the template engine&rsquo;s environment and the view helpers&rsquo; closure; those three used to be separate full registries. Don&rsquo;t expect that to show up in your RSS &mdash; a registry turns out to be a few hundred KB, so removing two of them per thread sits below the noise of an ordinary measurement. The levers below are what actually move the number.
+        </p>
+        <p class="text-gray-400 mb-4">
+            Measuring it at all takes more care than it looks. <code>ps -o rss=</code> cannot separate a process&rsquo;s own heap from the file-backed pages every <code>soli</code> process shares; <code>Pss_Anon</code> from <code>/proc/&lt;pid&gt;/smaps_rollup</code> can, but counts only <em>resident</em> pages, so on a swapping machine a process reads as smaller the more pressure the box is under &mdash; add <code>SwapPss</code>. Transparent huge pages move anonymous RSS by tens of MiB between identical runs, so take a median of several. And compare two binaries by alternating them in one session, never by lining up two sweeps taken minutes apart: machine drift lands entirely on whichever ran later. <code>scripts/mem-probe.sh</code> in the repository does all of this, <code>--ab</code> included.
+        </p>
+        <p class="text-gray-400 mb-4">
+            The levers, cheapest first:
         </p>
         <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-4">
             <table class="w-full text-left text-sm">

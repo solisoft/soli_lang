@@ -339,7 +339,8 @@ mod tests {
         assert!(err.contains("control characters"), "{err}");
     }
 
-    use crate::live::component::{render_component, set_app_root};
+    use crate::live::component::render_component;
+    use crate::serve::tenant::set_app_root;
     use std::fs;
     use tempfile::tempdir;
 
@@ -406,7 +407,7 @@ mod tests {
                 r#"<span id="s"><%= score %></span>"#,
             )
             .unwrap();
-            set_app_root(dir.path().to_path_buf());
+            set_app_root(dir.path());
 
             let spec = json!({ "score": true });
             let html = render_nested("score", &json!({ "score": 3 }), &spec).unwrap();
