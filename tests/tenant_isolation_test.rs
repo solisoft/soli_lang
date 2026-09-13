@@ -12,6 +12,7 @@
 
 use std::path::PathBuf;
 
+use solilang::db::{clear_registry_override, registry, set_registry_for_tests};
 use solilang::interpreter::builtins::file::{jail_root, set_file_jail};
 use solilang::interpreter::builtins::model::{get_collection_type, register_collection_type};
 use solilang::serve::tenant::{app_root, register, scoped, set_app_root, TenantId};
@@ -101,5 +102,58 @@ fn the_primary_tenant_is_untouched_by_the_others() {
             None,
             "another tenant's collection must not leak into the primary"
         );
+    });
+}
+
+#[test]
+fn two_applications_do_not_share_a_database() {
+    // The one that matters most. `db::registry` decides which database a query
+    // goes to, and it used to be a process-global `OnceLock`: the first
+    // application to boot froze it for every application after it, silently,
+    // so each later one read and wrote the first one's data with the first
+    // one's credentials.
+    let alpha = register(PathBuf::from("/srv/alpha"));
+    let beta = register(PathBuf::from("/srv/beta"));
+
+    let alpha_registry = scoped(alpha, registry);
+    let mut beta_registry = scoped(beta, registry);
+    // Give beta a distinguishable default so the assertion cannot pass by both
+    // sides happening to hold the same env-derived registry.
+    beta_registry.default = "beta_primary".into();
+    let spec = beta_registry
+        .connections
+        .values()
+        .next()
+        .cloned()
+        .expect("the env fallback always yields one connection");
+    beta_registry
+        .connections
+        .insert("beta_primary".into(), spec);
+
+    scoped(beta, || set_registry_for_tests(beta_registry.clone()));
+
+    scoped(beta, || {
+        assert_eq!(
+            registry().default,
+            "beta_primary",
+            "beta must see the registry it installed"
+        );
+    });
+    scoped(alpha, || {
+        assert_eq!(
+            registry().default,
+            alpha_registry.default,
+            "alpha must still see its own registry, not beta's"
+        );
+        assert!(
+            !registry().connections.contains_key("beta_primary"),
+            "beta's connection must not appear in alpha's registry"
+        );
+    });
+
+    // Clearing beta's override is beta's business alone.
+    scoped(beta, clear_registry_override);
+    scoped(alpha, || {
+        assert_eq!(registry().default, alpha_registry.default);
     });
 }

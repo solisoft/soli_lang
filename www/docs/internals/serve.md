@@ -86,7 +86,7 @@ Several of the others are security properties rather than tidiness:
 
 Mount-time state — the app root, the jails, the views directory, the model and controller registries — is written to whichever tenant the *calling thread* is bound to. A host mounting a second application from the thread that booted the first would overwrite it, so mounting runs under `tenant::scoped(id, || …)`, which binds for the duration and restores the previous binding afterwards. It restores on panic too: a mount that fails halfway must not leave the thread pointing at a half-built tenant.
 
-`tests/tenant_isolation_test.rs` is the acceptance criterion. It mounts two applications on one thread and asserts each sees only its own root, jail and collections; that a worker thread pinned to a tenant reads what the mounting thread wrote (which is why this state is in the process-wide registry rather than a `thread_local!`); and that the primary tenant is untouched by the others, which is what makes the whole conversion a no-op for `soli serve`.
+`tests/tenant_isolation_test.rs` is the acceptance criterion. It mounts two applications on one thread and asserts each sees only its own root, jail and collections; that neither can see the other's **database registry**, which is the property everything else rests on; that a worker thread pinned to a tenant reads what the mounting thread wrote (which is why this state is in the process-wide registry rather than a `thread_local!`); and that the primary tenant is untouched by the others, which is what makes the whole conversion a no-op for `soli serve`.
 
 ### Which application serves a request
 
