@@ -47,7 +47,27 @@ pub(super) fn detect_postfix_if_kind(source: &str, start: usize) -> Option<Postf
             b'"' | b'\'' | b'`' => quote = Some(c),
             b'(' | b'[' | b'{' => depth += 1,
             b')' | b']' | b'}' => depth -= 1,
-            b'\n' => break,
+            // A comment can say "if" without meaning it.
+            b'#' => {
+                while j < len && bytes[j] != b'\n' {
+                    j += 1;
+                }
+                continue; // let the newline arm below decide
+            }
+            // A newline ends the statement only where nothing is still
+            // open. Inside brackets it is the value wrapping, and the
+            // keyword that makes the statement conditional is on the line
+            // that closes them:
+            //
+            //     parts = parts.concat([
+            //       muted(extra)
+            //     ]) if chosen.length() > shown
+            //
+            // Stopping at the first newline made that read as a block `if`,
+            // which pass 2 then collapsed back to a postfix guard because
+            // the printed value fits on one line — `fmt(fmt(x)) != fmt(x)`,
+            // and the EUI catalogue failed `fmt_corpus_test` on it.
+            b'\n' if depth <= 0 => break,
             b'i' | b'u' if depth == 0 => {
                 if starts_with_keyword(bytes, j, b"if") {
                     // Make sure the preceding char is whitespace — avoid
@@ -1185,6 +1205,11 @@ fn stmt_layout_span(s: &Stmt) -> crate::span::Span {
 /// `guard_clause_to_rewrite` already refuses to *create* one of these via
 /// [`expr_likely_breaks`]; this applies the same policy to a postfix that was
 /// already written that way in the source, so pass 1 emits what pass 2 would.
+///
+/// The converse case — a source postfix whose value wraps but which the
+/// printer will collapse onto one line — is [`detect_postfix_if_kind`]'s to
+/// recognise, and it now does: it reads past a newline while brackets are
+/// still open.
 pub(super) fn postfix_payload_breaks(then_branch: &Stmt) -> bool {
     match &then_branch.kind {
         StmtKind::Expression(e) | StmtKind::Throw(e) => expr_likely_breaks(e),

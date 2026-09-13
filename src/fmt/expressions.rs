@@ -547,18 +547,13 @@ impl Printer<'_> {
                     self.newline();
                     self.write("]");
                 } else {
+                    // `[[` is the lexer's raw-string opener, so the two
+                    // brackets must not meet. `Printer::write` keeps them
+                    // apart for every arm that can produce the sequence —
+                    // including this one, where the nested bracket may be a
+                    // method call's receiver rather than an element that is
+                    // itself an array.
                     self.write("[");
-                    // Avoid `[[` as the first two characters — Soli's lexer
-                    // treats `[[X...` (where X is not a digit/minus/[) as a
-                    // Lua-style multiline string. Adding a space before the
-                    // nested `[` disambiguates.
-                    let first_is_array = elements
-                        .first()
-                        .map(|e| matches!(e.kind, ExprKind::Array(_)))
-                        .unwrap_or(false);
-                    if first_is_array {
-                        self.write(" ");
-                    }
                     for (i, e) in elements.iter().enumerate() {
                         if i > 0 {
                             self.write(", ");

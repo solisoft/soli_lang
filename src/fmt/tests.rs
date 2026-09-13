@@ -346,6 +346,78 @@ fn postfix_guard_with_a_wrapping_value_is_idempotent() {
     );
 }
 
+/// The other half of the same story: a postfix guard whose value wraps in the
+/// *source* but which the printer collapses onto one line. `detect_postfix_if_kind`
+/// stopped at the first newline, so the trailing `if` was invisible and pass 1
+/// emitted a block; pass 2 then found a guard that fits and collapsed it back.
+/// Both passes must now agree on the postfix form.
+#[test]
+fn a_postfix_guard_whose_source_wraps_is_recognised() {
+    let src = concat!(
+        "def f(parts, chosen, shown)\n",
+        "  parts = parts.concat([\n",
+        "    muted(str(chosen.length() - shown))\n",
+        "  ]) if chosen.length() > shown\n",
+        "  parts\n",
+        "end\n",
+    );
+    assert_idempotent(src);
+    let once = format_source(src).expect("format_source failed");
+    assert!(
+        once.contains("]) if chosen.length() > shown")
+            || once.contains(") if chosen.length() > shown"),
+        "expected the guard kept postfix on one line, got:\n{once}"
+    );
+}
+
+/// A `#` comment inside the wrapped value must not be read as the keyword.
+#[test]
+fn a_comment_inside_a_wrapped_guard_is_not_its_keyword() {
+    let src = concat!(
+        "def f(xs, ok)\n",
+        "  xs = xs.concat([\n",
+        "    1 # keep this unless it is slow\n",
+        "  ]) if ok\n",
+        "  xs\n",
+        "end\n",
+    );
+    assert_idempotent(src);
+    let once = format_source(src).expect("format_source failed");
+    assert!(
+        !once.contains("unless ok"),
+        "the comment's `unless` was taken for the guard's keyword:\n{once}"
+    );
+}
+
+/// `[[` opens a Lua-style raw string unless the next byte is a digit, `-` or
+/// `[`, so the printer must never put two brackets together — including when
+/// the inner one is a method call's receiver, which is how the EUI chart
+/// builders write a path list. This used to emit `concat([[` + a newline and
+/// swallow the rest of the file into a string.
+#[test]
+fn a_nested_array_never_becomes_a_raw_string() {
+    let src = concat!(
+        "def f(paths, points, j)\n",
+        "  paths = paths.concat([[0, chart_role(j), 2].concat(flatten_points(points))])\n",
+        "  paths\n",
+        "end\n",
+    );
+    let once = format_source(src).expect("format_source failed");
+    assert!(
+        !once.contains("[[\n") && !once.contains("[[ "),
+        "two brackets met, which the lexer reads as a raw string:\n{once}"
+    );
+    // And what comes out is still the same program.
+    assert_idempotent(src);
+    let tokens = crate::lexer::Scanner::new(&once)
+        .scan_tokens()
+        .expect("the formatted output no longer lexes");
+    assert!(
+        crate::parser::Parser::new(tokens).parse().is_ok(),
+        "the formatted output no longer parses:\n{once}"
+    );
+}
+
 /// The short form still stays postfix — the fix must not expand every guard.
 #[test]
 fn postfix_guard_that_fits_stays_postfix() {

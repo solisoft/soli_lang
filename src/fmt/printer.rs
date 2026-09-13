@@ -120,6 +120,25 @@ impl<'a> Printer<'a> {
             self.at_line_start = false;
             self.column = indent_spaces;
         }
+        // Never let two `[` meet. The lexer reads `[[` as the opener of a
+        // Lua-style raw string unless the byte after it is a digit, `-` or
+        // `[` (`scanner.rs`), so whether a nested array survives the round
+        // trip depends on what happens to follow the second bracket — and a
+        // newline does not qualify. `concat([[0, role(j), 2].concat(pts)])`
+        // was written back as `concat([[` + a line break, and everything to
+        // the next `]]` became a string: the file no longer parsed.
+        //
+        // A space is always legal between the two brackets and always
+        // disambiguates, so the rule belongs here rather than in the handful
+        // of `print_expr` arms that can put one bracket after another. The
+        // array arm used to carry its own version of this, which only
+        // recognised a first element that *was* an array — not one that
+        // merely began with a bracket, which is what a method call on an
+        // array literal does.
+        if s.starts_with('[') && self.out.ends_with('[') {
+            self.out.push(' ');
+            self.column += 1;
+        }
         self.out.push_str(s);
         // Update column: find the last newline in s, count from there
         if let Some(pos) = s.rfind('\n') {
