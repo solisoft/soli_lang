@@ -22,36 +22,38 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
 
-use lazy_static::lazy_static;
 use tokio::sync::mpsc::Sender;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, Instance, NativeFunction, Value};
+use crate::serve::tenant::TenantValue;
 
-lazy_static! {
-    /// id -> chunk sender. `tokio::mpsc::Sender` is `Send + Sync + Clone`.
-    static ref SENDERS: Mutex<HashMap<usize, Sender<Vec<u8>>>> = Mutex::new(HashMap::new());
-}
+/// id -> chunk sender, per application. `tokio::mpsc::Sender` is
+/// `Send + Sync + Clone`. The ids come from a process-wide counter, so a shared
+/// map would not *mis*-deliver — but the senders belong to one application's
+/// in-flight responses, and holding another's is how a stream outlives the app
+/// that opened it.
+static SENDERS: TenantValue<HashMap<usize, Sender<Vec<u8>>>> = TenantValue::new(HashMap::new);
+
 static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
 
 /// Register a chunk sender, returning its id (stored on the `out` instance).
 pub fn register_sender(tx: Sender<Vec<u8>>) -> usize {
     let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
-    SENDERS.lock().unwrap().insert(id, tx);
+    SENDERS.write(|senders| senders.insert(id, tx));
     id
 }
 
 /// Drop the sender for `id` — closes the stream (the receiver sees end-of-body).
 pub fn unregister_sender(id: usize) {
-    SENDERS.lock().unwrap().remove(&id);
+    SENDERS.write(|senders| senders.remove(&id));
 }
 
 /// Push one body chunk. Returns false if the client has disconnected (the
 /// receiver was dropped) so the block can stop early.
 fn send_chunk(id: usize, bytes: Vec<u8>) -> bool {
-    let tx = SENDERS.lock().unwrap().get(&id).cloned();
+    let tx = SENDERS.read(|senders| senders.get(&id).cloned());
     match tx {
         // Safe: the worker thread is not inside a tokio runtime when running
         // the stream block, so blocking_send won't panic. It blocks (back-
@@ -71,19 +73,15 @@ fn send_chunk(id: usize, bytes: Vec<u8>) -> bool {
 // connections cost async-task memory, not OS threads.
 // ---------------------------------------------------------------------------
 
-lazy_static! {
-    static ref SUBSCRIBERS: Mutex<HashMap<String, Vec<Sender<Vec<u8>>>>> =
-        Mutex::new(HashMap::new());
-}
+/// topic -> subscribers, per application. Topic names are chosen by application
+/// code, so two co-hosted apps both publishing to `"updates"` would deliver
+/// into each other's streams.
+static SUBSCRIBERS: TenantValue<HashMap<String, Vec<Sender<Vec<u8>>>>> =
+    TenantValue::new(HashMap::new);
 
 /// Register a subscriber's chunk sender under `topic`.
 pub fn register_subscriber(topic: &str, tx: Sender<Vec<u8>>) {
-    SUBSCRIBERS
-        .lock()
-        .unwrap()
-        .entry(topic.to_string())
-        .or_default()
-        .push(tx);
+    SUBSCRIBERS.write(|subs| subs.entry(topic.to_string()).or_default().push(tx));
 }
 
 /// Fan out `bytes` to every live subscriber of `topic`, pruning disconnected
@@ -91,28 +89,29 @@ pub fn register_subscriber(topic: &str, tx: Sender<Vec<u8>>) {
 /// (but keeps its subscription). Returns the number delivered.
 fn broadcast_bytes(topic: &str, bytes: Vec<u8>) -> usize {
     use tokio::sync::mpsc::error::TrySendError;
-    let mut subs = SUBSCRIBERS.lock().unwrap();
-    let Some(list) = subs.get_mut(topic) else {
-        return 0;
-    };
-    let mut delivered = 0;
-    list.retain(|tx| {
-        if tx.is_closed() {
-            return false; // client disconnected
-        }
-        match tx.try_send(bytes.clone()) {
-            Ok(()) => {
-                delivered += 1;
-                true
+    SUBSCRIBERS.write(|subs| {
+        let Some(list) = subs.get_mut(topic) else {
+            return 0;
+        };
+        let mut delivered = 0;
+        list.retain(|tx| {
+            if tx.is_closed() {
+                return false; // client disconnected
             }
-            Err(TrySendError::Full(_)) => true, // slow client: drop msg, keep sub
-            Err(TrySendError::Closed(_)) => false,
+            match tx.try_send(bytes.clone()) {
+                Ok(()) => {
+                    delivered += 1;
+                    true
+                }
+                Err(TrySendError::Full(_)) => true, // slow client: drop msg, keep sub
+                Err(TrySendError::Closed(_)) => false,
+            }
+        });
+        if list.is_empty() {
+            subs.remove(topic);
         }
-    });
-    if list.is_empty() {
-        subs.remove(topic);
-    }
-    delivered
+        delivered
+    })
 }
 
 /// Broadcast `data` as an SSE frame to every subscriber of `topic`. Public
@@ -130,16 +129,17 @@ pub fn subscriber_count_for(topic: &str) -> usize {
 
 /// Number of live subscribers on `topic` (best-effort; prunes closed ones).
 fn subscriber_count(topic: &str) -> usize {
-    let mut subs = SUBSCRIBERS.lock().unwrap();
-    let Some(list) = subs.get_mut(topic) else {
-        return 0;
-    };
-    list.retain(|tx| !tx.is_closed());
-    let n = list.len();
-    if n == 0 {
-        subs.remove(topic);
-    }
-    n
+    SUBSCRIBERS.write(|subs| {
+        let Some(list) = subs.get_mut(topic) else {
+            return 0;
+        };
+        list.retain(|tx| !tx.is_closed());
+        let n = list.len();
+        if n == 0 {
+            subs.remove(topic);
+        }
+        n
+    })
 }
 
 /// A stream a controller asked for, captured during the request handler run.

@@ -130,13 +130,32 @@ The two registries are held as `Arc`s behind their `TenantValue` (`live_registry
 
 One thing that had to survive the conversion: `put_chunk` assembled a finished file, dropped the chunk lock explicitly, *then* called `put`, which takes the store lock. Wrapping the body in a closure would have nested the two and fixed a lock order this file deliberately does not have. It now returns what it assembled and calls `put` after the closure.
 
-### Deliberately left alone
+### Deliberately left shared
 
-Three, each for a reason worth reading before "finishing" them:
+Four, each for a reason worth reading before "finishing" them:
 
 * **`mixin_registry::HOOKS`** cannot be keyed per application on its own. The only reason a cache-hit thread finds anything there is that some *other* thread registered it, and `compiled_cache::MODULE_CACHE` is keyed by source text, not by application. Key the hooks per tenant and the second app to compile an identical module gets a cache hit, registers nothing under its own id, and silently loses every `included do`. Fixing it properly means keying both by something content-derived — a change to the compile cache.
 * **`server::ROUTES`** holds `Vec<Value>` for middleware, so it is `Rc`-based and can only ever be a `TenantLocal`, never a `Tenant` field. Under the rule that worker threads serve one application for life, a thread-local already *is* per application, and keying it would put a hash lookup on the route index for every request. What the rule does not cover is boot — see the note in `builtins/server.rs`.
-* **`.env`** is loaded with `std::env::set_var`, which is process-wide whatever the tenant registry does. Routing it per application means every `std::env::var` read in the tree consults the tenant first — hundreds of sites, and a decision about what a library call inside an app should see. It belongs with the host that actually loads two `.env` files, not before it.
+* **SQL connection pools** (`db/{postgres,mysql,sqlite}.rs`) are keyed by connection name **and URL**. Two applications pointing a connection called `primary` at different databases already get different pools, and when the URL matches, sharing the pool is the point.
+* **`serve/eui/assets.rs`** is content-addressed and bounded: the same bytes uploaded by two applications are one entry, which is the cross-tenant sharing step 6 wants, not a leak.
+
+### Still process-global
+
+Known, not yet converted. None is on the request-auth or data path; each is its own small pass:
+
+| Where | What it is |
+|---|---|
+| `builtins/logger.rs` | log level, format and the capture buffer |
+| `builtins/resilience.rs` | named circuit breakers and semaphores — `payments` in two apps would trip together |
+| `builtins/mail_outbox.rs` | captured mail, test mode only |
+| `builtins/solidb.rs`, `imap.rs`, `pop3.rs` | handle tables keyed by an integer id |
+| `serve/files/mod.rs` | the file-mode root and extra asset roots — a process in file mode serves one directory by definition |
+| `serve/openapi.rs`, `serve/otel.rs`, `serve/prod_log.rs`, `metrics.rs` | observability config, read once from the environment |
+| `jobs/mod.rs`, `jobs/engine.rs` | the job engine's config, node id and in-flight list |
+| `bundle.rs` | the bundle metadata of a protected build |
+| `interpreter/symbol.rs` | the interner, which leaks by design — see the hibernation note under step 5 of the plan |
+
+Everything else that looked like a candidate is a `thread_local!`, and a worker thread serves one application for life.
 
 ## Measuring memory
 

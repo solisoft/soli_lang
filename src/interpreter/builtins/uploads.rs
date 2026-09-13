@@ -1,15 +1,15 @@
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use lazy_static::lazy_static;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::RwLock;
 
-lazy_static! {
-    static ref SOLIDB_ADDRESS: RwLock<Option<String>> = RwLock::new(None);
-}
+/// The SoliDB address attachments are stored against, for the application on
+/// this thread. Per application: it falls back to that app's `SOLIDB_HOST`, and
+/// an attachment belongs to the database its app writes to.
+static SOLIDB_ADDRESS: crate::serve::tenant::TenantValue<Option<String>> =
+    crate::serve::tenant::TenantValue::new(|| None);
 
 /// Sanitize filename to prevent path traversal and other security issues.
 /// Removes directory components, leading/trailing dots and spaces, and dangerous characters.
@@ -40,16 +40,14 @@ fn sanitize_filename(filename: &str) -> String {
 }
 
 pub fn get_solidb_address() -> Option<String> {
-    if let Some(addr) = SOLIDB_ADDRESS.read().ok().and_then(|s| s.clone()) {
+    if let Some(addr) = SOLIDB_ADDRESS.read(|a| a.clone()) {
         return Some(addr);
     }
     std::env::var("SOLIDB_HOST").ok()
 }
 
 pub fn set_solidb_address(addr: &str) {
-    if let Ok(mut guard) = SOLIDB_ADDRESS.write() {
-        *guard = Some(addr.to_string());
-    }
+    SOLIDB_ADDRESS.write(|a| *a = Some(addr.to_string()));
 }
 
 pub fn register_upload_builtins(env: &mut Environment) {
