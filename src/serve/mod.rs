@@ -311,8 +311,11 @@ pub fn set_tokio_handle(handle: tokio::runtime::Handle) {
 /// them cold. An EUI session is pinned to one worker by hashing its id;
 /// these are the queues, in realtime-worker order, and `lv_sender_for`
 /// picks one.
-static PINNED_LV_TX: std::sync::OnceLock<Vec<channel::Sender<LiveViewEventData>>> =
-    std::sync::OnceLock::new();
+/// Per application: these are *that* application's realtime worker queues, and
+/// its workers hold its interpreters. A `OnceLock` here meant the second
+/// application to boot silently kept the first one's queues, so its EUI
+/// sessions would have been rendered by workers that had never loaded its code.
+static PINNED_LV_TX: TenantCell<Vec<channel::Sender<LiveViewEventData>>> = TenantCell::new();
 
 /// The queue for one LiveView instance's events: its pinned worker's for an
 /// EUI component, the shared queue for everything else.
@@ -331,11 +334,12 @@ pub(crate) fn lv_sender_for(
         }
     }
     let _ = (liveview_id, component);
-    LV_EVENT_TX.get().cloned()
+    LV_EVENT_TX.get()
 }
 
-static LV_EVENT_TX: std::sync::OnceLock<channel::Sender<LiveViewEventData>> =
-    std::sync::OnceLock::new();
+/// The shared LiveView queue, per application for the same reason as
+/// [`PINNED_LV_TX`].
+static LV_EVENT_TX: TenantCell<channel::Sender<LiveViewEventData>> = TenantCell::new();
 use crate::interpreter::builtins::controller::controller::ControllerInfo;
 use crate::interpreter::builtins::controller::CONTROLLER_REGISTRY;
 use crate::interpreter::builtins::session::{
@@ -367,6 +371,7 @@ pub struct UploadedFile {
 use repl_session::REPL_STORE;
 
 // Import worker pool structures
+use tenant::TenantCell;
 use worker_pool::{HotReloadVersions, WorkerQueues, WorkerSender};
 
 /// Request data sent to interpreter thread
@@ -1157,7 +1162,7 @@ fn run_hyper_server_worker_pool(
     ) = channel::bounded(num_workers * capacity_per_worker);
     // Make the sender available to `handle_liveview_event` so it can spawn
     // per-instance tick tasks that re-enter the worker queue.
-    let _ = LV_EVENT_TX.set(lv_event_tx.clone());
+    LV_EVENT_TX.set_once(lv_event_tx.clone());
     // crossbeam Sender is cheap to clone - no need for Arc<Mutex<Option<>>>
     // Shutdown state lives in `serve::shutdown` as process-global atomics rather
     // than an Arc threaded through here: the readiness probe is answered deep
@@ -2144,7 +2149,7 @@ fn run_hyper_server_worker_pool(
     )> = (0..num_pinned)
         .map(|_| channel::bounded(capacity_per_worker))
         .collect();
-    let _ = PINNED_LV_TX.set(pinned_lv.iter().map(|(tx, _)| tx.clone()).collect());
+    PINNED_LV_TX.set_once(pinned_lv.iter().map(|(tx, _)| tx.clone()).collect());
 
     for i in 0..num_workers {
         // Role for this worker. When the pool isn't split, every worker drains

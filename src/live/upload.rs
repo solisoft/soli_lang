@@ -6,10 +6,11 @@
 //! a multipart `find_uploaded_file` result.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use base64::{engine::general_purpose, Engine as _};
+
+use crate::serve::tenant::TenantValue;
 
 /// Default per-file cap (bytes). Matches a typical `SOLI_MAX_BODY_SIZE` floor.
 pub const DEFAULT_MAX_BYTES: usize = 8 * 1024 * 1024;
@@ -51,9 +52,16 @@ struct Stored {
     created: Instant,
 }
 
-fn store() -> &'static Mutex<HashMap<String, Stored>> {
-    static STORE: std::sync::OnceLock<Mutex<HashMap<String, Stored>>> = std::sync::OnceLock::new();
-    STORE.get_or_init(|| Mutex::new(HashMap::new()))
+/// Files uploaded to this application, held until the session takes them back.
+///
+/// Per application, and not negotiable: these are user bytes keyed by a
+/// server-minted id. Shared across a process serving two applications, an id
+/// minted by one would resolve in the other — the `owner` check would still
+/// hold, but the store itself would not be the tenant's own.
+static STORE: TenantValue<HashMap<String, Stored>> = TenantValue::new(HashMap::new);
+
+fn with_store<R>(f: impl FnOnce(&mut HashMap<String, Stored>) -> R) -> R {
+    STORE.write(f)
 }
 
 /// Put one uploaded file in the store. Returns the public metadata (no bytes).
@@ -75,50 +83,52 @@ pub fn put(
     }
     let id = uuid::Uuid::new_v4().to_string();
     let size = data.len();
-    let mut map = store().lock().unwrap_or_else(|e| e.into_inner());
-    prune_locked(&mut map);
-    let owner_key = owner.map(|s| s.to_string());
-    let mine = map.values().filter(|v| v.owner == owner_key).count();
-    if mine >= MAX_PER_OWNER {
-        return Err("too many pending LiveView uploads for this session".to_string());
-    }
-    if map.len() >= MAX_STORED {
-        return Err("too many pending LiveView uploads".to_string());
-    }
-    map.insert(
-        id.clone(),
-        Stored {
-            owner: owner_key,
-            name: name.to_string(),
-            filename: filename.to_string(),
-            content_type: content_type.to_string(),
-            data,
-            created: Instant::now(),
-        },
-    );
-    Ok(serde_json::json!({
-        "id": id,
-        "name": name,
-        "filename": filename,
-        "content_type": content_type,
-        "size": size,
-    }))
+    with_store(|map| {
+        prune_locked(map);
+        let owner_key = owner.map(|s| s.to_string());
+        let mine = map.values().filter(|v| v.owner == owner_key).count();
+        if mine >= MAX_PER_OWNER {
+            return Err("too many pending LiveView uploads for this session".to_string());
+        }
+        if map.len() >= MAX_STORED {
+            return Err("too many pending LiveView uploads".to_string());
+        }
+        map.insert(
+            id.clone(),
+            Stored {
+                owner: owner_key,
+                name: name.to_string(),
+                filename: filename.to_string(),
+                content_type: content_type.to_string(),
+                data,
+                created: Instant::now(),
+            },
+        );
+        Ok(serde_json::json!({
+            "id": id,
+            "name": name,
+            "filename": filename,
+            "content_type": content_type,
+            "size": size,
+        }))
+    })
 }
 
 /// Take a stored file, or `None` if unknown, expired, or owned by another
 /// session. A mismatch leaves the entry in place — a wrong guess must not
 /// consume someone else's pending upload.
 pub fn take(id: &str, taker: Option<&str>) -> Option<serde_json::Value> {
-    let mut map = store().lock().unwrap_or_else(|e| e.into_inner());
-    prune_locked(&mut map);
-    let owner = map.get(id)?.owner.clone();
-    if let Some(owner) = owner {
-        if taker != Some(owner.as_str()) {
-            return None;
+    with_store(|map| {
+        prune_locked(map);
+        let owner = map.get(id)?.owner.clone();
+        if let Some(owner) = owner {
+            if taker != Some(owner.as_str()) {
+                return None;
+            }
         }
-    }
-    let stored = map.remove(id)?;
-    Some(entry_json(&stored))
+        let stored = map.remove(id)?;
+        Some(entry_json(&stored))
+    })
 }
 
 fn entry_json(stored: &Stored) -> serde_json::Value {
@@ -163,10 +173,12 @@ impl PartialUpload {
     }
 }
 
-fn chunks() -> &'static Mutex<HashMap<String, PartialUpload>> {
-    static CHUNKS: std::sync::OnceLock<Mutex<HashMap<String, PartialUpload>>> =
-        std::sync::OnceLock::new();
-    CHUNKS.get_or_init(|| Mutex::new(HashMap::new()))
+/// Partially received resumable uploads, per application for the same reason
+/// as [`STORE`].
+static CHUNKS: TenantValue<HashMap<String, PartialUpload>> = TenantValue::new(HashMap::new);
+
+fn with_chunks<R>(f: impl FnOnce(&mut HashMap<String, PartialUpload>) -> R) -> R {
+    CHUNKS.write(f)
 }
 
 /// Accept one chunk of a resumable upload. `index` is 0-based. When every
@@ -195,78 +207,108 @@ pub fn put_chunk(
             DEFAULT_MAX_BYTES
         ));
     }
-    let mut map = chunks().lock().unwrap_or_else(|e| e.into_inner());
-    let now = Instant::now();
-    map.retain(|_, v| now.duration_since(v.touched) < PARTIAL_IDLE_TTL);
+    // What the chunk lock produced: either a finished answer, or the parts of a
+    // completed file to hand to `put`.
+    enum Assembled {
+        Pending(serde_json::Value),
+        Complete {
+            name: String,
+            filename: String,
+            content_type: String,
+            bytes: Vec<u8>,
+        },
+    }
 
-    let owner_key = owner.map(|s| s.to_string());
-    // Admission control, before the entry exists: an unknown `upload_id` is a
-    // new allocation and has to fit under every cap. A chunk for an upload
-    // already in flight skips this — it consumes a slot that was granted.
-    if !map.contains_key(upload_id) {
-        let mine = map.values().filter(|v| v.owner == owner_key).count();
-        if mine >= MAX_PARTIAL_PER_OWNER {
-            return Err("too many in-progress LiveView uploads for this session".to_string());
-        }
-        if map.len() >= MAX_PARTIAL {
-            return Err("too many in-progress LiveView uploads".to_string());
-        }
-    }
-    let held: usize = map.values().map(|v| v.held_bytes(None)).sum();
+    let outcome = with_chunks(|map| {
+        let now = Instant::now();
+        map.retain(|_, v| now.duration_since(v.touched) < PARTIAL_IDLE_TTL);
 
-    let entry = map
-        .entry(upload_id.to_string())
-        .or_insert_with(|| PartialUpload {
-            owner: owner_key,
-            name: name.to_string(),
-            filename: filename.to_string(),
-            content_type: content_type.to_string(),
-            total,
-            received: vec![None; total],
-            touched: now,
-        });
-    if entry.total != total {
-        return Err("chunk count changed mid-upload".to_string());
-    }
-    if let Some(owner_id) = &entry.owner {
-        if owner != Some(owner_id.as_str()) {
-            return Err("upload belongs to another session".to_string());
+        let owner_key = owner.map(|s| s.to_string());
+        // Admission control, before the entry exists: an unknown `upload_id` is a
+        // new allocation and has to fit under every cap. A chunk for an upload
+        // already in flight skips this — it consumes a slot that was granted.
+        if !map.contains_key(upload_id) {
+            let mine = map.values().filter(|v| v.owner == owner_key).count();
+            if mine >= MAX_PARTIAL_PER_OWNER {
+                return Err("too many in-progress LiveView uploads for this session".to_string());
+            }
+            if map.len() >= MAX_PARTIAL {
+                return Err("too many in-progress LiveView uploads".to_string());
+            }
         }
+        let held: usize = map.values().map(|v| v.held_bytes(None)).sum();
+
+        let entry = map
+            .entry(upload_id.to_string())
+            .or_insert_with(|| PartialUpload {
+                owner: owner_key,
+                name: name.to_string(),
+                filename: filename.to_string(),
+                content_type: content_type.to_string(),
+                total,
+                received: vec![None; total],
+                touched: now,
+            });
+        if entry.total != total {
+            return Err("chunk count changed mid-upload".to_string());
+        }
+        if let Some(owner_id) = &entry.owner {
+            if owner != Some(owner_id.as_str()) {
+                return Err("upload belongs to another session".to_string());
+            }
+        }
+        // Ignore the slot being written: a client retrying chunk 3 must not be
+        // charged for both the old copy and the new one.
+        let replaced = entry.received[index].as_ref().map(|b| b.len()).unwrap_or(0);
+        let so_far = entry.held_bytes(Some(index));
+        if so_far + data.len() > DEFAULT_MAX_BYTES {
+            return Err(format!(
+                "file exceeds {} byte LiveView upload limit",
+                DEFAULT_MAX_BYTES
+            ));
+        }
+        if held - replaced + data.len() > MAX_PARTIAL_BYTES {
+            return Err("LiveView upload staging is full, retry shortly".to_string());
+        }
+        entry.received[index] = Some(data);
+        entry.touched = now;
+        let got = entry.received.iter().filter(|c| c.is_some()).count();
+        if got < total {
+            return Ok(Assembled::Pending(serde_json::json!({
+                "id": upload_id,
+                "pending": true,
+                "received": got,
+                "total": total,
+            })));
+        }
+        let mut bytes = Vec::new();
+        for part in &entry.received {
+            bytes.extend_from_slice(part.as_ref().unwrap());
+        }
+        let name = entry.name.clone();
+        let filename = entry.filename.clone();
+        let content_type = entry.content_type.clone();
+        map.remove(upload_id);
+        Ok(Assembled::Complete {
+            name,
+            filename,
+            content_type,
+            bytes,
+        })
+    })?;
+
+    // `put` takes the *store* lock. The chunk lock is released before we get
+    // here, as it was by the explicit `drop` this replaces: nesting the two
+    // would fix a lock order this file deliberately does not have.
+    match outcome {
+        Assembled::Pending(pending) => Ok(pending),
+        Assembled::Complete {
+            name,
+            filename,
+            content_type,
+            bytes,
+        } => put(owner, &name, &filename, &content_type, bytes),
     }
-    // Ignore the slot being written: a client retrying chunk 3 must not be
-    // charged for both the old copy and the new one.
-    let replaced = entry.received[index].as_ref().map(|b| b.len()).unwrap_or(0);
-    let so_far = entry.held_bytes(Some(index));
-    if so_far + data.len() > DEFAULT_MAX_BYTES {
-        return Err(format!(
-            "file exceeds {} byte LiveView upload limit",
-            DEFAULT_MAX_BYTES
-        ));
-    }
-    if held - replaced + data.len() > MAX_PARTIAL_BYTES {
-        return Err("LiveView upload staging is full, retry shortly".to_string());
-    }
-    entry.received[index] = Some(data);
-    entry.touched = now;
-    let got = entry.received.iter().filter(|c| c.is_some()).count();
-    if got < total {
-        return Ok(serde_json::json!({
-            "id": upload_id,
-            "pending": true,
-            "received": got,
-            "total": total,
-        }));
-    }
-    let mut assembled = Vec::new();
-    for part in &entry.received {
-        assembled.extend_from_slice(part.as_ref().unwrap());
-    }
-    let name = entry.name.clone();
-    let filename = entry.filename.clone();
-    let content_type = entry.content_type.clone();
-    map.remove(upload_id);
-    drop(map);
-    put(owner, &name, &filename, &content_type, assembled)
 }
 
 /// Replace `{ "id": "…" }` file hashes in a LiveView event's params with
