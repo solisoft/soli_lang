@@ -12,8 +12,8 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use crate::interpreter::value::HashPairs;
+use crate::serve::tenant::TenantValue;
 
-use lazy_static::lazy_static;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
@@ -302,7 +302,7 @@ pub fn spawn_session_readiness_probe(runtime: tokio::runtime::Handle) {
 }
 
 // SEC-038a: the previous `SessionStoreManager` cached one Arc<dyn SessionStore>
-// at first access via a lazy_static. `configure_session` updated CURRENT_STORE
+// at first access. `configure_session` updated CURRENT_STORE
 // but the manager's cached pointer never moved, so a runtime call like
 // `session_configure({"driver": "disk"})` was a silent no-op for dispatch.
 // Helpers now go straight through `get_current_store()` per call, which reads
@@ -571,43 +571,55 @@ fn is_loopback_session_host(host: &str) -> bool {
     false
 }
 
-lazy_static! {
-    static ref SESSION_CONFIG: RwLock<SessionConfig> = RwLock::new(SessionConfig::default());
-    // SEC-038: build the startup store from the env-derived config so
-    // SOLI_SESSION_TTL is honored from the first request, not just after
-    // an explicit `session_configure` call. Falls back to a TTL-aware
-    // in-memory store if the configured backend errors at boot.
-    static ref CURRENT_STORE: RwLock<Arc<dyn SessionStore>> = {
-        let cfg = SessionConfig::default();
-        let store = cfg.create_store().unwrap_or_else(|e| {
-            // Loud, not silent: a misconfigured driver (missing secret, bad
-            // SoliDB host) downgrading to in-memory is exactly the kind of
-            // surprise an operator needs to see in the logs.
-            eprintln!(
-                "[session] falling back to in_memory driver: {} (requested driver: {})",
-                e, cfg.driver
-            );
-            Arc::new(InMemorySessionStore::new().with_max_age(Duration::from_secs(cfg.ttl)))
-        });
-        RwLock::new(store)
-    };
+/// Session settings for the application on this thread.
+///
+/// Per application, and among the most consequential: the TTL, the cookie
+/// attributes and — through `SOLI_SESSION_SECRET` — the key that seals a
+/// cookie-driver session. Two applications sharing this would share the
+/// sealing key, which means either could mint a session the other trusts.
+static SESSION_CONFIG: TenantValue<SessionConfig> = TenantValue::new(SessionConfig::default);
+
+/// The live session store for the application on this thread.
+///
+/// SEC-038: built from the env-derived config so `SOLI_SESSION_TTL` is honored
+/// from the first request, not just after an explicit `session_configure`
+/// call. Falls back to a TTL-aware in-memory store if the configured backend
+/// errors at boot.
+///
+/// Per application for the same reason as the config, and one more: a session
+/// id is looked up by key, so a shared store would resolve one application's id
+/// inside another.
+static CURRENT_STORE: TenantValue<Arc<dyn SessionStore>> = TenantValue::new(default_store);
+
+fn default_store() -> Arc<dyn SessionStore> {
+    let cfg = SessionConfig::default();
+    cfg.create_store().unwrap_or_else(|e| {
+        // Loud, not silent: a misconfigured driver (missing secret, bad
+        // SoliDB host) downgrading to in-memory is exactly the kind of
+        // surprise an operator needs to see in the logs.
+        eprintln!(
+            "[session] falling back to in_memory driver: {} (requested driver: {})",
+            e, cfg.driver
+        );
+        Arc::new(InMemorySessionStore::new().with_max_age(Duration::from_secs(cfg.ttl)))
+    })
 }
 
 pub fn get_session_config() -> SessionConfig {
-    SESSION_CONFIG.read().unwrap().clone()
+    SESSION_CONFIG.read(|cfg| cfg.clone())
 }
 
 pub fn configure_session(config: SessionConfig) -> Result<(), String> {
+    // Built before either lock is taken: `create_store` can reach SoliDB or
+    // SoliKV, and neither of these values should be held across that.
     let store = config.create_store()?;
-    let mut current = CURRENT_STORE.write().map_err(|e| e.to_string())?;
-    *current = store;
-    let mut cfg = SESSION_CONFIG.write().map_err(|e| e.to_string())?;
-    *cfg = config;
+    CURRENT_STORE.write(|current| *current = store);
+    SESSION_CONFIG.write(|cfg| *cfg = config);
     Ok(())
 }
 
 pub fn get_current_store() -> Arc<dyn SessionStore> {
-    CURRENT_STORE.read().unwrap().clone()
+    CURRENT_STORE.read(Arc::clone)
 }
 
 /// Session data with expiration.
@@ -1063,10 +1075,8 @@ pub fn extract_session_id_from_cookie(cookie_header: Option<&str>) -> Option<Str
 /// SameSite=None) is preferable to hard-failing startup; the docs reflect
 /// the implicit pairing.
 pub fn create_session_cookie(session_id: &str, secure: bool) -> String {
-    let cfg = SESSION_CONFIG.read().ok();
-    let max_age = cfg.as_ref().map(|c| c.ttl).unwrap_or(24 * 60 * 60);
-    let same_site = cfg.as_ref().map(|c| c.same_site).unwrap_or(SameSite::Lax);
-    let host_prefix = cfg.as_ref().map(|c| c.host_prefix).unwrap_or(false);
+    let (max_age, same_site, host_prefix) =
+        SESSION_CONFIG.read(|cfg| (cfg.ttl, cfg.same_site, cfg.host_prefix));
     // SEC-079: SameSite=None requires Secure per browser policy.
     let secure = secure || same_site == SameSite::None;
     let secure_flag = if secure { "; Secure" } else { "" };
@@ -2099,8 +2109,19 @@ mod tests {
         assert!(cookie.contains(&format!("session_id={resolved}")));
     }
 
-    /// Serialize tests that mutate the process-global SESSION_CONFIG /
-    /// CURRENT_STORE. Cargo runs tests in a module in parallel by default,
+    /// This tenant's session config, for the tests that save and restore it.
+    fn peek_config() -> SessionConfig {
+        SESSION_CONFIG.read(|cfg| cfg.clone())
+    }
+
+    /// Install this tenant's session config outright.
+    fn put_config(next: SessionConfig) {
+        SESSION_CONFIG.write(|cfg| *cfg = next);
+    }
+
+    /// Serialize tests that mutate the tenant's session config or store. Every
+    /// test here runs on the primary tenant, and cargo runs a module's tests in
+    /// parallel by default,
     /// and these globals are read by every other test in this module.
     /// Taken BOTH by the tests that mutate the globals AND by the lifecycle
     /// tests above that depend on `get_current_store()` returning the same
@@ -2115,11 +2136,8 @@ mod tests {
     #[test]
     fn session_ttl_threads_through_to_cookie_and_store() {
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let prev = SESSION_CONFIG.read().unwrap().clone();
-        {
-            let mut cfg = SESSION_CONFIG.write().unwrap();
-            cfg.ttl = 300;
-        }
+        let prev = peek_config();
+        SESSION_CONFIG.write(|cfg| cfg.ttl = 300);
         let cookie = create_session_cookie("abc", false);
         assert!(
             cookie.contains("Max-Age=300"),
@@ -2143,8 +2161,7 @@ mod tests {
         );
 
         // Restore.
-        let mut cfg = SESSION_CONFIG.write().unwrap();
-        *cfg = prev;
+        put_config(prev);
     }
 
     /// SEC-079: SameSite=Lax / Strict cookies follow the caller's request-
@@ -2154,29 +2171,23 @@ mod tests {
     #[test]
     fn samesite_lax_omits_secure_on_plain_http() {
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let prev = SESSION_CONFIG.read().unwrap().clone();
-        {
-            let mut cfg = SESSION_CONFIG.write().unwrap();
-            cfg.same_site = SameSite::Lax;
-        }
+        let prev = peek_config();
+        SESSION_CONFIG.write(|cfg| cfg.same_site = SameSite::Lax);
         let cookie = create_session_cookie("abc", false);
         assert!(cookie.contains("SameSite=Lax"), "{}", cookie);
         assert!(!cookie.contains("Secure"), "{}", cookie);
-        *SESSION_CONFIG.write().unwrap() = prev;
+        put_config(prev);
     }
 
     #[test]
     fn samesite_strict_omits_secure_on_plain_http() {
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let prev = SESSION_CONFIG.read().unwrap().clone();
-        {
-            let mut cfg = SESSION_CONFIG.write().unwrap();
-            cfg.same_site = SameSite::Strict;
-        }
+        let prev = peek_config();
+        SESSION_CONFIG.write(|cfg| cfg.same_site = SameSite::Strict);
         let cookie = create_session_cookie("abc", false);
         assert!(cookie.contains("SameSite=Strict"), "{}", cookie);
         assert!(!cookie.contains("Secure"), "{}", cookie);
-        *SESSION_CONFIG.write().unwrap() = prev;
+        put_config(prev);
     }
 
     #[test]
@@ -2185,11 +2196,8 @@ mod tests {
         // every modern browser; emit Secure regardless of the caller's
         // scheme detection so the cookie stays useful.
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let prev = SESSION_CONFIG.read().unwrap().clone();
-        {
-            let mut cfg = SESSION_CONFIG.write().unwrap();
-            cfg.same_site = SameSite::None;
-        }
+        let prev = peek_config();
+        SESSION_CONFIG.write(|cfg| cfg.same_site = SameSite::None);
         let cookie = create_session_cookie("abc", false);
         assert!(cookie.contains("SameSite=None"), "{}", cookie);
         assert!(
@@ -2197,7 +2205,7 @@ mod tests {
             "SameSite=None must always carry Secure: {}",
             cookie
         );
-        *SESSION_CONFIG.write().unwrap() = prev;
+        put_config(prev);
     }
 
     #[test]
@@ -2205,11 +2213,8 @@ mod tests {
         // The auto-Secure for SameSite=None must not double up the flag
         // when the caller already detected HTTPS.
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let prev = SESSION_CONFIG.read().unwrap().clone();
-        {
-            let mut cfg = SESSION_CONFIG.write().unwrap();
-            cfg.same_site = SameSite::None;
-        }
+        let prev = peek_config();
+        SESSION_CONFIG.write(|cfg| cfg.same_site = SameSite::None);
         let cookie = create_session_cookie("abc", true);
         assert_eq!(
             cookie.matches("Secure").count(),
@@ -2217,11 +2222,11 @@ mod tests {
             "Secure must appear exactly once: {}",
             cookie
         );
-        *SESSION_CONFIG.write().unwrap() = prev;
+        put_config(prev);
     }
 
     /// SEC-038a: configure_session must swap the live store at runtime.
-    /// Previously the lazy_static SessionStoreManager cached one Arc clone
+    /// Previously the lazily-built SessionStoreManager cached one Arc clone
     /// at first access, so dispatch kept going to the original store
     /// regardless of subsequent configure_session() calls.
     #[test]
@@ -2229,7 +2234,7 @@ mod tests {
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
 
         // Snapshot and rebuild the default store so the test starts clean.
-        let prev_cfg = SESSION_CONFIG.read().unwrap().clone();
+        let prev_cfg = peek_config();
         configure_session(prev_cfg.clone()).expect("reset to default config");
 
         let store_before = get_current_store();
@@ -2266,7 +2271,7 @@ mod tests {
     fn cookie_driver_round_trips_session_through_sealed_cookie() {
         let _guard = GLOBAL_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let env = fresh_env();
-        let prev_cfg = SESSION_CONFIG.read().unwrap().clone();
+        let prev_cfg = peek_config();
         let mut cfg = prev_cfg.clone();
         cfg.driver = SessionDriver::Cookie;
         cfg.secret = Some("0123456789abcdef0123456789abcdef".to_string());
