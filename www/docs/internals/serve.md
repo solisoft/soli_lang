@@ -36,6 +36,8 @@ File: `src/serve/mod.rs`. Read it top-to-bottom once; it is the map.
 
 Two things follow. The registry holds `Rc` values, so it is per *thread*, not per process: nothing is shared across workers. And test-only builtins are deliberately absent — they belong to `Interpreter::new`, the `soli run` / `soli test` path, which owns its environment outright. The template engine used to register them unconditionally, so `visit` and `assert_eq` resolved inside a served view.
 
+The root is **sealed** once built: `Environment::assign` on a sealed scope answers `NotFound`, so an application that writes `print = …` defines `print` in its own child scope and shadows the builtin there. Without the seal, `assign` walked the chain and rewrote the shared registry — the template engine and the view helpers on that thread saw the override, and so did the next interpreter built on that thread after a hot reload or a worker restart, since the root outlives them. Sealing restores exactly what separate registries gave each consumer: an override that is local and dies with the interpreter that made it. Verified on a served app: a controller that hijacks `str` renders its own version while the view in the same request still renders the real one.
+
 Don't expect this to move RSS; a registry is a few hundred KB. See [Measuring memory](#measuring-memory).
 
 ## Tenants
@@ -43,6 +45,10 @@ Don't expect this to move RSS; a registry is a few hundred KB. See [Measuring me
 `src/serve/tenant.rs` is the seam that per-application state moves behind, so a process can eventually serve more than one app.
 
 A `Tenant` owns what belongs to one application; the process holds a registry of them; each thread knows which one it is serving, and worker threads are pinned, so the current tenant is fixed when the thread starts rather than looked up per request. With a single application the registry holds exactly one tenant (`TenantId::PRIMARY`) and every thread falls back to it, so nothing observable changes.
+
+The HTTP side is different. A request future runs on whichever tokio thread polls it next and moves between them at every `.await`, so a thread-local binding is meaningless there — the thread that starts a request is not the one that finishes it. Yet everything the request path consults before handing off to a worker is keyed by tenant: the CORS rules, the CSRF exemptions, the cookie jar, the session config, the dev-bar store. So the request future is scoped with `tenant::task_scope(id, …)` — a tokio task-local that travels with the future — as soon as the `Host` header has said which application it belongs to, and `current_id()` consults that binding before the thread-local. `cors::evaluate` runs *inside* the scope for that reason, after the host is resolved rather than before.
+
+**Lock poisoning** is tolerated throughout `tenant.rs`, on purpose. `TenantValue::read` retries until the value is found, so a poisoned lock treated as "absent" would spin forever; a jail that read as "none" after a panic elsewhere would lift a security boundary; an app root that fell back to `.` would resolve views against the process's working directory. The values are plain maps — a writer that panicked mid-closure leaves an entry, not a torn lock — so `into_inner` is the safe answer everywhere.
 
 Which state goes where is not a matter of taste:
 
@@ -138,6 +144,13 @@ Four, each for a reason worth reading before "finishing" them:
 * **`server::ROUTES`** holds `Vec<Value>` for middleware, so it is `Rc`-based and can only ever be a `TenantLocal`, never a `Tenant` field. Under the rule that worker threads serve one application for life, a thread-local already *is* per application, and keying it would put a hash lookup on the route index for every request. What the rule does not cover is boot — see the note in `builtins/server.rs`.
 * **SQL connection pools** (`db/{postgres,mysql,sqlite}.rs`) are keyed by connection name **and URL**. Two applications pointing a connection called `primary` at different databases already get different pools, and when the URL matches, sharing the pool is the point.
 * **`serve/eui/assets.rs`** is content-addressed and bounded: the same bytes uploaded by two applications are one entry, which is the cross-tenant sharing step 6 wants, not a leak.
+
+### Left for the host (step 4)
+
+Not globals, but gaps a multi-application host has to close before it is correct:
+
+* **Spawned realtime tasks.** A tokio task-local does not cross `tokio::spawn`, so the tasks the WebSocket, EUI and LiveView upgrades spawn — and the tick tasks after them — start unbound and fall back to `PRIMARY`. Right for one application; a host must hand each spawn its tenant, in the shape `tokio::spawn(tenant::task_scope(id, fut))`.
+* **`.env`.** `load_env_files` uses `std::env::set_var`, which is process-wide whatever the tenant registry does. Routing it per application means every `std::env::var` read in the tree consults the tenant first — hundreds of sites, and a decision about what a library call inside an app should see. It belongs with the host that actually loads two `.env` files, not before it.
 
 ### Still process-global
 
