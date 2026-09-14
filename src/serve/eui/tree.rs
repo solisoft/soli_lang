@@ -1098,9 +1098,15 @@ impl Encoder {
             // path is only rejected after it is resolved, so `asset:foo.png`
             // under `public/` is a name a file may legally have and a prefix
             // would be ambiguous with it.
-            let value = if matches!(kind, NodeKind::Image | NodeKind::Audio | NodeKind::Video)
-                && name == "src"
-            {
+            // A scene names two assets rather than one, and they travel the
+            // same verified path a picture's `src` does: a hash on the wire,
+            // fetched from the origin, checked against its own name before
+            // anything decodes it. The client then validates both in its
+            // worker -- the module against the shader verifier, the mesh
+            // against its vertex count -- so nothing here has to.
+            let asset_prop = matches!(kind, NodeKind::Image | NodeKind::Audio | NodeKind::Video) && name == "src"
+                || kind == NodeKind::Scene && matches!(name.as_str(), "shader" | "mesh");
+            let value = if asset_prop {
                 match v {
                     Json::String(path) => WireValue::Asset(super::assets::from_file(path)?),
                     Json::Object(o) if o.len() == 1 => {
@@ -1111,8 +1117,10 @@ impl Encoder {
                             format!("EUI: a src asset must be 64 hex characters, got '{hex}'")
                         })?)
                     }
-                    other => return Err(format!("EUI: a src must be a path, got {other}")),
+                    other => return Err(format!("EUI: a {name} must be a path, got {other}")),
                 }
+            } else if kind == NodeKind::Scene && name == "uniforms" {
+                self.uniforms_value(v)?
             } else if kind == NodeKind::Canvas && name == "paths" {
                 self.paths_value(v)?
             } else {
@@ -1204,6 +1212,37 @@ impl Encoder {
     /// Spec 03 §1.1: a canvas path is `[kind, colour, numbers…]`. The colour
     /// is written as a role name or `#RRGGBB` and goes on the wire resolved,
     /// so the client never parses a string while painting.
+    /// A scene's eight floats: the author's half of the uniform block.
+    ///
+    /// Eight and not more, because the other twenty-four are the client's --
+    /// the matrix, the clock and the size. A server therefore never sends a
+    /// camera, and so can never send a degenerate one. Short lists are
+    /// padded rather than refused: an author who wants one number should not
+    /// have to write seven zeroes after it.
+    fn uniforms_value(&mut self, v: &Json) -> Result<WireValue, String> {
+        let given = v
+            .as_array()
+            .ok_or("EUI: a scene's uniforms must be a list of numbers")?;
+        if given.len() > 8 {
+            return Err(format!(
+                "EUI: a scene has eight uniforms, got {}",
+                given.len()
+            ));
+        }
+        let mut out = Vec::with_capacity(8);
+        for n in given {
+            let f = n.as_f64().ok_or_else(|| {
+                format!("EUI: a scene's uniforms must be numbers, got {n}")
+            })?;
+            if !f.is_finite() {
+                return Err("EUI: a scene's uniforms must be finite".to_owned());
+            }
+            out.push(WireValue::Float(f));
+        }
+        out.resize(8, WireValue::Float(0.0));
+        Ok(WireValue::List(out))
+    }
+
     fn paths_value(&mut self, v: &Json) -> Result<WireValue, String> {
         let paths = v.as_array().ok_or("EUI: paths must be a list of paths")?;
         let mut out = Vec::with_capacity(paths.len());
@@ -1461,6 +1500,7 @@ fn kind_of(name: &str) -> Result<NodeKind, String> {
         "sizer" => NodeKind::Sizer,
         "audio" => NodeKind::Audio,
         "video" => NodeKind::Video,
+        "scene" => NodeKind::Scene,
         other => return Err(format!("EUI: unknown node kind '{other}'")),
     })
 }
@@ -1925,6 +1965,71 @@ fn find(node: &TNode, id: u32) -> Option<&TNode> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 03 §1.2: a `scene` names two assets, and its uniforms are the
+    /// author's eight floats.
+    ///
+    /// Both hashes travel the way a picture's `src` does -- fetched from the
+    /// origin, checked against their own name before anything decodes them
+    /// -- and the client validates each in its worker afterwards. Nothing
+    /// here inspects a module or a mesh, and nothing here should.
+    #[test]
+    fn a_scene_names_two_assets_and_carries_eight_uniforms() {
+        let hash = super::super::assets::put(b"EUIS\x01@fragment fn fs_main() {}".to_vec()).unwrap();
+        let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+
+        let mut enc = Encoder::default();
+        let tree = json!({"k": "box", "c": [
+            {"k": "scene", "p": {
+                "shader": {"asset": hex.clone()},
+                "uniforms": [0.5, 2],
+                "playing": true,
+            }}
+        ]});
+        enc.render(&tree, false).unwrap();
+
+        // The atom ids first: looking one up interns it, which wants the
+        // encoder mutably, and the node below borrows it.
+        let (shader_atom, uniforms_atom) = (enc.atom("shader"), enc.atom("uniforms"));
+        let node = &enc.prev.as_ref().unwrap().children[0];
+        assert_eq!(node.node().kind, NodeKind::Scene);
+        let prop = |atom: u32| {
+            node.node()
+                .props
+                .iter()
+                .find(|(a, _)| *a == atom)
+                .map(|(_, v)| v.clone())
+        };
+        assert!(matches!(prop(shader_atom), Some(WireValue::Asset(h)) if h == hash));
+        // Short lists are padded, not refused: an author who wants one
+        // number should not have to write seven zeroes after it.
+        match prop(uniforms_atom) {
+            Some(WireValue::List(vs)) => {
+                assert_eq!(vs.len(), 8, "the block is eight floats wide");
+                assert!(matches!(vs[0], WireValue::Float(f) if (f - 0.5).abs() < 1e-9));
+                assert!(matches!(vs[1], WireValue::Float(f) if (f - 2.0).abs() < 1e-9), "an integer is a number too");
+                assert!(matches!(vs[7], WireValue::Float(f) if f == 0.0));
+            }
+            other => panic!("uniforms should be a list, got {other:?}"),
+        }
+    }
+
+    /// What the uniform block refuses, so a bad view is a server-side error
+    /// with a line number rather than a window drawing nothing.
+    #[test]
+    fn a_scenes_uniforms_must_be_eight_finite_numbers() {
+        let mut enc = Encoder::default();
+        let bad = |u: serde_json::Value| {
+            let mut enc2 = Encoder::default();
+            enc2.render(&json!({"k": "scene", "p": {"uniforms": u}}), false).unwrap_err()
+        };
+        assert!(bad(json!([1, 2, 3, 4, 5, 6, 7, 8, 9])).contains("eight uniforms"));
+        assert!(bad(json!("nope")).contains("list of numbers"));
+        assert!(bad(json!(["a"])).contains("must be numbers"));
+        // And the ordinary case still works, so the refusals above are not
+        // refusing everything.
+        enc.render(&json!({"k": "scene", "p": {"uniforms": [1, 2, 3, 4, 5, 6, 7, 8]}}), false).unwrap();
+    }
 
     #[test]
     fn a_src_names_bytes_in_the_store_as_well_as_a_file() {

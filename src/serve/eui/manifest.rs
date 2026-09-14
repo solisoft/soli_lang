@@ -138,8 +138,14 @@ fn sign(capabilities: u32) -> Result<Vec<u8>, String> {
         app_id: app_id.clone(),
         name: app_id,
         version: env!("CARGO_PKG_VERSION").to_string(),
-        protocol_min: 1,
-        protocol_max: 1,
+        // The range this server serves. `scene` is the one thing in it that
+        // an older client cannot be shown at all -- `0x11` is a decode error
+        // there, and the batch carrying it would end the session -- so an
+        // application that asked for it raises the floor and is refused at
+        // the handshake instead, with a reason, before anything is drawn.
+        // Every other application keeps its old clients.
+        protocol_min: if capabilities & eui_proto::caps::SCENE != 0 { 2 } else { 1 },
+        protocol_max: eui_proto::PROTOCOL_VERSION,
         publisher_key,
         capabilities,
         theme: None,

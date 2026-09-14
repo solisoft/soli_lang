@@ -219,7 +219,13 @@ pub fn upgrade(
         if ws_write
             .send(Message::Binary(
                 Frame::Welcome(Welcome {
-                    version: PROTOCOL_VERSION,
+                    // The version both ends speak, not this one's own: a
+                    // server that answered with its highest would lock out
+                    // every client built before it, including for
+                    // applications using nothing it added. The Hello named
+                    // the client's; this is the lower of the two, which is
+                    // what a negotiation is.
+                    version: hello.version.min(PROTOCOL_VERSION),
                     session: session_bytes,
                     // EUI 01 §4.1: a session that survives its socket. A
                     // LiveView session is torn down with the socket under
