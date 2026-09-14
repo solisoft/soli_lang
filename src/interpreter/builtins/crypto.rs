@@ -7,7 +7,7 @@ use std::rc::Rc;
 use aes_gcm::{aead::Aead, Aes256Gcm, Nonce};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    Argon2,
+    Algorithm, Argon2, Params, Version,
 };
 use base64::Engine as _;
 use curve25519_dalek::edwards::EdwardsPoint;
@@ -296,10 +296,51 @@ fn do_random_bytes(n: &Value, method: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+/// The cost a new password hash is made at.
+///
+/// `Argon2::default()` is the RFC 9106 profile — 19 MiB and two passes,
+/// ~19 ms a hash on a developer's machine. That is the right price for a
+/// real password and the wrong one for a fixture: a suite pays it twice per
+/// authenticated test, once creating the user and once verifying at login.
+/// Measured on one real application, 1 013 logins and as many fixture users:
+/// 38 of the 106 seconds the suite took were argon2 and nothing else.
+///
+/// `SOLI_ARGON2_FAST=1` swaps in a deliberately weak profile. Two properties
+/// make it safe to ship rather than alarming:
+///
+/// * It changes **hashing only**. `verify_password` reads m/t/p from the
+///   stored PHC string, so a password hashed in production keeps its full
+///   cost however this is set, and a fixture hashed cheaply is checked
+///   cheaply without a second switch. A database may hold both.
+/// * `soli test` sets it for its own process and for the servers it spawns.
+///   Nothing else in the tree sets it.
+///
+/// It must never be set on a machine that stores real passwords: a hash made
+/// under it carries its weakness for as long as it is stored.
+fn argon2_hasher() -> Argon2<'static> {
+    // `1` or `true`, and nothing else: `var_os(..).is_some()` would read an
+    // empty `SOLI_ARGON2_FAST=` — how a shell says "off" — as on.
+    static FAST: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+        matches!(
+            std::env::var("SOLI_ARGON2_FAST").as_deref(),
+            Ok("1") | Ok("true")
+        )
+    });
+    if !*FAST {
+        return Argon2::default();
+    }
+    // 4 MiB and a single pass: milliseconds rather than tens of them. Still
+    // a real Argon2id, so nothing downstream has to special-case the shape.
+    match Params::new(4 * 1024, 1, 1, None) {
+        Ok(params) => Argon2::new(Algorithm::Argon2id, Version::V0x13, params),
+        // A profile the crate refuses is not worth failing a hash over.
+        Err(_) => Argon2::default(),
+    }
+}
+
 fn do_argon2_hash(password: &[u8]) -> Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-    let hash = argon2
+    let hash = argon2_hasher()
         .hash_password(password, &salt)
         .map_err(|e| format!("Failed to hash password: {}", e))?;
     Ok(hash.to_string())
@@ -1820,6 +1861,42 @@ pub fn register_crypto_builtins(env: &mut Environment) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The property the whole `SOLI_ARGON2_FAST` design rests on: a hash is
+    /// verified at the cost it was *made* at, because `verify_password` reads
+    /// m/t/p from the stored PHC string rather than from the verifier. So one
+    /// database may hold a cheap fixture hash beside a production one, each
+    /// checked at its own price, and no second switch exists to get wrong.
+    #[test]
+    fn a_hash_is_verified_at_the_cost_it_was_made_at() {
+        let params = Params::new(4 * 1024, 1, 1, None).expect("a 4 MiB single-pass profile");
+        let cheap = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+        let salt = SaltString::generate(&mut OsRng);
+        let hash = cheap
+            .hash_password(b"correct horse", &salt)
+            .expect("hashing")
+            .to_string();
+        assert!(
+            hash.contains("m=4096") && hash.contains("t=1"),
+            "the cost is recorded in the hash itself: {hash}"
+        );
+        // `do_argon2_verify` builds a *default* verifier, and still accepts it.
+        assert_eq!(do_argon2_verify(b"correct horse", &hash), Ok(true));
+        assert_eq!(do_argon2_verify(b"wrong", &hash), Ok(false));
+    }
+
+    /// A hash made at the default cost says so, whatever the environment —
+    /// the fast profile never reaches an existing stored password.
+    #[test]
+    fn the_default_profile_is_the_rfc_9106_one() {
+        let salt = SaltString::generate(&mut OsRng);
+        let hash = Argon2::default()
+            .hash_password(b"correct horse", &salt)
+            .expect("hashing")
+            .to_string();
+        assert!(hash.contains("m=19456"), "RFC 9106 low-memory: {hash}");
+        assert_eq!(do_argon2_verify(b"correct horse", &hash), Ok(true));
+    }
 
     #[test]
     fn random_hex_length_is_twice_the_byte_count() {

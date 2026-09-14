@@ -909,6 +909,35 @@ users = Factory.create_list("user", 5)
 Factory.bind("user", User)
 persisted = Factory.insert("user")</code></pre>
 
+        <h3 class="text-xl font-semibold text-white mb-4" id="section-argon2-fast">Password hashing under test</h3>
+        <p class="text-gray-400 mb-4">
+            <code class="text-cyan-400">soli test</code> sets
+            <code class="text-cyan-400">SOLI_ARGON2_FAST=1</code> for itself and for the servers it
+            starts. New password hashes are then made at 4&nbsp;MiB and one pass instead of the
+            RFC&nbsp;9106 default of 19&nbsp;MiB and two — roughly 2&nbsp;ms instead of 20.
+        </p>
+        <p class="text-gray-400 mb-4">
+            A suite pays the full price twice per authenticated test: once creating the fixture
+            user, once verifying at login. On one real application — 1&nbsp;013 logins and as many
+            fixture users — that was 38 of the 106 seconds the run took, and the average login went
+            from 62&nbsp;ms to 29&nbsp;ms.
+        </p>
+        <p class="text-gray-400 mb-4">Two things keep this from reaching anything real:</p>
+        <ul class="space-y-2 text-gray-400 text-sm leading-relaxed mb-4 list-disc pl-5">
+            <li>It changes <strong class="text-white">hashing only</strong>.
+                <code class="text-cyan-400">Crypto.argon2_verify</code> reads the cost from the
+                stored hash (Argon2 records <code>m</code>, <code>t</code> and <code>p</code> in the
+                PHC string it returns), so a password hashed in production keeps its full cost
+                however the variable is set, and one database may hold both kinds.</li>
+            <li>Only <code class="text-cyan-400">soli test</code> sets it. It is read once, and only
+                <code>1</code> or <code>true</code> count — an empty
+                <code>SOLI_ARGON2_FAST=</code> is off.</li>
+        </ul>
+        <p class="text-gray-400 mb-8">
+            Never set it on a machine that stores real passwords: a hash made under it carries its
+            weakness for as long as it is stored.
+        </p>
+
         <h3 class="text-xl font-semibold text-white mb-4" id="section-mock-queries">Mock Database Queries</h3>
         <p class="text-gray-400 mb-4">For integration tests without a real database, use <code>Model.mock_query_result()</code> to intercept queries and return predefined data:</p>
 
