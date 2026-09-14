@@ -668,6 +668,78 @@ def danger_button(label, on_click)
   button_variant(label, on_click, "danger.base", "danger.on")
 end
 
+# One button with a second opinion. The label is the thing you usually want;
+# the caret beside it opens the things you sometimes want instead.
+#
+# It is one control and not two, because two would be two tab stops for one
+# decision. The caret is a `context_menu` anchor rather than its own button:
+# the menu already knows how to open, close on Escape and pick, and a split
+# button that reimplemented any of that would drift from it.
+#
+# `o["items"]` are the alternatives, `o["open"]` is the server's, and
+# `o["on_pick"]` reads `params["props"]["item"]`.
+def split_button(label, on_click, o = {})
+  sb_items = o["items"] ?? []
+  sb_tone = o["tone"] ?? "accent"
+  sb_size = o["size"] ?? "md"
+  sb_pads = control_metrics(sb_size)["pad"]
+  sb_key = o["key"] ?? ("split:" + on_click.to_s)
+  # The sb_caret is inside the button, not beside it.
+  #
+  # Two controls side by side cannot be made to look like one: `radius` is a
+  # single `u8` in the protocol, so a half cannot be round on its outer edge
+  # and square against its neighbour, and the clip that would hide the seam
+  # is rectangular (the renderer's clip stack holds rects, not rounded
+  # rects). Two rounded halves read as two buttons, which is what they are.
+  #
+  # So: one rounded button, and the sb_caret is a node within it that takes the
+  # click first -- an event goes to the nearest ancestor that handles it
+  # (06 §2), so pressing the chevron opens the menu and pressing anywhere
+  # else saves. The rule between them is what says the two ends do different
+  # things; the hover is the whole button's, because the whole button is one
+  # control.
+  sb_caret = {
+    "k": "box",
+    "key": sb_key + ":more",
+    "s": {
+      "display": "row", "align": "center", "justify": "center",
+      # Square against the button's own height, so the sb_caret is a target and
+      # not a sliver: a 14 px chevron with the label's side padding is half
+      # again as wide as it needs, and with none at all it is too small to hit.
+      "pad": [sb_pads[0], 3, sb_pads[2], 3], "cursor": "pointer", "shrink": 0
+    },
+    "p": {"role": "button", "label": o["more_label"] ?? "More actions", "expanded": o["open"] == true},
+    "on": {"click": o["on_toggle"]},
+    "c": [icon("chevron_down", {"width": 14, "height": 14})]
+  }
+  sb_menu = context_menu(
+    sb_caret,
+    sb_items,
+    o["open"] == true,
+    o["on_toggle"],
+    o["on_pick"],
+    {"on_close": o["on_close"] ?? o["on_toggle"]}
+  )
+  control({
+    "key": sb_key,
+    "tone": sb_tone,
+    "size": sb_size,
+    # `self: start` so it is as wide as its label and its sb_caret. A control in
+    # a column is stretched by the column's align, and a button the width of
+    # the card it sits in is a button that looks like a banner.
+    "shape": {"gap": 0, "pad": [0, 0, 0, sb_pads[3]], "align": "stretch", "self": "start"},
+    "on": {"click": on_click},
+    "disabled": o["disabled"] == true,
+    "loading": o["loading"] == true,
+    "a11y": {"role": "button", "label": label},
+    "c": [
+      row({"align": "center", "grow": 1, "pad": [sb_pads[0], sb_pads[1], sb_pads[2], 0]}, [text(label, {"weight": "semibold"})]),
+      node("box", {"width": 1, "bg": (TONES[sb_tone] ?? TONES["quiet"])["hover"]["bg"] ?? "border.subtle", "shrink": 0}, []),
+      sb_menu
+    ]
+  })
+end
+
 def ghost_button(label, on_click)
   button_variant(label, on_click, "none", "accent.base")
 end
@@ -1092,6 +1164,18 @@ def lazy(id, shown, placeholder, make)
   make()
 end
 
+# A panel that a click stops at.
+#
+# An event goes to the nearest ancestor that handles it (06 §2), so once a
+# scrim carries `click` to close, every click *inside* the panel would reach
+# it too and shut the thing the person is using. An empty local chunk is the
+# cheapest way to stop one: it handles the click, runs no instruction and
+# sends nothing, so the click dies at the panel without a round trip.
+def swallow_clicks(node)
+  node["on"] = (node["on"] ?? {}).merge({"click": {"local": []}})
+  node
+end
+
 def dialog(title, body_children, actions, opts = {})
   panel = card(
     {
@@ -1105,6 +1189,7 @@ def dialog(title, body_children, actions, opts = {})
       actions
     )])
   )
+  panel = swallow_clicks(panel)
   n = {
     "k": "overlay",
     "key": opts["key"] ?? ("dialog:" + title),
@@ -1119,23 +1204,33 @@ def dialog(title, body_children, actions, opts = {})
       # page went from sharp to fully frosted between two frames, which reads
       # as a flash rather than as something arriving. `slow` is the longest
       # the motion scale offers -- 320 ms.
-      "animation": "enter",
+      # And an `exit` is the same sentence backwards: the scrim unfrosts
+      # rather than being cut away, which is what stops a dismissed dialog
+      # from looking like a dropped frame.
+      "animation": ["enter", "exit"],
       "transition": opts["transition"] ?? "slow"
     },
     # `modal` keeps Tab inside the dialog, and puts it there when it opens:
     # a server cannot do either, because it does not own Tab. `keys` claims
     # Escape alone, so the buttons inside keep Enter as the press they stand
     # for — and Escape now reaches the server, which is what closes it.
+    # `opts["props"]` rides on the overlay itself, so that a caller whose
+    # close event reads `params["props"]` — the handbook's `lazy_close`
+    # wants an `id` — gets the same props from Escape and from the scrim as
+    # it gets from its own Close button.
     "p": {
       "role": opts["alert"] == true ? "alert_dialog" : "dialog",
       "label": title,
       "modal": true,
       "autofocus": true,
       "keys": ["Escape"]
-    },
+    }.merge(opts["props"] ?? {}),
     "c": [panel]
   }
-  n["on"] = {"key_down": opts["on_close"]} unless opts["on_close"].nil?
+  # Escape and the scrim say the same thing: this is over. 03 §5 — the
+  # page behind is out of reach, and a click on it is a person reaching
+  # for the way out.
+  n["on"] = {"key_down": opts["on_close"], "click": opts["on_close"]} unless opts["on_close"].nil?
   n
 end
 # The page behind is put out of play twice over: blurred, so nothing
@@ -1276,13 +1371,14 @@ def split_at(extent, at, min_a, min_b, bar)
   int((a * 1000.0 / span).round())
 end
 
-def split_panel(build, px, across: Bool, cross)
+def split_panel(build, px, across: Bool, cross, dragging = false)
   {
     "k": "box",
     "s": {
       "display": "column",
       "width": across ? px : cross,
       "height": across ? cross : px,
+      "cursor": dragging ? (across ? "resize_h" : "resize_v") : "default",
       "overflow": "clip"
     },
     "c": [build(px)]
@@ -1358,12 +1454,20 @@ def split_pane(o)
       "align": "stretch",
       "width": across ? extent : cross,
       "height": across ? cross : extent,
+      # While the drag is live the whole split shows the resize cursor, not
+      # just the six pixels of the bar. The move and the release already
+      # belong to the container so that the pointer may leave the divider
+      # without the drag ending -- but the cursor came from whatever node was
+      # under it, so it flickered between resize and default as the hand
+      # strayed a pixel onto a pane. The drag is the container's; so is the
+      # cursor for as long as it lasts.
+      "cursor": o["dragging"] == true ? (across ? "resize_h" : "resize_v") : "default",
       "overflow": "clip"
     },
     "c": [
-      split_panel(o["a"], sizes[0], across, cross),
+      split_panel(o["a"], sizes[0], across, cross, o["dragging"] == true),
       split_divider(key + ":bar", across, bar, cross, fraction, on_drag, o["dragging"] == true, o["label"]),
-      split_panel(o["b"], sizes[1], across, cross)
+      split_panel(o["b"], sizes[1], across, cross, o["dragging"] == true)
     ]
   }
   # The move and the release belong to the container, not to the divider: that
@@ -1427,6 +1531,106 @@ def split_event(state, params, name, dir, extent, min_a, min_b, bar)
     state = split_keys(state, params, name, dir, step)
   end
   state
+end
+
+# A row that opens onto what is inside it.
+#
+# The alternative is a dialog, and a dialog is the wrong shape for this: the
+# lines of an order belong *under* the order, in the table you were reading,
+# with the rows above and below still there to compare against. What opens
+# here is a panel in the flow, so the table grows and nothing is covered.
+#
+# The chevron is not a separate control. The whole row opens it, because a
+# row whose only open affordance is a 14 px glyph is a row most people do not
+# know opens at all -- and the glyph still turns, so it says which it is.
+def expandable_row(key, values, widths, open, on_toggle, detail, o = {})
+  er_head = control({
+    "key": key + ":head",
+    "kind": "box",
+    "tone": "quiet",
+    "size": "md",
+    "selected": open,
+    "shape": {
+      "display": "row", "gap": 4, "align": "center", "width": "100%",
+      "justify": "start", "pad": [1, 3, 1, 3], "radius": 0,
+      "border": [0, 0, 1, 0], "border_color": "border.subtle",
+      "min_width": 0
+    },
+    "on": {"click": on_toggle},
+    "props": o["props"] ?? {},
+    "a11y": {"role": "row", "label": o["label"] ?? values[0].to_s, "expanded": open},
+    "c": [icon(open ? "chevron_down" : "chevron_right", {"width": 14, "height": 14, "fg": "text.muted", "shrink": 0})].concat(
+      range(0, values.length()).map(fn(i) { text(values[i], {"width": widths[i]}) })
+    )
+  })
+  er_body = open ? [{
+    "k": "box",
+    "s": {
+      "display": "column", "gap": 3, "width": "100%",
+      "pad": [3, 3, 3, 8], "bg": "surface.sunken",
+      "border": [0, 0, 1, 0], "border_color": "border.subtle"
+    },
+    "c": detail
+  }] : []
+  keyed(key, column({"gap": 0, "width": "100%"}, [er_head].concat(er_body)))
+end
+
+# A table whose rows nest.
+#
+# `tree_view` is a rail and `data_grid` is flat, and between them sits every
+# hierarchy that also has columns: a bill of materials with quantities, a
+# chart of accounts with balances, a folder tree with sizes. Indentation
+# lives in the first cell rather than on the row, so the numbers down the
+# right stay in their columns however deep the nesting goes -- which is the
+# whole reason to put a tree in a table instead of beside one.
+#
+# A row is `{"id", "cells": [...], "children": [...]}`. Depth is this
+# function's own business; callers pass 0 and let the recursion carry it.
+def tree_table(labels, widths, rows, open_ids, on_toggle, depth = 0, o = {})
+  tt_opened = open_ids ?? []
+  tt_drawn = rows.map(fn(r) {
+    kids = r["children"] ?? []
+    has_kids = kids.length() > 0
+    is_open = tt_opened.includes?(r["id"])
+    cells = r["cells"] ?? []
+    first = row({"gap": 1, "align": "center", "width": widths[0], "shrink": 0}, [
+      node("box", {"width": depth * 4, "shrink": 0}, []),
+      has_kids
+        ? icon(is_open ? "chevron_down" : "chevron_right", {"width": 14, "height": 14, "fg": "text.muted", "shrink": 0})
+        : node("box", {"width": 14, "shrink": 0}, []),
+      text(cells[0], {"grow": 1, "clamp": 1, "weight": has_kids ? "semibold" : "regular"})
+    ])
+    rest = range(1, cells.length()).map(fn(i) { text(cells[i], {"width": widths[i]}) })
+    line = control({
+      "key": (o["key"] ?? "tt") + ":" + r["id"].to_s,
+      "kind": "box",
+      "tone": "quiet",
+      "shape": {
+        "display": "row", "gap": 4, "align": "center", "width": "100%",
+        "justify": "start", "pad": [1, 3, 1, 3], "radius": 0,
+        "border": [0, 0, 1, 0], "border_color": "border.subtle",
+        "min_width": 0, "cursor": has_kids ? "pointer" : "default"
+      },
+      "on": has_kids ? {"click": on_toggle} : {},
+      "props": {"id": r["id"]},
+      "a11y": {
+        "role": "tree_item",
+        "label": cells[0].to_s,
+        "expanded": has_kids ? is_open : null,
+        "level": depth + 1
+      },
+      "c": [first].concat(rest)
+    })
+    under = is_open && has_kids
+      ? [tree_table(labels, widths, kids, tt_opened, on_toggle, depth + 1, o)]
+      : []
+    column({"gap": 0, "width": "100%"}, [line].concat(under))
+  })
+  return column({"gap": 0, "width": "100%"}, tt_drawn) if depth > 0
+
+  tt_whole = column({"gap": 0, "width": "100%"}, [table_header(labels, widths)].concat(tt_drawn))
+  tt_whole["p"] = {"role": "tree", "label": o["label"] ?? "Tree"}
+  tt_whole
 end
 
 def table_header(labels, widths)
@@ -1750,6 +1954,58 @@ def image(src, width, height)
   }
 end
 
+# Who is on this, in the space of one and a half faces.
+#
+# The overlap is the point: a row of eight avatars at full width is a row
+# nobody reads, and the question being asked is "roughly who", not "exactly
+# which". Past `max` the rest become a count, which is the honest way to say
+# more than fits. Negative margin does the stacking, so the group is as wide
+# as what it shows rather than as wide as what it has.
+#
+# Each entry is `{"src"}` or `{"initial", "tone"}` -- a picture when there is
+# one, a letter when there is not, the same pair `post_avatar` draws.
+def avatar_group(people, o = {})
+  ag_size = o["size"] ?? 28
+  # Not `max`: it is a builtin, and a bare assignment rebinds the global.
+  ag_cap = o["max"] ?? 4
+  ag_shown = people.length() > ag_cap ? people.slice(0, ag_cap) : people
+  ag_rest = people.length() - ag_shown.length()
+  # `margin` is unsigned in the protocol -- `[u8; 4]`, 0-255 -- so there is no
+  # negative margin to pull a face back over the one before it. What does the
+  # same work: give every face but the ag_last a slot narrower than it is. A box
+  # does not clip unless it is told to, so each face spills over the slot
+  # after it, and the row is as wide as the slots rather than as wide as the
+  # ag_faces.
+  # A quarter, not a third: a third reads as a pile rather than a row, and
+  # the initials stop being legible, which is the only thing a letter avatar
+  # has to offer.
+  ag_lap = ag_size / 4
+  ag_last = ag_shown.length() - 1
+  ag_faces = range(0, ag_shown.length()).map(fn(i) {
+    p = ag_shown[i]
+    face = (p["src"] ?? "") == ""
+      ? initial_avatar(p["initial"] ?? "?", p["tone"] ?? "accent.base", ag_size)
+      : avatar(p["src"], ag_size)
+    face["s"] = face["s"].merge({"border": 2, "border_color": "surface.base", "shrink": 0})
+    node("box", {"width": i == ag_last && ag_rest <= 0 ? ag_size : ag_size - ag_lap, "height": ag_size, "shrink": 0}, [face])
+  })
+  # Not `initial_avatar`: it paints its letter in `accent.on`, which is the
+  # right colour on a tone and invisible on a sunken ground.
+  ag_tail = ag_rest <= 0 ? [] : [{
+    "k": "box",
+    "s": {
+      "width": ag_size, "height": ag_size, "radius": 4,
+      "display": "row", "justify": "center", "align": "center",
+      "bg": "surface.sunken",
+      "border": 2, "border_color": "surface.base", "shrink": 0
+    },
+    "c": [text("+" + ag_rest.to_s, {"size": 0, "weight": "semibold", "fg": "text.muted"})]
+  }]
+  ag_strip = row({"gap": 0, "align": "center", "shrink": 0}, ag_faces.concat(ag_tail))
+  ag_strip["p"] = {"role": "group", "label": o["label"] ?? (people.length().to_s + " people")}
+  ag_strip
+end
+
 def avatar(src, size)
   {
     "k": "image",
@@ -1867,12 +2123,16 @@ end
 # share of whatever the line has left: three tiles across on a desktop,
 # two on a tablet, one on a phone, decided by the width itself rather
 # than by a breakpoint, and with no hole at the end of the last line.
+#
+# It goes through `restyle`, because the patch has to reach the styles the
+# node's local handlers declare as well as its resting one. A `stateful`
+# card builds its hover out of the style it had *before* it was tiled, so a
+# tile that only touched `node["s"]` left a hover carrying the old
+# `width: 100%`: the first pointer_enter dropped the basis, the card grew to
+# the whole row, and the grid reflowed under the pointer. Every style on a
+# node is a whole style, so every one of them has to be tiled.
 def tile(basis, node)
-  node["s"]["width"] = "auto"
-  node["s"]["basis"] = basis
-  node["s"]["grow"] = 1
-  node["s"]["shrink"] = 1
-  node
+  restyle(node, {"width": "auto", "basis": basis, "grow": 1, "shrink": 1})
 end
 
 def stat(label, value, hint)
@@ -1981,6 +2241,41 @@ def pagination(page, pages, on_page)
 end
 
 # Segmented control: one row of options, the selected one raised.
+# `segmented` asks which one; this asks which ones. The difference is not
+# cosmetic: a filter bar that offers four statuses and lets you pick one is
+# a filter bar that cannot express "late or unpaid", which is the question
+# people actually have. `chosen` is a list, and a cell sends the option it
+# stands for -- the server does the adding and removing, because what the
+# list means is the server's business.
+def toggle_group(options, chosen, on_toggle, o = {})
+  tg_picked = chosen ?? []
+  tg_count = options.length()
+  tg_cells = range(0, tg_count).map(fn(i) {
+    opt = options[i]
+    lit = tg_picked.includes?(opt)
+    control({
+      "key": (o["key"] ?? "toggles") + ":" + opt.to_s,
+      "size": o["size"] ?? "sm",
+      "tone": "quiet",
+      "selected": lit,
+      "shape": {"radius": 1, "pad": [1, 3, 1, 3], "min_width": 0, "bg": lit ? "surface.raised" : "none", "border": lit ? 1 : 0},
+      "on": {"click": on_toggle},
+      "props": {"option": opt, "item": opt},
+      "a11y": {
+        "role": "check_box",
+        "label": opt.to_s,
+        "checked": lit,
+        "pos_in_set": i + 1,
+        "set_size": tg_count
+      },
+      "c": [text(opt, lit ? {"weight": "semibold"} : {"fg": "text.muted"})]
+    })
+  })
+  tg_strip = row({"gap": 1, "pad": 1, "radius": 2, "bg": "surface.sunken", "shrink": 0, "wrap": "wrap"}, tg_cells)
+  tg_strip["p"] = {"role": "group", "label": o["label"] ?? "Filters"}
+  tg_strip
+end
+
 def segmented(options, selected, on_select)
   count = options.length()
   cells = range(0, count).map(fn(i) {
@@ -2138,6 +2433,54 @@ def menu(items, on_pick)
   )
 end
 
+# A question asked where it was raised.
+#
+# `confirm` puts a modal over the whole window, which is right for "discard
+# this draft" and much too much for "remove this row": the page goes dark,
+# the eye leaves the thing being removed, and the answer arrives somewhere
+# else entirely. This asks beside the control instead, and the row stays
+# visible behind the question about it.
+#
+# The caller owns `open` and gives the anchor its own click. `o["props"]`
+# ride on the confirming button, because the question is always about a
+# particular thing and the handler has to be told which.
+def popconfirm(anchor, open, o = {})
+  pc_key = o["key"] ?? "popconfirm"
+  pc_panel = column(
+    {
+      "gap": 3, "pad": 3, "radius": 2, "shadow": 2,
+      "bg": "surface.overlay", "border": 1, "border_color": "border.subtle",
+      "max_width": 260
+    },
+    [
+      text(o["question"] ?? "Are you sure?", {"weight": "semibold"}),
+      o["detail"].nil? ? spacer() : muted(o["detail"]),
+      row({"gap": 2, "justify": "end", "align": "center"}, [
+        control({
+          "key": pc_key + ":no",
+          "tone": "quiet",
+          "size": "sm",
+          "on": {"click": o["on_cancel"]},
+          "a11y": {"role": "button", "label": o["cancel"] ?? "Cancel"},
+          "c": [text(o["cancel"] ?? "Cancel", {})]
+        }),
+        control({
+          "key": pc_key + ":yes",
+          "tone": o["tone"] ?? "danger",
+          "size": "sm",
+          "on": {"click": o["on_confirm"]},
+          "props": o["props"] ?? {},
+          "a11y": {"role": "button", "label": o["confirm"] ?? "Remove"},
+          "c": [text(o["confirm"] ?? "Remove", {"weight": "semibold"})]
+        })
+      ])
+    ]
+  )
+  pc_panel["p"] = {"role": "dialog", "label": o["question"] ?? "Are you sure?", "keys": ["Escape"]}
+  pc_panel["on"] = {"key_down": o["on_cancel"]} unless o["on_cancel"].nil?
+  popover(anchor, [pc_panel], open == true)
+end
+
 # The menu that a right-click opens. The client already emits `context_menu`
 # on button 1 (06 §1); this is the overlay it opens, the same column `menu`
 # draws, hung off the node that was pointed at.
@@ -2167,7 +2510,11 @@ def command_row(it)
     "id": (it["id"] ?? it["label"]).to_s,
     "label": (it["label"] ?? it["id"]).to_s,
     "hint": (it["hint"] ?? "").to_s,
-    "group": (it["group"] ?? "").to_s
+    "group": (it["group"] ?? "").to_s,
+    # Optional, and blank when a command does not name one: a palette row
+    # without an icon should hold the same left edge as one with it, or the
+    # labels of a mixed list zig-zag down the panel.
+    "icon": (it["icon"] ?? "").to_s
   }
 end
 
@@ -2175,9 +2522,12 @@ def command_match(items, query)
   said = (query ?? "").strip().downcase()
   out = []
   for it in items
-    row = command_row(it)
-    hay = (row["label"] + " " + row["hint"] + " " + row["group"]).downcase()
-    out = out.concat([row]) if said == "" || hay.index_of(said) >= 0
+    # Not `row`: a bare assignment rebinds the global, and `row()` is the
+    # builder half this file is made of (line 28). Opening the palette once
+    # turned it into a node and every later view raised.
+    hit = command_row(it)
+    hay = (hit["label"] + " " + hit["hint"] + " " + hit["group"]).downcase()
+    out = out.concat([hit]) if said == "" || hay.index_of(said) >= 0
   end
   out
 end
@@ -2216,16 +2566,19 @@ def command_palette(query, items, at, o = {})
   pal_group = ""
   i = 0
   while i < pal_rows.length()
-    row = pal_rows[i]
-    if row["group"] != "" && row["group"] != pal_group
-      pal_group = row["group"]
+    pal_row = pal_rows[i]  # not `row`: it is the builder at line 28
+    if pal_row["group"] != "" && pal_row["group"] != pal_group
+      pal_group = pal_row["group"]
       pal_list = pal_list.concat([muted(pal_group)])
     end
     lit = i == pal_at
-    kids = [text(row["label"], {"grow": 1, "weight": lit ? "semibold" : "regular"})]
-    kids = kids.concat([muted(row["hint"])]) unless row["hint"] == ""
+    kids = [(pal_row["icon"] ?? "") == ""
+      ? node("box", {"width": 16, "shrink": 0}, [])
+      : icon(pal_row["icon"], {"width": 16, "height": 16, "shrink": 0, "fg": lit ? "accent.base" : "text.muted"}),
+      text(pal_row["label"], {"grow": 1, "weight": lit ? "semibold" : "regular"})]
+    kids = kids.concat([muted(pal_row["hint"])]) unless pal_row["hint"] == ""
     pal_list = pal_list.concat([control({
-      "key": pal_key + ":opt:" + row["id"],
+      "key": pal_key + ":opt:" + pal_row["id"],
       "size": "sm",
       "tone": "quiet",
       "shape": {
@@ -2237,11 +2590,11 @@ def command_palette(query, items, at, o = {})
         "border_color": lit ? "accent.base" : "none"
       },
       "on": {"click": o["on_pick"]},
-      "props": {"id": row["id"], "item": row["label"]},
+      "props": {"id": pal_row["id"], "item": pal_row["label"]},
       "a11y": {
         "role": "option",
         "selected": lit,
-        "label": row["label"],
+        "label": pal_row["label"],
         "pos_in_set": i + 1,
         "set_size": pal_rows.length()
       },
@@ -2259,12 +2612,13 @@ def command_palette(query, items, at, o = {})
     },
     [pal_entry, scroll({"max_height": 360}, pal_body)]
   )
+  panel = swallow_clicks(panel)
   n = {
     "k": "overlay",
     "key": pal_key,
     "s": {
       "display": "stack",
-      "justify": "start",
+      "justify": "center",
       "align": "center",
       "pad": [10, 4, 4, 4],
       "blur": 16,
@@ -2281,7 +2635,7 @@ def command_palette(query, items, at, o = {})
     },
     "c": [panel]
   }
-  n["on"] = {"key_down": o["on_close"]} unless o["on_close"].nil?
+  n["on"] = {"key_down": o["on_close"], "click": o["on_close"]} unless o["on_close"].nil?
   n
 end
 
@@ -2312,6 +2666,7 @@ def sheet(side, children, opts = {})
     },
     children
   )
+  panel = swallow_clicks(panel)
   n = {
     "k": "overlay",
     "key": opts["key"] ?? ("sheet:" + side),
@@ -2320,7 +2675,13 @@ def sheet(side, children, opts = {})
       "justify": side == "left" ? "start" : "end",
       "align": "stretch",
       "blur": 10,
-      "bg": "#00000047"
+      "bg": "#00000047",
+      # A sheet slides in by the edge it belongs to and leaves the same way.
+      # Its direction never flips — it is not a page in a stack, it is a panel
+      # attached to a side — so it names its own and needs no mirror.
+      "animation": ["enter", "exit"],
+      "motion": side == "left" ? "leading" : "trailing",
+      "transition": opts["transition"] ?? "base"
     },
     "p": {
       "role": "dialog",
@@ -2331,12 +2692,121 @@ def sheet(side, children, opts = {})
     },
     "c": [panel]
   }
-  n["on"] = {"key_down": opts["on_close"]} unless opts["on_close"].nil?
+  n["on"] = {"key_down": opts["on_close"], "click": opts["on_close"]} unless opts["on_close"].nil?
   n
 end
 # Lighter than a dialog's, and blurred less: a sheet is somewhere you
 # went, not a question you have to answer, and the page it slid over
 # should stay recognisable behind it.
+
+# ---- Pages ------------------------------------------------------------
+#
+# A navigator is one page on screen, a stack in state, and the client owning
+# the movement between them. Nothing here says how long a push takes or which
+# way it goes: the page says how it *arrives*, the client mirrors that for
+# whatever is leaving, and a pop is the same sentence read backwards.
+
+# One page. The name carries the `nav_` prefix its neighbours do, and not the
+# bare `page` it wants, because `page` is what half the views in the world
+# call a page *number* — and a bare assignment to it rebinds the function for
+# the rest of the run. A catalogue that ships to every new project cannot
+# take a name that common.
+#
+# `key` is what makes it a different page rather than the same one
+# with new contents — a keyed child that disappears is removed, and removal is
+# what an exit is a rendering of.
+#
+# `motion` is where it comes *in* from. The page it covers goes the other way
+# without being told to, so there is only ever one direction to get right.
+#
+# It **restyles the node it is given** rather than wrapping it in one. A
+# wrapper is not free: `grow` only shares out space that is left over, so a
+# box around a scroller whose content is taller than the window keeps its
+# content size instead of shrinking into what the header left — and the
+# scroller then runs off the bottom of the screen, where nothing can reach
+# it. Being the page rather than boxing it has no layout at all.
+def nav_page(key, node, o = {})
+  motion = o["motion"] ?? "trailing"
+  # `none` is a page that still *is* a page — keyed, so it is replaced rather
+  # than edited in place — and simply appears. Nothing is animated, nothing is
+  # kept after it goes, and the client is asked for no frames: the cut this
+  # application had before any of this existed.
+  return keyed("page:" + key, node) if motion == "none"
+
+  n = restyle(node, {
+    "z": o["z"] ?? 0,
+    "animation": ["enter", "exit"],
+    "motion": motion,
+    "transition": o["transition"] ?? "base"
+  })
+  keyed("page:" + key, n)
+end
+
+# The way out of a page you went into (06 §1.3).
+#
+# It asks the client first and the server after. `back()` is the one thing a
+# local handler can say that is a *request* rather than a change: what it asks
+# for is the server's to grant, so this button and a swipe from the leading
+# edge cannot come to mean two different things — they are the same event,
+# arriving by different hands.
+def back_button(after)
+  b = icon_button("‹", after, {}, {"icon": "chevron_left", "name": "Back", "key": "nav_back"})
+  b["on"]["click"] = {"local": "back()", "then": after}
+  b
+end
+
+# Nothing, where a layout wants a child and there is none to give it.
+def spacer_none()
+  {"k": "spacer", "s": {"width": 0, "height": 0}}
+end
+
+# The stack, rendered. `pages` is a hash of **thunks**, so only what is on
+# screen is built — the `lazy` discipline, one level up: a navigator over
+# eight sections costs two of them, not eight.
+#
+# Two are rendered and not one, when there is one underneath. An edge swipe
+# reveals what it is going back to from the first frame it moves, and there is
+# nothing to reveal if the server never sent it. `{"under": false}` is the
+# opt-out for a page too heavy to keep laid out, and costs the swipe its
+# liveness — it then waits for the server, like a tapped button.
+def navigator(state, pages, o = {})
+  st = state["nav_stack"] ?? ["home"]
+  top = st[st.length() - 1]
+  back = st.length() > 1 ? st[st.length() - 2] : nil
+  # A pop arrives from where a push would have gone.
+  edge = (state["nav_dir"] ?? "none") == "pop" ? "leading" : "trailing"
+  kids = []
+  kids = kids.concat([
+    nav_page(back, pages[back](), {"z": 0, "motion": "leading"})
+  ]) if !back.nil? && (o["under"] ?? true)
+  kids = kids.concat([
+    nav_page(top, pages[top](), {
+      "z": back.nil? ? 0 : 1,
+      "motion": (state["nav_dir"] ?? "none") == "none" ? "fade" : edge
+    })
+  ])
+  n = stack({"grow": 1, "width": "100%"}, kids)
+  keyed(o["key"] ?? "nav", n)
+end
+
+# The handler half. Three assignments and no knowledge of the client at all:
+# what the stack is, and which way it last moved.
+def nav_push(state, key)
+  st = (state["nav_stack"] ?? ["home"]).concat([key])
+  set_key(set_key(state, "nav_stack", st), "nav_dir", "push")
+end
+
+def nav_pop(state)
+  st = state["nav_stack"] ?? ["home"]
+  return state if st.length() <= 1
+  set_key(set_key(state, "nav_stack", st.slice(0, st.length() - 1)), "nav_dir", "pop")
+end
+
+# Where the stack is, for a view that wants to mark its own nav.
+def nav_top(state)
+  st = state["nav_stack"] ?? ["home"]
+  st[st.length() - 1]
+end
 
 def drawer(children, opts = {})
   sheet("left", children, opts)
@@ -2463,6 +2933,53 @@ def sidebar(links, active, on_go, icons = {})
       }
     })
   )
+end
+
+# A patch, read as one column.
+#
+# Unified and not side by side, and that is a judgement rather than a
+# shortcut: two panes make you compare across a gutter, they halve the width
+# every line has, and they need two scrollers that have to be kept in step.
+# One column puts the removed line directly above the line that replaced it,
+# which is where the eye wants it.
+#
+# The sign column carries the meaning and the tint repeats it, because a
+# tint alone is a diff that says nothing in high contrast and nothing to
+# anyone who cannot separate the two greens. `old` and `new` are line
+# numbers, and a blank means the line does not exist on that side.
+#
+# A line is `{"kind": "add" | "del" | "same" | "hunk", "text", "old"?, "new"?}`.
+def diff_view(lines, o = {})
+  dv_gutter = o["gutter"] ?? 44
+  dv_drawn = range(0, lines.length()).map(fn(i) {
+    l = lines[i]
+    kind = (l["kind"] ?? "same").to_s
+    # A hunk header carries its own `@@`; signing it again reads as `@@@`.
+    sign = kind == "add" ? "+" : (kind == "del" ? "-" : " ")
+    wash = kind == "add" ? "success.subtle" : (kind == "del" ? "danger.subtle" : (kind == "hunk" ? "surface.sunken" : "none"))
+    ink = kind == "hunk" ? "text.muted" : "text.default"
+    keyed((o["key"] ?? "diff") + ":" + i.to_s, {
+      "k": "box",
+      "s": {"display": "row", "gap": 0, "width": "100%", "bg": wash, "pad": [0, 2, 0, 2]},
+      "p": {"role": "row", "label": (kind == "add" ? "added " : (kind == "del" ? "removed " : "")) + l["text"].to_s},
+      "c": [
+        text((l["old"] ?? "").to_s, {"font": "mono", "size": 0, "fg": "text.muted", "width": dv_gutter}),
+        text((l["new"] ?? "").to_s, {"font": "mono", "size": 0, "fg": "text.muted", "width": dv_gutter}),
+        text(sign, {"font": "mono", "size": 1, "fg": ink, "width": 14, "weight": "semibold"}),
+        text(l["text"], {"font": "mono", "size": 1, "fg": ink, "grow": 1})
+      ]
+    })
+  })
+  dv_whole = column({"gap": 0, "width": "100%", "radius": 2, "overflow": "clip", "border": 1, "border_color": "border.subtle"}, dv_drawn)
+  dv_whole["p"] = {"role": "group", "label": o["label"] ?? "Changes"}
+  dv_whole
+end
+
+# How many lines a patch adds and takes away, for a header beside it.
+def diff_tally(lines)
+  added = lines.filter(fn(l) { (l["kind"] ?? "").to_s == "add" }).length()
+  removed = lines.filter(fn(l) { (l["kind"] ?? "").to_s == "del" }).length()
+  {"added": added, "removed": removed}
 end
 
 def code_block(code)
@@ -2640,9 +3157,16 @@ def select_sized(options, value, open, on_toggle, on_pick, min_width, grow, o = 
     "transition": "fast"
   }
   s["grow"] = 1 if grow
+  # `o["key"]` and `o["props"]` are how two selects that answer the same
+  # event tell themselves apart. Without them the key is the event name, so
+  # a second select wearing it silently restyles the first (07 §3), and
+  # neither the toggle nor the pick can say which row it came from -- which
+  # is exactly what a filter builder, or any list of rows with a select in
+  # it, has to be able to say.
+  props = o["props"] ?? {}
   anchor = {
     "k": "box",
-    "key": "sel:" + on_toggle.to_s,
+    "key": o["key"] ?? ("sel:" + on_toggle.to_s),
     "s": s,
     "on": stateful(s, TONES["neutral"], {"click": on_toggle}),
     "c": [text(value, {"grow": 1}), icon(
@@ -2650,10 +3174,11 @@ def select_sized(options, value, open, on_toggle, on_pick, min_width, grow, o = 
       {"fg": "text.muted", "width": 14, "height": 14}
     )]
   }
-  dropdown(anchor, options.map(fn(o) { select_option(o, o == value, on_pick, min_width) }), open, DROPDOWN_MAX_PX)
+  anchor["p"] = props if props.keys().length() > 0
+  dropdown(anchor, options.map(fn(opt) { select_option(opt, opt == value, on_pick, min_width, props) }), open, DROPDOWN_MAX_PX)
 end
 
-def select_option(label, selected, on_pick, min_width)
+def select_option(label, selected, on_pick, min_width, props = {})
   {
     "k": "box",
     "s": {
@@ -2663,7 +3188,7 @@ def select_option(label, selected, on_pick, min_width)
       "bg": selected ? "surface.sunken" : "none",
       "cursor": "pointer"
     },
-    "p": {"value": label},
+    "p": props.merge({"value": label}),
     "on": {"click": on_pick},
     "c": [text(label, {"weight": selected ? "bold" : "regular"})]
   }
@@ -2675,6 +3200,8 @@ end
 # is not a list of options — a calendar, say — passes no ceiling and is
 # bounded by the window alone.
 DROPDOWN_MAX_PX = 280
+# How wide a popover may get. See the note in `dropdown`.
+DROPDOWN_MAX_W = 320
 
 # A popover that opens under its anchor rather than over it.
 # An open list floats: it is an `overlay`, so it paints in the top layer
@@ -2715,6 +3242,15 @@ def dropdown(anchor, content, open, max_px = 0)
         "border": 1,
         "border_color": "border.subtle",
         "display": "column",
+        # A cap, because a popover with no width of its own comes out as wide
+        # as the window: it is measured against the window (03 §5, so its
+        # options are not clipped to a narrow field) and an `auto` width then
+        # fills that bound instead of shrinking to the options. Left alone the
+        # panel spanned all 1400 px and `settle_anchored` clamped it to x=0,
+        # so it hung under the whole page rather than under its field. The cap
+        # is a stopgap over a layout question, not the answer to it: the panel
+        # should shrink-wrap and take the field's width as its floor.
+        "max_width": DROPDOWN_MAX_W,
         "z": 5
       },
       "c": [scroll(pane, content)]
@@ -2834,6 +3370,391 @@ def combobox(options, value, o = {})
   cb_panel = column({"gap": 0}, [cb_entry].concat(cb_rows.length() == 0 ? [muted("Nothing matches")] : cb_rows))
   cb_panel["p"] = {"role": "list_box", "label": (o["label"] ?? "Options").to_s}
   dropdown(anchor, [cb_panel], true, DROPDOWN_MAX_PX)
+end
+
+# What you can do to the rows you have ticked.
+#
+# It appears because something is ticked and leaves when nothing is, which
+# is the whole interaction: a bar that is always there is a toolbar, and a
+# toolbar cannot say "3 of 63". The count comes from `selection_count`, so
+# it is right under the "all except these" reading too -- tick the header,
+# untick two rows, and it says 61 without anybody enumerating 61 ids.
+#
+# `o["scope_total"]` is how many rows the query behind it has, which is not
+# the same as how many are on screen: "select all 63" is an offer about the
+# query, and taking it is what `selection_all` means.
+#
+# The actions are `{"label", "event", "tone"?, "icon"?}`. Each carries the
+# selection's scope, because an action on "all except these" that arrived
+# without its scope would be an action on a different question's rows.
+def bulk_bar(sel, total, actions, on_clear, o = {})
+  bb_count = selection_count(sel, total)
+  return spacer() if bb_count == 0
+
+  bb_scope = selection_scope(sel)
+  bb_said = bb_count == 1 ? "1 selected" : bb_count.to_s + " selected"
+  bb_offer = selection_all?(sel) || bb_count >= total || o["on_all"].nil?
+    ? []
+    : [control({
+        "key": (o["key"] ?? "bulk") + ":all",
+        "size": "sm", "tone": "ghost",
+        "on": {"click": o["on_all"]},
+        "props": {"scope": bb_scope},
+        "a11y": {"role": "button", "label": "Select all " + total.to_s},
+        "c": [text("Select all " + total.to_s, {"size": 0, "weight": "semibold"})]
+      })]
+  # Keyed by position and label, not by event. Several actions may answer
+  # the same event and tell themselves apart by their props -- "Chase",
+  # "Export" and "Archive" all sending `demo_bulk` is the ordinary case --
+  # and keying by the event gives all three the same key, which 07 §3 refuses
+  # outright: two children of one box cannot share one.
+  bb_doing = range(0, actions.length()).map(fn(bb_i) {
+    a = actions[bb_i]
+    control({
+      "key": (o["key"] ?? "bulk") + ":" + bb_i.to_s + ":" + (a["label"] ?? "").to_s,
+      "size": "sm",
+      "tone": a["tone"] ?? "neutral",
+      "on": {"click": a["event"]},
+      # The label rides along so a handler shared by several actions can say
+      # which one was pressed.
+      "props": {"scope": bb_scope, "count": bb_count, "action": a["label"]},
+      "a11y": {"role": "button", "label": a["label"].to_s},
+      "c": (a["icon"] ?? "") == ""
+        ? [text(a["label"], {"size": 0, "weight": "semibold"})]
+        : [icon(a["icon"], {"width": 14, "height": 14}), text(a["label"], {"size": 0, "weight": "semibold"})]
+    })
+  })
+  bb_bar = row({
+    "gap": 2, "align": "center", "width": "100%", "wrap": "wrap",
+    "pad": [2, 3, 2, 3], "radius": 2,
+    "bg": "info.subtle", "border": 1, "border_color": "border.subtle",
+    "animation": "enter", "transition": "fast"
+  }, [text(bb_said, {"weight": "semibold"})].concat(bb_offer).concat([spacer()]).concat(bb_doing).concat([
+    icon_button("close", on_clear, {"scope": bb_scope}, {
+      "icon": "close", "name": "Clear the selection", "size": "sm", "key": (o["key"] ?? "bulk") + ":clear"
+    })
+  ]))
+  bb_bar["p"] = {"role": "toolbar", "label": bb_said}
+  keyed(o["key"] ?? "bulk", bb_bar)
+end
+
+# ---- A question you can come back to -----------------------------------------
+#
+# A filter builder answers one question at a time and forgets it. Most of
+# the questions worth asking are asked again next week, which is what a
+# saved view is: a name, and the condition that was in the builder when the
+# name was given.
+#
+# A view is `{"id", "name", "filter"}`. The model below is the whole of it --
+# adding, dropping and finding by id -- because the condition is already a
+# value and a list of them needs nothing cleverer.
+
+def views_add(views, id, name, tree)
+  (views ?? []).filter(fn(v) { v["id"] != id }).concat([{"id": id, "name": name, "filter": tree}])
+end
+
+def views_drop(views, id)
+  (views ?? []).filter(fn(v) { v["id"] != id })
+end
+
+def views_find(views, id)
+  found = (views ?? []).filter(fn(v) { v["id"] == id })
+  found.length() == 0 ? null : found[0]
+end
+
+# The saved views, as a row of chips, with the one that is up lit.
+#
+# `o["dirty"]` is the honest part: the condition in the builder has been
+# edited since the view was chosen, so the chip is still lit but no longer
+# describes what is on screen. Saying so is the difference between a saved
+# view and a decoration -- otherwise the name goes on claiming a question
+# that has since been changed underneath it.
+def saved_views(views, current, on_pick, o = {})
+  sv_chips = (views ?? []).map(fn(v) {
+    lit = v["id"].to_s == (current ?? "").to_s
+    row({"gap": 0, "align": "center", "shrink": 0}, [
+      control({
+        "key": (o["key"] ?? "view") + ":" + v["id"].to_s,
+        "size": "sm",
+        "tone": "quiet",
+        "selected": lit,
+        "shape": {"radius": 2, "pad": [1, 3, 1, 3], "min_width": 0, "gap": 1},
+        "on": {"click": on_pick},
+        "props": {"id": v["id"]},
+        "a11y": {"role": "tab", "label": v["name"].to_s, "selected": lit},
+        "c": [text(v["name"], {"size": 0, "weight": lit ? "semibold" : "regular"})].concat(
+          lit && o["dirty"] == true ? [text("·", {"size": 0, "fg": "warning.base", "weight": "bold"})] : []
+        )
+      })
+    ].concat(o["on_drop"].nil? ? [] : [icon_button("close", o["on_drop"], {"id": v["id"]}, {
+      "icon": "close", "name": "Forget " + v["name"].to_s, "size": "sm", "key": (o["key"] ?? "view") + ":x:" + v["id"].to_s
+    })]))
+  })
+  sv_tail = o["on_save"].nil? ? [] : [control({
+    "key": (o["key"] ?? "view") + ":save",
+    "size": "sm", "tone": "ghost",
+    "on": {"click": o["on_save"]},
+    "a11y": {"role": "button", "label": o["save_label"] ?? "Save this view"},
+    "c": [text(o["save_label"] ?? "Save this view", {"size": 0, "weight": "semibold"})]
+  })]
+  sv_strip = row({"gap": 2, "align": "center", "wrap": "wrap", "width": "100%"}, sv_chips.concat(sv_tail))
+  sv_strip["p"] = {"role": "tab_list", "label": o["label"] ?? "Saved views"}
+  sv_strip
+end
+
+# ---- A question, built out of smaller questions -----------------------------
+#
+# Every list in this catalogue can be filtered by whatever the application
+# thought of in advance: a status, a month, a search box. That covers the
+# questions someone anticipated and none of the ones they did not, and the
+# gap shows the moment anybody asks something like "late, or unpaid and over
+# ten thousand". A filter builder is how a person asks a question the author
+# never wrote down.
+#
+# The condition is a tree, and the tree is the server's:
+#
+#   group  {"op": "and" | "or", "items": [...]}
+#   leaf   {"field", "cmp", "value"}
+#
+# Nothing here holds state. Every control sends a `path` -- the dotted index
+# of the item it belongs to, `""` for the root, `"1.0"` for the first item of
+# the second -- and the handler walks that path and changes what it finds.
+# That is what makes the whole thing answerable from one server event per
+# act, and what `filter_path_*` below are for.
+
+# The item at `path` in `tree`, or `null`.
+def filter_at(tree, path)
+  return tree if path.to_s == ""
+
+  here = tree
+  steps = path.to_s.split(".")
+  i = 0
+  while i < steps.length()
+    items = here["items"] ?? []
+    at = int(steps[i])
+    return null if at < 0 || at >= items.length()
+
+    here = items[at]
+    i = i + 1
+  end
+  here
+end
+
+# `tree` with `f` applied to the item at `path`. A rebuild rather than a
+# mutation, because a group holds its children by value and editing one in
+# place would leave the copy the view is drawing untouched.
+def filter_edit(tree, path, f)
+  return f(tree) if path.to_s == ""
+
+  steps = path.to_s.split(".")
+  at = int(steps[0])
+  rest = steps.slice(1, steps.length()).join(".")
+  items = tree["items"] ?? []
+  return tree if at < 0 || at >= items.length()
+
+  out = range(0, items.length()).map(fn(i) { i == at ? filter_edit(items[i], rest, f) : items[i] })
+  tree.merge({"items": out})
+end
+
+# `tree` without the item at `path`. The root cannot be removed.
+def filter_drop(tree, path)
+  return tree if path.to_s == ""
+
+  steps = path.to_s.split(".")
+  return filter_edit(tree, steps.slice(0, steps.length() - 1).join("."), fn(g) {
+    at = int(steps[steps.length() - 1])
+    kept = range(0, (g["items"] ?? []).length()).filter(fn(i) { i != at }).map(fn(i) { g["items"][i] })
+    g.merge({"items": kept})
+  }) if steps.length() > 1
+
+  at = int(steps[0])
+  kept = range(0, (tree["items"] ?? []).length()).filter(fn(i) { i != at }).map(fn(i) { tree["items"][i] })
+  tree.merge({"items": kept})
+end
+
+# An empty condition, for "Add condition" to put somewhere.
+def filter_blank(fields, cmps)
+  {"field": (fields[0] ?? "").to_s, "cmp": (cmps[0] ?? "is").to_s, "value": ""}
+end
+
+def filter_group_blank(fields, cmps)
+  {"op": "and", "items": [filter_blank(fields, cmps)]}
+end
+
+# Whether an item is a group. A leaf has no `items`, and that is the only
+# difference worth testing: an empty group is still a group.
+def filter_group?(it)
+  !(it["items"]).nil?
+end
+
+# Does this row answer the question?
+#
+# The half that was missing. A filter builder that only edits a tree draws a
+# question nobody asks; this is what asks it. `row` is a hash and a leaf's
+# `field` is a key in it -- no schema, no registry, because the fields the
+# builder offers came from the caller in the first place and the caller is
+# the one that knows what they mean.
+#
+# Comparison is on strings unless both sides read as numbers, which is the
+# rule that stops "Amount > 9" matching 10 000 by alphabet. `number_valid?`
+# is the same judgement the number field makes, so a value that a field
+# would have refused is compared the way it was typed.
+def filter_match?(row, node)
+  return true if node.nil?
+
+  return filter_group_match?(row, node) if filter_group?(node)
+
+  said = (row[(node["field"] ?? "").to_s] ?? "").to_s
+  want = (node["value"] ?? "").to_s
+  cmp = (node["cmp"] ?? "is").to_s
+  return said.downcase().index_of(want.downcase()) >= 0 if cmp == "contains"
+  return said.downcase() == want.downcase() if cmp == "is"
+  return said.downcase() != want.downcase() if cmp == "is not"
+
+  # `>` and `<`. Numbers when both sides are numbers, text otherwise -- and
+  # an empty draft matches nothing rather than everything, or a half-typed
+  # condition would empty the list under the hands typing it.
+  return false if want == ""
+
+  both = number_valid?(said) && number_valid?(want)
+  return (both ? said.to_f > want.to_f : said > want) if cmp == ">"
+  return (both ? said.to_f < want.to_f : said < want) if cmp == "<"
+
+  true
+end
+
+def filter_group_match?(row, group)
+  items = group["items"] ?? []
+  # An empty group asks nothing, and a question nobody asked excludes nobody.
+  return true if items.length() == 0
+
+  return items.filter(fn(it) { filter_match?(row, it) }).length() == items.length() if (group["op"] ?? "and").to_s == "and"
+
+  items.filter(fn(it) { filter_match?(row, it) }).length() > 0
+end
+
+# The rows that answer it.
+def filter_apply(rows, tree)
+  rows.filter(fn(r) { filter_match?(r, tree) })
+end
+
+# How a condition reads as a sentence, for a chip that stands for it.
+def filter_says(node)
+  return "everything" if node.nil?
+
+  return filter_group_says(node) if filter_group?(node)
+
+  ((node["field"] ?? "").to_s + " " + (node["cmp"] ?? "").to_s + " " + (node["value"] ?? "").to_s).strip()
+end
+
+def filter_group_says(group)
+  items = group["items"] ?? []
+  return "everything" if items.length() == 0
+
+  items.map(fn(it) { filter_says(it) }).join((group["op"] ?? "and").to_s == "and" ? " and " : " or ")
+end
+
+# The tree, drawn.
+#
+# `o`: `fields`, `cmps`, `open` (the key of whichever select is up, or ""),
+# and the events -- `on_op`, `on_add`, `on_add_group`, `on_remove`,
+# `on_open`, `on_field`, `on_cmp`, `on_value`. Every one of them is handed
+# `params["props"]["path"]`.
+#
+# Depth is drawn as a rule down the left rather than as indentation alone.
+# Three levels of padding all look like one level of padding by the time the
+# rows are 32 px tall, and what matters here is precisely which `or` a
+# condition belongs to.
+def filter_builder(tree, o = {})
+  fields = o["fields"] ?? []
+  cmps = o["cmps"] ?? ["is", "is not", "contains", ">", "<"]
+  whole = filter_group_view(tree ?? filter_group_blank(fields, cmps), "", 0, o)
+  whole["p"] = {"role": "group", "label": o["label"] ?? "Filter"}
+  whole
+end
+
+def filter_group_view(group, path, depth, o)
+  fgv_fields = o["fields"] ?? []
+  fgv_cmps = o["cmps"] ?? ["is", "is not", "contains", ">", "<"]
+  fgv_items = group["items"] ?? []
+  fgv_root = path.to_s == ""
+  fgv_head = row({"gap": 2, "align": "center", "width": "100%"}, [
+    segmented_at(["and", "or"], (group["op"] ?? "and").to_s, o["on_op"], path, depth),
+    muted(fgv_items.length() == 1 ? "1 condition" : fgv_items.length().to_s + " conditions"),
+    spacer(),
+    control({
+      "key": "fb:add:" + depth.to_s + ":" + path.to_s,
+      "size": "sm", "tone": "ghost",
+      "on": {"click": o["on_add"]},
+      "props": {"path": path},
+      "a11y": {"role": "button", "label": "Add condition"},
+      "c": [text("Add condition", {"size": 0, "weight": "semibold"})]
+    }),
+    control({
+      "key": "fb:grp:" + depth.to_s + ":" + path.to_s,
+      "size": "sm", "tone": "ghost",
+      "on": {"click": o["on_add_group"]},
+      "props": {"path": path},
+      "a11y": {"role": "button", "label": "Add group"},
+      "c": [text("Add group", {"size": 0, "weight": "semibold"})]
+    })
+  ].concat(fgv_root ? [] : [icon_button("close", o["on_remove"], {"path": path}, {
+    "icon": "close", "name": "Remove group", "size": "sm", "key": "fb:rmg:" + depth.to_s + ":" + path.to_s
+  })]))
+  fgv_kids = range(0, fgv_items.length()).map(fn(i) {
+    here = (fgv_root ? "" : path.to_s + ".") + i.to_s
+    here = i.to_s if fgv_root
+    it = fgv_items[i]
+    filter_group?(it)
+      ? filter_group_view(it, here, depth + 1, o)
+      : filter_leaf_view(it, here, depth + 1, o, fgv_fields, fgv_cmps)
+  })
+  column({
+    "gap": 2, "width": "100%",
+    "pad": fgv_root ? 0 : [2, 0, 2, 3],
+    "border": fgv_root ? 0 : [0, 0, 0, 2],
+    "border_color": "border.subtle"
+  }, [fgv_head].concat(fgv_kids))
+end
+
+def filter_leaf_view(leaf, path, depth, o, fields, cmps)
+  flv_open = (o["open"] ?? "").to_s
+  keyed("fb:row:" + path.to_s, row({"gap": 2, "align": "center", "width": "100%", "wrap": "wrap"}, [
+    select_sized(fields, (leaf["field"] ?? "").to_s, flv_open == path.to_s + ":field", o["on_open"], o["on_field"], 140, false, {
+      "key": "fb:f:" + path.to_s, "props": {"path": path, "slot": "field"}, "density": o["density"]
+    }),
+    select_sized(cmps, (leaf["cmp"] ?? "").to_s, flv_open == path.to_s + ":cmp", o["on_open"], o["on_cmp"], 110, false, {
+      "key": "fb:c:" + path.to_s, "props": {"path": path, "slot": "cmp"}, "density": o["density"]
+    }),
+    input((leaf["value"] ?? "").to_s, o["on_value"], {
+      "key": "fb:v:" + path.to_s,
+      "style": {"grow": 1, "min_width": 120},
+      "props": {"path": path, "label": "Value"}
+    }),
+    icon_button("close", o["on_remove"], {"path": path}, {
+      "icon": "close", "name": "Remove condition", "size": "sm", "key": "fb:rm:" + path.to_s
+    })
+  ]))
+end
+
+# `segmented`, but every cell says which group it belongs to. The plain one
+# sends the option alone, which is all a page with one segmented control
+# needs and not enough for a tree of them.
+def segmented_at(options, selected, on_select, path, depth)
+  cells = range(0, options.length()).map(fn(i) {
+    opt = options[i]
+    lit = opt == selected
+    control({
+      "key": "fb:op:" + depth.to_s + ":" + path.to_s + ":" + opt.to_s,
+      "size": "sm", "tone": "quiet", "selected": lit,
+      "shape": {"radius": 1, "pad": [0, 2, 0, 2], "min_width": 0, "bg": lit ? "surface.raised" : "none", "border": lit ? 1 : 0},
+      "on": {"click": on_select},
+      "props": {"path": path, "option": opt},
+      "a11y": {"role": "tab", "label": opt.to_s, "selected": lit, "pos_in_set": i + 1, "set_size": options.length()},
+      "c": [text(opt.to_s.upcase(), {"size": 0, "weight": lit ? "bold" : "regular", "fg": lit ? "text.default" : "text.muted"})]
+    })
+  })
+  row({"gap": 1, "pad": 1, "radius": 2, "bg": "surface.sunken", "shrink": 0}, cells)
 end
 
 # ---- Multi-selection --------------------------------------------------------
@@ -3326,7 +4247,248 @@ end
 # handler) the arrow keys nudge it. The server owns the value: `on_set`
 # receives `params["kind"]` — "click", "pointer_down", "pointer_move",
 # "pointer_up", or "key_down" — and `params["payload"]`.
-def slider(value, min, max, on_set)
+# How many out of how many, as stars you can click.
+#
+# Every star is its own control, which is what makes it answerable from a
+# keyboard and legible to a screen reader: five buttons in a `radio_group`,
+# each saying what it would set. A single node with a pointer offset would
+# be one target with five meanings, and no way to say which one has focus.
+#
+# `value` is the server's. A star lights when its position is at or under it,
+# so the fill reads left to right without any state on this side.
+# Two handles on one track: from and to.
+#
+# One node takes the pointer, not two. A range with a handle per node has to
+# decide what happens when they cross, and it decides it twice -- once per
+# handle, in two places, differently. Here the track reports where the
+# pointer is and which end is nearer, and the server moves that end and keeps
+# the pair in order. `params["props"]` carries `min`, `max`, `width`, `low`
+# and `high`, which is everything the arithmetic needs.
+#
+# The filled segment is between the handles rather than from the left, which
+# is the whole visual difference between "up to here" and "between here and
+# here".
+def range_slider(low, high, min, max, on_set, o = {})
+  rs_width = o["width"] ?? 240
+  rs_span = max - min
+  rs_span = 1 if rs_span == 0
+  rs_a = (low - min) * rs_width / rs_span
+  rs_b = (high - min) * rs_width / rs_span
+  rs_a = 0 if rs_a < 0
+  rs_b = rs_width if rs_b > rs_width
+  # Each handle is 14 px of inline width, so the runs beside them are short
+  # by half a handle each -- the same subtraction `slider` makes for its one.
+  rs_a = rs_a > 7 ? rs_a - 7 : 0
+  rs_mid = rs_b > rs_a + 14 ? rs_b - rs_a - 14 : 0
+  rs_on = {"click": on_set, "key_down": on_set, "pointer_down": on_set, "pointer_up": on_set}
+  rs_on["pointer_move"] = on_set if o["dragging"] == true
+  {
+    "k": "box",
+    "key": o["key"] ?? "range",
+    "s": {"display": "row", "align": "center", "width": rs_width, "height": 24, "cursor": "grab"},
+    "p": {
+      "min": min, "max": max, "width": rs_width, "low": low, "high": high,
+      "role": "group",
+      "label": o["label"] ?? "Range",
+      "value_now": low,
+      "value_min": min,
+      "value_max": max
+    },
+    # `pointer_move` is declared only while a drag is live.
+    #
+    # A handler is what makes the client send: an event goes to the nearest
+    # ancestor that handles it, and to none if nobody does (06 §2). Declared
+    # always, the track answers every pointer that crosses it -- a round trip
+    # and a whole view rebuilt per mouse move, for a value nobody asked to
+    # change. Gating it in the handler is too late: the cost is paid by the
+    # time the handler can decline.
+    #
+    # The caller hands back the drag flag it already keeps, so the handler
+    # appears on the press and goes on the release. What that costs is the
+    # moves between the press and the batch answering it -- one round trip --
+    # and nothing drifts, because the position is read from the pointer's
+    # absolute offset every time rather than accumulated.
+    "on": rs_on,
+    "c": [
+      node("box", {"width": rs_a, "height": 4, "bg": "surface.sunken", "radius": 4}, []),
+      node("box", {"width": 14, "height": 14, "radius": 4, "shrink": 0, "bg": "accent.base", "border": 2, "border_color": "surface.base"}, []),
+      node("box", {"width": rs_mid, "height": 4, "bg": "accent.base", "radius": 4}, []),
+      node("box", {"width": 14, "height": 14, "radius": 4, "shrink": 0, "bg": "accent.base", "border": 2, "border_color": "surface.base"}, []),
+      node("box", {"grow": 1, "height": 4, "bg": "surface.sunken", "radius": 4}, [])
+    ]
+  }
+end
+
+# Whether a pointer event should move a handle at all.
+#
+# A track reports `pointer_move` whenever the pointer crosses it, pressed or
+# not -- it has to, because a widget that only reported presses could not be
+# dragged. So the gate is the handler's, and every caller getting it wrong
+# the same way is what a catalogue is for: without this, the handles follow
+# the pointer across the track and the value of something changes because
+# somebody walked past it.
+#
+# `dragging` is the caller's own flag, set from this function's verdict on
+# the last event: down or a gated move means a hand is on it, up means the
+# hand has gone.
+def range_takes?(kind, dragging)
+  said = (kind ?? "").to_s
+  return true if said == "click" || said == "pointer_down" || said == "pointer_up"
+
+  said == "pointer_move" && dragging == true
+end
+
+# Whether a hand is still on the track after an event this one took.
+def range_holding?(kind)
+  said = (kind ?? "").to_s
+  said == "pointer_down" || said == "pointer_move"
+end
+
+# Which end of a range a pointer at `x` is asking to move, and where it
+# would put it. The widget cannot decide this -- it has no arithmetic -- so
+# the handler does, and this is that handler's half.
+def range_moved(props, x)
+  # Not `min`/`max`: both are builtins, and a bare assignment rebinds the
+  # global -- the static checker rejects the file outright, which is the one
+  # mercy in this family of mistakes.
+  floor_v = props["min"] ?? 0
+  ceil_v = props["max"] ?? 100
+  width = props["width"] ?? 240
+  width = 1 if width <= 0
+  at = floor_v + (ceil_v - floor_v) * x / width
+  at = floor_v if at < floor_v
+  at = ceil_v if at > ceil_v
+  low = props["low"] ?? floor_v
+  high = props["high"] ?? ceil_v
+  near_low = (at - low) < 0 ? low - at : at - low
+  near_high = (at - high) < 0 ? high - at : at - high
+  return {"low": at, "high": high} if near_low <= near_high && at <= high
+
+  return {"low": low, "high": at} if at >= low
+
+  at <= low ? {"low": at, "high": high} : {"low": low, "high": at}
+end
+
+# Money, typed.
+#
+# The ERP shows amounts on every screen and offers nowhere to type one, and
+# the reason a plain `number_field` is not enough is the symbol: a field that
+# says `1500` where the column beside it says `1 500,00 €` makes the person
+# do the conversion, and doing it wrong is expensive in exactly this kind of
+# application. The unit sits in the field, inside the border, so it reads as
+# part of the value and not as a label that might belong to something else.
+#
+# What is typed is what is sent. Grouping a number while a caret is inside it
+# moves the caret, and a field that moves your caret while you type is a
+# field you cannot type in; the grouped form belongs beside it, and
+# `o["hint"]` is where this puts it.
+def currency_field(label, value, on_change, o = {})
+  cf_unit = (o["unit"] ?? "€").to_s
+  cf_said = (value ?? "").to_s
+  cf_error = field_error(value, fn(x) { number_valid?(x) }, o["complaint"] ?? "That is not an amount", o)
+  cf_bad = field_bad(cf_error, o)
+  cf_props = field_props(label, cf_error, cf_bad, o)
+  cf_box = input(cf_said, on_change, {
+    "key": o["key"].nil? ? null : o["key"].to_s,
+    "style": {"width": "auto", "grow": 1, "border": 0, "bg": "none", "pad": [1, 2, 1, 2], "align": "end"},
+    "props": cf_props
+  })
+  cf_shell = row({
+    "gap": 1, "align": "center", "width": o["width"] ?? "100%",
+    "min_height": field_height(o), "pad": [0, 3, 0, 3], "radius": 2,
+    "border": 1, "border_color": cf_bad ? "danger.base" : "border.default",
+    "bg": "surface.sunken"
+  }, (o["unit_after"] == true ? [cf_box, muted(cf_unit)] : [muted(cf_unit), cf_box]))
+  field_shell(label, cf_shell, o.merge({"error": cf_error}))
+end
+
+def rating(value, on_set, o = {})
+  # Not `max`: builtin.
+  rt_max = o["max"] ?? 5
+  rt_now = value ?? 0
+  rt_size = o["size"] ?? 18
+  rt_ro = o["read_only"] == true
+  rt_stars = range(1, rt_max + 1).map(fn(i) {
+    lit = i <= rt_now
+    glyph = icon("star", {
+      "width": rt_size,
+      "height": rt_size,
+      "fg": lit ? (o["tone"] ?? "warning.base") : "border.default"
+    })
+    return restyle(glyph, {"shrink": 0}) if rt_ro
+
+    control({
+      "key": (o["key"] ?? "rating") + ":" + i.to_s,
+      "size": "sm",
+      "tone": "quiet",
+      "shape": {"pad": 0, "min_width": 0, "bg": "none", "border": 0, "height": rt_size + 4},
+      "on": {"click": on_set},
+      "props": {"value": i, "id": i},
+      "a11y": {
+        "role": "radio",
+        "label": i.to_s + " of " + rt_max.to_s,
+        "checked": i == rt_now,
+        "pos_in_set": i,
+        "set_size": rt_max
+      },
+      "c": [glyph]
+    })
+  })
+  rt_strip = row({"gap": rt_ro ? 0 : 1, "align": "center", "shrink": 0}, rt_stars)
+  rt_strip["p"] = {
+    "role": rt_ro ? "group" : "radio_group",
+    "label": o["label"] ?? "Rating",
+    "value_now": rt_now,
+    "value_min": 0,
+    "value_max": rt_max
+  }
+  rt_strip
+end
+
+# One key, drawn as the cap it is printed on. `kbd("Ctrl")`, not `Ctrl` in
+# prose: a shortcut sheet that sets its keys in body text is a sheet you have
+# to read rather than scan.
+def kbd(key)
+  {
+    "k": "box",
+    "s": {
+      "pad": [0, 2, 0, 2], "radius": 1, "min_width": 22,
+      "display": "row", "justify": "center", "align": "center",
+      "bg": "surface.sunken", "border": 1, "border_color": "border.default", "shrink": 0
+    },
+    "c": [text(key.to_s, {"size": 0, "weight": "semibold", "fg": "text.muted"})]
+  }
+end
+
+# What the application claims of the keyboard, on one screen.
+#
+# It belongs in the catalogue rather than in each application because the
+# list is not decoration: 03 §3.1 says a node claims keys, and an application
+# that claims `Ctrl+K` without ever saying so has a shortcut only its author
+# knows about. This is where it says so.
+#
+# `groups` are `{"name", "keys": [{"keys": ["Ctrl", "K"], "does": "..."}]}`.
+def shortcut_sheet(groups, on_close, o = {})
+  ss_body = groups.map(fn(g) {
+    lines = (g["keys"] ?? []).map(fn(k) {
+      row({"gap": 3, "align": "center", "width": "100%"}, [
+        text(k["does"].to_s, {"grow": 1}),
+        row({"gap": 1, "align": "center", "shrink": 0}, (k["keys"] ?? []).map(fn(cap) { kbd(cap) }))
+      ])
+    })
+    column({"gap": 2, "width": "100%"}, [muted(g["name"].to_s)].concat(lines))
+  })
+  dialog(
+    o["title"] ?? "Keyboard shortcuts",
+    [column({"gap": 4, "width": "100%"}, ss_body)],
+    [secondary_button(o["done"] ?? "Close", on_close)],
+    {"width": o["width"] ?? 420, "key": "shortcuts", "on_close": on_close}
+  )
+end
+
+def slider(value, min, max, on_set, o = {})
+  sl_on = {"click": on_set, "key_down": on_set, "pointer_down": on_set, "pointer_up": on_set}
+  sl_on["pointer_move"] = on_set if o["dragging"].nil? || o["dragging"] == true
   width = 240
   span = max - min
   span = 1 if span == 0
@@ -3352,13 +4514,9 @@ def slider(value, min, max, on_set)
       "value_max": max,
       "orientation": "horizontal"
     },
-    "on": {
-      "click": on_set,
-      "key_down": on_set,
-      "pointer_down": on_set,
-      "pointer_move": on_set,
-      "pointer_up": on_set
-    },
+    # The same gate, opt-in: a caller that passes no `dragging` keeps the
+    # handler declared always, which is what every existing one has today.
+    "on": sl_on,
     "c": [
       node("box", {
         "width": lead,
@@ -3843,11 +5001,17 @@ def password_field(label, value, on_change, o = {})
     "style": field_style(bad, o).merge(reveal == "" ? {} : {"width": "auto", "grow": 1}),
     "props": props
   })
-  control = reveal == "" ? box : row(
+  # Not `control`: a bare assignment rebinds the global of that name, and
+  # `control` is the function every widget below is built on (line 564). The
+  # first field with a Show button turned it into a node, and the next
+  # `control(...)` — `ghost_button`, `icon_button`, anything — raised
+  # "Cannot call non-function value" from inside a view, which reaches a
+  # window as a blank screen and no error.
+  body = reveal == "" ? box : row(
     {"gap": 2, "align": "center", "width": o["width"] ?? "100%"},
     [box, ghost_button(shown ? "Hide" : "Show", reveal)]
   )
-  field_shell(label, control, o.merge({"error": error}))
+  field_shell(label, body, o.merge({"error": error}))
 end
 
 def email_field(label, value, on_change, o = {})
@@ -5508,6 +6672,182 @@ def chart_heat_cell(id, r, c, value, alpha, cell_px, label)
   }
 end
 
+# How many of them got to the end.
+#
+# A funnel is a ranked bar chart that has given up its baseline: the bars are
+# centred, so the eye reads the narrowing rather than the lengths, which is
+# the question a funnel is asked. The drop between two stages is put beside
+# the lower one, because that is the number anybody is actually looking for
+# and computing it in your head from two absolutes is work.
+#
+# A stage is `{"label", "value"}`, in the order they happen.
+def chart_funnel(id, stages, w, h)
+  count = stages.length()
+  return muted("nothing to funnel") if count == 0
+
+  gutter = w / 3
+  gutter = 96 if gutter < 96
+  gutter = 180 if gutter > 180
+  plot_w = w - gutter - 8
+  ph = chart_plot_h(h)
+  row_h = (ph - 8) / count
+  bar_h = row_h * 3 / 5
+  bar_h = 8 if bar_h < 8
+  top = chart_max(stages.map(fn(st) { st["value"] }))
+  bars = range(0, count).map(fn(i) {
+    bw = (plot_w - 8) * stages[i]["value"] / top
+    bw = 3 if bw < 3
+    [1, i == count - 1 ? "success.base" : "series.1", 4 + (plot_w - 8 - bw) / 2, 4 + i * row_h + (row_h - bar_h) / 2, bw, bar_h, 2]
+  })
+  drawing = canvas(plot_w, ph, bars)
+  names = column({"gap": 0, "width": gutter}, range(0, count).map(fn(i) {
+    st = stages[i]
+    kept = i == 0 || stages[0]["value"] == 0 ? "" : str(st["value"] * 100 / stages[0]["value"]) + " %"
+    {
+      "k": "box",
+      "s": {"display": "column", "gap": 0, "justify": "center", "align": "end", "height": row_h, "width": "100%"},
+      "c": [
+        text(st["label"], {"size": 0, "fg": "text.muted", "clamp": 1}),
+        text(str(st["value"]) + (kept == "" ? "" : " · " + kept), {"size": 0, "weight": "semibold"})
+      ]
+    }
+  }))
+  heights = range(0, count).map(fn(i) { row_h })
+  labels = range(0, count).map(fn(i) { stages[i]["label"].to_s + " · " + str(stages[i]["value"]) })
+  row({"gap": 2, "width": w, "align": "start"}, [
+    column({"gap": 0, "width": gutter}, [names, {"k": "box", "s": {"height": CHART_AXIS_H}}]),
+    column({"gap": 0, "align": "center", "width": plot_w}, [
+      chart_row_layers(id, heights, labels, plot_w, ph, drawing),
+      chart_value_axis(0, top, plot_w, CHART_TICKS - 1)
+    ])
+  ])
+end
+
+# Where the money went between one total and the next.
+#
+# Every bar starts where the last one ended, so the chart is a bridge rather
+# than a comparison: the gap between the opening and closing columns is the
+# sum of everything drawn between them, and that is visible instead of
+# asserted. A step marked `{"total": true}` is measured from zero -- an
+# opening or closing balance stands on the floor, and only the moves float.
+#
+# A step is `{"label", "delta"}`, or `{"label", "delta", "total": true}`.
+def chart_waterfall(id, steps, w, h)
+  count = steps.length()
+  return muted("nothing to bridge") if count == 0
+
+  # Walk it once for the extent: a bridge is only readable if the axis holds
+  # every intermediate level, not just the ends.
+  running = 0
+  levels = [0]
+  tops = range(0, count).map(fn(i) {
+    st = steps[i]
+    # Not `from`/`to`: both are keywords.
+    starts = st["total"] == true ? 0 : running
+    ends = st["total"] == true ? st["delta"] : running + st["delta"]
+    running = ends
+    levels = levels.concat([ends])
+    [starts, ends]
+  })
+  high = chart_max(levels)
+  low = 0
+  for lv in levels
+    low = lv if lv < low
+  end
+  span = high - low
+  span = 1 if span == 0
+  ticks = chart_scale_ticks(low, high)
+  gutter = chart_gutter(ticks)
+  pw = w - gutter
+  ph = chart_plot_h(h)
+  slot = (pw - 8) / count
+  bar_w = slot * 3 / 5
+  bar_w = 4 if bar_w < 4
+  y_of = fn(v) { 4 + (high - v) * (ph - 8) / span }
+  bars = range(0, count).map(fn(i) {
+    st = steps[i]
+    a = y_of(tops[i][0])
+    b = y_of(tops[i][1])
+    y = a < b ? a : b
+    bh = a < b ? b - a : a - b
+    bh = 2 if bh < 2
+    tone = st["total"] == true ? "accent.base" : (st["delta"] < 0 ? "danger.base" : "success.base")
+    [1, tone, 4 + i * slot + (slot - bar_w) / 2, y, bar_w, bh, 1]
+  })
+  # The dotted rails that carry each level across to the next bar are what
+  # make it read as one walk instead of six unrelated columns.
+  rails = range(0, count - 1).map(fn(i) {
+    y = y_of(tops[i][1])
+    [0, "border.strong", 1, 4 + i * slot + (slot + bar_w) / 2, y, 4 + (i + 1) * slot + (slot - bar_w) / 2, y]
+  })
+  drawing = canvas(pw, ph, chart_grid(pw, ph).concat(rails).concat(bars))
+  spans = range(0, count).map(fn(i) { slot })
+  labels = range(0, count).map(fn(i) {
+    steps[i]["label"].to_s + " · " + (steps[i]["total"] == true ? str(steps[i]["delta"]) : chart_signed(steps[i]["delta"]))
+  })
+  layers = chart_layers(id, spans, labels, pw, ph, drawing)
+  chart_framed(ticks, chart_x_axis_bands(steps.map(fn(st) { st["label"] }), spans), pw, ph, gutter, layers)
+end
+
+# The shape of a distribution, five numbers at a time.
+#
+# An average hides everything that makes a number worth looking at: two
+# warehouses can pick the same mean lines per hour and one of them can be
+# stopping every afternoon. The box is the middle half, the line in it is the
+# median -- not the mean, which a single bad day drags -- and the whiskers
+# are the ends.
+#
+# A group is `{"label", "min", "q1", "median", "q3", "max"}`. This draws the
+# summary; computing it from a sample is the application's business.
+def chart_box(id, groups, w, h)
+  count = groups.length()
+  return muted("nothing to summarise") if count == 0
+
+  lows = groups.map(fn(g) { g["min"] })
+  highs = groups.map(fn(g) { g["max"] })
+  high = chart_max(highs)
+  low = lows[0]
+  for v in lows
+    low = v if v < low
+  end
+  ticks = chart_scale_ticks(low, high)
+  gutter = chart_gutter(ticks)
+  pw = w - gutter
+  ph = chart_plot_h(h)
+  span = high - low
+  span = 1 if span == 0
+  slot = (pw - 8) / count
+  box_w = slot * 3 / 5
+  box_w = 6 if box_w < 6
+  y_of = fn(v) { 4 + (high - v) * (ph - 8) / span }
+  paths = []
+  for i in range(0, count)
+    g = groups[i]
+    cx = 4 + i * slot + slot / 2
+    left = cx - box_w / 2
+    y3 = y_of(g["q3"])
+    y1 = y_of(g["q1"])
+    bh = y1 - y3
+    bh = 2 if bh < 2
+    paths = paths.concat([
+      [0, "border.strong", 1, cx, y_of(g["max"]), cx, y3],
+      [0, "border.strong", 1, cx, y1, cx, y_of(g["min"])],
+      [0, "border.strong", 2, cx - box_w / 4, y_of(g["max"]), cx + box_w / 4, y_of(g["max"])],
+      [0, "border.strong", 2, cx - box_w / 4, y_of(g["min"]), cx + box_w / 4, y_of(g["min"])],
+      [1, "series.1", left, y3, box_w, bh, 1],
+      [0, "surface.base", 2, left, y_of(g["median"]), left + box_w, y_of(g["median"])]
+    ])
+  end
+  drawing = canvas(pw, ph, chart_grid(pw, ph).concat(paths))
+  spans = range(0, count).map(fn(i) { slot })
+  labels = range(0, count).map(fn(i) {
+    g = groups[i]
+    g["label"].to_s + " · " + str(g["min"]) + "–" + str(g["max"]) + ", median " + str(g["median"])
+  })
+  layers = chart_layers(id, spans, labels, pw, ph, drawing)
+  chart_framed(ticks, chart_x_axis_bands(groups.map(fn(g) { g["label"] }), spans), pw, ph, gutter, layers)
+end
+
 def chart_heatmap(id, grid, col_labels, row_labels, w, h)
   row_count = grid.length()
   return muted("nothing to map") if row_count == 0
@@ -6289,6 +7629,42 @@ def post_media(post, play)
   end
 
   []
+end
+
+# What happened, in the order it happened.
+#
+# The rail down the left is what makes it a timeline rather than a list with
+# dates in it: the line is continuous and the dots are on it, so the eye
+# reads one thread instead of eight separate rows. The last entry draws a dot
+# and no line -- a thread that continues past the last thing that happened is
+# a thread that says more is coming, and nothing is.
+#
+# An entry is `{"at", "title", "body"?, "tone"?, "icon"?}`. `at` is whatever
+# the application calls a time; this draws it and judges none of it.
+def timeline(entries, o = {})
+  tl_count = entries.length()
+  tl_rows = range(0, tl_count).map(fn(i) {
+    e = entries[i]
+    last = i == tl_count - 1
+    mark = (e["icon"] ?? "") == ""
+      ? node("box", {"width": 9, "height": 9, "radius": 4, "shrink": 0, "bg": e["tone"] ?? "accent.base", "border": 2, "border_color": "surface.base"}, [])
+      : icon(e["icon"], {"width": 14, "height": 14, "shrink": 0, "fg": e["tone"] ?? "accent.base"})
+    rail = column({"gap": 0, "align": "center", "width": 16, "shrink": 0}, [
+      node("box", {"height": 4}, []),
+      mark,
+      last ? spacer() : node("box", {"width": 1, "grow": 1, "bg": "border.default"}, [])
+    ])
+    said = column({"gap": 1, "grow": 1, "pad": [0, 0, last ? 0 : 4, 0]}, [
+      row({"gap": 2, "align": "center", "width": "100%"}, [
+        text(e["title"].to_s, {"weight": "semibold", "grow": 1, "clamp": 1}),
+        muted(e["at"].to_s)
+      ])
+    ].concat((e["body"] ?? "") == "" ? [] : [muted(e["body"])]))
+    keyed((o["key"] ?? "timeline") + ":" + i.to_s, row({"gap": 3, "align": "stretch", "width": "100%"}, [rail, said]))
+  })
+  tl_list = column({"gap": 0, "width": "100%"}, tl_rows)
+  tl_list["p"] = {"role": "list", "label": o["label"] ?? "Activity"}
+  tl_list
 end
 
 def post_card(post, liked, play, height)
