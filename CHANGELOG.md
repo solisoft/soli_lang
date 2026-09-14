@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [2.3.3] - 2026-09-15
+
+### Fixed
+
+* **fix(ci):** a `Cargo.lock` written while the local `[patch]` was active is not the lockfile CI resolves, and every job but `audit` refused it — `cannot update the lock file ... because --locked was passed`. The patch in `.cargo/config.toml` points `eui-proto` and `eui-client` at the checkout next door; it is untracked by design, because a path dependency in the manifest breaks every build without that sibling. But cargo records a patched crate as a path dep with no `source`, so the lockfile it leaves behind describes a resolution no other machine performs. Regenerated with the patch removed, so it names the pinned rev again. `cargo fmt` had not been run either. **v2.3.2 was tagged and never published for exactly this reason**: its own CI was red, so the `release` job — which waits on the full gate — never ran, and no binaries were built. This release carries everything 2.3.2 was meant to
+
 ## [2.3.2] - 2026-09-14
 
 ### Fixed
