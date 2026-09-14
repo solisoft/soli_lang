@@ -4500,8 +4500,7 @@ def slider(value, min, max, on_set, o = {})
       "display": "row",
       "align": "center",
       "width": width,
-      "height": 24,
-      "cursor": "grab"
+      "height": 24
     },
     "p": {
       "min": min,
@@ -4524,13 +4523,18 @@ def slider(value, min, max, on_set, o = {})
         "bg": "accent.base",
         "radius": 4
       }, []),
+      # The hand belongs to the handle. Over the track the pointer stays what
+      # it was: the track can be jumped to with a click, but it is not
+      # something you take hold of, and a cursor that says otherwise the whole
+      # width of the control is a promise it does not keep.
       node("box", {
         "width": 16,
         "height": 16,
         "radius": 4,
         "bg": "accent.base",
         "border": 2,
-        "border_color": "surface.base"
+        "border_color": "surface.base",
+        "cursor": "grab"
       }, []),
       node("box", {
         "grow": 1,
