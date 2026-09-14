@@ -4258,115 +4258,85 @@ end
 # so the fill reads left to right without any state on this side.
 # Two handles on one track: from and to.
 #
-# One node takes the pointer, not two. A range with a handle per node has to
-# decide what happens when they cross, and it decides it twice -- once per
-# handle, in two places, differently. Here the track reports where the
-# pointer is and which end is nearer, and the server moves that end and keeps
-# the pair in order. `params["props"]` carries `min`, `max`, `width`, `low`
-# and `high`, which is everything the arithmetic needs.
+# The track is declared, not arranged (03 §3.4). `track: "x"` says this box
+# is one; `track_min`, `track_max` and `track_step` say what it measures;
+# `track_value` says where the handles are; the children say which part of
+# it they are. Everything between the press and the release is the client's
+# after that -- which handle the press took, where it goes, the thumb under
+# the pointer every frame -- and the only thing that comes back is a
+# `change`, and only when the quantised value has moved.
 #
-# The filled segment is between the handles rather than from the left, which
-# is the whole visual difference between "up to here" and "between here and
+# What that replaces was five handlers and a round trip per mouse move. The
+# server was told where the pointer was, inverted it against a `width` baked
+# into the props -- a lie the moment a parent stretched the track -- worked
+# out on this side which end the hand was nearest, and sent a whole tree
+# back so the handles could catch up. The moves arrived whether the value
+# had changed or not, and dragging this widget cost 39 ms a frame against
+# the 9 of a page without one.
+#
+# There is no arithmetic left here because the only width that was ever true
+# is the one the client laid out. There is no `drag_only` either, and
+# nothing for it to gate: the prop exists for a node that must hear
+# `pointer_move` while it is dragged, and this one never hears it at all.
+# What must never come back is the handler declared only while a drag is
+# live -- an event in flight naming a handler the server has since removed
+# is refused by 06 §4, and the session goes with it.
+#
+# The filled run is between the handles rather than from the left, which is
+# the whole visual difference between "up to here" and "between here and
 # here".
 def range_slider(low, high, min, max, on_set, o = {})
-  rs_width = o["width"] ?? 240
-  rs_span = max - min
-  rs_span = 1 if rs_span == 0
-  rs_a = (low - min) * rs_width / rs_span
-  rs_b = (high - min) * rs_width / rs_span
-  rs_a = 0 if rs_a < 0
-  rs_b = rs_width if rs_b > rs_width
-  # Each handle is 14 px of inline width, so the runs beside them are short
-  # by half a handle each -- the same subtraction `slider` makes for its one.
-  rs_a = rs_a > 7 ? rs_a - 7 : 0
-  rs_mid = rs_b > rs_a + 14 ? rs_b - rs_a - 14 : 0
-  rs_on = {"click": on_set, "key_down": on_set, "pointer_down": on_set, "pointer_up": on_set}
-  rs_on["pointer_move"] = on_set if o["dragging"] == true
   {
     "k": "box",
     "key": o["key"] ?? "range",
-    "s": {"display": "row", "align": "center", "width": rs_width, "height": 24, "cursor": "grab"},
+    "s": {"display": "row", "align": "center", "width": o["width"] ?? 240, "height": 24, "cursor": "grab"},
     "p": {
-      "min": min, "max": max, "width": rs_width, "low": low, "high": high,
+      "track": "x",
+      "track_min": min,
+      "track_max": max,
+      "track_step": o["step"] ?? 1,
+      "track_value": [low, high],
       "role": "group",
-      "label": o["label"] ?? "Range",
-      "value_now": low,
-      "value_min": min,
-      "value_max": max
+      "label": o["label"] ?? "Range"
     },
-    # `pointer_move` is declared only while a drag is live.
-    #
-    # A handler is what makes the client send: an event goes to the nearest
-    # ancestor that handles it, and to none if nobody does (06 §2). Declared
-    # always, the track answers every pointer that crosses it -- a round trip
-    # and a whole view rebuilt per mouse move, for a value nobody asked to
-    # change. Gating it in the handler is too late: the cost is paid by the
-    # time the handler can decline.
-    #
-    # The caller hands back the drag flag it already keeps, so the handler
-    # appears on the press and goes on the release. What that costs is the
-    # moves between the press and the batch answering it -- one round trip --
-    # and nothing drifts, because the position is read from the pointer's
-    # absolute offset every time rather than accumulated.
-    "on": rs_on,
+    "on": {"change": on_set},
     "c": [
-      node("box", {"width": rs_a, "height": 4, "bg": "surface.sunken", "radius": 4}, []),
-      node("box", {"width": 14, "height": 14, "radius": 4, "shrink": 0, "bg": "accent.base", "border": 2, "border_color": "surface.base"}, []),
-      node("box", {"width": rs_mid, "height": 4, "bg": "accent.base", "radius": 4}, []),
-      node("box", {"width": 14, "height": 14, "radius": 4, "shrink": 0, "bg": "accent.base", "border": 2, "border_color": "surface.base"}, []),
-      node("box", {"grow": 1, "height": 4, "bg": "surface.sunken", "radius": 4}, [])
+      track_part("groove", {"height": 4, "bg": "surface.sunken", "radius": 4}),
+      track_thumb(o["low_label"] ?? "From", low, min, high),
+      track_part("fill", {"height": 4, "bg": "accent.base", "radius": 4}),
+      track_thumb(o["high_label"] ?? "To", high, low, max)
     ]
   }
 end
 
-# Whether a pointer event should move a handle at all.
-#
-# A track reports `pointer_move` whenever the pointer crosses it, pressed or
-# not -- it has to, because a widget that only reported presses could not be
-# dragged. So the gate is the handler's, and every caller getting it wrong
-# the same way is what a catalogue is for: without this, the handles follow
-# the pointer across the track and the value of something changes because
-# somebody walked past it.
-#
-# `dragging` is the caller's own flag, set from this function's verdict on
-# the last event: down or a gated move means a hand is on it, up means the
-# hand has gone.
-def range_takes?(kind, dragging)
-  said = (kind ?? "").to_s
-  return true if said == "click" || said == "pointer_down" || said == "pointer_up"
-
-  said == "pointer_move" && dragging == true
+# One piece of a track for the client to place: the line, or the run of it
+# the value covers. It is sized from the value every frame, so the width
+# here is only what it has before the first paint.
+def track_part(part, style)
+  {"k": "box", "s": style, "p": {"track_part": part}, "c": []}
 end
 
-# Whether a hand is still on the track after an event this one took.
-def range_holding?(kind)
-  said = (kind ?? "").to_s
-  said == "pointer_down" || said == "pointer_move"
-end
-
-# Which end of a range a pointer at `x` is asking to move, and where it
-# would put it. The widget cannot decide this -- it has no arithmetic -- so
-# the handler does, and this is that handler's half.
-def range_moved(props, x)
-  # Not `min`/`max`: both are builtins, and a bare assignment rebinds the
-  # global -- the static checker rejects the file outright, which is the one
-  # mercy in this family of mistakes.
-  floor_v = props["min"] ?? 0
-  ceil_v = props["max"] ?? 100
-  width = props["width"] ?? 240
-  width = 1 if width <= 0
-  at = floor_v + (ceil_v - floor_v) * x / width
-  at = floor_v if at < floor_v
-  at = ceil_v if at > ceil_v
-  low = props["low"] ?? floor_v
-  high = props["high"] ?? ceil_v
-  near_low = (at - low) < 0 ? low - at : at - low
-  near_high = (at - high) < 0 ? high - at : at - high
-  return {"low": at, "high": high} if near_low <= near_high && at <= high
-
-  return {"low": low, "high": at} if at >= low
-
-  at <= low ? {"low": at, "high": high} : {"low": low, "high": at}
+# A handle. It is its own focus stop and its own `slider` to a reader, with
+# its own bounds -- the handle beside it, which is how two of them cannot
+# cross without a line of code saying so.
+def track_thumb(label, at, floor_v, ceil_v)
+  {
+    "k": "box",
+    "s": {
+      "width": 14, "height": 14, "radius": 4, "shrink": 0,
+      "bg": "accent.base", "border": 2, "border_color": "surface.base"
+    },
+    "p": {
+      "track_part": "thumb",
+      "role": "slider",
+      "label": label,
+      "value_now": at,
+      "value_min": floor_v,
+      "value_max": ceil_v,
+      "orientation": "horizontal"
+    },
+    "c": []
+  }
 end
 
 # Money, typed.
@@ -4487,61 +4457,35 @@ def shortcut_sheet(groups, on_close, o = {})
 end
 
 def slider(value, min, max, on_set, o = {})
-  sl_on = {"click": on_set, "key_down": on_set, "pointer_down": on_set, "pointer_up": on_set}
-  sl_on["pointer_move"] = on_set if o["dragging"].nil? || o["dragging"] == true
-  width = 240
-  span = max - min
-  span = 1 if span == 0
-  filled = (value - min) * width / span
-  lead = filled > 8 ? filled - 8 : 0
   {
     "k": "box",
-    "s": {
-      "display": "row",
-      "align": "center",
-      "width": width,
-      "height": 24
-    },
+    "s": {"display": "row", "align": "center", "width": o["width"] ?? 240, "height": 24, "cursor": "grab"},
     "p": {
-      "min": min,
-      "max": max,
-      "width": width,
+      "track": "x",
+      "track_min": min,
+      "track_max": max,
+      "track_step": o["step"] ?? 1,
+      "track_value": value,
       "role": "slider",
-      "label": "Value",
+      "label": o["label"] ?? "Value",
       "value_now": value,
       "value_min": min,
       "value_max": max,
       "orientation": "horizontal"
     },
-    # The same gate, opt-in: a caller that passes no `dragging` keeps the
-    # handler declared always, which is what every existing one has today.
-    "on": sl_on,
+    "on": {"change": on_set},
     "c": [
-      node("box", {
-        "width": lead,
-        "height": 4,
-        "bg": "accent.base",
-        "radius": 4
-      }, []),
-      # The hand belongs to the handle. Over the track the pointer stays what
-      # it was: the track can be jumped to with a click, but it is not
-      # something you take hold of, and a cursor that says otherwise the whole
-      # width of the control is a promise it does not keep.
-      node("box", {
-        "width": 16,
-        "height": 16,
-        "radius": 4,
-        "bg": "accent.base",
-        "border": 2,
-        "border_color": "surface.base",
-        "cursor": "grab"
-      }, []),
-      node("box", {
-        "grow": 1,
-        "height": 4,
-        "bg": "surface.sunken",
-        "radius": 4
-      }, [])
+      track_part("groove", {"height": 4, "bg": "surface.sunken", "radius": 4}),
+      track_part("fill", {"height": 4, "bg": "accent.base", "radius": 4}),
+      {
+        "k": "box",
+        "s": {
+          "width": 16, "height": 16, "radius": 4, "shrink": 0,
+          "bg": "accent.base", "border": 2, "border_color": "surface.base"
+        },
+        "p": {"track_part": "thumb"},
+        "c": []
+      }
     ]
   }
 end
