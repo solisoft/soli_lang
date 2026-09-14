@@ -755,6 +755,19 @@ pub fn register_router_builtins(env: &mut Environment) {
                                 "router_eui: session must be \"required\" or \"optional\", got \"{other}\""
                             ))
                         }
+                        // {"default": true}: the component a bare origin
+                        // opens. The manifest carries one `entry` (EUI 01
+                        // §2.1) and a server here carries many components,
+                        // so one of them has to be what `wss://host` means.
+                        ("default", "true") => {
+                            crate::serve::eui::set_default(&component, false)
+                        }
+                        ("default", "false") => {}
+                        ("default", other) => {
+                            return Err(format!(
+                                "router_eui: default must be true or false, got \"{other}\""
+                            ))
+                        }
                         (other, _) => {
                             return Err(format!("router_eui: unknown option '{other}'"))
                         }

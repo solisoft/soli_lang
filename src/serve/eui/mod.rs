@@ -69,6 +69,35 @@ pub const FORGET_EVENT: &str = "__eui_forget";
 static EUI_SESSION_REQUIRED: TenantValue<std::collections::HashSet<String>> =
     TenantValue::new(std::collections::HashSet::new);
 
+/// Which component a bare origin opens: the manifest's `entry` (EUI 01 §2.1).
+///
+/// The protocol has one entry and a server here has many components, so one
+/// of them has to be the one `wss://host` means. The first `router_eui` in
+/// the routes file is it, which is the one a person reading that file top to
+/// bottom would say, and `{"default": true}` on any of them says otherwise.
+static EUI_DEFAULT: TenantValue<Option<String>> = TenantValue::new(|| None);
+
+/// Name `component` as the one a bare origin opens. `first` is a
+/// registration claiming it only because nothing else has.
+pub fn set_default(component: &str, first: bool) {
+    EUI_DEFAULT.write(|d| {
+        if !first || d.is_none() {
+            *d = Some(component.to_string());
+        }
+    });
+}
+
+/// The session path the manifest advertises: the default component's, or
+/// the bare endpoint when no component has been registered at all.
+pub fn entry_path() -> String {
+    EUI_DEFAULT.read(|d| {
+        d.as_ref().map_or_else(
+            || "/_eui/session".to_string(),
+            |c| format!("/_eui/session/{c}"),
+        )
+    })
+}
+
 /// Refuse the upgrade for `component` unless the request carries a session.
 pub fn require_session(component: &str) {
     EUI_SESSION_REQUIRED.write(|set| set.insert(component.to_string()));
@@ -110,6 +139,7 @@ pub fn has_encoder(liveview_id: &str) -> bool {
 
 /// Register a component's view action.
 pub fn register_view(component: &str, view: &str) {
+    set_default(component, true);
     EUI_VIEWS.write(|m| m.insert(component.to_string(), view.to_string()));
 }
 

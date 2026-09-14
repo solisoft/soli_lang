@@ -143,7 +143,11 @@ fn sign(capabilities: u32) -> Result<Vec<u8>, String> {
         publisher_key,
         capabilities,
         theme: None,
-        entry: "/_eui/session".into(),
+        // Where this application's session lives, so a client need not be
+        // told the protocol's own prefix: `wss://host` is an address, and
+        // this is what completes it (EUI 01 §2.1). The first `router_eui`
+        // in the routes file, or whichever one said `{"default": true}`.
+        entry: super::entry_path(),
         rotation: None,
     };
     let signature = key.sign(&manifest.signed_bytes());
