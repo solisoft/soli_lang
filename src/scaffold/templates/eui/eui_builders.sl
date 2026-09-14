@@ -339,22 +339,29 @@ end
 # the catalogue's geometry, which is the same layout shift as a border that
 # only exists on hover, several times larger. This applies one patch to every
 # style a node declares, so all of its states keep the same shape.
+#
+# Every handler that declares styles, not a named four: a field also states a
+# `focus` and a `blur` look (`editable_states`), and patching only the pointer
+# events left the keyboard to undo the patch.
 def restyle(n, patch)
   n["s"] = n["s"].merge(patch)
   handlers = n["on"]
   return n if handlers.nil?
 
-  names = ["pointer_enter", "pointer_leave", "pointer_down", "pointer_up"]
-  for name in names
+  for name in handlers.keys()
     handler = handlers[name]
-    unless handler.nil?
-      styles = handler["styles"] ?? {}
-      for key in styles.keys()
-        styles[key] = styles[key].merge(patch)
-      end
-      handler["styles"] = styles
-      handlers[name] = handler
+    # A handler that is only an event name is a string, and a string declares
+    # no styles.
+    next if handler.nil? || handler.to_s == handler
+
+    styles = handler["styles"] ?? {}
+    next if styles.keys().length() == 0
+
+    for key in styles.keys()
+      styles[key] = styles[key].merge(patch)
     end
+    handler["styles"] = styles
+    handlers[name] = handler
   end
   n["on"] = handlers
   n
@@ -2124,11 +2131,158 @@ def menu(items, on_pick)
           "cursor": "pointer"
         },
         "on": {"click": on_pick},
-        "p": {"item": it},
+        "p": {"item": it, "role": "menu_item", "label": it.to_s},
         "c": [text(it, {})]
       }
     })
   )
+end
+
+# The menu that a right-click opens. The client already emits `context_menu`
+# on button 1 (06 §1); this is the overlay it opens, the same column `menu`
+# draws, hung off the node that was pointed at.
+#
+# `on_open` is the event the right-click sends. `on_pick` is what a row
+# sends, with `params["props"]["item"]` the label. `o["on_close"]` is Escape.
+# The server owns `open`, as it owns a popover's.
+def context_menu(anchor, items, open, on_open, on_pick, o = {})
+  on = (anchor["on"] ?? {}).merge({"context_menu": on_open})
+  on["key_down"] = o["on_close"] unless o["on_close"].nil?
+  anchor["on"] = on
+  props = anchor["p"] ?? {}
+  props["keys"] = ["Escape"] unless o["on_close"].nil?
+  anchor["p"] = props
+  return anchor unless open == true
+
+  popover(anchor, [menu(items, on_pick)], true)
+end
+
+# A command is `{id, label, hint, group}`. A string is a label that is its
+# own id. The four functions below are the whole of the model, so a spec
+# can pin them without a client.
+def command_row(it)
+  return {"id": it.to_s, "label": it.to_s, "hint": "", "group": ""} unless it.class == "hash"
+
+  {
+    "id": (it["id"] ?? it["label"]).to_s,
+    "label": (it["label"] ?? it["id"]).to_s,
+    "hint": (it["hint"] ?? "").to_s,
+    "group": (it["group"] ?? "").to_s
+  }
+end
+
+def command_match(items, query)
+  said = (query ?? "").strip().downcase()
+  out = []
+  for it in items
+    row = command_row(it)
+    hay = (row["label"] + " " + row["hint"] + " " + row["group"]).downcase()
+    out = out.concat([row]) if said == "" || hay.index_of(said) >= 0
+  end
+  out
+end
+
+PALETTE_KEYS = ["ArrowDown", "ArrowUp", "Escape"]
+
+# Overlay, a field, a list. Type to narrow, arrows to walk, Enter to take.
+# The caller owns `query` and `at`; this is a view of them. Closed, it
+# draws nothing — include it in the tree only while it is up, the way a
+# dialog is.
+#
+# `o`: `on_change`, `on_key`, `on_pick`, `on_submit`, `on_close`, `key`.
+def command_palette(query, items, at, o = {})
+  pal_key = (o["key"] ?? "palette").to_s
+  pal_at = at ?? -1
+  pal_rows = command_match(items, query)
+  pal_entry = input(query ?? "", o["on_change"], {
+    "key": pal_key + ":entry",
+    "style": {"width": "100%"},
+    "props": {
+      "keys": PALETTE_KEYS,
+      "role": "combo_box",
+      "expanded": true,
+      "label": "Command",
+      "autofocus": true
+    },
+    "on": {
+      "key_down": o["on_key"],
+      "submit": o["on_submit"]
+    }
+  })
+  if pal_at >= 0 && pal_at < pal_rows.length()
+    pal_entry["p"]["active_descendant"] = pal_key + ":opt:" + pal_rows[pal_at]["id"]
+  end
+  pal_list = []
+  pal_group = ""
+  i = 0
+  while i < pal_rows.length()
+    row = pal_rows[i]
+    if row["group"] != "" && row["group"] != pal_group
+      pal_group = row["group"]
+      pal_list = pal_list.concat([muted(pal_group)])
+    end
+    lit = i == pal_at
+    kids = [text(row["label"], {"grow": 1, "weight": lit ? "semibold" : "regular"})]
+    kids = kids.concat([muted(row["hint"])]) unless row["hint"] == ""
+    pal_list = pal_list.concat([control({
+      "key": pal_key + ":opt:" + row["id"],
+      "size": "sm",
+      "tone": "quiet",
+      "shape": {
+        "justify": "start",
+        "width": "100%",
+        "gap": 3,
+        "bg": lit ? "surface.sunken" : "none",
+        "border": [0, 0, 0, 3],
+        "border_color": lit ? "accent.base" : "none"
+      },
+      "on": {"click": o["on_pick"]},
+      "props": {"id": row["id"], "item": row["label"]},
+      "a11y": {
+        "role": "option",
+        "selected": lit,
+        "label": row["label"],
+        "pos_in_set": i + 1,
+        "set_size": pal_rows.length()
+      },
+      "c": kids
+    })])
+    i = i + 1
+  end
+  pal_body = pal_list.length() == 0 ? [muted("Nothing matches")] : pal_list
+  panel = card(
+    {
+      "width": o["width"] ?? 480,
+      "max_width": "100%",
+      "gap": 3,
+      "self": "center"
+    },
+    [pal_entry, scroll({"max_height": 360}, pal_body)]
+  )
+  n = {
+    "k": "overlay",
+    "key": pal_key,
+    "s": {
+      "display": "stack",
+      "justify": "start",
+      "align": "center",
+      "pad": [10, 4, 4, 4],
+      "blur": 16,
+      "bg": "#00000073",
+      "animation": "enter",
+      "transition": "slow"
+    },
+    "p": {
+      "role": "dialog",
+      "label": "Command palette",
+      "modal": true,
+      "autofocus": true,
+      "keys": ["Escape"]
+    },
+    "c": [panel]
+  }
+  n["on"] = {"key_down": o["on_close"]} unless o["on_close"].nil?
+  n
 end
 
 def tooltip(content)
@@ -2566,6 +2720,120 @@ def dropdown(anchor, content, open, max_px = 0)
       "c": [scroll(pane, content)]
     }
   ])
+end
+
+# The keys the filter field hands back: arrows walk the panel, Escape
+# shuts it. `Enter` is a `submit`, same as `tag_field`.
+COMBO_KEYS = ["ArrowDown", "ArrowUp", "Escape"]
+
+# What of a fixed list still belongs under the draft. An empty draft offers
+# everything, because a panel that appears only once you have typed is a
+# panel most people never learn is there — the same reason `tag_suggest`
+# does.
+def combo_filter(options, query)
+  said = (query ?? "").strip().downcase()
+  return options if said == ""
+
+  options.filter(fn(o) { o.to_s.downcase().index_of(said) >= 0 })
+end
+
+# A select you can type into. Closed, it is its value and a chevron;
+# open, a field at the top of the panel filters the options. The caller
+# owns `open`, `query` and `at`, the way it owns a select's `open`.
+#
+# `o`: `query`, `open`, `at`, `on_toggle`, `on_change`, `on_pick`, `on_key`,
+# `on_submit`, `on_close`, `key`, `label`, `density`, `width`, `min_width`.
+def combobox(options, value, o = {})
+  cb_key = (o["key"] ?? ("combo:" + (o["label"] ?? value).to_s)).to_s
+  cb_open = o["open"] == true
+  cb_query = o["query"] ?? ""
+  cb_at = o["at"] ?? -1
+  cb_min = o["min_width"] ?? 160
+  words = combo_filter(options, cb_query)
+  s = {
+    "display": "row",
+    "align": "center",
+    "gap": 2,
+    "pad": [2, 3, 2, 3],
+    "min_width": cb_min,
+    "min_height": field_height(o),
+    "border": 1,
+    "border_color": "border.default",
+    "radius": 2,
+    "bg": "surface.sunken",
+    "cursor": "pointer",
+    "transition": "fast"
+  }
+  s["width"] = o["width"] unless o["width"].nil?
+  s["grow"] = 1 if o["grow"] == true
+  anchor = {
+    "k": "box",
+    "key": cb_key,
+    "s": s,
+    "p": {
+      "role": "combo_box",
+      "expanded": cb_open,
+      "label": o["label"] ?? value.to_s
+    },
+    "on": stateful(s, TONES["neutral"], {"click": o["on_toggle"]}),
+    "c": [text(value, {"grow": 1}), icon(
+      "chevron_down",
+      {"fg": "text.muted", "width": 14, "height": 14}
+    )]
+  }
+  return anchor unless cb_open
+
+  cb_props = {
+    "keys": COMBO_KEYS,
+    "role": "combo_box",
+    "expanded": true,
+    "label": o["label"] ?? value.to_s,
+    "autofocus": true
+  }
+  cb_props["active_descendant"] = cb_key + ":opt:" + words[cb_at].to_s if cb_at >= 0 && cb_at < words.length()
+  cb_on = {}
+  cb_on["key_down"] = o["on_key"] unless o["on_key"].nil?
+  cb_on["submit"] = o["on_submit"] unless o["on_submit"].nil?
+  cb_entry = input(cb_query, o["on_change"], {
+    "key": cb_key + ":entry",
+    "style": {
+      "width": "100%",
+      "border": 0,
+      "bg": "none",
+      "pad": [1, 2, 1, 2]
+    },
+    "props": cb_props,
+    "on": cb_on
+  })
+  cb_rows = range(0, words.length()).map(fn(i) {
+    word = words[i]
+    lit = i == cb_at
+    control({
+      "key": cb_key + ":opt:" + word.to_s,
+      "size": "sm",
+      "tone": "quiet",
+      "shape": {
+        "justify": "start",
+        "min_width": cb_min,
+        "bg": lit ? "surface.sunken" : "none",
+        "border": [0, 0, 0, 3],
+        "border_color": lit ? "accent.base" : "none"
+      },
+      "on": {"click": o["on_pick"]},
+      "props": {"value": word, "id": word},
+      "a11y": {
+        "role": "option",
+        "selected": lit,
+        "label": word.to_s,
+        "pos_in_set": i + 1,
+        "set_size": words.length()
+      },
+      "c": [text(word.to_s, {"weight": lit ? "semibold" : "regular"})]
+    })
+  })
+  cb_panel = column({"gap": 0}, [cb_entry].concat(cb_rows.length() == 0 ? [muted("Nothing matches")] : cb_rows))
+  cb_panel["p"] = {"role": "list_box", "label": (o["label"] ?? "Options").to_s}
+  dropdown(anchor, [cb_panel], true, DROPDOWN_MAX_PX)
 end
 
 # ---- Multi-selection --------------------------------------------------------
@@ -3336,10 +3604,14 @@ def datetime_picker(
   )
 end
 
+# An input of a stated width. The width goes in through the style `input` is
+# handed, not onto `box["s"]` afterwards: `input` builds its hover and focus
+# styles out of that style, and a width written on after the fact reaches the
+# resting state alone. The field then collapsed to its own text the moment the
+# pointer touched it — 200 px at rest, 78 hovered — and stayed collapsed,
+# because the style it goes back to on leaving had no width either.
 def sized_input(value, on_change, width)
-  box = input(value, on_change)
-  box["s"]["width"] = width
-  box
+  input(value, on_change, {"style": {"width": width}})
 end
 
 # Two selections on one calendar: the first click starts, the second ends,
@@ -3553,6 +3825,31 @@ def text_field(label, value, on_change, o = {})
   )
 end
 
+# A line of anything, painted as marks. The client reads `secret` (03 §3);
+# without it this is a text field whose value is on screen, which is the
+# whole of why a login cannot be composed from `text_field`.
+#
+# `o["shown"]` is the reveal: true paints the text, false (the default)
+# paints the marks. `o["on_reveal"]` is the event the Show/Hide control
+# sends. The handler owns both; this widget holds neither.
+def password_field(label, value, on_change, o = {})
+  error = field_error(value, fn(said) { true }, "", o)
+  bad = field_bad(error, o)
+  shown = o["shown"] == true
+  props = field_props(label, error, bad, o)
+  props["secret"] = true unless shown
+  reveal = o["on_reveal"] ?? ""
+  box = input(value, on_change, {
+    "style": field_style(bad, o).merge(reveal == "" ? {} : {"width": "auto", "grow": 1}),
+    "props": props
+  })
+  control = reveal == "" ? box : row(
+    {"gap": 2, "align": "center", "width": o["width"] ?? "100%"},
+    [box, ghost_button(shown ? "Hide" : "Show", reveal)]
+  )
+  field_shell(label, control, o.merge({"error": error}))
+end
+
 def email_field(label, value, on_change, o = {})
   error = field_error(value, fn(said) { email_valid?(said) }, "That does not look like an email address", o)
   bad = field_bad(error, o)
@@ -3621,6 +3918,204 @@ def textarea_field(label, value, on_change, o = {})
       "props": field_props(label, error, bad, o)
     }),
     o.merge({"error": error})
+  )
+end
+
+# ---- Files -----------------------------------------------------------------
+#
+# The two things a server cannot do at all: reach a file on the person's
+# machine, and show one back.
+#
+# A picker is never one thing. 03 §3.2 asks for three at once and a node that
+# has only two of them opens nothing, silently: the `pick` prop, a **server**
+# handler for `file_pick`, and a capability the person granted. That is the
+# whole reason this is a builder — the prop and the handler are easy to write
+# and easy to write only one of, and the failure is a button that does
+# nothing with no diagnostic anywhere (08 §3, deliberately).
+#
+# The third is not ours to give. `fs.pick`, `camera` and `microphone` are
+# three different powers and none implies another, so a component asks for
+# what it uses in `eui_capabilities(...)` and the person still answers.
+
+# `flags` in a `pick`. Bit 0 takes more than one file; bit 1 asks the camera
+# for a picture that does not exist yet and bit 2 asks for a recording —
+# which is why they need their own grants. Together they are a contradiction
+# and a client resolves them as the camera, so do not send both.
+PICK_MANY = 1
+PICK_CAMERA = 2
+PICK_MICROPHONE = 4
+
+# `"png,jpg"` on its own, or `[accept, flags, max]` when anything else is
+# asked for. `max` of 0 means the client's own default (16 MiB), which is
+# also what it uses for a list that does not say.
+def pick_prop(accept, o)
+  pick_flags = o["flags"] ?? 0
+  pick_flags = pick_flags + PICK_MANY if o["multiple"] == true
+  return accept if pick_flags == 0 && o["max"].nil?
+
+  [accept, pick_flags, o["max"] ?? 0]
+end
+
+# A control that opens the platform's open dialog.
+#
+# Everything `control` gives every other control — tones, sizes, the
+# disabled and loading states, the a11y mapping — and two more options:
+#
+#   accept    "png,jpg,pdf", extensions without dots, empty for anything
+#   flags     PICK_CAMERA or PICK_MICROPHONE; omit for a file already there
+#   multiple  more than one file, which the two capture flags ignore
+#   max       the largest one file may be, in bytes
+#
+# `on_pick` is the **server** handler name for `file_pick`, and what it
+# receives is `[id, name, size]` — a name and a weight, never a path. The
+# bytes arrive later and separately, as the server's own `file_upload`.
+def file_field(label, accept, on_pick, o = {})
+  ff_node = control(o.merge({
+    "key": o["key"] ?? ("file:" + label),
+    "on": {"file_pick": on_pick},
+    "a11y": o["a11y"] ?? {"role": "button", "label": label},
+    "c": o["c"] ?? [text_interned(label, {"size": o["text_size"] ?? 1})]
+  }))
+  ff_node["p"] = (ff_node["p"] ?? {}).merge({"pick": pick_prop(accept, o)})
+
+  # A tool button is a glyph that lights rather than a surface that fills, so
+  # it wants a hover the TONES table has no name for. `control` looks its tone
+  # up by name, so the override is applied here, against the style `control`
+  # settled on — and only when there are handlers to replace, since `disabled`
+  # and `loading` mean there are deliberately none.
+  unless ff_node["on"].nil? || (o["hover"].nil? && o["press"].nil?)
+    ff_node["on"] = stateful(ff_node["s"], {
+      "hover": o["hover"] ?? {},
+      "press": o["press"] ?? {}
+    }, {"file_pick": on_pick})
+  end
+  ff_node
+end
+
+# A surface a file can be let go over. `drop` is the same prop as `pick`
+# (03 §3.2), so a file arrives as `file_pick` whether it was chosen in the
+# dialog or dropped here. `o["on_drag"]` is `file_drag`, whose payload is
+# `[over]`: the box lights when a file is over it and goes dark when it
+# leaves. `o["pick"]` (default true) also opens the dialog on a click, so
+# one box is both gestures.
+#
+# `o["over"]` is whether a file is over it *now* — the handler stores what
+# `file_drag` said; this widget holds no state.
+def file_drop(label, accept, on_pick, o = {})
+  over = o["over"] == true
+  hint = o["hint"] ?? ""
+  resting = {
+    "display": "column",
+    "gap": 1,
+    "align": "center",
+    "justify": "center",
+    "width": "100%",
+    "pad": 5,
+    "radius": 3,
+    "border": 1,
+    "border_color": over ? "accent.base" : "border.subtle",
+    "bg": over ? "accent.hover" : "surface.sunken",
+    "transition": "fast"
+  }
+  on = {"file_pick": on_pick}
+  on["file_drag"] = o["on_drag"] unless o["on_drag"].nil?
+  pick = o["pick"] != false
+  props = {
+    "drop": pick_prop(accept, o),
+    "role": "button",
+    "label": label
+  }
+  props["pick"] = pick_prop(accept, o) if pick
+  n = {
+    "k": "box",
+    "key": o["key"] ?? ("drop:" + label),
+    "s": resting,
+    "p": props,
+    "on": on,
+    "c": [
+      text(over ? (o["over_label"] ?? "Let go to add them") : label, {"weight": "semibold"})
+    ].concat(hint == "" ? [] : [muted(hint)])
+  }
+  n
+end
+
+# What was attached, drawn as a card.
+#
+# Three cards, because there are three things there can be to show.
+#
+#   o["src"]    a small square of the file itself — an asset from
+#               `eui_asset(bytes)`, or a path under `public/`
+#   o["badge"]  a node for the square when there is no picture to put in it,
+#               usually the extension set in small bold type
+#   neither     the name and the note, in a row padded where the square
+#               would have been
+#
+# The last is not a fallback nobody reaches: it is what a picture whose bytes
+# have gone gets, and the reason the card survives that at all. A `src` that
+# names nothing is a view that cannot be encoded, which ends the session
+# (01 §4) — so the caller resolves the bytes first and passes what it got.
+#
+# The name is not decoration either. A picture the client cannot decode is an
+# error nowhere — the server puts bytes on the wire and the client fails to
+# make an image of them — so a card that was only a picture drew an empty box
+# and said nothing about what was in it.
+ATTACHMENT_PX = 74
+
+def attachment_card(name, note, o = {})
+  ac_edge = o["size"] ?? ATTACHMENT_PX
+  ac_square = {
+    "width": ac_edge - 2,
+    "height": ac_edge - 2,
+    "shrink": 0,
+    "overflow": "clip",
+    "bg": "surface.sunken",
+    "display": "row",
+    "justify": "center",
+    "align": "center"
+  }
+
+  ac_stamp = []
+  unless o["badge"].nil?
+    ac_stamp = [{
+      "k": "box",
+      "s": ac_square.merge({"width": 40, "height": 40, "radius": 1, "margin": [0, 0, 0, 3]}),
+      "c": [o["badge"]]
+    }]
+  end
+  unless o["src"].nil?
+    # `image` does not scale a picture to its box: it draws at the size the
+    # style asks for and anything larger is clipped, so what is handed here
+    # is a square made on the way in and not the file squeezed at render.
+    ac_stamp = [{"k": "box", "s": ac_square, "c": [image(o["src"], ac_edge - 2, ac_edge - 2)]}]
+  end
+
+  # A ternary's condition has to type as Bool and `.nil?` on a value out of
+  # an untyped hash is Any, so this is an `if` and not `?:`.
+  ac_pad = [0, 0, 0, 0]
+  ac_pad = [0, 3, 0, 3] if o["src"].nil?
+
+  row(
+    {
+      "gap": 3,
+      "align": "center",
+      "height": ac_edge,
+      "pad": ac_pad,
+      "radius": 2,
+      "overflow": "clip",
+      "border": 1,
+      "border_color": "border.subtle",
+      "bg": "surface.raised",
+      "margin": [1, 0, 0, 0]
+    },
+    ac_stamp.concat([
+      column(
+        {"gap": 0, "grow": 1, "shrink": 1, "min_width": 0, "pad": [0, 3, 0, 0]},
+        [
+          text(name.to_s, {"weight": "semibold", "size": 1, "clamp": 1, "fg": "text.default"}),
+          muted(note.to_s)
+        ]
+      )
+    ])
   )
 end
 
@@ -5172,6 +5667,413 @@ def stat_spark(label, value, hint, vals, w)
       text(hint, {"fg": "text.muted", "size": 0})
     ]
   )
+end
+
+# ---- Tags ------------------------------------------------------------------
+#
+# A list of short things somebody typed. Not a `multi_select`: that one keeps a
+# selection over a fixed set of options, and a selection cannot hold a word
+# nobody has an id for. A tag list is ordered, its members are strings, and the
+# set it draws from — if it draws from one at all — is only a suggestion.
+#
+# The four functions below are the whole of the model and none of them touches
+# a node, which is what lets `tests/tag_spec.sl` pin them without a client.
+
+# What a typed line becomes. Blank is nothing, the ends are trimmed, a repeat
+# is not a second tag — matched without case, because "Lyon" and "lyon" are the
+# same label to everyone but the machine — and `o["max"]` is a ceiling.
+def tag_add(tags, text, o = {})
+  said = (text ?? "").strip()
+  return tags if said == ""
+
+  for t in tags
+    return tags if t.downcase() == said.downcase()
+  end
+  cap = o["max"] ?? 0
+  return tags if cap > 0 && tags.length() >= cap
+
+  # `concat` grows the array it is called on, so copy before growing: the
+  # caller still holds `tags`, and the state hash it came out of holds it too.
+  tags.slice(0, tags.length()).concat([said])
+end
+
+def tag_remove(tags, at)
+  return tags if at < 0 || at >= tags.length()
+
+  tags.slice(0, at).concat(tags.slice(at + 1, tags.length()))
+end
+
+# What to offer. Anything already taken is not a suggestion, and neither is
+# anything that does not contain what has been typed so far — matched without
+# case for the same reason `tag_add` dedupes without it. An empty draft offers
+# everything left, because a panel that appears only once you have typed is a
+# panel most people never learn is there.
+def tag_suggest(all, tags, draft, limit)
+  said = (draft ?? "").strip().downcase()
+  out = []
+  for one in all
+    if out.length() < limit
+      taken = false
+      for t in tags
+        taken = true if t.downcase() == one.downcase()
+      end
+      fits = said == "" || one.downcase().index_of(said) >= 0
+      out = out.concat([one]) if !taken && fits
+    end
+  end
+  out
+end
+
+# Where the highlight goes. It wraps, because a list you can walk off the end
+# of is a list you have to look at to use; `-1` is "nothing highlighted", and
+# stepping from there lands on an end rather than nowhere.
+def tag_highlight(count, at, step)
+  return -1 if count <= 0
+
+  return step > 0 ? 0 : count - 1 if at < 0
+
+  next_at = at + step
+  return count - 1 if next_at < 0
+  return 0 if next_at >= count
+
+  next_at
+end
+
+# ---- The tag field ---------------------------------------------------------
+
+# How many words the panel offers at once. It is capped in pixels too
+# (`DROPDOWN_MAX_PX`), but a panel that scrolls is one nobody reads to the end
+# of, and the arrow keys have to walk it.
+TAG_SUGGEST_MAX = 6
+
+# The keys the field hands back to the server instead of using itself.
+#
+# `Backspace` is the interesting one, and naming it does not make the field
+# undeletable: 03 §3.1's third tier sends a key only when the press moved
+# nothing in the text, which for `Backspace` means the caret was at the start
+# with nothing left to delete — which is exactly when it should take the last
+# chip instead. The other three the field has no use for at all.
+#
+# `Enter` is deliberately absent. It arrives as `submit`, and claiming it would
+# withhold that submit (03 §3.1, tier 2) — which is the one event this field
+# cannot do without.
+TAG_KEYS = ["Backspace", "ArrowDown", "ArrowUp", "Escape"]
+
+# The index a chip's × names. `chip_remove` keys itself from the `id` it is
+# given, so the id carries the field's key as well as the position — two tag
+# fields on one page would otherwise hand their first × the same key, which is
+# the bug `erp_filter_chips` has today.
+def tag_at(said)
+  tga_text = said.to_s
+  tga_cut = tga_text.index_of("/")
+  return -1 if tga_cut < 0
+
+  int(tga_text.substring(tga_cut + 1, tga_text.length()))
+end
+
+# The line you type into. Borderless and growing, because the well around it
+# is the field; this is only the last cell of it.
+def tag_entry(draft, bad, o)
+  tgn_style = {
+    "grow": 1,
+    "min_width": 80,
+    "border": 0,
+    "bg": "none",
+    "fg": "text.default",
+    "pad": [0, 0, 0, 0]
+  }
+  # A no-op restyle on all four states, so `editable_states` leaves them alone.
+  # It lights the node it is on, and here that node is a bare line of text
+  # between the last chip and the right edge — lighting *it* draws a pale bar
+  # inside the well rather than a field that has the keyboard. The well takes
+  # the focused border from the server instead, which it must do anyway:
+  # focus is what opens the panel, so the round trip is already happening.
+  tgn_flat = {"local": "self.style = @base", "styles": {"base": tgn_style}}
+  tgn_on = {"pointer_enter": tgn_flat, "pointer_leave": tgn_flat}
+  tgn_on["submit"] = o["on_submit"] unless o["on_submit"].nil?
+  tgn_on["key_down"] = o["on_key"] unless o["on_key"].nil?
+  tgn_on["focus"] = tgn_flat
+  tgn_on["blur"] = tgn_flat
+  tgn_on["focus"] = tgn_flat.merge({"then": o["on_focus"]}) unless o["on_focus"].nil?
+  tgn_on["blur"] = tgn_flat.merge({"then": o["on_blur"]}) unless o["on_blur"].nil?
+
+  tgn_props = {
+    "keys": TAG_KEYS,
+    "role": "combo_box",
+    "expanded": o["open"] == true,
+    "label": o["name"] ?? (o["label"] ?? "Tags")
+  }
+  tgn_note = o["error"] ?? ""
+  tgn_note = o["hint"] ?? "" if tgn_note == ""
+  tgn_props["description"] = tgn_note if tgn_note != ""
+  tgn_props["invalid"] = true if bad
+  tgn_props["required"] = true if o["required"] == true
+  # Clicking a suggestion blurs the field, so the server that took the word
+  # asks for the caret back on the batch that answers the click — once, and not
+  # on every render, or the field would steal focus from whatever else the page
+  # has since been given.
+  tgn_props["autofocus"] = true if o["take_focus"] == true
+  # 03 §6.1 rule 4. The field keeps the keyboard while the arrows walk the
+  # panel, so the option is named rather than focused -- which is the only way
+  # to say "3 of 8, Consignment" with the option's own role and place in its
+  # set rather than as prose a `live` node would have had to spell out.
+  tgn_props["active_descendant"] = o["active"] unless o["active"].nil?
+
+  input(draft, o["on_change"], {
+    "key": o["key"].to_s + ":entry",
+    "style": tgn_style,
+    "props": tgn_props,
+    "on": tgn_on
+  })
+end
+
+# The well: the chips and the line, wrapping.
+#
+# `wrap` is what makes it a well rather than a row — chips are `shrink: 0`, so
+# without it a ninth tag pushes the line you type into out of the box.
+def tag_well(tags, draft, bad, o)
+  tgw_lit = o["open"] == true
+  tgw_edge = tgw_lit ? "accent.base" : "border.default"
+  tgw_edge = "danger.base" if bad == true
+  tgw_kids = range(0, tags.length()).map(fn(i) {
+    chip(tags[i], o["on_remove"], {"id": o["key"].to_s + "/" + str(i)})
+  })
+  {
+    "k": "box",
+    "key": o["key"].to_s + ":well",
+    "s": {
+      "display": "row",
+      "wrap": "wrap",
+      "align": "center",
+      "gap": 1,
+      "pad": [1, 2, 1, 2],
+      "width": o["width"] ?? "100%",
+      "min_height": field_height(o),
+      "border": 1,
+      "border_color": tgw_edge,
+      "radius": 2,
+      "bg": "surface.sunken",
+      "cursor": "text",
+      "transition": "fast"
+    },
+    "c": tgw_kids.concat([tag_entry(draft, bad, o)])
+  }
+end
+
+# One word in the panel. `lit` is where the arrows have walked to, which is not
+# a selection — nothing is chosen until Enter or a click — so it is `selected`
+# for the sake of an assistive technology reading the panel and a left border
+# for the sake of everyone else.
+def tag_option(word, lit, pos, total, o)
+  tgo_lit = lit == true
+  control({
+    "key": o["key"].to_s + ":opt:" + word,
+    "size": "sm",
+    "tone": "quiet",
+    "shape": {
+      "justify": "start",
+      "align": "center",
+      "width": "auto",
+      "min_width": o["min_width"] ?? 200,
+      "gap": 2,
+      "radius": 1,
+      "pad": [1, 2, 1, 2],
+      "bg": tgo_lit ? "surface.sunken" : "none",
+      "border": [0, 0, 0, 3],
+      "border_color": tgo_lit ? "accent.base" : "none"
+    },
+    "on": {"click": o["on_pick"]},
+    "props": {"id": word},
+    "a11y": {
+      "role": "option",
+      "selected": tgo_lit,
+      "label": word,
+      "pos_in_set": pos,
+      "set_size": total
+    },
+    "c": [text(word, {"weight": tgo_lit ? "semibold" : "regular"})]
+  })
+end
+
+# A line of chips you type into, and a panel of what is still worth choosing.
+#
+# `combo_box` has been on the widget list since the first draft and this is it.
+# What makes it one rather than a `multi_select` is that the words are not a
+# fixed set: `tag_add` takes whatever was typed, so the panel narrows the
+# familiar ones rather than enumerating the only ones.
+#
+# The caller owns everything. This is a view of four decisions it has already
+# made — the tags, the draft, the suggestions, and where the arrows are — and
+# the widget makes none of them, which is what lets `tests/tag_spec.sl` pin
+# them without a client.
+#
+# `o`, beyond the usual field keys (`hint`, `error`, `required`, `width`,
+# `density`, `name`):
+#
+#   "key"         (required) names every node in here
+#   "on_change"   the draft moved — narrow the suggestions
+#   "on_submit"   Enter — take the highlight, else commit the draft
+#   "on_key"      one of `TAG_KEYS`; `params["payload"][0]` says which
+#   "on_remove"   a chip's × — `tag_at(params["props"]["id"])` is the position
+#   "on_pick"     a word in the panel — `params["props"]["id"]` is the word
+#   "on_focus" / "on_blur"
+#   "suggest"     the words to offer, already narrowed by `tag_suggest`
+#   "at"          which of them the arrows are on, or -1
+#   "open"        whether the panel is shown
+#   "take_focus"  ask for the caret back on this batch and no other
+def tag_field(label, tags, draft, o = {})
+  throw "tag_field: o[\"key\"] names every node inside it" if o["key"].blank?
+
+  tgf_error = o["error"] ?? ""
+  tgf_bad = field_bad(tgf_error, o)
+  tgf_words = o["suggest"] ?? []
+  tgf_at = o["at"] ?? -1
+  tgf_open = o["open"] == true && tgf_words.length() > 0
+  tgf_o = o.merge({"label": o["label"] ?? label})
+  # The key of the row the arrows are on, for the entry to point at. It has to
+  # be worked out before the well is built and cannot be worked out inside it,
+  # because the row it names is in the panel and the panel is the well's
+  # sibling, not its child -- which is the whole reason the prop exists.
+  tgf_o["active"] = o["key"].to_s + ":opt:" + tgf_words[tgf_at] if tgf_open && tgf_at >= 0 && tgf_at < tgf_words.length()
+  tgf_well = tag_well(tags, draft, tgf_bad, tgf_o)
+  return field_shell(label, tgf_well, o) unless tgf_open
+
+  tgf_rows = range(0, tgf_words.length()).map(fn(i) {
+    tag_option(tgf_words[i], i == tgf_at, i + 1, tgf_words.length(), tgf_o)
+  })
+  # The rows ask for their own width and the panel takes its size from them,
+  # for the reason `multi_select` gives: `width: 100%` inside an absolutely
+  # positioned overlay resolves against the window, not against the panel.
+  tgf_panel = column({"gap": 0}, tgf_rows)
+  tgf_panel["p"] = {"role": "list_box", "label": (o["label"] ?? label).to_s + " suggestions"}
+  field_shell(label, dropdown(tgf_well, [tgf_panel], true, DROPDOWN_MAX_PX), o)
+end
+
+# ---- Picking things up -----------------------------------------------------
+#
+# Spec 06 §6. The client owns the whole of the hand — how a press becomes a
+# grab, what is under it, which slot it is in, when a list should scroll
+# because the hand is at its edge — and tells the server three things: one
+# `drag_start`, one `drag_over` a boundary crossed, one `drop`.
+#
+# Two props do the declaring, and the split between them is the design:
+# **the prop says what a node *is*; the handler says who *hears*.** A card is
+# draggable and the column is what hears the drop, and those are two different
+# nodes. There is no "reorder me" flag either — reordering is the case where
+# the card's own column is the target, so one `accepts` gives both.
+#
+# A draggable node MUST carry a key. It is what the client holds it by: a move
+# between columns is a removal and an insertion, so the node is rebuilt under
+# the hand and its id changes, and only the key survives that.
+
+# A thing that can be picked up. `group` is what a column has to accept for it
+# to land there; the key is not optional.
+def draggable(key, group, style, children, opts = {})
+  {
+    "k": "box",
+    "key": key,
+    "s": style,
+    "p": {"drag": group}.merge(opts["p"] ?? {}),
+    "on": opts["on"] ?? {},
+    "c": children
+  }
+end
+
+# The grip. A press here grabs at once — no slop to cross on a mouse and no
+# half-second to wait out on a finger — which is what lets a row be dragged out
+# of a list a finger can otherwise only scroll (06 §5 step 2).
+def drag_grip(label)
+  {
+    "k": "box",
+    "s": {
+      "display": "row",
+      "align": "center",
+      "justify": "center",
+      "width": 20,
+      "height": 24,
+      "radius": 2,
+      "cursor": "grab",
+      "fg": "text.muted",
+      "shrink": 0,
+      "transition": "fast"
+    },
+    "p": {"drag_handle": true, "role": "button", "label": label},
+    "on": {
+      "pointer_enter": {"local": "self.style = @lit", "styles": {"lit": drag_grip_style(true)}},
+      "pointer_leave": {"local": "self.style = @rest", "styles": {"rest": drag_grip_style(false)}}
+    },
+    "c": [{"k": "icon", "s": {"width": 18, "height": 18}, "p": {"name": "grip"}}]
+  }
+end
+
+# The grip lit and at rest. A grip is a small target and an easy one to miss,
+# so it answers the pointer before the pointer commits to it.
+def drag_grip_style(lit)
+  {
+    "display": "row",
+    "align": "center",
+    "justify": "center",
+    "width": 20,
+    "height": 24,
+    "radius": 2,
+    "cursor": "grab",
+    "bg": lit ? "surface.sunken" : "none",
+    "fg": lit ? "text.default" : "text.muted",
+    "shrink": 0,
+    "transition": "fast"
+  }
+end
+
+# A thing that takes what others carry. The handlers are what make it a target
+# at all: a container marked `accepts` with nothing listening is not one.
+def drop_zone(group, style, on_over, on_drop, children, props = {})
+  {
+    "k": "box",
+    "s": style,
+    "p": {"accepts": group}.merge(props),
+    "on": {"drag_over": on_over, "drop": on_drop},
+    "c": children
+  }
+end
+
+# The slot a `drag_over` or a `drop` carries: the third number, and `-1` when
+# the gesture was cancelled rather than finished.
+def drag_slot(params)
+  (params["payload"] ?? [])[2] ?? -1
+end
+
+# Move `id` to `slot` of `col` in a board — a hash of column name to a list of
+# ids — taking it out of wherever it was first. This is the whole of what a
+# reorder is on the server: the view renders the lists, the cards are keyed,
+# and the diff turns the permutation into `MoveChild` ops on its own.
+def board_move(board, id, col, slot)
+  out = {}
+  for name in board.keys()
+    kept = []
+    for it in board[name]
+      kept = kept.concat([it]) if it != id
+    end
+    out[name] = kept
+  end
+  at = slot < 0 ? 0 : slot
+  at = out[col].length() if at > out[col].length()
+  before = out[col].slice(0, at)
+  after = out[col].slice(at, out[col].length())
+  out[col] = before.concat([id]).concat(after)
+  out
+end
+
+# Where `id` sits now, as `[column, slot]`, so a cancelled drag can put it
+# back exactly where it was rather than at the top of where it came from.
+def board_at(board, id)
+  for name in board.keys()
+    i = 0
+    for it in board[name]
+      return [name, i] if it == id
+      i = i + 1
+    end
+  end
+  [board.keys()[0], 0]
 end
 
 # ---- Feed ------------------------------------------------------------------
