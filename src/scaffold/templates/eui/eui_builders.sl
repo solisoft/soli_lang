@@ -5018,6 +5018,168 @@ def password_field(label, value, on_change, o = {})
   field_shell(label, body, o.merge({"error": error}))
 end
 
+# Six boxes, one code. The value is a prefix of length 0..n; the live cell
+# is the next empty one, or the last when the code is full. Typing a digit
+# appends and the live cell moves — the old input is gone, so `autofocus`
+# can take the new one (03 §3.1: a later batch will not yank focus that is
+# already settled). Backspace on an empty cell is reported (nothing to
+# delete) and pops the prefix; Backspace on the last filled cell is local
+# and arrives as `change` once the field has gone quiet.
+#
+# Paste of more than one character replaces. `o["numeric"]` defaults true.
+# `o["secret"]` paints marks, for a PIN. `o["on_input"]` hears `text_input`,
+# `change`, `key_down` and a click on a filled cell (jump: keep the prefix
+# up to there). `o["take_focus"]` and `o["gen"]` are how the handler asks
+# for the caret on the batch that answered, and how it throws away a local
+# edit the code refused.
+OTP_KEYS = ["Backspace"]
+
+def otp_clean(text, o = {})
+  n = o["digits"] ?? 6
+  numeric = o["numeric"] != false
+  said = (text ?? "").to_s
+  out = ""
+  i = 0
+  while i < said.length() && out.length() < n
+    ch = said.substring(i, i + 1)
+    ok = numeric ? "0123456789".includes?(ch) : (ch != " " && ch != "\n")
+    out = out + ch if ok
+    i = i + 1
+  end
+  out
+end
+
+def otp_take(value, text, o = {})
+  incoming = otp_clean(text, o)
+  return value if incoming == ""
+  return incoming if incoming.length() != 1
+
+  otp_clean((value ?? "").to_s + incoming, o)
+end
+
+def otp_pop(value)
+  said = (value ?? "").to_s
+  return "" if said.length() <= 1
+
+  said.substring(0, said.length() - 1)
+end
+
+def otp_jump(value, i)
+  said = (value ?? "").to_s
+  return said if i.nil?
+  return "" if i <= 0
+  return said if i >= said.length()
+
+  said.substring(0, i)
+end
+
+def otp_apply(value, kind, payload, props, o = {})
+  if kind == "text_input"
+    return otp_take(value, payload.to_s, o)
+  end
+  if kind == "change"
+    cell = otp_clean(payload.to_s, {"digits": 1, "numeric": o["numeric"]})
+    return otp_pop(value) if cell == ""
+    return value
+  end
+  if kind == "key_down"
+    key = payload.class == "array" ? payload[0] : payload.to_s
+    return otp_pop(value) if key == "Backspace"
+    return value
+  end
+  return otp_jump(value, props["i"] ?? 0) if kind == "click"
+
+  value
+end
+
+def otp_field(label, value, o = {})
+  otp_n = o["digits"] ?? 6
+  otp_said = (value ?? "").to_s
+  otp_at = o["at"] ?? otp_said.length()
+  otp_at = otp_n - 1 if otp_at >= otp_n
+  otp_at = 0 if otp_at < 0
+  otp_key = (o["key"] ?? ("otp:" + label)).to_s
+  otp_on = o["on_input"] ?? ""
+  otp_cells = range(0, otp_n).map(fn(i) {
+    otp_cell(i, otp_said, otp_at, otp_n, otp_key, otp_on, o)
+  })
+  otp_row = {
+    "k": "box",
+    "s": {"display": "row", "gap": 2, "align": "center"},
+    "p": {"role": "group", "label": label},
+    "c": otp_cells
+  }
+  field_shell(label, otp_row, o)
+end
+
+def otp_cell(i, said, at, n, key, on_input, o)
+  ch = i < said.length() ? said.substring(i, i + 1) : ""
+  secret = o["secret"] == true
+  mark = (secret && ch != "") ? "•" : ch
+  live = i == at
+  shell = {
+    "display": "row",
+    "justify": "center",
+    "align": "center",
+    "width": 44,
+    "height": 48,
+    "shrink": 0,
+    "radius": 2,
+    "border": 1,
+    "border_color": live ? "accent.base" : "border.default",
+    "bg": "surface.sunken"
+  }
+  return otp_live_cell(i, ch, n, key, on_input, o, shell) if live
+
+  {
+    "k": "box",
+    "key": key + ":x:" + i.to_s,
+    "s": shell.merge({"cursor": "pointer"}),
+    "on": {"click": on_input},
+    "p": {
+      "i": i,
+      "role": "button",
+      "label": "Digit " + (i + 1).to_s + " of " + n.to_s
+    },
+    "c": [text(mark == "" ? " " : mark, {"weight": "semibold", "size": 4})]
+  }
+end
+
+def otp_live_cell(i, ch, n, key, on_input, o, shell)
+  props = {
+    "keys": OTP_KEYS,
+    "label": "Digit " + (i + 1).to_s + " of " + n.to_s,
+    "i": i
+  }
+  props["secret"] = true if o["secret"] == true
+  props["autofocus"] = true if o["take_focus"] == true
+  # Not `editable()`: that restyles on focus, and a restyle that does not
+  # carry `text_align` would put the caret back on the left of the box.
+  # The shell already wears the live border.
+  inner = {
+    "k": "input",
+    "t": ch,
+    "key": key + ":in:" + i.to_s + ":" + (o["gen"] ?? 0).to_s,
+    "s": {
+      "width": 42,
+      "height": 46,
+      "pad": 0,
+      "border": 0,
+      "bg": "none",
+      "text_align": "center",
+      "size": 4,
+      "weight": "semibold"
+    },
+    "p": props,
+    "on": {
+      "change": on_input,
+      "text_input": on_input,
+      "key_down": on_input
+    }
+  }
+  {"k": "box", "s": shell, "c": [inner]}
+end
+
 def email_field(label, value, on_change, o = {})
   error = field_error(value, fn(said) { email_valid?(said) }, "That does not look like an email address", o)
   bad = field_bad(error, o)
