@@ -98,16 +98,21 @@ pub fn create_routes_file(app_path: &Path, eui: bool) -> Result<(), String> {
 /// written by `create_routes_file`.
 ///
 /// The catalogue is written verbatim, around `write_file` and so around
-/// the formatter. It is not generated code: it is a vendored copy of a
-/// file maintained in the EUI repository, hand-laid-out and not `soli
+/// the formatter. It is not generated code: it is a vendored copy of
+/// files maintained in the EUI repository, hand-laid-out and not `soli
 /// fmt` clean there. Reformatting it here would put 3 000 lines of
 /// difference between a new application and the upstream it will want to
 /// take fixes from.
+///
+/// It arrives as four files that load into one namespace, in no
+/// particular order; `templates::eui::EUI_BUILDERS` names them.
 #[cfg(feature = "eui")]
 pub fn create_eui(app_path: &Path) -> Result<(), String> {
-    let catalogue = app_path.join("app/controllers/eui_builders.sl");
-    fs::write(&catalogue, templates::eui::EUI_BUILDERS)
-        .map_err(|e| format!("Failed to write to '{}': {}", catalogue.display(), e))?;
+    for (name, source) in templates::eui::EUI_BUILDERS {
+        let catalogue = app_path.join("app/controllers").join(name);
+        fs::write(&catalogue, source)
+            .map_err(|e| format!("Failed to write to '{}': {}", catalogue.display(), e))?;
+    }
     write_file(
         &app_path.join("app/controllers/eui_controller.sl"),
         templates::eui::EUI_CONTROLLER,
@@ -702,7 +707,7 @@ pub fn print_eui_message() {
     println!("  \x1b[1mThe window:\x1b[0m");
     println!();
     println!("    \x1b[2mapp/controllers/\x1b[0meui_controller.sl  \x1b[2ma component: a handler and a view\x1b[0m");
-    println!("    \x1b[2mapp/controllers/\x1b[0meui_builders.sl    \x1b[2m150 widgets, all of them plain Soli\x1b[0m");
+    println!("    \x1b[2mapp/controllers/\x1b[0meui_builders*.sl   \x1b[2m343 widgets in four files, all of them plain Soli\x1b[0m");
     println!();
     println!("  With the server up, open the component in a native window:");
     println!();

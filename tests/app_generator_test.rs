@@ -122,12 +122,14 @@ fn create_eui_writes_the_catalogue_verbatim_and_a_component() {
     setup_app(tmp.path());
     create_eui(tmp.path()).expect("eui ok");
 
-    let catalogue = fs::read_to_string(tmp.path().join("app/controllers/eui_builders.sl")).unwrap();
-    assert_eq!(
-        catalogue,
-        solilang::scaffold::templates::eui::EUI_BUILDERS,
-        "the catalogue is copied, not regenerated"
-    );
+    for (name, source) in solilang::scaffold::templates::eui::EUI_BUILDERS {
+        let catalogue =
+            fs::read_to_string(tmp.path().join("app/controllers").join(name)).unwrap();
+        assert_eq!(
+            catalogue, source,
+            "{name} is copied, not regenerated"
+        );
+    }
 
     let controller =
         fs::read_to_string(tmp.path().join("app/controllers/eui_controller.sl")).unwrap();
