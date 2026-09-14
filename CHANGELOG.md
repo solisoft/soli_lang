@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-09-14
+
+### Fixed
+
+* **fix(eui):** the `Welcome` frame carried this server's own protocol version instead of the one both ends speak. A server built against a newer EUI would therefore have refused every older client — including for applications using nothing the new version added — because the client checks the `Welcome`'s version against its own and stops if the server names a higher one. It now answers `min(hello.version, PROTOCOL_VERSION)`, which is what a negotiation is. This went unnoticed while EUI stayed at version 1; it would have bitten on every bump after that, and the first one is in this release
+
+### Other
+
+* **feat(eui):** `"scene"` joins the node kinds a view may write (EUI 03 §1.2) — a 3D picture drawn by a shader the application wrote, rendered by the client into a target of its own and composited as one quad. Its `shader` and `mesh` travel the verified asset path a picture's `src` already takes: a hash on the wire, fetched from the origin, checked against its own name before anything decodes it. Neither is inspected here — the client validates both in its confined worker, the module against a shader verifier that proves it terminates before compiling it, the mesh against its own vertex count, which is the one bounds check no GPU driver performs. `uniforms` is the author's half of the client's uniform block: at most eight numbers, zero-padded, refused if they are not finite. The other twenty-four floats are the client's, which is why a server never sends a camera and so can never send a degenerate one. **It needs an EUI client that understands the kind** — an older one meets `0x11` as a decode error — so an application that asks for the `scene` capability advertises `protocol_min: 2` and is refused at the handshake, with a reason, rather than mid-session on a batch it cannot read. Every other application keeps the clients it had
+* **chore(deps):** eui-proto and eui-client move to eui `5a9f9d9`
+
 ## [2.3.1] - 2026-09-14
 
 ### Fixed
