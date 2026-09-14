@@ -309,6 +309,11 @@ pub fn run_test(
     let test_path = test_paths[0].clone();
 
     std::env::set_var("APP_ENV", "test");
+    // Specs create their fixture users in this process, so the cheap hashing
+    // profile has to be on here as well as on the servers spawned below —
+    // otherwise the suite still pays full Argon2 for every `User.create`.
+    // `crypto::argon2_hasher` explains what it does and does not weaken.
+    std::env::set_var("SOLI_ARGON2_FAST", "1");
 
     // SEC-017: tell the SSRF blocklist this process is a test runner so
     // loopback/private addresses are reachable for spec fixtures. The
@@ -685,6 +690,13 @@ pub fn run_test(
                 // (override_existing=true) doesn't clobber the per-worker
                 // value we just set.
                 .env("SOLI_PROTECT_ENV", "SOLIDB_DATABASE")
+                // Fixture passwords are hashed at a cost meant for real ones.
+                // A suite pays it twice per authenticated test — once here,
+                // creating the user, once on the server verifying the login —
+                // and on a real application that was 38 of 106 seconds. See
+                // `crypto::argon2_hasher`: it changes hashing only, and a
+                // stored hash keeps whatever cost it was made at.
+                .env("SOLI_ARGON2_FAST", "1")
                 .stdout(
                     std::fs::File::create(&log_path)
                         .map(std::process::Stdio::from)

@@ -330,6 +330,29 @@ soli test --jobs=1
 soli test --reporter=json
 ```
 
+### Password hashing under test
+
+`soli test` sets `SOLI_ARGON2_FAST=1` for itself and for the servers it
+starts. New password hashes are then made at 4 MiB and one pass instead of
+the RFC 9106 default of 19 MiB and two — roughly 2 ms instead of 20.
+
+A suite pays the full price twice per authenticated test: once creating the
+fixture user, once verifying at login. On one real application — 1 013
+logins and as many fixture users — that was 38 of the 106 seconds the run
+took, and the average login went from 62 ms to 29 ms.
+
+Two things keep this from reaching anything real:
+
+- It changes **hashing only**. `Crypto.argon2_verify` reads the cost from the
+  stored hash (Argon2 records `m`, `t` and `p` in the PHC string it returns),
+  so a password hashed in production keeps its full cost however the variable
+  is set, and one database may hold both kinds.
+- Only `soli test` sets it. It is read once, and only `1` or `true` count —
+  an empty `SOLI_ARGON2_FAST=` is off.
+
+Never set it on a machine that stores real passwords: a hash made under it
+carries its weakness for as long as it is stored.
+
 ## Mock Database Queries
 
 For integration tests that don't need a real database, use `Model.mock_query_result()` to intercept queries and return predefined data.
