@@ -3175,7 +3175,7 @@ def select_sized(options, value, open, on_toggle, on_pick, min_width, grow, o = 
     )]
   }
   anchor["p"] = props if props.keys().length() > 0
-  dropdown(anchor, options.map(fn(opt) { select_option(opt, opt == value, on_pick, min_width, props) }), open, DROPDOWN_MAX_PX)
+  dropdown(anchor, options.map(fn(opt) { select_option(opt, opt == value, on_pick, min_width, props) }), open, DROPDOWN_MAX_PX, on_toggle)
 end
 
 def select_option(label, selected, on_pick, min_width, props = {})
@@ -3223,14 +3223,23 @@ DROPDOWN_MAX_W = 320
 # window. The client clamps it back inside, so the options that did not fit
 # were unreachable, and the wheel over them found the page's scroller and
 # moved the page behind instead.
-def dropdown(anchor, content, open, max_px = 0)
+# `on_close` is what makes it light-dismissable (03 §1). A press outside the
+# widget — outside the `stack` below, which is the anchor and the panel
+# together — reaches the overlay as `blur`, and the client decides that
+# without asking, because the client owns the hand. A panel that passes
+# nothing here is not dismissible and is never closed behind the
+# application's back.
+#
+# For a widget whose anchor *toggles*, the toggle is the right thing to pass:
+# the panel is open, so toggling it is closing it, and no second handler has
+# to exist. A press on the anchor is inside the widget and sends no `blur`,
+# so the toggle still fires once and not twice.
+def dropdown(anchor, content, open, max_px = 0, on_close = "")
   return anchor unless open
 
   pane = {"gap": 0}
   pane["max_height"] = max_px if max_px > 0
-  stack({"gap": 0}, [
-    anchor,
-    {
+  panel = {
       "k": "overlay",
       "s": {
         "position": "absolute",
@@ -3254,8 +3263,9 @@ def dropdown(anchor, content, open, max_px = 0)
         "z": 5
       },
       "c": [scroll(pane, content)]
-    }
-  ])
+  }
+  panel["on"] = {"blur": on_close} unless on_close.to_s.blank?
+  stack({"gap": 0}, [anchor, panel])
 end
 
 # The keys the filter field hands back: arrows walk the panel, Escape
@@ -3369,7 +3379,7 @@ def combobox(options, value, o = {})
   })
   cb_panel = column({"gap": 0}, [cb_entry].concat(cb_rows.length() == 0 ? [muted("Nothing matches")] : cb_rows))
   cb_panel["p"] = {"role": "list_box", "label": (o["label"] ?? "Options").to_s}
-  dropdown(anchor, [cb_panel], true, DROPDOWN_MAX_PX)
+  dropdown(anchor, [cb_panel], true, DROPDOWN_MAX_PX, o["on_close"] ?? o["on_toggle"] ?? "")
 end
 
 # What you can do to the rows you have ticked.
@@ -4237,7 +4247,7 @@ def multi_select(options, sel, open, on_toggle, on_pick, o = {})
   })
   msd_panel = column({"gap": 0}, msd_rows)
   msd_panel["p"] = multi_select_semantics(o)
-  dropdown(msd_anchor, [msd_panel], true, DROPDOWN_MAX_PX)
+  dropdown(msd_anchor, [msd_panel], true, DROPDOWN_MAX_PX, on_toggle)
 end
 
 # ---- Slider ----------------------------------------------------------------
@@ -5464,7 +5474,7 @@ def picker_field(o, caption, empty, make)
   # `make` is a thunk, not a node: building a calendar for a panel nobody has
   # opened is a month of day cells thrown away on every render, and a `month`
   # the caller has not filled in yet is not an error until it is shown.
-  field_shell(label, open ? dropdown(anchor, [make()], true) : anchor, o)
+  field_shell(label, open ? dropdown(anchor, [make()], true, 0, o["on_toggle"] ?? "") : anchor, o)
 end
 
 def date_field(o)
@@ -7396,7 +7406,7 @@ def tag_field(label, tags, draft, o = {})
   # positioned overlay resolves against the window, not against the panel.
   tgf_panel = column({"gap": 0}, tgf_rows)
   tgf_panel["p"] = {"role": "list_box", "label": (o["label"] ?? label).to_s + " suggestions"}
-  field_shell(label, dropdown(tgf_well, [tgf_panel], true, DROPDOWN_MAX_PX), o)
+  field_shell(label, dropdown(tgf_well, [tgf_panel], true, DROPDOWN_MAX_PX, o["on_blur"] ?? ""), o)
 end
 
 # ---- Picking things up -----------------------------------------------------
