@@ -217,6 +217,16 @@ impl<C: Ctx> Compiler<'_, C> {
                 self.op_varint(0x32, a);
                 Ok(())
             }
+            Some(Tok::Ident(k)) if k == "back" => {
+                // `back()` — ask to go back, as the platform's own gesture
+                // would (06 §1.3). It takes nothing and leaves nothing: what
+                // it asks for is the server's to grant, so a back button and
+                // a swipe from the edge cannot come to mean different things.
+                self.expect("(")?;
+                self.expect(")")?;
+                self.op(0x35);
+                Ok(())
+            }
             Some(Tok::Ident(k)) if k == "theme" => {
                 // theme.mode = expr | theme.toggle()
                 self.expect(".")?;

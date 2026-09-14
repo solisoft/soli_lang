@@ -23,7 +23,7 @@ use crate::interpreter::value::{HashKey, Value};
 
 use eui_proto::{
     AlignItems, AlignSelf, Batch, ColorRef, Cursor, Dim, Display, EventKind, FlatNode, FontFamily,
-    FontWeight, Handler, Justify, NodeKind, Op, Overflow, Position, StyleRecord, Subtree,
+    FontWeight, Handler, Justify, Motion, NodeKind, Op, Overflow, Position, StyleRecord, Subtree,
     TextAlign, TextRef, Value as WireValue, Wrap, Writer,
 };
 use serde_json::Value as Json;
@@ -1394,7 +1394,21 @@ impl Encoder {
                     r.transition =
                         enum_of(v, &[("none", 0), ("fast", 1), ("base", 2), ("slow", 3)])?
                 }
-                "animation" => r.animation = enum_of(v, &[("none", 0), ("spin", 1), ("enter", 2)])?,
+                "animation" => r.animation = animation_of(v)?,
+                "motion" => {
+                    r.motion = enum_of(
+                        v,
+                        &[
+                            ("fade", Motion::Fade),
+                            ("leading", Motion::Leading),
+                            ("trailing", Motion::Trailing),
+                            ("top", Motion::Top),
+                            ("bottom", Motion::Bottom),
+                            ("scale", Motion::Scale),
+                            ("paired", Motion::Paired),
+                        ],
+                    )?
+                }
                 "position" => {
                     r.position = enum_of(
                         v,
@@ -1516,6 +1530,23 @@ fn fingerprint_of(v: &Value) -> Option<[u8; 16]> {
     let mut out = [0u8; 16];
     out.copy_from_slice(&h.finalize().as_bytes()[..16]);
     Some(out)
+}
+
+/// `animation`, which is a bit set rather than one name (03 §5).
+///
+/// One name still works, and every existing view keeps meaning what it did:
+/// `"spin"`, `"enter"`, `"none"`. A page needs two — it has to say how it
+/// arrives *and* how it leaves while it is still there to say it, because the
+/// op that removes a node is the only op there is — and two is written as a
+/// list: `["enter", "exit"]`.
+fn animation_of(v: &Json) -> Result<u8, String> {
+    const NAMES: &[(&str, u8)] = &[("none", 0), ("spin", 1), ("enter", 2), ("exit", 4)];
+    match v.as_array() {
+        Some(items) => items
+            .iter()
+            .try_fold(0u8, |acc, i| Ok(acc | enum_of(i, NAMES)?)),
+        None => enum_of(v, NAMES),
+    }
 }
 
 fn enum_of<T: Copy>(v: &Json, table: &[(&str, T)]) -> Result<T, String> {
@@ -1651,6 +1682,7 @@ fn event_kind(name: &str) -> Option<EventKind> {
         "file_pick" => EventKind::FilePick,
         "file_save" => EventKind::FileSave,
         "file_drag" => EventKind::FileDrag,
+        "back" => EventKind::Back,
         "location" => EventKind::Location,
         "nfc_tag" => EventKind::NfcTag,
         _ => return None,
@@ -1693,6 +1725,7 @@ pub fn event_name(kind: EventKind) -> &'static str {
         EventKind::FilePick => "file_pick",
         EventKind::FileSave => "file_save",
         EventKind::FileDrag => "file_drag",
+        EventKind::Back => "back",
         EventKind::Location => "location",
         EventKind::NfcTag => "nfc_tag",
     }
