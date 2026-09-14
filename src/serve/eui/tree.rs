@@ -1104,7 +1104,8 @@ impl Encoder {
             // anything decodes it. The client then validates both in its
             // worker -- the module against the shader verifier, the mesh
             // against its vertex count -- so nothing here has to.
-            let asset_prop = matches!(kind, NodeKind::Image | NodeKind::Audio | NodeKind::Video) && name == "src"
+            let asset_prop = matches!(kind, NodeKind::Image | NodeKind::Audio | NodeKind::Video)
+                && name == "src"
                 || kind == NodeKind::Scene && matches!(name.as_str(), "shader" | "mesh");
             let value = if asset_prop {
                 match v {
@@ -1231,9 +1232,9 @@ impl Encoder {
         }
         let mut out = Vec::with_capacity(8);
         for n in given {
-            let f = n.as_f64().ok_or_else(|| {
-                format!("EUI: a scene's uniforms must be numbers, got {n}")
-            })?;
+            let f = n
+                .as_f64()
+                .ok_or_else(|| format!("EUI: a scene's uniforms must be numbers, got {n}"))?;
             if !f.is_finite() {
                 return Err("EUI: a scene's uniforms must be finite".to_owned());
             }
@@ -1975,7 +1976,8 @@ mod tests {
     /// here inspects a module or a mesh, and nothing here should.
     #[test]
     fn a_scene_names_two_assets_and_carries_eight_uniforms() {
-        let hash = super::super::assets::put(b"EUIS\x01@fragment fn fs_main() {}".to_vec()).unwrap();
+        let hash =
+            super::super::assets::put(b"EUIS\x01@fragment fn fs_main() {}".to_vec()).unwrap();
         let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
 
         let mut enc = Encoder::default();
@@ -2007,7 +2009,10 @@ mod tests {
             Some(WireValue::List(vs)) => {
                 assert_eq!(vs.len(), 8, "the block is eight floats wide");
                 assert!(matches!(vs[0], WireValue::Float(f) if (f - 0.5).abs() < 1e-9));
-                assert!(matches!(vs[1], WireValue::Float(f) if (f - 2.0).abs() < 1e-9), "an integer is a number too");
+                assert!(
+                    matches!(vs[1], WireValue::Float(f) if (f - 2.0).abs() < 1e-9),
+                    "an integer is a number too"
+                );
                 assert!(matches!(vs[7], WireValue::Float(f) if f == 0.0));
             }
             other => panic!("uniforms should be a list, got {other:?}"),
@@ -2021,14 +2026,19 @@ mod tests {
         let mut enc = Encoder::default();
         let bad = |u: serde_json::Value| {
             let mut enc2 = Encoder::default();
-            enc2.render(&json!({"k": "scene", "p": {"uniforms": u}}), false).unwrap_err()
+            enc2.render(&json!({"k": "scene", "p": {"uniforms": u}}), false)
+                .unwrap_err()
         };
         assert!(bad(json!([1, 2, 3, 4, 5, 6, 7, 8, 9])).contains("eight uniforms"));
         assert!(bad(json!("nope")).contains("list of numbers"));
         assert!(bad(json!(["a"])).contains("must be numbers"));
         // And the ordinary case still works, so the refusals above are not
         // refusing everything.
-        enc.render(&json!({"k": "scene", "p": {"uniforms": [1, 2, 3, 4, 5, 6, 7, 8]}}), false).unwrap();
+        enc.render(
+            &json!({"k": "scene", "p": {"uniforms": [1, 2, 3, 4, 5, 6, 7, 8]}}),
+            false,
+        )
+        .unwrap();
     }
 
     #[test]

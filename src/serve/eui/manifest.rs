@@ -144,7 +144,11 @@ fn sign(capabilities: u32) -> Result<Vec<u8>, String> {
         // application that asked for it raises the floor and is refused at
         // the handshake instead, with a reason, before anything is drawn.
         // Every other application keeps its old clients.
-        protocol_min: if capabilities & eui_proto::caps::SCENE != 0 { 2 } else { 1 },
+        protocol_min: if capabilities & eui_proto::caps::SCENE != 0 {
+            2
+        } else {
+            1
+        },
         protocol_max: eui_proto::PROTOCOL_VERSION,
         publisher_key,
         capabilities,
