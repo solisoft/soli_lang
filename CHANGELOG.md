@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-09-14
+
 ### Performance
 
 * **perf(test):** `soli test` stops paying production key-stretching for fixture passwords. Argon2's RFC 9106 profile — 19 MiB, two passes, ~20 ms a hash — is the right price for a real password and the wrong one for a fixture, and a suite pays it *twice* per authenticated test: once creating the user, once verifying at login. Measured on a real application (1 013 logins, as many fixture users): 38 of the 106 seconds the run took were Argon2 and nothing else. The runner now sets `SOLI_ARGON2_FAST=1` for its own process and for every server it spawns, and new hashes are made at 4 MiB and one pass; the same suite finished in 88 s, with the average login down from 61.8 ms to 28.7 ms. It changes **hashing only** — `verify_password` reads `m`/`t`/`p` from the stored PHC string, so a password hashed in production keeps its full cost however the variable is set and one database may hold both kinds, which is what the two new `crypto` tests pin down. Only `1` or `true` count, so an empty `SOLI_ARGON2_FAST=` is off; never set it where real passwords are stored
