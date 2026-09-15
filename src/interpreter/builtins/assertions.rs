@@ -15,9 +15,7 @@ pub fn register_assertions(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("assert", Some(1), |args| {
             match &args[0] {
                 Value::Bool(true) => {
-                    ASSERTION_COUNT.with(|count| {
-                        *count.borrow_mut() += 1;
-                    });
+                    increment_assertion_count();
                     Ok(Value::Int(1))
                 }
                 Value::Bool(false) => Err("assertion failed".to_string()),
@@ -33,9 +31,7 @@ pub fn register_assertions(env: &mut Environment) {
             Some(1),
             |args| match &args[0] {
                 Value::Bool(false) => {
-                    ASSERTION_COUNT.with(|count| {
-                        *count.borrow_mut() += 1;
-                    });
+                    increment_assertion_count();
                     Ok(Value::Int(1))
                 }
                 Value::Bool(true) => Err("assertion failed".to_string()),
@@ -48,9 +44,7 @@ pub fn register_assertions(env: &mut Environment) {
         "assert_eq".to_string(),
         Value::NativeFunction(NativeFunction::new("assert_eq", Some(2), |args| {
             if args[0] == args[1] {
-                ASSERTION_COUNT.with(|count| {
-                    *count.borrow_mut() += 1;
-                });
+                increment_assertion_count();
                 Ok(Value::Int(1))
             } else {
                 Err("values not equal".to_string())
@@ -62,9 +56,7 @@ pub fn register_assertions(env: &mut Environment) {
         "assert_ne".to_string(),
         Value::NativeFunction(NativeFunction::new("assert_ne", Some(2), |args| {
             if args[0] != args[1] {
-                ASSERTION_COUNT.with(|count| {
-                    *count.borrow_mut() += 1;
-                });
+                increment_assertion_count();
                 Ok(Value::Int(1))
             } else {
                 Err("values should not be equal".to_string())
@@ -79,9 +71,7 @@ pub fn register_assertions(env: &mut Environment) {
             Some(1),
             |args| match &args[0] {
                 Value::Null => {
-                    ASSERTION_COUNT.with(|count| {
-                        *count.borrow_mut() += 1;
-                    });
+                    increment_assertion_count();
                     Ok(Value::Int(1))
                 }
                 _ => Err("expected null".to_string()),
@@ -97,9 +87,7 @@ pub fn register_assertions(env: &mut Environment) {
             |args| match &args[0] {
                 Value::Null => Err("expected non-null".to_string()),
                 _ => {
-                    ASSERTION_COUNT.with(|count| {
-                        *count.borrow_mut() += 1;
-                    });
+                    increment_assertion_count();
                     Ok(Value::Int(1))
                 }
             },
@@ -111,15 +99,11 @@ pub fn register_assertions(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("assert_gt", Some(2), |args| {
             match (&args[0], &args[1]) {
                 (Value::Int(a), Value::Int(b)) if a > b => {
-                    ASSERTION_COUNT.with(|count| {
-                        *count.borrow_mut() += 1;
-                    });
+                    increment_assertion_count();
                     Ok(Value::Int(1))
                 }
                 (Value::Float(a), Value::Float(b)) if a > b => {
-                    ASSERTION_COUNT.with(|count| {
-                        *count.borrow_mut() += 1;
-                    });
+                    increment_assertion_count();
                     Ok(Value::Int(1))
                 }
                 _ => Err("assert_gt failed".to_string()),
@@ -132,15 +116,11 @@ pub fn register_assertions(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("assert_lt", Some(2), |args| {
             match (&args[0], &args[1]) {
                 (Value::Int(a), Value::Int(b)) if a < b => {
-                    ASSERTION_COUNT.with(|count| {
-                        *count.borrow_mut() += 1;
-                    });
+                    increment_assertion_count();
                     Ok(Value::Int(1))
                 }
                 (Value::Float(a), Value::Float(b)) if a < b => {
-                    ASSERTION_COUNT.with(|count| {
-                        *count.borrow_mut() += 1;
-                    });
+                    increment_assertion_count();
                     Ok(Value::Int(1))
                 }
                 _ => Err("assert_lt failed".to_string()),
@@ -154,9 +134,7 @@ pub fn register_assertions(env: &mut Environment) {
             if let (Value::String(s), Value::String(pattern)) = (&args[0], &args[1]) {
                 match crate::regex_cache::get_regex(pattern) {
                     Ok(re) if re.is_match(s) => {
-                        ASSERTION_COUNT.with(|count| {
-                            *count.borrow_mut() += 1;
-                        });
+                        increment_assertion_count();
                         Ok(Value::Int(1))
                     }
                     _ => Err("assert_match failed".to_string()),
@@ -174,17 +152,13 @@ pub fn register_assertions(env: &mut Environment) {
             Some(2),
             |args| match &args[0] {
                 Value::Array(arr) if arr.borrow().contains(&args[1]) => {
-                    ASSERTION_COUNT.with(|count| {
-                        *count.borrow_mut() += 1;
-                    });
+                    increment_assertion_count();
                     Ok(Value::Int(1))
                 }
                 Value::String(s) => {
                     if let Value::String(sub) = &args[1] {
                         if s.contains(&**(sub)) {
-                            ASSERTION_COUNT.with(|count| {
-                                *count.borrow_mut() += 1;
-                            });
+                            increment_assertion_count();
                             Ok(Value::Int(1))
                         } else {
                             Err("assert_contains failed".to_string())
@@ -212,9 +186,7 @@ pub fn register_assertions(env: &mut Environment) {
                         false
                     };
                     if found {
-                        ASSERTION_COUNT.with(|count| {
-                            *count.borrow_mut() += 1;
-                        });
+                        increment_assertion_count();
                         Ok(Value::Int(1))
                     } else {
                         Err("hash does not contain key".to_string())
@@ -232,9 +204,7 @@ pub fn register_assertions(env: &mut Environment) {
             if let Value::String(s) = &args[0] {
                 match serde_json::from_str::<serde_json::Value>(s) {
                     Ok(_) => {
-                        ASSERTION_COUNT.with(|count| {
-                            *count.borrow_mut() += 1;
-                        });
+                        increment_assertion_count();
                         Ok(Value::Int(1))
                     }
                     Err(_) => Err("invalid JSON".to_string()),
@@ -256,9 +226,7 @@ pub fn register_assertions(env: &mut Environment) {
             |args| {
                 let groups = n_plus_one_of(&args[0])?;
                 if groups.is_empty() {
-                    ASSERTION_COUNT.with(|count| {
-                        *count.borrow_mut() += 1;
-                    });
+                    increment_assertion_count();
                     Ok(Value::Int(1))
                 } else {
                     Err(n_plus_one_failure_message(&groups))
@@ -278,9 +246,7 @@ pub fn register_assertions(env: &mut Environment) {
             |args| {
                 let reads = ungrouped_reads_of(&args[0])?;
                 if reads.is_empty() {
-                    ASSERTION_COUNT.with(|count| {
-                        *count.borrow_mut() += 1;
-                    });
+                    increment_assertion_count();
                     Ok(Value::Int(1))
                 } else {
                     Err(ungrouped_reads_failure_message(&reads))
@@ -299,9 +265,7 @@ pub fn register_assertions(env: &mut Environment) {
                 _ => return Err("assert_query_count expects an Int second argument".to_string()),
             };
             if actual == expected {
-                ASSERTION_COUNT.with(|count| {
-                    *count.borrow_mut() += 1;
-                });
+                increment_assertion_count();
                 Ok(Value::Int(1))
             } else {
                 Err(format!(
@@ -325,9 +289,7 @@ pub fn register_assertions(env: &mut Environment) {
                 _ => return Err("assert_max_queries expects an Int second argument".to_string()),
             };
             if actual <= max {
-                ASSERTION_COUNT.with(|count| {
-                    *count.borrow_mut() += 1;
-                });
+                increment_assertion_count();
                 Ok(Value::Int(1))
             } else {
                 Err(format!(
@@ -468,10 +430,18 @@ pub fn get_and_reset_assertion_count() -> i64 {
     })
 }
 
+/// Count one assertion.
+///
+/// Two counters, on purpose. The thread-local is per file and is drained by
+/// `get_and_reset_assertion_count` when the file ends — that is the number the
+/// report prints. The global is per suite and readable from any thread, which
+/// is what lets the runner's progress bar move while a file is still running
+/// rather than jumping once at the end.
 pub fn increment_assertion_count() {
     ASSERTION_COUNT.with(|count| {
         *count.borrow_mut() += 1;
     });
+    crate::interpreter::builtins::test_progress::record_assertion();
 }
 
 #[cfg(test)]

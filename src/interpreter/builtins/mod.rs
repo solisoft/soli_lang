@@ -152,6 +152,7 @@ pub mod system;
 pub mod template;
 pub mod test_dsl;
 pub mod test_helpers;
+pub mod test_progress;
 pub mod test_server;
 pub mod toml_yaml;
 pub mod trust_proxy;

@@ -1021,6 +1021,30 @@ persisted = Factory.insert("user")</code></pre>
 soli test --jobs=4           # 4 workers
 soli test --jobs=1           # Sequential (debug)</code></pre>
 
+        <h2 class="text-2xl font-bold text-white mb-6">Live Progress</h2>
+        <p class="text-gray-400 mb-4">While the suite runs, each worker gets a row and the aggregate bar at the bottom carries the running totals:</p>
+
+        <pre data-filename="soli test"><code class="language-text text-sm"> W0  [████████░░░░░░] ⠇ users_spec                       2.4s  6
+ W1  [██████░░░░░░░░] ⠹ buildings_pages_spec            10.0s  4
+
+[██████████░░░░░░░░░░░░░░░░░░░░] ⠇ 41/158 1 204 tests · 6 018 assertions</code></pre>
+
+        <p class="text-gray-400 mb-4">The three counters advance at different rates on purpose. <code class="text-emerald-300">41/158</code> counts <strong class="text-white">files</strong>, and only moves when one finishes. <code class="text-emerald-300">tests</code> counts each <code class="text-emerald-300">test(...)</code> block as it ends, and <code class="text-emerald-300">assertions</code> counts every assertion as it fires &mdash; both are live, so a spec file that runs for twenty seconds visibly contributes while it is still running rather than landing all at once at the end. A failing test is called out in red on the bar as soon as it fails, before its file has finished.</p>
+
+        <p class="text-gray-400 mb-4">The summary repeats the three, and says which unit each line counts:</p>
+
+        <pre data-filename="Summary"><code class="language-text text-sm">❌
+  156 files passed, 2 failed (158 total)
+  1 204 tests, 2 failed
+  6 018 assertions
+  Time: 41.2s</code></pre>
+
+        <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-8">
+            <p class="text-amber-300 text-sm">
+                <strong>Note:</strong> A file that panics outright (rather than failing an assertion) loses its own assertion count, so the summary reports what the per-file tally saw. The test count has no second source &mdash; it is counted as each block ends, so the tests a panicking file ran before it died are still there.
+            </p>
+        </div>
+
         <h2 class="text-2xl font-bold text-white mb-6" id="section-coverage">Coverage Reporting</h2>
         <p class="text-gray-400 mb-4">Generate coverage reports for your tests:</p>
 

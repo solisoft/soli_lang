@@ -10,10 +10,18 @@ use solilang::coverage::data::AggregatedCoverage;
 use solilang::coverage::tracker::{clear_global_coverage_tracker, set_global_coverage_tracker};
 use solilang::coverage::{CoverageConfig, CoverageReporter, CoverageTracker, OutputFormat};
 
+/// What the aggregate bar and the final summary draw.
+///
+/// `passed`/`failed` count *files*; `tests_passed`/`tests_failed` count the
+/// `test(...)` blocks inside them. Both are worth showing — a suite of 158
+/// files says nothing about whether it exercises four hundred tests or four
+/// thousand.
 struct ProgressState {
     passed: usize,
     failed: usize,
     total_assertions: i64,
+    tests_passed: usize,
+    tests_failed: usize,
 }
 
 #[derive(Clone)]
@@ -158,6 +166,17 @@ fn render_worker_row(
     )
 }
 
+/// `1 file`, `2 files`. The counts sit next to each other in the summary, so
+/// a stray plural on a one-file run is the kind of thing that reads as a bug
+/// in the runner rather than a detail of English.
+fn plural(n: usize, one: &'static str, many: &'static str) -> &'static str {
+    if n == 1 {
+        one
+    } else {
+        many
+    }
+}
+
 fn render_progress_bar(state: &ProgressState, total_files: usize, icon: &str) -> String {
     let done = state.passed + state.failed;
     let bar_len = 30;
@@ -169,13 +188,26 @@ fn render_progress_bar(state: &ProgressState, total_files: usize, icon: &str) ->
     let filled = filled.min(bar_len);
     let empty = bar_len - filled;
     let color = if state.failed > 0 { "31" } else { "32" };
+    // Failing tests are called out in red even while the run is green so far:
+    // the file they are in has not finished, so nothing else on screen shows
+    // them yet.
+    let tests = if state.tests_failed > 0 {
+        format!(
+            "\x1b[90m{} tests \x1b[0m\x1b[31m{} failed\x1b[0m\x1b[90m",
+            state.tests_passed + state.tests_failed,
+            state.tests_failed
+        )
+    } else {
+        format!("{} tests", state.tests_passed + state.tests_failed)
+    };
     format!(
-        "\x1b[{color}m\x1b[1m[\x1b[{color}m{}\x1b[0m\x1b[90m{}\x1b[0m\x1b[{color}m\x1b[1m] {} {}/{} \x1b[90m{} assertions\x1b[0m",
+        "\x1b[{color}m\x1b[1m[\x1b[{color}m{}\x1b[0m\x1b[90m{}\x1b[0m\x1b[{color}m\x1b[1m] {} {}/{} \x1b[90m{} · {} assertions\x1b[0m",
         "█".repeat(filled),
         "░".repeat(empty),
         icon,
         done,
         total_files,
+        tests,
         state.total_assertions,
     )
 }
@@ -783,10 +815,15 @@ pub fn run_test(
     }
 
     let total_files = test_files.len();
+    // One suite is one accumulation. Nothing else resets these, so a second
+    // run in the same process would otherwise keep counting from the first.
+    solilang::interpreter::builtins::test_progress::reset();
     let progress = Arc::new(Mutex::new(ProgressState {
         passed: 0,
         failed: 0,
         total_assertions: 0,
+        tests_passed: 0,
+        tests_failed: 0,
     }));
     type TestResult = (PathBuf, bool, String, Duration, i64);
     let all_results_shared: Arc<Mutex<Vec<TestResult>>> = Arc::new(Mutex::new(Vec::new()));
@@ -816,12 +853,19 @@ pub fn run_test(
             let mut frame = 0usize;
             let mut last_lines = 0usize;
             while !stop.load(Ordering::Relaxed) {
+                // Files come from the shared tally, which only moves when a
+                // file ends. Assertions and tests come from the global
+                // counters instead: they are what makes the numbers advance
+                // *during* a long file rather than jumping when it finishes.
+                let live = solilang::interpreter::builtins::test_progress::snapshot();
                 let snapshot = {
                     let p = progress.lock().unwrap();
                     ProgressState {
                         passed: p.passed,
                         failed: p.failed,
-                        total_assertions: p.total_assertions,
+                        total_assertions: live.assertions,
+                        tests_passed: live.tests_passed,
+                        tests_failed: live.tests_failed,
                     }
                 };
                 let slot_snapshot: Vec<WorkerSlot> =
@@ -1024,10 +1068,17 @@ pub fn run_test(
         let p = progress.lock().unwrap();
         (p.passed, p.failed, p.total_assertions)
     };
+    // The last frame uses the per-file sum, not the live counter: a file that
+    // panics has its thread-local count discarded, and the bar must not end on
+    // a number the summary below then contradicts. The test tally has no such
+    // second source — these counters are the only place it exists.
+    let live = solilang::interpreter::builtins::test_progress::snapshot();
     let final_state = ProgressState {
         passed,
         failed,
         total_assertions: total_assertions_val,
+        tests_passed: live.tests_passed,
+        tests_failed: live.tests_failed,
     };
     let final_icon = if failed > 0 { '✗' } else { '✓' };
     if animate {
@@ -1179,11 +1230,23 @@ pub fn run_test(
     println!();
     println!("{}", if failed > 0 { "❌ " } else { "✓ " });
     println!(
-        "  {} passed, {} failed ({} total)",
+        "  {} {} passed, {} failed ({} total)",
         passed,
+        plural(passed, "file", "files"),
         failed,
         passed + failed
     );
+    let tests_run = live.tests_run();
+    if live.tests_failed > 0 {
+        println!(
+            "  {} {}, {} failed",
+            tests_run,
+            plural(tests_run, "test", "tests"),
+            live.tests_failed
+        );
+    } else {
+        println!("  {} {}", tests_run, plural(tests_run, "test", "tests"));
+    }
     println!("  {} assertions", total_assertions_val);
     println!("  Time: {}", format_duration(suite_duration));
 

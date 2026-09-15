@@ -678,6 +678,12 @@ fn execute_test_suites(
             // Execute the test body and track failures
             let result = interpreter.call_value(test_body, Vec::new(), span::Span::new(0, 0, 1, 1));
 
+            // The only place individual `test(...)` blocks are counted. The
+            // runner's own tally is per file, so without this the suite could
+            // report how many files ran and how many assertions fired, but
+            // never how many tests.
+            crate::interpreter::builtins::test_progress::record_test(result.is_ok());
+
             if let Err(e) = result {
                 failed_count += 1;
                 failed_tests.push(format!("{}: {}", test.name, e));

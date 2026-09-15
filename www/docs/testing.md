@@ -481,11 +481,40 @@ end)
 
 ## Test Results
 
-```
-Tests: 45 passed, 2 failed
-Coverage: 87.5% (1250/1428 lines) ✓
+While the suite runs, each worker gets a row and the aggregate bar at the bottom
+carries the running totals:
 
-Failed tests:
-  - "returns 422 with invalid email" (users_spec.sl:42)
-  - "shows deleted user" (users_spec.sl:89)
 ```
+ W0  [████████░░░░░░] ⠇ users_spec                       2.4s  6
+ W1  [██████░░░░░░░░] ⠹ buildings_pages_spec            10.0s  4
+
+[██████████░░░░░░░░░░░░░░░░░░░░] ⠇ 41/158 1 204 tests · 6 018 assertions
+```
+
+The three counters advance at different rates on purpose. `41/158` is **files**,
+and only moves when one finishes. `tests` counts each `test(...)` block as it
+ends, and `assertions` counts every assertion as it fires — both are live, so a
+spec file that runs for twenty seconds visibly contributes while it is still
+running rather than landing all at once at the end. A failing test is called out
+in red on the bar as soon as it fails, before its file has finished:
+
+```
+[██████████░░░░░░░░░░░░░░░░░░░░] ⠇ 41/158 1 204 tests 2 failed · 6 018 assertions
+```
+
+The summary repeats the three, and says which unit each line counts:
+
+```
+❌
+  156 files passed, 2 failed (158 total)
+  1 204 tests, 2 failed
+  6 018 assertions
+  Time: 41.2s
+
+Coverage: 87.5% (1250/1428 lines) ✓
+```
+
+A file that panics outright (rather than failing an assertion) loses its own
+assertion count, so the summary reports what the per-file tally saw. The test
+count has no second source — it is counted as each block ends, so the tests a
+panicking file ran before it died are still there.
