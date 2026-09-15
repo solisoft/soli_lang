@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.3.4] - 2026-09-15
+
 ### Added
 
 * **feat(test):** `soli test` counts the `test(...)` blocks it runs, and both the test and assertion totals now advance while a file is still running. The runner knew how many *files* had finished and how many assertions they had fired, and neither number moved until a file ended — a spec taking twenty seconds contributed nothing to the display in the meantime, because the assertion counter is a thread-local (`assertions::ASSERTION_COUNT`) that the thread painting the bar cannot read. Assertions now also feed a process-global counter (`builtins::test_progress`), and each test block is counted as it ends, which nothing did before. The aggregate bar reads `41/158 1 204 tests · 6 018 assertions` and turns the test count red the moment one fails, before its file has finished; the summary names the unit of each line — `156 files passed, 2 failed`, then `1 204 tests`, then `6 018 assertions`. The last frame and the summary use the per-file assertion sum rather than the live counter, so a file that panics (discarding its thread-local count) cannot leave the bar contradicting the summary

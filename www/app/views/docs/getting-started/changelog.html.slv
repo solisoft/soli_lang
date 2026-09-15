@@ -20,14 +20,19 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-3-0" class="text-amber-400 hover:underline">v2.2.2</a>.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-3-4" class="text-amber-400 hover:underline">v2.3.4</a>.</p>
 
-        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+
+    </section>
+
+    <section id="v2-3-4" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.3.4 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-15</span></h2>
+
+        <h3 id="v2-3-4-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">soli test</code> counts tests, and counts them live.</strong> The runner knew how many <em>files</em> had run and how many assertions they had fired, and both numbers only moved when a file finished — a spec that runs for twenty seconds contributed nothing to the display until it ended, because the assertion counter was a thread-local the painting thread could not read. Assertions now also feed a process-global counter, so the bar advances during a file; and each <code class="text-cyan-400">test(...)</code> block is counted as it ends, which nothing did before. The bar reads <code class="text-cyan-400">41/158 1 204 tests · 6 018 assertions</code>, calls out failing tests in red as soon as they fail, and the summary says which unit each line counts: <code class="text-cyan-400">156 files passed</code>, then <code class="text-cyan-400">1 204 tests</code>, then <code class="text-cyan-400">6 018 assertions</code>.</li>
             <li><strong class="text-white">New lint rule <code class="text-cyan-400">idiom/prefer-to-s</code>.</strong> <code class="text-cyan-400">x ?? ""</code> means &ldquo;render this, and render nothing when it is nil&rdquo;, which is what <code class="text-cyan-400">.to_s</code> says in one call. It is also the more honest version when the value is not already a string: <code class="text-cyan-400">count ?? ""</code> evaluates to the <em>number</em> when there is one and to <code class="text-cyan-400">""</code> when there is not, so what it yields changes type with the data. A real fallback &mdash; <code class="text-cyan-400">name ?? "Guest"</code> &mdash; is left alone.</li>
         </ul>
-
     </section>
 
     <section id="v2-3-0" class="mb-16 scroll-mt-24">
