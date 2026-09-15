@@ -283,6 +283,7 @@ soli lint path/to/file.sl   # Lint specific file
 - `idiom/nil-comparison` - prefer `.nil?` / `.present?` over `== null` / `!= null`
 - `idiom/prefer-blank` - prefer `.blank?` / `.present?` over comparing to `""`
 - `idiom/prefer-includes` - replace a chain of 3+ same-value `==`/`!=` comparisons with `.includes?`
+- `idiom/prefer-to-s` - prefer `.to_s` over `?? ""` (a real fallback like `?? "Guest"` is left alone)
 - `idiom/manual-find-guard` - drop the nil-check after `Model.find` (it raises on a miss; use `find_by`/`first_by` for "or nil")
 - `security/unfiltered-mass-assignment` - `Model.create(params)` / `update` / `create_many` in `app/controllers/` or `app/services/` with raw request params; whitelist with `permit` first
 - `component/props` - a component's `props(...)` declaration must use string-literal names with no duplicates

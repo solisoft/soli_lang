@@ -685,7 +685,7 @@ end
 # A flowing element's position depends on everything before it, so only the
 # layout engine can answer this — the editor cannot compute it.
 def pdf_studio_layout
-  let template = params["template"] ?? ""
+  let template = params["template"].to_s
   let data = params["data"] ?? "{}"
   try
     let boxes = pdf_layout_map(template, data, {
@@ -711,12 +711,12 @@ def pdf_playground
 end
 
 def pdf_playground_render
-  let markdown = params["markdown"] ?? ""
+  let markdown = params["markdown"].to_s
   try
     let t0 = clock()
     let pdf = null
     if markdown.blank?
-      let template = params["template"] ?? ""
+      let template = params["template"].to_s
       let data = params["data"] ?? "{}"
       pdf = pdf_render(template, data, {
         "fetch_images": false,

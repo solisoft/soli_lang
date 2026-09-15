@@ -18,7 +18,7 @@ class DemosController < Controller
 
   # 2. Live debounced search — filter a hardcoded fruit list.
   def search
-    search_query = (params["q"] ?? "").downcase()
+    search_query = params["q"].to_s.downcase()
     fruits = [
       "Apple",
       "Apricot",
@@ -84,7 +84,7 @@ class DemosController < Controller
 
   # 4. Inline edit. Accepts a new value, returns the read-only display row.
   def todo_update
-    value = (params["value"] ?? "").trim()
+    value = params["value"].to_s.trim()
     display = value == "" ? "(empty)" : value
     render("demos/_todo_row", {"value": display}, {"layout": false})
   end
@@ -229,7 +229,7 @@ class DemosController < Controller
   def users
     sort_column    = params["sort"] ?? "name"
     sort_direction = params["dir"] ?? "asc"
-    search_query   = params["q"] ?? ""
+    search_query   = params["q"].to_s
     result = this._users_result(
       search_query, sort_column, sort_direction,
       int(params["page"] ?? "1"), 10
@@ -250,9 +250,9 @@ class DemosController < Controller
   end
 
   def user_update
-    id = params["id"] ?? ""
+    id = params["id"].to_s
     field = params["field"] ?? "name"
-    value = params["value"] ?? ""
+    value = params["value"].to_s
 
     user = DemoUser.find(id)
     attrs = {}
@@ -291,7 +291,7 @@ class DemosController < Controller
   end
 
   def user_delete
-    id = params["id"] ?? ""
+    id = params["id"].to_s
     user = DemoUser.find(id)
     DemoUser.delete(id)
     {

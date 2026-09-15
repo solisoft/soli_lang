@@ -4153,6 +4153,7 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
 | `idiom/nil-comparison` | Prefer `.nil?` / `.present?` over `== null` / `!= null` |
 | `idiom/prefer-blank` | Prefer `.blank?` / `.present?` over comparing to an empty string (`.blank?` also covers nil) |
 | `idiom/prefer-includes` | Replace a chain of 3+ same-value `==`/`!=` comparisons with `.includes?` |
+| `idiom/prefer-to-s` | Prefer `.to_s` over `?? ""` — it renders nil as the empty string, and gives the expression one type instead of two |
 | `idiom/manual-find-guard` | Drop the nil-check after `Model.find` — it raises on a miss (handled as a 404); use `find_by`/`first_by` for "or nil" |
 | `idiom/redundant-template-escape` | `<%= h(x) %>` / `<%= attr(x) %>` / `<%= html_escape(x) %>` in a `.slv` — `<%= %>` already HTML-escapes, so this escapes twice and renders literal `&#x27;`/`&amp;`. Write the expression bare, or use `<%- %>` for pre-escaped HTML |
 | `security/unfiltered-mass-assignment` | `Model.create(params)` / `.update` / `.create_many` in `app/controllers/` or `app/services/` with the raw request hash. Whitelist with `permit(params, { "field": true })` or `this._permit_params(params)` |

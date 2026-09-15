@@ -147,6 +147,7 @@ impl Linter {
             }
 
             ExprKind::NullishCoalescing { left, right } => {
+                rules::idiom::check_prefer_to_s(right, expr.span, &mut self.diagnostics);
                 self.lint_expr(left);
                 self.lint_expr(right);
             }

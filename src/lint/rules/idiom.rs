@@ -1,7 +1,8 @@
 //! Soli-specific idiom rules. These flag code that is *correct* but not
 //! idiomatic — the patterns CLAUDE.md calls out as fluency tells: comparing
-//! against `null`/`""` instead of `.nil?`/`.blank?`, and chained `==`/`!=`
-//! membership tests instead of `.includes?`.
+//! against `null`/`""` instead of `.nil?`/`.blank?`, coalescing to `""`
+//! instead of `.to_s`, and chained `==`/`!=` membership tests instead of
+//! `.includes?`.
 
 use crate::ast::expr::{BinaryOp, Expr, ExprKind};
 use crate::ast::stmt::{Stmt, StmtKind};
@@ -68,6 +69,30 @@ pub fn check_prefer_blank(
             "prefer `{suggestion}` over comparing to an empty string — `.blank?` \
              also covers the nil case"
         ),
+        span,
+        severity: Severity::Warning,
+    });
+}
+
+/// `x ?? ""` → prefer `x.to_s`.
+///
+/// Coalescing to an empty string means "render this, and render nothing when
+/// it is nil". `.to_s` says exactly that in one call, and the reader does not
+/// have to work out what the fallback is standing in for.
+///
+/// It is also the more honest version whenever `x` is not already a string:
+/// `count ?? ""` evaluates to the *number* when there is one and to `""` when
+/// there is not, so what the expression yields changes type with the data.
+/// `count.to_s` has one type, always.
+pub fn check_prefer_to_s(right: &Expr, span: Span, diagnostics: &mut Vec<LintDiagnostic>) {
+    if !is_empty_string(right) {
+        return;
+    }
+    diagnostics.push(LintDiagnostic {
+        rule: "idiom/prefer-to-s",
+        message: "prefer `.to_s` over `?? \"\"` — it renders nil as the empty string \
+                  and gives the expression one type instead of two"
+            .to_string(),
         span,
         severity: Severity::Warning,
     });
@@ -362,6 +387,40 @@ mod tests {
             Span::new(0, 0, 1, 1),
             &mut d,
         );
+        assert!(d.is_empty());
+    }
+
+    fn coalesce(l: Expr, r: Expr) -> Expr {
+        Expr::new(
+            ExprKind::NullishCoalescing {
+                left: Box::new(l),
+                right: Box::new(r),
+            },
+            Span::new(0, 0, 1, 1),
+        )
+    }
+
+    #[test]
+    fn flags_coalesce_to_empty_string() {
+        let mut d = Vec::new();
+        let expr = coalesce(var("somedata"), string(""));
+        let ExprKind::NullishCoalescing { right, .. } = &expr.kind else {
+            unreachable!()
+        };
+        check_prefer_to_s(right, expr.span, &mut d);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].rule, "idiom/prefer-to-s");
+    }
+
+    /// A real fallback is not a `.to_s` in disguise — `name ?? "Guest"` says
+    /// something `.to_s` cannot.
+    #[test]
+    fn ignores_coalesce_to_a_real_fallback() {
+        let mut d = Vec::new();
+        check_prefer_to_s(&string("Guest"), Span::new(0, 0, 1, 1), &mut d);
+        assert!(d.is_empty());
+
+        check_prefer_to_s(&null(), Span::new(0, 0, 1, 1), &mut d);
         assert!(d.is_empty());
     }
 
