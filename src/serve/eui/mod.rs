@@ -11,6 +11,7 @@
 
 pub mod assets;
 pub mod diff;
+pub mod fonts;
 pub mod local;
 pub mod manifest;
 pub mod session;

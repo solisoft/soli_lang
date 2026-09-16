@@ -109,17 +109,20 @@ fn read_or_generate_key() -> Result<Ed25519KeyPair, String> {
 /// The manifest bytes, signed — once per capability mask. Every request
 /// used to resolve the root and sign again.
 pub fn bytes() -> Result<Vec<u8>, String> {
-    /// The signed manifest, cached against the capability mask it was signed
-    /// for. Per application, like the mask itself.
-    static SIGNED: TenantValue<Option<(u32, Vec<u8>)>> = TenantValue::new(|| None);
+    /// The signed manifest, cached against what it was signed for: the
+    /// capability mask, and whether the application had declared a font —
+    /// the second raises `protocol_min`, so a manifest signed before
+    /// `eui_font` ran is the wrong one to keep handing out.
+    static SIGNED: TenantValue<Option<((u32, bool), Vec<u8>)>> = TenantValue::new(|| None);
     let capabilities = CAPABILITIES.read(|caps| *caps);
-    if let Some((mask, bytes)) = SIGNED.read(|signed| signed.clone()) {
-        if mask == capabilities {
+    let signed_for = (capabilities, super::fonts::any());
+    if let Some((held, bytes)) = SIGNED.read(|signed| signed.clone()) {
+        if held == signed_for {
             return Ok(bytes);
         }
     }
     let bytes = sign(capabilities)?;
-    SIGNED.write(|signed| *signed = Some((capabilities, bytes.clone())));
+    SIGNED.write(|signed| *signed = Some((signed_for, bytes.clone())));
     Ok(bytes)
 }
 
@@ -153,7 +156,14 @@ fn sign(capabilities: u32) -> Result<Vec<u8>, String> {
         // session settled below the version it needs, so an old client
         // gets an application that works and a meter that does not move,
         // rather than a decode error and no session at all.
-        protocol_min: if capabilities & eui_proto::caps::SCENE != 0 {
+        // A declared font raises the floor for the same reason a `scene`
+        // does, and higher: `DefFont` is opcode `0x15` and a font role is a
+        // style byte of `2`, both decode errors before EUI 4. An
+        // application that declared one is refused at the handshake, with a
+        // reason, rather than mid-batch with a dead session.
+        protocol_min: if super::fonts::any() {
+            4
+        } else if capabilities & eui_proto::caps::SCENE != 0 {
             2
         } else {
             1

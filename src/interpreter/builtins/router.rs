@@ -837,6 +837,87 @@ pub fn register_router_builtins(env: &mut Environment) {
         })),
     );
 
+    // eui_font(name, faces) — declare a font the application supplies, and
+    // answer the name a style uses it by.
+    //
+    // A client ships two faces, sans and mono, and nothing else: it never
+    // asks the machine what fonts it has, and it never fetches one from a
+    // font service — that is the privacy claim of spec 08 §8, and it is
+    // what makes the same text shape the same way on every screen. So a
+    // face an application wants is a face the application *serves*: a
+    // `.ttf` or `.otf` under `public/` or `app/assets/`, hashed and served
+    // immutably from the app's own origin like every other asset.
+    //
+    //     eui_font("Playfair Display", ["public/fonts/playfair-400.ttf",
+    //                                   "public/fonts/playfair-700.ttf"])
+    //     text("A heading", {"font": "Playfair Display", "weight": "bold"})
+    //
+    // Each face is a path, or `{"asset": "<64 hex>"}` from `eui_asset` for
+    // bytes with no file. One face per weight: `"weight"` picks among them,
+    // at most eight, and the first that fits is the one drawn.
+    //
+    // A face from a font service — Google Fonts and the like — is
+    // downloaded by the *server*, once, into `public/`: `HTTP.download` and
+    // a `File.exists` guard is the whole of it. The viewer's address never
+    // reaches the third party, and the bytes arrive named by their content.
+    //
+    // The names "sans" and "mono" replace the client's own faces instead of
+    // taking a role of their own, which is what a theme's `font_sans` asset
+    // means (05 §3). Declaring a name twice replaces its faces.
+    //
+    // Declaring any font asks clients for EUI 4; an application that
+    // declares none keeps every client it had.
+    #[cfg(feature = "eui")]
+    env.define(
+        "eui_font".to_string(),
+        Value::NativeFunction(NativeFunction::new("eui_font", Some(2), |args| {
+            let name = match &args[0] {
+                Value::String(s) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "eui_font() expects a name, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let items = match &args[1] {
+                Value::Array(items) => items.borrow().clone(),
+                other => {
+                    return Err(format!(
+                        "eui_font() expects an array of faces, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let mut faces = Vec::with_capacity(items.len());
+            for item in &items {
+                faces.push(match item {
+                    Value::String(path) => crate::serve::eui::assets::from_file(path)?,
+                    Value::Hash(map) => {
+                        let hex = map
+                            .borrow()
+                            .get(&crate::interpreter::value::HashKey::String("asset".into()))
+                            .map(|v| v.to_string())
+                            .ok_or_else(|| {
+                                "eui_font() face object must be {\"asset\": \"<hash>\"}".to_string()
+                            })?;
+                        crate::serve::eui::assets::parse_hex(&hex).ok_or_else(|| {
+                            format!("eui_font() face asset must be 64 hex characters, got '{hex}'")
+                        })?
+                    }
+                    other => {
+                        return Err(format!(
+                            "eui_font() expects a path or {{\"asset\": \"<hash>\"}}, got {}",
+                            other.type_name()
+                        ))
+                    }
+                });
+            }
+            crate::serve::eui::fonts::declare(&name, faces)?;
+            Ok(Value::String(name.into()))
+        })),
+    );
+
     // eui_asset(data) — put bytes in the asset store and name them.
     //
     // A picture a view wants to draw does not have to be a file. `src` takes

@@ -162,6 +162,9 @@ pub struct Encoder {
     generation: u32,
     /// How many nodes the last tree had, for `eui_stats()`.
     last_nodes: usize,
+    /// Font roles this session has already been told about, so a `DefFont`
+    /// goes out once rather than once per style that names the family.
+    fonts_sent: std::collections::HashSet<u8>,
 }
 
 impl Encoder {
@@ -297,6 +300,8 @@ fn op_weight(op: &Op) -> usize {
         }
         Op::DefAtom { value, .. } => 8 + value.len(),
         Op::DefChunkBytes { bytes, .. } => 8 + bytes.len(),
+        // Thirty-two bytes a face, and a role may carry eight.
+        Op::DefFont { faces, .. } => 8 + faces.len() * eui_proto::limits::HASH_BYTES,
         Op::SetText {
             text: TextRef::Inline(s),
             ..
@@ -630,6 +635,58 @@ impl Encoder {
         out.push(16); // max stack; the client verifier proves the real depth fits
         out.extend_from_slice(&code);
         Ok(out)
+    }
+
+    /// `"sans"`, `"mono"`, or the name of a font this application declared
+    /// with `eui_font` (02 §5.1).
+    ///
+    /// The role's `DefFont` is emitted the first time a style names it, and
+    /// once per session: the faces are the same hashes every render, and a
+    /// client that has been told cannot be untold. A name nothing declared
+    /// is an error here, where the view's author is, rather than a role the
+    /// client would draw in sans without ever saying why.
+    fn font_family(&mut self, v: &Json) -> Result<FontFamily, String> {
+        let name = v.as_str().ok_or("EUI: expected a name")?;
+        match name {
+            "sans" if super::fonts::role_of("sans").is_none() => return Ok(FontFamily::Sans),
+            "mono" if super::fonts::role_of("mono").is_none() => return Ok(FontFamily::Mono),
+            _ => {}
+        }
+        // A font role and the `DefFont` that binds it are both EUI 4, and a
+        // client below it meets either as a decode error and ends the
+        // session. The manifest keeps such a client away from an
+        // application that declared a font at boot — but an application may
+        // declare one from a view, with sessions already open, and a
+        // typeface is not worth a window. So an older session is drawn in
+        // the client's own face, the way `since` leaves a `level` handler
+        // out rather than sending it: the application works and the
+        // typography does not, which is the right way round.
+        if self.protocol() < 4 {
+            return Ok(match name {
+                "mono" => FontFamily::Mono,
+                _ => FontFamily::Sans,
+            });
+        }
+        let role = super::fonts::role_of(name).ok_or_else(|| {
+            let mut known = vec!["sans".to_owned(), "mono".to_owned()];
+            // A declared `sans` or `mono` is a *rebinding* of the client's
+            // own role, so it is already in the list above.
+            known.extend(
+                super::fonts::names()
+                    .into_iter()
+                    .filter(|n| n != "sans" && n != "mono"),
+            );
+            format!(
+                "EUI: unknown font '{name}'; declare it with eui_font(\"{name}\", [...]) — known: {}",
+                known.join(", ")
+            )
+        })?;
+        if self.fonts_sent.insert(role) {
+            let faces = super::fonts::faces_of(role)
+                .ok_or_else(|| format!("EUI: font '{name}' names no face"))?;
+            self.pending.push(Op::DefFont { role, faces });
+        }
+        FontFamily::from_u8(role).map_err(|e| format!("EUI: font role {role}: {e}"))
     }
 
     fn style(&mut self, record: StyleRecord) -> u32 {
@@ -1420,10 +1477,7 @@ impl Encoder {
                 "shadow" => r.shadow = u8_of(v)?,
                 "opacity" => r.opacity = u8_of(v)?,
                 "blur" => r.blur = u8_of(v)?,
-                "font" => {
-                    r.font_family =
-                        enum_of(v, &[("sans", FontFamily::Sans), ("mono", FontFamily::Mono)])?
-                }
+                "font" => r.font_family = self.font_family(v)?,
                 "size" => r.font_size = u8_of(v)?,
                 "weight" => {
                     r.font_weight = enum_of(
