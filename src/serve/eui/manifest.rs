@@ -109,11 +109,13 @@ fn read_or_generate_key() -> Result<Ed25519KeyPair, String> {
 /// The manifest bytes, signed — once per capability mask. Every request
 /// used to resolve the root and sign again.
 pub fn bytes() -> Result<Vec<u8>, String> {
-    /// The signed manifest, cached against what it was signed for: the
-    /// capability mask, and whether the application had declared a font —
-    /// the second raises `protocol_min`, so a manifest signed before
-    /// `eui_font` ran is the wrong one to keep handing out.
-    static SIGNED: TenantValue<Option<((u32, bool), Vec<u8>)>> = TenantValue::new(|| None);
+    /// What a signed manifest was signed *for*: the capability mask, and
+    /// whether the application had declared a font — the second raises
+    /// `protocol_min`, so a manifest signed before `eui_font` ran is the
+    /// wrong one to keep handing out.
+    type SignedFor = (u32, bool);
+    /// The signed manifest, cached against that.
+    static SIGNED: TenantValue<Option<(SignedFor, Vec<u8>)>> = TenantValue::new(|| None);
     let capabilities = CAPABILITIES.read(|caps| *caps);
     let signed_for = (capabilities, super::fonts::any());
     if let Some((held, bytes)) = SIGNED.read(|signed| signed.clone()) {
