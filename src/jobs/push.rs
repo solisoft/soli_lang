@@ -252,7 +252,15 @@ fn handle_frame(text: &str) {
 fn should_wake(event: &serde_json::Value) -> bool {
     // Control frames (`{"type":"subscribed"}`) carry no operation and mean
     // nothing has changed yet.
-    if event.get("operation").is_none() {
+    let Some(operation) = event.get("operation").and_then(|v| v.as_str()) else {
+        return false;
+    };
+
+    // Removing a row never creates claimable work, and `prune_done` deletes one
+    // row per request on SoliDB — so a retention sweep over a long backlog would
+    // otherwise wake the poller once per deleted row, each wake costing a claim
+    // query that can only come back empty.
+    if operation == "delete" || operation == "truncate" {
         return false;
     }
 
@@ -344,6 +352,29 @@ mod tests {
             crate::jobs::next_future_run_at(crate::jobs::unix_now()).is_some(),
             "it must be remembered as a deadline instead"
         );
+    }
+
+    #[test]
+    fn a_deletion_never_wakes_us() {
+        // `prune_done` issues one delete per row on SoliDB; a backlog sweep
+        // would otherwise wake the poller thousands of times for work that by
+        // definition no longer exists.
+        assert!(!should_wake(&json!({
+            "operation": "delete",
+            "collection": "_jobs",
+            "key": "gone",
+            "data": serde_json::Value::Null,
+        })));
+    }
+
+    #[test]
+    fn a_truncate_never_wakes_us() {
+        assert!(!should_wake(&json!({
+            "operation": "truncate",
+            "collection": "_jobs",
+            "key": "",
+            "data": serde_json::Value::Null,
+        })));
     }
 
     #[test]
