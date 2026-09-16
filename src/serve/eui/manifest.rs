@@ -144,6 +144,15 @@ fn sign(capabilities: u32) -> Result<Vec<u8>, String> {
         // application that asked for it raises the floor and is refused at
         // the handshake instead, with a reason, before anything is drawn.
         // Every other application keeps its old clients.
+        //
+        // An *event* added in a later version cannot raise this floor the
+        // same way, and should not try: a capability is declared before
+        // anything renders, while a handler is a key in a view that has
+        // not run yet. `level` (03 §7) is handled a step later instead --
+        // `tree::since` leaves the handler out of the tree when the
+        // session settled below the version it needs, so an old client
+        // gets an application that works and a meter that does not move,
+        // rather than a decode error and no session at all.
         protocol_min: if capabilities & eui_proto::caps::SCENE != 0 {
             2
         } else {

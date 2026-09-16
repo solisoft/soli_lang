@@ -256,6 +256,12 @@ pub fn upgrade(
         );
         instance.id = liveview_instance_id(&session_id, &component, None);
         let liveview_id = instance.id.clone();
+        // What the two ends settled on, so the encoder can leave out a
+        // handler this client could not decode rather than send one that
+        // ends its session (`tree::since`).
+        with_encoder(&liveview_id, |enc| {
+            enc.set_protocol(hello.version.min(PROTOCOL_VERSION))
+        });
         let already = live_registry()
             .attach_or_register(instance, sender.clone())
             .is_some();

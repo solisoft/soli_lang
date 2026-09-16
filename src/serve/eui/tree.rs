@@ -122,6 +122,16 @@ impl From<TNode> for Child {
 /// One session's tables and previous tree.
 #[derive(Debug, Default, Clone)]
 pub struct Encoder {
+    /// The protocol version this session settled on -- `hello.version`
+    /// capped at ours (01 §2). `0` means nobody has said yet, which the
+    /// encoder reads as "ours", so a path with no handshake behind it (a
+    /// test, a render outside a session) is not silently degraded.
+    ///
+    /// It exists so that a handler naming an event an older client cannot
+    /// decode can be left out instead of ending its session. A kind it has
+    /// never heard of is `UnknownTag` and the batch carrying it is fatal,
+    /// which is a steep price for a meter that would simply not move.
+    version: u32,
     atoms: HashMap<String, u32>,
     /// The atoms again, by id — ids are dense and 1-based, so `atoms_by_id[id]`
     /// is the string, and the reverse lookup every event needs is a index
@@ -799,6 +809,20 @@ impl Encoder {
 
     /// [`handler_name`] and [`props_of`] for one event, from one walk of
     /// the tree: what `validate` needs, at the cost of one lookup.
+    /// The version this session speaks; ours when nobody has said.
+    fn protocol(&self) -> u32 {
+        if self.version == 0 {
+            eui_proto::PROTOCOL_VERSION
+        } else {
+            self.version
+        }
+    }
+
+    /// Remember what the handshake settled on (01 §2).
+    pub fn set_protocol(&mut self, version: u32) {
+        self.version = version;
+    }
+
     pub fn event_target(
         &self,
         node: u32,
@@ -1140,6 +1164,12 @@ impl Encoder {
         let mut handlers = Vec::with_capacity(on.len());
         for (event, target) in on {
             let kind = event_kind(event).ok_or_else(|| format!("EUI: unknown event '{event}'"))?;
+            // An event the other end cannot decode is left out rather than
+            // sent: the view still renders, the widget just never hears
+            // from it. `level` arrived in version 3 (03 §7).
+            if since(kind) > self.protocol() {
+                continue;
+            }
             let handler = match target {
                 Json::String(name) => Handler::Server(self.atom(name)),
                 Json::Object(spec) => {
@@ -1693,6 +1723,16 @@ fn scroll_offset(kind: NodeKind, v: &Json) -> Result<(i64, i64), String> {
     Ok((axis(0)?, axis(1)?))
 }
 
+/// The protocol version an event kind arrived in. Everything older than
+/// the first bump is `1`; this exists so `handlers` can skip what an older
+/// client would choke on rather than guess from a list of names.
+fn since(kind: EventKind) -> u32 {
+    match kind {
+        EventKind::Level => 3,
+        _ => 1,
+    }
+}
+
 fn event_kind(name: &str) -> Option<EventKind> {
     Some(match name {
         "click" => EventKind::Click,
@@ -1719,6 +1759,7 @@ fn event_kind(name: &str) -> Option<EventKind> {
         "window" => EventKind::Window,
         "ended" => EventKind::Ended,
         "time_update" => EventKind::TimeUpdate,
+        "level" => EventKind::Level,
         "wake" => EventKind::Wake,
         "file_pick" => EventKind::FilePick,
         "file_save" => EventKind::FileSave,
@@ -1757,6 +1798,7 @@ pub fn event_name(kind: EventKind) -> &'static str {
         EventKind::Window => "window",
         EventKind::Ended => "ended",
         EventKind::TimeUpdate => "time_update",
+        EventKind::Level => "level",
         EventKind::Wake => "wake",
         // EUI 03 §3.2. The client sends these for a node carrying `pick` or
         // `save`, and `event_kind` above deliberately does not take their
@@ -2311,6 +2353,67 @@ mod tests {
         // `pick` prop *and* a server handler for the matching event.
         assert!(event_kind("file_pick").is_some());
         assert!(event_kind("file_save").is_some());
+    }
+
+    /// The atom names of every server handler in a batch's `Mount`.
+    fn handler_names(enc: &Encoder, ops: &[Op]) -> Vec<String> {
+        let mut out = Vec::new();
+        for op in ops {
+            if let Op::Mount(t) = op {
+                for (_, h) in &t.handlers {
+                    if let Handler::Server(atom) = h {
+                        out.push(
+                            enc.atoms_by_id
+                                .get(*atom as usize)
+                                .cloned()
+                                .unwrap_or_default(),
+                        );
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn a_handler_an_older_client_cannot_decode_is_left_out() {
+        // `level` is version 3 (03 §7). A client that settled on 2 has
+        // never heard of event kind 0x20, and a batch naming it would be
+        // a decode error that ends the session -- an expensive way to
+        // find out a meter would not have moved.
+        // A box rather than an `audio`: the gate is on the handler, not
+        // on the kind, and a sound would want an asset that exists.
+        let view = json!({"k": "box", "on": {"level": "vu", "click": "done"}});
+
+        let mut old = Encoder::default();
+        old.set_protocol(2);
+        let ops: Vec<Op> = old
+            .render(&view, false)
+            .unwrap()
+            .into_iter()
+            .flat_map(|b| b.ops)
+            .collect();
+        let names = handler_names(&old, &ops);
+        assert!(
+            !names.contains(&"vu".to_string()),
+            "no level for a version-2 client: {names:?}"
+        );
+        assert!(
+            names.contains(&"done".to_string()),
+            "everything else still goes: {names:?}"
+        );
+
+        // And a client that speaks 3 gets it.
+        let mut new = Encoder::default();
+        new.set_protocol(3);
+        let ops: Vec<Op> = new
+            .render(&view, false)
+            .unwrap()
+            .into_iter()
+            .flat_map(|b| b.ops)
+            .collect();
+        let names = handler_names(&new, &ops);
+        assert!(names.contains(&"vu".to_string()), "{names:?}");
     }
 
     #[test]

@@ -136,6 +136,25 @@ def video(src, props, style, on)
   picture
 end
 
+# A 3D picture (EUI spec 03 §1.2), drawn by a graphics program rather than
+# decoded from a file. `props` may carry "shader" and "mesh" — both content
+# hashes, both optional, and the client draws its own cube when neither is
+# given — plus "playing", "fps" and "uniforms". Those eight numbers are the
+# author's half of the uniform block; the other twenty-four are the matrix,
+# the clock and the size, which the client fills, so a server never sends a
+# camera and cannot send a broken one.
+#
+# It needs the `scene` capability and a client that speaks EUI 2. Without
+# either, the node paints its own background and nothing else — the module
+# is not even fetched.
+def scene(props, style)
+  {
+    "k": "scene",
+    "s": style ?? {},
+    "p": props ?? {}
+  }
+end
+
 # `o` narrows a field without its caller having to reach into the hash
 # afterwards: `style` is merged over the resting style, `props` is the
 # identity and the semantics the handler and the screen reader read back,
