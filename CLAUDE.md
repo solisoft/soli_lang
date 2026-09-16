@@ -548,7 +548,15 @@ and the plain cargo commands above are the right ones.
 rbuild lang                                  # replaces cargo build --release
 rbuild check lang                            # replaces the fmt + clippy gate
 rbuild test lang --profile ci --test <name>  # replaces cargo test
+rbuild audit lang                            # replaces cargo audit --deny warnings
+rbuild soli lang test                        # replaces soli test tests/ (the .sl specs)
+rbuild soli lang test tests-e2e/browser/specs --browser --no-coverage
 ```
+
+`audit` is a verb of its own, not a step of `check`: `check` judges the diff you
+just wrote, `audit` judges the dependency tree against third-party advisories.
+Waivers stay in `.cargo/audit.toml`, which the rsync carries — so the verdict
+here is the one the CI job gives, waivers included.
 
 The binary lands in `target/remote/release/soli` and is linked into
 `Work/soli/bin/`, which is first on `PATH` — so `soli` already means the build

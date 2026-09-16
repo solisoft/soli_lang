@@ -5,3 +5,23 @@
 
 *No recent activity*
 </claude-mem-context>
+
+## Tests run on the build server, not here
+
+Run this project's suite through `rbuild`, which executes it on the dedicated
+build machine and hands back the console output and the exit code:
+
+```bash
+rbuild soli lang/www test                                 # whole suite
+rbuild soli lang/www test tests/<the-relevant-spec>.sl    # one spec, fast feedback
+```
+
+**Prerequisite, currently missing:** this app has no `.env.test`. `soli test`
+exits 1 without one, so `rbuild` refuses the target up front rather than syncing
+and taking the server lock for nothing. Create `lang/www/.env.test` with at
+least `SOLIDB_DATABASE`; add `SOLIDB_USERNAME` / `SOLIDB_PASSWORD` only if the
+specs actually need a database — declaring none tells `rbuild` not to start a
+throwaway SoliDB, which is what keeps `lang`'s own DB-less specs honest.
+
+`soli fmt`, `soli lint` and `soli serve . --dev` stay local: they are short and
+interactive. `test` is the one that saturates the machine.
