@@ -39,6 +39,7 @@ def get_blog_posts()
 
     # Simple list - ordered manually (newest first)
     let blog_info = [
+        {"slug": "eui-notes-app", "file": "docs/blog/eui-notes-app.md", "desc": "Build a notes app that opens in a native window — no HTML, no CSS, no JavaScript. An EUI component is a handler and a view that returns plain Soli hashes; the runtime diffs the tree and sends the difference. Motion, local handlers, assets, capabilities and scenes.", "tag": "Tutorial", "image": "eui-notes-app.svg"},
         {"slug": "whats-unreleased", "file": "docs/blog/whats-unreleased.md", "desc": "A tour of everything that shipped in v2.0.0: SQL as a real backend, in-process jobs, LiveView rooms and hardening, unless/end, and auth that no longer helps attackers.", "tag": "Guide", "image": "whats-unreleased.svg"},
         {"slug": "stripe-checkout", "file": "docs/blog/stripe-checkout.md", "desc": "Take payments with Stripe Checkout in a Soli app — no generator. Create a session, send the buyer to Stripe, and mark the order paid only after a signed webhook. HTTP.post, Crypto.hmac, skip_csrf.", "tag": "Tutorial", "image": "stripe-checkout.svg"},
         {"slug": "liveview-desk", "file": "docs/blog/liveview-desk.md", "desc": "A live Field Desk on the page: nested live_component assigns, soli-upload, in-socket tabs, debounce, click-away, hooks, JS commands, and the hash .where / jobs snippets you would ship with it.", "tag": "Tutorial", "image": "liveview-desk.svg"},

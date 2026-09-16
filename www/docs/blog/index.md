@@ -4,6 +4,13 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 
 ## Featured
 
+<div>
+<a href="/docs/blog/eui-notes-app"><img src="/images/blog/eui-notes-app.svg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="A native window in 80 lines of Soli"></a>
+<br>
+<strong><a href="/docs/blog/eui-notes-app">A Native Window in 80 Lines of Soli</a></strong><br>
+<small>Build a notes app that opens in a native window &mdash; no HTML, no CSS, no JavaScript. The view returns plain Soli hashes and the runtime sends the difference.</small>
+</div>
+
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem;margin:1.5rem 0;">
 
 <div>
@@ -157,6 +164,7 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 
 ## Recent Posts
 
+- [A Native Window in 80 Lines of Soli](/docs/blog/eui-notes-app) - an EUI tutorial: a handler, a view that returns node hashes, motion, local handlers, assets, capabilities and scenes
 - [What shipped in v2.0.0](/docs/blog/whats-unreleased) - SQL as a real backend, in-process jobs, LiveView rooms and hardening, `unless … end`, auth that no longer helps attackers
 - [Taking Payments with Stripe in a Soli App](/docs/blog/stripe-checkout) - Checkout Session, signed webhook, idempotent fulfill — no generator. `HTTP.post`, `Crypto.hmac`, `skip_csrf("/webhooks/stripe")`
 - [How to Operate a Release Channel](/docs/blog/release-channels) - Signing keys, CDN layout, canary before stable, fix-forward rollbacks, key rotation, and monitoring for Soli auto-update channels
