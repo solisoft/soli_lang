@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [2.3.6] - 2026-09-16
+
+### Fixed
+
+* **fix(cdp):** a native dialog no longer wedges the browser driver, and a read timeout is no longer reported as a lost connection. `alert`, `confirm`, `prompt` and `beforeunload` block the renderer until someone answers, and nothing in a driven session ever does: the command in flight never got its reply, nor did any command after it, so `soli test --browser` simply stopped producing output — no failure, no diagnostic, a suite of six spec files running half an hour without returning. `Page.enable` was already sent, so `Page.javascriptDialogOpening` was arriving all along; it was filed among the events nobody reads. It is now handled **inside the read loop**, before the message is even checked against the pending command id — the only place that holds the socket while the page is frozen. The dialog is **dismissed rather than accepted**, because a `confirm` guarding a deletion must not be answered "yes" by the driver, and it is recorded as a page error, so `assert_no_page_errors` shows it instead of letting a spec pass over a screen nobody can drive. The diagnosis was worse than the fault: the socket carries its own read timeout so a wedged browser cannot pin the worker, and when it trips the kernel says `EAGAIN` — "Resource temporarily unavailable" — which the loop announced as `lost the browser connection`. That sent a whole afternoon looking for a machine out of resources; the machine was idle, a dialog was waiting. A read timeout now goes round the loop again, the command deadline stays the only judge, and its message names what to look for
+
 ## [2.3.5] - 2026-09-16
 
 ### Performance
