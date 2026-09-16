@@ -166,6 +166,22 @@ struct Unplaced {
     tree: Vec<u32>,
 }
 
+/// The lowest set bit of `i`, on its own — the step a Fenwick tree walks by.
+///
+/// `i & -i` is the classic spelling: negation in two's complement flips every
+/// bit above the lowest one and leaves it standing.
+///
+/// The `allow` is not a style preference, it is a catch-22. Clippy 1.98 fires
+/// `manual_isolate_lowest_one` here and tells you to write
+/// `i.isolate_lowest_one()` — which rustc 1.98 then rejects with E0658,
+/// because that method is still nightly-only (rust-lang#136909). Following the
+/// lint is what broke the build; the lint is simply ahead of the toolchain.
+/// Drop this attribute once the method is stable and take the suggestion.
+#[allow(clippy::manual_isolate_lowest_one)]
+fn lowest_one(i: usize) -> usize {
+    i & i.wrapping_neg()
+}
+
 impl Unplaced {
     fn new(n: usize) -> Self {
         let mut this = Self {
@@ -181,7 +197,7 @@ impl Unplaced {
         let mut i = index + 1;
         while i < self.tree.len() {
             self.tree[i] = self.tree[i].wrapping_add(delta as u32);
-            i += i.isolate_lowest_one();
+            i += lowest_one(i);
         }
     }
 
@@ -191,7 +207,7 @@ impl Unplaced {
         let mut sum = 0u32;
         while i > 0 {
             sum += self.tree[i];
-            i -= i.isolate_lowest_one();
+            i -= lowest_one(i);
         }
         sum as usize
     }
