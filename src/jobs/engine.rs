@@ -102,25 +102,55 @@ pub fn start(pool_slots: usize, runtime_handle: tokio::runtime::Handle, dev_mode
     // it; bound for the life of the thread, since thread-locals do not cross
     // `spawn`.
     let tenant = crate::serve::tenant::current_id();
+    // Subscribe before the poller starts, so its first sleep can already be the
+    // long one. This runs on the server runtime, never on the poller thread.
+    super::push::start(&runtime_handle);
+
+    let idle_ms = super::idle_poll_ms();
     let spawned = builder.spawn(move || {
         crate::serve::tenant::bind_current(tenant);
         crate::serve::set_tokio_handle(runtime_handle);
+        ensure_queue_collections();
         run_poller(cfg)
     });
     match spawned {
         Ok(_) => println!(
-            "Job engine: polling every {}ms, {} worker slot(s), {}s lease",
-            poll_ms, pool_slots, lease_secs
+            "Job engine: {} worker slot(s), {}s lease, polling every {}ms \
+             (backstop {}ms when the changefeed is connected)",
+            pool_slots, lease_secs, poll_ms, idle_ms
         ),
         Err(e) => eprintln!("Failed to spawn job poller: {e}"),
     }
 }
 
+/// Create `_jobs` and `_cron_jobs` if this database has never had them.
+///
+/// They would otherwise appear on the first enqueue, which for most apps is
+/// never — and the changefeed refuses a subscription to a collection that does
+/// not exist, so the app that needs the cheap idle path the most was the one
+/// that could not get it. Runs on the poller thread, where blocking database
+/// calls belong, and is best-effort: a failure just means the app keeps
+/// polling.
+fn ensure_queue_collections() {
+    if crate::db::is_sql() {
+        // The SQL backends create their tables in `store::enqueue`, and have no
+        // changefeed to satisfy.
+        return;
+    }
+    for collection in [super::JOBS_COLLECTION, super::CRON_COLLECTION] {
+        if let Err(e) = crate::interpreter::builtins::model::crud::ensure_collection(collection) {
+            eprintln!("[jobs] could not ensure {collection}: {e}");
+        }
+    }
+}
+
+/// How long to keep pruning apart, regardless of how often the loop wakes.
+const PRUNE_EVERY: Duration = Duration::from_secs(600);
+
 fn run_poller(cfg: super::EngineConfig) {
-    let mut ticks: u64 = 0;
+    let mut last_prune = std::time::Instant::now();
     loop {
-        std::thread::sleep(Duration::from_millis(cfg.poll_ms));
-        ticks = ticks.wrapping_add(1);
+        super::wake::wait(next_sleep(&cfg));
 
         // Renew leases first: in-flight work must not be reclaimed just because
         // this tick is slow or the queue is busy.
@@ -140,14 +170,126 @@ fn run_poller(cfg: super::EngineConfig) {
             eprintln!("[jobs] poll failed: {e}");
         }
 
-        // Prune completed rows about once every 10 minutes of ticks.
-        let prune_every = (600_000 / cfg.poll_ms).max(1);
-        if cfg.retention_secs > 0 && ticks.is_multiple_of(prune_every) {
+        // Prune completed rows about every ten minutes. Timed rather than
+        // counted in ticks: the loop no longer wakes on a fixed interval, so a
+        // tick count says nothing about elapsed time.
+        if cfg.retention_secs > 0 && last_prune.elapsed() >= PRUNE_EVERY {
+            last_prune = std::time::Instant::now();
             let cutoff = super::iso_from_unix(super::unix_now() - cfg.retention_secs);
             if let Err(e) = store::prune_done(&cutoff) {
                 eprintln!("[jobs] prune failed: {e}");
             }
         }
+    }
+}
+
+/// How long the poller may sleep before it must look at the queue again.
+///
+/// A live changefeed subscription is what earns the long backstop: without one
+/// nothing would tell us about a job another process enqueued, so the interval
+/// stays what it always was.
+fn next_sleep(cfg: &super::EngineConfig) -> Duration {
+    let backstop_ms = if super::push::is_connected() {
+        super::idle_poll_ms().max(cfg.poll_ms)
+    } else {
+        cfg.poll_ms
+    };
+    let holding_work = in_flight().lock().map(|l| !l.is_empty()).unwrap_or(false);
+    let now = super::unix_now();
+    let deadlines = [
+        super::scheduler::next_due_unix(),
+        super::next_future_run_at(now),
+    ];
+
+    soonest(backstop_ms, cfg.lease_secs, holding_work, &deadlines, now)
+}
+
+/// The backstop, pulled in by whatever falls due sooner.
+///
+/// Split out from [`next_sleep`] so the arithmetic can be tested without the
+/// process-wide state the real deadlines come from.
+fn soonest(
+    backstop_ms: u64,
+    lease_secs: i64,
+    holding_work: bool,
+    deadlines: &[Option<i64>],
+    now: i64,
+) -> Duration {
+    let mut sleep = Duration::from_millis(backstop_ms);
+
+    // Work already running must have its lease renewed well inside the lease
+    // window, whatever else is or is not due.
+    if holding_work {
+        let renew_every = Duration::from_secs((lease_secs.max(2) / 2) as u64);
+        sleep = sleep.min(renew_every);
+    }
+
+    for deadline in deadlines.iter().flatten() {
+        let until = Duration::from_secs(deadline.saturating_sub(now).max(0) as u64);
+        sleep = sleep.min(until);
+    }
+
+    // Never spin: a deadline that has already passed still yields one pass, and
+    // the pass itself is what clears it.
+    sleep.max(Duration::from_millis(50))
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+
+    const NOW: i64 = 1_700_000_000;
+
+    #[test]
+    fn with_nothing_due_the_poller_sleeps_the_whole_backstop() {
+        assert_eq!(
+            soonest(30_000, 60, false, &[None, None], NOW),
+            Duration::from_millis(30_000)
+        );
+    }
+
+    #[test]
+    fn a_nearer_deadline_pulls_the_sleep_in() {
+        // A job due in 5s must not wait out a 30s backstop.
+        let sleep = soonest(30_000, 60, false, &[None, Some(NOW + 5)], NOW);
+        assert_eq!(sleep, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn the_soonest_of_several_deadlines_wins() {
+        let sleep = soonest(30_000, 60, false, &[Some(NOW + 20), Some(NOW + 3)], NOW);
+        assert_eq!(sleep, Duration::from_secs(3));
+    }
+
+    #[test]
+    fn a_deadline_beyond_the_backstop_does_not_extend_it() {
+        let sleep = soonest(30_000, 60, false, &[Some(NOW + 9_000)], NOW);
+        assert_eq!(sleep, Duration::from_millis(30_000));
+    }
+
+    #[test]
+    fn in_flight_work_forces_a_wake_inside_the_lease_window() {
+        // Sleeping the full backstop would let a 20s lease expire under a
+        // running job and another process would reclaim it mid-flight.
+        let sleep = soonest(30_000, 20, true, &[None], NOW);
+        assert_eq!(sleep, Duration::from_secs(10));
+        assert!(sleep < Duration::from_secs(20), "must renew before expiry");
+    }
+
+    #[test]
+    fn an_overdue_deadline_yields_one_pass_not_a_spin() {
+        let sleep = soonest(30_000, 60, false, &[Some(NOW - 500)], NOW);
+        assert_eq!(
+            sleep,
+            Duration::from_millis(50),
+            "a passed deadline must still sleep a little, or the loop spins"
+        );
+    }
+
+    #[test]
+    fn a_tiny_lease_cannot_produce_a_zero_sleep() {
+        let sleep = soonest(30_000, 1, true, &[None], NOW);
+        assert!(sleep >= Duration::from_millis(50));
     }
 }
 

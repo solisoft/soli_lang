@@ -1067,6 +1067,21 @@ fn create_database_sync(name: &str) -> Result<(), String> {
     })
 }
 
+/// Make sure `name` exists, creating it (and its database) if not.
+///
+/// The changefeed refuses a subscription to a collection that does not exist
+/// yet, and the job engine's `_jobs` only appears on the first enqueue — so an
+/// app that has never run a job could never subscribe, which is exactly the
+/// idle case the subscription exists to make cheap. An existing collection
+/// answers 409, which this treats as success.
+pub fn ensure_collection(name: &str) -> Result<(), String> {
+    match create_collection_sync(name) {
+        Ok(()) => Ok(()),
+        Err(e) if e.contains("409") || e.to_lowercase().contains("already exists") => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
 /// Create a collection, auto-creating the parent database first if it does not
 /// exist yet. The collection endpoint returns 404 (or a database-not-found
 /// message) when the database path is missing; in that case we create the

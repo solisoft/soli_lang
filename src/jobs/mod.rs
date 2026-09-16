@@ -14,8 +14,10 @@
 
 pub mod claim;
 pub mod engine;
+pub mod push;
 pub mod scheduler;
 pub mod store;
+pub mod wake;
 
 use serde::{Deserialize, Serialize};
 
@@ -263,6 +265,64 @@ pub fn worker_identity() -> &'static str {
 /// the claim predicates compare these lexicographically.
 pub fn now_iso() -> String {
     iso_from_unix(unix_now())
+}
+
+/// Backstop interval used when a changefeed subscription is live, in
+/// milliseconds. `SOLI_JOBS_IDLE_POLL_MS` overrides it.
+///
+/// The push is a hint, not a guarantee — SoliDB drops broadcast events on lag
+/// without telling the client, and they do not cross cluster nodes — so the
+/// poller still sweeps on its own. Thirty seconds is how late the worst
+/// degraded case may start a job, in exchange for ~60x fewer idle round-trips
+/// than the one-second default.
+pub const DEFAULT_IDLE_POLL_MS: u64 = 30_000;
+
+/// The backstop interval, floored at one second so a misconfiguration cannot
+/// turn this back into a busy loop.
+pub fn idle_poll_ms() -> u64 {
+    std::env::var("SOLI_JOBS_IDLE_POLL_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(|ms| ms.max(1_000))
+        .unwrap_or(DEFAULT_IDLE_POLL_MS)
+}
+
+/// Parse one of our own fixed-width ISO stamps back to Unix seconds.
+pub fn parse_iso_secs(value: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.timestamp())
+}
+
+/// Earliest `run_at` we know of that has not fallen due yet, Unix seconds.
+///
+/// A job enqueued for the future produces exactly one signal — its insert — and
+/// then nothing at the moment it becomes due. Remembering the time lets the
+/// poller sleep until precisely then instead of discovering it on the backstop.
+static NEXT_FUTURE_RUN_AT: std::sync::Mutex<Option<i64>> = std::sync::Mutex::new(None);
+
+/// Note that a job is due at `at` (Unix seconds), keeping the earliest.
+///
+/// Anything in the future is worth remembering; anything already due wakes the
+/// poller instead, which is the caller's job.
+pub fn note_future_run_at(at: i64) {
+    if let Ok(mut slot) = NEXT_FUTURE_RUN_AT.lock() {
+        *slot = Some(slot.map_or(at, |cur: i64| cur.min(at)));
+    }
+}
+
+/// The soonest future `run_at`, if it is still in the future. A recorded time
+/// that has now passed is dropped: the pass about to run will claim it.
+pub fn next_future_run_at(now: i64) -> Option<i64> {
+    let mut slot = NEXT_FUTURE_RUN_AT.lock().ok()?;
+    match *slot {
+        Some(at) if at > now => Some(at),
+        Some(_) => {
+            *slot = None;
+            None
+        }
+        None => None,
+    }
 }
 
 pub fn unix_now() -> i64 {

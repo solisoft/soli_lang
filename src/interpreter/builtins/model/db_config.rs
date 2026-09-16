@@ -183,6 +183,27 @@ pub fn db_host() -> String {
     DB_CONFIG.read(|cfg| cfg.host.clone())
 }
 
+/// WebSocket endpoint for SoliDB's changefeed, on the same scheme and host the
+/// cursor URL uses. The token goes in the query string because that is the only
+/// credential the endpoint accepts — it is outside the auth middleware and
+/// reads `?token=` directly.
+pub fn get_changefeed_url() -> String {
+    let (scheme, host) = db_scheme_and_host();
+    let ws_scheme = if scheme.starts_with("https") {
+        "wss://"
+    } else {
+        "ws://"
+    };
+    format!("{ws_scheme}{host}/_api/ws/changefeed")
+}
+
+/// Unix seconds at which `token` expires, or 0 when it carries no usable `exp`.
+/// A socket authenticated at connect time has no refresh path, so the caller
+/// has to re-dial before this.
+pub fn token_expires_at(token: &str) -> u64 {
+    jwt_exp(token)
+}
+
 pub fn init_jwt_token() {
     let _ = get_jwt_token();
 }

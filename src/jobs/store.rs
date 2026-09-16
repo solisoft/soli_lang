@@ -93,6 +93,15 @@ pub fn enqueue(doc: &JobDoc) -> Result<String, String> {
     } else {
         crud::exec_insert(JOBS_COLLECTION, Some(&doc.key), json)?;
     }
+
+    // Tell the poller directly rather than making it discover this on its next
+    // sleep: an in-process enqueue is the case where push latency is most
+    // visible, and it costs nothing.
+    match super::parse_iso_secs(&doc.run_at) {
+        Some(at) if at > super::unix_now() => super::note_future_run_at(at),
+        _ => super::wake::notify(),
+    }
+
     Ok(doc.key.clone())
 }
 

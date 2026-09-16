@@ -9,10 +9,61 @@
 //! dow`), evaluated here with the `cron` crate.
 
 use std::str::FromStr;
+use std::sync::{Mutex, OnceLock};
 
 use super::{store, JobDoc};
 use crate::db;
 use crate::interpreter::builtins::model::crud;
+
+/// When the next cron slot falls due, so [`tick`] can skip the read that used
+/// to happen on every poller tick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CronDue {
+    /// Never looked, or invalidated by a declaration — must read.
+    Unknown,
+    /// No enabled row has a schedule position. Nothing local can fall due; a
+    /// row added by another process is picked up on the poller's backstop, or
+    /// at once if it arrives over the changefeed.
+    Nothing,
+    /// Earliest `next_run_at` across enabled rows, Unix seconds.
+    At(i64),
+}
+
+static CRON_DUE: OnceLock<Mutex<CronDue>> = OnceLock::new();
+
+fn cron_due() -> &'static Mutex<CronDue> {
+    CRON_DUE.get_or_init(|| Mutex::new(CronDue::Unknown))
+}
+
+fn set_cron_due(due: CronDue) {
+    if let Ok(mut slot) = cron_due().lock() {
+        *slot = due;
+    }
+}
+
+fn get_cron_due() -> CronDue {
+    cron_due()
+        .lock()
+        .map(|slot| *slot)
+        .unwrap_or(CronDue::Unknown)
+}
+
+/// Forget the cached schedule position, so the next [`tick`] reads again.
+///
+/// Called when this process declares or changes a cron: the new row may be due
+/// sooner than whatever we last saw.
+pub fn invalidate_due() {
+    set_cron_due(CronDue::Unknown);
+}
+
+/// When the next cron slot falls due, Unix seconds, if that is known and there
+/// is one. The poller folds this into its sleep deadline.
+pub fn next_due_unix() -> Option<i64> {
+    match get_cron_due() {
+        CronDue::At(at) => Some(at),
+        CronDue::Unknown | CronDue::Nothing => None,
+    }
+}
 
 /// Validate a cron expression and return the next firing time after `after`
 /// (Unix seconds), as an ISO-8601 UTC string.
@@ -43,8 +94,21 @@ pub fn validate(expression: &str) -> Result<(), String> {
 /// *this* process (rows lost to another process are not counted).
 pub fn tick() -> Result<usize, String> {
     let now = super::now_iso();
+
+    // Skip the read entirely when nothing can be due yet. This ran on every
+    // poller tick regardless of whether the app had declared a single cron,
+    // which was half the idle round-trips a `soli serve` made.
+    match get_cron_due() {
+        CronDue::Nothing => return Ok(0),
+        CronDue::At(at) if at > super::unix_now() => return Ok(0),
+        _ => {}
+    }
+
     let rows = store::list_crons()?;
     let mut fired = 0usize;
+    // Rebuilt as we walk the rows; `Unknown` if any row leaves us unsure.
+    let mut earliest: Option<i64> = None;
+    let mut certain = true;
 
     for row in rows {
         if row.get("enabled").and_then(|v| v.as_bool()) == Some(false) {
@@ -66,9 +130,16 @@ pub fn tick() -> Result<usize, String> {
         let Some(next_run_at) = row.get("next_run_at").and_then(|v| v.as_str()) else {
             // No schedule position yet (freshly inserted by another process
             // mid-write): compute one next tick.
+            certain = false;
             continue;
         };
         if next_run_at > now.as_str() {
+            // Not due. Remember it so the poller can sleep until it is.
+            if let Some(at) = parse_iso(next_run_at) {
+                earliest = Some(earliest.map_or(at, |e: i64| e.min(at)));
+            } else {
+                certain = false;
+            }
             continue;
         }
 
@@ -78,10 +149,23 @@ pub fn tick() -> Result<usize, String> {
         let following = match next_run_after(expression, anchor) {
             Ok(next) => next,
             Err(e) => {
+                // The row stays due and cannot advance. Keep reading every tick
+                // rather than caching a position we know is wrong — the
+                // expression has to be fixed, and the fix invalidates anyway.
                 eprintln!("[cron] {name}: {e}");
+                certain = false;
                 continue;
             }
         };
+
+        // Record the advanced position before the CAS, not after: losing the
+        // race means another process moved this row to the same slot, and
+        // skipping it here would let us sleep past that occurrence.
+        if let Some(at) = parse_iso(&following) {
+            earliest = Some(earliest.map_or(at, |e: i64| e.min(at)));
+        } else {
+            certain = false;
+        }
 
         // Claim the slot: only the process whose CAS lands enqueues the job.
         let patch = serde_json::json!({
@@ -99,6 +183,13 @@ pub fn tick() -> Result<usize, String> {
         store::enqueue(&job)?;
         fired += 1;
     }
+
+    set_cron_due(match (certain, earliest) {
+        (false, _) => CronDue::Unknown,
+        (true, Some(at)) => CronDue::At(at),
+        (true, None) => CronDue::Nothing,
+    });
+
     Ok(fired)
 }
 
@@ -143,14 +234,17 @@ pub fn upsert(
 ) -> Result<String, String> {
     validate(expression)?;
     let next = next_run_after(expression, super::unix_now())?;
-    store::upsert_cron(name, expression, handler, args, &next)
+    let id = store::upsert_cron(name, expression, handler, args, &next)?;
+    // The new row may fall due sooner than whatever we last cached, and the
+    // poller may be part-way through a long backstop sleep.
+    invalidate_due();
+    super::wake::notify();
+    Ok(id)
 }
 
 /// Parse one of our own fixed-width ISO stamps back to Unix seconds.
 fn parse_iso(value: &str) -> Option<i64> {
-    chrono::DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|dt| dt.timestamp())
+    super::parse_iso_secs(value)
 }
 
 #[cfg(test)]
