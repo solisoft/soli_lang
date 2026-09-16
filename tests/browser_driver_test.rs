@@ -229,3 +229,51 @@ fn cookies_round_trip_through_the_page() {
         cookies
     );
 }
+
+/// LE CAS QUI FIGEAIT UNE SUITE ENTIERE.
+///
+/// `alert`, `confirm` et `prompt` bloquent le rendu jusqu'a ce que quelqu'un
+/// reponde, et personne ne repond dans une session pilotee. Avant ce
+/// correctif, la commande en cours n'avait jamais de reponse, ni aucune des
+/// suivantes : le lanceur cessait simplement d'ecrire, sans echouer, et une
+/// suite de six fichiers pouvait tourner une demi-heure sans rendre la main.
+///
+/// Le pire etait le diagnostic : le depassement du delai de lecture remonte
+/// par le noyau en `EAGAIN` — « Resource temporarily unavailable » — que le
+/// pilote annoncait comme une connexion perdue. On cherchait une machine a
+/// bout de ressources ; la machine etait au repos, une boite de dialogue
+/// attendait.
+#[test]
+fn a_native_dialog_is_dismissed_instead_of_wedging_the_driver() {
+    let Some(mut browser) = browser() else { return };
+    browser.navigate(FIXTURE).expect("the fixture must load");
+
+    // `confirm` bloque le rendu des son appel. Sans la fermeture automatique,
+    // cette evaluation ne rendrait jamais la main.
+    let answer = browser
+        .evaluate("confirm('Supprimer ?')")
+        .expect("the evaluation must return even though a dialog opened");
+    assert_eq!(
+        answer.as_bool(),
+        Some(false),
+        "la boite est REFUSEE, pas acceptee : un `confirm` qui garde une \
+         suppression ne doit pas recevoir « oui » du pilote"
+    );
+
+    // Et le test est prevenu : sans cela il passerait en silence sur un ecran
+    // que personne ne peut piloter.
+    assert!(
+        browser
+            .page_errors()
+            .iter()
+            .any(|e| e.contains("native") && e.contains("Supprimer ?")),
+        "la boite doit etre signalee comme erreur de page, got {:?}",
+        browser.page_errors()
+    );
+
+    // La page reste pilotable apres coup — c'est tout l'objet du correctif.
+    let sum = browser
+        .evaluate("2 + 2")
+        .expect("the page must still answer after the dialog is gone");
+    assert_eq!(sum.as_i64(), Some(4));
+}
