@@ -272,21 +272,70 @@ fn redraw_grid(
     num_workers + 1
 }
 
+/// Whether `dir` looks like the root of a Soli application.
+///
+/// `soli.toml` is the manifest `soli new` writes; `app/` beside `config/` is
+/// what an application looks like even where no manifest was created. Either
+/// is enough, and neither is true of a `tests/` directory or of one nested
+/// inside it — which is what makes this usable as a stopping condition.
+fn is_app_root(dir: &Path) -> bool {
+    dir.join("soli.toml").is_file() || (dir.join("app").is_dir() && dir.join("config").is_dir())
+}
+
+/// Walk up from `start` looking for the directory that holds the application.
+///
+/// Textual, not canonicalised: a relative argument keeps producing a relative
+/// answer, which is what the error messages and the `soli serve` argument have
+/// always shown. `Path::parent()` answers `Some("")` rather than `None` when
+/// there is nothing above the current component, so the empty path is folded
+/// to `.` and `.` is the last thing checked before giving up.
+fn find_app_root(start: &Path) -> Option<PathBuf> {
+    let mut dir = if start.as_os_str().is_empty() {
+        PathBuf::from(".")
+    } else {
+        start.to_path_buf()
+    };
+    loop {
+        if is_app_root(&dir) {
+            return Some(dir);
+        }
+        if dir.as_os_str() == "." {
+            return None;
+        }
+        dir = match dir.parent() {
+            Some(parent) if parent.as_os_str().is_empty() => PathBuf::from("."),
+            Some(parent) => parent.to_path_buf(),
+            None => return None,
+        };
+    }
+}
+
 /// Compute the app/project root for a given test invocation.
 ///
 /// `test_path` is what the user passed (or the implicit `tests/` default);
 /// `is_file` is whether it points at a single spec rather than a directory.
-/// File specs need to walk up two parents (`tests/foo_spec.sl` → `.`),
-/// directory specs need one (`tests/` → `.`).
 ///
-/// `Path::parent()` returns `Some("")` rather than `None` when there's
-/// nothing above the current component (e.g. `Path::new("tests")`'s parent
-/// is the empty path). The previous `unwrap_or_else(|| Path::new("."))`
-/// only fired on `None`, so a relative spec like `tests/foo_spec.sl` left
-/// `app_dir` as `""` and downstream `soli serve ""` could never serve
-/// `/health` — the test runner then sat in its 200×50ms probe loop and
-/// looked like it hung. This helper treats empty paths the same as `None`.
+/// This used to count levels — one parent for a directory, two for a file — on
+/// the assumption that specs sit exactly one level under the root. Browser
+/// specs do not: `is_browser_spec` recognises them by a path component named
+/// `browser`, so they must live in `tests/browser/`, and `soli test
+/// tests/browser` resolved the root to `tests` and died looking for
+/// `tests/.env.test`. The layout the feature requires was the one the resolver
+/// could not read.
+///
+/// So the root is now *found* rather than counted, and the level counting
+/// stays only as the fallback for a tree with no marker in it — a bare
+/// `foo.sl`, or the temp directories the tests below run in.
 fn resolve_app_dir(test_path: &Path, is_file: bool) -> PathBuf {
+    let start = if is_file {
+        test_path.parent()
+    } else {
+        Some(test_path)
+    };
+    if let Some(root) = start.and_then(find_app_root) {
+        return root;
+    }
+
     let parent_chain = if is_file {
         test_path.parent().and_then(|p| p.parent())
     } else {
@@ -2219,6 +2268,79 @@ fn collect_and_register_sources(tracker: &mut CoverageTracker, dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Lay out an application: a manifest, `app/`, `config/`, and specs at
+    /// `tests/` and `tests/browser/`.
+    fn app_tree() -> tempfile::TempDir {
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("soli.toml"), "[package]\n").unwrap();
+        std::fs::create_dir_all(root.join("app/controllers")).unwrap();
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::create_dir_all(root.join("tests/browser")).unwrap();
+        std::fs::write(root.join("tests/browser/home_spec.sl"), "").unwrap();
+        std::fs::write(root.join("tests/unit_spec.sl"), "").unwrap();
+        dir
+    }
+
+    /// The regression. `is_browser_spec` recognises a browser spec by a path
+    /// component named `browser`, so they have to live in `tests/browser/` —
+    /// and counting one parent off that directory landed on `tests`, where
+    /// there is no `.env.test` and never was.
+    #[test]
+    fn resolve_app_dir_finds_the_root_from_a_nested_spec_dir() {
+        let dir = app_tree();
+        let root = dir.path();
+        assert_eq!(resolve_app_dir(&root.join("tests/browser"), false), root);
+        assert_eq!(
+            resolve_app_dir(&root.join("tests/browser/home_spec.sl"), true),
+            root
+        );
+    }
+
+    /// The layouts that already worked keep working, now for a better reason.
+    #[test]
+    fn resolve_app_dir_finds_the_root_from_the_usual_layouts() {
+        let dir = app_tree();
+        let root = dir.path();
+        assert_eq!(resolve_app_dir(root, false), root);
+        assert_eq!(resolve_app_dir(&root.join("tests"), false), root);
+        assert_eq!(
+            resolve_app_dir(&root.join("tests/unit_spec.sl"), true),
+            root
+        );
+    }
+
+    /// An application without a manifest is still an application.
+    #[test]
+    fn resolve_app_dir_accepts_app_beside_config_without_a_manifest() {
+        let dir = app_tree();
+        let root = dir.path();
+        std::fs::remove_file(root.join("soli.toml")).unwrap();
+        assert_eq!(resolve_app_dir(&root.join("tests/browser"), false), root);
+    }
+
+    /// `tests/` on its own is not a root, or the walk would stop one short of
+    /// the thing it is looking for.
+    #[test]
+    fn a_tests_directory_is_not_an_app_root() {
+        let dir = app_tree();
+        assert!(!is_app_root(&dir.path().join("tests")));
+        assert!(!is_app_root(&dir.path().join("tests/browser")));
+        assert!(is_app_root(dir.path()));
+    }
+
+    /// No marker anywhere above: the old level counting still answers, which
+    /// is what the four cases below depend on.
+    #[test]
+    fn resolve_app_dir_falls_back_when_no_marker_is_found() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let specs = dir.path().join("tests");
+        std::fs::create_dir_all(&specs).unwrap();
+        std::fs::write(specs.join("foo.sl"), "").unwrap();
+        assert_eq!(resolve_app_dir(&specs.join("foo.sl"), true), dir.path());
+        assert_eq!(resolve_app_dir(&specs, false), dir.path());
+    }
 
     #[test]
     fn resolve_app_dir_bare_filename() {
