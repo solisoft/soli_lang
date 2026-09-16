@@ -62,6 +62,24 @@ pub struct Browser {
     page_errors: Vec<String>,
 }
 
+/// What to do with a native dialog the page opens: dismiss it.
+///
+/// `alert`, `confirm`, `prompt` and `beforeunload` block the renderer until
+/// someone answers, and nothing in a headless session ever does. Every command
+/// that follows then waits for a page that will never speak again — which is
+/// exactly how a suite stops producing output without failing.
+///
+/// Dismissing rather than accepting is the conservative half: a `confirm` that
+/// guards a deletion must not be answered "yes" by the driver. The test is told
+/// about it (the dialog is recorded as a page error), so the right fix — using
+/// the application's own dialog instead of the browser's — is visible rather
+/// than papered over.
+const DIALOG_ACCEPT: bool = false;
+
+/// Plafond des erreurs de page retenues : une page qui echoue dans une boucle
+/// de rendu ferait sinon croitre ce tableau tant que le test dure.
+const MAX_PAGE_ERRORS: usize = 50;
+
 /// Why one launch attempt failed, and whether trying the same binary again could
 /// plausibly do better.
 struct LaunchError {
@@ -226,7 +244,14 @@ impl Browser {
         let deadline = Instant::now() + COMMAND_TIMEOUT;
         loop {
             if Instant::now() >= deadline {
-                return Err(format!("the browser did not answer {} in time", method));
+                return Err(format!(
+                    "the browser did not answer {} in {}s — a page that stops \
+                     answering is usually one blocked by a native dialog \
+                     (`alert`, `confirm`, `prompt`) opened outside the driver's \
+                     sight",
+                    method,
+                    COMMAND_TIMEOUT.as_secs()
+                ));
             }
             let message = match self.socket.read() {
                 Ok(Message::Text(text)) => text.to_string(),
@@ -235,6 +260,14 @@ impl Browser {
                 }
                 // Ping/pong and binary frames are not part of this protocol.
                 Ok(_) => continue,
+                // A READ THAT TIMED OUT IS NOT A LOST CONNECTION. The socket
+                // carries its own read timeout so a wedged browser cannot pin
+                // the worker; when it trips, the kernel says `WouldBlock`
+                // ("Resource temporarily unavailable"), which reported as a
+                // lost connection sent a whole afternoon chasing memory
+                // exhaustion on a machine that was idle. The deadline above is
+                // the real bound: go round again and let it decide.
+                Err(tungstenite::Error::Io(ref io)) if is_timeout(io) => continue,
                 Err(e) => return Err(format!("lost the browser connection: {}", e)),
             };
 
@@ -242,6 +275,18 @@ impl Browser {
                 Ok(parsed) => parsed,
                 Err(_) => continue,
             };
+
+            // UNE BOITE NATIVE EST RENVOYEE TOUT DE SUITE. Elle bloque le
+            // rendu : la commande en cours n'aurait jamais de reponse, ni
+            // aucune des suivantes. On la ferme ici, dans la boucle qui lit,
+            // avant meme de regarder si ce message est notre reponse — c'est le
+            // seul endroit ou l'on tient la socket pendant que la page est
+            // figee.
+            if parsed.get("method").and_then(|v| v.as_str()) == Some("Page.javascriptDialogOpening")
+            {
+                self.dismiss_dialog(&parsed);
+                continue;
+            }
 
             if parsed.get("id").and_then(|v| v.as_u64()) == Some(id) {
                 if let Some(error) = parsed.get("error") {
@@ -493,8 +538,46 @@ impl Browser {
         let _ = self.send("Runtime.evaluate", json!({ "expression": "0" }));
     }
 
+    /// Ferme une boite native et en laisse la trace au test.
+    ///
+    /// L'envoi est ecrit DIRECTEMENT sur la socket plutot que par `send` :
+    /// celui-ci attend sa reponse en lisant, et on est deja dans cette lecture.
+    /// La reponse a cette commande arrivera avec son propre identifiant et sera
+    /// simplement ignoree par la boucle appelante, ce qui est correct.
+    ///
+    /// La boite est aussi enregistree comme erreur de page : sans cela, le test
+    /// passerait en silence sur un ecran que personne ne peut piloter, et
+    /// `assert_no_page_errors` — que chaque page de spec appelle — est
+    /// justement l'endroit ou ce genre de chose doit se voir.
+    fn dismiss_dialog(&mut self, event: &Json) {
+        let params = event.get("params");
+        let kind = params
+            .and_then(|p| p.get("type"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("dialog");
+        let text = params
+            .and_then(|p| p.get("message"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        self.next_id += 1;
+        let payload = json!({
+            "id": self.next_id,
+            "method": "Page.handleJavaScriptDialog",
+            "params": { "accept": DIALOG_ACCEPT }
+        })
+        .to_string();
+        let _ = self.socket.send(Message::Text(payload));
+
+        if self.page_errors.len() < MAX_PAGE_ERRORS {
+            self.page_errors.push(format!(
+                "a native `{}` dialog blocked the page and was dismissed: {}",
+                kind, text
+            ));
+        }
+    }
+
     fn record_event(&mut self, message: &Json) {
-        const MAX_ERRORS: usize = 50;
         let Some(method) = message.get("method").and_then(|v| v.as_str()) else {
             return;
         };
@@ -539,7 +622,7 @@ impl Browser {
         if let Some(text) = text {
             // Bounded: a page erroring in a render loop would otherwise grow
             // this without limit for as long as the test runs.
-            if self.page_errors.len() < MAX_ERRORS {
+            if self.page_errors.len() < MAX_PAGE_ERRORS {
                 self.page_errors.push(text);
             }
         }
@@ -740,6 +823,16 @@ fn fetch_page_target(port: u16) -> Option<String> {
         }
         Some(target.get("webSocketDebuggerUrl")?.as_str()?.to_string())
     })
+}
+
+/// Un dépassement du délai de lecture, sous les deux noms que les plateformes
+/// lui donnent. `WouldBlock` sur Linux (`EAGAIN`, « Resource temporarily
+/// unavailable »), `TimedOut` ailleurs.
+fn is_timeout(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+    )
 }
 
 /// Open the protocol socket, with reads bounded by a timeout.
