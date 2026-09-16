@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [2.3.5] - 2026-09-16
+
+### Performance
+
+* **perf(jobs):** the job poller waits on a changefeed instead of polling every second. Its interval was the only way it learned about a job, so an idle `soli serve` cost two round-trips per `poll_ms` forever — `list_crons` whether or not the app declared a cron, and `claim` whenever a worker slot was free. At the 1000ms default that is 2 req/s per process, and a dev box with a few dozen apps open made it the dominant load on the shared database: a measured ~17% of a core on SoliDB, against 0% for an identical instance holding the same data. The poller now waits on a condvar that a WebSocket subscription to the `_jobs` and `_cron_jobs` changefeeds notifies, and the interval becomes a backstop — `SOLI_JOBS_IDLE_POLL_MS`, 30s by default, while a subscription is live, and the original `poll_ms` when it is not. The socket is a hint and never the source of truth: SoliDB broadcasts over a bounded ring and drops a lagging subscriber in silence, so the poller keeps its own timer regardless
+* **fix(jobs):** removing a row no longer wakes the poller. `should_wake` filtered on the document body alone, and a delete carries `data: null`, so it fell through every check. `prune_done` issues one delete per matched row, which meant a retention sweep over a long backlog woke the poller once per row — each wake costing a claim query that by definition came back empty. Observed on two apps whose `_jobs` had grown to five and six figures. `delete` and `truncate` are now ignored outright, since removing a row cannot create claimable work
+
+### Added
+
+* **feat(eui):** a `level` event, and the meter that consumes it. `level` (03 §7) arrived in protocol version 3, and a client that settled on 2 cannot send it — but the handshake is the wrong place to refuse over it, since a capability is declared before anyone knows which version the far end speaks. The gate is on the handler instead: a version-2 client never has `level` wired, so it gets an application that works and a meter that does not move, rather than a refused connection. The catalogue gains `vu_meter` and the `vu_strip` / `vu_segment` / `vu_scale` / `vu_zone` it is built from, plus a `scene` builder for the node kind that landed in 2.3.2
+* **feat(attachments):** `SOLI_ATTACHMENTS_MAX_DIMENSION` lifts the image-transform ceiling. The `w`, `h`, `thumb`, `square` and `crop` parameters the attachments controller serves were clamped to a hard 1000px. That cap has to exist — anyone who can reach the endpoint can append `?w=99999&h=99999`, and it is the only bound on the allocation — but a fixed ceiling is wrong for an app that genuinely serves larger images. It is now the default rather than the limit. Set it to what the app actually serves, not to a number chosen for headroom: raising it raises the largest allocation a crafted URL can ask for. A missing, non-numeric or non-positive value falls back to the default instead of removing the guard
+
+### Fixed
+
+* **fix(test):** `soli test tests/browser --browser` died with `.env.test file not found at 'tests/.env.test'` before a browser was ever considered. `resolve_app_dir` located the app root by counting — one parent for a directory argument, two for a file — on the assumption that specs sit exactly one level under it. Browser specs do not: `is_browser_spec` recognises them by a path component named `browser`, so they must live in `tests/browser/`, and the layout the feature requires was the one the resolver could not read. Not browser-specific — any nested spec directory failed the same way, with or without the flag. The root is now found rather than counted: walk up for `soli.toml`, or `app/` beside `config/`, with the old level counting kept as the fallback for a tree with no marker above it
+* **fix(ci):** the eui pin moves to a rev that has `EventKind::Level`. The `level` work above was committed with a `Cargo.lock` that `cargo` had left behind while `.cargo/config.toml` was patching eui to a sibling checkout — the same trap as c1d00578 — and every job but `audit` died on `cannot update the lock file ... because --locked was passed`. Reverting the lockfile alone would only have traded that for a compile error, because `EventKind::Level` does not exist at rev `5a9f9d9`: the pin was stale, not just the lockfile
+
+
 ## [2.3.4] - 2026-09-15
 
 ### Added

@@ -20,9 +20,35 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-3-4" class="text-amber-400 hover:underline">v2.3.4</a>.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since <a href="#v2-3-5" class="text-amber-400 hover:underline">v2.3.5</a>.</p>
 
 
+    </section>
+
+    <section id="v2-3-5" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.3.5 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-16</span></h2>
+
+        <h3 id="v2-3-5-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">The job poller stops asking.</strong> Its interval was the only way it learned about a job, so an idle <code class="text-cyan-400">soli serve</code> cost two round-trips per <code class="text-cyan-400">poll_ms</code> forever &mdash; a list of crons whether or not the app declared one, and a claim whenever a worker slot was free. At the default that is two requests a second per process, and a machine with a few dozen apps open made it the dominant load on the shared database: a measured <strong class="text-white">~17% of a core</strong> on SoliDB, against nothing at all for an identical instance holding the same data. The poller now waits to be told, over a changefeed subscription to <code class="text-cyan-400">_jobs</code> and <code class="text-cyan-400">_cron_jobs</code>, and the interval becomes a backstop &mdash; <code class="text-cyan-400">SOLI_JOBS_IDLE_POLL_MS</code>, 30 seconds by default, while a subscription is live. The socket is a hint and never the source of truth, so the poller keeps its own timer regardless: a dropped subscriber loses latency, never a job.</li>
+            <li><strong class="text-white">Deleting a row no longer looks like work arriving.</strong> The wake filter read the document body, and a delete carries none, so it fell through every check &mdash; and a retention sweep issues one delete per row. On two apps whose job table had grown to five and six figures, pruning woke the poller once per deleted row, each wake costing a query that could only come back empty.</li>
+        </ul>
+
+        <h3 id="v2-3-5-eui" class="text-xl font-semibold text-white mb-4 scroll-mt-24">EUI</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A meter, and the event that feeds it.</strong> <code class="text-cyan-400">level</code> arrived in protocol version 3, and a client that settled on 2 cannot send it. Refusing at the handshake would have been the wrong trade &mdash; a capability is declared before anyone knows which version the far end speaks, so it would turn a working application into a refused one for the sake of one widget. The gate sits on the handler instead: an older client simply never has <code class="text-cyan-400">level</code> wired, and gets an application that works and a meter that does not move. The catalogue gains <code class="text-cyan-400">vu_meter</code> and the <code class="text-cyan-400">vu_strip</code> / <code class="text-cyan-400">vu_segment</code> / <code class="text-cyan-400">vu_scale</code> / <code class="text-cyan-400">vu_zone</code> it is built from, plus a <code class="text-cyan-400">scene</code> builder for the node kind that landed in 2.3.2.</li>
+        </ul>
+
+        <h3 id="v2-3-5-web" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Web</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">The image-transform ceiling is configurable.</strong> <code class="text-cyan-400">w</code>, <code class="text-cyan-400">h</code>, <code class="text-cyan-400">thumb</code>, <code class="text-cyan-400">square</code> and <code class="text-cyan-400">crop</code> were clamped to a hard 1000&nbsp;px. The cap has to exist &mdash; anyone who can reach the endpoint can append <code class="text-cyan-400">?w=99999&amp;h=99999</code>, and it is the only bound on the allocation &mdash; but a fixed ceiling is wrong for an app that genuinely serves larger images. <code class="text-cyan-400">SOLI_ATTACHMENTS_MAX_DIMENSION</code> makes it the default rather than the limit. Set it to what the app actually serves, not to a number chosen for headroom: raising it raises the largest allocation a crafted URL can ask for. A missing or nonsensical value falls back to the default instead of removing the guard.</li>
+        </ul>
+
+        <h3 id="v2-3-5-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">soli test tests/browser --browser</code> works.</strong> It died on <code class="text-cyan-400">.env.test file not found at 'tests/.env.test'</code> before a browser was ever considered. The runner located the app root by counting parents &mdash; one for a directory, two for a file &mdash; on the assumption that specs sit exactly one level under it. Browser specs do not: they are recognised by a path component named <code class="text-cyan-400">browser</code>, so they have to live in <code class="text-cyan-400">tests/browser/</code>, and the layout the feature requires was the one the resolver could not read. Any nested spec directory failed the same way, with or without the flag. The root is now found rather than counted.</li>
+            <li><strong class="text-white">A tutorial for EUI.</strong> <a href="/docs/blog/eui-notes-app" class="text-amber-400 hover:underline">A Native Window in 80 Lines of Soli</a> builds a notes app from <code class="text-cyan-400">soli new --eui</code> to a window &mdash; handler, view, motion, a local handler, then assets, capabilities, scenes and <code class="text-cyan-400">eui_stats</code>.</li>
+        </ul>
     </section>
 
     <section id="v2-3-4" class="mb-16 scroll-mt-24">
