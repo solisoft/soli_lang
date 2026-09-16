@@ -1082,6 +1082,17 @@ pub fn ensure_collection(name: &str) -> Result<(), String> {
     }
 }
 
+/// Make sure a hash index on `field` exists for `collection`.
+///
+/// `create_index_sync` already treats 409 as success, so this is idempotent and
+/// safe to call on every boot. Exposed because the job queue needs it on the
+/// SoliDB backend: `store::ensure_sql_indexes` only ever ran in the SQL branch
+/// of `enqueue`, so a SoliDB app indexed nothing and every claim scanned the
+/// whole collection — measured at 738ms against 128k rows, on every poll.
+pub fn ensure_index(collection: &str, field: &str) -> Result<(), String> {
+    create_index_sync(collection, field)
+}
+
 /// Create a collection, auto-creating the parent database first if it does not
 /// exist yet. The collection endpoint returns 404 (or a database-not-found
 /// message) when the database path is missing; in that case we create the

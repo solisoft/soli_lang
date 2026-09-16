@@ -123,23 +123,42 @@ pub fn start(pool_slots: usize, runtime_handle: tokio::runtime::Handle, dev_mode
     }
 }
 
-/// Create `_jobs` and `_cron_jobs` if this database has never had them.
+/// Create `_jobs` and `_cron_jobs`, and index them, on the SoliDB backend.
 ///
-/// They would otherwise appear on the first enqueue, which for most apps is
-/// never — and the changefeed refuses a subscription to a collection that does
-/// not exist, so the app that needs the cheap idle path the most was the one
-/// that could not get it. Runs on the poller thread, where blocking database
-/// calls belong, and is best-effort: a failure just means the app keeps
-/// polling.
+/// The collections would otherwise appear on the first enqueue, which for most
+/// apps is never — and the changefeed refuses a subscription to a collection
+/// that does not exist, so the app that needs the cheap idle path the most was
+/// the one that could not get it.
+///
+/// The indexes matter just as much. `store::ensure_sql_indexes` only ever ran
+/// in the SQL branch of `enqueue`, so a SoliDB app indexed nothing at all and
+/// the claim query — which filters on `state` and orders by `priority`, on
+/// every poll — scanned the entire collection. Measured against a real queue
+/// that had grown to 128k rows: 738ms per claim, versus 0.08ms for the
+/// server's own dispatch query, which does have its index.
+///
+/// Runs on the poller thread, where blocking database calls belong, and is
+/// best-effort: a failure costs performance, not correctness.
 fn ensure_queue_collections() {
     if crate::db::is_sql() {
-        // The SQL backends create their tables in `store::enqueue`, and have no
-        // changefeed to satisfy.
+        // The SQL backends create and index their tables in `store::enqueue`,
+        // and have no changefeed to satisfy.
         return;
     }
-    for collection in [super::JOBS_COLLECTION, super::CRON_COLLECTION] {
-        if let Err(e) = crate::interpreter::builtins::model::crud::ensure_collection(collection) {
+    use crate::interpreter::builtins::model::crud;
+
+    for (collection, fields) in [
+        (super::JOBS_COLLECTION, &["state", "run_at", "priority"][..]),
+        (super::CRON_COLLECTION, &["next_run_at", "enabled"][..]),
+    ] {
+        if let Err(e) = crud::ensure_collection(collection) {
             eprintln!("[jobs] could not ensure {collection}: {e}");
+            continue;
+        }
+        for field in fields {
+            if let Err(e) = crud::ensure_index(collection, field) {
+                eprintln!("[jobs] could not index {collection}.{field}: {e}");
+            }
         }
     }
 }
