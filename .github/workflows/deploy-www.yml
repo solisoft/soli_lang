@@ -233,17 +233,20 @@ jobs:
             --exclude='sites/' \
             www/ "$USER@$HOST:$SITES_DIR/$SITE_DIR/"
 
-      - name: The server runs the pinned version
+      # Advisory, not a gate. The version the server runs drifts on its own
+      # schedule — every release here moves it, without this pin moving — and
+      # the check sits after the rsync, so a mismatch left the site
+      # half-deployed: files already on the server, the switch never run. Drift
+      # is worth knowing about; it is not worth withholding a deployment over.
+      # (The same guard in soli-proxy was made advisory for the same reason.)
+      - name: Compare the server's Soli with the pinned one
         if: steps.cfg.outputs.configured == 'true'
         run: |
           set -euo pipefail
           installed="$(ssh "$USER@$HOST" 'soli --version' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
           echo "server: $installed — pinned: $SOLI_VERSION"
           if [ "$installed" != "$SOLI_VERSION" ]; then
-            echo "" >&2
-            echo "The server runs Soli $installed; this workflow verified $SOLI_VERSION." >&2
-            echo "Align SOLI_VERSION here, or update the server." >&2
-            exit 1
+            echo "::warning title=Soli version drift::The server runs Soli $installed; this workflow verified $SOLI_VERSION. Deploying anyway — align SOLI_VERSION here, or update the server."
           fi
 
       - name: Migrations
