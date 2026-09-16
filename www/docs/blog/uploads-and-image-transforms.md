@@ -98,6 +98,8 @@ Reach for `square=N` for avatars and grid tiles — every cell is the same size,
 
 Anyone who can hit `/contacts/:id/photo` can also append `?w=99999&h=99999`. Without bounds, that's a multi-gigabyte allocation per request — a denial-of-service waiting to happen. The framework clamps `w`, `h`, `thumb`, `square`, and the width/height components of `crop` to **1000 px**. Crafted URLs with bigger numbers are silently treated as 1000.
 
+One thousand is the default, not a hard limit: an app that really does serve larger images sets `SOLI_ATTACHMENTS_MAX_DIMENSION` in its `.env` and the ceiling moves with it. Move it to what the app serves, though — the cap is the only thing bounding the allocation, so it is the one number you don't want to set to "big enough for anything".
+
 The cap is enforced in the framework prelude, not the URL builder, so no app can accidentally bypass it (and template typos can't either).
 
 ## Transform on the way in, too

@@ -14,6 +14,8 @@
 //! - `SOLIDB_DATABASE` (default: `default`)
 //! - `SOLIDB_USERNAME` (no default — auth skipped if not set)
 //! - `SOLIDB_PASSWORD` (paired with username)
+//! - `SOLI_ATTACHMENTS_MAX_DIMENSION` (default: `1000`) — ceiling for the
+//!   `w`/`h`/`thumb`/`square`/`crop` transform parameters
 
 use crate::error::RuntimeError;
 use crate::interpreter::executor::Interpreter;
@@ -376,20 +378,23 @@ class AttachmentsController < Controller
             #    - `w + h` (exact resize, may distort)
             #    - `w` alone (square thumbnail at that max edge)
             #
-            # Dimensions are clamped to 1000 px so a crafted URL like
-            # `?w=99999&h=99999` can't drive the worker into a multi-GB
-            # allocation. The cap applies transitively: `_fit_image` resizes
-            # to a multiple of (w, h) which are both capped here, and the
-            # crop parser caps its own width/height components.
-            w     = this._int_param_clamped(query, "w", 1000)
-            h     = this._int_param_clamped(query, "h", 1000)
-            thumb = this._int_param_clamped(query, "thumb", 1000)
+            # Dimensions are clamped so a crafted URL like `?w=99999&h=99999`
+            # can't drive the worker into a multi-GB allocation. The cap
+            # applies transitively: `_fit_image` resizes to a multiple of
+            # (w, h) which are both capped here, and the crop parser caps its
+            # own width/height components.
+            #
+            # 1000 px unless the app raises it — see `_max_dimension`.
+            cap   = this._max_dimension()
+            w     = this._int_param_clamped(query, "w", cap)
+            h     = this._int_param_clamped(query, "h", cap)
+            thumb = this._int_param_clamped(query, "thumb", cap)
             fit   = (query["fit"] ?? "").to_s
 
             # `square=N` is sugar for `w=N&h=N&fit=cover`. Only fills slots
             # the caller didn't set explicitly, so users can mix `square`
             # with their own overrides predictably.
-            square = this._int_param_clamped(query, "square", 1000)
+            square = this._int_param_clamped(query, "square", cap)
             if !square.nil?
                 w   = square if w.nil?
                 h   = square if h.nil?
@@ -500,8 +505,9 @@ class AttachmentsController < Controller
     end
 
     # Parse `crop=x,y,w,h`. Returns `null` on any malformed component, otherwise
-    # returns `[x, y, w, h]` with the width and height clamped to 1000 px so a
-    # crafted `crop=0,0,99999,99999` can't drive a giant allocation. x and y
+    # returns `[x, y, w, h]` with the width and height clamped to the same
+    # ceiling as `w`/`h`/`thumb` (see `_max_dimension`) so a crafted
+    # `crop=0,0,99999,99999` can't drive a giant allocation. x and y
     # are not clamped — they're offsets into the source image, and Image.crop
     # rejects out-of-bounds offsets (the `try/catch` in _render_transformed
     # then falls back to streaming the raw blob).
@@ -512,15 +518,40 @@ class AttachmentsController < Controller
         return null if parts.length() != 4
         coords = []
         idx = 0
+        cap = this._max_dimension()
         for p in parts
             n = p.to_i
             return null if n == 0 && p != "0"
             return null if n < 0
-            n = 1000 if idx >= 2 && n > 1000
+            n = cap if idx >= 2 && n > cap
             coords.push(n)
             idx = idx + 1
         end
         coords
+    end
+
+    # Ceiling for every dimension parsed out of a transform query string:
+    # `w`, `h`, `thumb`, `square`, and the width/height components of `crop`.
+    #
+    # 1000 px by default — comfortably above what a page actually displays,
+    # and low enough that `?w=99999&h=99999` allocates nothing dangerous.
+    # An app that genuinely serves larger images (retina heroes, a photo
+    # gallery with a lightbox) raises it by setting
+    # `SOLI_ATTACHMENTS_MAX_DIMENSION` in its `.env`.
+    #
+    # This is OPERATOR configuration, not request input, so the value is
+    # trusted as given — but it is the ONLY thing standing between a crafted
+    # URL and a `value × value` pixel allocation, so set it to what the app
+    # really serves rather than to an arbitrarily large number.
+    #
+    # A missing, empty, non-numeric or non-positive value falls back to 1000:
+    # a typo in `.env` must not silently remove the guard.
+    def _max_dimension
+        raw = getenv("SOLI_ATTACHMENTS_MAX_DIMENSION")
+        return 1000 if raw.nil?
+        n = raw.to_s.trim().to_i
+        return 1000 if n < 1
+        n
     end
 
     # Truthy if `query[key]` is set, non-empty, and not "0". Used for boolean
@@ -591,4 +622,27 @@ fn interpret_source(interpreter: &mut Interpreter, source: &str) -> Result<(), R
                 span: Span::default(),
             })?;
     interpreter.interpret(&program)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The prelude is lexed and parsed at server startup, so a syntax slip in
+    /// it doesn't break one route — it stops every app from booting. Parse
+    /// both sources here so a typo surfaces in `cargo test` instead.
+    #[test]
+    fn prelude_sources_parse() {
+        for (label, source) in [
+            ("UPLOADS_PRELUDE_SOURCE", UPLOADS_PRELUDE_SOURCE),
+            ("UPLOADS_HELPERS_SOURCE", UPLOADS_HELPERS_SOURCE),
+        ] {
+            let tokens = crate::lexer::Scanner::new(source)
+                .scan_tokens()
+                .unwrap_or_else(|e| panic!("{label} failed to lex: {e}"));
+            crate::parser::Parser::new(tokens)
+                .parse()
+                .unwrap_or_else(|e| panic!("{label} failed to parse: {e}"));
+        }
+    }
 }
