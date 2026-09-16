@@ -255,12 +255,32 @@
     // close the attribute and open a live event handler — a stored XSS in the
     // most ordinary "Delete <title>?" button. A data attribute is escaped once,
     // for one context, and carries no code.
+    //
+    // THE APPLICATION ANSWERS FIRST. `soli:confirm` is dispatched on the
+    // element and can be cancelled: a page that ships its own dialog calls
+    // `preventDefault()` on it and takes over, and the native box never opens.
+    // Without a listener the event goes through unchanged, so a page that has
+    // no dialog of its own keeps the one it always had.
+    //
+    // This is not a nicety. `window.confirm` blocks the renderer until someone
+    // answers, and nothing answers in a driven session: a browser spec that
+    // clicks such a button gets a frozen page, not a failure. An application
+    // that already had `data-confirm` — the attribute is not reserved — found
+    // its own dialog shadowed by a native box it never asked for, and its
+    // whole browser suite stopped returning.
     document.addEventListener("click", function (e) {
         if (e.defaultPrevented) return;
         var el = e.target.closest && e.target.closest("[data-confirm]");
         if (!el) return;
         var message = el.getAttribute("data-confirm");
         if (!message) return;
+        var ask = new CustomEvent("soli:confirm", {
+            bubbles: true,
+            cancelable: true,
+            detail: { message: message, element: el }
+        });
+        // `dispatchEvent` returns false when a listener cancelled it.
+        if (!el.dispatchEvent(ask)) return;
         if (!window.confirm(message)) {
             e.preventDefault();
             e.stopPropagation();

@@ -381,4 +381,40 @@ mod tests {
         assert!(NAV_SCRIPT.contains("data-prefetch-ttl"));
         assert!(NAV_SCRIPT.contains("data-no-prefetch"));
     }
+
+    /// UNE APPLICATION QUI TIENT SES PROPRES BOITES DOIT POUVOIR LE DIRE.
+    ///
+    /// `data-confirm` n'est pas un attribut reserve : une application peut
+    /// l'employer pour sa propre boite, et elle le faisait avant que le script
+    /// de navigation ne s'y interesse. Le script ouvrait alors une boite
+    /// NATIVE par-dessus — or `window.confirm` bloque le rendu jusqu'a ce que
+    /// quelqu'un reponde, et personne ne repond dans une session pilotee : la
+    /// suite navigateur de cette application cessait de rendre la main.
+    ///
+    /// L'evenement `soli:confirm` est annulable et precede la boite native.
+    #[test]
+    fn the_page_can_take_over_data_confirm() {
+        assert!(
+            NAV_SCRIPT.contains("soli:confirm"),
+            "le script doit demander a la page avant d'ouvrir sa propre boite"
+        );
+        // L'ordre compte : l'evenement part AVANT `window.confirm`, sinon la
+        // page n'a rien a reprendre.
+        let ask = NAV_SCRIPT
+            .find("soli:confirm")
+            .expect("l'evenement doit exister");
+        let native = NAV_SCRIPT
+            .find("window.confirm(message)")
+            .expect("la boite native reste le repli");
+        assert!(
+            ask < native,
+            "l'application doit etre consultee avant l'ouverture de la boite native"
+        );
+        // Et le repli existe toujours : une page sans ecouteur garde la boite
+        // qu'elle a toujours eue.
+        assert!(
+            NAV_SCRIPT.contains("if (!el.dispatchEvent(ask)) return;"),
+            "un evenement annule doit sortir sans ouvrir la boite native"
+        );
+    }
 }
