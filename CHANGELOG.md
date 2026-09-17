@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [2.3.7] - 2026-09-17
+
+### Fixed
+
+* **fix(nav):** a page that ships its own confirmation dialog can say so. `data-confirm` is not a reserved attribute, and the nav script took it over in 2.0.3 — rightly, it replaced an `onclick="return confirm(...)"` escaped for JavaScript and not for HTML, a stored XSS in the most ordinary "Delete &lt;title&gt;?" button. But an application already using that attribute for **its** dialog found a **native** box opening on top of it, on the click, before its own `submit` handler ever ran. That is not a matter of taste: `window.confirm` blocks the renderer until someone answers, and nothing answers in a driven session — ten browser specs across six files stopped returning, without failing, without a word. The script now dispatches `soli:confirm` on the element, cancelable, **before** the native box: a page that handles confirmation itself calls `preventDefault()` and takes over; a page with no listener sees no difference and keeps the box it always had
+* **fix(test):** a read timeout is no longer reported as a read that failed. The specs' HTTP client sets a 10s read timeout so a mute server cannot pin the worker. When it tripped, the kernel returned `WouldBlock` — "Resource temporarily unavailable", `os error 11` — and the loop announced it as `read response failed`, with no mention of a timeout. A response taking eleven seconds on a loaded machine therefore became a spec failure whose message pointed the wrong way; days went into looking for machines out of resources that were not. The socket timeout goes back to being a wake-up rather than a verdict, a 30s overall deadline decides, and the message names the method and the path when it trips. `EINTR` is retried without comment: a signal says nothing about the server
+
 ## [2.3.6] - 2026-09-16
 
 ### Fixed
