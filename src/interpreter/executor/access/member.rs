@@ -50,6 +50,17 @@ pub(crate) fn bind_user_method_to_receiver(receiver: Value, func: Rc<Function>) 
             let env_clone = env_rc.borrow().clone();
 
             let mut interp = Interpreter::default();
+            // COUVERTURE : ce corps appartient au fichier QUI LE DECLARE.
+            //
+            // L'interpreteur cree ici est NEUF — pile d'appel vide,
+            // `current_source_path` a `None`. Sans ce report, aucune ligne
+            // d'un corps de scope (`scope("for_x", fn(...) { ... })`) n'etait
+            // jamais imputee a quoi que ce soit : le scope pouvait etre appele
+            // des centaines de fois et ses lignes restaient a zero hit, dans
+            // tous les modeles et tous les projets.
+            if let Some(ref declaring_file) = func.source_path {
+                interp.current_source_path = Some(std::path::PathBuf::from(declaring_file));
+            }
             match interp.execute_block(&func.body, env_clone) {
                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                 Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
@@ -211,6 +222,13 @@ pub(crate) fn bind_class_method_missing(
             }
             let env_clone = env_inner.clone();
             let mut interpreter = Interpreter::default();
+            // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
+            // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
+            // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
+            // fichier, quel que soit le nombre d'appels.
+            if let Some(ref declaring_file) = mm_method.source_path {
+                interpreter.current_source_path = Some(std::path::PathBuf::from(declaring_file));
+            }
             match interpreter.execute_block(&mm_method.body, env_clone) {
                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                 Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
@@ -718,6 +736,13 @@ impl Interpreter {
                             let env_clone = call_env_rc.borrow().clone();
 
                             let mut interpreter = Interpreter::default();
+                            // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
+                            // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
+                            // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
+                            // fichier, quel que soit le nombre d'appels.
+                            if let Some(ref declaring_file) = method.source_path {
+                                interpreter.current_source_path = Some(std::path::PathBuf::from(declaring_file));
+                            }
                             match interpreter.execute_block(&method.body, env_clone) {
                                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                                 Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
@@ -752,6 +777,13 @@ impl Interpreter {
                             let env_clone = call_env_rc.borrow().clone();
 
                             let mut interpreter = Interpreter::default();
+                            // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
+                            // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
+                            // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
+                            // fichier, quel que soit le nombre d'appels.
+                            if let Some(ref declaring_file) = mm_method.source_path {
+                                interpreter.current_source_path = Some(std::path::PathBuf::from(declaring_file));
+                            }
                             match interpreter.execute_block(&mm_method.body, env_clone) {
                                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                                 Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
@@ -958,6 +990,13 @@ impl Interpreter {
                         let env_clone = eval_env_rc.borrow().clone();
 
                         let mut interpreter = Interpreter::default();
+                        // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
+                        // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
+                        // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
+                        // fichier, quel que soit le nombre d'appels.
+                        if let Some(ref declaring_file) = block.source_path {
+                            interpreter.current_source_path = Some(std::path::PathBuf::from(declaring_file));
+                        }
                         match interpreter.execute_block(&block.body, env_clone) {
                             Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                             Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
@@ -1925,6 +1964,13 @@ impl Interpreter {
                         let env_clone = eval_env_rc.borrow().clone();
 
                         let mut interpreter = Interpreter::default();
+                        // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
+                        // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
+                        // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
+                        // fichier, quel que soit le nombre d'appels.
+                        if let Some(ref declaring_file) = block.source_path {
+                            interpreter.current_source_path = Some(std::path::PathBuf::from(declaring_file));
+                        }
                         match interpreter.execute_block(&block.body, env_clone) {
                             Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                             Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
