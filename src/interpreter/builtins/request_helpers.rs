@@ -546,12 +546,47 @@ fn raw_http_request(
     }
     stream.flush().map_err(|e| format!("flush failed: {}", e))?;
 
+    // UN DEPASSEMENT DU DELAI DE LECTURE N'EST PAS UNE LECTURE QUI ECHOUE.
+    //
+    // La socket porte un delai de 10s pour qu'un serveur muet ne pende pas le
+    // worker. Quand il expire, le noyau rend `WouldBlock` — « Resource
+    // temporarily unavailable », `os error 11` — et cette boucle l'annoncait
+    // comme « read response failed », sans un mot sur le delai. Sur une machine
+    // chargee, une reponse qui met onze secondes devenait donc un echec de
+    // spec au message trompeur : on y a cherche des jours une machine a bout
+    // de ressources.
+    //
+    // Le delai de socket redevient ce qu'il doit etre — un reveil, pas un
+    // verdict — et c'est l'ECHEANCE GLOBALE qui tranche. Une reponse lente a
+    // desormais le temps d'arriver ; une reponse qui n'arrive jamais echoue en
+    // le disant.
+    const RESPONSE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+    let deadline = std::time::Instant::now() + RESPONSE_DEADLINE;
     let mut raw = Vec::with_capacity(4096);
     let mut buf = [0u8; 8192];
     loop {
         match stream.read(&mut buf) {
             Ok(0) => break,
             Ok(n) => raw.extend_from_slice(&buf[..n]),
+            // Un signal interrompt la lecture sans rien dire du serveur.
+            Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(ref e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                if std::time::Instant::now() >= deadline {
+                    return Err(format!(
+                        "the test server did not answer {} {} in {}s — the request \
+                         reached it, the response did not come back",
+                        method,
+                        path,
+                        RESPONSE_DEADLINE.as_secs()
+                    ));
+                }
+                continue;
+            }
             Err(e) => return Err(format!("read response failed: {}", e)),
         }
     }
