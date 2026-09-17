@@ -464,7 +464,7 @@ impl Interpreter {
     }
 
     /// Get the current file path from the call stack (top frame) or fallback to current_source_path.
-    fn current_file_path(&self) -> Option<PathBuf> {
+    pub(crate) fn current_file_path(&self) -> Option<PathBuf> {
         self.call_stack
             .last()
             .and_then(|frame| frame.file_path.as_ref())

@@ -25,10 +25,23 @@ impl Interpreter {
                 span: stmt.span,
             });
         }
+        // ATTRIBUER LA LIGNE AU FICHIER QUI LA PORTE, PAS AU FICHIER D'ENTREE.
+        //
+        // `current_source_path` est le script d'entree (la spec en cours, la
+        // requete en cours) : s'en servir ici faisait tomber les hits de
+        // CHAQUE fonction appelee sur le fichier de l'appelant. Un controleur
+        // dont les tests passent ressortait a 2,7 %, et ses lignes comptees
+        // non couvertes s'executaient pourtant a chaque requete.
+        //
+        // `current_file_path()` prefere le fichier de la frame d'appel, pose
+        // depuis le `source_path` de la fonction. C'est deja ce que fait
+        // `record_coverage` pour les expressions, et ce que fait la
+        // localisation des ERREURS quelques centaines de lignes plus bas —
+        // avec le meme commentaire, et pour la meme raison.
         let source_path = stmt
             .source_path
             .clone()
-            .or_else(|| self.current_source_path.clone());
+            .or_else(|| self.current_file_path());
         if let Some(ref path) = source_path {
             if let Some(ref tracker) = self.coverage_tracker {
                 if let Ok(guard) = tracker.lock() {
