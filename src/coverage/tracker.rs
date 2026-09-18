@@ -491,12 +491,8 @@ where
 }
 
 impl CoverageTracker {
-    pub fn register_executable_lines_from_source(&mut self, path: &PathBuf, source: &str) {
-        let absolute_path = if path.is_absolute() {
-            path.clone()
-        } else {
-            std::fs::canonicalize(path).unwrap_or_else(|_| path.clone())
-        };
+    pub fn register_executable_lines_from_source(&mut self, path: &Path, source: &str) {
+        let absolute_path = crate::coverage::coverage_path_key(path);
 
         let tokens = Scanner::new(source).scan_tokens();
         if tokens.is_err() {

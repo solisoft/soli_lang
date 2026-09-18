@@ -349,6 +349,28 @@ n.sleep         # pause for 5 seconds</code></pre>
                 </div>
             </section>
 
+            <section id="method-to-i" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-to-i" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">.to_i / .to_int</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the integer itself. It is there so that <code class="text-cyan-400">.to_i</code> can be written over a value whose type you do not control &mdash; a query parameter, a JSON field, a column &mdash; without a guard around the case where it already arrived as a number.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">42.to_i         # 42
+(-7).to_int     # -7
+
+# The point: one call, whatever arrived.
+[7, "7", 7.9, null, true].map(fn(v) v.to_i)   # [7, 7, 7, 0, 1]
+
+# So this
+let page = params["page"].to_i
+# rather than this
+let page = (params["page"] ?? 0).to_i</code></pre>
+                </div>
+            </section>
+
             <section id="method-chr" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-chr" class="group flex items-center gap-2 mb-3">

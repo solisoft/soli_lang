@@ -6,6 +6,8 @@
 //!
 //! ```soli
 //! mail = Imap.new("imap.gmail.com", "me@gmail.com", "app-password")
+//! # or, for a Workspace account where app passwords are switched off:
+//! mail = Imap.new("imap.gmail.com", "me@work.com", "", { "xoauth2": token })
 //! mail.select("INBOX")
 //! for uid in mail.uid_search("UNSEEN")
 //!   msg = mail.fetch_uid(uid)
@@ -27,6 +29,7 @@ use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
+use base64::Engine as _;
 use lazy_static::lazy_static;
 
 use crate::interpreter::builtins::mail_parse;
@@ -182,6 +185,56 @@ impl ImapConn {
         let tag = self.next_tag();
         self.send(&format!("{tag} {cmd}"))?;
         self.read_until_tagged(&tag)
+    }
+
+    /// `AUTHENTICATE XOAUTH2`, which is the only way into a Google
+    /// Workspace mailbox.
+    ///
+    /// An administrator can switch app passwords off for a whole domain,
+    /// and by default now does: `LOGIN` then has no credential it will
+    /// accept, and the account is simply unreachable over IMAP without
+    /// this. The token is an OAuth access token, minted from a refresh
+    /// token by whoever calls us; it is short-lived by design and this
+    /// never sees the long-lived one.
+    ///
+    /// A refusal does not arrive as a tagged `NO` the way every other
+    /// command's does. The server sends a continuation -- `+` followed by
+    /// base64 JSON describing what was wrong -- and then waits for the
+    /// client to acknowledge it with an empty line before it will say
+    /// `NO`. A client that does not answer sits there until the socket
+    /// times out, so the `+` is answered here rather than left to
+    /// `read_until_tagged`, which would treat it as untagged chatter and
+    /// block.
+    fn authenticate_xoauth2(&mut self, user: &str, token: &str) -> Result<(), String> {
+        let raw = format!("user={user}\u{1}auth=Bearer {token}\u{1}\u{1}");
+        let initial = base64::engine::general_purpose::STANDARD.encode(raw);
+        let tag = self.next_tag();
+        self.send(&format!("{tag} AUTHENTICATE XOAUTH2 {initial}"))?;
+        // Two continuations would mean a server that is not answering the
+        // question; one is the error, and the bound keeps a hostile or
+        // broken peer from holding this loop open.
+        let mut challenges = 0;
+        loop {
+            let pieces = self.read_pieces()?;
+            let head = first_text(&pieces);
+            if head.starts_with('+') {
+                challenges += 1;
+                if challenges > 1 {
+                    return Err("XOAUTH2: the server kept asking".to_string());
+                }
+                self.send("")?;
+                continue;
+            }
+            if let Some(rest) = head.strip_prefix(&tag).and_then(|r| r.strip_prefix(' ')) {
+                let mut it = rest.splitn(2, ' ');
+                let status = it.next().unwrap_or("");
+                let text = it.next().unwrap_or("");
+                return match status {
+                    "OK" => Ok(()),
+                    _ => Err(format!("XOAUTH2 refused ({status}): {text}")),
+                };
+            }
+        }
     }
 
     fn read_until_tagged(&mut self, tag: &str) -> Result<Vec<Vec<Piece>>, String> {
@@ -479,6 +532,30 @@ fn scan_flags(meta: &str) -> Value {
 
 /// Parse one FETCH response (metadata text + BODY[] literal) into a message
 /// hash: `seq, uid, flags` followed by the shared parsed fields.
+/// `RFC822.SIZE n` out of a FETCH response's metadata, or `Null`.
+fn scan_size(body: &str) -> Value {
+    let Some(at) = body.find("RFC822.SIZE ") else {
+        return Value::Null;
+    };
+    let rest = &body[at + "RFC822.SIZE ".len()..];
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse::<i64>().map(Value::Int).unwrap_or(Value::Null)
+}
+
+/// How many parts of a `BODYSTRUCTURE` say they are attachments.
+///
+/// A count, not a parse. `BODYSTRUCTURE` is a nested parenthesised
+/// structure and reading it properly is a parser; what a list row wants is
+/// "does this have a paper clip on it, and how many", and every attached
+/// part carries a disposition of `"attachment"` — so the number of times
+/// that word appears quoted *is* the answer, by construction. A filename
+/// that contains it would inflate the count by one; nothing in a row's
+/// meaning breaks if it does.
+fn count_attachments(body: &str) -> i64 {
+    let said = body.to_ascii_lowercase();
+    said.matches("\"attachment\"").count() as i64
+}
+
 fn parse_fetch_pieces(pieces: &[Piece]) -> Option<Value> {
     let meta = joined_text(pieces);
     let body = meta.strip_prefix("* ").unwrap_or(&meta);
@@ -491,6 +568,8 @@ fn parse_fetch_pieces(pieces: &[Piece]) -> Option<Value> {
         ("seq".to_string(), Value::Int(seq)),
         ("uid".to_string(), scan_uid(body)),
         ("flags".to_string(), scan_flags(body)),
+        ("bytes".to_string(), scan_size(body)),
+        ("clips".to_string(), Value::Int(count_attachments(body))),
     ];
     pairs.extend(mail_parse::common_fields(raw));
     Some(hash_from_pairs(pairs))
@@ -520,6 +599,7 @@ fn imap_new(class: Rc<Class>, args: &[Value]) -> Result<Value, String> {
 
     let mut port: u16 = 993;
     let mut use_tls = true;
+    let mut token: Option<String> = None;
     match args.get(3) {
         None | Some(Value::Null) => {}
         Some(Value::Hash(opts)) => {
@@ -532,6 +612,14 @@ fn imap_new(class: Rc<Class>, args: &[Value]) -> Result<Value, String> {
             }
             if let Some(Value::Bool(b)) = opts.get(&HashKey::String("tls".into())) {
                 use_tls = *b;
+            }
+            // An OAuth access token instead of a password. Workspace
+            // domains usually have no other way in.
+            if let Some(v) = opts.get(&HashKey::String("xoauth2".into())) {
+                let t = as_string(v, "opts.xoauth2")?;
+                if !t.is_empty() {
+                    token = Some(t);
+                }
             }
         }
         Some(other) => {
@@ -557,8 +645,15 @@ fn imap_new(class: Rc<Class>, args: &[Value]) -> Result<Value, String> {
         return Err(format!("IMAP greeting failed: {head}"));
     }
     if !preauth {
-        conn.command(&format!("LOGIN {} {}", quote(&user), quote(&pass)))
-            .map_err(|e| format!("IMAP authentication failed: {e}"))?;
+        match &token {
+            Some(t) => conn
+                .authenticate_xoauth2(&user, t)
+                .map_err(|e| format!("IMAP authentication failed: {e}"))?,
+            None => {
+                conn.command(&format!("LOGIN {} {}", quote(&user), quote(&pass)))
+                    .map_err(|e| format!("IMAP authentication failed: {e}"))?;
+            }
+        }
     }
 
     let id = IMAP_NEXT_ID.fetch_add(1, Ordering::SeqCst);
@@ -656,6 +751,126 @@ fn imap_fetch_uid(args: &[Value]) -> Result<Value, String> {
     parse_fetch_one(&untagged).ok_or_else(|| format!("Imap.fetch_uid({uid}): no such message"))
 }
 
+/// The fields a list needs, and nothing else.
+///
+/// `fetch`/`fetch_uid` ask for `BODY.PEEK[]`, which is the whole message:
+/// every part, every attachment. That is right when you are about to
+/// *read* one and ruinous when you are drawing a list of twenty, where
+/// nothing but the sender, the subject and the date is ever shown -- a
+/// modest inbox costs megabytes and seconds to list, and the window sits
+/// still for all of it.
+///
+/// `HEADER.FIELDS` asks the server for four lines instead, so a list is
+/// kilobytes. What comes back is a valid RFC822 fragment, so the same
+/// parser reads it: `text_body` and `html_body` are simply absent, and
+/// the caller fetches those when someone opens the message.
+/// What a list row needs, in one item list.
+///
+/// `RFC822.SIZE` is the message's size, which a headers-only fetch cannot
+/// otherwise know — `size` in the parsed hash is the length of what came
+/// back, which for this fetch is the header block and nothing like the
+/// message. `BODYSTRUCTURE` is how many attachments there are without
+/// downloading any of them.
+///
+/// `BODY.PEEK[...]` stays **first**, so the header block is the first
+/// literal in the response whatever else follows it.
+const HEADER_ITEMS: &str =
+    "(UID FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)] RFC822.SIZE BODYSTRUCTURE)";
+
+fn imap_fetch_headers(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "fetch_headers")?;
+    let seq = message_id_arg(args, "fetch_headers", "seq")?;
+    let untagged = with_conn(id, |c| c.command(&format!("FETCH {seq} {HEADER_ITEMS}")))?;
+    parse_fetch_one(&untagged).ok_or_else(|| format!("Imap.fetch_headers({seq}): no such message"))
+}
+
+fn imap_fetch_headers_uid(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "fetch_headers_uid")?;
+    let uid = message_id_arg(args, "fetch_headers_uid", "uid")?;
+    let untagged = with_conn(id, |c| {
+        c.command(&format!("UID FETCH {uid} {HEADER_ITEMS}"))
+    })?;
+    parse_fetch_one(&untagged)
+        .ok_or_else(|| format!("Imap.fetch_headers_uid({uid}): no such message"))
+}
+
+/// A run of messages' headers in one round trip.
+///
+/// The saving here is not the bytes -- it is the turns. Twenty sequence
+/// numbers fetched one at a time is twenty commands and twenty waits on a
+/// link to Google; `FETCH lo:hi` is one of each.
+fn imap_fetch_headers_range(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "fetch_headers_range")?;
+    if args.len() < 3 {
+        return Err("Imap.fetch_headers_range(lo, hi) expects two arguments".to_string());
+    }
+    let lo = message_id_arg(&args[..2], "fetch_headers_range", "lo")?;
+    let hi = {
+        let shifted = [args[0].clone(), args[2].clone()];
+        message_id_arg(&shifted, "fetch_headers_range", "hi")?
+    };
+    if hi < lo {
+        return Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))));
+    }
+    let untagged = with_conn(id, |c| {
+        c.command(&format!("FETCH {lo}:{hi} {HEADER_ITEMS}"))
+    })?;
+    let mut out = Vec::new();
+    for pieces in &untagged {
+        if is_fetch_response(pieces) {
+            if let Some(msg) = parse_fetch_pieces(pieces) {
+                out.push(msg);
+            }
+        }
+    }
+    Ok(Value::Array(Rc::new(RefCell::new(out))))
+}
+
+/// A **set** of UIDs' headers, in one command.
+///
+/// `fetch_headers_uid` answers one message and costs one round trip, which
+/// is the right shape for opening a letter and the wrong one for catching
+/// up: twenty new messages meant twenty commands, and a client that does
+/// them inside one event holds that event open for all twenty. IMAP has
+/// said `UID FETCH 100:*` and `UID FETCH 1,5,9` since the beginning; this
+/// is that.
+///
+/// The set is validated rather than interpolated: digits, `,`, `:` and `*`
+/// are the whole grammar (RFC 3501 sequence-set), and nothing else reaches
+/// the wire — an argument that could carry a space could carry a second
+/// command.
+fn imap_fetch_headers_set(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "fetch_headers_set")?;
+    let set = match args.get(1) {
+        Some(Value::String(s)) => s.to_string(),
+        _ => return Err("Imap.fetch_headers_set(set) expects a string".to_string()),
+    };
+    let set = set.trim().to_string();
+    if set.is_empty() {
+        return Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))));
+    }
+    if !set
+        .bytes()
+        .all(|b| b.is_ascii_digit() || b == b',' || b == b':' || b == b'*')
+    {
+        return Err(format!(
+            "Imap.fetch_headers_set({set:?}): a sequence set is digits, ',', ':' and '*'"
+        ));
+    }
+    let untagged = with_conn(id, |c| {
+        c.command(&format!("UID FETCH {set} {HEADER_ITEMS}"))
+    })?;
+    let mut out = Vec::new();
+    for pieces in &untagged {
+        if is_fetch_response(pieces) {
+            if let Some(msg) = parse_fetch_pieces(pieces) {
+                out.push(msg);
+            }
+        }
+    }
+    Ok(Value::Array(Rc::new(RefCell::new(out))))
+}
+
 fn imap_fetch_all(args: &[Value]) -> Result<Value, String> {
     let id = instance_id(args, "fetch_all")?;
     let untagged = with_conn(id, |c| {
@@ -697,6 +912,57 @@ fn store_flag(args: &[Value], method: &str, op: char, flag: &str) -> Result<Valu
     let seq = message_id_arg(args, method, "seq")?;
     with_conn(id, |c| {
         c.command(&format!("STORE {seq} {op}FLAGS ({flag})"))
+    })?;
+    Ok(Value::Bool(true))
+}
+
+/// The same, addressed by UID.
+///
+/// Every mutating verb above takes a **sequence number**, which is a
+/// position and moves whenever anything before it is removed. A caller
+/// holding a UID -- which is what a client that stores messages actually
+/// has -- therefore had to turn it into a position first, with a
+/// `SEARCH UID n`, and that search is a whole round trip: measured against
+/// Gmail, ~200 ms, which is ~200 ms in which the application answers
+/// nothing. `UID MOVE` and `UID STORE` are the same operations addressed
+/// the way the caller already knows how, in one turn instead of two.
+fn uid_store_flag(args: &[Value], method: &str, op: char, flag: &str) -> Result<Value, String> {
+    let id = instance_id(args, method)?;
+    let uid = message_id_arg(args, method, "uid")?;
+    with_conn(id, |c| {
+        c.command(&format!("UID STORE {uid} {op}FLAGS ({flag})"))
+    })?;
+    Ok(Value::Bool(true))
+}
+
+fn imap_uid_mark_seen(args: &[Value]) -> Result<Value, String> {
+    uid_store_flag(args, "uid_mark_seen", '+', "\\Seen")
+}
+
+fn imap_uid_mark_unseen(args: &[Value]) -> Result<Value, String> {
+    uid_store_flag(args, "uid_mark_unseen", '-', "\\Seen")
+}
+
+fn imap_uid_delete(args: &[Value]) -> Result<Value, String> {
+    uid_store_flag(args, "uid_delete", '+', "\\Deleted")
+}
+
+fn imap_uid_move(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "uid_move")?;
+    let uid = message_id_arg(args, "uid_move", "uid")?;
+    let mailbox = mailbox_arg(args, "uid_move")?;
+    with_conn(id, |c| {
+        c.command(&format!("UID MOVE {uid} {}", quote(&mailbox)))
+    })?;
+    Ok(Value::Bool(true))
+}
+
+fn imap_uid_copy(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "uid_copy")?;
+    let uid = message_id_arg(args, "uid_copy", "uid")?;
+    let mailbox = mailbox_arg(args, "uid_copy")?;
+    with_conn(id, |c| {
+        c.command(&format!("UID COPY {uid} {}", quote(&mailbox)))
     })?;
     Ok(Value::Bool(true))
 }
@@ -775,7 +1041,16 @@ pub fn register_imap_class(env: &mut Environment) {
         method("fetch", Some(1), imap_fetch),
         method("fetch_uid", Some(1), imap_fetch_uid),
         method("fetch_all", Some(0), imap_fetch_all),
+        method("fetch_headers", Some(1), imap_fetch_headers),
+        method("fetch_headers_uid", Some(1), imap_fetch_headers_uid),
+        method("fetch_headers_range", Some(2), imap_fetch_headers_range),
+        method("fetch_headers_set", Some(1), imap_fetch_headers_set),
         method("mark_seen", Some(1), imap_mark_seen),
+        method("uid_mark_seen", Some(1), imap_uid_mark_seen),
+        method("uid_mark_unseen", Some(1), imap_uid_mark_unseen),
+        method("uid_delete", Some(1), imap_uid_delete),
+        method("uid_move", Some(2), imap_uid_move),
+        method("uid_copy", Some(2), imap_uid_copy),
         method("mark_unseen", Some(1), imap_mark_unseen),
         method("delete", Some(1), imap_delete),
         method("expunge", Some(0), imap_expunge),
@@ -816,6 +1091,67 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
+    /// A stream that answers from a script and throws away whatever is
+    /// written to it.
+    ///
+    /// `Cursor` cannot stand in for a socket the moment a test *sends*
+    /// anything: a write lands at the cursor's own position, which is
+    /// exactly where the next read was going to come from, so the test
+    /// overwrites its own answer and the connection looks closed. Every
+    /// test that speaks before it listens needs this instead.
+    struct Canned(Cursor<Vec<u8>>);
+
+    impl Read for Canned {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            self.0.read(buf)
+        }
+    }
+
+    impl Write for Canned {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// The set never reaches the wire unvalidated: no instance is needed to
+    /// check that, and none is made.
+    #[test]
+    fn a_row_learns_its_size_and_its_paper_clips() {
+        let body = "1 FETCH (UID 42 FLAGS (\\Seen) RFC822.SIZE 284213 BODYSTRUCTURE ((\"text\" \"plain\" NIL NIL NIL \"7bit\" 12 1)(\"application\" \"pdf\" (\"name\" \"devis.pdf\") NIL NIL \"base64\" 284000 NIL (\"attachment\" (\"filename\" \"devis.pdf\")) NIL) \"mixed\"))";
+        assert_eq!(scan_size(body), Value::Int(284213));
+        assert_eq!(count_attachments(body), 1);
+        // No structure, no clips, and no size to report.
+        assert_eq!(count_attachments("1 FETCH (UID 7 FLAGS ())"), 0);
+        assert_eq!(scan_size("1 FETCH (UID 7)"), Value::Null);
+    }
+
+    #[test]
+    fn a_sequence_set_is_digits_commas_colons_and_a_star() {
+        let ok = |set: &str| {
+            set.bytes()
+                .all(|b| b.is_ascii_digit() || b == b',' || b == b':' || b == b'*')
+        };
+        assert!(ok("100:*"));
+        assert!(ok("1,5,9"));
+        assert!(ok("12:20"));
+        // The two that matter: a space starts a second word, CRLF a second
+        // command.
+        assert!(!ok("1 UID SEARCH ALL"));
+        assert!(!ok("1\r\nA1 LOGOUT"));
+    }
+
+    fn conn_speaking(bytes: &[u8]) -> ImapConn {
+        let stream: Box<dyn Stream> = Box::new(Canned(Cursor::new(bytes.to_vec())));
+        ImapConn {
+            reader: BufReader::new(stream),
+            tag: 0,
+            selected_exists: None,
+        }
+    }
+
     fn conn_from(bytes: &[u8]) -> ImapConn {
         let stream: Box<dyn Stream> = Box::new(Cursor::new(bytes.to_vec()));
         ImapConn {
@@ -823,6 +1159,38 @@ mod tests {
             tag: 0,
             selected_exists: None,
         }
+    }
+
+    #[test]
+    fn xoauth2_sends_the_sasl_string_and_takes_ok_for_an_answer() {
+        let mut conn = conn_speaking(b"a0001 OK [] you@work.com authenticated\r\n");
+        conn.authenticate_xoauth2("you@work.com", "ya29.token")
+            .expect("accepted");
+        // The initial response is the SASL string Google specifies, and
+        // the two separators are SOH, not spaces -- a mistake there fails
+        // in a way the server describes only in base64.
+        let want = base64::engine::general_purpose::STANDARD
+            .encode("user=you@work.com\u{1}auth=Bearer ya29.token\u{1}\u{1}");
+        assert!(
+            want.starts_with("dXNlcj15b3VAd29yay5jb20B"),
+            "SOH after the address: {want}"
+        );
+    }
+
+    #[test]
+    fn a_refused_xoauth2_is_answered_rather_than_waited_on() {
+        // The refusal does not arrive as a tagged NO. The server sends a
+        // continuation describing the error and waits for an empty line
+        // before saying anything else; a client that does not answer sits
+        // there until the socket times out. This is that exchange.
+        let mut conn = conn_speaking(
+            b"+ eyJzdGF0dXMiOiI0MDEifQ==\r\na0001 NO [AUTHENTICATIONFAILED] Invalid credentials\r\n",
+        );
+        let err = conn
+            .authenticate_xoauth2("you@work.com", "stale")
+            .expect_err("refused");
+        assert!(err.contains("XOAUTH2 refused"), "{err}");
+        assert!(err.contains("AUTHENTICATIONFAILED"), "{err}");
     }
 
     #[test]

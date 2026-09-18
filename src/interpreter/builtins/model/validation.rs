@@ -135,6 +135,13 @@ fn invoke_validator(func: &Function, field_value: &Value, record: &Value) -> Res
     let env_rc = Rc::new(RefCell::new(env_inner));
     let env_clone = env_rc.borrow().clone();
     let mut interp = Interpreter::default();
+    // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
+    // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
+    // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
+    // fichier, quel que soit le nombre d'appels.
+    if let Some(ref declaring_file) = func.source_path {
+        interp.current_source_path = Some(std::path::PathBuf::from(declaring_file));
+    }
     match interp.execute_block(&func.body, env_clone) {
         Ok(ControlFlow::Return(v)) | Ok(ControlFlow::Normal(v)) => Ok(v.is_truthy()),
         Ok(ControlFlow::Continue) | Ok(ControlFlow::Break) => Ok(true),
@@ -515,6 +522,13 @@ fn invoke_condition(func: &Function, record: &Value) -> Result<bool, String> {
     let env_rc = Rc::new(RefCell::new(env_inner));
     let env_clone = env_rc.borrow().clone();
     let mut interp = Interpreter::default();
+    // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
+    // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
+    // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
+    // fichier, quel que soit le nombre d'appels.
+    if let Some(ref declaring_file) = func.source_path {
+        interp.current_source_path = Some(std::path::PathBuf::from(declaring_file));
+    }
     match interp.execute_block(&func.body, env_clone) {
         Ok(ControlFlow::Return(v)) | Ok(ControlFlow::Normal(v)) => Ok(v.is_truthy()),
         Ok(ControlFlow::Continue) | Ok(ControlFlow::Break) => Ok(true),

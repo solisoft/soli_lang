@@ -9,6 +9,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use base64::Engine;
 use mail_parser::{Addr, Address, MessageParser, MimeHeaders};
 
 use crate::interpreter::value::{hash_from_pairs, Value};
@@ -46,14 +47,14 @@ fn addr_all(addr: Option<&Address>) -> Value {
 
 /// Parse a raw RFC822 message into the fields common to every mail client, in a
 /// stable order: `size, subject, from, to, date, text_body, html_body,
-/// attachments, raw`. `from` is a single `{name, address}` hash (or `null`);
+/// parts, attachments, raw`. `from` is a single `{name, address}` hash (or `null`);
 /// `to` is an array of them. Missing headers/bodies are `null`. The `raw` field
 /// is the message source as a (lossily decoded) string.
 pub fn common_fields(raw: &[u8]) -> Vec<(String, Value)> {
     let size = raw.len() as i64;
     let parsed = MessageParser::default().parse(raw);
 
-    let (subject, from, to, date, text_body, html_body, attachments) = match &parsed {
+    let (subject, from, to, date, text_body, html_body, parts, attachments) = match &parsed {
         Some(msg) => {
             let date = msg
                 .date()
@@ -67,6 +68,45 @@ pub fn common_fields(raw: &[u8]) -> Vec<(String, Value)> {
                 .body_html(0)
                 .map(|c| Value::String(c.into_owned().into()))
                 .unwrap_or(Value::Null);
+            // Every text part, with the type it declares.
+            //
+            // `text_body`/`html_body` answer "the plain one" and "the HTML
+            // one", which is every message there is until one carries a
+            // third face: a `text/markdown` part is `PartType::Text` like
+            // any other text/*, and neither of those two accessors will
+            // ever return it. A client that wants to *prefer* the source a
+            // message was written in has to be able to see it.
+            let mut parts_out = Vec::new();
+            for part in &msg.parts {
+                let ctype = match part.content_type() {
+                    Some(ct) => match ct.subtype() {
+                        Some(sub) => format!("{}/{}", ct.ctype(), sub).to_lowercase(),
+                        None => ct.ctype().to_lowercase(),
+                    },
+                    None => String::new(),
+                };
+                let body = match &part.body {
+                    mail_parser::PartType::Text(t) => Some(t.to_string()),
+                    mail_parser::PartType::Html(t) => Some(t.to_string()),
+                    _ => None,
+                };
+                if let Some(body) = body {
+                    let ctype = if ctype.is_empty() {
+                        match &part.body {
+                            mail_parser::PartType::Html(_) => "text/html".to_string(),
+                            _ => "text/plain".to_string(),
+                        }
+                    } else {
+                        ctype
+                    };
+                    parts_out.push(hash_from_pairs([
+                        ("content_type".to_string(), Value::String(ctype.into())),
+                        ("body".to_string(), Value::String(body.into())),
+                    ]));
+                }
+            }
+            let parts_out = Value::Array(Rc::new(RefCell::new(parts_out)));
+
             let mut atts = Vec::new();
             for part in msg.attachments() {
                 let content_type = part
@@ -76,10 +116,27 @@ pub fn common_fields(raw: &[u8]) -> Vec<(String, Value)> {
                         None => Value::String(ct.ctype().to_string().into()),
                     })
                     .unwrap_or(Value::Null);
+                // The bytes, base64, beside the name.
+                //
+                // A client that only lists attachments needs three fields;
+                // one that can *hand them over* needs a fourth, and the
+                // bytes are already here -- the message was fetched whole
+                // to be read at all. Base64 because a Soli string is UTF-8
+                // and an attachment is not text: `File.write_base64` is
+                // the other end of this.
+                let bytes = part.contents();
                 atts.push(hash_from_pairs([
                     ("name".to_string(), opt_str(part.attachment_name())),
                     ("content_type".to_string(), content_type),
                     ("size".to_string(), Value::Int(part.len() as i64)),
+                    (
+                        "base64".to_string(),
+                        Value::String(
+                            base64::engine::general_purpose::STANDARD
+                                .encode(bytes)
+                                .into(),
+                        ),
+                    ),
                 ]));
             }
             (
@@ -89,6 +146,7 @@ pub fn common_fields(raw: &[u8]) -> Vec<(String, Value)> {
                 date,
                 text_body,
                 html_body,
+                parts_out,
                 Value::Array(Rc::new(RefCell::new(atts))),
             )
         }
@@ -99,6 +157,7 @@ pub fn common_fields(raw: &[u8]) -> Vec<(String, Value)> {
             Value::Null,
             Value::Null,
             Value::Null,
+            Value::Array(Rc::new(RefCell::new(Vec::new()))),
             Value::Array(Rc::new(RefCell::new(Vec::new()))),
         ),
     };
@@ -111,6 +170,7 @@ pub fn common_fields(raw: &[u8]) -> Vec<(String, Value)> {
         ("date".to_string(), date),
         ("text_body".to_string(), text_body),
         ("html_body".to_string(), html_body),
+        ("parts".to_string(), parts),
         ("attachments".to_string(), attachments),
         (
             "raw".to_string(),
@@ -130,6 +190,62 @@ mod tests {
             .find(|(k, _)| k == key)
             .expect("field present")
             .1
+    }
+
+    #[test]
+    fn an_attachment_carries_its_bytes() {
+        let raw = b"From: a@b.com\r\nTo: c@d.com\r\nSubject: devis\r\n\
+MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"x\"\r\n\r\n\
+--x\r\nContent-Type: text/plain\r\n\r\nvoici\r\n\
+--x\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=\"devis.pdf\"\r\n\
+Content-Transfer-Encoding: base64\r\n\r\naGVsbG8gcGRm\r\n--x--\r\n";
+        let got = common_fields(raw);
+        let Value::Array(atts) = field(&got, "attachments") else {
+            panic!("attachments is an array");
+        };
+        let atts = atts.borrow();
+        assert_eq!(atts.len(), 1);
+        let Value::Hash(one) = &atts[0] else {
+            panic!("an attachment is a hash");
+        };
+        let one = one.borrow();
+        let b64 = match one.get(&HashKey::String("base64".into())) {
+            Some(Value::String(s)) => s.to_string(),
+            other => panic!("base64 is a string, got {other:?}"),
+        };
+        // "hello pdf", which is what the part decodes to.
+        assert_eq!(b64, "aGVsbG8gcGRm");
+    }
+
+    #[test]
+    fn a_third_face_is_visible_among_the_parts() {
+        // Three alternatives, the middle one a source no accessor returns.
+        let raw = b"From: a@b.com\r\nTo: c@d.com\r\nSubject: three\r\n\
+MIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"x\"\r\n\r\n\
+--x\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nLe point\r\n\
+--x\r\nContent-Type: text/markdown; charset=utf-8\r\n\r\n# Le point\r\n\
+--x\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<h1>Le point</h1>\r\n--x--\r\n";
+        let got = common_fields(raw);
+        let Value::Array(parts) = field(&got, "parts") else {
+            panic!("parts is an array");
+        };
+        let types: Vec<String> = parts
+            .borrow()
+            .iter()
+            .filter_map(|p| match p {
+                Value::Hash(h) => h
+                    .borrow()
+                    .get(&HashKey::String("content_type".into()))
+                    .and_then(|v| match v {
+                        Value::String(s) => Some(s.to_string()),
+                        _ => None,
+                    }),
+                _ => None,
+            })
+            .collect();
+        assert!(types.iter().any(|t| t == "text/markdown"), "{types:?}");
+        assert!(types.iter().any(|t| t == "text/plain"), "{types:?}");
+        assert!(types.iter().any(|t| t == "text/html"), "{types:?}");
     }
 
     #[test]

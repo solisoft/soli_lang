@@ -3679,6 +3679,12 @@ s = str(123);              # "123"
 s2 = str(3.14);            # "3.14"
 s3 = str([1, 2, 3]);       # "[1, 2, 3]"
 
+# `to_i` / `to_f` are total over the scalars: every type answers them,
+# including the one that is already that type. So a value whose type you
+# do not control needs one call and no guard around it.
+[7, "7", 7.9, null, true].map(fn(v) v.to_i);   # [7, 7, 7, 0, 1]
+let page = params["page"].to_i;                # not (params["page"] ?? 0).to_i
+
 # Type checking
 let value: Any = "hello";
 print(type(value));  # "String"

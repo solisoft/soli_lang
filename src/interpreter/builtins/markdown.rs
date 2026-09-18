@@ -16,7 +16,9 @@ use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{hash_from_pairs, Class, NativeFunction, Value};
-use crate::template::{markdown_to_html, markdown_to_safe_html, markdown_to_spans};
+use crate::template::{
+    markdown_to_html, markdown_to_safe_html, markdown_to_spans, markdown_to_text,
+};
 
 /// Register the `Markdown` class with its static methods.
 pub fn register_markdown_builtins(env: &mut Environment) {
@@ -64,6 +66,26 @@ pub fn register_markdown_builtins(env: &mut Environment) {
                 Ok(Value::String(markdown_to_safe_html(&md).into()))
             },
         )),
+    );
+
+    // Markdown.to_text(string) -> string
+    // Renders markdown as plain text: headings keep their words, list items
+    // keep a marker, links become `text <url>`, quotes keep `> `. For the
+    // `text/plain` face of a message whose source is markdown.
+    static_methods.insert(
+        "to_text".to_string(),
+        Rc::new(NativeFunction::new("Markdown.to_text", Some(1), |args| {
+            let md = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "Markdown.to_text() expects string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            Ok(Value::String(markdown_to_text(&md).into()))
+        })),
     );
 
     // Markdown.to_spans(string) -> Array<Hash>

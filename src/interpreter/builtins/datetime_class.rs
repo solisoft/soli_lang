@@ -801,7 +801,17 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
         "now".to_string(),
         Rc::new(NativeFunction::new("DateTime.now", Some(0), move |_args| {
             let now = local_zone::now_local();
-            Ok(Value::DateTime(now.timestamp() * 1_000_000_000, false))
+            // Nanoseconds, not seconds times a billion. `millisecond()` is a
+            // method on this value and it answered 0 for every instant this
+            // constructor ever made -- so a duration measured between two
+            // `DateTime.now()` calls could only ever come out as a whole
+            // number of seconds, which is not a measurement. `utc()` beside
+            // it has always kept them.
+            Ok(Value::DateTime(
+                now.timestamp_nanos_opt()
+                    .unwrap_or_else(|| now.timestamp() * 1_000_000_000),
+                false,
+            ))
         })),
     );
 

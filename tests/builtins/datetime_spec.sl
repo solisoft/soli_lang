@@ -432,4 +432,20 @@ describe("DateTime before 1970", fn() {
         let dt = DateTime.parse("1969-07-20T20:17:00.500Z");
         assert(dt.format("%Y").len() == 4);
     });
+
+    # `now()` used to be `timestamp() * 1_000_000_000`: every instant it
+    # made carried a zero subsecond, so `millisecond()` answered 0 for all
+    # of them and a duration measured between two of them could only come
+    # out as a whole number of seconds. Anything timing itself in Soli was
+    # therefore timing nothing.
+    test("now() carries the subsecond that millisecond() reads", fn() {
+        let seen = [];
+        let i = 0;
+        while (i < 2000) {
+            seen.push(DateTime.now().millisecond());
+            i = i + 1;
+        }
+        let moved = seen.filter(fn(ms) { return ms != seen[0]; });
+        assert(moved.length() > 0);
+    });
 });

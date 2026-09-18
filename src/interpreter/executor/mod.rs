@@ -196,12 +196,10 @@ impl Interpreter {
     }
 
     pub fn set_source_path(&mut self, path: PathBuf) {
-        let absolute_path = if path.is_absolute() {
-            path
-        } else {
-            std::fs::canonicalize(&path).unwrap_or(path)
-        };
-        self.current_source_path = Some(absolute_path);
+        // Absolute but symlink-preserving: see `coverage_path_key`. Every
+        // function declared in this file carries the path as its
+        // `source_path`, and that is what its line hits are keyed by.
+        self.current_source_path = Some(crate::coverage::coverage_path_key(&path));
     }
 
     #[inline(always)]
@@ -464,7 +462,7 @@ impl Interpreter {
     }
 
     /// Get the current file path from the call stack (top frame) or fallback to current_source_path.
-    fn current_file_path(&self) -> Option<PathBuf> {
+    pub(crate) fn current_file_path(&self) -> Option<PathBuf> {
         self.call_stack
             .last()
             .and_then(|frame| frame.file_path.as_ref())

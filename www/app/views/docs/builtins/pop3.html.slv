@@ -78,6 +78,7 @@ mail = Pop3.new("127.0.0.1", "user", "pass", { "port": 110, "tls": false })</cod
         <h2 class="text-2xl font-bold text-white mb-4">Message Hash</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-4">Each fetched message is a hash. <code class="text-cyan-400">from</code> is a single <code class="text-cyan-400">{name, address}</code> hash (or <code>null</code>); <code class="text-cyan-400">to</code> is an array of them. Missing headers/bodies are <code>null</code>.</p>
+            <p class="text-gray-400 mb-4"><code class="text-cyan-400">parts</code> is <strong>every</strong> text part with the type it declares, in the order the message carries them. <code class="text-cyan-400">text_body</code> and <code class="text-cyan-400">html_body</code> answer &ldquo;the plain one&rdquo; and &ldquo;the HTML one&rdquo;, and neither will ever return a <code class="text-cyan-400">text/markdown</code> part &mdash; it is text like any other. Read <code class="text-cyan-400">parts</code> when you want to prefer the source a message was written in.</p>
             <pre data-filename="Message"><code class="language-soli text-sm">{
   "id":           1,
   "size":         2048,
@@ -87,6 +88,9 @@ mail = Pop3.new("127.0.0.1", "user", "pass", { "port": 110, "tls": false })</cod
   "date":         "2026-06-01T10:00:00Z",
   "text_body":    "Hi Bob, ...",
   "html_body":    "&lt;p&gt;Hi Bob, ...&lt;/p&gt;",
+  "parts":        [ { "content_type": "text/plain",    "body": "Hi Bob, ..." },
+                    { "content_type": "text/markdown", "body": "Hi **Bob**, ..." },
+                    { "content_type": "text/html",     "body": "&lt;p&gt;Hi Bob, ...&lt;/p&gt;" } ],
   "attachments":  [ { "name": "report.pdf", "content_type": "application/pdf", "size": 51200 } ],
   "raw":          "From: Alice ..."   # full RFC822 source
 }</code></pre>

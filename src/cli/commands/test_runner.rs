@@ -123,8 +123,53 @@ fn render_worker_row(
         None => "     ".to_string(),
     };
 
+    let counter = slot.files_done.to_string();
+    let counter_visible = counter.chars().count();
+
+    // The row is laid out by priority, because the filename is what it is
+    // actually for. Always drawn: " W0 " + icon + " " + name + trailing
+    // space (CHROME). The rest are fitted in order — counter, elapsed, then
+    // bar — and each is dropped rather than squeezing the name below
+    // FILE_MIN. The bar goes first: the aggregate bar below still shows
+    // overall progress, so a per-worker bar is the least informative thing
+    // on the row. Whatever survives the fitting is handed to the name.
+    const CHROME: usize = 8;
+    const BAR_MAX: usize = 14;
+    const BAR_MIN: usize = 6;
+    const FILE_MIN: usize = 14;
+    const FILE_TARGET: usize = 28;
+    // One spare column: a row that fills the terminal exactly makes an
+    // auto-margin terminal emit its own newline, which desynchronises the
+    // rewind count in `redraw_grid` and stacks the display.
+    let usable = term_width.saturating_sub(1);
+
+    let counter_cost = counter_visible + 1;
+    let elapsed_cost = 6;
+
+    // Counts first, each dropped rather than pushing the name under FILE_MIN.
+    let budget = usable.saturating_sub(CHROME + FILE_MIN);
+    let show_counter = budget >= counter_cost;
+    let budget = budget - if show_counter { counter_cost } else { 0 };
+    let show_elapsed = budget >= elapsed_cost;
+    let used =
+        if show_elapsed { elapsed_cost } else { 0 } + if show_counter { counter_cost } else { 0 };
+
+    // What is left once the counts have been placed is the name's, and the
+    // bar only ever spends the surplus above FILE_TARGET. Below that the bar
+    // is not drawn and the name is capped at FILE_TARGET rather than taking
+    // the cells the bar would occupy: widening the terminal then never makes
+    // a name shorter, which is what the alternative (bar reappearing and
+    // clawing back its cells) would do.
+    let for_name_and_bar = usable.saturating_sub(CHROME + used);
+    let (bar_len, file_w) = if for_name_and_bar >= FILE_TARGET + BAR_MIN + 3 {
+        let bar = (for_name_and_bar - FILE_TARGET - 3).min(BAR_MAX);
+        (bar, for_name_and_bar - (bar + 3))
+    } else {
+        (0, for_name_and_bar.min(FILE_TARGET))
+    };
+    let file_w = file_w.max(4);
+
     let expected_share = total_files.div_ceil(num_workers.max(1)).max(1);
-    let bar_len: usize = 14;
     // Once the suite's done, every worker's bar shows 100% regardless of
     // how many files they actually pulled — LPT scheduling produces uneven
     // splits, so a fast worker may have processed more than its even share
@@ -139,9 +184,6 @@ fn render_worker_row(
     let empty = bar_len - filled;
     let bar_color = if slot.files_failed > 0 { "31" } else { "32" };
 
-    let counter = slot.files_done.to_string();
-    let counter_visible = counter.chars().count();
-
     let file_text = slot.current_file.clone().unwrap_or_else(|| {
         if slot.files_done > 0 || slot.files_failed > 0 {
             "idle".to_string()
@@ -150,20 +192,30 @@ fn render_worker_row(
         }
     });
 
-    // Visible widths used: 1(lead) + 3(label) + 1 + 1([) + bar_len + 1(])
-    //                     + 1 + 1(icon) + 1 + file_w + 1 + 5(elapsed)
-    //                     + 1 + counter + 1(trail) = 17 + bar_len + counter + file_w
-    let fixed = 17 + bar_len + counter_visible;
-    let file_w = term_width.saturating_sub(1).saturating_sub(fixed).max(4);
-
     let file_truncated = truncate_chars(&file_text, file_w);
     let file_padded = pad_chars(&file_truncated, file_w);
 
-    format!(
-        " {label} \x1b[{bar_color}m[\x1b[{bar_color}m{bar_filled}\x1b[0m\x1b[90m{bar_empty}\x1b[0m\x1b[{bar_color}m]\x1b[0m \x1b[{icon_color}m{icon}\x1b[0m {file_padded} \x1b[90m{elapsed_str}\x1b[0m \x1b[{bar_color}m{counter}\x1b[0m ",
-        bar_filled = "█".repeat(filled),
-        bar_empty = "░".repeat(empty),
-    )
+    let bar = if bar_len > 0 {
+        format!(
+            "\x1b[{bar_color}m[\x1b[{bar_color}m{}\x1b[0m\x1b[90m{}\x1b[0m\x1b[{bar_color}m]\x1b[0m ",
+            "█".repeat(filled),
+            "░".repeat(empty),
+        )
+    } else {
+        String::new()
+    };
+    let elapsed = if show_elapsed {
+        format!(" \x1b[90m{elapsed_str}\x1b[0m")
+    } else {
+        String::new()
+    };
+    let counter = if show_counter {
+        format!(" \x1b[{bar_color}m{counter}\x1b[0m")
+    } else {
+        String::new()
+    };
+
+    format!(" {label} {bar}\x1b[{icon_color}m{icon}\x1b[0m {file_padded}{elapsed}{counter} ")
 }
 
 /// `1 file`, `2 files`. The counts sit next to each other in the summary, so
@@ -177,39 +229,97 @@ fn plural(n: usize, one: &'static str, many: &'static str) -> &'static str {
     }
 }
 
-fn render_progress_bar(state: &ProgressState, total_files: usize, icon: &str) -> String {
+fn render_progress_bar(
+    state: &ProgressState,
+    total_files: usize,
+    icon: &str,
+    term_width: usize,
+) -> String {
     let done = state.passed + state.failed;
-    let bar_len = 30;
-    let filled = if total_files == 0 {
-        0
-    } else {
-        ((bar_len as f64) * (done as f64) / (total_files as f64)) as usize
-    };
-    let filled = filled.min(bar_len);
-    let empty = bar_len - filled;
     let color = if state.failed > 0 { "31" } else { "32" };
+
     // Failing tests are called out in red even while the run is green so far:
     // the file they are in has not finished, so nothing else on screen shows
     // them yet.
-    let tests = if state.tests_failed > 0 {
-        format!(
-            "\x1b[90m{} tests \x1b[0m\x1b[31m{} failed\x1b[0m\x1b[90m",
-            state.tests_passed + state.tests_failed,
-            state.tests_failed
+    let (tests, tests_visible) = if state.tests_failed > 0 {
+        let total = state.tests_passed + state.tests_failed;
+        (
+            format!(
+                "\x1b[90m{} tests \x1b[0m\x1b[31m{} failed\x1b[0m\x1b[90m",
+                total, state.tests_failed
+            ),
+            format!("{} tests {} failed", total, state.tests_failed)
+                .chars()
+                .count(),
         )
     } else {
-        format!("{} tests", state.tests_passed + state.tests_failed)
+        let t = format!("{} tests", state.tests_passed + state.tests_failed);
+        let n = t.chars().count();
+        (t, n)
     };
-    format!(
-        "\x1b[{color}m\x1b[1m[\x1b[{color}m{}\x1b[0m\x1b[90m{}\x1b[0m\x1b[{color}m\x1b[1m] {} {}/{} \x1b[90m{} · {} assertions\x1b[0m",
-        "█".repeat(filled),
-        "░".repeat(empty),
-        icon,
-        done,
-        total_files,
-        tests,
-        state.total_assertions,
-    )
+    let assertions = format!(" · {} assertions", state.total_assertions);
+    let assertions_visible = assertions.chars().count();
+
+    // Fitted like the worker rows: the counts are what matter, the bar gives
+    // up width for them, and anything that still does not fit is dropped
+    // rather than wrapped — a wrapped line desynchronises the rewind count in
+    // `redraw_grid` and makes the whole display stack on every tick.
+    const BAR_MAX: usize = 30;
+    const BAR_MIN: usize = 6;
+    let head = format!("{}/{}", done, total_files);
+    let mandatory = icon.chars().count() + 1 + head.chars().count();
+    let usable = term_width.saturating_sub(1);
+
+    let mut budget = usable.saturating_sub(mandatory);
+    let show_tests = budget > tests_visible;
+    if show_tests {
+        budget -= tests_visible + 1;
+    }
+    // Reserve the assertion count before widening the bar past its minimum.
+    let reserved = if show_tests && budget >= BAR_MIN + 3 + assertions_visible {
+        assertions_visible
+    } else {
+        0
+    };
+    let bar_len = if budget.saturating_sub(reserved) >= BAR_MIN + 3 {
+        budget
+            .saturating_sub(reserved)
+            .saturating_sub(3)
+            .min(BAR_MAX)
+    } else {
+        0
+    };
+    if bar_len > 0 {
+        budget -= bar_len + 3;
+    }
+    let show_assertions = show_tests && budget >= assertions_visible;
+
+    let filled = if total_files == 0 {
+        0
+    } else {
+        (((bar_len as f64) * (done as f64) / (total_files as f64)) as usize).min(bar_len)
+    };
+    let empty = bar_len - filled;
+
+    let bar = if bar_len > 0 {
+        format!(
+            "\x1b[{color}m\x1b[1m[\x1b[{color}m{}\x1b[0m\x1b[90m{}\x1b[0m\x1b[{color}m\x1b[1m]\x1b[0m ",
+            "█".repeat(filled),
+            "░".repeat(empty),
+        )
+    } else {
+        String::new()
+    };
+    let tail = if show_tests {
+        format!(
+            " \x1b[90m{tests}{}\x1b[0m",
+            if show_assertions { &assertions } else { "" }
+        )
+    } else {
+        String::new()
+    };
+
+    format!("{bar}\x1b[{color}m\x1b[1m{icon}\x1b[0m {head}{tail}")
 }
 
 /// Redraw one row per worker (with its own progress bar) plus the aggregate
@@ -225,8 +335,20 @@ fn redraw_grid(
 ) -> usize {
     use std::fmt::Write as _;
 
-    let term_width = crossterm::terminal::size()
-        .map(|(c, _)| c as usize)
+    // `COLUMNS` wins when it is set, so a pane whose real width we cannot ask
+    // for (or get a useless answer for) can be told what it is. A detached or
+    // emulated terminal can report 0 from the ioctl, which would collapse
+    // every column to its floor, so that answer is discarded too.
+    let term_width = std::env::var("COLUMNS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|w| *w > 0)
+        .or_else(|| {
+            crossterm::terminal::size()
+                .ok()
+                .map(|(c, _)| c as usize)
+                .filter(|w| *w > 0)
+        })
         .unwrap_or(80);
     let num_workers = slots.len();
     let all_done = total_files > 0 && state.passed + state.failed >= total_files;
@@ -260,6 +382,7 @@ fn redraw_grid(
         state,
         total_files,
         &spinner_char.to_string(),
+        term_width,
     ));
     buf.push_str("\x1b[K");
 
@@ -535,7 +658,7 @@ pub fn run_test(
         for entry in sorted {
             let path = entry.path();
             if let Ok(content) = fs::read_to_string(&path) {
-                let absolute = path.canonicalize().unwrap_or(path);
+                let absolute = solilang::coverage::coverage_path_key(&path);
                 model_preamble_files.push((absolute, content));
             }
         }
@@ -1144,7 +1267,14 @@ pub fn run_test(
         // Non-TTY: just print the bar inline so logs stay readable.
         eprint!(
             "{}\x1b[K",
-            render_progress_bar(&final_state, total_files, &final_icon.to_string())
+            // Nothing is redrawn in a log, so nothing needs to fit a width:
+            // ask for the full bar and every count.
+            render_progress_bar(
+                &final_state,
+                total_files,
+                &final_icon.to_string(),
+                usize::MAX,
+            )
         );
     }
     eprintln!();
@@ -2268,6 +2398,119 @@ fn collect_and_register_sources(tracker: &mut CoverageTracker, dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Visible width of a rendered row: the ANSI SGR sequences it is built
+    /// from occupy no cells.
+    fn visible_width(s: &str) -> usize {
+        let mut n = 0;
+        let mut chars = s.chars();
+        while let Some(c) = chars.next() {
+            if c == '\x1b' {
+                for e in chars.by_ref() {
+                    if e == 'm' {
+                        break;
+                    }
+                }
+            } else {
+                n += 1;
+            }
+        }
+        n
+    }
+
+    fn slot_running(id: usize, file: &str, done: usize) -> WorkerSlot {
+        let mut slot = WorkerSlot::new(id);
+        slot.current_file = Some(file.to_string());
+        slot.started_at = Some(std::time::Instant::now());
+        slot.files_done = done;
+        slot
+    }
+
+    /// A row that reaches the last column makes an auto-margin terminal wrap
+    /// it, and a wrapped row throws off the `\x1b[{n}F` rewind in
+    /// `redraw_grid` — the grid then stacks a fresh copy of itself on every
+    /// tick instead of repainting in place. So: every row, every width, at
+    /// least one spare column.
+    #[test]
+    fn worker_rows_never_reach_the_last_column() {
+        let long = "dossiers_individuels_admin_integration";
+        for width in 20..200usize {
+            for done in [0usize, 9, 1234] {
+                let row = render_worker_row(&slot_running(0, long, done), 40, 6, width, '⠧', false);
+                assert!(
+                    visible_width(&row) < width,
+                    "worker row is {} cells wide at term_width {}",
+                    visible_width(&row),
+                    width
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn aggregate_bar_never_reaches_the_last_column() {
+        let state = ProgressState {
+            passed: 12,
+            failed: 3,
+            total_assertions: 4096,
+            tests_passed: 812,
+            tests_failed: 7,
+        };
+        for width in 20..200usize {
+            let bar = render_progress_bar(&state, 40, "⠧", width);
+            assert!(
+                visible_width(&bar) < width,
+                "aggregate bar is {} cells wide at term_width {}",
+                visible_width(&bar),
+                width
+            );
+        }
+    }
+
+    /// The point of the layout: the filename gets the cells the bar and the
+    /// counts do not need, and never falls to a stub while the row still has
+    /// room. The old layout pinned the bar at 14 cells and left the name with
+    /// its 4-char floor on any terminal under 37 columns.
+    #[test]
+    fn narrow_terminals_spend_their_cells_on_the_filename() {
+        let long = "dossiers_individuels_admin_integration";
+        // How many leading characters of the name survived truncation.
+        let name_at = |width: usize| {
+            let row = render_worker_row(&slot_running(0, long, 9), 40, 6, width, '⠧', false);
+            let plain: String = {
+                let mut out = String::new();
+                let mut chars = row.chars();
+                while let Some(c) = chars.next() {
+                    if c == '\x1b' {
+                        for e in chars.by_ref() {
+                            if e == 'm' {
+                                break;
+                            }
+                        }
+                    } else {
+                        out.push(c);
+                    }
+                }
+                out
+            };
+            (0..=long.chars().count())
+                .rev()
+                .find(|n| {
+                    let prefix: String = long.chars().take(*n).collect();
+                    plain.contains(&prefix)
+                })
+                .unwrap_or(0)
+        };
+        // Was 4 (the floor) on every terminal under 37 columns.
+        assert!(
+            name_at(37) >= 18,
+            "a 37-column row should show ~20 chars of the name, showed {}",
+            name_at(37)
+        );
+        assert!(name_at(60) >= 26, "showed {}", name_at(60));
+        // Wide enough for all 38 characters, so none of it is cut.
+        assert_eq!(name_at(100), long.chars().count());
+    }
 
     /// Lay out an application: a manifest, `app/`, `config/`, and specs at
     /// `tests/` and `tests/browser/`.

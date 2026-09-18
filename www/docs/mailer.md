@@ -189,7 +189,53 @@ logs and falls back to sending synchronously so a message is never dropped.
 | `template`    | String?     | Override the convention view path. |
 
 Addresses accept either a bare `addr@host` or a `"Name <addr@host>"` display
-form.
+form — for `to` and `cc` as well as `from` and `reply_to`. A named recipient
+lands as one address, `To: "Ana Vieira" <ana@example.com>`.
+
+## `Mailer.deliver(mail)` — the hash, directly
+
+`this.mail(...)` renders a mailer action into a hash and `Message` sends it.
+Anything that already *has* the hash can hand it over itself, and two keys live
+only on this path:
+
+```soli
+Mailer.deliver({
+  "from":    "Acme <noreply@example.com>",
+  "to":      "Ana Vieira <ana@example.com>",
+  "subject": "Re: le point de mardi",
+  "text":    Markdown.to_text(source),
+  "html":    Markdown.to_html(source),
+  "alternatives": [ { "content_type": "text/markdown", "body": source } ],
+  "headers": { "In-Reply-To": "<one@mail>", "References": "<one@mail>" }
+})
+```
+
+### Extra headers
+
+`headers` is a hash of header name to value, written verbatim. It exists for
+`In-Reply-To` and `References` — what makes an answer an answer rather than a
+new message in the reader it lands in — but any header name works.
+
+Both halves of the line come from the application here, so both are guarded: a
+name or a value carrying CR or LF is header injection and is refused, as is a
+name containing `:` or whitespace.
+
+### Three faces of one message
+
+`text` and `html` are the two alternatives every mail library knows, and they
+cover every message there is until one carries a third: the **source** a person
+actually typed. `alternatives` is an array of `{ "content_type", "body" }`
+hashes for exactly that, `text/markdown` being what it exists for.
+
+The parts are ordered least rich to most — plain, then the extras in the order
+given, then HTML — because a reader shows the last part it understands
+(RFC 2046 §5.1.4). A client that prefers the source can find it in the message's
+[`parts`](builtins.md#message-hash-shape); every other client shows the HTML or
+the plain text and never knows it was there. Attachments still ride alongside:
+the message becomes `multipart/mixed` wrapping the `multipart/alternative`.
+
+`Markdown.to_text(md)` is what the `text` face is built from — it keeps the
+bullets and the link addresses that stripping tags off the HTML would lose.
 
 ## Configuration
 

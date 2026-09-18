@@ -144,7 +144,33 @@ UserMailer.welcome(user).deliver_later</code></pre>
                 <div><code class="text-amber-400">attachments</code> : <code class="text-orange-400">Array?</code> &mdash; <code class="text-cyan-400">{ "filename", "content_type", "content" }</code> hashes</div>
                 <div><code class="text-amber-400">template</code> : <code class="text-orange-400">String?</code> &mdash; override the convention view path</div>
             </div>
-            <p class="text-gray-400 mt-4">Addresses accept a bare <code class="text-cyan-400">addr@host</code> or a <code class="text-cyan-400">"Name &lt;addr@host&gt;"</code> display form.</p>
+            <p class="text-gray-400 mt-4">Addresses accept a bare <code class="text-cyan-400">addr@host</code> or a <code class="text-cyan-400">"Name &lt;addr@host&gt;"</code> display form &mdash; for <code class="text-cyan-400">to</code> and <code class="text-cyan-400">cc</code> as well as <code class="text-cyan-400">from</code> and <code class="text-cyan-400">reply_to</code>. A named recipient lands as one address, <code class="text-cyan-400">To: "Ana Vieira" &lt;ana@example.com&gt;</code>.</p>
+        </div>
+    </section>
+
+    <!-- Mailer.deliver -->
+    <section id="mailer-deliver" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4"><code class="text-amber-400">Mailer.deliver(mail)</code> &mdash; the hash, directly</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-3"><code class="text-cyan-400">this.mail(...)</code> renders a mailer action into a hash and <code class="text-amber-400">Message</code> sends it. Anything that already <em>has</em> the hash can hand it over itself, and two keys live only on this path.</p>
+            <pre data-filename="Answering a message"><code class="language-soli text-sm">Mailer.deliver({
+  "from":    "Acme &lt;noreply@example.com&gt;",
+  "to":      "Ana Vieira &lt;ana@example.com&gt;",
+  "subject": "Re: le point de mardi",
+  "text":    Markdown.to_text(source),
+  "html":    Markdown.to_html(source),
+  "alternatives": [ { "content_type": "text/markdown", "body": source } ],
+  "headers": { "In-Reply-To": "&lt;one@mail&gt;", "References": "&lt;one@mail&gt;" }
+})</code></pre>
+
+            <h3 class="text-lg font-semibold text-white mt-6 mb-2">Extra headers</h3>
+            <p class="text-gray-400 mb-3"><code class="text-cyan-400">headers</code> is a hash of header name to value, written verbatim. It exists for <code class="text-cyan-400">In-Reply-To</code> and <code class="text-cyan-400">References</code> &mdash; what makes an answer an answer rather than a new message in the reader it lands in &mdash; but any header name works.</p>
+            <p class="text-gray-400">Both halves of the line come from the application here, so both are guarded: a name or a value carrying CR or LF is header injection and is refused, as is a name containing <code>:</code> or whitespace.</p>
+
+            <h3 class="text-lg font-semibold text-white mt-6 mb-2">Three faces of one message</h3>
+            <p class="text-gray-400 mb-3"><code class="text-cyan-400">text</code> and <code class="text-cyan-400">html</code> are the two alternatives every mail library knows, and they cover every message there is until one carries a third: the <strong>source</strong> a person actually typed. <code class="text-cyan-400">alternatives</code> is an array of <code class="text-cyan-400">{ "content_type", "body" }</code> hashes for exactly that, <code class="text-cyan-400">text/markdown</code> being what it exists for.</p>
+            <p class="text-gray-400 mb-3">The parts are ordered least rich to most &mdash; plain, then the extras in the order given, then HTML &mdash; because a reader shows the last part it understands (RFC 2046 &sect;5.1.4). A client that prefers the source can find it in the message's <a href="/docs/builtins/imap#imap-message" class="text-cyan-400 hover:underline"><code>parts</code></a>; every other client shows the HTML or the plain text and never knows it was there. Attachments still ride alongside: the message becomes <code>multipart/mixed</code> wrapping the <code>multipart/alternative</code>.</p>
+            <p class="text-gray-400"><a href="/docs/builtins/markdown#def-markdown-to-text" class="text-cyan-400 hover:underline"><code>Markdown.to_text(md)</code></a> is what the <code class="text-cyan-400">text</code> face is built from &mdash; it keeps the bullets and the link addresses that stripping tags off the HTML would lose.</p>
         </div>
     </section>
 

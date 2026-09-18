@@ -57,6 +57,18 @@ pub struct TNode {
     /// scroll is a thing done to a node once, not a state it carries. The
     /// diff turns a change of this into `Op::ScrollTo` and nothing else.
     pub scroll_to: Option<(i64, i64)>,
+    /// Whether this node's view asked it to take focus (EUI 02 §5,
+    /// `Op::Focus`). The same shape as `scroll_to`, and for the same
+    /// reason: focusing is something done to a node once.
+    ///
+    /// `autofocus` cannot cover this. It is deliberately weak -- a client
+    /// applies it "only when focus is not already where it belongs"
+    /// (03 §3.1), so that a batch arriving mid-Tab does not yank someone
+    /// back to a dialog's first field. That makes it useless for a view
+    /// that *opens* a field: focus is already on whatever was there
+    /// before, so the new field never gets it. `Op::Focus` is the op the
+    /// protocol has for exactly this, and nothing was emitting it.
+    pub focus_to: bool,
     /// `(event, handler)`.
     pub handlers: Vec<(EventKind, Handler)>,
     /// Children in order.
@@ -357,6 +369,11 @@ pub fn scroll_ops(node: &TNode, ops: &mut Vec<Op>) {
             x,
             y,
         });
+    }
+    // A field that arrives already asking for the caret gets it here: the
+    // subtree is new, so there is no previous answer to compare against.
+    if node.focus_to {
+        ops.push(Op::Focus { node: node.id });
     }
     for child in &node.children {
         scroll_ops(child.node(), ops);
@@ -1014,15 +1031,15 @@ impl Encoder {
             Some(other) => Some(self.text_of(other.to_string(), intern)?),
             None => None,
         };
-        let (props, scroll_to) = match obj.get("p").and_then(Json::as_object) {
+        let (props, scroll_to, focus_to) = match obj.get("p").and_then(Json::as_object) {
             Some(p) => self.props_from(kind, p)?,
-            None => (Vec::new(), None),
+            None => (Vec::new(), None, false),
         };
         let handlers = match obj.get("on").and_then(Json::as_object) {
             Some(on) => self.handlers_from(on, &key)?,
             None => Vec::new(),
         };
-        Ok(self.node(kind, style, key, text, props, scroll_to, handlers))
+        Ok(self.node(kind, style, key, text, props, scroll_to, focus_to, handlers))
     }
 
     /// [`convert_shallow`] straight off the view's hash: the scalar fields
@@ -1053,13 +1070,13 @@ impl Encoder {
             Some(Value::String(s)) => Some(self.text_of(s.to_string(), intern)?),
             Some(other) => Some(self.text_of(other.to_string(), intern)?),
         };
-        let (props, scroll_to) = match field("p") {
-            None => (Vec::new(), None),
+        let (props, scroll_to, focus_to) = match field("p") {
+            None => (Vec::new(), None, false),
             Some(p) => {
                 let json = crate::interpreter::value::value_to_json(p)?;
                 match json.as_object() {
                     Some(p) => self.props_from(kind, p)?,
-                    None => (Vec::new(), None),
+                    None => (Vec::new(), None, false),
                 }
             }
         };
@@ -1073,7 +1090,7 @@ impl Encoder {
                 }
             }
         };
-        Ok(self.node(kind, style, key, text, props, scroll_to, handlers))
+        Ok(self.node(kind, style, key, text, props, scroll_to, focus_to, handlers))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1085,6 +1102,7 @@ impl Encoder {
         text: Option<TextRef>,
         props: Vec<(u32, WireValue)>,
         scroll_to: Option<(i64, i64)>,
+        focus_to: bool,
         handlers: Vec<(EventKind, Handler)>,
     ) -> TNode {
         let key_atom = match &key {
@@ -1100,6 +1118,7 @@ impl Encoder {
             text,
             props,
             scroll_to,
+            focus_to,
             handlers,
             children: Vec::new(),
             identity: 0,
@@ -1163,9 +1182,17 @@ impl Encoder {
     ) -> Result<NodeProps, String> {
         let mut props = Vec::with_capacity(p.len());
         let mut scroll_to = None;
+        let mut focus_to = false;
         for (name, v) in p {
             if name == "scroll_to" {
                 scroll_to = Some(scroll_offset(kind, v)?);
+                continue;
+            }
+            // Like `scroll_to`: an instruction, never a prop. The client
+            // has no `focus_to` to set, and handing it one would leave it
+            // nothing to do with it.
+            if name == "focus_to" {
+                focus_to = matches!(v, Json::Bool(true));
                 continue;
             }
             let atom = self.atom(name);
@@ -1210,7 +1237,7 @@ impl Encoder {
             };
             props.push((atom, value));
         }
-        Ok((props, scroll_to))
+        Ok((props, scroll_to, focus_to))
     }
 
     fn handlers_from(
@@ -1515,8 +1542,17 @@ impl Encoder {
                     )?
                 }
                 "transition" => {
-                    r.transition =
-                        enum_of(v, &[("none", 0), ("fast", 1), ("base", 2), ("slow", 3)])?
+                    r.transition = enum_of(
+                        v,
+                        &[
+                            ("none", 0),
+                            ("fast", 1),
+                            ("base", 2),
+                            ("slow", 3),
+                            ("slower", 4),
+                            ("slowest", 5),
+                        ],
+                    )?
                 }
                 "animation" => r.animation = animation_of(v)?,
                 "motion" => {
@@ -1740,7 +1776,7 @@ fn edges_of(v: &Json) -> Result<[u8; 4], String> {
 
 /// What a node's `p` hash amounts to: the props that go on the wire, and
 /// the one that does not.
-type NodeProps = (Vec<(u32, WireValue)>, Option<(i64, i64)>);
+type NodeProps = (Vec<(u32, WireValue)>, Option<(i64, i64)>, bool);
 
 /// `scroll_to: [x, y]`, in pixels, on a node that can be scrolled.
 ///
@@ -1940,6 +1976,7 @@ fn freeze(node: &mut TNode, memo: &mut Memo, pins: &mut HashMap<usize, Value>, g
                         text: None,
                         props: Vec::new(),
                         scroll_to: None,
+                        focus_to: false,
                         handlers: Vec::new(),
                         children: Vec::new(),
                         identity: 0,

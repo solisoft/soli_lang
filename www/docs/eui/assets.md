@@ -70,3 +70,23 @@ scroll({"scroll_to": [0, 99999]}, messages.map(fn(m) message_row(m)))
 
 It is an instruction, not state: the client scrolls when the op arrives, and the
 viewer may scroll away again afterwards.
+
+## Moving the caret
+
+`focus_to: true` is the same shape for focus: the differ emits a `Focus` op when
+a node asks for the caret and did not ask last time.
+
+```soli
+input({"focus_to": true, "value": query, "placeholder": "Search"}, [])
+```
+
+`autofocus` cannot do this. It is deliberately weak — a client applies it only
+when focus is not already somewhere it belongs, so that a batch arriving
+mid-Tab does not yank the viewer back to a dialog's first field. That makes it
+useless for a view that *opens* a field: focus is already on whatever was there
+before, so a search bar opening over a page never gets the caret and cannot be
+typed into.
+
+Asking twice is not asking again: a view that keeps returning `focus_to: true`
+means "stay there", and costs nothing. A view that stops asking is not a request
+to take focus away — there would be nowhere to put it.
