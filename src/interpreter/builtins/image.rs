@@ -724,8 +724,19 @@ fn build_image_class() -> Rc<Class> {
                 _ => return Err("Image.new requires string path".to_string()),
             };
             let resolved = validate_image_path(&path, "Image.new")?;
-            let mut reader =
-                ImageReader::open(&resolved).map_err(|e| format!("Failed to open image: {}", e))?;
+            // The format comes from the bytes, not from the name.
+            //
+            // `ImageReader::open` infers it from the extension alone, so a
+            // file named by content hash -- which is what a cache of
+            // downloaded images looks like -- failed to decode however
+            // ordinary a PNG it was. Sniffing is what every other reader of
+            // these formats does, the magic bytes are unambiguous, and the
+            // extension is not ours to control when the file came off the
+            // network.
+            let mut reader = ImageReader::open(&resolved)
+                .map_err(|e| format!("Failed to open image: {}", e))?
+                .with_guessed_format()
+                .map_err(|e| format!("Failed to read image header: {}", e))?;
             let format = reader.format();
             // SEC-019: decompression-bomb defense.
             reader.limits(safe_image_limits());
