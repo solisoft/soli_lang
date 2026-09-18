@@ -741,7 +741,8 @@ impl Interpreter {
                             // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
                             // fichier, quel que soit le nombre d'appels.
                             if let Some(ref declaring_file) = method.source_path {
-                                interpreter.current_source_path = Some(std::path::PathBuf::from(declaring_file));
+                                interpreter.current_source_path =
+                                    Some(std::path::PathBuf::from(declaring_file));
                             }
                             match interpreter.execute_block(&method.body, env_clone) {
                                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
@@ -782,7 +783,8 @@ impl Interpreter {
                             // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
                             // fichier, quel que soit le nombre d'appels.
                             if let Some(ref declaring_file) = mm_method.source_path {
-                                interpreter.current_source_path = Some(std::path::PathBuf::from(declaring_file));
+                                interpreter.current_source_path =
+                                    Some(std::path::PathBuf::from(declaring_file));
                             }
                             match interpreter.execute_block(&mm_method.body, env_clone) {
                                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
@@ -995,7 +997,8 @@ impl Interpreter {
                         // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
                         // fichier, quel que soit le nombre d'appels.
                         if let Some(ref declaring_file) = block.source_path {
-                            interpreter.current_source_path = Some(std::path::PathBuf::from(declaring_file));
+                            interpreter.current_source_path =
+                                Some(std::path::PathBuf::from(declaring_file));
                         }
                         match interpreter.execute_block(&block.body, env_clone) {
                             Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
@@ -1969,7 +1972,8 @@ impl Interpreter {
                         // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
                         // fichier, quel que soit le nombre d'appels.
                         if let Some(ref declaring_file) = block.source_path {
-                            interpreter.current_source_path = Some(std::path::PathBuf::from(declaring_file));
+                            interpreter.current_source_path =
+                                Some(std::path::PathBuf::from(declaring_file));
                         }
                         match interpreter.execute_block(&block.body, env_clone) {
                             Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
@@ -2418,6 +2422,13 @@ impl Interpreter {
             "nil?" => Ok(Value::Bool(false)),
             "blank?" => Ok(Value::Bool(false)),
             "present?" => Ok(Value::Bool(true)),
+            // Itself. Every other type answers `to_i` -- a string parses, a
+            // float truncates, nil is 0 -- so the one type that already *is*
+            // an int was the only one on which `x.to_i` could fail, which is
+            // exactly where a caller reaching for it would never expect it
+            // to. It is what lets `params["n"].to_i` be written once,
+            // whether what arrives is "3", 3, or nothing at all.
+            "to_i" | "to_int" => Ok(Value::Int(n)),
             "to_f" | "to_float" => Ok(Value::Float(n as f64)),
             "inspect" => Ok(Value::String(n.to_string().into())),
             "abs" => Ok(Value::Int(n.abs())),
@@ -2482,6 +2493,9 @@ impl Interpreter {
             "present?" => Ok(Value::Bool(true)),
             "to_s" | "to_string" => Ok(Value::String(format!("{}", n).into())),
             "to_i" | "to_int" => Ok(Value::Int(n as i64)),
+            // The same gap, mirrored: a float was the one type on which
+            // `to_f` was missing.
+            "to_f" | "to_float" => Ok(Value::Float(n)),
             "inspect" => Ok(Value::String(format!("{}", n).into())),
             "abs" => Ok(Value::Float(n.abs())),
             "sqrt" => Ok(Value::Float(n.sqrt())),

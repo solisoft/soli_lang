@@ -158,6 +158,16 @@ pub const INT_METHODS: &[MethodDef] = &[
         ret: "float",
     },
     MethodDef {
+        name: "to_i",
+        zero_arg: true,
+        ret: "int",
+    },
+    MethodDef {
+        name: "to_int",
+        zero_arg: true,
+        ret: "int",
+    },
+    MethodDef {
         name: "to_s",
         zero_arg: true,
         ret: "string",
@@ -272,6 +282,16 @@ pub const FLOAT_METHODS: &[MethodDef] = &[
     },
     MethodDef {
         name: "sqrt",
+        zero_arg: true,
+        ret: "float",
+    },
+    MethodDef {
+        name: "to_f",
+        zero_arg: true,
+        ret: "float",
+    },
+    MethodDef {
+        name: "to_float",
         zero_arg: true,
         ret: "float",
     },

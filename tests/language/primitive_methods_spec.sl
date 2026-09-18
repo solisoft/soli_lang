@@ -299,6 +299,42 @@ describe("Int method dispatch (with args)", fn() {
     });
 });
 
+// Every type answers `to_i`, so the one type that already IS an int was the
+// only one on which `x.to_i` could raise — which is exactly where a caller
+// reaching for it would never expect it to. `to_f` on a float was the same
+// gap, mirrored. Both are what let a value be normalised in one call,
+// whatever arrived.
+describe("A conversion to a type's own type is the identity", fn() {
+    test("an int converts to an int", fn() {
+        assert_eq((42).to_i, 42);
+        assert_eq((42).to_int, 42);
+        assert_eq((-7).to_i, -7);
+        assert_eq((0).to_i, 0);
+        assert_eq((42).to_i(), 42);
+    });
+
+    test("a float converts to a float", fn() {
+        assert_eq((3.5).to_f, 3.5);
+        assert_eq((3.5).to_float, 3.5);
+        assert_eq((-0.25).to_f, -0.25);
+        assert_eq((3.5).to_f(), 3.5);
+    });
+
+    // The point of the pair: one call normalises whatever arrived, so the
+    // caller stops writing `?? 0` around it.
+    test("to_i is total over the scalars a param can hold", fn() {
+        let seen = [7, "7", 7.9, null, true].map(fn(v) { return v.to_i; });
+        assert_eq(seen, [7, 7, 7, 0, 1]);
+    });
+
+    test("to_f is total over the same", fn() {
+        assert_eq((7).to_f, 7.0);
+        assert_eq("7.5".to_f, 7.5);
+        assert_eq((7.5).to_f, 7.5);
+        assert_eq(null.to_f, 0.0);
+    });
+});
+
 describe("Float method dispatch", fn() {
     test("round with no args returns int", fn() {
         assert_eq((3.4).round, 3);
