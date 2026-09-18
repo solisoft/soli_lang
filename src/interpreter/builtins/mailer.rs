@@ -42,6 +42,8 @@ use std::time::Duration;
 use base64::Engine;
 use mail_builder::headers::address::Address;
 use mail_builder::headers::date::Date;
+use mail_builder::headers::raw::Raw;
+use mail_builder::mime::MimePart;
 use mail_builder::MessageBuilder;
 use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
@@ -215,8 +217,9 @@ fn as_address_list(v: Option<&Value>) -> Vec<String> {
 }
 
 /// Split `"Display Name <addr@host>"` into `(Some(name), addr)`, or `(None, s)`
-/// when there's no angle-bracket form. Used for the `From`/`Reply-To` display
-/// name; recipients are passed through as bare addresses.
+/// when there's no angle-bracket form. Used for every address that is
+/// written into a header, and for the envelope by way of
+/// [`envelope_address`].
 fn parse_address(s: &str) -> (Option<String>, String) {
     let s = s.trim();
     if let (Some(lt), Some(gt)) = (s.rfind('<'), s.rfind('>')) {
@@ -266,20 +269,49 @@ fn build_mime(mail: &HashPairs) -> Result<String, String> {
         ensure_no_crlf("recipient", addr)?;
     }
 
+    // Recipients carry a display name like every other address does.
+    // Handing `"Ana <ana@x.io>"` over as a bare string wrote
+    // `To: <Ana <ana@x.io>>` -- one address inside another, which is not
+    // an address at all. `from` has always been parsed; this is the same
+    // parse, applied where it was missing.
+    let named: Vec<Address<'static>> = to.iter().map(|a| make_address(a)).collect();
     let mut builder = MessageBuilder::new()
         .from(make_address(&from))
-        .to(to)
+        .to(named)
         .subject(subject)
         .date(Date::now());
 
     if !cc.is_empty() {
-        builder = builder.cc(cc);
+        let named: Vec<Address<'static>> = cc.iter().map(|a| make_address(a)).collect();
+        builder = builder.cc(named);
     }
     // Bcc is intentionally NOT added as a header; bcc recipients are only in
     // the SMTP envelope (see deliver_smtp).
     if let Some(reply_to) = hash_get(mail, "reply_to").and_then(|v| as_string(&v)) {
         ensure_no_crlf("reply_to", &reply_to)?;
         builder = builder.reply_to(make_address(&reply_to));
+    }
+    // Headers this crate has no name for: `In-Reply-To` and `References`,
+    // which are what makes an answer an answer rather than a new message in
+    // the reader it lands in. Written raw and guarded like every other
+    // field -- a name or a value carrying CR or LF is header injection, and
+    // this is the one place an application hands over both halves of a line.
+    if let Some(Value::Hash(extra)) = mail.get(&HashKey::String("headers".into())) {
+        for (name, value) in extra.borrow().iter() {
+            let HashKey::String(name) = name else {
+                return Err("mail `headers` keys must be strings".to_string());
+            };
+            let Some(value) = as_string(value) else {
+                continue;
+            };
+            ensure_no_crlf("header name", name)?;
+            ensure_no_crlf(name, &value)?;
+            if name.trim().is_empty() || name.bytes().any(|b| b == b':' || b.is_ascii_whitespace())
+            {
+                return Err(format!("mail `headers` name {name:?} is not a header name"));
+            }
+            builder = builder.header(name.to_string(), Raw::new(value));
+        }
     }
     if let Some(text) = hash_get(mail, "text").and_then(|v| as_string(&v)) {
         builder = builder.text_body(text);
@@ -288,8 +320,30 @@ fn build_mime(mail: &HashPairs) -> Result<String, String> {
         builder = builder.html_body(html);
     }
 
-    if let Some(Value::Array(atts)) = mail.get(&HashKey::String("attachments".into())) {
-        for att in atts.borrow().iter() {
+    // `alternatives`: extra faces of the same message, each a hash of
+    // `content_type` and `body`. `text/markdown` is what this exists for.
+    let mut extra: Vec<MimePart<'static>> = Vec::new();
+    if let Some(Value::Array(list)) = mail.get(&HashKey::String("alternatives".into())) {
+        for one in list.borrow().iter() {
+            if let Value::Hash(one) = one {
+                let one = one.borrow();
+                let content_type = hash_get(&one, "content_type")
+                    .and_then(|v| as_string(&v))
+                    .unwrap_or_else(|| "text/plain".to_string());
+                // Written verbatim into the part's header block.
+                ensure_no_crlf("alternative content_type", &content_type)?;
+                validate_mime_type(&content_type)?;
+                let body = hash_get(&one, "body")
+                    .and_then(|v| as_string(&v))
+                    .unwrap_or_default();
+                extra.push(MimePart::new(content_type, body));
+            }
+        }
+    }
+
+    let mut atts: Vec<MimePart<'static>> = Vec::new();
+    if let Some(Value::Array(atts_in)) = mail.get(&HashKey::String("attachments".into())) {
+        for att in atts_in.borrow().iter() {
             if let Value::Hash(att) = att {
                 let att = att.borrow();
                 let filename = hash_get(&att, "filename")
@@ -319,9 +373,43 @@ fn build_mime(mail: &HashPairs) -> Result<String, String> {
                         .unwrap_or_default()
                         .into_bytes()
                 };
-                builder = builder.attachment(content_type, filename, bytes);
+                atts.push(MimePart::new(content_type, bytes).attachment(filename));
             }
         }
+    }
+
+    // A third face of the same message.
+    //
+    // `text_body`/`html_body` are the two mail-builder knows, and they cover
+    // almost every message there is. A source that is neither -- markdown,
+    // which is what a person actually typed -- is a third alternative, and
+    // the crate has no name for it: `body` takes a structure instead, and
+    // setting it means assembling the whole thing here, attachments
+    // included, because a custom body makes the others inert.
+    //
+    // Ordered least rich to most (RFC 2046 §5.1.4: the last part a reader
+    // can show is the one it shows), so plain, then the extras in the order
+    // given, then HTML.
+    if !extra.is_empty() {
+        let mut parts: Vec<MimePart<'static>> = Vec::with_capacity(extra.len() + 2);
+        if let Some(text) = builder.text_body.take() {
+            parts.push(text);
+        }
+        parts.extend(extra);
+        if let Some(html) = builder.html_body.take() {
+            parts.push(html);
+        }
+        let alternative = MimePart::new("multipart/alternative", parts);
+        builder = builder.body(if atts.is_empty() {
+            alternative
+        } else {
+            let mut mixed = Vec::with_capacity(atts.len() + 1);
+            mixed.push(alternative);
+            mixed.extend(atts);
+            MimePart::new("multipart/mixed", mixed)
+        });
+    } else if !atts.is_empty() {
+        builder.attachments = Some(atts);
     }
 
     builder
@@ -1067,6 +1155,113 @@ mod tests {
             (Some("Alice".to_string()), "alice@example.com".to_string())
         );
         assert_eq!(envelope_address("Bob <bob@x.io>"), "bob@x.io");
+    }
+
+    fn pairs(items: &[(&str, Value)]) -> HashPairs {
+        let mut h = HashPairs::default();
+        for (k, v) in items {
+            h.insert(HashKey::String((*k).into()), v.clone());
+        }
+        h
+    }
+
+    #[test]
+    fn three_faces_of_one_message() {
+        let alts = Value::Array(Rc::new(RefCell::new(vec![Value::Hash(Rc::new(
+            RefCell::new(pairs(&[
+                ("content_type", Value::String("text/markdown".into())),
+                ("body", Value::String("# Hi\n\n- one".into())),
+            ])),
+        ))])));
+        let mail = pairs(&[
+            ("from", Value::String("me@b.com".into())),
+            ("to", Value::String("you@d.com".into())),
+            ("subject", Value::String("three".into())),
+            ("text", Value::String("Hi\n\n- one".into())),
+            ("html", Value::String("<h1>Hi</h1>".into())),
+            ("alternatives", alts),
+        ]);
+        let mime = build_mime(&mail).expect("built");
+        assert!(mime.contains("multipart/alternative"), "{mime}");
+        // Least rich first: a reader shows the last part it understands.
+        let plain = mime.find("text/plain").expect("a plain part");
+        let md = mime.find("text/markdown").expect("a markdown part");
+        let html = mime.find("text/html").expect("an html part");
+        assert!(plain < md && md < html, "wrong order: {mime}");
+    }
+
+    #[test]
+    fn an_attachment_still_rides_beside_three_faces() {
+        let alts = Value::Array(Rc::new(RefCell::new(vec![Value::Hash(Rc::new(
+            RefCell::new(pairs(&[
+                ("content_type", Value::String("text/markdown".into())),
+                ("body", Value::String("hi".into())),
+            ])),
+        ))])));
+        let att = Value::Array(Rc::new(RefCell::new(vec![Value::Hash(Rc::new(
+            RefCell::new(pairs(&[
+                ("filename", Value::String("note.txt".into())),
+                ("content_type", Value::String("text/plain".into())),
+                ("content", Value::String("a note".into())),
+            ])),
+        ))])));
+        let mail = pairs(&[
+            ("from", Value::String("me@b.com".into())),
+            ("to", Value::String("you@d.com".into())),
+            ("text", Value::String("hi".into())),
+            ("alternatives", alts),
+            ("attachments", att),
+        ]);
+        let mime = build_mime(&mail).expect("built");
+        assert!(mime.contains("multipart/mixed"), "{mime}");
+        assert!(mime.contains("multipart/alternative"), "{mime}");
+        assert!(mime.contains("note.txt"), "{mime}");
+    }
+
+    #[test]
+    fn a_named_recipient_is_one_address_not_two() {
+        let mail = pairs(&[
+            ("from", Value::String("Me <me@b.com>".into())),
+            ("to", Value::String("Ana Vieira <ana@fieldnotes.co>".into())),
+            ("subject", Value::String("hi".into())),
+            ("text", Value::String("hi".into())),
+        ]);
+        let mime = build_mime(&mail).expect("built");
+        // The crate quotes a display name, which is its business; what this
+        // is about is that the address is not inside another one.
+        assert!(mime.contains("<ana@fieldnotes.co>"), "{mime}");
+        assert!(mime.contains("Ana Vieira"), "{mime}");
+        assert!(!mime.contains("<Ana Vieira <"), "{mime}");
+    }
+
+    #[test]
+    fn extra_headers_are_written_and_injection_is_refused() {
+        let threading = Value::Hash(Rc::new(RefCell::new(pairs(&[(
+            "In-Reply-To",
+            Value::String("<one@mail>".into()),
+        )]))));
+        let mail = pairs(&[
+            ("from", Value::String("a@b.com".into())),
+            ("to", Value::String("c@d.com".into())),
+            ("subject", Value::String("Re: hello".into())),
+            ("text", Value::String("hi".into())),
+            ("headers", threading),
+        ]);
+        let mime = build_mime(&mail).expect("built");
+        assert!(mime.contains("In-Reply-To: <one@mail>"), "{mime}");
+
+        // Both halves of a header line come from the application here, so
+        // both are guarded: a value carrying CRLF is a second header.
+        let smuggled = Value::Hash(Rc::new(RefCell::new(pairs(&[(
+            "X-Note",
+            Value::String("one\r\nBcc: sneak@x.io".into()),
+        )]))));
+        let bad = pairs(&[
+            ("from", Value::String("a@b.com".into())),
+            ("to", Value::String("c@d.com".into())),
+            ("headers", smuggled),
+        ]);
+        assert!(build_mime(&bad).is_err());
     }
 
     #[test]
