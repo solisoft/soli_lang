@@ -177,6 +177,57 @@ pub struct Encoder {
     /// Font roles this session has already been told about, so a `DefFont`
     /// goes out once rather than once per style that names the family.
     fonts_sent: std::collections::HashSet<u8>,
+    /// What the last render spent, phase by phase, in milliseconds:
+    /// converting the view value, counting the nodes, diffing, freezing the
+    /// keyed memo, and cutting the ops into batches. `EUI_TRACE=1` prints
+    /// them; without it they are five stores nobody reads.
+    phase_convert: f64,
+    phase_count: f64,
+    phase_diff: f64,
+    phase_freeze: f64,
+    phase_batch: f64,
+}
+
+/// Style ids by the *identity* of the value that produced them, for the
+/// length of one conversion pass.
+///
+/// A fingerprint is a walk of the hash and a BLAKE3 over every field; this is
+/// a pointer comparison. A style the view hoists out of its loop — what the
+/// catalogue's builders do, and what a table of ten thousand rows wants — is
+/// then fingerprinted once per render instead of once per node. A style built
+/// fresh per node has a fresh pointer and falls through to the fingerprint,
+/// so nothing is lost by trying.
+///
+/// It keeps the value, and that is not bookkeeping: an address is unique only
+/// among things that are *alive*. A style dropped after its lookup frees an
+/// allocation the next one can be handed, and a pointer that answered for the
+/// old contents would then quietly dress a node in somebody else's style.
+/// Holding an `Rc` clone means nothing the memo remembers can be freed while
+/// it remembers it.
+///
+/// A pass local rather than a field on the encoder, for the same two reasons
+/// `pins` is: an interpreter value cannot cross threads, and a hash is
+/// mutable — within one pass it cannot move, since the view has already
+/// returned the whole tree, but between two a handler may have written to the
+/// very hash a module constant holds.
+#[derive(Default)]
+struct StyleMemo {
+    by_identity: HashMap<usize, (Value, u32)>,
+}
+
+impl StyleMemo {
+    fn get(&self, at: &usize) -> Option<u32> {
+        self.by_identity.get(at).map(|(_, id)| *id)
+    }
+
+    fn remember(&mut self, at: usize, value: Value, id: u32) {
+        self.by_identity.insert(at, (value, id));
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.by_identity.len()
+    }
 }
 
 impl Encoder {
@@ -755,11 +806,14 @@ impl Encoder {
         // until `finish` pins them in the memo. Held here, not on the
         // encoder: an interpreter value cannot cross threads.
         let mut pins: HashMap<usize, Value> = HashMap::new();
-        let tree = match self.convert_value(value, &mut pins, 1)? {
+        let mut styles = StyleMemo::default();
+        let t_convert = std::time::Instant::now();
+        let tree = match self.convert_value(value, &mut pins, &mut styles, 1)? {
             Some(Child::Fresh(n)) => n,
             Some(Child::Kept(rc)) => (*rc).clone(),
             None => return Err("EUI: the view returned nothing".into()),
         };
+        self.phase_convert = t_convert.elapsed().as_secs_f64() * 1e3;
         self.finish(tree, resync, pins)
     }
 
@@ -775,7 +829,9 @@ impl Encoder {
         if let Some(reason) = self.overflow.take() {
             return Err(reason);
         }
+        let t_count = std::time::Instant::now();
         let nodes = count_nodes(&tree);
+        self.phase_count = t_count.elapsed().as_secs_f64() * 1e3;
         self.last_nodes = nodes;
         if nodes > eui_proto::limits::MAX_NODES as usize {
             return Err(format!(
@@ -783,6 +839,7 @@ impl Encoder {
                 eui_proto::limits::MAX_NODES
             ));
         }
+        let t_diff = std::time::Instant::now();
         let ops = match (self.prev.take(), resync) {
             (Some(prev), false) => {
                 let mut ops = Vec::new();
@@ -794,9 +851,11 @@ impl Encoder {
                 mount_ops(&tree)
             }
         };
+        self.phase_diff = t_diff.elapsed().as_secs_f64() * 1e3;
         // Keyed nodes converted this render are frozen behind an Arc, so the
         // next render can keep them by the identity of their view value.
         let generation = self.generation;
+        let t_freeze = std::time::Instant::now();
         if !self.session.is_empty() {
             let session = self.session.clone();
             with_memo(&session, |memo| {
@@ -823,7 +882,9 @@ impl Encoder {
                 memo.entries.retain(|id, _| keep.contains(id));
             });
         }
+        self.phase_freeze = t_freeze.elapsed().as_secs_f64() * 1e3;
         self.prev = Some(tree);
+        let t_batch = std::time::Instant::now();
         let mut all = std::mem::take(&mut self.pending);
         all.extend(ops);
         // A big update streams: every prefix of the op list is valid on its
@@ -862,6 +923,17 @@ impl Encoder {
         // noticed. On a page that carries a `wake` — the clock in this very
         // demo, a progress bar, a messenger — it meant the whole screen was
         // restyled once a tick forever, which reads as a flicker and is one.
+        self.phase_batch = t_batch.elapsed().as_secs_f64() * 1e3;
+        if super::trace() {
+            eprintln!(
+                "[EUI trace] phases: convert {:.2} count {:.2} diff {:.2} freeze {:.2} batch {:.2} ms",
+                self.phase_convert,
+                self.phase_count,
+                self.phase_diff,
+                self.phase_freeze,
+                self.phase_batch,
+            );
+        }
         Ok(batches)
     }
 
@@ -936,6 +1008,7 @@ impl Encoder {
         &mut self,
         v: &Value,
         pins: &mut HashMap<usize, Value>,
+        styles: &mut StyleMemo,
         depth: u32,
     ) -> Result<Option<Child>, String> {
         too_deep(depth)?;
@@ -966,7 +1039,7 @@ impl Encoder {
         // The node's own fields are read off the value; `c` is walked.
         let (mut node, kids) = {
             let borrow = hash.borrow();
-            let node = self.convert_shallow_value(&borrow)?;
+            let node = self.convert_shallow_value(&borrow, styles)?;
             let kids = match borrow.get(&HashKey::String("c".into())) {
                 Some(Value::Array(items)) => Some(Rc::clone(items)),
                 _ => None,
@@ -975,7 +1048,7 @@ impl Encoder {
         };
         if let Some(kids) = kids {
             for child in kids.borrow().iter() {
-                if let Some(c) = self.convert_value(child, pins, depth + 1)? {
+                if let Some(c) = self.convert_value(child, pins, styles, depth + 1)? {
                     node.children.push(c);
                 }
             }
@@ -1049,6 +1122,7 @@ impl Encoder {
     fn convert_shallow_value(
         &mut self,
         fields: &crate::interpreter::value::HashPairs,
+        styles: &mut StyleMemo,
     ) -> Result<TNode, String> {
         let field = |name: &str| fields.get(&HashKey::String(name.into()));
         let kind = match field("k") {
@@ -1058,7 +1132,7 @@ impl Encoder {
         };
         let style = match field("s") {
             None => 0,
-            Some(style) => self.style_of_value(style)?,
+            Some(style) => self.style_of_value(style, styles)?,
         };
         let key = field("key").map(|k| match k {
             Value::String(s) => s.to_string(),
@@ -1128,21 +1202,32 @@ impl Encoder {
 
     /// A style id for a view value: by fingerprint when the value is a hash
     /// seen before, else the JSON way, remembered under its fingerprint.
-    fn style_of_value(&mut self, style: &Value) -> Result<u32, String> {
+    fn style_of_value(&mut self, style: &Value, seen: &mut StyleMemo) -> Result<u32, String> {
+        let identity = match style {
+            Value::Hash(hash) => Some(Rc::as_ptr(hash) as *const u8 as usize),
+            _ => None,
+        };
+        if let Some(id) = identity.and_then(|at| seen.get(&at)) {
+            return Ok(id);
+        }
+
         let fingerprint = match style {
             Value::Hash(_) => fingerprint_of(style),
             _ => None,
         };
-        if let Some(fp) = fingerprint {
-            if let Some(id) = self.style_fingerprints.get(&fp) {
-                return Ok(*id);
+        let id = if let Some(id) = fingerprint.and_then(|fp| self.style_fingerprints.get(&fp)) {
+            *id
+        } else {
+            let json = crate::interpreter::value::value_to_json(style)?;
+            let record = self.style_record(&json)?;
+            let id = self.style(record);
+            if let Some(fp) = fingerprint {
+                self.style_fingerprints.insert(fp, id);
             }
-        }
-        let json = crate::interpreter::value::value_to_json(style)?;
-        let record = self.style_record(&json)?;
-        let id = self.style(record);
-        if let Some(fp) = fingerprint {
-            self.style_fingerprints.insert(fp, id);
+            id
+        };
+        if let Some(at) = identity {
+            seen.remember(at, style.clone(), id);
         }
         Ok(id)
     }
@@ -1645,52 +1730,78 @@ fn too_deep(depth: u32) -> Result<(), String> {
 /// The keyed style cache lives on this: two style hashes with the same
 /// fields fingerprint the same, whatever object they are.
 fn fingerprint_of(v: &Value) -> Option<[u8; 16]> {
-    fn feed(v: &Value, h: &mut blake3::Hasher) -> bool {
+    // Serialised first, hashed once.
+    //
+    // This used to feed BLAKE3 directly, a dozen `update` calls of a few
+    // bytes each per style — and BLAKE3's per-call buffering, not its
+    // compression, was most of what a style lookup cost: 895 ns for a
+    // three-key style, of which the walk was 76 and hashing all 83 bytes in
+    // one go was 195. The bytes fed are exactly the same, so the digest is
+    // exactly the same; only the number of calls changed.
+    fn feed(v: &Value, out: &mut Vec<u8>) -> bool {
         match v {
-            Value::Null => h.update(b"n"),
-            Value::Bool(b) => h.update(if *b { b"t" } else { b"f" }),
-            Value::Int(i) => h.update(b"i").update(&i.to_le_bytes()),
-            Value::Float(f) => h.update(b"d").update(&f.to_bits().to_le_bytes()),
-            Value::String(s) | Value::Symbol(s) => h
-                .update(b"s")
-                .update(&(s.len() as u64).to_le_bytes())
-                .update(s.as_bytes()),
+            Value::Null => out.push(b'n'),
+            Value::Bool(b) => out.push(if *b { b't' } else { b'f' }),
+            Value::Int(i) => {
+                out.push(b'i');
+                out.extend_from_slice(&i.to_le_bytes());
+            }
+            Value::Float(f) => {
+                out.push(b'd');
+                out.extend_from_slice(&f.to_bits().to_le_bytes());
+            }
+            Value::String(s) | Value::Symbol(s) => {
+                out.push(b's');
+                out.extend_from_slice(&(s.len() as u64).to_le_bytes());
+                out.extend_from_slice(s.as_bytes());
+            }
             Value::Array(items) => {
                 let items = items.borrow();
-                h.update(b"a").update(&(items.len() as u64).to_le_bytes());
+                out.push(b'a');
+                out.extend_from_slice(&(items.len() as u64).to_le_bytes());
                 for item in items.iter() {
-                    if !feed(item, h) {
+                    if !feed(item, out) {
                         return false;
                     }
                 }
-                h
             }
             Value::Hash(pairs) => {
                 let pairs = pairs.borrow();
-                h.update(b"h").update(&(pairs.len() as u64).to_le_bytes());
+                out.push(b'h');
+                out.extend_from_slice(&(pairs.len() as u64).to_le_bytes());
                 for (k, val) in pairs.iter() {
                     let HashKey::String(name) = k else {
                         return false;
                     };
-                    h.update(&(name.len() as u64).to_le_bytes())
-                        .update(name.as_bytes());
-                    if !feed(val, h) {
+                    out.extend_from_slice(&(name.len() as u64).to_le_bytes());
+                    out.extend_from_slice(name.as_bytes());
+                    if !feed(val, out) {
                         return false;
                     }
                 }
-                h
             }
             _ => return false,
         };
         true
     }
-    let mut h = blake3::Hasher::new();
-    if !feed(v, &mut h) {
-        return None;
+
+    thread_local! {
+        /// One buffer per thread, kept between styles: a style is tens of
+        /// bytes and there are thousands of them per render, so the
+        /// allocation would otherwise be the next thing to show up.
+        static SCRATCH: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
     }
-    let mut out = [0u8; 16];
-    out.copy_from_slice(&h.finalize().as_bytes()[..16]);
-    Some(out)
+
+    SCRATCH.with(|scratch| {
+        let mut buf = scratch.borrow_mut();
+        buf.clear();
+        if !feed(v, &mut buf) {
+            return None;
+        }
+        let mut out = [0u8; 16];
+        out.copy_from_slice(&blake3::hash(&buf).as_bytes()[..16]);
+        Some(out)
+    })
 }
 
 /// `animation`, which is a bit set rather than one name (03 §5).
@@ -2268,16 +2379,69 @@ mod tests {
             ])
         };
         let mut enc = Encoder::default();
-        let a = enc.style_of_value(&style()).unwrap();
+        let seen = &mut StyleMemo::default();
+        let a = enc.style_of_value(&style(), seen).unwrap();
         assert_eq!(enc.style_fingerprints.len(), 1);
-        let b = enc.style_of_value(&style()).unwrap();
+        let b = enc.style_of_value(&style(), seen).unwrap();
         assert_eq!(a, b, "the same fields are the same style");
         assert_eq!(enc.styles.len(), 1);
         let c = enc
-            .style_of_value(&h(vec![("display", s("column"))]))
+            .style_of_value(&h(vec![("display", s("column"))]), seen)
             .unwrap();
         assert_ne!(a, c);
         assert_eq!(enc.style_fingerprints.len(), 2);
+    }
+
+    /// The point of the identity memo: a style a view hoists out of its loop
+    /// is one allocation, so it is fingerprinted once however many nodes wear
+    /// it. The fingerprint is a walk of the hash and a BLAKE3 over its
+    /// fields; this is a pointer.
+    #[test]
+    fn a_style_shared_by_many_nodes_is_fingerprinted_once() {
+        let shared = h(vec![("display", s("row")), ("gap", Value::Int(4))]);
+        let mut enc = Encoder::default();
+        let seen = &mut StyleMemo::default();
+
+        let first = enc.style_of_value(&shared, seen).unwrap();
+        for _ in 0..50 {
+            assert_eq!(enc.style_of_value(&shared, seen).unwrap(), first);
+        }
+        assert_eq!(seen.len(), 1);
+        assert_eq!(enc.style_fingerprints.len(), 1, "one walk, not fifty-one");
+        assert_eq!(enc.styles.len(), 1);
+    }
+
+    /// And the reason it is cleared every pass: a hash is mutable. Inside one
+    /// conversion nothing can move — the view has already returned the whole
+    /// tree — but a handler between two renders may write to the very hash a
+    /// module constant holds, and a pointer that still answers the old id
+    /// would paint last render's style for ever.
+    #[test]
+    fn a_style_mutated_between_renders_is_not_the_one_the_pointer_remembers() {
+        let shared = h(vec![("display", s("row"))]);
+        let view = |style: &Value| {
+            h(vec![
+                ("k", s("box")),
+                ("s", style.clone()),
+                ("c", list(vec![h(vec![("k", s("text")), ("t", s("hi"))])])),
+            ])
+        };
+
+        let mut enc = Encoder::default();
+        enc.render_value("session", &view(&shared), false).unwrap();
+        let before = enc.style_of_value(&shared, &mut StyleMemo::default()).unwrap();
+
+        // The same allocation, different contents.
+        let Value::Hash(pairs) = &shared else {
+            unreachable!("a hash")
+        };
+        pairs
+            .borrow_mut()
+            .insert(HashKey::String("gap".into()), Value::Int(9));
+
+        enc.render_value("session", &view(&shared), false).unwrap();
+        let after = enc.style_of_value(&shared, &mut StyleMemo::default()).unwrap();
+        assert_ne!(before, after, "the pointer outlived its contents");
     }
 
     #[test]
@@ -2599,5 +2763,74 @@ mod tests {
         }
         assert_eq!(memo_entries("gone"), 0);
         assert_eq!(memo_entries("live"), 1);
+    }
+}
+
+#[cfg(test)]
+mod fingerprint_cost {
+    use super::*;
+
+    /// Not an assertion — a measurement, printed with `--nocapture`. The
+    /// question it answers: of the 737 ns a style lookup costs per node, how
+    /// much is walking the hash and how much is BLAKE3 over what the walk
+    /// produced?
+    #[test]
+    #[ignore]
+    fn what_a_style_fingerprint_costs() {
+        let mut map = crate::interpreter::value::HashPairs::default();
+        map.insert(HashKey::String("width".into()), Value::Int(90));
+        map.insert(HashKey::String("size".into()), Value::Int(1));
+        map.insert(
+            HashKey::String("fg".into()),
+            Value::String("text.default".into()),
+        );
+        let style = Value::Hash(Rc::new(RefCell::new(map)));
+
+        let rounds = 200_000;
+        let t = std::time::Instant::now();
+        let mut sink = 0u8;
+        for _ in 0..rounds {
+            sink ^= fingerprint_of(&style).unwrap()[0];
+        }
+        let full = t.elapsed().as_secs_f64() / (rounds as f64) * 1e9;
+
+        // The same walk, feeding a counter instead of a hash.
+        let t = std::time::Instant::now();
+        let mut bytes = 0usize;
+        for _ in 0..rounds {
+            bytes += walked_bytes(&style);
+        }
+        let walk = t.elapsed().as_secs_f64() / (rounds as f64) * 1e9;
+
+        // And the hash alone, over that many bytes.
+        let payload = vec![0u8; bytes / rounds];
+        let t = std::time::Instant::now();
+        for _ in 0..rounds {
+            sink ^= blake3::hash(&payload).as_bytes()[0];
+        }
+        let hash = t.elapsed().as_secs_f64() / (rounds as f64) * 1e9;
+
+        println!(
+            "fingerprint {full:.0} ns = walk {walk:.0} ns + blake3 over {} bytes {hash:.0} ns (sink {sink})",
+            bytes / rounds
+        );
+    }
+
+    fn walked_bytes(v: &Value) -> usize {
+        match v {
+            Value::Int(_) => 9,
+            Value::String(s) | Value::Symbol(s) => 9 + s.len(),
+            Value::Hash(pairs) => {
+                let pairs = pairs.borrow();
+                9 + pairs
+                    .iter()
+                    .map(|(k, val)| {
+                        let HashKey::String(name) = k else { return 0 };
+                        8 + name.len() + walked_bytes(val)
+                    })
+                    .sum::<usize>()
+            }
+            _ => 1,
+        }
     }
 }

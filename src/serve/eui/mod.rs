@@ -439,7 +439,7 @@ pub fn handle_eui_event(
     };
     if trace() {
         eprintln!(
-            "[EUI trace] worker: view {view_ms:.0} ms, convert+diff+encode {:.0} ms, {} batch(es)",
+            "[EUI trace] worker: view {view_ms:.1} ms, convert+diff+encode {:.1} ms, {} batch(es)",
             t_render.elapsed().as_secs_f64() * 1e3,
             batches.len()
         );
