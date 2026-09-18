@@ -47,15 +47,23 @@
                     <div><code class="text-amber-400">host</code> : <code class="text-orange-400">String</code> &mdash; IMAP server hostname</div>
                     <div><code class="text-amber-400">user</code> : <code class="text-orange-400">String</code> &mdash; Mailbox username</div>
                     <div><code class="text-amber-400">password</code> : <code class="text-orange-400">String</code> &mdash; Password or app password</div>
-                    <div><code class="text-amber-400">opts</code> : <code class="text-orange-400">Hash?</code> &mdash; <code class="text-cyan-400">port</code> (default <code>993</code>), <code class="text-cyan-400">tls</code> (default <code>true</code>)</div>
+                    <div><code class="text-amber-400">opts</code> : <code class="text-orange-400">Hash?</code> &mdash; <code class="text-cyan-400">port</code> (default <code>993</code>), <code class="text-cyan-400">tls</code> (default <code>true</code>), <code class="text-cyan-400">xoauth2</code> (an OAuth access token instead of a password)</div>
                 </div>
                 <pre data-filename="Connect"><code class="language-soli text-sm">mail = Imap.new("imap.gmail.com", "me@gmail.com", "app-password")
 
 # Plaintext on a custom port (e.g. a local test server)
-mail = Imap.new("127.0.0.1", "user", "pass", { "port": 143, "tls": false })</code></pre>
+mail = Imap.new("127.0.0.1", "user", "pass", { "port": 143, "tls": false })
+
+# OAuth instead of a password
+mail = Imap.new("imap.gmail.com", "me@work.com", "", { "xoauth2": access_token })</code></pre>
                 <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mt-4">
                     <p class="text-sm text-amber-200"><strong>Gmail / 2FA accounts:</strong> use an <a class="underline" href="https://support.google.com/accounts/answer/185833">App Password</a>, not your normal password, and enable IMAP access in your account settings.</p>
                 </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-6 mb-2"><code class="text-cyan-400">xoauth2</code> &mdash; OAuth instead of a password</h4>
+                <p class="text-gray-400 mb-3">A Google Workspace administrator can switch app passwords off for a whole domain, and by default now does: <code>LOGIN</code> then has no credential the server will accept, and the mailbox is unreachable over IMAP without <code>AUTHENTICATE XOAUTH2</code>. Pass the OAuth <strong>access token</strong> as <code class="text-cyan-400">opts.xoauth2</code> and leave the password empty &mdash; minting it from a refresh token is yours to do (see <a href="/docs/security/oauth-client" class="text-cyan-400 hover:underline">OAuth client</a>); Soli never sees the long-lived credential.</p>
+                <pre data-filename="Workspace"><code class="language-soli text-sm">token = OAuth.refresh(...)["access_token"]
+mail  = Imap.new("imap.gmail.com", "me@work.com", "", { "xoauth2": token })</code></pre>
+                <p class="text-gray-400 mt-3 text-sm">A refusal comes back as <code class="text-amber-400">IMAP authentication failed: XOAUTH2 refused (NO): &hellip;</code>.</p>
             </div>
         </section>
     </section>
@@ -71,15 +79,52 @@ mail = Imap.new("127.0.0.1", "user", "pass", { "port": 143, "tls": false })</cod
             <div><code class="text-amber-400">mail.fetch(seq)</code> &mdash; returns a parsed message hash for a sequence number (see below).</div>
             <div><code class="text-amber-400">mail.fetch_uid(uid)</code> &mdash; returns a parsed message hash for a UID.</div>
             <div><code class="text-amber-400">mail.fetch_all()</code> &mdash; returns parsed messages from the selected mailbox (capped at 200; raise via <code class="text-amber-400">SOLI_IMAP_MAX_MESSAGES</code>).</div>
+            <div><code class="text-amber-400">mail.fetch_headers(seq)</code> / <code class="text-amber-400">mail.fetch_headers_uid(uid)</code> &mdash; one message, <strong>headers only</strong> (see below).</div>
+            <div><code class="text-amber-400">mail.fetch_headers_range(lo, hi)</code> &mdash; headers for sequence numbers <code class="text-cyan-400">lo:hi</code>, in <strong>one</strong> round trip.</div>
+            <div><code class="text-amber-400">mail.fetch_headers_set(set)</code> &mdash; headers for a UID set &mdash; <code class="text-cyan-400">"100:*"</code>, <code class="text-cyan-400">"1,5,9"</code> &mdash; in one round trip.</div>
             <div><code class="text-amber-400">mail.mark_seen(seq)</code> / <code class="text-amber-400">mail.mark_unseen(seq)</code> &mdash; toggle the <code class="text-cyan-400">\Seen</code> flag; return <code class="text-cyan-400">true</code>.</div>
             <div><code class="text-amber-400">mail.delete(seq)</code> &mdash; marks the message <code class="text-cyan-400">\Deleted</code> (removed on <code class="text-amber-400">expunge</code>); returns <code class="text-cyan-400">true</code>.</div>
             <div><code class="text-amber-400">mail.expunge()</code> &mdash; permanently removes <code class="text-cyan-400">\Deleted</code> messages; returns <code class="text-cyan-400">true</code>.</div>
             <div><code class="text-amber-400">mail.copy(seq, mailbox)</code> &mdash; copies a message into another mailbox; returns <code class="text-cyan-400">true</code>.</div>
             <div><code class="text-amber-400">mail.move(seq, mailbox)</code> &mdash; moves a message via the RFC 6851 <code class="text-cyan-400">MOVE</code> extension; returns <code class="text-cyan-400">true</code>.</div>
+            <div><code class="text-amber-400">mail.uid_mark_seen(uid)</code> / <code class="text-amber-400">mail.uid_mark_unseen(uid)</code> &mdash; the same flag, addressed by UID.</div>
+            <div><code class="text-amber-400">mail.uid_delete(uid)</code> &mdash; marks the message <code class="text-cyan-400">\Deleted</code>, addressed by UID.</div>
+            <div><code class="text-amber-400">mail.uid_copy(uid, mailbox)</code> / <code class="text-amber-400">mail.uid_move(uid, mailbox)</code> &mdash; copy/move, addressed by UID.</div>
             <div><code class="text-amber-400">mail.logout()</code> &mdash; closes the connection; returns <code class="text-cyan-400">true</code>.</div>
         </div>
         <div class="rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-4 mt-4">
             <p class="text-sm text-cyan-100"><code class="text-amber-400">fetch</code> / <code class="text-amber-400">fetch_uid</code> use <code>BODY.PEEK[]</code>, so reading a message does <strong>not</strong> mark it <code>\Seen</code> &mdash; call <code class="text-amber-400">mark_seen()</code> explicitly if you want that.</p>
+        </div>
+    </section>
+
+    <!-- Listing without downloading -->
+    <section id="imap-headers" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Listing Without Downloading</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-4"><code class="text-amber-400">fetch</code> / <code class="text-amber-400">fetch_uid</code> ask for the whole message: every part, every attachment. That is right when you are about to <em>read</em> one and ruinous when you are drawing a list of twenty, where nothing but the sender, the subject and the date is ever shown &mdash; a modest inbox costs megabytes and seconds to list.</p>
+            <p class="text-gray-400 mb-4">The <code class="text-amber-400">fetch_headers*</code> family asks the server for four header lines instead (<code class="text-cyan-400">SUBJECT FROM TO DATE</code>), so a list costs kilobytes. What comes back is parsed by the same code into the same hash, with <code class="text-cyan-400">text_body</code> and <code class="text-cyan-400">html_body</code> simply absent &mdash; fetch those when someone opens the message.</p>
+            <pre data-filename="Listing an inbox"><code class="language-soli text-sm">rows = mail.fetch_headers_set("100:*")     # one round trip for the whole run
+for row in rows
+  print("#{row["subject"]} — #{row["bytes"]} bytes, #{row["clips"]} attachment(s)")
+end
+
+msg = mail.fetch_uid(rows[0]["uid"])       # the body, only when it is wanted</code></pre>
+            <p class="text-gray-400 mt-4 mb-2">A headers-only row carries two fields a full fetch does not need:</p>
+            <div class="text-sm text-gray-400 space-y-2">
+                <div><code class="text-cyan-400">bytes</code> &mdash; the message's real size (<code>RFC822.SIZE</code>). <code class="text-cyan-400">size</code> is the length of what <em>came back</em>, which for a headers fetch is the header block, not the message.</div>
+                <div><code class="text-cyan-400">clips</code> &mdash; how many parts declare themselves attachments (from <code>BODYSTRUCTURE</code>), without downloading any of them.</div>
+            </div>
+            <p class="text-gray-400 mt-4"><code class="text-amber-400">fetch_headers_range(lo, hi)</code> and <code class="text-amber-400">fetch_headers_set(set)</code> are one command and one wait for the whole run, where a loop over <code class="text-amber-400">fetch_headers_uid</code> is one of each per message. A set is digits, <code>,</code>, <code>:</code> and <code>*</code> &mdash; the RFC 3501 sequence-set grammar. Anything else is refused rather than interpolated onto the wire.</p>
+        </div>
+    </section>
+
+    <!-- Addressing by UID -->
+    <section id="imap-uid" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Addressing by UID</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <p class="text-gray-400 mb-4">Every mutating verb above takes a <strong>sequence number</strong>, which is a position and moves whenever anything before it is removed. A client that stores messages holds UIDs, so it had to turn each one into a position first with a <code>SEARCH UID n</code> &mdash; a whole extra round trip, and an application that answers nothing while it waits. The <code class="text-amber-400">uid_*</code> methods are the same operations addressed the way the caller already knows how, in one turn instead of two:</p>
+            <pre data-filename="By UID"><code class="language-soli text-sm">mail.uid_mark_seen(4821)
+mail.uid_move(4821, "Archive")</code></pre>
         </div>
     </section>
 
@@ -100,6 +145,7 @@ mail.search("ALL")                              # everything (the default)</code
         <h2 class="text-2xl font-bold text-white mb-4">Message Hash</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <p class="text-gray-400 mb-4">Each fetched message is a hash carrying the same fields as <a href="/docs/builtins/pop3" class="text-cyan-400 hover:underline">Pop3</a> plus IMAP identity fields (<code class="text-cyan-400">seq</code>, <code class="text-cyan-400">uid</code>, <code class="text-cyan-400">flags</code>). <code class="text-cyan-400">from</code> is a single <code class="text-cyan-400">{name, address}</code> hash (or <code>null</code>); <code class="text-cyan-400">to</code> is an array of them. Missing headers/bodies are <code>null</code>.</p>
+            <p class="text-gray-400 mb-4"><code class="text-cyan-400">parts</code> is <strong>every</strong> text part with the type it declares, in the order the message carries them. <code class="text-cyan-400">text_body</code> and <code class="text-cyan-400">html_body</code> answer &ldquo;the plain one&rdquo; and &ldquo;the HTML one&rdquo;, which covers every message there is until one carries a third face: a <code class="text-cyan-400">text/markdown</code> part is text like any other and neither of those two accessors will ever return it. Read <code class="text-cyan-400">parts</code> when you want to prefer the source a message was written in.</p>
             <pre data-filename="Message"><code class="language-soli text-sm">{
   "seq":          1,
   "uid":          4821,
@@ -111,6 +157,9 @@ mail.search("ALL")                              # everything (the default)</code
   "date":         "2026-06-01T10:00:00Z",
   "text_body":    "Hi Bob, ...",
   "html_body":    "&lt;p&gt;Hi Bob, ...&lt;/p&gt;",
+  "parts":        [ { "content_type": "text/plain",    "body": "Hi Bob, ..." },
+                    { "content_type": "text/markdown", "body": "Hi **Bob**, ..." },
+                    { "content_type": "text/html",     "body": "&lt;p&gt;Hi Bob, ...&lt;/p&gt;" } ],
   "attachments":  [ { "name": "report.pdf", "content_type": "application/pdf", "size": 51200 } ],
   "raw":          "From: Alice ..."   # full RFC822 source
 }</code></pre>

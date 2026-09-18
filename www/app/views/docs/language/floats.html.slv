@@ -269,6 +269,23 @@ delay.sleep     # pause for 1.5 seconds</code></pre>
                 </div>
             </section>
 
+            <section id="method-to-f" class="scroll-mt-20 mb-6">
+                <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                    <a href="#method-to-f" class="group flex items-center gap-2 mb-3">
+                        <code class="text-lg font-mono text-amber-400">.to_f / .to_float</code>
+                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </a>
+                    <p class="text-gray-400 mb-3">Returns the float itself. Like <a href="/docs/language/integers#method-to-i" class="text-cyan-400 hover:underline"><code>Int.to_i</code></a>, it is there so the call can be written over a value whose type you do not control.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">3.5.to_f        # 3.5
+(-0.25).to_float # -0.25
+
+# One call, whatever arrived.
+[7, "7.5", 7.5, null].map(fn(v) v.to_f)   # [7.0, 7.5, 7.5, 0.0]</code></pre>
+                </div>
+            </section>
+
             <section id="method-to-s" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-to-s" class="group flex items-center gap-2 mb-3">

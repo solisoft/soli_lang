@@ -1352,12 +1352,22 @@ mail = Pop3.new("127.0.0.1", "user", "pass", { "port": 110, "tls": false })
   "date":         "2026-06-01T10:00:00Z",
   "text_body":    "Hi Bob, ...",
   "html_body":    "<p>Hi Bob, ...</p>",
+  "parts":        [ { "content_type": "text/plain",    "body": "Hi Bob, ..." },
+                    { "content_type": "text/markdown", "body": "Hi **Bob**, ..." },
+                    { "content_type": "text/html",     "body": "<p>Hi Bob, ...</p>" } ],
   "attachments":  [ { "name": "report.pdf", "content_type": "application/pdf", "size": 51200 } ],
   "raw":          "From: Alice ..."   # full RFC822 source
 }
 ```
 
 `from` is a single `{name, address}` hash (or `null`); `to` is an array of them.
+
+`parts` is **every** text part with the type it declares, in the order the
+message carries them. `text_body` and `html_body` answer "the plain one" and
+"the HTML one", which covers every message there is until one carries a third
+face: a `text/markdown` part is text like any other and neither of those two
+accessors will ever return it. Read `parts` when you want to prefer the source a
+message was written in.
 Missing headers/bodies are `null`. Attachment `content_type` is `type/subtype`.
 
 ### Example
@@ -1384,17 +1394,36 @@ leaving the messages on the server. It connects over implicit TLS by default
 ### Imap.new(host, user, password, opts?)
 
 Connect and authenticate, returning a client instance. The optional `opts` hash
-accepts `port` (default `993`) and `tls` (default `true`).
+accepts `port` (default `993`), `tls` (default `true`) and `xoauth2`.
 
 ```soli
 mail = Imap.new("imap.gmail.com", "me@gmail.com", "app-password")
 
 # Plaintext on a custom port (e.g. a local test server)
 mail = Imap.new("127.0.0.1", "user", "pass", { "port": 143, "tls": false })
+
+# OAuth instead of a password
+mail = Imap.new("imap.gmail.com", "me@work.com", "", { "xoauth2": access_token })
 ```
 
 > **Gmail / 2FA accounts:** use an [App Password](https://support.google.com/accounts/answer/185833),
 > not your normal password, and enable IMAP in the account settings.
+
+#### `xoauth2` — OAuth instead of a password
+
+A Google Workspace administrator can switch app passwords off for a whole
+domain, and by default now does: `LOGIN` then has no credential the server will
+accept, and the mailbox is unreachable over IMAP without `AUTHENTICATE XOAUTH2`.
+Pass the OAuth **access token** as `opts.xoauth2` and leave the password empty —
+minting it from a refresh token is yours to do (see
+[OAuth client](oauth-client.md)); Soli never sees the long-lived credential.
+
+```soli
+token = OAuth.refresh(...)["access_token"]
+mail  = Imap.new("imap.gmail.com", "me@work.com", "", { "xoauth2": token })
+```
+
+A refusal comes back as `IMAP authentication failed: XOAUTH2 refused (NO): ...`.
 
 ### Instance methods
 
@@ -1407,17 +1436,71 @@ mail = Imap.new("127.0.0.1", "user", "pass", { "port": 143, "tls": false })
 | `mail.fetch(seq)` | A parsed message hash for the given sequence number |
 | `mail.fetch_uid(uid)` | A parsed message hash for the given UID |
 | `mail.fetch_all()` | An array of parsed message hashes from the selected mailbox |
+| `mail.fetch_headers(seq)` / `mail.fetch_headers_uid(uid)` | One message, **headers only** — see below |
+| `mail.fetch_headers_range(lo, hi)` | Headers for sequence numbers `lo:hi`, in **one** round trip |
+| `mail.fetch_headers_set(set)` | Headers for a UID set — `"100:*"`, `"1,5,9"` — in one round trip |
 | `mail.mark_seen(seq)` / `mail.mark_unseen(seq)` | Toggle the `\Seen` flag; returns `true` |
 | `mail.delete(seq)` | Marks the message `\Deleted` (removed on `expunge`); returns `true` |
 | `mail.expunge()` | Permanently removes `\Deleted` messages; returns `true` |
 | `mail.copy(seq, mailbox)` | Copies the message into another mailbox; returns `true` |
 | `mail.move(seq, mailbox)` | Moves the message (RFC 6851 `MOVE`); returns `true` |
+| `mail.uid_mark_seen(uid)` / `mail.uid_mark_unseen(uid)` | The same flag, addressed by UID |
+| `mail.uid_delete(uid)` | Marks the message `\Deleted`, addressed by UID |
+| `mail.uid_copy(uid, mailbox)` / `mail.uid_move(uid, mailbox)` | Copy/move, addressed by UID |
 | `mail.logout()` | Closes the connection; returns `true` |
 
 `fetch_all()` requires a prior `select()` and is capped at 200 messages by
 default; raise it with the `SOLI_IMAP_MAX_MESSAGES` environment variable.
 `fetch`/`fetch_uid` use `BODY.PEEK[]`, so reading a message does **not** mark it
 `\Seen` — call `mark_seen()` explicitly if you want that.
+
+### Listing without downloading
+
+`fetch`/`fetch_uid` ask for the whole message: every part, every attachment.
+That is right when you are about to *read* one and ruinous when you are drawing
+a list of twenty, where nothing but the sender, the subject and the date is ever
+shown — a modest inbox costs megabytes and seconds to list.
+
+The `fetch_headers*` family asks the server for four header lines instead
+(`SUBJECT FROM TO DATE`), so a list costs kilobytes. What comes back is parsed
+by the same code into the same hash, with `text_body` and `html_body` simply
+absent — fetch those when someone opens the message.
+
+```soli
+uids = mail.uid_search("ALL")
+rows = mail.fetch_headers_set("100:*")     # one round trip for the whole run
+for row in rows
+  print("#{row["subject"]} — #{row["bytes"]} bytes, #{row["clips"]} attachment(s)")
+end
+
+msg = mail.fetch_uid(rows[0]["uid"])       # the body, only when it is wanted
+```
+
+A headers-only row carries two fields a full fetch does not need:
+
+| Field | Meaning |
+|-------|---------|
+| `bytes` | The message's real size (`RFC822.SIZE`). `size` is the length of what *came back*, which for a headers fetch is the header block, not the message. |
+| `clips` | How many parts declare themselves attachments (from `BODYSTRUCTURE`), without downloading any of them. |
+
+`fetch_headers_range(lo, hi)` and `fetch_headers_set(set)` are one command and
+one wait for the whole run, where a loop over `fetch_headers_uid` is one of each
+per message. A set is digits, `,`, `:` and `*` — the RFC 3501 sequence-set
+grammar. Anything else is refused rather than interpolated onto the wire.
+
+### Addressing by UID
+
+Every mutating verb above takes a **sequence number**, which is a position and
+moves whenever anything before it is removed. A client that stores messages
+holds UIDs, so it had to turn each one into a position first with a
+`SEARCH UID n` — a whole extra round trip, and an application that answers
+nothing while it waits. The `uid_*` methods are the same operations addressed
+the way the caller already knows how, in one turn instead of two:
+
+```soli
+mail.uid_mark_seen(4821)
+mail.uid_move(4821, "Archive")
+```
 
 ### Search criteria
 
@@ -1448,6 +1531,9 @@ Fetched messages carry the same fields as `Pop3` plus IMAP identity fields
   "date":         "2026-06-01T10:00:00Z",
   "text_body":    "Hi Bob, ...",
   "html_body":    "<p>Hi Bob, ...</p>",
+  "parts":        [ { "content_type": "text/plain",    "body": "Hi Bob, ..." },
+                    { "content_type": "text/markdown", "body": "Hi **Bob**, ..." },
+                    { "content_type": "text/html",     "body": "<p>Hi Bob, ...</p>" } ],
   "attachments":  [ { "name": "report.pdf", "content_type": "application/pdf", "size": 51200 } ],
   "raw":          "From: Alice ..."   # full RFC822 source
 }
@@ -2799,6 +2885,33 @@ Converts a Markdown string to HTML for user-generated content. Raw HTML is escap
 ```soli
 html = Markdown.to_safe_html(user.bio)
 ```
+
+### Markdown.to_text(markdown)
+
+Renders Markdown as **plain text** — the face of a message for a reader that
+does not draw. Headings keep their words, list items keep a marker (`- ` / `1. `,
+indented two spaces per level), a link becomes `text <url>`, an image becomes
+`[alt: url]`, a quote keeps its `> `, a fenced block keeps its lines verbatim, a
+table's cells are joined by ` | `, and a rule becomes `---`. Emphasis loses its
+markers. At most one blank line anywhere, and none at either end.
+
+Stripping tags off `to_html` output is not the same thing: it loses a list's
+bullets and every link's address, leaving the words of a link and no way to
+reach it.
+
+**Parameters:**
+- `markdown` (String) - Markdown source text
+
+**Returns:** String - The plain-text rendering
+
+**Example:**
+```soli
+Markdown.to_text("# Le point\n\n- un [lien](https://example.com)")
+# "Le point\n\n- un lien <https://example.com>"
+```
+
+This is what a `text/plain` part is built from when the message was written in
+Markdown — see [Mailer](mailer.md#three-faces-of-one-message).
 
 **Supported syntax:**
 

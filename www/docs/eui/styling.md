@@ -40,6 +40,24 @@ column({"bg": "surface.raised", "pad": 4}, [
 ])
 ```
 
+## Transitions
+
+`transition` names how long a node takes to settle into a change of style, in
+the client's own scale rather than milliseconds — the viewer's reduced-motion
+setting is the client's to honour:
+
+| Value | For |
+|-------|-----|
+| `"none"` | The default: the change is immediate. |
+| `"fast"` | A hover or a press — an answer to something the viewer just did. |
+| `"base"` | A panel opening, a row highlighting. |
+| `"slow"` | A change the viewer did not ask for and should notice. |
+| `"slower"` `"slowest"` | Ambient movement — a level meter settling, a background easing between states. |
+
+```soli
+box({"bg": lit ? "accent.base" : "surface.sunken", "transition": "fast"}, [])
+```
+
 ## Placement
 
 `position` decides how a node sits in its parent:
