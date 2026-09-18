@@ -919,6 +919,205 @@ pub struct MdSpan {
     pub link: Option<String>,
 }
 
+/// Render markdown as **plain text** a person can read and act on.
+///
+/// The third face of one source: `markdown_to_html` for the readers that
+/// draw, this for the readers that do not. The rule throughout is that
+/// nothing a reader would need may be dropped — which `strip_html` on the
+/// HTML does drop: it loses a list's bullets and, worse, every link's
+/// address, leaving the words of a link and no way to reach it.
+///
+/// So: headings keep their text, list items keep a marker (`- ` and `1. `,
+/// indented two spaces per level), a link becomes `text <url>` unless the
+/// text already is the url, an image becomes its alt text, a quote keeps
+/// its `> `, a code fence keeps its lines verbatim, a table's cells are
+/// joined by ` | `, and a rule is `---`. Emphasis loses its markers,
+/// because this is the face for someone who wants no markers.
+pub fn markdown_to_text(markdown: &str) -> String {
+    use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+
+    let mut out = String::new();
+    // The line being built, and the prefix every line of the current block
+    // opens with (quote markers and list indentation).
+    let mut line = String::new();
+    let mut prefix: Vec<String> = Vec::new();
+    // One entry per open list: `None` for a bullet list, `Some(n)` for an
+    // ordered one, counting.
+    let mut lists: Vec<Option<u64>> = Vec::new();
+    let mut links: Vec<String> = Vec::new();
+    let mut link_text = String::new();
+    let mut in_link = false;
+    let mut in_code = false;
+    let mut cells: Vec<String> = Vec::new();
+    let mut in_table = false;
+
+    fn flush(out: &mut String, line: &mut String, prefix: &[String]) {
+        let said = line.trim_end();
+        if !said.is_empty() {
+            out.push_str(&prefix.concat());
+            out.push_str(said);
+        }
+        out.push('\n');
+        line.clear();
+    }
+
+    for ev in Parser::new_ext(markdown, options) {
+        match ev {
+            Event::Start(Tag::Paragraph) => {}
+            Event::End(TagEnd::Paragraph) => {
+                flush(&mut out, &mut line, &prefix);
+                out.push('\n');
+            }
+            Event::Start(Tag::Heading { .. }) => {}
+            Event::End(TagEnd::Heading(_)) => {
+                flush(&mut out, &mut line, &prefix);
+                out.push('\n');
+            }
+            Event::Start(Tag::List(first)) => {
+                lists.push(first);
+                if lists.len() > 1 {
+                    prefix.push("  ".to_string());
+                }
+            }
+            Event::End(TagEnd::List(_)) => {
+                lists.pop();
+                if !lists.is_empty() {
+                    prefix.pop();
+                }
+                if lists.is_empty() {
+                    out.push('\n');
+                }
+            }
+            Event::Start(Tag::Item) => {
+                let mark = match lists.last_mut() {
+                    Some(Some(n)) => {
+                        let said = format!("{n}. ");
+                        *n += 1;
+                        said
+                    }
+                    _ => "- ".to_string(),
+                };
+                line.push_str(&mark);
+            }
+            Event::End(TagEnd::Item) => flush(&mut out, &mut line, &prefix),
+            Event::Start(Tag::BlockQuote(_)) => prefix.push("> ".to_string()),
+            Event::End(TagEnd::BlockQuote(_)) => {
+                prefix.pop();
+            }
+            Event::Start(Tag::CodeBlock(_)) => in_code = true,
+            Event::End(TagEnd::CodeBlock) => {
+                in_code = false;
+                flush(&mut out, &mut line, &prefix);
+                out.push('\n');
+            }
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                links.push(dest_url.to_string());
+                link_text.clear();
+                in_link = true;
+            }
+            Event::End(TagEnd::Link) => {
+                in_link = false;
+                let url = links.pop().unwrap_or_default();
+                // `text <url>`, unless the text is the url already — which is
+                // what an autolink is, and `<https://…> <https://…>` helps
+                // nobody.
+                if link_text.trim() == url.trim() || url.is_empty() {
+                    line.push_str(&link_text);
+                } else {
+                    line.push_str(&link_text);
+                    line.push_str(" <");
+                    line.push_str(&url);
+                    line.push('>');
+                }
+                link_text.clear();
+            }
+            Event::Start(Tag::Image { dest_url, .. }) => {
+                links.push(dest_url.to_string());
+                link_text.clear();
+                in_link = true;
+            }
+            Event::End(TagEnd::Image) => {
+                in_link = false;
+                let url = links.pop().unwrap_or_default();
+                let alt = if link_text.trim().is_empty() {
+                    "image".to_string()
+                } else {
+                    link_text.clone()
+                };
+                line.push_str(&format!("[{alt}: {url}]"));
+                link_text.clear();
+            }
+            Event::Start(Tag::Table(_)) => in_table = true,
+            Event::End(TagEnd::Table) => {
+                in_table = false;
+                out.push('\n');
+            }
+            Event::Start(Tag::TableCell) => {}
+            Event::End(TagEnd::TableCell) => {
+                cells.push(std::mem::take(&mut line).trim().to_string());
+            }
+            Event::End(TagEnd::TableRow) | Event::End(TagEnd::TableHead) => {
+                line = cells.join(" | ");
+                cells.clear();
+                flush(&mut out, &mut line, &prefix);
+            }
+            Event::Rule => {
+                flush(&mut out, &mut line, &prefix);
+                out.push_str("---\n\n");
+            }
+            Event::Text(t) | Event::Code(t) => {
+                if in_link {
+                    link_text.push_str(&t);
+                } else if in_code {
+                    // A fence keeps its own newlines.
+                    for (i, said) in t.split('\n').enumerate() {
+                        if i > 0 {
+                            flush(&mut out, &mut line, &prefix);
+                        }
+                        line.push_str(said);
+                    }
+                } else {
+                    line.push_str(&t);
+                }
+            }
+            Event::SoftBreak => {
+                if in_link {
+                    link_text.push(' ');
+                } else if in_table {
+                    line.push(' ');
+                } else {
+                    flush(&mut out, &mut line, &prefix);
+                }
+            }
+            Event::HardBreak => flush(&mut out, &mut line, &prefix),
+            _ => {}
+        }
+    }
+    flush(&mut out, &mut line, &prefix);
+    // At most one blank line anywhere, and none at either end.
+    let mut tidy = String::new();
+    let mut blanks = 0;
+    for said in out.lines() {
+        if said.trim().is_empty() {
+            blanks += 1;
+            if blanks > 1 || tidy.is_empty() {
+                continue;
+            }
+            tidy.push('\n');
+        } else {
+            blanks = 0;
+            tidy.push_str(said);
+            tidy.push('\n');
+        }
+    }
+    tidy.trim_end().to_string()
+}
+
 /// Convert **inline** markdown into a flat list of styled spans, suitable for a
 /// PDF paragraph's `spans`. Bold (`**`/`__`) → bold, emphasis (`*`/`_`) →
 /// italic, inline code (`` `…` ``) → monospace, and links → a clickable span.
@@ -1136,6 +1335,40 @@ mod tests {
     use super::*;
     use crate::interpreter::value::{HashKey, HashPairs};
     use std::fs;
+
+    #[test]
+    fn markdown_to_text_keeps_what_a_reader_needs() {
+        let md = "# Le point\n\nBonjour **Ana**,\n\n- un premier point\n- un second, avec [un lien](https://example.com)\n\n> du texte cité\n\nÀ bientôt.";
+        let said = markdown_to_text(md);
+        assert!(said.contains("Le point"), "{said}");
+        assert!(
+            said.contains("Bonjour Ana,"),
+            "emphasis loses its markers: {said}"
+        );
+        assert!(
+            said.contains("- un premier point"),
+            "a list keeps its bullets: {said}"
+        );
+        // The one `strip_html` drops, and the one that matters most.
+        assert!(
+            said.contains("un lien <https://example.com>"),
+            "a link keeps its address: {said}"
+        );
+        assert!(
+            said.contains("> du texte cité"),
+            "a quote stays quoted: {said}"
+        );
+        assert!(!said.contains("**"), "no markers left: {said}");
+    }
+
+    #[test]
+    fn markdown_to_text_numbers_an_ordered_list_and_leaves_no_double_blanks() {
+        let said = markdown_to_text("1. un\n2. deux\n3. trois\n\n\n\nfin");
+        assert!(said.contains("1. un"), "{said}");
+        assert!(said.contains("3. trois"), "{said}");
+        assert!(!said.contains("\n\n\n"), "at most one blank line: {said:?}");
+        assert!(!said.ends_with('\n'), "no trailing blank: {said:?}");
+    }
 
     #[test]
     fn markdown_to_spans_maps_inline_styles() {
