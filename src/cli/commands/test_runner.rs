@@ -151,8 +151,8 @@ fn render_worker_row(
     let show_counter = budget >= counter_cost;
     let budget = budget - if show_counter { counter_cost } else { 0 };
     let show_elapsed = budget >= elapsed_cost;
-    let used = if show_elapsed { elapsed_cost } else { 0 }
-        + if show_counter { counter_cost } else { 0 };
+    let used =
+        if show_elapsed { elapsed_cost } else { 0 } + if show_counter { counter_cost } else { 0 };
 
     // What is left once the counts have been placed is the name's, and the
     // bar only ever spends the surplus above FILE_TARGET. Below that the bar
@@ -282,7 +282,10 @@ fn render_progress_bar(
         0
     };
     let bar_len = if budget.saturating_sub(reserved) >= BAR_MIN + 3 {
-        budget.saturating_sub(reserved).saturating_sub(3).min(BAR_MAX)
+        budget
+            .saturating_sub(reserved)
+            .saturating_sub(3)
+            .min(BAR_MAX)
     } else {
         0
     };
@@ -2433,14 +2436,7 @@ mod tests {
         let long = "dossiers_individuels_admin_integration";
         for width in 20..200usize {
             for done in [0usize, 9, 1234] {
-                let row = render_worker_row(
-                    &slot_running(0, long, done),
-                    40,
-                    6,
-                    width,
-                    '⠧',
-                    false,
-                );
+                let row = render_worker_row(&slot_running(0, long, done), 40, 6, width, '⠧', false);
                 assert!(
                     visible_width(&row) < width,
                     "worker row is {} cells wide at term_width {}",

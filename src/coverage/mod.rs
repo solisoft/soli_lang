@@ -57,7 +57,9 @@ mod key_tests {
         assert!(key.is_absolute());
         assert_eq!(
             key,
-            std::env::current_dir().unwrap().join("app/models/product.sl")
+            std::env::current_dir()
+                .unwrap()
+                .join("app/models/product.sl")
         );
     }
 }
