@@ -62,6 +62,14 @@ pub fn diff(enc: &mut Encoder, old: &TNode, new: &mut TNode, ops: &mut Vec<Op>) 
             ops.push(Op::ScrollTo { node: id, x, y });
         }
     }
+    // Focus is done, not held, exactly as a scroll is: the op goes out
+    // when the view asks for it and did not ask last time. A view that
+    // keeps asking means "stay there", which costs nothing -- and one
+    // that stopped asking is not a request to take focus away, because
+    // there is nowhere to put it.
+    if new.focus_to && !old.focus_to {
+        ops.push(Op::Focus { node: id });
+    }
     for (name, _) in &old.props {
         if !new.props.iter().any(|(n, _)| n == name) {
             ops.push(Op::SetProp {
@@ -342,6 +350,7 @@ mod tests {
             text: Some(TextRef::Inline(text.to_owned())),
             props: vec![],
             scroll_to: None,
+            focus_to: false,
             handlers: vec![],
             children: vec![],
             identity: 0,
@@ -358,6 +367,7 @@ mod tests {
             text: None,
             props: vec![],
             scroll_to: None,
+            focus_to: false,
             handlers: vec![],
             children: children.into_iter().map(Child::Fresh).collect(),
             identity: 0,
@@ -539,6 +549,51 @@ mod tests {
             let expected: Vec<u32> = new.children.iter().map(|c| c.id).collect();
             assert_eq!(client, expected, "{old_order:?} -> {new_order:?}: {ops:?}");
         }
+    }
+
+    #[test]
+    fn a_view_that_asks_for_the_caret_gets_one_focus_op_and_not_two() {
+        // `autofocus` cannot open a field. A client applies it "only when
+        // focus is not already where it belongs" (03 §3.1), so a search bar
+        // opening over a page whose root holds the shortcuts never gets the
+        // caret and cannot be typed into. `Op::Focus` is what the protocol
+        // has for this, and nothing here emitted it until now.
+        let mut enc = Encoder::default();
+        let mut old = parent(vec![leaf(NodeKind::Input, None, "")]);
+        assign_fresh_ids(&mut enc, &mut old);
+
+        // Asking, having not asked before: one op.
+        let mut new = parent(vec![leaf(NodeKind::Input, None, "")]);
+        new.children[0].node_mut().focus_to = true;
+        let mut ops = Vec::new();
+        diff(&mut enc, &old, &mut new, &mut ops);
+        let asked: Vec<u32> = ops
+            .iter()
+            .filter_map(|o| {
+                if let Op::Focus { node } = o {
+                    Some(*node)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(
+            asked,
+            vec![old.children[0].node().id],
+            "the field is asked for"
+        );
+
+        // Still asking, unchanged: nothing. A view that keeps saying the
+        // same thing means "stay there", and re-focusing every render
+        // would fight anyone who had moved on with Tab.
+        let mut again = parent(vec![leaf(NodeKind::Input, None, "")]);
+        again.children[0].node_mut().focus_to = true;
+        let mut ops = Vec::new();
+        diff(&mut enc, &new, &mut again, &mut ops);
+        assert!(
+            !ops.iter().any(|o| matches!(o, Op::Focus { .. })),
+            "asking twice is not asking again"
+        );
     }
 
     #[test]
