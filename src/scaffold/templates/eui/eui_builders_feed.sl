@@ -559,8 +559,14 @@ def vu_segment(i, n, lit, axis)
       "opacity": lit == true ? 255 : 38,
       "transition": "fast",
       "shrink": 0,
-      "grow": axis == "v" ? 0 : 1,
-      "min_width": axis == "v" ? 0 : thin
+      # Both axes now: a segment shares the length the strip was given, the
+      # way the horizontal one always has. Vertically it used to be three
+      # pixels and no growth, so the bar came out the height of its contents
+      # — 58 px — while the legend beside it stretched to 96 and no mark
+      # stood against the segment it names.
+      "grow": 1,
+      "min_width": axis == "v" ? 0 : thin,
+      "min_height": axis == "v" ? long : 0
     }
   }
 end
@@ -582,8 +588,12 @@ def vu_strip(level, o = {})
     vu_segment(i, n, i < lit_to || i == hold_at, axis)
   })
   cells = cells.reverse() if axis == "v"
+  # The vertical strip needs a length to share out, exactly as the
+  # horizontal one takes the full width. `height` names it; the legend is
+  # given the same one, which is the whole of making the two line up.
+  tall = o["height"] ?? 96
   strip = axis == "v"
-    ? column({"gap": 0, "align": "center", "shrink": 0}, cells)
+    ? column({"gap": 0, "align": "center", "shrink": 0, "height": tall}, cells)
     : row({"gap": 0, "align": "center", "width": "100%"}, cells)
   strip["s"]["gap"] = 1
   strip["p"] = {
@@ -605,7 +615,20 @@ def vu_scale(o = {})
   marks = (o["marks"] ?? ["-20", "-10", "-6", "-3", "0", "+3"]).map(fn(m) {
     text(m, {"size": 0, "fg": "text.muted", "font": "mono"})
   })
-  return column({"gap": 1, "align": "end", "shrink": 0}, marks.reverse()) if axis == "v"
+  # The mirror of the horizontal case, and it was not one. Laid out at its
+  # natural height, six marks of text stand about twice as tall as twelve
+  # three-pixel segments, so the legend ran past the strip and no mark stood
+  # beside the segment it names. `between` is what the row already does
+  # across its width.
+  #
+  # The height is the same number the strip is given, in pixels, and not
+  # `"100%"`: a percentage resolves against an ancestor rather than the row,
+  # which laid the meter out 6 232 pixels tall -- measured, after writing it.
+  if axis == "v"
+    tall = o["height"] ?? 96
+    return column({"gap": 0, "justify": "between", "align": "end", "shrink": 0, "height": tall}, marks.reverse())
+  end
+
   row({"gap": 0, "justify": "between", "width": "100%"}, marks)
 end
 
@@ -616,7 +639,17 @@ def vu_meter(level, o = {})
   axis = o["axis"] ?? "h"
   pair = level.is_a?("array") == true ? level : [level]
   vals = pair.filter(fn(v) { v != null })
-  sides = vals.length() > 1 ? [" left", " right"] : [""]
+  # One strip per reading, whatever the readings are. Two is the pair a
+  # `level` event carries and the shape a deck showed, so two is named left
+  # and right; one is named nothing, because there is nothing to tell it
+  # apart from. Anything else — bands of a spectrum, a channel per voice —
+  # is the same drawing and only wants its own words, so `labels` supplies
+  # them. A reader who cannot see the bars is who this is for: without a
+  # name each strip announces itself as "Level" and the screen reader says
+  # the same thing five times.
+  sides = o["labels"].is_a?("array") == true
+    ? o["labels"].map(fn(l) { " " + l.to_s })
+    : (vals.length() == 2 ? [" left", " right"] : [""])
   # The hold marker has the same shape as the reading it follows: one
   # number for one strip, a pair for two. A single number shared by both
   # would put the louder channel's marker over the quieter one, which is
