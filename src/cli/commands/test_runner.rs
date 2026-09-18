@@ -655,7 +655,7 @@ pub fn run_test(
         for entry in sorted {
             let path = entry.path();
             if let Ok(content) = fs::read_to_string(&path) {
-                let absolute = path.canonicalize().unwrap_or(path);
+                let absolute = solilang::coverage::coverage_path_key(&path);
                 model_preamble_files.push((absolute, content));
             }
         }

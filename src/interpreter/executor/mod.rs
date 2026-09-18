@@ -196,12 +196,10 @@ impl Interpreter {
     }
 
     pub fn set_source_path(&mut self, path: PathBuf) {
-        let absolute_path = if path.is_absolute() {
-            path
-        } else {
-            std::fs::canonicalize(&path).unwrap_or(path)
-        };
-        self.current_source_path = Some(absolute_path);
+        // Absolute but symlink-preserving: see `coverage_path_key`. Every
+        // function declared in this file carries the path as its
+        // `source_path`, and that is what its line hits are keyed by.
+        self.current_source_path = Some(crate::coverage::coverage_path_key(&path));
     }
 
     #[inline(always)]
