@@ -422,6 +422,15 @@ pub(crate) struct RequestData {
     pub(crate) response_tx: oneshot::Sender<WorkerResponse>,
 }
 
+/// A response that must not have the dev live-reload script spliced into it.
+///
+/// Dev mode injects that script into every `text/html` body, which is right
+/// for a page rendered from templates somebody is editing and wrong for one
+/// compiled into the binary: there is nothing to reload, so the splice buys a
+/// socket and fourteen kilobytes of script on a twenty-kilobyte page. The
+/// header is stripped on the way out and never reaches the client.
+pub(crate) const NO_INJECT_HEADER: &str = "x-soli-no-inject";
+
 /// Borrow a header value from the wire `HeaderMap` by its lowercase name.
 /// Non-UTF-8 header values read as absent (same as the previous
 /// `HashMap<String, String>` extraction, which skipped them).
@@ -4389,7 +4398,14 @@ async fn handle_hyper_request(
                 None
             };
 
+            let no_inject = resp_data
+                .headers
+                .iter()
+                .any(|(k, _)| k.eq_ignore_ascii_case(NO_INJECT_HEADER));
             for (key, value) in &resp_data.headers {
+                if key.eq_ignore_ascii_case(NO_INJECT_HEADER) {
+                    continue;
+                }
                 if let Some(ref cache_control) = prefetch_cache_control {
                     if key.eq_ignore_ascii_case("cache-control") {
                         builder = add_header_checked(builder, key.as_str(), cache_control.as_str());
@@ -4402,7 +4418,7 @@ async fn handle_hyper_request(
             // Inject live reload script for HTML responses (only in dev mode).
             // HTML is UTF-8, so we can safely view the body as &str for injection.
             // Binary responses (images/files) skip this path via the content-type guard.
-            let body: Vec<u8> = if reload_tx.is_some() {
+            let body: Vec<u8> = if reload_tx.is_some() && !no_inject {
                 let is_html = resp_data.headers.iter().any(|(k, v)| {
                     k.eq_ignore_ascii_case("content-type") && v.contains("text/html")
                 });
@@ -8159,6 +8175,10 @@ fn handle_request(
                             ),
                             ("Cache-Control".to_string(), "no-store".to_string()),
                             ("Vary".to_string(), "Accept".to_string()),
+                            // Compiled in, so there is nothing to hot-reload
+                            // and no reason to open a socket from the page
+                            // that exists to say a machine is doing too much.
+                            (NO_INJECT_HEADER.to_string(), "1".to_string()),
                         ],
                         body: body.into_bytes(),
                     };
