@@ -304,7 +304,7 @@ Only `pdf_preview*` reads these.
 | `format` | String | `"png"` | `"png"`, `"webp"` or `"jpeg"`. **Reach for `webp`** — see below. The written file and the response `Content-Type` follow it. |
 | `quality` | Int | `90` | 1&ndash;100, for `webp` and `jpeg`. Ignored by `png`, which is lossless. |
 
-`font_dirs` and `fetch_images` work as they do for `pdf_render`. `stationery`, `attachments`, `password`, `pdfa` and `sign` are **accepted but ignored**, with a warning on stderr — so one options hash can drive both the PDF and its preview.
+`font_dirs` and `fetch_images` work as they do for `pdf_render`. `stationery`, `attachments`, `password`, `pdfa` and `sign` are **accepted but ignored**, so one options hash can drive both the PDF and its preview. The two that change what you would see — `stationery` and `sign` — warn once per process; the rest cannot alter a pixel, so they pass quietly.
 
 ---
 
@@ -316,15 +316,17 @@ Only `pdf_preview*` reads these.
 
 **It only covers what the engine renders.** `pdf_merge`, `pdf_pages`, `pdf_fill`, `pdf_stamp` and an uploaded PDF all produce *bytes*, and rasterising those would need a PDF interpreter. Preview the template instead, before those steps.
 
-**A few things cannot appear**, and each warns on stderr rather than failing:
+**A few things cannot appear**, and none of them fails the render:
 
-| Option | Why not |
-|---|---|
-| `stationery` | The letterhead is composited onto emitted PDF bytes. The preview shows your content without it. |
-| `attachments` | Embedded files are not drawn on a page. |
-| `password` | A preview image is plaintext by nature. |
-| `pdfa` | Metadata and OutputIntent only — no visual effect. |
-| `sign` | A signature is not page content. |
+| Option | Why not | Warns |
+|---|---|---|
+| `stationery` | The letterhead is composited onto emitted PDF bytes. The preview shows your content without it. | yes |
+| `sign` | The signature is applied to emitted bytes, so a visible signature appearance is missing. | yes |
+| `attachments` | Embedded files are not drawn on a page. | no |
+| `password` | A preview image is plaintext by nature. | no |
+| `pdfa` | Metadata and OutputIntent only — no visual effect. | no |
+
+Only the two that change what you would see say anything, and each says it once per process — a preview endpoint runs this on every request, and three lines per thumbnail is a log, not a warning.
 
 Two smaller divergences from a PDF viewer: colour/bitmap glyph fonts (CBDT/sbix/COLR) are not drawn, and hairlines below one device pixel are anti-aliased rather than snapped, so very thin table rules read a little differently at low `dpi`. Raise `dpi` if that matters.
 
