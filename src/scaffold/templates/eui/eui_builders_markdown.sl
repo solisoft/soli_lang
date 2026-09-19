@@ -523,14 +523,50 @@ def md_quote(lines)
   }
 end
 
+# A list, and a task list, which markdown makes the same thing: `- [ ] x`
+# is a bullet whose first three characters are a box. So the marker is
+# decided per item rather than per list, because nothing stops a document
+# mixing them and every reader that matters draws them mixed.
+#
+# The box is `check_mark`, the same one `checkbox` is built from — drawn
+# here and not pressable, because this is the document being *read*. The
+# editor's own task blocks carry a real `checkbox`; a tick in a rendered
+# page would be a control with nowhere to send itself.
 def md_list(items, ordered)
   column({"gap": 1}, range(0, items.length()).map(fn(i) {
-    marker = ordered ? str(i + 1) + "." : "•"
     row({"gap": 2, "align": "start"}, [
-      text(marker, {"fg": "text.muted", "size": 2, "width": ordered ? 24 : 14}),
-      {"k": "box", "s": {"display": "column", "grow": 1}, "c": [md_line(items[i], 2)]}
+      md_list_marker(items[i], ordered, i),
+      {"k": "box", "s": {"display": "column", "grow": 1}, "c": [md_line(md_task_bare(items[i]), 2)]}
     ])
   }))
+end
+
+def md_list_marker(item, ordered, at)
+  return text(str(at + 1) + ".", {"fg": "text.muted", "size": 2, "width": 24}) if ordered
+  # The box sits in a line-tall box so it lands on the words beside it
+  # rather than at the top of a row that wrapped.
+  unless md_task_of(item) == ""
+    return {
+      "k": "box",
+      "s": {"display": "row", "align": "center", "height": 22, "width": 22, "shrink": 0},
+      "c": [check_mark(md_task_of(item) == "x", false, false, "sm")]
+    }
+  end
+
+  text("•", {"fg": "text.muted", "size": 2, "width": 14})
+end
+
+# `"x"` for a ticked box, `" "` for an empty one, and `""` for a list item
+# that carries no box at all.
+def md_task_of(item)
+  return "x" if md_starts(item, "[x] ") || md_starts(item, "[X] ")
+  return " " if md_starts(item, "[ ] ")
+
+  ""
+end
+
+def md_task_bare(item)
+  md_task_of(item) == "" ? item : item.substring(4, item.length())
 end
 
 # How many characters an ordered-list marker takes ("12. " -> 4), or 0.
