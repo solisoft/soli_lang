@@ -7811,12 +7811,14 @@ dependencies = [
  "printpdf",
  "qrcode",
  "reqwest",
+ "resvg",
  "serde",
  "serde_json",
  "subsetter 0.1.1",
  "svg2pdf",
  "thiserror 2.0.19",
  "time",
+ "tiny-skia",
  "ttf-parser 0.25.1",
 ]
 
