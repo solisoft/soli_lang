@@ -3180,6 +3180,25 @@ async fn handle_hyper_request(
         if path == "/.well-known/eui" {
             return Ok(eui::manifest::respond());
         }
+        // A one-shot render, for a component that declared it may be served
+        // this way. No socket, no session, nothing resident afterwards, and
+        // a strong ETag so a cache in front answers the second reader.
+        //
+        // No origin protection, deliberately: `check_csrf_origin` exempts
+        // `GET`, and a resource that a CDN is meant to hold cannot have a
+        // same-origin check. What stands in for it is that the render runs as
+        // nobody and that `{"static": ...}` is the application promising its
+        // `connect` is a read — `<img src=".../_eui/view/x">` on any page
+        // anywhere reaches this.
+        if let Some(component) = path.strip_prefix("/_eui/view/") {
+            return Ok(eui::snapshot::respond(
+                component.trim_end_matches('/'),
+                raw_query.as_deref(),
+                req.headers(),
+                &lv_event_tx,
+            )
+            .await);
+        }
     }
 
     // Check for WebSocket upgrade request
@@ -8115,6 +8134,36 @@ fn handle_request(
     let (route_handler_name, scoped_middleware, matched_params) = match find_route(method, path) {
         Some(found) => found,
         None => {
+            // Nothing in this application answers here. If it serves EUI and
+            // the caller is a browser, that is not a missing page — it is
+            // somebody who arrived over the wrong protocol, and a 404 teaches
+            // them nothing. An application that *does* define a route for
+            // this path never reaches this branch, so its own page always
+            // wins; this is only what happens when nothing is defined.
+            #[cfg(feature = "eui")]
+            if method == "GET" && eui::snapshot::accepts_html(header_str(&data.headers, "accept")) {
+                if let Some(component) = eui::default_component() {
+                    set_current_session_id(None);
+                    let body = eui::snapshot::browser_body(
+                        header_str(&data.headers, "host"),
+                        header_str(&data.headers, "x-forwarded-host"),
+                        header_str(&data.headers, "x-forwarded-proto"),
+                        &component,
+                    );
+                    return ResponseData {
+                        status: 200,
+                        headers: vec![
+                            (
+                                "Content-Type".to_string(),
+                                "text/html; charset=utf-8".to_string(),
+                            ),
+                            ("Cache-Control".to_string(), "no-store".to_string()),
+                            ("Vary".to_string(), "Accept".to_string()),
+                        ],
+                        body: body.into_bytes(),
+                    };
+                }
+            }
             // Clear session context before returning
             set_current_session_id(None);
             // Log timing for 404 responses (skip health checks)

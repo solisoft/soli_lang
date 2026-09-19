@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>This address speaks EUI</title>
+<meta name="description" content="An application served over EUI, and what it costs the machine that shows it.">
+<style>
+:root {
+  --ground: #0e1720;
+  --raised: #16222e;
+  --ink: #dde7ed;
+  --muted: #8598a5;
+  --line: #24323f;
+  --shared: #3f5261;   /* the text, identical either way */
+  --html: #5d7f94;     /* what HTML spends on structure */
+  --eui: #8cbfa2;      /* what EUI spends on structure */
+  --ghost: #33444f;
+  --act: #d3ad4e;
+  --sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --ground: #eef2f4; --raised: #e3e9ec; --ink: #16222e; --muted: #5a6b78;
+    --line: #cdd7dd; --shared: #9fb0bb; --html: #517087; --eui: #4e8f6c;
+    --ghost: #b2c0c8;
+    --act: #8a6d13;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--ground); color: var(--ink);
+  font-family: var(--sans); font-size: 17px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+.page { max-width: 47rem; margin: 0 auto; padding: 4.5rem 1rem 5rem; }
+@media (max-width: 40rem) { .page { padding-top: 2.5rem; } }
+
+.mark {
+  display: inline-block; font-family: var(--mono); font-size: .82rem;
+  letter-spacing: .18em; color: var(--muted); margin: 0 0 3.5rem;
+}
+h1 {
+  font-size: clamp(1.9rem, 1.2rem + 3vw, 3.1rem); line-height: 1.1;
+  letter-spacing: -.025em; font-weight: 600; margin: 0 0 1.4rem; max-width: 18ch;
+}
+.lede { font-size: 1.12rem; color: var(--ink); margin: 0 0 1rem; max-width: 60ch; }
+p { max-width: 62ch; }
+.muted { color: var(--muted); }
+
+/* The picture ------------------------------------------------------ */
+figure { margin: 3.4rem 0 0; }
+.field { width: 100%; height: auto; display: block; }
+.c.t { fill: none; stroke: var(--ghost); stroke-width: 1; }
+.c.h { fill: var(--html); }
+.c.e { fill: var(--eui); }
+
+.key { display: flex; flex-wrap: wrap; gap: 1.6rem; margin: 1.5rem 0 0; font-size: .92rem; }
+.key div { display: flex; align-items: baseline; gap: .5rem; }
+.key i { width: .62rem; height: .62rem; border-radius: 1.5px; flex: none; transform: translateY(0); }
+.key b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.k-t i { background: none; box-shadow: inset 0 0 0 1px var(--ghost); }
+.k-h i { background: var(--html); }
+.k-e i { background: var(--eui); }
+figcaption { margin: 1.1rem 0 0; color: var(--muted); font-size: .95rem; max-width: 58ch; }
+
+/* Sections --------------------------------------------------------- */
+section { margin: 3.6rem 0 0; padding: 2.2rem 0 0; border-top: 1px solid var(--line); }
+h2 { font-size: 1.06rem; font-weight: 600; letter-spacing: -.01em; margin: 0 0 .9rem; }
+
+.work { list-style: none; margin: 1.3rem 0 0; padding: 0; display: grid; gap: 1.5rem; }
+@media (min-width: 40rem) { .work { grid-template-columns: 1fr 1fr; gap: 2.4rem; } }
+.work h3 { font-size: .92rem; font-weight: 600; margin: 0 0 .6rem; color: var(--muted); }
+.work ol { margin: 0; padding-left: 1.1rem; font-size: .96rem; line-height: 1.75; }
+.work li { padding-left: .15rem; }
+.work .browser ol { color: var(--html); }
+.work .client ol { color: var(--eui); }
+@media (prefers-color-scheme: dark) { .work .browser ol { color: #97b3c4; } }
+
+/* Action ----------------------------------------------------------- */
+.open { margin: 1.4rem 0 0; }
+code.addr {
+  display: block; font-family: var(--mono); font-size: .93rem; color: var(--ink);
+  background: var(--raised); border: 1px solid var(--line); border-radius: 4px;
+  padding: .85rem 1rem; overflow-x: auto; white-space: nowrap; margin: 0 0 1.5rem;
+}
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem; }
+a.get {
+  display: inline-block; background: var(--act); color: var(--ground);
+  font-weight: 600; font-size: .98rem; text-decoration: none;
+  padding: .72rem 1.35rem; border-radius: 4px;
+}
+a.get:hover { filter: brightness(1.08); }
+a { color: var(--ink); text-underline-offset: .18em; text-decoration-thickness: 1px; }
+a.plain { color: var(--muted); font-size: .96rem; }
+a:focus-visible, .get:focus-visible { outline: 2px solid var(--act); outline-offset: 3px; }
+
+footer { margin: 4rem 0 0; padding: 1.6rem 0 0; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
+footer p { max-width: 56ch; margin: 0; }
+</style>
+</head>
+<body>
+<main class="page">
+  <span class="mark">eui</span>
+
+  <h1>Your browser asked for HTML, so here is HTML.</h1>
+
+  <p class="lede">The application at this address draws itself over EUI, a
+  protocol that sends an interface already worked out. Nothing here has to be
+  guessed at, matched, resolved or compiled before it can be shown.</p>
+
+  <figure>
+    <svg class="field" viewBox="0 0 308 126" role="img"
+       aria-label="The same table twice, one cell per hundred bytes: HTML fills 6 rows, EUI fills 2.">
+      <rect class="c t" x="0" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="13" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="26" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="39" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="52" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="65" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="78" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="91" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="104" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="117" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="130" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="143" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="156" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="169" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="182" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="195" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="208" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="221" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="234" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="247" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="260" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="273" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="286" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="299" y="0" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="0" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="13" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="26" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="39" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="52" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="65" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="78" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="91" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="104" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="117" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="130" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="143" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="156" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="169" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="182" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="195" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="208" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="221" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="234" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="247" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="260" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="273" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="286" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="299" y="13" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="0" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="13" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="26" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="39" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="52" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="65" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="78" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="91" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="104" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="117" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="130" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="143" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="156" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="169" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="182" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="195" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="208" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="221" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="234" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="247" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="260" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="273" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="286" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="299" y="26" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="0" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="13" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="26" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="39" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="52" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="65" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="78" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="91" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="104" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="117" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="130" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="143" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="156" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="169" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="182" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="195" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="208" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="221" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="234" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="247" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="260" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="273" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="286" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="299" y="39" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="0" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="13" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="26" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="39" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="52" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="65" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="78" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="91" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="104" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="117" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="130" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="143" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="156" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="169" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="182" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="195" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="208" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="221" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="234" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="247" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="260" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="273" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="286" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="299" y="52" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="0" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="13" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="26" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="39" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="52" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="65" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="78" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="91" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="104" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="117" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="130" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="143" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="156" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="169" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="182" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="195" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="208" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="221" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="234" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="247" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="260" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="273" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c h" x="286" y="65" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="0" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="13" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="26" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="39" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="52" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="65" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="78" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="91" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="104" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="117" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="130" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="143" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="156" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="169" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="182" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="195" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="208" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="221" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="234" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="247" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="260" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="273" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c t" x="286" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="299" y="104" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="0" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="13" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="26" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="39" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="52" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="65" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="78" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="91" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="104" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="117" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="130" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="143" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="156" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="169" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="182" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="195" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="208" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="221" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="234" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="247" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="260" y="117" width="9" height="9" rx="1.5"/>
+      <rect class="c e" x="273" y="117" width="9" height="9" rx="1.5"/>
+    </svg>
+    <div class="key">
+      <div class="k-t"><i></i><span>Text, the same either way <b>2 337 B</b></span></div>
+      <div class="k-h"><i></i><span>HTML structure <b>12 025 B</b></span></div>
+      <div class="k-e"><i></i><span>EUI structure <b>2 282 B</b></span></div>
+    </div>
+    <figcaption>A fifty-row invoice table, sent twice. One cell is a hundred
+    bytes. Both runs begin with the same text, because the text is the data and
+    neither side can compress it away &mdash; so the part worth looking at is
+    everything after it.</figcaption>
+  </figure>
+
+  <section>
+    <h2>Structure is the part a machine has to think about</h2>
+    <p>Those extra four rows are not just bytes on a wire. They are instructions
+    to work something out, and they are worked out again on every load, on every
+    machine, by every reader.</p>
+    <ul class="work">
+      <li class="browser">
+        <h3>To show this table, a browser</h3>
+        <ol>
+          <li>parses markup that is allowed to be wrong</li>
+          <li>matches selectors against every node</li>
+          <li>resolves the cascade to find each value</li>
+          <li>lays out a tree whose types it inferred</li>
+          <li>compiles and runs the page&rsquo;s script</li>
+          <li>paints</li>
+        </ol>
+      </li>
+      <li class="client">
+        <h3>To show it, an EUI client</h3>
+        <ol>
+          <li>applies the tree it was sent</li>
+          <li>lays it out</li>
+          <li>paints it on the GPU</li>
+        </ol>
+      </li>
+    </ul>
+    <p class="muted" style="margin-top:1.6rem">The server keeps less too. A reader
+    who is only reading costs this machine about <b style="font-weight:600">50&nbsp;kB</b>
+    while their socket is open. Over a cached render it costs nothing at all:
+    six hundred of them moved resident memory by four kilobytes.</p>
+  </section>
+
+  <section>
+    <h2>Open this address in the client</h2>
+    <div class="open">
+      <code class="addr">__ADDRESS__</code>
+      <div class="actions">
+        <a class="get" href="https://github.com/solisoft/eui/releases/tag/rolling">Get the client</a>
+        <a class="plain" href="https://eui.solisoft.net/docs/eui/transport">Read how the protocol works</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>This page is dark because on an OLED screen a dark page draws less power
+    than a white one. It is the same argument as everything above it, in its
+    smallest form.</p>
+  </footer>
+</main>
+</body>
+</html>

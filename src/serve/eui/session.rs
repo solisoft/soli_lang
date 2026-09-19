@@ -910,7 +910,7 @@ async fn post(
 }
 
 /// The client's viewport as the application sees it, in `params`.
-fn viewport_json(v: &eui_proto::Viewport) -> serde_json::Value {
+pub(super) fn viewport_json(v: &eui_proto::Viewport) -> serde_json::Value {
     serde_json::json!({
         "width": v.width,
         "height": v.height,

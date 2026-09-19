@@ -16,6 +16,7 @@ pub mod local;
 pub mod manifest;
 pub mod notify;
 pub mod session;
+pub mod snapshot;
 pub mod stats;
 pub mod tree;
 
@@ -71,6 +72,15 @@ pub const FORGET_EVENT: &str = "__eui_forget";
 static EUI_SESSION_REQUIRED: TenantValue<std::collections::HashSet<String>> =
     TenantValue::new(std::collections::HashSet::new);
 
+/// Components an application will also serve as a one-shot render over
+/// `GET /_eui/view/<component>`, and the `Cache-Control` each wants on it:
+/// `router_eui(component, handler, view, {"static": "public, max-age=60"})`.
+///
+/// Per application, like the two above. Whether a component's first render
+/// may be handed to anybody who asks is one application's decision about one
+/// application's pages, and a co-hosted neighbour must not inherit it.
+static EUI_STATIC: TenantValue<HashMap<String, String>> = TenantValue::new(HashMap::new);
+
 /// Which component a bare origin opens: the manifest's `entry` (EUI 01 §2.1).
 ///
 /// The protocol has one entry and a server here has many components, so one
@@ -89,6 +99,15 @@ pub fn set_default(component: &str, first: bool) {
     });
 }
 
+/// The component a bare origin opens, if this application registered any.
+///
+/// `None` is how the rest of the server asks "is this an EUI application at
+/// all", which is the question behind the page a browser gets when nothing
+/// else answers.
+pub fn default_component() -> Option<String> {
+    EUI_DEFAULT.read(Clone::clone)
+}
+
 /// The session path the manifest advertises: the default component's, or
 /// the bare endpoint when no component has been registered at all.
 pub fn entry_path() -> String {
@@ -98,6 +117,22 @@ pub fn entry_path() -> String {
             |c| format!("/_eui/session/{c}"),
         )
     })
+}
+
+/// Serve `component` as a one-shot render too, with `cache_control` on it.
+pub fn allow_static(component: &str, cache_control: &str) {
+    EUI_STATIC.write(|map| {
+        map.insert(component.to_string(), cache_control.to_string());
+    });
+}
+
+/// The `Cache-Control` for a component that may be served as a one-shot
+/// render, or `None` when it may not.
+///
+/// One lookup answers both questions the endpoint has — is this a component,
+/// and did it opt in — because the answer to either on its own is a 404.
+pub fn static_cache_control(component: &str) -> Option<String> {
+    EUI_STATIC.read(|map| map.get(component).cloned())
 }
 
 /// Refuse the upgrade for `component` unless the request carries a session.

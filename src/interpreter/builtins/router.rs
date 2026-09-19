@@ -736,6 +736,13 @@ pub fn register_router_builtins(env: &mut Environment) {
             let view = args[2].to_string();
             // {"session": "required"}: refuse the socket to a client with
             // no session cookie, before `connect` runs as nobody.
+            //
+            // The options are gathered first and applied after, rather than
+            // applied as they are read: `{"static": ...}` carries a free-form
+            // value the old match could not express, and the two options have
+            // to be checked against each other before either takes effect.
+            let mut needs_session = false;
+            let mut is_static: Option<String> = None;
             if let Some(options) = args.get(3) {
                 let Value::Hash(options) = options else {
                     return Err("router_eui: options must be a hash".to_string());
@@ -746,9 +753,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                         other => format!("{other:?}"),
                     };
                     match (key.as_str(), value.to_string().as_str()) {
-                        ("session", "required") => {
-                            crate::serve::eui::require_session(&component)
-                        }
+                        ("session", "required") => needs_session = true,
                         ("session", "optional") => {}
                         ("session", other) => {
                             return Err(format!(
@@ -768,11 +773,42 @@ pub fn register_router_builtins(env: &mut Environment) {
                                 "router_eui: default must be true or false, got \"{other}\""
                             ))
                         }
+                        // {"static": "public, max-age=60"}: this component's
+                        // first render is the same for everybody, so it may
+                        // also be fetched once over `GET /_eui/view/<c>` and
+                        // cached — no socket, and nothing resident on this
+                        // side for a reader who only reads. The value is the
+                        // `Cache-Control` the application wants on it; `true`
+                        // means `no-cache`, which still saves the session and
+                        // revalidates against the ETag.
+                        ("static", "false") => {}
+                        ("static", "true") => {
+                            is_static = Some("no-cache".to_string())
+                        }
+                        ("static", cache) => {
+                            is_static = Some(
+                                crate::serve::eui::snapshot::validate_cache_control(cache)?,
+                            )
+                        }
                         (other, _) => {
                             return Err(format!("router_eui: unknown option '{other}'"))
                         }
                     }
                 }
+            }
+            if needs_session {
+                crate::serve::eui::require_session(&component);
+            }
+            if let Some(cache) = is_static {
+                // Said together, these two contradict each other, and the
+                // honest place to say so is the line that wrote both rather
+                // than a 404 at request time that nobody connects to it.
+                if needs_session {
+                    return Err(format!(
+                        "router_eui: '{component}' cannot be both {{\"session\": \"required\"}}                          and {{\"static\": ...}}; a static view is rendered for nobody, so a                          component that needs a session has no static first render to serve"
+                    ));
+                }
+                crate::serve::eui::allow_static(&component, &cache);
             }
             crate::live::socket::register_liveview_route(&component, &handler);
             crate::serve::eui::register_view(&component, &view);

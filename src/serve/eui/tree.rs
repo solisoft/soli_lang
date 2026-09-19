@@ -171,6 +171,16 @@ pub struct Encoder {
     prev: Option<TNode>,
     /// Which session this is, for the thread-local memo.
     session: String,
+    /// Whether this encoder's renders may keep subtrees in the worker's memo.
+    ///
+    /// A one-shot render — `GET /_eui/view/<component>`, which has no socket
+    /// and no second render to be warm for — must not. The memo is a
+    /// thread-local holding interpreter values, so what it keeps for a
+    /// session that is already over can only be freed by asking the right
+    /// worker nicely, and a render that never asked is a render with nothing
+    /// to free. Cheaper and more certain than posting a forget afterwards
+    /// and hoping the queue takes it.
+    ephemeral: bool,
     generation: u32,
     /// How many nodes the last tree had, for `eui_stats()`.
     last_nodes: usize,
@@ -801,7 +811,14 @@ impl Encoder {
         value: &Value,
         resync: bool,
     ) -> Result<Vec<Batch>, String> {
-        self.session = session.to_owned();
+        // An ephemeral encoder names no session to the memo, which is how it
+        // leaves nothing behind on the worker that rendered it: `finish`
+        // freezes keyed subtrees only when this is non-empty.
+        self.session = if self.ephemeral {
+            String::new()
+        } else {
+            session.to_owned()
+        };
         self.generation = self.generation.wrapping_add(1);
         // The view values behind this render's keyed nodes, by identity,
         // until `finish` pins them in the memo. Held here, not on the
@@ -979,6 +996,12 @@ impl Encoder {
         } else {
             self.version
         }
+    }
+
+    /// Say that this encoder renders once and is thrown away, so nothing it
+    /// converts is kept in the worker's keyed memo.
+    pub fn set_ephemeral(&mut self, yes: bool) {
+        self.ephemeral = yes;
     }
 
     /// Remember what the handshake settled on (01 §2).
@@ -2227,6 +2250,72 @@ fn find(node: &TNode, id: u32) -> Option<&TNode> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// The premise the one-shot render's ETag and the adopt offer both rest
+    /// on: the same tree, encoded twice by two fresh encoders, is the same
+    /// bytes. Ids are allocated `len() + 1` in traversal order and every
+    /// definition is pushed into `pending` at allocation, so nothing here
+    /// depends on the iteration order of a `HashMap` — but that is a
+    /// property of this code rather than a law, and it is load-bearing
+    /// enough to be checked rather than reasoned about.
+    #[test]
+    fn two_fresh_encoders_render_the_same_tree_to_the_same_bytes() {
+        let tree = json!({"k": "box", "s": {"display": "column", "gap": 8}, "c": [
+            {"k": "text", "t": "one", "s": {"fg": "text.default"}},
+            {"k": "text", "t": "two", "s": {"fg": "text.default"}},
+            {"k": "box", "s": {"display": "row", "gap": 4}, "c": [
+                {"k": "text", "t": "three"},
+                {"k": "box", "on": {"click": "go"}, "c": [{"k": "text", "t": "go"}]},
+            ]},
+        ]});
+
+        let encode = || {
+            let mut enc = Encoder::default();
+            let batches = enc.render(&tree, false).unwrap();
+            batches
+                .iter()
+                .flat_map(|b| eui_proto::Frame::Batch(b.clone()).encode())
+                .collect::<Vec<u8>>()
+        };
+        assert_eq!(encode(), encode());
+    }
+
+    /// An ephemeral encoder leaves nothing on the worker that drew it.
+    ///
+    /// The memo is a thread-local holding interpreter values, so anything it
+    /// keeps for a render that is already over can only be freed by asking
+    /// that same worker. A one-shot render never asks, because it never puts
+    /// anything there.
+    #[test]
+    fn an_ephemeral_encoder_keeps_nothing_in_the_memo() {
+        let tree = json!({"k": "box", "c": [
+            {"k": "box", "key": "a", "c": [{"k": "text", "t": "one"}]},
+            {"k": "box", "key": "b", "c": [{"k": "text", "t": "two"}]},
+        ]});
+
+        let value = crate::serve::json_to_value(&tree);
+
+        let warm = "memo-test-warm";
+        let mut kept = Encoder::default();
+        kept.render_value(warm, &value, false).unwrap();
+        assert!(
+            memo_entries(warm) > 0,
+            "an ordinary session memoizes its keyed subtrees"
+        );
+
+        let cold = "memo-test-cold";
+        let mut once = Encoder::default();
+        once.set_ephemeral(true);
+        once.render_value(cold, &value, false).unwrap();
+        assert_eq!(
+            memo_entries(cold),
+            0,
+            "a one-shot render leaves the worker nothing to free"
+        );
+
+        forget_session(warm);
+        forget_session(cold);
+    }
 
     /// 03 §1.2: a `scene` names two assets, and its uniforms are the
     /// author's eight floats.
