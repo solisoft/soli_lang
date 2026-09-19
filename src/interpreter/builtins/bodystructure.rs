@@ -129,6 +129,12 @@ fn lex(s: &str) -> Option<Vec<Tok>> {
 #[derive(Debug)]
 enum Node {
     Leaf(Vec<Item>),
+    /// The children, then the multipart's own trailing fields — subtype
+    /// parameters, disposition, language. Only the children are read today;
+    /// the rest is kept so the parse stays lossless and a caller that later
+    /// wants, say, the boundary does not send anyone back through the
+    /// grammar for it.
+    #[allow(dead_code)]
     Multi(Vec<Node>, Vec<Item>),
 }
 
