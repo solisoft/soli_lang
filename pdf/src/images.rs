@@ -293,6 +293,9 @@ fn decode_svg(bytes: &[u8], font_bytes: &[&[u8]]) -> Result<ImageData> {
         pixels: Vec::new(),
         source_key: None,
         vector: Some(pdf),
+        // Kept for the raster backend: a Form XObject is meaningless to a
+        // rasteriser, so it re-parses this and draws it with resvg.
+        svg_source: Some(std::sync::Arc::new(bytes.to_vec())),
         opacity: 1.0,
     })
 }
@@ -312,6 +315,7 @@ pub fn faded(img: &ImageData, opacity: f32) -> ImageData {
             pixels: Vec::new(),
             source_key: None,
             vector: Some(pdf.clone()),
+            svg_source: img.svg_source.clone(),
             opacity: img.opacity * opacity,
         };
     }
@@ -344,6 +348,7 @@ pub fn faded(img: &ImageData, opacity: f32) -> ImageData {
         pixels,
         source_key: None,
         vector: None,
+        svg_source: None,
         opacity: 1.0,
     }
 }

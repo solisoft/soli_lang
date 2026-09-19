@@ -40,6 +40,13 @@ qrcode = { version = "0.14", default-features = false }
 # <text> glyphs). system-fonts stay off — we load faces from font_dirs, like
 # the rest of the engine, so renders stay deterministic/offline.
 svg2pdf = { version = "0.13", default-features = false, features = ["text"] }
+# PNG page previews: a second backend paints the same `LaidOutDoc` the PDF
+# backend does (see src/raster_backend.rs). Both crates are already in the
+# graph — svg2pdf 0.13 depends on resvg 0.45, which depends on tiny-skia — so
+# naming them here adds no compilation. resvg keeps `text` on so <text> inside
+# an SVG rasterises like svg2pdf's `embed_text` draws it.
+tiny-skia = "0.11"
+resvg = { version = "0.45", default-features = false, features = ["text"] }
 # 1D barcode encoding only — we rasterise the bar pattern ourselves into an RGB
 # buffer (like QR), so the image/svg generator features stay off.
 barcoders = { version = "2", default-features = false, features = ["std"] }

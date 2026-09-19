@@ -67,6 +67,10 @@ pub enum RenderWarning {
     /// A tagged (PDF/UA) render has an image with no `alt` text — the `Figure`
     /// will be emitted without the `/Alt` conformance requires.
     MissingAlt { src: String },
+    /// A [`crate::RenderOptions`] feature the raster (PNG) preview cannot
+    /// reproduce. The preview is still produced — it just differs from the
+    /// PDF, and the caller can say so.
+    RasterUnsupported { feature: String },
 }
 
 impl std::fmt::Display for RenderWarning {
@@ -94,6 +98,9 @@ impl std::fmt::Display for RenderWarning {
                     f,
                     "tagged image {src:?} has no alt text (PDF/UA needs /Alt)"
                 )
+            }
+            RenderWarning::RasterUnsupported { feature } => {
+                write!(f, "{feature} is not reproduced in the raster preview")
             }
         }
     }

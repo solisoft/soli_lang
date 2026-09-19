@@ -14,6 +14,9 @@
             <code class="text-teal-300">pdf_render</code> for an ordinary PDF, <code class="text-teal-300">pdf_facturx</code> for a
             <strong>PDF/A&#8209;3b Factur&#8209;X (EN&nbsp;16931)</strong> electronic invoice with a Cross-Industry-Invoice XML you supply, and <code class="text-teal-300">pdf_facturx_from_invoice</code> which <em>generates</em> that XML (and the totals) from a typed invoice. The Factur-X output validates clean against veraPDF (146/146 rules).
         </p>
+        <p class="text-lg text-gray-400 leading-8 mt-4">
+            And to <em>show</em> a document rather than download it, <code class="text-teal-300">pdf_preview</code> rasterises the same template to <strong>one PNG per page</strong> &mdash; thumbnails and preview panes without poppler or a PDF.js bundle.
+        </p>
         <div class="mt-6">
             <a href="/docs/builtins/pdf-playground" style="background-color:#0F766E;color:#ffffff" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold hover:opacity-90 transition-opacity">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /></svg>
@@ -179,6 +182,61 @@ end</code></pre>
             </div>
         </section>
 
+        <section id="def-pdf-preview" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-amber-400">pdf_preview(template, data, options?)</code>
+                <p class="text-gray-400 mt-3 mb-3">Rasterise the same document to <strong>PNG page images</strong> &mdash; a thumbnail grid, a preview pane, a generated image asset. In-process like everything else here: no headless browser, no poppler.</p>
+                <pre data-filename="controllers/invoices_controller.sl"><code class="language-soli text-sm"># One base64 PNG per page.
+let pages = pdf_preview(template, data, { "dpi": 150 })
+file_write_base64("out/page-1.png", pages[0])
+
+# Or a thumbnail width — `width` wins over `dpi`.
+# WebP is ~3x smaller than PNG for a page of type: 7.7 KB vs 25 KB here.
+let thumbs = pdf_preview(template, data,
+  { "width": 320, "format": "webp", "quality": 90 })
+
+# Or write them straight to disk, and get the paths back.
+let paths = pdf_preview(template, data,
+  { "width": 320, "out_dir": "public/previews", "prefix": "invoice-42" })
+# => ["public/previews/invoice-42-1.png", "public/previews/invoice-42-2.png"]</code></pre>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div>As <code>pdf_render</code>, plus the <a href="#section-preview" class="text-teal-300 hover:underline">preview options</a>: <code class="text-amber-400">dpi</code>, <code class="text-amber-400">width</code>, <code class="text-amber-400">height</code>, <code class="text-amber-400">pages</code>, <code class="text-amber-400">out_dir</code>, <code class="text-amber-400">prefix</code>.</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Array&lt;String&gt;</code> &mdash; one base64 PNG per rendered page, in page order. With <code>out_dir</code>, the written paths instead.</div>
+                <p class="text-gray-400 mt-4 text-sm">Previews rasterise the layout engine&rsquo;s own draw model, not PDF bytes &mdash; so they cover what the renderer produces, and not a merged, filled, stamped or uploaded PDF. See <a href="#section-preview" class="text-teal-300 hover:underline">Page previews</a>.</p>
+            </div>
+        </section>
+
+        <section id="def-pdf-preview-markdown" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-amber-400">pdf_preview_from_markdown(markdown, options?)</code>
+                <p class="text-gray-400 mt-3 mb-3">The Markdown counterpart of <code>pdf_preview</code>, mirroring <code>pdf_from_markdown</code>.</p>
+                <pre data-filename="scripts/preview.sl"><code class="language-soli text-sm">let pages = pdf_preview_from_markdown(slurp("README.md"), { "width": 600 })</code></pre>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Array&lt;String&gt;</code> &mdash; as <code>pdf_preview</code>.</div>
+            </div>
+        </section>
+
+        <section id="def-pdf-preview-response" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-lg font-mono text-amber-400">pdf_preview_response(template, data, options?)</code>
+                <p class="text-gray-400 mt-3 mb-3">One page as a ready <code>image/png</code> response &mdash; the preview mirror of <code>pdf_response</code>.</p>
+                <pre data-filename="controllers/invoices_controller.sl"><code class="language-soli text-sm">def thumbnail
+  let tpl  = slurp("pdf/invoice.json")
+  let data = Invoice.find(params["id"]).to_json()
+  return pdf_preview_response(tpl, data, { "page": 1, "width": 480 })
+end</code></pre>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div>As <code>pdf_preview</code>, plus <code class="text-amber-400">page</code> : <code class="text-orange-400">Int</code> (default <code>1</code>) and <code class="text-amber-400">filename</code>. <code>pages</code> and <code>out_dir</code> are rejected &mdash; a response carries one image.</div>
+                </div>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> &mdash; <code>{ "status": 200, "headers": { "Content-Type": "image/png" }, "body_base64": … }</code>.</div>
+            </div>
+        </section>
+
         <section id="def-pdf-facturx" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-lg font-mono text-amber-400">pdf_facturx(template, data, xml, options?)</code>
@@ -304,7 +362,77 @@ end</code></pre>
                     </tbody>
                 </table>
             </div>
+
+            <h3 class="text-lg font-semibold text-white mt-8 mb-3">Preview options <span class="text-xs font-normal text-teal-300 align-middle">&middot; <code>pdf_preview*</code> only</span></h3>
+            <div class="overflow-x-auto rounded-xl border border-white/10">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-white/5 text-gray-300">
+                        <tr><th class="px-4 py-2 font-semibold">Key</th><th class="px-4 py-2 font-semibold">Type</th><th class="px-4 py-2 font-semibold">Default</th><th class="px-4 py-2 font-semibold">Meaning</th></tr>
+                    </thead>
+                    <tbody class="text-gray-400 divide-y divide-white/5">
+                        <tr><td class="px-4 py-2"><code>dpi</code></td><td class="px-4 py-2">Number</td><td class="px-4 py-2"><code>96</code></td><td class="px-4 py-2">Rasterisation density; scale is <code>dpi / 72</code>. A4 comes out 794&times;1123 at 96, 1240&times;1754 at 150. Capped at 600.</td></tr>
+                        <tr><td class="px-4 py-2"><code>width</code> / <code>height</code></td><td class="px-4 py-2">Int (px)</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Exact output size. <strong>Either one overrides <code>dpi</code></strong>; given both, the page is scaled to <em>fit inside</em> the box with its aspect ratio preserved. Capped at 8192 per axis.</td></tr>
+                        <tr><td class="px-4 py-2"><code>pages</code></td><td class="px-4 py-2">Array&nbsp;|&nbsp;String</td><td class="px-4 py-2">all</td><td class="px-4 py-2">Which pages to rasterise, 1&#8209;based &mdash; <code>[1, 3]</code> or <code>"1-3,7"</code>, the same selection <code>pdf_pages</code> takes. A page past the end is an error, not a short array.</td></tr>
+                        <tr><td class="px-4 py-2"><code>out_dir</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Write PNG files here (app-root relative, jailed) and return their paths instead of base64.</td></tr>
+                        <tr><td class="px-4 py-2"><code>prefix</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2"><code>"page"</code></td><td class="px-4 py-2">Base file name under <code>out_dir</code>. One page gives <code>&lt;prefix&gt;.png</code>; several give <code>&lt;prefix&gt;-1.png</code>, <code>&lt;prefix&gt;-2.png</code>, &hellip; Must be a plain file name &mdash; no path separators.</td></tr>
+                        <tr><td class="px-4 py-2"><code>page</code></td><td class="px-4 py-2">Int</td><td class="px-4 py-2"><code>1</code></td><td class="px-4 py-2"><span class="text-gray-500">(pdf_preview_response)</span> Which page the response carries.</td></tr>
+                        <tr><td class="px-4 py-2"><code>format</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2"><code>"png"</code></td><td class="px-4 py-2"><code>"png"</code>, <code>"webp"</code> or <code>"jpeg"</code>. <strong>Reach for <code>webp</code></strong> &mdash; see below. The written file extension and the response <code>Content-Type</code> follow it.</td></tr>
+                        <tr><td class="px-4 py-2"><code>quality</code></td><td class="px-4 py-2">Int</td><td class="px-4 py-2"><code>90</code></td><td class="px-4 py-2">1&ndash;100, for <code>webp</code> and <code>jpeg</code>. Ignored by <code>png</code>, which is lossless.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-gray-400 mt-3 text-sm"><code>font_dirs</code> and <code>fetch_images</code> work as they do for <code>pdf_render</code>. <code>stationery</code>, <code>attachments</code>, <code>password</code>, <code>pdfa</code> and <code>sign</code> are <strong>accepted but ignored</strong>, with a warning on stderr &mdash; so one options hash can drive both the PDF and its preview.</p>
         </section>
+    </section>
+
+    <!-- Page previews -->
+    <section id="section-preview" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">Page previews <span class="text-xs font-normal text-teal-300 align-middle">&middot; <code>pdf_preview</code> &middot; PNG</span></h2>
+        <p class="text-gray-400 mb-4"><code class="text-amber-400">pdf_preview</code> gives the layout engine a second backend: instead of emitting PDF operators it paints the same laid-out page into pixels. Three consequences are worth knowing.</p>
+        <div class="grid gap-3 md:grid-cols-3 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-4">
+                <h4 class="text-sm font-semibold text-white mb-1">It is the same layout</h4>
+                <p class="text-sm text-gray-400">Not an approximation from a separate renderer &mdash; the identical draw model, measured with the identical font metrics. What you see is where the text will be.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-4">
+                <h4 class="text-sm font-semibold text-white mb-1">It covers what the engine renders</h4>
+                <p class="text-sm text-gray-400"><code>pdf_merge</code>, <code>pdf_pages</code>, <code>pdf_fill</code>, <code>pdf_stamp</code> and an uploaded PDF produce <em>bytes</em>; rasterising those would need a PDF interpreter. Preview the template, before those steps.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-4">
+                <h4 class="text-sm font-semibold text-white mb-1">A few things cannot appear</h4>
+                <p class="text-sm text-gray-400">Each warns on stderr rather than failing, so a preview always appears.</p>
+            </div>
+        </div>
+        <div class="overflow-x-auto rounded-xl border border-white/10">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300"><tr><th class="px-4 py-2 font-semibold">Option</th><th class="px-4 py-2 font-semibold">Why not</th></tr></thead>
+                <tbody class="text-gray-400 divide-y divide-white/5">
+                    <tr><td class="px-4 py-2"><code>stationery</code></td><td class="px-4 py-2">The letterhead is composited onto emitted PDF bytes. The preview shows your content without it.</td></tr>
+                    <tr><td class="px-4 py-2"><code>attachments</code></td><td class="px-4 py-2">Embedded files are not drawn on a page.</td></tr>
+                    <tr><td class="px-4 py-2"><code>password</code></td><td class="px-4 py-2">A preview image is plaintext by nature.</td></tr>
+                    <tr><td class="px-4 py-2"><code>pdfa</code></td><td class="px-4 py-2">Metadata and OutputIntent only &mdash; no visual effect.</td></tr>
+                    <tr><td class="px-4 py-2"><code>sign</code></td><td class="px-4 py-2">A signature is not page content.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mt-4">Two smaller divergences from a PDF viewer: colour/bitmap glyph fonts (CBDT/sbix/COLR) are not drawn, and hairlines below one device pixel are anti-aliased rather than snapped, so very thin table rules read a little differently at low <code>dpi</code>. Raise <code>dpi</code> if that matters.</p>
+        <h3 class="text-lg font-semibold text-white mt-8 mb-3">WebP is three times smaller</h3>
+        <p class="text-gray-400 mb-4">A document page is mostly flat colour and crisp type &mdash; exactly what PNG is bad at and WebP is good at. Measured on the <code>invoice</code> sample:</p>
+        <div class="overflow-x-auto rounded-xl border border-white/10">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-white/5 text-gray-300"><tr><th class="px-4 py-2 font-semibold"></th><th class="px-4 py-2 font-semibold">PNG</th><th class="px-4 py-2 font-semibold">WebP q90</th><th class="px-4 py-2 font-semibold">WebP q80</th></tr></thead>
+                <tbody class="text-gray-400 divide-y divide-white/5">
+                    <tr><td class="px-4 py-2">A4 at 150&nbsp;dpi</td><td class="px-4 py-2">165&nbsp;KB</td><td class="px-4 py-2 text-teal-300 font-semibold">51&nbsp;KB</td><td class="px-4 py-2">41&nbsp;KB</td></tr>
+                    <tr><td class="px-4 py-2">A4 at 96&nbsp;dpi</td><td class="px-4 py-2">93&nbsp;KB</td><td class="px-4 py-2 text-teal-300 font-semibold">28&nbsp;KB</td><td class="px-4 py-2">&mdash;</td></tr>
+                    <tr><td class="px-4 py-2">320&nbsp;px thumbnail</td><td class="px-4 py-2">25&nbsp;KB</td><td class="px-4 py-2 text-teal-300 font-semibold">7.7&nbsp;KB</td><td class="px-4 py-2">&mdash;</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mt-4">At <code>quality: 90</code> the type stays crisp &mdash; no visible ringing on body text at 150&nbsp;dpi. If a preview is going over the network, <code class="text-amber-400">{ "format": "webp", "quality": 90 }</code> is very likely the right setting; <code>png</code> is the default only because lossless and universal is the safer thing to default to.</p>
+        <p class="text-gray-400 mt-3">Encoding goes through libwebp, the same encoder <code>Image.format("webp")</code> uses &mdash; the <code>image</code> crate&rsquo;s own WebP encoder is lossless-only and would give up most of that saving. <code>jpeg</code> is accepted for completeness; it has no alpha (the page is flattened onto the paper colour) and is worse than WebP at this kind of content.</p>
+        <p class="text-gray-400 mt-3"><strong>Limits.</strong> Because <code>dpi</code> and <code>width</code> usually come from a request, each is capped: <code>SOLI_PDF_PREVIEW_MAX_DPI</code> (600), <code>SOLI_PDF_PREVIEW_MAX_DIMENSION_PX</code> (8192), <code>SOLI_PDF_PREVIEW_MAX_PAGES</code> (64), <code>SOLI_PDF_PREVIEW_MAX_PIXELS</code> (40&nbsp;000&nbsp;000 per page). An A4 at 600&nbsp;dpi is already a 140&nbsp;MB pixmap.</p>
+        <p class="text-gray-400 mt-3"><strong>Writing files.</strong> <code>out_dir</code> resolves through the same jail as <code>file_write_base64</code>, and <code>prefix</code> must be a plain file name. Under <code>soli run</code> and <code>soli test</code> no jail is installed, so paths resolve against the working directory exactly as <code>File.write</code> does &mdash; which is what lets the gallery on this site regenerate itself.</p>
+        <p class="text-gray-400 mt-3">Compose with the <a href="/docs/builtins/image" class="text-teal-300 hover:underline">Image</a> class for the rest: <code>Image.from_buffer(pages[0]).thumbnail(240).format("webp").to_buffer()</code>.</p>
     </section>
 
     <!-- Digital signatures (PAdES) -->

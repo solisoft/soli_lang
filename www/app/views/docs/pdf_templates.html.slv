@@ -391,7 +391,7 @@ end</code></pre>
         <p class="text-gray-400 mb-4 max-w-3xl">The images on this page are committed artifacts rendered from the sample files. After editing a template, regenerate them:</p>
         <pre data-filename="shell"><code class="language-bash text-sm">scripts/gen_pdf_previews.sh                     # every sample
 scripts/gen_pdf_previews.sh invoice_minimal     # just one</code></pre>
-        <p class="text-gray-500 text-xs mt-3">Needs <code>pdftoppm</code> (poppler-utils). Renders page&nbsp;1 of each sample at 150&nbsp;DPI into <code>www/public/images/docs/pdf/</code>.</p>
+        <p class="text-gray-500 text-xs mt-3">Needs nothing but <code>soli</code> &mdash; the engine rasterises its own pages through <a href="/docs/builtins/pdf#section-preview" class="text-teal-300 hover:underline"><code>pdf_preview</code></a>. Renders page&nbsp;1 of each sample at 150&nbsp;DPI into <code>www/public/images/docs/pdf/</code>.</p>
     </section>
 
     <p class="text-sm text-gray-500">

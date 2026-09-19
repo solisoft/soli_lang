@@ -173,7 +173,7 @@ scripts/gen_pdf_previews.sh                     # every sample
 scripts/gen_pdf_previews.sh invoice_minimal     # just one
 ```
 
-Needs `pdftoppm` (poppler-utils). Renders page 1 of each sample at 150 DPI, which for A4 gives 1240×1755.
+Needs nothing but `soli` — the engine rasterises its own pages through [`pdf_preview`](pdf.md#page-previews). Renders page 1 of each sample at 150 DPI, which for A4 gives 1240×1754.
 
 ## Layout notes
 

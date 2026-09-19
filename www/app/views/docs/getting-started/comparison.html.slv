@@ -74,7 +74,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Documents</td>
-                        <td class="py-3 px-4 text-gray-400"><code>pdf_render</code>, Factur-X / EN&nbsp;16931 e-invoices (PDF/A-3b), PAdES digital signatures + timestamping, tagged PDF/UA output, merge/fill/stamp, markdown&rarr;PDF, ready-made <a href="/docs/builtins/pdf-templates" class="text-amber-300 hover:underline">invoice &amp; quote templates</a>, spreadsheets (CSV/XLSX read+write)</td>
+                        <td class="py-3 px-4 text-gray-400"><code>pdf_render</code>, Factur-X / EN&nbsp;16931 e-invoices (PDF/A-3b), PAdES digital signatures + timestamping, tagged PDF/UA output, merge/fill/stamp, markdown&rarr;PDF, in-process <strong>PNG page previews</strong> (<code>pdf_preview</code> &mdash; no poppler, no PDF.js), ready-made <a href="/docs/builtins/pdf-templates" class="text-amber-300 hover:underline">invoice &amp; quote templates</a>, spreadsheets (CSV/XLSX read+write)</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Tooling</td>
@@ -109,7 +109,7 @@
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-amber-400 mb-2">Documents and compliance</h3>
-            <p class="text-gray-400 text-sm">European e-invoicing (Factur-X/EN&nbsp;16931) down to the French mandate's party identifiers (SIREN/SIRET, BT-30/BT-47), PAdES-compliant digital signatures with timestamp authorities, PDF/A and tagged PDF/UA output, form filling, stamping and merging &mdash; built in. In every other framework this is a third-party integration project.</p>
+            <p class="text-gray-400 text-sm">European e-invoicing (Factur-X/EN&nbsp;16931) down to the French mandate's party identifiers (SIREN/SIRET, BT-30/BT-47), PAdES-compliant digital signatures with timestamp authorities, PDF/A and tagged PDF/UA output, form filling, stamping and merging, and page images for previews and thumbnails &mdash; built in, in-process. In every other framework this is a third-party integration project, and the preview half usually means shelling out to poppler or shipping a PDF.js bundle to the browser.</p>
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-amber-400 mb-2">Frontend without a toolchain</h3>

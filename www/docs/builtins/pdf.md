@@ -8,6 +8,8 @@ Render a PDF from a **JSON layout template** + a **JSON data** document, in-proc
 
 All three return the PDF as a **base64 string** (Soli has no bytes type). Save it with `file_write_base64(path, b64)`.
 
+Need to *show* the document rather than download it? `pdf_preview(template, data)` gives you one **PNG per page** from the same template — see [Page previews](#page-previews).
+
 > Looking for a finished invoice or quote to start from? See **[Invoice & Quote Templates](pdf-templates.md)** — eight ready-to-copy billing documents (compliant and minimal invoices, subscription billing, credit note, sectioned and optioned quotes) with their data files and previews.
 
 ---
@@ -26,6 +28,10 @@ file_write_base64("out/invoice.pdf", pdf)
 let xml = slurp("pdf/factur-x.xml")
 let fx  = pdf_facturx(template, data, xml, { "profile": "en16931", "title": "Invoice 42" })
 file_write_base64("out/facturx.pdf", fx)
+
+# A page image, for a thumbnail or a preview pane
+let thumbs = pdf_preview(template, data, { "width": 320 })
+file_write_base64("public/previews/invoice.png", thumbs[0])
 
 # Factur-X from a typed invoice — totals, VAT breakdown and CII XML are generated
 let invoice = slurp("pdf/invoice.json")
@@ -63,6 +69,60 @@ end
 **Parameters:** as `pdf_render`, plus the optional `filename` option — when set, adds `Content-Disposition: attachment; filename="…"` (otherwise the browser renders the PDF inline).
 
 **Returns:** Hash — `{ "status": 200, "headers": { "Content-Type": "application/pdf", … }, "body_base64": … }`. The `body_base64` key is decoded to the binary body by the server (available to any handler, not just PDFs).
+
+### pdf_preview(template, data, options?)
+
+Rasterise the same document to **PNG page images** — for a thumbnail grid, a preview pane, or a generated image asset. In-process, like everything else here: no headless browser and no poppler.
+
+```soli
+# One base64 PNG per page.
+let pages = pdf_preview(template, data, { "dpi": 150 })
+file_write_base64("out/page-1.png", pages[0])
+
+# Or a thumbnail width — `width` wins over `dpi`.
+# WebP is ~3x smaller than PNG for a page of type: 7.7 KB vs 25 KB here.
+let thumbs = pdf_preview(template, data,
+  { "width": 320, "format": "webp", "quality": 90 })
+
+# Or write them straight to disk, and get the paths back.
+let paths = pdf_preview(template, data,
+  { "width": 320, "out_dir": "public/previews", "prefix": "invoice-42" })
+# => ["public/previews/invoice-42-1.png", "public/previews/invoice-42-2.png"]
+```
+
+**Parameters:** as `pdf_render`, plus the [preview options](#preview-options).
+
+**Returns:** Array<String> — one base64 PNG per rendered page, in page order. With `out_dir`, the paths written instead.
+
+Previews rasterise the **layout engine's own draw model**, not PDF bytes. So they cover what the renderer produces — `pdf_render` and `pdf_from_markdown` input — and *not* a merged, filled, stamped or uploaded PDF, which exists only as bytes. See [Page previews](#page-previews) for what a preview cannot show.
+
+Compose with the [Image](image.md) class for the rest: `Image.from_buffer(pages[0]).thumbnail(240).format("webp").to_buffer()`.
+
+### pdf_preview_from_markdown(markdown, options?)
+
+The Markdown counterpart of `pdf_preview`, mirroring `pdf_from_markdown`.
+
+```soli
+let pages = pdf_preview_from_markdown(slurp("README.md"), { "width": 600 })
+```
+
+**Returns:** Array<String> — as `pdf_preview`.
+
+### pdf_preview_response(template, data, options?)
+
+One page as a ready `image/png` response — the preview mirror of `pdf_response`.
+
+```soli
+def thumbnail
+  let tpl  = slurp("pdf/invoice.json")
+  let data = Invoice.find(params["id"]).to_json()
+  return pdf_preview_response(tpl, data, { "page": 1, "width": 480 })
+end
+```
+
+**Parameters:** as `pdf_preview`, plus `page` (Int, default `1`) and `filename`. `pages` and `out_dir` are rejected — a response carries one image.
+
+**Returns:** Hash — `{ "status": 200, "headers": { "Content-Type": "image/png" }, "body_base64": … }`.
 
 ### pdf_facturx(template, data, xml, options?)
 
@@ -228,6 +288,63 @@ end
 | `permissions` | Array | all | With a password set, the actions the user password permits: any of `["print", "copy", "modify", "annotate"]`. Empty (default) allows everything — a pure open-password. |
 | `pdfa` | Bool | `false` | *(pdf_render / pdf_response)* Emit **PDF/A-3b** (archival conformance: sRGB OutputIntent, XMP `pdfaid` metadata, PDF 1.7) without any Factur-X payload — for legal-archiving mandates on documents that aren't invoices. Incompatible with `password` (PDF/A forbids encryption); `pdf_facturx*` reject it (they are already PDF/A). **Composes with a `tagged` template** — the output then declares PDF/A-3b *and* PDF/UA-1 (accessible + archival). Attachments compose. |
 | `sign` | Hash | — | **Digitally sign** the PDF (PAdES) — see [Digital signatures](#digital-signatures-pades). `{ "cert", "key", "chain"?, "reason"?, "location"?, "name"?, "contact"? }`. Works on `pdf_render`, `pdf_response`, and `pdf_facturx*` (signed e-invoices). Incompatible with `password` (a signed PDF must not be encrypted). |
+
+### Preview options
+
+Only `pdf_preview*` reads these.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `dpi` | Number | `96` | Rasterisation density; scale is `dpi / 72`. A4 comes out 794×1123 at 96, 1240×1754 at 150. Capped at 600. |
+| `width` / `height` | Int (px) | — | Exact output size in pixels. **Either one overrides `dpi`**; given both, the page is scaled to *fit inside* the box with its aspect ratio preserved. Capped at 8192 per axis. |
+| `pages` | Array\|String | all | Which pages to rasterise, 1-based — `[1, 3]` or `"1-3,7"`, the same selection `pdf_pages` takes. Asking for a page past the end is an error, not a short array. |
+| `out_dir` | String | — | Write PNG files here (app-root relative, jailed) and return their paths instead of base64. |
+| `prefix` | String | `"page"` | Base file name under `out_dir`. One page gives `<prefix>.png`; several give `<prefix>-1.png`, `<prefix>-2.png`, … Must be a plain file name — no path separators. |
+| `page` | Int | `1` | *(pdf_preview_response only)* Which page the response carries. |
+| `format` | String | `"png"` | `"png"`, `"webp"` or `"jpeg"`. **Reach for `webp`** — see below. The written file and the response `Content-Type` follow it. |
+| `quality` | Int | `90` | 1&ndash;100, for `webp` and `jpeg`. Ignored by `png`, which is lossless. |
+
+`font_dirs` and `fetch_images` work as they do for `pdf_render`. `stationery`, `attachments`, `password`, `pdfa` and `sign` are **accepted but ignored**, with a warning on stderr — so one options hash can drive both the PDF and its preview.
+
+---
+
+## Page previews
+
+`pdf_preview` gives the layout engine a second backend: instead of emitting PDF operators it paints the same laid-out page into pixels. That has three consequences worth knowing.
+
+**It is the same layout.** A preview is not an approximation of the PDF from a separate renderer — it is the identical draw model, measured with the identical font metrics. What you see is where the text will be.
+
+**It only covers what the engine renders.** `pdf_merge`, `pdf_pages`, `pdf_fill`, `pdf_stamp` and an uploaded PDF all produce *bytes*, and rasterising those would need a PDF interpreter. Preview the template instead, before those steps.
+
+**A few things cannot appear**, and each warns on stderr rather than failing:
+
+| Option | Why not |
+|---|---|
+| `stationery` | The letterhead is composited onto emitted PDF bytes. The preview shows your content without it. |
+| `attachments` | Embedded files are not drawn on a page. |
+| `password` | A preview image is plaintext by nature. |
+| `pdfa` | Metadata and OutputIntent only — no visual effect. |
+| `sign` | A signature is not page content. |
+
+Two smaller divergences from a PDF viewer: colour/bitmap glyph fonts (CBDT/sbix/COLR) are not drawn, and hairlines below one device pixel are anti-aliased rather than snapped, so very thin table rules read a little differently at low `dpi`. Raise `dpi` if that matters.
+
+### WebP is three times smaller
+
+A document page is mostly flat colour and crisp type — exactly what PNG is bad at and WebP is good at. Measured on the `invoice` sample:
+
+| | PNG | WebP q90 | WebP q80 |
+|---|---|---|---|
+| A4 at 150 dpi | 165 KB | **51 KB** | 41 KB |
+| A4 at 96 dpi | 93 KB | **28 KB** | — |
+| 320 px thumbnail | 25 KB | **7.7 KB** | — |
+
+At `quality: 90` the type stays crisp — there is no visible ringing on body text at 150 dpi. If a preview is going over the network, `{ "format": "webp", "quality": 90 }` is very likely the right setting, and `png` is the default only because lossless and universal is the safer thing to default to.
+
+Encoding goes through libwebp, the same encoder `Image.format("webp")` uses — the `image` crate's own WebP encoder is lossless-only and would give up most of that saving. `jpeg` is accepted for completeness; it has no alpha (the page is flattened onto the paper colour) and is worse than WebP at this kind of content.
+
+**Limits.** Because `dpi` and `width` usually come from a request, each is capped: `SOLI_PDF_PREVIEW_MAX_DPI` (600), `SOLI_PDF_PREVIEW_MAX_DIMENSION_PX` (8192), `SOLI_PDF_PREVIEW_MAX_PAGES` (64), `SOLI_PDF_PREVIEW_MAX_PIXELS` (40 000 000 per page). An A4 at 600 dpi is already a 140 MB pixmap.
+
+**Writing files.** `out_dir` resolves through the same jail as `file_write_base64`, and `prefix` must be a plain file name. Under `soli run` and `soli test` no jail is installed, so paths resolve against the working directory exactly as `File.write` does — that is what lets `scripts/gen_pdf_previews.sl` regenerate the documentation gallery.
 
 ---
 

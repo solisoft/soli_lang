@@ -13062,6 +13062,56 @@
       ]
     },
     {
+      "title": "pdf_preview",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-preview",
+      "signature": "pdf_preview(template, data, options?)",
+      "description": "Rasterise a PDF template to one base64 PNG per page - thumbnails and previews in-process, no poppler. With out_dir, writes the files and returns their paths.",
+      "keywords": [
+        "pdf",
+        "preview",
+        "thumbnail",
+        "png",
+        "page image",
+        "rasterise",
+        "dpi",
+        "out_dir"
+      ]
+    },
+    {
+      "title": "pdf_preview_from_markdown",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-preview-markdown",
+      "signature": "pdf_preview_from_markdown(markdown, options?)",
+      "description": "Rasterise a Markdown document to one base64 PNG per page - the preview counterpart of pdf_from_markdown.",
+      "keywords": [
+        "pdf",
+        "preview",
+        "markdown",
+        "thumbnail",
+        "png",
+        "page image"
+      ]
+    },
+    {
+      "title": "pdf_preview_response",
+      "type": "function",
+      "category": "PDF",
+      "path": "/docs/builtins/pdf#def-pdf-preview-response",
+      "signature": "pdf_preview_response(template, data, options?)",
+      "description": "Render one page as a ready image/png HTTP response (binary body via body_base64) - the preview mirror of pdf_response.",
+      "keywords": [
+        "pdf",
+        "preview",
+        "response",
+        "png",
+        "thumbnail",
+        "body_base64"
+      ]
+    },
+    {
       "title": "PDF TOC page numbers (#PAGE_OF:)",
       "type": "feature",
       "category": "PDF",

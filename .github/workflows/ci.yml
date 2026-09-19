@@ -138,6 +138,14 @@ jobs:
       - name: Run tests
         run: cargo test --locked
 
+      # `pdf/` is its own cargo workspace, not a member of the root manifest,
+      # so `cargo test` above compiles soli-pdf as a dependency and never runs
+      # a single one of its own tests. That left the whole PDF engine — the
+      # layout passes, Factur-X, signatures, the raster backend — covered only
+      # by the handful of `.sl` specs that call the builtins end to end.
+      - name: Run PDF engine tests
+        run: cargo test --locked --manifest-path pdf/Cargo.toml
+
       - name: Run Soli tests
         run: cargo run --locked -- test
 
@@ -215,6 +223,14 @@ jobs:
         # that should not be the only thing to discover a broken cfg.
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
+      # The `pdf/` workspace is invisible to the command above for the same
+      # reason its tests are: clippy does not lint dependencies. Warnings are
+      # not denied here yet — the crate has a backlog of pre-existing lints —
+      # so this reports without gating until that is cleared.
+      - name: Clippy (PDF engine)
+        run: cargo clippy --locked --manifest-path pdf/Cargo.toml --all-targets
+        continue-on-error: true
+
       - name: Unwrap-count ratchet (parser/template/JSON)
         # Freezes `.unwrap()`/`.expect()` counts in modules that process
         # untrusted input. Every one of them is a potential panic the fuzzing
@@ -234,6 +250,9 @@ jobs:
 
       - name: Check formatting
         run: cargo fmt --check
+
+      - name: Check formatting (PDF engine)
+        run: cargo fmt --check --manifest-path pdf/Cargo.toml
 
   # A published advisory against a transitive dependency is the one class of
   # vulnerability no amount of reviewing *our* code will surface: nothing in
