@@ -95,6 +95,42 @@ end</code></pre>
     <p class="text-gray-400 mb-4"><code class="text-cyan-400">{"close": reason}</code> &mdash; from <code class="text-cyan-400">connect</code> or any later event &mdash; sends the client an <code class="text-cyan-400">Error</code> frame (code 403) with the reason and ends the session; nothing is rendered for it. A <code class="text-cyan-400">connect</code> that closed never ran for that client, so no <code class="text-cyan-400">disconnect</code> follows. Without <code class="text-cyan-400">{"session": "required"}</code> a cookie-less client gets a synthetic session and <code class="text-cyan-400">connect</code> runs as nobody: fine for a public board, wrong for anything else.</p>
     <p class="text-gray-400 mb-12">An EUI component is reachable only over its own socket. <code class="text-cyan-400">/live/socket/&lt;component&gt;</code> answers 404 for it, so the JSON LiveView socket cannot be used to call its handler with an event name and <code class="text-cyan-400">params</code> of the client's choosing.</p>
 
+    <h2 id="a-page-with-no-session" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Serving a page with no session</h2>
+    <p class="text-gray-400 mb-4">A socket costs this server a session per reader: the instance, the four interned tables, and the previous tree they diff against. Measured against the EUI site, that is <strong class="text-white">50&ndash;60&nbsp;kB of resident memory for somebody who is only reading</strong>, linear to four hundred sessions, against 4&nbsp;799&nbsp;B of page &mdash; about twelve times the page, held for as long as the window is open. For a documentation page or a catalogue that is the wrong shape, and the socket buys nothing there, because nothing on such a page changes unless the reader changes it.</p>
+    <p class="text-gray-400 mb-6">So a view can be answered as one render instead. The body is the frames a fresh socket would have sent &mdash; a <code class="text-cyan-400">Welcome</code> and the batches through the first <code class="text-cyan-400">Mount</code> &mdash; with a strong <code class="text-cyan-400">ETag</code> over it, so a cache or a CDN answers the second reader and this server renders once per revalidation rather than once per person. Six hundred <em>distinct</em> renders, each at a different viewport so nothing could be reused, moved resident memory by four kilobytes.</p>
+
+    <p class="text-gray-400 mb-4">The usual way is an ordinary route, because a page wants its own URL and its own params:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/docs_controller.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">def show
+  page = Doc.find(req["params"]["slug"])
+  respond_to(req, fn(format) {
+    format.html(fn() render("docs/show", {"page": page}))
+    format.eui(fn()  eui_render(doc_view(page)))
+  })
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-6"><code class="text-cyan-400">eui_render(tree)</code> encodes a view hash into frames and returns an ordinary response &mdash; status, headers, an <code class="text-cyan-400">ETag</code>, and a <code class="text-cyan-400">304</code> when the caller's <code class="text-cyan-400">If-None-Match</code> matches. The encoder is built, used and dropped inside the call: no instance, no registry entry and nothing to clean up, because an action is already running on a worker with an interpreter. A page on a route is <em>cheaper</em> to serve this way than through a component, not dearer. <code class="text-cyan-400">eui?</code> answers the same question <code class="text-cyan-400">format.eui</code> asks, for a controller that would rather branch itself.</p>
+
+    <p class="text-gray-400 mb-4">A component with no route of its own can be offered the same way, and then it is fetched from <code class="text-cyan-400">GET /_eui/view/&lt;component&gt;</code>:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">router_eui("site", "site#site", "site#site_view", {"static": "public, max-age=60"})</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4"><code class="text-cyan-400">{"static": true}</code> means <code class="text-cyan-400">no-cache</code>, which still saves the session and still revalidates against the <code class="text-cyan-400">ETag</code>. It cannot be combined with <code class="text-cyan-400">{"session": "required"}</code> &mdash; a static view is rendered for nobody &mdash; and saying both is refused where it is written rather than at request time.</p>
+
+    <p class="text-gray-400 mb-4">Three things follow from &ldquo;rendered for nobody&rdquo;, and all three are the application's to honour:</p>
+    <ul class="list-disc pl-5 text-gray-400 space-y-2 mb-6">
+        <li>The render sees <strong class="text-white">no session, no cookie and no locale</strong>. A view that greets somebody by name does not belong here, and a component that needs a session is refused outright.</li>
+        <li>A <code class="text-cyan-400">GET</code> has <strong class="text-white">no same-origin check</strong> &mdash; a resource a CDN is meant to hold cannot have one &mdash; so an <code class="text-cyan-400">&lt;img src&gt;</code> on any page anywhere reaches it. Offering a view this way is promising that rendering it is a <em>read</em>.</li>
+        <li>Two renders of the same thing must produce <strong class="text-white">the same bytes</strong>, since the <code class="text-cyan-400">ETag</code> is the identity of those bytes. A view that reads the clock, a random, or a counter that moves per render is still correct &mdash; it simply caches nothing.</li>
+    </ul>
+    <p class="text-gray-400 mb-12">The render is given a nominal viewport, since there is nobody to ask; <code class="text-cyan-400">?w=</code> carries a width when the client knows one. A view that derives its measurements from the viewport will therefore draw at a size the reader did not choose, which is a reason to prefer layout the client resolves. In a browser, an address that serves EUI and nothing else answers with a short page saying so rather than a 404.</p>
+
     <h2 id="limits-and-back-pressure" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Limits, budgets and back-pressure</h2>
     <p class="text-gray-400 mb-4">What the client would refuse, the server refuses first, with a reason the view's author can act on &mdash; a tree nested past 256, more than a million nodes, a text over 4 KiB, or a session that has interned more atoms, styles, colours or chunks than the protocol allows (a key or a style derived from data grows the table with every new value). Such a render fails with <code class="text-cyan-400">Error</code> code 400 and the session ends, since every later render would fail the same way.</p>
     <p class="text-gray-400 mb-4">Sockets are admitted against <code class="text-cyan-400">SOLI_WS_MAX_CONNECTIONS</code> and <code class="text-cyan-400">SOLI_WS_MAX_CONNECTIONS_PER_IP</code>, like every other socket; a client has ten seconds to say Hello; the server pings every thirty seconds and closes after two go unanswered. Inbound frames are charged against the <code class="text-cyan-400">/ws/*</code> budget (<code class="text-cyan-400">SOLI_WS_MAX_MESSAGES_PER_SEC</code>), a <code class="text-cyan-400">Resync</code> twenty at a time &mdash; it re-sends the whole tree. A reader that stops draining its frames is closed after two seconds rather than have batches skipped: the client reconnects and resyncs, and a session is never left with a tree the server no longer has.</p>
@@ -131,7 +167,7 @@ EUI_ALLOW_INSECURE_LOOPBACK=1 eui ws://127.0.0.1:5011/_eui/session/counter</code
     <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-12"><table class="w-full text-left text-sm"><tbody class="text-gray-400 divide-y divide-white/10">
 <tr><td class="py-3 px-4 text-white font-medium w-56"><code class="text-cyan-400">Cargo.toml</code></td><td class="py-3 px-4">Optional <code class="text-cyan-400">eui-proto</code> dependency; feature <code class="text-cyan-400">eui</code>, not in the default set</td></tr>
 <tr><td class="py-3 px-4 text-white font-medium"><code class="text-cyan-400">src/serve/mod.rs</code></td><td class="py-3 px-4">Three <code class="text-cyan-400">#[cfg(feature = "eui")]</code> insertions: the module, the socket branch, an early return for EUI components in the worker</td></tr>
-<tr><td class="py-3 px-4 text-white font-medium"><code class="text-cyan-400">builtins/router.rs</code></td><td class="py-3 px-4"><code class="text-cyan-400">router_eui(component, handler, view)</code></td></tr>
+<tr><td class="py-3 px-4 text-white font-medium"><code class="text-cyan-400">builtins/router.rs</code></td><td class="py-3 px-4"><code class="text-cyan-400">router_eui(component, handler, view)</code>, <code class="text-cyan-400">eui_render(tree)</code>, <code class="text-cyan-400">eui?</code></td></tr>
 <tr><td class="py-3 px-4 text-white font-medium"><code class="text-cyan-400">src/serve/eui/</code></td><td class="py-3 px-4">New: tree conversion with interned atoms and styles, the tree diff, the session socket, the local-handler assembler</td></tr>
 <tr><td class="py-3 px-4 text-white font-medium">Untouched</td><td class="py-3 px-4"><code class="text-cyan-400">live/</code>, <code class="text-cyan-400">template/</code>, <code class="text-cyan-400">vm/</code>, <code class="text-cyan-400">interpreter/</code></td></tr>
 </tbody></table></div>

@@ -452,6 +452,7 @@ halt(403, "Forbidden")</code></pre>
     format.excel(fn() render_xlsx_for(post))
     format.htmx(fn()  render("posts/_show_partial", { "post": post }, { "layout": false }))
     format.xhr(fn()   render_json({ "id": post["id"] }))
+    format.eui(fn()   eui_render(post_view(post)))              # an EUI client
     format.any(fn()   render("posts/show", { "post": post }))   # optional catch-all
   })
 end</code></pre>
@@ -461,11 +462,15 @@ end</code></pre>
   "json": fn() render_json(post)
 })</code></pre>
 
+                <p class="text-gray-400 text-sm mt-4 mb-3">
+                    The <code>eui</code> branch answers <code>application/vnd.eui.frames</code> &mdash; an EUI client asking for the interface already resolved rather than for markup to build it from. A page and its EUI form are two representations of one thing, so they share a route, a URL and its params; see <a href="/docs/eui/overview#a-page-with-no-session" class="text-cyan-400 hover:underline">serving a page with no session</a>. The match is on that exact media type and never on a substring, because a browser's <code>Accept</code> ends in <code>*/*</code> and a looser rule would hand every browser a screenful of binary.
+                </p>
+
                 <h4 class="text-white font-semibold mt-5 mb-2">Format detection priority</h4>
                 <ol class="list-decimal pl-5 text-sm text-gray-400 space-y-1">
                     <li><code>HX-Request: true</code> header &rarr; <code>htmx</code> branch.</li>
                     <li><code>X-Requested-With: XMLHttpRequest</code> header &rarr; <code>xhr</code> branch.</li>
-                    <li>URL extension: <code>.html</code>, <code>.json</code>, <code>.xml</code>, <code>.csv</code>, <code>.pdf</code>, <code>.xlsx</code>/<code>.xls</code>, <code>.txt</code>.</li>
+                    <li>URL extension: <code>.html</code>, <code>.json</code>, <code>.xml</code>, <code>.csv</code>, <code>.pdf</code>, <code>.xlsx</code>/<code>.xls</code>, <code>.txt</code>, <code>.eui</code>.</li>
                     <li><code>?format=&hellip;</code> query parameter.</li>
                     <li><code>Accept</code> header &mdash; parsed with q-values; <code>*/*</code> falls through to the first registered handler.</li>
                 </ol>
