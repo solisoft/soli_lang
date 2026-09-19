@@ -64,11 +64,11 @@ a:focus-visible { outline: 2px solid var(--act); outline-offset: 3px; }
 <main>
   <span class="mark">eui</span>
 
-  <h1>Less to download. Less for your battery to do.</h1>
+  <h1>Less for your battery to do.</h1>
 
   <p class="lede">You are seeing this page because your browser asked for one.
-  The app at this address can send something lighter &mdash; about a third of
-  the data, and almost none of the work.</p>
+  The app at this address sends an interface that is already worked out, so
+  the machine showing it has almost nothing left to work out for itself.</p>
 
   <figure>
     <svg class="field" viewBox="0 0 476 119" role="img"
@@ -263,10 +263,15 @@ a:focus-visible { outline: 2px solid var(--act); outline-offset: 3px; }
       <rect class="c e" x="180" y="108" width="11.0" height="11.0" rx="1.6"/>
       <rect class="c e" x="195" y="108" width="11.0" height="11.0" rx="1.6"/>
     </svg>
-    <figcaption>The same table of fifty rows, sent both ways. Every cell is a
-    hundred bytes. The outlined run is the words on the page, which are the
-    same either way &mdash; everything after it is the machine being told how
-    to draw them, <b>five times over</b>.</figcaption>
+    <figcaption>The same table of fifty rows, sent both ways, a hundred bytes
+    to the cell. The outlined run is the words, identical either way; the rest
+    is the machine being told how to draw them, <b>five times over</b>.
+    <br><br>
+    Compressed, though, the HTML is the smaller of the two &mdash; its bulk is
+    one tag repeated fifty times, and that is exactly what a compressor
+    removes. The saving is not really in the bytes. It is that this side has
+    already done the work the other side is about to do, on every load, on
+    every machine.</figcaption>
   </figure>
 
   <div class="open">

@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use bytes::Bytes;
-use eui_proto::{Frame, Viewport, Welcome, PROTOCOL_VERSION};
+use eui_proto::{Frame, Start, Viewport, Welcome, PROTOCOL_VERSION};
 use hyper::header;
 use hyper::{Response, StatusCode};
 use tokio::sync::{oneshot, Semaphore};
@@ -303,7 +303,7 @@ pub fn render_once(
     let mut body = Frame::Welcome(Welcome {
         version,
         session: [0u8; 16],
-        resumed: false,
+        start: Start::Fresh,
     })
     .encode();
     for batch in &batches {
@@ -643,7 +643,7 @@ pub async fn respond(
     let mut body = Frame::Welcome(Welcome {
         version: negotiated,
         session: [0u8; 16],
-        resumed: false,
+        start: Start::Fresh,
     })
     .encode();
     for batch in &batches {
@@ -731,13 +731,13 @@ mod tests {
         let welcome_http = Frame::Welcome(Welcome {
             version: 4,
             session: [0u8; 16],
-            resumed: false,
+            start: Start::Fresh,
         })
         .encode();
         let welcome_sock = Frame::Welcome(Welcome {
             version: 4,
             session: [7u8; 16],
-            resumed: false,
+            start: Start::Fresh,
         })
         .encode();
         let batches = vec![vec![0x03, 0x02, 0x01, 0x00], vec![0x03, 0x01, 0x20]];

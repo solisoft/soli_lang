@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use eui_proto::{EventFrame, Frame, Welcome, PROTOCOL_VERSION};
+use eui_proto::{EventFrame, Frame, Offer, Start, Welcome, PROTOCOL_VERSION};
 use futures_util::{SinkExt, StreamExt};
 use hyper::body::Incoming;
 use hyper::{Request, Response, StatusCode};
@@ -216,30 +216,40 @@ pub fn upgrade(
         // carry its first sixteen bytes. A synthetic `sess-*` id names no
         // session and goes as it is.
         let session_bytes = welcome_session(&session_id);
-        if ws_write
-            .send(Message::Binary(
-                Frame::Welcome(Welcome {
-                    // The version both ends speak, not this one's own: a
-                    // server that answered with its highest would lock out
-                    // every client built before it, including for
-                    // applications using nothing it added. The Hello named
-                    // the client's; this is the lower of the two, which is
-                    // what a negotiation is.
-                    version: hello.version.min(PROTOCOL_VERSION),
-                    session: session_bytes,
-                    // EUI 01 §4.1: a session that survives its socket. A
-                    // LiveView session is torn down with the socket under
-                    // it, so there is nothing here to pick up again and
-                    // the client is told to start clean. A socket that
-                    // breaks does now bring the window back by itself —
-                    // on a fresh session and a fresh mount, which is the
-                    // half of it that needs nothing from this side.
-                    resumed: false,
-                })
-                .encode(),
-            ))
-            .await
-            .is_err()
+        // 01 §2.6. A client that fetched this page over HTTPS offers the hash
+        // of the tree it holds rather than a session. The answer depends on
+        // what the first render comes out as, so the `Welcome` waits for it —
+        // and only in that case, because every other handshake is better off
+        // answered at once.
+        let offered = match hello.resume {
+            Some(Offer::Adopt(tree)) => Some(tree),
+            _ => None,
+        };
+        if offered.is_none()
+            && ws_write
+                .send(Message::Binary(
+                    Frame::Welcome(Welcome {
+                        // The version both ends speak, not this one's own: a
+                        // server that answered with its highest would lock out
+                        // every client built before it, including for
+                        // applications using nothing it added. The Hello named
+                        // the client's; this is the lower of the two, which is
+                        // what a negotiation is.
+                        version: hello.version.min(PROTOCOL_VERSION),
+                        session: session_bytes,
+                        // EUI 01 §4.1: a session that survives its socket. A
+                        // LiveView session is torn down with the socket under
+                        // it, so there is nothing here to pick up again and
+                        // the client is told to start clean. A socket that
+                        // breaks does now bring the window back by itself —
+                        // on a fresh session and a fresh mount, which is the
+                        // half of it that needs nothing from this side.
+                        start: Start::Fresh,
+                    })
+                    .encode(),
+                ))
+                .await
+                .is_err()
         {
             return;
         }
@@ -286,6 +296,62 @@ pub fn upgrade(
             &session_id,
         )
         .await;
+
+        // 3.5. 01 §2.6: the answer to a client that offered a tree.
+        //
+        // The first render's frames are already sitting in `rx` — nothing
+        // drains it until the write task below — so the comparison costs no
+        // second render, which is the whole point: the server renders what it
+        // would have rendered anyway and then decides whether to send it.
+        //
+        // A socket that found a live instance (`already`) is ignored here: it
+        // is getting a whole-tree resend of a tree this client has never seen,
+        // and there is nothing to adopt.
+        if let Some(tree) = offered.filter(|_| connected) {
+            let mut rendered: Vec<Vec<u8>> = Vec::new();
+            while let Ok(Ok(Message::Binary(bytes))) = rx.try_recv() {
+                rendered.push(bytes);
+            }
+            let adopted = !already && is_the_tree_they_have(tree, &rendered);
+            let start = if adopted {
+                Start::Adopted
+            } else {
+                Start::Fresh
+            };
+            if trace() {
+                eprintln!(
+                    "[EUI trace] {component}: offered a tree of {} frame(s); {}",
+                    rendered.len(),
+                    if adopted {
+                        "adopted, sending no Mount"
+                    } else {
+                        "not ours, sending it"
+                    }
+                );
+            }
+            let welcome = Frame::Welcome(Welcome {
+                version: hello.version.min(PROTOCOL_VERSION),
+                session: session_bytes,
+                start,
+            });
+            if ws_write
+                .send(Message::Binary(welcome.encode()))
+                .await
+                .is_err()
+            {
+                return;
+            }
+            // Missed: the client does not have these bytes, and here they
+            // are — the ones just rendered, not a second render of the same
+            // thing.
+            if !adopted {
+                for frame in rendered {
+                    if ws_write.send(Message::Binary(frame)).await.is_err() {
+                        return;
+                    }
+                }
+            }
+        }
 
         // 4. Server frames out.
         let write_task = crate::serve::tenant::spawn(async move {
@@ -909,6 +975,27 @@ async fn post(
     true
 }
 
+/// 01 §2.6: is what this render produced the tree the client already has?
+///
+/// Hashes the `Batch` frames and nothing else. The `Welcome` is deliberately
+/// not in it — this one carries a session handle and the one the client holds
+/// carries sixteen zero bytes — so a server that hashed the whole body would
+/// find no match ever, and the only symptom would be that adoption silently
+/// never happens.
+///
+/// Anything that is not a batch means this render said something other than
+/// "here is the tree" — an `Error`, a `Notify` — and is not a tree to adopt.
+pub(super) fn is_the_tree_they_have(offered: [u8; 32], frames: &[Vec<u8>]) -> bool {
+    if frames.is_empty() || frames.iter().any(|f| f.first() != Some(&0x03)) {
+        return false;
+    }
+    let mut hasher = blake3::Hasher::new();
+    for frame in frames {
+        hasher.update(frame);
+    }
+    *hasher.finalize().as_bytes() == offered
+}
+
 /// The client's viewport as the application sees it, in `params`.
 pub(super) fn viewport_json(v: &eui_proto::Viewport) -> serde_json::Value {
     serde_json::json!({
@@ -924,6 +1011,35 @@ pub(super) fn viewport_json(v: &eui_proto::Viewport) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tree_is_recognised_by_its_batches_and_nothing_else() {
+        let one = vec![0x03u8, 0x02, 0x10, 0x01];
+        let two = vec![0x03u8, 0x01, 0x20];
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(&one);
+        hasher.update(&two);
+        let tree = *hasher.finalize().as_bytes();
+
+        assert!(is_the_tree_they_have(tree, &[one.clone(), two.clone()]));
+        // Order is part of the identity: the same ops applied the other way
+        // round are a different tree.
+        assert!(!is_the_tree_they_have(tree, &[two.clone(), one.clone()]));
+        assert!(!is_the_tree_they_have(
+            [0u8; 32],
+            &[one.clone(), two.clone()]
+        ));
+        assert!(!is_the_tree_they_have(tree, std::slice::from_ref(&one)));
+        // Nothing rendered is nothing to adopt, whatever was offered.
+        assert!(!is_the_tree_they_have(tree, &[]));
+        // A `Welcome` in the run would mean the hash was taken over the body
+        // rather than the tree — the mistake that makes adoption silently
+        // never fire.
+        assert!(!is_the_tree_they_have(
+            tree,
+            &[vec![0x02u8, 0x01, 0x00], one, two]
+        ));
+    }
 
     #[test]
     fn the_welcome_never_carries_the_cookie() {
