@@ -175,6 +175,17 @@ the app's secrets and out of version control. `eui_capabilities("clipboard.read"
 in `config/routes.sl` lists what the manifest asks the client for; nothing
 is granted by asking — the person allows each capability on their side.
 
+The manifest also carries the app's **icon**, which is what a client
+installs it as: `eui --install <url>`, or the arrow in the address bar,
+writes a launcher entry — a `.desktop` file on Linux, a bundle in
+`~/Applications` on macOS, a Start menu shortcut on Windows — that opens
+the app in its own window. Drop a PNG at `public/icon.png` and that is the
+whole of publishing one; `eui_icon("public/images/logo.png")` names a
+different file. The hash rides inside the signed body, so the picture on
+the launcher tile is the publisher's and not something picked up on the
+way. An app with no icon cannot be installed, because the alternative is
+every installed app wearing the same one.
+
 
 ## Opening an application
 

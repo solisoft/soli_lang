@@ -23,6 +23,54 @@ use crate::serve::ResponseBody;
 /// Shared, a co-hosted app would inherit permissions it never requested.
 static CAPABILITIES: TenantValue<u32> = TenantValue::new(|| 0);
 
+/// The icon this application is installed as, set by `eui_icon("...")`.
+///
+/// Per application for the same reason the capabilities are: the picture
+/// on a co-hosted application's launcher tile must be its own.
+static ICON: TenantValue<Option<String>> = TenantValue::new(|| None);
+
+/// Where an application's icon is looked for when it did not say. A file
+/// with this name and nothing else to declare is the whole of publishing
+/// one, which is what `favicon.ico` got right.
+const ICON_BY_CONVENTION: [&str; 2] = ["public/icon.png", "public/images/icon.png"];
+
+/// `eui_icon("public/images/logo.png")`: the PNG a client installs this
+/// application as (EUI 01 §2.1).
+///
+/// A path and not bytes, resolved at signing time through the same asset
+/// store a view's pictures go through — so it must live under `public/` or
+/// `app/assets/`, and the client fetches it by its hash like anything else.
+pub fn declare_icon(path: &str) -> Result<(), String> {
+    // Read now, so that a path that is not there is an error at boot with
+    // the line number on it, rather than a manifest that quietly has no
+    // icon in it and an Install button that never appears.
+    super::assets::from_file(path)?;
+    ICON.write(|icon| *icon = Some(path.to_owned()));
+    Ok(())
+}
+
+/// The icon's hash, or `None` when this application has none to publish.
+///
+/// A declared path that has stopped resolving is not an error here: the
+/// manifest is what a session depends on, and refusing to serve one
+/// because a picture was moved would take the application down over its
+/// launcher tile. It is said once on stderr and the manifest goes out
+/// without an icon, which costs exactly the ability to install it.
+fn icon_hash() -> Option<[u8; 32]> {
+    if let Some(declared) = ICON.read(Clone::clone) {
+        return match super::assets::from_file(&declared) {
+            Ok(h) => Some(h),
+            Err(e) => {
+                eprintln!("EUI: the icon this application declared is not there ({e}); it will not be installable");
+                None
+            }
+        };
+    }
+    ICON_BY_CONVENTION
+        .iter()
+        .find_map(|rel| super::assets::from_file(rel).ok())
+}
+
 /// `eui_capabilities("clipboard.read", ...)`: what the manifest asks for.
 /// The client grants only what the person allows on top of this.
 pub fn request_capabilities(names: &[String]) -> Result<(), String> {
@@ -113,22 +161,25 @@ pub fn bytes() -> Result<Vec<u8>, String> {
     /// whether the application had declared a font — the second raises
     /// `protocol_min`, so a manifest signed before `eui_font` ran is the
     /// wrong one to keep handing out.
-    type SignedFor = (u32, bool);
+    type SignedFor = (u32, bool, Option<[u8; 32]>);
     /// The signed manifest, cached against that.
     static SIGNED: TenantValue<Option<(SignedFor, Vec<u8>)>> = TenantValue::new(|| None);
     let capabilities = CAPABILITIES.read(|caps| *caps);
-    let signed_for = (capabilities, super::fonts::any());
+    // The icon is part of what the signature covers, so a picture that
+    // changed on disk has to re-sign: its hash is in the cache key.
+    let icon = icon_hash();
+    let signed_for = (capabilities, super::fonts::any(), icon);
     if let Some((held, bytes)) = SIGNED.read(|signed| signed.clone()) {
         if held == signed_for {
             return Ok(bytes);
         }
     }
-    let bytes = sign(capabilities)?;
+    let bytes = sign(capabilities, icon)?;
     SIGNED.write(|signed| *signed = Some((signed_for, bytes.clone())));
     Ok(bytes)
 }
 
-fn sign(capabilities: u32) -> Result<Vec<u8>, String> {
+fn sign(capabilities: u32, icon: Option<[u8; 32]>) -> Result<Vec<u8>, String> {
     let key = key_pair()?;
     let key = key.as_ref().as_ref().map_err(Clone::clone)?;
     let root = get_app_root();
@@ -174,6 +225,7 @@ fn sign(capabilities: u32) -> Result<Vec<u8>, String> {
         publisher_key,
         capabilities,
         theme: None,
+        icon,
         // Where this application's session lives, so a client need not be
         // told the protocol's own prefix: `wss://host` is an address, and
         // this is what completes it (EUI 01 §2.1). The first `router_eui`

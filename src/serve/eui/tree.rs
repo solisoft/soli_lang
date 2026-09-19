@@ -369,6 +369,7 @@ fn op_weight(op: &Op) -> usize {
             text: TextRef::Inline(s),
             ..
         } => 8 + s.len(),
+        Op::Notify { title, body, tag } => 16 + title.len() + body.len() + tag.len(),
         _ => 16,
     }
 }
@@ -887,6 +888,11 @@ impl Encoder {
         let t_batch = std::time::Instant::now();
         let mut all = std::mem::take(&mut self.pending);
         all.extend(ops);
+        // What this pass asked to say to the person (02 §5.2). After the
+        // tree, so the window is showing what the notification is about by
+        // the time it arrives -- the same reason a `ScrollTo` follows the
+        // subtree it names.
+        all.extend(super::notify::take());
         // A big update streams: every prefix of the op list is valid on its
         // own (definitions come first, ops apply in order), so a batch of
         // thousands of inserts goes out in slices the client paints between.
@@ -896,9 +902,18 @@ impl Encoder {
         let mut batches = Vec::new();
         let mut ops = Vec::new();
         let mut weight = 0usize;
+        // The third bound on a slice, and the only one that is not about
+        // size: a client refuses a batch carrying more than four
+        // notifications (02 §5.2), so a handler that said five things
+        // sends them in two batches rather than ending its own session.
+        let mut notes = 0u32;
         for op in all {
             let w = op_weight(&op);
-            if !ops.is_empty() && (ops.len() >= MAX_OPS_PER_BATCH || weight + w > MAX_BATCH_WEIGHT)
+            let note = matches!(op, Op::Notify { .. });
+            if !ops.is_empty()
+                && (ops.len() >= MAX_OPS_PER_BATCH
+                    || weight + w > MAX_BATCH_WEIGHT
+                    || (note && notes >= eui_proto::limits::MAX_NOTIFY_PER_BATCH))
             {
                 self.seq += 1;
                 batches.push(Batch {
@@ -906,8 +921,10 @@ impl Encoder {
                     ops: std::mem::take(&mut ops),
                 });
                 weight = 0;
+                notes = 0;
             }
             weight += w;
+            notes += u32::from(note);
             ops.push(op);
         }
         if !ops.is_empty() {
@@ -2429,7 +2446,9 @@ mod tests {
 
         let mut enc = Encoder::default();
         enc.render_value("session", &view(&shared), false).unwrap();
-        let before = enc.style_of_value(&shared, &mut StyleMemo::default()).unwrap();
+        let before = enc
+            .style_of_value(&shared, &mut StyleMemo::default())
+            .unwrap();
 
         // The same allocation, different contents.
         let Value::Hash(pairs) = &shared else {
@@ -2440,7 +2459,9 @@ mod tests {
             .insert(HashKey::String("gap".into()), Value::Int(9));
 
         enc.render_value("session", &view(&shared), false).unwrap();
-        let after = enc.style_of_value(&shared, &mut StyleMemo::default()).unwrap();
+        let after = enc
+            .style_of_value(&shared, &mut StyleMemo::default())
+            .unwrap();
         assert_ne!(before, after, "the pointer outlived its contents");
     }
 
@@ -2566,6 +2587,51 @@ mod tests {
         // A change still goes out.
         let moved = json!({"k": "box", "c": [{"k": "text", "t": "moved"}]});
         assert!(!enc.render(&moved, false).unwrap().is_empty());
+    }
+
+    /// EUI 02 §5.2: what `eui_notify` queued rides out with the render
+    /// that follows it, after the tree, and four to a batch.
+    #[test]
+    fn a_queued_notification_leaves_with_the_next_render() {
+        super::super::notify::clear();
+        let mut enc = Encoder::default();
+        let tree = json!({"k": "box", "c": [{"k": "text", "t": "steady"}]});
+        enc.render(&tree, false).unwrap();
+
+        super::super::notify::queue("Nouveau message", "Ana : on déjeune ?", "thread-7");
+        // The same tree: a render that changed nothing still carries what
+        // the handler asked to say.
+        let batches = enc.render(&tree, false).unwrap();
+        let ops: Vec<&Op> = batches.iter().flat_map(|b| b.ops.iter()).collect();
+        assert_eq!(ops.len(), 1, "{ops:?}");
+        assert!(
+            matches!(ops[0], Op::Notify { title, body, tag }
+                if title == "Nouveau message" && body == "Ana : on déjeune ?" && tag == "thread-7"),
+            "{ops:?}"
+        );
+        // Taken, not repeated: the next render says nothing.
+        assert!(enc.render(&tree, false).unwrap().is_empty());
+    }
+
+    /// A client refuses a batch carrying a fifth notification, so five
+    /// leave in two batches rather than ending the session.
+    #[test]
+    fn five_notifications_go_out_in_two_batches() {
+        super::super::notify::clear();
+        let mut enc = Encoder::default();
+        let tree = json!({"k": "box"});
+        enc.render(&tree, false).unwrap();
+        for i in 0..5 {
+            super::super::notify::queue(&format!("ping {i}"), "", "");
+        }
+        let batches = enc.render(&tree, false).unwrap();
+        assert_eq!(batches.len(), 2, "{batches:?}");
+        assert_eq!(batches[0].ops.len(), 4);
+        assert_eq!(batches[1].ops.len(), 1);
+        assert!(
+            batches[1].seq > batches[0].seq,
+            "a second batch is a second sequence number"
+        );
     }
 
     #[test]

@@ -801,6 +801,24 @@ pub fn register_router_builtins(env: &mut Environment) {
         })),
     );
 
+    // eui_icon("public/icon.png") — the PNG a client installs this
+    // application as (EUI 01 §2.1). Without one there is nothing to put on
+    // a launcher tile, so the client refuses to install the application
+    // rather than giving it a picture that is not its own.
+    //
+    // Only for an application that does not keep its icon where one is
+    // looked for anyway: `public/icon.png` and `public/images/icon.png` are
+    // found without this being called at all.
+    #[cfg(feature = "eui")]
+    env.define(
+        "eui_icon".to_string(),
+        Value::NativeFunction(NativeFunction::new("eui_icon", Some(1), |args| {
+            let path = args.first().map(ToString::to_string).unwrap_or_default();
+            crate::serve::eui::manifest::declare_icon(&path)?;
+            Ok(Value::Null)
+        })),
+    );
+
     // eui_stats() — what the previous render of this session cost, for an
     // application's own dev bar: the view and the encode in milliseconds, the
     // ops and bytes that went on the wire, the seq, the node count and the
@@ -1011,6 +1029,53 @@ pub fn register_router_builtins(env: &mut Environment) {
             let here = crate::serve::eui::stats::current_session();
             let woken = crate::serve::eui::wake_component(&component, &event, here.as_deref());
             Ok(Value::Int(woken as i64))
+        })),
+    );
+
+    // eui_notify(title, body, opts) — say one line to the person at this
+    // window, through their machine's own notifier (EUI 02 §5.2).
+    //
+    // Not a node and not a view: a notification is something an application
+    // *does* where something happened, so it is a call in a handler — or in
+    // the `wake` handler that a background job's `eui_wake` just fired. It
+    // reaches the session whose handler is running and no other; the window
+    // shows it only if the person granted `notifications`, and neither the
+    // grant nor the notification is ever reported back, so this returns
+    // whether it was *sent*, not whether anybody saw it.
+    //
+    //   eui_notify("Nouveau message", "Ana : on déjeune ?", { "tag": "thread-7" })
+    //
+    // A second notification carrying a tag still on screen replaces it, so
+    // ten replies to one thread are one notification and not ten.
+    #[cfg(feature = "eui")]
+    env.define(
+        "eui_notify".to_string(),
+        Value::NativeFunction(NativeFunction::new("eui_notify", None, |args| {
+            let Some(title) = args.first().map(Value::to_string) else {
+                return Err(
+                    "eui_notify() expects a title, e.g. eui_notify(\"Nouveau message\", \"Ana : on déjeune ?\")"
+                        .into(),
+                );
+            };
+            if title.trim().is_empty() {
+                return Err("eui_notify(): the title is empty; a notification with no title is a blank rectangle".into());
+            }
+            let body = args.get(1).map_or_else(String::new, Value::to_string);
+            let mut tag = String::new();
+            if let Some(Value::Hash(opts)) = args.get(2) {
+                let key = crate::interpreter::value::HashKey::String("tag".into());
+                if let Some(v) = opts.borrow().get(&key) {
+                    tag = v.to_string();
+                }
+            }
+            // No session on this thread means nothing is rendering: a
+            // controller, a job, a `soli run`. There is no window to say it
+            // to, and saying so is more use than a line that goes nowhere.
+            if crate::serve::eui::stats::current_session().is_none() {
+                return Ok(Value::Bool(false));
+            }
+            crate::serve::eui::notify::queue(&title, &body, &tag);
+            Ok(Value::Bool(true))
         })),
     );
 

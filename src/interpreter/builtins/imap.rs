@@ -32,6 +32,7 @@ use std::sync::Mutex;
 use base64::Engine as _;
 use lazy_static::lazy_static;
 
+use crate::interpreter::builtins::bodystructure;
 use crate::interpreter::builtins::mail_parse;
 use crate::interpreter::builtins::pop3::{connect, Stream};
 use crate::interpreter::environment::Environment;
@@ -447,6 +448,90 @@ fn parse_atom_or_quoted(s: &str) -> (String, &str) {
 
 /// Parse a single `LIST (flags) delimiter name` response into `{name,
 /// delimiter, flags}`.
+/// A mailbox name as a person reads it: modified UTF-7 decoded to UTF-8.
+///
+/// RFC 3501 §5.1.3. A server names its mailboxes in US-ASCII, and anything
+/// outside it is shifted into a modified BASE64 of UTF-16 between `&` and
+/// `-`: "Messages envoyés" arrives as `Messages envoy&AOK-s`, which is
+/// what a folder list shows when nobody decodes it. `&-` is a literal
+/// ampersand, and the alphabet is BASE64's with `,` in place of `/`
+/// because `/` is a hierarchy delimiter.
+///
+/// What comes back is for *reading*. The name to put in a command is the
+/// one the server sent — this returns the display form beside it, never
+/// instead of it.
+fn decode_modified_utf7(said: &str) -> String {
+    let mut out = String::new();
+    let b: Vec<char> = said.chars().collect();
+    let mut i = 0usize;
+    while i < b.len() {
+        let Some(&c) = b.get(i) else { break };
+        if c != '&' {
+            out.push(c);
+            i += 1;
+            continue;
+        }
+        // `&-` is how a name says it contains an ampersand.
+        if b.get(i + 1) == Some(&'-') {
+            out.push('&');
+            i += 2;
+            continue;
+        }
+        let Some(end) = b
+            .get(i + 1..)
+            .and_then(|rest| rest.iter().position(|c| *c == '-'))
+        else {
+            // A shift that never ends is not a shift. Take it as text
+            // rather than losing the rest of the name.
+            out.push(c);
+            i += 1;
+            continue;
+        };
+        let chunk: String = b
+            .get(i + 1..i + 1 + end)
+            .map(|s| s.iter().collect())
+            .unwrap_or_default();
+        match decode_utf7_chunk(&chunk) {
+            Some(said) => out.push_str(&said),
+            None => {
+                out.push('&');
+                out.push_str(&chunk);
+                out.push('-');
+            }
+        }
+        i += end + 2;
+    }
+    out
+}
+
+/// One `&…-` run: modified BASE64 of UTF-16BE.
+fn decode_utf7_chunk(chunk: &str) -> Option<String> {
+    let mut bits: u32 = 0;
+    let mut have: u32 = 0;
+    let mut units: Vec<u16> = Vec::new();
+    for c in chunk.chars() {
+        let v = match c {
+            'A'..='Z' => c as u32 - 'A' as u32,
+            'a'..='z' => c as u32 - 'a' as u32 + 26,
+            '0'..='9' => c as u32 - '0' as u32 + 52,
+            '+' => 62,
+            ',' => 63,
+            _ => return None,
+        };
+        bits = (bits << 6) | v;
+        have += 6;
+        if have >= 16 {
+            have -= 16;
+            units.push(((bits >> have) & 0xFFFF) as u16);
+        }
+    }
+    // Whatever is left over must be zero padding, not a truncated unit.
+    if have >= 6 || (bits & ((1 << have) - 1)) != 0 {
+        return None;
+    }
+    String::from_utf16(&units).ok()
+}
+
 fn parse_list_line(s: &str) -> Option<Value> {
     let s = s.trim();
     let flags_end = s.find(')')?;
@@ -463,8 +548,12 @@ fn parse_list_line(s: &str) -> Option<Value> {
     } else {
         Value::String(delim.into())
     };
+    let shown = decode_modified_utf7(&name);
     Some(hash_from_pairs(vec![
         ("name".to_string(), Value::String(name.into())),
+        // The same name, for a person: `Messages envoy&AOK-s` is
+        // `Messages envoyés` and nobody should have to know that.
+        ("label".to_string(), Value::String(shown.into())),
         ("delimiter".to_string(), delimiter),
         (
             "flags".to_string(),
@@ -681,6 +770,64 @@ fn imap_select(args: &[Value]) -> Result<Value, String> {
     })
 }
 
+/// `STATUS <mailbox> (MESSAGES UNSEEN RECENT UIDNEXT)` — how much is in a
+/// mailbox, without opening it.
+///
+/// The point is the "without": `SELECT` makes a mailbox *the* mailbox of
+/// the connection, so asking how many messages are in five folders with
+/// `SELECT` means five folders each becoming the selected one and the
+/// sixth command going somewhere unexpected. `STATUS` asks about a
+/// mailbox the connection is not in and leaves the selection alone.
+///
+/// The counts come back as `* STATUS "name" (MESSAGES 231 UNSEEN 4 ...)`.
+/// Anything the server leaves out is simply absent from the hash rather
+/// than reported as zero: a folder with no `UNSEEN` in its answer is a
+/// server that did not say, not a folder with nothing unread.
+fn imap_status(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "status")?;
+    let mailbox = match args.get(1) {
+        None | Some(Value::Null) => "INBOX".to_string(),
+        Some(v) => as_string(v, "mailbox")?,
+    };
+    let untagged = with_conn(id, |c| {
+        c.command(&format!(
+            "STATUS {} (MESSAGES UNSEEN RECENT UIDNEXT UIDVALIDITY)",
+            quote(&mailbox)
+        ))
+    })?;
+    let mut pairs: Vec<(String, Value)> =
+        vec![("mailbox".to_string(), Value::String(mailbox.clone().into()))];
+    for piece in &untagged {
+        let line = joined_text(piece);
+        let body = line.strip_prefix("* ").unwrap_or(&line);
+        let Some(rest) = body
+            .strip_prefix("STATUS ")
+            .or_else(|| body.strip_prefix("status "))
+        else {
+            continue;
+        };
+        let Some(open) = rest.find('(') else { continue };
+        let Some(close) = rest.rfind(')') else {
+            continue;
+        };
+        let Some(inside) = rest.get(open + 1..close) else {
+            continue;
+        };
+        let words: Vec<&str> = inside.split_whitespace().collect();
+        let mut i = 0;
+        while i + 1 < words.len() {
+            let (Some(name), Some(value)) = (words.get(i), words.get(i + 1)) else {
+                break;
+            };
+            if let Ok(n) = value.parse::<i64>() {
+                pairs.push((name.to_ascii_lowercase(), Value::Int(n)));
+            }
+            i += 2;
+        }
+    }
+    Ok(hash_from_pairs(pairs))
+}
+
 fn imap_mailboxes(args: &[Value]) -> Result<Value, String> {
     let id = instance_id(args, "mailboxes")?;
     let untagged = with_conn(id, |c| c.command("LIST \"\" \"*\""))?;
@@ -740,6 +887,298 @@ fn imap_fetch(args: &[Value]) -> Result<Value, String> {
         c.command(&format!("FETCH {seq} (UID FLAGS BODY.PEEK[])"))
     })?;
     parse_fetch_one(&untagged).ok_or_else(|| format!("Imap.fetch({seq}): no such message"))
+}
+
+/// The letter without its freight.
+///
+/// `fetch_uid` asks for `BODY.PEEK[]`, which is the whole message — and a
+/// mail with seventeen photographs on it is two megabytes of which the
+/// text is four thousand bytes. It was fetched whole to show the text,
+/// and fetched whole *again* when the photographs were wanted, because
+/// what the first fetch kept was the list of attachments and not their
+/// bytes.
+///
+/// So: ask the server for the shape first (`BODYSTRUCTURE`, which costs
+/// nothing and which it sends with every header anyway), take the numbers
+/// of the parts that are the letter's faces, and fetch only those. What
+/// comes back is assembled into a message that carries the original
+/// headers and the text parts alone, so `mail_parse` reads it exactly as
+/// it read the whole thing.
+///
+/// `attachments` on the result then carries what the structure says about
+/// the freight -- name, type and size -- with none of it downloaded.
+/// `fetch_uid_parts` is how those bytes are asked for, when they are.
+///
+/// Anything unexpected falls back to `fetch_uid`: a structure that does
+/// not parse, a message with no text part in it, or a server that answers
+/// the second fetch with nothing.
+fn imap_fetch_uid_text(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "fetch_uid_text")?;
+    let uid = message_id_arg(args, "fetch_uid_text", "uid")?;
+    let shape = with_conn(id, |c| {
+        c.command(&format!(
+            "UID FETCH {uid} (UID FLAGS RFC822.SIZE BODYSTRUCTURE)"
+        ))
+    })?;
+    let Some(pieces) = shape.iter().find(|p| is_fetch_response(p)) else {
+        return Err(format!("Imap.fetch_uid_text({uid}): no such message"));
+    };
+    let meta = joined_text(pieces);
+    let Some(parts) = bodystructure::parts_of(&meta) else {
+        return imap_fetch_uid(args);
+    };
+    let faces: Vec<&bodystructure::Part> = parts.iter().filter(|p| p.is_text()).collect();
+    if faces.is_empty() {
+        return imap_fetch_uid(args);
+    }
+    let mut items = String::from("(UID FLAGS BODY.PEEK[HEADER]");
+    for f in &faces {
+        items.push_str(&format!(
+            " BODY.PEEK[{}.MIME] BODY.PEEK[{}]",
+            f.number, f.number
+        ));
+    }
+    items.push(')');
+    let got = with_conn(id, |c| c.command(&format!("UID FETCH {uid} {items}")))?;
+    let Some(pieces) = got.iter().find(|p| is_fetch_response(p)) else {
+        return imap_fetch_uid(args);
+    };
+    let named = keyed_literals(pieces);
+    let Some(head) = literal_named(&named, "HEADER") else {
+        return imap_fetch_uid(args);
+    };
+    let mut faces_in = Vec::new();
+    for f in &faces {
+        let (Some(mime), Some(body)) = (
+            literal_named(&named, &format!("{}.MIME", f.number)),
+            literal_named(&named, &f.number),
+        ) else {
+            continue;
+        };
+        faces_in.push((mime, body));
+    }
+    let Some(raw) = assemble(head, &faces_in) else {
+        return imap_fetch_uid(args);
+    };
+    let body = meta.strip_prefix("* ").unwrap_or(&meta);
+    let seq = body
+        .split_whitespace()
+        .next()
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(0);
+    let clips = parts.iter().filter(|p| !p.is_text()).count() as i64;
+    let mut pairs: Vec<(String, Value)> = vec![
+        ("seq".to_string(), Value::Int(seq)),
+        ("uid".to_string(), scan_uid(body)),
+        ("flags".to_string(), scan_flags(body)),
+        ("bytes".to_string(), scan_size(body)),
+        ("clips".to_string(), Value::Int(clips)),
+    ];
+    pairs.extend(mail_parse::common_fields(&raw));
+    // The freight, named and measured, and not one byte of it fetched.
+    // This replaces whatever the parse of a text-only message said about
+    // attachments, which is necessarily nothing.
+    pairs.retain(|(k, _)| k != "attachments");
+    pairs.push(("attachments".to_string(), freight(&parts)));
+    Ok(hash_from_pairs(pairs))
+}
+
+/// The literals of a FETCH response, each keyed by the item that
+/// introduced it.
+///
+/// A response interleaves text and literals — `… BODY[HEADER] {1234}` then
+/// twelve hundred bytes, then ` BODY[1.MIME] {56}` then fifty-six — and
+/// the pieces arrive in that order. Taking the literals *positionally*,
+/// which is what the first version of this did, assumes the server
+/// answers with exactly the items that were asked for, in the order they
+/// were asked for, and nothing else. A server that adds `FLAGS` between
+/// two of them, or answers `BODY[1]` before `BODY[1.MIME]`, then pairs a
+/// part's body with the next part's header — and what comes out is a
+/// letter that starts in the middle of a stylesheet.
+///
+/// So each literal is named by the `BODY[…]` in the text just before it,
+/// and the caller asks for what it wants by name.
+fn keyed_literals(pieces: &[Piece]) -> Vec<(String, &[u8])> {
+    let mut out: Vec<(String, &[u8])> = Vec::new();
+    let mut last = String::new();
+    for p in pieces {
+        match p {
+            Piece::Text(t) => last.push_str(t),
+            Piece::Literal(b) => {
+                let key = last
+                    .to_ascii_uppercase()
+                    .rfind("BODY[")
+                    .and_then(|at| {
+                        let rest = last.get(at + "BODY[".len()..)?;
+                        let end = rest.find(']')?;
+                        Some(rest.get(..end)?.to_ascii_uppercase())
+                    })
+                    .unwrap_or_default();
+                out.push((key, b.as_slice()));
+                last.clear();
+            }
+        }
+    }
+    out
+}
+
+/// One named literal, or nothing.
+fn literal_named<'a>(named: &'a [(String, &'a [u8])], key: &str) -> Option<&'a [u8]> {
+    named
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(key))
+        .map(|(_, b)| *b)
+}
+
+/// The freight of a message, as `fetch_uid` would have listed it, from the
+/// structure alone: no `base64`, because nothing was downloaded.
+fn freight(parts: &[bodystructure::Part]) -> Value {
+    let rows: Vec<Value> = parts
+        .iter()
+        .filter(|p| !p.is_text())
+        .map(|p| {
+            hash_from_pairs(vec![
+                ("name".to_string(), Value::String(p.name.clone().into())),
+                (
+                    "content_type".to_string(),
+                    Value::String(format!("{}/{}", p.kind, p.sub).into()),
+                ),
+                ("size".to_string(), Value::Int(p.bytes)),
+                ("part".to_string(), Value::String(p.number.clone().into())),
+                ("base64".to_string(), Value::String(String::new().into())),
+            ])
+        })
+        .collect();
+    Value::Array(Rc::new(RefCell::new(rows)))
+}
+
+/// Header, then the parts, as one message `mail_parse` can read.
+///
+/// The literals arrive in the order they were asked for: the header, then
+/// a MIME header and a body for each face. One face is spliced straight
+/// on to the header with the top `Content-*` lines dropped, because the
+/// top one describes a multipart that is no longer there. Several become a
+/// `multipart/alternative` of our own making, which is what they were
+/// inside the original anyway.
+fn assemble(head: &[u8], faces: &[(&[u8], &[u8])]) -> Option<Vec<u8>> {
+    if faces.is_empty() {
+        return None;
+    }
+    let mut out: Vec<u8> = Vec::new();
+    // Whether the last header line seen is one we are keeping, so its
+    // folded continuations follow it either way.
+    let mut keeping = true;
+    for line in head.split(|b| *b == b'\n') {
+        let said = String::from_utf8_lossy(line);
+        let trimmed = said.trim_end_matches('\r');
+        if trimmed.is_empty() {
+            continue;
+        }
+        // A continuation line belongs to the field above it, so it goes
+        // or stays with it.
+        if trimmed.starts_with(' ') || trimmed.starts_with('\t') {
+            // A folded line belongs to the field above it, and goes or
+            // stays with it. Kept as its own line rather than joined,
+            // which is what the field meant.
+            if keeping {
+                out.extend_from_slice(trimmed.as_bytes());
+                out.extend_from_slice(b"\r\n");
+            }
+            continue;
+        }
+        // The top `Content-*` lines describe a multipart that is not
+        // here any more: what follows is one part, or an alternative of
+        // this function's own making.
+        keeping = !trimmed.to_ascii_lowercase().starts_with("content-");
+        if !keeping {
+            continue;
+        }
+        out.extend_from_slice(trimmed.as_bytes());
+        out.extend_from_slice(b"\r\n");
+    }
+    if let [(mime, body)] = faces {
+        out.extend_from_slice(mime);
+        if !mime.ends_with(b"\n") {
+            out.extend_from_slice(b"\r\n");
+        }
+        out.extend_from_slice(b"\r\n");
+        out.extend_from_slice(body);
+        return Some(out);
+    }
+    let line = "eui-faces-8f3a2b";
+    out.extend_from_slice(
+        format!("Content-Type: multipart/alternative; boundary=\"{line}\"\r\n\r\n").as_bytes(),
+    );
+    for (mime, body) in faces {
+        out.extend_from_slice(format!("--{line}\r\n").as_bytes());
+        out.extend_from_slice(mime);
+        if !mime.ends_with(b"\n") {
+            out.extend_from_slice(b"\r\n");
+        }
+        out.extend_from_slice(b"\r\n");
+        out.extend_from_slice(body);
+        out.extend_from_slice(b"\r\n");
+    }
+    out.extend_from_slice(format!("--{line}--\r\n").as_bytes());
+    Some(out)
+}
+
+/// The freight alone, by part number: `p`'s half of the bargain.
+///
+/// `parts` is a list of the numbers a previous `fetch_uid_text` reported,
+/// and what comes back is one row per part with its `base64`. Nothing else
+/// of the message crosses the wire.
+fn imap_fetch_uid_parts(args: &[Value]) -> Result<Value, String> {
+    let id = instance_id(args, "fetch_uid_parts")?;
+    let uid = message_id_arg(args, "fetch_uid_parts", "uid")?;
+    let Some(Value::Array(asked)) = args.get(2) else {
+        return Err(
+            "Imap.fetch_uid_parts(uid, parts) expects an array of part numbers".to_string(),
+        );
+    };
+    let numbers: Vec<String> = asked
+        .borrow()
+        .iter()
+        .filter_map(|v| match v {
+            Value::String(s) => Some(s.to_string()),
+            _ => None,
+        })
+        // A part number is digits and dots and nothing else: it is put
+        // straight into a command line.
+        .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit() || c == '.'))
+        .collect();
+    if numbers.is_empty() {
+        return Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))));
+    }
+    let mut items = String::from("(UID");
+    for n in &numbers {
+        items.push_str(&format!(" BODY.PEEK[{n}]"));
+    }
+    items.push(')');
+    let got = with_conn(id, |c| c.command(&format!("UID FETCH {uid} {items}")))?;
+    let Some(pieces) = got.iter().find(|p| is_fetch_response(p)) else {
+        return Err(format!("Imap.fetch_uid_parts({uid}): no such message"));
+    };
+    let named = keyed_literals(pieces);
+    let rows: Vec<Value> = numbers
+        .iter()
+        .filter_map(|n| literal_named(&named, n).map(|raw| (n, raw)))
+        .map(|(n, raw)| {
+            // What the server sends is the part still encoded the way the
+            // message encoded it, which for anything attached is base64
+            // with its line breaks. Those are removed and nothing else is
+            // touched: the caller writes it with `file_write_base64`.
+            let said: String = String::from_utf8_lossy(raw)
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect();
+            hash_from_pairs(vec![
+                ("part".to_string(), Value::String(n.clone().into())),
+                ("base64".to_string(), Value::String(said.into())),
+            ])
+        })
+        .collect();
+    Ok(Value::Array(Rc::new(RefCell::new(rows))))
 }
 
 fn imap_fetch_uid(args: &[Value]) -> Result<Value, String> {
@@ -1040,6 +1479,9 @@ pub fn register_imap_class(env: &mut Environment) {
         method("uid_search", None, imap_uid_search),
         method("fetch", Some(1), imap_fetch),
         method("fetch_uid", Some(1), imap_fetch_uid),
+        method("status", None, imap_status),
+        method("fetch_uid_text", Some(1), imap_fetch_uid_text),
+        method("fetch_uid_parts", Some(2), imap_fetch_uid_parts),
         method("fetch_all", Some(0), imap_fetch_all),
         method("fetch_headers", Some(1), imap_fetch_headers),
         method("fetch_headers_uid", Some(1), imap_fetch_headers_uid),
@@ -1216,6 +1658,121 @@ mod tests {
         assert_eq!(rest.trim(), "tail");
     }
 
+    /// One face: the top header keeps everything but its `Content-*`
+    /// lines, and the part's own MIME header takes their place.
+    #[test]
+    fn one_face_is_spliced_on_to_the_header_it_came_with() {
+        let head = b"Subject: les photos\r\nFrom: club@example.com\r\nContent-Type: multipart/mixed; boundary=\"xx\"\r\nContent-Transfer-Encoding: 7bit\r\n";
+        let mime = b"Content-Type: text/plain; charset=utf-8\r\n";
+        let body = b"bonjour\r\n";
+        let out =
+            assemble(head.as_slice(), &[(mime.as_slice(), body.as_slice())]).expect("assembled");
+        let said = String::from_utf8_lossy(&out);
+        assert!(said.contains("Subject: les photos"), "{said}");
+        assert!(said.contains("Content-Type: text/plain"), "{said}");
+        assert!(
+            !said.contains("multipart/mixed"),
+            "the freight's wrapper is gone: {said}"
+        );
+        let fields = mail_parse::common_fields(&out);
+        let body = fields
+            .iter()
+            .find(|(k, _)| k == "text_body")
+            .map(|(_, v)| v.to_string())
+            .unwrap_or_default();
+        assert!(body.contains("bonjour"), "{body}");
+    }
+
+    /// Two faces become an alternative of our own, which is what they were
+    /// inside the original.
+    #[test]
+    fn two_faces_are_wrapped_in_an_alternative() {
+        let head = b"Subject: two\r\nContent-Type: multipart/mixed; boundary=\"xx\"\r\n";
+        let out = assemble(
+            head.as_slice(),
+            &[
+                (
+                    b"Content-Type: text/plain\r\n".as_slice(),
+                    b"plain words\r\n".as_slice(),
+                ),
+                (
+                    b"Content-Type: text/html\r\n".as_slice(),
+                    b"<p>rich words</p>\r\n".as_slice(),
+                ),
+            ],
+        )
+        .expect("assembled");
+        let said = String::from_utf8_lossy(&out);
+        assert!(said.contains("multipart/alternative"), "{said}");
+        let fields = mail_parse::common_fields(&out);
+        let body = fields
+            .iter()
+            .find(|(k, _)| k == "text_body")
+            .map(|(_, v)| v.to_string())
+            .unwrap_or_default();
+        let html = fields
+            .iter()
+            .find(|(k, _)| k == "html_body")
+            .map(|(_, v)| v.to_string())
+            .unwrap_or_default();
+        assert!(body.contains("plain words"), "text face: {body}");
+        assert!(html.contains("rich words"), "html face: {html}");
+    }
+
+    /// Nothing to splice, or an odd number of pieces, says so rather than
+    /// building half a message.
+    #[test]
+    fn an_incomplete_answer_is_refused() {
+        assert!(assemble(b"Subject: x\r\n", &[]).is_none());
+    }
+
+    /// The fault that showed as a letter starting in the middle of a
+    /// stylesheet: literals taken by position rather than by name.
+    #[test]
+    fn a_literal_is_named_by_the_item_that_introduced_it() {
+        let pieces = vec![
+            Piece::Text("* 1 FETCH (UID 42 FLAGS (\\Seen) BODY[HEADER] {12}".to_string()),
+            Piece::Literal(b"Subject: hi\n".to_vec()),
+            // A server is allowed to answer with more than was asked for,
+            // and in whatever order it likes.
+            Piece::Text(" BODY[1.2] {6}".to_string()),
+            Piece::Literal(b"<p>x</p>".to_vec()),
+            Piece::Text(" BODY[1.2.MIME] {10}".to_string()),
+            Piece::Literal(b"text/html\n".to_vec()),
+            Piece::Text(")".to_string()),
+        ];
+        let named = keyed_literals(&pieces);
+        assert_eq!(
+            literal_named(&named, "HEADER"),
+            Some(b"Subject: hi\n".as_slice())
+        );
+        assert_eq!(literal_named(&named, "1.2"), Some(b"<p>x</p>".as_slice()));
+        assert_eq!(
+            literal_named(&named, "1.2.MIME"),
+            Some(b"text/html\n".as_slice())
+        );
+        assert_eq!(literal_named(&named, "1.1"), None);
+    }
+
+    /// A folded `Content-Type` takes its continuation with it, rather
+    /// than leaving ` boundary="xx"` behind as a header line of its own.
+    #[test]
+    fn a_folded_header_that_is_dropped_takes_its_continuation() {
+        let head =
+            b"Subject: x\r\nContent-Type: multipart/mixed;\r\n boundary=\"xx\"\r\nTo: a@b.c\r\n";
+        let out = assemble(
+            head.as_slice(),
+            &[(
+                b"Content-Type: text/plain\r\n".as_slice(),
+                b"words\r\n".as_slice(),
+            )],
+        )
+        .expect("assembled");
+        let said = String::from_utf8_lossy(&out);
+        assert!(!said.contains("boundary=\"xx\""), "{said}");
+        assert!(said.contains("To: a@b.c"), "{said}");
+    }
+
     #[test]
     fn reads_fetch_with_literal_body() {
         // A FETCH whose BODY[] arrives as a 28-octet literal, then the tagged OK.
@@ -1310,6 +1867,90 @@ mod tests {
             h.get(&HashKey::String("uidnext".into())),
             Some(Value::Int(20))
         ));
+    }
+
+    /// The encoding that made a French mailbox read as
+    /// `Messages envoy&AOK-s` in a folder list.
+    #[test]
+    fn a_mailbox_name_is_decoded_for_reading_and_kept_for_commands() {
+        // `é` is U+00E9, which is `000000 001110 1001` + two bits of
+        // padding -- `A`, `O`, `k`. A capital `K` is a different code
+        // point and a name that does not mean what it looks like, so it
+        // is left alone rather than decoded into the wrong letter.
+        assert_eq!(
+            decode_modified_utf7("Messages envoy&AOk-s"),
+            "Messages envoyés"
+        );
+        assert_eq!(decode_modified_utf7("INBOX"), "INBOX");
+        assert_eq!(
+            decode_modified_utf7("[Gmail]/Sent Mail"),
+            "[Gmail]/Sent Mail"
+        );
+        // A literal ampersand, which is the one escape this encoding has.
+        assert_eq!(decode_modified_utf7("R&-D"), "R&D");
+        // Cyrillic, to prove it is UTF-16 and not Latin-1 with a hat on --
+        // and that `,` stands in for BASE64's `/`.
+        assert_eq!(
+            decode_modified_utf7("&BB4EQgQ,BEAEMAQyBDsENQQ9BD0ESwQ1-"),
+            "Отправленные"
+        );
+        assert_eq!(decode_modified_utf7("Wys&AUI-ane"), "Wysłane");
+        // Nonsense stays as it came rather than losing the name.
+        assert_eq!(decode_modified_utf7("a&b"), "a&b");
+        assert_eq!(decode_modified_utf7("a&!!-b"), "a&!!-b");
+
+        let line = "(\\HasNoChildren \\Sent) \"/\" \"Messages envoy&AOk-s\"";
+        let Some(Value::Hash(h)) = parse_list_line(line) else {
+            panic!("a mailbox")
+        };
+        let h = h.borrow();
+        // The wire form is what a `SELECT` must be given.
+        assert_eq!(
+            h.get(&HashKey::String("name".into())),
+            Some(&Value::String("Messages envoy&AOk-s".into()))
+        );
+        assert_eq!(
+            h.get(&HashKey::String("label".into())),
+            Some(&Value::String("Messages envoyés".into()))
+        );
+    }
+
+    /// How many messages a folder has, without becoming the folder.
+    #[test]
+    fn a_status_line_is_read_into_its_counts() {
+        let pieces = vec![Piece::Text(
+            "* STATUS \"[Gmail]/All Mail\" (MESSAGES 10431 UNSEEN 4 RECENT 0 UIDNEXT 78312)"
+                .to_string(),
+        )];
+        let untagged = vec![pieces];
+        // The parse is the body of `imap_status` after the command; run it
+        // the same way over a canned response.
+        let mut counts: Vec<(String, i64)> = Vec::new();
+        for piece in &untagged {
+            let line = joined_text(piece);
+            let body = line.strip_prefix("* ").unwrap_or(&line);
+            let rest = body.strip_prefix("STATUS ").unwrap();
+            let open = rest.find('(').unwrap();
+            let close = rest.rfind(')').unwrap();
+            let inside = &rest[open + 1..close];
+            let words: Vec<&str> = inside.split_whitespace().collect();
+            let mut i = 0;
+            while i + 1 < words.len() {
+                if let Ok(n) = words[i + 1].parse::<i64>() {
+                    counts.push((words[i].to_ascii_lowercase(), n));
+                }
+                i += 2;
+            }
+        }
+        assert_eq!(
+            counts,
+            vec![
+                ("messages".to_string(), 10431),
+                ("unseen".to_string(), 4),
+                ("recent".to_string(), 0),
+                ("uidnext".to_string(), 78312),
+            ]
+        );
     }
 
     #[test]

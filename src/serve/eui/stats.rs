@@ -62,6 +62,9 @@ pub struct Current;
 impl Current {
     pub fn enter(session: String) -> Self {
         set_current(Some(session));
+        // Whatever an earlier pass on this thread queued and never sent is
+        // not this session's to say (`super::notify`).
+        super::notify::clear();
         Self
     }
 }
@@ -69,6 +72,7 @@ impl Current {
 impl Drop for Current {
     fn drop(&mut self) {
         set_current(None);
+        super::notify::clear();
     }
 }
 

@@ -42,6 +42,10 @@ pub mod assertions;
 pub mod assigns_helpers;
 pub mod attachments;
 pub mod body_limit;
+#[cfg(feature = "mail")]
+/// Reading an IMAP `BODYSTRUCTURE`: which parts of a message are the
+/// letter and which are the freight, so neither is fetched twice.
+pub mod bodystructure;
 pub mod browser;
 pub mod cache;
 pub mod clock;
@@ -67,7 +71,6 @@ pub mod http_class;
 pub mod http_log;
 pub mod i18n;
 pub mod image;
-#[cfg(feature = "mail")]
 pub mod imap;
 pub mod job_log;
 pub mod jobs;

@@ -14,6 +14,7 @@ pub mod diff;
 pub mod fonts;
 pub mod local;
 pub mod manifest;
+pub mod notify;
 pub mod session;
 pub mod stats;
 pub mod tree;

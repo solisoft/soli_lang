@@ -77,3 +77,34 @@ end
 Nothing in the protocol required the polling shape: a `Batch` is server→client, the
 send side is a queue drained by its own task, and a rendered batch goes to the
 instance's senders. Call it where the change is written, not on a timer.
+
+## Notifying the person
+
+`eui_notify(title, body, opts)` raises a real notification on the machine the window is
+on — the desktop's own, the one every other application uses. It is the one thing a
+session can do that reaches somebody who has stopped looking at it.
+
+```soli
+def mail_arrived(event)
+  msg = Mail.latest()
+  eui_notify("Nouveau message", "#{msg.from} : #{msg.subject}", { "tag": "thread-#{msg.thread_id}" })
+  { "state": { "unseen": Mail.unseen() } }
+end
+```
+
+A call and not a node: a notification is something an application *does* once, where
+something happened, so it belongs in a handler — a view that calls it says the same
+thing again on every render. The title is required; `opts["tag"]` is an identity, and a
+second notification carrying the tag of one still on screen replaces it rather than
+stacking beside it. Long strings are cut to the protocol's limits rather than refused.
+
+It reaches **the session whose handler is running, and no other**, and returns whether
+it was *sent* — never whether it was seen. The client shows it only if the person
+granted `notifications` (ask in `config/routes.sl` with `eui_capabilities`), and nothing
+comes back over the socket: not shown, not clicked, not dismissed. Called where no
+session is rendering — a controller, a job, `soli run` — it does nothing and returns
+`false`.
+
+So the pairing with `eui_wake` is the shape to reach for: the job that took the delivery
+wakes the component, and each woken session decides for itself whether its own machine
+should say anything.
