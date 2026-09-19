@@ -381,7 +381,7 @@ end</code></pre>
                     </tbody>
                 </table>
             </div>
-            <p class="text-gray-400 mt-3 text-sm"><code>font_dirs</code> and <code>fetch_images</code> work as they do for <code>pdf_render</code>. <code>stationery</code>, <code>attachments</code>, <code>password</code>, <code>pdfa</code> and <code>sign</code> are <strong>accepted but ignored</strong>, with a warning on stderr &mdash; so one options hash can drive both the PDF and its preview.</p>
+            <p class="text-gray-400 mt-3 text-sm"><code>font_dirs</code> and <code>fetch_images</code> work as they do for <code>pdf_render</code>. <code>stationery</code>, <code>attachments</code>, <code>password</code>, <code>pdfa</code> and <code>sign</code> are <strong>accepted but ignored</strong>, so one options hash can drive both the PDF and its preview. The two that change what you would see &mdash; <code>stationery</code> and <code>sign</code> &mdash; warn once per process; the rest cannot alter a pixel, so they pass quietly.</p>
         </section>
     </section>
 
@@ -400,18 +400,18 @@ end</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-4">
                 <h4 class="text-sm font-semibold text-white mb-1">A few things cannot appear</h4>
-                <p class="text-sm text-gray-400">Each warns on stderr rather than failing, so a preview always appears.</p>
+                <p class="text-sm text-gray-400">None of them fails the render, so a preview always appears. Only the two that change what you would see say anything, once per process.</p>
             </div>
         </div>
         <div class="overflow-x-auto rounded-xl border border-white/10">
             <table class="w-full text-sm text-left">
-                <thead class="bg-white/5 text-gray-300"><tr><th class="px-4 py-2 font-semibold">Option</th><th class="px-4 py-2 font-semibold">Why not</th></tr></thead>
+                <thead class="bg-white/5 text-gray-300"><tr><th class="px-4 py-2 font-semibold">Option</th><th class="px-4 py-2 font-semibold">Why not</th><th class="px-4 py-2 font-semibold">Warns</th></tr></thead>
                 <tbody class="text-gray-400 divide-y divide-white/5">
-                    <tr><td class="px-4 py-2"><code>stationery</code></td><td class="px-4 py-2">The letterhead is composited onto emitted PDF bytes. The preview shows your content without it.</td></tr>
-                    <tr><td class="px-4 py-2"><code>attachments</code></td><td class="px-4 py-2">Embedded files are not drawn on a page.</td></tr>
-                    <tr><td class="px-4 py-2"><code>password</code></td><td class="px-4 py-2">A preview image is plaintext by nature.</td></tr>
-                    <tr><td class="px-4 py-2"><code>pdfa</code></td><td class="px-4 py-2">Metadata and OutputIntent only &mdash; no visual effect.</td></tr>
-                    <tr><td class="px-4 py-2"><code>sign</code></td><td class="px-4 py-2">A signature is not page content.</td></tr>
+                    <tr><td class="px-4 py-2"><code>stationery</code></td><td class="px-4 py-2">The letterhead is composited onto emitted PDF bytes. The preview shows your content without it.</td><td class="px-4 py-2 text-teal-300">yes</td></tr>
+                    <tr><td class="px-4 py-2"><code>sign</code></td><td class="px-4 py-2">The signature is applied to emitted bytes, so a visible signature appearance is missing.</td><td class="px-4 py-2 text-teal-300">yes</td></tr>
+                    <tr><td class="px-4 py-2"><code>attachments</code></td><td class="px-4 py-2">Embedded files are not drawn on a page.</td><td class="px-4 py-2">no</td></tr>
+                    <tr><td class="px-4 py-2"><code>password</code></td><td class="px-4 py-2">A preview image is plaintext by nature.</td><td class="px-4 py-2">no</td></tr>
+                    <tr><td class="px-4 py-2"><code>pdfa</code></td><td class="px-4 py-2">Metadata and OutputIntent only &mdash; no visual effect.</td><td class="px-4 py-2">no</td></tr>
                 </tbody>
             </table>
         </div>

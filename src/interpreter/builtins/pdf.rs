@@ -20,8 +20,9 @@
 //! `width`/`height` in px (either overrides `dpi`), `pages` (the 1-based
 //! selection `pdf_pages` takes), `out_dir`/`prefix`, and `page` for the
 //! response helper. `stationery`, `attachments`, `password`, `pdfa` and `sign`
-//! are accepted but have no raster meaning, and warn — so one options hash can
-//! drive both the PDF and its preview.
+//! are accepted but have no raster meaning, so one options hash can drive both
+//! the PDF and its preview; the two that change what you would see —
+//! `stationery` and `sign` — warn once per process.
 //!
 //! Both take the layout template and data as JSON strings and return the PDF as
 //! a **base64 string** (Soli has no bytes type). Save it with
@@ -52,9 +53,10 @@
 //! it straight from a controller action, no `file_write_base64` dance.
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use base64::Engine as _;
 use sha2::{Digest, Sha256};
@@ -912,6 +914,13 @@ fn encode_preview(
 /// rather than reject: sharing one hash between `pdf_render` and
 /// `pdf_preview` is the natural way to write this, and refusing it would buy
 /// no safety.
+///
+/// Warned **once per option per process**. A preview endpoint calls this on
+/// every request, so warning each time would put three lines in the log for
+/// every thumbnail served — and, in `soli test`, repaint over the progress
+/// dashboard. The condition is a property of the caller's options hash, not
+/// of the request, so saying it once is saying it. Same shape as the
+/// warn-once in `serve::otel`.
 fn warn_ignored_preview_options(opts: Option<&Value>, func: &str) {
     let Some(Value::Hash(h)) = opts else {
         return;
@@ -919,25 +928,33 @@ fn warn_ignored_preview_options(opts: Option<&Value>, func: &str) {
     let h = h.borrow();
     let has = |k: &str| h.get(&HashKey::String(k.into())).is_some();
 
+    let warn = |option: &'static str, why: &str| {
+        static SEEN: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
+        let seen = SEEN.get_or_init(|| Mutex::new(HashSet::new()));
+        if let Ok(mut set) = seen.lock() {
+            if set.insert(option) {
+                eprintln!("[WARN] {func}(): ignoring `{option}` — {why}");
+            }
+        }
+    };
+
+    // Only the two that change what the reader would see. `attachments`,
+    // `password` and `pdfa` are equally inert here, but they cannot alter a
+    // single pixel, so announcing them is noise — the options table documents
+    // them. A warning earns its line by describing a *difference*.
     if has("stationery") {
-        eprintln!(
-            "[WARN] {func}(): ignoring `stationery` — a letterhead is composited onto \
-             emitted PDF bytes, so the preview shows the content without it"
+        warn(
+            "stationery",
+            "a letterhead is composited onto emitted PDF bytes, so the preview \
+             shows the content without it",
         );
-    }
-    if has("attachments") {
-        eprintln!(
-            "[WARN] {func}(): ignoring `attachments` — embedded files are not drawn on a page"
-        );
-    }
-    if has("password") || has("owner_password") {
-        eprintln!("[WARN] {func}(): ignoring `password` — a preview image is plaintext by nature");
-    }
-    if has("pdfa") {
-        eprintln!("[WARN] {func}(): ignoring `pdfa` — it writes metadata, with no visual effect");
     }
     if has("sign") {
-        eprintln!("[WARN] {func}(): ignoring `sign` — a signature is not page content");
+        warn(
+            "sign",
+            "a signature is applied to emitted PDF bytes, so a visible \
+             signature appearance will be missing from the preview",
+        );
     }
 }
 
