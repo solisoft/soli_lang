@@ -2596,6 +2596,12 @@ end
 def file_drop(label, accept, on_pick, o = {})
   over = o["over"] == true
   hint = o["hint"] ?? ""
+  # A ground and a foreground are one decision. `over` fills the box with
+  # `accent.hover`, so the words on it have to be `accent.on` -- the theme
+  # guarantees that pair and guarantees nothing about `text.default` on a
+  # filled accent, which in the light theme is dark grey on blue and reads
+  # as a box that has gone wrong rather than one that is ready.
+  fd_ink = over ? "accent.on" : "text.default"
   resting = {
     "display": "column",
     "gap": 1,
@@ -2607,6 +2613,7 @@ def file_drop(label, accept, on_pick, o = {})
     "border": 1,
     "border_color": over ? "accent.base" : "border.subtle",
     "bg": over ? "accent.hover" : "surface.sunken",
+    "fg": fd_ink,
     "transition": "fast"
   }
   on = {"file_pick": on_pick}
@@ -2625,9 +2632,17 @@ def file_drop(label, accept, on_pick, o = {})
     "p": props,
     "on": on,
     "c": [
-      text(over ? (o["over_label"] ?? "Let go to add them") : label, {"weight": "semibold"})
-    ].concat(hint == "" ? [] : [muted(hint)])
+      text(over ? (o["over_label"] ?? "Let go to add them") : label, {"weight": "semibold", "fg": fd_ink})
+    ].concat(hint == "" ? [] : [text(hint, {"size": 1, "fg": over ? "accent.on" : "text.muted"})])
   }
+  # A box that opens a dialog on a click and answered a pointer with nothing
+  # was a button that did not look like one. The hover is local, so it
+  # costs no round trip; while a file is actually over the box the two
+  # states would fight, so it is left off then and `over` has the box.
+  n["on"] = stateful(resting, {
+    "hover": {"bg": "surface.raised", "border_color": "border.strong"},
+    "press": {"bg": "surface.sunken"}
+  }, on) if pick && !over
   n
 end
 

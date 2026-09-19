@@ -1506,3 +1506,201 @@ def stat_spark(label, value, hint, vals, w)
     ]
   )
 end
+
+# ---- Streaming -------------------------------------------------------------
+#
+# The one chart here that is not a picture of last week: a window that moves.
+# The newest sample is at the right edge, the oldest falls off the left, and
+# the thing that moves it is a `wake` on the card (06 §1.1) — the only clock
+# this protocol has. Everything under it is the same `canvas` of paths every
+# chart above is made of; what is different is that all of it is resent on
+# every tick, because in a moving window every point moves.
+#
+# Four decisions are the difference between a chart that streams and one that
+# merely redraws, and each of them is a cost:
+#
+# **No hover bands.** Every other chart here stacks invisible bands over the
+# drawing to answer the pointer (`chart_layers`). A band here would be a
+# different sample half a second later, so the chip would name a reading that
+# had already gone, and a pointer left resting on the plot would report a new
+# number twice a second without anybody asking it anything. A streaming chart
+# direct-labels instead: the reading you want is the newest one, and it is in
+# the legend beside the colour it belongs to.
+#
+# **One marker a series, not one a sample.** Sixty points four pixels apart is
+# a texture; discs on it draw a dotted line and cost sixty paths. Only the
+# newest sample of each series wears one, which is also the only one a reader
+# is looking for.
+#
+# **Whole-pixel coordinates.** A `Value::Float` is a tag and eight bytes on the
+# wire; a `Value::Int` is a tag and a varint — two, at these magnitudes. Over
+# a three-series window that is about three times the bytes of this card,
+# twice a second, in exchange for a rounding nobody can see at one logical
+# pixel. The static charts above are drawn once and can afford their floats.
+#
+# **Nothing derives a colour from a reading.** The session's colour table
+# holds 4 095 entries and never reuses one (02 §5, `DefineOnce`), so a hue
+# computed from a live value mints a permanent entry on every tick and ends
+# the session in an afternoon. A live chart spends the five series roles and a
+# four-step status ramp, and nothing else.
+
+# A series scaled into the plot at whole pixels, as [x, y] pairs. The window
+# is always full — the caller generates `count` samples and no fewer — so
+# there is no partial-fill case and the left edge is always a real reading.
+def chart_stream_points(sp_vals, sp_top, sp_w, sp_h)
+  sp_n = sp_vals.length()
+  sp_step = sp_n > 1 ? (sp_w - 8) * 1.0 / (sp_n - 1) : 0
+  range(0, sp_n).map(fn(sp_i) {
+    [
+      int(4 + sp_i * sp_step + 0.5),
+      int(4 + (sp_h - 8) * (sp_top - sp_vals[sp_i]) * 1.0 / sp_top + 0.5)
+    ]
+  })
+end
+
+# A dashed rule, drawn as segments. The path format has one line kind and no
+# dash pattern, and that is the right side of the line for it to be on: a
+# pattern is a renderer feature with a state machine behind it, and this is a
+# list of six-pixel segments a server can write in three.
+def chart_stream_rule(sr_y, sr_w, sr_colour)
+  sr_n = int((sr_w - 8) / 12)
+  range(0, sr_n).map(fn(sr_i) { [0, sr_colour, 1, 4 + sr_i * 12, sr_y, 4 + sr_i * 12 + 6, sr_y] })
+end
+
+# The legend of a streaming chart carries the readings. A swatch on its own
+# sends the eye back into the plot to find out what the line is doing now,
+# and "now" is the only question this chart is asked.
+def chart_stream_legend(sl_names, sl_sets, sl_mark, sl_mark_name)
+  sl_keys = range(0, sl_names.length()).map(fn(sl_i) {
+    sl_vals = sl_sets[sl_i];
+    row({"gap": 1, "align": "center"}, [
+      {"k": "box", "s": {"width": 10, "height": 10, "radius": 4, "bg": chart_role(sl_i), "shrink": 0}},
+      text(sl_names[sl_i], {"size": 0, "fg": "text.muted"}),
+      text(str(sl_vals[sl_vals.length() - 1]), {"size": 0, "weight": "semibold"})
+    ])
+  })
+  sl_all = sl_keys
+  sl_all = sl_keys.concat([row({"gap": 1, "align": "center"}, [
+    {"k": "box", "s": {"width": 10, "height": 2, "radius": 0, "bg": "danger.base", "shrink": 0}},
+    text(sl_mark_name + " " + str(sl_mark), {"size": 0, "fg": "text.muted"})
+  ])]) if sl_mark > 0
+  {
+    "k": "box",
+    "s": {"display": "row", "wrap": "wrap", "gap": 3, "width": "100%", "align": "center", "justify": "center"},
+    "c": sl_all
+  }
+end
+
+# Several series over a moving window, on one shared scale, with the target
+# they are read against dashed across them.
+#
+# No `id`, unlike every chart above: an id is what the hit-testing layers name
+# their nodes with, and this chart has none.
+# A scale that does not breathe.
+#
+# The obvious top for a moving window is the largest reading in it, which is
+# what every chart above uses and what this one used first. It is wrong here,
+# and visibly: the largest reading changes on every tick, so the whole plot
+# rescales twice a second and a line that has not moved appears to wobble
+# against an axis whose numbers are also changing. Round up to a step
+# instead. The top then moves in jumps, rarely, and between them a mark means
+# the same height it meant last tick — which is the only way an eye can read
+# a trend off something that is being redrawn under it.
+def chart_stream_ceiling(sc_max, sc_mark)
+  sc_want = sc_max > sc_mark ? sc_max : sc_mark + sc_mark / 8
+  sc_step = 20
+  sc_step = 50 if sc_want > 400
+  sc_step = 5 if sc_want < 40
+  sc_steps = int(sc_want / sc_step) + 1
+  sc_steps * sc_step
+end
+
+def chart_stream(sets, names, w, h, x_labels = [], mark = 0, mark_name = "")
+  st_top = chart_stream_ceiling(chart_rows_max(sets), mark)
+  st_ticks = chart_scale_ticks(0, st_top)
+  st_gutter = chart_gutter(st_ticks)
+  st_pw = w - st_gutter
+  st_ph = chart_plot_h(h)
+  st_pts = range(0, sets.length()).map(fn(st_i) { chart_stream_points(sets[st_i], st_top, st_pw, st_ph) })
+  # No wash under any of them. `chart_area` fills because it draws one series
+  # and the fill is the series; three on a shared scale would be three washes
+  # over each other, and one wash under the tallest — which is what this drew
+  # first — reads as a plot background and hides the grid the other two are
+  # measured against.
+  st_paths = chart_grid(st_pw, st_ph)
+  st_paths = st_paths.concat(chart_stream_rule(
+    int(4 + (st_ph - 8) * (st_top - mark) * 1.0 / st_top + 0.5),
+    st_pw,
+    "danger.base"
+  )) if mark > 0
+  for st_j in range(0, st_pts.length())
+    st_line = [0, chart_role(st_j), 2].concat(flatten_points(st_pts[st_j]))
+    st_paths = st_paths.concat([st_line])
+  end
+  # The markers after every line, not beside their own: a disc drawn before
+  # the next series' line is crossed out by it. The ring is the card's own
+  # surface, which is what keeps the newest reading legible where two lines
+  # arrive at the same value.
+  for st_k in range(0, st_pts.length())
+    st_at = st_pts[st_k][st_pts[st_k].length() - 1]
+    st_paths = st_paths.concat([[3, "surface.raised", st_at[0], st_at[1], 5]])
+    st_paths = st_paths.concat([[3, chart_role(st_k), st_at[0], st_at[1], 3]])
+  end
+  column(
+    {"gap": 2, "width": w},
+    [
+      chart_framed(st_ticks, chart_x_axis_points(x_labels, st_pw), st_pw, st_ph, st_gutter, canvas(st_pw, st_ph, st_paths)),
+      chart_stream_legend(names, sets, mark, mark_name)
+    ]
+  )
+end
+
+# ---- Load strip ------------------------------------------------------------
+#
+# The same window as a row of cells: one measure, one cell a reading, newest
+# at the right. It answers "how often was it in the red", which a line chart
+# answers badly — a reader has to hold the threshold in their head and follow
+# the line over it — and it answers nothing about "what was it at 14:02",
+# which is the trade.
+#
+# It is the one place in the catalogue where a status colour is the right
+# colour for a chart. Everywhere else the series roles exist precisely to
+# stop a chart borrowing `warning.base` for a hue; here the band *is* the
+# meaning, and a reading over its ceiling is a warning in the sense the role
+# was named for.
+
+# The ramp, and the whole of it: four roles chosen by which quarter of the
+# ceiling a reading is in — idle, working, busy, over. Four, not a gradient:
+# see `chart_stream`'s last note. A `DefColor` per percentage point would be
+# 101 permanent table entries in the first minute and 4 095 within the hour.
+def chart_band_role(sb_pct)
+  return "danger.base" if sb_pct >= 90
+  return "warning.base" if sb_pct >= 70
+  return "success.base" if sb_pct >= 40
+
+  # `info.base` and not `success.subtle`, which is what this had first. A
+  # `.subtle` role is a tint meant to sit behind text, and a strip of them
+  # beside three saturated bands does not read as "quiet" — it reads as a hole
+  # in the drawing, as though those readings were missing. The quiet end of a
+  # load ramp still has to be a colour. Blue also gives the ramp a fourth hue
+  # rather than a fourth lightness, which is what a reader who cannot separate
+  # the green from the amber has to go on.
+  "info.base"
+end
+
+def chart_strip(sv_vals, sv_ceiling, sv_w, sv_h)
+  sv_n = sv_vals.length()
+  sv_cell = sv_n > 0 ? (sv_w - 8) * 1.0 / sv_n : 0
+  sv_wide = int(sv_cell) < 2 ? 1 : int(sv_cell) - 1
+  canvas(sv_w, sv_h, range(0, sv_n).map(fn(sv_i) {
+    [
+      1,
+      chart_band_role(sv_vals[sv_i] * 100 / sv_ceiling),
+      int(4 + sv_i * sv_cell),
+      2,
+      sv_wide,
+      sv_h - 4,
+      1
+    ]
+  }))
+end

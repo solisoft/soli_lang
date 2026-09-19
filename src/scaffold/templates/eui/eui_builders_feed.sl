@@ -621,13 +621,15 @@ def vu_scale(o = {})
   # beside the segment it names. `between` is what the row already does
   # across its width.
   #
-  # The height is the same number the strip is given, in pixels, and not
-  # `"100%"`: a percentage resolves against an ancestor rather than the row,
-  # which laid the meter out 6 232 pixels tall -- measured, after writing it.
+  # And no `height`: the parent row is `align: "stretch"`, so this column is
+  # already the height of the strips beside it. Asking for `100%` on top of
+  # that resolved against an ancestor instead and laid the meter out 6 232
+  # pixels tall — measured, after writing it.
   if axis == "v"
     tall = o["height"] ?? 96
     return column({"gap": 0, "justify": "between", "align": "end", "shrink": 0, "height": tall}, marks.reverse())
   end
+
 
   row({"gap": 0, "justify": "between", "width": "100%"}, marks)
 end

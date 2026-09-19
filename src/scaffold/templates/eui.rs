@@ -4,15 +4,17 @@
 //! component has no use for the 8 000 lines of catalogue, and the flag
 //! that writes them is refused there.
 
-/// The reference catalogue, spec/03-widgets.md §4 — 343 widgets composed
-/// from the primitives, all of it plain Soli.
+/// The reference catalogue, spec/03-widgets.md §4 — 438 definitions
+/// composed from the primitives, all of it plain Soli. The site's
+/// `/components` counts the ones a caller reaches for, which is fewer:
+/// this is every `def`, helpers included.
 ///
-/// Four files, byte for byte the copies in the EUI repository under
+/// Five files, byte for byte the copies in the EUI repository under
 /// `examples/demo-app/app/controllers/`, which is where they are edited;
 /// `scripts/sync-catalogue.sh` there copies them here. They load into one
 /// namespace and none depends on which loads first, so the order below is
 /// only the order a new application sees them listed in.
-pub const EUI_BUILDERS: [(&str, &str); 4] = [
+pub const EUI_BUILDERS: [(&str, &str); 5] = [
     ("eui_builders.sl", include_str!("eui/eui_builders.sl")),
     (
         "eui_builders_forms.sl",
@@ -25,6 +27,10 @@ pub const EUI_BUILDERS: [(&str, &str); 4] = [
     (
         "eui_builders_feed.sl",
         include_str!("eui/eui_builders_feed.sl"),
+    ),
+    (
+        "eui_builders_markdown.sl",
+        include_str!("eui/eui_builders_markdown.sl"),
     ),
 ];
 
