@@ -361,7 +361,7 @@ end
 # But that wants the `net.open` capability, which this application does not
 # ask for, and asking for one so that a paragraph of markdown can contain a
 # link is the wrong way round. A builder does not decide that.
-def md_run_node(run, size)
+def md_run_node(run, size, em_font = "")
   kind = run["k"]
   # A picture in the middle of a sentence is a small one, and small is a
   # number this has to pick: a run carries no width to fit itself to. A
@@ -370,7 +370,20 @@ def md_run_node(run, size)
   return md_picture(run, 240) if kind == "image"
   return text(run["t"], {"font": "mono", "size": size - 1, "bg": "surface.sunken", "fg": "accent.base", "pad": [0, 1, 0, 1], "radius": 1}) if kind == "code"
   return text(run["t"], {"size": size, "weight": "bold"}) if kind == "strong"
-  return text(run["t"], {"size": size, "fg": "text.muted"}) if kind == "em"
+  # **There is no italic in EUI.** The 64-byte style record has a family, a
+  # size and a weight, and no slant at all (02 §3) -- and its last reserved
+  # byte went to `motion_kind`, so there will not be one. What a `*mark*`
+  # can become is therefore a weight or a face, and nothing else.
+  #
+  # A weight by default, because the old answer was `text.muted` and grey
+  # reads as *de*-emphasis: it said the opposite of what the mark meant.
+  #
+  # A face when the caller has one. `eui_font(name, paths)` ships an italic
+  # with the application and its faces travel as content-addressed assets,
+  # so an application that wants real italics has them for two lines of
+  # `routes.sl` -- and one that does not gets a weight rather than a lie.
+  return text(run["t"], {"size": size, "font": em_font, "weight": "medium"}) if kind == "em" && em_font != ""
+  return text(run["t"], {"size": size, "weight": "medium"}) if kind == "em"
   return text(run["t"], {"size": size, "strike": true}) if kind == "strike"
   return text(run["t"], {"size": size, "underline": true}) if kind == "under"
   return text(run["t"], {"size": size, "fg": "accent.base"}) if kind == "link"
@@ -384,7 +397,7 @@ end
 # per run would be tidier, but a row wraps between its children, so a whole
 # sentence would drop to the next line the moment it did not fit beside a
 # bold word. Words wrap the way prose is supposed to.
-def md_line(line, size)
+def md_line(line, size, em_font = "")
   nodes = []
   for r in md_runs(line)
     if r["k"] == "plain"
@@ -397,7 +410,7 @@ def md_line(line, size)
         lead = "" unless w == ""
       end
     else
-      nodes = nodes.concat([md_run_node(r, size)])
+      nodes = nodes.concat([md_run_node(r, size, em_font)])
     end
   end
   row({"wrap": "wrap", "align": "baseline", "gap": 0}, nodes)
@@ -553,7 +566,7 @@ end
 # that needs one. It has a default because most callers render into a
 # column whose width they never said out loud, and 640 is a readable one;
 # a caller that knows better passes it.
-def md_blocks(source, width = 640)
+def md_blocks(source, width = 640, em_font = "")
   out = []
   lines = source.split("\n")
   n = lines.length()
@@ -595,7 +608,7 @@ def md_blocks(source, width = 640)
       # top-level def rebinds that def for the whole process, and `node` is
       # the builder every `row` and `column` calls.
       heads = md_runs(line.substring(level + 1, line.length())).map(fn(r) {
-        piece = md_run_node(r, size)
+        piece = md_run_node(r, size, em_font)
         piece["s"] = piece["s"].merge({"weight": "bold"})
         piece
       })
@@ -673,7 +686,7 @@ def md_blocks(source, width = 640)
       para = para.concat([lines[i].strip()])
       i = i + 1
     end
-    out = out.concat([md_line(para.join(" "), 2)]) if para.length() > 0
+    out = out.concat([md_line(para.join(" "), 2, em_font)]) if para.length() > 0
     i = i + 1 if para.length() == 0
   end
   out
@@ -811,7 +824,7 @@ end
 # {"width": px} a picture is fitted to.
 def markdown(source, opts)
   opts = opts ?? {}
-  column({"gap": opts["gap"] ?? 3}, md_blocks(source, opts["width"] ?? 640))
+  column({"gap": opts["gap"] ?? 3}, md_blocks(source, opts["width"] ?? 640, (opts["em_font"] ?? "").to_s))
 end
 
 # ============================================================== the editor
@@ -2176,6 +2189,11 @@ MD_EDIT_MAX = 4194304
 #   bar       false leaves the toolbar out, for a caller drawing
 #             `markdown_editor_bar` above the scroller instead — which is
 #             the only way a bar stays put while a long document moves
+#   em_font   a font role for `*emphasis*`, from `eui_font(name, paths)`.
+#             EUI has no italic at all — the style record has a family, a
+#             size and a weight and no slant (02 §3) — so a real italic is
+#             a face an application ships, and without one a mark is drawn
+#             a weight heavier.
 #   accept / max / files   as `file_field`'s
 #   key       unique, as every control's is
 #   placeholder   what an empty document says
@@ -2207,7 +2225,7 @@ def markdown_editor(doc, o = {})
   ew_kind = (md_edit_at(ew_blocks, ew_focus)["kind"] ?? "").to_s
   ew_body = []
   if doc["preview"] == true
-    ew_body = [markdown(md_edit_source(ew_blocks), {"width": ew_inner, "gap": 3})]
+    ew_body = [markdown(md_edit_source(ew_blocks), {"width": ew_inner, "gap": 3, "em_font": o["em_font"] ?? ""})]
   else
     ew_n = 0
     ew_at = 0
