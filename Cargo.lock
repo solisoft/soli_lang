@@ -2476,7 +2476,7 @@ dependencies = [
 [[package]]
 name = "eui-audio"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 dependencies = [
  "eui-proto",
  "symphonia",
@@ -2485,7 +2485,7 @@ dependencies = [
 [[package]]
 name = "eui-client"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -2532,13 +2532,14 @@ dependencies = [
  "webpki-roots 0.26.11",
  "wgpu",
  "winit",
+ "zbus",
  "zune-jpeg",
 ]
 
 [[package]]
 name = "eui-cursor"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 dependencies = [
  "objc2 0.5.2",
  "objc2-app-kit 0.2.2",
@@ -2549,7 +2550,7 @@ dependencies = [
 [[package]]
 name = "eui-layout"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 dependencies = [
  "eui-proto",
  "eui-theme",
@@ -2559,12 +2560,12 @@ dependencies = [
 [[package]]
 name = "eui-proto"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 
 [[package]]
 name = "eui-render"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 dependencies = [
  "bytemuck",
  "eui-layout",
@@ -2579,7 +2580,7 @@ dependencies = [
 [[package]]
 name = "eui-shader"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 dependencies = [
  "naga",
 ]
@@ -2587,7 +2588,7 @@ dependencies = [
 [[package]]
 name = "eui-text"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 dependencies = [
  "cosmic-text",
  "eui-layout",
@@ -2597,7 +2598,7 @@ dependencies = [
 [[package]]
 name = "eui-theme"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 dependencies = [
  "eui-proto",
 ]
@@ -2605,7 +2606,7 @@ dependencies = [
 [[package]]
 name = "eui-tree"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 dependencies = [
  "eui-proto",
 ]
@@ -2613,7 +2614,7 @@ dependencies = [
 [[package]]
 name = "eui-uikit"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 dependencies = [
  "objc2 0.5.2",
  "objc2-ui-kit",
@@ -2622,7 +2623,7 @@ dependencies = [
 [[package]]
 name = "eui-video"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 dependencies = [
  "gif 0.13.3",
  "image-webp",
@@ -2631,7 +2632,7 @@ dependencies = [
 [[package]]
 name = "eui-vm"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 dependencies = [
  "eui-proto",
 ]
@@ -2639,7 +2640,7 @@ dependencies = [
 [[package]]
 name = "eui-wayland"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3368a1b#3368a1bb15751623756c90f5c7abe1c69f3b16e3"
+source = "git+https://github.com/solisoft/eui?rev=ef78e95#ef78e95f503f2c11a0738490390de2f0d073ee01"
 dependencies = [
  "rustix 1.1.4",
  "wayland-backend",
