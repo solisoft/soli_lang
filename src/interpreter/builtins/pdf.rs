@@ -6,6 +6,22 @@
 //!   * `pdf_facturx_from_invoice(template_json, invoice_json, options?)` — same,
 //!     but the CII XML (and the visual totals/VAT breakdown) are **generated**
 //!     from a typed invoice document, so the PDF and the XML can never disagree.
+//!   * `pdf_preview(template_json, data_json, options?)` — the same document as
+//!     one **base64 PNG per page**, for thumbnails and previews. With
+//!     `out_dir` it writes the files and returns their paths instead.
+//!   * `pdf_preview_from_markdown(markdown, options?)` — the Markdown
+//!     counterpart.
+//!   * `pdf_preview_response(template, data, options?)` — one page as a ready
+//!     `image/png` response hash.
+//!
+//! Previews rasterise the layout engine's own draw model, not PDF bytes, so
+//! they cover what the renderer produces — not a merged, filled or stamped
+//! PDF, which exists only as bytes. Raster-only options: `dpi` (default 96),
+//! `width`/`height` in px (either overrides `dpi`), `pages` (the 1-based
+//! selection `pdf_pages` takes), `out_dir`/`prefix`, and `page` for the
+//! response helper. `stationery`, `attachments`, `password`, `pdfa` and `sign`
+//! are accepted but have no raster meaning, and warn — so one options hash can
+//! drive both the PDF and its preview.
 //!
 //! Both take the layout template and data as JSON strings and return the PDF as
 //! a **base64 string** (Soli has no bytes type). Save it with
@@ -38,6 +54,7 @@
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::OnceLock;
 
 use base64::Engine as _;
 use sha2::{Digest, Sha256};
@@ -89,6 +106,31 @@ pub fn register_pdf_builtins(env: &mut Environment) {
                 .map_err(|e| format!("pdf_render() failed: {e}"))?;
             let pdf = apply_signature(pdf, sign.as_ref())?;
             Ok(b64(pdf))
+        })),
+    );
+
+    // The same document as a page image. Previews rasterise the layout
+    // engine's own draw model rather than the PDF, so they cover what
+    // `pdf_render` produces — not a merged, filled or stamped PDF, which
+    // exists only as bytes.
+    env.define(
+        "pdf_preview".to_string(),
+        Value::NativeFunction(NativeFunction::new("pdf_preview", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "pdf_preview() expects 2 or 3 arguments (template, data, options?), got {}",
+                    args.len()
+                ));
+            }
+            let template = arg_string(&args[0], "pdf_preview", "template")?;
+            let data = arg_string(&args[1], "pdf_preview", "data")?;
+            let (pages, format) = preview_pages(
+                template.as_bytes(),
+                data.as_bytes(),
+                args.get(2),
+                "pdf_preview",
+            )?;
+            preview_result(pages, format, args.get(2), "pdf_preview")
         })),
     );
 
@@ -158,6 +200,36 @@ pub fn register_pdf_builtins(env: &mut Environment) {
             let pdf = apply_signature(pdf, sign.as_ref())?;
             Ok(b64(pdf))
         })),
+    );
+
+    // Markdown straight to page images — the counterpart of
+    // `pdf_from_markdown`. A separate builtin rather than an option because
+    // the argument shape differs: there is no `data` document.
+    env.define(
+        "pdf_preview_from_markdown".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "pdf_preview_from_markdown",
+            None,
+            |args| {
+                if args.is_empty() || args.len() > 2 {
+                    return Err(format!(
+                        "pdf_preview_from_markdown() expects 1 or 2 arguments \
+                         (markdown, options?), got {}",
+                        args.len()
+                    ));
+                }
+                let md = arg_string(&args[0], "pdf_preview_from_markdown", "markdown")?;
+                let template_json =
+                    markdown_template_json(&md, args.get(1), "pdf_preview_from_markdown")?;
+                let (pages, format) = preview_pages(
+                    &template_json,
+                    b"{}",
+                    args.get(1),
+                    "pdf_preview_from_markdown",
+                )?;
+                preview_result(pages, format, args.get(1), "pdf_preview_from_markdown")
+            },
+        )),
     );
 
     // Fill an existing PDF's AcroForm fields from a `{ field => value }` hash —
@@ -430,6 +502,90 @@ pub fn register_pdf_builtins(env: &mut Environment) {
         })),
     );
 
+    // One page as a ready `image/png` response — the preview mirror of
+    // `pdf_response`.
+    env.define(
+        "pdf_preview_response".to_string(),
+        Value::NativeFunction(NativeFunction::new("pdf_preview_response", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "pdf_preview_response() expects 2 or 3 arguments (template, data, options?), got {}",
+                    args.len()
+                ));
+            }
+            let template = arg_string(&args[0], "pdf_preview_response", "template")?;
+            let data = arg_string(&args[1], "pdf_preview_response", "data")?;
+            let opts = args.get(2);
+
+            // A response carries one image, so the plural forms cannot mean
+            // anything here. Say so rather than silently picking one.
+            if let Some(Value::Hash(h)) = opts {
+                let h = h.borrow();
+                if h.get(&HashKey::String("pages".into())).is_some() {
+                    return Err("pdf_preview_response(): use `page` (a single page) rather than `pages` — the response carries one image".to_string());
+                }
+                if h.get(&HashKey::String("out_dir".into())).is_some() {
+                    return Err("pdf_preview_response(): `out_dir` is meaningless here — the response carries the image; use pdf_preview() to write files".to_string());
+                }
+            }
+
+            let page_no = match opts {
+                Some(Value::Hash(h)) => match h.borrow().get(&HashKey::String("page".into())) {
+                    Some(Value::Int(n)) if *n >= 1 => *n as usize,
+                    Some(v) => {
+                        return Err(format!(
+                            "pdf_preview_response(): `page` must be a positive integer, got {}",
+                            v.type_name()
+                        ))
+                    }
+                    None => 1,
+                },
+                _ => 1,
+            };
+
+            warn_ignored_preview_options(opts, "pdf_preview_response");
+            let render = base_render_options(opts);
+            let raster = raster_options(opts, "pdf_preview_response")?;
+            let (format, quality) = preview_format(opts, "pdf_preview_response")?;
+            let session =
+                soli_pdf::RasterSession::open(template.as_bytes(), data.as_bytes(), &render)
+                    .map_err(|e| format!("pdf_preview_response() failed: {e}"))?;
+            if page_no > session.page_count() {
+                return Err(format!(
+                    "pdf_preview_response(): page {page_no} is past the end of the document ({} page(s))",
+                    session.page_count()
+                ));
+            }
+            let page = session
+                .page_pixels(page_no - 1, &raster)
+                .map_err(|e| format!("pdf_preview_response() failed: {e}"))?;
+            let body = encode_preview(&page, format, quality, "pdf_preview_response")?;
+
+            let mut headers = HashPairs::default();
+            headers.insert(
+                HashKey::String("Content-Type".into()),
+                Value::String(format.mime().into()),
+            );
+            if let Some(filename) = opt_str(opts, "filename") {
+                // Quote-escape so a weird filename can't break the header.
+                let safe = filename.replace(['"', '\r', '\n'], "_");
+                headers.insert(
+                    HashKey::String("Content-Disposition".into()),
+                    Value::String(format!("attachment; filename=\"{safe}\"").into()),
+                );
+            }
+
+            let mut response = HashPairs::default();
+            response.insert(HashKey::String("status".into()), Value::Int(200));
+            response.insert(
+                HashKey::String("headers".into()),
+                Value::Hash(Rc::new(RefCell::new(headers))),
+            );
+            response.insert(HashKey::String("body_base64".into()), b64(body));
+            Ok(Value::Hash(Rc::new(RefCell::new(response))))
+        })),
+    );
+
     env.define(
         "pdf_facturx".to_string(),
         Value::NativeFunction(NativeFunction::new("pdf_facturx", None, |args| {
@@ -550,9 +706,370 @@ fn resolve_font_dir(dir: PathBuf) -> PathBuf {
     }
 }
 
-/// Build `RenderOptions` from an optional options hash. Defaults the font search
-/// path to a `font/` folder at the app root.
-fn render_options(opts: Option<&Value>) -> Result<RenderOptions, String> {
+// ---------------------------------------------------------------------------
+// PNG page previews
+// ---------------------------------------------------------------------------
+
+/// SEC: a preview's `dpi`/`width` typically comes straight from a request, so
+/// every knob that drives an allocation is capped. An A4 at 600 dpi is already
+/// a 140 MB pixmap; at 20 000 dpi it is hundreds of gigabytes.
+///
+/// * `SOLI_PDF_PREVIEW_MAX_DPI` — default 600.
+/// * `SOLI_PDF_PREVIEW_MAX_DIMENSION_PX` — per axis, default 8192.
+/// * `SOLI_PDF_PREVIEW_MAX_PAGES` — default 64.
+/// * `SOLI_PDF_PREVIEW_MAX_PIXELS` — per page, default 40M (≈160 MB RGBA).
+fn env_cap<T: std::str::FromStr + Copy>(var: &'static str, default: T) -> T {
+    std::env::var(var)
+        .ok()
+        .and_then(|s| s.parse::<T>().ok())
+        .unwrap_or(default)
+}
+
+fn preview_max_dpi() -> f32 {
+    static CAP: OnceLock<f32> = OnceLock::new();
+    *CAP.get_or_init(|| env_cap("SOLI_PDF_PREVIEW_MAX_DPI", 600.0f32))
+}
+
+fn preview_max_dimension_px() -> u32 {
+    static CAP: OnceLock<u32> = OnceLock::new();
+    *CAP.get_or_init(|| env_cap("SOLI_PDF_PREVIEW_MAX_DIMENSION_PX", 8192u32))
+}
+
+fn preview_max_pages() -> usize {
+    static CAP: OnceLock<usize> = OnceLock::new();
+    *CAP.get_or_init(|| env_cap("SOLI_PDF_PREVIEW_MAX_PAGES", 64usize))
+}
+
+fn preview_max_pixels() -> u64 {
+    static CAP: OnceLock<u64> = OnceLock::new();
+    *CAP.get_or_init(|| env_cap("SOLI_PDF_PREVIEW_MAX_PIXELS", 40_000_000u64))
+}
+
+/// Read a positive pixel dimension, refusing anything over the cap.
+fn preview_dimension(opts: Option<&Value>, key: &str, func: &str) -> Result<Option<u32>, String> {
+    let Some(Value::Hash(h)) = opts else {
+        return Ok(None);
+    };
+    let raw = match h.borrow().get(&HashKey::String(key.into())) {
+        Some(v) => match opt_num(v) {
+            Some(n) => n,
+            None => return Err(format!("{func}(): `{key}` must be a number")),
+        },
+        None => return Ok(None),
+    };
+    if !raw.is_finite() || raw < 1.0 {
+        return Err(format!(
+            "{func}(): `{key}` must be at least 1 pixel, got {raw}"
+        ));
+    }
+    let cap = preview_max_dimension_px();
+    if raw > cap as f32 {
+        return Err(format!(
+            "{func}(): `{key}` of {raw}px exceeds the {cap}px cap \
+             (raise SOLI_PDF_PREVIEW_MAX_DIMENSION_PX)"
+        ));
+    }
+    Ok(Some(raw as u32))
+}
+
+/// Build the raster options from the Soli options hash.
+fn raster_options(opts: Option<&Value>, func: &str) -> Result<soli_pdf::RasterOptions, String> {
+    let mut raster = soli_pdf::RasterOptions {
+        max_pixels: preview_max_pixels(),
+        ..Default::default()
+    };
+
+    if let Some(Value::Hash(h)) = opts {
+        if let Some(v) = h.borrow().get(&HashKey::String("dpi".into())) {
+            let dpi = opt_num(v).ok_or_else(|| format!("{func}(): `dpi` must be a number"))?;
+            if !dpi.is_finite() || dpi <= 0.0 {
+                return Err(format!("{func}(): `dpi` must be positive, got {dpi}"));
+            }
+            let cap = preview_max_dpi();
+            if dpi > cap {
+                return Err(format!(
+                    "{func}(): `dpi` of {dpi} exceeds the {cap} cap \
+                     (raise SOLI_PDF_PREVIEW_MAX_DPI)"
+                ));
+            }
+            raster.dpi = dpi;
+        }
+    }
+    raster.width = preview_dimension(opts, "width", func)?;
+    raster.height = preview_dimension(opts, "height", func)?;
+
+    // `pages`: the same 1-based selection `pdf_pages` takes, converted to the
+    // 0-based indices the backend uses.
+    if let Some(Value::Hash(h)) = opts {
+        let sel = h.borrow().get(&HashKey::String("pages".into())).cloned();
+        if let Some(v) = sel {
+            let pages = parse_page_selection(&v).map_err(|e| format!("{func}(): {e}"))?;
+            let cap = preview_max_pages();
+            if pages.len() > cap {
+                return Err(format!(
+                    "{func}(): `pages` selects {} pages, over the {cap} cap \
+                     (raise SOLI_PDF_PREVIEW_MAX_PAGES)",
+                    pages.len()
+                ));
+            }
+            raster.pages =
+                soli_pdf::PageSelection::Indices(pages.iter().map(|p| *p as usize - 1).collect());
+        }
+    }
+    Ok(raster)
+}
+
+/// The image format a preview is encoded in.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PreviewFormat {
+    Png,
+    Webp,
+    Jpeg,
+}
+
+impl PreviewFormat {
+    fn extension(self) -> &'static str {
+        match self {
+            PreviewFormat::Png => "png",
+            PreviewFormat::Webp => "webp",
+            PreviewFormat::Jpeg => "jpg",
+        }
+    }
+
+    fn mime(self) -> &'static str {
+        match self {
+            PreviewFormat::Png => "image/png",
+            PreviewFormat::Webp => "image/webp",
+            PreviewFormat::Jpeg => "image/jpeg",
+        }
+    }
+
+    fn image_format(self) -> image::ImageFormat {
+        match self {
+            PreviewFormat::Png => image::ImageFormat::Png,
+            PreviewFormat::Webp => image::ImageFormat::WebP,
+            PreviewFormat::Jpeg => image::ImageFormat::Jpeg,
+        }
+    }
+}
+
+/// `format` and `quality`. PNG is the default because it is lossless and
+/// universal; `"webp"` is the one to reach for when size matters — a text page
+/// is 3-5x smaller as lossy WebP, and libwebp (not the `image` crate's
+/// lossless-only encoder) is what makes that true.
+fn preview_format(opts: Option<&Value>, func: &str) -> Result<(PreviewFormat, u8), String> {
+    let format = match opt_str(opts, "format") {
+        None => PreviewFormat::Png,
+        Some(f) => match f.trim().to_ascii_lowercase().as_str() {
+            "png" => PreviewFormat::Png,
+            "webp" => PreviewFormat::Webp,
+            "jpeg" | "jpg" => PreviewFormat::Jpeg,
+            other => {
+                return Err(format!(
+                    "{func}(): unknown `format` {other:?} — use \"png\", \"webp\" or \"jpeg\""
+                ))
+            }
+        },
+    };
+    let mut quality: u8 = 90;
+    if let Some(Value::Hash(h)) = opts {
+        if let Some(v) = h.borrow().get(&HashKey::String("quality".into())) {
+            let q = opt_num(v).ok_or_else(|| format!("{func}(): `quality` must be a number"))?;
+            if !(1.0..=100.0).contains(&q) {
+                return Err(format!("{func}(): `quality` must be 1-100, got {q}"));
+            }
+            quality = q as u8;
+        }
+    }
+    Ok((format, quality))
+}
+
+/// Encode one rasterised page. PNG goes through the `image` crate; WebP goes
+/// through libwebp via the same encoder `Image.format("webp")` uses, so a
+/// preview and a thumbnail of it compress identically.
+fn encode_preview(
+    page: &soli_pdf::RasterPixels,
+    format: PreviewFormat,
+    quality: u8,
+    func: &str,
+) -> Result<Vec<u8>, String> {
+    let buffer = image::RgbaImage::from_raw(page.width, page.height, page.rgba.clone())
+        .ok_or_else(|| format!("{func}(): rasterised page has an inconsistent pixel buffer"))?;
+    let mut dynamic = image::DynamicImage::ImageRgba8(buffer);
+    if format == PreviewFormat::Jpeg {
+        // JPEG has no alpha channel; flatten rather than emit a black page.
+        dynamic = image::DynamicImage::ImageRgb8(dynamic.to_rgb8());
+    }
+    crate::interpreter::builtins::image::encode_dynamic_image(
+        &dynamic,
+        quality,
+        format.image_format(),
+    )
+    .map_err(|e| format!("{func}(): {e}"))
+}
+
+/// Options that mean something for a PDF but nothing for a page image. Warn
+/// rather than reject: sharing one hash between `pdf_render` and
+/// `pdf_preview` is the natural way to write this, and refusing it would buy
+/// no safety.
+fn warn_ignored_preview_options(opts: Option<&Value>, func: &str) {
+    let Some(Value::Hash(h)) = opts else {
+        return;
+    };
+    let h = h.borrow();
+    let has = |k: &str| h.get(&HashKey::String(k.into())).is_some();
+
+    if has("stationery") {
+        eprintln!(
+            "[WARN] {func}(): ignoring `stationery` — a letterhead is composited onto \
+             emitted PDF bytes, so the preview shows the content without it"
+        );
+    }
+    if has("attachments") {
+        eprintln!(
+            "[WARN] {func}(): ignoring `attachments` — embedded files are not drawn on a page"
+        );
+    }
+    if has("password") || has("owner_password") {
+        eprintln!("[WARN] {func}(): ignoring `password` — a preview image is plaintext by nature");
+    }
+    if has("pdfa") {
+        eprintln!("[WARN] {func}(): ignoring `pdfa` — it writes metadata, with no visual effect");
+    }
+    if has("sign") {
+        eprintln!("[WARN] {func}(): ignoring `sign` — a signature is not page content");
+    }
+}
+
+/// A `prefix` must be a plain file-name component. Even inside the jail, a
+/// `prefix` of `../avatars/me` would overwrite someone else's file.
+fn preview_prefix(opts: Option<&Value>, func: &str) -> Result<String, String> {
+    let prefix = opt_str(opts, "prefix").unwrap_or_else(|| "page".to_string());
+    if prefix.is_empty() || prefix.len() > 100 {
+        return Err(format!(
+            "{func}(): `prefix` must be 1-100 characters, got {}",
+            prefix.len()
+        ));
+    }
+    if prefix.contains(['/', '\\', '\0'])
+        || prefix == "."
+        || prefix == ".."
+        || prefix.starts_with('.')
+    {
+        return Err(format!(
+            "{func}(): `prefix` must be a plain file name without path separators, got {prefix:?}"
+        ));
+    }
+    Ok(prefix)
+}
+
+/// Turn rasterised pages into the builtin's return value: base64 PNGs, or —
+/// when `out_dir` is set — the paths they were written to.
+///
+/// Writes go through `file::write_bytes_jailed`, so SEC-006 containment and
+/// SEC-050's `O_NOFOLLOW` apply at open time rather than being reimplemented
+/// here. Paths come back as given, not canonicalised: the useful thing is an
+/// `<img src>`, and the absolute path would leak the server's layout.
+fn preview_result(
+    pages: Vec<EncodedPage>,
+    format: PreviewFormat,
+    opts: Option<&Value>,
+    func: &str,
+) -> Result<Value, String> {
+    let Some(out_dir) = opt_str(opts, "out_dir") else {
+        let encoded: Vec<Value> = pages.into_iter().map(|p| b64(p.bytes)).collect();
+        return Ok(Value::Array(Rc::new(RefCell::new(encoded))));
+    };
+
+    let prefix = preview_prefix(opts, func)?;
+    let dir = out_dir.trim_end_matches('/');
+    // A single page keeps the bare name, which is what a gallery wants;
+    // several are suffixed with their 1-based page number.
+    let single = pages.len() == 1;
+    let width = pages
+        .iter()
+        .map(|p| (p.index + 1).to_string().len())
+        .max()
+        .unwrap_or(1);
+
+    let mut written = Vec::with_capacity(pages.len());
+    for page in pages {
+        let ext = format.extension();
+        let name = if single {
+            format!("{prefix}.{ext}")
+        } else {
+            format!("{prefix}-{:0width$}.{ext}", page.index + 1, width = width)
+        };
+        let path = format!("{dir}/{name}");
+        crate::interpreter::builtins::file::write_bytes_jailed(&path, func, &page.bytes)?;
+        written.push(Value::String(path.into()));
+    }
+    Ok(Value::Array(Rc::new(RefCell::new(written))))
+}
+
+/// One encoded page: the bytes plus the 0-based index they came from.
+struct EncodedPage {
+    index: usize,
+    bytes: Vec<u8>,
+}
+
+/// Shared body of `pdf_preview` / `pdf_preview_from_markdown`: lay out once,
+/// then paint and encode one page at a time so a long document never holds
+/// every pixmap at once.
+fn preview_pages(
+    template_json: &[u8],
+    data_json: &[u8],
+    args_opts: Option<&Value>,
+    func: &str,
+) -> Result<(Vec<EncodedPage>, PreviewFormat), String> {
+    warn_ignored_preview_options(args_opts, func);
+    let opts = base_render_options(args_opts);
+    let raster = raster_options(args_opts, func)?;
+    let (format, quality) = preview_format(args_opts, func)?;
+    let session = soli_pdf::RasterSession::open(template_json, data_json, &opts)
+        .map_err(|e| format!("{func}() failed: {e}"))?;
+    let selected = session
+        .selected(&raster)
+        .map_err(|e| format!("{func}() failed: {e}"))?;
+    // The cap is on pages actually painted, not on the document's length: a
+    // thumbnail of page 1 of a 200-page report is exactly what this is for.
+    if selected.len() > preview_max_pages() {
+        return Err(format!(
+            "{func}(): would rasterise {} pages, over the {} cap \
+             (select fewer with `pages`, or raise SOLI_PDF_PREVIEW_MAX_PAGES)",
+            selected.len(),
+            preview_max_pages()
+        ));
+    }
+    let mut out = Vec::with_capacity(selected.len());
+    for index in selected {
+        let page = session
+            .page_pixels(index, &raster)
+            .map_err(|e| format!("{func}() failed: {e}"))?;
+        out.push(EncodedPage {
+            index,
+            bytes: encode_preview(&page, format, quality, func)?,
+        });
+    }
+    Ok((out, format))
+}
+
+/// The template JSON a Markdown preview renders.
+fn markdown_template_json(md: &str, opts: Option<&Value>, func: &str) -> Result<Vec<u8>, String> {
+    let theme = theme_from_options(opts);
+    let template = pdf_markdown::markdown_to_template(md, &theme);
+    serde_json::to_vec(&template).map_err(|e| format!("{func}(): building template: {e}"))
+}
+
+/// The half of the options that needs no IO: fonts, image fetching and the
+/// Info-dictionary metadata.
+///
+/// Split out because the raster preview must not run the other half —
+/// `stationery` and `attachments` read files and hard-error when one is
+/// missing, and a preview that refuses to appear over a letterhead it cannot
+/// draw anyway would be useless. It also lets one options hash be shared
+/// between `pdf_render` and `pdf_preview`.
+fn base_render_options(opts: Option<&Value>) -> RenderOptions {
     let mut dirs = vec![PathBuf::from("font")];
     let mut fetch_images = true;
     let mut pdfa = false;
@@ -578,6 +1095,22 @@ fn render_options(opts: Option<&Value>) -> Result<RenderOptions, String> {
             }
         }
     }
+    RenderOptions {
+        font_dirs: dirs.into_iter().map(resolve_font_dir).collect(),
+        fetch_images,
+        title: opt_str(opts, "title"),
+        author: opt_str(opts, "author"),
+        subject: opt_str(opts, "subject"),
+        pdfa,
+        ..Default::default()
+    }
+}
+
+/// Build `RenderOptions` from an optional options hash. Defaults the font search
+/// path to a `font/` folder at the app root.
+fn render_options(opts: Option<&Value>) -> Result<RenderOptions, String> {
+    let base = base_render_options(opts);
+
     // Letterhead underlay: a path (resolved against the app root, like font
     // dirs) read into bytes here so the render stays IO-free. A missing or
     // unreadable file is a hard error — silently rendering WITHOUT the
@@ -636,19 +1169,11 @@ fn render_options(opts: Option<&Value>) -> Result<RenderOptions, String> {
     // `permissions` (["print","copy","modify","annotate"]).
     let encrypt = build_encrypt_options(opts);
 
-    // `pdfa` is set explicitly (not via `..Default::default()`) so a future
-    // field reorder can't silently drop it.
     Ok(RenderOptions {
-        font_dirs: dirs.into_iter().map(resolve_font_dir).collect(),
-        fetch_images,
-        title: opt_str(opts, "title"),
-        author: opt_str(opts, "author"),
-        subject: opt_str(opts, "subject"),
         stationery,
         attachments,
         encrypt,
-        pdfa,
-        ..Default::default()
+        ..base
     })
 }
 

@@ -62,6 +62,13 @@ impl TypeEnvironment {
             "CircuitBreaker",
             "Semaphore",
             "Retry",
+            // Registered unconditionally by `register_builtins`
+            // (image.rs:426, file.rs:355-356) but missing here, so any script
+            // touching them failed the check — the very problem this list
+            // exists to solve.
+            "Image",
+            "File",
+            "Trusted",
         ] {
             env.define(name.to_string(), Type::Any);
         }
@@ -1011,6 +1018,49 @@ impl TypeEnvironment {
             Type::Function {
                 params: vec![Type::String, Type::Any],
                 return_type: Box::new(Type::String),
+            },
+        );
+
+        // pdf_response(template, data, options?) -> Hash (an application/pdf response)
+        self.functions.insert(
+            "pdf_response".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String, Type::Any],
+                return_type: Box::new(Type::Hash {
+                    key_type: Box::new(Type::String),
+                    value_type: Box::new(Type::Any),
+                }),
+            },
+        );
+
+        // pdf_preview(template, data, options?) -> Array<String>
+        // Base64 PNGs, one per page — or the written paths, with `out_dir`.
+        self.functions.insert(
+            "pdf_preview".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String, Type::Any],
+                return_type: Box::new(Type::Array(Box::new(Type::String))),
+            },
+        );
+
+        // pdf_preview_from_markdown(markdown, options?) -> Array<String>
+        self.functions.insert(
+            "pdf_preview_from_markdown".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::Any],
+                return_type: Box::new(Type::Array(Box::new(Type::String))),
+            },
+        );
+
+        // pdf_preview_response(template, data, options?) -> Hash (an image/png response)
+        self.functions.insert(
+            "pdf_preview_response".to_string(),
+            Type::Function {
+                params: vec![Type::String, Type::String, Type::Any],
+                return_type: Box::new(Type::Hash {
+                    key_type: Box::new(Type::String),
+                    value_type: Box::new(Type::Any),
+                }),
             },
         );
 

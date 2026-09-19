@@ -120,6 +120,11 @@ pub struct PageTextDraw {
 }
 
 /// One draw operation.
+///
+/// Two backends consume this: `pdf_backend` (normative — it is what ships in
+/// the document) and `raster_backend` (PNG previews). Adding a variant is a
+/// compile error in both, which is the point; *changing* one is not, so keep
+/// them in step by hand.
 #[derive(Debug, Clone)]
 pub enum DrawOp {
     Text(TextDraw),
@@ -254,6 +259,14 @@ pub struct ImageData {
     /// still in `width_px`/`height_px` (SVG user units, treated as pt at 72
     /// dpi for layout).
     pub vector: Option<Vec<u8>>,
+    /// The original SVG source, kept beside `vector` so a non-PDF backend can
+    /// draw the same artwork — `raster_backend` re-parses it and hands the
+    /// tree to resvg, because a PDF Form XObject means nothing to a
+    /// rasteriser. The PDF backend never reads this.
+    ///
+    /// The parsed `usvg::Tree` is deliberately *not* stored here: this module
+    /// is the backend-neutral IR and must not grow a usvg dependency.
+    pub svg_source: Option<std::sync::Arc<Vec<u8>>>,
     /// Extra alpha applied when painting (background-image fade). Rasters bake
     /// this into `pixels`; vectors keep it here so the Form can use an ExtGState.
     pub opacity: f32,
@@ -268,6 +281,7 @@ impl ImageData {
             pixels,
             source_key: None,
             vector: None,
+            svg_source: None,
             opacity: 1.0,
         }
     }
@@ -277,10 +291,14 @@ impl ImageData {
     }
 
     pub fn cache_bytes(&self) -> usize {
-        self.vector
+        let payload = self
+            .vector
             .as_ref()
             .map(|v| v.len())
-            .unwrap_or(self.pixels.len())
+            .unwrap_or(self.pixels.len());
+        // The retained SVG source is held for the raster backend, so it counts
+        // against the same budget as the payload it sits beside.
+        payload + self.svg_source.as_ref().map(|s| s.len()).unwrap_or(0)
     }
 }
 
