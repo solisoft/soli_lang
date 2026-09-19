@@ -387,10 +387,15 @@ pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String
         )
         .map_err(|e| format!("JSON error: {}", e))?;
 
+        // SoliDB answers `{"id": "tx:…"}`; older builds (and the docs) say
+        // `tx_id`. Only `tx_id` was read, so a perfectly good transaction came
+        // back as "No tx_id in response" and every `with_transaction` block
+        // failed against a current server. Accept either spelling.
         let tx_id = json
             .get("tx_id")
+            .or_else(|| json.get("id"))
             .and_then(|v| v.as_str())
-            .ok_or_else(|| "No tx_id in response".to_string())?
+            .ok_or_else(|| format!("No transaction id in response: {json}"))?
             .to_string();
 
         CURRENT_TX.with(|tx| {
@@ -989,6 +994,19 @@ pub fn exec_query_hardcoded(sdbql: String) -> Value {
             .body(body);
 
         let resp = request.send().await.map_err(|e| e.to_string())?;
+        // The status was discarded here, so a refusal with an empty body —
+        // which is exactly what a 401 from SoliDB looks like — came back as
+        // an empty string, indistinguishable from an empty result set. The
+        // caller's contract is that this never returns nothing: either the
+        // server's JSON, or a legible error. `exec_async_query_raw` has
+        // always done this; this path was simply missing it.
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
+                .await
+                .unwrap_or_default();
+            return Err(format_query_http_failure(status, &body));
+        }
         crate::interpreter::builtins::http_class::read_capped_text_async(resp)
             .await
             .map_err(|e| e.to_string())

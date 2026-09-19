@@ -48,10 +48,21 @@ describe("Factory", fn() {
             return
         end
 
+        # Nothing resets the database between runs, so start from a known
+        # state — this asserted an absolute count and so passed exactly once
+        # per clean database and failed on every run after.
+        for leftover in FactoryTestUser.all()
+            leftover.delete()
+        end
+
         Factory.define("user", {"email": "persist@test.com"})
         Factory.bind("user", FactoryTestUser)
         record = Factory.insert("user")
-        assert_eq(FactoryTestUser.count(), 1)
+        # `all()` rather than `count()`: the latter asks SoliDB for
+        # COLLECTION_COUNT, whose counter is not decremented on delete, so it
+        # reports rows that a scan of the same collection does not return.
+        assert_eq(len(FactoryTestUser.all()), 1)
         assert_eq(record.email, "persist@test.com")
+        record.delete()
     })
 })

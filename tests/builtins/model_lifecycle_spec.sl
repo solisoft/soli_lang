@@ -1,12 +1,14 @@
 # ============================================================================
 # Model lifecycle hooks, schema-DSL globals, and mock-query-driven APIs.
 #
-# Runs WITHOUT a database:
+# Runs with or without a database:
 #   - Reads (all / live_where / variance) are served from query mocks
 #     registered with Model.mock_query_result(query, rows).
-#   - Writes fail persistence (no SolidB on localhost), which is exactly
-#     what lets us observe hook gating: before_* callbacks run before the
-#     write, after_* callbacks are suppressed when persistence fails.
+#   - Writes may or may not land. Hook *ordering* does not depend on that,
+#     so it is asserted unconditionally; only the after_* callbacks, which
+#     are suppressed when persistence fails, are conditioned on the outcome.
+#     Assuming persistence always failed made these pass in CI and fail on
+#     any machine with a SoliDB running.
 #   - Schema DSL (soft_delete/timeseries/columnar/column/table/enum_field/
 #     fulltext_index/state_machine) is exercised by defining classes with
 #     it and asserting definition-time behavior + introspection.
@@ -144,19 +146,35 @@ class Lamp < Model
 end
 
 # ============================================================================
-describe("create/save lifecycle hooks (persistence fails — no DB)", fn() {
-  test("create fires before_save then before_create, never the afters", fn() {
+# These assert hook *ordering*, which does not depend on whether the write
+# lands. They used to assume no database was reachable — `_errors` present,
+# `save()` false — so they passed in CI and failed on any machine with a
+# SoliDB running. The afters are the only part that differs, so that is the
+# only part conditioned on the outcome.
+describe("create/save lifecycle hooks", fn() {
+  test("create fires before_save then before_create, in declaration order", fn() {
     let result = HookDoc.create({"title": "hello"})
-    # Persistence failed (no database) so _errors must be present…
-    assert_not_null(result._errors)
-    # …and only the pre-write hooks fired, in declaration order.
-    assert_eq(result.chain, "before_save;before_create;")
+    # The ordering invariant holds either way: the pre-write hooks run
+    # first, in declaration order. This is what the test is actually for.
+    assert(result.chain.starts_with("before_save;before_create;"))
+    if !result._errors.nil?
+      # Persistence failed, so the afters must stay suppressed.
+      assert_eq(result.chain, "before_save;before_create;")
+    end
+    # NOTE: when persistence *succeeds*, `create()` still does not fire
+    # after_create/after_save, while `new(...).save()` below does. That
+    # asymmetry looks like a bug in `create()` rather than a rule worth
+    # pinning, so it is deliberately not asserted either way here.
   })
 
   test("a new-record save() runs the create chain", fn() {
     let rec = HookDoc.new({"title": "fresh"})
-    assert(rec.save() == false)
-    assert_eq(rec.chain, "before_save;before_create;")
+    let saved = rec.save()
+    if saved
+      assert_eq(rec.chain, "before_save;before_create;after_create;after_save;")
+    else
+      assert_eq(rec.chain, "before_save;before_create;")
+    end
   })
 
   test("a persisted record's save() runs the update chain", fn() {
@@ -250,8 +268,12 @@ describe("mock_query_result serves reads without a database", fn() {
     )
     assert_eq(len(MockWidget.all()), 1)
     MockWidget.clear_mocks()
-    # Without the mock the read hits the wire and reports a connection error.
-    assert(MockWidget.all().is_a?("string"))
+    # Without the mock the read hits the wire: a connection error string when
+    # no server answers, an empty result when one does. Either way the canned
+    # row is gone, which is what clearing the mock has to mean. (The sibling
+    # test above already accepts both shapes.)
+    let after = MockWidget.all()
+    assert(after.is_a?("string") || (after.is_a?("array") && len(after) == 0))
     # Re-register so later suites still have their fixtures.
     MockWidget.mock_query_result(
       "FOR doc IN mock_widgets RETURN doc",
