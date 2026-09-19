@@ -45,4 +45,10 @@ __pycache__/
 # so nightly resumes from yesterday's corpus instead of starting cold.
 # Refresh the tracked seeds occasionally with `cargo fuzz cmin <target>`.
 /fuzz/corpus/
-config/eui_publisher.pkcs8
+# An EUI application's Ed25519 publisher key, generated on first serve.
+# `**/` and not a bare path: a test fixture that serves an EUI app grows one
+# of these under its own root, and the unanchored form matched only a key at
+# this repository's root — so `tests/fixtures/_e2e_app/config/` was holding
+# an untracked private key that one `git add -A` would have published.
+# Whoever holds it can publish as that application.
+**/config/eui_publisher.pkcs8
