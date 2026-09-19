@@ -627,10 +627,19 @@ def show
     format.excel(fn() render_xlsx_for(post));
     format.htmx(fn()  render("posts/_show_partial", {"post": post}, {"layout": false}));
     format.xhr(fn()   render_json({"id": post.id}));
+    format.eui(fn()   eui_render(post_view(post)));           # an EUI client
     format.any(fn()   render("posts/show", {"post": post}));  // optional catch-all
   })
 }
 ```
+
+The `eui` branch answers `application/vnd.eui.frames` — an EUI client asking
+for the interface already resolved rather than for markup to build it from. A
+page and its EUI form are two representations of one thing, so they share a
+route, a URL and its params; see [EUI: serving a page with no session](eui/overview.md#serving-a-page-with-no-session).
+The match is on that exact media type and never on a substring, because a
+browser's `Accept` ends in `*/*` and a looser rule would hand every browser a
+screenful of binary.
 
 A terser hash form is also supported:
 
@@ -645,7 +654,7 @@ respond_to(req, {
 
 1. `HX-Request: true` header → `htmx` branch.
 2. `X-Requested-With: XMLHttpRequest` header → `xhr` branch.
-3. URL extension: `.html`, `.json`, `.xml`, `.csv`, `.pdf`, `.xlsx`/`.xls`, `.txt`.
+3. URL extension: `.html`, `.json`, `.xml`, `.csv`, `.pdf`, `.xlsx`/`.xls`, `.txt`, `.eui`.
 4. `?format=…` query parameter.
 5. `Accept` header — parsed with q-values; `*/*` falls through to the first registered handler.
 

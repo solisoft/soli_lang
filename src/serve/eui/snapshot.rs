@@ -445,12 +445,7 @@ fn wants_html(headers: &hyper::HeaderMap) -> bool {
 
 /// The address to open, as this server would be reached: `wss://` everywhere
 /// but loopback, where there is no certificate and the client is told so.
-fn session_address(
-    host: Option<&str>,
-    forwarded_host: Option<&str>,
-    proto: Option<&str>,
-    component: &str,
-) -> String {
+fn open_address(host: Option<&str>, forwarded_host: Option<&str>, proto: Option<&str>) -> String {
     let sane = |h: &&str| !h.is_empty() && h.len() < 256 && !h.contains(|c: char| c.is_control());
     // A forwarded list is `client, proxy1, proxy2`; the first is the one the
     // reader typed.
@@ -471,11 +466,15 @@ fn session_address(
         Some(p) => p.eq_ignore_ascii_case("https"),
         None => !loopback,
     };
-    let scheme = if secure { "wss" } else { "ws" };
-    let component = component.replace(
-        |c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_',
-        "",
-    );
+    // The origin as the reader's browser shows it, and nothing more.
+    //
+    // It used to print the whole session address — `wss://host/_eui/session/
+    // <component>` — which is correct and is not what anybody would type.
+    // The client now takes `https://` as a spelling of `wss://` and completes
+    // a bare origin from the manifest's `entry` (01 §2.1: "the protocol's own
+    // prefix is the part nobody should have to type"), so the shortest thing
+    // that works is the address already in the address bar.
+    let scheme = if secure { "https" } else { "http" };
     // The opt-out is loopback-only in the client, so offering it anywhere
     // else would be a command that cannot work. A plain-http origin that is
     // not loopback is refused outright (01 §1), and the honest thing is to
@@ -485,7 +484,7 @@ fn session_address(
     } else {
         ""
     };
-    format!("{prefix}eui {scheme}://{host}/_eui/session/{component}")
+    format!("{prefix}eui {scheme}://{host}/")
 }
 
 /// The browser page, with this server's own address written into it.
@@ -493,9 +492,8 @@ pub fn browser_body(
     host: Option<&str>,
     forwarded_host: Option<&str>,
     proto: Option<&str>,
-    component: &str,
 ) -> String {
-    let address = session_address(host, forwarded_host, proto, component);
+    let address = open_address(host, forwarded_host, proto);
     BROWSER_PAGE.replace("__ADDRESS__", &escape(&address))
 }
 
@@ -508,13 +506,12 @@ pub fn accepts_html(accept: Option<&str>) -> bool {
 }
 
 /// The browser page as a response.
-pub fn browser_page(headers: &hyper::HeaderMap, component: &str) -> Response<ResponseBody> {
+pub fn browser_page(headers: &hyper::HeaderMap) -> Response<ResponseBody> {
     let get = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
     let body = browser_body(
         get("host"),
         get("x-forwarded-host"),
         get("x-forwarded-proto"),
-        component,
     );
     Response::builder()
         .status(StatusCode::OK)
@@ -551,7 +548,7 @@ pub async fn respond(
     // answer would be a screenful of binary. Content negotiation, and the
     // only place this server has two representations of one thing.
     if wants_html(headers) && super::is_eui_component(component) {
-        return browser_page(headers, component);
+        return browser_page(headers);
     }
     let Some(cache_control) = super::static_cache_control(component) else {
         return refuse(StatusCode::NOT_FOUND, "no such static view");
@@ -766,33 +763,25 @@ mod tests {
         // listens on, so a line built from it hands somebody
         // `ws://localhost:20059/...` — right for the proxy, unreachable for
         // everyone else. The whole job of that line is to be copied.
-        let direct = session_address(Some("127.0.0.1:5190"), None, None, "site");
-        assert!(direct.contains("ws://127.0.0.1:5190/_eui/session/site"));
+        let direct = open_address(Some("127.0.0.1:5190"), None, None);
+        assert!(direct.contains("http://127.0.0.1:5190/"), "{direct}");
         assert!(direct.starts_with("EUI_ALLOW_INSECURE_LOOPBACK=1 "));
 
-        let proxied = session_address(
+        let proxied = open_address(
             Some("localhost:20059"),
             Some("eui-site.solisoft.test"),
             Some("https"),
-            "site",
         );
-        assert_eq!(
-            proxied,
-            "eui wss://eui-site.solisoft.test/_eui/session/site"
-        );
+        assert_eq!(proxied, "eui https://eui-site.solisoft.test/");
 
         // A forwarded list names the reader first.
-        let chained = session_address(
-            None,
-            Some("a.example, proxy.internal"),
-            Some("https, http"),
-            "site",
-        );
-        assert_eq!(chained, "eui wss://a.example/_eui/session/site");
+        let chained = open_address(None, Some("a.example, proxy.internal"), Some("https, http"));
+        assert_eq!(chained, "eui https://a.example/");
 
-        // Plain http through a proxy is still ws, and still says so.
-        let plain = session_address(Some("localhost:9"), Some("box.local"), Some("http"), "site");
-        assert_eq!(plain, "eui ws://box.local/_eui/session/site");
+        // Plain http through a proxy stays http, and the loopback spell is
+        // not offered where it cannot work.
+        let plain = open_address(Some("localhost:9"), Some("box.local"), Some("http"));
+        assert_eq!(plain, "eui http://box.local/");
     }
 
     #[tokio::test]

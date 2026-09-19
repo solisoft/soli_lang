@@ -104,6 +104,81 @@ An EUI component is reachable only over its own socket. `/live/socket/<component
 answers 404 for it, so the JSON LiveView socket cannot be used to call its
 handler with an event name and `params` of the client's choosing.
 
+## Serving a page with no session
+
+A socket costs this server a session per reader: the instance, the four
+interned tables, and the previous tree they diff against. Measured against the
+EUI site, that is **50–60 kB of resident memory for somebody who is only
+reading**, linear to four hundred sessions, against 4 799 B of page — about
+twelve times the page, held for as long as the window is open. For a
+documentation page or a catalogue that is the wrong shape, and the socket buys
+nothing there, because nothing on such a page changes unless the reader
+changes it.
+
+So a view can be answered as one render instead. The body is the frames a
+fresh socket would have sent — a `Welcome` and the batches through the first
+`Mount` — with a strong `ETag` over it, so a cache or a CDN answers the second
+reader and this server renders once per revalidation rather than once per
+person. Six hundred *distinct* renders, each at a different viewport so
+nothing could be reused, moved resident memory by four kilobytes.
+
+The usual way is an ordinary route, because a page wants its own URL and its
+own params:
+
+```soli
+# app/controllers/docs_controller.sl
+def show
+  page = Doc.find(req["params"]["slug"])
+  respond_to(req, fn(format) {
+    format.html(fn() render("docs/show", {"page": page}))
+    format.eui(fn()  eui_render(doc_view(page)))
+  })
+end
+```
+
+`eui_render(tree)` encodes a view hash into frames and returns an ordinary
+response — status, headers, an `ETag`, and a `304` when the caller's
+`If-None-Match` matches. The encoder is built, used and dropped inside the
+call: no instance, no registry entry and nothing to clean up, because an
+action is already running on a worker with an interpreter. A page on a route
+is *cheaper* to serve this way than through a component, not dearer. `eui?`
+answers the same question `format.eui` asks, for a controller that would
+rather branch itself.
+
+A component with no route of its own can be offered the same way, and is then
+fetched from `GET /_eui/view/<component>`:
+
+```soli
+# config/routes.sl
+router_eui("site", "site#site", "site#site_view", {"static": "public, max-age=60"})
+```
+
+`{"static": true}` means `no-cache`, which still saves the session and still
+revalidates against the `ETag`. It cannot be combined with
+`{"session": "required"}` — a static view is rendered for nobody — and saying
+both is refused where it is written rather than at request time.
+
+Three things follow from "rendered for nobody", and all three are the
+application's to honour:
+
+- The render sees **no session, no cookie and no locale**. A view that greets
+  somebody by name does not belong here, and a component that needs a session
+  is refused outright.
+- A `GET` has **no same-origin check** — a resource a CDN is meant to hold
+  cannot have one — so an `<img src>` on any page anywhere reaches it.
+  Offering a view this way is promising that rendering it is a *read*.
+- Two renders of the same thing must produce **the same bytes**, since the
+  `ETag` is the identity of those bytes. A view that reads the clock, a
+  random, or a counter that moves per render is still correct — it simply
+  caches nothing.
+
+The render is given a nominal viewport, since there is nobody to ask; `?w=`
+carries a width when the client knows one. A view that derives its
+measurements from the viewport will therefore draw at a size the reader did
+not choose, which is a reason to prefer layout the client resolves. In a
+browser, an address that serves EUI and nothing else answers with a short page
+saying so rather than a 404.
+
 ## Limits, budgets and back-pressure
 
 What the client would refuse, the server refuses first, with a reason the

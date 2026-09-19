@@ -494,6 +494,20 @@ When you add, change, or remove a feature visible to Soli users (a new builtin, 
 
 Use `#` for comments inside Soli code blocks in both `.md` and `.slv` (the `//` style was standardized away — see `www/app/views/docs/CLAUDE.md` recent activity).
 
+5. **`CHANGELOG.md`** at the repo root, in the same change. The docs-site changelog above is *in addition to* it, not instead of it.
+
+**Documentation is part of the change, not a follow-up.** Ship them together or the change is not finished: a docs site that describes a version nobody is running is worse than one that says nothing, because a reader cannot tell which half is stale. If a change turns out not to need any of these surfaces, that is worth a sentence in the commit message rather than silence.
+
+### EUI reaches a second repository
+
+EUI is specified in `../eui` and implemented on both sides of the wire, so a change to `src/serve/eui/` or to the `eui*` builtins usually has a counterpart there. Check, in that repo:
+
+* **`spec/*.md`** — normative. A new endpoint, frame, op, prop or refusal belongs here **before** the code, and `spec/09-conformance.md` names the test that proves it.
+* **`doc/docs/eui/*.md`** — the prose docs, including `status.md`, which says crate by crate what is built, tested, specified or not started. It prints counted claims and measured numbers; sweep it whenever one moves.
+* **`www/docs/`** — a *copy*, written only by `scripts/sync-docs.sh`. Never edit it by hand; run the script and commit what it produces. CI runs `sync-docs.sh --check`.
+
+A protocol change also reaches `clients/eui-{ruby,python,php,node,go,rust}`, each of which carries its own port of the framing.
+
 ## Imports
 ```soli
 import "./math.sl";           // Relative import

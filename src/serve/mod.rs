@@ -8158,13 +8158,15 @@ fn handle_request(
             // wins; this is only what happens when nothing is defined.
             #[cfg(feature = "eui")]
             if method == "GET" && eui::snapshot::accepts_html(header_str(&data.headers, "accept")) {
-                if let Some(component) = eui::default_component() {
+                // The question is whether this is an EUI application at
+                // all, not which component it would open: the page names the
+                // origin now, and the client completes it from the manifest.
+                if eui::default_component().is_some() {
                     set_current_session_id(None);
                     let body = eui::snapshot::browser_body(
                         header_str(&data.headers, "host"),
                         header_str(&data.headers, "x-forwarded-host"),
                         header_str(&data.headers, "x-forwarded-proto"),
-                        &component,
                     );
                     return ResponseData {
                         status: 200,
