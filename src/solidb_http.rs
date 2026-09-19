@@ -610,12 +610,15 @@ impl SoliDBClient {
             "/_api/transaction/begin",
             Some(&payload),
         )?;
+        // See the note in `model::crud::begin_transaction`: the server calls
+        // this field `id`, not `tx_id`.
         response
             .get("tx_id")
+            .or_else(|| response.get("id"))
             .and_then(|t| t.as_str())
             .map(|s| s.to_string())
             .ok_or_else(|| SoliDBError {
-                message: "No tx_id in response".to_string(),
+                message: format!("No transaction id in response: {response}"),
                 code: None,
             })
     }
