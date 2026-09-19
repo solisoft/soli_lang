@@ -23,6 +23,35 @@ use crate::serve::ResponseBody;
 /// Shared, a co-hosted app would inherit permissions it never requested.
 static CAPABILITIES: TenantValue<u32> = TenantValue::new(|| 0);
 
+/// What this application is called, set by `eui_name("...")`.
+///
+/// The manifest has always had a `name`; what it never had was a way to
+/// say one, so it was the directory's name and an installed application
+/// wore that on its dock tile — `demo-app.app`. A directory name is a
+/// path, not a title, and the two only look alike while the application
+/// happens to live somewhere tidy.
+static NAME: TenantValue<Option<String>> = TenantValue::new(|| None);
+
+/// `eui_name("Demo")`: what a client shows for this application — the tab
+/// strip, the launcher entry, the dock tile.
+pub fn declare_name(name: &str) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("eui_name: a name with nothing in it is not a name".into());
+    }
+    // 01 §2.1 caps every manifest string, and a name past it would be
+    // refused by the client after the signature verified — which reads as
+    // a broken manifest rather than as a name somebody made too long.
+    if name.len() > 256 {
+        return Err(format!(
+            "eui_name: at most 256 bytes, this is {}",
+            name.len()
+        ));
+    }
+    NAME.write(|held| *held = Some(name.to_owned()));
+    Ok(())
+}
+
 /// The icon this application is installed as, set by `eui_icon("...")`.
 ///
 /// Per application for the same reason the capabilities are: the picture
@@ -161,25 +190,30 @@ pub fn bytes() -> Result<Vec<u8>, String> {
     /// whether the application had declared a font — the second raises
     /// `protocol_min`, so a manifest signed before `eui_font` ran is the
     /// wrong one to keep handing out.
-    type SignedFor = (u32, bool, Option<[u8; 32]>);
+    type SignedFor = (u32, bool, Option<[u8; 32]>, Option<String>);
     /// The signed manifest, cached against that.
     static SIGNED: TenantValue<Option<(SignedFor, Vec<u8>)>> = TenantValue::new(|| None);
     let capabilities = CAPABILITIES.read(|caps| *caps);
     // The icon is part of what the signature covers, so a picture that
     // changed on disk has to re-sign: its hash is in the cache key.
     let icon = icon_hash();
-    let signed_for = (capabilities, super::fonts::any(), icon);
+    let name = NAME.read(Clone::clone);
+    let signed_for = (capabilities, super::fonts::any(), icon, name.clone());
     if let Some((held, bytes)) = SIGNED.read(|signed| signed.clone()) {
         if held == signed_for {
             return Ok(bytes);
         }
     }
-    let bytes = sign(capabilities, icon)?;
+    let bytes = sign(capabilities, icon, name)?;
     SIGNED.write(|signed| *signed = Some((signed_for, bytes.clone())));
     Ok(bytes)
 }
 
-fn sign(capabilities: u32, icon: Option<[u8; 32]>) -> Result<Vec<u8>, String> {
+fn sign(
+    capabilities: u32,
+    icon: Option<[u8; 32]>,
+    name: Option<String>,
+) -> Result<Vec<u8>, String> {
     let key = key_pair()?;
     let key = key.as_ref().as_ref().map_err(Clone::clone)?;
     let root = get_app_root();
@@ -191,8 +225,11 @@ fn sign(capabilities: u32, icon: Option<[u8; 32]>) -> Result<Vec<u8>, String> {
     let mut publisher_key = [0u8; 32];
     publisher_key.copy_from_slice(key.public_key().as_ref());
     let manifest = Manifest {
-        app_id: app_id.clone(),
-        name: app_id,
+        // The directory's name identifies the application and is a poor
+        // title for it; `eui_name` is how an application says the second
+        // without changing the first, which is what a key is pinned to.
+        name: name.unwrap_or_else(|| app_id.clone()),
+        app_id,
         version: env!("CARGO_PKG_VERSION").to_string(),
         // The range this server serves. `scene` is the one thing in it that
         // an older client cannot be shown at all -- `0x11` is a decode error

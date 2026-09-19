@@ -801,6 +801,20 @@ pub fn register_router_builtins(env: &mut Environment) {
         })),
     );
 
+    // eui_name("Demo") — what a client shows for this application: the tab
+    // strip, the launcher entry, the dock tile. Without it the manifest's
+    // name is the application directory's, which is a path and not a title
+    // — an installed app called `demo-app` rather than `Demo`.
+    #[cfg(feature = "eui")]
+    env.define(
+        "eui_name".to_string(),
+        Value::NativeFunction(NativeFunction::new("eui_name", Some(1), |args| {
+            let name = args.first().map(ToString::to_string).unwrap_or_default();
+            crate::serve::eui::manifest::declare_name(&name)?;
+            Ok(Value::Null)
+        })),
+    );
+
     // eui_icon("public/icon.png") — the PNG a client installs this
     // application as (EUI 01 §2.1). Without one there is nothing to put on
     // a launcher tile, so the client refuses to install the application
