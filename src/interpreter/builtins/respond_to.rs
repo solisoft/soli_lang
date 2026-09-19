@@ -19,7 +19,7 @@ thread_local! {
 
 /// All format tokens the DSL exposes as methods on the `format` object.
 const FORMAT_TOKENS: &[&str] = &[
-    "html", "json", "xml", "csv", "pdf", "excel", "htmx", "xhr", "text", "any",
+    "html", "json", "xml", "csv", "pdf", "excel", "htmx", "xhr", "text", "eui", "any",
 ];
 
 /// Build the `format` hash passed to the user's `fn(format) { ... }` block.
@@ -105,6 +105,10 @@ fn mime_to_token(mime: &str) -> Option<String> {
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         | "application/vnd.ms-excel" => "excel",
         "text/plain" => "text",
+        // One render of an interface, already resolved (EUI 01 §2.4). A page
+        // and its EUI form are two representations of one resource, so they
+        // belong on one route and one URL — which is what this token is for.
+        "application/vnd.eui.frames" => "eui",
         "*/*" => "*",
         _ => {
             // application/<anything>+json or +xml suffix forms
@@ -137,6 +141,10 @@ fn extension_to_token(path: &str) -> Option<String> {
         "pdf" => "pdf".to_string(),
         "xlsx" | "xls" => "excel".to_string(),
         "txt" => "text".to_string(),
+        // `/docs/getting-started.eui` names the same page as
+        // `/docs/getting-started`, in the representation a CDN can hold
+        // without varying on a header no cache wants to key by.
+        "eui" => "eui".to_string(),
         _ => return None,
     })
 }

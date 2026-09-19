@@ -27,6 +27,7 @@ use hyper::{Response, StatusCode};
 use tokio::sync::{oneshot, Semaphore};
 use tungstenite::Message;
 
+use crate::interpreter::value::Value;
 use crate::live::view::{live_registry, LiveViewInstance};
 
 use super::super::{full, LiveViewEventData, ResponseBody};
@@ -253,6 +254,115 @@ impl Drop for Ephemeral {
 }
 
 // ----------------------------------------------------------- the handler
+
+/// Does an `Accept` ask for frames rather than a page?
+///
+/// Exact rather than a substring of the whole header, because a browser's
+/// `Accept` ends in `*/*` and everything matches that. What is being asked
+/// is whether the caller named this type, not whether it would tolerate it.
+pub fn accepts_frames(accept: Option<&str>) -> bool {
+    accept.is_some_and(|a| {
+        a.split(',').any(|part| {
+            part.split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .eq_ignore_ascii_case(FRAMES_MEDIA_TYPE)
+        })
+    })
+}
+
+/// The media type one render is answered with.
+pub const FRAMES_MEDIA_TYPE: &str = "application/vnd.eui.frames";
+
+/// `eui_render(tree)`: one render of a view value, as a response hash.
+///
+/// The encoder is built here, used, and dropped when this returns. There is
+/// no instance, no registry entry and nothing to clean up, because an action
+/// is already running on a worker with an interpreter — which is why a page
+/// on an ordinary route is cheaper to serve than one behind
+/// `GET /_eui/view/<component>`, not dearer.
+pub fn render_once(
+    tree: &Value,
+    version: u32,
+    if_none_match: Option<&str>,
+) -> Result<Value, String> {
+    let mut encoder = super::tree::Encoder::default();
+    encoder.set_protocol(version);
+    // Nothing kept on the worker: this render has no second render to be
+    // warm for.
+    encoder.set_ephemeral(true);
+    let batches = encoder.render_value("", tree, false)?;
+    if batches.is_empty() {
+        return Err("eui_render: the view produced nothing to mount".to_string());
+    }
+
+    // Sixteen zero bytes: this body names no session, because it is
+    // everyone's. A real handle here would give every response its own ETag
+    // and cache nothing while appearing to.
+    let mut body = Frame::Welcome(Welcome {
+        version,
+        session: [0u8; 16],
+        resumed: false,
+    })
+    .encode();
+    for batch in &batches {
+        body.extend_from_slice(&Frame::Batch(batch.clone()).encode());
+    }
+    if body.len() > MAX_SNAPSHOT_BYTES {
+        return Err(format!(
+            "eui_render: {} bytes is past what one render may be",
+            body.len()
+        ));
+    }
+    let etag = format!("\"{}\"", blake3::hash(&body).to_hex());
+
+    let key = |k: &str| crate::interpreter::value::HashKey::String(k.into());
+    let mut headers = crate::interpreter::value::HashPairs::default();
+    headers.insert(key("Content-Type"), Value::String(FRAMES_MEDIA_TYPE.into()));
+    headers.insert(key("ETag"), Value::String(etag.clone().into()));
+    // The application decides how long this may be held; saying nothing here
+    // leaves that to whatever it sets itself.
+    let hashed = |pairs| Value::Hash(std::rc::Rc::new(std::cell::RefCell::new(pairs)));
+
+    let mut out = crate::interpreter::value::HashPairs::default();
+    if if_none_match.is_some_and(|inm| inm.split(',').map(str::trim).any(|c| c == "*" || c == etag))
+    {
+        out.insert(key("status"), Value::Int(304));
+        out.insert(key("headers"), hashed(headers));
+        out.insert(key("body"), Value::String("".into()));
+        return Ok(hashed(out));
+    }
+    out.insert(key("status"), Value::Int(200));
+    out.insert(key("headers"), hashed(headers));
+    // Soli has no bytes type, so a binary body travels as base64 and is
+    // decoded once on the way out (`body_base64` in `extract_response`).
+    out.insert(key("body_base64"), Value::String(b64(&body).into()));
+    Ok(hashed(out))
+}
+
+/// Standard base64, no padding omitted — what `extract_response` decodes.
+fn b64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk.first().copied().unwrap_or(0),
+            chunk.get(1).copied().unwrap_or(0),
+            chunk.get(2).copied().unwrap_or(0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        let idx = [(n >> 18) & 63, (n >> 12) & 63, (n >> 6) & 63, n & 63];
+        for (i, part) in idx.iter().enumerate() {
+            if i <= chunk.len() {
+                out.push(char::from(ALPHABET[*part as usize]));
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
 
 /// A `Cache-Control` an application asked for, checked before it is ever
 /// written into a header.

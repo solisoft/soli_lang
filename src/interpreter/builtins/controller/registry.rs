@@ -1068,6 +1068,9 @@ pub fn setup_controller_context(
         inst.fields.insert("params".into(), params.clone());
         inst.fields.insert("session".into(), session.clone());
         inst.fields.insert("headers".into(), headers.clone());
+        // The same headers where a free function can reach them: `eui?` asks
+        // what the caller will accept, and it is not a method on anything.
+        template_module::set_current_headers(headers.clone());
         inst.fields.insert("cookies".into(), cookies.clone());
     }
 

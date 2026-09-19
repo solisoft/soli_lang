@@ -110,6 +110,41 @@ describe("respond_to (DSL form)", fn() {
         assert_eq(res["body"], "html");
     });
 
+    // EUI 01 §2.4: a page and its already-resolved form are two
+    // representations of one resource, so they share a route and a URL.
+    test("eui wins when the caller asks for frames", fn() {
+        let req = _make_req({"accept": "application/vnd.eui.frames"}, "/docs/intro", {});
+        let res = respond_to(req, fn(format) {
+            format.html(fn() {"status": 200, "headers": {}, "body": "html"});
+            format.eui(fn() {"status": 200, "headers": {}, "body": "frames"});
+        });
+        assert_eq(res["body"], "frames");
+    });
+
+    test("a browser still gets the page at the same address", fn() {
+        // The header a real browser sends, `*/*` and all: it must not be
+        // read as "anything will do, give it the frames".
+        let req = _make_req(
+            {"accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+            "/docs/intro", {}
+        );
+        let res = respond_to(req, fn(format) {
+            format.html(fn() {"status": 200, "headers": {}, "body": "html"});
+            format.eui(fn() {"status": 200, "headers": {}, "body": "frames"});
+        });
+        assert_eq(res["body"], "html");
+    });
+
+    test("a .eui address names the other representation", fn() {
+        // What a cache holds, since no CDN wants to key on Accept.
+        let req = _make_req({}, "/docs/intro.eui", {});
+        let res = respond_to(req, fn(format) {
+            format.html(fn() {"status": 200, "headers": {}, "body": "html"});
+            format.eui(fn() {"status": 200, "headers": {}, "body": "frames"});
+        });
+        assert_eq(res["body"], "frames");
+    });
+
     test("json wins over html when Accept asks for json", fn() {
         let req = _make_req({"accept": "application/json"}, "/posts/1", {});
         let res = respond_to(req, fn(format) {

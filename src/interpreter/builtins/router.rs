@@ -816,6 +816,51 @@ pub fn register_router_builtins(env: &mut Environment) {
         })),
     );
 
+    // eui? — does the caller want frames rather than a page?
+    //
+    // The question a route answers in two representations has to ask, and
+    // the reason it is a builtin rather than a look at `headers["accept"]`
+    // in each application: which media type means EUI is the protocol's
+    // business, and an application that spelled it itself would be wrong the
+    // day it changes.
+    #[cfg(feature = "eui")]
+    env.define(
+        "eui?".to_string(),
+        Value::NativeFunction(NativeFunction::new("eui?", None, |_args| {
+            let accept = crate::interpreter::builtins::template::current_header("accept");
+            Ok(Value::Bool(crate::serve::eui::snapshot::accepts_frames(
+                accept.as_deref(),
+            )))
+        })),
+    );
+
+    // eui_render(tree) — one render of a view hash, as a response.
+    //
+    // For a page that lives on an ordinary route: `/docs/:slug` keeps its
+    // own URL, its own cache entry and its own params, and answers a browser
+    // with HTML and a client with frames. Nothing is held between requests —
+    // the encoder is built, used and dropped inside this call — so a
+    // thousand readers cost a thousand cached responses and no sessions.
+    //
+    // The body rides as `body_base64` because Soli has no bytes type and
+    // frames are not text. It is decoded once on the way out.
+    #[cfg(feature = "eui")]
+    env.define(
+        "eui_render".to_string(),
+        Value::NativeFunction(NativeFunction::new("eui_render", None, |args| {
+            let Some(tree) = args.first() else {
+                return Err("eui_render(tree) takes the node tree to render".to_string());
+            };
+            let version = crate::interpreter::builtins::template::current_query("v")
+                .and_then(|v| v.parse::<u32>().ok())
+                .filter(|v| (1..=1000).contains(v))
+                .unwrap_or(eui_proto::PROTOCOL_VERSION)
+                .min(eui_proto::PROTOCOL_VERSION);
+            let inm = crate::interpreter::builtins::template::current_header("if-none-match");
+            crate::serve::eui::snapshot::render_once(tree, version, inm.as_deref())
+        })),
+    );
+
     // eui_capabilities("clipboard.read", ...) — what the EUI manifest asks the
     // client for. The person still has to allow each one; nothing is granted
     // by asking.

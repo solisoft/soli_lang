@@ -544,6 +544,40 @@ pub fn inject_request_context(data: &Value) {
     }
 }
 
+thread_local! {
+    /// The headers of the request this thread is answering, for a builtin
+    /// that needs one without having it passed down. A controller already
+    /// gets them as a field; this is for `eui?` and `eui_render`, which are
+    /// free functions and would otherwise make every caller thread the
+    /// request through by hand.
+    static CURRENT_HEADERS: std::cell::RefCell<Option<Value>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Remember the headers of the request being answered on this thread.
+pub fn set_current_headers(headers: Value) {
+    CURRENT_HEADERS.with(|h| *h.borrow_mut() = Some(headers));
+}
+
+/// One header of the request being answered, by its lowercase name.
+pub fn current_header(name: &str) -> Option<String> {
+    CURRENT_HEADERS.with(|h| {
+        let borrowed = h.borrow();
+        let Some(Value::Hash(map)) = borrowed.as_ref() else {
+            return None;
+        };
+        let map = map.borrow();
+        match map.get(&HashKey::String(name.to_string().into())) {
+            Some(Value::String(s)) => Some(s.to_string()),
+            _ => None,
+        }
+    })
+}
+
+/// A query parameter of the request being answered.
+pub fn current_query(name: &str) -> Option<String> {
+    current_request_query_param(name)
+}
+
 /// Read a string field off the thread-local current request. Returns `Null` when
 /// there's no active request or the field isn't a string. Used by the
 /// `current_path()` / `current_method()` view helpers.
