@@ -1239,6 +1239,113 @@ impl TypeEnvironment {
             );
         }
 
+        // Streaming responses: `sse(req) do |out|` and
+        // `stream(req, content_type) do |out|`. Both take the request and a
+        // block and return a response, so the block is `Any` rather than a
+        // spelled-out function type.
+        for name in &["sse", "stream"] {
+            self.functions.insert(
+                name.to_string(),
+                Type::Function {
+                    params: vec![Type::Any, Type::Any],
+                    return_type: Box::new(Type::Any),
+                },
+            );
+        }
+
+        // `next` — the loop-continue sentinel, in both spellings (`next` bare
+        // via zero-arg auto-invoke, and `next()`). It is implemented in both
+        // engines and compiled by the VM, but was reachable only from a server
+        // handler, because `serve` does not type-check and every other entry
+        // point rejected the program before running it.
+        self.functions.insert(
+            "next".to_string(),
+            Type::Function {
+                params: vec![],
+                return_type: Box::new(Type::Any),
+            },
+        );
+
+        // EUI. Registered under the same `eui` feature that installs them at
+        // runtime, so a build without it keeps a checker that agrees with what
+        // the binary can actually do.
+        //
+        // Params are `Any` throughout: these take node-tree hashes, options
+        // hashes and variadic name lists, and spelling those out here would buy
+        // arity false-positives rather than safety.
+        #[cfg(feature = "eui")]
+        {
+            // `router_eui(component, handler, view, options?)` registers a
+            // component; `eui_render(tree)` answers one render as a response;
+            // `eui?` says whether the caller asked for frames rather than a
+            // page.
+            self.functions.insert(
+                "router_eui".to_string(),
+                Type::Function {
+                    params: vec![Type::Any, Type::Any, Type::Any, Type::Any],
+                    return_type: Box::new(Type::Any),
+                },
+            );
+            self.functions.insert(
+                "eui_render".to_string(),
+                Type::Function {
+                    params: vec![Type::Any],
+                    return_type: Box::new(Type::Any),
+                },
+            );
+            self.functions.insert(
+                "eui?".to_string(),
+                Type::Function {
+                    params: vec![],
+                    return_type: Box::new(Type::Bool),
+                },
+            );
+            // `eui_stats()` is the previous render's cost, as a hash — empty
+            // outside `--dev` and before the first render, so a view can
+            // compose it unconditionally.
+            self.functions.insert(
+                "eui_stats".to_string(),
+                Type::Function {
+                    params: vec![],
+                    return_type: Box::new(Type::Any),
+                },
+            );
+            // `eui_asset(base64)` returns the handle a node refers to the
+            // bytes by; `eui_wake(component, event?)` returns how many
+            // sessions were woken.
+            self.functions.insert(
+                "eui_asset".to_string(),
+                Type::Function {
+                    params: vec![Type::Any],
+                    return_type: Box::new(Type::String),
+                },
+            );
+            self.functions.insert(
+                "eui_wake".to_string(),
+                Type::Function {
+                    params: vec![Type::Any, Type::Any],
+                    return_type: Box::new(Type::Int),
+                },
+            );
+            // Manifest declarations and the notification: called for their
+            // effect, so each answers null.
+            for name in &[
+                "eui_notify",
+                "eui_font",
+                "eui_icon",
+                "eui_name",
+                "eui_capabilities",
+            ] {
+                self.functions.insert(
+                    name.to_string(),
+                    Type::Function {
+                        params: vec![Type::Any, Type::Any, Type::Any],
+                        return_type: Box::new(Type::Null),
+                    },
+                );
+            }
+        }
+
         // Register built-in classes
         self.register_builtin_classes();
     }

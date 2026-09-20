@@ -236,6 +236,87 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "short_content_kind",
     // Test framework
     "clock",
+    // EUI: the component router, the one-shot render, the manifest
+    // declarations and the session-side helpers. `eui?` answers whether the
+    // caller asked for frames rather than a page.
+    "router_eui",
+    "eui?",
+    "eui_render",
+    "eui_wake",
+    "eui_notify",
+    "eui_asset",
+    "eui_font",
+    "eui_icon",
+    "eui_name",
+    "eui_stats",
+    "eui_capabilities",
+    // Streaming responses
+    "sse",
+    "stream",
+    // Mass-assignment whitelist
+    "permit",
+    // Hashing and password helpers
+    "md5",
+    "sha512",
+    "password_hash",
+    "password_verify",
+    // Curve25519 / Ed25519 key material
+    "x25519",
+    "x25519_keypair",
+    "x25519_public_key",
+    "x25519_shared_secret",
+    "ed25519_keypair",
+    // Escaping and sanitising
+    "html_escape",
+    "html_unescape",
+    "strip_html",
+    "sanitize_html",
+    "url_encode",
+    "url_decode",
+    // Filesystem
+    "file_exists",
+    "file_write_bytes",
+    "mkdir_p",
+    "slurp",
+    // Environment
+    "setenv",
+    "unsetenv",
+    // JSON
+    "json_stringify",
+    // Cache, pub/sub and CORS
+    "cache",
+    "broadcast",
+    "cors",
+    // Request context and CSRF
+    "csrf_token",
+    "current_action",
+    "forbidden",
+    "content_type_for",
+    // Uploads
+    "uploaded_file_at",
+    // Dates
+    "datetime_now",
+    "time_ago",
+    // LLM / embeddings
+    "llm_generate",
+    "embed",
+    "embed_batch",
+    "rerank",
+    // SoliDB standalone helpers
+    "solidb_connect",
+    "solidb_ping",
+    "solidb_auth",
+    "solidb_query",
+    // Reflection and control
+    "const_get",
+    "defined",
+    "await",
+    "sleep",
+    "input",
+    "range",
+    "contains",
+    "has_key",
+    "barf",
 ];
 
 /// Collect top-level names defined in the program. These are names a
@@ -286,7 +367,15 @@ pub fn check_undefined_locals(
     }
 }
 
-fn is_likely_global(name: &str) -> bool {
+/// Whether the rule will let a bare read of `name` pass without declaring it.
+///
+/// Public because it is the question
+/// `tests/builtin_registration_parity_test.rs` asks of every builtin the
+/// runtime registers: a name this answers `false` for is reported by
+/// `smell/undefined-local` at every one of its call sites. Asking the
+/// predicate rather than reading `WELL_KNOWN_GLOBALS` keeps the two shortcuts
+/// below — PascalCase, and a leading underscore — in the answer.
+pub fn is_likely_global(name: &str) -> bool {
     // Classes / modules are conventionally PascalCase and live at program
     // level. If we don't see them defined here they may come from imports
     // or be builtins — don't flag.
