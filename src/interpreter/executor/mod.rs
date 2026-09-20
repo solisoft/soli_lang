@@ -497,8 +497,21 @@ impl Interpreter {
             // always reported it — so a script that raised passed under
             // `soli run` and `soli test` and failed under `soli serve`.
             //
-            // Return/Break/Continue keep their existing top-level behaviour
-            // (ignored); only the silently-dropped error is corrected here.
+            // A top-level `return` ends the program, which is what the VM has
+            // always done and what the construct can only mean at file scope.
+            // This engine ignored it, so a script guarding its own work —
+            //
+            //     unless reachable
+            //         print("nothing to measure")
+            //         return
+            //     end
+            //
+            // — printed the message and then fell straight into the code the
+            // guard was written to skip. Two engines, two answers, and the
+            // wrong one was the one `soli run` and `soli test` used.
+            //
+            // Break/Continue outside a loop stay ignored: unlike `return` they
+            // name no sensible whole-program action.
             match self.execute(stmt)? {
                 ControlFlow::Throw(value) => {
                     return Err(RuntimeError::Thrown {
@@ -506,10 +519,8 @@ impl Interpreter {
                         span: stmt.span,
                     });
                 }
-                ControlFlow::Normal(_)
-                | ControlFlow::Return(_)
-                | ControlFlow::Break
-                | ControlFlow::Continue => {}
+                ControlFlow::Return(_) => return Ok(()),
+                ControlFlow::Normal(_) | ControlFlow::Break | ControlFlow::Continue => {}
             }
         }
         Ok(())

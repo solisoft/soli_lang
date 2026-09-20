@@ -63,7 +63,7 @@ Two more things about generators, both learned the hard way:
 | `if (x) { … }`                             | `if x … end`                               | C-style parses, but Ruby-style is the convention here.                       |
 | `xs.forEach(…)`                            | `xs.each do \|x\| … end` or `for x in xs`  | No `forEach`.                                                                |
 | `x \|\| default`                           | `x ?? default`                             | `\|\|` returns the wrong side when `x` is `0` or `""` (those are TRUTHY).    |
-| `if (xs.length)`                           | `if xs.length() > 0`                       | `0` and `""` are truthy in Soli — only `false` and `null` are falsy.         |
+| `if (xs.length)`                           | `if xs.length() > 0`                       | Both work: `0` is falsy. Prefer the explicit form — it survives a refactor to a non-numeric value. |
 | `import "../models/post.sl"` in controller | nothing — already auto-loaded              | Triggers `style/redundant-model-import` lint.                                |
 | Building URLs by hand                      | `posts_path()`, `post_path(post)`          | Named helpers come from `resources(...)` in `config/routes.sl`.              |
 | Overriding `Model.all` / `Model.find`      | don't                                      | Inherited from `Model`; the framework relies on it.                          |

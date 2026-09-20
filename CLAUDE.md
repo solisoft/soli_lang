@@ -536,7 +536,7 @@ let single  = r"C:\Users\name";   // raw, single-line
 
 - **Files are executable top-to-bottom** - No separate `main()` function needed
 - **Semicolons optional** - Statements end at line breaks (but `;` is allowed)
-- **Truthiness** - Only `false` and `null` are falsy; `0` and `""` are truthy
+- **Truthiness** - `false`, `null`, `0`, `""`, `[]` and `{}` are falsy. Everything else is truthy — including `0.0`, which is *not* falsy even though `0` is. This is Python-like, not Ruby-like: `if xs.length` is a valid emptiness test, and `count ||= 10` replaces a zero count
 - **Classes inherit from Object** - Built-in methods available on all objects
 - **HTML escaping** - `<%= %>` escapes automatically; `h()` there double-escapes. Use `<%- %>` only for markup you built yourself, and `json_script()` for JSON inside a `<script>`
 

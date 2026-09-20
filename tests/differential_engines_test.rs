@@ -1052,6 +1052,29 @@ const CASES: &[(&str, &str)] = &[
         "finally_cleanup_no_leak_on_early_return",
         "let handles = []\ndef p() {\n  handles.push(\"h\")\n  try { return \"early\" } finally { handles.pop() }\n}\nprint(p())\nprint(handles.length)",
     ),
+    // --- top-level `return` ends the program ---
+    //
+    // The VM has always stopped; the tree-walker ignored it and ran on into
+    // the code the guard was written to skip, so a script that guarded its own
+    // work behaved one way under `soli run` and another under `soli serve`.
+    (
+        "toplevel_return_stops_the_program",
+        "print(\"a\")\nif true { return }\nprint(\"unreachable\")",
+    ),
+    (
+        "toplevel_return_inside_unless_guard",
+        "let ready = false\nunless ready\n  print(\"not ready\")\n  return\nend\nprint(\"unreachable\")",
+    ),
+    (
+        "toplevel_return_after_output",
+        "print(1)\nprint(2)\nreturn\nprint(3)",
+    ),
+    // A `return` inside a function is a function return, not a program one —
+    // pinned so the fix above cannot be over-applied.
+    (
+        "return_in_fn_is_not_a_program_return",
+        "def f() { return 1 }\nprint(f())\nprint(\"still running\")",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

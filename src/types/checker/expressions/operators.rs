@@ -80,7 +80,15 @@ impl TypeChecker {
                 }
             }
             BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => {
-                if left_type.is_numeric() && right_type.is_numeric() {
+                // `"-" * 40` and `40 * "-"` both repeat the string. Arrays do
+                // not: `[1, 2] * 2` raises at run time, so it is not admitted
+                // here either.
+                if matches!(operator, BinaryOp::Multiply)
+                    && ((matches!(left_type, Type::String) && matches!(right_type, Type::Int))
+                        || (matches!(left_type, Type::Int) && matches!(right_type, Type::String)))
+                {
+                    Ok(Type::String)
+                } else if left_type.is_numeric() && right_type.is_numeric() {
                     if matches!(left_type, Type::Float) || matches!(right_type, Type::Float) {
                         Ok(Type::Float)
                     } else {
@@ -164,11 +172,27 @@ impl TypeChecker {
         }
     }
 
-    /// Check logical AND/OR expression.
+    /// Check a logical `&&` / `||` expression.
+    ///
+    /// **The result is an operand, not a boolean.** `a || b` answers `a` when
+    /// `a` is truthy and `b` otherwise; `&&` is the mirror. So `0 || 7` is `7`
+    /// and `getenv("HOST") || "localhost"` is a `String` — which is the
+    /// default-value idiom the conventions teach.
+    ///
+    /// Answering `Bool` unconditionally, as this used to, type-checked the
+    /// `let` and then failed at the *use*: `Type mismatch: expected String,
+    /// found Bool`, pointing at a line that was not the one at fault. There is
+    /// no union type to name here, so two operands that disagree give `Any`.
+    /// That is wider than the truth and never wrong, and conditions accept
+    /// `Any`, so `if a || b` still checks.
     pub(crate) fn check_logical(&mut self, left: &Expr, right: &Expr) -> TypeResult<Type> {
-        self.check_expr(left)?;
-        self.check_expr(right)?;
-        Ok(Type::Bool)
+        let left_type = self.check_expr(left)?;
+        let right_type = self.check_expr(right)?;
+        Ok(if left_type == right_type {
+            left_type
+        } else {
+            Type::Any
+        })
     }
 
     /// Check nullish coalescing expression.

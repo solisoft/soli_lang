@@ -242,3 +242,81 @@ describe("Shovel operator (<<)", fn() {
         }
     });
 });
+
+# These three forms all ran correctly and were rejected by `soli check`, which
+# is as costly as missing a real error: the checker refused code the runtime
+# was happy to execute, and in one case the form it refused is the one the
+# project's own conventions teach. Pinned here so a future change to the
+# operator table cannot quietly take them away again.
+describe("forms the type checker used to reject", fn() {
+    test("|| answers an operand, not a boolean", fn() {
+        # `a || b` is `a` when `a` is truthy and `b` otherwise. The checker
+        # answered Bool unconditionally, so the `let` passed and the *use*
+        # failed with "expected String, found Bool".
+        let host: String = getenv("SOLI_SPEC_UNSET_HOST") || "localhost";
+        assert_eq(host, "localhost");
+
+        let n: Int = 0 || 42;
+        assert_eq(n, 42);
+
+        let kept: Int = 7 || 42;
+        assert_eq(kept, 7);
+    });
+
+    test("&& answers an operand too", fn() {
+        let a: Int = 1 && 5;
+        assert_eq(a, 5);
+        assert_eq(false && 5, false);
+    });
+
+    test("|| still works as a condition", fn() {
+        # Widening the result type must not break the ordinary use.
+        let seen = false;
+        if false || true { seen = true; }
+        assert(seen);
+    });
+
+    test("a string repeats by an int, either way round", fn() {
+        assert_eq("ab" * 3, "ababab");
+        assert_eq(3 * "ab", "ababab");
+        assert_eq("-" * 5, "-----");
+    });
+
+    test("an array does not repeat", fn() {
+        # `[1, 2] * 2` raises at run time, so the checker is right to refuse it
+        # and the rule above must not be widened to cover arrays.
+        try {
+            let bad = [1, 2] * 2;
+            assert(false, "expected a runtime error");
+        } catch _e {
+            assert(true);
+        }
+    });
+});
+
+# The falsy set, pinned. Three documentation surfaces claimed for a long time
+# that "only false and null are falsy; 0 and "" are truthy", which is the
+# opposite of what both engines do — and one of those surfaces is the CLAUDE.md
+# copied into every scaffolded application.
+describe("truthiness", fn() {
+    test("the whole falsy set", fn() {
+        assert_eq(false || "f", "f");
+        assert_eq(null  || "f", "f");
+        assert_eq(0     || "f", "f");
+        assert_eq(""    || "f", "f");
+        assert_eq([]    || "f", "f");
+        assert_eq({}    || "f", "f");
+    });
+
+    test("0.0 is truthy even though 0 is not", fn() {
+        assert_eq(0.0 || "f", 0.0);
+        assert_eq(0   || "f", "f");
+    });
+
+    test("everything else is truthy", fn() {
+        assert_eq(1        || "f", 1);
+        assert_eq("x"      || "f", "x");
+        assert_eq([0]      || "f", [0]);
+        assert_eq(true     || "f", true);
+    });
+});

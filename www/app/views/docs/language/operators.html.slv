@@ -359,7 +359,7 @@ msg += " World"   # msg is now "Hello World"</code></pre>
                 <tbody class="divide-y divide-white/5">
                     <tr id="op-or-equal" class="scroll-mt-20">
                         <td class="py-2 px-4"><a href="#op-or-equal" class="text-amber-400 font-mono hover:text-amber-300">||=</a></td>
-                        <td class="py-2 px-4 text-gray-400">Assign if current value is falsy (null or false)</td>
+                        <td class="py-2 px-4 text-gray-400">Assign if current value is falsy &mdash; <code>false</code>, <code>null</code>, <code>0</code>, <code>&quot;&quot;</code>, <code>[]</code> or <code>{}</code></td>
                         <td class="py-2 px-4 text-gray-500">a ||= b is a = a || b</td>
                     </tr>
                     <tr id="op-and-equal" class="scroll-mt-20">

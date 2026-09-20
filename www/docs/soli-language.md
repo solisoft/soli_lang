@@ -252,7 +252,7 @@ target meets a condition. They follow the short-circuit semantics of their
 matching binary operators.
 
 ```soli
-# ||=  Assign only if the current value is falsy (null or false)
+# ||=  Assign only if the current value is falsy (false, null, 0, "", [], {})
 name = null;
 name ||= "Anonymous";   # name is now "Anonymous"
 
@@ -277,7 +277,7 @@ cache["key"] ||= expensive_lookup();   # compute once, reuse on repeat
 
 | Operator | Equivalent to            | Use when                                    |
 |----------|--------------------------|---------------------------------------------|
-| `a ||= b` | `a = a || b`            | You want a fallback for falsy values        |
+| `a ||= b` | `a = a || b`            | You want a fallback for any falsy value — `0` and `""` included |
 | `a &&= b` | `a = a && b`            | You want to update only when already set    |
 | `a ??= b` | `a = a ?? b`            | You want a default only for `null` (keeps `false`/`0`) |
 
@@ -729,11 +729,19 @@ match value {
 
 ### Truthiness
 
-Soli follows common truthiness rules:
+Six values are falsy. Everything else is truthy.
+
+`0.0` is **truthy**, even though `0` is falsy: only the integer zero counts. A
+`Decimal` is always truthy whatever its value, which matters for money —
+`Decimal("0.00")` does not vanish in a condition.
+
+This is closer to Python than to Ruby, where only `false` and `nil` are falsy.
+Two consequences worth knowing: `if xs.length` is a valid emptiness test, and
+`count ||= 10` replaces a zero count rather than only a missing one.
 
 ```soli
-# Falsy values
-falsy_values = [false, null, 0, 0.0, "", []];
+# The whole falsy set — there is nothing else
+falsy_values = [false, null, 0, "", [], {}];
 
 # Truthy values (everything else)
 if "hello"
