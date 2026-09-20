@@ -17,6 +17,7 @@ mod dev_jobs;
 pub mod dev_store;
 mod file_watcher;
 pub mod files;
+mod framework_assets;
 mod hot_reload;
 pub mod live_reload;
 mod live_reload_ws; // WebSocket-based live reload
@@ -2772,34 +2773,16 @@ async fn handle_hyper_request(
             .unwrap());
     }
 
-    // Built-in LiveView client, embedded in the binary so the client is
-    // always in sync with the server's patch protocol (no vendored copy to
-    // go stale). `no-cache` + version ETag: browsers revalidate and get a
-    // 304 until the binary changes.
-    if path == crate::live::LIVE_CLIENT_PATH && (method == "GET" || method == "HEAD") {
-        const ETAG: &str = concat!("\"soli-live-", env!("CARGO_PKG_VERSION"), "\"");
-        let not_modified = req
-            .headers()
+    // The built-in LiveView client. Before the same-origin gate, where it has
+    // always been. See `framework_assets`.
+    if let Some(response) = framework_assets::live_client(
+        &path,
+        &method,
+        req.headers()
             .get("if-none-match")
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.contains(ETAG));
-        if not_modified {
-            return Ok(Response::builder()
-                .status(StatusCode::NOT_MODIFIED)
-                .header("ETag", ETAG)
-                .header("Cache-Control", "no-cache")
-                .body(full(Bytes::new()))
-                .unwrap());
-        }
-        return Ok(Response::builder()
-            .status(StatusCode::OK)
-            .header("Content-Type", "application/javascript; charset=utf-8")
-            .header("Cache-Control", "no-cache")
-            .header("ETag", ETAG)
-            .body(full(Bytes::from_static(
-                crate::live::LIVE_CLIENT_JS.as_bytes(),
-            )))
-            .unwrap());
+            .and_then(|v| v.to_str().ok()),
+    ) {
+        return Ok(response);
     }
 
     // SEC-014: same-origin gate for state-changing requests. Runs before
@@ -3469,66 +3452,19 @@ async fn handle_hyper_request(
         }
     }
 
-    // Framework-bundled hover-prefetch script. Served at a reserved path so
-    // strict-CSP apps can use `<script src>` instead of inline JS.
-    if path == "/__soli/prefetch.js" && method == "GET" {
-        return Ok(box_full(prefetch::handle_prefetch_js()));
-    }
-
-    // Framework-bundled instant-navigation script (body swap + pushState).
-    if path == "/__soli/nav.js" && method == "GET" {
-        return Ok(box_full(nav::handle_nav_js()));
-    }
-
-    // Stylesheet and script behind the pages `soli serve` generates for a
-    // plain directory. Served from the binary so those pages make no network
-    // request at all.
-    if method == "GET" && (path == "/__soli/files.css" || path == "/__soli/files.js") {
-        let if_none_match = req
-            .headers()
+    // Everything the binary serves from itself: the nav and prefetch scripts,
+    // the native bridge and its helpers, the generated directory pages' own
+    // assets. After the same-origin gate, where these blocks stood. See
+    // `framework_assets`.
+    if let Some(response) = framework_assets::bundled(
+        &path,
+        &method,
+        req.headers()
             .get("if-none-match")
-            .and_then(|v| v.to_str().ok());
-        return Ok(if path == "/__soli/files.css" {
-            files::handle_files_css(if_none_match)
-        } else {
-            files::handle_files_js(if_none_match)
-        });
-    }
-
-    // Framework-bundled native bridge: the client shim, and the SSE stream it
-    // subscribes to. The stream is the only place a channel is trusted, so the
-    // signed token is verified before subscribing; every rejection is a flat
-    // 403 rather than an explanation an attacker could probe with.
-    if path == "/__soli/native.js" && method == "GET" {
-        return Ok(box_full(native::handle_native_js()));
-    }
-
-    // Camera preview / barcode scanning, injected only into pages that use one.
-    if path == "/__soli/camera.js" && method == "GET" {
-        return Ok(box_full(camera::handle_camera_js()));
-    }
-    if path == "/__soli/barcode-decoder.js" && method == "GET" {
-        return Ok(box_full(camera::handle_barcode_decoder_js()));
-    }
-
-    // Motion sensors (gyroscope / accelerometer / orientation), injected only
-    // into pages that opt in.
-    if path == "/__soli/sensors.js" && method == "GET" {
-        return Ok(box_full(sensors::handle_sensors_js()));
-    }
-    if path == "/__soli/native/stream" && method == "GET" {
-        return Ok(match native::topic_for_query(raw_query.as_deref()) {
-            Some(topic) => native_stream_response(&topic),
-            None => box_full(
-                Response::builder()
-                    .status(403)
-                    .header("Content-Type", "text/plain; charset=utf-8")
-                    .body(Full::new(Bytes::from_static(
-                        b"native channel token missing, invalid or expired",
-                    )))
-                    .unwrap(),
-            ),
-        });
+            .and_then(|v| v.to_str().ok()),
+        raw_query.as_deref(),
+    ) {
+        return Ok(response);
     }
 
     // Handle live reload SSE endpoint
