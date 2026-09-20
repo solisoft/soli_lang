@@ -11,11 +11,11 @@ src/                    # Rust interpreter source
 ├── parser/            # Parser
 ├── interpreter/       # Runtime (builtins in interpreter/builtins/)
 ├── vm/                # Virtual machine
-└── template/          # ERB template engine
+├── template/          # ERB template engine
+└── scaffold/          # What `soli new` writes — templates/ is embedded at build time
 tests/                 # Soli test files (.sl)
 examples/              # Example Soli programs
 stdlib/                # Standard library
-template/              # MVC project template (used by `soli new`)
 www/                   # Documentation website
 ```
 
