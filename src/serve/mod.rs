@@ -30,6 +30,7 @@ mod origin;
 pub mod otel;
 pub mod phase_log;
 pub mod prefetch;
+mod probes;
 pub mod prod_log;
 pub mod route_listing;
 pub mod route_log;
@@ -2717,60 +2718,10 @@ async fn handle_hyper_request(
         }
     }
 
-    // Liveness: is this process up at all? Answers 200 for as long as the
-    // server is running, including mid-drain — a draining process is healthy, it
-    // just does not want new traffic. An orchestrator that gets a non-200 here
-    // restarts the container, so it must not fail during a normal shutdown.
-    if path == "/_health" && (method == "GET" || method == "HEAD") {
-        return Ok(Response::builder()
-            .status(StatusCode::OK)
-            .header("Content-Type", "text/plain; charset=utf-8")
-            .header("Cache-Control", "no-store")
-            .body(full(Bytes::from_static(b"ok")))
-            .unwrap());
-    }
-
-    // Readiness: should this instance be in the load balancer right now? 503
-    // while workers are still booting and again for the whole drain, so a
-    // rolling deploy stops routing here before connections start being refused.
-    if path == "/_ready" && (method == "GET" || method == "HEAD") {
-        let (status, body) = if shutdown::is_ready() {
-            (StatusCode::OK, &b"ready"[..])
-        } else if shutdown::is_draining() {
-            (StatusCode::SERVICE_UNAVAILABLE, &b"draining"[..])
-        } else {
-            (StatusCode::SERVICE_UNAVAILABLE, &b"starting"[..])
-        };
-        return Ok(Response::builder()
-            .status(status)
-            .header("Content-Type", "text/plain; charset=utf-8")
-            .header("Cache-Control", "no-store")
-            .body(full(Bytes::from_static(body)))
-            .unwrap());
-    }
-
-    // Prometheus metrics endpoint — no CSRF check, intended for scraping
-    if path == "/_metrics" && method == "GET" {
-        // Prometheus text tells anyone who reads it the request volume, timing
-        // distribution and error rate of the whole app. It was served to
-        // anybody who asked, on the same public port. `SOLI_METRICS_TOKEN`
-        // requires a bearer token; unset, access is limited to loopback and
-        // private-range peers (where a scraper normally lives), so an existing
-        // in-cluster Prometheus keeps working without configuration while the
-        // public internet stops seeing it.
-        if !metrics_request_allowed(req.headers(), peer_addr.ip()) {
-            return Ok(Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .header("Content-Type", "text/plain; charset=utf-8")
-                .body(full(Bytes::from_static(b"Not Found")))
-                .unwrap());
-        }
-        let body = crate::metrics::Metrics::global().render_prometheus();
-        return Ok(Response::builder()
-            .status(StatusCode::OK)
-            .header("Content-Type", "text/plain; charset=utf-8")
-            .body(full(Bytes::from(body)))
-            .unwrap());
+    // Liveness, readiness and Prometheus metrics: answered from the path, the
+    // headers and the peer, before any routing. See `probes`.
+    if let Some(response) = probes::handle(&path, &method, req.headers(), peer_addr.ip()) {
+        return Ok(response);
     }
 
     // The built-in LiveView client. Before the same-origin gate, where it has
