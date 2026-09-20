@@ -898,6 +898,22 @@ fn content_type_of(name: &str) -> &'static str {
 /// Check an event against the tree the client was last sent; on success,
 /// the server-side event name and the params the handler receives.
 fn validate(liveview_id: &str, e: &EventFrame) -> Option<(String, serde_json::Value)> {
+    // 06 §4's third check, and the one this function did not do until now.
+    // A `click` carrying a string, a null, one coordinate or a thousand
+    // reached a view handler exactly as a pair of coordinates would, and
+    // what happened next was the application's problem.
+    //
+    // Before the handler is even looked up: it is the cheapest of the three
+    // and the only one that needs nothing but the frame. `payload_fits` is
+    // `eui-proto`'s, because the shape of a payload is a fact about the wire
+    // format rather than about this server, and there are six more servers
+    // that are ports of that crate.
+    if !e.event.payload_fits(&e.payload) {
+        if trace() {
+            eprintln!("[EUI trace] event refused: node={} kind={:?} payload is not the shape 06 §1 declares", e.node, e.event);
+        }
+        return None;
+    }
     with_encoder(liveview_id, |enc| {
         let (name, props) = enc.event_target(e.node, e.event)?;
         let params = serde_json::json!({
@@ -1292,5 +1308,55 @@ mod tests {
         );
         assert!(!dir.join("4-f").exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 06 §4: a payload that is not the shape §1 declares is refused before
+    /// the handler is even looked up.
+    ///
+    /// `validate` needs a session to resolve a handler against, so this
+    /// exercises the half that needs nothing — which is also the half that
+    /// runs first and the one that was missing. The three checks are
+    /// ordered cheapest first on purpose.
+    #[test]
+    fn a_payload_that_is_not_its_kinds_shape_never_reaches_a_handler() {
+        use eui_proto::{EventKind, Value};
+
+        let click = |payload: Value| {
+            let e = EventFrame {
+                node: 1,
+                event: EventKind::Click,
+                name: 1,
+                payload,
+            };
+            // No session is registered under this id, so a payload that
+            // *fits* gets as far as looking one up and finds nothing. The
+            // distinction that matters is which of the two returned `None`,
+            // and `payload_fits` is what says so without a session.
+            e.event.payload_fits(&e.payload)
+        };
+
+        assert!(
+            click(Value::List(vec![Value::Float(1.0), Value::Float(2.0)])),
+            "a pair of coordinates is a click"
+        );
+        assert!(
+            click(Value::List(vec![Value::Int(0), Value::Int(0)])),
+            "and so is the top-left corner, which any narrow encoder writes as integers"
+        );
+        assert!(!click(Value::Str("wherever you like".into())));
+        assert!(!click(Value::Null));
+        assert!(!click(Value::List(vec![Value::Float(1.0)])));
+        assert!(!click(Value::List(vec![Value::Float(0.0); 512])));
+
+        // And `validate` itself refuses before it reaches the encoder: an
+        // id no session was ever registered under would otherwise be the
+        // reason it returns `None`, and this proves the payload was.
+        let bad = EventFrame {
+            node: 1,
+            event: EventKind::Click,
+            name: 1,
+            payload: Value::Null,
+        };
+        assert!(validate("no-such-session", &bad).is_none());
     }
 }

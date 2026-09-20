@@ -6,16 +6,17 @@
 # under `src/scaffold/templates/eui/`; each file is kept byte for byte
 # identical with its copy there by `scripts/sync-catalogue.sh`.
 #
-# The catalogue is four files, cut where the calls already stopped
+# The catalogue is five files, cut where the calls already stopped
 # crossing. This one holds the primitives and the controls the rest is
-# built from; the other three are leaves that call in and are never called
+# built from; the other four are leaves that call in and are never called
 # back. It is one namespace either way, so the split says where to look,
 # not what to import, and no file depends on which loads first.
 #
-#   eui_builders.sl         primitives, control base, split panes, data grid
-#   eui_builders_forms.sl   pages, select, questions, fields, files, dev bar
-#   eui_builders_charts.sl  axes, series, and every mark
-#   eui_builders_feed.sl    tags, dragging, feed
+#   eui_builders.sl           primitives, control base, split panes, data grid
+#   eui_builders_forms.sl     pages, select, questions, fields, files, dev bar
+#   eui_builders_charts.sl    axes, series, and every mark
+#   eui_builders_feed.sl      tags, dragging, feed
+#   eui_builders_markdown.sl  the document, its rows, and the editor
 #
 #   {"k": kind, "s": style, "t": text, "c": children, "on": handlers, "key": key, "p": props}
 #

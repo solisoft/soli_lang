@@ -11,9 +11,22 @@ checkbox(item["title"], item["done"], "toggle", {"id": item["id"]})
 id = params["props"]["id"]
 ```
 
-An event on a node that has no such handler in the tree the client was sent
-is refused and ends the session. Nothing a client sends is trusted before
-that check.
+Nothing a client sends is trusted. Three things are checked before a handler
+runs, and an event that fails any of them is **dropped** — it is not an error
+and it does not end the session:
+
+1. the node exists in the tree this server last sent;
+2. it carries a handler of that kind, naming that name;
+3. the payload is the shape the kind declares — a `click` carries two
+   numbers, a `key_down` a string and a bit set, a `focus` nothing at all.
+
+Dropping rather than closing is deliberate. An event arrives from a client
+that may be one render behind, naming a node that existed a moment ago: a
+handler a re-render removed is still in the client's tree for the round trip
+it takes the new one to arrive, and a hand still moving sends one more event
+into that window. Ending the session there would cost somebody their
+application for a mouse movement — and would make a single malformed frame
+an attack on every reader. `EUI_TRACE=1` prints what was dropped and why.
 
 ## Every event kind
 
