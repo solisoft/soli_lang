@@ -1,3 +1,59 @@
+# `www/docs/` — the markdown source of truth
+
+## The pairing rule, and it runs both ways
+
+The repository's documentation policy (root `CLAUDE.md`) asks for every user-facing topic to
+exist as markdown here *and* as a hand-maintained page under
+`www/app/views/docs/**/*.html.slv`. The `.slv` pages are **not** generated from these files;
+both are written.
+
+The rule is usually stated one way — "markdown with no page" — and the drift has happened in
+both directions. `core-concepts/streaming.html.slv` was a routed, 11 kB page with no markdown
+source at all for as long as it existed, which meant the whole SSE and chunked-streaming
+surface was missing from the documentation that ships *inside applications*.
+
+## Why a missing markdown file is worse than it looks
+
+`soli new` bundles every file in `www/docs/` into the new application under `docs/` — 63
+files, as of this writing. So markdown here is not only the source for the site: it is what a
+person reads in their own project, and what an agent working in that project reads. A topic
+with no markdown is absent from every application anyone creates.
+
+The converse is not symmetrical, which is why some files here have no page and that is fine.
+
+## Deciding, and recording the decision
+
+When you add a file here, it is one of three things. Say which, in the file:
+
+1. **Paired** — the default. Write the `.slv` page in the same change.
+2. **A hub** — one markdown file backing a whole `.slv` *section* rather than one page.
+   `builtins.md` backs `www/app/views/docs/builtins/*` (about 40 pages), `soli-language.md`
+   backs `language/*` (22), `database.md` backs `database/*`. These are not drift and need no
+   note; they are listed in `scripts/check-docs-parity.sh`.
+3. **Markdown-only, deliberately** — it ships in applications and does not belong on the site.
+   Put a one-line `> **Markdown-only, deliberately.**` note under the `# ` heading saying why,
+   as `testing-e2e.md`, `testing-assertions.md` and `solidb-reference.md` do, and add it to
+   the allowlist in `scripts/check-docs-parity.sh`.
+
+A page with no markdown is case 1 unless it is the **site itself** rather than a topic — the
+changelog, the comparison page, the three interactive PDF tools. There is nothing to ship in
+an application's `docs/` for those, and they are listed in the script's `SLV_ONLY`. The list
+should stay short; if a new page wants to join it, that is usually a sign the topic has a
+reference form that ought to be written.
+
+`scripts/check-docs-parity.sh` reports anything that is none of the above. It is advisory
+rather than a gate, because the allowlists *are* the judgement and the script only remembers
+them. It currently reports six pages with no markdown — `i18n`, `websockets`, `debugging`,
+`linting`, `base64` and `encoding` — each a real topic whose reference form is missing from
+every scaffolded application. See `tasks/todo/`.
+
+## Comment style
+
+`#`, not `//`, in every `soli` code block — here and in the `.slv` pages. The `//` form was
+standardised away; the runtime still accepts it for middleware directives, which is why stale
+`// order: 5` examples survived as long as they did.
+
+
 <claude-mem-context>
 # Recent Activity
 

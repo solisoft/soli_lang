@@ -1,5 +1,9 @@
 # Testing Assertions
 
+> **Markdown-only, deliberately.** No `.html.slv` counterpart: this is a reference table
+> people read next to their code, and `www/docs/` ships inside every scaffolded
+> application under `docs/`. See `www/docs/CLAUDE.md`.
+
 Assertions are **builtins** of the test runner: they are defined by the runtime and
 available inside any `test(...)` body run by `soli test`. Nothing to import, and no
 `tests/helpers/assertions.sl` to write.

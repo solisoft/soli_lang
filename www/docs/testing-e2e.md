@@ -1,5 +1,10 @@
 # E2E Controller Testing Guide
 
+> **Markdown-only, deliberately.** This page has no `.html.slv` counterpart on the docs
+> site. Every file in `www/docs/` is bundled into each scaffolded application under
+> `docs/`, so it reaches its readers there; the site covers testing under
+> `/docs/testing/*`. See `www/docs/CLAUDE.md` for the rule.
+
 Rails-like end-to-end testing framework for Soli MVC applications.
 
 ## Overview

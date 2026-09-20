@@ -115,6 +115,10 @@
             <h3 class="text-lg font-semibold text-amber-400 mb-2">Frontend without a toolchain</h3>
             <p class="text-gray-400 text-sm">Auto-escaped server templates, vendored htmx + Alpine, Turbo-Drive-class instant navigation and hover prefetching with ETag revalidation &mdash; zero Node, zero config.</p>
         </div>
+        <div class="p-6 rounded-xl bg-white/5 border border-white/10">
+            <h3 class="text-lg font-semibold text-amber-400 mb-2">Shipping to a device</h3>
+            <p class="text-gray-400 text-sm"><code>soli generate client android|ios|linux|windows</code> writes a thin OS shell that loads your deployed app and speaks a <a href="/docs/development-tools/native-bridge" class="text-amber-400 hover:text-amber-300">native bridge</a>: <code>Native.notify</code> raises a real OS notification when the app is closed, where web push does not exist at all. <code>soli generate devices</code> adds the token-registration endpoint, and APNs and FCM are both first-party. <code>soli desktop build</code> is the other shape &mdash; a local product with an embedded database rather than a shell over a deployment. Deep links, camera and microphone permissions, geolocation, motion sensors, barcode scanning and an offline story are documented per platform, including where each host refuses. None of Rails, Laravel, Phoenix or Django generates a shippable mobile or desktop client at all; this is the one edge here that is about distribution rather than the server.</p>
+        </div>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Honest Gaps</h2>
@@ -128,6 +132,7 @@
         <li><strong class="text-white">Attachments are first-class.</strong> <code>has_one_attached("avatar")</code> / <code>has_many_attached("photos")</code> store on <strong class="text-white">disk</strong> by default (or <code>s3</code> / <code>solidb</code>), generate <code>attach_</code>/<code>detach_</code>/<code>_url</code> methods, and purge on <code>delete</code>. The older <code>uploader(...)</code> form still defaults to SoliDB blobs. Ingest is buffered in memory under a per-request cap and an aggregate in-flight budget, so uploads are bounded rather than streamed: there is no direct-to-storage browser upload and no resumable/tus path.</li>
         <li><strong class="text-white">View composition</strong> &mdash; layouts, partials with locals, <code>content_for</code>/named <code>yield</code>, plus a built-in <code>component(name, data)</code> helper (looks in <code>components/</code>, scaffold with <code>soli generate component</code>) with a block form for default + named slots (a <code>c.slot(...)</code> slot-builder), collection rendering, declared props with dev/lint warnings, opt-in fragment caching, a dev component catalog at <code>/__soli/components</code>, and <code>paginate(pagination)</code> for list navigation. Not a full ViewComponent system (no component classes), but a practical, growing step up from raw partials.</li>
         <li><strong class="text-white">LiveView is young.</strong> Patching is DOM-aware &mdash; the client morphs nodes in place with keyed reconciliation (<code>soli-key</code>/<code>soli-ignore</code>), so focus and widget state survive updates &mdash; and it has collection <strong class="text-white">streams</strong>, reactive live queries, debounce/throttle, JS commands, <code>soli-patch</code> / <code>soli-live</code> navigation, nested child sockets, shared-state <code>live_component</code> assigns, <code>send_update</code> / child <code>event == "update"</code>, client hooks, loading/disable-with, click-away, chunked <code>soli-upload</code>, and reconnect state restore. Child components are not OTP processes (no cross-process <code>send_update</code>). Pause/resume of a mid-flight upload is still missing.</li>
+        <li><strong class="text-white">EUI is the second real-time UI stack, and it is not a browser one.</strong> A component declared with <code>router_eui</code> uses the same LiveView machinery &mdash; same registration, same <code>{event, params, state} -&gt; state</code> handler, same worker pool &mdash; but its view returns a <em>node tree as plain data</em> rather than an HTML template, and the server sends it as compact binary patches over <code>/_eui/session/&lt;component&gt;</code>. A Rust client lays it out and draws it on the GPU, so there is no document engine running and a counter idles at a few megabytes and no CPU. It is in the default feature set. <strong class="text-white">The cost is the client:</strong> this reaches a native application, not a web page &mdash; a browser opening an EUI address gets a short page explaining what the address is. A page can also be served as <em>one render with no session behind it</em>, and one corner of it made live with an island, which is how a mostly-static page stops paying a session per reader; the client half of islands is not built yet.</li>
     </ul>
 
     <h3 class="text-xl font-semibold text-white mb-4">Auth</h3>
@@ -210,7 +215,7 @@
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-white mb-2">vs the TypeScript full-stacks (AdonisJS, NestJS, Next.js)</h3>
-            <p class="text-gray-400 text-sm">Soli competes here on <em>not</em> having a <code>node_modules</code> directory: comparable expressiveness, far higher throughput, and one binary instead of a toolchain. It concedes the npm ecosystem and React-style rich-client UIs.</p>
+            <p class="text-gray-400 text-sm">Soli competes here on <em>not</em> having a <code>node_modules</code> directory: comparable expressiveness, far higher throughput, and one binary instead of a toolchain. It concedes the npm ecosystem and React-style rich-client UIs &mdash; though for a server-driven interface there is LiveView in the browser, and EUI for a native client that draws on the GPU without a document engine.</p>
         </div>
     </div>
 
@@ -230,7 +235,7 @@
             <ul class="list-disc pl-5 text-red-200/80 text-sm space-y-2">
                 <li>Full SQL parity (raw SQL dialects, associations/<code>group_by</code> on existing schemas) &mdash; SQL is document CRUD plus a column-aware mode for existing tables; SoliDB remains the integrated stack for graph/search/columnar</li>
                 <li>A generic, zero-build admin UI (Django-style) &mdash; Soli's bet is agents + scaffolding for bespoke admins instead</li>
-                <li>Phoenix-LiveView-depth realtime UI, or a rich SPA toolchain</li>
+                <li>A rich SPA toolchain &mdash; no bundler, no component framework, no <code>node_modules</code>. For <em>server-driven</em> realtime UI there are now two answers (LiveView in the browser, EUI on a native client), but if your plan is React or Vue with a JSON API, Soli gives you the API and nothing else</li>
                 <li>A large third-party package ecosystem</li>
             </ul>
         </div>

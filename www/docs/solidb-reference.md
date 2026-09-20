@@ -1,5 +1,10 @@
 # SolidB Reference
 
+> **Markdown-only, deliberately.** SolidB is a separate project; this is the request and
+> method surface Soli talks to, kept here so it ships in the `docs/` of every scaffolded
+> application. The site documents the Soli-facing ORM instead, under `/docs/database/*`.
+> See `www/docs/CLAUDE.md`.
+
 The complete request & method surface for talking to **SolidB**, Soli's
 database — in one place. Everything below ships with your project; the deep-dive
 links point at other files in this same `docs/` folder.
