@@ -205,11 +205,11 @@ Regex.escape("(test)")       # "\\(test\\)"</code></pre>
 
     <!-- Navigation -->
     <div class="flex justify-between items-center pt-8 border-t border-white/10">
-        <a href="/docs/builtins/jwt" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+        <a href="/docs/builtins/xml-signatures" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
             </svg>
-            JWT Functions
+            XML Signatures &amp; Key Material
         </a>
         <a href="/docs/builtins/env" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
             Env Functions
