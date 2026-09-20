@@ -17,11 +17,13 @@ set -u
 SOLI="${SOLI:-./target/release/soli}"
 
 # Files known not to parse, each with a reason. This list should only ever
-# shrink. See tasks/todo/two-examples-are-written-in-a-dialect-soli-never-had.md
-SKIP=(
-  "examples/duration.sl"      # static methods + `self.` + `x as Float`: needs an API redesign
-  "examples/solidb_bench.sl"  # `new Solidb(...)`: a class and constructor form Soli does not have
-)
+# shrink — and as of now it is empty. The last two entries were
+# `examples/duration.sl`, a 152-line userland reimplementation of the built-in
+# `Duration` class written against `static` methods and `x as Float`, and
+# `examples/solidb_bench.sl`, written against `new Solidb(...)`. Both were
+# rewritten rather than repaired: the constructs they needed are ones Soli has
+# never had, and the first was shadowing a builtin that does the same job.
+SKIP=()
 
 skipped=0
 failed=0

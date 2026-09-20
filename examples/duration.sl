@@ -1,152 +1,48 @@
-// Duration class for time span manipulation
-// Internal representation is total seconds as Float
+# Duration — time spans, from the built-in class.
+#
+# This file used to be a 152-line userland `Duration` class: a constructor
+# taking a value and a unit, six `static` convenience constructors, seven
+# `total_*` accessors and four operator overloads. It never ran. It was written
+# against `static` methods, `self.`, `value as Float` and `new Duration(...)` —
+# four constructs Soli does not have — and nothing executed `examples/`, so it
+# sat there being wrong for as long as it existed.
+#
+# It was also reimplementing something Soli ships. `Duration` is a built-in,
+# with the same surface that file was building by hand, so the example now
+# shows the thing itself rather than a copy of it.
+#
+#   soli examples/duration.sl
 
-class Duration {
-    // Internal total seconds
-    total_secs: Float;
+# Constructors. Each takes a count and answers a span.
+let quarter_hour = Duration.minutes(15)
+let working_day  = Duration.hours(8)
+let sprint       = Duration.days(14)
 
-    // Constructor - creates duration from value and unit
-    // Units: "days", "hours", "minutes", "seconds", "milliseconds"
-    new(value: Int, unit: String) {
-        let multiplier = 1.0;
-        if (unit == "days") {
-            multiplier = 86400.0;
-        } elsif (unit == "hours") {
-            multiplier = 3600.0;
-        } elsif (unit == "minutes") {
-            multiplier = 60.0;
-        } elsif (unit == "seconds") {
-            multiplier = 1.0;
-        } elsif (unit == "milliseconds") {
-            multiplier = 0.001;
-        } else {
-            print("Error: Unknown duration unit: " + unit);
-            print("Valid units: days, hours, minutes, seconds, milliseconds");
-            self.total_secs = 0.0;
-            return;
-        }
-        self.total_secs = value as Float * multiplier;
-    }
+print("a quarter hour in seconds: #{quarter_hour.total_seconds()}")
+print("a working day in minutes:  #{working_day.total_minutes()}")
+print("a sprint in hours:         #{sprint.total_hours()}")
 
-    // Convenience constructor for days
-    static days(n: Int): Duration {
-        return new Duration(n, "days");
-    }
+# The accessors convert rather than truncate, so they answer a float and the
+# unit you ask for is the unit you get.
+print("a sprint in days:          #{sprint.total_days()}")
 
-    // Convenience constructor for hours
-    static hours(n: Int): Duration {
-        return new Duration(n, "hours");
-    }
+# `humanize` is for showing someone, not for arithmetic.
+print(Duration.seconds(3661).humanize())   # 1 hour 1 minute
+print(Duration.seconds(45).humanize())
+print(Duration.minutes(90).humanize())
 
-    // Convenience constructor for minutes
-    static minutes(n: Int): Duration {
-        return new Duration(n, "minutes");
-    }
-
-    // Convenience constructor for seconds
-    static seconds(n: Int): Duration {
-        return new Duration(n, "seconds");
-    }
-
-    // Convenience constructor for milliseconds
-    static milliseconds(n: Int): Duration {
-        return new Duration(n, "milliseconds");
-    }
-
-    // Convenience constructor for weeks
-    static weeks(n: Int): Duration {
-        return new Duration(n * 7, "days");
-    }
-
-    // Create duration between two DateTimes (uses built-in Duration.between)
-    static between(start: DateTime, end: DateTime): Duration {
-        return Duration.between(start, end);
-    }
-
-    // Get total days
-    total_days(): Float {
-        return self.total_secs / 86400.0;
-    }
-
-    // Get total hours
-    total_hours(): Float {
-        return self.total_secs / 3600.0;
-    }
-
-    // Get total minutes
-    total_minutes(): Float {
-        return self.total_secs / 60.0;
-    }
-
-    // Get total seconds
-    total_seconds(): Float {
-        return self.total_secs;
-    }
-
-    // Get total milliseconds
-    total_millis(): Float {
-        return self.total_secs * 1000.0;
-    }
-
-    // Get total years (approximate, using 365.25 days per year)
-    total_years(): Float {
-        return self.total_days() / 365.25;
-    }
-
-    // Get total weeks
-    total_weeks(): Float {
-        return self.total_days() / 7.0;
-    }
-
-    // Clone this duration
-    clone(): Duration {
-        let dur = new Duration(0, "seconds");
-        dur.total_secs = self.total_secs;
-        return dur;
-    }
-
-    // Convert to string
-    to_string(): String {
-        let days = self.total_days();
-        if (days >= 1.0) {
-            return str(days) + " days";
-        }
-        let hours = self.total_hours();
-        if (hours >= 1.0) {
-            return str(hours) + " hours";
-        }
-        let minutes = self.total_minutes();
-        if (minutes >= 1.0) {
-            return str(minutes) + " minutes";
-        }
-        return str(self.total_secs) + " seconds";
-    }
+# `between` measures two instants. Note that `DateTime.now()` carries a
+# subsecond, so this is a real measurement and not a whole number of seconds.
+let started = DateTime.now()
+let total   = 0
+for i in 1..200000 {
+    total = total + i
 }
+let elapsed = Duration.between(started, DateTime.now())
 
-// Operator: Duration + Duration
-def Duration.+(other: Duration): Duration {
-    let result = new Duration(0, "seconds");
-    result.total_secs = self.total_secs + other.total_secs;
-    return result;
-}
+print("summed to #{total} in #{elapsed.total_seconds()}s")
 
-// Operator: Duration - Duration
-def Duration.-(other: Duration): Duration {
-    let result = new Duration(0, "seconds");
-    result.total_secs = self.total_secs - other.total_secs;
-    return result;
-}
-
-// Operator: Duration * Int
-def Duration.*(n: Int): Duration {
-    let result = new Duration(0, "seconds");
-    result.total_secs = self.total_secs * (n as Float);
-    return result;
-}
-
-// Operator: Duration / Int
-def Duration./(n: Int): Duration {
-    let result = new Duration(0, "seconds");
-    result.total_secs = self.total_secs / (n as Float);
-    return result;
-}
+# A week is seven days; there is no separate constructor for it, because
+# multiplying the count is clearer than another name to remember.
+let fortnight = Duration.days(7 * 2)
+print("a fortnight in days:       #{fortnight.total_days()}")
