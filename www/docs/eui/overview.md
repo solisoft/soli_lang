@@ -233,8 +233,33 @@ seconds to say Hello; the server pings every thirty seconds and closes after
 two go unanswered. Inbound frames are charged against the `/ws/*` budget
 (`SOLI_WS_MAX_MESSAGES_PER_SEC`), a `Resync` twenty at a time — it re-sends
 the whole tree. A reader that stops draining its frames is closed after two
-seconds rather than have batches skipped: the client reconnects and resyncs,
-and a session is never left with a tree the server no longer has.
+seconds rather than have batches skipped: the client reconnects and picks the
+session up again (below), and a session is never left with a tree the server no
+longer has.
+
+### A socket that breaks is not an application that ended
+
+EUI 01 §4.1. The `Welcome` names the session with sixteen bytes; a client whose
+socket dropped offers them back, with the sequence number of the last batch it
+applied. If the handle names a session still here — opened by the same cookie,
+on the same component, whose replay still reaches back that far — the answer is
+`Welcome{Resumed}` followed by **only the batches that client missed**. Nothing
+is rendered: no `connect`, no resync, no whole tree. The reader keeps their
+scroll, their focus and what they had half-typed.
+
+The session survives for two minutes after the socket goes. Past that, or if
+any of the four conditions fails, the answer is `Welcome{Fresh}` and the client
+tears its tree down and takes the mount that follows — which is honest, and is
+what happened on every reconnect before this.
+
+Two things are deliberate. The handle is **minted per session**, not derived
+from the cookie: two tabs of one reader share a cookie and must not share a
+session. And it is not sufficient on its own — it is a bearer, so a resume also
+checks the cookie and the component, or sixteen bytes would be enough to be
+handed somebody else's tree. A client that fell further behind than the last
+sixty-four batches is refused rather than half-filled: being told you were
+resumed and handed a tree with a hole in it is worse than being told to start
+again, because nothing would say so.
 
 An `Error` frame ends the session on both sides, so it is sent only when the
 session really is over: 503 when the worker queue could not take the event,

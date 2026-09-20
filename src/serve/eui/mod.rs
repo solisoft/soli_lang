@@ -56,6 +56,192 @@ type EncoderCell = std::sync::Arc<Mutex<tree::Encoder>>;
 /// previous tree.
 static EUI_ENCODERS: TenantValue<HashMap<String, EncoderCell>> = TenantValue::new(HashMap::new);
 
+/// EUI 01 §4.1: what a broken socket leaves behind, so the socket after it
+/// can pick the session up instead of mounting a new one.
+///
+/// Keyed by instance id, which is what every write here has in hand: a batch
+/// is remembered on each render and an `Ack` trims the buffer, while a handle
+/// is looked up once per reconnect. The rare road pays the scan.
+///
+/// The **handle** is what a `Welcome` names the session by — sixteen random
+/// bytes minted per EUI session, not the cookie's digest. Two tabs of one
+/// person share a cookie and must not share a session, so the handle cannot
+/// be derived from it; and because it is a bearer (01 §4.1), resuming also
+/// requires the socket to carry the same cookie session and name the same
+/// component, so possession of the bytes alone is not possession of the
+/// session.
+struct Resumable {
+    /// The handle this session was opened with. A field rather than the key:
+    /// a batch is remembered on every render and a handle is looked up once
+    /// per reconnect, so the map is keyed by the thing the hot path has.
+    handle: [u8; 16],
+    /// The cookie session that opened it. A resume must match it.
+    session_id: String,
+    /// Which component, so a handle cannot be pointed at another one.
+    component: String,
+    /// Batches sent and not yet acknowledged, oldest first, capped at
+    /// [`MAX_REPLAY`]: the client names the last one it applied and is sent
+    /// what came after it.
+    replay: std::collections::VecDeque<(u64, Vec<u8>)>,
+    /// When the socket went. `None` while one is attached.
+    detached_at: Option<std::time::Instant>,
+}
+
+/// How many unacknowledged batches a session keeps for a reconnect.
+///
+/// The same number the reference server keeps, and a ceiling rather than a
+/// target: a client that has applied everything keeps none of them. What
+/// bounds it is a session that renders while nobody is reading the socket —
+/// past this the replay is incomplete, and an incomplete replay is refused
+/// rather than half-applied, because 01 §4.1's whole promise is that a
+/// resumed session is the session and not something like it.
+const MAX_REPLAY: usize = 64;
+
+/// How long a detached session is kept. The same two minutes the LiveView
+/// registry holds an instance for, because the two have to expire together:
+/// a handle whose instance the reaper took names nothing.
+const RESUME_GRACE: std::time::Duration = std::time::Duration::from_secs(120);
+
+static EUI_RESUMABLE: TenantValue<HashMap<String, Resumable>> = TenantValue::new(HashMap::new);
+
+/// Sixteen bytes that name one EUI session and nothing else.
+///
+/// Random, because a handle derived from anything a client can see is a
+/// handle a client can guess, and 01 §4.1 makes it a bearer.
+pub fn mint_handle() -> [u8; 16] {
+    let mut out = [0u8; 16];
+    out.copy_from_slice(&uuid::Uuid::new_v4().as_bytes()[..16]);
+    out
+}
+
+/// Drop every detached session whose grace has run out, taking its encoder
+/// with it.
+///
+/// The encoder is no longer dropped when the socket goes — that is what made
+/// every reconnect a fresh mount — so this is the only thing that frees it,
+/// and it runs on every path that touches the map.
+fn sweep(m: &mut HashMap<String, Resumable>) {
+    let now = std::time::Instant::now();
+    let gone: Vec<String> = m
+        .iter()
+        .filter(|(_, r)| {
+            r.detached_at
+                .is_some_and(|t| now.duration_since(t) >= RESUME_GRACE)
+        })
+        .map(|(id, _)| id.clone())
+        .collect();
+    m.retain(|_, r| {
+        r.detached_at
+            .is_none_or(|t| now.duration_since(t) < RESUME_GRACE)
+    });
+    for id in gone {
+        drop_encoder(&id);
+    }
+}
+
+/// Mint a handle for a new session and remember what it names.
+pub fn open_resumable(handle: [u8; 16], liveview_id: &str, session_id: &str, component: &str) {
+    EUI_RESUMABLE.write(|m| {
+        sweep(m);
+        m.insert(
+            liveview_id.to_owned(),
+            Resumable {
+                handle,
+                session_id: session_id.to_owned(),
+                component: component.to_owned(),
+                replay: std::collections::VecDeque::new(),
+                detached_at: None,
+            },
+        );
+    });
+}
+
+/// The socket went. Start the clock; the state stays until it runs out.
+pub fn detach_resumable(liveview_id: &str) {
+    EUI_RESUMABLE.write(|m| {
+        sweep(m);
+        if let Some(r) = m.get_mut(liveview_id) {
+            r.detached_at = Some(std::time::Instant::now());
+        }
+    });
+}
+
+/// Forget a session outright: it ended, rather than lost its socket.
+pub fn close_resumable(liveview_id: &str) {
+    EUI_RESUMABLE.write(|m| {
+        sweep(m);
+        m.remove(liveview_id);
+    });
+    drop_encoder(liveview_id);
+}
+
+/// What an offered handle may be picked up as: the instance to re-attach to
+/// and the batches owed after `acked`.
+///
+/// `None` unless the handle names a live detached session of **this** cookie
+/// session and **this** component, and the replay still reaches back to what
+/// the client says it applied. A gap is a refusal: 01 §4.1 says a resumed
+/// session is the session, and a client sent a tree with a hole in it would
+/// be told nothing was wrong.
+pub fn take_resumable(
+    handle: [u8; 16],
+    session_id: &str,
+    component: &str,
+    acked: u64,
+) -> Option<(String, Vec<Vec<u8>>)> {
+    EUI_RESUMABLE.write(|m| {
+        sweep(m);
+        // By handle, which is the rare road: once per reconnect, against a
+        // map holding one entry per live session.
+        let id = m
+            .iter()
+            .find(|(_, r)| r.handle == handle)
+            .map(|(id, _)| id.clone())?;
+        let r = m.get_mut(&id)?;
+        if r.session_id != session_id || r.component != component || r.detached_at.is_none() {
+            return None;
+        }
+        // Everything after what the client applied. `acked` of zero is a
+        // client that applied nothing, and the buffer must then hold the
+        // mount itself for this to be honest.
+        let oldest = r.replay.front().map(|(seq, _)| *seq);
+        if let Some(first) = oldest {
+            if acked.saturating_add(1) < first {
+                return None;
+            }
+        }
+        let owed: Vec<Vec<u8>> = r
+            .replay
+            .iter()
+            .filter(|(seq, _)| *seq > acked)
+            .map(|(_, b)| b.clone())
+            .collect();
+        r.detached_at = None;
+        Some((id, owed))
+    })
+}
+
+/// Keep a batch for a reconnect, and drop what the client has applied.
+fn remember_batch(liveview_id: &str, seq: u64, bytes: &[u8]) {
+    EUI_RESUMABLE.write(|m| {
+        if let Some(r) = m.get_mut(liveview_id) {
+            r.replay.push_back((seq, bytes.to_vec()));
+            while r.replay.len() > MAX_REPLAY {
+                r.replay.pop_front();
+            }
+        }
+    });
+}
+
+/// The client applied everything up to `seq`; the rest is no longer owed.
+pub fn note_acked(liveview_id: &str, seq: u64) {
+    EUI_RESUMABLE.write(|m| {
+        if let Some(r) = m.get_mut(liveview_id) {
+            r.replay.retain(|(s, _)| *s > seq);
+        }
+    });
+}
+
 /// The synthetic event the socket posts when the client asks for a resync:
 /// the handler is not run, the tree is re-sent whole.
 pub const RESYNC_EVENT: &str = "__eui_resync";
@@ -297,7 +483,13 @@ const SEND_PATIENCE: std::time::Duration = std::time::Duration::from_secs(2);
 /// each, and say how many bytes that was — the one number a dev bar cannot
 /// work out for itself. `deadline` is the render's, shared by all its frames.
 fn send_frame(instance: &LiveViewInstance, frame: &Frame, deadline: std::time::Instant) -> usize {
-    let bytes = frame.encode();
+    send_bytes(instance, frame.encode(), deadline)
+}
+
+/// The same, for a frame already encoded — a `Batch` is encoded once and kept
+/// for a reconnect (01 §4.1) before it is sent, and encoding it twice to do
+/// both would put the cost of resume on every render.
+fn send_bytes(instance: &LiveViewInstance, bytes: Vec<u8>, deadline: std::time::Instant) -> usize {
     let size = bytes.len();
     for sender in &instance.senders {
         send_or_close(sender, bytes.clone(), deadline);
@@ -516,7 +708,12 @@ pub fn handle_eui_event(
         }
         sent.ops += batch.ops.len();
         sent.seq = batch.seq;
-        sent.bytes += send_frame(instance, &Frame::Batch(batch), deadline);
+        // 01 §4.1: kept before it is sent, because the send is what may fail.
+        // A batch the client never received is exactly the one a resume owes
+        // it, and the encoder has already moved on — this is the only copy.
+        let bytes = Frame::Batch(batch).encode();
+        remember_batch(&instance.id, sent.seq, &bytes);
+        sent.bytes += send_bytes(instance, bytes, deadline);
     }
     // What this render cost, for the next one to draw. A dev bar reports the
     // work behind what is on the screen, so it is always one render behind —
@@ -584,5 +781,116 @@ mod tests {
         assert_eq!(drain.join().unwrap(), vec![0, 1, 2], "in order, none lost");
         assert!(!tx.is_closed(), "a draining reader is never given up on");
         drop(still_open);
+    }
+}
+
+#[cfg(test)]
+mod resume_tests {
+    use super::*;
+
+    fn batch_bytes(seq: u64) -> Vec<u8> {
+        Frame::Batch(eui_proto::Batch {
+            seq,
+            ops: Vec::new(),
+        })
+        .encode()
+    }
+
+    /// 01 §4.1: a socket that breaks is not an application that ended. The
+    /// handle names the session, and what comes back is the batches after
+    /// the one the client says it applied — not the whole tree.
+    #[test]
+    fn a_resumed_session_is_owed_only_what_it_did_not_apply() {
+        let h = mint_handle();
+        open_resumable(h, "view-1", "sess-a", "counter");
+        for seq in 1..=5 {
+            remember_batch("view-1", seq, &batch_bytes(seq));
+        }
+        detach_resumable("view-1");
+
+        let (id, owed) = take_resumable(h, "sess-a", "counter", 3).expect("still here");
+        assert_eq!(id, "view-1");
+        assert_eq!(owed.len(), 2, "four and five, not the tree");
+        assert_eq!(owed[0], batch_bytes(4));
+        assert_eq!(owed[1], batch_bytes(5));
+        close_resumable("view-1");
+    }
+
+    /// The handle is a bearer (01 §4.1), so it is not the whole of the check.
+    /// Another person's cookie, or another component, resumes nothing — the
+    /// alternative is that sixteen bytes are enough to be handed somebody
+    /// else's tree, with their data in it.
+    #[test]
+    fn a_handle_alone_does_not_open_somebody_elses_session() {
+        let h = mint_handle();
+        open_resumable(h, "view-2", "sess-owner", "inbox");
+        remember_batch("view-2", 1, &batch_bytes(1));
+        detach_resumable("view-2");
+
+        assert!(
+            take_resumable(h, "sess-thief", "inbox", 0).is_none(),
+            "another cookie"
+        );
+        assert!(
+            take_resumable(h, "sess-owner", "settings", 0).is_none(),
+            "another component"
+        );
+        assert!(
+            take_resumable(mint_handle(), "sess-owner", "inbox", 0).is_none(),
+            "a handle nobody minted"
+        );
+        // And the real one still works afterwards: a refusal consumes nothing.
+        assert!(take_resumable(h, "sess-owner", "inbox", 0).is_some());
+        close_resumable("view-2");
+    }
+
+    /// A session whose socket is still attached is not resumable: two live
+    /// sockets on one session would both be told they own its tree.
+    #[test]
+    fn a_session_that_never_lost_its_socket_is_not_picked_up() {
+        let h = mint_handle();
+        open_resumable(h, "view-3", "sess-a", "counter");
+        assert!(
+            take_resumable(h, "sess-a", "counter", 0).is_none(),
+            "still attached"
+        );
+        detach_resumable("view-3");
+        assert!(take_resumable(h, "sess-a", "counter", 0).is_some());
+        close_resumable("view-3");
+    }
+
+    /// A gap is a refusal. The buffer holds at most `MAX_REPLAY`, and a
+    /// client that fell further behind than that cannot be caught up — being
+    /// told it was resumed and handed a tree with a hole in it is worse than
+    /// being told to start again, because nothing would say so.
+    #[test]
+    fn a_client_too_far_behind_is_refused_rather_than_half_filled() {
+        let h = mint_handle();
+        open_resumable(h, "view-4", "sess-a", "counter");
+        for seq in 1..=(MAX_REPLAY as u64 + 10) {
+            remember_batch("view-4", seq, &batch_bytes(seq));
+        }
+        detach_resumable("view-4");
+        assert!(
+            take_resumable(h, "sess-a", "counter", 2).is_none(),
+            "the buffer no longer reaches back that far"
+        );
+        close_resumable("view-4");
+    }
+
+    /// What the client acknowledged is no longer owed, or the buffer would
+    /// hold the last sixty-four batches of every session for ever.
+    #[test]
+    fn an_ack_drops_what_it_names() {
+        let h = mint_handle();
+        open_resumable(h, "view-5", "sess-a", "counter");
+        for seq in 1..=4 {
+            remember_batch("view-5", seq, &batch_bytes(seq));
+        }
+        note_acked("view-5", 4);
+        detach_resumable("view-5");
+        let (_, owed) = take_resumable(h, "sess-a", "counter", 4).expect("still here");
+        assert!(owed.is_empty(), "{owed:?}");
+        close_resumable("view-5");
     }
 }

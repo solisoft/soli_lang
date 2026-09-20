@@ -216,7 +216,39 @@ pub fn upgrade(
         // client (`live::socket::session_handle`), and this frame used to
         // carry its first sixteen bytes. A synthetic `sess-*` id names no
         // session and goes as it is.
-        let session_bytes = welcome_session(&session_id);
+        // 01 §4.1: the handle is minted per EUI session, not derived from the
+        // cookie. It used to be a digest of the session id, which names the
+        // *person* — two tabs of one reader share a cookie and must not share
+        // a session, so a handle taken from it could not tell them apart and
+        // a resume had nothing to look up. `welcome_session` stays for a
+        // cookie-less socket, which names nothing either way.
+        let session_bytes = if session_id.starts_with("sess-") {
+            welcome_session(&session_id)
+        } else {
+            super::mint_handle()
+        };
+        // The handle is a bearer (01 §4.1), so it is not the whole of the
+        // check: `take_resumable` also requires this socket to carry the same
+        // cookie session and name the same component.
+        let resuming = match &hello.resume {
+            Some(Offer::Resume(r)) => {
+                super::take_resumable(r.session, &session_id, &component, r.acked)
+                    // And the instance itself must still be there. A session
+                    // that *ended* — a `connect` that closed it, an `Error` —
+                    // is unregistered, while one that merely lost its socket
+                    // is detached and kept. Without this the handle would
+                    // outlive the thing it names for the length of the grace,
+                    // and a client would be told `Resumed` and then handed a
+                    // session with nothing in it.
+                    .filter(|(id, _)| live_registry().get(id).is_some())
+                    .map(|(id, owed)| (r.session, id, owed))
+            }
+            _ => None,
+        };
+        // A resumed session keeps the handle it was opened with: the client
+        // is holding it and will offer it again the next time the socket
+        // breaks, which on a bad connection is a thing that happens twice.
+        let session_bytes = resuming.as_ref().map_or(session_bytes, |(h, _, _)| *h);
         // 01 §2.6. A client that fetched this page over HTTPS offers the hash
         // of the tree it holds rather than a session. The answer depends on
         // what the first render comes out as, so the `Welcome` waits for it —
@@ -238,14 +270,18 @@ pub fn upgrade(
                         // what a negotiation is.
                         version: hello.version.min(PROTOCOL_VERSION),
                         session: session_bytes,
-                        // EUI 01 §4.1: a session that survives its socket. A
-                        // LiveView session is torn down with the socket under
-                        // it, so there is nothing here to pick up again and
-                        // the client is told to start clean. A socket that
-                        // breaks does now bring the window back by itself —
-                        // on a fresh session and a fresh mount, which is the
-                        // half of it that needs nothing from this side.
-                        start: Start::Fresh,
+                        // EUI 01 §4.1. `Resumed` when this socket offered a
+                        // handle that named a session still here, opened by
+                        // this cookie, on this component, whose replay still
+                        // reaches back to the batch the client says it
+                        // applied. Anything short of all four is `Fresh`, and
+                        // a `Fresh` is honest: the client tears its tree down
+                        // and takes the mount that follows.
+                        start: if resuming.is_some() {
+                            Start::Resumed
+                        } else {
+                            Start::Fresh
+                        },
                     })
                     .encode(),
                 ))
@@ -253,6 +289,24 @@ pub fn upgrade(
                 .is_err()
         {
             return;
+        }
+
+        // 1.5. 01 §4.1: what the resumed client is owed — the batches after
+        // the one it said it applied, in order, byte for byte as they were
+        // sent. Straight onto the socket, before the write task exists, so
+        // nothing a later render produces can overtake them.
+        if let Some((_, _, owed)) = &resuming {
+            if trace() {
+                eprintln!(
+                    "[EUI trace] {component}: resumed, replaying {} batch(es)",
+                    owed.len()
+                );
+            }
+            for bytes in owed {
+                if ws_write.send(Message::Binary(bytes.clone())).await.is_err() {
+                    return;
+                }
+            }
         }
 
         // 2. The instance, shared with LiveView's registry.
@@ -276,6 +330,13 @@ pub fn upgrade(
         let already = live_registry()
             .attach_or_register(instance, sender.clone())
             .is_some();
+        // 01 §4.1: from here the session can be picked up again. On a resume
+        // the entry is already there and `take_resumable` has cleared its
+        // detached clock; on anything else this is where it starts existing,
+        // and opening one forgets whatever the same instance had before.
+        if resuming.is_none() {
+            super::open_resumable(session_bytes, &liveview_id, &session_id, &component);
+        }
 
         // 3. First render: `connect` for a fresh instance, a whole-tree resend
         //    for a reconnect that found its state still there.
@@ -296,16 +357,28 @@ pub fn upgrade(
         };
         // A `connect` that closes never ran for this client: there is no
         // `disconnect` to post on the way out.
-        let connected = post(
-            &lv_event_tx,
-            &sender,
-            &liveview_id,
-            &component,
-            first,
-            first_params,
-            &session_id,
-        )
-        .await;
+        //
+        // 01 §4.1: a resumed session renders nothing at all. The tree the
+        // client holds is the tree this instance last sent, and the replay
+        // above has already closed the gap — a `connect` would run the
+        // application's handler a second time, and a resync would send a
+        // whole tree the client already has. Doing neither is what makes a
+        // resume cheaper than a reconnect, which is the only reason to have
+        // one.
+        let connected = if resuming.is_some() {
+            true
+        } else {
+            post(
+                &lv_event_tx,
+                &sender,
+                &liveview_id,
+                &component,
+                first,
+                first_params,
+                &session_id,
+            )
+            .await
+        };
 
         // 3.5. 01 §2.6: the answer to a client that offered a tree.
         //
@@ -565,7 +638,10 @@ pub fn upgrade(
                         break;
                     }
                 }
-                Frame::Ack { .. } => {}
+                // 01 §4.1: what the client has applied is what a resume no
+                // longer owes it. Without this the buffer would keep the last
+                // sixty-four batches of every session for ever.
+                Frame::Ack { seq } => super::note_acked(&liveview_id, seq),
                 Frame::Pong(_) => unanswered_pings = 0,
                 Frame::Error { code, message } => {
                     eprintln!("[EUI] client error {code}: {}", printable(&message));
@@ -666,7 +742,12 @@ pub fn upgrade(
         {
             write_task.abort();
         }
-        super::drop_encoder(&liveview_id);
+        // 01 §4.1: the socket went; the session has not. The encoder holds
+        // the interned tables and the tree the next batch diffs against, so
+        // dropping it here is what made every reconnect a fresh mount. It
+        // stays for `RESUME_GRACE`, the same two minutes the LiveView
+        // registry holds the instance for, and the reaper takes both.
+        super::detach_resumable(&liveview_id);
         // The memo lives on the worker this session was pinned to; ask it.
         // Fire and forget: a saturated queue means the worker's own sweep
         // finds the encoder gone and drops the memo on its next render.

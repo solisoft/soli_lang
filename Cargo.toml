@@ -358,9 +358,12 @@ mail-builder = { version = "0.4", optional = true }
 # JSON-template + Factur-X PDF generation (vendored crate, lives in pdf/).
 soli-pdf = { path = "pdf", optional = true }
 soli-codegraph = { path = "codegraph", optional = true }
-# EUI: the binary UI protocol. Off by default; `--features eui` adds the
-# `/_eui/session/<component>` socket and the `router_eui` builtin and changes
-# nothing else. The wire crate has no dependencies of its own.
+# EUI: the binary UI protocol. **In the default set** — it adds the
+# `/_eui/session/<component>` socket, the one-shot render of 01 §2.4 and the
+# `router_eui` builtin, and changes nothing else. The wire crate has no
+# dependencies of its own. Being a default is why a stale `rev =` below takes
+# the whole of `cargo test` down rather than one optional job; it read "off by
+# default" here long after it stopped being true.
 # Fetched from the public eui repository, not from a sibling checkout. Cargo
 # loads a path dependency's manifest even when its feature is off, so a path
 # here made `cargo build` fail for anyone without ../eui — CI included, which is
