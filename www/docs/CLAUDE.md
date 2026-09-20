@@ -43,9 +43,7 @@ reference form that ought to be written.
 
 `scripts/check-docs-parity.sh` reports anything that is none of the above. It is advisory
 rather than a gate, because the allowlists *are* the judgement and the script only remembers
-them. It currently reports six pages with no markdown — `i18n`, `websockets`, `debugging`,
-`linting`, `base64` and `encoding` — each a real topic whose reference form is missing from
-every scaffolded application. See `tasks/todo/`.
+them. It currently reports nothing in either direction, which is the state to keep it in.
 
 ## Comment style
 

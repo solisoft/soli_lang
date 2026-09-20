@@ -130,7 +130,7 @@ re-renders itself on writes, prefer [reactive live queries](liveview.md).
 | | Use it for |
 |---|---|
 | **SSE** | One-way server → browser updates: notifications, token streams, progress. Simpler than WebSockets, and reconnects on its own. |
-| **WebSockets** | Two-way and low-latency: chat, presence, games. Documented at `/docs/core-concepts/websockets` — it has no markdown reference yet. |
+| **[WebSockets](websockets.md)** | Two-way and low-latency: chat, presence, games. |
 | **[Live View](liveview.md)** | Server-rendered reactive UI, with no client JavaScript to write. |
 
 **Pick the path by lifetime, not by feature.** A `sse` / `stream` block holds one worker thread
