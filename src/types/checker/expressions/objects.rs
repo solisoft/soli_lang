@@ -155,8 +155,15 @@ impl TypeChecker {
         then_branch: &Expr,
         else_branch: Option<&Expr>,
     ) -> TypeResult<Type> {
+        // Same admission as an `if` *statement* (see `statements.rs`): `Any`
+        // and `Unknown` pass. They disagreed, and the ternary was the stricter
+        // one — so `flag ? "a" : "b"` failed wherever `if flag { … }` was
+        // accepted, for no reason a reader could act on. Soli's truthiness
+        // takes any value, so demanding `Bool` here refuses working code; that
+        // was 31 of the 52 remaining errors on a freshly scaffolded
+        // application.
         let cond_type = self.check_expr(condition)?;
-        if !matches!(cond_type, Type::Bool) {
+        if !matches!(cond_type, Type::Bool | Type::Any | Type::Unknown) {
             return Err(TypeError::mismatch(
                 "Bool".to_string(),
                 format!("{}", cond_type),

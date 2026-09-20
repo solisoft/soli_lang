@@ -393,6 +393,16 @@ soli check app/models/user.sl
             <p class="text-gray-400 mt-3">
                 Running a file with <code class="text-cyan-400">soli &lt;file&gt;</code> type-checks it first too (use <code class="text-cyan-400">--no-type-check</code> to skip); <code class="text-cyan-400">soli check</code> is the standalone, whole-project form that never runs your app.
             </p>
+            <h3 class="text-lg font-semibold text-white mt-8 mb-3">A directory is checked as one namespace</h3>
+            <p class="text-gray-400">
+                A running server loads <code class="text-cyan-400">app/controllers</code>, <code class="text-cyan-400">app/models</code>, <code class="text-cyan-400">app/services</code>, <code class="text-cyan-400">app/policies</code>, <code class="text-cyan-400">app/middleware</code>, <code class="text-cyan-400">app/mailers</code>, <code class="text-cyan-400">config</code> and <code class="text-cyan-400">stdlib</code> into <strong class="text-white">one</strong> environment &mdash; so a helper declared in one file is callable from its neighbours with no import. Given a <em>directory</em>, <code class="text-cyan-400">soli check</code> reads the top-level declarations of all of them first, and every file is checked knowing what its neighbours declare.
+            </p>
+            <p class="text-gray-400 mt-3">
+                Two consequences. A project declaration <strong class="text-white">overrides a built-in of the same name</strong>, because that is what happens at run time &mdash; a project that defines its own three-argument <code class="text-cyan-400">input</code> is checked against that one. And a name declared without <code class="text-cyan-400">let</code> counts: <code class="text-cyan-400">MAX_WIDTH = 280</code> at the top of a file declares <code class="text-cyan-400">MAX_WIDTH</code> for the whole project, exactly as <code class="text-cyan-400">const</code> would.
+            </p>
+            <p class="text-gray-400 mt-3">
+                Naming a single file &mdash; <code class="text-cyan-400">soli check app/models/user.sl</code> &mdash; keeps the narrower per-file view, since a loose script has no project around it. A neighbour's type is not inferred, only its existence: what it <em>is</em> would mean checking the file that declares it, so its calls are unconstrained rather than wrongly constrained.
+            </p>
         </div>
     </section>
 

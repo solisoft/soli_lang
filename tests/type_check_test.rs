@@ -1,6 +1,6 @@
 //! `soli check` / `type_check_source` integration tests.
 
-use solilang::type_check_source;
+use solilang::{type_check_source, type_check_source_with_ambient};
 
 #[test]
 fn clean_source_has_no_type_errors() {
@@ -91,4 +91,58 @@ print(describe(Status.Active))
         "a `_` arm makes the match exhaustive, got: {:?}",
         warnings
     );
+}
+
+/// `render` and `redirect` are registered at run time and deliberately absent
+/// from the type environment: they only mean anything inside a request, and
+/// `serve` does not type-check. Teaching the checker about them would make
+/// `soli check` accept a controller-shaped call in a standalone script that
+/// cannot run it.
+///
+/// This is the test `tests/builtin_registration_baseline.txt` names for that
+/// decision. Before it existed the baseline cited a test that did not.
+#[test]
+fn render_and_redirect_stay_unknown_to_the_checker() {
+    for name in ["render", "redirect"] {
+        let src = format!("def index(req) {{ return {name}(\"x\", {{}}) }}");
+        let errors = type_check_source(&src, None)
+            .expect_err("a controller helper must not type-check outside a request");
+        assert!(
+            errors.iter().any(|e| e.to_string().contains(name)),
+            "expected an error naming `{name}`, got: {errors:?}"
+        );
+    }
+}
+
+/// A helper declared in a neighbouring file is callable with no import, because
+/// the server loads the auto-loaded directories into one environment. The
+/// checker sees one file at a time, so it has to be told.
+#[test]
+fn ambient_names_make_a_neighbours_helper_resolvable() {
+    let src = "def view() { return card({}, []) }\nprint(view())";
+
+    let errors = type_check_source(src, None).expect_err("without ambient names `card` is unknown");
+    assert!(
+        errors.iter().any(|e| e.to_string().contains("card")),
+        "expected `card` to be undefined, got: {errors:?}"
+    );
+
+    type_check_source_with_ambient(src, None, &["card".to_string()])
+        .expect("with `card` declared by a neighbour it must check");
+}
+
+/// A project declaration wins over a builtin of the same name, because that is
+/// what happens at run time. The scaffolded EUI catalogue defines its own
+/// three-argument `input`; the one-argument builtin was rejecting every call.
+#[test]
+fn a_project_declaration_overrides_a_builtin_of_the_same_name() {
+    let src = "def view() { return input(\"a\", \"b\", {}) }\nprint(view())";
+
+    assert!(
+        type_check_source(src, None).is_err(),
+        "the one-argument builtin should reject a three-argument call"
+    );
+
+    type_check_source_with_ambient(src, None, &["input".to_string()])
+        .expect("a project-declared `input` must override the builtin");
 }

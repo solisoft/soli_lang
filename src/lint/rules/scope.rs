@@ -344,6 +344,11 @@ pub fn collect_program_names(stmts: &[Stmt], out: &mut HashSet<String>) {
             }
             StmtKind::Import(decl) => insert_import_names(decl, out),
             StmtKind::Export(inner) => collect_program_names(std::slice::from_ref(inner), out),
+            // `let` is optional, so a bare top-level `MAX = 280` declares a
+            // program-level name just as `const MAX = 280` does. Missing these
+            // made `DROPDOWN_MAX_PX` — assigned that way in the scaffolded EUI
+            // catalogue and read from two other files — look undefined.
+            StmtKind::Expression(e) => collect_assigned_in_expr(e, out),
             _ => {}
         }
     }

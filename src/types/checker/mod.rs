@@ -33,6 +33,32 @@ impl TypeChecker {
         }
     }
 
+    /// Declare names that exist at run time but are not in this file.
+    ///
+    /// `serve` loads `app/controllers/`, `app/models/`, `app/services/` and
+    /// `stdlib/` into **one** environment, so a helper declared in one file is
+    /// callable from its neighbours with no import — which is what the EUI
+    /// catalogue's header means by "one namespace either way". The checker sees
+    /// one file at a time, so every such call read as `Undefined variable`: a
+    /// freshly scaffolded `--eui` application reported 137 of them, all naming
+    /// five functions declared in a sibling file.
+    ///
+    /// They are declared as `Type::Any` deliberately. What is known here is
+    /// that the name will exist; what it *is* would mean checking the file that
+    /// declares it, which is a whole-project pass and a bigger change. `Any`
+    /// removes the false error without inventing a type, and a name the file
+    /// does declare itself still wins — this only fills gaps.
+    pub fn declare_ambient<I, S>(&mut self, names: I)
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        for name in names {
+            self.env
+                .define_function(name.as_ref().to_string(), Type::Any);
+        }
+    }
+
     /// Type-check a program and return any non-blocking warnings collected
     /// during the pass (errors are returned via [`TypeChecker::check`]).
     pub fn check_collecting_warnings(

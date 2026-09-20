@@ -190,6 +190,44 @@ pub fn type_check_source(
     source: &str,
     source_path: Option<&std::path::Path>,
 ) -> Result<Vec<String>, Vec<SolilangError>> {
+    type_check_source_with_ambient(source, source_path, &[])
+}
+
+/// The directories a running server loads into **one** environment, so that a
+/// declaration in any of them is reachable from all of them with no import.
+///
+/// `soli check` reads them to build its ambient name set; see
+/// [`type_check_source_with_ambient`].
+pub const AUTOLOADED_DIRS: &[&str] = &[
+    "app/controllers",
+    "app/models",
+    "app/services",
+    "app/policies",
+    "app/middleware",
+    "app/mailers",
+    "config",
+    "stdlib",
+];
+
+/// Type-check one file, given the names its *neighbours* declare.
+///
+/// `serve` loads every auto-loaded directory into one environment, so a helper
+/// declared in `app/controllers/a.sl` is callable from `app/controllers/b.sl`
+/// with no import. The checker sees one file at a time, so without `ambient`
+/// every such call reads as `Undefined variable` — a freshly scaffolded `--eui`
+/// application reported 137 of them, all naming five functions declared in a
+/// sibling file.
+///
+/// A project declaration **overrides a builtin of the same name**, because that
+/// is what happens at run time: the scaffolded EUI catalogue defines its own
+/// three-argument `input`, and the one-argument builtin's signature was
+/// rejecting all nine of its call sites. A name the checked file declares
+/// itself still wins over both.
+pub fn type_check_source_with_ambient(
+    source: &str,
+    source_path: Option<&std::path::Path>,
+    ambient: &[String],
+) -> Result<Vec<String>, Vec<SolilangError>> {
     let tokens = lexer::Scanner::new(source)
         .scan_tokens()
         .map_err(|e| vec![e.into()])?;
@@ -210,6 +248,7 @@ pub fn type_check_source(
     }
 
     let mut checker = types::TypeChecker::new();
+    checker.declare_ambient(ambient);
     let (result, warnings) = checker.check_collecting_warnings(&program);
     match result {
         Ok(()) => Ok(warnings.into_iter().map(|w| w.to_string()).collect()),

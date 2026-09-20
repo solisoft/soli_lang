@@ -160,8 +160,8 @@ read_cookie
 # `render` and `redirect` only mean anything inside a request, and `serve` does
 # not type-check. Teaching the checker about them would make `soli check`
 # accept a controller-shaped call in a standalone script that cannot run it.
-# Pinned by `project_controller_helpers_typecheck_and_request_context`. These
-# two are a decision, not a backlog item: they stay.
+# A decision, not a backlog item: they stay. Pinned by
+# `render_and_redirect_stay_unknown_to_the_checker` in tests/type_check_test.rs.
 redirect
 render
 redirect_external
