@@ -179,16 +179,18 @@ not choose, which is a reason to prefer layout the client resolves. In a
 browser, an address that serves EUI and nothing else answers with a short page
 saying so rather than a 404.
 
-## A page with one live corner
+## Islands: a page with one live corner
 
 A whole page becoming a session because one part of it must be live is the
 wrong trade: every reader then pays a session's memory for a comment count
-that changes twice a day. A node may instead carry a `live` prop — an
+that changes twice a day. A node may instead carry an `island` prop — an
 absolute path on this same origin — and take its **content** from a session of
 its own, while the page around it stays a cached render nothing is held for.
+The name is the web's own: a page that is mostly still, with islands in it
+that are not.
 
 ```soli
-{"k": "slot", "live": "/_eui/session/comments?for=" + page["id"], "c": [
+{"k": "slot", "island": "/_eui/session/comments?for=" + page["id"], "c": [
   {"k": "text", "t": str(page["comment_count"]) + " comments"}
 ]}
 ```
@@ -198,10 +200,10 @@ came from whatever rendered the page. So a client too old to know the prop, a
 session that cannot be opened, and a page served from a cache all end in the
 same place — content that is out of date rather than missing.
 
-The query is how two regions of one component tell your application which of
+The query is how two islands of one component tell your application which of
 them is being rendered: it arrives in `connect` alongside `viewport`, so
-`params["for"]` is the row. Regions naming the same path share one session, at
-most eight are opened for a page, and a `live` naming another origin is
+`params["for"]` is the row. Islands naming the same path share one session, at
+most eight are opened for a page, and an `island` naming another origin is
 refused.
 
 ## The session that keeps the tree

@@ -1009,7 +1009,7 @@ pub(super) fn is_the_tree_they_have(offered: [u8; 32], frames: &[Vec<u8>]) -> bo
 /// A socket's query string as `connect` params.
 ///
 /// Percent-decoding and nothing else — no nesting, no arrays, no `[]`
-/// conventions. A region says which row it is for; anything that needs more
+/// conventions. An island says which row it is for; anything that needs more
 /// structure than that is an argument for a second component rather than a
 /// richer query.
 fn query_pairs(query: Option<&str>) -> Vec<(String, String)> {
@@ -1067,8 +1067,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_region_says_which_region_it_is() {
-        // 01 §2.7: two regions of one component are told apart by the query
+    fn an_island_says_which_island_it_is() {
+        // 01 §2.7: two islands of one component are told apart by the query
         // their socket was opened with, and it reaches `connect` as params.
         assert_eq!(
             query_pairs(Some("for=1042")),
@@ -1089,7 +1089,7 @@ mod tests {
             query_pairs(Some("bare&for=1")),
             vec![("for".into(), "1".into())]
         );
-        // Decoded, because a region key can be a title as easily as a number.
+        // Decoded, because an island key can be a title as easily as a number.
         assert_eq!(
             query_pairs(Some("q=two%20words")),
             vec![("q".into(), "two words".into())]
@@ -1101,7 +1101,7 @@ mod tests {
             query_pairs(Some("q=100%")),
             vec![("q".into(), "100%".into())]
         );
-        // Bounded: a query is how a region names itself, not a payload.
+        // Bounded: a query is how an island names itself, not a payload.
         assert_eq!(
             query_pairs(Some(
                 &(1..=20)

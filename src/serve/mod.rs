@@ -3260,7 +3260,7 @@ async fn handle_hyper_request(
             // Same registry as LiveView, same reaper — an application that
             // only ever serves EUI used to keep every instance it ever made.
             start_liveview_reaper();
-            // 01 §2.7: a live region is addressed by a path *with a query* —
+            // 01 §2.7: an island is addressed by a path *with a query* —
             // `?for=1042` is how two regions of one component tell the
             // application which of them is being rendered. It reaches
             // `connect` as ordinary params.
