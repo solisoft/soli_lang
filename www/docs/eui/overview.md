@@ -10,6 +10,12 @@ It is **on by default**: `eui` is part of the default feature set, so a
 stock `cargo build --release` / `cargo install --path . --locked` has it.
 Drop it with `--no-default-features` when you want a slimmer binary.
 
+The protocol itself, the Rust client, and the client SDKs for the other
+languages are their own project: **[eui.solisoft.net](https://eui.solisoft.net)**
+carries the specification, the widget catalogue and the client documentation.
+The pages here cover Soli's half — how a component is declared, what a view
+returns, and which builtins reach the session.
+
 The reference is split across a few pages:
 
 | Page | What it covers |

@@ -1,0 +1,31 @@
+<%# Previous / next, from the same list the sidebar renders from
+    (`docs_nav_sections()` in app/helpers/docs_nav.sl).
+
+    Rendered by the docs layout for every page, so a page carries no navigation
+    markup of its own. Before this, 48 of the 151 pages had hand-written arrows
+    and 34 of those disagreed with the sidebar; the other hundred had none. %>
+<% nav = docs_nav_neighbours(nav_path) %>
+<% if nav["prev"].present? || nav["next"].present? %>
+<div class="flex justify-between items-center pt-8 mt-12 border-t border-white/10">
+  <% if nav["prev"].present? %>
+  <a href="<%= nav["prev"]["path"] %>" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+    </svg>
+    <%= nav["prev"]["label"] %>
+  </a>
+  <% else %>
+  <span></span>
+  <% end %>
+  <% if nav["next"].present? %>
+  <a href="<%= nav["next"]["path"] %>" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+    <%= nav["next"]["label"] %>
+    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+    </svg>
+  </a>
+  <% else %>
+  <span></span>
+  <% end %>
+</div>
+<% end %>

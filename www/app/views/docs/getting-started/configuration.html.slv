@@ -473,18 +473,4 @@ enable_force_secure_cookies()
 set_max_body_size(32 * 1024 * 1024)</code></pre>
     </section>
 
-    <div class="flex justify-between items-center pt-8 border-t border-white/10">
-        <a href="/docs/getting-started/installation" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-            </svg>
-            Installation
-        </a>
-        <a href="/docs/core-concepts/routing" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
-            Routing
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-        </a>
-    </div>
 </div>

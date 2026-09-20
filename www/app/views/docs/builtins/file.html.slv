@@ -230,19 +230,4 @@ Trusted.append("/var/log/app/audit.log", line)  # follows a symlinked logfile</c
         </div>
     </section>
 
-    <!-- Navigation -->
-    <div class="flex justify-between items-center pt-8 border-t border-white/10">
-        <a href="/docs/builtins/core" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-            </svg>
-            Core
-        </a>
-        <a href="/docs/builtins/datetime" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
-            DateTime
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-        </a>
-    </div>
 </div>

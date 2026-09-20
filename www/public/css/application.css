@@ -3526,6 +3526,12 @@
   .text-amber-400 {
     color: var(--color-amber-400);
   }
+  .text-amber-400\/70 {
+    color: color-mix(in srgb, oklch(82.8% 0.189 84.429) 70%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      color: color-mix(in oklab, var(--color-amber-400) 70%, transparent);
+    }
+  }
   .text-amber-500 {
     color: var(--color-amber-500);
   }

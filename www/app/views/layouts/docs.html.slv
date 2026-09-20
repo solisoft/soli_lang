@@ -503,6 +503,13 @@
                             <div><div>
                                 <%= yield %>
                             </div></div>
+
+                            <%# Previous / next, from the same ordered list the
+                                sidebar renders from. Rendered here so every page
+                                has them and no page carries its own. %>
+                            <% if defined("nav_path") %>
+                            <%- render_partial("layouts/docs_page_nav", { "nav_path": nav_path }) %>
+                            <% end %>
                         </article>
 
                         <!-- Footer -->

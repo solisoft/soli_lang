@@ -355,19 +355,4 @@ print("Sum of odd numbers: " + str(sum));  # 1+3+5+7+9 = 25</code></pre>
         </section>
     </section>
 
-    <!-- Navigation -->
-    <div class="flex justify-between items-center pt-8 border-t border-white/10">
-        <a href="/docs/language/operators" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-            </svg>
-            Operators
-        </a>
-        <a href="/docs/language/error-handling" class="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
-            Error Handling
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-        </a>
-    </div>
 </div>

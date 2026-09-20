@@ -14,6 +14,11 @@ def render_docs(view, title, section, subsection, hide_toc = false)
       "section": section,
       "subsection": subsection,
       "hide_toc": hide_toc,
+      # The path this page is reached at, so the layout can render the
+      # previous/next arrows from the same ordered list the sidebar uses
+      # (app/helpers/docs_nav.sl). Every docs route is exactly `/` + its view
+      # name — checked across all 160 actions — so the view says the path.
+      "nav_path": "/" + view,
       "layout": "layouts/docs"
     }
   )

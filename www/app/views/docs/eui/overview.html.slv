@@ -9,7 +9,7 @@
     </div>
 
     <div class="rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-5 mb-12">
-        <p class="text-gray-300 text-sm leading-relaxed"><strong class="text-indigo-300">On by default.</strong> <code class="text-cyan-400">eui</code> is part of the default feature set, so a stock <code class="text-cyan-400">cargo build --release</code> or <code class="text-cyan-400">cargo install --path . --locked</code> has it; drop it with <code class="text-cyan-400">--no-default-features</code> for a slimmer binary. The protocol, the client and its own documentation live in the <code class="text-cyan-400">eui</code> repository. This page covers what changed in Soli.</p>
+        <p class="text-gray-300 text-sm leading-relaxed"><strong class="text-indigo-300">On by default.</strong> <code class="text-cyan-400">eui</code> is part of the default feature set, so a stock <code class="text-cyan-400">cargo build --release</code> or <code class="text-cyan-400">cargo install --path . --locked</code> has it; drop it with <code class="text-cyan-400">--no-default-features</code> for a slimmer binary. The protocol, the client and its own documentation live in the <code class="text-cyan-400">eui</code> project &mdash; <a href="https://eui.solisoft.net" class="text-amber-400 hover:text-amber-300">eui.solisoft.net</a>, where the specification, the widget catalogue and the client SDKs are. This page covers what changed in Soli.</p>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">A component is a Live View component</h2>
