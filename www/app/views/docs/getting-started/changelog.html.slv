@@ -91,6 +91,32 @@
 
     </section>
 
+    <section id="v2-3-7" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.3.7 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-17</span></h2>
+
+        <h3 id="v2-3-7-web" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Web</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A page that ships its own confirmation dialog can say so.</strong> <code class="text-cyan-400">data-confirm</code> is not a reserved attribute, and the nav script took it over in 2.0.3 &mdash; rightly, since it replaced an <code class="text-cyan-400">onclick="return confirm(...)"</code> escaped for JavaScript and not for HTML, which was a stored XSS in the most ordinary &ldquo;Delete &lt;title&gt;?&rdquo; button. But an application already using that attribute for <em>its</em> dialog found a native box opening on top of it, on the click, before its own <code class="text-cyan-400">submit</code> handler ever ran. That is not a matter of taste: <code class="text-cyan-400">window.confirm</code> blocks the renderer until someone answers, and nothing answers in a driven session &mdash; ten browser specs across six files stopped returning, without failing, without a word. The script now dispatches a cancelable <code class="text-cyan-400">soli:confirm</code> on the element <em>before</em> the native box: a page that handles confirmation itself calls <code class="text-cyan-400">preventDefault()</code> and takes over, and a page with no listener keeps the box it always had.</li>
+        </ul>
+
+        <h3 id="v2-3-7-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A read timeout is no longer reported as a read that failed.</strong> The specs' HTTP client sets a 10s read timeout so a mute server cannot pin the worker. When it tripped the kernel returned <code class="text-cyan-400">WouldBlock</code> &mdash; &ldquo;Resource temporarily unavailable&rdquo; &mdash; and the loop announced <code class="text-cyan-400">read response failed</code>, never mentioning a timeout. A response taking eleven seconds on a loaded machine therefore became a spec failure whose message pointed the wrong way, and days went into looking for machines out of resources that were not. The socket timeout goes back to being a wake-up rather than a verdict, a 30s overall deadline decides, and the message names the method and the path when it trips.</li>
+        </ul>
+
+    </section>
+
+    <section id="v2-3-6" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.3.6 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-16</span></h2>
+
+        <h3 id="v2-3-6-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A native dialog no longer wedges the browser driver.</strong> <code class="text-cyan-400">alert</code>, <code class="text-cyan-400">confirm</code>, <code class="text-cyan-400">prompt</code> and <code class="text-cyan-400">beforeunload</code> block the renderer until someone answers, and nothing in a driven session ever does: the command in flight never got its reply, nor did any command after it, so <code class="text-cyan-400">soli test --browser</code> simply stopped producing output &mdash; no failure, no diagnostic, six spec files running half an hour without returning. The event had been arriving all along, filed among the ones nobody reads. It is handled <strong class="text-white">inside the read loop</strong> now, before the message is even matched against the pending command id, because that is the only place holding the socket while the page is frozen. The dialog is <strong class="text-white">dismissed rather than accepted</strong> &mdash; a <code class="text-cyan-400">confirm</code> guarding a deletion must not be answered &ldquo;yes&rdquo; by a driver &mdash; and it is recorded as a page error, so <code class="text-cyan-400">assert_no_page_errors</code> shows it instead of letting a spec pass over a screen nobody can drive.</li>
+            <li><strong class="text-white">The diagnosis was worse than the fault.</strong> The driver's socket carries its own read timeout so a wedged browser cannot pin the worker, and when it tripped the kernel said <code class="text-cyan-400">EAGAIN</code> &mdash; which the loop announced as <em>lost the browser connection</em>. That sent a whole afternoon looking for a machine out of resources; the machine was idle and a dialog was waiting. A read timeout now goes round the loop again, the command deadline stays the only judge, and its message names what to look for.</li>
+        </ul>
+
+    </section>
+
     <section id="v2-3-5" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">v2.3.5 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-16</span></h2>
 
@@ -125,6 +151,38 @@
             <li><strong class="text-white"><code class="text-cyan-400">soli test</code> counts tests, and counts them live.</strong> The runner knew how many <em>files</em> had run and how many assertions they had fired, and both numbers only moved when a file finished — a spec that runs for twenty seconds contributed nothing to the display until it ended, because the assertion counter was a thread-local the painting thread could not read. Assertions now also feed a process-global counter, so the bar advances during a file; and each <code class="text-cyan-400">test(...)</code> block is counted as it ends, which nothing did before. The bar reads <code class="text-cyan-400">41/158 1 204 tests · 6 018 assertions</code>, calls out failing tests in red as soon as they fail, and the summary says which unit each line counts: <code class="text-cyan-400">156 files passed</code>, then <code class="text-cyan-400">1 204 tests</code>, then <code class="text-cyan-400">6 018 assertions</code>.</li>
             <li><strong class="text-white">New lint rule <code class="text-cyan-400">idiom/prefer-to-s</code>.</strong> <code class="text-cyan-400">x ?? ""</code> means &ldquo;render this, and render nothing when it is nil&rdquo;, which is what <code class="text-cyan-400">.to_s</code> says in one call. It is also the more honest version when the value is not already a string: <code class="text-cyan-400">count ?? ""</code> evaluates to the <em>number</em> when there is one and to <code class="text-cyan-400">""</code> when there is not, so what it yields changes type with the data. A real fallback &mdash; <code class="text-cyan-400">name ?? "Guest"</code> &mdash; is left alone.</li>
         </ul>
+    </section>
+
+    <section id="v2-3-3" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.3.3 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-15</span></h2>
+
+        <h3 id="v2-3-3-tooling" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Tooling</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A lockfile written under a local <code class="text-cyan-400">[patch]</code> is not the one CI resolves.</strong> The patch points the EUI crates at the checkout next door and is untracked by design, because a path dependency in the manifest breaks every build that has no sibling. But cargo records a patched crate as a path dep with <em>no source</em>, so the lockfile left behind describes a resolution no other machine performs, and every job but <code class="text-cyan-400">audit</code> refused it. Regenerated with the patch removed, so it names the pinned revision again. <strong class="text-white">v2.3.2 was tagged and never published for exactly this reason</strong> &mdash; its own CI was red, so the release job never ran and no binaries were built. This release carries everything 2.3.2 was meant to.</li>
+        </ul>
+
+    </section>
+
+    <section id="v2-3-2" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.3.2 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-14</span> <span class="text-amber-400/70 text-base font-normal">&mdash; tagged, never published</span></h2>
+
+        <h3 id="v2-3-2-eui" class="text-xl font-semibold text-white mb-4 scroll-mt-24">EUI</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">The <code class="text-cyan-400">Welcome</code> frame names the version both ends speak, not this server's own.</strong> A server built against a newer EUI would have refused every older client &mdash; including for applications using nothing the new version added &mdash; because the client checks that version against its own and stops if the server names a higher one. It answers <code class="text-cyan-400">min(hello.version, PROTOCOL_VERSION)</code> now, which is what a negotiation is. This went unnoticed while EUI stayed at version 1; it would have bitten on every bump after that, and the first one is in this release.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">scene</code> joins the node kinds a view may write</strong> &mdash; a 3D picture drawn by a shader the application wrote, rendered into a target of the client's own and composited as one quad. Its <code class="text-cyan-400">shader</code> and <code class="text-cyan-400">mesh</code> travel the verified asset path a picture's <code class="text-cyan-400">src</code> already takes: a hash on the wire, fetched from the origin, checked against its own name before anything decodes it. Neither is inspected server-side &mdash; the client validates both in its confined worker, the module against a verifier that proves it terminates before compiling it, the mesh against its own vertex count, which is the one bounds check no GPU driver performs. <code class="text-cyan-400">uniforms</code> is the author's half of the uniform block: at most eight numbers, zero-padded, refused if they are not finite. The other twenty-four floats belong to the client, which is why a server never sends a camera and so can never send a degenerate one. <strong class="text-white">It needs a client that understands the kind</strong>, so an application asking for the capability advertises <code class="text-cyan-400">protocol_min: 2</code> and is refused at the handshake, with a reason, rather than mid-session on a batch it cannot read.</li>
+        </ul>
+
+    </section>
+
+    <section id="v2-3-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.3.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-14</span></h2>
+
+        <h3 id="v2-3-1-eui" class="text-xl font-semibold text-white mb-4 scroll-mt-24">EUI</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">soli new &lt;app&gt; --eui</code> no longer writes a slider that can end the session.</strong> The catalogue gated the track's <code class="text-cyan-400">pointer_move</code> handler by <em>declaring</em> it only while a drag was live &mdash; the one shape the spec rejects, because an event already in flight then names a handler the server has since removed, and the session goes with it. Measured on a split pane: <strong class="text-white">167 of 429 events dropped</strong>. <code class="text-cyan-400">slider</code> and <code class="text-cyan-400">range_slider</code> now declare a <code class="text-cyan-400">track</code> and one <code class="text-cyan-400">change</code> handler that never leaves the tree. The client resolves the whole gesture and reports only when the quantised value moves, so a drag costs one event per step crossed rather than one round trip per pointer sample; the builders keep no arithmetic and no width to invert an offset against, since the only width that was ever true is the one the client laid out. <strong class="text-white">An application generated by this release needs a client that understands <code class="text-cyan-400">track</code></strong>.</li>
+            <li><strong class="text-white">A light-dismissable dropdown, and a manifest that says what a bare origin opens.</strong> <code class="text-cyan-400">dropdown</code> takes an <code class="text-cyan-400">on_close</code>, and a press outside the widget reaches the overlay as <code class="text-cyan-400">blur</code> without the server being asked.</li>
+        </ul>
+
     </section>
 
     <section id="v2-3-0" class="mb-16 scroll-mt-24">
