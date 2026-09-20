@@ -16,16 +16,15 @@ use super::opcode::Op;
 /// it, and `compile_pattern_in_slot` recurses for nested sub-patterns by parking
 /// each extracted value in a slot of its own.
 ///
-/// What is left needs machinery that does not exist yet rather than a different
-/// arrangement of what does:
+/// **Nothing does, today.** The three kinds this once refused were all kinds
+/// the parser could not build: `Destructuring` carrying fields, and `And`/`Or`.
+/// They have since been deleted rather than given a syntax, so every pattern
+/// that can be written compiles, and this answers `false` throughout.
 ///
-/// * `Destructuring` *with fields* — but no parser path produces one. The
-///   reachable spelling is `v: Type`, which carries no fields and compiles; the
-///   `Type { field }` branch in `parse_match_pattern` sits behind a guard that
-///   requires the identifier to be followed by `:`, so the `{` it then looks
-///   for can never be there.
-/// * `And`/`Or` are unreachable: no parser path constructs them. See
-///   tasks/todo/match-and-or-patterns-are-unreachable.md.
+/// The function stays because the match is exhaustive: a new `MatchPattern`
+/// variant will not compile until someone says here whether the bytecode path
+/// can take it, and the alternative to saying so is finding out from a wrong
+/// answer at run time.
 ///
 /// The historical hazard this gate guarded against is worth keeping in view: an
 /// early version interleaved each sub-pattern's stack traffic with the arm's own
@@ -47,9 +46,8 @@ fn pattern_needs_interpreter(pattern: &MatchPattern) -> bool {
         MatchPattern::EnumVariant { bindings, .. } => {
             bindings.iter().any(pattern_needs_interpreter)
         }
-        // `v: Type` — a bare type test, which is all the parser can build.
-        MatchPattern::Destructuring { fields, .. } => !fields.is_empty(),
-        MatchPattern::And(_) | MatchPattern::Or(_) => true,
+        // `v: Type` — a bare type test, which binds nothing.
+        MatchPattern::Destructuring { .. } => false,
     }
 }
 

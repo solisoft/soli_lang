@@ -256,11 +256,15 @@ pub enum MatchPattern {
         fields: Vec<(String, MatchPattern)>,
         rest: Option<String>,
     },
-    /// Destructuring pattern: Type { field1, field2 }
-    Destructuring {
-        type_name: String,
-        fields: Vec<(String, MatchPattern)>,
-    },
+    /// Type test: `v: Type`. The name before the colon is discarded — the
+    /// pattern tests the value's class and binds nothing.
+    ///
+    /// It once carried `fields`, for a `Type { field1, field2 }` spelling that
+    /// no parser path could reach: the branch that built it sat behind a guard
+    /// requiring the identifier to be followed by `:`, so the `{` it then
+    /// looked for was never there. The field was therefore always empty, and
+    /// four modules carried loops over it.
+    Destructuring { type_name: String },
     /// Enum-variant pattern: `Status.Active` or `Status.Pending(r)`.
     /// `bindings` are matched positionally against the variant's payload fields.
     EnumVariant {
@@ -268,10 +272,6 @@ pub enum MatchPattern {
         variant_name: String,
         bindings: Vec<MatchPattern>,
     },
-    /// Conjunction (AND) of patterns
-    And(Vec<MatchPattern>),
-    /// Disjunction (OR) of patterns
-    Or(Vec<MatchPattern>),
 }
 
 /// Binary operators.

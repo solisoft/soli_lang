@@ -365,7 +365,7 @@ impl TypeChecker {
                 Ok(())
             }
 
-            MatchPattern::Destructuring { type_name, fields } => {
+            MatchPattern::Destructuring { type_name } => {
                 if let Some(class) = self.env.get_class(type_name).cloned() {
                     if !input_type.is_assignable_to(&Type::Class(class.clone())) {
                         return Err(TypeError::mismatch(
@@ -373,10 +373,6 @@ impl TypeChecker {
                             format!("{}", input_type),
                             Span::default(),
                         ));
-                    }
-
-                    for (_, field_pattern) in fields {
-                        self.check_match_pattern(input_type, field_pattern)?;
                     }
                     Ok(())
                 } else {
@@ -390,20 +386,6 @@ impl TypeChecker {
                 // registration (see `declare_enum`).
                 for binding in bindings {
                     self.check_match_pattern(&Type::Any, binding)?;
-                }
-                Ok(())
-            }
-
-            MatchPattern::And(patterns) => {
-                for pattern in patterns {
-                    self.check_match_pattern(input_type, pattern)?;
-                }
-                Ok(())
-            }
-
-            MatchPattern::Or(patterns) => {
-                for pattern in patterns {
-                    self.check_match_pattern(input_type, pattern)?;
                 }
                 Ok(())
             }

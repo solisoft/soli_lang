@@ -134,37 +134,15 @@ impl Interpreter {
                 Ok(Some(bindings))
             }
 
-            MatchPattern::Destructuring { type_name, fields } => {
-                let instance = match value {
-                    Value::Instance(inst) => inst.clone(),
-                    _ => return Ok(None),
+            // `v: Type` — a class test that binds nothing.
+            MatchPattern::Destructuring { type_name } => {
+                let Value::Instance(instance) = value else {
+                    return Ok(None);
                 };
-
                 if instance.borrow().class.name != *type_name {
                     return Ok(None);
                 }
-
-                let mut bindings = Vec::new();
-
-                for (field_name, field_pattern) in fields {
-                    match instance.borrow().fields.get(field_name.as_str()) {
-                        Some(field_value) => {
-                            match self.match_pattern(field_value, field_pattern)? {
-                                Some(field_bindings) => {
-                                    bindings.extend(field_bindings);
-                                }
-                                _ => {
-                                    return Ok(None);
-                                }
-                            }
-                        }
-                        _ => {
-                            return Ok(None);
-                        }
-                    }
-                }
-
-                Ok(Some(bindings))
+                Ok(Some(Vec::new()))
             }
 
             MatchPattern::EnumVariant {
@@ -217,25 +195,6 @@ impl Interpreter {
                 Ok(Some(result))
             }
 
-            MatchPattern::And(patterns) => {
-                let mut all_bindings = Vec::new();
-                for p in patterns {
-                    match self.match_pattern(value, p)? {
-                        Some(bindings) => all_bindings.extend(bindings),
-                        None => return Ok(None),
-                    }
-                }
-                Ok(Some(all_bindings))
-            }
-
-            MatchPattern::Or(patterns) => {
-                for p in patterns {
-                    if let Some(bindings) = self.match_pattern(value, p)? {
-                        return Ok(Some(bindings));
-                    }
-                }
-                Ok(None)
-            }
         }
     }
 }

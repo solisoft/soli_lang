@@ -1173,18 +1173,12 @@ impl Printer<'_> {
                 }
                 self.write("}");
             }
-            MatchPattern::Destructuring { type_name, fields } => {
+            // `v: Type`. The bound name is not in the AST — the parser
+            // discards it — so the printed form uses the placeholder every
+            // other reader of this pattern sees.
+            MatchPattern::Destructuring { type_name } => {
+                self.write("_: ");
                 self.write(type_name);
-                self.write(" { ");
-                for (i, (name, pat)) in fields.iter().enumerate() {
-                    if i > 0 {
-                        self.write(", ");
-                    }
-                    self.write(name);
-                    self.write(": ");
-                    self.print_match_pattern(pat);
-                }
-                self.write(" }");
             }
             MatchPattern::EnumVariant {
                 enum_name,
@@ -1203,22 +1197,6 @@ impl Printer<'_> {
                         self.print_match_pattern(pat);
                     }
                     self.write(")");
-                }
-            }
-            MatchPattern::And(pats) => {
-                for (i, pat) in pats.iter().enumerate() {
-                    if i > 0 {
-                        self.write(" & ");
-                    }
-                    self.print_match_pattern(pat);
-                }
-            }
-            MatchPattern::Or(pats) => {
-                for (i, pat) in pats.iter().enumerate() {
-                    if i > 0 {
-                        self.write(" | ");
-                    }
-                    self.print_match_pattern(pat);
                 }
             }
         }

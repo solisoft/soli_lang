@@ -1763,30 +1763,15 @@ impl Parser {
                 Ok(MatchPattern::Variable(s))
             }
 
+            // `v: Type` — a type test. Reached only when the identifier is
+            // followed by a colon, because the arm above takes every other
+            // identifier; so the name is consumed, discarded, and the type
+            // after the colon is the whole pattern.
             Identifier(_) => {
                 self.advance();
-                if self.check(&TokenKind::LeftBrace) {
-                    let type_name = match &self.previous().kind {
-                        TokenKind::Identifier(s) => s.clone(),
-                        _ => {
-                            return Err(ParserError::unexpected_token(
-                                "type name".to_string(),
-                                format!("{}", self.previous().kind),
-                                self.previous().span,
-                            ))
-                        }
-                    };
-                    let fields = self.parse_hash_pattern_fields()?;
-                    self.expect(&TokenKind::RightBrace)?;
-                    Ok(MatchPattern::Destructuring { type_name, fields })
-                } else {
-                    self.expect(&TokenKind::Colon)?;
-                    let type_name = self.expect_identifier()?;
-                    Ok(MatchPattern::Destructuring {
-                        type_name: type_name.clone(),
-                        fields: Vec::new(),
-                    })
-                }
+                self.expect(&TokenKind::Colon)?;
+                let type_name = self.expect_identifier()?;
+                Ok(MatchPattern::Destructuring { type_name })
             }
 
             _ => Err(ParserError::unexpected_token(
