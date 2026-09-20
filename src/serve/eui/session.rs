@@ -137,6 +137,7 @@ fn printable(s: &str) -> String {
 pub fn upgrade(
     mut req: Request<Incoming>,
     component: String,
+    query: Option<String>,
     session_id: String,
     lv_event_tx: crossbeam::channel::Sender<LiveViewEventData>,
     slot: WsConnectionSlot,
@@ -282,7 +283,16 @@ pub fn upgrade(
         let first_params = if already {
             serde_json::json!({})
         } else {
-            serde_json::json!({"viewport": viewport_json(&hello.viewport)})
+            // The query the socket was opened with, as params. A live
+            // region (01 §2.7) is an ordinary session whose address carries
+            // which region it is; nothing else in the protocol had to learn
+            // about it.
+            let mut params = serde_json::Map::new();
+            params.insert("viewport".into(), viewport_json(&hello.viewport));
+            for (k, v) in query_pairs(query.as_deref()) {
+                params.insert(k, serde_json::Value::String(v));
+            }
+            serde_json::Value::Object(params)
         };
         // A `connect` that closes never ran for this client: there is no
         // `disconnect` to post on the way out.
@@ -996,6 +1006,50 @@ pub(super) fn is_the_tree_they_have(offered: [u8; 32], frames: &[Vec<u8>]) -> bo
     *hasher.finalize().as_bytes() == offered
 }
 
+/// A socket's query string as `connect` params.
+///
+/// Percent-decoding and nothing else — no nesting, no arrays, no `[]`
+/// conventions. A region says which row it is for; anything that needs more
+/// structure than that is an argument for a second component rather than a
+/// richer query.
+fn query_pairs(query: Option<&str>) -> Vec<(String, String)> {
+    let Some(q) = query else { return Vec::new() };
+    q.split('&')
+        .filter(|pair| !pair.is_empty())
+        .filter_map(|pair| {
+            let (k, v) = pair.split_once('=')?;
+            Some((percent_decode(k), percent_decode(v)))
+        })
+        .take(16)
+        .collect()
+}
+
+/// `%20` and `+`, which is all a query has ever needed here.
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes.get(i) {
+            Some(b'+') => out.push(b' '),
+            Some(b'%') => {
+                let hex = s.get(i.saturating_add(1)..i.saturating_add(3));
+                match hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                    Some(byte) => {
+                        out.push(byte);
+                        i = i.saturating_add(2);
+                    }
+                    None => out.push(b'%'),
+                }
+            }
+            Some(c) => out.push(*c),
+            None => break,
+        }
+        i = i.saturating_add(1);
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// The client's viewport as the application sees it, in `params`.
 pub(super) fn viewport_json(v: &eui_proto::Viewport) -> serde_json::Value {
     serde_json::json!({
@@ -1011,6 +1065,54 @@ pub(super) fn viewport_json(v: &eui_proto::Viewport) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_region_says_which_region_it_is() {
+        // 01 §2.7: two regions of one component are told apart by the query
+        // their socket was opened with, and it reaches `connect` as params.
+        assert_eq!(
+            query_pairs(Some("for=1042")),
+            vec![("for".into(), "1042".into())]
+        );
+        assert_eq!(
+            query_pairs(Some("for=1042&kind=comments")),
+            vec![
+                ("for".into(), "1042".into()),
+                ("kind".into(), "comments".into())
+            ]
+        );
+        assert_eq!(query_pairs(None), vec![]);
+        assert_eq!(query_pairs(Some("")), vec![]);
+        // A pair with no `=` names nothing and is dropped rather than read as
+        // a key with an empty value.
+        assert_eq!(
+            query_pairs(Some("bare&for=1")),
+            vec![("for".into(), "1".into())]
+        );
+        // Decoded, because a region key can be a title as easily as a number.
+        assert_eq!(
+            query_pairs(Some("q=two%20words")),
+            vec![("q".into(), "two words".into())]
+        );
+        assert_eq!(query_pairs(Some("q=a+b")), vec![("q".into(), "a b".into())]);
+        // A truncated escape is left as it stands rather than swallowing the
+        // characters after it.
+        assert_eq!(
+            query_pairs(Some("q=100%")),
+            vec![("q".into(), "100%".into())]
+        );
+        // Bounded: a query is how a region names itself, not a payload.
+        assert_eq!(
+            query_pairs(Some(
+                &(1..=20)
+                    .map(|i| format!("k{i}=v"))
+                    .collect::<Vec<_>>()
+                    .join("&")
+            ))
+            .len(),
+            16
+        );
+    }
 
     #[test]
     fn a_tree_is_recognised_by_its_batches_and_nothing_else() {
