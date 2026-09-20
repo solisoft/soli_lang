@@ -39,6 +39,30 @@
     </div>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12"><div class="p-4 overflow-x-auto"><pre><code class="language-soli text-sm">box({"bg": lit ? "accent.base" : "surface.sunken", "transition": "fast"}, [])</code></pre></div></div>
 
+    <h2 id="arriving" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Arriving and leaving</h2>
+    <p class="text-gray-400 mb-6"><code class="text-cyan-400">transition</code> is a duration and never a direction. What a node does when it is <em>grafted</em> or <em>released</em> is <code class="text-cyan-400">animation</code>, which is a list, and <code class="text-cyan-400">motion</code>, which says which way.</p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead><tr class="border-b border-white/10"><th class="text-left py-3 px-4 text-gray-400 font-semibold">Key</th><th class="text-left py-3 px-4 text-gray-400 font-semibold">Values</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-3 px-4"><code class="text-amber-300">animation</code></td><td class="py-3 px-4 text-gray-400"><code class="text-amber-300">"spin"</code> <code class="text-amber-300">"enter"</code> <code class="text-amber-300">"exit"</code> &mdash; a list, so <code class="text-amber-300">["enter", "exit"]</code> is the ordinary spelling of a page.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">motion</code></td><td class="py-3 px-4 text-gray-400"><code class="text-amber-300">"fade"</code> <code class="text-amber-300">"leading"</code> <code class="text-amber-300">"trailing"</code> <code class="text-amber-300">"top"</code> <code class="text-amber-300">"bottom"</code> <code class="text-amber-300">"scale"</code> <code class="text-amber-300">"paired"</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-6">Only the arriving side names a direction. Whatever is leaving beside it takes the mirror &mdash; <code>leading</code> against <code>trailing</code>, <code>top</code> against <code>bottom</code> &mdash; so a push and a pop are one sentence read in the two directions, and &ldquo;which way is back&rdquo; is never asked. A <code>motion</code> with neither an entrance nor an exit is refused, because it is a direction with nothing to direct.</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12"><div class="p-4 overflow-x-auto"><pre><code class="language-soli text-sm">nav_page("detail", customer_page(state), {"motion": "trailing"})</code></pre></div></div>
+
+    <h3 class="text-xl font-bold text-white mb-4">A shared element</h3>
+    <p class="text-gray-400 mb-6"><code class="text-amber-300">"paired"</code> is not a direction: it is one thing on two pages. Put it, with the <strong class="text-white">same</strong> <code>key</code>, on the node that is leaving and on the node taking its place, and the arriving one flies out of the box its partner had &mdash; a row's avatar becoming a header's avatar, a thumbnail becoming a hero. Both ends are boxes the client already laid out, so nothing is laid out again for it.</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6"><div class="p-4 overflow-x-auto"><pre><code class="language-soli text-sm"># In the list, on every row: which row is about to be the one is not
+# known until it is tapped.
+shared_element("cust:" + one["id"], initial_avatar(one["initial"], one["tone"], 24))
+
+# And in the detail, under the same name, half again as large.
+shared_element("cust:" + one["id"], initial_avatar(one["initial"], one["tone"], 36))</code></pre></div></div>
+    <p class="text-gray-400 mb-12">A name that resolves to nothing is the ordinary case and not an error &mdash; a panel is built and torn down as it opens &mdash; so the node simply takes the motion of the page it is on. Which is also the one way to get this wrong silently: a name spelt two ways is a page where nothing moves and nothing complains. Run the client with <code>EUI_TRACE=1</code> and it prints a line per pair, resolved or not, and says why.</p>
+
     <h2 id="placement" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Placement</h2>
     <div class="overflow-x-auto mb-12">
         <table class="w-full text-sm">

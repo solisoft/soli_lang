@@ -58,6 +58,51 @@ setting is the client's to honour:
 box({"bg": lit ? "accent.base" : "surface.sunken", "transition": "fast"}, [])
 ```
 
+## Arriving and leaving
+
+`transition` is a duration and never a direction. What a node does when it is
+*grafted* or *released* is `animation`, which is a list, and `motion`, which
+says which way:
+
+| Key | Values |
+|-----|--------|
+| `animation` | `"spin"`, `"enter"`, `"exit"` — a list, so `["enter", "exit"]` is the ordinary spelling of a page |
+| `motion` | `"fade"` `"leading"` `"trailing"` `"top"` `"bottom"` `"scale"` `"paired"` |
+
+Only the arriving side names a direction. Whatever is leaving beside it takes
+the mirror — `leading` against `trailing`, `top` against `bottom` — so a push
+and a pop are one sentence read in the two directions, and "which way is
+back" is never asked. A `motion` with neither an entrance nor an exit is
+refused, because it is a direction with nothing to direct.
+
+```soli
+nav_page("detail", customer_page(state), {"motion": "trailing"})
+```
+
+### A shared element
+
+`"paired"` is not a direction: it is one thing on two pages. Put it, with the
+**same** `key`, on the node that is leaving and on the node taking its place,
+and the arriving one flies out of the box its partner had — a row's avatar
+becoming a header's avatar, a thumbnail becoming a hero. Both ends are boxes
+the client already laid out, so nothing is laid out again for it.
+
+```soli
+# In the list, on every row: which row is about to be the one is not
+# known until it is tapped.
+shared_element("cust:" + one["id"], initial_avatar(one["initial"], one["tone"], 24))
+
+# And in the detail, under the same name, half again as large.
+shared_element("cust:" + one["id"], initial_avatar(one["initial"], one["tone"], 36))
+```
+
+A name that resolves to nothing is the ordinary case and not an error — a
+panel is built and torn down as it opens — so the node simply takes the
+motion of the page it is on. Which is also the one way to get this wrong
+silently: a name spelt two ways is a page where nothing moves and nothing
+complains. Run the client with `EUI_TRACE=1` and it prints a line per pair,
+resolved or not, and says why.
+
 ## Placement
 
 `position` decides how a node sits in its parent:

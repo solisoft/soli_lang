@@ -50,6 +50,39 @@ def nav_page(key, node, o = {})
   keyed("page:" + key, n)
 end
 
+# A shared element: one thing on two pages (03 §5.3).
+#
+# Give this to the node on the page that is leaving **and** to the node on
+# the page that is arriving, under the same `name`, and the client flies the
+# arriving one out of the box the leaving one had instead of letting each go
+# the way its page goes. A row's avatar becoming the header's avatar is the
+# whole of it; nothing here says how far or how long, because both ends are
+# boxes the client already laid out.
+#
+# `animation` is not optional and not something the client fills in: a style
+# record naming a motion with neither an entrance nor an exit is refused on
+# the wire ("motion needs an entrance or an exit to belong to"), in this
+# client and in all six SDKs.
+#
+# **A name that resolves to nothing is the ordinary case and not an error.**
+# The node simply takes the motion of the page it is on. Which is convenient
+# — a panel is built and torn down as it opens — and is also why a wrong name
+# is invisible: nothing moves, nothing complains. `EUI_TRACE=1` prints a line
+# per pair, including the ones that did not resolve and why.
+#
+# So the list side wears it on **every** row: which row is about to be the
+# one is not known until it is tapped.
+#
+# It restyles the node it is given rather than wrapping it, for the reason
+# `nav_page` gives above: a wrapper is layout, and this is not.
+def shared_element(name, node, o = {})
+  restyle(keyed("pair:" + name, node), {
+    "animation": ["enter", "exit"],
+    "motion": "paired",
+    "transition": o["transition"] ?? "base"
+  })
+end
+
 # The way out of a page you went into (06 §1.3).
 #
 # It asks the client first and the server after. `back()` is the one thing a
