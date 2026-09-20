@@ -183,6 +183,27 @@ fn is_write_keyword(word: &str) -> bool {
         || word.eq_ignore_ascii_case("ALTER")
 }
 
+/// Connect, select the database, and apply basic auth if the instance carries
+/// any — the four lines that open every `Solidb` verb.
+///
+/// They were written out at each of the twenty-four call sites, identically,
+/// which is how the error message came to say "Failed to connect" without
+/// naming the host it failed to reach.
+fn connected_client(
+    host: &str,
+    database: &str,
+    auth_username: &Option<String>,
+    auth_password: &Option<String>,
+) -> Result<SoliDBClient, String> {
+    let mut client =
+        SoliDBClient::connect(host).map_err(|e| format!("Failed to connect to {host}: {e}"))?;
+    client.set_database(database);
+    if let (Some(u), Some(p)) = (auth_username.as_deref(), auth_password.as_deref()) {
+        client = client.with_basic_auth(u, p);
+    }
+    Ok(client)
+}
+
 /// Whether this Solidb instance talks to the same host + database the ORM
 /// uses, so a `db.query` inside `grouped` can join the coalesced batch.
 fn targets_orm_endpoint(host: &str, database: &str) -> bool {
@@ -680,14 +701,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_json(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let doc = client
                                 .get(&collection, &key)
                                 .map_err(|e| format!("Get failed: {}", e))?;
@@ -719,14 +734,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_json(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let result = client
                                 .insert(&collection, key.as_deref(), document)
                                 .map_err(|e| format!("Insert failed: {}", e))?;
@@ -759,14 +768,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_json(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let result = client
                                 .update(&collection, &key, document, merge)
                                 .map_err(|e| format!("Update failed: {}", e))?;
@@ -795,14 +798,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             client
                                 .delete(&collection, &key)
                                 .map_err(|e| format!("Delete failed: {}", e))?;
@@ -822,14 +819,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_json(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let docs = client
                                 .list(&collection, 100, 0)
                                 .map_err(|e| format!("List failed: {}", e))?;
@@ -866,14 +857,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_json(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let explanation = client
                                 .explain(&sdbql, bind_vars)
                                 .map_err(|e| format!("Explain failed: {}", e))?;
@@ -884,14 +869,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let timestamp =
                                 client.ping().map_err(|e| format!("Ping failed: {}", e))?;
                             Ok(timestamp.to_string())
@@ -934,14 +913,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             client
                                 .create_collection(&name, collection_type.as_deref())
                                 .map_err(|e| format!("Create collection failed: {}", e))?;
@@ -987,14 +960,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let resp = client
                                 .create_columnar(&name, &columns, compression.as_deref())
                                 .map_err(|e| format!("Create columnar failed: {}", e))?;
@@ -1014,14 +981,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             client
                                 .drop_columnar(&name)
                                 .map_err(|e| format!("Drop columnar failed: {}", e))?;
@@ -1032,14 +993,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let list = client
                                 .list_columnar()
                                 .map_err(|e| format!("List columnar failed: {}", e))?;
@@ -1068,14 +1023,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let deleted = client
                                 .prune_collection(&name, &older_than)
                                 .map_err(|e| format!("Prune failed: {}", e))?;
@@ -1096,14 +1045,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             client
                                 .drop_collection(&name)
                                 .map_err(|e| format!("Drop collection failed: {}", e))?;
@@ -1114,14 +1057,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_json(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let collections = client
                                 .list_collections()
                                 .map_err(|e| format!("List collections failed: {}", e))?;
@@ -1142,14 +1079,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_json(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let stats = client
                                 .collection_stats(&collection)
                                 .map_err(|e| format!("Collection stats failed: {}", e))?;
@@ -1228,14 +1159,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             client
                                 .create_index(&collection, &name, fields, unique, &index_type)
                                 .map_err(|e| format!("Create index failed: {}", e))?;
@@ -1301,14 +1226,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             client
                                 .create_vector_index(
                                     &collection,
@@ -1344,14 +1263,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             client
                                 .drop_index(&collection, &name)
                                 .map_err(|e| format!("Drop index failed: {}", e))?;
@@ -1380,14 +1293,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             client
                                 .drop_vector_index(&collection, &name)
                                 .map_err(|e| format!("Drop vector index failed: {}", e))?;
@@ -1410,14 +1317,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_json(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let indexes = client
                                 .list_indexes(&collection)
                                 .map_err(|e| format!("List indexes failed: {}", e))?;
@@ -1467,14 +1368,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let blob_id = client
                                 .store_blob(&collection, &data, &filename, &content_type)
                                 .map_err(|e| format!("Store blob failed: {}", e))?;
@@ -1503,14 +1398,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let data = client
                                 .get_blob(&collection, &blob_id)
                                 .map_err(|e| format!("Get blob failed: {}", e))?;
@@ -1539,14 +1428,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_json(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             let metadata = client
                                 .get_blob_metadata(&collection, &blob_id)
                                 .map_err(|e| format!("Get blob metadata failed: {}", e))?;
@@ -1575,14 +1458,8 @@ fn register_solidb_class(env: &mut Environment) {
                         let auth_username = auth_username.clone();
                         let auth_password = auth_password.clone();
                         exec_db_sync(move || {
-                            let mut client = SoliDBClient::connect(&host)
-                                .map_err(|e| format!("Failed to connect: {}", e))?;
-                            client.set_database(&database);
-                            if let (Some(u), Some(p)) =
-                                (auth_username.as_deref(), auth_password.as_deref())
-                            {
-                                client = client.with_basic_auth(u, p);
-                            }
+                            let client =
+                                connected_client(&host, &database, &auth_username, &auth_password)?;
                             client
                                 .delete_blob(&collection, &blob_id)
                                 .map_err(|e| format!("Delete blob failed: {}", e))?;
