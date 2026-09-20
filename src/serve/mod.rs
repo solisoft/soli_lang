@@ -3640,22 +3640,23 @@ async fn handle_hyper_request(
                                 {
                                     let length = end - start + 1;
                                     let slice = asset.bytes.slice(start as usize..=(end as usize));
-                                    return Ok(Response::builder()
-                                        .status(StatusCode::PARTIAL_CONTENT)
-                                        .header("Content-Type", asset.content_type)
-                                        .header(
-                                            "Content-Range",
-                                            format!("bytes {}-{}/{}", start, end, total_size),
-                                        )
-                                        .header("Content-Length", length.to_string())
-                                        .header("Accept-Ranges", "bytes")
-                                        .header("ETag", &asset.etag)
-                                        .header(
-                                            "Cache-Control",
-                                            server_constants::STATIC_CACHE_MAX_AGE,
-                                        )
-                                        .body(full(slice))
-                                        .unwrap());
+                                    return Ok(finish_response(
+                                        Response::builder()
+                                            .status(StatusCode::PARTIAL_CONTENT)
+                                            .header("Content-Type", asset.content_type)
+                                            .header(
+                                                "Content-Range",
+                                                format!("bytes {}-{}/{}", start, end, total_size),
+                                            )
+                                            .header("Content-Length", length.to_string())
+                                            .header("Accept-Ranges", "bytes")
+                                            .header("ETag", &asset.etag)
+                                            .header(
+                                                "Cache-Control",
+                                                server_constants::STATIC_CACHE_MAX_AGE,
+                                            ),
+                                        slice,
+                                    ));
                                 } else {
                                     return Ok(Response::builder()
                                         .status(StatusCode::RANGE_NOT_SATISFIABLE)

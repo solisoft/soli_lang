@@ -1782,30 +1782,6 @@ impl Parser {
         }
     }
 
-    fn parse_hash_pattern_fields(&mut self) -> ParseResult<Vec<(String, MatchPattern)>> {
-        let mut fields = Vec::new();
-
-        if self.check(&TokenKind::RightBrace) {
-            return Ok(fields);
-        }
-
-        loop {
-            let field_name = self.expect_identifier()?;
-            self.expect(&TokenKind::Colon)?;
-            let field_pattern = self.parse_match_pattern()?;
-            fields.push((field_name, field_pattern));
-
-            if !self.match_token(&TokenKind::Comma) {
-                break;
-            }
-            if self.check(&TokenKind::RightBrace) {
-                break;
-            }
-        }
-
-        Ok(fields)
-    }
-
     fn parse_array_pattern(&mut self) -> ParseResult<MatchPattern> {
         if self.check(&TokenKind::RightBracket) {
             self.advance();

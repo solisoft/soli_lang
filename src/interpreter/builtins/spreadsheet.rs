@@ -266,12 +266,18 @@ fn write_excel_file(data: &Rc<RefCell<Vec<Value>>>, path: &str) -> Result<Value,
     let (headers, rows) = extract_headers_and_rows(data)?;
 
     let mut spreadsheet = new_file();
-    let worksheet = spreadsheet.get_sheet_mut(&0).unwrap();
+    // umya 3.x takes the index by value and answers a `Result`; `new_file()`
+    // always makes sheet 0, so a failure here would be the crate breaking its
+    // own contract rather than anything the caller did — but it is reported
+    // rather than unwrapped, because this runs on a request.
+    let worksheet = spreadsheet
+        .sheet_mut(0)
+        .map_err(|e| format!("Spreadsheet.excel_write() cannot open the sheet: {e}"))?;
 
     for (col_idx, header) in headers.iter().enumerate() {
         let col_letter = (b'A' + col_idx as u8) as char;
         worksheet
-            .get_cell_mut(format!("{col_letter}1"))
+            .cell_mut(format!("{col_letter}1"))
             .set_value(header.clone());
     }
 
@@ -280,7 +286,7 @@ fn write_excel_file(data: &Rc<RefCell<Vec<Value>>>, path: &str) -> Result<Value,
         for (col_idx, value) in row.iter().enumerate() {
             let col_letter = (b'A' + col_idx as u8) as char;
             worksheet
-                .get_cell_mut(format!("{col_letter}{row_number}"))
+                .cell_mut(format!("{col_letter}{row_number}"))
                 .set_value(value.clone());
         }
     }

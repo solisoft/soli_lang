@@ -46,23 +46,6 @@ ignore = [
     # Small, stable surface; revisit if a maintained equivalent appears.
     "RUSTSEC-2025-0069",
 
-    # quick-xml <0.41 DoS (RUSTSEC-2026-0194 quadratic duplicate-attr scan;
-    # RUSTSEC-2026-0195 unbounded namespace-decl allocation). These are the only
-    # *vulnerability* (not informational) advisories waived here — see the
-    # narrow-exception criteria at the top of this file. quick-xml 0.31 is pulled
-    # transitively by calamine and umya-spreadsheet (Excel/ODS parsing only).
-    # UNBLOCKED as of 2026-09, and this is the most actionable entry in the file:
-    # calamine 0.36.1 and umya-spreadsheet 3.1.0 both require quick-xml ^0.41,
-    # which clears both advisories. It is not a lockfile bump — Cargo.toml pins
-    # `calamine = "0.26"` and `umya-spreadsheet = "1.0"`, so it needs a manifest
-    # change and whatever API churn ten and two major versions bring.
-    # Scope until then: DoS only, reachable solely via `Spreadsheet.excel*` on an
-    # *untrusted* .xlsx/.ods — treat those inputs as trusted. The direct quick-xml
-    # dep (the remotely-reachable SOAP / SAML XML surface) is already on 0.41 and
-    # unaffected.
-    "RUSTSEC-2026-0194",
-    "RUSTSEC-2026-0195",
-
     # proc-macro-error 1.0.4 — unmaintained proc-macro (build-time only, no
     # runtime risk). Reached through the PDF font stack via allsorts 0.16 →
     # ouroboros 0.17, which pins it; ouroboros >=0.18 uses proc-macro-error2.

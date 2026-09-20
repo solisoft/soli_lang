@@ -387,15 +387,6 @@ impl Compiler {
                     live += self.bind_or_recurse(b, line, live, &mut fails)?;
                 }
             }
-
-            other => {
-                return Err(CompileError::new(
-                    format!(
-                        "this match pattern is not yet supported by the bytecode VM: {other:?}"
-                    ),
-                    crate::span::Span::new(0, 0, line, 0),
-                ));
-            }
         }
 
         Ok((fails, live))
