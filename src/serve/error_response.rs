@@ -14,7 +14,7 @@
 //! instead of re-deriving it. See the note on that function for why the two flat
 //! sites keep `false`.
 //!
-//! - [`html`] — the response envelope, nothing else.
+//! - [`html`] / [`text`] — the response envelope, nothing else.
 //! - [`page`] — request id + production error page, no log line.
 //! - [`production`] — [`page`] plus the `[WARN]` access line.
 //! - [`handler_failure`] — the dev/production 500 fork.
@@ -34,6 +34,16 @@ pub(super) fn html(status: u16, body: String) -> ResponseData {
             "text/html; charset=utf-8".to_string(),
         )],
         body: body.into_bytes(),
+    }
+}
+
+/// A plain-text response, for the built-in endpoints that answer without a
+/// template.
+pub(super) fn text(status: u16, body: &'static str) -> ResponseData {
+    ResponseData {
+        status,
+        headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+        body: body.as_bytes().to_vec(),
     }
 }
 

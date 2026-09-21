@@ -8,6 +8,7 @@
 
 mod accept;
 mod asset_cache;
+mod builtin_endpoints;
 pub mod camera;
 pub mod cors;
 mod coverage;
@@ -5380,60 +5381,11 @@ fn handle_request(
         None
     };
 
-    // Built-in readiness probe for blue/green deploys (soli-proxy's health
-    // gate). Returns 503 until the session store's backing connection has been
-    // warmed, and 200 afterwards. A liveness-only health check (a bare 200
-    // from a freshly-booted slot) promotes the slot before its first session
-    // round-trip can complete, so traffic switches into the cold-connection
-    // window and requests stall to the HTTP client timeout. Gating promotion
-    // on this endpoint keeps the old slot serving until the new one is truly
-    // ready. Answered here, before any session/cookie work, so the probe never
-    // creates a session or touches the store. Apps should not define their own
-    // `/up` route — this built-in shadows it.
-    if path == "/up" {
-        let ready = crate::interpreter::builtins::session::session_store_ready();
-        return ResponseData {
-            status: if ready { 200 } else { 503 },
-            headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
-            body: if ready {
-                b"ready".to_vec()
-            } else {
-                b"warming".to_vec()
-            },
-        };
-    }
-
-    // Opt-in OpenAPI (SOLI_OPENAPI): the spec + a Scalar UI over it, built from
-    // the app's registered routes (a per-worker thread-local, hence answered
-    // here on the worker rather than the async layer). Always-on when enabled,
-    // production included. 404 when disabled so it's invisible by default.
-    if method == "GET" && (path == "/openapi.json" || path == "/openapi") {
-        if !openapi::openapi_enabled() {
-            return ResponseData {
-                status: 404,
-                headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
-                body: b"Not Found".to_vec(),
-            };
-        }
-        return if path == "/openapi.json" {
-            ResponseData {
-                status: 200,
-                headers: vec![(
-                    "Content-Type".to_string(),
-                    "application/json; charset=utf-8".to_string(),
-                )],
-                body: openapi::generate_spec_json().into_bytes(),
-            }
-        } else {
-            ResponseData {
-                status: 200,
-                headers: vec![(
-                    "Content-Type".to_string(),
-                    "text/html; charset=utf-8".to_string(),
-                )],
-                body: openapi::ui_page().into_bytes(),
-            }
-        };
+    // The endpoints the framework answers itself. `/up` in particular has to
+    // answer here, before any session or cookie work, so the readiness probe
+    // never creates a session or touches the store — see the module.
+    if let Some(resp) = builtin_endpoints::handle(method, path) {
+        return resp;
     }
 
     // Check if request logging is enabled. `--dev` implies access logging —
