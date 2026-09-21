@@ -38,6 +38,7 @@ mod pipeline;
 pub mod prefetch;
 mod probes;
 pub mod prod_log;
+mod request_scope;
 pub mod route_listing;
 pub mod route_log;
 mod router;
@@ -312,8 +313,7 @@ static LV_EVENT_TX: TenantCell<channel::Sender<LiveViewEventData>> = TenantCell:
 use crate::interpreter::builtins::controller::controller::ControllerInfo;
 use crate::interpreter::builtins::controller::CONTROLLER_REGISTRY;
 use crate::interpreter::builtins::session::{
-    clear_response_cookies, finalize_session_cookie, get_current_session_id, parse_cookie_pairs,
-    session_id_from_cookie_pairs, set_current_session_id, take_response_cookies,
+    finalize_session_cookie, get_current_session_id, set_current_session_id, take_response_cookies,
 };
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
 use crate::interpreter::value::{HashKey, HashPairs, StrKey};
@@ -5330,29 +5330,7 @@ fn handle_request(
     data: &mut RequestData,
     dev_mode: bool,
 ) -> ResponseData {
-    // Reset the per-request AQL log so `dev_queries()` only returns this
-    // request's queries. Cheap when dev mode is off (early-out on the flag).
-    // Also clear when production logging is on, otherwise the thread-local
-    // buffers would accumulate across requests on the same worker thread.
-    // OpenTelemetry reuses span_log, so clear that tree whenever OTEL is on.
-    if dev_mode || prod_log::channels().has_detail() || otel::enabled() {
-        crate::interpreter::builtins::model::query_log::clear();
-        crate::interpreter::builtins::http_log::clear();
-        crate::interpreter::builtins::kv_log::clear();
-        phase_log::clear();
-        middleware_log::clear();
-        view_log::clear();
-        span_log::clear();
-        route_log::clear();
-        template_warnings::clear();
-    }
-
-    // E2E test client: clear any render captured by a prior request on this
-    // pooled worker thread, so assigns()/view_path()/render_template() reflect
-    // only the current request. A single atomic load in non-test processes.
-    if crate::interpreter::builtins::test_server::is_test_runner_process() {
-        crate::interpreter::builtins::test_server::clear_captured_render();
-    }
+    request_scope::reset_worker_thread_locals(dev_mode);
 
     // File mode: this request resolved to a `.slv`/`.erb` file in the served
     // folder. There is no route table, no session and no CSRF gate to run —
@@ -5447,76 +5425,10 @@ fn handle_request(
         span_log::open_request_root(format!("{} {}", method, path));
     }
 
-    // Record the TCP peer for the trust-proxy gate: with SOLI_TRUSTED_PROXIES
-    // set, `X-Forwarded-*` is only honoured for requests that actually arrived
-    // from a listed hop.
-    crate::interpreter::builtins::trust_proxy::set_current_peer_ip(data.peer_ip.parse().ok());
-
-    // Drop the previous request's taint marks before this one records its own.
-    crate::interpreter::taint::clear_request_values();
-
-    // Parse the Cookie header ONCE: the same parse feeds both the session-ID
-    // resolution here and `req["cookies"]` in the request hash below (the
-    // header used to be scanned twice per request).
-    let cookie_pairs = parse_cookie_pairs(header_str(&data.headers, "cookie"));
-
-    // Hand the raw header to the cookie jar so `read_cookie` can verify/open
-    // sealed values on demand. Installing `None` doubles as the per-request
-    // clear, alongside the session-state clears below.
-    crate::interpreter::builtins::cookie_jar::install_request_cookie_header(header_str(
-        &data.headers,
-        "cookie",
-    ));
-
-    // Drop any cookie-driver session state a previous request left on this
-    // worker thread. Must happen before `ensure_session` installs this
-    // request's state — a no-cookie request would otherwise silently inherit
-    // (and re-emit) the previous visitor's session.
-    crate::interpreter::builtins::session_cookie::clear_request_state();
-
-    // Resolve the session ID from the parsed cookies (if any). When no cookie
-    // is sent, we leave the thread-local unset — session_set / session_regenerate
-    // will create one lazily on first use, and finalize_response emits
-    // Set-Cookie whenever the post-handler session ID differs from the cookie's.
-    // SEC-077 precedence (`__Host-session_id` over `session_id`) is preserved
-    // inside session_id_from_cookie_pairs.
-    let cookie_session_id = session_id_from_cookie_pairs(&cookie_pairs);
-    // Resolve without creating. A cookie naming a session we do not have used to
-    // mint and persist an empty one on every request, so any client could grow
-    // the store without limit just by sending a fresh UUID each time. An unknown
-    // cookie now takes the same lazy path a cookie-less request always did: no
-    // session exists until the app stores something.
-    let session_id = match cookie_session_id
-        .as_deref()
-        .and_then(|id| crate::interpreter::builtins::session::resolve_existing_session(Some(id)))
-    {
-        Some(resolved) => {
-            set_current_session_id(Some(resolved.clone()));
-            Some(resolved)
-        }
-        None => {
-            set_current_session_id(None);
-            None
-        }
-    };
-    // The locale this request starts from, now that the session is resolved
-    // (a stored choice is consulted first). `LocaleGuard` puts it back at the
-    // end of the request; see there for what it cost not to.
-    crate::interpreter::builtins::i18n::helpers::set_locale(
-        resolve_request_locale(&data.headers, &cookie_pairs)
-            .unwrap_or_default()
-            .as_str(),
-    );
+    let scope = request_scope::install(data);
+    // Bound here and not inside `install`: a guard built and dropped in there
+    // would restore the default locale before the handler ever ran.
     let _locale_guard = LocaleGuard;
-
-    // Clear response cookies from any previous request on this thread.
-    clear_response_cookies();
-    // Reset the static-page response cacheability flags so this request
-    // starts clean. set_cookie / session_set trip `mark_response_dirty`
-    // and clock / random trip `mark_data_dirty` while the controller
-    // runs; the cache lookup in TemplateCache::render consults both
-    // and short-circuits to a cache hit only when neither is set.
-    crate::template::response_cache::reset_for_new_request();
 
     // Per-form CSRF token verification. The hyper layer's Origin/Referer
     // gate ran before the body was read; this second gate runs where the
@@ -5626,8 +5538,8 @@ fn handle_request(
             // explicit locals because the thread-local session ID was cleared
             // above.
             if let Some(cookie_value) = finalize_session_cookie(
-                session_id.as_deref(),
-                cookie_session_id.as_deref(),
+                scope.session_id.as_deref(),
+                scope.cookie_session_id.as_deref(),
                 cookie_secure,
             ) {
                 resp.headers.push(("Set-Cookie".to_string(), cookie_value));
@@ -5769,7 +5681,7 @@ fn handle_request(
     // The single cookie parse from above becomes `req["cookies"]`; keep an
     // Rc handle so the `cookies` global below reuses it without re-probing
     // the request hash.
-    let cookies_value = Value::Hash(Rc::new(RefCell::new(cookie_pairs)));
+    let cookies_value = Value::Hash(Rc::new(RefCell::new(scope.cookie_pairs)));
 
     // Build request hash with parsed body (owned headers/query avoid String
     // clones). Also hands back the "all" params value so the `params` global
@@ -5820,7 +5732,7 @@ fn handle_request(
         crate::interpreter::builtins::named_routes::clear_current_request_host();
         if let Some(cookie_value) = finalize_session_cookie(
             get_current_session_id().as_deref(),
-            cookie_session_id.as_deref(),
+            scope.cookie_session_id.as_deref(),
             cookie_secure,
         ) {
             resp.headers.push(("Set-Cookie".to_string(), cookie_value));
