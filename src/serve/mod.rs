@@ -31,6 +31,7 @@ pub mod openapi;
 mod origin;
 pub mod otel;
 pub mod phase_log;
+mod pipeline;
 pub mod prefetch;
 mod probes;
 pub mod prod_log;
@@ -222,7 +223,6 @@ use futures_util::StreamExt;
 use http_body_util::combinators::BoxBody;
 use http_body_util::BodyExt;
 use http_body_util::Full;
-use http_body_util::Limited;
 use http_body_util::StreamBody;
 use hyper::body::Incoming;
 use hyper::service::service_fn;
@@ -2564,9 +2564,6 @@ pub struct LiveViewEventData {
     pub response_tx: oneshot::Sender<Result<(), String>>,
 }
 
-// File upload functions are now in file_upload module
-use file_upload::parse_multipart_body;
-
 /// Everything the request path needs that belongs to one served application.
 ///
 /// Bundled rather than passed as seven arguments because the point of the
@@ -2773,12 +2770,6 @@ async fn handle_hyper_request(
         return Ok(response);
     }
 
-    let query_str = raw_query.as_deref().unwrap_or("");
-
-    // Parse query string into ordered pairs (order matters for bracket
-    // arrays like tags[]=a&tags[]=b — the worker nests them Rack-style).
-    let query = parse_query_pairs(query_str);
-
     // File mode: the served folder is a plain directory, not an MVC app.
     // Directory indexes, Markdown pages and static files are answered right
     // here; only a `.slv`/`.erb` template needs an interpreter, and that falls
@@ -2802,143 +2793,22 @@ async fn handle_hyper_request(
         }
     }
 
-    // Split the request: take ownership of the wire headers (moved into
-    // RequestData as-is — `HeaderMap` is Send) and the body stream. No
-    // per-header String copies happen here; the worker converts the map to
-    // Soli HashPairs exactly once when it builds `req["headers"]`.
-    let (parts, req_body) = req.into_parts();
-    let headers = parts.headers;
-
-    // Keep the conditional-GET validator around so the response-assembly
-    // block below can short-circuit to 304 when the controller's rendered
-    // ETag matches the browser's cached copy.
-    let if_none_match = header_str(&headers, "if-none-match").map(|v| v.to_owned());
-
-    // Is this a browser speculative prefetch (hover-preload)? If so the
-    // response-assembly block below relaxes the HTML `Cache-Control` so the
-    // eventual click reuses the prefetched bytes without a revalidation
-    // round-trip — see `prefetch::prefetch_cache_control`.
-    let is_prefetch =
-        crate::serve::prefetch::is_prefetch_request(|name| header_str(&headers, name));
-
-    // Content headers used by the body-reading block below.
-    let declared_content_length =
-        header_str(&headers, "content-length").and_then(|v| v.parse::<usize>().ok());
-    let req_content_type = header_str(&headers, "content-type").map(|v| v.to_owned());
-
-    // Read body - skip for GET/HEAD requests (usually empty). Cap the
-    // read so a hostile client can't exhaust worker memory by streaming
-    // an unbounded body. Content-Length lets us short-circuit before any
-    // bytes are buffered; chunked uploads (no Content-Length) are caught
-    // mid-stream by `Limited`.
-    let max_body = crate::interpreter::builtins::body_limit::get_max_body_size();
-    let mut body_reservation = None;
-    if method != "GET" && method != "HEAD" {
-        if let Some(declared) = declared_content_length {
-            if declared > max_body {
-                return Ok(Response::builder()
-                    .status(StatusCode::PAYLOAD_TOO_LARGE)
-                    .header("Content-Type", "text/plain; charset=utf-8")
-                    .body(full(Bytes::from("Request body too large")))
-                    .unwrap());
-            }
-        }
-        // Claim the memory *before* buffering, not after: the point is to stop
-        // many connections each collecting their own body. A chunked request
-        // declares no length, so it reserves the per-request cap — the most it
-        // could turn out to be.
-        let want = declared_content_length.map_or(max_body, |n| n.min(max_body));
-        match crate::interpreter::builtins::body_limit::BodyReservation::try_acquire(want) {
-            Some(reservation) => body_reservation = Some(reservation),
-            None => {
-                return Ok(Response::builder()
-                    .status(StatusCode::SERVICE_UNAVAILABLE)
-                    .header("Content-Type", "text/plain; charset=utf-8")
-                    .header("Retry-After", "1")
-                    .body(full(Bytes::from("Server busy: too many uploads in flight")))
-                    .unwrap());
-            }
-        }
-    }
-    let (body, multipart_form, multipart_files) = if method == "GET" || method == "HEAD" {
-        (String::new(), None, None)
-    } else {
-        // Bounded in time as well as size: `Limited` caps how much can
-        // arrive, not how long it may take, so a trickled body held a
-        // connection and its buffer indefinitely.
-        let collected = match tokio::time::timeout(
-            Duration::from_secs(server_constants::body_read_timeout_secs()),
-            BodyExt::collect(Limited::new(req_body, max_body)),
-        )
-        .await
-        {
-            Ok(result) => result,
-            Err(_) => {
-                return Ok(Response::builder()
-                    .status(StatusCode::REQUEST_TIMEOUT)
-                    .header("Content-Type", "text/plain; charset=utf-8")
-                    .body(full(Bytes::from("Request body read timed out")))
-                    .unwrap());
-            }
-        };
-        // Keep the collected body as `Bytes`. It is refcounted, so the
-        // multipart parser can take it by value without copying, and the
-        // non-multipart branch only borrows it to build the String. The
-        // previous `.to_vec()` was a full extra copy of every request body.
-        let body_bytes = match collected {
-            Ok(b) => b.to_bytes(),
-            Err(_) => {
-                // `Limited` returns an error once the running total
-                // crosses `max_body`. Treat any failure here as oversize:
-                // we can't reliably distinguish a transport error from a
-                // length-limit hit, but in either case we don't want to
-                // proceed with a partial body.
-                return Ok(Response::builder()
-                    .status(StatusCode::PAYLOAD_TOO_LARGE)
-                    .header("Content-Type", "text/plain; charset=utf-8")
-                    .body(full(Bytes::from("Request body too large")))
-                    .unwrap());
-            }
-        };
-
-        // Check if this is a multipart form
-        let content_type = req_content_type.as_deref();
-        if let Some(ct) = content_type {
-            if ct.starts_with("multipart/form-data") {
-                // Structured view only: form fields + files. Do not also
-                // allocate a lossy UTF-8 `String` of the raw multipart
-                // bytes (binary boundary noise) — that triple-buffered
-                // an 8 MiB body as bytes + string + parsed parts.
-                // CSRF / `_method` read `multipart_form`.
-                //
-                // The raw body is moved into the parser and not retained.
-                // It used to ride along in `RequestData.body_bytes`, which
-                // nothing in the tree ever read (the field was
-                // `#[allow(dead_code)]`), so every upload carried a second
-                // full copy of itself across the worker queue.
-                let (form_fields, files) = parse_multipart_body(body_bytes, ct).await;
-                (String::new(), Some(form_fields), Some(files))
-            } else {
-                let body_str = String::from_utf8_lossy(&body_bytes).to_string();
-                (body_str, None, None)
-            }
-        } else {
-            let body_str = String::from_utf8_lossy(&body_bytes).to_string();
-            (body_str, None, None)
-        }
-    };
-
-    // HTML forms can only express GET and POST. Rails-style method override:
-    // a POST whose form body carries `_method=PUT|PATCH|DELETE` (the hidden
-    // input `form_with` / `button_to` and the scaffold emit) is routed and
-    // dispatched to the app as that verb. Applied after the CSRF origin gate
-    // above — the overridden verbs are state-changing either way.
-    let method = apply_form_method_override(
+    // From here the request is the application's to answer: read the body,
+    // hand the work to a worker, and assemble the reply. See `pipeline`.
+    let pipeline::Intake {
         method,
-        &body,
-        req_content_type.as_deref(),
-        multipart_form.as_deref(),
-    );
+        query,
+        headers,
+        body,
+        body_reservation,
+        multipart_form,
+        multipart_files,
+        if_none_match,
+        is_prefetch,
+    } = match pipeline::intake(req, method, raw_query.as_deref()).await {
+        Ok(intake) => intake,
+        Err(response) => return Ok(*response),
+    };
 
     // Create oneshot channel for response
     let (response_tx, response_rx) = oneshot::channel();
@@ -2965,200 +2835,23 @@ async fn handle_hyper_request(
         response_tx,
     };
 
-    // Non-blocking send: use try_send + async yield to avoid blocking tokio threads.
-    // Blocking send() here would deadlock under high concurrency because:
-    // - Full queues block tokio worker threads on send()
-    // - Workers' Handle::block_on() futures need the tokio I/O driver to complete
-    // - Blocked tokio threads can't drive the I/O driver → permanent deadlock
-    let mut pending_data = Some(request_data);
-    let deadline =
-        tokio::time::Instant::now() + Duration::from_secs(server_constants::REQUEST_TIMEOUT_SECS);
-    let send_ok = loop {
-        if let Some(data) = pending_data.take() {
-            match request_tx.try_send(data) {
-                Ok(()) => break true,
-                Err(crossbeam::channel::TrySendError::Full(returned)) => {
-                    if tokio::time::Instant::now() >= deadline {
-                        break false;
-                    }
-                    pending_data = Some(returned);
-                    tokio::time::sleep(Duration::from_millis(1)).await;
-                }
-                Err(crossbeam::channel::TrySendError::Disconnected(_)) => {
-                    break false;
-                }
-            }
-        }
-    };
-
-    if !send_ok {
-        return Ok(Response::builder()
-            .status(StatusCode::SERVICE_UNAVAILABLE)
-            .body(full(Bytes::from("Server busy")))
-            .unwrap());
+    if let Err(busy) = pipeline::enqueue(&request_tx, request_data).await {
+        return Ok(*busy);
     }
 
-    // Wait for response, bounded by RESPONSE_WAIT_TIMEOUT_SECS. The worker
-    // reply is otherwise awaited with no timeout: a worker parked in a
-    // blocking DB/HTTP call or a lock would hang this request forever
-    // ("pending" in the browser, system idle). On timeout we free the
-    // connection with a 504 and log which route stalled. Dropping
-    // `response_rx` here is safe — the worker's reply send is a discarded
-    // `let _ = ...send(...)`, so it won't panic on a closed receiver.
-    match tokio::time::timeout(
-        Duration::from_secs(server_constants::RESPONSE_WAIT_TIMEOUT_SECS),
-        response_rx,
-    )
-    .await
-    {
-        Err(_) => {
-            eprintln!(
-                "[WARN] layer=lang_serve method={} path={} timeout_secs={} elapsed_ms={} \
-                 worker response timed out; returning 504",
-                log_method,
-                log_path,
-                server_constants::RESPONSE_WAIT_TIMEOUT_SECS,
-                request_start.elapsed().as_millis(),
-            );
-            Ok(Response::builder()
-                .status(StatusCode::GATEWAY_TIMEOUT)
-                .header("Server", "soliMVC")
-                .body(full(Bytes::from("Gateway Timeout")))
-                .unwrap())
-        }
-        Ok(Ok(worker_response)) => {
-            // Streaming responses (SSE / chunked) bypass the buffered path
-            // entirely: build a chunked body fed by the worker's channel.
-            let resp_data = match worker_response {
-                WorkerResponse::Stream {
-                    status,
-                    headers,
-                    rx,
-                } => {
-                    let stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|chunk| {
-                        Ok::<_, std::io::Error>(hyper::body::Frame::data(Bytes::from(chunk)))
-                    });
-                    let body = BodyExt::boxed(StreamBody::new(stream));
-                    let mut builder = Response::builder()
-                        .status(StatusCode::from_u16(status).unwrap_or(StatusCode::OK))
-                        .header("Server", "soliMVC");
-                    for (key, value) in &headers {
-                        builder = builder.header(key, value);
-                    }
-                    return Ok(builder.body(body).unwrap_or_else(|_| {
-                        Response::new(full(Bytes::from("stream init error")))
-                    }));
-                }
-                WorkerResponse::Buffered(rd) => rd,
-            };
-            // Conditional-GET short-circuit: if the controller produced an
-            // ETag matching the browser's If-None-Match, return 304 with
-            // just the validator headers. Enables the hover-prefetch feature
-            // to deliver "instant navigation" — the body is already in the
-            // prefetched-resources cache; revalidation costs one tiny round
-            // trip instead of re-sending tens of KB of HTML.
-            //
-            // Skipped in --dev: the dev bar is injected after the ETag is
-            // computed, so a 304 would replay an HTML snapshot with stale
-            // bar contents (old timings, old query log, old req counter).
-            if !dev_mode {
-                if let Some(ref client_etag) = if_none_match {
-                    if let Some(server_etag) = resp_data.headers.iter().find_map(|(k, v)| {
-                        if k.eq_ignore_ascii_case("etag") {
-                            Some(v.as_str())
-                        } else {
-                            None
-                        }
-                    }) {
-                        fn strip_weak(s: &str) -> &str {
-                            s.trim_start_matches("W/").trim()
-                        }
-                        if strip_weak(client_etag) == strip_weak(server_etag) {
-                            let mut b304 = Response::builder()
-                                .status(StatusCode::NOT_MODIFIED)
-                                .header("Server", "soliMVC");
-                            // RFC 7232 §4.1: 304 MUST include the ETag it validated
-                            // against and SHOULD include Cache-Control so the
-                            // browser knows the freshness semantics for the next
-                            // reuse.
-                            for (key, value) in &resp_data.headers {
-                                if key.eq_ignore_ascii_case("etag")
-                                    || key.eq_ignore_ascii_case("cache-control")
-                                    || key.eq_ignore_ascii_case("vary")
-                                {
-                                    b304 = add_header_checked(b304, key.as_str(), value.as_str());
-                                }
-                            }
-                            return Ok(finish_response(b304, Bytes::new()));
-                        }
-                    }
-                }
-            }
+    let worker_response =
+        match pipeline::await_worker(response_rx, &log_method, &log_path, request_start).await {
+            Ok(worker_response) => worker_response,
+            Err(response) => return Ok(*response),
+        };
 
-            let mut builder = Response::builder()
-                .status(StatusCode::from_u16(resp_data.status).unwrap_or(StatusCode::OK))
-                .header("Server", "soliMVC");
-
-            // For a speculative prefetch of an HTML page, swap the page's
-            // `private, no-cache` for a short `private, max-age=N` so the click
-            // serves the prefetched bytes straight from the browser cache — no
-            // conditional GET, so a CDN that won't relay a 304 (Cloudflare et
-            // al.) can't break instant navigation. The ETag still rides along
-            // for revalidation once the window lapses.
-            let prefetch_cache_control = if is_prefetch
-                && resp_data
-                    .headers
-                    .iter()
-                    .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && v.contains("text/html"))
-            {
-                Some(crate::serve::prefetch::prefetch_cache_control())
-            } else {
-                None
-            };
-
-            let no_inject = resp_data
-                .headers
-                .iter()
-                .any(|(k, _)| k.eq_ignore_ascii_case(NO_INJECT_HEADER));
-            for (key, value) in &resp_data.headers {
-                if key.eq_ignore_ascii_case(NO_INJECT_HEADER) {
-                    continue;
-                }
-                if let Some(ref cache_control) = prefetch_cache_control {
-                    if key.eq_ignore_ascii_case("cache-control") {
-                        builder = add_header_checked(builder, key.as_str(), cache_control.as_str());
-                        continue;
-                    }
-                }
-                builder = add_header_checked(builder, key.as_str(), value.as_str());
-            }
-
-            // Inject live reload script for HTML responses (only in dev mode).
-            // HTML is UTF-8, so we can safely view the body as &str for injection.
-            // Binary responses (images/files) skip this path via the content-type guard.
-            let body: Vec<u8> = if reload_tx.is_some() && !no_inject {
-                let is_html = resp_data.headers.iter().any(|(k, v)| {
-                    k.eq_ignore_ascii_case("content-type") && v.contains("text/html")
-                });
-                if is_html {
-                    match std::str::from_utf8(&resp_data.body) {
-                        Ok(html) => live_reload::inject_live_reload_script(html).into_bytes(),
-                        Err(_) => resp_data.body,
-                    }
-                } else {
-                    resp_data.body
-                }
-            } else {
-                resp_data.body
-            };
-
-            Ok(finish_response(builder, Bytes::from(body)))
-        }
-        Ok(Err(_)) => Ok(Response::builder()
-            .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(full(Bytes::from("Internal Server Error")))
-            .unwrap()),
-    }
+    Ok(pipeline::assemble(
+        worker_response,
+        if_none_match.as_deref(),
+        is_prefetch,
+        dev_mode,
+        reload_tx.is_some(),
+    ))
 }
 
 fn forbidden_csrf_response(reason: &str) -> Response<ResponseBody> {
