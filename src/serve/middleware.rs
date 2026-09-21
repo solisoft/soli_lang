@@ -101,7 +101,8 @@ use crate::interpreter::Interpreter;
 use crate::span::Span;
 
 use super::{
-    error_logging, error_pages, middleware_log, phase_log, span_log, RequestData, ResponseData,
+    error_logging, error_pages, error_response, middleware_log, phase_log, span_log, RequestData,
+    ResponseData,
 };
 
 /// A registered middleware with its handler function.
@@ -619,15 +620,10 @@ fn middleware_prod_error_string(
     let stack_trace = middleware_fallback_stack(mw_name, mw_source);
     let env_json = interpreter.serialize_environment_for_debug();
     error_logging::log_production_error(&request_id, data, err, &stack_trace, Some(&env_json));
-    let error_html = error_pages::render_production_error_page(500, err, &request_id);
-    ResponseData {
-        status: 500,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/html; charset=utf-8".to_string(),
-        )],
-        body: error_html.into_bytes(),
-    }
+    error_response::html(
+        500,
+        error_pages::render_production_error_page(500, err, &request_id),
+    )
 }
 
 /// Build a production 500 response for a middleware that raised a
@@ -658,15 +654,10 @@ fn middleware_prod_error_runtime(
         &stack_trace,
         Some(&env_json),
     );
-    let error_html = error_pages::render_production_error_page(500, &error_msg, &request_id);
-    ResponseData {
-        status: 500,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/html; charset=utf-8".to_string(),
-        )],
-        body: error_html.into_bytes(),
-    }
+    error_response::html(
+        500,
+        error_pages::render_production_error_page(500, &error_msg, &request_id),
+    )
 }
 
 #[cfg(test)]

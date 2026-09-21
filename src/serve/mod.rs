@@ -18,6 +18,7 @@ mod dev_inbox;
 mod dev_jobs;
 mod dev_routes;
 pub mod dev_store;
+mod error_response;
 mod file_watcher;
 pub mod files;
 mod framework_assets;
@@ -4457,46 +4458,16 @@ fn call_handler(
                         .map(|s| s.to_string())
                         .or(captured_env);
                     let request_id = Uuid::new_v4().to_string();
-                    let error_msg = e.to_string();
-                    // Breakpoints are intentional debug pauses, not failures,
-                    // so don't emit the stderr error block for them.
-                    if !e.is_breakpoint() {
-                        error_logging::log_production_error(
-                            &request_id,
-                            request_data,
-                            &error_msg,
-                            &stack_trace,
-                            env_json.as_deref(),
-                        );
-                    }
-                    if dev_mode {
-                        let error_html = error_pages::render_error_page(
-                            &error_msg,
-                            interpreter,
-                            request_data,
-                            &stack_trace,
-                            env_json.as_deref(),
-                        );
-                        ResponseData {
-                            status: if e.is_breakpoint() { 200 } else { 500 },
-                            headers: vec![(
-                                "Content-Type".to_string(),
-                                "text/html; charset=utf-8".to_string(),
-                            )],
-                            body: error_html.into_bytes(),
-                        }
-                    } else {
-                        let error_html =
-                            error_pages::render_production_error_page(500, &error_msg, &request_id);
-                        ResponseData {
-                            status: 500,
-                            headers: vec![(
-                                "Content-Type".to_string(),
-                                "text/html; charset=utf-8".to_string(),
-                            )],
-                            body: error_html.into_bytes(),
-                        }
-                    }
+                    error_response::handler_failure(
+                        dev_mode,
+                        interpreter,
+                        request_data,
+                        &e.to_string(),
+                        &stack_trace,
+                        env_json.as_deref(),
+                        &request_id,
+                        e.is_breakpoint(),
+                    )
                 }
             }
         }
@@ -4507,42 +4478,18 @@ fn call_handler(
             // stack trace — use whatever the interpreter still holds.
             let stack_trace = interpreter.get_stack_trace();
             let request_id = Uuid::new_v4().to_string();
-            let error_msg = e.to_string();
-            error_logging::log_production_error(
-                &request_id,
+            error_response::handler_failure(
+                dev_mode,
+                interpreter,
                 request_data,
-                &error_msg,
+                &e.to_string(),
                 &stack_trace,
                 captured_env.as_deref(),
-            );
-            if dev_mode {
-                let error_html = error_pages::render_error_page(
-                    &error_msg,
-                    interpreter,
-                    request_data,
-                    &stack_trace,
-                    captured_env.as_deref(),
-                );
-                ResponseData {
-                    status: 500,
-                    headers: vec![(
-                        "Content-Type".to_string(),
-                        "text/html; charset=utf-8".to_string(),
-                    )],
-                    body: error_html.into_bytes(),
-                }
-            } else {
-                let error_html =
-                    error_pages::render_production_error_page(500, &error_msg, &request_id);
-                ResponseData {
-                    status: 500,
-                    headers: vec![(
-                        "Content-Type".to_string(),
-                        "text/html; charset=utf-8".to_string(),
-                    )],
-                    body: error_html.into_bytes(),
-                }
-            }
+                &request_id,
+                // `e` is the `String` `resolve_handler` returns; a breakpoint
+                // cannot arrive through it.
+                false,
+            )
         }
     }
 }
@@ -4647,42 +4594,18 @@ fn call_oop_controller_action(
             let stack_trace = interpreter.get_stack_trace();
             let env_json = interpreter.serialize_environment_for_debug();
             let request_id = Uuid::new_v4().to_string();
-            let error_msg = e.to_string();
-            error_logging::log_production_error(
-                &request_id,
+            return Some(error_response::handler_failure(
+                dev_mode,
+                interpreter,
                 request_data,
-                &error_msg,
+                &e.to_string(),
                 &stack_trace,
                 Some(&env_json),
-            );
-            return Some(if dev_mode {
-                let error_html = error_pages::render_error_page(
-                    &error_msg,
-                    interpreter,
-                    request_data,
-                    &stack_trace,
-                    Some(&env_json),
-                );
-                ResponseData {
-                    status: 500,
-                    headers: vec![(
-                        "Content-Type".to_string(),
-                        "text/html; charset=utf-8".to_string(),
-                    )],
-                    body: error_html.into_bytes(),
-                }
-            } else {
-                let error_html =
-                    error_pages::render_production_error_page(500, &error_msg, &request_id);
-                ResponseData {
-                    status: 500,
-                    headers: vec![(
-                        "Content-Type".to_string(),
-                        "text/html; charset=utf-8".to_string(),
-                    )],
-                    body: error_html.into_bytes(),
-                }
-            });
+                &request_id,
+                // `e` is the `String` `create_controller_instance` returns; a
+                // breakpoint cannot arrive through it.
+                false,
+            ));
         }
     };
 
@@ -4780,46 +4703,16 @@ fn call_oop_controller_action(
                     .map(|s| s.to_string())
                     .or_else(|| Some(interpreter.serialize_environment_for_debug()));
                 let request_id = Uuid::new_v4().to_string();
-                let error_msg = e.to_string();
-                // Breakpoints are intentional debug pauses, not failures,
-                // so don't emit the stderr error block for them.
-                if !e.is_breakpoint() {
-                    error_logging::log_production_error(
-                        &request_id,
-                        request_data,
-                        &error_msg,
-                        &stack_trace,
-                        env_json.as_deref(),
-                    );
-                }
-                if dev_mode {
-                    let error_html = error_pages::render_error_page(
-                        &error_msg,
-                        interpreter,
-                        request_data,
-                        &stack_trace,
-                        env_json.as_deref(),
-                    );
-                    ResponseData {
-                        status: if e.is_breakpoint() { 200 } else { 500 },
-                        headers: vec![(
-                            "Content-Type".to_string(),
-                            "text/html; charset=utf-8".to_string(),
-                        )],
-                        body: error_html.into_bytes(),
-                    }
-                } else {
-                    let error_html =
-                        error_pages::render_production_error_page(500, &error_msg, &request_id);
-                    ResponseData {
-                        status: 500,
-                        headers: vec![(
-                            "Content-Type".to_string(),
-                            "text/html; charset=utf-8".to_string(),
-                        )],
-                        body: error_html.into_bytes(),
-                    }
-                }
+                error_response::handler_failure(
+                    dev_mode,
+                    interpreter,
+                    request_data,
+                    &e.to_string(),
+                    &stack_trace,
+                    env_json.as_deref(),
+                    &request_id,
+                    e.is_breakpoint(),
+                )
             }
         }
     };
@@ -5114,17 +5007,7 @@ fn execute_after_actions(
 /// custom `app/views/errors/404.html.slv` template and have it rendered
 /// automatically (same mechanism the route-not-found 404 uses).
 fn record_not_found_response(err: &RuntimeError) -> Option<ResponseData> {
-    let message = err.record_not_found_message()?;
-    let request_id = Uuid::new_v4().to_string();
-    let body = error_pages::render_production_error_page(404, &message, &request_id);
-    Some(ResponseData {
-        status: 404,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/html; charset=utf-8".to_string(),
-        )],
-        body: body.into_bytes(),
-    })
+    Some(error_response::page(404, &err.record_not_found_message()?))
 }
 
 /// If the error came from an authorization failure (the `forbidden()` builtin
@@ -5132,17 +5015,7 @@ fn record_not_found_response(err: &RuntimeError) -> Option<ResponseData> {
 /// standard production error-page pipeline (so apps can ship a custom
 /// `app/views/errors/403.html.slv`). Returns None otherwise.
 fn forbidden_response(err: &RuntimeError) -> Option<ResponseData> {
-    let message = err.forbidden_message()?;
-    let request_id = Uuid::new_v4().to_string();
-    let body = error_pages::render_production_error_page(403, &message, &request_id);
-    Some(ResponseData {
-        status: 403,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/html; charset=utf-8".to_string(),
-        )],
-        body: body.into_bytes(),
-    })
+    Some(error_response::page(403, &err.forbidden_message()?))
 }
 
 fn check_for_response(value: &Value) -> Option<ResponseData> {
@@ -5706,24 +5579,13 @@ fn handle_request(
     if !data.replay {
         if let Err(reason) = verify_csrf_token(data, method, path) {
             set_current_session_id(None);
-            let request_id = Uuid::new_v4().to_string();
-            eprintln!(
-                "[WARN] request_id={} {} {} - 403 CSRF: {}",
-                request_id, method, path, reason
-            );
-            let error_html = error_pages::render_production_error_page(
+            return error_response::production(
                 403,
+                method,
+                path,
                 "CSRF verification failed. Reload the page and resubmit the form.",
-                &request_id,
+                Some(&format!("CSRF: {}", reason)),
             );
-            return ResponseData {
-                status: 403,
-                headers: vec![(
-                    "Content-Type".to_string(),
-                    "text/html; charset=utf-8".to_string(),
-                )],
-                body: error_html.into_bytes(),
-            };
         }
     }
 
@@ -5786,12 +5648,12 @@ fn handle_request(
                     elapsed.as_secs_f64() * 1000.0
                 );
             }
-            let request_id = Uuid::new_v4().to_string();
-            eprintln!("[WARN] request_id={} {} {} - 404", request_id, method, path);
-            let error_html = error_pages::render_production_error_page(
+            let mut resp = error_response::production(
                 404,
+                method,
+                path,
                 "The page you're looking for doesn't exist.",
-                &request_id,
+                None,
             );
             let is_https = if crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled() {
                 header_str(&data.headers, "x-forwarded-proto")
@@ -5811,22 +5673,14 @@ fn handle_request(
             // incoming blob was invalid/expired and got replaced. Uses the
             // explicit locals because the thread-local session ID was cleared
             // above.
-            let mut headers = vec![(
-                "Content-Type".to_string(),
-                "text/html; charset=utf-8".to_string(),
-            )];
             if let Some(cookie_value) = finalize_session_cookie(
                 session_id.as_deref(),
                 cookie_session_id.as_deref(),
                 cookie_secure,
             ) {
-                headers.push(("Set-Cookie".to_string(), cookie_value));
+                resp.headers.push(("Set-Cookie".to_string(), cookie_value));
             }
-            return ResponseData {
-                status: 404,
-                headers,
-                body: error_html.into_bytes(),
-            };
+            return resp;
         }
     };
 
@@ -5844,21 +5698,13 @@ fn handle_request(
         } else {
             // Clear session context before returning 404
             set_current_session_id(None);
-            let request_id = Uuid::new_v4().to_string();
-            eprintln!("[WARN] request_id={} {} {} - 404", request_id, method, path);
-            let error_html = error_pages::render_production_error_page(
+            return error_response::production(
                 404,
+                method,
+                path,
                 "Action not found for this route.",
-                &request_id,
+                None,
             );
-            return ResponseData {
-                status: 404,
-                headers: vec![(
-                    "Content-Type".to_string(),
-                    "text/html; charset=utf-8".to_string(),
-                )],
-                body: error_html.into_bytes(),
-            };
         }
     };
 
