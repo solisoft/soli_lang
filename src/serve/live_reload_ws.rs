@@ -40,7 +40,7 @@ pub async fn handle_live_reload_websocket(
     // upgrade — the client only sends pong frames, but tungstenite's
     // 64 MiB default leaves an attacker free to drip-feed huge payloads
     // and pin worker memory.
-    let ws_config = super::default_websocket_config();
+    let ws_config = super::upgrade::default_websocket_config();
     let (response, websocket) = match hyper_tungstenite::upgrade(&mut req, Some(ws_config)) {
         Ok(result) => result,
         Err(e) => {

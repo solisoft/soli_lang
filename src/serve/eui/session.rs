@@ -20,7 +20,8 @@ use tungstenite::Message;
 use crate::live::liveview_instance_id;
 use crate::live::view::{live_registry, LiveViewInstance};
 
-use super::super::{box_full, default_websocket_config, full, LiveViewEventData, ResponseBody};
+use super::super::upgrade::default_websocket_config;
+use super::super::{box_full, full, LiveViewEventData, ResponseBody};
 use super::{trace, tree, with_encoder, RESYNC_EVENT};
 use crate::serve::websocket::{WsConnectionSlot, WsRateLimiter};
 
