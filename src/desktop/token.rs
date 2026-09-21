@@ -24,6 +24,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use bytes::Bytes;
+use hyper::{Response, StatusCode};
+
+use crate::serve::{full, ResponseBody};
+
 /// Path that trades the launch token for a session cookie.
 pub const EXCHANGE_PATH: &str = "/__desktop__/session";
 /// Session cookie name.
@@ -169,6 +174,52 @@ pub fn evaluate(path: &str, query: Option<&str>, cookie_header: Option<&str>) ->
     Decision::Deny
 }
 
+/// The gate as an HTTP answer: `None` lets the request through.
+///
+/// The request handler calls this before any routing — including `/_health`
+/// and `/_metrics` — so an ungated caller reaches nothing at all. It is inert
+/// unless a desktop boot armed the gate, so an ordinary `soli serve` pays one
+/// atomic load for it.
+pub fn gate_request(
+    path: &str,
+    query: Option<&str>,
+    cookie_header: Option<&str>,
+) -> Option<Response<ResponseBody>> {
+    if !is_armed() {
+        return None;
+    }
+    match evaluate(path, query, cookie_header) {
+        Decision::Allow => None,
+        Decision::GrantSession { session, redirect } => {
+            // Redirect rather than serve here, so the one-shot token stops
+            // being part of the URL the browser keeps showing. Deep links
+            // land on `redirect` instead of always `/`.
+            let location = if redirect.starts_with('/') {
+                redirect
+            } else {
+                "/".to_string()
+            };
+            Some(
+                Response::builder()
+                    .status(StatusCode::FOUND)
+                    .header("Location", location)
+                    .header("Set-Cookie", session_cookie_header(&session))
+                    .body(full(Bytes::new()))
+                    .expect("redirect to a checked path is always valid"),
+            )
+        }
+        Decision::Deny => Some(
+            Response::builder()
+                .status(StatusCode::FORBIDDEN)
+                .header("Content-Type", "text/plain; charset=utf-8")
+                .body(full(Bytes::from_static(
+                    b"This application must be opened from its own launcher.",
+                )))
+                .expect("static 403 is always valid"),
+        ),
+    }
+}
+
 /// `Set-Cookie` value for a granted session.
 ///
 /// `HttpOnly` keeps it away from page scripts, `SameSite=Strict` stops another
@@ -244,6 +295,52 @@ mod tests {
             evaluate(EXCHANGE_PATH, Some("t=anything"), None),
             Decision::Deny
         );
+        reset();
+    }
+
+    /// `gate_request` is the only part of the gate that builds an HTTP
+    /// answer, and nothing else exercises it: a running `soli serve` never
+    /// arms the gate, so no end-to-end run reaches these two responses.
+    #[test]
+    fn the_gate_answers_a_refusal_and_an_exchange_over_http() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset();
+
+        // Unarmed: every request passes straight through, which is what an
+        // ordinary `soli serve` relies on.
+        assert!(gate_request("/", None, None).is_none());
+
+        let url = arm(5011);
+        let token = url.split("?t=").nth(1).unwrap().to_string();
+
+        // No token, no cookie: refused before anything is routed.
+        let denied = gate_request("/", None, None).expect("unauthenticated request is refused");
+        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+
+        // The token buys a cookie and a redirect, and the token itself stops
+        // being part of the URL the browser keeps showing.
+        let granted = gate_request(EXCHANGE_PATH, Some(&format!("t={token}")), None)
+            .expect("a valid launch token is answered with a redirect");
+        assert_eq!(granted.status(), StatusCode::FOUND);
+        assert_eq!(granted.headers()["location"], "/");
+        let cookie = granted.headers()["set-cookie"].to_str().unwrap();
+        assert!(
+            cookie.starts_with(&format!("{SESSION_COOKIE}=")),
+            "{cookie}"
+        );
+        assert!(cookie.contains("HttpOnly"), "{cookie}");
+
+        // And that cookie then passes.
+        let session = cookie
+            .split(';')
+            .next()
+            .unwrap()
+            .split_once('=')
+            .unwrap()
+            .1
+            .to_string();
+        assert!(gate_request("/", None, Some(&cookie_header_value(&session))).is_none());
+
         reset();
     }
 

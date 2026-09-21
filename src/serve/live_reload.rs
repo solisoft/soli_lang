@@ -12,8 +12,10 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use http_body_util::Full;
-use hyper::Response;
+use hyper::{HeaderMap, Response, StatusCode};
 use tokio::sync::broadcast;
+
+use crate::serve::{box_full, full, websocket_origin_allowed, ResponseBody};
 
 // Re-export the WebSocket-based live reload script
 // Note: Using crate:: to avoid circular imports
@@ -32,12 +34,54 @@ pub fn is_live_reload_enabled() -> bool {
     LIVE_RELOAD_ENABLED.load(Ordering::SeqCst)
 }
 
+/// `GET /__livereload`, or `None` for anything else.
+///
+/// Lifted out of `handle_hyper_request`, where it sat between two blocks that
+/// have since become modules of their own. It answers from the path and one
+/// header, before any routing.
+pub(crate) async fn handle(
+    path: &str,
+    headers: &HeaderMap,
+    reload_tx: Option<&broadcast::Sender<()>>,
+) -> Option<Response<ResponseBody>> {
+    if path != "/__livereload" {
+        return None;
+    }
+
+    // SEC-043: gate the dev-only SSE endpoint by Origin, mirroring
+    // the WebSocket variant in `upgrade`. Without this any
+    // browser tab on any origin can open the long-poll, hold a
+    // worker for 55 s per connection, and fan out hundreds in
+    // parallel to exhaust the broadcast channel + worker pool.
+    // `websocket_origin_allowed` requires Origin whenever a Cookie
+    // is present (SEC-046) and otherwise requires it to match
+    // `Host`; cookie-less curl from the dev box still works.
+    if !websocket_origin_allowed(headers) {
+        return Some(
+            Response::builder()
+                .status(StatusCode::FORBIDDEN)
+                .body(full(Bytes::from("Forbidden live-reload origin")))
+                .unwrap(),
+        );
+    }
+
+    match reload_tx {
+        Some(tx) => Some(box_full(handle_live_reload_sse(tx.subscribe()).await)),
+        // Live reload disabled
+        None => Some(
+            Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(full(Bytes::from("Live reload is disabled")))
+                .unwrap(),
+        ),
+    }
+}
+
 /// Handle a live reload SSE connection using long-polling.
 /// Waits for a reload signal with a 55 second timeout (under typical browser timeout).
 ///
-/// SEC-043: the same-origin check happens at the call site
-/// (`serve/mod.rs::handle_hyper_request`) before this future is awaited,
-/// and the responses below intentionally omit
+/// SEC-043: the same-origin check happens in [`handle`] before this future is
+/// awaited, and the responses below intentionally omit
 /// `Access-Control-Allow-Origin: *`. The header was a relic of a
 /// dev-only "open to anyone" stance — combined with the 55 s long-poll
 /// it let any origin pin a worker per connection. Browsers refuse a
