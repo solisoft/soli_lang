@@ -39,6 +39,7 @@ pub mod sensors;
 pub mod server_constants;
 pub mod shutdown;
 pub mod span_log;
+mod static_files;
 pub mod template_warnings;
 pub mod tenant;
 mod uploads_prelude;
@@ -2605,8 +2606,6 @@ pub struct LiveViewEventData {
 // File upload functions are now in file_upload module
 use file_upload::parse_multipart_body;
 
-/// Handle a hyper request
-#[allow(clippy::too_many_arguments)]
 /// Everything the request path needs that belongs to one served application.
 ///
 /// Bundled rather than passed as seven arguments because the point of the
@@ -2662,11 +2661,12 @@ async fn handle_hyper_request(
         hyper::Method::OPTIONS => Cow::Borrowed("OPTIONS"),
         _ => Cow::Owned(req.method().to_string().to_uppercase()),
     };
-    let uri = req.uri();
-    let path = uri.path().to_string();
-    // Owned so the borrow of `req` ends here; the native bridge's stream route
-    // below needs the raw query string to verify its channel token.
-    let raw_query = uri.query().map(|q| q.to_string());
+    let path = req.uri().path().to_string();
+    // Owned so no borrow of `req` outlives this line: the blocks below hand
+    // `req` itself to their handlers, and a live `req.uri()` borrow would stop
+    // them. The native bridge's stream route also needs the raw query string
+    // to verify its channel token.
+    let raw_query = req.uri().query().map(|q| q.to_string());
     let request_start = std::time::Instant::now();
 
     // Increment total request counter before any routing decisions
@@ -3158,249 +3158,17 @@ async fn handle_hyper_request(
         }
     }
 
-    // Check for static file in public directory. Skipped in file mode, where
-    // the whole served folder — not a `public/` subdirectory — is the static
-    // root and `files::handle` below owns the resolution.
-    if method == "GET" && files::files_root().is_none() && public_dir.exists() {
-        match resolve_static_file(&path, &public_dir) {
-            Err(()) => {
-                return Ok(Response::builder()
-                    .status(StatusCode::FORBIDDEN)
-                    .body(full(Bytes::from("Forbidden")))
-                    .unwrap());
-            }
-            Ok(Some(file_path)) => {
-                // `file_path` is already canonical (see `resolve_static_file`).
-                let mime_type = server_constants::get_mime_type(&file_path);
-
-                // Production fast path: serve cached CSS/JS bytes loaded at startup.
-                // The cache is populated only in prod (`!dev_mode`); a miss here
-                // (e.g. images, fonts, files added post-startup) falls through to
-                // the disk-read path below.
-                if !dev_mode {
-                    if let Some(asset) = asset_cache.get(&file_path) {
-                        // Conditional GET: 304 short-circuit on matching ETag.
-                        if let Some(if_none_match) = req.headers().get("if-none-match") {
-                            if let Ok(client_etag) = if_none_match.to_str() {
-                                if client_etag == asset.etag
-                                    || client_etag == format!("W/{}", asset.etag)
-                                {
-                                    return Ok(Response::builder()
-                                        .status(StatusCode::NOT_MODIFIED)
-                                        .header("ETag", &asset.etag)
-                                        .header(
-                                            "Cache-Control",
-                                            server_constants::STATIC_CACHE_MAX_AGE,
-                                        )
-                                        .body(full(Bytes::new()))
-                                        .unwrap());
-                                }
-                            }
-                        }
-
-                        let total_size = asset.bytes.len() as u64;
-
-                        // Range support: slice cheaply from refcounted Bytes.
-                        if let Some(range_header) = req.headers().get("range") {
-                            if let Ok(range_str) = range_header.to_str() {
-                                if let Some((start, end)) =
-                                    server_constants::parse_range_header(range_str, total_size)
-                                {
-                                    let length = end - start + 1;
-                                    let slice = asset.bytes.slice(start as usize..=(end as usize));
-                                    return Ok(finish_response(
-                                        Response::builder()
-                                            .status(StatusCode::PARTIAL_CONTENT)
-                                            .header("Content-Type", asset.content_type)
-                                            .header(
-                                                "Content-Range",
-                                                format!("bytes {}-{}/{}", start, end, total_size),
-                                            )
-                                            .header("Content-Length", length.to_string())
-                                            .header("Accept-Ranges", "bytes")
-                                            .header("ETag", &asset.etag)
-                                            .header(
-                                                "Cache-Control",
-                                                server_constants::STATIC_CACHE_MAX_AGE,
-                                            ),
-                                        slice,
-                                    ));
-                                } else {
-                                    return Ok(Response::builder()
-                                        .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                                        .header("Content-Range", format!("bytes */{}", total_size))
-                                        .body(full(Bytes::new()))
-                                        .unwrap());
-                                }
-                            }
-                        }
-
-                        return Ok(Response::builder()
-                            .status(StatusCode::OK)
-                            .header("Content-Type", asset.content_type)
-                            .header("Content-Length", asset.bytes.len().to_string())
-                            .header("Accept-Ranges", "bytes")
-                            .header("ETag", &asset.etag)
-                            .header("Cache-Control", server_constants::STATIC_CACHE_MAX_AGE)
-                            .body(full(asset.bytes.clone()))
-                            .unwrap());
-                    }
-                }
-
-                // In production mode, check for conditional request (If-None-Match)
-                if !dev_mode {
-                    if let Ok(metadata) = std::fs::metadata(&file_path) {
-                        if let Ok(modified) = metadata.modified() {
-                            let etag = server_constants::generate_etag(modified);
-
-                            // Check If-None-Match header
-                            if let Some(if_none_match) = req.headers().get("if-none-match") {
-                                if let Ok(client_etag) = if_none_match.to_str() {
-                                    // ETags match - return 304 Not Modified (skip file read!)
-                                    if client_etag == etag || client_etag == format!("W/{}", etag) {
-                                        return Ok(Response::builder()
-                                            .status(StatusCode::NOT_MODIFIED)
-                                            .header("ETag", &etag)
-                                            .header(
-                                                "Cache-Control",
-                                                server_constants::STATIC_CACHE_MAX_AGE,
-                                            )
-                                            .body(full(Bytes::new()))
-                                            .unwrap());
-                                    }
-                                }
-                            }
-
-                            let file_size = metadata.len();
-
-                            // Check for Range request
-                            if let Some(range_header) = req.headers().get("range") {
-                                if let Ok(range_str) = range_header.to_str() {
-                                    if let Some((start, end)) =
-                                        server_constants::parse_range_header(range_str, file_size)
-                                    {
-                                        let length = end - start + 1;
-                                        // SEC-048: open + seek + bounded read so a tiny
-                                        // Range against a large asset doesn't slurp the
-                                        // whole file into memory each request.
-                                        let slice = match server_constants::read_file_range(
-                                            &file_path, start, length,
-                                        ) {
-                                            Ok(buf) => buf,
-                                            Err(_) => {
-                                                return Ok(Response::builder()
-                                                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                                    .body(full(Bytes::from("Error reading file")))
-                                                    .unwrap())
-                                            }
-                                        };
-                                        return Ok(Response::builder()
-                                            .status(StatusCode::PARTIAL_CONTENT)
-                                            .header("Content-Type", mime_type)
-                                            .header(
-                                                "Content-Range",
-                                                format!("bytes {}-{}/{}", start, end, file_size),
-                                            )
-                                            .header("Content-Length", length.to_string())
-                                            .header("Accept-Ranges", "bytes")
-                                            .header("ETag", &etag)
-                                            .header(
-                                                "Cache-Control",
-                                                server_constants::STATIC_CACHE_MAX_AGE,
-                                            )
-                                            .body(full(Bytes::from(slice)))
-                                            .unwrap());
-                                    } else {
-                                        // Range not satisfiable
-                                        return Ok(Response::builder()
-                                            .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                                            .header(
-                                                "Content-Range",
-                                                format!("bytes */{}", file_size),
-                                            )
-                                            .body(full(Bytes::new()))
-                                            .unwrap());
-                                    }
-                                }
-                            }
-
-                            // No Range header - serve full file
-                            let content = match std::fs::read(&file_path) {
-                                Ok(c) => c,
-                                Err(_) => {
-                                    return Ok(Response::builder()
-                                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                        .body(full(Bytes::from("Error reading file")))
-                                        .unwrap())
-                                }
-                            };
-
-                            return Ok(Response::builder()
-                                .status(StatusCode::OK)
-                                .header("Content-Type", mime_type)
-                                .header("Content-Length", content.len().to_string())
-                                .header("Accept-Ranges", "bytes")
-                                .header("ETag", etag)
-                                .header("Cache-Control", server_constants::STATIC_CACHE_MAX_AGE)
-                                .body(full(Bytes::from(content)))
-                                .unwrap());
-                        }
-                    }
-                }
-
-                // Dev mode or metadata unavailable
-                let content = match std::fs::read(&file_path) {
-                    Ok(c) => c,
-                    Err(_) => {
-                        return Ok(Response::builder()
-                            .status(StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(full(Bytes::from("Error reading file")))
-                            .unwrap())
-                    }
-                };
-
-                let file_size = content.len() as u64;
-
-                // Check for Range request in dev mode too
-                if let Some(range_header) = req.headers().get("range") {
-                    if let Ok(range_str) = range_header.to_str() {
-                        if let Some((start, end)) =
-                            server_constants::parse_range_header(range_str, file_size)
-                        {
-                            let length = end - start + 1;
-                            let slice =
-                                &content[start as usize..=(end as usize).min(content.len() - 1)];
-                            return Ok(Response::builder()
-                                .status(StatusCode::PARTIAL_CONTENT)
-                                .header("Content-Type", mime_type)
-                                .header(
-                                    "Content-Range",
-                                    format!("bytes {}-{}/{}", start, end, file_size),
-                                )
-                                .header("Content-Length", length.to_string())
-                                .header("Accept-Ranges", "bytes")
-                                .body(full(Bytes::copy_from_slice(slice)))
-                                .unwrap());
-                        } else {
-                            return Ok(Response::builder()
-                                .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                                .header("Content-Range", format!("bytes */{}", file_size))
-                                .body(full(Bytes::new()))
-                                .unwrap());
-                        }
-                    }
-                }
-
-                return Ok(Response::builder()
-                    .status(StatusCode::OK)
-                    .header("Content-Type", mime_type)
-                    .header("Content-Length", content.len().to_string())
-                    .header("Accept-Ranges", "bytes")
-                    .body(full(Bytes::from(content)))
-                    .unwrap());
-            }
-            Ok(None) => {} // Not a static file, fall through to route matching
-        }
+    // A file under `public/`: resolution, the traversal and symlink checks,
+    // and the conditional-GET / `Range` / full-body reply. See `static_files`.
+    if let Some(response) = static_files::handle(
+        &path,
+        &method,
+        &public_dir,
+        &asset_cache,
+        dev_mode,
+        req.headers(),
+    ) {
+        return Ok(response);
     }
 
     // Everything the binary serves from itself: the nav and prefetch scripts,
@@ -3588,7 +3356,7 @@ async fn handle_hyper_request(
             .unwrap());
     }
 
-    let query_str = uri.query().unwrap_or("");
+    let query_str = raw_query.as_deref().unwrap_or("");
 
     // Parse query string into ordered pairs (order matters for bracket
     // arrays like tags[]=a&tags[]=b — the worker nests them Rack-style).
@@ -8931,7 +8699,7 @@ async fn handle_dev_source(
     // form. Plain string `starts_with` would treat
     // `/home/me/app-secrets/x` as inside `/home/me/app` because the
     // prefix matches character-by-character — exactly the leak this
-    // task was filed for. `resolve_static_file` already uses this idiom.
+    // task was filed for. `static_files` already uses this idiom.
     if !canonical_path.starts_with(&canonical_root) {
         return Ok(Response::builder()
             .status(StatusCode::FORBIDDEN)
@@ -9168,52 +8936,6 @@ fn convert_json_to_value(json: serde_json::Value) -> crate::interpreter::value::
     json::convert_json_to_value(json)
 }
 
-/// Resolve a request path to a static file in the public directory.
-/// Returns:
-///   Ok(Some(path)) - file found and safe to serve (**already canonical**)
-///   Ok(None) - not a static file, fall through to route matching
-///   Err(()) - path traversal attempt, should return 403
-///
-/// Returns the *canonical* path, not the pre-join candidate. Serving the
-/// non-canonical path after a canonicalize jail check leaves a TOCTOU window
-/// where a symlink planted under `public/` between check and open could
-/// escape the public root.
-fn resolve_static_file(path: &str, public_dir: &Path) -> Result<Option<PathBuf>, ()> {
-    let relative_path = path.trim_start_matches('/');
-    let decoded_path = match urlencoding::decode(relative_path) {
-        Ok(d) => d.into_owned(),
-        Err(_) => relative_path.to_string(),
-    };
-    // Do not allow directory traversal or absolute paths in URL
-    if decoded_path.contains("..") || decoded_path.starts_with('/') {
-        return Ok(None);
-    }
-    let file_path = public_dir.join(&decoded_path);
-
-    // Canonicalize both paths to resolve symlinks and prevent traversal
-    let (canonical_file, canonical_public) = match (
-        std::fs::canonicalize(&file_path),
-        std::fs::canonicalize(public_dir),
-    ) {
-        (Ok(f), Ok(p)) => (f, p),
-        _ => return Ok(None), // file doesn't exist, fall through
-    };
-
-    // Ensure the canonical file path is within public directory.
-    // Use `Path::starts_with` (segment-aware), NOT `str::starts_with`: the
-    // string form would let `…/public-evil/x` pass the check against
-    // `…/public` because the directory name is a byte-level prefix.
-    if !canonical_file.starts_with(&canonical_public) {
-        return Err(()); // traversal attempt
-    }
-
-    if !canonical_file.is_file() {
-        return Ok(None); // directory or special file, fall through
-    }
-
-    Ok(Some(canonical_file))
-}
-
 /// Walk the MVC app directories that the test runner also walks for coverage
 /// (`app/`, `config/`, `lib/`) and pre-register every `.sl` file's executable
 /// lines on the server-side coverage tracker. Without this, lines that are
@@ -9359,7 +9081,6 @@ mod tests {
         assert!(caught.is_err(), "panics must unwind, not abort");
     }
 
-    use std::fs;
     use std::sync::Mutex;
 
     static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -9797,124 +9518,6 @@ mod tests {
         assert!(websocket_origin_allowed(&headers));
 
         crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED.write(|on| *on = prev_trust);
-    }
-
-    #[test]
-    fn test_resolve_static_file_serves_existing_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let public = dir.path().join("public");
-        fs::create_dir(&public).unwrap();
-        fs::write(public.join("style.css"), "body{}").unwrap();
-
-        let result = resolve_static_file("/style.css", &public);
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_some());
-    }
-
-    #[test]
-    fn test_resolve_static_file_root_path_falls_through() {
-        let dir = tempfile::tempdir().unwrap();
-        let public = dir.path().join("public");
-        fs::create_dir(&public).unwrap();
-
-        // "/" should NOT return 404 — it should fall through (None) so route matching handles it
-        let result = resolve_static_file("/", &public);
-        assert_eq!(result, Ok(None));
-    }
-
-    #[test]
-    fn test_resolve_static_file_directory_falls_through() {
-        let dir = tempfile::tempdir().unwrap();
-        let public = dir.path().join("public");
-        let subdir = public.join("css");
-        fs::create_dir_all(&subdir).unwrap();
-
-        // "/css" is a directory, should fall through
-        let result = resolve_static_file("/css", &public);
-        assert_eq!(result, Ok(None));
-    }
-
-    #[test]
-    fn test_resolve_static_file_nonexistent_falls_through() {
-        let dir = tempfile::tempdir().unwrap();
-        let public = dir.path().join("public");
-        fs::create_dir(&public).unwrap();
-
-        let result = resolve_static_file("/nope.js", &public);
-        assert_eq!(result, Ok(None));
-    }
-
-    #[test]
-    fn test_resolve_static_file_blocks_traversal() {
-        let dir = tempfile::tempdir().unwrap();
-        let public = dir.path().join("public");
-        fs::create_dir(&public).unwrap();
-
-        let result = resolve_static_file("/../etc/passwd", &public);
-        assert_eq!(result, Ok(None));
-    }
-
-    #[test]
-    fn test_resolve_static_file_blocks_encoded_traversal() {
-        let dir = tempfile::tempdir().unwrap();
-        let public = dir.path().join("public");
-        fs::create_dir(&public).unwrap();
-
-        let result = resolve_static_file("/%2e%2e/etc/passwd", &public);
-        assert_eq!(result, Ok(None));
-    }
-
-    /// Regression: the containment check must compare path components, not
-    /// stringified bytes. `…/public-evil/x` is a byte-level prefix match
-    /// against `…/public`, so the previous `&str::starts_with` check would
-    /// pass it through. The fix uses `Path::starts_with`, which is segment
-    /// aware. Exercised here via a symlink inside `public/` that resolves
-    /// out to a sibling whose name starts with `public`.
-    #[cfg(unix)]
-    #[test]
-    fn test_resolve_static_file_blocks_sibling_prefix_via_symlink() {
-        let dir = tempfile::tempdir().unwrap();
-        let public = dir.path().join("public");
-        let evil = dir.path().join("public-evil");
-        fs::create_dir(&public).unwrap();
-        fs::create_dir(&evil).unwrap();
-        fs::write(evil.join("secret.txt"), "leaked").unwrap();
-
-        // `public/escape` -> `../public-evil`
-        std::os::unix::fs::symlink(&evil, public.join("escape")).unwrap();
-
-        // `escape/secret.txt` has no `..` in the URL, so the early-out
-        // doesn't catch it; the canonical path lives in `public-evil`,
-        // which used to satisfy `starts_with("…/public")` byte-wise.
-        let result = resolve_static_file("/escape/secret.txt", &public);
-        assert_eq!(result, Err(()));
-    }
-
-    /// Regression: the same containment-check bug, without symlinks — a
-    /// canonicalized path under a sibling directory whose name is a byte
-    /// prefix of `public_dir` must not pass the check. This is harder to
-    /// trigger from a clean URL (the early `..` reject covers the obvious
-    /// vector), but we still want explicit coverage that the segment-aware
-    /// check is what's running.
-    #[test]
-    fn test_resolve_static_file_path_starts_with_is_segment_aware() {
-        let dir = tempfile::tempdir().unwrap();
-        let public = dir.path().join("public");
-        let evil = dir.path().join("public-evil");
-        fs::create_dir(&public).unwrap();
-        fs::create_dir(&evil).unwrap();
-        let secret = evil.join("secret.txt");
-        fs::write(&secret, "leaked").unwrap();
-
-        // Sanity: with the old byte-level check, `…/public-evil/secret.txt`
-        // would test as a prefix-match against `…/public`. With Path-aware
-        // semantics it does not.
-        let canon_secret = fs::canonicalize(&secret).unwrap();
-        let canon_public = fs::canonicalize(&public).unwrap();
-        assert!(!canon_secret.starts_with(&canon_public));
-        assert!(canon_secret
-            .to_string_lossy()
-            .starts_with(&*canon_public.to_string_lossy()));
     }
 
     /// Regression test: controller actions dispatched via `call_class_method`
