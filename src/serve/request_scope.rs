@@ -111,7 +111,7 @@ pub(super) fn install(data: &RequestData) -> Scope {
 
     // Resolve the session ID from the parsed cookies (if any). When no cookie
     // is sent, we leave the thread-local unset — session_set / session_regenerate
-    // will create one lazily on first use, and finalize_response emits
+    // will create one lazily on first use, and `finalize::finish` emits
     // Set-Cookie whenever the post-handler session ID differs from the cookie's.
     // SEC-077 precedence (`__Host-session_id` over `session_id`) is preserved
     // inside session_id_from_cookie_pairs.

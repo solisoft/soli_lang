@@ -5352,7 +5352,7 @@ fn handle_request(
 
     // In --dev, snapshot the raw request now — before headers/query/body are
     // moved out downstream — so the dev bar's replay button can re-dispatch it
-    // faithfully. Stored in finalize_response keyed by the same request id as
+    // faithfully. Stashed by `finalize::finish` under the same request id as
     // the profiling snapshot. Dev-only, so this clone never costs production.
     let captured_raw = if dev_mode {
         Some(dev_store::RawRequest {
@@ -5418,7 +5418,7 @@ fn handle_request(
     // single top-level rectangle (e.g. `GET /docs/getting_started`) and
     // every other span — middleware, action, view, db — nests beneath it
     // instead of appearing as detached sibling roots. The root is closed
-    // explicitly inside `finalize_response` right before the snapshot, so
+    // explicitly inside `finalize::finish` right before the snapshot, so
     // it actually ends up in the recorded log.
     //
     // Same tree is used for OTLP export when tracing is on (dev or prod).

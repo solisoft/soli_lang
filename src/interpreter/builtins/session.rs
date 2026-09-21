@@ -880,7 +880,7 @@ pub fn set_response_cookie_with_attrs(name: &str, value: &str, attrs: &str) {
     });
 }
 
-/// Drain all accumulated response cookies (called in finalize_response).
+/// Drain all accumulated response cookies (called in `serve::finalize::finish`).
 pub fn take_response_cookies() -> Vec<(String, String, String)> {
     RESPONSE_COOKIES.with(|c| std::mem::take(&mut *c.borrow_mut()))
 }
@@ -1952,7 +1952,7 @@ mod tests {
 
     /// First-time visitor: no Cookie header, handler writes to the session.
     /// session_set must create a session on demand, persist the value, and
-    /// leave the thread-local pointing at the new ID so finalize_response
+    /// leave the thread-local pointing at the new ID so `serve::finalize::finish`
     /// can emit Set-Cookie.
     #[test]
     fn session_set_lazily_creates_session_when_no_cookie() {
@@ -1975,7 +1975,7 @@ mod tests {
             "value must persist under the newly created session"
         );
 
-        // Simulate finalize_response: Set-Cookie must carry the new ID.
+        // Simulate `serve::finalize::finish`: Set-Cookie must carry the new ID.
         let cookie = session_cookie_if_changed(Some(&current), cookie_session_id.as_deref(), false)
             .expect("expected Set-Cookie for lazily created session");
         assert!(cookie.contains(&format!("session_id={current}")));
@@ -2090,7 +2090,7 @@ mod tests {
     }
 
     /// ensure_session mints a replacement when the cookie's ID is unknown
-    /// (e.g. after a server restart). finalize_response must notice and
+    /// (e.g. after a server restart). `serve::finalize::finish` must notice and
     /// refresh the client's cookie.
     #[test]
     fn unknown_cookie_id_triggers_replacement_and_set_cookie() {

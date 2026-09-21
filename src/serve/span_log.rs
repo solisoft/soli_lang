@@ -96,7 +96,7 @@ thread_local! {
 
 /// State for the synthetic root span that wraps the entire request.
 /// Stored separately from `STACK` so we can close it explicitly in
-/// `finalize_response` (right before snapshotting) without relying on
+/// `finalize::finish` (right before snapshotting) without relying on
 /// SpanGuard drop ordering — the dev-bar injection happens *inside* the
 /// `handle_request` stack frame, so a normal RAII guard would still be
 /// alive at snapshot time and the root would be missing from the trace.

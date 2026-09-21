@@ -2,7 +2,7 @@
 //!
 //! These run in the **test-runner** process. The view path + locals are
 //! rendered in the spawned `soli serve` child and shipped back as the
-//! `x-soli-test-*` response headers (see `serve::mod::finalize_response`).
+//! `x-soli-test-*` response headers (see `serve::finalize::finish`).
 //! `request_helpers::http_request` decodes those headers after every
 //! `get`/`post`/... and stores them here via [`set_last_render`], so the
 //! `assigns()` / `assign(key)` / `view_path()` / `render_template()` helpers
