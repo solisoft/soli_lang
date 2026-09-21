@@ -41,6 +41,7 @@ pub mod prod_log;
 mod request_scope;
 pub mod route_listing;
 pub mod route_log;
+mod route_match;
 mod router;
 pub mod sensors;
 pub mod server_constants;
@@ -5459,118 +5460,38 @@ fn handle_request(
         return handle_live_upload(data);
     }
 
-    // Find matching route using indexed lookup (O(1) for exact matches, O(m) for patterns)
-    let (route_handler_name, scoped_middleware, matched_params) = match find_route(method, path) {
-        Some(found) => found,
-        None => {
-            // Nothing in this application answers here. If it serves EUI and
-            // the caller is a browser, that is not a missing page — it is
-            // somebody who arrived over the wrong protocol, and a 404 teaches
-            // them nothing. An application that *does* define a route for
-            // this path never reaches this branch, so its own page always
-            // wins; this is only what happens when nothing is defined.
-            #[cfg(feature = "eui")]
-            if method == "GET" && eui::snapshot::accepts_html(header_str(&data.headers, "accept")) {
-                // The question is whether this is an EUI application at
-                // all, not which component it would open: the page names the
-                // origin now, and the client completes it from the manifest.
-                if eui::default_component().is_some() {
-                    set_current_session_id(None);
-                    let body = eui::snapshot::browser_body(
-                        header_str(&data.headers, "host"),
-                        header_str(&data.headers, "x-forwarded-host"),
-                        header_str(&data.headers, "x-forwarded-proto"),
-                    );
-                    return ResponseData {
-                        status: 200,
-                        headers: vec![
-                            (
-                                "Content-Type".to_string(),
-                                "text/html; charset=utf-8".to_string(),
-                            ),
-                            ("Cache-Control".to_string(), "no-store".to_string()),
-                            ("Vary".to_string(), "Accept".to_string()),
-                            // Compiled in, so there is nothing to hot-reload
-                            // and no reason to open a socket from the page
-                            // that exists to say a machine is doing too much.
-                            (NO_INJECT_HEADER.to_string(), "1".to_string()),
-                        ],
-                        body: body.into_bytes(),
-                    };
-                }
-            }
-            // Clear session context before returning
-            set_current_session_id(None);
-            // Log timing for 404 responses (skip health checks)
-            if log_requests && path != "/health" {
-                let elapsed = start_time.unwrap().elapsed();
-                println!(
-                    "{} [LOG] {} {} - 404 ({:.3}ms)",
-                    log_timestamp(),
-                    method,
-                    path,
-                    elapsed.as_secs_f64() * 1000.0
-                );
-            }
-            let mut resp = error_response::production(
-                404,
-                method,
-                path,
-                "The page you're looking for doesn't exist.",
-                None,
-            );
-            let is_https = if crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled() {
-                header_str(&data.headers, "x-forwarded-proto")
-                    .map(|v| first_forwarded_token(v) == "https")
-                    .unwrap_or(false)
-            } else {
-                false
-            };
-            // SEC-028: cookie Secure flag also fires when the operator has
-            // explicitly opted into "always Secure" via
-            // `SOLI_FORCE_SECURE_COOKIES=1` or `enable_force_secure_cookies()`,
-            // covering the TLS-without-trust_proxy / TLS-without-XFP-header case.
-            let cookie_secure = is_https
-                || crate::interpreter::builtins::secure_cookies::is_force_secure_cookies_enabled();
-            // Driver-aware: ID drivers re-emit only when the resolved ID
-            // differs from the cookie's; the cookie driver re-emits when the
-            // incoming blob was invalid/expired and got replaced. Uses the
-            // explicit locals because the thread-local session ID was cleared
-            // above.
-            if let Some(cookie_value) = finalize_session_cookie(
-                scope.session_id.as_deref(),
-                scope.cookie_session_id.as_deref(),
-                cookie_secure,
-            ) {
-                resp.headers.push(("Set-Cookie".to_string(), cookie_value));
-            }
-            return resp;
-        }
-    };
-
-    // Expand wildcard action pattern (e.g., "docs#*" → "docs#routing")
-    // Skip expansion entirely when handler doesn't use wildcards (common case)
-    let handler_name = if !route_handler_name.ends_with("#*") {
-        route_handler_name
+    // Resolved before the route lookup because a 404 emits a session cookie
+    // too, and has to know whether it is `Secure`. Deciding that twice from
+    // the same headers is how the two copies of this block drifted apart.
+    //
+    // `X-Forwarded-*` is honored only when `enable_trust_proxy()` has been
+    // opted into; otherwise an attacker on a directly-exposed deploy could
+    // spoof the scheme used to set the session-cookie `Secure` flag.
+    let trust_proxy = crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled();
+    let is_https = if trust_proxy {
+        header_str(&data.headers, "x-forwarded-proto")
+            .map(|v| first_forwarded_token(v) == "https")
+            .unwrap_or(false)
     } else {
-        let expanded_handler = crate::interpreter::builtins::server::expand_wildcard_action(
-            &route_handler_name,
-            &matched_params,
-        );
-        if let Some(expanded) = expanded_handler {
-            expanded
-        } else {
-            // Clear session context before returning 404
-            set_current_session_id(None);
-            return error_response::production(
-                404,
-                method,
-                path,
-                "Action not found for this route.",
-                None,
-            );
-        }
+        false
     };
+    // SEC-028: cookie Secure flag also fires when the operator has
+    // explicitly opted into "always Secure" via
+    // `SOLI_FORCE_SECURE_COOKIES=1` or `enable_force_secure_cookies()`,
+    // covering the TLS-without-trust_proxy / TLS-without-XFP-header case.
+    let cookie_secure =
+        is_https || crate::interpreter::builtins::secure_cookies::is_force_secure_cookies_enabled();
+
+    let matched = match route_match::resolve(method, path, data, &scope, cookie_secure, start_time)
+    {
+        Ok(matched) => matched,
+        Err(resp) => return resp,
+    };
+    let route_match::Matched {
+        handler_name,
+        scoped_middleware,
+        params: matched_params,
+    } = matched;
 
     // Record the matched route (post wildcard-expansion) for the dev bar's
     // "requests" panel + the `X-Soli-Route` header. Early-outs on the gate in
@@ -5590,32 +5511,11 @@ fn handle_request(
         )
     };
 
-    // Read scheme + host out of the headers BEFORE `std::mem::take` strips
-    // them. `is_https` is also used further down (session cookie Secure
-    // flag) — keep it computed here rather than re-reading the now-empty
-    // headers map. The host falls back to the `Host` header per RFC 7230
-    // when no proxy header is present; empty string is fine — `*_url` will
-    // reject it with a clear error. `X-Forwarded-*` are honored only when
-    // `enable_trust_proxy()` has been opted into; otherwise an attacker on
-    // a directly-exposed deploy could spoof the scheme/host used to set the
-    // session-cookie `Secure` flag and to build absolute URL helpers.
-    let trust_proxy = crate::interpreter::builtins::trust_proxy::is_trust_proxy_enabled();
-    let is_https = if trust_proxy {
-        header_str(&data.headers, "x-forwarded-proto")
-            .map(|v| first_forwarded_token(v) == "https")
-            .unwrap_or(false)
-    } else {
-        false
-    };
-    // SEC-028: cookie Secure flag uses `is_https || force_secure_cookies()`
-    // so a TLS deployment without `enable_trust_proxy()` (or without an
-    // X-Forwarded-Proto: https header) still emits Secure cookies once the
-    // operator opts in.
-    let cookie_secure =
-        is_https || crate::interpreter::builtins::secure_cookies::is_force_secure_cookies_enabled();
-
-    // Publish scheme + host before headers are taken. Skip when no named
-    // routes exist so a JSON API does not allocate host strings per request.
+    // Publish scheme + host before `std::mem::take` strips the headers. The
+    // host falls back to the `Host` header per RFC 7230 when no proxy header
+    // is present; empty string is fine — `*_url` will reject it with a clear
+    // error. Skip when no named routes exist so a JSON API does not allocate
+    // host strings per request.
     if crate::interpreter::builtins::named_routes::any_named_routes() {
         // SEC-044: take only the first comma-separated entry from
         // X-Forwarded-Host. A nginx-style appending proxy sends
