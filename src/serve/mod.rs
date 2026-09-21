@@ -6,6 +6,7 @@
 //! - Automatic route derivation
 //! - Middleware support for request interception
 
+mod accept;
 mod asset_cache;
 pub mod camera;
 pub mod cors;
@@ -225,11 +226,7 @@ use http_body_util::BodyExt;
 use http_body_util::Full;
 use http_body_util::StreamBody;
 use hyper::body::Incoming;
-use hyper::service::service_fn;
 use hyper::{header, Request, Response, StatusCode};
-use hyper_util::rt::{TokioIo, TokioTimer};
-use hyper_util::server::conn::auto;
-use tokio::net::TcpListener;
 use tokio::sync::{broadcast, oneshot};
 use uuid::Uuid;
 
@@ -1122,7 +1119,6 @@ fn run_hyper_server_worker_pool(
     } else {
         None
     };
-    let reload_tx_for_tokio = reload_tx.clone();
 
     let ws_registry = crate::serve::websocket::get_ws_registry();
 
@@ -1145,13 +1141,10 @@ fn run_hyper_server_worker_pool(
     // Single shared queue drained by all workers: any free worker pulls the
     // next request, so a request is never stranded behind a busy worker.
     let worker_queues = Arc::new(WorkerQueues::new(num_workers, capacity_per_worker));
-    let worker_queues_for_tokio = worker_queues.clone();
 
     // Channel to pass actual bound port from tokio thread to main thread
     let (bound_port_tx, bound_port_rx) = std::sync::mpsc::channel::<u16>();
 
-    // Wrap public_dir in Arc for cheap cloning across connections
-    let public_dir_arc = Arc::new(public_dir.clone());
     // Build prod-mode in-memory snapshot of CSS/JS assets so a mid-deploy file
     // swap on disk doesn't desync against still-cached HTML in browsers.
     // File mode never reads from `public/` — the whole served folder is the
@@ -1163,9 +1156,6 @@ fn run_hyper_server_worker_pool(
     } else {
         asset_cache::build(&public_dir, dev_mode)
     };
-    let asset_cache_for_tokio = asset_cache.clone();
-    let ws_registry_for_tokio = ws_registry.clone();
-    let dev_mode_for_tokio = dev_mode;
 
     // Channel to pass runtime handle from tokio thread to main thread
     let (runtime_handle_tx, runtime_handle_rx) =
@@ -1208,266 +1198,24 @@ fn run_hyper_server_worker_pool(
         _ => std::net::IpAddr::from([0, 0, 0, 0]),
     };
 
-    thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(tokio_worker_threads)
-            .enable_all()
-            .build()
-            .expect("Failed to create tokio runtime");
-
-        runtime.block_on(async move {
-            // Send runtime handle to main thread for workers to use
-            let handle = tokio::runtime::Handle::current();
-            crate::serve::websocket::set_runtime_handle(handle.clone());
-            let _ = runtime_handle_tx.send(handle);
-
-            // Try the requested port, then scan for a free one
-            let mut try_port = port;
-            // Bounds how many connections can be open at once (see
-            // `server_constants::max_connections`). A semaphore rather than a
-            // counter so the permit is released by `Drop` on every exit path.
-            let connection_limiter = std::sync::Arc::new(tokio::sync::Semaphore::new(
-                match server_constants::max_connections() {
-                    0 => tokio::sync::Semaphore::MAX_PERMITS,
-                    n => n,
-                },
-            ));
-
-            let listener = loop {
-                let addr = SocketAddr::from((bind_host, try_port));
-                match TcpListener::bind(addr).await {
-                    Ok(l) => break l,
-                    Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-                        if strict_port_requested() {
-                            eprintln!(
-                                "Port {} is already in use and --strict-port was given, so no \
-                                 other port will be tried.",
-                                port
-                            );
-                            std::process::exit(1);
-                        }
-                        if try_port == port {
-                            eprintln!(
-                                "Port {} is already in use, looking for a free port...",
-                                port
-                            );
-                        }
-                        try_port = try_port.checked_add(1).unwrap_or_else(|| {
-                            eprintln!("No free port found");
-                            std::process::exit(1);
-                        });
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to bind: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-            };
-            // Report the port the OS actually gave us, not the one we asked
-            // for. They differ when `port` is 0: the caller is asking for an
-            // ephemeral port, the kernel picks one, and `try_port` is still 0 —
-            // so without this the bound port is undiscoverable and every
-            // consumer (the startup banner, a desktop shell that has to open a
-            // browser at the right URL) sees `0`. Falls back to `try_port` if
-            // the address can't be read, which keeps the fixed-port and
-            // scan-upward-on-AddrInUse paths behaving exactly as before.
-            let bound_port = listener
-                .local_addr()
-                .map(|addr| addr.port())
-                .unwrap_or(try_port);
-            let _ = bound_port_tx.send(bound_port);
-
-            // Own SIGTERM/SIGINT for the lifetime of the server so shutdown
-            // drains instead of truncating.
-            spawn_drain_on_signal();
-
-            // One application, so the router is a single fallback entry that
-            // answers every `Host`. A host serving several would build this
-            // with `Router::new()` and one `insert` per mounted application;
-            // nothing else in the request path would differ.
-            let router = Arc::new(vhost::Router::single(TenantRuntime {
-                tenant: tenant::TenantId::PRIMARY,
-                request_tx: worker_queues_for_tokio.get_sender(),
-                reload_tx: reload_tx_for_tokio.clone(),
-                public_dir: public_dir_arc.clone(),
-                asset_cache: asset_cache_for_tokio.clone(),
-                ws_event_tx: ws_event_tx.clone(),
-                lv_event_tx: lv_event_tx.clone(),
-                dev_mode: dev_mode_for_tokio,
-            }));
-
-            loop {
-                // The accept loop deliberately keeps running during a drain.
-                // Breaking out would return from the enclosing `block_on`,
-                // dropping the tokio runtime and killing the in-flight
-                // connections this drain exists to protect. A load balancer also
-                // needs to *reach* `/_ready` to learn this instance is going
-                // away; a closed listener gives it a TCP refusal instead.
-                let (stream, peer_addr) = match listener.accept().await {
-                    Ok(conn) => conn,
-                    Err(_) => continue,
-                };
-                // Disable Nagle's algorithm: without this, small responses
-                // written across multiple TCP segments stall ~40ms waiting on
-                // the peer's delayed-ACK, even when the CPU is idle. Matches the
-                // proxy/db convention which already set this on their sockets.
-                let _ = stream.set_nodelay(true);
-
-                // Global connection cap. Without one, a client that opens
-                // sockets and trickles bodies exhausts file descriptors and
-                // memory long before any per-request limit applies. Closing
-                // immediately past the cap sheds the flood while keeping the
-                // listener responsive for everyone else.
-                let connection_permit = match connection_limiter.clone().try_acquire_owned() {
-                    Ok(permit) => permit,
-                    Err(_) => {
-                        // Drop the stream: a RST is the fastest possible signal
-                        // to a well-behaved client to back off.
-                        drop(stream);
-                        continue;
-                    }
-                };
-
-                let io = TokioIo::new(stream);
-                let router = router.clone(); // Arc clone is cheap
-                let _ws_registry = ws_registry_for_tokio.clone();
-
-                tokio::spawn(async move {
-                    // Held for the whole connection so the drain knows when the
-                    // last client has actually finished. Dropped on every exit
-                    // path, including error and panic.
-                    let _conn = shutdown::ConnectionGuard::new();
-                    // Released when this connection ends, however it ends.
-                    let _connection_permit = connection_permit;
-                    let service = service_fn(move |req| {
-                        let router = router.clone(); // Arc clone is cheap
-
-                        async move {
-                            // Draining: refuse new work, but let the probes
-                            // through — `/_ready` answering 503 is precisely how
-                            // a load balancer learns to stop routing here, and it
-                            // cannot do that if the drain check swallows it.
-                            if shutdown::is_draining()
-                                && !matches!(req.uri().path(), "/_health" | "/_ready")
-                            {
-                                return Ok(Response::builder()
-                                    .status(StatusCode::SERVICE_UNAVAILABLE)
-                                    .header("Connection", "close")
-                                    .body(full(Bytes::from("Server shutting down")))
-                                    .unwrap());
-                            }
-                            // Which application serves this. `Host` first, and
-                            // the URI authority behind it: an HTTP/2 request
-                            // carries `:authority` instead, which hyper leaves
-                            // in the URI rather than synthesising a header.
-                            let host = req
-                                .headers()
-                                .get(hyper::header::HOST)
-                                .and_then(|value| value.to_str().ok())
-                                .or_else(|| req.uri().host());
-                            let Some(runtime) = router.resolve(host).cloned() else {
-                                // No application claims this host and there is
-                                // no fallback. 421 is the answer that tells a
-                                // client it reached the wrong server, rather
-                                // than handing it whichever app is first.
-                                return Ok(Response::builder()
-                                    .status(StatusCode::MISDIRECTED_REQUEST)
-                                    .header("Server", "soliMVC")
-                                    .body(full(Bytes::from("Misdirected request")))
-                                    .unwrap());
-                            };
-                            // Everything from here runs as that tenant, on
-                            // every thread this future is polled on: the CORS
-                            // and CSRF policies, the cookie jar, the session
-                            // config and the dev-bar store are all keyed by it,
-                            // and a thread-local binding does not survive an
-                            // `.await`.
-                            let tenant_id = runtime.tenant;
-                            let (result, cors_decision) =
-                                tenant::task_scope(tenant_id, async move {
-                                    // Built-in CORS (`cors("/api/*", {...})` in
-                                    // config/routes.sl). Wraps the whole handler so
-                                    // every response of a CORS-managed path —
-                                    // buffered, streamed, static, or error — carries
-                                    // the allow headers, and preflights are answered
-                                    // before routing.
-                                    let cors_decision = cors::evaluate(
-                                        req.method().as_str(),
-                                        req.uri().path(),
-                                        req.headers(),
-                                    );
-                                    if let Some(preflight) =
-                                        cors_decision.as_ref().and_then(|d| d.preflight.as_ref())
-                                    {
-                                        let mut builder = Response::builder()
-                                            .status(StatusCode::NO_CONTENT)
-                                            .header("Server", "soliMVC");
-                                        for (key, value) in preflight {
-                                            builder = add_header_checked(builder, key, value);
-                                        }
-                                        let preflight_response = Ok(builder
-                                            .body(full(Bytes::new()))
-                                            .unwrap_or_else(|_| Response::new(full(Bytes::new()))));
-                                        // A preflight carries no allow headers of
-                                        // its own beyond the ones just added.
-                                        return (preflight_response, None);
-                                    }
-                                    let result =
-                                        handle_hyper_request(req, runtime, peer_addr).await;
-                                    // The decision leaves the scope with the result:
-                                    // the allow headers are stamped on the response
-                                    // below, outside it.
-                                    (result, cors_decision)
-                                })
-                                .await;
-                            match (result, cors_decision) {
-                                (Ok(mut response), Some(decision)) => {
-                                    for (key, value) in decision.response_headers {
-                                        if let (Ok(name), Ok(val)) = (
-                                            hyper::header::HeaderName::try_from(key.as_str()),
-                                            hyper::header::HeaderValue::try_from(value.as_str()),
-                                        ) {
-                                            response.headers_mut().append(name, val);
-                                        }
-                                    }
-                                    Ok(response)
-                                }
-                                (result, _) => result,
-                            }
-                        }
-                    });
-
-                    // `hyper_util::server::conn::auto::Builder` auto-detects
-                    // HTTP/1.1 vs HTTP/2 (h2c prior knowledge) from the first
-                    // bytes the client sends. h1 connections go through the
-                    // same `http1::Builder` as before; h2c connections get a
-                    // multiplexed stream handler with one TCP connection
-                    // carrying N concurrent requests. SEC-045's 10 s header
-                    // read timeout still applies on the h1 path.
-                    //
-                    // `Builder::new` takes an executor (used by h2 to spawn
-                    // stream tasks), not the IO — the IO goes into
-                    // `serve_connection_with_upgrades` below.
-                    let mut builder = auto::Builder::new(hyper_util::rt::TokioExecutor::new());
-                    // Configure h1: bound the header read timeout so slowloris
-                    // attackers don't pin accept slots. h2c has its own
-                    // header-equivalent timeouts inside hyper.
-                    builder
-                        .http1()
-                        .timer(TokioTimer::new())
-                        .header_read_timeout(Duration::from_secs(10));
-                    // MUST be the `_with_upgrades` variant: plain
-                    // `serve_connection` never performs the HTTP/1.1 protocol
-                    // upgrade after a 101, so every WebSocket (live reload,
-                    // /ws/* routes, LiveView, presence) dies with
-                    // "Handshake not finished". h2 streams are unaffected by
-                    // the wrapper — it only arms the h1 upgrade path.
-                    if let Err(_e) = builder.serve_connection_with_upgrades(io, service).await {
-                        // Silently ignore connection errors
-                    }
-                });
-            }
-        });
+    accept::spawn(accept::Server {
+        bind_host,
+        port,
+        tokio_worker_threads,
+        runtime: TenantRuntime {
+            tenant: tenant::TenantId::PRIMARY,
+            request_tx: worker_queues.get_sender(),
+            reload_tx: reload_tx.clone(),
+            // Arc so a clone per connection and per request is a refcount
+            // bump rather than a path copy.
+            public_dir: Arc::new(public_dir.clone()),
+            asset_cache,
+            ws_event_tx: ws_event_tx.clone(),
+            lv_event_tx: lv_event_tx.clone(),
+            dev_mode,
+        },
+        runtime_handle_tx,
+        bound_port_tx,
     });
 
     // Hot reload version counters (shared between file watcher and workers)
