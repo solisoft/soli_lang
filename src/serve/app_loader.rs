@@ -869,6 +869,52 @@ pub(crate) fn define_routes_dsl(interpreter: &mut Interpreter) -> Result<(), Run
     interpreter.interpret(&program)
 }
 
+/// Load `app/models/` and the three sibling directories that load with it:
+/// `app/services/`, `app/policies/`, `app/mailers/`.
+///
+/// One list, called both when a worker boots and when the models hot-reload
+/// signal fires, because the file watcher treats all four directories as that
+/// one signal — `file_watcher` bumps `models` for a change under any of them
+/// and says so in a comment for each.
+///
+/// It had been written out twice, and the second copy was a directory short:
+/// a worker booted with mailers loaded and then reloaded without them, so
+/// editing `app/mailers/*.sl` under `--dev` bumped the signal, re-ran models,
+/// services and policies, and left the old mailer resident. There is one copy
+/// now, so a fourth sibling can only be forgotten in one place.
+///
+/// `verb` reads into the error lines as "Error loading …" / "Error
+/// reloading …".
+pub(crate) fn load_models_and_siblings(
+    worker_id: usize,
+    interpreter: &mut Interpreter,
+    models_dir: &Path,
+    verb: &str,
+) {
+    // Models first: classes defined in the environment for everything below.
+    if let Err(e) = load_models(interpreter, models_dir) {
+        eprintln!("Worker {}: Error {} models: {}", worker_id, verb, e);
+    }
+
+    let Some(parent) = models_dir.parent() else {
+        return;
+    };
+    // Services: integration classes — Stripe, etc. — visible to controllers
+    // loaded later in this worker.
+    // Policies: `authorize(...)` and the `<Model>Policy` classes.
+    // Mailers: the `Mailer` base class they extend is defined by
+    // `ensure_prelude` when the worker interpreter is built.
+    for sibling in ["services", "policies", "mailers"] {
+        let dir = parent.join(sibling);
+        if !dir.exists() {
+            continue;
+        }
+        if let Err(e) = load_models(interpreter, &dir) {
+            eprintln!("Worker {}: Error {} {}: {}", worker_id, verb, sibling, e);
+        }
+    }
+}
+
 /// Load the application into a freshly built worker interpreter.
 ///
 /// The initial-load counterpart to [`reload_controllers_in_worker`] and
@@ -902,37 +948,7 @@ pub(crate) fn load_app_in_worker(
         }
     }
 
-    // Load models in this worker so classes are defined in environment
-    if let Err(e) = load_models(interpreter, models_dir) {
-        eprintln!("Worker {}: Error loading models: {}", worker_id, e);
-    }
-
-    // Load services (sibling of models) so integration classes — Stripe,
-    // etc. — are visible to controllers loaded later in this worker.
-    if let Some(parent) = models_dir.parent() {
-        let services_dir = parent.join("services");
-        if services_dir.exists() {
-            if let Err(e) = load_models(interpreter, &services_dir) {
-                eprintln!("Worker {}: Error loading services: {}", worker_id, e);
-            }
-        }
-        // Load authorization policies (sibling of models) so `authorize(...)`
-        // and the `<Model>Policy` classes are visible to controllers.
-        let policies_dir = parent.join("policies");
-        if policies_dir.exists() {
-            if let Err(e) = load_models(interpreter, &policies_dir) {
-                eprintln!("Worker {}: Error loading policies: {}", worker_id, e);
-            }
-        }
-        // Load mailers (sibling of models). The Mailer base class is defined by
-        // ensure_prelude when the worker interpreter is built.
-        let mailers_dir = parent.join("mailers");
-        if mailers_dir.exists() {
-            if let Err(e) = load_models(interpreter, &mailers_dir) {
-                eprintln!("Worker {}: Error loading mailers: {}", worker_id, e);
-            }
-        }
-    }
+    load_models_and_siblings(worker_id, interpreter, models_dir, "loading");
 
     // Define DSL helpers for routes (needed for hot reload)
     if let Err(e) = define_routes_dsl(interpreter) {

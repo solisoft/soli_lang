@@ -41,15 +41,26 @@ endpoints, so the cost in production is zero rather than merely disabled.
 
 ## Events
 
-The live reload system watches for changes in these directories:
+The live reload system watches these directories:
 
-- `app/views/` - View templates
-- `app/controllers/` - Controller files
-- `app/models/` - Model files
-- `config/` - Configuration files
-- `public/` - Static assets
+| Watched | Reloaded |
+|---|---|
+| `app/views/` (`.slv`, `.erb`, `.md`) | the template cache |
+| `app/controllers/` (`*_controller.sl`) | controllers, and the routes derived from them |
+| `app/models/`, `app/services/`, `app/policies/`, `app/mailers/` | all four, together |
+| `app/middleware/` | middleware |
+| `app/helpers/` | view helpers |
+| `app/jobs/` (`*_job.sl`) | job classes |
+| `config/routes.sl` | the route table and the `<name>_path` helpers |
+| `public/`, `app/assets/css/` | static assets; Tailwind recompiles |
 
-When any file in these directories changes, a reload signal is sent to connected browsers.
+The four model-ish directories are **one signal**: they load in a fixed order
+into the same environment (a policy refers to a model, a mailer to both), so a
+change in any of them reloads all four. Editing a policy or a mailer on its own
+used not to reload anything at all.
+
+When any watched file changes, the workers reload what changed and a reload
+signal is sent to connected browsers.
 
 ## Troubleshooting
 

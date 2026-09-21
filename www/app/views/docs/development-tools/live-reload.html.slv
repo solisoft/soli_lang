@@ -55,6 +55,62 @@
         </div>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">What Is Watched</h2>
+    <p class="text-gray-400 mb-6">
+        Each directory maps to what the workers reload when something in it changes.
+    </p>
+
+    <div class="overflow-x-auto rounded-xl ring-1 ring-white/10 mb-6">
+        <table class="w-full text-sm text-left">
+            <thead class="bg-white/5 text-gray-300">
+                <tr>
+                    <th class="px-4 py-3 font-semibold">Watched</th>
+                    <th class="px-4 py-3 font-semibold">Reloaded</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">app/views/</code> <span class="text-gray-500">(.slv, .erb, .md)</span></td>
+                    <td class="px-4 py-3">the template cache</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">app/controllers/</code> <span class="text-gray-500">(*_controller.sl)</span></td>
+                    <td class="px-4 py-3">controllers, and the routes derived from them</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">app/models/</code>, <code class="text-amber-400">app/services/</code>, <code class="text-amber-400">app/policies/</code>, <code class="text-amber-400">app/mailers/</code></td>
+                    <td class="px-4 py-3">all four, together</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">app/middleware/</code></td>
+                    <td class="px-4 py-3">middleware</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">app/helpers/</code></td>
+                    <td class="px-4 py-3">view helpers</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">app/jobs/</code> <span class="text-gray-500">(*_job.sl)</span></td>
+                    <td class="px-4 py-3">job classes</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">config/routes.sl</code></td>
+                    <td class="px-4 py-3">the route table and the <code class="text-amber-400">&lt;name&gt;_path</code> helpers</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">public/</code>, <code class="text-amber-400">app/assets/css/</code></td>
+                    <td class="px-4 py-3">static assets; Tailwind recompiles</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        The four model-ish directories are <strong class="text-white">one signal</strong>: they load in a fixed
+        order into the same environment (a policy refers to a model, a mailer to both), so a change in any of
+        them reloads all four. Editing a policy or a mailer on its own used not to reload anything at all.
+    </p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Starting the Server</h2>
     <p class="text-gray-400 mb-6">Use the CLI to start your app in development mode:</p>
 

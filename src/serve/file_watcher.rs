@@ -27,6 +27,7 @@ pub(super) struct WatchPaths {
     pub helpers: PathBuf,
     pub models: PathBuf,
     pub services: PathBuf,
+    pub policies: PathBuf,
     pub mailers: PathBuf,
     pub jobs: PathBuf,
     pub public: PathBuf,
@@ -57,6 +58,7 @@ impl WatchPaths {
             helpers: helpers.to_path_buf(),
             models: models.to_path_buf(),
             services: folder.join("app/services"),
+            policies: folder.join("app/policies"),
             mailers: folder.join("app/mailers"),
             jobs: jobs.to_path_buf(),
             public: public.to_path_buf(),
@@ -84,6 +86,7 @@ pub(super) fn spawn(
         helpers: watch_helpers_dir,
         models: watch_models_dir,
         services: watch_services_dir,
+        policies: watch_policies_dir,
         mailers: watch_mailers_dir,
         jobs: watch_jobs_dir,
         public: watch_public_dir,
@@ -141,6 +144,13 @@ pub(super) fn spawn(
         if watch_services_dir.exists()
             && watcher
                 .watch(&watch_services_dir, RecursiveMode::Recursive)
+                .is_ok()
+        {
+            watch_count += 1;
+        }
+        if watch_policies_dir.exists()
+            && watcher
+                .watch(&watch_policies_dir, RecursiveMode::Recursive)
                 .is_ok()
         {
             watch_count += 1;
@@ -322,13 +332,16 @@ pub(super) fn spawn(
                         helpers_changed = true;
                     } else if name.ends_with(".sl") && path.starts_with(&watch_models_dir) {
                         models_changed = true;
-                    } else if name.ends_with(".sl") && path.starts_with(&watch_services_dir) {
-                        // Reuse the models signal — workers already reload
-                        // app/services/ in the same step (see app_loader).
-                        models_changed = true;
-                    } else if name.ends_with(".sl") && path.starts_with(&watch_mailers_dir) {
-                        // Workers reload app/mailers/ in the same step as
-                        // models (see worker reload path).
+                    } else if name.ends_with(".sl")
+                        && (path.starts_with(&watch_services_dir)
+                            || path.starts_with(&watch_policies_dir)
+                            || path.starts_with(&watch_mailers_dir))
+                    {
+                        // The models signal covers all three siblings, because
+                        // `app_loader::load_models_and_siblings` reloads them
+                        // in the same step. `app/policies/` had been left out
+                        // of the watch list, so a policy edit on its own
+                        // signalled nothing at all.
                         models_changed = true;
                     } else if name.ends_with("_job.sl") && path.starts_with(&watch_jobs_dir) {
                         jobs_changed = true;
