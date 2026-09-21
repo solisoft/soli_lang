@@ -2197,27 +2197,10 @@ fn worker_loop(
 
         if current_models != last_models_version {
             last_models_version = current_models;
-            // Re-load all models
-            if let Err(e) = load_models(interpreter, &_models_dir) {
-                eprintln!("Worker {}: Error reloading models: {}", worker_id, e);
-            }
-            // Re-load services in lockstep with models — they share a
-            // signal (see watcher) and live in app/services/ alongside
-            // models in the load order.
-            if let Some(parent) = _models_dir.parent() {
-                let services_dir = parent.join("services");
-                if services_dir.exists() {
-                    if let Err(e) = load_models(interpreter, &services_dir) {
-                        eprintln!("Worker {}: Error reloading services: {}", worker_id, e);
-                    }
-                }
-                let policies_dir = parent.join("policies");
-                if policies_dir.exists() {
-                    if let Err(e) = load_models(interpreter, &policies_dir) {
-                        eprintln!("Worker {}: Error reloading policies: {}", worker_id, e);
-                    }
-                }
-            }
+            // Models and the three sibling directories that share their
+            // reload signal — see `app_loader::load_models_and_siblings`,
+            // which is also what the worker booted with.
+            app_loader::load_models_and_siblings(worker_id, interpreter, &_models_dir, "reloading");
         }
 
         if current_jobs != last_jobs_version {
