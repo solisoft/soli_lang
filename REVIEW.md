@@ -158,19 +158,33 @@ actually worth. See P2 below.
 
 ### God functions
 
-| Function | Lines | Location |
-|---|---:|---|
-| `register_model_class` | **3,904** | `interpreter/builtins/model/core.rs:1218` |
-| `handle_hyper_request` | 1,122 | `serve/mod.rs` |
-| `run_hyper_server_worker_pool` | 993 | `serve/mod.rs` |
-| `handle_request` | 922 | `serve/mod.rs` |
-| `worker_loop` | 632 | `serve/mod.rs` |
+| Function | When measured | Now | Location |
+|---|---:|---:|---|
+| `register_model_class` | **3,904** | 30 | `interpreter/builtins/model/core.rs` |
+| `handle_hyper_request` | 1,122 | 263 | `serve/mod.rs` |
+| `run_hyper_server_worker_pool` | 993 | 557 | `serve/mod.rs` |
+| `handle_request` | 922 | 900 | `serve/mod.rs` |
+| `worker_loop` | 632 | 455 | `serve/mod.rs` |
 
-(`vm.rs::run_dispatch` at 2,283 is a bytecode dispatch `match` — that one is fine as-is.)
-`serve/mod.rs` is 8,704 lines. `register_model_class` registers the entire ORM surface as
-inline closures in one function; it is the highest-value refactor in the repo and the reason
-`core.rs` is 6,141 lines. Splitting it by concern (CRUD / query / associations / callbacks /
-AI) is mechanical and low-risk.
+(`vm.rs::run_dispatch`, 2,810 lines, is a bytecode dispatch `match` — that one is fine as-is.)
+
+**All five have been split.** `register_model_class` registered the entire ORM surface as
+inline closures in one function and was the highest-value refactor in the repo; it went first.
+The four in `serve/mod.rs` followed, each by the same method: lift out *a thing that is a
+function rather than a stage*, keep every reasoning comment verbatim, turn ambient captures
+into named parameters or a small struct, and verify against a **running server** rather than
+by reading. `serve/mod.rs` is 7,236 lines across 58 sibling modules, down from 8,704 when this
+was written and from a peak of 10,953; `core.rs` is 3,004, down from 6,141.
+
+What the splits found, which is the argument for doing them at all: every duplicate that came
+apart had already drifted. Three copies of the static-file response differed in their defensive
+slice bound; the two middleware loops differed in a four-line comment the second had lost; the
+list of directories a worker loads was a directory short in its second copy, which is why
+`app/mailers/` never hot-reloaded. Two `Arc` clones and a route-table clone turned out to be
+per-connection or per-worker work for a binding nobody read.
+
+`handle_request` is the one still worth looking at: at 900 lines it is now the largest, and
+unlike the others its bulk is not stages but a single long body.
 
 ### The dual-engine maintenance tax
 
