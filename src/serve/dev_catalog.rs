@@ -1,9 +1,8 @@
 //! The `--dev` component and mailer preview catalogs (`/__soli/components`
 //! and `/__soli/mailers`): list every `.html.slv` view, read its declared
 //! props and leading `<%# preview %>` header, and render a gallery of iframe
-//! cards. Extracted from the serve god-module. Dev-only. `view_raw_source`
-//! and `component_preview_data` are re-exported to `super` for the
-//! single-mailer preview endpoint.
+//! cards, plus the single-mailer preview (`/__soli/mailers/<rel>`) the
+//! gallery's iframes point at. Extracted from the serve god-module. Dev-only.
 
 use hyper::Response;
 
@@ -305,5 +304,37 @@ Looking for mail the app really sent? <a href=\"/__soli/inbox\" style=\"color:#8
             "{inbox_link}<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:1rem;\">{}</div>",
             cards
         ),
+    ))
+}
+
+/// Dev-only single mailer preview (`GET /__soli/mailers/<mailer>/<action>`),
+/// used by the gallery iframes and directly linkable. Renders the HTML body
+/// only (no layout), with example data from a `<%# preview: {json} %>` header.
+pub(crate) fn handle_mailer_preview(rel: &str, query: Option<&str>) -> Response<ResponseBody> {
+    if !crate::template::is_safe_template_name(rel) {
+        return html_ok("<!doctype html><p>invalid mailer template</p>".to_string());
+    }
+    let inner = match crate::interpreter::builtins::template::get_template_cache() {
+        Ok(cache) => {
+            let raw = view_raw_source(cache.views_dir(), rel).unwrap_or_default();
+            let data = component_preview_data(&raw);
+            match cache.render(rel, &data, Some(None)) {
+                Ok(html) => html,
+                Err(e) => format!(
+                    "<pre style=\"color:#b00\">render error: {}</pre>",
+                    dev_bar::html_escape(&e)
+                ),
+            }
+        }
+        Err(e) => format!("template cache unavailable: {}", dev_bar::html_escape(&e)),
+    };
+    // Mailer bodies bring their own markup; render them on a plain white page.
+    // The back link is suppressed when the gallery frames this page (?framed=1).
+    html_ok(format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\">\
+<style>body{{margin:0;padding:1rem;font-family:system-ui,sans-serif;background:#fff;color:#111;}}</style>\
+</head><body>{back}{inner}</body></html>",
+        back = preview_back_link(query),
+        inner = inner
     ))
 }

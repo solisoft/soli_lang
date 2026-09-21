@@ -176,10 +176,10 @@ pub(super) fn render_error_page(
     // can still evaluate snippets that touch `req.body`. The
     // trusted-peer check mirrors the REPL auth: same network shape is
     // treated as same trust boundary across both endpoints.
-    let peer_trusted = super::is_trusted_dev_peer_str(&request_data.peer_ip);
+    let peer_trusted = super::dev_routes::is_trusted_dev_peer_str(&request_data.peer_ip);
     let request_data_json = build_redacted_request_data_json(
         request_data,
-        super::dev_repl_allows_remote() && !peer_trusted,
+        super::dev_routes::dev_repl_allows_remote() && !peer_trusted,
     );
 
     render_dev_error_page(
@@ -885,7 +885,8 @@ fn escape_for_script_tag(s: &str) -> String {
 /// peer that rendered a dev-mode error page.
 fn dev_repl_token_for_html(peer_trusted: bool) -> String {
     if peer_trusted {
-        serde_json::to_string(super::dev_repl_auth_token()).unwrap_or_else(|_| "\"\"".to_string())
+        serde_json::to_string(super::dev_routes::dev_repl_auth_token())
+            .unwrap_or_else(|_| "\"\"".to_string())
     } else {
         "\"\"".to_string()
     }
