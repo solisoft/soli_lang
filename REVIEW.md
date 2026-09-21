@@ -163,7 +163,7 @@ actually worth. See P2 below.
 | `register_model_class` | **3,904** | 30 | `interpreter/builtins/model/core.rs` |
 | `handle_hyper_request` | 1,122 | 263 | `serve/mod.rs` |
 | `run_hyper_server_worker_pool` | 993 | 557 | `serve/mod.rs` |
-| `handle_request` | 922 | 900 | `serve/mod.rs` |
+| `handle_request` | 922 | 258 | `serve/mod.rs` |
 | `worker_loop` | 632 | 455 | `serve/mod.rs` |
 
 (`vm.rs::run_dispatch`, 2,810 lines, is a bytecode dispatch `match` — that one is fine as-is.)
@@ -173,7 +173,7 @@ inline closures in one function and was the highest-value refactor in the repo; 
 The four in `serve/mod.rs` followed, each by the same method: lift out *a thing that is a
 function rather than a stage*, keep every reasoning comment verbatim, turn ambient captures
 into named parameters or a small struct, and verify against a **running server** rather than
-by reading. `serve/mod.rs` is 7,236 lines across 58 sibling modules, down from 8,704 when this
+by reading. `serve/mod.rs` is 6,479 lines across 64 sibling modules, down from 8,704 when this
 was written and from a peak of 10,953; `core.rs` is 3,004, down from 6,141.
 
 What the splits found, which is the argument for doing them at all: every duplicate that came
@@ -183,8 +183,21 @@ list of directories a worker loads was a directory short in its second copy, whi
 `app/mailers/` never hot-reloaded. Two `Arc` clones and a route-table clone turned out to be
 per-connection or per-worker work for a binding nobody read.
 
-`handle_request` is the one still worth looking at: at 900 lines it is now the largest, and
-unlike the others its bulk is not stages but a single long body.
+`handle_request` was the last one worth looking at, and it has been split too — into
+`error_response.rs`, `builtin_endpoints.rs`, `request_scope.rs`, `route_match.rs`,
+`request_input.rs` and `finalize.rs`. It found two more of the same kind. Nine copies of
+"mint a request id, render the production error page, assemble an HTML `ResponseData`"
+existed while the helper that does it already existed twice, 600 lines above three of them.
+And a 404 from a failed wildcard expansion skipped the `finalize_session_cookie` call that
+a 404 from a route miss made — invisible under the ID session drivers, a dropped
+replacement cookie under `SOLI_SESSION_DRIVER=cookie`.
+
+One apparent drift turned out not to be one, which is worth recording because reading alone
+suggested otherwise: of the four `if dev_mode { render_error_page } else {
+render_production_error_page }` forks, two map a breakpoint to `200` and two return a flat
+`500`. The two flat ones hold an `Err(e)` where `e` is a `String` — from `resolve_handler`
+and `create_controller_instance` — with no breakpoint channel to carry. They pass a hard
+`false` to the shared helper and say why.
 
 ### The dual-engine maintenance tax
 
@@ -198,13 +211,23 @@ one declarative source.
 
 ### `finish_response` adoption (deliberately deferred)
 
-72 raw `.body(..).unwrap()` sites remain in `src/serve/` against 2 uses of the helper built
-to replace them. I attempted the mechanical rewrite and **reverted it**: nested-paren cases
-made a regex rewrite unsafe, and two sites were corrupted in a way that happened to be
-caught by the compiler — the dangerous version is the one that compiles and is subtly wrong.
-With the per-request `catch_unwind` now in place these are no longer a process-availability
-risk, only a wasted request and a noisy log. Filed as a task to do with a proper
-balanced-paren tool and site-by-site review.
+68 raw `.body(..).unwrap()` sites remain in `src/serve/`, against 17 uses of the helper built
+to replace them — in `static_files.rs` (4), `pipeline.rs` (2), `files/assets.rs` (2) and
+`files/mod.rs` (9). (Counted with a balanced-paren scan for `.body( … ).unwrap()`, not a
+line grep: most of these sites span several lines and a line grep finds one of them.)
+
+Of the 68, **57 are literal drop-ins** and **11 sit in functions that return
+`Response<Full<Bytes>>`** — `camera.rs`, `live_reload.rs`, `live_reload_ws.rs`, `native.rs`,
+`nav.rs`, `prefetch.rs`, `sensors.rs` — where adopting the helper means changing the
+function's return type to `Response<ResponseBody>` and following it through its callers.
+That last number is the honest reason the sweep is still deferred.
+
+I attempted the mechanical rewrite and **reverted it**: nested-paren cases made a regex
+rewrite unsafe, and two sites were corrupted in a way that happened to be caught by the
+compiler — the dangerous version is the one that compiles and is subtly wrong. With the
+per-request `catch_unwind` now in place these are no longer a process-availability risk,
+only a wasted request and a noisy log. Filed as a task to do with a proper balanced-paren
+tool and site-by-site review.
 
 ---
 
