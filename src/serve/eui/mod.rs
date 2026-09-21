@@ -23,7 +23,9 @@ pub mod tree;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use crossbeam::channel;
 use eui_proto::Frame;
+use hyper::{HeaderMap, Response};
 use tungstenite::Message;
 
 use crate::interpreter::value::Value;
@@ -35,7 +37,58 @@ use crate::span::Span;
 use self::stats::Stats;
 use super::{
     handler_return_is_bare, json_to_value, unwrap_handler_return, value_to_json, LiveViewEventData,
+    ResponseBody,
 };
+
+/// The three EUI things a plain `GET` can ask for, or `None` for anything
+/// else.
+///
+/// Lifted out of `handle_hyper_request`, from between the same-origin gate and
+/// the WebSocket upgrade branch. It stays on that side of the gate: the
+/// comment on `/_eui/view/` below records that its lack of origin protection
+/// is deliberate, and moving the trio ahead of the gate would have changed
+/// what `check_csrf_origin` sees rather than only where the code lives.
+pub(super) async fn http_get(
+    path: &str,
+    method: &str,
+    raw_query: Option<&str>,
+    headers: &HeaderMap,
+    lv_event_tx: &channel::Sender<LiveViewEventData>,
+) -> Option<Response<ResponseBody>> {
+    if method != "GET" {
+        return None;
+    }
+    // Content-addressed and immutable, so a plain GET with no session and no
+    // cookie is the whole protocol.
+    if let Some(hex) = path.strip_prefix("/_eui/asset/") {
+        return Some(assets::respond(hex));
+    }
+    if path == "/.well-known/eui" {
+        return Some(manifest::respond());
+    }
+    // A one-shot render, for a component that declared it may be served
+    // this way. No socket, no session, nothing resident afterwards, and
+    // a strong ETag so a cache in front answers the second reader.
+    //
+    // No origin protection, deliberately: `check_csrf_origin` exempts
+    // `GET`, and a resource that a CDN is meant to hold cannot have a
+    // same-origin check. What stands in for it is that the render runs as
+    // nobody and that `{"static": ...}` is the application promising its
+    // `connect` is a read — `<img src=".../_eui/view/x">` on any page
+    // anywhere reaches this.
+    if let Some(component) = path.strip_prefix("/_eui/view/") {
+        return Some(
+            snapshot::respond(
+                component.trim_end_matches('/'),
+                raw_query,
+                headers,
+                lv_event_tx,
+            )
+            .await,
+        );
+    }
+    None
+}
 
 /// `component -> view action`, filled by `router_eui`. Per application: two
 /// apps may both register a component called `counter`, and this is what

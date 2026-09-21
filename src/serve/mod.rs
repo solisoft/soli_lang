@@ -9,6 +9,7 @@
 mod asset_cache;
 pub mod camera;
 pub mod cors;
+mod coverage;
 mod csrf;
 pub mod dev_bar;
 mod dev_catalog;
@@ -428,7 +429,7 @@ pub(crate) enum WorkerResponse {
 pub(crate) type ResponseBody = BoxBody<Bytes, std::io::Error>;
 
 /// Wrap fully-buffered bytes as a boxed response body.
-fn full(body: Bytes) -> ResponseBody {
+pub(crate) fn full(body: Bytes) -> ResponseBody {
     Full::<Bytes>::new(body)
         .map_err(|never| match never {})
         .boxed()
@@ -471,7 +472,7 @@ fn native_stream_response(topic: &str) -> Response<ResponseBody> {
         })
 }
 
-fn box_full(resp: Response<Full<Bytes>>) -> Response<ResponseBody> {
+pub(crate) fn box_full(resp: Response<Full<Bytes>>) -> Response<ResponseBody> {
     resp.map(|b| b.map_err(|never| match never {}).boxed())
 }
 
@@ -718,7 +719,7 @@ pub fn serve_folder_with_options_and_hooks(
             root_dir: Some(folder.to_path_buf()),
         };
         let mut tracker = CoverageTracker::new(config);
-        register_app_source_lines_for_server(&mut tracker, folder);
+        coverage::register_app_source_lines(&mut tracker, folder);
         set_global_coverage_tracker(std::sync::Arc::new(std::sync::Mutex::new(tracker)));
     }
 
@@ -2638,44 +2639,15 @@ async fn handle_hyper_request(
     // every process running as this user can reach the port. Runs before any
     // routing (including /_metrics) so an ungated caller cannot reach anything
     // at all. Completely inert unless a desktop boot armed it, so ordinary
-    // `soli serve` pays one atomic load.
-    if crate::desktop::token::is_armed() {
-        let cookie_header = req
-            .headers()
+    // `soli serve` pays one atomic load. See `desktop::token`.
+    if let Some(response) = crate::desktop::token::gate_request(
+        &path,
+        req.uri().query(),
+        req.headers()
             .get(hyper::header::COOKIE)
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
-        match crate::desktop::token::evaluate(&path, req.uri().query(), cookie_header.as_deref()) {
-            crate::desktop::token::Decision::Allow => {}
-            crate::desktop::token::Decision::GrantSession { session, redirect } => {
-                // Redirect rather than serve here, so the one-shot token stops
-                // being part of the URL the browser keeps showing. Deep links
-                // land on `redirect` instead of always `/`.
-                let location = if redirect.starts_with('/') {
-                    redirect
-                } else {
-                    "/".to_string()
-                };
-                return Ok(Response::builder()
-                    .status(StatusCode::FOUND)
-                    .header("Location", location)
-                    .header(
-                        "Set-Cookie",
-                        crate::desktop::token::session_cookie_header(&session),
-                    )
-                    .body(full(Bytes::new()))
-                    .unwrap());
-            }
-            crate::desktop::token::Decision::Deny => {
-                return Ok(Response::builder()
-                    .status(StatusCode::FORBIDDEN)
-                    .header("Content-Type", "text/plain; charset=utf-8")
-                    .body(full(Bytes::from_static(
-                        b"This application must be opened from its own launcher.",
-                    )))
-                    .unwrap());
-            }
-        }
+            .and_then(|v| v.to_str().ok()),
+    ) {
+        return Ok(response);
     }
 
     // Liveness, readiness and Prometheus metrics: answered from the path, the
@@ -2698,44 +2670,30 @@ async fn handle_hyper_request(
 
     // SEC-014: same-origin gate for state-changing requests. Runs before
     // routing so a cross-origin POST is rejected before any controller
-    // sees it. WebSocket upgrades have their own check (`websocket_origin_allowed`)
-    // a few lines below, so the early return doesn't fire on those.
+    // sees it. WebSocket upgrades have their own check (`websocket_origin_allowed`,
+    // once per branch inside `upgrade`), so the early return doesn't fire on
+    // those.
     if !hyper_tungstenite::is_upgrade_request(&req) {
         if let Err(reason) = check_csrf_origin(req.headers(), &method, &path) {
             return Ok(forbidden_csrf_response(&reason));
         }
     }
 
-    // EUI assets: content-addressed and immutable, so a plain GET with no
-    // session and no cookie is the whole protocol. After the desktop gate and
-    // the origin check, before any routing.
+    // The three EUI things a plain GET can ask for: a content-addressed
+    // asset, the manifest, and a one-shot render. After the desktop gate and
+    // the origin check, where they stood — the `/_eui/view/` comment records
+    // that being on this side of it is deliberate. See `eui::http_get`.
     #[cfg(feature = "eui")]
-    if method == "GET" {
-        if let Some(hex) = path.strip_prefix("/_eui/asset/") {
-            return Ok(eui::assets::respond(hex));
-        }
-        if path == "/.well-known/eui" {
-            return Ok(eui::manifest::respond());
-        }
-        // A one-shot render, for a component that declared it may be served
-        // this way. No socket, no session, nothing resident afterwards, and
-        // a strong ETag so a cache in front answers the second reader.
-        //
-        // No origin protection, deliberately: `check_csrf_origin` exempts
-        // `GET`, and a resource that a CDN is meant to hold cannot have a
-        // same-origin check. What stands in for it is that the render runs as
-        // nobody and that `{"static": ...}` is the application promising its
-        // `connect` is a read — `<img src=".../_eui/view/x">` on any page
-        // anywhere reaches this.
-        if let Some(component) = path.strip_prefix("/_eui/view/") {
-            return Ok(eui::snapshot::respond(
-                component.trim_end_matches('/'),
-                raw_query.as_deref(),
-                req.headers(),
-                &lv_event_tx,
-            )
-            .await);
-        }
+    if let Some(response) = eui::http_get(
+        &path,
+        &method,
+        raw_query.as_deref(),
+        req.headers(),
+        &lv_event_tx,
+    )
+    .await
+    {
+        return Ok(response);
     }
 
     // The four sockets this binary upgrades to: live reload, an EUI session,
@@ -2784,33 +2742,10 @@ async fn handle_hyper_request(
         return Ok(response);
     }
 
-    // Handle live reload SSE endpoint
-    if path == "/__livereload" {
-        // SEC-043: gate the dev-only SSE endpoint by Origin, mirroring
-        // the WebSocket variant a few lines above. Without this any
-        // browser tab on any origin can open the long-poll, hold a
-        // worker for 55 s per connection, and fan out hundreds in
-        // parallel to exhaust the broadcast channel + worker pool.
-        // `websocket_origin_allowed` requires Origin whenever a Cookie
-        // is present (SEC-046) and otherwise requires it to match
-        // `Host`; cookie-less curl from the dev box still works.
-        if !websocket_origin_allowed(req.headers()) {
-            return Ok(Response::builder()
-                .status(StatusCode::FORBIDDEN)
-                .body(full(Bytes::from("Forbidden live-reload origin")))
-                .unwrap());
-        }
-        if let Some(ref tx) = reload_tx {
-            return Ok(box_full(
-                live_reload::handle_live_reload_sse(tx.subscribe()).await,
-            ));
-        } else {
-            // Live reload disabled
-            return Ok(Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(full(Bytes::from("Live reload is disabled")))
-                .unwrap());
-        }
+    // The live-reload long-poll, and the SEC-043 origin check in front of it.
+    // See `live_reload`.
+    if let Some(response) = live_reload::handle(&path, req.headers(), reload_tx.as_ref()).await {
+        return Ok(response);
     }
 
     // Job dashboard: open in --dev; in production only when credentials
@@ -2831,43 +2766,11 @@ async fn handle_hyper_request(
         Err(req) => req,
     };
 
-    // Coverage dump endpoint: only active when the parent process asked us
-    // to collect coverage (via SOLI_COVERAGE_ENABLED). Returns a JSON blob
-    // the test runner merges into its own aggregated report.
-    //
-    // SEC-080: gate the dump on a per-process `SOLI_COVERAGE_TOKEN`. The
-    // test runner mints a fresh random token, hands it to each child via
-    // env, and presents it as `X-Coverage-Token` when scraping. Coverage
-    // accidentally enabled in production would otherwise let any remote
-    // client read source paths and line-hit counts; with the token gate
-    // an unauthenticated GET returns 403, even if `SOLI_COVERAGE_ENABLED`
-    // is set. The token is required — running without it (legacy callers,
-    // misconfiguration) is rejected too, so the endpoint is never open.
-    if path == "/__coverage__" && method == "GET" && std::env::var("SOLI_COVERAGE_ENABLED").is_ok()
-    {
-        let expected = std::env::var("SOLI_COVERAGE_TOKEN")
-            .ok()
-            .filter(|t| !t.is_empty());
-        let provided = req
-            .headers()
-            .get("x-coverage-token")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        if !coverage_request_authorized(expected.as_deref(), provided) {
-            return Ok(Response::builder()
-                .status(StatusCode::FORBIDDEN)
-                .header("Content-Type", "text/plain; charset=utf-8")
-                .body(full(Bytes::from(
-                    "coverage endpoint requires X-Coverage-Token matching SOLI_COVERAGE_TOKEN",
-                )))
-                .unwrap());
-        }
-        let body = coverage_dump_json();
-        return Ok(Response::builder()
-            .status(StatusCode::OK)
-            .header("Content-Type", "application/json")
-            .body(full(Bytes::from(body)))
-            .unwrap());
+    // The coverage dump the test runner scrapes before it kills this
+    // process, and the token that keeps it from being readable by anyone
+    // else. See `coverage`.
+    if let Some(response) = coverage::handle(&path, &method, req.headers()) {
+        return Ok(response);
     }
 
     let query_str = raw_query.as_deref().unwrap_or("");
@@ -3258,21 +3161,6 @@ async fn handle_hyper_request(
     }
 }
 
-/// SEC-080: decide whether a `/__coverage__` GET is authorised. The
-/// endpoint is only reachable when `SOLI_COVERAGE_ENABLED` is set; the
-/// test runner additionally mints a random `SOLI_COVERAGE_TOKEN` per
-/// run and presents it as `X-Coverage-Token`. `expected` is the env
-/// value (None = not configured = reject), `provided` is the request
-/// header value (empty = no header = reject). Constant-time compare so
-/// the negative result doesn't leak token shape.
-fn coverage_request_authorized(expected: Option<&str>, provided: &str) -> bool {
-    let Some(tok) = expected else { return false };
-    if tok.is_empty() || provided.is_empty() {
-        return false;
-    }
-    crate::interpreter::builtins::crypto::do_secure_compare(tok, provided)
-}
-
 fn forbidden_csrf_response(reason: &str) -> Response<ResponseBody> {
     Response::builder()
         .status(StatusCode::FORBIDDEN)
@@ -3281,7 +3169,7 @@ fn forbidden_csrf_response(reason: &str) -> Response<ResponseBody> {
         .unwrap()
 }
 
-fn websocket_origin_allowed(headers: &hyper::HeaderMap) -> bool {
+pub(crate) fn websocket_origin_allowed(headers: &hyper::HeaderMap) -> bool {
     let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) else {
         // SEC-046: an Origin-less upgrade was previously allowed because
         // non-browser clients (curl, native apps) often omit it. But the
@@ -7511,83 +7399,6 @@ pub(crate) fn html_ok(html: String) -> Response<ResponseBody> {
         .unwrap()
 }
 
-/// Walk the MVC app directories that the test runner also walks for coverage
-/// (`app/`, `config/`, `lib/`) and pre-register every `.sl` file's executable
-/// lines on the server-side coverage tracker. Without this, lines that are
-/// never hit would be absent from the report (the aggregator only knows about
-/// lines it has seen hit).
-fn register_app_source_lines_for_server(
-    tracker: &mut crate::coverage::CoverageTracker,
-    app_dir: &Path,
-) {
-    let source_dirs = [
-        app_dir.join("app"),
-        app_dir.join("config"),
-        app_dir.join("lib"),
-    ];
-    for source_dir in &source_dirs {
-        if source_dir.is_dir() {
-            collect_and_register_server_sources(tracker, source_dir);
-        }
-    }
-}
-
-fn collect_and_register_server_sources(tracker: &mut crate::coverage::CoverageTracker, dir: &Path) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                collect_and_register_server_sources(tracker, &path);
-            } else if path.extension().is_some_and(|e| e == "sl") {
-                if let Ok(source) = std::fs::read_to_string(&path) {
-                    tracker.register_executable_lines_from_source(&path, &source);
-                }
-            }
-        }
-    }
-}
-
-/// Build a JSON response that enumerates every recorded line hit on the
-/// server-side global coverage tracker. Consumed by the test runner right
-/// before it kills the subprocess so the parent process can merge the data
-/// into its own aggregated report.
-fn coverage_dump_json() -> String {
-    let Some(tracker) = crate::coverage::tracker::get_global_coverage_tracker() else {
-        return "{}".to_string();
-    };
-    let Ok(tracker) = tracker.lock() else {
-        return "{}".to_string();
-    };
-    let coverage = tracker.get_aggregated_coverage();
-    let mut out = String::from("{\"files\":[");
-    let mut first = true;
-    for (path, file_cov) in &coverage.file_coverages {
-        if !first {
-            out.push(',');
-        }
-        first = false;
-        let path_str = path
-            .to_string_lossy()
-            .replace('\\', "\\\\")
-            .replace('"', "\\\"");
-        out.push_str(&format!("{{\"path\":\"{}\",\"hits\":[", path_str));
-        let mut line_first = true;
-        for (line_num, line_cov) in &file_cov.lines {
-            if line_cov.hits == 0 {
-                continue;
-            }
-            if !line_first {
-                out.push(',');
-            }
-            line_first = false;
-            out.push_str(&format!("[{},{}]", line_num, line_cov.hits));
-        }
-        out.push_str("]}");
-    }
-    out.push_str("]}");
-    out
-}
-
 #[allow(dead_code)]
 #[cfg(test)]
 mod tests {
@@ -8278,37 +8089,6 @@ mod tests {
         // Different path under /webhooks/: not skipped.
         assert!(check_csrf_origin(&h, "POST", "/webhooks/paypal").is_err());
         clear_csrf_skip_patterns();
-    }
-
-    // SEC-080 — `coverage_request_authorized` regression coverage.
-
-    #[test]
-    fn coverage_rejected_without_env_token() {
-        // Test runner forgot to set SOLI_COVERAGE_TOKEN — endpoint must
-        // refuse rather than fall back to "any caller wins".
-        assert!(!coverage_request_authorized(None, "anything"));
-        assert!(!coverage_request_authorized(Some(""), "anything"));
-    }
-
-    #[test]
-    fn coverage_rejected_without_request_header() {
-        assert!(!coverage_request_authorized(Some("secret-token"), ""));
-    }
-
-    #[test]
-    fn coverage_rejected_on_token_mismatch() {
-        assert!(!coverage_request_authorized(
-            Some("secret-token"),
-            "wrong-token"
-        ));
-    }
-
-    #[test]
-    fn coverage_accepted_on_token_match() {
-        assert!(coverage_request_authorized(
-            Some("secret-token"),
-            "secret-token"
-        ));
     }
 
     #[test]

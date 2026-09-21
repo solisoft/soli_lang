@@ -47,7 +47,9 @@ use super::{
 pub(super) async fn handle(
     mut req: Request<Incoming>,
     path: &str,
-    raw_query: Option<&str>,
+    // Read only by the EUI session arm: with the `eui` feature off there is
+    // no arm here that looks at a query string.
+    #[cfg_attr(not(feature = "eui"), allow(unused_variables))] raw_query: Option<&str>,
     peer_addr: SocketAddr,
     reload_tx: Option<&broadcast::Sender<()>>,
     ws_event_tx: &channel::Sender<WebSocketEventData>,
