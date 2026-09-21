@@ -2032,83 +2032,15 @@ fn worker_loop(
     let app_mode = files::files_root().is_none();
 
     if app_mode {
-        // Load middleware in this worker (needed for scoped middleware resolution by name)
-        {
-            let mut file_tracker = FileTracker::new();
-            if let Err(e) = load_middleware(interpreter, &middleware_dir, &mut file_tracker) {
-                eprintln!("Worker {}: Error loading middleware: {}", worker_id, e);
-            }
-        }
-
-        // Load models in this worker so classes are defined in environment
-        if let Err(e) = load_models(interpreter, &_models_dir) {
-            eprintln!("Worker {}: Error loading models: {}", worker_id, e);
-        }
-
-        // Load services (sibling of models) so integration classes — Stripe,
-        // etc. — are visible to controllers loaded later in this worker.
-        if let Some(parent) = _models_dir.parent() {
-            let services_dir = parent.join("services");
-            if services_dir.exists() {
-                if let Err(e) = load_models(interpreter, &services_dir) {
-                    eprintln!("Worker {}: Error loading services: {}", worker_id, e);
-                }
-            }
-            // Load authorization policies (sibling of models) so `authorize(...)`
-            // and the `<Model>Policy` classes are visible to controllers.
-            let policies_dir = parent.join("policies");
-            if policies_dir.exists() {
-                if let Err(e) = load_models(interpreter, &policies_dir) {
-                    eprintln!("Worker {}: Error loading policies: {}", worker_id, e);
-                }
-            }
-            // Load mailers (sibling of models). The Mailer base class is defined by
-            // ensure_prelude when the worker interpreter is built.
-            let mailers_dir = parent.join("mailers");
-            if mailers_dir.exists() {
-                if let Err(e) = load_models(interpreter, &mailers_dir) {
-                    eprintln!("Worker {}: Error loading mailers: {}", worker_id, e);
-                }
-            }
-        }
-
-        // Define DSL helpers for routes (needed for hot reload)
-        if let Err(e) = define_routes_dsl(interpreter) {
-            eprintln!("Worker {}: Error defining routes DSL: {}", worker_id, e);
-        }
-
-        // Ship the framework upload helpers + `AttachmentsController` class
-        // BEFORE user controllers load, so a user-defined `AttachmentsController`
-        // (or a user `attach_upload`/`detach_upload`/etc.) cleanly overrides the
-        // default by being defined later in the same env.
-        if let Err(e) = uploads_prelude::define_uploads_prelude(interpreter) {
-            eprintln!("Worker {}: Error loading uploads prelude: {}", worker_id, e);
-        }
-
-        // Load controllers in this worker so functions are defined in environment.
-        // Anything user-defined here shadows the framework prelude above.
-        load_controllers_in_worker(worker_id, interpreter, &controllers_dir);
-
-        // Load app/jobs/*_job.sl in this worker so XJob classes are available
-        // to the callback dispatcher and to controller code that calls
-        // `XJob.perform_later(...)`. Worker 0 also syncs `static cron`
-        // declarations to SolidB.
-        if jobs_dir.exists() {
-            let mut tracker = FileTracker::new();
-            app_loader::load_jobs_in_worker(worker_id, interpreter, &jobs_dir, &mut tracker, true);
-        }
-
-        let _worker_routes = get_routes();
-
-        // Define `<name>_path` / `<name>_url` helpers in this worker's env from
-        // the route table we just received. Must run BEFORE the VM globals copy
-        // below so prod mode picks them up. Re-runs on hot reload via the same
-        // call inside `reload_routes_in_worker`.
-        {
-            let mut env = interpreter.environment.borrow_mut();
-            crate::interpreter::builtins::named_routes::register_named_route_helpers(&mut env);
-        }
-    } // end app_mode
+        app_loader::load_app_in_worker(
+            worker_id,
+            interpreter,
+            &_models_dir,
+            &middleware_dir,
+            &controllers_dir,
+            &jobs_dir,
+        );
+    }
 
     // Create VM for production mode (bytecode execution for handler calls)
     let mut vm: Option<crate::vm::Vm> = if !dev_mode {

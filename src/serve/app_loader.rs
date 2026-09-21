@@ -869,6 +869,107 @@ pub(crate) fn define_routes_dsl(interpreter: &mut Interpreter) -> Result<(), Run
     interpreter.interpret(&program)
 }
 
+/// Load the application into a freshly built worker interpreter.
+///
+/// The initial-load counterpart to [`reload_controllers_in_worker`] and
+/// [`reload_routes_in_worker`], which have always lived here while this half
+/// sat inlined in `worker_loop` calling six functions from this module in a
+/// particular order.
+///
+/// It has no outputs at all: every call defines something in `interpreter`'s
+/// environment or in a thread-local the request path reads. The *order* is the
+/// contract, and two steps of it are load-bearing enough that the comments
+/// below say so — the framework's upload prelude goes in before user
+/// controllers, so a user-defined `AttachmentsController` wins by being
+/// defined later in the same environment; and the named-route helpers go in
+/// before `worker_loop` copies the globals into the production VM.
+///
+/// Not called in file mode (`soli serve` on a plain directory): there is no
+/// application to load, only templates the engine already points at.
+pub(crate) fn load_app_in_worker(
+    worker_id: usize,
+    interpreter: &mut Interpreter,
+    models_dir: &Path,
+    middleware_dir: &Path,
+    controllers_dir: &Path,
+    jobs_dir: &Path,
+) {
+    // Load middleware in this worker (needed for scoped middleware resolution by name)
+    {
+        let mut file_tracker = FileTracker::new();
+        if let Err(e) = load_middleware(interpreter, middleware_dir, &mut file_tracker) {
+            eprintln!("Worker {}: Error loading middleware: {}", worker_id, e);
+        }
+    }
+
+    // Load models in this worker so classes are defined in environment
+    if let Err(e) = load_models(interpreter, models_dir) {
+        eprintln!("Worker {}: Error loading models: {}", worker_id, e);
+    }
+
+    // Load services (sibling of models) so integration classes — Stripe,
+    // etc. — are visible to controllers loaded later in this worker.
+    if let Some(parent) = models_dir.parent() {
+        let services_dir = parent.join("services");
+        if services_dir.exists() {
+            if let Err(e) = load_models(interpreter, &services_dir) {
+                eprintln!("Worker {}: Error loading services: {}", worker_id, e);
+            }
+        }
+        // Load authorization policies (sibling of models) so `authorize(...)`
+        // and the `<Model>Policy` classes are visible to controllers.
+        let policies_dir = parent.join("policies");
+        if policies_dir.exists() {
+            if let Err(e) = load_models(interpreter, &policies_dir) {
+                eprintln!("Worker {}: Error loading policies: {}", worker_id, e);
+            }
+        }
+        // Load mailers (sibling of models). The Mailer base class is defined by
+        // ensure_prelude when the worker interpreter is built.
+        let mailers_dir = parent.join("mailers");
+        if mailers_dir.exists() {
+            if let Err(e) = load_models(interpreter, &mailers_dir) {
+                eprintln!("Worker {}: Error loading mailers: {}", worker_id, e);
+            }
+        }
+    }
+
+    // Define DSL helpers for routes (needed for hot reload)
+    if let Err(e) = define_routes_dsl(interpreter) {
+        eprintln!("Worker {}: Error defining routes DSL: {}", worker_id, e);
+    }
+
+    // Ship the framework upload helpers + `AttachmentsController` class
+    // BEFORE user controllers load, so a user-defined `AttachmentsController`
+    // (or a user `attach_upload`/`detach_upload`/etc.) cleanly overrides the
+    // default by being defined later in the same env.
+    if let Err(e) = crate::serve::uploads_prelude::define_uploads_prelude(interpreter) {
+        eprintln!("Worker {}: Error loading uploads prelude: {}", worker_id, e);
+    }
+
+    // Load controllers in this worker so functions are defined in environment.
+    // Anything user-defined here shadows the framework prelude above.
+    load_controllers_in_worker(worker_id, interpreter, controllers_dir);
+
+    // Load app/jobs/*_job.sl in this worker so XJob classes are available
+    // to the callback dispatcher and to controller code that calls
+    // `XJob.perform_later(...)`. Worker 0 also syncs `static cron`
+    // declarations to SolidB.
+    if jobs_dir.exists() {
+        let mut tracker = FileTracker::new();
+        load_jobs_in_worker(worker_id, interpreter, jobs_dir, &mut tracker, true);
+    }
+
+    // Define `<name>_path` / `<name>_url` helpers in this worker's env from
+    // the route table we just received. Must run BEFORE the VM globals copy
+    // below so prod mode picks them up. Re-runs on hot reload via the same
+    // call inside `reload_routes_in_worker`.
+    {
+        let mut env = interpreter.environment.borrow_mut();
+        crate::interpreter::builtins::named_routes::register_named_route_helpers(&mut env);
+    }
+}
+
 /// Reload all controllers in a worker thread.
 /// This ensures OOP controllers are properly registered in the environment
 /// before routes are reloaded.
