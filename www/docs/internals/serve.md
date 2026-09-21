@@ -218,6 +218,21 @@ pub(crate) fn finish_response(builder: Builder, body: Bytes) -> Response<Respons
 
 Use this for every response you build in `src/serve/`. File-mode already does.
 
+## The worker-side request path
+
+`handle_request` in `mod.rs` is the order the stages run in; each stage is its
+own module, and each module header says what it is and why it is a function
+rather than a stage of the pipeline.
+
+| Module | What it owns |
+|---|---|
+| `request_scope.rs` | What a pooled worker must forget from the previous visitor, and the session, cookies and locale it installs for this one. `LocaleGuard` is deliberately bound by the caller — a guard dropped inside the module would restore the default locale before the handler ran |
+| `builtin_endpoints.rs` | `/up`, `/openapi.json`, `/openapi` — answered before any session work, so a readiness probe never creates a session |
+| `route_match.rs` | The route lookup, wildcard expansion, the EUI browser fallback, and the one 404 both misses return |
+| `request_input.rs` | Body parse, trust-proxy scheme and host (SEC-044, `SOLI_APP_HOSTS`, SEC-028), and the `req` hash a controller reads |
+| `finalize.rs` | Everything after the handler returns: session and response cookies, security headers, trace headers, test-runner headers, the dev bar, the OTLP export, the access line — in that order, because each reads what the last wrote |
+| `error_response.rs` | The 403/404/500 responses the request path builds by hand, in one place |
+
 ## File mode
 
 `src/serve/files/` — `soli serve ./notes` when the folder is not an MVC app.
@@ -235,6 +250,7 @@ No `.env`, no DB, no controllers. Templates in that folder **are** code — only
 |---|---|
 | `router.rs` | Path matching, `resources`, named routes |
 | `middleware.rs` | Global vs scoped |
+| `error_response.rs` | The 403/404/500 pages; `handler_failure` is the dev/production 500 fork |
 | `worker_pool.rs` | Channels, 504 timeout |
 | `shutdown.rs` | SIGTERM drain; compile_error on panic=abort |
 | `env_loader.rs` | dotenv |
