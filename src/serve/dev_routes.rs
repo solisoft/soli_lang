@@ -34,6 +34,7 @@ use super::dev_catalog::{
     handle_component_catalog, handle_component_preview, handle_mailer_catalog,
     handle_mailer_preview,
 };
+use super::pipeline;
 use super::repl_session::REPL_STORE;
 use super::{
     add_header_checked, dev_bar, dev_inbox, dev_store, full, json, load_models, prod_log,
@@ -403,30 +404,10 @@ async fn handle_replay(id: &str, request_tx: &WorkerSender) -> Response<Response
         response_tx,
     };
 
-    // Mirror the main dispatch's non-blocking send loop.
-    let mut pending = Some(request_data);
-    let deadline =
-        tokio::time::Instant::now() + Duration::from_secs(server_constants::REQUEST_TIMEOUT_SECS);
-    let send_ok = loop {
-        if let Some(data) = pending.take() {
-            match request_tx.try_send(data) {
-                Ok(()) => break true,
-                Err(crossbeam::channel::TrySendError::Full(returned)) => {
-                    if tokio::time::Instant::now() >= deadline {
-                        break false;
-                    }
-                    pending = Some(returned);
-                    tokio::time::sleep(Duration::from_millis(1)).await;
-                }
-                Err(crossbeam::channel::TrySendError::Disconnected(_)) => break false,
-            }
-        }
-    };
-    if !send_ok {
-        return Response::builder()
-            .status(StatusCode::SERVICE_UNAVAILABLE)
-            .body(full(Bytes::from("Server busy")))
-            .unwrap();
+    // The same non-blocking send the main dispatch uses — this used to be a
+    // hand-copied duplicate of it, under a comment saying so.
+    if let Err(busy) = pipeline::enqueue(request_tx, request_data).await {
+        return *busy;
     }
 
     let worker_response = match tokio::time::timeout(
