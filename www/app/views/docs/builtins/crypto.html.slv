@@ -710,9 +710,12 @@ uri = Crypto.totp_uri(secret, "user@example.com", "MyApp", 30)
 
 # Returns: otpauth://totp/MyApp:user%40example.com?secret=...&algorithm=SHA1&digits=6&period=30
 
-# Use with QR code library
-qr_data = QRCode.encode(uri)
-# Display qr_data to user for scanning</code></pre>
+# No QR builtin: render the URI as a QR code client-side,
+# and show the raw secret for manual entry
+
+# Generating a Base32 secret (32 chars = 160 bits)
+alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+secret = Crypto.random_bytes(32).map(fn(b) alphabet[b % 32]).join("")</code></pre>
             </div>
         </section>
     </section>

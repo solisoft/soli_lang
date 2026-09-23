@@ -1990,9 +1990,24 @@ Alias for `Crypto.argon2_hash`.
 
 Alias for `Crypto.argon2_verify`.
 
+### TOTP (two-factor authentication)
+
+RFC 6238 time-based one-time passwords — the six-digit codes of Google
+Authenticator, Authy, 1Password and the like. Built in: no gem, no external
+2FA provider. Secrets are **Base32** strings.
+
+#### Crypto.totp_generate(secret, time?, period?)
+
+Returns the current code as a 6-digit String. `time` is a Unix timestamp
+(default: now), `period` the step length in seconds (default 30).
+
+```soli
+Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59, 30)  # "287082" (RFC 6238 vector)
+```
+
 #### Crypto.totp_verify(secret, code, time?, period?)
 
-Verifies a TOTP code (RFC 6238) against a Base32 secret. It accepts the current
+Verifies a TOTP code against a Base32 secret. It accepts the current
 code and the previous/next step (±1 step, so a code stays valid for up to ~90 s
 at the default 30 s period) to tolerate clock drift.
 
@@ -2006,6 +2021,31 @@ if Crypto.totp_verify(user.totp_secret, params["code"])
   # compare the step against user.totp_last_step before accepting
 end
 ```
+
+#### Crypto.totp_uri(secret, account_name?, issuer?, period?)
+
+Builds the `otpauth://totp/...` URI an authenticator app enrolls from. Show it
+as a QR code (render it client-side — there is no QR-encoding builtin) and as
+the raw secret for manual entry.
+
+```soli
+Crypto.totp_uri(secret, "ada@example.com", "MyApp")
+# otpauth://totp/MyApp:ada%40example.com?secret=...&algorithm=SHA1&digits=6&period=30&issuer=MyApp
+```
+
+#### Generating a secret
+
+There is no Base32 encoder builtin; map random bytes onto the Base32 alphabet
+(256 is a multiple of 32, so `b % 32` stays uniform). 32 characters = 160 bits,
+the size RFC 4226 recommends.
+
+```soli
+alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+secret = Crypto.random_bytes(32).map(fn(b) alphabet[b % 32]).join("")
+```
+
+Store the secret encrypted at rest, and only switch 2FA on once the user has
+typed back one valid code from the freshly enrolled app.
 
 ### X25519 Key Exchange
 

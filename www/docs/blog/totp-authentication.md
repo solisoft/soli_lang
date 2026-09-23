@@ -64,13 +64,9 @@ println(uri)
 # otpauth://totp/MyApp:user%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=MyApp&algorithm=SHA1&digits=6&period=30
 ```
 
-Then encode it as a QR code:
-
-```soli
-qr_data = QRCode.encode(uri)
-```
-
-Display `qr_data` to the user as an image.
+Then show it as a QR code. Soli has no QR-encoding builtin, so render the URI
+client-side with any small QR library (or show the secret for manual entry —
+every authenticator app accepts both).
 
 ## Complete Example: Adding 2FA to Login
 
@@ -136,9 +132,9 @@ To help users set up 2FA, generate their secret and QR code:
 def enable_2fa
   user = User.find(session["user_id"])
   
-  # Generate a new random secret
-  keypair = Crypto.x25519_keypair
-  secret = base64_encode(keypair["private"][0..20])  # 20 bytes = 32 Base32 chars
+  # Generate a new random Base32 secret (32 chars = 160 bits)
+  alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+  secret = Crypto.random_bytes(32).map(fn(b) alphabet[b % 32]).join("")
   
   # Save to user (in production, encrypt this!)
   user["totp_secret"] = secret
@@ -146,9 +142,9 @@ def enable_2fa
   
   # Generate QR code URI
   uri = Crypto.totp_uri(secret, user["email"], "MyApp", 30)
-  qr_code = QRCode.encode(uri)
-  
-  render("settings/2fa_setup", {"qr_code": qr_code, "secret": secret})
+
+  # the view turns `uri` into a QR code client-side
+  render("settings/2fa_setup", {"otpauth_uri": uri, "secret": secret})
 end
 ```
 

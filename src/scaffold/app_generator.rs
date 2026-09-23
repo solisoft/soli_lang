@@ -865,6 +865,42 @@ mod tests {
         assert!(dir.path().join("app/jobs").is_dir());
     }
 
+    /// Every bundled doc must be reachable from the generated root CLAUDE.md,
+    /// or an agent in a new app never learns the feature exists (TOTP was
+    /// documented in `docs/builtins.md` and still reimplemented by hand).
+    /// Tutorials (`blog/`) and contributor internals are exempt; a whole
+    /// directory can be covered by one `docs/<dir>/*.md` glob.
+    #[test]
+    fn root_claude_md_indexes_every_bundled_doc() {
+        fn collect(dir: &include_dir::Dir, out: &mut Vec<String>) {
+            for file in dir.files() {
+                out.push(file.path().to_string_lossy().into_owned());
+            }
+            for sub in dir.dirs() {
+                collect(sub, out);
+            }
+        }
+        let mut paths = Vec::new();
+        collect(&bundled_docs::DOCS, &mut paths);
+
+        let index = app::CLAUDE_MD_TEMPLATE;
+        let missing: Vec<_> = paths
+            .iter()
+            .filter(|p| p.ends_with(".md") && bundled_docs::should_copy(p))
+            .filter(|p| !p.starts_with("blog/") && !p.starts_with("internals/"))
+            .filter(|p| {
+                let glob = p
+                    .rsplit_once('/')
+                    .map(|(dir, _)| format!("docs/{dir}/*.md"));
+                !index.contains(&format!("docs/{p}")) && !glob.is_some_and(|g| index.contains(&g))
+            })
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "add these to the \"Built in\" index in src/scaffold/templates/CLAUDE.md: {missing:?}"
+        );
+    }
+
     #[test]
     fn accepts_normal_relative_paths() {
         assert!(validate_template_entry_path(Path::new("app/models/user.sl")).is_ok());

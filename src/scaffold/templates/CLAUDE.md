@@ -53,6 +53,77 @@ Two more things about generators, both learned the hard way:
 - Two migrations generated in the same second **share a timestamp**. The runner
   treats them as one, plays one, and reports the other as applied. Rename one.
 
+### Built in — check before you write it yourself
+
+Soli ships far more than this file shows, and the full reference sits in
+`docs/` inside this project (refreshed by `soli update docs`). **Before
+implementing anything that sounds like infrastructure — 2FA, uploads, PDFs,
+jobs, rate limiting, search, push — search there first:**
+
+```bash
+grep -ril "totp" docs/          # → docs/builtins.md, "TOTP (two-factor authentication)"
+```
+
+`docs/builtins.md` is one long file; its `## `/`### ` headings are the index
+(`grep -n "^##" docs/builtins.md`). If a search finds nothing, the capability
+may still exist under another name — try a synonym before writing it by hand.
+
+| Need | Built in as | Read |
+|---|---|---|
+| Login / signup, sessions, `current_user` | `soli generate auth` | `docs/sessions.md`, `docs/authorization.md` |
+| Policies (who may do what) | Pundit-style policies, `authorize` | `docs/authorization.md` |
+| Two-factor auth (TOTP, authenticator apps) | `Crypto.totp_generate` / `totp_verify` / `totp_uri` | `docs/builtins.md` → TOTP |
+| Password hashing | `password_hash` / `password_verify` (Argon2id) | `docs/builtins.md` → Password Hashing |
+| Sign in with GitHub / Google | `soli generate oauth github\|google` | `docs/oauth-client.md` |
+| Be an OpenID Connect provider | `soli generate oidc_provider` | `docs/oidc-provider.md` |
+| API tokens | `jwt_sign` / `jwt_verify`, `Paseto.*` | `docs/authentication.md`, `docs/builtins.md` → JWT, PASETO |
+| Hashes, HMAC, random tokens, signatures, hash chains | `Crypto.*` (SHA, HMAC, `random_token`, Ed25519, X25519, Merkle) | `docs/builtins.md` → Cryptography |
+| Cookies (signed / encrypted), CSRF | `set_cookie`, `read_cookie`, `csrf_token` | `docs/sessions.md`, `docs/forms.md` |
+| Security headers, trust proxy, body limits | builtins + env vars | `docs/security/defaults.md`, `docs/builtins/hardening.md` |
+| Rate limiting, circuit breaker, retry | `RateLimiter`, `CircuitBreaker`, `Retry.with_backoff` | `docs/builtins.md` |
+| Cache / key-value store | `Cache.set` / `Cache.get`, `KV` | `docs/builtins.md` → Cache, KV |
+| Feature flags | `FeatureFlags.enabled?`, rollouts, allowlists | `docs/feature-flags.md` |
+| Forms, validation errors, nested params | `form_with`, `permit` | `docs/forms.md`, `docs/request-params.md` |
+| Input validation schemas | `V.string()`, `validate` | `docs/validation.md` |
+| File uploads, S3, images (resize/crop) | `find_uploaded_file`, `S3.*`, `Image` | `docs/builtins.md` → File Upload, S3, Image |
+| PDF / invoices / Factur-X | PDF builtins + ready templates | `docs/builtins/pdf.md`, `docs/builtins/pdf-templates.md` |
+| Email out (SMTP) / in (IMAP, POP3) | `soli generate mailer`, `Imap`, `Pop3` | `docs/mailer.md`, `docs/builtins.md` → IMAP |
+| Background jobs, cron | `app/jobs/`, `Cron`, `static cron` | `docs/jobs.md` |
+| Real-time: WebSockets, presence | WebSocket routes + presence | `docs/websockets.md` |
+| Server-rendered interactivity, no JS | Live View | `docs/liveview.md` |
+| htmx / Alpine (shipped, no build step) | `public/js/` | `docs/client-interactivity.md` |
+| SSE, chunked streaming | streaming responses | `docs/streaming.md` |
+| Web push | `vapid_*` | `docs/builtins/vapid.md` |
+| i18n, pluralization, money/date formatting | `I18n.*`, `Money`, `DateTime`, `Duration` | `docs/i18n.md`, `docs/builtins.md` |
+| State machines on a model | `state_machine` block | `docs/state-machines.md` |
+| Vector / fulltext / geo search | model search indexes | `docs/search.md` |
+| Analytics, columnar stores | SolidB analytics | `docs/analytics.md` |
+| Postgres / MySQL / SQLite, several DBs | adapters, named connections | `docs/database.md`, `docs/multi-database.md`, `docs/postgres.md`, `docs/mysql.md`, `docs/sqlite.md` |
+| Raw queries (SDBQL) | `@sdbql{}` | `docs/solidb-reference.md` |
+| AI: embeddings, LLM calls | `embed`, `embed_batch`, `llm_generate` | `docs/builtins.md` → AI Functions |
+| HTTP client, SOAP, JSON, Markdown, TOML/YAML | `HTTP.*`, `SOAP`, `JSON`, `Markdown`, `Toml`, `Yaml` | `docs/builtins.md` |
+| Legacy text encodings, Base64 | `Encoding`, `Base64` | `docs/encoding.md`, `docs/base64.md` |
+| Metrics, structured logs, traces | opt-in via env | `docs/observability.md` |
+| Custom error pages | `app/views/errors/404.html.slv` etc. | `docs/error-pages.md` |
+| Mountable sub-apps | engines | `docs/engines.md` |
+| Native mobile / desktop shells | `soli generate client`, `soli desktop build` | `docs/native/*.md`, `docs/native-bridge.md`, `docs/desktop.md`, `docs/auto-update.md` |
+| Native UI without HTML | EUI | `docs/eui/*.md` |
+| Deploy | `soli build`, `soli deploy` | `docs/deploy.md` |
+| Debugging: breakpoints, query log, flamegraph, mail inbox | `soli serve --dev` | `docs/debugging.md`, `docs/live-reload.md` |
+| Code search for agents | `soli graph build` / `query` | `docs/graph.md` |
+| Metaprogramming, extending core types | `define_method`, `class_eval` | `docs/metaprogramming.md` |
+
+Everything else in `docs/`: language reference `docs/soli-language.md`,
+`docs/introduction.md`, `docs/installation.md`, `docs/configuration.md`,
+`docs/routing.md`, `docs/controllers.md`, `docs/models.md`, `docs/views.md`,
+`docs/middleware.md`, `docs/migrations.md`, `docs/scaffold.md`,
+`docs/static-server.md`, `docs/formatting.md`, `docs/linting.md`,
+`docs/editor-integration.md`, testing (`docs/testing.md`,
+`docs/testing-guide.md`, `docs/testing-e2e.md`, `docs/testing-assertions.md`,
+`docs/testing-browser.md`, `docs/testing-quick-reference.md`), agents
+(`docs/ai.md`, `docs/ai-agents.md`, `docs/ai-evals.md`), `docs/benchmarks.md`.
+Worked tutorials live in `docs/blog/`.
+
 ## Footgun cheatsheet (Soli ≠ Ruby ≠ JS)
 
 | You'd type…                                | In Soli it's…                              | Why                                                                          |

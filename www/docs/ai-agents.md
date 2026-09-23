@@ -8,7 +8,7 @@ Every fresh `soli new myapp` project includes:
 
 | Path | Purpose |
 |---|---|
-| `CLAUDE.md` | Root agent guide — verification loop, footgun cheatsheet, recipes, MVC reference |
+| `CLAUDE.md` | Root agent guide — verification loop, built-in capability index (need → builtin → `docs/` file), footgun cheatsheet, recipes, MVC reference |
 | `AGENTS.md` | Tool-agnostic stub pointing other agents to `CLAUDE.md` |
 | `app/controllers/CLAUDE.md` | Controller-specific rules (auto-loaded models, named route helpers, mass-assignment) |
 | `app/models/CLAUDE.md` | Model rules (don't override CRUD; safe `where`/`@sdbql{}` query forms) |

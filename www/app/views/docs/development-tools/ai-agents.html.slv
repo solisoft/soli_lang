@@ -20,7 +20,7 @@
                 </tr>
             </thead>
             <tbody class="divide-y divide-white/5">
-                <tr><td class="px-6 py-4 font-mono text-amber-300">CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Root agent guide — verification loop, footgun cheatsheet, recipes</td></tr>
+                <tr><td class="px-6 py-4 font-mono text-amber-300">CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Root agent guide — verification loop, built-in capability index (need → builtin → <code>docs/</code> file), footgun cheatsheet, recipes</td></tr>
                 <tr><td class="px-6 py-4 font-mono text-amber-300">AGENTS.md</td><td class="px-6 py-4 text-gray-400">Tool-agnostic stub pointing other agents to <code>CLAUDE.md</code></td></tr>
                 <tr><td class="px-6 py-4 font-mono text-amber-300">app/controllers/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Controller-specific rules: auto-loaded models, named route helpers, mass-assignment</td></tr>
                 <tr><td class="px-6 py-4 font-mono text-amber-300">app/models/CLAUDE.md</td><td class="px-6 py-4 text-gray-400">Model rules: don't override CRUD; safe <code>where</code> / <code>@sdbql{}</code> forms</td></tr>
