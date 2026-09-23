@@ -127,6 +127,10 @@ pub enum Op {
     // --- Objects ---
     /// Get a property by name constant index.
     GetProperty(u16),
+    /// `GetProperty` for the read half of `obj.x ||= v` / `&&=` / `??=`: an
+    /// instance that has no such property pushes Null instead of raising, so
+    /// `@items ||= []` can initialise a field nothing has set yet.
+    GetPropertyOrNull(u16),
     /// Set a property by name constant index.
     SetProperty(u16),
 

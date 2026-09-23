@@ -384,7 +384,23 @@ impl Interpreter {
     ) -> RuntimeResult<Value> {
         use crate::ast::expr::CompoundOp;
 
-        let current = self.evaluate(target)?;
+        let current = match self.evaluate(target) {
+            // `obj.x ||= v` on a property nothing has set yet reads as Null,
+            // or `@items ||= []` could never initialise an instance variable.
+            // Only for the short-circuit operators — `@n += 1` on an unset
+            // field is still an error — and only for an instance: the
+            // receiver is re-evaluated to check, on this error path alone.
+            // The VM does the same with `Op::GetPropertyOrNull`.
+            Err(RuntimeError::NoSuchProperty { ref property, .. })
+                if matches!(op, CompoundOp::Or | CompoundOp::And | CompoundOp::Coalesce)
+                    && matches!(&target.kind, ExprKind::Member { name, object }
+                        if name == property
+                            && matches!(self.evaluate(object), Ok(Value::Instance(_)))) =>
+            {
+                Value::Null
+            }
+            other => other?,
+        };
 
         // Short-circuit operators: only evaluate RHS and assign when needed.
         match op {

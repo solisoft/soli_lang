@@ -135,6 +135,10 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("GET_PROPERTY {:>5} ({})", idx, name));
         }
+        Op::GetPropertyOrNull(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("GET_PROPERTY_OR_NULL {:>5} ({})", idx, name));
+        }
         Op::SetProperty(idx) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("SET_PROPERTY {:>5} ({})", idx, name));

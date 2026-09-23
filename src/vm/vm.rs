@@ -1885,6 +1885,20 @@ impl Vm {
                     let result = self.op_get_property_member(&object, &name, span)?;
                     self.stack.push(result);
                 }
+                Op::GetPropertyOrNull(idx) => {
+                    let object = self.stack.pop().unwrap();
+                    let name = self.read_string_constant_owned(idx);
+                    let span = self.current_span();
+                    let result = match self.op_get_property_member(&object, &name, span) {
+                        Err(RuntimeError::NoSuchProperty { ref property, .. })
+                            if matches!(object, Value::Instance(_)) && *property == name =>
+                        {
+                            Value::Null
+                        }
+                        other => other?,
+                    };
+                    self.stack.push(result);
+                }
                 Op::SetProperty(idx) => {
                     let value = self.stack.pop().unwrap();
                     // Fast path: in-place update of an EXISTING instance

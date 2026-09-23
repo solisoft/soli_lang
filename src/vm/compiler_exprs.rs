@@ -283,6 +283,33 @@ impl Compiler {
                 // matching short-circuit binary node so the existing VM logic
                 // skips the RHS when the left operand already short-circuits.
                 use crate::ast::expr::CompoundOp;
+
+                // `obj.x ||= v` on a property nothing has set yet: the read
+                // answers Null instead of raising, or `@items ||= []` could
+                // never initialise an instance variable. Same shape as the
+                // desugaring below — `obj.x = (obj.x || v)` — with only the
+                // read swapped for its lenient form.
+                if let ExprKind::Member { object, name } = &target.kind {
+                    let jump_op = match operator {
+                        CompoundOp::Or => Some(Op::JumpIfTrueNoPop(0)),
+                        CompoundOp::And => Some(Op::JumpIfFalseNoPop(0)),
+                        CompoundOp::Coalesce => Some(Op::NullishJump(0)),
+                        _ => None,
+                    };
+                    if let Some(jump_op) = jump_op {
+                        let idx = self.add_string_constant(name);
+                        self.compile_expr(object)?;
+                        self.compile_expr(object)?;
+                        self.emit(Op::GetPropertyOrNull(idx), line);
+                        let jump = self.emit_jump(jump_op, line);
+                        self.emit(Op::Pop, line);
+                        self.compile_expr(value)?;
+                        self.patch_jump(jump);
+                        self.emit(Op::SetProperty(idx), line);
+                        return Ok(());
+                    }
+                }
+
                 let desugared_value = match operator {
                     CompoundOp::Or => Expr::new(
                         ExprKind::LogicalOr {
