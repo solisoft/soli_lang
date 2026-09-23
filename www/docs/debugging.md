@@ -151,6 +151,21 @@ The panel has a `⬇ trace.json` link that downloads the same data as Chrome Tra
 Event Format — drop it into [ui.perfetto.dev](https://ui.perfetto.dev) or
 `chrome://tracing` for timeline navigation and aggregation.
 
+**Large requests.** A request that walks a few hundred records produces
+thousands of spans, and drawing every one made the panel itself the slowest
+thing on the page (3.4 MB of markup on a real dashboard). The chart therefore
+draws the **300 heaviest spans** — chosen by duration, not by order, so the
+expensive ones are never the ones cut — and the header says so
+(`showing 300 heaviest`). The span count in the header stays exact. Set
+`SOLI_DEV_FLAME_MAX` to change the bound, or `SOLI_DEV_FLAME_MAX=0` to draw
+everything.
+
+`trace.json` is never truncated: it is the artefact you load into a profiler.
+Up to 64 KB it is inlined in the link; above that the link points at
+`/__solidev/trace/<request-id>`, a dev-only endpoint that serves the complete
+trace from the same ring buffer the requests panel reads (404 once the request
+has aged out).
+
 ## The requests panel
 
 Every dev response carries `X-Soli-Route` naming the route that handled it. The

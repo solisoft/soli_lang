@@ -135,6 +135,18 @@ impl TypeChecker {
             }
         }
 
+        // Writing a key into a hash. The value type of a hash literal is a
+        // snapshot of what that literal happened to hold, not a declaration:
+        // `let e = {"timeout": 10}` followed by `e["Authorization"] = "Bearer …"`
+        // is ordinary Soli — a hash is a heterogeneous bag at run time — and
+        // reading the snapshot as a constraint rejected it as
+        // "expected Int, found String".
+        if let ExprKind::Index { object, .. } = &target.kind {
+            if matches!(self.check_expr(object)?, Type::Hash { .. }) {
+                return Ok(value_type);
+            }
+        }
+
         let target_type = self.check_expr(target)?;
 
         if !value_type.is_assignable_to(&target_type) {

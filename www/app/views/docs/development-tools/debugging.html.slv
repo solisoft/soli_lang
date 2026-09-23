@@ -416,6 +416,14 @@ end</code></pre>
             The flame panel includes a <code class="text-cyan-400">⬇ trace.json</code> link that downloads the same data as Chrome Trace Event Format JSON. Drop the file into <a href="https://ui.perfetto.dev/" class="text-cyan-400 hover:underline">ui.perfetto.dev</a> or open <code>chrome://tracing</code> for full timeline navigation, search, and aggregation across spans.
         </p>
 
+        <h3 class="text-xl font-semibold text-white mb-4">Large requests</h3>
+        <p class="text-gray-400 mb-4">
+            A request that walks a few hundred records produces thousands of spans, and drawing every one made the panel itself the slowest thing on the page (3.4&nbsp;MB of markup on a real dashboard). The chart therefore draws the <strong class="text-white">300 heaviest spans</strong> &mdash; chosen by duration, not by order, so the expensive ones are never the ones cut &mdash; and the header says so (<code class="text-cyan-400">showing 300 heaviest</code>). The span count in the header stays exact. Set <code class="text-cyan-400">SOLI_DEV_FLAME_MAX</code> to change the bound, or <code class="text-cyan-400">SOLI_DEV_FLAME_MAX=0</code> to draw everything.
+        </p>
+        <p class="text-gray-400 mb-4">
+            <code class="text-cyan-400">trace.json</code> is never truncated: it is the artefact you load into a profiler. Up to 64&nbsp;KB it is inlined in the link; above that the link points at <code class="text-cyan-400">/__solidev/trace/&lt;request-id&gt;</code>, a dev-only endpoint that serves the complete trace from the same ring buffer the requests panel reads (404 once the request has aged out).
+        </p>
+
         <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
             <p class="text-amber-300 text-sm">
                 <strong>Production-safe.</strong> The flamegraph capture is gated on <code>--dev</code>: every span hook short-circuits on a thread-local enable flag, so production servers don't pay the cost. The panel is only injected into <code>text/html</code> responses, never into JSON or other content types.

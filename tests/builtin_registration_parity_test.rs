@@ -1,27 +1,30 @@
 //! Every builtin the runtime registers should also be known to the type checker
 //! and to the linter — and where one is not, the gap is written down.
 //!
-//! Soli installs its builtins into one `Environment` at startup, but two other
-//! surfaces have to be told about each one by hand:
+//! Soli installs its builtins into one `Environment` at startup, and two other
+//! surfaces have to know about each one:
 //!
-//!   * `src/types/environment.rs` — or `soli check` fails the program with
-//!     `Undefined variable '<name>'`.
+//!   * the type checker — or `soli check` fails the program with
+//!     `Undefined variable '<name>'`. It no longer keeps a list: it derives
+//!     the served namespace from `register_builtins` itself
+//!     (`src/types/runtime_globals.rs`), so the only names left unknown to it
+//!     are the test DSL, seeded per file for a spec.
 //!   * `src/lint/rules/scope.rs` — or `smell/undefined-local` flags every call
 //!     site, because `let` is optional and the rule cannot tell a builtin from
-//!     a typo.
+//!     a typo. This one is still a hand-written list.
 //!
-//! Both lists are maintained by hand, so both drift, and the drift is silent:
-//! the builtin works, and only the tooling refuses it. That has now been paid
-//! for twice — once for the ten `pdf_*` builtins, once for `Image` / `File` /
-//! `Trusted` — and each time it was found by a user rather than by a test.
+//! A hand-written list drifts, and the drift is silent: the builtin works, and
+//! only the tooling refuses it. That was paid for three times — the ten
+//! `pdf_*` builtins, then `Image` / `File` / `Trusted`, then 140 false errors
+//! on one application — and each time it was found by a user rather than by a
+//! test.
 //!
 //! The runtime environment is the authoritative enumerator here, the same
 //! choice `examples/builtin_inventory` makes and for the same reason: grepping
 //! the registration sites misses whatever is registered in a loop.
 //!
-//! **This is a ratchet, not a clean bill of health.** A few hundred names are
-//! legitimately unknown to one surface or the other — the test DSL, the model
-//! DSL, the `__`-prefixed internals — and they are listed in
+//! **This is a ratchet, not a clean bill of health.** Names legitimately
+//! unknown to one surface or the other are listed in
 //! `tests/builtin_registration_baseline.txt`. The test fails when a name shows
 //! up that is not in that file, and fails again when a name in that file has
 //! since been registered. So the baseline can only shrink, and a new builtin
@@ -135,6 +138,43 @@ fn no_builtin_reaches_main_unknown_to_the_type_checker_or_the_linter() {
     ));
 
     assert!(failure.is_empty(), "{failure}");
+}
+
+/// Whatever is still unknown to the type checker is there for one of two
+/// stated reasons, and the baseline says which rather than merely listing it.
+///
+/// The two are the **test DSL** (installed only when the runtime is about to
+/// run tests, so seeded per spec file) and the **request scope** (`render`,
+/// `redirect` — meaningless outside a request, so seeded per application
+/// file). Both are derived sets, not lists.
+///
+/// Without this, the section drifts back into a bucket: a served builtin that
+/// escapes the derivation would be silenced by adding a line, which is exactly
+/// the habit the derivation was written to end.
+#[test]
+fn the_type_checker_section_has_one_of_two_stated_reasons() {
+    let (types, _) = baseline();
+    let mut allowed: BTreeSet<String> = solilang::types::runtime_globals::test_dsl_globals()
+        .iter()
+        .cloned()
+        .collect();
+    allowed.extend(
+        solilang::types::runtime_globals::request_scope_globals()
+            .iter()
+            .map(|n| (*n).to_string()),
+    );
+
+    let unexplained: Vec<&String> = types.difference(&allowed).collect();
+
+    assert!(
+        unexplained.is_empty(),
+        "tests/builtin_registration_baseline.txt lists {} name(s) under [type-checker] \
+         that are neither test DSL nor request scope — they are registered for a served \
+         application too, so the checker should derive them instead of the baseline \
+         hiding them:\n  {:?}",
+        unexplained.len(),
+        unexplained
+    );
 }
 
 /// The baseline lists names the runtime registers. One that it no longer does

@@ -102,6 +102,8 @@ pub(super) async fn dispatch(
         ("GET", _) => {
             if let Some(id) = path.strip_prefix("/__solidev/request/") {
                 Ok(request_snapshot(id))
+            } else if let Some(id) = path.strip_prefix("/__solidev/trace/") {
+                Ok(request_trace(id))
             } else if let Some(name) = path.strip_prefix("/__soli/components/") {
                 Ok(handle_component_preview(name, req.uri().query()))
             } else if let Some(rel) = path.strip_prefix("/__soli/mailers/") {
@@ -136,6 +138,27 @@ fn request_snapshot(id: &str) -> Response<ResponseBody> {
             .status(StatusCode::OK)
             .header("Content-Type", "text/html; charset=utf-8")
             .body(full(Bytes::from(dev_bar::render_for_inspect(&ctx))))
+            .unwrap(),
+        None => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(full(Bytes::from("unknown or expired request id")))
+            .unwrap(),
+    }
+}
+
+/// The full trace of a captured request, as JSON.
+///
+/// The flamegraph panel inlines `trace.json` as a base64 data URI only while
+/// it is small; above that it links here instead. The trace is never
+/// truncated — it is the artefact one loads into a profiler — so when it gets
+/// big it moves off the page rather than losing spans.
+fn request_trace(id: &str) -> Response<ResponseBody> {
+    match dev_store::get(id) {
+        Some(ctx) => Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json; charset=utf-8")
+            .header("Content-Disposition", "attachment; filename=\"trace.json\"")
+            .body(full(Bytes::from(dev_bar::build_trace_json(&ctx.spans))))
             .unwrap(),
         None => Response::builder()
             .status(StatusCode::NOT_FOUND)

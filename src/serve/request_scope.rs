@@ -57,6 +57,27 @@ pub(super) fn reset_worker_thread_locals(dev_mode: bool) {
     // Also clear when production logging is on, otherwise the thread-local
     // buffers would accumulate across requests on the same worker thread.
     // OpenTelemetry reuses span_log, so clear that tree whenever OTEL is on.
+    forget_request_logs(dev_mode);
+
+    // E2E test client: clear any render captured by a prior request on this
+    // pooled worker thread, so assigns()/view_path()/render_template() reflect
+    // only the current request. A single atomic load in non-test processes.
+    if crate::interpreter::builtins::test_server::is_test_runner_process() {
+        crate::interpreter::builtins::test_server::clear_captured_render();
+    }
+}
+
+/// What a request begins by forgetting.
+///
+/// The per-request logs — queries, HTTP calls, KV commands, phases,
+/// middleware, views, spans, routes, template warnings — are thread-local
+/// buffers a worker fills as it serves and a dev bar reads at the end.
+/// They are only ever emptied here, so anything that serves without
+/// passing through here accumulates for the life of the worker. Cheap when
+/// nothing is recording: every `clear` is a `Vec::clear` on an empty
+/// vector. Cleared for production detail logging and OpenTelemetry too,
+/// which reuse the same buffers.
+pub(super) fn forget_request_logs(dev_mode: bool) {
     if dev_mode || prod_log::channels().has_detail() || otel::enabled() {
         crate::interpreter::builtins::model::query_log::clear();
         crate::interpreter::builtins::http_log::clear();
@@ -67,13 +88,6 @@ pub(super) fn reset_worker_thread_locals(dev_mode: bool) {
         span_log::clear();
         route_log::clear();
         template_warnings::clear();
-    }
-
-    // E2E test client: clear any render captured by a prior request on this
-    // pooled worker thread, so assigns()/view_path()/render_template() reflect
-    // only the current request. A single atomic load in non-test processes.
-    if crate::interpreter::builtins::test_server::is_test_runner_process() {
-        crate::interpreter::builtins::test_server::clear_captured_render();
     }
 }
 

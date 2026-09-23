@@ -10,11 +10,20 @@ use super::TypeChecker;
 impl TypeChecker {
     pub(crate) fn declare_class(&mut self, decl: &ClassDecl) {
         let mut class_type = ClassType::new(decl.name.clone());
+        class_type.is_module = decl.is_module;
 
-        // Set superclass
+        // Set superclass. A parent this pass never saw declared is recorded by
+        // name rather than dropped: a served application loads every
+        // auto-loaded directory into one environment, so the parent is usually
+        // in a sibling file (`class UserPolicy < ApplicationPolicy`) or
+        // installed by the framework (`class ApplicationController <
+        // Controller`). Forgetting it made the class look like a root with
+        // only its own members, and every inherited call read as
+        // `Cannot access member`.
         if let Some(ref superclass_name) = decl.superclass {
-            if let Some(super_class) = self.env.get_class(superclass_name) {
-                class_type.superclass = Some(Box::new(super_class.clone()));
+            match self.env.get_class(superclass_name) {
+                Some(super_class) => class_type.superclass = Some(Box::new(super_class.clone())),
+                None => class_type.unresolved_superclass = Some(superclass_name.clone()),
             }
         }
 
@@ -46,11 +55,19 @@ impl TypeChecker {
                 .iter()
                 .map(|p| (p.name.clone(), self.resolve_type(&p.type_annotation)))
                 .collect();
+            // No annotation means unknown, not `Void`. Annotations are
+            // optional in Soli and most application code omits them, so
+            // defaulting to `Void` made every use of a returned value an
+            // error: `poses + Job.pour_organisation(...)` read as "cannot add
+            // Int and Void", and `this._porteur().nil?` as "cannot access
+            // member on Void". Only an explicit `-> Void` means it returns
+            // nothing. `check_class_stmt` already types the body this way;
+            // this table disagreed with it.
             let return_type = method
                 .return_type
                 .as_ref()
                 .map(|t| self.resolve_type(t))
-                .unwrap_or(Type::Void);
+                .unwrap_or(Type::Any);
 
             class_type.methods.insert(
                 method.name.clone(),
@@ -136,7 +153,7 @@ impl TypeChecker {
             .return_type
             .as_ref()
             .map(|t| self.resolve_type(t))
-            .unwrap_or(Type::Void);
+            .unwrap_or(Type::Any);
         MethodInfo {
             name: method.name.clone(),
             params,
@@ -166,7 +183,7 @@ impl TypeChecker {
                 .return_type
                 .as_ref()
                 .map(|t| self.resolve_type(t))
-                .unwrap_or(Type::Void);
+                .unwrap_or(Type::Any);
 
             iface_type.methods.insert(
                 method.name.clone(),
@@ -191,7 +208,7 @@ impl TypeChecker {
             .return_type
             .as_ref()
             .map(|t| self.resolve_type(t))
-            .unwrap_or(Type::Void);
+            .unwrap_or(Type::Any);
 
         self.env.define_function(
             decl.name.clone(),

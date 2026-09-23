@@ -59,6 +59,40 @@ impl TypeChecker {
         }
     }
 
+    /// Declare the test DSL, for a file `soli test` would run.
+    ///
+    /// `describe`, `test`, `expect`, `as_guest`, the factories and the browser
+    /// verbs exist only when the runtime is about to run tests:
+    /// `register_builtins` is called with the flag off when serving.
+    /// Seeding them everywhere would accept a spec-shaped call in a controller
+    /// that cannot run it, so the caller decides, by path — and a spec that
+    /// calls them stops reporting one error per file (the outer `describe`
+    /// failed, and its whole body went unchecked behind it).
+    pub fn declare_test_dsl(&mut self) {
+        for name in crate::types::runtime_globals::test_dsl_globals() {
+            if self.env.get(name).is_none() {
+                self.env.define(name.clone(), Type::Any);
+            }
+        }
+    }
+
+    /// Declare the names that only exist while a request is served, for a file
+    /// that belongs to an application.
+    ///
+    /// `req`, `params`, `session`, `cookies`, `flash`, `current_user` are
+    /// injected into the handler's scope by the server; `render` and
+    /// `redirect` are registered builtins deliberately kept out of the general
+    /// namespace, because a standalone script calling them cannot work. A
+    /// controller, a helper, a middleware and a job are that file; a loose
+    /// script is not, and still gets `Undefined variable 'render'`.
+    pub fn declare_request_scope(&mut self) {
+        for name in crate::types::runtime_globals::request_scope_globals() {
+            if self.env.get(name).is_none() {
+                self.env.define((*name).to_string(), Type::Any);
+            }
+        }
+    }
+
     /// Type-check a program and return any non-blocking warnings collected
     /// during the pass (errors are returned via [`TypeChecker::check`]).
     pub fn check_collecting_warnings(

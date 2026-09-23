@@ -93,6 +93,10 @@ pub mod mailer {
     use crate::interpreter::environment::Environment;
     use crate::interpreter::Interpreter;
 
+    /// Nothing to install, hence nothing for the type checker to learn from
+    /// it either (see `types::runtime_globals`).
+    pub const MAILER_PRELUDE: &str = "";
+
     /// No prelude to install.
     pub fn ensure_prelude(_interpreter: &mut Interpreter) {}
 

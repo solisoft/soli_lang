@@ -403,6 +403,28 @@ soli check app/models/user.sl
             <p class="text-gray-400 mt-3">
                 Naming a single file &mdash; <code class="text-cyan-400">soli check app/models/user.sl</code> &mdash; keeps the narrower per-file view, since a loose script has no project around it. A neighbour's type is not inferred, only its existence: what it <em>is</em> would mean checking the file that declares it, so its calls are unconstrained rather than wrongly constrained.
             </p>
+
+            <h3 class="text-lg font-semibold text-white mt-8 mb-3">The builtins are learnt from the runtime</h3>
+            <p class="text-gray-400">
+                The checker does not keep a list of the framework's globals. It registers the builtins into a throwaway environment and asks it what it holds, and it parses the preludes the runtime evaluates as <strong class="text-white">Soli source</strong> &mdash; the routing verbs (<code class="text-cyan-400">get</code>, <code class="text-cyan-400">middleware</code>, <code class="text-cyan-400">resources</code>), the mailer (<code class="text-cyan-400">Mailer</code>, <code class="text-cyan-400">Message</code>), the form builder (<code class="text-cyan-400">form_with</code>, <code class="text-cyan-400">csrf_field</code>), the upload helpers. A class global carries its native verbs with it, so <code class="text-cyan-400">I18n.cache_table(&hellip;)</code> resolves while <code class="text-cyan-400">I18n.cache_tabel(&hellip;)</code> is still an error. A builtin added to the runtime is known to <code class="text-cyan-400">soli check</code> on the next build, with no second list to update.
+            </p>
+            <p class="text-gray-400 mt-3">
+                Two sets are <strong class="text-white">seeded per file</strong> rather than always, because they mean nothing everywhere. The <strong class="text-white">test DSL</strong> &mdash; <code class="text-cyan-400">describe</code>, <code class="text-cyan-400">test</code>, <code class="text-cyan-400">expect</code>, <code class="text-cyan-400">as_guest</code>, the factories, the browser verbs &mdash; exists only when the runtime is about to run tests, so it is declared for a file <code class="text-cyan-400">soli test</code> would run: anything under <code class="text-cyan-400">tests/</code>, or a file named <code class="text-cyan-400">*_spec.sl</code> / <code class="text-cyan-400">*_test.sl</code>. A <code class="text-cyan-400">describe(&hellip;)</code> in a controller is a real error, because a served application does not have it.
+            </p>
+            <p class="text-gray-400 mt-3">
+                And the <strong class="text-white">request scope</strong> &mdash; <code class="text-cyan-400">req</code>, <code class="text-cyan-400">request</code>, <code class="text-cyan-400">params</code>, <code class="text-cyan-400">session</code>, <code class="text-cyan-400">cookies</code>, <code class="text-cyan-400">flash</code>, <code class="text-cyan-400">current_user</code>, plus <code class="text-cyan-400">render</code> and <code class="text-cyan-400">redirect</code> &mdash; is declared for a file that belongs to an application: under <code class="text-cyan-400">app/</code>, <code class="text-cyan-400">config/</code> or <code class="text-cyan-400">stdlib/</code>. A controller, a helper, a job and a middleware get them; a loose script still gets <code>Undefined variable 'render'</code>, which is the point &mdash; a controller-shaped call in a script that cannot run it should not pass the check.
+            </p>
+
+            <h3 class="text-lg font-semibold text-white mt-8 mb-3">Where it answers <code class="text-amber-400">Any</code> on purpose</h3>
+            <p class="text-gray-400">
+                Annotations are optional in Soli, and the checker treats a missing one as unknown rather than as a claim. Four cases where it therefore says nothing rather than something wrong:
+            </p>
+            <ul class="mt-3 space-y-2 text-gray-400 list-disc list-inside">
+                <li>A <code class="text-cyan-400">def</code> with <strong class="text-white">no return annotation</strong> returns <code class="text-cyan-400">Any</code>. Only an explicit <code class="text-cyan-400">-&gt; Void</code> means it returns nothing &mdash; and indexing the result of one is still an error.</li>
+                <li>A class whose <strong class="text-white">parent is not in the file</strong> &mdash; <code class="text-cyan-400">ApplicationController &lt; Controller</code>, or a parent declared in a sibling &mdash; answers any member access with <code class="text-cyan-400">Any</code>, as a <code class="text-cyan-400">Model</code> subclass already did. So does a <code class="text-cyan-400">module</code>, whose <code class="text-cyan-400">this</code> is whatever includes it. When the whole ancestry <em>is</em> in the file, an unknown member is still an error.</li>
+                <li><code class="text-cyan-400">let x = nil</code> is "nothing known yet", not "null forever": the next line usually assigns a record and reads a field back.</li>
+                <li>Writing a key into a hash is not checked against the value type of the literal that built it. <code class="text-cyan-400">{"timeout": 10}</code> then <code class="text-cyan-400">h["Authorization"] = "Bearer &hellip;"</code> is ordinary Soli; a hash is a heterogeneous bag at run time.</li>
+            </ul>
         </div>
     </section>
 

@@ -73,7 +73,57 @@ impl TypeEnvironment {
             env.define(name.to_string(), Type::Any);
         }
 
+        // Everything else the interpreter installs, asked of the interpreter.
+        // The lists above are what is modelled *precisely*; this fills the
+        // rest so a name that exists at run time is never reported undefined.
+        env.absorb_runtime_globals();
+
         env
+    }
+
+    /// Learn the runtime's global namespace from the runtime.
+    ///
+    /// Two effects, both narrow. A global with no type here becomes `Any` —
+    /// what is known is that the name exists, and claiming more would mean
+    /// inventing it. A global that *is* a class modelled above keeps its
+    /// modelled verbs and gains the native ones it was missing, so a
+    /// misspelling is still an error while `I18n.cache_table(...)` — real
+    /// since the day it was added to the interpreter — stops being one.
+    ///
+    /// Nothing here overwrites a precise type: a name already defined, or a
+    /// verb already modelled, wins.
+    fn absorb_runtime_globals(&mut self) {
+        for global in crate::types::runtime_globals::runtime_globals() {
+            if let Some(verbs) = &global.class_verbs {
+                if let Some(class) = self.classes.get_mut(&global.name) {
+                    for verb in verbs {
+                        if class.methods.contains_key(verb) {
+                            continue;
+                        }
+                        class.methods.insert(
+                            verb.clone(),
+                            MethodInfo {
+                                name: verb.clone(),
+                                // No parameters and `Any` back: the arity and
+                                // the shape live in the native function, which
+                                // enforces them at run time. Modelling the
+                                // name is what stops the false error; guessing
+                                // the signature would start a different one.
+                                params: Vec::new(),
+                                return_type: Type::Any,
+                                is_private: false,
+                                is_static: true,
+                            },
+                        );
+                    }
+                    continue;
+                }
+            }
+
+            if self.get(&global.name).is_none() {
+                self.define(global.name.clone(), Type::Any);
+            }
+        }
     }
 
     fn register_builtins(&mut self) {

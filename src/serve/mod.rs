@@ -53,7 +53,7 @@ mod static_files;
 pub mod template_warnings;
 pub mod tenant;
 mod upgrade;
-mod uploads_prelude;
+pub(crate) mod uploads_prelude;
 pub mod vhost;
 pub mod view_log;
 pub mod websocket;
@@ -3260,6 +3260,19 @@ fn handle_liveview_event(
     // `last_html` — the client then gets a diff against markup it never saw.
     let frame_lock = live_registry().frame_lock(&data.liveview_id);
     let _frame = frame_lock.lock().unwrap_or_else(|e| e.into_inner());
+
+    // An event is a request, as far as the per-request logs are concerned.
+    //
+    // They are thread-local `Vec`s that an HTTP request empties on the way
+    // in (`request_scope::forget_request_logs`) and fills as it goes; a socket event
+    // never went through that door, so on a realtime worker they only ever
+    // filled. In `--dev` the flamegraph records a span per function call:
+    // an EUI view that redraws ten times a second grew that log by close
+    // to a megabyte a second until the window went slow, then froze — and
+    // it read like a leak in the view, because nothing in the view was
+    // keeping anything. Measured on herdr-eui: 0.85 MB/s with `--dev`,
+    // 0.16 MB/s without, on the same page.
+    request_scope::forget_request_logs(crate::interpreter::builtins::template::is_dev_mode());
 
     // Get the LiveView instance
     let mut instance = live_registry()

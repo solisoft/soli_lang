@@ -189,6 +189,19 @@ impl EnumType {
 pub struct ClassType {
     pub name: String,
     pub superclass: Option<Box<ClassType>>,
+    /// The name of a superclass the checker has no declaration for.
+    ///
+    /// `soli check` reads one file at a time, and a served application loads
+    /// every auto-loaded directory into one environment: `class UserPolicy <
+    /// ApplicationPolicy` names a parent declared in a sibling file, and
+    /// `class ApplicationController < Controller` names one the framework
+    /// installs at boot. Either way the members come from somewhere this pass
+    /// cannot see, so a class that extends an unknown parent answers any
+    /// member access with `Any` instead of an error it cannot substantiate.
+    pub unresolved_superclass: Option<String>,
+    /// `module Foo` rather than `class Foo`. A module's `this` is whatever
+    /// includes it, so its members legitimately live outside the declaration.
+    pub is_module: bool,
     pub interfaces: Vec<String>,
     pub fields: HashMap<String, FieldInfo>,
     pub methods: HashMap<String, MethodInfo>,
@@ -199,6 +212,8 @@ impl ClassType {
         Self {
             name,
             superclass: None,
+            unresolved_superclass: None,
+            is_module: false,
             interfaces: Vec::new(),
             fields: HashMap::new(),
             methods: HashMap::new(),
@@ -223,6 +238,24 @@ impl ClassType {
             return super_.find_method(name);
         }
         None
+    }
+
+    /// Whether members this declaration does not carry may still exist at run
+    /// time — so an unknown one is answered with `Any` rather than an error.
+    pub fn has_members_elsewhere(&self) -> bool {
+        self.is_module || self.extends_model() || self.extends_unknown()
+    }
+
+    /// Check if this class's ancestry reaches a superclass the checker never
+    /// saw declared (directly or transitively).
+    pub fn extends_unknown(&self) -> bool {
+        if self.unresolved_superclass.is_some() {
+            return true;
+        }
+        match self.superclass {
+            Some(ref super_) => super_.extends_unknown(),
+            None => false,
+        }
     }
 
     /// Check if this class extends Model (directly or transitively).
@@ -642,6 +675,29 @@ mod tests {
         let base = class_extending("BaseUser", model);
         let user = class_extending("User", base);
         assert!(user.extends_model());
+    }
+
+    #[test]
+    fn extends_unknown_when_parent_was_never_declared() {
+        let mut c = class("UserPolicy");
+        c.unresolved_superclass = Some("ApplicationPolicy".to_string());
+        assert!(c.extends_unknown());
+    }
+
+    #[test]
+    fn extends_unknown_through_a_known_parent() {
+        let mut base = class("ApplicationController");
+        base.unresolved_superclass = Some("Controller".to_string());
+        let child = class_extending("EcartsController", base);
+        assert!(child.extends_unknown());
+    }
+
+    #[test]
+    fn extends_unknown_false_when_the_whole_chain_is_declared() {
+        let parent = class("Animal");
+        let child = class_extending("Dog", parent);
+        assert!(!child.extends_unknown());
+        assert!(!class("Foo").extends_unknown());
     }
 
     #[test]

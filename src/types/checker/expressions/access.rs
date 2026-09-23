@@ -32,9 +32,14 @@ impl TypeChecker {
                             return_type: Box::new(method.return_type.clone()),
                         }));
                     }
-                    // Model subclasses have native_static_methods (where, all, includes, join, etc.)
-                    // that are only known at runtime. Allow any member access on Model subclasses.
-                    if class_def.extends_model() {
+                    // Three cases where a member absent from the declaration
+                    // is real anyway. A `Model` subclass carries native static
+                    // methods (`where`, `all`, `join`) known only at run time.
+                    // A class whose ancestry leaves this file inherits from a
+                    // sibling the pass never read, or from the framework
+                    // (`Controller`, `Mailer`, `Job`). And a `module`'s `this`
+                    // is whatever includes it.
+                    if class_def.has_members_elsewhere() {
                         return Ok(Type::Any);
                     }
                 }
@@ -639,6 +644,17 @@ impl TypeChecker {
             // A Future resolves transparently at runtime (`HTTP.get(url)["status"]`),
             // the same way member access on one is permissive above.
             Type::Future(_) => Ok(Type::Any),
+            // A record reads its own attributes by name (`this[champ]`), and a
+            // class whose parent is not in this file may be one. Same reason
+            // member access is permissive on both.
+            Type::Class(class)
+                if self
+                    .env
+                    .get_class(&class.name)
+                    .is_some_and(|c| c.has_members_elsewhere()) =>
+            {
+                Ok(Type::Any)
+            }
             _ => Err(TypeError::General {
                 message: format!("cannot index {}", obj_type),
                 span,

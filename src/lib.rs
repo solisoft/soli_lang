@@ -249,11 +249,53 @@ pub fn type_check_source_with_ambient(
 
     let mut checker = types::TypeChecker::new();
     checker.declare_ambient(ambient);
+    if source_path.is_some_and(is_test_path) {
+        checker.declare_test_dsl();
+    }
+    if source_path.is_some_and(|p| is_application_path(p) || is_test_path(p)) {
+        checker.declare_request_scope();
+    }
     let (result, warnings) = checker.check_collecting_warnings(&program);
     match result {
         Ok(()) => Ok(warnings.into_iter().map(|w| w.to_string()).collect()),
         Err(errs) => Err(errs.into_iter().map(Into::into).collect()),
     }
+}
+
+/// Whether a path belongs to an application rather than to a loose script.
+///
+/// `app/`, `config/` and `stdlib/` are what a server loads to answer requests
+/// — see [`AUTOLOADED_DIRS`], plus `app/jobs` and `app/helpers`, which are
+/// loaded by their own machinery and are just as much request-scope code. Only
+/// there does `req` exist and `render` mean anything.
+fn is_application_path(path: &std::path::Path) -> bool {
+    path.components().any(|c| {
+        matches!(
+            c.as_os_str().to_str(),
+            Some("app") | Some("config") | Some("stdlib")
+        )
+    })
+}
+
+/// Whether a path is one `soli test` would run, and so may call the test DSL.
+///
+/// Deliberately a superset of the runner's own rule (every `.sl` under the
+/// tests directory) plus the two file-name conventions, because getting it
+/// wrong in the generous direction costs an unreported `describe` in an odd
+/// place, and in the strict direction costs an error on every spec in the
+/// project.
+fn is_test_path(path: &std::path::Path) -> bool {
+    let in_test_dir = path.components().any(|c| {
+        matches!(
+            c.as_os_str().to_str(),
+            Some("tests") | Some("test") | Some("tests-e2e") | Some("spec")
+        )
+    });
+    let named_like_a_spec = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .is_some_and(|stem| stem.ends_with("_spec") || stem.ends_with("_test"));
+    in_test_dir || named_like_a_spec
 }
 
 /// Run a Solilang program through the bytecode VM (faster execution).

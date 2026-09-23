@@ -682,7 +682,7 @@ pub fn inject_controller_instance_vars(data: &Value) {
 /// Pure-Soli form-builder layer (`form_with` / `FormBuilder` / `csrf_field`
 /// / `csrf_meta_tag` / `button_to`), evaluated into the shared template
 /// builtins environment at seed time (see `core_eval::get_builtins_rc`).
-const FORM_BUILDER_SOURCE: &str = include_str!("form_builder.sl");
+pub(crate) const FORM_BUILDER_SOURCE: &str = include_str!("form_builder.sl");
 
 /// Evaluate the embedded form-builder Soli source into the template builtins
 /// environment so `form_with(...)` and friends resolve in every view.

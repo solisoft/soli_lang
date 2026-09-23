@@ -1323,3 +1323,33 @@ let result = u&.name ?? "default"
         assert_eq!(val, Value::String("Eve".into()));
     }
 }
+
+#[cfg(test)]
+mod interpreter_drop_tests {
+    use super::*;
+
+    // A throwaway interpreter is built for every call of a named scope, a
+    // user method on a primitive, a validator... Its builtins registry must
+    // go when it does, or a long-lived server keeps one per call.
+    #[test]
+    fn dropping_an_interpreter_frees_its_globals() {
+        let interp = Interpreter::new();
+        let globals = Rc::downgrade(&interp.environment);
+        drop(interp);
+        assert!(
+            globals.upgrade().is_none(),
+            "the builtins registry outlived its interpreter"
+        );
+    }
+
+    #[test]
+    fn dropping_a_serve_interpreter_frees_its_globals() {
+        let interp = Interpreter::new_for_serve();
+        let globals = Rc::downgrade(&interp.environment);
+        drop(interp);
+        assert!(
+            globals.upgrade().is_none(),
+            "the builtins registry outlived its interpreter"
+        );
+    }
+}

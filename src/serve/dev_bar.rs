@@ -660,7 +660,7 @@ fn render_bar(ctx: &DevBarContext) -> String {
     // when the request didn't open any spans (e.g. dev mode off, or a
     // 404 with no controller dispatch).
     let flame_count = ctx.spans.len();
-    let flame_panel = render_flame_panel(&ctx.spans, elapsed_us);
+    let flame_panel = render_flame_panel(&ctx.spans, elapsed_us, &ctx.request_id);
 
     // Requests panel: the page's own route (server-rendered self-row) plus the
     // XHR/fetch/HTMx calls the page fires afterwards, appended client-side by
@@ -870,7 +870,7 @@ fn json_escape(s: &str) -> String {
 /// Build a Chrome Trace Event Format JSON document. Opens cleanly in
 /// chrome://tracing and ui.perfetto.dev. One "X" (complete) event per
 /// span; pid/tid hard-coded since this is a single-request profile.
-fn build_trace_json(spans: &[SpanRecord]) -> String {
+pub(crate) fn build_trace_json(spans: &[SpanRecord]) -> String {
     let mut out = String::from("{\"traceEvents\":[");
     for (i, s) in spans.iter().enumerate() {
         if i > 0 {
@@ -908,16 +908,69 @@ fn relativize_meta(meta: &str, cwd_prefix: &str) -> String {
     }
 }
 
+/// How many spans the flamegraph renders inline.
+///
+/// A request that walks a few hundred records produces thousands of spans, and
+/// each one costs a chart rect *and* a list row. Measured on a real dashboard:
+/// 3.4 MB of markup for the panel alone, parsed and laid out by the browser on
+/// every page load whether or not anyone opens it. The page froze — the
+/// profiler meant to explain the slowness had become the slowness.
+///
+/// So we render the heaviest spans, which are the only ones anyone reads, and
+/// the header says how many were left out. `SOLI_DEV_FLAME_MAX=0` restores the
+/// old, unbounded behaviour.
+const FLAME_MAX_DEFAULT: usize = 300;
+
+fn flame_max() -> usize {
+    match std::env::var("SOLI_DEV_FLAME_MAX") {
+        Ok(v) => v.trim().parse::<usize>().unwrap_or(FLAME_MAX_DEFAULT),
+        Err(_) => FLAME_MAX_DEFAULT,
+    }
+}
+
+/// Above this, `trace.json` is served from `/__solidev/trace/<id>` instead of
+/// being inlined as a base64 `data:` URI. The trace is the one artefact that
+/// must stay COMPLETE — it is what you load into a profiler — so it is never
+/// truncated, only moved off the page.
+const TRACE_INLINE_MAX: usize = 64 * 1024;
+
 /// Render the inline-SVG flamegraph panel + trace JSON download link.
 /// Returns the empty string when `spans` is empty so the closing `</aside>`
 /// stays valid.
-fn render_flame_panel(spans: &[SpanRecord], total_us: u64) -> String {
+fn render_flame_panel(spans: &[SpanRecord], total_us: u64, request_id: &str) -> String {
     if spans.is_empty() {
         return String::new();
     }
 
+    // The spans we actually draw: all of them, or the heaviest `limit`.
+    // Selection is by duration, not by order, because a flamegraph truncated
+    // at the front would hide exactly what one is looking for.
+    let limit = flame_max();
+    let kept: Vec<bool> = if limit == 0 || spans.len() <= limit {
+        vec![true; spans.len()]
+    } else {
+        let mut by_dur: Vec<usize> = (0..spans.len()).collect();
+        by_dur.sort_by(|&a, &b| {
+            let da = spans[a].end_us.saturating_sub(spans[a].start_us);
+            let db = spans[b].end_us.saturating_sub(spans[b].start_us);
+            db.cmp(&da)
+        });
+        let mut keep = vec![false; spans.len()];
+        for &i in by_dur.iter().take(limit) {
+            keep[i] = true;
+        }
+        keep
+    };
+    let shown = kept.iter().filter(|k| **k).count();
+
     let depths = compute_depths(spans);
-    let max_depth = depths.iter().copied().max().unwrap_or(0);
+    let max_depth = depths
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| kept[*i])
+        .map(|(_, d)| *d)
+        .max()
+        .unwrap_or(0);
     let row_h: u32 = 18;
     let chart_h: u32 = (max_depth + 1) * row_h + 4;
     // Span coordinates are encoded as percentages of the total request
@@ -933,6 +986,10 @@ fn render_flame_panel(spans: &[SpanRecord], total_us: u64) -> String {
     let mut rects = String::new();
     let mut row_html: Vec<String> = Vec::with_capacity(spans.len());
     for (i, s) in spans.iter().enumerate() {
+        if !kept[i] {
+            row_html.push(String::new());
+            continue;
+        }
         let dur = s.end_us.saturating_sub(s.start_us).max(1);
         let depth = depths[i];
         let y = depth * row_h;
@@ -1041,17 +1098,23 @@ fn render_flame_panel(spans: &[SpanRecord], total_us: u64) -> String {
         list_rows.push_str(&row_html[i]);
     }
 
+    // Le trace reste ENTIER : c'est lui qu'on charge dans un profileur, et un
+    // trace amputé ne sert à rien. Seul son transport change.
     let trace_json = build_trace_json(spans);
-    let trace_b64 = base64::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        trace_json.as_bytes(),
-    );
-    let trace_href = format!("data:application/json;base64,{}", trace_b64);
+    let trace_href = if trace_json.len() > TRACE_INLINE_MAX {
+        format!("/__solidev/trace/{}", request_id)
+    } else {
+        let trace_b64 = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            trace_json.as_bytes(),
+        );
+        format!("data:application/json;base64,{}", trace_b64)
+    };
 
     format!(
         "<div id=\"__solidev_flame\" class=\"__solidev_panel\" style=\"display:none;border-top:1px solid #30363d;background:#08090b;padding:0.5rem 0.75rem;\">\
 <div class=\"__solidev_flame_head\" style=\"display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;font-size:10px;color:#8b949e;letter-spacing:0.08em;\">\
-<span>FLAMEGRAPH · {n_spans} SPAN{plural} · {total_str}</span>\
+<span>FLAMEGRAPH · {n_spans} SPAN{plural} · {total_str}{omitted}</span>\
 <span class=\"__solidev_flame_help\" style=\"color:#30363d;\">|</span>\
 <span class=\"__solidev_flame_help\" style=\"color:#6c7280;\">click a span to zoom in · double-click the chart to reset</span>\
 <a href=\"{href}\" download=\"trace.json\" style=\"margin-left:auto;color:#8be9fd;text-decoration:none;border:1px solid #30363d;padding:0.125rem 0.5rem;border-radius:0.25rem;\">⬇ trace.json</a>\
@@ -1061,6 +1124,15 @@ fn render_flame_panel(spans: &[SpanRecord], total_us: u64) -> String {
 </div>",
         n_spans = spans.len(),
         plural = if spans.len() == 1 { "" } else { "S" },
+        omitted = if shown < spans.len() {
+            format!(
+                " · showing {} heaviest (SOLI_DEV_FLAME_MAX={})",
+                shown,
+                flame_max()
+            )
+        } else {
+            String::new()
+        },
         total_str = html_escape(&fmt_duration_us(total_us)),
         total_us = total_us.max(1),
         chart_h = chart_h,
@@ -1972,6 +2044,58 @@ mod tests {
         assert!(!out.contains("__solidev_flame\""));
         // Button still renders but with `0s`.
         assert!(out.contains("0s</span>"));
+    }
+
+    /// La borne doit REFUSER quelque chose, sinon elle ne borne rien.
+    ///
+    /// Le panneau atteignait 3,4 Mo sur un tableau de bord réel, et le
+    /// navigateur gelait en le mettant en page à chaque clic — le profileur
+    /// était devenu la lenteur qu il devait expliquer.
+    ///
+    /// Les deux cas tiennent dans UN test : `SOLI_DEV_FLAME_MAX` est une
+    /// variable de processus, et deux tests qui la posent chacun de leur côté
+    /// se marchent dessus dès que le lanceur les exécute en parallèle. Le
+    /// symptôme est un échec qui n arrive qu une fois sur deux.
+    #[test]
+    fn flame_panel_keeps_only_the_heaviest_spans() {
+        let html = "<html><body></body></html>";
+        let mut c = ctx("GET", "/");
+        c.spans
+            .push(span(0, None, "GET /", SpanKind::Action, 0, 100_000));
+        // Quatre spans courts, un long. Avec une borne à trois, c est le long
+        // qui doit survivre — une troncature par ordre d arrivée cacherait
+        // justement ce qu on cherche.
+        for i in 1..5u32 {
+            c.spans.push(span(
+                i,
+                Some(0),
+                &format!("court{}", i),
+                SpanKind::View,
+                (i as u64) * 1_000,
+                (i as u64) * 1_000 + 10,
+            ));
+        }
+        c.spans
+            .push(span(5, Some(0), "leLong", SpanKind::View, 10_000, 90_000));
+
+        std::env::set_var("SOLI_DEV_FLAME_MAX", "3");
+        let borne = inject_dev_bar(html, &c);
+        assert_eq!(borne.matches("class=\"__solidev_rect\"").count(), 3);
+        assert!(borne.contains("leLong"), "le span le plus lourd a été jeté");
+        assert!(
+            borne.contains("showing 3 heaviest"),
+            "la barre ne dit pas qu elle a tronqué"
+        );
+        // Le compte total reste exact : on montre moins, on ne ment pas.
+        assert!(borne.contains("6 SPANS"));
+
+        // Et sans borne atteinte, rien ne change : pas de mention de troncature.
+        std::env::set_var("SOLI_DEV_FLAME_MAX", "50");
+        let entier = inject_dev_bar(html, &c);
+        assert_eq!(entier.matches("class=\"__solidev_rect\"").count(), 6);
+        assert!(!entier.contains("heaviest"));
+
+        std::env::remove_var("SOLI_DEV_FLAME_MAX");
     }
 
     #[test]

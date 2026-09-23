@@ -40,6 +40,12 @@ impl TypeChecker {
                         decl
                     }
                     (Some(decl), None) => decl,
+                    // `let retenue = nil` states that nothing is known yet,
+                    // not that the variable is forever null: the next lines
+                    // assign a record to it and read a field back. Typing it
+                    // `Null` turned that into "cannot index Null" on code that
+                    // runs. An explicit annotation still says what it says.
+                    (None, Some(Type::Null)) => Type::Any,
                     (None, Some(init)) => init,
                     (None, None) => Type::Unknown,
                 };
