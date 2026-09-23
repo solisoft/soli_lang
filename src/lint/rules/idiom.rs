@@ -3,17 +3,36 @@
 //! against `null`/`""` instead of `.nil?`/`.blank?`, coalescing to `""`
 //! instead of `.to_s`, and chained `==`/`!=` membership tests instead of
 //! `.includes?`.
+//!
+//! A RULE IN HERE MUST PROPOSE A PURE REWRITE, or say plainly that it does
+//! not. `nil-comparison` used to suggest `.present?` for `!= null`: that is a
+//! different predicate, not a nicer spelling, and it turns an "idiom cleanup"
+//! into a silent behaviour change on every value that can hold `""`. It now
+//! suggests `!x.nil?`, which is exactly equivalent. `prefer-blank` cannot be
+//! made equivalent at all — nil sits on the other side of the fence either
+//! way — so it states the change instead of hiding it.
 
 use crate::ast::expr::{BinaryOp, Expr, ExprKind};
 use crate::ast::stmt::{Stmt, StmtKind};
 use crate::lint::{LintDiagnostic, Severity};
 use crate::span::Span;
 
-/// `x == null` / `x != null` → prefer `x.nil?` / `x.present?`.
+/// `x == null` / `x != null` → prefer `x.nil?` / `!x.nil?`.
 ///
 /// Called on every `Binary` node. Only equality/inequality against a bare
 /// `null` literal is flagged; `??` and `&.` already cover the safe-navigation
 /// cases, so we leave those alone.
+///
+/// `!=` SUGGESTS `!x.nil?`, NOT `.present?`, and the difference is not
+/// cosmetic. `"" != null` is true while `"".present?` is false, and in Soli
+/// the empty string is truthy — so `.present?` silently narrows the branch
+/// wherever the value can be `""`. A lint rule that calls itself an idiom
+/// must be a pure rewrite; suggesting `.present?` here made it a behaviour
+/// change wearing an idiom's clothes. Applied across one real codebase it
+/// would have touched 613 sites, each a coin toss.
+///
+/// `.present?` is often what the author MEANT — but that is a judgement about
+/// the value, and only a human holding the surrounding code can make it.
 pub fn check_nil_comparison(
     left: &Expr,
     operator: BinaryOp,
@@ -22,8 +41,8 @@ pub fn check_nil_comparison(
     diagnostics: &mut Vec<LintDiagnostic>,
 ) {
     let (op_str, suggestion) = match operator {
-        BinaryOp::Equal => ("==", ".nil?"),
-        BinaryOp::NotEqual => ("!=", ".present?"),
+        BinaryOp::Equal => ("==", "x.nil?"),
+        BinaryOp::NotEqual => ("!=", "!x.nil?"),
         _ => return,
     };
     if !is_null(left) && !is_null(right) {
@@ -55,9 +74,9 @@ pub fn check_prefer_blank(
     span: Span,
     diagnostics: &mut Vec<LintDiagnostic>,
 ) {
-    let suggestion = match operator {
-        BinaryOp::Equal => ".blank?",
-        BinaryOp::NotEqual => ".present?",
+    let (op_str, suggestion) = match operator {
+        BinaryOp::Equal => ("==", ".blank?"),
+        BinaryOp::NotEqual => ("!=", ".present?"),
         _ => return,
     };
     if !is_empty_string(left) && !is_empty_string(right) {
@@ -66,8 +85,10 @@ pub fn check_prefer_blank(
     diagnostics.push(LintDiagnostic {
         rule: "idiom/prefer-blank",
         message: format!(
-            "prefer `{suggestion}` over comparing to an empty string — `.blank?` \
-             also covers the nil case"
+            "consider `{suggestion}` over comparing to an empty string — but it \
+             CHANGES the nil case: `.blank?` counts nil as empty and `.present?` \
+             counts nil as absent, while `{op_str} \"\"` does neither. Rewrite only \
+             where nil and \"\" should mean the same thing"
         ),
         span,
         severity: Severity::Warning,
@@ -348,6 +369,54 @@ mod tests {
         );
         assert_eq!(d.len(), 1);
         assert_eq!(d[0].rule, "idiom/nil-comparison");
+    }
+
+    /// LA RAISON D'ETRE DE CETTE REGLE TIENT DANS CE TEST. `!= null` doit
+    /// proposer `!x.nil?`, son exact equivalent, et surtout PAS `.present?` :
+    /// `"" != null` est vrai la ou `"".present?` est faux, et la chaine vide
+    /// est truthy en Soli. Une regle d'idiome qui change le predicat est un
+    /// piege, pas un conseil.
+    #[test]
+    fn ne_null_suggests_the_equivalent_form() {
+        let mut d = Vec::new();
+        check_nil_comparison(
+            &var("x"),
+            BinaryOp::NotEqual,
+            &null(),
+            Span::new(0, 0, 1, 1),
+            &mut d,
+        );
+        assert_eq!(d.len(), 1);
+        assert!(
+            d[0].message.contains("!x.nil?"),
+            "expected the equivalent form, got: {}",
+            d[0].message
+        );
+        assert!(
+            !d[0].message.contains(".present?"),
+            "`.present?` is a different predicate, not a nicer spelling: {}",
+            d[0].message
+        );
+    }
+
+    /// `prefer-blank` ne PEUT pas etre un pur renommage — nil change de camp
+    /// dans les deux sens —, alors elle doit le dire au lieu de le taire.
+    #[test]
+    fn prefer_blank_states_that_nil_moves() {
+        let mut d = Vec::new();
+        check_prefer_blank(
+            &var("x"),
+            BinaryOp::NotEqual,
+            &string(""),
+            Span::new(0, 0, 1, 1),
+            &mut d,
+        );
+        assert_eq!(d.len(), 1);
+        assert!(
+            d[0].message.contains("CHANGES the nil case"),
+            "the message must own up to the behaviour change: {}",
+            d[0].message
+        );
     }
 
     #[test]
