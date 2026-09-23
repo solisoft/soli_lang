@@ -224,9 +224,17 @@ async fn serve_connection(
     // last client has actually finished. Dropped on every exit
     // path, including error and panic.
     let _conn = shutdown::ConnectionGuard::new();
+    // Request accounting for the idle watchdog below: how many requests have
+    // started on this connection, and how many are still being answered.
+    let activity = Arc::new(ConnectionActivity::default());
+    let service_activity = activity.clone();
     let service = service_fn(move |req| {
         let router = router.clone(); // Arc clone is cheap
-        async move { dispatch(req, &router, peer_addr).await }
+        let in_flight = InFlight::start(service_activity.clone());
+        async move {
+            let _in_flight = in_flight;
+            dispatch(req, &router, peer_addr).await
+        }
     });
     // `hyper_util::server::conn::auto::Builder` auto-detects
     // HTTP/1.1 vs HTTP/2 (h2c prior knowledge) from the first
@@ -247,14 +255,93 @@ async fn serve_connection(
         .http1()
         .timer(TokioTimer::new())
         .header_read_timeout(Duration::from_secs(10));
+    // h2c had no liveness bound at all: a peer that vanished without a FIN
+    // (or never sent another byte) held its task and a connection permit
+    // forever. Ping it; no acknowledgement within the timeout closes the
+    // connection. The timer is required for the pings to run.
+    builder
+        .http2()
+        .timer(TokioTimer::new())
+        .keep_alive_interval(Duration::from_secs(
+            server_constants::h2_keep_alive_interval_secs(),
+        ))
+        .keep_alive_timeout(Duration::from_secs(20));
     // MUST be the `_with_upgrades` variant: plain
     // `serve_connection` never performs the HTTP/1.1 protocol
     // upgrade after a 101, so every WebSocket (live reload,
     // /ws/* routes, LiveView, presence) dies with
     // "Handshake not finished". h2 streams are unaffected by
     // the wrapper — it only arms the h1 upgrade path.
-    if let Err(_e) = builder.serve_connection_with_upgrades(io, service).await {
-        // Silently ignore connection errors
+    let connection = builder.serve_connection_with_upgrades(io, service);
+    tokio::pin!(connection);
+
+    // Idle watchdog. Pings only prove the peer is alive, and a live client
+    // can hold an h2c connection open forever without sending a request —
+    // twenty thousand of those exhaust `SOLI_MAX_CONNECTIONS`. (h1 already
+    // closes an idle keep-alive connection through `header_read_timeout`.)
+    // A connection with nothing in flight and no new request for a whole idle
+    // period is shut down gracefully: h2 sends GOAWAY and lets open streams
+    // (SSE included) finish; h1 finishes the current response first.
+    let idle = Duration::from_secs(server_constants::connection_idle_timeout_secs());
+    let mut seen_requests = activity.started();
+    let mut shutting_down = false;
+    loop {
+        tokio::select! {
+            _result = connection.as_mut() => {
+                // Connection errors are silently ignored, as before.
+                break;
+            }
+            _ = tokio::time::sleep(idle), if !shutting_down => {
+                let started = activity.started();
+                if started == seen_requests && activity.in_flight() == 0 {
+                    connection.as_mut().graceful_shutdown();
+                    shutting_down = true;
+                }
+                seen_requests = started;
+            }
+        }
+    }
+}
+
+/// Per-connection request counters for the idle watchdog in
+/// [`serve_connection`]. Two relaxed atomics per request.
+#[derive(Default)]
+struct ConnectionActivity {
+    started: std::sync::atomic::AtomicU64,
+    in_flight: std::sync::atomic::AtomicUsize,
+}
+
+impl ConnectionActivity {
+    fn started(&self) -> u64 {
+        self.started.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn in_flight(&self) -> usize {
+        self.in_flight.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+/// One request being answered; dropped (on every path) when its handler
+/// future completes or is cancelled.
+struct InFlight(Arc<ConnectionActivity>);
+
+impl InFlight {
+    fn start(activity: Arc<ConnectionActivity>) -> Self {
+        activity
+            .started
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        activity
+            .in_flight
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        InFlight(activity)
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        self.0
+            .in_flight
+            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -287,7 +374,9 @@ async fn dispatch(
         .get(hyper::header::HOST)
         .and_then(|value| value.to_str().ok())
         .or_else(|| req.uri().host());
-    let Some(runtime) = router.resolve(host).cloned() else {
+    // Borrowed, not cloned: the bundle holds several channel senders whose
+    // shared refcounts every request would otherwise bump and drop.
+    let Some(runtime) = router.resolve(host) else {
         // No application claims this host and there is
         // no fallback. 421 is the answer that tells a
         // client it reached the wrong server, rather

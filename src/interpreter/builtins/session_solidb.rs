@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::solidb_http::{SoliDBClient, SoliDBError};
 
 use super::session::SessionStore;
+use super::session_request_cache as request_cache;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct SessionDocument {
@@ -177,6 +178,30 @@ impl SolidbSessionStore {
         }
     }
 
+    /// This store's key in the per-request session memo.
+    fn memo_id(&self) -> usize {
+        self as *const Self as usize
+    }
+
+    /// Read a session through the per-request memo (see
+    /// `session_request_cache`): the first read in a request loads it, the
+    /// rest answer from memory. Writes do not come through here.
+    fn read_session<R>(
+        &self,
+        session_id: &str,
+        f: impl Fn(Option<&SessionDocument>) -> R,
+    ) -> Result<R, String> {
+        if let Some(hit) =
+            request_cache::with_cached::<SessionDocument, _>(self.memo_id(), session_id, &f)
+        {
+            return Ok(hit);
+        }
+        let loaded = self.load_session(session_id)?;
+        let answer = f(loaded.as_ref());
+        request_cache::remember(self.memo_id(), session_id, loaded);
+        Ok(answer)
+    }
+
     fn save_session(&self, session: &SessionDocument) -> Result<(), String> {
         let client = self.create_client().map_err(|e| e.to_string())?;
         let doc_value = serde_json::to_value(session)
@@ -207,18 +232,24 @@ impl SessionStore for SolidbSessionStore {
             self.spawn_cleanup();
         }
 
-        if let Ok(Some(session)) = self.load_session(session_id) {
-            let now = chrono::Utc::now().timestamp_millis();
-            let age = (now - session.last_accessed) as u64;
-            if Duration::from_millis(age) < self.max_age {
-                return session_id.to_string();
-            }
+        let live = self
+            .read_session(session_id, |session| {
+                session.is_some_and(|session| {
+                    let now = chrono::Utc::now().timestamp_millis();
+                    let age = (now - session.last_accessed) as u64;
+                    Duration::from_millis(age) < self.max_age
+                })
+            })
+            .unwrap_or(false);
+        if live {
+            return session_id.to_string();
         }
 
         let new_id = Uuid::new_v4().to_string();
         let session = SessionDocument::new(new_id.clone());
-        if let Err(e) = self.insert_session(&session) {
-            eprintln!("Failed to create session: {}", e);
+        match self.insert_session(&session) {
+            Ok(()) => request_cache::remember(self.memo_id(), &new_id, Some(session)),
+            Err(e) => eprintln!("Failed to create session: {}", e),
         }
         new_id
     }
@@ -226,33 +257,39 @@ impl SessionStore for SolidbSessionStore {
     fn create_session(&self) -> String {
         let session_id = Uuid::new_v4().to_string();
         let session = SessionDocument::new(session_id.clone());
-        if let Err(e) = self.insert_session(&session) {
-            eprintln!("Failed to create session: {}", e);
+        match self.insert_session(&session) {
+            Ok(()) => request_cache::remember(self.memo_id(), &session_id, Some(session)),
+            Err(e) => eprintln!("Failed to create session: {}", e),
         }
         session_id
     }
 
     fn get(&self, session_id: &str, key: &str) -> Option<JsonValue> {
-        self.load_session(session_id)
-            .ok()
-            .flatten()
-            .and_then(|s| s.data.get(key).cloned())
+        self.read_session(session_id, |session| {
+            session.and_then(|s| s.data.get(key).cloned())
+        })
+        .ok()
+        .flatten()
     }
 
     /// See `DiskSessionStore::exists`: the trait default cannot see a session
     /// through a per-key `get`.
     fn exists(&self, session_id: &str) -> bool {
-        self.load_session(session_id)
-            .ok()
-            .flatten()
-            .is_some_and(|session| {
+        self.read_session(session_id, |session| {
+            session.is_some_and(|session| {
                 let now = chrono::Utc::now().timestamp_millis();
                 let age = (now - session.last_accessed).max(0) as u64;
                 Duration::from_millis(age) < self.max_age
             })
+        })
+        .unwrap_or(false)
     }
 
+    // Writes keep their fresh load-modify-save, and then drop the memo rather
+    // than trust it: the stored document is whatever SoliDB's merging update
+    // made of ours, so the next read in this request reloads it.
     fn set(&self, session_id: &str, key: &str, value: JsonValue) {
+        request_cache::forget(self.memo_id(), session_id);
         if let Ok(Some(mut session)) = self.load_session(session_id) {
             session.touch();
             session.data.insert(key.to_string(), value);
@@ -263,6 +300,7 @@ impl SessionStore for SolidbSessionStore {
     }
 
     fn delete(&self, session_id: &str, key: &str) -> Option<JsonValue> {
+        request_cache::forget(self.memo_id(), session_id);
         if let Ok(Some(mut session)) = self.load_session(session_id) {
             session.touch();
             let value = session.data.remove(key);
@@ -276,6 +314,7 @@ impl SessionStore for SolidbSessionStore {
     }
 
     fn destroy(&self, session_id: &str) {
+        request_cache::forget(self.memo_id(), session_id);
         if let Ok(client) = self.create_client() {
             if let Err(e) = client.delete(&self.collection, session_id) {
                 eprintln!("Failed to destroy session: {}", e);
@@ -290,13 +329,15 @@ impl SessionStore for SolidbSessionStore {
         if let Some(mut session) = old_session {
             session.key = new_id.clone();
             session.touch();
-            if let Err(e) = self.insert_session(&session) {
-                eprintln!("Failed to create new session during regenerate: {}", e);
+            match self.insert_session(&session) {
+                Ok(()) => request_cache::remember(self.memo_id(), &new_id, Some(session)),
+                Err(e) => eprintln!("Failed to create new session during regenerate: {}", e),
             }
         } else {
             let session = SessionDocument::new(new_id.clone());
-            if let Err(e) = self.insert_session(&session) {
-                eprintln!("Failed to create session during regenerate: {}", e);
+            match self.insert_session(&session) {
+                Ok(()) => request_cache::remember(self.memo_id(), &new_id, Some(session)),
+                Err(e) => eprintln!("Failed to create session during regenerate: {}", e),
             }
         }
 

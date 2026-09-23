@@ -1780,7 +1780,9 @@ impl Vm {
     ///
     /// Used by the server's class-based controller dispatch: JIT-compiles the
     /// method as `FunctionType::Method` so slot 0 is reserved for `this`, then
-    /// seeds the call frame with `instance` at slot 0 and `arg` at slot 1.
+    /// seeds the call frame with `instance` at slot 0 and `arg` (when `Some`)
+    /// at slot 1. A zero-parameter action (`def index`) passes `None`: it reads
+    /// the request through the `req` global the server publishes beforehand.
     ///
     /// The compiled `FunctionProto` is cached on `method.jit_cache` so the AST
     /// walk in `Compiler::compile_method_standalone` only runs once per worker
@@ -1792,7 +1794,7 @@ impl Vm {
         &mut self,
         method: &Function,
         instance: Value,
-        arg: Value,
+        arg: Option<Value>,
         span: Span,
     ) -> Result<Value, RuntimeError> {
         // The `let cached = ...borrow().clone()` line scopes the
@@ -1821,13 +1823,20 @@ impl Vm {
         };
         let closure = Rc::new(VmClosure::new(proto, Vec::new()));
 
-        // Stack layout after these pushes: [..., instance, arg]. call_closure
+        // Stack layout after these pushes: [..., instance, arg?]. call_closure
         // derives stack_base = len - total_params - 1, placing `instance` at
         // slot 0 (i.e., `this`) and `arg` at slot 1 — matching the layout the
-        // method bytecode expects.
+        // method bytecode expects. Omitted parameters are padded with null
+        // (and their defaults applied) by call_closure itself.
         self.push(instance);
-        self.push(arg);
-        self.call_closure(closure, 1, span)?;
+        let argc = match arg {
+            Some(arg) => {
+                self.push(arg);
+                1
+            }
+            None => 0,
+        };
+        self.call_closure(closure, argc, span)?;
         self.run()
     }
 

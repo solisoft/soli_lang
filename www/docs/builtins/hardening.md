@@ -58,9 +58,12 @@ default) and each parsed request would then sit in the worker queue still
 holding its payload.
 
 `SOLI_MAX_INFLIGHT_BODY_BYTES` caps the **sum** of request-body bytes reserved
-at once. A request reserves its share before any bytes are buffered and returns
-it when the request ends — including on error paths — so a burst of large
-uploads is refused rather than swapping the box.
+at once. A request is charged **as its bytes arrive**: it starts with a 64 KiB
+reservation and doubles it as the body grows, up to `SOLI_MAX_BODY_SIZE`,
+rather than claiming the full per-request cap up front — so a crowd of small
+bodies no longer exhausts the budget. The reservation is returned when the
+request ends — including on error paths — so a burst of large uploads is
+refused rather than swapping the box.
 
 **Default: 16 × the per-request cap** (128 MiB out of the box). Over the cap:
 `503 Service Unavailable` with `Retry-After: 1`. Set it to `0` to disable the
@@ -73,9 +76,18 @@ SOLI_MAX_INFLIGHT_BODY_BYTES=268435456   # 256 MiB across all requests
 Raising `SOLI_MAX_BODY_SIZE` for an app that accepts big uploads raises this
 default with it, so the two stay in proportion unless you set it explicitly.
 
+### Stalled and broken bodies
+
+`SOLI_BODY_READ_TIMEOUT_SECS` (default `60`) bounds how long a whole body may
+take. `SOLI_BODY_IDLE_TIMEOUT_SECS` (default `10`) bounds the silence **between
+two frames**: a body that stalls that long is answered `408 Request Timeout`
+and its reservation freed. A body cut off by a transport error is a `400 Bad
+Request` (it used to be reported as `413`).
+
 ## Related env
 
-See [Configuration](/docs/getting-started/configuration) for `SOLI_CSRF_TOKENS`, `SOLI_DISABLE_CSRF`, `SOLI_FORCE_SECURE_COOKIES`, `SOLI_HTTP_MAX_RESPONSE_BYTES`, image and parallel-fan-out caps, `SOLI_MAX_UPLOAD_FILES`, and
-`SOLI_MAX_INFLIGHT_BODY_BYTES`.
+See [Configuration](/docs/getting-started/configuration) for `SOLI_CSRF_TOKENS`, `SOLI_DISABLE_CSRF`, `SOLI_FORCE_SECURE_COOKIES`, `SOLI_HTTP_MAX_RESPONSE_BYTES`, image and parallel-fan-out caps, `SOLI_MAX_UPLOAD_FILES`,
+`SOLI_MAX_INFLIGHT_BODY_BYTES`, `SOLI_BODY_IDLE_TIMEOUT_SECS`, and the HTTP/2
+`SOLI_H2_KEEPALIVE_SECS` / `SOLI_CONN_IDLE_TIMEOUT_SECS`.
 
 Response-side headers: [Security Headers](/docs/builtins/security-headers).

@@ -116,7 +116,7 @@ fn two_applications_do_not_share_a_database() {
     let beta = register(PathBuf::from("/srv/beta"));
 
     let alpha_registry = scoped(alpha, registry);
-    let mut beta_registry = scoped(beta, registry);
+    let mut beta_registry = (*scoped(beta, registry)).clone();
     // Give beta a distinguishable default so the assertion cannot pass by both
     // sides happening to hold the same env-derived registry.
     beta_registry.default = "beta_primary".into();

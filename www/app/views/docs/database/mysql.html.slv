@@ -121,6 +121,9 @@ DATABASE_URL=mysql://user:pass@db.internal:3306/myapp?ssl-mode=VERIFY_CA&amp;ssl
             it is refused, not silently ignored.</li>
         <li>A mandatory mode fails at boot naming the reason, e.g.
             <code>connection "primary" asked for ssl-mode=verify-full: invalid peer certificate: UnknownIssuer</code>.</li>
+        <li>Outside <code class="text-cyan-400">--dev</code>, a connection to a <strong class="text-white">non-local host</strong>
+            with a mode below <code class="text-cyan-400">VERIFY_IDENTITY</code> (<code>DISABLED</code>, <code>PREFERRED</code>,
+            <code>REQUIRED</code>) logs a one-time warning recommending it. The default is unchanged.</li>
     </ul>
 
     <h2 id="create-drop" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Create and drop</h2>

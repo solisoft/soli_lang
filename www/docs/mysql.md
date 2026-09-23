@@ -91,6 +91,9 @@ DATABASE_URL=mysql://user:pass@db.internal:3306/myapp?ssl-mode=VERIFY_CA&ssl-ca=
   silently ignored.
 - A mandatory mode fails at boot naming the reason, e.g. `connection "primary"
   asked for ssl-mode=verify-full: invalid peer certificate: UnknownIssuer`.
+- Outside `--dev`, a connection to a **non-local host** with a mode below
+  `VERIFY_IDENTITY` (`DISABLED`, `PREFERRED`, `REQUIRED`) logs a one-time
+  warning recommending it. The default is unchanged.
 
 ## Create and drop
 

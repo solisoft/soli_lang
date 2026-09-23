@@ -11,7 +11,7 @@
     allow(unused_variables)
 )]
 
-use super::registry::active_spec;
+use super::registry::active_adapter;
 pub use super::sql_compile::ListQueryParts;
 use super::sql_compile::{list_query_from_parts as build_list_query, GroupAgg, ListQuery, SqlAgg};
 use super::Adapter;
@@ -32,31 +32,31 @@ fn feature_missing(adapter: &str) -> String {
 }
 
 pub fn is_sql() -> bool {
-    active_spec().map(|s| s.is_sql()).unwrap_or(false)
+    active_adapter().map(|a| a.is_sql()).unwrap_or(false)
 }
 
 pub fn is_postgres() -> bool {
-    active_spec()
-        .map(|s| s.adapter == Adapter::Postgres)
+    active_adapter()
+        .map(|a| a == Adapter::Postgres)
         .unwrap_or(false)
 }
 
 pub fn is_mysql() -> bool {
-    active_spec()
-        .map(|s| s.adapter == Adapter::Mysql)
+    active_adapter()
+        .map(|a| a == Adapter::Mysql)
         .unwrap_or(false)
 }
 
 pub fn is_sqlite() -> bool {
-    active_spec()
-        .map(|s| s.adapter == Adapter::Sqlite)
+    active_adapter()
+        .map(|a| a == Adapter::Sqlite)
         .unwrap_or(false)
 }
 
 /// Dispatch a SQL op to the active backend, or a clear missing-feature error.
 macro_rules! route_sql {
     ($pg:expr, $my:expr, $lite:expr) => {{
-        match active_spec()?.adapter {
+        match active_adapter()? {
             Adapter::Mysql => {
                 #[cfg(feature = "mysql")]
                 {
@@ -499,7 +499,7 @@ pub fn load_schema(dump: &str) -> Result<(), String> {
 /// Dialect of the active connection — for compiling DDL before executing it.
 pub fn active_dialect() -> Result<super::sql_compile::Dialect, String> {
     use super::sql_compile::Dialect;
-    match active_spec()?.adapter {
+    match active_adapter()? {
         Adapter::Postgres => Ok(Dialect::Postgres),
         Adapter::Mysql => Ok(Dialect::Mysql),
         Adapter::Sqlite => Ok(Dialect::Sqlite),
@@ -541,7 +541,7 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
 
 pub fn list_query_from_parts(parts: ListQueryParts) -> Result<ListQuery, String> {
     use super::sql_compile::Dialect;
-    let dialect = match active_spec()?.adapter {
+    let dialect = match active_adapter()? {
         Adapter::Mysql => Dialect::Mysql,
         Adapter::Postgres => Dialect::Postgres,
         Adapter::Sqlite => Dialect::Sqlite,

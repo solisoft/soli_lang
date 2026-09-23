@@ -91,6 +91,7 @@
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use uuid::Uuid;
 
@@ -119,13 +120,15 @@ pub struct Middleware {
 
 // Middleware registry stored in thread-local storage.
 // Middleware contains Value (which uses Rc), so must be accessed from interpreter thread only.
+// Behind an `Rc` so a request snapshots the list with a refcount bump instead
+// of cloning every entry; registration copies on write (`Rc::make_mut`).
 thread_local! {
-    pub static MIDDLEWARE: RefCell<Vec<Middleware>> = const { RefCell::new(Vec::new()) };
+    pub static MIDDLEWARE: RefCell<Rc<Vec<Middleware>>> = RefCell::new(Rc::new(Vec::new()));
 }
 
 /// Clear all registered middleware.
 pub fn clear_middleware() {
-    MIDDLEWARE.with(|mw| mw.borrow_mut().clear());
+    MIDDLEWARE.with(|mw| *mw.borrow_mut() = Rc::new(Vec::new()));
 }
 
 /// Register a middleware function.
@@ -142,7 +145,8 @@ pub fn register_middleware_with_options(
     scope_only: bool,
 ) {
     MIDDLEWARE.with(|mw| {
-        let mut middleware = mw.borrow_mut();
+        let mut guard = mw.borrow_mut();
+        let middleware = Rc::make_mut(&mut guard);
         middleware.push(Middleware {
             name: name.to_string(),
             handler,
@@ -156,17 +160,11 @@ pub fn register_middleware_with_options(
 }
 
 /// Get all registered middleware in execution order (must be called from interpreter thread).
-/// Note: This clones the middleware Vec. For performance-critical paths, use
-/// `with_middleware()` to iterate without cloning.
-pub fn get_middleware() -> Vec<Middleware> {
-    MIDDLEWARE.with(|mw| {
-        let mw = mw.borrow();
-        if mw.is_empty() {
-            Vec::new()
-        } else {
-            mw.clone()
-        }
-    })
+/// A snapshot: the `Rc` is shared, so this costs a refcount bump, and a
+/// middleware that registers another while the list is being walked mutates a
+/// copy rather than the snapshot.
+pub fn get_middleware() -> Rc<Vec<Middleware>> {
+    MIDDLEWARE.with(|mw| Rc::clone(&mw.borrow()))
 }
 
 /// Execute a closure with a reference to the middleware list (avoids cloning).

@@ -16,7 +16,6 @@ use bytes::Bytes;
 use http_body_util::Full;
 use hyper::Response;
 
-use crate::serve::live_reload::rfind_ascii_case_insensitive;
 use crate::serve::prefetch;
 
 /// Client JS — compiled into the binary, like `nav.js`.
@@ -51,26 +50,13 @@ fn camera_tag() -> String {
 }
 
 /// Insert the camera `<script>` before `</body>` — or `</html>`, or at the end.
-pub fn inject_camera_tag(html: &str) -> String {
-    if html.contains(INJECTED_MARKER) || !page_uses_camera(html) {
-        return html.to_string();
+pub fn inject_camera_tag(html: impl Into<String>) -> String {
+    let html: String = html.into();
+    // Opt-in probe first: one body scan instead of two for most pages.
+    if !page_uses_camera(&html) || html.contains(INJECTED_MARKER) {
+        return html;
     }
-    let tag = camera_tag();
-    if let Some(pos) = rfind_ascii_case_insensitive(html, b"</body>") {
-        let mut out = String::with_capacity(html.len() + tag.len());
-        out.push_str(&html[..pos]);
-        out.push_str(&tag);
-        out.push_str(&html[pos..]);
-        out
-    } else if let Some(pos) = rfind_ascii_case_insensitive(html, b"</html>") {
-        let mut out = String::with_capacity(html.len() + tag.len());
-        out.push_str(&html[..pos]);
-        out.push_str(&tag);
-        out.push_str(&html[pos..]);
-        out
-    } else {
-        format!("{}{}", html, tag)
-    }
+    prefetch::insert_before_body_close(html, &camera_tag())
 }
 
 /// `GET /__soli/camera.js`.

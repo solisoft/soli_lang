@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use http_body_util::{BodyExt, Limited, StreamBody};
+use http_body_util::{BodyExt, StreamBody};
 use hyper::body::Incoming;
 use hyper::{Request, Response, StatusCode};
 use tokio::sync::oneshot;
@@ -103,7 +103,7 @@ pub(super) async fn intake(
     // read so a hostile client can't exhaust worker memory by streaming
     // an unbounded body. Content-Length lets us short-circuit before any
     // bytes are buffered; chunked uploads (no Content-Length) are caught
-    // mid-stream by `Limited`.
+    // mid-stream by `read_body`.
     let max_body = crate::interpreter::builtins::body_limit::get_max_body_size();
     let mut body_reservation = None;
     if method != "GET" && method != "HEAD" {
@@ -119,38 +119,54 @@ pub(super) async fn intake(
             }
         }
         // Claim the memory *before* buffering, not after: the point is to stop
-        // many connections each collecting their own body. A chunked request
-        // declares no length, so it reserves the per-request cap — the most it
-        // could turn out to be.
-        let want = declared_content_length.map_or(max_body, |n| n.min(max_body));
+        // many connections each collecting their own body. Only a first slice
+        // is claimed here — the declared length when it is small, at most
+        // `INITIAL_BODY_RESERVATION` — and `read_body` grows the claim as bytes
+        // actually arrive. Reserving the whole cap for every chunked upload
+        // (which declares no length) let sixteen idle connections exhaust the
+        // default budget and 503 every other POST; a declared-but-never-sent
+        // `Content-Length` did the same.
+        let want = declared_content_length
+            .unwrap_or(INITIAL_BODY_RESERVATION)
+            .min(INITIAL_BODY_RESERVATION)
+            .min(max_body);
         match crate::interpreter::builtins::body_limit::BodyReservation::try_acquire(want) {
             Some(reservation) => body_reservation = Some(reservation),
-            None => {
-                return Err(Box::new(
-                    Response::builder()
-                        .status(StatusCode::SERVICE_UNAVAILABLE)
-                        .header("Content-Type", "text/plain; charset=utf-8")
-                        .header("Retry-After", "1")
-                        .body(full(Bytes::from("Server busy: too many uploads in flight")))
-                        .unwrap(),
-                ));
-            }
+            None => return Err(Box::new(server_busy_response())),
         }
     }
     let (body, multipart_form, multipart_files) = if method == "GET" || method == "HEAD" {
         (String::new(), None, None)
     } else {
-        // Bounded in time as well as size: `Limited` caps how much can
-        // arrive, not how long it may take, so a trickled body held a
-        // connection and its buffer indefinitely.
-        let collected = match tokio::time::timeout(
+        // Bounded in time as well as size: a cap on how much can arrive says
+        // nothing about how long it may take, so a trickled body held a
+        // connection and its buffer indefinitely. Two clocks: the whole body
+        // within `body_read_timeout_secs`, and no gap between frames longer
+        // than `body_idle_timeout_secs`.
+        let reservation = body_reservation
+            .as_mut()
+            .expect("a reservation is taken for every body-bearing method");
+        let body_bytes = match read_body(
+            req_body,
+            max_body,
+            reservation,
+            Duration::from_secs(server_constants::body_idle_timeout_secs()),
             Duration::from_secs(server_constants::body_read_timeout_secs()),
-            BodyExt::collect(Limited::new(req_body, max_body)),
         )
         .await
         {
-            Ok(result) => result,
-            Err(_) => {
+            Ok(bytes) => bytes,
+            Err(BodyReadError::TooLarge) => {
+                return Err(Box::new(
+                    Response::builder()
+                        .status(StatusCode::PAYLOAD_TOO_LARGE)
+                        .header("Content-Type", "text/plain; charset=utf-8")
+                        .body(full(Bytes::from("Request body too large")))
+                        .unwrap(),
+                ));
+            }
+            Err(BodyReadError::Busy) => return Err(Box::new(server_busy_response())),
+            Err(BodyReadError::TimedOut) => {
                 return Err(Box::new(
                     Response::builder()
                         .status(StatusCode::REQUEST_TIMEOUT)
@@ -159,24 +175,15 @@ pub(super) async fn intake(
                         .unwrap(),
                 ));
             }
-        };
-        // Keep the collected body as `Bytes`. It is refcounted, so the
-        // multipart parser can take it by value without copying, and the
-        // non-multipart branch only borrows it to build the String. The
-        // previous `.to_vec()` was a full extra copy of every request body.
-        let body_bytes = match collected {
-            Ok(b) => b.to_bytes(),
-            Err(_) => {
-                // `Limited` returns an error once the running total
-                // crosses `max_body`. Treat any failure here as oversize:
-                // we can't reliably distinguish a transport error from a
-                // length-limit hit, but in either case we don't want to
-                // proceed with a partial body.
+            Err(BodyReadError::Transport) => {
+                // The connection failed mid-body (reset, or fewer bytes than
+                // the declared `Content-Length`). Never proceed with a
+                // partial body.
                 return Err(Box::new(
                     Response::builder()
-                        .status(StatusCode::PAYLOAD_TOO_LARGE)
+                        .status(StatusCode::BAD_REQUEST)
                         .header("Content-Type", "text/plain; charset=utf-8")
-                        .body(full(Bytes::from("Request body too large")))
+                        .body(full(Bytes::from("Request body could not be read")))
                         .unwrap(),
                 ));
             }
@@ -200,12 +207,10 @@ pub(super) async fn intake(
                 let (form_fields, files) = parse_multipart_body(body_bytes, ct).await;
                 (String::new(), Some(form_fields), Some(files))
             } else {
-                let body_str = String::from_utf8_lossy(&body_bytes).to_string();
-                (body_str, None, None)
+                (body_into_string(body_bytes), None, None)
             }
         } else {
-            let body_str = String::from_utf8_lossy(&body_bytes).to_string();
-            (body_str, None, None)
+            (body_into_string(body_bytes), None, None)
         }
     };
 
@@ -232,6 +237,112 @@ pub(super) async fn intake(
         multipart_files,
         if_none_match,
         is_prefetch,
+    })
+}
+
+/// The first slice of the in-flight body budget a request claims before any
+/// of its body has arrived. Small bodies (the declared length, when it is
+/// below this) claim exactly what they are; anything larger grows its claim as
+/// bytes arrive, so a connection that sends nothing holds almost nothing.
+const INITIAL_BODY_RESERVATION: usize = 64 * 1024;
+
+fn server_busy_response() -> Response<ResponseBody> {
+    Response::builder()
+        .status(StatusCode::SERVICE_UNAVAILABLE)
+        .header("Content-Type", "text/plain; charset=utf-8")
+        .header("Retry-After", "1")
+        .body(full(Bytes::from("Server busy: too many uploads in flight")))
+        .unwrap()
+}
+
+/// Why [`read_body`] gave up.
+#[derive(Debug, PartialEq, Eq)]
+enum BodyReadError {
+    /// More than `max_body` bytes arrived.
+    TooLarge,
+    /// The in-flight budget could not cover the bytes that arrived.
+    Busy,
+    /// The body stalled past the idle timeout, or overran the total one.
+    TimedOut,
+    /// The transport failed mid-body.
+    Transport,
+}
+
+/// The request body as a `String`. Valid UTF-8 — nearly every body — takes
+/// the bytes over without a second pass through `from_utf8_lossy`'s copy
+/// (`Vec::from(Bytes)` reuses the allocation when the buffer is uniquely
+/// owned); invalid input is still replaced lossily, as before.
+fn body_into_string(body: Bytes) -> String {
+    String::from_utf8(Vec::from(body))
+        .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+}
+
+/// Buffer a request body, charging the in-flight budget for the bytes as they
+/// arrive rather than for the most they could be.
+///
+/// The reservation grows by doubling (capped at `max_body`), so a large upload
+/// takes a handful of budget updates, not one per frame. Every frame must
+/// arrive within `idle` of the previous one and the whole body within `total`.
+async fn read_body<B>(
+    mut body: B,
+    max_body: usize,
+    reservation: &mut crate::interpreter::builtins::body_limit::BodyReservation,
+    idle: Duration,
+    total: Duration,
+) -> Result<Bytes, BodyReadError>
+where
+    B: hyper::body::Body<Data = Bytes> + Unpin,
+{
+    let deadline = tokio::time::Instant::now() + total;
+    // A body that arrives as one frame (most JSON and form posts) is kept as
+    // that frame's `Bytes`, with no copy; only a second frame starts a buffer.
+    let mut first: Option<Bytes> = None;
+    let mut buffer: Option<bytes::BytesMut> = None;
+    let mut received: usize = 0;
+    loop {
+        let frame_deadline = std::cmp::min(deadline, tokio::time::Instant::now() + idle);
+        let frame = match tokio::time::timeout_at(frame_deadline, body.frame()).await {
+            Err(_) => return Err(BodyReadError::TimedOut),
+            Ok(None) => break,
+            Ok(Some(Err(_))) => return Err(BodyReadError::Transport),
+            Ok(Some(Ok(frame))) => frame,
+        };
+        // Trailers carry no body bytes.
+        let Ok(data) = frame.into_data() else {
+            continue;
+        };
+        if data.is_empty() {
+            continue;
+        }
+        received = received.saturating_add(data.len());
+        if received > max_body {
+            return Err(BodyReadError::TooLarge);
+        }
+        if received > reservation.bytes() {
+            let grown = reservation
+                .bytes()
+                .saturating_mul(2)
+                .max(received)
+                .min(max_body);
+            if !reservation.try_grow_to(grown) {
+                return Err(BodyReadError::Busy);
+            }
+        }
+        if let Some(buf) = buffer.as_mut() {
+            buf.extend_from_slice(&data);
+        } else if let Some(previous) = first.take() {
+            let mut buf = bytes::BytesMut::with_capacity(received);
+            buf.extend_from_slice(&previous);
+            buf.extend_from_slice(&data);
+            buffer = Some(buf);
+        } else {
+            first = Some(data);
+        }
+    }
+    Ok(match (buffer, first) {
+        (Some(buf), _) => buf.freeze(),
+        (None, Some(only)) => only,
+        (None, None) => Bytes::new(),
     })
 }
 
@@ -468,6 +579,79 @@ pub(super) fn assemble(
     };
 
     finish_response(builder, Bytes::from(body))
+}
+
+#[cfg(test)]
+mod read_body_tests {
+    use super::*;
+    use crate::interpreter::builtins::body_limit::tests::BUDGET_LOCK;
+    use crate::interpreter::builtins::body_limit::BodyReservation;
+    use futures_util::stream;
+    use hyper::body::Frame;
+
+    type FrameResult = Result<Frame<Bytes>, std::convert::Infallible>;
+
+    fn frames(chunks: &[&'static str]) -> Vec<FrameResult> {
+        chunks
+            .iter()
+            .map(|c| Ok(Frame::data(Bytes::from_static(c.as_bytes()))))
+            .collect()
+    }
+
+    /// Run `read_body` on a private runtime while holding the budget lock:
+    /// the in-flight counter is process-global, and the lock must not be held
+    /// across an `.await`.
+    fn read<B>(body: B, max_body: usize, idle: Duration) -> (Result<Bytes, BodyReadError>, usize)
+    where
+        B: hyper::body::Body<Data = Bytes> + Unpin,
+    {
+        let _serial = BUDGET_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .expect("test runtime");
+        let mut reservation = BodyReservation::try_acquire(4).expect("tiny first slice");
+        let outcome = runtime.block_on(read_body(
+            body,
+            max_body,
+            &mut reservation,
+            idle,
+            Duration::from_secs(30),
+        ));
+        (outcome, reservation.bytes())
+    }
+
+    /// A chunked body is reassembled in order, and the budget it holds tracks
+    /// what actually arrived rather than the per-request cap.
+    #[test]
+    fn a_chunked_body_is_charged_for_what_arrives() {
+        let body = StreamBody::new(stream::iter(frames(&["hello ", "chunked ", "world"])));
+        let (outcome, reserved) = read(body, 1024, Duration::from_secs(5));
+        let bytes = outcome.expect("body reads");
+        assert_eq!(&bytes[..], b"hello chunked world");
+        assert!(reserved >= bytes.len());
+        assert!(reserved <= 1024, "never more than the cap");
+    }
+
+    #[test]
+    fn a_body_over_the_cap_is_refused_mid_stream() {
+        let body = StreamBody::new(stream::iter(frames(&["0123456789", "0123456789"])));
+        let (outcome, _) = read(body, 15, Duration::from_secs(5));
+        assert_eq!(outcome.unwrap_err(), BodyReadError::TooLarge);
+    }
+
+    /// A body that stops sending is dropped after the idle timeout, well
+    /// before the total one.
+    #[test]
+    fn a_stalled_body_times_out_on_the_idle_clock() {
+        let body = StreamBody::new(
+            stream::iter(frames(&["partial"])).chain(stream::pending::<FrameResult>()),
+        );
+        let started = std::time::Instant::now();
+        let (outcome, _) = read(body, 1024, Duration::from_millis(50));
+        assert_eq!(outcome.unwrap_err(), BodyReadError::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
 }
 
 #[cfg(test)]

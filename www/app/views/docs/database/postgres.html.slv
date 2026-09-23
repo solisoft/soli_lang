@@ -119,6 +119,10 @@ DATABASE_URL=postgres://user:pass@db.internal:5432/myapp?sslmode=verify-full&amp
             consult it is refused, not silently ignored.</li>
         <li>A mandatory mode fails at boot naming the reason, e.g.
             <code>connection "primary" asked for sslmode=require: error performing TLS handshake: server does not support TLS</code>.</li>
+        <li>Outside <code class="text-cyan-400">--dev</code>, a connection to a <strong class="text-white">non-local host</strong>
+            with <code class="text-cyan-400">disable</code>, <code class="text-cyan-400">prefer</code> or
+            <code class="text-cyan-400">require</code> logs a one-time warning recommending
+            <code class="text-cyan-400">verify-full</code>. The default is unchanged.</li>
         <li>Postgres never negotiates TLS over a Unix socket, so <code class="text-cyan-400">require</code>
             and up fail on a socket URL rather than pretending the connection is encrypted.</li>
         <li><code class="text-cyan-400">verify-ca</code> skips only the hostname check &mdash; useful behind a

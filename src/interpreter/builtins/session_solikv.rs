@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use super::resp::{RespPool, RespValue};
 use super::session::SessionStore;
+use super::session_request_cache as request_cache;
 
 const DEFAULT_TTL_SECONDS: u64 = 86400;
 
@@ -63,12 +64,43 @@ impl SolikvSessionStore {
     }
 
     fn load_session(&self, session_id: &str) -> Option<SessionData> {
-        let key = self.session_key(session_id);
-        let val = self.pool.execute(&["GET", &key]).ok()?;
+        self.fetch_session(session_id).ok().flatten()
+    }
 
-        match val {
+    /// `load_session`, keeping a transport error apart from "no session" so
+    /// only a real answer is remembered by the per-request memo.
+    fn fetch_session(&self, session_id: &str) -> Result<Option<SessionData>, String> {
+        let key = self.session_key(session_id);
+        let val = self.pool.execute(&["GET", &key])?;
+
+        Ok(match val {
             RespValue::BulkString(s) => serde_json::from_str(&s).ok(),
             _ => None,
+        })
+    }
+
+    /// This store's key in the per-request session memo.
+    fn memo_id(&self) -> usize {
+        self as *const Self as usize
+    }
+
+    /// Read a session through the per-request memo (see
+    /// `session_request_cache`): the first read in a request loads it, the
+    /// rest answer from memory. A transport error reads as "no session", as
+    /// `load_session` always did. Writes do not come through here.
+    fn read_session<R>(&self, session_id: &str, f: impl Fn(Option<&SessionData>) -> R) -> R {
+        if let Some(hit) =
+            request_cache::with_cached::<SessionData, _>(self.memo_id(), session_id, &f)
+        {
+            return hit;
+        }
+        match self.fetch_session(session_id) {
+            Ok(loaded) => {
+                let answer = f(loaded.as_ref());
+                request_cache::remember(self.memo_id(), session_id, loaded);
+                answer
+            }
+            Err(_) => f(None),
         }
     }
 
@@ -97,18 +129,22 @@ impl SessionStore for SolikvSessionStore {
             self.cleanup();
         }
 
-        if let Some(session) = self.load_session(session_id) {
-            let now = chrono::Utc::now().timestamp_millis();
-            let age_ms = (now - session.last_accessed) as u64;
-            if Duration::from_millis(age_ms) < Duration::from_secs(self.ttl) {
-                return session_id.to_string();
-            }
+        let live = self.read_session(session_id, |session| {
+            session.is_some_and(|session| {
+                let now = chrono::Utc::now().timestamp_millis();
+                let age_ms = (now - session.last_accessed) as u64;
+                Duration::from_millis(age_ms) < Duration::from_secs(self.ttl)
+            })
+        });
+        if live {
+            return session_id.to_string();
         }
 
         let new_id = Uuid::new_v4().to_string();
         let session = SessionData::new();
-        if let Err(e) = self.save_session(&new_id, &session) {
-            eprintln!("Failed to create session: {}", e);
+        match self.save_session(&new_id, &session) {
+            Ok(()) => request_cache::remember(self.memo_id(), &new_id, Some(session)),
+            Err(e) => eprintln!("Failed to create session: {}", e),
         }
         new_id
     }
@@ -116,43 +152,53 @@ impl SessionStore for SolikvSessionStore {
     fn create_session(&self) -> String {
         let session_id = Uuid::new_v4().to_string();
         let session = SessionData::new();
-        if let Err(e) = self.save_session(&session_id, &session) {
-            eprintln!("Failed to create session: {}", e);
+        match self.save_session(&session_id, &session) {
+            Ok(()) => request_cache::remember(self.memo_id(), &session_id, Some(session)),
+            Err(e) => eprintln!("Failed to create session: {}", e),
         }
         session_id
     }
 
     fn get(&self, session_id: &str, key: &str) -> Option<JsonValue> {
-        self.load_session(session_id)
-            .and_then(|s| s.data.get(key).cloned())
+        self.read_session(session_id, |session| {
+            session.and_then(|s| s.data.get(key).cloned())
+        })
     }
 
     /// See `DiskSessionStore::exists`: the trait default cannot see a session
     /// through a per-key `get`.
     fn exists(&self, session_id: &str) -> bool {
-        self.load_session(session_id).is_some_and(|session| {
-            let now = chrono::Utc::now().timestamp_millis();
-            let age_ms = (now - session.last_accessed).max(0) as u64;
-            Duration::from_millis(age_ms) < Duration::from_secs(self.ttl)
+        self.read_session(session_id, |session| {
+            session.is_some_and(|session| {
+                let now = chrono::Utc::now().timestamp_millis();
+                let age_ms = (now - session.last_accessed).max(0) as u64;
+                Duration::from_millis(age_ms) < Duration::from_secs(self.ttl)
+            })
         })
     }
 
+    // Writes keep their fresh load-modify-save. `SET` stores exactly the
+    // document written, so a successful save refreshes the memo with it.
     fn set(&self, session_id: &str, key: &str, value: JsonValue) {
+        request_cache::forget(self.memo_id(), session_id);
         if let Some(mut session) = self.load_session(session_id) {
             session.touch();
             session.data.insert(key.to_string(), value);
-            if let Err(e) = self.save_session(session_id, &session) {
-                eprintln!("Failed to save session: {}", e);
+            match self.save_session(session_id, &session) {
+                Ok(()) => request_cache::remember(self.memo_id(), session_id, Some(session)),
+                Err(e) => eprintln!("Failed to save session: {}", e),
             }
         }
     }
 
     fn delete(&self, session_id: &str, key: &str) -> Option<JsonValue> {
+        request_cache::forget(self.memo_id(), session_id);
         if let Some(mut session) = self.load_session(session_id) {
             session.touch();
             let value = session.data.remove(key);
-            if let Err(e) = self.save_session(session_id, &session) {
-                eprintln!("Failed to save session: {}", e);
+            match self.save_session(session_id, &session) {
+                Ok(()) => request_cache::remember(self.memo_id(), session_id, Some(session)),
+                Err(e) => eprintln!("Failed to save session: {}", e),
             }
             value
         } else {
@@ -161,6 +207,7 @@ impl SessionStore for SolikvSessionStore {
     }
 
     fn destroy(&self, session_id: &str) {
+        request_cache::forget(self.memo_id(), session_id);
         self.delete_session(session_id);
     }
 
@@ -169,13 +216,15 @@ impl SessionStore for SolikvSessionStore {
         let new_id = Uuid::new_v4().to_string();
 
         if let Some(session) = old_session {
-            if let Err(e) = self.save_session(&new_id, &session) {
-                eprintln!("Failed to create new session during regenerate: {}", e);
+            match self.save_session(&new_id, &session) {
+                Ok(()) => request_cache::remember(self.memo_id(), &new_id, Some(session)),
+                Err(e) => eprintln!("Failed to create new session during regenerate: {}", e),
             }
         } else {
             let session = SessionData::new();
-            if let Err(e) = self.save_session(&new_id, &session) {
-                eprintln!("Failed to create session during regenerate: {}", e);
+            match self.save_session(&new_id, &session) {
+                Ok(()) => request_cache::remember(self.memo_id(), &new_id, Some(session)),
+                Err(e) => eprintln!("Failed to create session during regenerate: {}", e),
             }
         }
 

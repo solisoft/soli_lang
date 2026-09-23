@@ -853,6 +853,7 @@ fn compile_where_offset(
 
 pub(crate) fn validate_field(field: &str) -> Result<(), String> {
     if field.is_empty()
+        || field.len() > crate::interpreter::builtins::model::core::MAX_FIELD_NAME_LEN
         || !field.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
         || field.chars().next().is_some_and(|c| c.is_ascii_digit())
     {

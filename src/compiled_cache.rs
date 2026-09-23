@@ -18,6 +18,9 @@ fn has_imports(program: &crate::ast::Program) -> bool {
         .any(|stmt| matches!(stmt.kind, crate::ast::StmtKind::Import(_)))
 }
 
+/// Most compiled modules kept (see `get_or_compile`).
+const MODULE_CACHE_MAX: usize = 128;
+
 static MODULE_CACHE: OnceLock<Arc<Mutex<HashMap<String, CompiledModule>>>> = OnceLock::new();
 
 fn get_cache() -> &'static Arc<Mutex<HashMap<String, CompiledModule>>> {
@@ -37,10 +40,17 @@ pub fn get_or_compile(
 
     let compiled = compile(source, source_path, type_check)?;
 
-    get_cache()
-        .lock()
-        .unwrap()
-        .insert(cache_key, compiled.clone());
+    {
+        let mut cache = get_cache().lock().unwrap();
+        // Keyed by the whole source, so each edited version of a file is a new
+        // entry that the old ones never make room for. Past the cap, start over:
+        // a recompile is cheap next to keeping every revision for the process's
+        // life.
+        if cache.len() >= MODULE_CACHE_MAX {
+            cache.clear();
+        }
+        cache.insert(cache_key, compiled.clone());
+    }
 
     Ok(compiled)
 }

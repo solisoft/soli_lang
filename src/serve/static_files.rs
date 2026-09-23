@@ -23,11 +23,11 @@ use super::{files, finish_response, full, server_constants, ResponseBody};
 
 /// Where the bytes of the response come from.
 enum Source<'a> {
-    /// Already in memory: the startup asset cache, or a dev-mode read that had
-    /// to happen anyway because there is no metadata to build an ETag from.
+    /// Already in memory: the startup asset cache.
     Memory(Bytes),
     /// Still on disk. A `Range` then opens, seeks and reads only the requested
-    /// span (SEC-048) instead of slurping the whole file per request.
+    /// span (SEC-048) instead of slurping the whole file per request, and a
+    /// body above `STREAM_THRESHOLD` is streamed rather than read whole.
     Disk { path: &'a Path, size: u64 },
 }
 
@@ -52,32 +52,68 @@ pub(super) fn handle(
     // Skipped in file mode, where the whole served folder — not a `public/`
     // subdirectory — is the static root and `files::handle` owns the
     // resolution.
-    if method != "GET" || files::files_root().is_some() || !public_dir.exists() {
+    if method != "GET" || files::files_root().is_some() {
         return None;
     }
+    // `/` and anything ending in `/` name a directory, which is never served
+    // from here: no filesystem call for the most common dynamic GETs.
+    if path.is_empty() || path.ends_with('/') {
+        return None;
+    }
+    // Canonicalised once per thread, not twice per request (`exists()` plus
+    // the `canonicalize` inside the jail check). No `public/` at all: nothing
+    // to serve.
+    let canonical_public = canonical_public_dir(public_dir, false)?;
 
-    let file_path = match resolve_static_file(path, public_dir) {
-        Err(()) => {
-            return Some(
-                Response::builder()
-                    .status(StatusCode::FORBIDDEN)
-                    .body(full(Bytes::from("Forbidden")))
-                    .expect("static 403 is always valid"),
-            )
+    // Production fast path, before any filesystem call: the startup asset
+    // cache is keyed by canonical path, and for a traversal-free URL path that
+    // key is exactly `canonical_public.join(url_path)` (the cache skips
+    // symlinks, so a cached key has no link in it to resolve). The bytes were
+    // read from inside the jail at boot.
+    if !dev_mode && !asset_cache.is_empty() {
+        if let Some(relative) = sanitized_relative_path(path) {
+            if let Some(asset) = asset_cache.get(&canonical_public.join(relative.as_ref())) {
+                return Some(respond(
+                    Source::Memory(asset.bytes.clone()),
+                    asset.content_type,
+                    Some(&asset.etag),
+                    headers,
+                ));
+            }
         }
-        // Not a static file, fall through to route matching.
-        Ok(None) => return None,
-        Ok(Some(file_path)) => file_path,
+    }
+
+    let file_path = match resolve_static_file_in(path, public_dir, &canonical_public) {
+        // The public directory may itself be (or sit under) a symlink that a
+        // deploy re-pointed since the root was cached. Re-resolve the root
+        // once and judge again against the fresh one — the jail is always
+        // checked against the directory as it is now.
+        Err(()) => match canonical_public_dir(public_dir, true)
+            .map(|fresh| resolve_static_file_in(path, public_dir, &fresh))
+        {
+            Some(Ok(resolved)) => resolved,
+            // The directory is gone: nothing to serve, let routing answer.
+            None => return None,
+            Some(Err(())) => {
+                return Some(
+                    Response::builder()
+                        .status(StatusCode::FORBIDDEN)
+                        .body(full(Bytes::from("Forbidden")))
+                        .expect("static 403 is always valid"),
+                )
+            }
+        },
+        Ok(resolved) => resolved,
     };
+    // Not a static file, fall through to route matching.
+    let file_path = file_path?;
 
     // `file_path` is already canonical (see `resolve_static_file`).
     let mime_type = server_constants::get_mime_type(&file_path);
 
     if !dev_mode {
-        // Production fast path: serve cached CSS/JS bytes loaded at startup.
-        // The cache is populated only in prod (`!dev_mode`); a miss here
-        // (e.g. images, fonts, files added post-startup) falls through to the
-        // disk-read path below.
+        // A file the fast path above did not find under its URL spelling
+        // (reached through a link inside `public/`, say) may still be cached.
         if let Some(asset) = asset_cache.get(&file_path) {
             return Some(respond(
                 Source::Memory(asset.bytes.clone()),
@@ -86,35 +122,88 @@ pub(super) fn handle(
                 headers,
             ));
         }
-
-        // Still production, but not cached: the file's mtime is the ETag, so a
-        // conditional GET can be answered without reading the file at all.
-        if let Ok(metadata) = std::fs::metadata(&file_path) {
-            if let Ok(modified) = metadata.modified() {
-                return Some(respond(
-                    Source::Disk {
-                        path: &file_path,
-                        size: metadata.len(),
-                    },
-                    mime_type,
-                    Some(&server_constants::generate_etag(modified)),
-                    headers,
-                ));
-            }
-        }
     }
 
-    // Dev mode, or metadata unavailable: read fresh every time, and offer no
-    // ETag — there is nothing stable to build one from.
-    let content = match std::fs::read(&file_path) {
-        Ok(content) => content,
+    // Production: the file's mtime is the ETag, so a conditional GET can be
+    // answered without reading the file at all. Dev mode offers no ETag —
+    // an edit must always be seen — and so is never cached either.
+    let metadata = match std::fs::metadata(&file_path) {
+        Ok(metadata) => metadata,
         Err(_) => return Some(read_error()),
     };
+    let etag = if dev_mode {
+        None
+    } else {
+        metadata
+            .modified()
+            .ok()
+            .map(server_constants::generate_etag)
+    };
     Some(respond(
-        Source::Memory(Bytes::from(content)),
+        Source::Disk {
+            path: &file_path,
+            size: metadata.len(),
+        },
         mime_type,
-        None,
+        etag.as_deref(),
         headers,
+    ))
+}
+
+/// Files above this size are streamed from disk in chunks rather than read
+/// whole into memory on the async runtime.
+const STREAM_THRESHOLD: u64 = 1024 * 1024;
+
+/// Chunk size for a streamed file body.
+const STREAM_CHUNK: usize = 64 * 1024;
+
+/// `length` bytes of `path` from `start`, as a body read on the blocking pool
+/// and sent a chunk at a time.
+///
+/// Reading a large file with `std::fs::read` blocked a runtime thread for the
+/// whole read and held the whole file in memory per request, so a few
+/// concurrent downloads of a big asset stalled every other connection on those
+/// threads. The file is opened here, synchronously, so a failure is still a
+/// clean 500 rather than a truncated 200.
+fn stream_file(path: &Path, start: u64, length: u64) -> std::io::Result<ResponseBody> {
+    use std::io::{Read, Seek, SeekFrom};
+    use tokio_stream::StreamExt;
+
+    // `spawn_blocking` needs a runtime; outside one (a unit test) the caller
+    // falls back to an in-memory read.
+    let runtime =
+        tokio::runtime::Handle::try_current().map_err(|e| std::io::Error::other(e.to_string()))?;
+    let mut file = std::fs::File::open(path)?;
+    if start > 0 {
+        file.seek(SeekFrom::Start(start))?;
+    }
+    let (tx, rx) = tokio::sync::mpsc::channel::<std::io::Result<Bytes>>(4);
+    runtime.spawn_blocking(move || {
+        // Never more than was announced in `Content-Length`, even if the file
+        // grew in the meantime.
+        let mut reader = file.take(length);
+        loop {
+            let mut chunk = vec![0u8; STREAM_CHUNK];
+            match reader.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => {
+                    chunk.truncate(n);
+                    if tx.blocking_send(Ok(Bytes::from(chunk))).is_err() {
+                        // The client went away.
+                        break;
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.blocking_send(Err(e));
+                    break;
+                }
+            }
+        }
+    });
+    let stream = tokio_stream::wrappers::ReceiverStream::new(rx)
+        .map(|chunk| chunk.map(hyper::body::Frame::data));
+    Ok(http_body_util::BodyExt::boxed(
+        http_body_util::StreamBody::new(stream),
     ))
 }
 
@@ -158,51 +247,69 @@ fn respond(
             );
         };
         let length = end - start + 1;
+        let builder = with_validators(
+            Response::builder()
+                .status(StatusCode::PARTIAL_CONTENT)
+                .header("Content-Type", content_type)
+                .header(
+                    "Content-Range",
+                    format!("bytes {}-{}/{}", start, end, total_size),
+                )
+                .header("Content-Length", length.to_string())
+                .header("Accept-Ranges", "bytes"),
+            etag,
+        );
         let slice = match &source {
             // `parse_range_header` only ever returns an in-bounds span.
             Source::Memory(bytes) => bytes.slice(start as usize..=(end as usize)),
             Source::Disk { path, .. } => {
+                if length > STREAM_THRESHOLD {
+                    if let Ok(body) = stream_file(path, start, length) {
+                        return finish_streamed(builder, body);
+                    }
+                }
                 match server_constants::read_file_range(path, start, length) {
                     Ok(buf) => Bytes::from(buf),
                     Err(_) => return read_error(),
                 }
             }
         };
-        return finish_response(
-            with_validators(
-                Response::builder()
-                    .status(StatusCode::PARTIAL_CONTENT)
-                    .header("Content-Type", content_type)
-                    .header(
-                        "Content-Range",
-                        format!("bytes {}-{}/{}", start, end, total_size),
-                    )
-                    .header("Content-Length", length.to_string())
-                    .header("Accept-Ranges", "bytes"),
-                etag,
-            ),
-            slice,
-        );
+        return finish_response(builder, slice);
     }
 
-    let body = match source {
-        Source::Memory(bytes) => bytes,
-        Source::Disk { path, .. } => match std::fs::read(path) {
-            Ok(content) => Bytes::from(content),
-            Err(_) => return read_error(),
-        },
-    };
-    finish_response(
+    let builder = |length: u64| {
         with_validators(
             Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", content_type)
-                .header("Content-Length", body.len().to_string())
+                .header("Content-Length", length.to_string())
                 .header("Accept-Ranges", "bytes"),
             etag,
-        ),
-        body,
-    )
+        )
+    };
+    let body = match source {
+        Source::Memory(bytes) => bytes,
+        Source::Disk { path, size } => {
+            if size > STREAM_THRESHOLD {
+                if let Ok(body) = stream_file(path, 0, size) {
+                    return finish_streamed(builder(size), body);
+                }
+            }
+            match std::fs::read(path) {
+                Ok(content) => Bytes::from(content),
+                Err(_) => return read_error(),
+            }
+        }
+    };
+    finish_response(builder(body.len() as u64), body)
+}
+
+/// [`finish_response`] for a body that is already a stream.
+fn finish_streamed(
+    builder: hyper::http::response::Builder,
+    body: ResponseBody,
+) -> Response<ResponseBody> {
+    builder.body(body).unwrap_or_else(|_| read_error())
 }
 
 /// `ETag` and the long `Cache-Control` travel together: bytes we cannot name
@@ -226,7 +333,8 @@ fn read_error() -> Response<ResponseBody> {
         .expect("static 500 is always valid")
 }
 
-/// Resolve a request path to a static file in the public directory.
+/// Resolve a request path to a static file in the public directory (test
+/// entry point; the server passes its cached root to `resolve_static_file_in`).
 /// Returns:
 ///   Ok(Some(path)) - file found and safe to serve (**already canonical**)
 ///   Ok(None) - not a static file, fall through to route matching
@@ -236,32 +344,77 @@ fn read_error() -> Response<ResponseBody> {
 /// non-canonical path after a canonicalize jail check leaves a TOCTOU window
 /// where a symlink planted under `public/` between check and open could
 /// escape the public root.
+#[cfg(test)]
 fn resolve_static_file(path: &str, public_dir: &Path) -> Result<Option<PathBuf>, ()> {
+    match std::fs::canonicalize(public_dir) {
+        Ok(canonical_public) => resolve_static_file_in(path, public_dir, &canonical_public),
+        Err(_) => Ok(None),
+    }
+}
+
+/// The URL path as a path relative to `public/`: percent-decoded, and `None`
+/// for anything that tries to leave it (`..`, or absolute once decoded).
+fn sanitized_relative_path(path: &str) -> Option<std::borrow::Cow<'_, str>> {
     let relative_path = path.trim_start_matches('/');
     let decoded_path = match urlencoding::decode(relative_path) {
-        Ok(d) => d.into_owned(),
-        Err(_) => relative_path.to_string(),
+        Ok(decoded) => decoded,
+        Err(_) => std::borrow::Cow::Borrowed(relative_path),
     };
     // Do not allow directory traversal or absolute paths in URL
     if decoded_path.contains("..") || decoded_path.starts_with('/') {
-        return Ok(None);
+        return None;
     }
-    let file_path = public_dir.join(&decoded_path);
+    Some(decoded_path)
+}
 
-    // Canonicalize both paths to resolve symlinks and prevent traversal
-    let (canonical_file, canonical_public) = match (
-        std::fs::canonicalize(&file_path),
-        std::fs::canonicalize(public_dir),
-    ) {
-        (Ok(f), Ok(p)) => (f, p),
-        _ => return Ok(None), // file doesn't exist, fall through
+/// `public_dir`, canonicalised — cached per thread and per directory, since it
+/// is the same answer for every request. `refresh` re-resolves it (a deploy
+/// may have re-pointed a symlink on the way). `None` when the directory does
+/// not exist; that answer is not cached, so a `public/` created later is
+/// picked up.
+fn canonical_public_dir(public_dir: &Path, refresh: bool) -> Option<PathBuf> {
+    thread_local! {
+        static CANONICAL: std::cell::RefCell<Vec<(PathBuf, PathBuf)>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+    }
+    CANONICAL.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if !refresh {
+            if let Some((_, canonical)) = cache.iter().find(|(dir, _)| dir == public_dir) {
+                return Some(canonical.clone());
+            }
+        }
+        cache.retain(|(dir, _)| dir != public_dir);
+        let canonical = std::fs::canonicalize(public_dir).ok()?;
+        cache.push((public_dir.to_path_buf(), canonical.clone()));
+        Some(canonical)
+    })
+}
+
+/// Resolve a request path against an already-canonical public root: same
+/// contract as `resolve_static_file` — `Ok(Some(canonical))` to serve,
+/// `Ok(None)` to fall through, `Err(())` for an escape from the jail.
+fn resolve_static_file_in(
+    path: &str,
+    public_dir: &Path,
+    canonical_public: &Path,
+) -> Result<Option<PathBuf>, ()> {
+    let Some(decoded_path) = sanitized_relative_path(path) else {
+        return Ok(None);
+    };
+    let file_path = public_dir.join(decoded_path.as_ref());
+
+    // Canonicalize to resolve symlinks and prevent traversal
+    let canonical_file = match std::fs::canonicalize(&file_path) {
+        Ok(f) => f,
+        Err(_) => return Ok(None), // file doesn't exist, fall through
     };
 
     // Ensure the canonical file path is within public directory.
     // Use `Path::starts_with` (segment-aware), NOT `str::starts_with`: the
     // string form would let `…/public-evil/x` pass the check against
     // `…/public` because the directory name is a byte-level prefix.
-    if !canonical_file.starts_with(&canonical_public) {
+    if !canonical_file.starts_with(canonical_public) {
         return Err(()); // traversal attempt
     }
 
@@ -463,6 +616,117 @@ mod tests {
             &HeaderMap::new(),
         );
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    /// A file above the streaming threshold is sent in chunks from the
+    /// blocking pool — the bytes and the length must still be the file's.
+    #[tokio::test]
+    async fn a_large_file_is_streamed_whole_and_in_range() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("big.bin");
+        let size = STREAM_THRESHOLD as usize * 2 + 123;
+        let content: Vec<u8> = (0..size).map(|i| (i % 251) as u8).collect();
+        fs::write(&path, &content).unwrap();
+
+        let response = respond(
+            Source::Disk {
+                path: &path,
+                size: size as u64,
+            },
+            "application/octet-stream",
+            Some("\"v1\""),
+            &HeaderMap::new(),
+        );
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            header_of(&response, "content-length"),
+            Some(size.to_string())
+        );
+        assert_eq!(body_of(response).await, content);
+
+        let start = 1000usize;
+        let end = start + STREAM_THRESHOLD as usize + 10;
+        let range = format!("bytes={start}-{end}");
+        let response = respond(
+            Source::Disk {
+                path: &path,
+                size: size as u64,
+            },
+            "application/octet-stream",
+            Some("\"v1\""),
+            &headers(&[("range", range.as_str())]),
+        );
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(body_of(response).await, &content[start..=end]);
+    }
+
+    /// The production asset cache answers by URL path before any filesystem
+    /// call — and a traversal spelling never reaches it.
+    #[test]
+    fn the_asset_cache_answers_by_url_path() {
+        if files::files_root().is_some() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let public = dir.path().join("public");
+        fs::create_dir_all(public.join("css")).unwrap();
+        fs::write(public.join("css/app.css"), "on disk").unwrap();
+        let canonical = fs::canonicalize(&public).unwrap();
+        let mut map = std::collections::HashMap::new();
+        map.insert(
+            canonical.join("css/app.css"),
+            super::super::asset_cache::CachedAsset {
+                bytes: Bytes::from_static(b"cached at boot"),
+                etag: "\"e1\"".to_string(),
+                content_type: "text/css",
+            },
+        );
+        let cache: AssetCache = std::sync::Arc::new(map);
+
+        let response = handle(
+            "/css/app.css",
+            "GET",
+            &public,
+            &cache,
+            false,
+            &HeaderMap::new(),
+        )
+        .expect("served");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(header_of(&response, "etag").as_deref(), Some("\"e1\""));
+        assert_eq!(
+            header_of(&response, "content-length").as_deref(),
+            Some("14")
+        );
+
+        assert!(handle(
+            "/css/../css/app.css",
+            "GET",
+            &public,
+            &cache,
+            false,
+            &HeaderMap::new()
+        )
+        .is_none());
+        // Directories and `/` never touch the disk and fall through.
+        assert!(handle("/", "GET", &public, &cache, false, &HeaderMap::new()).is_none());
+        assert!(handle("/css/", "GET", &public, &cache, false, &HeaderMap::new()).is_none());
+    }
+
+    #[test]
+    fn the_canonical_public_root_is_cached_and_refreshable() {
+        let dir = tempfile::tempdir().unwrap();
+        let public = dir.path().join("public");
+        assert!(
+            canonical_public_dir(&public, false).is_none(),
+            "missing dir"
+        );
+        fs::create_dir(&public).unwrap();
+        // A missing directory was not cached as missing.
+        let first = canonical_public_dir(&public, false).expect("now exists");
+        assert_eq!(first, fs::canonicalize(&public).unwrap());
+        assert_eq!(canonical_public_dir(&public, false), Some(first.clone()));
+        assert_eq!(canonical_public_dir(&public, true), Some(first));
     }
 
     // ---------- path resolution ----------

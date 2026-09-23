@@ -220,6 +220,34 @@ pub fn body_read_timeout_secs() -> u64 {
     env_u64("SOLI_BODY_READ_TIMEOUT_SECS", 60)
 }
 
+/// Interval between HTTP/2 keep-alive pings on an h2c connection. A peer that
+/// does not acknowledge one within 20 s is disconnected.
+/// `SOLI_H2_KEEPALIVE_SECS` overrides it (minimum 1).
+pub fn h2_keep_alive_interval_secs() -> u64 {
+    env_u64("SOLI_H2_KEEPALIVE_SECS", 30).max(1)
+}
+
+/// How long a connection may sit with no request in flight and no new one
+/// arriving before it is closed gracefully. Mostly matters for h2c, which has
+/// no other idle bound (h1 keep-alive is bounded by the 10 s header read
+/// timeout). The check runs once per period, so an idle connection closes
+/// after between one and two periods. `SOLI_CONN_IDLE_TIMEOUT_SECS` overrides
+/// it (minimum 1).
+pub fn connection_idle_timeout_secs() -> u64 {
+    env_u64("SOLI_CONN_IDLE_TIMEOUT_SECS", 60).max(1)
+}
+
+/// How long a request body may go without delivering a single byte.
+///
+/// The total deadline above is generous on purpose, which also made it the
+/// window a stalled upload could sit in holding its slice of the in-flight
+/// body budget. A client that is really uploading sends something far more
+/// often than this; one that goes quiet for this long is dropped with a 408.
+/// `SOLI_BODY_IDLE_TIMEOUT_SECS` overrides it (minimum 1).
+pub fn body_idle_timeout_secs() -> u64 {
+    env_u64("SOLI_BODY_IDLE_TIMEOUT_SECS", 10).max(1)
+}
+
 /// Stack size for threads that run Soli code (HTTP workers, job workers).
 ///
 /// The tree-walking interpreter recurses on the native stack, and its 256-frame

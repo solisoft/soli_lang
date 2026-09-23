@@ -29,6 +29,7 @@ static ENABLED: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     static LOG: RefCell<Vec<LoggedKvCall>> = const { RefCell::new(Vec::new()) };
+    static DROPPED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 pub fn set_enabled(enabled: bool) {
@@ -42,6 +43,13 @@ pub fn is_enabled() -> bool {
 
 pub fn clear() {
     LOG.with(|l| l.borrow_mut().clear());
+    DROPPED.with(|d| d.set(0));
+}
+
+/// Entries not stored since the last `clear()` because the log was full
+/// (see `model::query_log::MAX_LOGGED_PER_REQUEST`).
+pub fn dropped() -> usize {
+    DROPPED.with(|d| d.get())
 }
 
 pub fn record(command: String, key: String, duration_ms: f64, error: Option<String>) {
@@ -67,7 +75,12 @@ pub fn record(command: String, key: String, duration_ms: f64, error: Option<Stri
     }
 
     LOG.with(|l| {
-        l.borrow_mut().push(LoggedKvCall {
+        let mut log = l.borrow_mut();
+        if log.len() >= super::model::query_log::MAX_LOGGED_PER_REQUEST {
+            DROPPED.with(|d| d.set(d.get() + 1));
+            return;
+        }
+        log.push(LoggedKvCall {
             command,
             key,
             duration_ms,

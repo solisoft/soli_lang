@@ -190,7 +190,10 @@ pub(super) fn render_error_page(
         &request_data_json,
         env_json_for_render,
         &source_files,
-        peer_trusted,
+        // The token goes only to a loopback peer that also named a local (or
+        // declared) host: a DNS-rebound page is a loopback peer too, and would
+        // read the token out of this very page as same-origin.
+        peer_trusted && super::dev_routes::is_local_dev_host_header(&request_data.headers),
     )
 }
 
@@ -1027,6 +1030,25 @@ pub(super) fn get_source_file(
     Some([(file_path.to_string(), lines)].iter().cloned().collect())
 }
 
+/// The `message` an app's custom `errors/<status>` template is given.
+///
+/// A 5xx `message` is the raw internal error — `Undefined variable 'user_id'
+/// at app/controllers/users.sl:92:15`, a driver error naming a table — and a
+/// custom `errors/500.html.slv` that prints `message` published it to every
+/// visitor. The real text is already in the production error log under the
+/// same request id, so the template gets the status's generic reason instead.
+/// A 4xx message is the application's own words (`forbidden("…")`, the
+/// `RecordNotFound` text) and passes through as before.
+fn public_error_message(status_code: u16, message: &str) -> &str {
+    if status_code < 500 {
+        return message;
+    }
+    hyper::StatusCode::from_u16(status_code)
+        .ok()
+        .and_then(|status| status.canonical_reason())
+        .unwrap_or("Internal Server Error")
+}
+
 pub(super) fn render_production_error_page(
     status_code: u16,
     message: &str,
@@ -1034,7 +1056,7 @@ pub(super) fn render_production_error_page(
 ) -> String {
     if let Some(custom_html) = crate::interpreter::builtins::template::render_error_template(
         status_code,
-        message,
+        public_error_message(status_code, message),
         request_id,
     ) {
         return custom_html;
@@ -1524,6 +1546,21 @@ mod tests {
                 .map(|s| s.contains("hunter2"))
                 .unwrap_or(false),
             "body should pass through when redact_body is false"
+        );
+    }
+
+    /// A custom `errors/500` template is handed the generic reason, never the
+    /// internal error; 4xx messages are the app's own and pass through.
+    #[test]
+    fn custom_error_templates_get_a_generic_5xx_message() {
+        let internal = "Undefined variable 'user_id' at app/controllers/users.sl:92:15";
+        assert_eq!(public_error_message(500, internal), "Internal Server Error");
+        assert_eq!(public_error_message(503, internal), "Service Unavailable");
+        assert_eq!(public_error_message(599, internal), "Internal Server Error");
+        assert_eq!(public_error_message(403, "Admins only"), "Admins only");
+        assert_eq!(
+            public_error_message(404, "Post not found"),
+            "Post not found"
         );
     }
 

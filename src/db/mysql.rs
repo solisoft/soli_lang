@@ -100,6 +100,7 @@ fn my_error(context: &str, e: &mysql::Error) -> String {
 /// are lifted out of the URL before it ever sees them.
 fn opts_for(url: &str, name: &str) -> Result<(OptsBuilder, super::tls::SslMode), String> {
     let (cleaned, ssl) = super::tls::split_url(url)?;
+    super::tls::warn_if_unverified(url, &ssl);
     let opts =
         Opts::from_url(&cleaned).map_err(|e| format!("invalid DATABASE_URL ({name}): {e}"))?;
     let ssl_opts =
@@ -172,7 +173,35 @@ fn pools() -> &'static Mutex<HashMap<String, MyPool>> {
     POOLS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+thread_local! {
+    /// The pool this thread handed out last, with the connection name and url
+    /// it is cached under in `POOLS`. Almost every query on a worker targets the
+    /// same connection, so this answers `pool_for_active` without the global
+    /// mutex, the spec copy or the `format!`ed key. `POOLS` never evicts, so
+    /// an entry here can never outlive the one it mirrors.
+    static LAST_POOL: RefCell<Option<(String, String, MyPool)>> = const { RefCell::new(None) };
+}
+
 fn pool_for_active() -> Result<MyPool, String> {
+    let recent = super::registry::with_active_spec(|spec| {
+        if spec.adapter != super::Adapter::Mysql {
+            return None;
+        }
+        let url = spec.url.as_deref()?;
+        LAST_POOL.with(|last| {
+            last.borrow()
+                .as_ref()
+                .filter(|(name, cached_url, _)| *name == spec.name && cached_url == url)
+                .map(|(_, _, pool)| pool.clone())
+        })
+    })?;
+    if let Some(pool) = recent {
+        return Ok(pool);
+    }
+    pool_for_active_uncached()
+}
+
+fn pool_for_active_uncached() -> Result<MyPool, String> {
     let name = active_connection_name();
     let spec = active_spec()?;
     if spec.adapter != super::Adapter::Mysql {
@@ -190,8 +219,14 @@ fn pool_for_active() -> Result<MyPool, String> {
     // (a config change, an app switching at runtime) does not keep handing back
     // the pool for the old one. See the matching comment in `sqlite.rs`.
     let cache_key = format!("{name}\u{1f}{url}");
+    let remember = |pool: &MyPool| {
+        LAST_POOL.with(|last| {
+            *last.borrow_mut() = Some((name.clone(), url.clone(), pool.clone()));
+        });
+    };
     let mut map = pools().lock().unwrap();
     if let Some(p) = map.get(&cache_key) {
+        remember(p);
         return Ok(p.clone());
     }
     let builder = pool_opts_for(&url, &name)?;
@@ -203,6 +238,7 @@ fn pool_for_active() -> Result<MyPool, String> {
         .build(manager)
         .map_err(|e| format!("mysql pool ({name}): {e}"))?;
     map.insert(cache_key, pool.clone());
+    remember(&pool);
     Ok(pool)
 }
 
@@ -398,9 +434,30 @@ fn get_on(conn: &mut MyConn, table: &str, key: &str) -> Result<Option<serde_json
 pub fn insert(
     table: &str,
     key: Option<&str>,
+    document: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    // Only a retry after a stale "table exists" memo needs the document twice.
+    let mut document = Some(document);
+    super::ensured::write_with_table(table, has_active_tx(), ensure_table, |may_retry| {
+        let attempt = if may_retry {
+            document.clone()
+        } else {
+            document.take()
+        };
+        insert_into_existing(
+            table,
+            key,
+            attempt.expect("document consumed only by the last attempt"),
+        )
+    })
+}
+
+/// `insert` minus the `ensure_table`, which `ensured::write_with_table` owns.
+fn insert_into_existing(
+    table: &str,
+    key: Option<&str>,
     mut document: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    ensure_table(table)?;
     let key = resolve_key(key, &mut document)?;
     if let Some(obj) = document.as_object_mut() {
         obj.insert("_key".to_string(), serde_json::json!(key));
@@ -421,7 +478,16 @@ pub fn insert(
 
 /// Insert many documents in one statement per chunk.
 pub fn insert_many(table: &str, rows: &[(String, serde_json::Value)]) -> Result<u64, String> {
-    ensure_table(table)?;
+    super::ensured::write_with_table(table, has_active_tx(), ensure_table, |_| {
+        insert_many_into_existing(table, rows)
+    })
+}
+
+/// `insert_many` minus the `ensure_table`, which `ensured::write_with_table` owns.
+fn insert_many_into_existing(
+    table: &str,
+    rows: &[(String, serde_json::Value)],
+) -> Result<u64, String> {
     let compiled = compile_insert_many_d(Dialect::Mysql, table, rows)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
@@ -442,10 +508,33 @@ pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> 
 pub fn update(
     table: &str,
     key: &str,
+    document: serde_json::Value,
+    merge: bool,
+) -> Result<serde_json::Value, String> {
+    // Only a retry after a stale "table exists" memo needs the document twice.
+    let mut document = Some(document);
+    super::ensured::write_with_table(table, has_active_tx(), ensure_table, |may_retry| {
+        let attempt = if may_retry {
+            document.clone()
+        } else {
+            document.take()
+        };
+        update_existing(
+            table,
+            key,
+            attempt.expect("document consumed only by the last attempt"),
+            merge,
+        )
+    })
+}
+
+/// `update` minus the `ensure_table`, which `ensured::write_with_table` owns.
+fn update_existing(
+    table: &str,
+    key: &str,
     mut document: serde_json::Value,
     merge: bool,
 ) -> Result<serde_json::Value, String> {
-    ensure_table(table)?;
     if let Some(obj) = document.as_object_mut() {
         obj.insert("_key".to_string(), serde_json::json!(key));
     }
@@ -722,6 +811,8 @@ pub fn ensure_table(table: &str) -> Result<(), String> {
 }
 
 pub fn drop_table(table: &str) -> Result<(), String> {
+    // Tables may be gone after this: stop skipping their `ensure_table`.
+    super::ensured::forget_all();
     let ddl = drop_table_sql_d(Dialect::Mysql, table)?;
     with_conn(|conn| {
         conn.query_drop(&ddl)
@@ -733,6 +824,8 @@ pub fn drop_table(table: &str) -> Result<(), String> {
 ///
 /// Connects without a database selected, since the target may not exist yet.
 pub fn create_or_drop_database(drop: bool) -> Result<String, String> {
+    // Tables may be gone after this: stop skipping their `ensure_table`.
+    super::ensured::forget_all();
     let spec = active_spec()?;
     let url = spec
         .url
@@ -891,12 +984,16 @@ pub fn dump_schema() -> Result<String, String> {
 
 /// Run compiled DDL (migrations' column-table helpers).
 pub fn execute_ddl(sql: &str) -> Result<(), String> {
+    // Tables may be gone after this: stop skipping their `ensure_table`.
+    super::ensured::forget_all();
     with_conn(|conn| conn.query_drop(sql).map_err(|e| my_error("mysql ddl", &e)))
 }
 
 /// `db.execute`: a dedicated connection, dropped afterwards, so
 /// `SET FOREIGN_KEY_CHECKS=0` cannot leak into the pool.
 pub fn execute_raw(sql: &str) -> Result<(), String> {
+    // Tables may be gone after this: stop skipping their `ensure_table`.
+    super::ensured::forget_all();
     let spec = active_spec()?;
     let url = spec
         .url

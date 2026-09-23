@@ -177,6 +177,16 @@ end</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-amber-400 font-mono text-sm">smell/closure-cycle</code>
+                <p class="text-gray-400 mt-2">A closure assigned onto the instance &mdash; <code>this.x = fn(...) ...</code>, <code>@x = |y| ...</code>, <code>this.handlers["k"] = fn ...</code>. The closure captures the method's environment, which holds <code>this</code>; stored on <code>this</code>, the two keep each other alive forever, so the instance and everything it holds leak in a long-lived worker. Store a method <strong class="text-white">name</strong> and dispatch on it, or pass the closure in per call.</p>
+                <pre><code class="language-soli text-sm"># Leaks: the instance holds a closure that holds the instance
+this.on_save = fn(record) { this.log(record) }
+
+# Instead: keep the name, call the method when needed
+this.on_save = "log"</code></pre>
+            </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-amber-400 font-mono text-sm">smell/dangerous-server-builtin</code>
                 <p class="text-gray-400 mt-2">Calls to <code>db_query_raw</code>, <code>Trusted.*</code>, <code>System.shell</code> / <code>System.shell_sync</code>, or backtick command substitution from <code>app/controllers/</code>, <code>app/middleware/</code>, or <code>app/views/</code>. These primitives are powerful but become injection / traversal sinks when fed request-controlled data. The diagnostic spells out the safe alternative for each:</p>
                 <ul class="text-gray-400 mt-2 list-disc list-inside">

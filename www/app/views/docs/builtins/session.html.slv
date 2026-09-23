@@ -220,10 +220,20 @@ print(config["ttl"])</code></pre>
                             <td class="py-3 pr-4">SoliKV port</td>
                             <td class="py-3"><code class="text-orange-400">6380</code></td>
                         </tr>
-                        <tr>
+                        <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SESSION_TTL</code></td>
                             <td class="py-3 pr-4">Session timeout (seconds)</td>
                             <td class="py-3"><code class="text-orange-400">86400</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SESSION_MAX_LIFETIME</code></td>
+                            <td class="py-3 pr-4">Absolute lifetime of a <code class="text-orange-400">cookie</code>-driver session (seconds from issue, however active). <code class="text-orange-400">session_regenerate()</code> restarts it; <code class="text-orange-400">0</code> disables</td>
+                            <td class="py-3"><code class="text-orange-400">2592000</code></td>
+                        </tr>
+                        <tr>
+                            <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SESSION_MAX_IN_MEMORY</code></td>
+                            <td class="py-3 pr-4">Cap on <code class="text-orange-400">in_memory</code> sessions; past it the least-recently-used are evicted (logged out). <code class="text-orange-400">0</code> = unlimited</td>
+                            <td class="py-3"><code class="text-orange-400">100000</code></td>
                         </tr>
                     </tbody>
                 </table>

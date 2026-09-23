@@ -395,6 +395,24 @@ pub(crate) fn is_blocked_ip(ip: IpAddr) -> bool {
             if octets[0] == 100 && (octets[1] & 0xc0) == 64 {
                 return true;
             }
+            // "This network" 0.0.0.0/8 (RFC1122) — Linux routes 0.x.y.z to
+            // the local host, so it is loopback in all but name.
+            if octets[0] == 0 {
+                return true;
+            }
+            // IETF protocol assignments 192.0.0.0/24 (RFC6890).
+            if octets[0] == 192 && octets[1] == 0 && octets[2] == 0 {
+                return true;
+            }
+            // Benchmarking 198.18.0.0/15 (RFC2544).
+            if octets[0] == 198 && (octets[1] & 0xfe) == 18 {
+                return true;
+            }
+            // Reserved 240.0.0.0/4 (RFC1112), which also covers the limited
+            // broadcast address 255.255.255.255.
+            if octets[0] >= 240 {
+                return true;
+            }
             false
         }
         IpAddr::V6(v6) => {
@@ -403,6 +421,13 @@ pub(crate) fn is_blocked_ip(ip: IpAddr) -> bool {
             // like `127.0.0.1`.
             if let Some(v4) = v6.to_ipv4_mapped() {
                 return is_blocked_ip(IpAddr::V4(v4));
+            }
+            // Every other IPv6 form that carries an IPv4 address a gateway or
+            // the host stack will actually reach (NAT64, 6to4, Teredo,
+            // IPv4-compatible) is judged by the IPv4 rules too — otherwise
+            // `[64:ff9b::7f00:1]` is `127.0.0.1` behind a NAT64 gateway.
+            if let Some(blocked) = embedded_ipv4_blocked(&v6) {
+                return blocked;
             }
             // ULA — RFC4193 fc00::/7 (covers fc00::/8 and fd00::/8).
             let octets = v6.octets();
@@ -433,6 +458,44 @@ pub(crate) fn is_blocked_ip(ip: IpAddr) -> bool {
             false
         }
     }
+}
+
+/// For an IPv6 address that embeds an IPv4 one, whether the embedded address
+/// (or the prefix as a whole) is blocked; `None` when `v6` embeds nothing.
+fn embedded_ipv4_blocked(v6: &std::net::Ipv6Addr) -> Option<bool> {
+    use std::net::Ipv4Addr;
+    let seg = v6.segments();
+    let low32 =
+        |hi: u16, lo: u16| Ipv4Addr::new((hi >> 8) as u8, hi as u8, (lo >> 8) as u8, lo as u8);
+    let v4_blocked = |v4: Ipv4Addr| is_blocked_ip(IpAddr::V4(v4));
+
+    // NAT64 well-known prefix 64:ff9b::/96 (RFC6052): IPv4 in the low 32 bits.
+    if seg[0] == 0x0064 && seg[1] == 0xff9b && seg[2..6].iter().all(|&s| s == 0) {
+        return Some(v4_blocked(low32(seg[6], seg[7])));
+    }
+    // NAT64 local-use prefix 64:ff9b:1::/48 (RFC8215). The IPv4 position
+    // depends on the operator's chosen prefix length, so it cannot be
+    // extracted reliably — and the range is never globally routable.
+    if seg[0] == 0x0064 && seg[1] == 0xff9b && seg[2] == 0x0001 {
+        return Some(true);
+    }
+    // 6to4 2002::/16 (RFC3056): IPv4 in bits 16..48.
+    if seg[0] == 0x2002 {
+        return Some(v4_blocked(low32(seg[1], seg[2])));
+    }
+    // Teredo 2001:0::/32 (RFC4380): server IPv4 in bits 32..64, client IPv4
+    // in the low 32 bits, obfuscated by XOR with 0xffffffff.
+    if seg[0] == 0x2001 && seg[1] == 0x0000 {
+        let server = low32(seg[2], seg[3]);
+        let client = low32(!seg[6], !seg[7]);
+        return Some(v4_blocked(server) || v4_blocked(client));
+    }
+    // IPv4-compatible ::a.b.c.d (RFC4291, deprecated). `::` and `::1` are
+    // caught by the unspecified/loopback checks before this runs.
+    if seg[0..6].iter().all(|&s| s == 0) {
+        return Some(v4_blocked(low32(seg[6], seg[7])));
+    }
+    None
 }
 
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
@@ -816,6 +879,82 @@ pub async fn read_capped_bytes_async(resp: reqwest::Response) -> Result<Vec<u8>,
         buf.extend_from_slice(&chunk);
     }
     Ok(buf)
+}
+
+/// Read a reqwest response body into bytes with an explicit `cap`, for
+/// callers whose natural ceiling is far below [`http_max_response_bytes`]
+/// (an embedded image, a timestamp token).
+#[cfg(feature = "pdf")]
+async fn read_capped_bytes_with_cap(
+    resp: reqwest::Response,
+    cap: usize,
+) -> Result<Vec<u8>, String> {
+    use futures_util::StreamExt;
+    if resp.content_length().is_some_and(|len| len > cap as u64) {
+        return Err(format!("HTTP response exceeds {} bytes", cap));
+    }
+    let mut buf: Vec<u8> = Vec::new();
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.to_string())?;
+        if buf.len().saturating_add(chunk.len()) > cap {
+            return Err(format!("HTTP response exceeds {} bytes", cap));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    Ok(buf)
+}
+
+/// Blocking request for an internal caller (PDF image loader, PAdES TSA)
+/// whose URL may be user-influenced, made through the SSRF-guarded user
+/// client: the URL is validated up front, every connect-time DNS answer is
+/// filtered by `SsrfBlockingResolver` (no rebinding window), each redirect
+/// hop is re-validated, and the body is read up to `cap` bytes. A non-2xx
+/// status is an error naming the status.
+#[cfg(feature = "pdf")]
+pub(crate) fn guarded_request_bytes(
+    method: reqwest::Method,
+    url: &str,
+    headers: &[(&str, &str)],
+    body: Option<Vec<u8>>,
+    timeout: std::time::Duration,
+    cap: usize,
+) -> Result<Vec<u8>, String> {
+    validate_url_for_ssrf(url)?;
+    let url = url.to_string();
+    let headers: Vec<(String, String)> = headers
+        .iter()
+        .map(|(name, value)| (name.to_string(), value.to_string()))
+        .collect();
+    run_user_http_request(move |client| async move {
+        let mut builder = client.request(method, &url).timeout(timeout);
+        for (name, value) in &headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        if let Some(body) = body {
+            builder = builder.body(body);
+        }
+        let resp = builder
+            .send()
+            .await
+            .map_err(|e| describe_request_error(&e))?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(format!("HTTP {}", status));
+        }
+        read_capped_bytes_with_cap(resp, cap).await
+    })
+}
+
+/// [`guarded_request_bytes`] as a GET, in the shape the PDF crate's
+/// `UrlFetcher` hook expects.
+#[cfg(feature = "pdf")]
+pub(crate) fn guarded_get_bytes(
+    url: &str,
+    timeout: std::time::Duration,
+    cap: usize,
+) -> Result<Vec<u8>, String> {
+    guarded_request_bytes(reqwest::Method::GET, url, &[], None, timeout, cap)
 }
 
 /// Read a ureq response body into a `String`, aborting once the
@@ -3349,6 +3488,59 @@ mod parallel_logging_tests {
             assert!(is_blocked_ip(IpAddr::V6("ff02::1".parse().unwrap())));
             assert!(is_blocked_ip(IpAddr::V6("2001:db8::1".parse().unwrap())));
             assert!(is_blocked_ip(IpAddr::V6("100::1".parse().unwrap())));
+        }
+
+        #[test]
+        fn blocks_reserved_ipv4_ranges() {
+            for ip in [
+                Ipv4Addr::new(0, 1, 2, 3),      // 0.0.0.0/8
+                Ipv4Addr::new(192, 0, 0, 8),    // 192.0.0.0/24
+                Ipv4Addr::new(198, 18, 0, 1),   // 198.18.0.0/15
+                Ipv4Addr::new(198, 19, 255, 1), // 198.18.0.0/15
+                Ipv4Addr::new(240, 0, 0, 1),    // 240.0.0.0/4
+                Ipv4Addr::new(255, 255, 255, 255),
+            ] {
+                assert!(is_blocked_ip(IpAddr::V4(ip)), "{ip}");
+            }
+            // Neighbours just outside each range stay reachable.
+            assert!(!is_blocked_ip(IpAddr::V4(Ipv4Addr::new(192, 0, 1, 1))));
+            assert!(!is_blocked_ip(IpAddr::V4(Ipv4Addr::new(198, 20, 0, 1))));
+            assert!(!is_blocked_ip(IpAddr::V4(Ipv4Addr::new(223, 255, 255, 1))));
+        }
+
+        #[test]
+        fn blocks_ipv6_forms_embedding_blocked_ipv4() {
+            for addr in [
+                "64:ff9b::7f00:1",                      // NAT64 -> 127.0.0.1
+                "64:ff9b::a9fe:a9fe",                   // NAT64 -> 169.254.169.254
+                "64:ff9b:1::1",                         // NAT64 local-use, blocked outright
+                "2002:7f00:1::",                        // 6to4 -> 127.0.0.1
+                "2002:a00:1::1",                        // 6to4 -> 10.0.0.1
+                "::7f00:1",                             // IPv4-compatible 127.0.0.1
+                "::a9fe:a9fe",                          // IPv4-compatible 169.254.169.254
+                "2001:0:4136:e378:8000:63bf:80ff:fffe", // Teredo client 127.0.0.1
+            ] {
+                assert!(
+                    is_blocked_ip(IpAddr::V6(addr.parse().unwrap())),
+                    "{addr} should be blocked"
+                );
+            }
+        }
+
+        #[test]
+        fn allows_ipv6_forms_embedding_public_ipv4() {
+            for addr in [
+                "64:ff9b::808:808", // NAT64 -> 8.8.8.8
+                "2002:808:808::1",  // 6to4 -> 8.8.8.8
+                "::808:808",        // IPv4-compatible 8.8.8.8
+                // Teredo: server 65.54.227.120, client 8.8.8.8 (xor'd).
+                "2001:0:4136:e378:8000:63bf:f7f7:f7f7",
+            ] {
+                assert!(
+                    !is_blocked_ip(IpAddr::V6(addr.parse().unwrap())),
+                    "{addr} should be allowed"
+                );
+            }
         }
 
         #[test]

@@ -229,11 +229,98 @@ fn publish_request_host(data: &RequestData, scheme: &Scheme) {
         req_host
     } else {
         let fallback = crate::serve::csrf::primary_declared_host().unwrap_or_default();
-        eprintln!(
-            "[WARN] request Host {req_host:?} is not in SOLI_APP_HOSTS;                  building URLs with {fallback:?} instead"
-        );
+        match undeclared_host_warning(&req_host) {
+            HostWarning::First => eprintln!(
+                "[WARN] request Host {req_host:?} is not in SOLI_APP_HOSTS; \
+                 building URLs with {fallback:?} instead"
+            ),
+            HostWarning::CapReached => eprintln!(
+                "[WARN] request Host {req_host:?} is not in SOLI_APP_HOSTS; \
+                 building URLs with {fallback:?} instead (further undeclared hosts \
+                 are no longer logged)"
+            ),
+            HostWarning::Quiet => {}
+        }
         fallback
     };
     let req_scheme = if scheme.is_https { "https" } else { "http" }.to_string();
     crate::interpreter::builtins::named_routes::set_current_request_host(req_scheme, req_host);
+}
+
+/// How many distinct undeclared hosts get their own warning line.
+const UNDECLARED_HOST_LOG_CAP: usize = 32;
+
+#[derive(Debug, PartialEq, Eq)]
+enum HostWarning {
+    /// First sighting of this host: log it.
+    First,
+    /// The host that fills the cap: log it and say the rest are suppressed.
+    CapReached,
+    /// Already logged, or past the cap.
+    Quiet,
+}
+
+/// Should a request carrying this undeclared `Host` write a warning?
+///
+/// It used to be written on *every* such request — and `Host` is
+/// client-chosen, so a scanner (or one misconfigured health check) turned
+/// stderr into a firehose. Each distinct host is reported once, up to
+/// [`UNDECLARED_HOST_LOG_CAP`] of them; after that nothing, since an attacker
+/// can mint hosts without limit.
+fn undeclared_host_warning(host: &str) -> HostWarning {
+    static SEEN: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
+        std::sync::Mutex::new(None);
+    let mut guard = SEEN.lock().unwrap_or_else(|e| e.into_inner());
+    let seen = guard.get_or_insert_with(std::collections::HashSet::new);
+    classify_undeclared_host(seen, host)
+}
+
+fn classify_undeclared_host(
+    seen: &mut std::collections::HashSet<String>,
+    host: &str,
+) -> HostWarning {
+    // Bound what an attacker-chosen value can make us store.
+    let key: String = host.chars().take(255).collect();
+    if seen.len() >= UNDECLARED_HOST_LOG_CAP || seen.contains(&key) {
+        return HostWarning::Quiet;
+    }
+    seen.insert(key);
+    if seen.len() == UNDECLARED_HOST_LOG_CAP {
+        HostWarning::CapReached
+    } else {
+        HostWarning::First
+    }
+}
+
+#[cfg(test)]
+mod undeclared_host_warning_tests {
+    use super::*;
+
+    #[test]
+    fn each_host_is_reported_once_and_the_total_is_capped() {
+        let mut seen = std::collections::HashSet::new();
+        assert_eq!(
+            classify_undeclared_host(&mut seen, "evil.test"),
+            HostWarning::First
+        );
+        assert_eq!(
+            classify_undeclared_host(&mut seen, "evil.test"),
+            HostWarning::Quiet
+        );
+        for i in 1..UNDECLARED_HOST_LOG_CAP - 1 {
+            assert_eq!(
+                classify_undeclared_host(&mut seen, &format!("h{i}.test")),
+                HostWarning::First
+            );
+        }
+        assert_eq!(
+            classify_undeclared_host(&mut seen, "last.test"),
+            HostWarning::CapReached
+        );
+        assert_eq!(
+            classify_undeclared_host(&mut seen, "more.test"),
+            HostWarning::Quiet
+        );
+        assert_eq!(seen.len(), UNDECLARED_HOST_LOG_CAP);
+    }
 }

@@ -81,6 +81,12 @@ fn install_pdf_image_source_guards() {
         crate::interpreter::builtins::http_class::validate_url_for_ssrf,
         |path| crate::interpreter::builtins::file::resolve_readable_path(path, "PDF image"),
     );
+    // The URL guard resolves DNS once; the fetch must not resolve it again
+    // with an unfiltered resolver (DNS rebinding), so the host also supplies
+    // the fetch: the SSRF-guarded user client, size-capped by the crate.
+    soli_pdf::images::set_image_fetcher(
+        crate::interpreter::builtins::http_class::guarded_get_bytes,
+    );
 }
 
 pub fn register_pdf_builtins(env: &mut Environment) {

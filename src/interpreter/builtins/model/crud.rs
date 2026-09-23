@@ -547,8 +547,20 @@ pub fn normalize_key(key: &str) -> &str {
 /// e.g. from a request param passed to `Model.find` — could inject a query
 /// string/fragment or otherwise reshape the SoliDB request URL. Encoding to
 /// the unreserved set neutralizes that.
-pub fn encode_key_for_url(key: &str) -> String {
-    urlencoding::encode(normalize_key(key)).into_owned()
+///
+/// The pure-dot keys `.` and `..` contain nothing `urlencoding` escapes, and
+/// the URL parser resolves them (and their `%2E` spellings) as dot segments —
+/// `Model.find("..")` would address the collection endpoint instead of a
+/// document. Those and the empty key are refused.
+pub fn encode_key_for_url(key: &str) -> Result<String, String> {
+    let key = normalize_key(key);
+    if key.is_empty() || key == "." || key == ".." {
+        return Err(format!(
+            "invalid document key {:?}: empty, \".\" and \"..\" are not valid keys",
+            key
+        ));
+    }
+    Ok(urlencoding::encode(key).into_owned())
 }
 
 /// Extract the collection from an _id: "default:organisations/UUID" → "organisations"
@@ -757,17 +769,21 @@ pub fn exec_async_query_with_binds(
     // Native driver: one MessagePack round trip on a pooled connection instead of
     // an HTTP cursor POST. Returns None unless the flag is on, in which case
     // control falls through to the reqwest path below unchanged.
-    if let Some(result) = driver::query(&sdbql, bind_vars.clone()) {
-        if log_enabled {
-            super::query_log::record(
-                log_query.unwrap_or_default(),
-                log_binds,
-                started
-                    .map(|s| s.elapsed().as_secs_f64() * 1000.0)
-                    .unwrap_or(0.0),
-            );
+    // Asked first so the binds are only copied for a driver that could take
+    // the query — off by default, and the copy is per query.
+    if driver::query_may_handle() {
+        if let Some(result) = driver::query(&sdbql, bind_vars.clone()) {
+            if log_enabled {
+                super::query_log::record(
+                    log_query.unwrap_or_default(),
+                    log_binds,
+                    started
+                        .map(|s| s.elapsed().as_secs_f64() * 1000.0)
+                        .unwrap_or(0.0),
+                );
+            }
+            return result;
         }
-        return result;
     }
 
     let future = async move {
@@ -782,15 +798,18 @@ pub fn exec_async_query_with_binds(
             payload["cache"] = serde_json::Value::Bool(false);
         }
         if let Some(bv) = bind_vars {
-            payload["bindVars"] = serde_json::json!(bv);
+            // Moved into the payload, not re-serialised from a borrow.
+            payload["bindVars"] = serde_json::Value::Object(bv.into_iter().collect());
         }
-        let body_str = payload.to_string();
+        // `Bytes`, so each (auth-retry) attempt shares the body instead of
+        // copying it.
+        let body = bytes::Bytes::from(payload.to_string());
 
         let resp = send_with_db_auth_retry(|| {
             client
                 .post(&url)
                 .header("Content-Type", "application/json")
-                .body(body_str.clone())
+                .body(body.clone())
         })
         .await
         .map_err(|e| format!("HTTP error: {}", e))?;
@@ -1047,10 +1066,9 @@ fn is_missing_collection_or_database_error(error: &str) -> bool {
 /// cleanly, and the database is created on first use the same way collections
 /// are created on demand.
 fn create_database_sync(name: &str) -> Result<(), String> {
-    let raw = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
     // SEC-027: preserve the operator-set scheme (or pick https for
     // remote, http for loopback) instead of forcing http://.
-    let (scheme, host) = super::db_config::parse_solidb_host(&raw);
+    let (scheme, host) = solidb_scheme_host();
     // Note: `/_api/databases` (plural) is GET-only (list); creation is a POST
     // to the singular `/_api/database`.
     let url = format!("{}{}/_api/database", scheme, host);
@@ -1141,8 +1159,7 @@ fn create_collection_sync(name: &str) -> Result<(), String> {
 
 /// Best-effort hash-index creation used by the edge auto-create path.
 fn create_index_sync(collection: &str, field: &str) -> Result<(), String> {
-    let raw = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-    let (scheme, host) = super::db_config::parse_solidb_host(&raw);
+    let (scheme, host) = solidb_scheme_host();
     let database = get_database_name();
     let url = format!(
         "{}{}/_api/database/{}/index/{}",
@@ -1182,10 +1199,9 @@ fn create_index_sync(collection: &str, field: &str) -> Result<(), String> {
 }
 
 fn try_create_collection_once(name: &str) -> Result<(), String> {
-    let raw = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
     // SEC-027: preserve the operator-set scheme (or pick https for
     // remote, http for loopback) instead of forcing http://.
-    let (scheme, host) = super::db_config::parse_solidb_host(&raw);
+    let (scheme, host) = solidb_scheme_host();
     let database = get_database_name();
     let url = format!("{}{}/_api/database/{}/collection", scheme, host, database);
 
@@ -1234,6 +1250,20 @@ fn try_create_collection_once(name: &str) -> Result<(), String> {
     })
 }
 
+/// `(scheme, host)` of the SoliDB HTTP API, from `SOLIDB_HOST` (default
+/// `http://localhost:6745`), parsed once per process. The model layer latches
+/// the database address at first use anyway (see the desktop boot ordering),
+/// so re-reading the environment and re-parsing it on every call bought
+/// nothing.
+fn solidb_scheme_host() -> &'static (String, String) {
+    static BASE: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
+    BASE.get_or_init(|| {
+        let raw =
+            std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+        super::db_config::parse_solidb_host(&raw)
+    })
+}
+
 /// Generic JSON request against a database-scoped API path (used by the
 /// columnar/vector/geo model layers). `path_suffix` is appended to
 /// `/_api/database/{db}` (so pass e.g. "/columnar/page_views/insert").
@@ -1254,8 +1284,7 @@ pub fn exec_db_api_request(
             crate::db::adapter_label()
         ));
     }
-    let raw = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-    let (scheme, host) = super::db_config::parse_solidb_host(&raw);
+    let (scheme, host) = solidb_scheme_host();
     let database = get_database_name();
     let url = format!(
         "{}{}/_api/database/{}{}",
@@ -1297,8 +1326,7 @@ pub fn exec_db_api_request(
 /// number of deleted documents. A missing collection prunes to 0 rather than
 /// erroring — nothing to delete is a success for retention.
 pub fn exec_prune(collection: &str, older_than_iso: &str) -> Result<i64, String> {
-    let raw = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-    let (scheme, host) = super::db_config::parse_solidb_host(&raw);
+    let (scheme, host) = solidb_scheme_host();
     let database = get_database_name();
     let url = format!(
         "{}{}/_api/database/{}/collection/{}/prune",
@@ -1445,6 +1473,17 @@ mod driver {
         {
             let _ = (c, key);
             None
+        }
+    }
+
+    /// Whether `query` could take a query at all. `false` guarantees `query`
+    /// returns `None`, so the caller can skip preparing its arguments.
+    pub fn query_may_handle() -> bool {
+        #[cfg(feature = "solidb-driver")]
+        return imp::query_may_handle();
+        #[cfg(not(feature = "solidb-driver"))]
+        {
+            false
         }
     }
 
@@ -1685,7 +1724,7 @@ pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String
     let url = format!(
         "{}/{}",
         document_base_url(collection),
-        encode_key_for_url(key)
+        encode_key_for_url(key)?
     );
     let result = match driver::get(collection, key) {
         Some(r) => r,
@@ -1752,7 +1791,7 @@ fn exec_update_inner(
     let url = format!(
         "{}/{}",
         document_base_url(collection),
-        encode_key_for_url(key)
+        encode_key_for_url(key)?
     );
     let result = match driver::update(collection, key, &document) {
         Some(r) => r,
@@ -1802,7 +1841,7 @@ fn exec_update_if_match_inner(
     let url = format!(
         "{}/{}",
         document_base_url(collection),
-        encode_key_for_url(key)
+        encode_key_for_url(key)?
     );
     let headers = [("If-Match", expected_rev.to_string())];
     exec_document_request_with_headers(reqwest::Method::PUT, url, Some(document), &headers)
@@ -1912,7 +1951,7 @@ fn exec_delete_inner(collection: &str, key: &str) -> Result<serde_json::Value, S
     let url = format!(
         "{}/{}",
         document_base_url(collection),
-        encode_key_for_url(key)
+        encode_key_for_url(key)?
     );
     let result = match driver::delete(collection, key) {
         Some(r) => r,
@@ -1982,7 +2021,7 @@ pub fn exec_get_tx(collection: &str, key: &str) -> Result<serde_json::Value, Str
             database,
             tx_id,
             collection,
-            encode_key_for_url(key)
+            encode_key_for_url(key)?
         ));
         exec_document_request(reqwest::Method::GET, url, None)
     } else {
@@ -2005,7 +2044,7 @@ pub fn exec_update_tx(
             database,
             tx_id,
             collection,
-            encode_key_for_url(key)
+            encode_key_for_url(key)?
         ));
         let result = exec_document_request(reqwest::Method::PUT, url, Some(document));
         if result.is_ok() {
@@ -2028,7 +2067,7 @@ pub fn exec_delete_tx(collection: &str, key: &str) -> Result<serde_json::Value, 
             database,
             tx_id,
             collection,
-            encode_key_for_url(key)
+            encode_key_for_url(key)?
         ));
         let result = exec_document_request(reqwest::Method::DELETE, url, None);
         if result.is_ok() {
@@ -2183,6 +2222,16 @@ mod tests {
     #[test]
     fn test_normalize_key_trailing_slash() {
         assert_eq!(normalize_key("default:users/"), "");
+    }
+
+    #[test]
+    fn test_encode_key_for_url_refuses_dot_and_empty_keys() {
+        for bad in ["", ".", "..", "default:users/..", "default:users/"] {
+            assert!(encode_key_for_url(bad).is_err(), "{bad:?} must be refused");
+        }
+        assert_eq!(encode_key_for_url("a.b").unwrap(), "a.b");
+        assert_eq!(encode_key_for_url("default:users/abc").unwrap(), "abc");
+        assert_eq!(encode_key_for_url("a?b").unwrap(), "a%3Fb");
     }
 
     #[test]

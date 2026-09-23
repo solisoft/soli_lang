@@ -165,7 +165,7 @@ shared between hosts. For production, pick a driver via `SOLI_SESSION_DRIVER`
 
 | Driver | Description | Requires |
 |--------|-------------|----------|
-| `in_memory` | Default. Fast, lost on restart. | — |
+| `in_memory` | Default. Fast, lost on restart. Expired sessions are swept every 1000 creations or 30 s, and the store is capped at `SOLI_SESSION_MAX_IN_MEMORY` (default `100000`, `0` = unlimited): past the cap the least-recently-used sessions are evicted, which logs those users out. | — |
 | `cookie` | Encrypted client-side sessions — the whole payload travels in the cookie. Survives restarts, works across hosts, zero infrastructure. | `SOLI_SESSION_SECRET` |
 | `disk` | JSON files on disk. | `SOLI_SESSION_PATH` |
 | `solidb` | SolidB HTTP database. | `SOLI_SOLIDB_*` |
@@ -213,6 +213,12 @@ Trade-offs to be aware of:
   outstanding session at once.
 - **TTL counts from the last write.** Expiry uses a timestamp sealed inside
   the payload, refreshed each time the session is written.
+- **Absolute lifetime.** A session that keeps being written would otherwise
+  never expire, and neither would a stolen copy of it. `SOLI_SESSION_MAX_LIFETIME`
+  (seconds, default `2592000` — 30 days; `0` disables) caps a session's age
+  counted from when it was issued, however active it is. `session_regenerate()`
+  restarts the clock — call it at login. A cookie issued before this existed
+  counts from its `iat`.
 
 If you need instant logout-everywhere or sessions bigger than a cookie,
 use a server-side driver (`solidb`, `solikv`, `disk`) instead.

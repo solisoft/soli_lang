@@ -77,9 +77,41 @@ pub(super) async fn dispatch(
         || path == "/__soli/inbox"
         || path.starts_with("/__soli/inbox/");
     if dev_diagnostics_path && !is_trusted_dev_peer(peer_addr.ip()) {
+        return Ok(not_found());
+    }
+
+    // DNS rebinding: the peer gate above cannot see it. A page on
+    // `attacker.example` re-points its own name at 127.0.0.1, and the
+    // victim's browser — a loopback peer — then reads these endpoints (and
+    // the REPL token embedded in a dev error page) as *same-origin*. The one
+    // thing the attacker cannot change is the `Host` the browser sends, so
+    // the dev endpoints answer only for a local or declared host.
+    let dev_endpoint_path = dev_diagnostics_path || path.starts_with("/__dev/");
+    if dev_endpoint_path {
+        let host = req
+            .headers()
+            .get(hyper::header::HOST)
+            .and_then(|v| v.to_str().ok())
+            .or_else(|| req.uri().authority().map(|a| a.as_str()));
+        if !is_local_dev_host(host) {
+            return Ok(not_found());
+        }
+    }
+
+    // A dev POST changes state (the inbox is wiped, a stored request is
+    // replayed with its original cookies) and the whole namespace is exempt
+    // from the CSRF barriers, so without this any page the developer visits
+    // could fire them cross-site. The dev bar and the inbox's own form are
+    // same-origin, and browsers send `Origin` on every POST. (`/__dev/repl`
+    // is not in this set: its `X-Soli-Dev-Token` header already cannot be
+    // sent cross-site without a CORS preflight nobody answers.)
+    if dev_diagnostics_path && method == "POST" && !is_same_origin_request(req.headers()) {
         return Ok(Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .body(full(Bytes::from("Not Found")))
+            .status(StatusCode::FORBIDDEN)
+            .header("Content-Type", "text/plain; charset=utf-8")
+            .body(full(Bytes::from(
+                "Cross-origin request to a dev endpoint refused",
+            )))
             .unwrap());
     }
 
@@ -124,6 +156,69 @@ pub(super) async fn dispatch(
             None => Err(req),
         },
         _ => Err(req),
+    }
+}
+
+fn not_found() -> Response<ResponseBody> {
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(full(Bytes::from("Not Found")))
+        .unwrap()
+}
+
+/// May a `--dev` endpoint answer a request that names this `Host`?
+///
+/// DNS rebinding needs a hostname the attacker controls, so what is safe is
+/// every name that cannot be one: `localhost` and `*.localhost` (resolved
+/// locally by browsers), any IP literal (an IP has no DNS to rebind — this is
+/// also what keeps "open the LAN address on my phone" working), and the hosts
+/// the operator declared in `SOLI_APP_HOSTS`. No `Host` at all is refused.
+pub(super) fn is_local_dev_host(host: Option<&str>) -> bool {
+    let Some(raw) = host else {
+        return false;
+    };
+    let Some(name) = super::vhost::normalize_host(raw) else {
+        return false;
+    };
+    if name == "localhost" || name.ends_with(".localhost") {
+        return true;
+    }
+    if name.parse::<std::net::Ipv4Addr>().is_ok() {
+        return true;
+    }
+    if let Some(inner) = name.strip_prefix('[').and_then(|n| n.strip_suffix(']')) {
+        if inner.parse::<std::net::Ipv6Addr>().is_ok() {
+            return true;
+        }
+    }
+    super::csrf::origin_matches_declared_host(raw.trim())
+}
+
+/// [`is_local_dev_host`] for a buffered request (the dev error page, which
+/// only holds the worker's copy of the headers).
+pub(super) fn is_local_dev_host_header(headers: &hyper::HeaderMap) -> bool {
+    is_local_dev_host(
+        headers
+            .get(hyper::header::HOST)
+            .and_then(|v| v.to_str().ok()),
+    )
+}
+
+/// Does this request's `Origin` (or, failing that, `Referer`) name the host it
+/// was sent to? A request carrying neither is refused: every browser sends
+/// `Origin` on a POST, and a non-browser client can set it.
+fn is_same_origin_request(headers: &hyper::HeaderMap) -> bool {
+    let Some(authority) = super::websocket_request_authority(headers) else {
+        return false;
+    };
+    let source = headers
+        .get(hyper::header::ORIGIN)
+        .or_else(|| headers.get(hyper::header::REFERER))
+        .and_then(|v| v.to_str().ok());
+    match source {
+        Some(value) => super::origin::origin_authority(value)
+            .is_some_and(|source_authority| source_authority == authority),
+        None => false,
     }
 }
 
@@ -866,6 +961,68 @@ mod tests {
 
         assert!(is_authorized_dev_repl_request(&headers, peer_addr));
         std::env::remove_var("SOLI_DEV_REPL_ALLOW_REMOTE");
+    }
+
+    /// DNS rebinding reaches the dev endpoints from a loopback peer under the
+    /// attacker's hostname; only names that cannot be rebound are served.
+    #[test]
+    fn dev_endpoints_answer_only_local_hosts() {
+        for host in [
+            "localhost",
+            "localhost:5011",
+            "LOCALHOST:5011",
+            "app.localhost:5011",
+            "127.0.0.1:5011",
+            "127.0.0.2",
+            "[::1]:5011",
+            "[::1]",
+            "192.168.1.30:5011",
+        ] {
+            assert!(is_local_dev_host(Some(host)), "expected local: {host}");
+        }
+        for host in [
+            "rebind.attacker.test",
+            "rebind.attacker.test:5011",
+            "localhost.attacker.test",
+            "127.0.0.1.attacker.test",
+            "",
+        ] {
+            assert!(!is_local_dev_host(Some(host)), "expected refused: {host}");
+        }
+        assert!(!is_local_dev_host(None), "no Host is refused");
+    }
+
+    /// State-changing dev POSTs (inbox clear, replay) must come from the dev
+    /// server's own pages.
+    #[test]
+    fn dev_posts_must_be_same_origin() {
+        fn headers(pairs: &[(&'static str, &'static str)]) -> hyper::HeaderMap {
+            let mut map = hyper::HeaderMap::new();
+            for (name, value) in pairs {
+                map.insert(*name, value.parse().unwrap());
+            }
+            map
+        }
+        assert!(is_same_origin_request(&headers(&[
+            ("host", "localhost:5011"),
+            ("origin", "http://localhost:5011"),
+        ])));
+        assert!(is_same_origin_request(&headers(&[
+            ("host", "localhost:5011"),
+            ("referer", "http://localhost:5011/__soli/inbox"),
+        ])));
+        assert!(!is_same_origin_request(&headers(&[
+            ("host", "localhost:5011"),
+            ("origin", "https://evil.test"),
+        ])));
+        assert!(!is_same_origin_request(&headers(&[
+            ("host", "localhost:5011"),
+            ("origin", "null"),
+        ])));
+        assert!(!is_same_origin_request(&headers(&[(
+            "host",
+            "localhost:5011"
+        )])));
     }
 
     #[test]

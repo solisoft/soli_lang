@@ -19,7 +19,6 @@ use http_body_util::Full;
 use hyper::Response;
 
 use crate::interpreter::builtins::native::{topic_for, verify_channel};
-use crate::serve::live_reload::rfind_ascii_case_insensitive;
 use crate::serve::prefetch;
 
 /// Client JS — compiled into the binary so there is no filesystem dependency.
@@ -55,26 +54,14 @@ fn native_tag() -> String {
 
 /// Insert the bridge `<script>` before `</body>` — or `</html>`, or at the end.
 /// Idempotent, and a no-op for pages with no channel meta tag.
-pub fn inject_native_tag(html: &str) -> String {
-    if html.contains(INJECTED_MARKER) || !page_wants_bridge(html) {
-        return html.to_string();
+pub fn inject_native_tag(html: impl Into<String>) -> String {
+    let html: String = html.into();
+    // The opt-in probe goes first: most pages lack it, which settles the
+    // question in one scan of the body instead of two.
+    if !page_wants_bridge(&html) || html.contains(INJECTED_MARKER) {
+        return html;
     }
-    let tag = native_tag();
-    if let Some(pos) = rfind_ascii_case_insensitive(html, b"</body>") {
-        let mut out = String::with_capacity(html.len() + tag.len());
-        out.push_str(&html[..pos]);
-        out.push_str(&tag);
-        out.push_str(&html[pos..]);
-        out
-    } else if let Some(pos) = rfind_ascii_case_insensitive(html, b"</html>") {
-        let mut out = String::with_capacity(html.len() + tag.len());
-        out.push_str(&html[..pos]);
-        out.push_str(&tag);
-        out.push_str(&html[pos..]);
-        out
-    } else {
-        format!("{}{}", html, tag)
-    }
+    prefetch::insert_before_body_close(html, &native_tag())
 }
 
 /// `GET /__soli/native.js`.

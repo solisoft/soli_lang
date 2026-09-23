@@ -60,10 +60,25 @@ yourself with `SOLI_DEV_REPL_SECRET=<long-random-string>`. The server refuses to
 start in remote-allowed mode without the secret, so the credential is never
 embedded in an HTML error page.
 
+**Local `Host` only.** The REPL token, the dev-bar diagnostics, `/__dev/*`, the
+inbox and request replay answer only when the request's `Host` is local —
+`localhost`, `*.localhost`, an IP literal, or a host listed in `SOLI_APP_HOSTS`.
+This stops a DNS-rebinding page from driving them through your browser. A name
+such as `myapp.test` or `mymac.local` must be added to `SOLI_APP_HOSTS`; until it
+is, those endpoints 404 and error pages carry no REPL token. The inbox *clear*
+and *replay* POSTs also require a same-origin `Origin`/`Referer`, and the jobs
+dashboard is credential-free only from a loopback peer with a local `Host`.
+
 ## The query log
 
 Under `--dev`, every query a request runs through the Model layer is captured
 into a per-request stack. `dev_queries()` returns it.
+
+The query, HTTP and KV logs (also kept in production when `SOLI_LOG` asks for
+them) hold at most **10 000 entries** per request, WebSocket/LiveView event or
+background job — a loop issuing a million queries no longer grows the log
+without bound — and are reset at the start of each WebSocket event and each job,
+so one does not inherit the previous one's entries.
 
 Every backend is covered. On SoliDB the entries are AQL; on the SQL adapters
 they are the SQL actually sent, with binds numbered the way `$1` / `?` appear in

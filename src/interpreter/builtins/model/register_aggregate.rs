@@ -67,7 +67,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
         native_static_methods.insert(
             method_name.clone(),
             Rc::new(NativeFunction::new(
-                Box::leak(format!("Model.{}", method_name).into_boxed_str()),
+                format!("Model.{}", method_name),
                 Some(2),
                 move |args| {
                     let class = get_class_rc_from_args(args)?;

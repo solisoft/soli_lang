@@ -20,6 +20,7 @@ static ENABLED: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     static LOG: RefCell<Vec<LoggedHttpRequest>> = const { RefCell::new(Vec::new()) };
+    static DROPPED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 pub fn set_enabled(enabled: bool) {
@@ -121,6 +122,13 @@ pub(crate) fn scrub_url_for_log(url: &str) -> String {
 
 pub fn clear() {
     LOG.with(|l| l.borrow_mut().clear());
+    DROPPED.with(|d| d.set(0));
+}
+
+/// Entries not stored since the last `clear()` because the log was full
+/// (see `model::query_log::MAX_LOGGED_PER_REQUEST`).
+pub fn dropped() -> usize {
+    DROPPED.with(|d| d.get())
 }
 
 pub fn record(method: String, url: String, status: u16, duration_ms: f64, error: Option<String>) {
@@ -163,7 +171,12 @@ pub fn record_with_start(
     }
 
     LOG.with(|l| {
-        l.borrow_mut().push(LoggedHttpRequest {
+        let mut log = l.borrow_mut();
+        if log.len() >= super::model::query_log::MAX_LOGGED_PER_REQUEST {
+            DROPPED.with(|d| d.set(d.get() + 1));
+            return;
+        }
+        log.push(LoggedHttpRequest {
             method,
             url: scrubbed_url,
             status,

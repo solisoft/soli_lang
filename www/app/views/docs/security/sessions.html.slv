@@ -24,7 +24,7 @@
                     <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
                     <h4 class="font-semibold text-white">In-Memory</h4>
                 </div>
-                <p class="text-sm text-gray-400">Default. Fast but lost on server restart.</p>
+                <p class="text-sm text-gray-400">Default. Fast but lost on server restart. Capped at <code class="text-emerald-400">SOLI_SESSION_MAX_IN_MEMORY</code> (default 100000): past it the least-recently-used sessions are evicted (those users are logged out). Expired sessions are swept every 1000 creations or 30&nbsp;s.</p>
             </div>
             <div class="bg-white/5 border border-white/10 rounded-xl p-4">
                 <div class="flex items-center gap-2 mb-2">
@@ -85,6 +85,7 @@ export SOLI_SESSION_SECRET=$(openssl rand -hex 32)   # 32+ chars, keep stable</c
                 <li><strong class="text-white">~4KB ceiling</strong> — browsers cap cookies at 4096 bytes. An oversized session refuses to seal (loud log line, previous cookie kept). Store identifiers, not records.</li>
                 <li><strong class="text-white">No server-side revocation</strong> — <code class="text-emerald-400">session_destroy()</code> overwrites the client's copy, but a stolen cookie stays valid until its TTL passes. Rotating the secret invalidates every outstanding session at once.</li>
                 <li><strong class="text-white">TTL counts from the last write</strong> — expiry uses a timestamp sealed inside the payload, refreshed on each write.</li>
+                <li><strong class="text-white">Absolute lifetime</strong> — however active, a session expires <code class="text-emerald-400">SOLI_SESSION_MAX_LIFETIME</code> seconds after it was issued (default 2592000 = 30 days; <code class="text-emerald-400">0</code> disables), so a stolen cookie cannot be kept alive forever. <code class="text-emerald-400">session_regenerate()</code> restarts the clock; a cookie issued before this existed counts from its <code class="text-emerald-400">iat</code>.</li>
             </ul>
             <p class="text-gray-400 mt-4 text-sm">
                 Need instant logout-everywhere or sessions bigger than a cookie? Use a server-side driver

@@ -1,7 +1,8 @@
 //! The job dashboard at `/__soli/jobs`: inspect queues, cancel pending
 //! work, and retry failed/dead rows.
 //!
-//! Open in `--dev`. In production it is served only when
+//! Open in `--dev` to a loopback peer on a local host name (anyone else needs
+//! the credentials below, as in production). In production it is served only when
 //! `SOLI_JOBS_USER` + `SOLI_JOBS_PASSWORD` and/or `SOLI_JOBS_TOKEN` are
 //! set; otherwise the path 404s. Auth is HTTP Basic and/or `Bearer`.
 
@@ -122,17 +123,26 @@ fn parse_bearer(headers: &HeaderMap) -> Option<String> {
     raw.strip_prefix("Bearer ").map(|s| s.trim().to_string())
 }
 
-fn authorize(headers: &HeaderMap, dev_mode: bool) -> DashAuth {
-    authorize_with(headers, dev_mode, configured_basic(), configured_token())
+fn authorize(headers: &HeaderMap, dev_mode: bool, peer_ip: std::net::IpAddr) -> DashAuth {
+    // `--dev` opens the dashboard without credentials only to the machine it
+    // runs on, under a name that cannot be DNS-rebound — the same rule as the
+    // rest of the dev bank. `--dev` binds 0.0.0.0, so "open in dev" used to
+    // mean anyone on the LAN could read job payloads and retry or cancel them.
+    // Anyone else falls through to the credential check below, exactly as in
+    // production.
+    let dev_local = dev_mode
+        && super::dev_routes::is_trusted_dev_peer(peer_ip)
+        && super::dev_routes::is_local_dev_host_header(headers);
+    authorize_with(headers, dev_local, configured_basic(), configured_token())
 }
 
 fn authorize_with(
     headers: &HeaderMap,
-    dev_mode: bool,
+    dev_local: bool,
     basic: Option<(String, String)>,
     token: Option<String>,
 ) -> DashAuth {
-    if dev_mode {
+    if dev_local {
         return DashAuth::Allow;
     }
     if basic.is_none() && token.is_none() {
@@ -178,11 +188,12 @@ pub(crate) fn dispatch(
     query: Option<&str>,
     headers: &HeaderMap,
     dev_mode: bool,
+    peer_ip: std::net::IpAddr,
 ) -> Option<Response<ResponseBody>> {
     if !is_jobs_dashboard_path(method, path) {
         return None;
     }
-    match authorize(headers, dev_mode) {
+    match authorize(headers, dev_mode, peer_ip) {
         DashAuth::Allow => Some(route(method, path, query)),
         DashAuth::NeedAuth => Some(unauthorized()),
         DashAuth::Hidden => Some(hidden_not_found()),
@@ -496,6 +507,32 @@ mod tests {
         assert_eq!(
             authorize_with(&HeaderMap::new(), true, None, None),
             DashAuth::Allow
+        );
+    }
+
+    /// `--dev` binds 0.0.0.0: a LAN peer (or a DNS-rebound page) must not get
+    /// the credential-free dashboard.
+    #[test]
+    fn dev_mode_opens_the_dashboard_only_to_a_local_request() {
+        let loopback: std::net::IpAddr = "127.0.0.1".parse().unwrap();
+        let lan: std::net::IpAddr = "192.168.1.30".parse().unwrap();
+        let mut local = HeaderMap::new();
+        local.insert(hyper::header::HOST, "localhost:5011".parse().unwrap());
+        let mut rebound = HeaderMap::new();
+        rebound.insert(hyper::header::HOST, "rebind.attacker.test".parse().unwrap());
+
+        let dev_local = |headers: &HeaderMap, ip| {
+            super::super::dev_routes::is_trusted_dev_peer(ip)
+                && super::super::dev_routes::is_local_dev_host_header(headers)
+        };
+        assert!(dev_local(&local, loopback));
+        assert!(!dev_local(&local, lan));
+        assert!(!dev_local(&rebound, loopback));
+
+        // Not local and nothing configured: hidden, as in production.
+        assert_eq!(
+            authorize_with(&local, dev_local(&local, lan), None, None),
+            DashAuth::Hidden
         );
     }
 

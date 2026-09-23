@@ -55,11 +55,22 @@ pub(crate) fn fnv1a_64(bytes: &[u8]) -> u64 {
     hash
 }
 
-/// Is the hover-prefetch feature enabled? Reads `SOLI_PREFETCH` env var at
-/// every call (cheap; std::env::var is ~a few syscalls and we only hit this
-/// once per render). Default: on. Off when the value is one of
-/// `"off"`, `"false"`, `"0"`, `"no"` (case-insensitive).
+/// Is the hover-prefetch feature enabled? Default: on. Off when
+/// `SOLI_PREFETCH` is one of `"off"`, `"false"`, `"0"`, `"no"`
+/// (case-insensitive).
+///
+/// Read once per process and cached — this runs on every HTML render, and the
+/// environment is settled before the server starts. Unit tests toggle the
+/// variable, so under `cfg(test)` it is re-read on every call.
 pub fn is_enabled() -> bool {
+    if cfg!(test) {
+        return read_is_enabled();
+    }
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(read_is_enabled)
+}
+
+fn read_is_enabled() -> bool {
     match std::env::var("SOLI_PREFETCH") {
         Ok(v) => !matches!(
             v.trim().to_ascii_lowercase().as_str(),
@@ -69,33 +80,32 @@ pub fn is_enabled() -> bool {
     }
 }
 
+/// Insert `tag` into `html` in place — before the last `</body>`
+/// (case-insensitive), else before the last `</html>`, else at the end — and
+/// hand the same buffer back. Shared by every script injector on the HTML
+/// response path so none of them copies the body to add a few dozen bytes.
+pub(crate) fn insert_before_body_close(mut html: String, tag: &str) -> String {
+    let pos = rfind_ascii_case_insensitive(&html, b"</body>")
+        .or_else(|| rfind_ascii_case_insensitive(&html, b"</html>"))
+        .unwrap_or(html.len());
+    html.insert_str(pos, tag);
+    html
+}
+
 /// Insert the prefetch `<script>` tag into an HTML body. Idempotent — calling
-/// it twice on the same string is a no-op.
+/// it twice on the same string is a no-op, and a no-op returns the buffer it
+/// was given without copying it.
 ///
 /// Insertion order of preference:
 ///   1. Immediately before `</body>` (case-insensitive).
 ///   2. Fallback: before `</html>`.
 ///   3. Last resort: appended at the end.
-pub fn inject_prefetch_tag(html: &str) -> String {
+pub fn inject_prefetch_tag(html: impl Into<String>) -> String {
+    let html: String = html.into();
     if html.contains(INJECTED_MARKER) {
-        return html.to_string();
+        return html;
     }
-    let tag = prefetch_tag();
-    if let Some(pos) = rfind_ascii_case_insensitive(html, b"</body>") {
-        let mut out = String::with_capacity(html.len() + tag.len());
-        out.push_str(&html[..pos]);
-        out.push_str(tag);
-        out.push_str(&html[pos..]);
-        out
-    } else if let Some(pos) = rfind_ascii_case_insensitive(html, b"</html>") {
-        let mut out = String::with_capacity(html.len() + tag.len());
-        out.push_str(&html[..pos]);
-        out.push_str(tag);
-        out.push_str(&html[pos..]);
-        out
-    } else {
-        format!("{}{}", html, tag)
-    }
+    insert_before_body_close(html, prefetch_tag())
 }
 
 /// True when the request headers indicate a browser-issued *speculative*
@@ -133,6 +143,14 @@ pub fn prefetch_cache_control() -> String {
 /// 1..=300, default 30). Also stamped on the nav script tag so the client's
 /// in-memory prefetch cache expires in step with the server's `max-age`.
 pub(crate) fn prefetch_ttl() -> u64 {
+    if cfg!(test) {
+        return read_prefetch_ttl();
+    }
+    static TTL: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *TTL.get_or_init(read_prefetch_ttl)
+}
+
+fn read_prefetch_ttl() -> u64 {
     std::env::var("SOLI_PREFETCH_TTL")
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())

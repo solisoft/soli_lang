@@ -6,7 +6,7 @@ use super::adapter::{parse_adapter, Adapter, AdapterConfig};
 use super::error::DbError;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::serve::tenant::TenantCell;
 
@@ -84,16 +84,21 @@ impl ConnectionRegistry {
 /// boot would have won permanently and silently: no error, no warning, the
 /// second application simply reading and writing the first one's data with the
 /// first one's credentials.
-static REGISTRY: TenantCell<ConnectionRegistry> = TenantCell::new();
+///
+/// Held behind an `Arc`: `registry()` is on every query's path (adapter
+/// dispatch, `is_sql`, the active spec), and handing out a clone of the whole
+/// map — every spec, every URL and credential string — several times per query
+/// was measurable. An `Arc` clone is a refcount bump.
+static REGISTRY: TenantCell<Arc<ConnectionRegistry>> = TenantCell::new();
 
 /// An explicitly installed registry, which wins over the lazily loaded one.
 /// Also per application, or a test installing an override would redirect every
 /// other application in the process.
-static REGISTRY_OVERRIDE: TenantCell<ConnectionRegistry> = TenantCell::new();
+static REGISTRY_OVERRIDE: TenantCell<Arc<ConnectionRegistry>> = TenantCell::new();
 
 /// Install a registry for tests (or reload).
 pub fn set_registry_for_tests(reg: ConnectionRegistry) {
-    REGISTRY_OVERRIDE.set(reg);
+    REGISTRY_OVERRIDE.set(Arc::new(reg));
 }
 
 /// Serializes tests that install a registry override. The override is
@@ -111,16 +116,16 @@ pub fn clear_registry_override() {
 }
 
 /// This application's registry: test override, else loaded from env/file on
-/// first use.
-pub fn registry() -> ConnectionRegistry {
+/// first use. A shared handle, not a copy — see `REGISTRY`.
+pub fn registry() -> Arc<ConnectionRegistry> {
     if let Some(r) = REGISTRY_OVERRIDE.get() {
         return r;
     }
     REGISTRY.get_or_init(|| {
-        load_registry(None).unwrap_or_else(|e| {
+        Arc::new(load_registry(None).unwrap_or_else(|e| {
             eprintln!("[WARN] database config: {}", e.message());
             env_only_primary().expect("solidb default always works")
-        })
+        }))
     })
 }
 
@@ -130,8 +135,9 @@ pub fn init_from_app_path(app: &Path) -> Result<ConnectionRegistry, DbError> {
     // Prefer filling the empty slot; fall back to the override when something
     // already loaded a registry for this application (a test, or an early
     // access before boot).
-    if !REGISTRY.set_once(reg.clone()) {
-        REGISTRY_OVERRIDE.set(reg.clone());
+    let shared = Arc::new(reg.clone());
+    if !REGISTRY.set_once(Arc::clone(&shared)) {
+        REGISTRY_OVERRIDE.set(shared);
     }
     Ok(reg)
 }
@@ -381,10 +387,27 @@ pub fn active_connection_name() -> String {
 }
 
 /// Spec for the active (or default) connection.
+///
+/// Returns an owned copy. On a per-query path prefer [`with_active_spec`] or
+/// [`active_adapter`], which borrow the spec instead of cloning its strings.
 pub fn active_spec() -> Result<ConnectionSpec, String> {
+    with_active_spec(ConnectionSpec::clone)
+}
+
+/// Run `f` against the active (or default) connection's spec, without copying
+/// it. Resolves exactly as `active_spec` does.
+pub fn with_active_spec<R>(f: impl FnOnce(&ConnectionSpec) -> R) -> Result<R, String> {
     let reg = registry();
-    let name = active_connection_name();
-    reg.resolve(Some(&name)).cloned()
+    // The thread-local borrow ends before `f` runs, so `f` may itself switch
+    // connections with `with_connection`.
+    let spec = ACTIVE.with(|c| reg.resolve(c.borrow().as_deref()))?;
+    Ok(f(spec))
+}
+
+/// Adapter of the active (or default) connection — the cheap question most
+/// per-query dispatch (`is_sql`, `route_sql!`) actually asks.
+pub fn active_adapter() -> Result<Adapter, String> {
+    with_active_spec(|spec| spec.adapter)
 }
 
 #[cfg(test)]

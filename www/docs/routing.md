@@ -185,7 +185,9 @@ end);
 
 ## CSRF Protection
 
-Soli rejects state-changing requests (POST/PUT/PATCH/DELETE) whose `Origin` or `Referer` header doesn't match the request `Host`. Cross-origin form-CSRF and same-site browser attacks return 403 before any controller runs. Safe methods (GET/HEAD/OPTIONS) are exempt, as are the endpoints the framework itself serves: `/_health`, `/_ready`, `/_metrics`, `/__coverage__`, and anything under `/__soli/`, `/__solidev/`, `/__dev/`, or `/__livereload`.
+Soli rejects state-changing requests (POST/PUT/PATCH/DELETE) whose `Origin` or `Referer` header doesn't match the request `Host`. Cross-origin form-CSRF and same-site browser attacks return 403 before any controller runs. Safe methods (GET/HEAD/OPTIONS) are exempt. `/_health`, `/_ready` and `/_metrics` are GET-only and get no special exemption.
+
+**Framework-reserved paths.** `/__coverage__`, `/__livereload` (exact, `/__livereload/…`, `/__livereload_ws`) and anything under `/__soli/`, `/__solidev/` or `/__dev/` belong to the framework. A request there that the framework does not itself serve is answered **404** and never reaches your routes — so a catch-all like `get("/:slug", …)` can no longer be reached as `/__dev`, and such a path is never a way around the CSRF gate.
 
 > **Your routes are never exempt implicitly.** This used to be a blanket "any path starting with `/_`", which quietly handed the exemption to ordinary application routes in that namespace — a `POST /_internal/wipe` lost both the Origin gate and token verification without anyone asking. Only the framework's own endpoints are exempt now; an application route that wants out says so with `skip_csrf` below.
 

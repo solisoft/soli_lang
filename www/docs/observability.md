@@ -68,7 +68,7 @@ Representative series (all Prometheus text format):
 
 `soli_handler_panics_total` and `soli_vm_handler_demotions_total` are counted even when `SOLI_METRICS` is off — rare enough that the atomics are free, and most wanted when nobody thought to enable collection in advance.
 
-Scrape from Prometheus / Grafana Alloy / Datadog agent like any other text exposition endpoint. There is no auth on `/_metrics`; bind it to a private interface or front it with a proxy that restricts access.
+Scrape from Prometheus / Grafana Alloy / Datadog agent like any other text exposition endpoint. Access: with `SOLI_METRICS_TOKEN` set, the endpoint wants `Authorization: Bearer <token>`. Unset, it answers only loopback and private-range peers — and **refuses (404) any request carrying `X-Forwarded-For`, `X-Real-IP` or `Forwarded`, or any request while `trust_proxy` is on**, since behind a reverse proxy every peer looks local. A deployment behind a proxy must set `SOLI_METRICS_TOKEN` and configure the scraper to send it.
 
 ## Structured logs
 

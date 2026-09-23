@@ -208,6 +208,11 @@ Unescapes HTML entities back to their original characters.
 
 Removes all HTML tags from a string.
 
+> **A naive tag stripper, not a sanitizer.** It removes what looks like a tag
+> and nothing else — malformed or nested markup can leave fragments behind, and
+> entities are not decoded. Always output it through `<%= %>` (escaped), never
+> `<%- %>`. To keep *some* HTML from an untrusted source, use `sanitize_html`.
+
 ```erb
 <%= strip_html("<p>Hello <b>World</b></p>") %>  <!-- Output: Hello World -->
 ```

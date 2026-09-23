@@ -10,6 +10,7 @@
 //! `Regex::new` is never used for request-controlled patterns.
 
 use lru::LruCache;
+use std::cell::RefCell;
 use std::num::NonZero;
 use std::sync::{Arc, LazyLock, Mutex};
 
@@ -28,14 +29,58 @@ const REGEX_SIZE_LIMIT: usize = 100_000;
 static REGEX_CACHE: LazyLock<Mutex<LruCache<String, Arc<Regex>>>> =
     LazyLock::new(|| Mutex::new(LruCache::new(MAX_CACHE_SIZE)));
 
+/// Entries in each thread's front cache.
+const LOCAL_CACHE_SIZE: usize = 8;
+
+thread_local! {
+    /// Per-thread front cache of the most recently used patterns, most recent
+    /// first. A hit here takes no lock: `LruCache::get` needs `&mut`, so every
+    /// hit on the shared cache serializes all workers on its mutex.
+    static LOCAL_CACHE: RefCell<Vec<(Box<str>, Arc<Regex>)>> =
+        RefCell::new(Vec::with_capacity(LOCAL_CACHE_SIZE));
+}
+
+fn local_get(pattern: &str) -> Option<Arc<Regex>> {
+    LOCAL_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        let pos = cache.iter().position(|(p, _)| &**p == pattern)?;
+        if pos != 0 {
+            let entry = cache.remove(pos);
+            cache.insert(0, entry);
+        }
+        Some(Arc::clone(&cache[0].1))
+    })
+}
+
+fn local_put(pattern: &str, re: &Arc<Regex>) {
+    LOCAL_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.len() >= LOCAL_CACHE_SIZE {
+            cache.pop();
+        }
+        cache.insert(0, (Box::from(pattern), Arc::clone(re)));
+    });
+}
+
 /// Compile with ReDoS limits and cache. `err_prefix` keeps the historical
 /// error message shape for each public API.
-fn get_cached(pattern: &str, err_prefix: &str) -> Result<Regex, String> {
-    // Fast path: cache hit — `Regex` is Arc-backed; clone is refcount only.
+///
+/// Returns the shared `Arc<Regex>` rather than a clone of the `Regex`: a
+/// cloned `Regex` starts with an empty matcher-cache pool, so every call paid
+/// to rebuild its lazy-DFA scratch space. Sharing one instance keeps it warm.
+fn get_cached(pattern: &str, err_prefix: &str) -> Result<Arc<Regex>, String> {
+    if let Some(re) = local_get(pattern) {
+        return Ok(re);
+    }
+
+    // Shared cache hit — clone is refcount only.
     {
         let mut cache = REGEX_CACHE.lock().unwrap();
         if let Some(re) = cache.get(pattern) {
-            return Ok(re.as_ref().clone());
+            let re = Arc::clone(re);
+            drop(cache);
+            local_put(pattern, &re);
+            return Ok(re);
         }
     }
 
@@ -46,14 +91,19 @@ fn get_cached(pattern: &str, err_prefix: &str) -> Result<Regex, String> {
         .map_err(|e| format!("{}{}", err_prefix, e))?;
     let arc = Arc::new(re);
 
-    let mut cache = REGEX_CACHE.lock().unwrap();
-    // Another thread may have inserted while we compiled; prefer the
-    // cached entry so we don't thrash the LRU with duplicates.
-    if let Some(existing) = cache.get(pattern) {
-        return Ok(existing.as_ref().clone());
-    }
-    cache.put(pattern.to_string(), Arc::clone(&arc));
-    Ok(arc.as_ref().clone())
+    let arc = {
+        let mut cache = REGEX_CACHE.lock().unwrap();
+        // Another thread may have inserted while we compiled; prefer the
+        // cached entry so we don't thrash the LRU with duplicates.
+        if let Some(existing) = cache.get(pattern) {
+            Arc::clone(existing)
+        } else {
+            cache.put(pattern.to_string(), Arc::clone(&arc));
+            arc
+        }
+    };
+    local_put(pattern, &arc);
+    Ok(arc)
 }
 
 /// Get a cached regex with ReDoS safety limits.
@@ -61,7 +111,7 @@ fn get_cached(pattern: &str, err_prefix: &str) -> Result<Regex, String> {
 /// Used by string methods, VM string ops, validation, and assertions.
 /// Prefer this (or [`get_safe_regex`]) over any unbounded compile.
 #[inline]
-pub fn get_regex(pattern: &str) -> Result<Regex, String> {
+pub fn get_regex(pattern: &str) -> Result<Arc<Regex>, String> {
     get_cached(pattern, "invalid regex: ")
 }
 
@@ -70,7 +120,7 @@ pub fn get_regex(pattern: &str) -> Result<Regex, String> {
 /// Same limits and cache as [`get_regex`]; distinct error prefix for API
 /// compatibility.
 #[inline]
-pub fn get_safe_regex(pattern: &str) -> Result<Regex, String> {
+pub fn get_safe_regex(pattern: &str) -> Result<Arc<Regex>, String> {
     get_cached(pattern, "Invalid regex pattern: ")
 }
 

@@ -275,7 +275,7 @@ this.page_owner           # controller instance vars</code></pre>
                     <tr class="hover:bg-white/5">
                         <td class="py-3 px-4 text-cyan-300 font-mono">message</td>
                         <td class="py-3 px-4 text-gray-300">String</td>
-                        <td class="py-3 px-4 text-gray-400">Error message</td>
+                        <td class="py-3 px-4 text-gray-400">Error message. For a <strong class="text-white">5xx in production</strong> this is the generic status text (e.g. &ldquo;Internal Server Error&rdquo;), never the internal error &mdash; the real one is logged. 4xx messages are passed as-is.</td>
                     </tr>
                     <tr class="hover:bg-white/5">
                         <td class="py-3 px-4 text-cyan-300 font-mono">request_id</td>

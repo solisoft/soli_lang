@@ -111,7 +111,10 @@ pub struct QueryBuilder {
     /// for the SQL compiler to drop in favour of `hash_filter`.
     pub has_raw_where: bool,
     pub bind_vars: HashMap<SymbolId, serde_json::Value>,
-    pub order_by: Option<(SymbolId, SymbolId)>,
+    /// `(field, direction)`, owned rather than interned: the field is often a
+    /// request parameter (`Post.order(params["sort"])`), and every distinct
+    /// string interned into the process-wide symbol table stays there for good.
+    pub order_by: Option<(String, String)>,
     pub limit_val: Option<usize>,
     pub offset_val: Option<usize>,
     pub includes: Vec<IncludeClause>,
@@ -397,9 +400,7 @@ impl QueryBuilder {
     }
 
     pub fn set_order(&mut self, field: String, direction: String) {
-        let field_id = crate::interpreter::get_symbol(&field);
-        let dir_id = crate::interpreter::get_symbol(&direction);
-        self.order_by = Some((field_id, dir_id));
+        self.order_by = Some((field, direction));
     }
 
     pub fn set_limit(&mut self, limit: usize) {
@@ -611,9 +612,7 @@ impl QueryBuilder {
             query.push_str(&Self::build_include_count_subquery(inc));
         }
 
-        if let Some((field, direction)) = &self.order_by {
-            let field_str = crate::interpreter::symbol_string(*field).unwrap_or("unknown");
-            let dir_str = crate::interpreter::symbol_string(*direction).unwrap_or("asc");
+        if let Some((field_str, dir_str)) = &self.order_by {
             let dir = match dir_str.to_lowercase().as_str() {
                 "desc" | "descending" => "DESC",
                 _ => "ASC",
@@ -2008,12 +2007,8 @@ fn list_query_from_qb(qb: &QueryBuilder, collection: &str) -> Result<crate::db::
         .collect();
     let (order_field, order_desc) = match &qb.order_by {
         Some((f, d)) => {
-            let field = crate::interpreter::symbol_string(*f)
-                .unwrap_or("unknown")
-                .to_string();
-            let dir = crate::interpreter::symbol_string(*d)
-                .unwrap_or("asc")
-                .to_lowercase();
+            let field = f.clone();
+            let dir = d.to_lowercase();
             let desc = matches!(dir.as_str(), "desc" | "descending");
             (Some(field), desc)
         }
@@ -3453,12 +3448,9 @@ impl QueryBuilder {
         }
 
         // SORT — bare group key or aggregate alias only.
-        if let Some((field, direction)) = &self.order_by {
-            let field_str = crate::interpreter::symbol_string(*field)
-                .unwrap_or("unknown")
-                .to_string();
-            let known = self.group_fields.iter().any(|f| f == &field_str)
-                || specs.iter().any(|s| s.alias == field_str);
+        if let Some((field_str, dir_str)) = &self.order_by {
+            let known = self.group_fields.iter().any(|f| f == field_str)
+                || specs.iter().any(|s| &s.alias == field_str);
             if !known {
                 return Err(format!(
                     "order({:?}) in a grouped query must name a group field or aggregate \
@@ -3472,7 +3464,6 @@ impl QueryBuilder {
                         .join(", ")
                 ));
             }
-            let dir_str = crate::interpreter::symbol_string(*direction).unwrap_or("asc");
             let dir = match dir_str.to_lowercase().as_str() {
                 "desc" | "descending" => "DESC",
                 _ => "ASC",

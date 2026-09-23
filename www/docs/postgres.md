@@ -90,6 +90,10 @@ DATABASE_URL=postgres://user:pass@db.internal:5432/myapp?sslmode=verify-full&ssl
 - A mandatory mode fails at boot naming the reason, e.g. `connection "primary"
   asked for sslmode=require: error performing TLS handshake: server does not
   support TLS`.
+- Outside `--dev`, a connection to a **non-local host** with `disable`,
+  `prefer` or `require` logs a one-time warning recommending `verify-full`. The
+  default is unchanged; the warning is how a production box learns that its
+  database traffic is not authenticated.
 - Postgres never negotiates TLS over a Unix socket, so `require` and up fail on
   a socket URL rather than pretending the connection is encrypted.
 - `verify-ca` skips only the hostname check — useful behind a proxy or when the

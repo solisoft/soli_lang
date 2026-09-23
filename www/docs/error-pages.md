@@ -131,7 +131,7 @@ Custom error templates have access to these variables:
 | Variable | Type | Description |
 |----------|------|-------------|
 | `status` | Number | The HTTP status code (e.g., 500) |
-| `message` | String | The error message |
+| `message` | String | The error message. For a **5xx in production** this is the generic status text (e.g. `"Internal Server Error"`), never the internal error — the real one is logged. 4xx messages are passed as-is. |
 | `request_id` | String | Unique identifier for support reference |
 
 ### Example: Custom 404 Page

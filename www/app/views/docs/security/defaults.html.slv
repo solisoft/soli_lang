@@ -24,10 +24,14 @@
                     <tr><td class="py-3 px-4 text-white">Auto-escaped templates</td><td class="py-3 px-4"><code>&lt;%= %&gt;</code> HTML-escapes, including non-String values</td></tr>
                     <tr><td class="py-3 px-4 text-white">CSRF Origin/Referer gate</td><td class="py-3 px-4">Cross-site state-changing requests without a matching origin fail</td></tr>
                     <tr><td class="py-3 px-4 text-white">Security headers</td><td class="py-3 px-4">Standard preset in production (nosniff, frame options, HSTS)</td></tr>
-                    <tr><td class="py-3 px-4 text-white">SSRF on <code>HTTP.*</code></td><td class="py-3 px-4">Loopback and private ranges refused; exceptions are literal <code>host:port</code> in <code>SOLI_HTTP_ALLOW_HOSTS</code></td></tr>
+                    <tr><td class="py-3 px-4 text-white">SSRF on <code>HTTP.*</code></td><td class="py-3 px-4">Loopback, private, reserved and benchmarking ranges refused (incl. <code>0.0.0.0/8</code>, <code>192.0.0.0/24</code>, <code>198.18.0.0/15</code>, <code>240.0.0.0/4</code>, and IPv6 forms embedding a blocked IPv4 &mdash; NAT64, 6to4, Teredo, IPv4-compatible); exceptions are literal <code>host:port</code> in <code>SOLI_HTTP_ALLOW_HOSTS</code>. The same guard covers PDF remote images and the PAdES <code>sign.tsa</code> URL, with every redirect hop re-validated</td></tr>
+                    <tr><td class="py-3 px-4 text-white">Framework-reserved paths</td><td class="py-3 px-4">Anything under <code>/__soli/</code>, <code>/__solidev/</code>, <code>/__dev/</code>, <code>/__coverage__</code> or <code>/__livereload</code> that the framework does not itself serve is a 404 &mdash; it never reaches an app route such as <code>/:slug</code>, and is not CSRF-exempt</td></tr>
+                    <tr><td class="py-3 px-4 text-white">Generic 5xx messages</td><td class="py-3 px-4">A custom <code>errors/5xx</code> template receives a generic <code>message</code> (&ldquo;Internal Server Error&rdquo;) in production, never the internal error; the real error is logged. 4xx messages are unchanged</td></tr>
+                    <tr><td class="py-3 px-4 text-white"><code>/_metrics</code> behind a proxy</td><td class="py-3 px-4">Without <code>SOLI_METRICS_TOKEN</code>, refused (404) when the request carries <code>X-Forwarded-For</code> / <code>X-Real-IP</code> / <code>Forwarded</code> or <code>trust_proxy</code> is on</td></tr>
+                    <tr><td class="py-3 px-4 text-white">Request body budget</td><td class="py-3 px-4">Bodies are charged against <code>SOLI_MAX_INFLIGHT_BODY_BYTES</code> as they arrive; a body stalled <code>SOLI_BODY_IDLE_TIMEOUT_SECS</code> (10&nbsp;s) between frames is a 408</td></tr>
                     <tr><td class="py-3 px-4 text-white">Request body cap</td><td class="py-3 px-4">8 MiB (<code>SOLI_MAX_BODY_SIZE</code>); 413 when exceeded</td></tr>
                     <tr><td class="py-3 px-4 text-white">Attachment types</td><td class="py-3 px-4">Default allowlist excludes <code>text/html</code>, SVG, XML; blob route sends <code>nosniff</code> + disposition</td></tr>
-                    <tr><td class="py-3 px-4 text-white">SQL TLS</td><td class="py-3 px-4">Postgres/MySQL via rustls; default <code>prefer</code></td></tr>
+                    <tr><td class="py-3 px-4 text-white">SQL TLS</td><td class="py-3 px-4">Postgres/MySQL via rustls; default <code>prefer</code>. Outside <code>--dev</code>, a one-time warning when a connection to a non-local host uses <code>disable</code>, <code>prefer</code> or <code>require</code></td></tr>
                     <tr><td class="py-3 px-4 text-white">Panic containment</td><td class="py-3 px-4">A panicking handler is a 500; the worker stays up</td></tr>
                     <tr><td class="py-3 px-4 text-white">Log redaction</td><td class="py-3 px-4">Credential-looking params, binds, locals, and HTTP URLs are redacted</td></tr>
                     <tr><td class="py-3 px-4 text-white">Jobs dashboard</td><td class="py-3 px-4">404 in production unless jobs credentials are set</td></tr>
@@ -45,9 +49,23 @@
             <li><strong class="text-white"><code class="text-cyan-400">SOLI_SESSION_SECRET</code></strong> (32+ chars) &mdash; required at production boot; sealed cookies and the cookie session driver derive keys from it.</li>
             <li><strong class="text-white"><code class="text-cyan-400">SOLI_CSRF_TOKENS=require</code></strong> &mdash; tokens are always verified when present; this makes a missing token a 403 for browser form posts. <strong class="text-white"><code class="text-cyan-400">soli new</code> writes this into <code>.env</code>.</strong> Existing apps stay optional until they set it.</li>
             <li><strong class="text-white"><code class="text-cyan-400">permit(...)</code> / <code class="text-cyan-400">attr_accessible</code></strong> &mdash; <code>Model.create(params)</code> is not blocked unless you whitelist.</li>
-            <li><strong class="text-white"><code class="text-cyan-400">sslmode=require</code></strong> (or <code>verify-full</code>) &mdash; default <code>prefer</code> still allows cleartext if the server offers none.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">sslmode=verify-full</code></strong> &mdash; default <code>prefer</code> still allows cleartext if the server offers none, and <code>require</code> encrypts without checking who answers. Only <code>verify-full</code> silences the startup warning for a remote host.</li>
             <li><strong class="text-white"><code class="text-cyan-400">SOLI_TRUST_PROXY=1</code></strong> &mdash; only behind a proxy that strips inbound <code>X-Forwarded-*</code> then sets its own.</li>
             <li><strong class="text-white">Reverse-proxy TLS</strong> &mdash; <code>soli serve</code> is HTTP.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2 class="text-2xl font-bold text-white mb-4">Under <code class="text-cyan-400">--dev</code></h2>
+        <p class="text-gray-400 mb-4">
+            The dev server exposes powerful endpoints &mdash; dev-bar diagnostics, <code>/__dev/*</code>, the mail inbox, request replay, the error-page REPL.
+            They answer only when the request's <code>Host</code> is local: <code>localhost</code>, <code>*.localhost</code>, an IP literal, or a host listed in
+            <code class="text-cyan-400">SOLI_APP_HOSTS</code> &mdash; so a DNS-rebinding page cannot drive them from a browser. A LAN name such as
+            <code>mymac.local</code> must be added to <code class="text-cyan-400">SOLI_APP_HOSTS</code>; the REPL token is not embedded in error pages served to any other host.
+        </p>
+        <ul class="list-disc pl-6 text-gray-400 space-y-2">
+            <li>The inbox <em>clear</em> and request <em>replay</em> POSTs also require a same-origin <code>Origin</code>/<code>Referer</code>.</li>
+            <li>The jobs dashboard is credential-free only from a loopback peer with a local <code>Host</code>; anyone else needs the configured Basic/Bearer credentials (404 when none are set).</li>
         </ul>
     </section>
 

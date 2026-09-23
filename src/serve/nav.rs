@@ -25,7 +25,6 @@ use bytes::Bytes;
 use http_body_util::Full;
 use hyper::Response;
 
-use crate::serve::live_reload::rfind_ascii_case_insensitive;
 use crate::serve::prefetch;
 
 /// Client JS — compiled into the binary so there's no filesystem dependency.
@@ -44,10 +43,21 @@ fn nav_hash() -> u64 {
     *HASH.get_or_init(|| prefetch::fnv1a_64(NAV_SCRIPT.as_bytes()))
 }
 
-/// Is instant navigation enabled? Reads `SOLI_NAV` at every call (cheap; once
-/// per render). Default: on. Off when the value is one of `"off"`, `"false"`,
-/// `"0"`, `"no"` (case-insensitive) — same convention as `SOLI_PREFETCH`.
+/// Is instant navigation enabled? Default: on. Off when `SOLI_NAV` is one of
+/// `"off"`, `"false"`, `"0"`, `"no"` (case-insensitive) — same convention as
+/// `SOLI_PREFETCH`.
+///
+/// Read once per process and cached (this runs on every HTML render); unit
+/// tests toggle the variable, so under `cfg(test)` it is re-read each call.
 pub fn is_enabled() -> bool {
+    if cfg!(test) {
+        return read_is_enabled();
+    }
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(read_is_enabled)
+}
+
+fn read_is_enabled() -> bool {
     match std::env::var("SOLI_NAV") {
         Ok(v) => !matches!(
             v.trim().to_ascii_lowercase().as_str(),
@@ -57,9 +67,10 @@ pub fn is_enabled() -> bool {
     }
 }
 
-/// The `<script>` tag to inject. Built per call (not cached) because it embeds
-/// the *current* `SOLI_PREFETCH` / `SOLI_PREFETCH_TTL` state as data
-/// attributes the client script reads; only the content hash is cached.
+/// The `<script>` tag to inject. It embeds the `SOLI_PREFETCH` /
+/// `SOLI_PREFETCH_TTL` state as data attributes the client script reads; both
+/// are fixed for the process, so [`inject_nav_tag`] caches the result (tests,
+/// which toggle them, rebuild it per call).
 fn nav_tag() -> String {
     let prefetch_attr = if prefetch::is_enabled() {
         ""
@@ -75,32 +86,23 @@ fn nav_tag() -> String {
 }
 
 /// Insert the nav `<script>` tag into an HTML body. Idempotent — calling it
-/// twice on the same string is a no-op.
+/// twice on the same string is a no-op, and a no-op hands the buffer back
+/// without copying it.
 ///
 /// Insertion order of preference:
 ///   1. Immediately before `</body>` (case-insensitive).
 ///   2. Fallback: before `</html>`.
 ///   3. Last resort: appended at the end.
-pub fn inject_nav_tag(html: &str) -> String {
+pub fn inject_nav_tag(html: impl Into<String>) -> String {
+    let html: String = html.into();
     if html.contains(INJECTED_MARKER) {
-        return html.to_string();
+        return html;
     }
-    let tag = nav_tag();
-    if let Some(pos) = rfind_ascii_case_insensitive(html, b"</body>") {
-        let mut out = String::with_capacity(html.len() + tag.len());
-        out.push_str(&html[..pos]);
-        out.push_str(&tag);
-        out.push_str(&html[pos..]);
-        out
-    } else if let Some(pos) = rfind_ascii_case_insensitive(html, b"</html>") {
-        let mut out = String::with_capacity(html.len() + tag.len());
-        out.push_str(&html[..pos]);
-        out.push_str(&tag);
-        out.push_str(&html[pos..]);
-        out
-    } else {
-        format!("{}{}", html, tag)
+    if cfg!(test) {
+        return prefetch::insert_before_body_close(html, &nav_tag());
     }
+    static TAG: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    prefetch::insert_before_body_close(html, TAG.get_or_init(nav_tag))
 }
 
 /// HTTP handler for `GET /__soli/nav.js`. Returns the bundled script with

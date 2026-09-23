@@ -363,12 +363,17 @@ impl WebSocketRegistry {
     }
 
     /// Join a connection to a channel.
+    ///
+    /// A connection that is no longer registered joins nothing: `unregister`
+    /// cleans the channel map from the connection's own list, so an id added
+    /// after it ran (a join racing the disconnect) would stay there for good.
     pub async fn join_channel(&self, connection_id: &Uuid, channel: &str) {
         let mut connections = self.connections.lock().await;
-        if let Some(conn) = connections.get_mut(connection_id) {
-            if !conn.channels.contains(&channel.to_string()) {
-                conn.channels.push(channel.to_string());
-            }
+        let Some(conn) = connections.get_mut(connection_id) else {
+            return;
+        };
+        if !conn.channels.iter().any(|joined| joined == channel) {
+            conn.channels.push(channel.to_string());
         }
 
         let mut channels = self.channels.lock().await;
@@ -1257,8 +1262,8 @@ mod tests {
 
         // Create mock connections (we can't actually test message delivery without real WebSockets,
         // but we can verify the method runs without error)
-        let conn_id1 = Uuid::new_v4();
-        let conn_id2 = Uuid::new_v4();
+        let conn_id1 = registered(&registry).await;
+        let conn_id2 = registered(&registry).await;
 
         registry.join_channel(&conn_id1, "room:lobby").await;
         registry.join_channel(&conn_id2, "room:lobby").await;
@@ -1314,12 +1319,31 @@ mod tests {
         assert!(json.contains("user_123"));
     }
 
+    /// A registered connection whose receiver stays open for the test.
+    async fn registered(registry: &WebSocketRegistry) -> Uuid {
+        let (tx, rx) = tokio::sync::mpsc::channel(8);
+        std::mem::forget(rx);
+        let conn = WebSocketConnection::new(Arc::new(tx));
+        let id = conn.id;
+        registry.register(conn).await;
+        id
+    }
+
+    /// A join that arrives after its connection is gone must not leave the
+    /// id in the channel map: nothing would ever remove it.
+    #[tokio::test]
+    async fn test_join_after_unregister_leaves_nothing() {
+        let registry = WebSocketRegistry::new();
+        registry.join_channel(&Uuid::new_v4(), "room:ghost").await;
+        assert!(registry.get_channel_ids("room:ghost").await.is_empty());
+    }
+
     // ========== Room/Channel Tests ==========
 
     #[tokio::test]
     async fn test_join_channel() {
         let registry = WebSocketRegistry::new();
-        let conn_id = Uuid::new_v4();
+        let conn_id = registered(&registry).await;
 
         // Join a channel
         registry.join_channel(&conn_id, "room:lobby").await;
@@ -1333,7 +1357,7 @@ mod tests {
     #[tokio::test]
     async fn test_join_multiple_channels() {
         let registry = WebSocketRegistry::new();
-        let conn_id = Uuid::new_v4();
+        let conn_id = registered(&registry).await;
 
         // Join multiple channels
         registry.join_channel(&conn_id, "room:lobby").await;
@@ -1432,7 +1456,7 @@ mod tests {
     #[tokio::test]
     async fn test_join_channel_idempotent() {
         let registry = WebSocketRegistry::new();
-        let conn_id = Uuid::new_v4();
+        let conn_id = registered(&registry).await;
 
         // Join same channel twice
         registry.join_channel(&conn_id, "room:lobby").await;
@@ -1446,7 +1470,7 @@ mod tests {
     #[tokio::test]
     async fn test_leave_channel() {
         let registry = WebSocketRegistry::new();
-        let conn_id = Uuid::new_v4();
+        let conn_id = registered(&registry).await;
 
         // Join then leave
         registry.join_channel(&conn_id, "room:lobby").await;
@@ -1460,7 +1484,7 @@ mod tests {
     #[tokio::test]
     async fn test_leave_channel_preserves_other_channels() {
         let registry = WebSocketRegistry::new();
-        let conn_id = Uuid::new_v4();
+        let conn_id = registered(&registry).await;
 
         // Join multiple channels
         registry.join_channel(&conn_id, "room:lobby").await;
@@ -1477,9 +1501,9 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_connections_in_channel() {
         let registry = WebSocketRegistry::new();
-        let conn_id1 = Uuid::new_v4();
-        let conn_id2 = Uuid::new_v4();
-        let conn_id3 = Uuid::new_v4();
+        let conn_id1 = registered(&registry).await;
+        let conn_id2 = registered(&registry).await;
+        let conn_id3 = registered(&registry).await;
 
         // Three connections join same channel
         registry.join_channel(&conn_id1, "room:lobby").await;
@@ -1496,8 +1520,8 @@ mod tests {
     #[tokio::test]
     async fn test_leave_channel_one_of_many() {
         let registry = WebSocketRegistry::new();
-        let conn_id1 = Uuid::new_v4();
-        let conn_id2 = Uuid::new_v4();
+        let conn_id1 = registered(&registry).await;
+        let conn_id2 = registered(&registry).await;
 
         // Two connections join
         registry.join_channel(&conn_id1, "room:lobby").await;
@@ -1525,7 +1549,7 @@ mod tests {
     #[tokio::test]
     async fn test_channel_cleanup_on_last_leave() {
         let registry = WebSocketRegistry::new();
-        let conn_id = Uuid::new_v4();
+        let conn_id = registered(&registry).await;
 
         // Join and leave
         registry.join_channel(&conn_id, "room:lobby").await;
@@ -1539,9 +1563,9 @@ mod tests {
     #[tokio::test]
     async fn test_broadcast_to_channel_membership() {
         let registry = WebSocketRegistry::new();
-        let conn_id1 = Uuid::new_v4();
-        let conn_id2 = Uuid::new_v4();
-        let conn_id3 = Uuid::new_v4();
+        let conn_id1 = registered(&registry).await;
+        let conn_id2 = registered(&registry).await;
+        let conn_id3 = registered(&registry).await;
 
         // conn1 and conn2 in lobby, conn3 in general
         registry.join_channel(&conn_id1, "room:lobby").await;
@@ -1564,9 +1588,9 @@ mod tests {
     #[tokio::test]
     async fn test_broadcast_to_channel_except_membership() {
         let registry = WebSocketRegistry::new();
-        let conn_id1 = Uuid::new_v4();
-        let conn_id2 = Uuid::new_v4();
-        let conn_id3 = Uuid::new_v4();
+        let conn_id1 = registered(&registry).await;
+        let conn_id2 = registered(&registry).await;
+        let conn_id3 = registered(&registry).await;
 
         // All join lobby
         registry.join_channel(&conn_id1, "room:lobby").await;

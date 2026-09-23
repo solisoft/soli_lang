@@ -63,25 +63,28 @@ fn build_request(imprint: &[u8]) -> Result<Vec<u8>, String> {
 /// unsigned attribute.
 pub fn fetch_timestamp_token(url: &str, imprint: &[u8]) -> Result<Vec<u8>, String> {
     let body = build_request(imprint)?;
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .map_err(|e| format!("tsa: HTTP client: {e}"))?;
-    let resp = client
-        .post(url)
-        .header("Content-Type", "application/timestamp-query")
-        .header("Accept", "application/timestamp-reply")
-        .body(body)
-        .send()
-        .map_err(|e| format!("tsa: request to {url} failed: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("tsa: {url} returned HTTP {}", resp.status()));
-    }
-    let bytes = resp
-        .bytes()
-        .map_err(|e| format!("tsa: reading response: {e}"))?;
+    // The TSA URL is app configuration, but it may be user-influenced and it
+    // is fetched server-side: go through the SSRF-guarded user client (URL
+    // validated, connect-time DNS filtered, redirects re-validated) and cap
+    // the reply — a timestamp token is a few KB.
+    let bytes = crate::interpreter::builtins::http_class::guarded_request_bytes(
+        reqwest::Method::POST,
+        url,
+        &[
+            ("Content-Type", "application/timestamp-query"),
+            ("Accept", "application/timestamp-reply"),
+        ],
+        Some(body),
+        std::time::Duration::from_secs(20),
+        TSA_MAX_RESPONSE_BYTES,
+    )
+    .map_err(|e| format!("tsa: request to {url} failed: {e}"))?;
     extract_token(&bytes)
 }
+
+/// Largest `TimeStampResp` accepted. Real tokens (with the TSA certificate
+/// chain embedded) are a few KB; 1 MiB leaves ample room.
+const TSA_MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 
 /// Read one DER length starting at `i`, returning `(length, header_end_index)`.
 fn read_len(b: &[u8], mut i: usize) -> Result<(usize, usize), String> {

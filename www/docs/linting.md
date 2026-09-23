@@ -59,10 +59,26 @@ class MyClass end
 | `smell/deep-nesting` | more than four levels |
 | `smell/undefined-local` | a bare name never assigned in this scope |
 | `smell/dangerous-server-builtin` | an injection sink reached from a request layer |
+| `smell/closure-cycle` | a closure stored onto `this` — the instance and the closure keep each other alive |
 
 `smell/undefined-local` exists because `let` is optional: `x = 1` declares `x`,
 so a typo like `optsx.push(...)` fails only at run time. The rule finds it
 statically.
+
+`smell/closure-cycle` flags a closure assigned onto the instance —
+`this.x = fn(...) ...`, `@x = |y| ...`, `this.handlers["k"] = fn ...`. The closure
+captures the method's environment, which holds `this`; stored on `this`, it
+makes a reference cycle, so neither the instance nor anything it holds is ever
+freed. In a long-lived worker that is a leak per object. Store a method **name**
+and dispatch on it, or pass the closure in per call:
+
+```soli
+# Leaks: the instance holds a closure that holds the instance
+this.on_save = fn(record) { this.log(record) }
+
+# Instead: keep the name, call the method when needed
+this.on_save = "log"
+```
 
 `smell/dangerous-server-builtin` fires on `db_query_raw`, `Trusted.*`,
 `System.shell` / `System.shell_sync`, and backtick command substitution, when

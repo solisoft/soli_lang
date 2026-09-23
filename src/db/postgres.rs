@@ -133,6 +133,7 @@ fn pg_error(context: &str, e: &postgres::Error) -> String {
 /// string to lift — keeps the mode its own parser found.
 fn config_and_tls(url: &str, name: &str) -> Result<(postgres::Config, MaybeTls), String> {
     let (cleaned, ssl) = super::tls::split_url(url)?;
+    super::tls::warn_if_unverified(url, &ssl);
     let mut config = cleaned
         .parse::<postgres::Config>()
         .map_err(|e| format!("invalid DATABASE_URL ({name}): {e}"))?;
@@ -165,7 +166,35 @@ fn pools() -> &'static Mutex<HashMap<String, PgPool>> {
     POOLS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+thread_local! {
+    /// The pool this thread handed out last, with the connection name and url
+    /// it is cached under in `POOLS`. Almost every query on a worker targets the
+    /// same connection, so this answers `pool_for_active` without the global
+    /// mutex, the spec copy or the `format!`ed key. `POOLS` never evicts, so
+    /// an entry here can never outlive the one it mirrors.
+    static LAST_POOL: RefCell<Option<(String, String, PgPool)>> = const { RefCell::new(None) };
+}
+
 fn pool_for_active() -> Result<PgPool, String> {
+    let recent = super::registry::with_active_spec(|spec| {
+        if spec.adapter != super::Adapter::Postgres {
+            return None;
+        }
+        let url = spec.url.as_deref()?;
+        LAST_POOL.with(|last| {
+            last.borrow()
+                .as_ref()
+                .filter(|(name, cached_url, _)| *name == spec.name && cached_url == url)
+                .map(|(_, _, pool)| pool.clone())
+        })
+    })?;
+    if let Some(pool) = recent {
+        return Ok(pool);
+    }
+    pool_for_active_uncached()
+}
+
+fn pool_for_active_uncached() -> Result<PgPool, String> {
     let name = active_connection_name();
     let spec = active_spec()?;
     if spec.adapter != super::Adapter::Postgres {
@@ -183,8 +212,14 @@ fn pool_for_active() -> Result<PgPool, String> {
     // (a config change, an app switching at runtime) does not keep handing back
     // the pool for the old one. See the matching comment in `sqlite.rs`.
     let cache_key = format!("{name}\u{1f}{url}");
+    let remember = |pool: &PgPool| {
+        LAST_POOL.with(|last| {
+            *last.borrow_mut() = Some((name.clone(), url.clone(), pool.clone()));
+        });
+    };
     let mut map = pools().lock().unwrap();
     if let Some(p) = map.get(&cache_key) {
+        remember(p);
         return Ok(p.clone());
     }
     let (config, tls) = config_and_tls(&url, &name)?;
@@ -211,6 +246,7 @@ fn pool_for_active() -> Result<PgPool, String> {
         .build(manager)
         .map_err(|e| format!("postgres pool ({name}): {}", error_chain(&e)))?;
     map.insert(cache_key, pool.clone());
+    remember(&pool);
     Ok(pool)
 }
 
@@ -389,9 +425,30 @@ fn with_conn<T>(f: impl FnOnce(&mut postgres::Client) -> Result<T, String>) -> R
 pub fn insert(
     table: &str,
     key: Option<&str>,
+    document: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    // Only a retry after a stale "table exists" memo needs the document twice.
+    let mut document = Some(document);
+    super::ensured::write_with_table(table, has_active_tx(), ensure_table, |may_retry| {
+        let attempt = if may_retry {
+            document.clone()
+        } else {
+            document.take()
+        };
+        insert_into_existing(
+            table,
+            key,
+            attempt.expect("document consumed only by the last attempt"),
+        )
+    })
+}
+
+/// `insert` minus the `ensure_table`, which `ensured::write_with_table` owns.
+fn insert_into_existing(
+    table: &str,
+    key: Option<&str>,
     mut document: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    ensure_table(table)?;
     let key = resolve_key(key, &mut document)?;
     if let Some(obj) = document.as_object_mut() {
         obj.insert("_key".to_string(), serde_json::json!(key));
@@ -414,7 +471,16 @@ pub fn insert(
 
 /// Insert many documents in one statement per chunk.
 pub fn insert_many(table: &str, rows: &[(String, serde_json::Value)]) -> Result<u64, String> {
-    ensure_table(table)?;
+    super::ensured::write_with_table(table, has_active_tx(), ensure_table, |_| {
+        insert_many_into_existing(table, rows)
+    })
+}
+
+/// `insert_many` minus the `ensure_table`, which `ensured::write_with_table` owns.
+fn insert_many_into_existing(
+    table: &str,
+    rows: &[(String, serde_json::Value)],
+) -> Result<u64, String> {
     let compiled = compile_insert_many_d(Dialect::Postgres, table, rows)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|client| {
@@ -447,10 +513,33 @@ pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> 
 pub fn update(
     table: &str,
     key: &str,
+    document: serde_json::Value,
+    merge: bool,
+) -> Result<serde_json::Value, String> {
+    // Only a retry after a stale "table exists" memo needs the document twice.
+    let mut document = Some(document);
+    super::ensured::write_with_table(table, has_active_tx(), ensure_table, |may_retry| {
+        let attempt = if may_retry {
+            document.clone()
+        } else {
+            document.take()
+        };
+        update_existing(
+            table,
+            key,
+            attempt.expect("document consumed only by the last attempt"),
+            merge,
+        )
+    })
+}
+
+/// `update` minus the `ensure_table`, which `ensured::write_with_table` owns.
+fn update_existing(
+    table: &str,
+    key: &str,
     mut document: serde_json::Value,
     merge: bool,
 ) -> Result<serde_json::Value, String> {
-    ensure_table(table)?;
     if let Some(obj) = document.as_object_mut() {
         obj.insert("_key".to_string(), serde_json::json!(key));
     }
@@ -789,6 +878,8 @@ pub fn ensure_table(table: &str) -> Result<(), String> {
 }
 
 pub fn drop_table(table: &str) -> Result<(), String> {
+    // Tables may be gone after this: stop skipping their `ensure_table`.
+    super::ensured::forget_all();
     let ddl = drop_table_sql_d(Dialect::Postgres, table)?;
     with_conn(|client| {
         client
@@ -851,6 +942,8 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
 /// connects to the `postgres` maintenance database on the same server. The name
 /// is quoted as an identifier, never interpolated raw.
 pub fn create_or_drop_database(drop: bool) -> Result<String, String> {
+    // Tables may be gone after this: stop skipping their `ensure_table`.
+    super::ensured::forget_all();
     let spec = active_spec()?;
     let url = spec
         .url
@@ -1024,6 +1117,8 @@ pub fn dump_schema() -> Result<String, String> {
 }
 
 pub fn execute_ddl(sql: &str) -> Result<(), String> {
+    // Tables may be gone after this: stop skipping their `ensure_table`.
+    super::ensured::forget_all();
     with_conn(|client| {
         client
             .batch_execute(sql)
@@ -1034,6 +1129,8 @@ pub fn execute_ddl(sql: &str) -> Result<(), String> {
 /// `db.execute`: a dedicated connection, dropped afterwards, so `SET ROLE` /
 /// `SET search_path` cannot leak into the pool.
 pub fn execute_raw(sql: &str) -> Result<(), String> {
+    // Tables may be gone after this: stop skipping their `ensure_table`.
+    super::ensured::forget_all();
     let spec = active_spec()?;
     let url = spec
         .url

@@ -169,7 +169,7 @@ soli serve . --dev</code></pre>
     </div>
 
     <p class="text-gray-400 mb-12">
-        You'll see a line like the above on prod startup confirming the snapshot. Files larger than 10 MB are skipped (and read from disk on demand). Other extensions (images, fonts) continue to be read fresh from disk per request — only <code>.css</code> and <code>.js</code> are cached.
+        You'll see a line like the above on prod startup confirming the snapshot. Files larger than 10 MB are skipped (and read from disk on demand). Other extensions (images, fonts) continue to be read fresh from disk per request — only <code>.css</code> and <code>.js</code> are cached. A file served from disk that is larger than 1 MiB is streamed rather than read into memory whole, so a large download does not hold its full size in a worker.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Next Steps</h2>

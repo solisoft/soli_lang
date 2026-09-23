@@ -591,19 +591,30 @@ pub fn register_security_headers_builtins(env: &mut Environment) {
 }
 
 pub fn get_security_headers() -> Vec<(String, String)> {
+    let mut headers = Vec::new();
+    append_security_headers(&mut headers);
+    headers
+}
+
+/// Append this thread's cached security headers to `out` — the response path's
+/// form of [`get_security_headers`], which skips the intermediate `Vec` (and,
+/// with headers disabled, does no work beyond the version check).
+pub fn append_security_headers(out: &mut Vec<(String, String)>) {
     let current_version = SECURITY_HEADERS_VERSION.load(Ordering::Acquire);
 
     CACHED_SECURITY_HEADERS.with(|cache| {
-        let cached = cache.borrow();
-        if cached.0 == current_version {
-            return cached.1.clone();
+        {
+            let cached = cache.borrow();
+            if cached.0 == current_version {
+                out.extend(cached.1.iter().cloned());
+                return;
+            }
         }
-        drop(cached);
 
         // Rebuild from global state (only once per thread per config change)
         let headers = build_security_headers_vec();
-        *cache.borrow_mut() = (current_version, headers.clone());
-        headers
+        out.extend(headers.iter().cloned());
+        *cache.borrow_mut() = (current_version, headers);
     })
 }
 

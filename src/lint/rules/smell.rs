@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use crate::ast::expr::{Expr, ExprKind};
 use crate::ast::stmt::{ClassDecl, Stmt, StmtKind};
 use crate::lint::{LintDiagnostic, Severity};
 use crate::span::Span;
@@ -60,6 +61,96 @@ pub fn check_deep_nesting(depth: usize, span: Span, diagnostics: &mut Vec<LintDi
             span,
             severity: Severity::Warning,
         });
+    }
+}
+
+/// `smell/closure-cycle`: a closure stored on `this` (`this.x = fn() {...}`,
+/// `@x = |y| ...`, `this.handlers["k"] = fn...`).
+///
+/// A closure keeps the whole environment it was created in, and a method's
+/// environment binds `this`. Stored on the instance, the closure and the
+/// instance hold each other, and without a cycle collector neither is ever
+/// freed — per call, in a long-lived server. It does not matter whether the
+/// body mentions `this`: the captured environment holds it either way.
+pub fn check_closure_cycle(
+    target: &Expr,
+    value: &Expr,
+    span: Span,
+    diagnostics: &mut Vec<LintDiagnostic>,
+) {
+    if !is_rooted_at_this(target) {
+        return;
+    }
+    let mut value = value;
+    while let ExprKind::Grouping(inner) = &value.kind {
+        value = inner;
+    }
+    if matches!(value.kind, ExprKind::Lambda { .. }) {
+        diagnostics.push(LintDiagnostic {
+            rule: "smell/closure-cycle",
+            message: "a closure stored on `this` captures the method's environment, which \
+                      holds `this`: the instance and the closure keep each other alive and \
+                      are never freed; store a method name or pass the closure per call"
+                .to_string(),
+            span,
+            severity: Severity::Warning,
+        });
+    }
+}
+
+fn is_rooted_at_this(expr: &Expr) -> bool {
+    match &expr.kind {
+        ExprKind::Member { object, .. }
+        | ExprKind::SafeMember { object, .. }
+        | ExprKind::Index { object, .. } => {
+            matches!(object.kind, ExprKind::This) || is_rooted_at_this(object)
+        }
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod closure_cycle_tests {
+    use crate::lexer::Scanner;
+    use crate::lint::Linter;
+    use crate::parser::Parser;
+
+    fn count(src: &str) -> usize {
+        let tokens = Scanner::new(src).scan_tokens().expect("lex");
+        let program = Parser::new(tokens).parse().expect("parse");
+        Linter::new(src)
+            .lint(&program)
+            .into_iter()
+            .filter(|d| d.rule == "smell/closure-cycle")
+            .count()
+    }
+
+    #[test]
+    fn a_closure_stored_on_this_is_flagged() {
+        let src = r#"
+class Counter {
+    new() {
+        this.on_tick = fn() { this.count = 1; };
+        @formatter = |x| { x * 2 };
+        this.handlers["k"] = (fn(y) y);
+    }
+}
+"#;
+        assert_eq!(count(src), 3);
+    }
+
+    #[test]
+    fn plain_values_and_local_closures_are_not_flagged() {
+        let src = r#"
+class Counter {
+    new() {
+        this.count = 0;
+        let double = fn(x) { x * 2 };
+        this.total = [1, 2].map(fn(x) { x * 2 });
+    }
+}
+"#;
+        assert_eq!(count(src), 0);
     }
 }
 

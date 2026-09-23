@@ -114,10 +114,7 @@ fn cookies(f: &Finalizer, resp: &mut ResponseData) {
 
 /// Add security headers if enabled
 fn security_headers(resp: &mut ResponseData) {
-    use crate::interpreter::builtins::security_headers::get_security_headers;
-    for (name, value) in get_security_headers() {
-        resp.headers.push((name, value));
-    }
+    crate::interpreter::builtins::security_headers::append_security_headers(&mut resp.headers);
 }
 
 /// W3C Trace Context: always echo a traceparent when OTEL is on so

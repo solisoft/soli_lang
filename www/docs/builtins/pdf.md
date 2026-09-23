@@ -279,7 +279,7 @@ end
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `font_dirs` | Array<String> | `["font"]` | Directories to load fonts from. No fonts are bundled. |
-| `fetch_images` | Bool | `true` | Fetch `http(s)` images (`false` = offline/deterministic). |
+| `fetch_images` | Bool | `true` | Fetch `http(s)` images (`false` = offline/deterministic). Fetches go through the same SSRF guard as `HTTP.*` — loopback/private/reserved addresses are refused, the resolved address is pinned (DNS-rebinding safe), each redirect hop is re-validated — and a body over 20 MiB is rejected. |
 | `profile` | String | `en16931` | *(Factur-X)* Factur-X profile. |
 | `title` / `author` / `subject` | String | — | Document metadata (PDF Info dictionary). Works for `pdf_render` too; the plain-render title defaults to `"invoice"` when unset. |
 | `stationery` | String | — | Path (app-root relative) to a **letterhead PDF** drawn beneath every page's content. Page 1 uses the letterhead's first page; later pages use its second page when present, else the first. A missing file is an error. The letterhead is scaled to the page size, and a template `background` fill paints over it. |
@@ -401,6 +401,8 @@ timestamped by a Time-Stamp Authority: the signature value is hashed and sent to
 the TSA (`application/timestamp-query`), and the returned RFC 3161 token is
 embedded as an unsigned attribute — independent proof the signature existed at a
 given time, resilient to the signer's certificate later expiring.
+The `tsa` URL is SSRF-checked like any outbound request (a private or loopback
+TSA is refused, redirects are re-validated) and the reply is capped at 1 MiB.
 
 ```soli
 pdf = pdf_render(template, data, {

@@ -59,6 +59,10 @@ use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
+/// Keyed by allocation address: a pointer needs no DoS-resistant SipHash, and
+/// every request marks its whole params/req/cookies tree through this table.
+type MarkTable = HashMap<usize, Value, ahash::RandomState>;
+
 use crate::interpreter::value::Value;
 
 /// How deep request marking descends. Inbound bodies are already depth-capped
@@ -74,8 +78,8 @@ thread_local! {
     /// alive, so its address cannot be recycled while the mark is still
     /// consulted. Keying on a pointer whose allocation may already be gone is
     /// what made this table report literals as client-supplied.
-    static REQUEST_CONTAINERS: RefCell<HashMap<usize, Value>> =
-        RefCell::new(HashMap::new());
+    static REQUEST_CONTAINERS: RefCell<MarkTable> =
+        RefCell::new(MarkTable::default());
 }
 
 /// Pointer identity of a container value, or `None` for scalars.
@@ -101,7 +105,7 @@ pub fn mark_request_value(value: &Value) {
 
 /// Record this container and recurse. Returns early on an allocation already
 /// seen, which is what terminates a cyclic or diamond-shaped request tree.
-fn mark_into(value: &Value, marks: &mut HashMap<usize, Value>, depth: usize) {
+fn mark_into(value: &Value, marks: &mut MarkTable, depth: usize) {
     if depth >= MAX_MARK_DEPTH {
         return;
     }

@@ -2239,8 +2239,8 @@ pub struct LiveViewEventData {
 /// is exactly one of these and nothing about the request path changes.
 ///
 /// Everything in it is cheap to clone — an `Arc`, a crossbeam `Sender`, a
-/// `broadcast::Sender` — because it is cloned per connection and again per
-/// request.
+/// `broadcast::Sender`. A request borrows it from the router rather than
+/// cloning it, which would bump (and drop) each sender's shared refcount.
 #[derive(Clone)]
 struct TenantRuntime {
     /// Which application this serves. The request future is scoped to it
@@ -2258,7 +2258,7 @@ struct TenantRuntime {
 
 async fn handle_hyper_request(
     mut req: Request<Incoming>,
-    runtime: TenantRuntime,
+    runtime: &TenantRuntime,
     peer_addr: SocketAddr,
 ) -> Result<Response<ResponseBody>, hyper::Error> {
     // Destructured rather than accessed through `runtime.` throughout: the body
@@ -2275,6 +2275,7 @@ async fn handle_hyper_request(
         lv_event_tx,
         dev_mode,
     } = runtime;
+    let dev_mode = *dev_mode;
     let method: Cow<'static, str> = match *req.method() {
         hyper::Method::GET => Cow::Borrowed("GET"),
         hyper::Method::POST => Cow::Borrowed("POST"),
@@ -2352,7 +2353,7 @@ async fn handle_hyper_request(
         &method,
         raw_query.as_deref(),
         req.headers(),
-        &lv_event_tx,
+        lv_event_tx,
     )
     .await
     {
@@ -2371,8 +2372,8 @@ async fn handle_hyper_request(
             raw_query.as_deref(),
             peer_addr,
             reload_tx.as_ref(),
-            &ws_event_tx,
-            &lv_event_tx,
+            ws_event_tx,
+            lv_event_tx,
         )
         .await;
     }
@@ -2382,8 +2383,8 @@ async fn handle_hyper_request(
     if let Some(response) = static_files::handle(
         &path,
         &method,
-        &public_dir,
-        &asset_cache,
+        public_dir,
+        asset_cache,
         dev_mode,
         req.headers(),
     ) {
@@ -2411,12 +2412,18 @@ async fn handle_hyper_request(
         return Ok(response);
     }
 
-    // Job dashboard: open in --dev; in production only when credentials
+    // Job dashboard: open in --dev to a local request (loopback peer, local
+    // host name); otherwise, and in production, only when credentials
     // are configured (Basic and/or Bearer). Unconfigured production 404s
     // so the route does not advertise itself.
-    if let Some(resp) =
-        dev_jobs::dispatch(&method, &path, req.uri().query(), req.headers(), dev_mode)
-    {
+    if let Some(resp) = dev_jobs::dispatch(
+        &method,
+        &path,
+        req.uri().query(),
+        req.headers(),
+        dev_mode,
+        peer_addr.ip(),
+    ) {
         return Ok(resp);
     }
 
@@ -2424,7 +2431,7 @@ async fn handle_hyper_request(
     // replay, the component and mailer catalogues and the sent-mail inbox —
     // behind the one trusted-peer gate that keeps them off the LAN. See
     // `dev_routes`.
-    req = match dev_routes::dispatch(req, &method, &path, peer_addr, &request_tx, dev_mode).await {
+    req = match dev_routes::dispatch(req, &method, &path, peer_addr, request_tx, dev_mode).await {
         Ok(response) => return Ok(response),
         Err(req) => req,
     };
@@ -2434,6 +2441,20 @@ async fn handle_hyper_request(
     // else. See `coverage`.
     if let Some(response) = coverage::handle(&path, &method, req.headers()) {
         return Ok(response);
+    }
+
+    // Every framework handler for the reserved `/__…` namespace has had its
+    // turn. Whatever is left must not reach the application: those paths are
+    // exempt from both CSRF layers, and a `post("/:locale/account/delete")`
+    // route would otherwise bind `:locale` to `__soli` and run with no CSRF
+    // check at all (production answers none of the dev endpoints, so they
+    // all fell through). See `csrf::is_reserved_framework_path`.
+    if csrf::is_reserved_framework_path(&path) {
+        return Ok(Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header("Content-Type", "text/plain; charset=utf-8")
+            .body(full(Bytes::from("Not Found")))
+            .unwrap());
     }
 
     // File mode: the served folder is a plain directory, not an MVC app.
@@ -2501,7 +2522,7 @@ async fn handle_hyper_request(
         response_tx,
     };
 
-    if let Err(busy) = pipeline::enqueue(&request_tx, request_data).await {
+    if let Err(busy) = pipeline::enqueue(request_tx, request_data).await {
         return Ok(*busy);
     }
 
@@ -2664,6 +2685,12 @@ fn handle_websocket_event(
     use crate::serve::websocket::{
         PresenceDiff, UserPresencePayload, WebSocketHandlerAction, WebSocketRegistry,
     };
+
+    // A socket event is a request as far as the per-request logs go: it never
+    // passes through `request_scope::install`, so without this a WebSocket
+    // worker's query/HTTP/span logs only ever filled (see the LiveView/EUI
+    // event path below for the measured cost).
+    request_scope::forget_request_logs(crate::interpreter::builtins::template::is_dev_mode());
 
     // Clone connection_id for use in async spawns
     let connection_id = data.connection_id;
@@ -4746,6 +4773,12 @@ fn call_oop_controller_action(
     Some(response)
 }
 
+thread_local! {
+    /// Scratch buffer for the "Class#method" key probed against
+    /// `Vm::failed_handlers` in [`call_class_method`].
+    static HANDLER_KEY_BUF: RefCell<String> = RefCell::new(String::with_capacity(64));
+}
+
 /// Call a method on a class instance.
 fn call_class_method(
     interpreter: &mut Interpreter,
@@ -4763,22 +4796,35 @@ fn call_class_method(
 
         // Try VM execution in production mode
         if let Some(vm) = vm {
-            let handler_key = format!("{}#{}", class.name, method_name);
-            // Only use VM for methods that take a (req) parameter. Zero-arg
-            // methods get req via the global and fall back to the interpreter.
-            if !vm.failed_handlers.contains(&handler_key) && !method.params.is_empty() {
+            // Probe the demotion set without allocating the "Class#method"
+            // key on every request: the set is empty on a healthy worker, and
+            // otherwise the key is built into a reused per-thread buffer.
+            let demoted = !vm.failed_handlers.is_empty()
+                && HANDLER_KEY_BUF.with(|buf| {
+                    let mut buf = buf.borrow_mut();
+                    buf.clear();
+                    buf.push_str(&class.name);
+                    buf.push('#');
+                    buf.push_str(method_name);
+                    vm.failed_handlers.contains(buf.as_str())
+                });
+            if !demoted {
                 crate::interpreter::builtins::model::crud::clear_durable_commit();
-                match vm.call_method_bound(
-                    &method,
-                    instance.clone(),
-                    request_hash.clone(),
-                    Span::default(),
-                ) {
+                // Mirror the interpreter path below: a zero-parameter action
+                // (`def index`) reads the request through the `req` global, so
+                // it is called with no argument rather than skipping the VM.
+                let action_arg = if method.params.is_empty() {
+                    None
+                } else {
+                    Some(request_hash.clone())
+                };
+                match vm.call_method_bound(&method, instance.clone(), action_arg, Span::default()) {
                     Ok(result) => {
                         vm.reset();
                         return Ok(result);
                     }
                     Err(err) => {
+                        let handler_key = format!("{}#{}", class.name, method_name);
                         record_vm_demotion(&handler_key, &err);
                         vm.failed_handlers.insert(handler_key);
                         vm.reset();
@@ -5446,6 +5492,12 @@ fn handle_request(
         span_log::open_request_root(format!("{} {}", data.method, data.path));
     }
 
+    // Network session stores (solidb, solikv) load the session document once
+    // per request instead of once per read: resolving the cookie, the stored
+    // locale, the CSRF token and every `session_get` share that load. Bound
+    // before `install`, which does the first read, and dropped last.
+    let _session_memo =
+        crate::interpreter::builtins::session_request_cache::RequestSessionCache::begin();
     let scope = request_scope::install(data);
     // Bound here and not inside `install`: a guard built and dropped in there
     // would restore the default locale before the handler ever ran.
@@ -5567,7 +5619,7 @@ fn handle_request(
 
     // Execute global middleware
     let has_scoped_middleware = !scoped_middleware.is_empty();
-    for mw in &global_middleware {
+    for mw in global_middleware.iter() {
         if has_scoped_middleware && mw.global_only {
             continue;
         }
@@ -5613,6 +5665,13 @@ fn handle_request(
 /// constant time). Without it, only a peer on the loopback or a private range —
 /// where a scraper actually runs — so the endpoint stops being readable from
 /// the public internet by default.
+///
+/// The peer rule cannot tell a scraper from a reverse proxy on the same host:
+/// behind nginx on loopback, *every* public client arrives from `127.0.0.1`.
+/// So without a token the request is also refused when it carries a
+/// forwarding header, or when the app trusts a proxy at all — in both cases
+/// the TCP peer is a hop, not the caller. Such deployments set
+/// `SOLI_METRICS_TOKEN`.
 fn metrics_request_allowed(headers: &hyper::HeaderMap, peer: std::net::IpAddr) -> bool {
     if let Ok(expected) = std::env::var("SOLI_METRICS_TOKEN") {
         let expected = expected.trim();
@@ -5626,7 +5685,21 @@ fn metrics_request_allowed(headers: &hyper::HeaderMap, peer: std::net::IpAddr) -
             return crate::interpreter::builtins::crypto::do_secure_compare(presented, expected);
         }
     }
+    if metrics_request_is_proxied(headers) {
+        return false;
+    }
+    if crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED.read(|on| *on) {
+        return false;
+    }
     is_private_metrics_peer(peer)
+}
+
+/// Does this request name a forwarding hop? Any of these means the TCP peer is
+/// a proxy relaying someone else, so its private address proves nothing.
+fn metrics_request_is_proxied(headers: &hyper::HeaderMap) -> bool {
+    ["x-forwarded-for", "x-real-ip", "forwarded"]
+        .iter()
+        .any(|name| headers.contains_key(*name))
 }
 
 /// Loopback, RFC1918, CGNAT, link-local or IPv6 unique-local: the addresses a
@@ -5650,6 +5723,28 @@ fn is_private_metrics_peer(ip: std::net::IpAddr) -> bool {
                 || (v6.segments()[0] & 0xfe00) == 0xfc00
                 || (v6.segments()[0] & 0xffc0) == 0xfe80
         }
+    }
+}
+
+#[cfg(test)]
+mod metrics_gate_tests {
+    use super::{metrics_request_allowed, metrics_request_is_proxied};
+
+    /// Behind a same-host reverse proxy every public client arrives from
+    /// loopback; a forwarding header is the tell that the peer is a hop.
+    #[test]
+    fn a_proxied_request_from_loopback_is_refused_without_a_token() {
+        if std::env::var("SOLI_METRICS_TOKEN").is_ok_and(|t| !t.trim().is_empty()) {
+            return;
+        }
+        let loopback: std::net::IpAddr = "127.0.0.1".parse().unwrap();
+        for name in ["x-forwarded-for", "x-real-ip", "forwarded"] {
+            let mut headers = hyper::HeaderMap::new();
+            headers.insert(name, "203.0.113.9".parse().unwrap());
+            assert!(metrics_request_is_proxied(&headers), "{name}");
+            assert!(!metrics_request_allowed(&headers, loopback), "{name}");
+        }
+        assert!(!metrics_request_is_proxied(&hyper::HeaderMap::new()));
     }
 }
 
@@ -6174,6 +6269,12 @@ mod tests {
         assert!(check_csrf_origin(&h, "POST", "/__coverage__").is_ok());
         assert!(check_csrf_origin(&h, "POST", "/__solidev/replay/abc").is_ok());
         assert!(check_csrf_origin(&h, "POST", "/_metrics").is_ok());
+
+        // The probes answer GET/HEAD only: a cross-origin POST to one of
+        // their paths can only be an application route, so it is not exempt.
+        let cross = make_headers(&[("host", "example.com"), ("origin", "https://evil.test")]);
+        assert!(check_csrf_origin(&cross, "POST", "/_metrics").is_err());
+        assert!(check_csrf_origin(&cross, "POST", "/__solidev/replay/abc").is_ok());
     }
 
     #[test]
@@ -6458,7 +6559,10 @@ mod tests {
         // Framework endpoints are exempt.
         let data = make_request_data(&[("x-csrf-token", "wrong")], "", None);
         assert!(verify_csrf_token(&data, "POST", "/__solidev/replay/abc").is_ok());
-        assert!(verify_csrf_token(&data, "POST", "/_metrics").is_ok());
+        assert!(verify_csrf_token(&data, "POST", "/__soli/inbox/clear").is_ok());
+        // The probes answer GET/HEAD only, so a POST to one of their paths is
+        // an application route (`post("/:slug")`) and keeps token checking.
+        assert!(verify_csrf_token(&data, "POST", "/_metrics").is_err());
 
         // An application route in the same namespace is not: a bad token is a
         // 403 there like anywhere else. The old blanket `/_` prefix let

@@ -8,7 +8,10 @@
 //! expires; `session_destroy` can only overwrite the client's copy).
 //!
 //! Wire format: `v1.<base64url(nonce[12] ‖ AES-256-GCM(payload))>` where the
-//! payload is `{"id": uuid, "iat": unix_secs, "data": {...}}`. The AES key is
+//! payload is `{"id": uuid, "iat": unix_secs, "created": unix_secs, "data": {...}}`.
+//! `iat` slides (the TTL runs from the last write); `created` does not, and
+//! `SOLI_SESSION_MAX_LIFETIME` (default 30 days, `0` = off) caps the whole
+//! session from it. The AES key is
 //! HKDF-SHA256-derived from `SOLI_SESSION_SECRET` (domain-separated from the
 //! model-field key, so rotating one never breaks the other). GCM's auth tag
 //! rejects any client-side tampering; a blob that fails to open or whose
@@ -52,17 +55,40 @@ const MIN_SECRET_LEN: usize = 32;
 /// silently-dropped `Set-Cookie` at the browser is far harder to debug.
 const MAX_SEALED_LEN: usize = 4000;
 
+/// Default absolute session lifetime: 30 days.
+const DEFAULT_MAX_LIFETIME_SECS: u64 = 30 * 24 * 60 * 60;
+
 /// The decrypted session payload as it travels inside the cookie.
 #[derive(Serialize, Deserialize)]
 struct SealedPayload {
     id: String,
+    /// When this cookie was last sealed. The sliding TTL runs from here.
     iat: u64,
+    /// When the session began — carried unchanged across re-seals, so the
+    /// absolute lifetime cannot be extended by activity. Absent from cookies
+    /// sealed before it existed; those take `iat` as their origin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    created: Option<u64>,
     data: HashMap<String, JsonValue>,
+}
+
+/// `SOLI_SESSION_MAX_LIFETIME`: seconds a cookie session may live in total,
+/// however active it stays. `0` disables the cap; unset or unparsable means
+/// the 30-day default.
+fn max_lifetime_from_env() -> u64 {
+    parse_max_lifetime(std::env::var("SOLI_SESSION_MAX_LIFETIME").ok().as_deref())
+}
+
+fn parse_max_lifetime(raw: Option<&str>) -> u64 {
+    raw.and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or(DEFAULT_MAX_LIFETIME_SECS)
 }
 
 /// Per-request session state for the cookie driver.
 struct CookieSessionState {
     id: String,
+    /// Unix seconds the session began (see `SealedPayload::created`).
+    created: u64,
     data: HashMap<String, JsonValue>,
     /// A write happened this request — the outgoing cookie must be re-sealed.
     dirty: bool,
@@ -104,6 +130,7 @@ fn now_unix_secs() -> u64 {
 fn fresh_state(replaced: bool) -> CookieSessionState {
     CookieSessionState {
         id: Uuid::new_v4().to_string(),
+        created: now_unix_secs(),
         data: HashMap::new(),
         dirty: false,
         replaced,
@@ -113,6 +140,10 @@ fn fresh_state(replaced: bool) -> CookieSessionState {
 pub struct CookieSessionStore {
     key: [u8; 32],
     ttl: u64,
+    /// Absolute lifetime in seconds (`0` = none). The TTL alone slides: every
+    /// write re-seals with a fresh `iat`, so a stolen cookie replayed often
+    /// enough never expired.
+    max_lifetime: u64,
 }
 
 impl CookieSessionStore {
@@ -131,13 +162,24 @@ impl CookieSessionStore {
         let mut key = [0u8; 32];
         hk.expand(b"soli.session.cookie.v1", &mut key)
             .map_err(|e| format!("session key derivation failed: {}", e))?;
-        Ok(Self { key, ttl })
+        Ok(Self {
+            key,
+            ttl,
+            max_lifetime: max_lifetime_from_env(),
+        })
+    }
+
+    /// Override the absolute lifetime (`0` disables it).
+    pub fn with_max_lifetime(mut self, seconds: u64) -> Self {
+        self.max_lifetime = seconds;
+        self
     }
 
     fn seal(&self, state: &CookieSessionState) -> Result<String, String> {
         let payload = SealedPayload {
             id: state.id.clone(),
             iat: now_unix_secs(),
+            created: Some(state.created),
             data: state.data.clone(),
         };
         let plaintext =
@@ -168,11 +210,17 @@ impl CookieSessionStore {
         let plaintext = aes_decrypt_bytes(&raw, &self.key)?;
         let payload: SealedPayload = serde_json::from_slice(&plaintext)
             .map_err(|e| format!("invalid session payload: {}", e))?;
-        if now_unix_secs() > payload.iat.saturating_add(self.ttl) {
+        let now = now_unix_secs();
+        if now > payload.iat.saturating_add(self.ttl) {
             return Err("session expired".to_string());
+        }
+        let created = payload.created.unwrap_or(payload.iat);
+        if self.max_lifetime > 0 && now > created.saturating_add(self.max_lifetime) {
+            return Err("session exceeded its maximum lifetime".to_string());
         }
         Ok(CookieSessionState {
             id: payload.id,
+            created,
             data: payload.data,
             dirty: false,
             replaced: false,
@@ -255,6 +303,9 @@ impl SessionStore for CookieSessionStore {
     fn regenerate(&self, _old_id: &str) -> String {
         self.with_state(|state| {
             state.id = Uuid::new_v4().to_string();
+            // A regenerated session (the post-login rotation) is a new
+            // session: its absolute lifetime starts now.
+            state.created = now_unix_secs();
             Self::mark_mutated(state);
             state.id.clone()
         })
@@ -426,6 +477,58 @@ mod tests {
             store.outgoing_cookie_value().is_none(),
             "oversized payload must refuse to seal rather than emit a cookie the browser drops"
         );
+    }
+
+    /// Activity re-seals with a fresh `iat`, but the session's origin rides
+    /// along unchanged, so the absolute lifetime still ends it.
+    #[test]
+    fn the_absolute_lifetime_is_not_extended_by_activity() {
+        clear_request_state();
+        let store = store().with_max_lifetime(100);
+        let id = store.create_session();
+        store.set(&id, "user_id", serde_json::json!(1));
+        let sealed = store.outgoing_cookie_value().unwrap();
+        let state = store.open(&sealed).expect("fresh session opens");
+        assert!(state.created <= now_unix_secs());
+
+        // A session that began long ago but was re-sealed just now.
+        let old = CookieSessionState {
+            id: "old".to_string(),
+            created: now_unix_secs() - 1_000,
+            data: HashMap::new(),
+            dirty: true,
+            replaced: false,
+        };
+        let resealed = store.seal(&old).unwrap();
+        assert!(store.open(&resealed).is_err(), "past the absolute lifetime");
+        // `0` disables the cap.
+        let uncapped = CookieSessionStore::new(SECRET, 3600)
+            .unwrap()
+            .with_max_lifetime(0);
+        assert!(uncapped.open(&resealed).is_ok());
+    }
+
+    /// Cookies sealed before `created` existed take `iat` as their origin.
+    #[test]
+    fn a_legacy_cookie_without_created_still_opens() {
+        let store = store().with_max_lifetime(100);
+        let legacy = serde_json::json!({"id": "legacy", "iat": now_unix_secs(), "data": {}});
+        let plaintext = serde_json::to_vec(&legacy).unwrap();
+        let sealed = format!(
+            "{}{}",
+            FORMAT_PREFIX,
+            URL_SAFE_NO_PAD.encode(aes_encrypt_bytes(&plaintext, &store.key).unwrap())
+        );
+        let state = store.open(&sealed).expect("legacy cookie opens");
+        assert_eq!(state.id, "legacy");
+    }
+
+    #[test]
+    fn max_lifetime_env_parsing() {
+        assert_eq!(parse_max_lifetime(None), DEFAULT_MAX_LIFETIME_SECS);
+        assert_eq!(parse_max_lifetime(Some("0")), 0);
+        assert_eq!(parse_max_lifetime(Some(" 3600 ")), 3600);
+        assert_eq!(parse_max_lifetime(Some("junk")), DEFAULT_MAX_LIFETIME_SECS);
     }
 
     #[test]

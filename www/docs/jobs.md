@@ -263,7 +263,7 @@ or a **bearer token** (`Authorization: Bearer …`):
 SOLI_JOBS_TOKEN=a-long-random-secret
 ```
 
-Both can be set; either method is accepted. Without either pair, `/__soli/jobs` answers `404` so the route does not advertise itself. A wrong password answers `401` with `WWW-Authenticate: Basic realm="Soli jobs"`. `--dev` stays open (no prompt). The CLI (`soli jobs list` / `retry` / `cancel`) and `Job.*` still work without the dashboard.
+Both can be set; either method is accepted. Without either pair, `/__soli/jobs` answers `404` so the route does not advertise itself. A wrong password answers `401` with `WWW-Authenticate: Basic realm="Soli jobs"`. Under `--dev` it is open without a prompt only to a **loopback peer with a local `Host`** (`localhost`, `*.localhost`, an IP literal, or a host in `SOLI_APP_HOSTS`); any other client needs the configured credentials, and gets `404` when none are set. The CLI (`soli jobs list` / `retry` / `cancel`) and `Job.*` still work without the dashboard.
 
 A LiveView that enqueues an upload job and refreshes when it finishes is walked through in [A Live Field Desk](/docs/blog/liveview-desk).
 

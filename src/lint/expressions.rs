@@ -122,6 +122,7 @@ impl Linter {
             }
 
             ExprKind::Assign { target, value } => {
+                rules::smell::check_closure_cycle(target, value, expr.span, &mut self.diagnostics);
                 self.lint_expr(target);
                 self.lint_expr(value);
             }
@@ -238,6 +239,7 @@ impl Linter {
             }
 
             ExprKind::CompoundAssign { target, value, .. } => {
+                rules::smell::check_closure_cycle(target, value, expr.span, &mut self.diagnostics);
                 self.lint_expr(target);
                 self.lint_expr(value);
             }

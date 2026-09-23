@@ -292,6 +292,9 @@ fn worker_recv_loop(
     runner: Value,
 ) {
     while let Ok(job) = rx.recv() {
+        // A job is a request as far as the per-request logs go: nothing else
+        // empties them on a pool thread, so they grew for its whole life.
+        super::request_scope::forget_request_logs(template::is_dev_mode());
         if let Some(record) = &job.record {
             crate::jobs::engine::mark_started(&record.key);
         }

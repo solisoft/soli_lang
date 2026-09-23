@@ -131,6 +131,10 @@ struct JwtState {
     /// once: after `force_refresh_jwt_token()` we must do a real login, not
     /// re-seed the same possibly-revoked token in a loop.
     env_consumed: bool,
+    /// A refresh of a still-usable token is running *outside* the lock. Other
+    /// threads keep serving the old token meanwhile instead of starting a
+    /// second `/auth/login` or waiting on the network under the write lock.
+    login_in_flight: bool,
 }
 
 static JWT_STATE: TenantValue<JwtState> = TenantValue::new(JwtState::default);
@@ -315,10 +319,31 @@ fn needs_jwt_refresh(cache: Option<&CachedJwt>, now: u64) -> bool {
 /// auth.
 pub fn get_jwt_token() -> Option<String> {
     let now = now_epoch();
-    // The whole operation runs under one write lock, as it did under the
-    // mutex this replaces: seeding, refreshing and recording a failure have to
-    // be one step or two threads both decide to log in.
-    JWT_STATE.write(|state| {
+    // Fast path, taken by nearly every query: a cached token that is not due
+    // for a refresh needs only the read lock, so concurrent queries on one
+    // application no longer serialise on the write lock just to read it.
+    let fresh = JWT_STATE.read(|state| {
+        state
+            .cache
+            .as_ref()
+            .filter(|entry| !needs_jwt_refresh(Some(*entry), now))
+            .map(|entry| entry.token.clone())
+    });
+    if fresh.is_some() {
+        return fresh;
+    }
+
+    /// What the locked decision step leaves for the caller to do.
+    enum Next {
+        Serve(Option<String>),
+        /// Refresh a still-usable token with the lock released.
+        RefreshUnlocked,
+    }
+
+    // Seeding, the freshness re-check and the choice of who logs in are one
+    // step under the write lock: two threads that both missed the fast path
+    // must not both decide to log in.
+    let next = JWT_STATE.write(|state| {
         // Seed from SOLIDB_JWT once: a parent process (the test runner) mints
         // one token and hands it to all children so N parallel boots don't
         // make N `/auth/login` calls from the same IP.
@@ -333,33 +358,78 @@ pub fn get_jwt_token() -> Option<String> {
             }
         }
 
-        if needs_jwt_refresh(state.cache.as_ref(), now) {
-            let last_failure = state.last_failure_epoch;
-            if last_failure != 0 && now < last_failure + JWT_LOGIN_BACKOFF_SECS {
-                // Recent login failure → don't hammer /auth/login on every
-                // query (that's what keeps SolidB's per-IP rate limit bucket
-                // full). Serve the old token if there is one, else fall back.
-                return state.cache.as_ref().map(|e| e.token.clone());
-            }
-            // `login_for_token` talks to SoliDB and reads the connection
-            // registry — both other locks, neither this one.
-            if let Some(fresh) = login_for_token() {
-                state.last_failure_epoch = 0;
-                state.cache = Some(fresh);
-            } else {
-                // Remember the failure so the next JWT_LOGIN_BACKOFF_SECS of
-                // queries go straight to the basic-auth fallback instead of
-                // retrying the login each time.
-                state.last_failure_epoch = now;
-                // No previous token to fall back on: give up and let the
-                // caller drop to API key or basic auth. With one, keep serving
-                // it — the 401-retry path will trigger
-                // `force_refresh_jwt_token()` on the next failed request.
-                state.cache.as_ref()?;
-            }
+        // Re-check: another thread may have refreshed while we waited.
+        if !needs_jwt_refresh(state.cache.as_ref(), now) {
+            return Next::Serve(state.cache.as_ref().map(|e| e.token.clone()));
         }
-        state.cache.as_ref().map(|e| e.token.clone())
-    })
+        let last_failure = state.last_failure_epoch;
+        if last_failure != 0 && now < last_failure + JWT_LOGIN_BACKOFF_SECS {
+            // Recent login failure → don't hammer /auth/login on every
+            // query (that's what keeps SolidB's per-IP rate limit bucket
+            // full). Serve the old token if there is one, else fall back.
+            return Next::Serve(state.cache.as_ref().map(|e| e.token.clone()));
+        }
+        if let Some(entry) = state.cache.as_ref() {
+            // The token is inside the refresh leeway but not yet expired, so
+            // it still works. One thread refreshes it off-lock; everyone
+            // else keeps using it until the new one lands.
+            if state.login_in_flight {
+                return Next::Serve(Some(entry.token.clone()));
+            }
+            state.login_in_flight = true;
+            return Next::RefreshUnlocked;
+        }
+        // No token at all: nothing to serve meanwhile, so log in under the
+        // lock — the threads queued behind it then find the fresh token on
+        // their re-check instead of each logging in. `login_for_token` talks
+        // to SoliDB and reads the connection registry — both other locks,
+        // neither this one.
+        if let Some(fresh) = login_for_token() {
+            state.last_failure_epoch = 0;
+            state.cache = Some(fresh);
+        } else {
+            // Remember the failure so the next JWT_LOGIN_BACKOFF_SECS of
+            // queries go straight to the basic-auth fallback instead of
+            // retrying the login each time.
+            state.last_failure_epoch = now;
+        }
+        Next::Serve(state.cache.as_ref().map(|e| e.token.clone()))
+    });
+
+    match next {
+        Next::Serve(token) => token,
+        Next::RefreshUnlocked => {
+            // Clears the in-flight flag even if the login panics, or every
+            // later refresh of this application would be skipped for good.
+            struct InFlight {
+                armed: bool,
+            }
+            impl Drop for InFlight {
+                fn drop(&mut self) {
+                    if self.armed {
+                        JWT_STATE.write(|state| state.login_in_flight = false);
+                    }
+                }
+            }
+            let mut in_flight = InFlight { armed: true };
+            let fresh = login_for_token();
+            in_flight.armed = false;
+            JWT_STATE.write(|state| {
+                state.login_in_flight = false;
+                if let Some(fresh) = fresh {
+                    state.last_failure_epoch = 0;
+                    state.cache = Some(fresh);
+                } else {
+                    // Keep serving the previous token (if a forced refresh
+                    // did not drop it meanwhile); the 401-retry path will
+                    // trigger `force_refresh_jwt_token()` on the next failed
+                    // request.
+                    state.last_failure_epoch = now;
+                }
+                state.cache.as_ref().map(|e| e.token.clone())
+            })
+        }
+    }
 }
 
 /// Drop the cached JWT so the next `get_jwt_token()` call re-logs in.
@@ -462,9 +532,10 @@ pub fn resolve_api_key() -> Option<String> {
     if let Some(k) = get_api_key() {
         return Some(k.to_string());
     }
-    crate::db::active_spec()
+    // Borrow the spec rather than copy it: this runs on every query.
+    crate::db::with_active_spec(|s| s.solidb_api_key.clone())
         .ok()
-        .and_then(|s| s.solidb_api_key)
+        .flatten()
         .filter(|k| !k.is_empty())
 }
 
@@ -473,14 +544,23 @@ pub fn resolve_basic_auth() -> Option<String> {
     if let Some(a) = get_basic_auth() {
         return Some(a.to_string());
     }
-    let (user, password) = if let Ok(spec) = crate::db::active_spec() {
-        if let Some(user) = spec.solidb_username.filter(|s| !s.is_empty()) {
-            (user, spec.solidb_password.unwrap_or_default())
-        } else {
-            loopback_dev_credentials()?
-        }
-    } else {
-        loopback_dev_credentials()?
+    // Borrow the spec rather than copy it: this runs on every query.
+    let configured = crate::db::with_active_spec(|spec| {
+        spec.solidb_username
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|user| {
+                (
+                    user.clone(),
+                    spec.solidb_password.clone().unwrap_or_default(),
+                )
+            })
+    })
+    .ok()
+    .flatten();
+    let (user, password) = match configured {
+        Some(pair) => pair,
+        None => loopback_dev_credentials()?,
     };
     use base64::Engine;
     Some(format!(

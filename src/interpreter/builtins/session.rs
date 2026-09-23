@@ -6,8 +6,9 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
@@ -654,26 +655,67 @@ impl Session {
 /// Thread-safe in-memory session store.
 ///
 /// In production (the common case when apps do not call `session_configure`),
-/// this store must not grow unbounded. We therefore clean aggressively on both
-/// a request counter (legacy) and a wall-time basis so that low-traffic or
-/// bursty workloads still reclaim memory from expired sessions.
+/// this store must not grow unbounded. Three things keep it in check:
+///
+/// * an expiry sweep, triggered every 1000th new session or every 30s of wall
+///   time. It is armed from `create_session` and `exists` too, because the
+///   serve path never calls `get_or_create` — before that, a server's expired
+///   sessions were never removed at all;
+/// * the map is split into `IN_MEMORY_SESSION_SHARDS` independently locked
+///   shards, so the sweep holds one shard at a time instead of stalling every
+///   request behind a single write lock;
+/// * a hard cap (`SOLI_SESSION_MAX_IN_MEMORY`, default 100 000, `0` = no cap).
+///   A new session past the cap evicts the expired sessions of a shard first,
+///   then the least recently used tenth of it.
 pub struct InMemorySessionStore {
-    sessions: RwLock<HashMap<String, Session>>,
+    shards: Box<[RwLock<HashMap<String, Session>>]>,
+    hasher: std::collections::hash_map::RandomState,
+    /// Sessions across all shards. Adjusted under the shard's write lock, by
+    /// exactly what that lock's holder inserted or removed.
+    len: AtomicUsize,
     max_age: Duration,
-    request_counter: AtomicU64,
-    /// Last time we ran a full expiry sweep. Protected by a mutex because
-    /// we only mutate it inside the (rare) cleanup path.
-    last_cleanup: std::sync::Mutex<Instant>,
+    /// `0` means no cap.
+    max_sessions: usize,
+    insert_counter: AtomicU64,
+    cleanup_interval: Duration,
+    /// Origin for `last_cleanup_ms`, so the time trigger is one atomic load.
+    epoch: Instant,
+    last_cleanup_ms: AtomicU64,
+    /// Set while a sweep runs, so concurrent triggers don't sweep twice.
+    sweeping: AtomicBool,
 }
+
+/// Independently locked shards of the in-memory session map.
+const IN_MEMORY_SESSION_SHARDS: usize = 16;
+
+/// Default for `SOLI_SESSION_MAX_IN_MEMORY`.
+const DEFAULT_MAX_IN_MEMORY_SESSIONS: usize = 100_000;
+
+fn max_in_memory_sessions_from_env() -> usize {
+    std::env::var("SOLI_SESSION_MAX_IN_MEMORY")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(DEFAULT_MAX_IN_MEMORY_SESSIONS)
+}
+
+type SessionShard = HashMap<String, Session>;
 
 impl InMemorySessionStore {
     fn new() -> Self {
-        let now = Instant::now();
+        let shards: Vec<RwLock<SessionShard>> = (0..IN_MEMORY_SESSION_SHARDS)
+            .map(|_| RwLock::new(HashMap::new()))
+            .collect();
         Self {
-            sessions: RwLock::new(HashMap::new()),
+            shards: shards.into_boxed_slice(),
+            hasher: std::collections::hash_map::RandomState::new(),
+            len: AtomicUsize::new(0),
             max_age: Duration::from_secs(24 * 60 * 60),
-            request_counter: AtomicU64::new(0),
-            last_cleanup: std::sync::Mutex::new(now),
+            max_sessions: max_in_memory_sessions_from_env(),
+            insert_counter: AtomicU64::new(0),
+            cleanup_interval: IN_MEMORY_SESSION_CLEANUP_INTERVAL,
+            epoch: Instant::now(),
+            last_cleanup_ms: AtomicU64::new(0),
+            sweeping: AtomicBool::new(false),
         }
     }
 
@@ -682,6 +724,117 @@ impl InMemorySessionStore {
     pub fn with_max_age(mut self, max_age: Duration) -> Self {
         self.max_age = max_age;
         self
+    }
+
+    /// Cap the number of sessions held (`0` = no cap).
+    pub fn with_max_sessions(mut self, max_sessions: usize) -> Self {
+        self.max_sessions = max_sessions;
+        self
+    }
+
+    #[cfg(test)]
+    fn with_cleanup_interval(mut self, interval: Duration) -> Self {
+        self.cleanup_interval = interval;
+        self
+    }
+
+    /// Sessions currently held, expired or not.
+    pub fn session_count(&self) -> usize {
+        self.len.load(Ordering::Relaxed)
+    }
+
+    fn shard_index(&self, session_id: &str) -> usize {
+        (self.hasher.hash_one(session_id) as usize) % self.shards.len()
+    }
+
+    fn read_shard(&self, session_id: &str) -> std::sync::RwLockReadGuard<'_, SessionShard> {
+        self.shards[self.shard_index(session_id)]
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn write_shard_at(&self, index: usize) -> std::sync::RwLockWriteGuard<'_, SessionShard> {
+        self.shards[index]
+            .write()
+            .unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn write_shard(&self, session_id: &str) -> std::sync::RwLockWriteGuard<'_, SessionShard> {
+        self.write_shard_at(self.shard_index(session_id))
+    }
+
+    fn now_ms(&self) -> u64 {
+        self.epoch.elapsed().as_millis() as u64
+    }
+
+    /// Sweep expired sessions when the count or time trigger is due.
+    fn maybe_cleanup(&self, count_trigger: bool) {
+        let due_by_time = self
+            .now_ms()
+            .saturating_sub(self.last_cleanup_ms.load(Ordering::Relaxed))
+            >= self.cleanup_interval.as_millis() as u64;
+        if count_trigger || due_by_time {
+            self.cleanup();
+        }
+    }
+
+    /// Store `session` under `session_id`, making room first when the store
+    /// is at its cap.
+    fn insert(&self, session_id: String, session: Session) {
+        let count = self.insert_counter.fetch_add(1, Ordering::Relaxed);
+        self.maybe_cleanup(count.is_multiple_of(1000));
+
+        if self.max_sessions > 0 && self.len.load(Ordering::Relaxed) >= self.max_sessions {
+            self.evict_for(&session_id);
+        }
+
+        let mut shard = self.write_shard(&session_id);
+        if shard.insert(session_id, session).is_none() {
+            self.len.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// Make room for one session: starting at the shard `session_id` lands
+    /// in, drop that shard's expired sessions, or failing any, its least
+    /// recently used tenth. Only one shard is locked at a time.
+    fn evict_for(&self, session_id: &str) {
+        let start = self.shard_index(session_id);
+        for offset in 0..self.shards.len() {
+            let mut shard = self.write_shard_at((start + offset) % self.shards.len());
+            let before = shard.len();
+            shard.retain(|_, session| !session.is_expired(self.max_age));
+            let mut removed = before - shard.len();
+
+            if removed == 0 && !shard.is_empty() {
+                let batch = (shard.len() / 10).max(1);
+                let mut by_age: Vec<(Instant, String)> = shard
+                    .iter()
+                    .map(|(id, session)| (session.last_accessed, id.clone()))
+                    .collect();
+                if batch < by_age.len() {
+                    by_age.select_nth_unstable_by_key(batch - 1, |(accessed, _)| *accessed);
+                }
+                for (_, id) in by_age.iter().take(batch) {
+                    if shard.remove(id).is_some() {
+                        removed += 1;
+                    }
+                }
+            }
+
+            if removed > 0 {
+                self.len.fetch_sub(removed, Ordering::Relaxed);
+                return;
+            }
+        }
+    }
+
+    fn remove(&self, session_id: &str) -> Option<Session> {
+        let mut shard = self.write_shard(session_id);
+        let removed = shard.remove(session_id);
+        if removed.is_some() {
+            self.len.fetch_sub(1, Ordering::Relaxed);
+        }
+        removed
     }
 }
 
@@ -694,63 +847,34 @@ const IN_MEMORY_SESSION_CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
 
 impl SessionStore for InMemorySessionStore {
     fn exists(&self, session_id: &str) -> bool {
-        let sessions = self.sessions.read().unwrap();
-        sessions
+        // Every request carrying a session cookie passes here, so this is what
+        // arms the time-based sweep on a server that mints few sessions.
+        self.maybe_cleanup(false);
+        self.read_shard(session_id)
             .get(session_id)
             .is_some_and(|session| !session.is_expired(self.max_age))
     }
 
     fn get_or_create(&self, session_id: &str) -> String {
-        let count = self.request_counter.fetch_add(1, Ordering::Relaxed);
-        let should_cleanup_by_count = count.is_multiple_of(1000);
-
-        // Time-based cleanup: ensures that even very low traffic or bursty
-        // production workloads (the exact scenario reported: 1 worker, prod
-        // mode, default in_memory, complex app) will eventually reclaim memory
-        // from expired sessions instead of growing for hours.
-        let should_cleanup_by_time = {
-            if let Ok(last) = self.last_cleanup.lock() {
-                last.elapsed() >= IN_MEMORY_SESSION_CLEANUP_INTERVAL
-            } else {
-                false
-            }
-        };
-
-        if should_cleanup_by_count || should_cleanup_by_time {
-            self.cleanup();
-        }
-
-        {
-            let sessions = self.sessions.read().unwrap();
-            if sessions.contains_key(session_id) {
-                return session_id.to_string();
-            }
-        }
-
-        let mut sessions = self.sessions.write().unwrap();
-
-        if sessions.contains_key(session_id) {
+        if self.read_shard(session_id).contains_key(session_id) {
             return session_id.to_string();
         }
-
         let new_id = Uuid::new_v4().to_string();
-        sessions.insert(new_id.clone(), Session::new());
+        self.insert(new_id.clone(), Session::new());
         new_id
     }
 
     fn create_session(&self) -> String {
-        let mut sessions = self.sessions.write().unwrap();
         let session_id = Uuid::new_v4().to_string();
-        sessions.insert(session_id.clone(), Session::new());
+        self.insert(session_id.clone(), Session::new());
         session_id
     }
 
     fn get(&self, session_id: &str, key: &str) -> Option<JsonValue> {
-        let sessions = self.sessions.read().unwrap();
-        sessions
+        self.read_shard(session_id)
             .get(session_id)
             // Expiry is checked on read, not only by the periodic sweep. The
-            // sweep runs every 30s (or every 1000th request), so a session
+            // sweep runs every 30s (or every 1000th new session), so a session
             // stayed usable for up to half a minute past its TTL — the disk,
             // SoliDB and SoliKV drivers already checked on read.
             .filter(|session| !session.is_expired(self.max_age))
@@ -758,16 +882,16 @@ impl SessionStore for InMemorySessionStore {
     }
 
     fn set(&self, session_id: &str, key: &str, value: JsonValue) {
-        let mut sessions = self.sessions.write().unwrap();
-        if let Some(session) = sessions.get_mut(session_id) {
+        let mut shard = self.write_shard(session_id);
+        if let Some(session) = shard.get_mut(session_id) {
             session.touch();
             session.data.insert(key.to_string(), value);
         }
     }
 
     fn delete(&self, session_id: &str, key: &str) -> Option<JsonValue> {
-        let mut sessions = self.sessions.write().unwrap();
-        if let Some(session) = sessions.get_mut(session_id) {
+        let mut shard = self.write_shard(session_id);
+        if let Some(session) = shard.get_mut(session_id) {
             session.touch();
             return session.data.remove(key);
         }
@@ -775,34 +899,37 @@ impl SessionStore for InMemorySessionStore {
     }
 
     fn destroy(&self, session_id: &str) {
-        let mut sessions = self.sessions.write().unwrap();
-        sessions.remove(session_id);
+        self.remove(session_id);
     }
 
     fn regenerate(&self, old_id: &str) -> String {
-        let mut sessions = self.sessions.write().unwrap();
         let new_id = Uuid::new_v4().to_string();
-
-        if let Some(session) = sessions.remove(old_id) {
-            sessions.insert(new_id.clone(), session);
-        } else {
-            sessions.insert(new_id.clone(), Session::new());
-        }
-
+        let session = self.remove(old_id).unwrap_or_else(Session::new);
+        self.insert(new_id.clone(), session);
         new_id
     }
 
     fn cleanup(&self) {
+        if self
+            .sweeping
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
         {
-            let mut sessions = self.sessions.write().unwrap();
-            sessions.retain(|_, session| !session.is_expired(self.max_age));
+            return; // another thread is sweeping right now
         }
-
-        // Record that we just did a sweep so the time-based trigger doesn't
-        // fire again immediately.
-        if let Ok(mut last) = self.last_cleanup.lock() {
-            *last = Instant::now();
+        // Stamp first, so the time trigger doesn't fire on every call while
+        // this sweep walks the shards.
+        self.last_cleanup_ms.store(self.now_ms(), Ordering::Relaxed);
+        for index in 0..self.shards.len() {
+            let mut shard = self.write_shard_at(index);
+            let before = shard.len();
+            shard.retain(|_, session| !session.is_expired(self.max_age));
+            let removed = before - shard.len();
+            if removed > 0 {
+                self.len.fetch_sub(removed, Ordering::Relaxed);
+            }
         }
+        self.sweeping.store(false, Ordering::Release);
     }
 
     fn driver_name(&self) -> &'static str {
@@ -2542,5 +2669,61 @@ mod unknown_cookie_tests {
             "expired data must not read"
         );
         assert!(!store.exists(&id), "an expired session is not present");
+    }
+
+    /// The serve path mints sessions with `create_session`, never
+    /// `get_or_create`; the expiry sweep must run from there, or a server's
+    /// expired sessions are never removed.
+    #[test]
+    fn creating_a_session_sweeps_expired_ones() {
+        let store = InMemorySessionStore::new()
+            .with_max_age(Duration::from_millis(1))
+            .with_max_sessions(0)
+            .with_cleanup_interval(Duration::ZERO);
+        store.create_session();
+        store.create_session();
+        std::thread::sleep(Duration::from_millis(5));
+
+        store.create_session();
+        assert_eq!(store.session_count(), 1, "expired sessions must be removed");
+    }
+
+    /// A request that only reads its cookie arms the sweep too.
+    #[test]
+    fn probing_a_session_sweeps_expired_ones() {
+        let store = InMemorySessionStore::new()
+            .with_max_age(Duration::from_millis(1))
+            .with_max_sessions(0)
+            .with_cleanup_interval(Duration::ZERO);
+        let id = store.create_session();
+        std::thread::sleep(Duration::from_millis(5));
+
+        assert!(!store.exists(&id));
+        assert_eq!(store.session_count(), 0);
+    }
+
+    /// Past the cap, a new session evicts old ones instead of growing the map.
+    #[test]
+    fn the_store_never_holds_more_than_its_cap() {
+        let store = InMemorySessionStore::new().with_max_sessions(10);
+        let mut last = String::new();
+        for _ in 0..200 {
+            last = store.create_session();
+            assert!(store.session_count() <= 10, "cap exceeded");
+        }
+        assert!(store.exists(&last), "the newest session survives eviction");
+    }
+
+    /// Destroy and regenerate keep the count honest.
+    #[test]
+    fn destroy_and_regenerate_keep_the_count() {
+        let store = InMemorySessionStore::new().with_max_sessions(0);
+        let first = store.create_session();
+        store.set(&first, "user_id", JsonValue::from(1));
+        let moved = store.regenerate(&first);
+        assert_eq!(store.session_count(), 1);
+        assert_eq!(store.get(&moved, "user_id"), Some(JsonValue::from(1)));
+        store.destroy(&moved);
+        assert_eq!(store.session_count(), 0);
     }
 }

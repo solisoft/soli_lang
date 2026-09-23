@@ -99,6 +99,54 @@ impl BodyReservation {
     }
 }
 
+impl BodyReservation {
+    /// Bytes this guard currently holds against the budget.
+    pub fn bytes(&self) -> usize {
+        self.0
+    }
+
+    /// Extend this reservation to `total` bytes, or return `false` (holding
+    /// what it already had) when the extra would exceed the ceiling.
+    ///
+    /// This is what lets a body of unknown length pay for the bytes it has
+    /// actually sent rather than for the per-request cap up front: reserving
+    /// the full cap for every chunked upload let sixteen idle connections —
+    /// sending nothing at all — exhaust the default budget and turn every
+    /// other POST into a 503.
+    ///
+    /// With the budget disabled (ceiling `0`) this always succeeds and records
+    /// nothing, like [`try_acquire`](Self::try_acquire).
+    pub fn try_grow_to(&mut self, total: usize) -> bool {
+        if total <= self.0 {
+            return true;
+        }
+        let cap = max_inflight_body_bytes();
+        if cap == 0 {
+            return true;
+        }
+        let extra = total - self.0;
+        let mut current = INFLIGHT_BYTES.load(Ordering::Relaxed);
+        loop {
+            let next = current.saturating_add(extra);
+            if next > cap {
+                return false;
+            }
+            match INFLIGHT_BYTES.compare_exchange_weak(
+                current,
+                next,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    self.0 = total;
+                    return true;
+                }
+                Err(observed) => current = observed,
+            }
+        }
+    }
+}
+
 impl Drop for BodyReservation {
     fn drop(&mut self) {
         if self.0 > 0 {
@@ -160,13 +208,14 @@ pub fn register_body_limit_builtins(env: &mut Environment) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// `INFLIGHT_BYTES` is process-global and `cargo test` runs these in
     /// parallel, so a test that samples the counter has to hold this first or
-    /// it observes another test's reservation.
-    static BUDGET_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    /// it observes another test's reservation. Shared with the serve layer's
+    /// body-reading tests, which charge the same counter.
+    pub(crate) static BUDGET_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// The guard exists for its `Drop`; the counter must come back down on
     /// every path, or the server refuses uploads forever after a burst.
@@ -205,6 +254,38 @@ mod tests {
         drop(a);
         assert_eq!(inflight_body_bytes(), before + 4096);
         drop(b);
+        assert_eq!(inflight_body_bytes(), before);
+    }
+
+    /// Growing charges only the difference, and the grown total is what
+    /// `Drop` hands back.
+    #[test]
+    fn a_reservation_grows_incrementally_and_returns_the_whole() {
+        let _serial = BUDGET_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let before = inflight_body_bytes();
+        {
+            let mut held = BodyReservation::try_acquire(1024).expect("first slice");
+            assert!(held.try_grow_to(4096));
+            assert_eq!(held.bytes(), 4096);
+            assert_eq!(inflight_body_bytes(), before + 4096);
+            // Shrinking is a no-op, never a refund mid-read.
+            assert!(held.try_grow_to(100));
+            assert_eq!(inflight_body_bytes(), before + 4096);
+        }
+        assert_eq!(inflight_body_bytes(), before);
+    }
+
+    #[test]
+    fn growing_past_the_ceiling_is_refused_and_keeps_what_was_held() {
+        let _serial = BUDGET_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let before = inflight_body_bytes();
+        let cap = max_inflight_body_bytes();
+        {
+            let mut held = BodyReservation::try_acquire(512).expect("first slice");
+            assert!(!held.try_grow_to(cap + 1));
+            assert_eq!(held.bytes(), 512);
+            assert_eq!(inflight_body_bytes(), before + 512);
+        }
         assert_eq!(inflight_body_bytes(), before);
     }
 

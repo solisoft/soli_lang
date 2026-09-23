@@ -39,6 +39,9 @@ thread_local! {
     static HANDLER_PROGRAM_CACHE: RefCell<HashMap<String, crate::ast::Program>> = RefCell::new(HashMap::new());
 }
 
+/// Most parsed hook programs a thread keeps (see `get_or_compile_handler`).
+const HANDLER_PROGRAM_CACHE_MAX: usize = 256;
+
 /// Controller registry - stores metadata about all controllers.
 #[derive(Debug, Clone)]
 pub struct ControllerRegistry {
@@ -891,6 +894,12 @@ fn get_or_compile_handler(wrapped_source: &str) -> Result<crate::ast::Program, S
             .parse()
             .map_err(|e| format!("Parser error in handler: {}", e))?;
 
+        // Keyed by source, so every edit of a hook under hot reload adds an
+        // entry and the old ones are never looked up again. An app has a
+        // handful of hooks: past the cap, start over rather than keep them all.
+        if cache.len() >= HANDLER_PROGRAM_CACHE_MAX {
+            cache.clear();
+        }
         cache.insert(wrapped_source.to_string(), program.clone());
         Ok(program)
     })

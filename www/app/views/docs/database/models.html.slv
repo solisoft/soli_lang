@@ -236,7 +236,7 @@ user = User.find_by_email_and_active("alice@example.com", true)</code></pre>
             <div class="my-6 p-4 rounded-lg bg-rose-500/10 border border-rose-500/20">
                 <p class="text-rose-200/80 text-sm">
                     <strong>Security &mdash; <code>where(...)</code> filter forms.</strong>
-                    The Hash form (<code>where({field: value, ...})</code>) is safe for user input: keys are validated as <code>[A-Za-z_][A-Za-z0-9_]*</code> identifiers, operators are a fixed vocabulary (<code>gt</code>/<code>gte</code>/<code>lt</code>/<code>lte</code>/<code>eq</code>/<code>ne</code>/<code>like</code>/<code>ilike</code>/<code>in</code>/<code>or</code>/<code>and</code>), and values are bound, so nothing from <code>req["params"]</code> can become AQL or SQL syntax. The string form (<code>where("doc.foo == @foo", {...})</code>) splices the filter argument verbatim into the query &mdash; treat it as <strong>developer-trusted only</strong>, like a <code>format!()</code> template. Building a filter string from request data <strong>will leak injection</strong>. Prefer the hash form whenever it can express the predicate, including on the SQL adapters.
+                    The Hash form (<code>where({field: value, ...})</code>) is safe for user input: keys are validated as <code>[A-Za-z_][A-Za-z0-9_]*</code> identifiers of at most 128 characters (the same cap applies to <code>order</code> and <code>find_by</code> field names, on every adapter), operators are a fixed vocabulary (<code>gt</code>/<code>gte</code>/<code>lt</code>/<code>lte</code>/<code>eq</code>/<code>ne</code>/<code>like</code>/<code>ilike</code>/<code>in</code>/<code>or</code>/<code>and</code>), and values are bound, so nothing from <code>req["params"]</code> can become AQL or SQL syntax. The string form (<code>where("doc.foo == @foo", {...})</code>) splices the filter argument verbatim into the query &mdash; treat it as <strong>developer-trusted only</strong>, like a <code>format!()</code> template. Building a filter string from request data <strong>will leak injection</strong>. Prefer the hash form whenever it can express the predicate, including on the SQL adapters.
                 </p>
             </div>
         </div>
@@ -486,7 +486,7 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.find(id)</code></td>
-                    <td class="py-3 px-4 text-gray-400"><strong class="text-white">Raises</strong> <code>RecordNotFound</code> when the id is missing (auto-mapped to a <strong class="text-white">404</strong> HTTP response). Use <code>find_by</code> for optional lookups.</td>
+                    <td class="py-3 px-4 text-gray-400"><strong class="text-white">Raises</strong> <code>RecordNotFound</code> when the id is missing (auto-mapped to a <strong class="text-white">404</strong> HTTP response). Use <code>find_by</code> for optional lookups. A key that is empty, <code>.</code> or <code>..</code> is refused (<code>invalid document key</code>) here and in <code>update</code>/<code>delete</code> &mdash; as are such collection names in the raw SoliDB client (<code>invalid path segment</code>).</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.find_by(field, value)</code></td>

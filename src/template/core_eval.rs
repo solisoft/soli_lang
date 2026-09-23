@@ -49,8 +49,9 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
             crate::interpreter::builtins::named_routes::register_named_route_helpers(&mut env);
             let env_rc = Rc::new(RefCell::new(env));
             // Form builder layer (form_with / csrf_field / button_to) is
-            // pure Soli evaluated into the shared env — its class methods
-            // close over env_rc, which is why it registers after wrapping.
+            // pure Soli, evaluated once per thread into an environment of its
+            // own and defined here — evaluated into env_rc, its functions held
+            // env_rc and every hot reload leaked the whole registry.
             if let Err(e) = crate::interpreter::builtins::template::register_form_builder(&env_rc) {
                 eprintln!("[WARN] template form builder failed to load: {}", e);
             }
@@ -573,6 +574,27 @@ mod tests {
         assert_eq!(called, Value::String("/admin".into()));
 
         clear_routes();
+        reset_builtins_rc();
+    }
+
+    /// A hot reload drops the cached env; nothing evaluated into it may hold
+    /// it, or every reload leaks a whole builtins registry.
+    #[test]
+    fn test_reset_builtins_rc_frees_the_old_env() {
+        reset_builtins_rc();
+        let old = Rc::downgrade(&get_builtins_rc());
+        reset_builtins_rc();
+        assert!(
+            old.upgrade().is_none(),
+            "the template builtins env outlived its reset"
+        );
+
+        // The form builder still resolves in the rebuilt env.
+        let data = make_hash(vec![]);
+        let mut interp = create_template_interpreter(&data);
+        let form_with =
+            evaluate_with_interpreter(&Expr::Var("form_with".to_string()), &mut interp).unwrap();
+        assert!(!matches!(form_with, Value::Null));
         reset_builtins_rc();
     }
 

@@ -79,9 +79,38 @@ fn send_chunk(id: usize, bytes: Vec<u8>) -> bool {
 static SUBSCRIBERS: TenantValue<HashMap<String, Vec<Sender<Vec<u8>>>>> =
     TenantValue::new(HashMap::new);
 
+/// Registrations between two sweeps of every topic for disconnected clients.
+const SUBSCRIBER_SWEEP_EVERY: usize = 256;
+
+static REGISTRATIONS: AtomicUsize = AtomicUsize::new(0);
+
 /// Register a subscriber's chunk sender under `topic`.
+///
+/// Disconnected clients used to be dropped only by a broadcast to their
+/// topic, so a quiet topic kept every sender (and its channel buffer) that
+/// ever subscribed to it. Registering prunes the topic it joins, and every
+/// `SUBSCRIBER_SWEEP_EVERY`th registration sweeps all topics, removing the
+/// ones left empty.
 pub fn register_subscriber(topic: &str, tx: Sender<Vec<u8>>) {
-    SUBSCRIBERS.write(|subs| subs.entry(topic.to_string()).or_default().push(tx));
+    let sweep_all = REGISTRATIONS
+        .fetch_add(1, Ordering::Relaxed)
+        .is_multiple_of(SUBSCRIBER_SWEEP_EVERY);
+    SUBSCRIBERS.write(|subs| {
+        if sweep_all {
+            prune_closed_subscribers(subs);
+        }
+        let list = subs.entry(topic.to_string()).or_default();
+        list.retain(|live| !live.is_closed());
+        list.push(tx);
+    });
+}
+
+/// Drop every disconnected sender, and every topic left with none.
+fn prune_closed_subscribers(subs: &mut HashMap<String, Vec<Sender<Vec<u8>>>>) {
+    subs.retain(|_, list| {
+        list.retain(|tx| !tx.is_closed());
+        !list.is_empty()
+    });
 }
 
 /// Fan out `bytes` to every live subscriber of `topic`, pruning disconnected
@@ -543,6 +572,30 @@ mod tests {
         assert_eq!(frame, "data: {\"id\":7}\n\n");
         // No subscribers on an unknown topic -> zero delivered.
         assert_eq!(broadcast_sse("unit_topic_none", "x", None), 0);
+    }
+
+    /// A quiet topic never broadcasts, so registering is what drops the
+    /// clients that left it.
+    #[test]
+    fn subscribing_prunes_disconnected_clients_of_a_quiet_topic() {
+        let topic = "unit_topic_quiet";
+        let (gone_tx, gone_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(4);
+        register_subscriber(topic, gone_tx);
+        drop(gone_rx);
+        let (tx, _rx) = tokio::sync::mpsc::channel::<Vec<u8>>(4);
+        register_subscriber(topic, tx);
+        let held = SUBSCRIBERS.read(|subs| subs.get(topic).map(Vec::len).unwrap_or(0));
+        assert_eq!(held, 1, "the disconnected sender must be gone");
+    }
+
+    #[test]
+    fn a_sweep_removes_topics_left_empty() {
+        let mut subs: HashMap<String, Vec<Sender<Vec<u8>>>> = HashMap::new();
+        let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(4);
+        subs.insert("abandoned".to_string(), vec![tx]);
+        drop(rx);
+        prune_closed_subscribers(&mut subs);
+        assert!(subs.is_empty());
     }
 
     #[test]

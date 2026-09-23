@@ -836,7 +836,10 @@ this class-based API.
 > validated up-front: schemes other than `http`/`https` are rejected, as are
 > hosts that resolve to loopback/private/link-local IP ranges (so a request to
 > `http://169.254.169.254/...` for cloud metadata, or `http://10.0.0.1/`, fails
-> immediately). Auto-redirects are **not** followed by the synchronous
+> immediately). The blocklist also covers `0.0.0.0/8`, `192.0.0.0/24`,
+> `198.18.0.0/15` and `240.0.0.0/4`, and IPv6 addresses that embed a blocked
+> IPv4 — NAT64 (`64:ff9b::/96`, `64:ff9b:1::/48`), 6to4 (`2002::/16`), Teredo
+> and IPv4-compatible forms. Auto-redirects are **not** followed by the synchronous
 > `HTTP.get` / `HTTP.post` / `HTTP.request` paths — a 3xx response is returned
 > as-is so a redirect-controlled `Location` cannot bypass the blocklist.
 > Asynchronous and Model-driven HTTP (the reqwest-backed paths) follow redirects
@@ -1987,6 +1990,23 @@ Alias for `Crypto.argon2_hash`.
 
 Alias for `Crypto.argon2_verify`.
 
+#### Crypto.totp_verify(secret, code, time?, period?)
+
+Verifies a TOTP code (RFC 6238) against a Base32 secret. It accepts the current
+code and the previous/next step (±1 step, so a code stays valid for up to ~90 s
+at the default 30 s period) to tolerate clock drift.
+
+> **No replay protection.** The function is stateless: the same code verifies
+> again and again within its window. Your app must remember the **last accepted
+> time step per user** and refuse a code at or before it, and must **rate-limit**
+> attempts — six digits are only 10⁶ guesses.
+
+```soli
+if Crypto.totp_verify(user.totp_secret, params["code"])
+  # compare the step against user.totp_last_step before accepting
+end
+```
+
 ### X25519 Key Exchange
 
 #### Crypto.x25519_keypair() / x25519_keypair()
@@ -2061,7 +2081,10 @@ left-padded with zero octets to the modulus width (`k = ceil(bits(modulus)/8)`),
 matching the RSA convention where a signature or ciphertext is always `k` octets
 wide — so the output drops straight into the PKCS#1 helpers.
 
-**Returns:** String — big-endian hex, `k` octets wide. Errors if the modulus is zero.
+**Returns:** String — big-endian hex, `k` octets wide. Errors if the modulus is zero,
+or if an operand is over its size cap: modulus and exponent at most **8192 bits**,
+base at most **16384 bits** (a request-supplied operand could otherwise pin a
+worker for minutes).
 
 ```soli
 # 4^13 mod 497 = 445 (0x01bd); modulus 0x01f1 is 2 octets, so output is 2 octets
@@ -2084,6 +2107,11 @@ Strips PKCS#1 v1.5 padding, returning the embedded data. Validates the
 that every padding octet is `0xFF`.
 
 **Returns:** String — the recovered data octets as hex. Errors on malformed padding.
+
+> **Not constant-time.** Which check fails, and when, leaks through timing and
+> through the error itself. Use it for signature verification and interop only;
+> never surface its errors (or their timing) from an endpoint that decrypts
+> attacker-supplied ciphertext — that is a Bleichenbacher padding oracle.
 
 ```soli
 # RSA sign/verify round-trip: sign a digest with the private exponent d,

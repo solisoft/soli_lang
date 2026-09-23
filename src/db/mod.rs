@@ -19,6 +19,8 @@ mod adapter;
 mod caps;
 pub mod columns;
 pub mod ddl;
+#[cfg(any(feature = "postgres", feature = "mysql", feature = "sqlite"))]
+mod ensured;
 pub mod error;
 pub mod hash_filter;
 pub mod import;
@@ -43,8 +45,9 @@ pub use adapter::{parse_adapter, Adapter, AdapterConfig};
 pub use caps::BackendCaps;
 pub use error::DbError;
 pub use registry::{
-    active_connection_name, active_spec, clear_registry_override, init_from_app_path, registry,
-    set_registry_for_tests, with_connection, ConnectionRegistry, ConnectionSpec,
+    active_adapter, active_connection_name, active_spec, clear_registry_override,
+    init_from_app_path, registry, set_registry_for_tests, with_active_spec, with_connection,
+    ConnectionRegistry, ConnectionSpec,
 };
 pub use sql_compile::{
     ExistsFilter, GroupAgg, ListQuery, ListQueryParts, SoftDeleteMode as SqlSoftDeleteMode, SqlAgg,
@@ -128,34 +131,34 @@ pub fn config() -> AdapterConfig {
 
 /// Capabilities of the **active** (or default) connection.
 pub fn caps() -> BackendCaps {
-    active_spec()
-        .map(|s| s.adapter.caps())
+    active_adapter()
+        .map(|adapter| adapter.caps())
         .unwrap_or_else(|_| BackendCaps::solidb())
 }
 
 /// True when the active connection is a SQL document backend.
 pub fn is_sql() -> bool {
-    active_spec().map(|s| s.is_sql()).unwrap_or(false)
+    active_adapter().map(|a| a.is_sql()).unwrap_or(false)
 }
 
 /// True when the active connection is PostgreSQL.
 pub fn is_postgres() -> bool {
-    active_spec()
-        .map(|s| s.adapter == Adapter::Postgres)
+    active_adapter()
+        .map(|a| a == Adapter::Postgres)
         .unwrap_or(false)
 }
 
 /// True when the active connection is MySQL.
 pub fn is_mysql() -> bool {
-    active_spec()
-        .map(|s| s.adapter == Adapter::Mysql)
+    active_adapter()
+        .map(|a| a == Adapter::Mysql)
         .unwrap_or(false)
 }
 
 /// True when the active connection is SQLite.
 pub fn is_sqlite() -> bool {
-    active_spec()
-        .map(|s| s.adapter == Adapter::Sqlite)
+    active_adapter()
+        .map(|a| a == Adapter::Sqlite)
         .unwrap_or(false)
 }
 

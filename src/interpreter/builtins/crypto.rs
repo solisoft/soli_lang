@@ -481,12 +481,20 @@ fn value_to_octets(value: &Value, what: &str) -> Result<Vec<u8>, String> {
     }
 }
 
+/// Largest modulus / exponent `Crypto.modexp` accepts, in bits.
+const MODEXP_MAX_BITS: u64 = 8192;
+
 /// Modular exponentiation `base^exp mod modulus` over big-endian octet strings.
 ///
 /// The result is left-padded with zero octets to the modulus length `k`
 /// (`k = ceil(bits(modulus) / 8)`), matching the RSA convention where a
 /// signature / ciphertext is always `k` octets wide. This makes the output
 /// directly composable with the PKCS#1 padding helpers.
+///
+/// Operands are capped at [`MODEXP_MAX_BITS`] (the base at twice that): the
+/// cost of `modpow` grows with `bits(exp) · bits(modulus)²`, so an unbounded
+/// call with multi-megabit operands pins a worker for minutes. 8192 bits
+/// covers every RSA key size in use.
 pub(crate) fn do_modexp(base: &[u8], exp: &[u8], modulus: &[u8]) -> Result<Vec<u8>, String> {
     let m = BigUint::from_bytes_be(modulus);
     if m == BigUint::from(0u32) {
@@ -494,6 +502,18 @@ pub(crate) fn do_modexp(base: &[u8], exp: &[u8], modulus: &[u8]) -> Result<Vec<u
     }
     let b = BigUint::from_bytes_be(base);
     let e = BigUint::from_bytes_be(exp);
+    for (name, bits, cap) in [
+        ("modulus", m.bits(), MODEXP_MAX_BITS),
+        ("exponent", e.bits(), MODEXP_MAX_BITS),
+        ("base", b.bits(), 2 * MODEXP_MAX_BITS),
+    ] {
+        if bits > cap {
+            return Err(format!(
+                "{} is {} bits, above the {}-bit limit",
+                name, bits, cap
+            ));
+        }
+    }
     let result = b.modpow(&e, &m);
 
     let k = (m.bits().div_ceil(8) as usize).max(1);
@@ -2203,6 +2223,25 @@ mod tests {
         // 497 = 0x01F1, 445 = 0x01BD; modulus needs 9 bits -> k = 2 octets.
         let out = do_modexp(&[4], &[13], &[0x01, 0xF1]).unwrap();
         assert_eq!(out, vec![0x01, 0xBD]);
+    }
+
+    #[test]
+    fn modexp_rejects_oversized_operands() {
+        // 8193-bit values: a leading 0x01 byte followed by 1024 bytes.
+        let mut big = vec![0x01u8];
+        big.extend(std::iter::repeat_n(0xFFu8, 1024));
+        let err = do_modexp(&[2], &[3], &big).unwrap_err();
+        assert!(
+            err.contains("modulus") && err.contains("8192-bit"),
+            "{}",
+            err
+        );
+        let err = do_modexp(&[2], &big, &[0x01, 0xF1]).unwrap_err();
+        assert!(err.contains("exponent"), "{}", err);
+        // Exactly 8192 bits (with leading zero octets that don't count) is fine.
+        let mut max = vec![0x00u8, 0x00];
+        max.extend(std::iter::repeat_n(0xFFu8, 1024));
+        assert_eq!(do_modexp(&[2], &[3], &max).unwrap().len(), 1024);
     }
 
     #[test]

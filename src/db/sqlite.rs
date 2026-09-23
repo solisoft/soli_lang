@@ -433,9 +433,11 @@ fn get_on(conn: &mut SqConn, table: &str, key: &str) -> Result<Option<serde_json
     // Traced here rather than in `get`: this is the per-key lookup a loop turns
     // into an N+1, and write paths read back through it too.
     let _trace = super::trace::start(&sql, &[SqlBind::Text(key.to_string())]);
+    // Per-connection statement cache: the same few document statements run on
+    // every request, and SQLite re-prepares a cached one itself on a schema change.
     let row: Option<String> = conn
-        .query_row(&sql, [key], |r| r.get(0))
-        .optional()
+        .prepare_cached(&sql)
+        .and_then(|mut stmt| stmt.query_row([key], |r| r.get(0)).optional())
         .map_err(|e| lite_error("sqlite get", &e))?;
     match row {
         Some(s) => serde_json::from_str(&s)
@@ -448,9 +450,30 @@ fn get_on(conn: &mut SqConn, table: &str, key: &str) -> Result<Option<serde_json
 pub fn insert(
     table: &str,
     key: Option<&str>,
+    document: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    // Only a retry after a stale "table exists" memo needs the document twice.
+    let mut document = Some(document);
+    super::ensured::write_with_table(table, has_active_tx(), ensure_table, |may_retry| {
+        let attempt = if may_retry {
+            document.clone()
+        } else {
+            document.take()
+        };
+        insert_into_existing(
+            table,
+            key,
+            attempt.expect("document consumed only by the last attempt"),
+        )
+    })
+}
+
+/// `insert` minus the `ensure_table`, which `ensured::write_with_table` owns.
+fn insert_into_existing(
+    table: &str,
+    key: Option<&str>,
     mut document: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    ensure_table(table)?;
     let key = resolve_key(key, &mut document)?;
     if let Some(obj) = document.as_object_mut() {
         obj.insert("_key".to_string(), serde_json::json!(key));
@@ -463,7 +486,8 @@ pub fn insert(
     let doc_str = document.to_string();
     let _trace = super::trace::start_plain(&sql);
     with_conn(|conn| {
-        conn.execute(&sql, rusqlite::params![&key, &doc_str])
+        conn.prepare_cached(&sql)
+            .and_then(|mut stmt| stmt.execute(rusqlite::params![&key, &doc_str]))
             .map_err(|e| lite_error("sqlite insert", &e))?;
         get_on(conn, table, &key)?.ok_or_else(|| "sqlite insert: row missing after write".into())
     })
@@ -471,7 +495,16 @@ pub fn insert(
 
 /// Insert many documents in one statement per chunk.
 pub fn insert_many(table: &str, rows: &[(String, serde_json::Value)]) -> Result<u64, String> {
-    ensure_table(table)?;
+    super::ensured::write_with_table(table, has_active_tx(), ensure_table, |_| {
+        insert_many_into_existing(table, rows)
+    })
+}
+
+/// `insert_many` minus the `ensure_table`, which `ensured::write_with_table` owns.
+fn insert_many_into_existing(
+    table: &str,
+    rows: &[(String, serde_json::Value)],
+) -> Result<u64, String> {
     let compiled = compile_insert_many_d(Dialect::Sqlite, table, rows)?;
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
@@ -493,10 +526,33 @@ pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> 
 pub fn update(
     table: &str,
     key: &str,
+    document: serde_json::Value,
+    merge: bool,
+) -> Result<serde_json::Value, String> {
+    // Only a retry after a stale "table exists" memo needs the document twice.
+    let mut document = Some(document);
+    super::ensured::write_with_table(table, has_active_tx(), ensure_table, |may_retry| {
+        let attempt = if may_retry {
+            document.clone()
+        } else {
+            document.take()
+        };
+        update_existing(
+            table,
+            key,
+            attempt.expect("document consumed only by the last attempt"),
+            merge,
+        )
+    })
+}
+
+/// `update` minus the `ensure_table`, which `ensured::write_with_table` owns.
+fn update_existing(
+    table: &str,
+    key: &str,
     mut document: serde_json::Value,
     merge: bool,
 ) -> Result<serde_json::Value, String> {
-    ensure_table(table)?;
     if let Some(obj) = document.as_object_mut() {
         obj.insert("_key".to_string(), serde_json::json!(key));
     }
@@ -518,7 +574,8 @@ pub fn update(
     );
     let _trace = super::trace::start_plain(&sql);
     with_conn(|conn| {
-        conn.execute(&sql, rusqlite::params![key, &doc_str])
+        conn.prepare_cached(&sql)
+            .and_then(|mut stmt| stmt.execute(rusqlite::params![key, &doc_str]))
             .map_err(|e| lite_error("sqlite update", &e))?;
         get_on(conn, table, key)?.ok_or_else(|| "sqlite update: row missing".into())
     })
@@ -727,6 +784,8 @@ pub fn ensure_table(table: &str) -> Result<(), String> {
 }
 
 pub fn drop_table(table: &str) -> Result<(), String> {
+    // Tables may be gone after this: stop skipping their `ensure_table`.
+    super::ensured::forget_all();
     let ddl = drop_table_sql_d(Dialect::Sqlite, table)?;
     with_conn(|conn| {
         conn.execute_batch(&ddl)
@@ -783,6 +842,8 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
 /// sidecars, which would otherwise resurrect committed data into the next file
 /// of the same name.
 pub fn create_or_drop_database(drop: bool) -> Result<String, String> {
+    // Tables may be gone after this: stop skipping their `ensure_table`.
+    super::ensured::forget_all();
     let spec = active_spec()?;
     let url = spec
         .url
@@ -916,6 +977,8 @@ pub fn dump_schema() -> Result<String, String> {
 
 /// Run compiled DDL (used by migrations and by the column-mode test harness).
 pub fn execute_ddl(sql: &str) -> Result<(), String> {
+    // Tables may be gone after this: stop skipping their `ensure_table`.
+    super::ensured::forget_all();
     with_conn(|conn| {
         conn.execute_batch(sql)
             .map_err(|e| lite_error("sqlite ddl", &e))
@@ -947,6 +1010,8 @@ fn reset_sqlite_session(conn: &rusqlite::Connection) {
 /// `db.execute`: runs on the pooled connection, resetting the session afterwards
 /// so a stray `ATTACH` / `PRAGMA` cannot poison it.
 pub fn execute_raw(sql: &str) -> Result<(), String> {
+    // Tables may be gone after this: stop skipping their `ensure_table`.
+    super::ensured::forget_all();
     // Still resolved so a connection with no `url` is refused with the same
     // message as every other sqlite entry point.
     let spec = active_spec()?;

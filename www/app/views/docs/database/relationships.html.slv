@@ -365,6 +365,7 @@ users = User.includes("posts", "published = @p", {
 }).all</code></pre>
         </div>
     </div>
+    <p class="text-gray-400 -mt-8 mb-12 text-sm">When a hash filter on <code class="text-amber-300">includes</code> is evaluated in memory, <code>like</code> / <code>ilike</code> use a linear-time matcher (a pattern like <code>%a%a%a%&hellip;</code> can no longer blow up), and <code>_</code> matches one <strong class="text-white">character</strong>, not one byte &mdash; as SQL does.</p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Includes with Field Projection</h2>
     <p class="text-gray-400 mb-4">Use a hash argument to select specific fields on included relations (without filtering):</p>

@@ -805,6 +805,9 @@ pub fn ensure_string_form_bind_value(
     }
 }
 
+/// Longest field name `validate_field_name` accepts.
+pub const MAX_FIELD_NAME_LEN: usize = 128;
+
 /// Validate that a string is a safe AQL identifier before it's
 /// `format!`-interpolated into a query template such as
 /// `FOR doc IN ... FILTER doc.{field} == @val` or
@@ -819,6 +822,14 @@ pub fn ensure_string_form_bind_value(
 /// `method` is the user-facing call name (e.g. `"find_by"`) so the error
 /// message points the developer at the right line.
 pub fn validate_field_name(field: &str, method: &str) -> Result<(), String> {
+    // A field name is often a request parameter (`Post.order(params["sort"])`)
+    // and ends up in query text, logs and caches; no real field is this long.
+    if field.len() > MAX_FIELD_NAME_LEN {
+        return Err(format!(
+            "{}() field name is longer than {} characters",
+            method, MAX_FIELD_NAME_LEN
+        ));
+    }
     let mut chars = field.chars();
     let first_ok = matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_');
     if !first_ok {
@@ -3000,5 +3011,32 @@ mod reserved_document_key_tests {
         let patch = serde_json::json!({"title": "new"});
         let merged = merge_json_documents(None, &patch);
         assert_eq!(merged, patch);
+    }
+}
+
+#[cfg(test)]
+mod field_name_length_tests {
+    use super::*;
+
+    #[test]
+    fn an_overlong_field_name_is_rejected() {
+        let longest = "a".repeat(MAX_FIELD_NAME_LEN);
+        assert!(validate_field_name(&longest, "order").is_ok());
+        let too_long = "a".repeat(MAX_FIELD_NAME_LEN + 1);
+        assert!(validate_field_name(&too_long, "order").is_err());
+    }
+
+    /// `order` keeps its field as an owned string: a sort column taken from a
+    /// request must not be interned into the process-wide symbol table.
+    #[test]
+    fn ordering_does_not_intern_the_field() {
+        let field = format!("never_interned_sort_{}", uuid::Uuid::new_v4().simple());
+        let mut qb = crate::interpreter::builtins::model::query::QueryBuilder::new(
+            "Post".to_string(),
+            "posts".to_string(),
+        );
+        qb.set_order(field.clone(), "desc".to_string());
+        assert!(crate::interpreter::symbol::lookup_symbol(&field).is_none());
+        assert_eq!(qb.order_by, Some((field, "desc".to_string())));
     }
 }

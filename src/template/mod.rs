@@ -81,6 +81,13 @@ pub struct TemplateCache {
     /// Cached path resolutions (template_name -> resolved_path).
     /// Arc so cache hits are pointer increments, not heap clones.
     path_cache: RwLock<HashMap<String, Arc<PathBuf>>>,
+    /// Negative path resolutions (template_name -> the "not found" error), so
+    /// a name that resolves to nothing — an optional per-controller layout,
+    /// say — stops costing a filesystem probe per extension on every render.
+    /// Production only: under `--dev` a view created while the server runs
+    /// must be found on the next request, so misses are never remembered.
+    /// Bounded like `path_cache`; emptied by [`TemplateCache::clear`].
+    missing_cache: RwLock<HashMap<String, String>>,
 }
 
 /// Which kind of nested include is being rendered — selects the path-resolution
@@ -99,6 +106,7 @@ impl TemplateCache {
             views_dir: views_dir.into(),
             cache: RwLock::new(HashMap::new()),
             path_cache: RwLock::new(HashMap::new()),
+            missing_cache: RwLock::new(HashMap::new()),
         }
     }
 
@@ -535,8 +543,33 @@ impl TemplateCache {
             return Ok(path);
         }
 
+        let remember_misses = !crate::interpreter::builtins::template::is_dev_mode();
+        if remember_misses {
+            if let Some(err) = self
+                .missing_cache
+                .read()
+                .ok()
+                .and_then(|c| c.get(name).cloned())
+            {
+                return Err(err);
+            }
+        }
+
         // Cache miss - do file system lookup
-        let resolved = Arc::new(self.do_resolve_template_path(name)?);
+        let resolved = match self.do_resolve_template_path(name) {
+            Ok(path) => Arc::new(path),
+            Err(err) => {
+                if remember_misses {
+                    if let Ok(mut missing) = self.missing_cache.write() {
+                        if missing.len() >= PATH_CACHE_MAX_SIZE {
+                            missing.clear();
+                        }
+                        missing.insert(name.to_string(), err.clone());
+                    }
+                }
+                return Err(err);
+            }
+        };
 
         // Cache the result (with eviction if cache is too large)
         if let Ok(mut path_cache) = self.path_cache.write() {
@@ -681,6 +714,9 @@ impl TemplateCache {
         if let Ok(mut c) = self.path_cache.write() {
             c.clear();
         }
+        if let Ok(mut c) = self.missing_cache.write() {
+            c.clear();
+        }
     }
 
     /// Check if any tracked templates have changed.
@@ -723,12 +759,12 @@ pub fn html_response(body: String, status: i64) -> Value {
     // injected when nav is off, restoring the previous behavior unchanged.
     let nav_on = crate::serve::nav::is_enabled();
     let body = if nav_on {
-        crate::serve::nav::inject_nav_tag(&body)
+        crate::serve::nav::inject_nav_tag(body)
     } else {
         body
     };
     let body = if !nav_on && crate::serve::prefetch::is_enabled() {
-        crate::serve::prefetch::inject_prefetch_tag(&body)
+        crate::serve::prefetch::inject_prefetch_tag(body)
     } else {
         body
     };
@@ -736,16 +772,16 @@ pub fn html_response(body: String, status: i64) -> Value {
     // Native bridge: injected only for pages that called `native_channel(...)`,
     // which is what puts the `soli-native` meta tag in the HTML. Pages that
     // want nothing from the shell get no script and open no stream.
-    let body = crate::serve::native::inject_native_tag(&body);
+    let body = crate::serve::native::inject_native_tag(body);
 
     // Camera preview + scan loop, for pages carrying a `data-soli-camera`
     // element. Independent of the native bridge: a page can show a camera
     // without wanting notifications, and vice versa.
-    let body = crate::serve::camera::inject_camera_tag(&body);
+    let body = crate::serve::camera::inject_camera_tag(body);
 
     // Motion sensors (gyroscope / accelerometer / orientation), for pages that
     // enabled them with `motion_sensors()` or reference `soli.sensors`.
-    let body = crate::serve::sensors::inject_sensors_tag(&body);
+    let body = crate::serve::sensors::inject_sensors_tag(body);
 
     // Compute a content-derived ETag so the shipped hover-prefetch feature
     // actually delivers "instant navigation": Chrome reuses the prefetched
@@ -780,32 +816,19 @@ pub fn html_response(body: String, status: i64) -> Value {
     Value::Hash(Rc::new(RefCell::new(result)))
 }
 
-/// Compute a deterministic ETag for an HTML response body using FNV-1a 64-bit.
+/// Compute a deterministic ETag for an HTML response body.
 ///
-/// Deterministic within AND across processes — no random seed — so a prefetch
-/// stored by one worker can be revalidated against another worker's render
-/// without unnecessary body re-delivery. FNV is not cryptographically strong;
-/// that's fine: the ETag is a cache validator, not an auth token. Collision
-/// probability between two different bodies is ~2^-32, which means one false
-/// 304 per ~4 billion distinct renders — far below anything that matters for
-/// navigation caching.
-///
-/// Format: `W/` weak validator with quoted 16-hex-digit body (RFC 7232 §2.3).
-/// Weak (not strong) so the header survives content-encoding transformations
-/// applied by CDNs in front of the app — Cloudflare and friends strip strong
-/// ETags when they re-encode (Brotli/gzip) because the byte stream the client
-/// receives no longer matches what the origin hashed. Weak validators assert
-/// semantic equivalence rather than byte-identity, which is exactly what we
-/// need: the same render is "the same response" whether compressed or not.
-/// Compute a deterministic ETag for an HTML response body using FNV-1a 64-bit.
-///
-/// Deterministic within AND across processes — no random seed — so a prefetch
-/// stored by one worker can be revalidated against another worker's render
-/// without unnecessary body re-delivery. FNV is not cryptographically strong;
-/// that's fine: the ETag is a cache validator, not an auth token. Collision
-/// probability between two different bodies is ~2^-32, which means one false
-/// 304 per ~4 billion distinct renders — far below anything that matters for
-/// navigation caching.
+/// Deterministic within AND across processes — no random seed, no dependence
+/// on CPU features — so a prefetch stored by one worker (or host) can be
+/// revalidated against another's render without unnecessary body re-delivery.
+/// The hash is not cryptographically strong; that's fine: the ETag is a cache
+/// validator, not an auth token. It consumes the body eight bytes at a time
+/// (one multiply + xor-shift per word, both bijections of the state, so two
+/// bodies that differ in a single word never collide) and finishes with the
+/// MurmurHash3 64-bit avalanche. Collision probability between two different
+/// bodies is on the order of 2^-64 — far below anything that matters for
+/// navigation caching. The previous byte-at-a-time FNV-1a cost one multiply
+/// per byte, which dominated for large pages.
 ///
 /// Format: `W/` weak validator with quoted 16-hex-digit body (RFC 7232 §2.3).
 /// Weak (not strong) so the header survives content-encoding transformations
@@ -815,14 +838,33 @@ pub fn html_response(body: String, status: i64) -> Value {
 /// semantic equivalence rather than byte-identity, which is exactly what we
 /// need: the same render is "the same response" whether compressed or not.
 pub fn etag_for_body(body: &str) -> String {
-    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
-    const FNV_PRIME: u64 = 0x100000001b3;
-    let mut hash = FNV_OFFSET;
-    for &b in body.as_bytes() {
-        hash ^= b as u64;
-        hash = hash.wrapping_mul(FNV_PRIME);
+    format!("W/\"{:016x}\"", body_hash_64(body.as_bytes()))
+}
+
+/// Word-at-a-time 64-bit hash behind [`etag_for_body`]. Seed and constants are
+/// fixed so the value is stable across processes and machines.
+fn body_hash_64(bytes: &[u8]) -> u64 {
+    const SEED: u64 = 0xcbf2_9ce4_8422_2325;
+    const MUL: u64 = 0x9e37_79b9_7f4a_7c15;
+    let mut hash = SEED ^ (bytes.len() as u64).wrapping_mul(MUL);
+    let (chunks, tail) = bytes.as_chunks::<8>();
+    for chunk in chunks {
+        hash = (hash ^ u64::from_le_bytes(*chunk)).wrapping_mul(MUL);
+        hash ^= hash >> 29;
     }
-    format!("W/\"{:016x}\"", hash)
+    if !tail.is_empty() {
+        let mut buf = [0u8; 8];
+        buf[..tail.len()].copy_from_slice(tail);
+        hash = (hash ^ u64::from_le_bytes(buf)).wrapping_mul(MUL);
+        hash ^= hash >> 29;
+    }
+    // MurmurHash3 fmix64 finalizer.
+    hash ^= hash >> 33;
+    hash = hash.wrapping_mul(0xff51_afd7_ed55_8ccd);
+    hash ^= hash >> 33;
+    hash = hash.wrapping_mul(0xc4ce_b9fe_1a85_ec53);
+    hash ^= hash >> 33;
+    hash
 }
 
 /// Check if a template path is a markdown file.

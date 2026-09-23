@@ -151,6 +151,69 @@ pub fn split_url(url: &str) -> Result<(String, SslConfig), String> {
     Ok((cleaned, config))
 }
 
+/// Whether a connection to `url` in `mode` deserves the unverified-TLS warning:
+/// a network host (not loopback, not a Unix socket) reached with a mode that
+/// does not check the server's identity (`disable`, `prefer`, `require`).
+/// `prefer` — the default — may even fall back to cleartext, so anyone on the
+/// path can read or rewrite the traffic, credentials included.
+fn is_unverified_remote(url: &str, mode: SslMode) -> bool {
+    if mode.verifies() {
+        return false;
+    }
+    // A libpq keyword string (`host=… dbname=…`) has no URL to inspect; stay
+    // quiet rather than guess.
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    let host = match parsed.host() {
+        None => return false,
+        Some(url::Host::Domain(domain)) => domain.to_ascii_lowercase(),
+        Some(url::Host::Ipv4(ip)) => return !ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => return !ip.is_loopback(),
+    };
+    let decoded = decode(&host);
+    let is_local = decoded.is_empty()
+        || decoded.starts_with('/')
+        || decoded == "localhost"
+        || decoded.ends_with(".localhost")
+        || decoded
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback());
+    !is_local
+}
+
+/// Warn once per process when a production (non-`--dev`) app talks to a remote
+/// SQL server without verifying its certificate.
+///
+/// The default stays `prefer` — changing it would break every self-signed and
+/// plaintext deployment that works today — but an operator should hear that
+/// the default is unauthenticated and may silently fall back to cleartext.
+pub fn warn_if_unverified(url: &str, config: &SslConfig) {
+    static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if crate::interpreter::builtins::template::is_dev_mode() {
+        return;
+    }
+    let mode = config.mode();
+    if !is_unverified_remote(url, mode) {
+        return;
+    }
+    if WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let consequence = match mode {
+        SslMode::Disable => "the connection is cleartext",
+        SslMode::Prefer => {
+            "the server certificate is not checked and a failed handshake falls back to cleartext"
+        }
+        _ => "the server certificate is not checked",
+    };
+    eprintln!(
+        "Warning: SQL connection to a remote host uses sslmode={} — {consequence}. \
+         Add ?sslmode=verify-full (or verify-ca) to DATABASE_URL.",
+        mode.as_str()
+    );
+}
+
 /// Percent-decode a query value, leaving it alone if it is not valid encoding.
 fn decode(raw: &str) -> String {
     urlencoding::decode(raw)
@@ -566,6 +629,30 @@ mod tests {
             ("VERIFY_IDENTITY", SslMode::VerifyFull),
         ] {
             assert_eq!(SslMode::parse(raw), Ok(expected), "{raw}");
+        }
+    }
+
+    #[test]
+    fn unverified_remote_detection() {
+        let remote = "postgres://u:p@db.example.com:5432/app";
+        assert!(is_unverified_remote(remote, SslMode::Prefer));
+        assert!(is_unverified_remote(remote, SslMode::Require));
+        assert!(is_unverified_remote(remote, SslMode::Disable));
+        assert!(!is_unverified_remote(remote, SslMode::VerifyCa));
+        assert!(!is_unverified_remote(remote, SslMode::VerifyFull));
+        assert!(is_unverified_remote(
+            "mysql://u:p@10.0.0.5/app",
+            SslMode::Prefer
+        ));
+        for local in [
+            "postgres://u:p@localhost/app",
+            "postgres://u:p@127.0.0.1:5432/app",
+            "postgres://u:p@[::1]:5432/app",
+            "postgres://u:p@%2Fvar%2Frun%2Fpostgresql/app",
+            "postgres:///app",
+            "host=db.example.com dbname=app",
+        ] {
+            assert!(!is_unverified_remote(local, SslMode::Prefer), "{local}");
         }
     }
 

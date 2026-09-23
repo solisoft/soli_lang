@@ -193,6 +193,9 @@ Click on any frame to see the source code.</code></pre>
             <p class="text-sm text-gray-300">
                 The REPL endpoint is token-protected and accepts loopback clients by default. If your <code class="text-amber-300">*.test</code> domains point to a trusted local server on another machine, start dev mode with <code class="text-amber-300">SOLI_DEV_REPL_ALLOW_REMOTE=1</code> <em>and</em> pin the token to a secret you control via <code class="text-amber-300">SOLI_DEV_REPL_SECRET=&lt;long-random-string&gt;</code>. The server refuses to start in remote-allowed mode without the secret (SEC-051) so the credential is never embedded in HTML error pages.
             </p>
+            <p class="text-gray-300 text-sm mt-3">
+                <strong class="text-white">Local <code>Host</code> only.</strong> The REPL token, the dev-bar diagnostics, <code class="text-amber-300">/__dev/*</code>, the inbox and request replay answer only when the request's <code>Host</code> is local &mdash; <code>localhost</code>, <code>*.localhost</code>, an IP literal, or a host listed in <code class="text-amber-300">SOLI_APP_HOSTS</code> &mdash; so a DNS-rebinding page cannot drive them through your browser. A name such as <code>myapp.test</code> or <code>mymac.local</code> must be added to <code class="text-amber-300">SOLI_APP_HOSTS</code>; until it is, those endpoints 404 and error pages carry no REPL token. The inbox <em>clear</em> and <em>replay</em> POSTs also require a same-origin <code>Origin</code>/<code>Referer</code>, and the jobs dashboard is credential-free only from a loopback peer with a local <code>Host</code>.
+            </p>
         </div>
 
         <h3 class="text-xl font-semibold text-white mb-4">Available Variables</h3>
@@ -259,6 +262,9 @@ headers    # View HTTP headers</code></pre>
 
         <p class="text-gray-400 mb-6">
             When the server runs with <code class="text-cyan-400">--dev</code>, every query a request executes through the Model layer is captured into a per-request stack. The <code class="text-cyan-400">dev_queries()</code> builtin returns that stack, so you can render a debug bar showing every query, its bind variables, and how long it took.
+        </p>
+        <p class="text-gray-400 mb-6">
+            The query, HTTP and KV logs (also kept in production when <code class="text-cyan-400">SOLI_LOG</code> asks for them) hold at most <strong class="text-white">10&nbsp;000 entries</strong> per request, WebSocket/LiveView event or background job, and are reset at the start of each WebSocket event and each job.
         </p>
         <div class="my-6 p-4 rounded-lg bg-cyan-500/10 border border-cyan-500/20 mb-6">
             <p class="text-cyan-200 text-sm leading-relaxed">

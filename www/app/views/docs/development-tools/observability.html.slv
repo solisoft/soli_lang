@@ -132,7 +132,7 @@ curl -s localhost:5011/_metrics</code></pre>
         </table>
     </div>
     <p class="text-gray-400 mb-12">
-        <code>soli_handler_panics_total</code> and <code>soli_vm_handler_demotions_total</code> are counted even when <code>SOLI_METRICS</code> is off &mdash; rare enough that the atomics are free, and most wanted when nobody thought to enable collection in advance. There is no auth on <code>/_metrics</code>; bind it to a private interface or front it with a proxy that restricts access.
+        <code>soli_handler_panics_total</code> and <code>soli_vm_handler_demotions_total</code> are counted even when <code>SOLI_METRICS</code> is off &mdash; rare enough that the atomics are free, and most wanted when nobody thought to enable collection in advance. Access: with <code>SOLI_METRICS_TOKEN</code> set, the endpoint wants <code>Authorization: Bearer &lt;token&gt;</code>. Unset, it answers only loopback and private-range peers &mdash; and <strong class="text-white">refuses (404) any request carrying <code>X-Forwarded-For</code>, <code>X-Real-IP</code> or <code>Forwarded</code>, or any request while <code>trust_proxy</code> is on</strong>, since behind a reverse proxy every peer looks local. A deployment behind a proxy must set <code>SOLI_METRICS_TOKEN</code> and have the scraper send it.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Structured logs</h2>

@@ -659,7 +659,10 @@ code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59, 30)
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Verify a TOTP code against a secret. Accepts the current code and the previous/next code (1 step window) to handle clock drift.</p>
+                <p class="text-gray-400 mb-3">Verify a TOTP code against a secret. Accepts the current code and the previous/next code (&plusmn;1 step window) to handle clock drift.</p>
+                <div class="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 mb-3 text-sm text-gray-300">
+                    <strong class="text-amber-400">No replay protection.</strong> The function is stateless: the same code verifies again within its window. Your app must remember the <strong class="text-white">last accepted time step per user</strong> and refuse a code at or before it, and must <strong class="text-white">rate-limit</strong> attempts &mdash; six digits are only 10<sup>6</sup> guesses.
+                </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
                     <div><code class="text-amber-400">secret</code> : <code class="text-orange-400">String</code> - Base32-encoded secret key</div>
@@ -747,7 +750,7 @@ qr_data = QRCode.encode(uri)
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-orange-400">String</code> - big-endian hex, <code>k</code> octets wide. Errors if the modulus is zero.
+                    <code class="text-orange-400">String</code> - big-endian hex, <code>k</code> octets wide. Errors if the modulus is zero, or if an operand is over its cap: modulus and exponent at most <strong class="text-white">8192 bits</strong>, base at most <strong class="text-white">16384 bits</strong>.
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm"># 4^13 mod 497 = 445 (0x01bd); modulus 0x01f1 is 2 octets, so output is 2 octets
 Crypto.modexp("04", "0d", "01f1")   # => "01bd"</code></pre>
@@ -788,6 +791,9 @@ Crypto.modexp("04", "0d", "01f1")   # => "01bd"</code></pre>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-orange-400">String</code> - the recovered data octets as hex. Errors on malformed padding.
+                </div>
+                <div class="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3 mt-3 text-sm text-gray-300">
+                    <strong class="text-amber-400">Not constant-time.</strong> Which check fails, and when, leaks through timing and through the error itself. Use it for signature verification and interop only; never surface its errors (or their timing) from an endpoint that decrypts attacker-supplied ciphertext &mdash; that is a Bleichenbacher padding oracle.
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm"># RSA sign/verify round-trip: sign a digest with the private exponent d,
 # verify by raising the signature to the public exponent e.

@@ -415,7 +415,8 @@
 &lt;!-- URL percent-encoding (query params / path segments) --&gt
 &lt;a href="/search?q=&lt;%= url(query) %&gt;"&gt;Search&lt;/a&gt
 
-&lt;!-- Strip HTML tags --&gt
+&lt;!-- Strip HTML tags. A naive tag stripper, NOT a sanitizer: always escape its
+     output (&lt;%= %&gt;, never &lt;%- %&gt;); use sanitize_html for untrusted HTML --&gt
 &lt;%= strip_html(post["content"]) %&gt
 
 &lt;!-- Sanitize HTML (remove dangerous tags/attributes) --&gt

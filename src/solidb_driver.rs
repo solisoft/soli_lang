@@ -245,6 +245,12 @@ pub fn try_get(collection: &str, key: &str) -> Option<Result<Value, String>> {
 /// The driver hands back the whole result set in one response, so unlike the
 /// HTTP cursor path there is no `has_more` batch to drain — which is also why
 /// the 1,000-row cursor truncation that bit the HTTP path cannot happen here.
+/// Could `try_query` handle a query at all? `false` guarantees it returns
+/// `None`, which lets the caller skip copying the binds it would pass.
+pub fn query_may_handle() -> bool {
+    enabled() && query_enabled()
+}
+
 pub fn try_query(
     sdbql: &str,
     bind_vars: Option<std::collections::HashMap<String, Value>>,

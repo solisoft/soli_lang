@@ -24,8 +24,17 @@ pub struct LoggedQuery {
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 
+/// Most entries a per-request log (queries, HTTP calls, KV commands) keeps.
+///
+/// These logs are emptied when a request, socket event or job begins; code
+/// that runs outside those (a long-lived loop, a job issuing a query per row)
+/// would otherwise grow them without bound. Past the cap an entry is counted
+/// in `dropped()` instead of stored.
+pub const MAX_LOGGED_PER_REQUEST: usize = 10_000;
+
 thread_local! {
     static LOG: RefCell<Vec<LoggedQuery>> = const { RefCell::new(Vec::new()) };
+    static DROPPED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 pub fn set_enabled(enabled: bool) {
@@ -39,6 +48,12 @@ pub fn is_enabled() -> bool {
 
 pub fn clear() {
     LOG.with(|l| l.borrow_mut().clear());
+    DROPPED.with(|d| d.set(0));
+}
+
+/// Queries not stored since the last `clear()` because the log was full.
+pub fn dropped() -> usize {
+    DROPPED.with(|d| d.get())
 }
 
 pub fn record(
@@ -53,7 +68,12 @@ pub fn record(
 
     let grouped = super::batch::in_block();
     LOG.with(|l| {
-        l.borrow_mut().push(LoggedQuery {
+        let mut log = l.borrow_mut();
+        if log.len() >= MAX_LOGGED_PER_REQUEST {
+            DROPPED.with(|d| d.set(d.get() + 1));
+            return;
+        }
+        log.push(LoggedQuery {
             query,
             bind_vars,
             duration_ms,
@@ -64,4 +84,24 @@ pub fn record(
 
 pub fn snapshot() -> Vec<LoggedQuery> {
     LOG.with(|l| l.borrow().clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Something that queries outside a request never has its log emptied;
+    /// past the cap an entry is counted, not stored.
+    #[test]
+    fn the_log_stops_at_its_cap() {
+        clear();
+        for _ in 0..=MAX_LOGGED_PER_REQUEST {
+            record("RETURN 1".to_string(), None, 0.0);
+        }
+        assert_eq!(snapshot().len(), MAX_LOGGED_PER_REQUEST);
+        assert_eq!(dropped(), 1);
+        clear();
+        assert_eq!(dropped(), 0);
+        assert!(snapshot().is_empty());
+    }
 }

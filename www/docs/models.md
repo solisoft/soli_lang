@@ -267,7 +267,9 @@ not an identifier is refused before anything is compiled.
 
 > **Security — `where(...)` filter forms.** The Hash form
 > (`where({field: value, ...})`) is safe for user input: keys are
-> validated as `[A-Za-z_][A-Za-z0-9_]*` identifiers, operators are a
+> validated as `[A-Za-z_][A-Za-z0-9_]*` identifiers of at most 128
+> characters (the same cap applies to `order` and `find_by` field names, on
+> every adapter), operators are a
 > fixed vocabulary, and values are bound, so nothing from `req["params"]`
 > can become AQL or SQL syntax. The string form
 > (`where("doc.foo == @foo", {...})`) splices the filter argument
@@ -347,7 +349,7 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 |--------|-------------|
 | `Model.create(data)` | Insert a new document |
 | `Model.create_many([data, ...])` | Batch insert multiple documents, returns `{ created, errors }` |
-| `Model.find(id)` | Get document by ID. **Raises** `RecordNotFound` if missing (auto-mapped to a 404 HTTP response). Use `find_by` for optional lookups. |
+| `Model.find(id)` | Get document by ID. **Raises** `RecordNotFound` if missing (auto-mapped to a 404 HTTP response). Use `find_by` for optional lookups. A key that is empty, `.` or `..` is refused (`invalid document key`) here and in `update`/`delete` — as are such collection names in the raw SoliDB client (`invalid path segment`) — so a request-supplied id can never address a different path. |
 | `Model.find_by(field, value)` | Find first record by field value. Returns `null` when missing. |
 | `Model.first_by(field, value)` | Find first record by field with ordering |
 | `Model.find_or_create_by(field, value, data?)` | Find by field, or create if not found |
@@ -1153,6 +1155,10 @@ recent  = User.includes("posts", { "where": { "views": { "gt": 10 } } }).all
 print(User.includes("posts", "published = @p", { "p": true }).to_query)
 # => ... LET _rel_posts = (FOR rel IN posts FILTER rel.user_id == doc._key AND rel.published == @p RETURN rel) ...
 ```
+
+When a hash filter on `includes` is evaluated in memory, `like` / `ilike` use a
+linear-time matcher (a pattern like `%a%a%a%…` can no longer blow up), and `_`
+matches one **character**, not one byte — so it matches `é` as SQL does.
 
 Combine a filter with field projection using the `"fields"` key in the bind hash:
 

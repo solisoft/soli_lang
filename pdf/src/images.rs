@@ -116,14 +116,54 @@ pub type UrlGuard = fn(&str) -> std::result::Result<(), String>;
 /// file read whose result is embedded in the generated document.
 pub type PathGuard = fn(&str) -> std::result::Result<std::path::PathBuf, String>;
 
+/// Fetches an already-policy-checked `http(s)` image source, returning at most
+/// `max_bytes` bytes (an over-cap body is an error, not a truncation).
+///
+/// Installed by the host application. The URL guard alone is a check made on a
+/// DNS answer the actual connect does not reuse: a hostname that resolves to a
+/// public address for the check and to `127.0.0.1` for the connect (DNS
+/// rebinding) slips through any client with the default resolver. `soli`
+/// installs its SSRF-guarded user HTTP client here, whose resolver filters
+/// every connect-time answer and whose redirect policy re-validates each hop.
+pub type UrlFetcher = fn(&str, Duration, usize) -> std::result::Result<Vec<u8>, String>;
+
+/// Largest remote image body the loader will buffer. A logo or a photo is a
+/// few MB; anything beyond this is refused rather than held in memory.
+pub const MAX_REMOTE_IMAGE_BYTES: usize = 20 * 1024 * 1024;
+
 static URL_GUARD: std::sync::OnceLock<UrlGuard> = std::sync::OnceLock::new();
 static PATH_GUARD: std::sync::OnceLock<PathGuard> = std::sync::OnceLock::new();
+static URL_FETCHER: std::sync::OnceLock<UrlFetcher> = std::sync::OnceLock::new();
 
 /// Install the host application's image-source policy. Idempotent; the first
 /// call wins, so a library user cannot be silently overridden later.
 pub fn set_image_source_guards(url: UrlGuard, path: PathGuard) {
     let _ = URL_GUARD.set(url);
     let _ = PATH_GUARD.set(path);
+}
+
+/// Install the host application's network fetcher for `http(s)` image
+/// sources (see [`UrlFetcher`]). Idempotent; the first call wins. Without one,
+/// the loader falls back to a private client that re-resolves DNS — still
+/// size-capped and redirect-free, but open to DNS rebinding.
+pub fn set_image_fetcher(fetcher: UrlFetcher) {
+    let _ = URL_FETCHER.set(fetcher);
+}
+
+/// Read at most `cap` bytes from `reader`; a body longer than that is an error.
+fn read_capped<R: std::io::Read>(reader: R, cap: usize, src: &str) -> Result<Vec<u8>> {
+    use std::io::Read as _;
+    let mut buf = Vec::new();
+    reader
+        .take((cap as u64).saturating_add(1))
+        .read_to_end(&mut buf)
+        .map_err(|e| PdfError::Image(format!("GET {src}: {e}")))?;
+    if buf.len() > cap {
+        return Err(PdfError::Image(format!(
+            "GET {src}: image exceeds {cap} bytes"
+        )));
+    }
+    Ok(buf)
 }
 
 fn check_url(src: &str) -> Result<()> {
@@ -173,6 +213,10 @@ fn fetch_bytes(src: &str, fetch: bool, timeout: Duration) -> Result<Vec<u8>> {
         // check against, and an image URL is often the most user-influenced
         // field in a document template.
         check_url(src)?;
+        if let Some(fetcher) = URL_FETCHER.get() {
+            return fetcher(src, timeout, MAX_REMOTE_IMAGE_BYTES)
+                .map_err(|e| PdfError::Image(format!("GET {src}: {e}")));
+        }
         let client = reqwest::blocking::Client::builder()
             .timeout(timeout)
             // Each hop would need re-validating against the policy above, and
@@ -186,10 +230,15 @@ fn fetch_bytes(src: &str, fetch: bool, timeout: Duration) -> Result<Vec<u8>> {
             .map_err(|e| PdfError::Image(format!("GET {src}: {e}")))?
             .error_for_status()
             .map_err(|e| PdfError::Image(format!("GET {src}: {e}")))?;
-        Ok(resp
-            .bytes()
-            .map_err(|e| PdfError::Image(e.to_string()))?
-            .to_vec())
+        if resp
+            .content_length()
+            .is_some_and(|len| len > MAX_REMOTE_IMAGE_BYTES as u64)
+        {
+            return Err(PdfError::Image(format!(
+                "GET {src}: image exceeds {MAX_REMOTE_IMAGE_BYTES} bytes"
+            )));
+        }
+        read_capped(resp, MAX_REMOTE_IMAGE_BYTES, src)
     } else {
         let path = src.strip_prefix("file://").unwrap_or(src);
         let resolved = resolve_path(path)?;
@@ -491,5 +540,15 @@ mod source_guard_tests {
         let bytes = fetch_bytes("data:text/plain;base64,aGk=", false, Duration::from_secs(1))
             .expect("data URIs are self-contained");
         assert_eq!(bytes, b"hi");
+    }
+
+    /// A remote body is buffered up to the cap and refused past it, so a
+    /// hostile image server cannot make the renderer hold gigabytes.
+    #[test]
+    fn remote_reads_are_capped() {
+        let exact = read_capped(&[7u8; 16][..], 16, "http://x/").expect("at the cap is fine");
+        assert_eq!(exact.len(), 16);
+        let err = read_capped(&[7u8; 17][..], 16, "http://x/").expect_err("past the cap");
+        assert!(err.to_string().contains("exceeds 16 bytes"), "{err}");
     }
 }

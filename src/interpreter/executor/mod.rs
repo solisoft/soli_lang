@@ -841,6 +841,12 @@ impl Interpreter {
         // (recursive) call may have already populated the slot — in that case
         // we simply drop env_for_capture and keep the slot's current value.
         if func.cached_env.borrow().is_none() && Rc::strong_count(&env_for_capture) == 1 {
+            // Empty it before parking it: the slot lives as long as the
+            // function, so a cached env still holding this call's locals kept
+            // them (a request's records, `this`) alive until the next call —
+            // for a function called once per boot, for the worker's life.
+            // Sole owner, so nothing can observe the bindings go.
+            env_for_capture.borrow_mut().reset_for_call();
             *func.cached_env.borrow_mut() = Some(env_for_capture);
         }
 
@@ -1340,6 +1346,33 @@ mod interpreter_drop_tests {
             globals.upgrade().is_none(),
             "the builtins registry outlived its interpreter"
         );
+    }
+
+    // The per-function cached call env lives as long as the function; it must
+    // not keep the last call's locals alive until the next call.
+    #[test]
+    fn a_parked_call_env_holds_no_locals() {
+        let source = "def keep(x) { let held_local = [x, x]; held_local.length }";
+        let tokens = crate::lexer::Scanner::new(source).scan_tokens().unwrap();
+        let program = crate::parser::Parser::new(tokens).parse().unwrap();
+        let mut interp = Interpreter::new();
+        interp.interpret(&program).unwrap();
+        let Some(Value::Function(func)) = interp.environment.borrow().get("keep") else {
+            panic!("keep is not a function");
+        };
+        interp.call_function(&func, vec![Value::Int(7)]).unwrap();
+
+        let parked = func
+            .cached_env
+            .borrow()
+            .clone()
+            .expect("env parked for reuse");
+        let parked = parked.borrow();
+        assert!(
+            parked.get("held_local").is_none(),
+            "a local outlived its call"
+        );
+        assert!(parked.get("x").is_none(), "a parameter outlived its call");
     }
 
     #[test]

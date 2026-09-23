@@ -417,9 +417,27 @@ impl<T: Clone> TenantCell<T> {
 /// `read`/`write` take a closure rather than returning a guard: the value lives
 /// inside a map inside a lock, and stable Rust has no way to hand out a guard
 /// borrowed into it. In exchange the lock is always released.
+///
+/// **Slots are never removed or replaced** — a value changes in place, under
+/// its own lock — so each slot is allocated once and leaked to `'static`,
+/// exactly as long-lived as the `static` that owns the map. That lets every
+/// thread remember the slots it has used in [`TENANT_VALUE_SLOTS`] and reach
+/// its value without the shared map's lock, its hash lookup, or a reference
+/// count bumped on a cache line every worker shares. It is also why `read` and
+/// `write` take `&'static self`: a `TenantValue` is always declared `static`.
 pub struct TenantValue<T: 'static> {
     init: fn() -> T,
-    slots: RwLock<Option<std::collections::HashMap<TenantId, Arc<RwLock<T>>>>>,
+    slots: RwLock<Option<std::collections::HashMap<TenantId, &'static RwLock<T>>>>,
+}
+
+thread_local! {
+    /// Per-thread memo of `TenantValue` slots: `(address of the static, tenant)`
+    /// → that tenant's slot. Sound because both halves of the key are
+    /// permanent — the `TenantValue` is `'static` and its slots are never
+    /// removed — and the entry is type-checked on the way out by `downcast_ref`.
+    static TENANT_VALUE_SLOTS: std::cell::RefCell<
+        ahash::AHashMap<(usize, u32), &'static dyn std::any::Any>,
+    > = std::cell::RefCell::new(ahash::AHashMap::new());
 }
 
 impl<T: 'static> TenantValue<T> {
@@ -430,30 +448,51 @@ impl<T: 'static> TenantValue<T> {
         }
     }
 
-    /// This tenant's slot, created on first use.
+    /// This tenant's slot, created on first use. Served from this thread's
+    /// [`TENANT_VALUE_SLOTS`] memo after the first access.
+    fn slot(&'static self) -> &'static RwLock<T> {
+        let id = current_id();
+        let key = (self as *const Self as usize, id.0);
+        // `try_with`: during thread teardown the memo may already be gone, in
+        // which case the shared map still answers.
+        let memo = TENANT_VALUE_SLOTS
+            .try_with(|memo| memo.borrow().get(&key).copied())
+            .ok()
+            .flatten();
+        if let Some(slot) = memo.and_then(|any| any.downcast_ref::<RwLock<T>>()) {
+            return slot;
+        }
+        let slot = self.shared_slot(id);
+        let _ = TENANT_VALUE_SLOTS.try_with(|memo| {
+            memo.borrow_mut()
+                .insert(key, slot as &'static dyn std::any::Any);
+        });
+        slot
+    }
+
+    /// This tenant's slot from the shared map, created on first use.
     ///
     /// `init` runs outside every lock: it may read another `TenantValue`, the
     /// filesystem (the EUI publisher key) or the network, and none of that
     /// belongs under a lock other tenants wait on. Two threads racing to build
     /// the same slot both run `init`; the first insert wins and the other value
     /// is dropped, which is the price of not holding a lock across it.
-    fn slot(&self) -> Arc<RwLock<T>> {
-        let id = current_id();
+    fn shared_slot(&self, id: TenantId) -> &'static RwLock<T> {
         {
             // Poison-tolerant, like every lock in this file: see `read`.
             let slots = self.slots.read().unwrap_or_else(|e| e.into_inner());
-            if let Some(slot) = slots.as_ref().and_then(|m| m.get(&id)) {
-                return Arc::clone(slot);
+            if let Some(slot) = slots.as_ref().and_then(|m| m.get(&id).copied()) {
+                return slot;
             }
         }
-        let fresh = Arc::new(RwLock::new((self.init)()));
+        let fresh = (self.init)();
         let mut slots = self.slots.write().unwrap_or_else(|e| e.into_inner());
-        Arc::clone(
-            slots
-                .get_or_insert_with(Default::default)
-                .entry(id)
-                .or_insert(fresh),
-        )
+        let slot: &mut &'static RwLock<T> = slots
+            .get_or_insert_with(Default::default)
+            .entry(id)
+            .or_insert_with(|| -> &'static RwLock<T> { Box::leak(Box::new(RwLock::new(fresh))) });
+        let slot: &'static RwLock<T> = slot;
+        slot
     }
 
     /// Read this tenant's value, building it on first use.
@@ -465,7 +504,7 @@ impl<T: 'static> TenantValue<T> {
     /// as "absent" would spin `slot`, a jail read as "none" would lift a
     /// security boundary, and the value is a plain map that a panicking writer
     /// leaves with an entry, not torn.
-    pub fn read<R>(&self, f: impl FnOnce(&T) -> R) -> R {
+    pub fn read<R>(&'static self, f: impl FnOnce(&T) -> R) -> R {
         let slot = self.slot();
         let guard = slot.read().unwrap_or_else(|e| e.into_inner());
         f(&guard)
@@ -477,7 +516,7 @@ impl<T: 'static> TenantValue<T> {
     /// guard this replaces, so a closure that re-enters the same value
     /// deadlocks exactly as it would have before, and a closure that blocks
     /// blocks this tenant only.
-    pub fn write<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+    pub fn write<R>(&'static self, f: impl FnOnce(&mut T) -> R) -> R {
         let slot = self.slot();
         let mut guard = slot.write().unwrap_or_else(|e| e.into_inner());
         f(&mut guard)

@@ -145,6 +145,7 @@ pub mod session;
 pub mod session_cookie;
 pub mod session_disk;
 pub mod session_helpers;
+pub mod session_request_cache;
 pub mod session_solidb;
 pub mod session_solikv;
 pub mod soap;

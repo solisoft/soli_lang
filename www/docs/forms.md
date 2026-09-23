@@ -33,6 +33,11 @@ template tag — so blocks don't leave blank lines in the output.
 Use `<%-` (raw output) for every builder call — the helpers return HTML.
 `<%=` would escape it into visible text.
 
+The builder runs in its own environment: its internal calls to `h`, `attr` and
+friends always reach the engine's escaping helpers, even when your app defines a
+view helper of the same name, so an app helper can never change what the builder
+escapes.
+
 Prefer the block form. The explicit builder is still there when you need it
 (a form assembled across non-contiguous markup):
 

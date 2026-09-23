@@ -649,33 +649,28 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.read", class_name);
         static_methods.insert(
             "read".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                None,
-                move |args| {
-                    let path = match args.first() {
-                        Some(Value::String(s)) => s.clone(),
-                        _ => return Err(format!("{}.read() expects string path", class_name)),
-                    };
-                    let resolved = resolve(&path, "read")?;
-                    match args.get(1) {
-                        None => read_to_string_policy(&resolved, follow)
-                            .map(|s| Value::String(s.into()))
-                            .map_err(|e| format!("{}.read() failed: {}", class_name, e)),
-                        Some(Value::String(enc)) => {
-                            let bytes = read_to_bytes_policy(&resolved, follow)
-                                .map_err(|e| format!("{}.read() failed: {}", class_name, e))?;
-                            super::encoding::decode_bytes(&bytes, enc)
-                                .map(|s| Value::String(s.into()))
-                        }
-                        Some(other) => Err(format!(
-                            "{}.read() encoding must be a string, got {}",
-                            class_name,
-                            other.type_name()
-                        )),
+            Rc::new(NativeFunction::new(label, None, move |args| {
+                let path = match args.first() {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => return Err(format!("{}.read() expects string path", class_name)),
+                };
+                let resolved = resolve(&path, "read")?;
+                match args.get(1) {
+                    None => read_to_string_policy(&resolved, follow)
+                        .map(|s| Value::String(s.into()))
+                        .map_err(|e| format!("{}.read() failed: {}", class_name, e)),
+                    Some(Value::String(enc)) => {
+                        let bytes = read_to_bytes_policy(&resolved, follow)
+                            .map_err(|e| format!("{}.read() failed: {}", class_name, e))?;
+                        super::encoding::decode_bytes(&bytes, enc).map(|s| Value::String(s.into()))
                     }
-                },
-            )),
+                    Some(other) => Err(format!(
+                        "{}.read() encoding must be a string, got {}",
+                        class_name,
+                        other.type_name()
+                    )),
+                }
+            })),
         );
     }
 
@@ -684,24 +679,20 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.write", class_name);
         static_methods.insert(
             "write".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                Some(2),
-                move |args| {
-                    let path = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        _ => return Err(format!("{}.write() expects string path", class_name)),
-                    };
-                    let content = match &args[1] {
-                        Value::String(s) => s.clone(),
-                        other => other.to_string().into(),
-                    };
-                    let resolved = resolve(&path, "write")?;
-                    write_all_policy(&resolved, content.as_bytes(), follow)
-                        .map(|_| Value::Bool(true))
-                        .map_err(|e| format!("{}.write() failed: {}", class_name, e))
-                },
-            )),
+            Rc::new(NativeFunction::new(label, Some(2), move |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(format!("{}.write() expects string path", class_name)),
+                };
+                let content = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string().into(),
+                };
+                let resolved = resolve(&path, "write")?;
+                write_all_policy(&resolved, content.as_bytes(), follow)
+                    .map(|_| Value::Bool(true))
+                    .map_err(|e| format!("{}.write() failed: {}", class_name, e))
+            })),
         );
     }
 
@@ -710,23 +701,19 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.exists", class_name);
         static_methods.insert(
             "exists".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                Some(1),
-                move |args| {
-                    let path = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        _ => return Err(format!("{}.exists() expects string path", class_name)),
-                    };
-                    // Use metadata_policy so File.exists("symlink") reports
-                    // the symlink itself (true even if the target is gone),
-                    // while Trusted.exists() reports the target.
-                    match resolve(&path, "exists") {
-                        Ok(resolved) => Ok(Value::Bool(metadata_policy(&resolved, follow).is_ok())),
-                        Err(_) => Ok(Value::Bool(false)),
-                    }
-                },
-            )),
+            Rc::new(NativeFunction::new(label, Some(1), move |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(format!("{}.exists() expects string path", class_name)),
+                };
+                // Use metadata_policy so File.exists("symlink") reports
+                // the symlink itself (true even if the target is gone),
+                // while Trusted.exists() reports the target.
+                match resolve(&path, "exists") {
+                    Ok(resolved) => Ok(Value::Bool(metadata_policy(&resolved, follow).is_ok())),
+                    Err(_) => Ok(Value::Bool(false)),
+                }
+            })),
         );
     }
 
@@ -735,20 +722,16 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.delete", class_name);
         static_methods.insert(
             "delete".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                Some(1),
-                move |args| {
-                    let path = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        _ => return Err(format!("{}.delete() expects string path", class_name)),
-                    };
-                    let resolved = resolve(&path, "delete")?;
-                    fs::remove_file(&resolved)
-                        .map(|_| Value::Bool(true))
-                        .map_err(|e| format!("{}.delete() failed: {}", class_name, e))
-                },
-            )),
+            Rc::new(NativeFunction::new(label, Some(1), move |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(format!("{}.delete() expects string path", class_name)),
+                };
+                let resolved = resolve(&path, "delete")?;
+                fs::remove_file(&resolved)
+                    .map(|_| Value::Bool(true))
+                    .map_err(|e| format!("{}.delete() failed: {}", class_name, e))
+            })),
         );
     }
 
@@ -759,23 +742,19 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.is_file", class_name);
         static_methods.insert(
             "is_file".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                Some(1),
-                move |args| {
-                    let path = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        _ => return Err(format!("{}.is_file() expects string path", class_name)),
-                    };
-                    match resolve(&path, "is_file") {
-                        Ok(resolved) => match metadata_policy(&resolved, follow) {
-                            Ok(m) => Ok(Value::Bool(m.is_file())),
-                            Err(_) => Ok(Value::Bool(false)),
-                        },
+            Rc::new(NativeFunction::new(label, Some(1), move |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(format!("{}.is_file() expects string path", class_name)),
+                };
+                match resolve(&path, "is_file") {
+                    Ok(resolved) => match metadata_policy(&resolved, follow) {
+                        Ok(m) => Ok(Value::Bool(m.is_file())),
                         Err(_) => Ok(Value::Bool(false)),
-                    }
-                },
-            )),
+                    },
+                    Err(_) => Ok(Value::Bool(false)),
+                }
+            })),
         );
     }
 
@@ -784,23 +763,19 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.is_dir", class_name);
         static_methods.insert(
             "is_dir".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                Some(1),
-                move |args| {
-                    let path = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        _ => return Err(format!("{}.is_dir() expects string path", class_name)),
-                    };
-                    match resolve(&path, "is_dir") {
-                        Ok(resolved) => match metadata_policy(&resolved, follow) {
-                            Ok(m) => Ok(Value::Bool(m.is_dir())),
-                            Err(_) => Ok(Value::Bool(false)),
-                        },
+            Rc::new(NativeFunction::new(label, Some(1), move |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(format!("{}.is_dir() expects string path", class_name)),
+                };
+                match resolve(&path, "is_dir") {
+                    Ok(resolved) => match metadata_policy(&resolved, follow) {
+                        Ok(m) => Ok(Value::Bool(m.is_dir())),
                         Err(_) => Ok(Value::Bool(false)),
-                    }
-                },
-            )),
+                    },
+                    Err(_) => Ok(Value::Bool(false)),
+                }
+            })),
         );
     }
 
@@ -809,20 +784,16 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.size", class_name);
         static_methods.insert(
             "size".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                Some(1),
-                move |args| {
-                    let path = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        _ => return Err(format!("{}.size() expects string path", class_name)),
-                    };
-                    let resolved = resolve(&path, "size")?;
-                    metadata_policy(&resolved, follow)
-                        .map(|m| Value::Int(m.len() as i64))
-                        .map_err(|e| format!("{}.size() failed: {}", class_name, e))
-                },
-            )),
+            Rc::new(NativeFunction::new(label, Some(1), move |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(format!("{}.size() expects string path", class_name)),
+                };
+                let resolved = resolve(&path, "size")?;
+                metadata_policy(&resolved, follow)
+                    .map(|m| Value::Int(m.len() as i64))
+                    .map_err(|e| format!("{}.size() failed: {}", class_name, e))
+            })),
         );
     }
 
@@ -831,24 +802,20 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.modified", class_name);
         static_methods.insert(
             "modified".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                Some(1),
-                move |args| {
-                    let path = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        _ => return Err(format!("{}.modified() expects string path", class_name)),
-                    };
-                    let resolved = resolve(&path, "modified")?;
-                    metadata_policy(&resolved, follow)
-                        .and_then(|m| m.modified())
-                        .map(|t| {
-                            let duration = t.duration_since(std::time::UNIX_EPOCH).unwrap();
-                            Value::Int(duration.as_secs() as i64)
-                        })
-                        .map_err(|e| format!("{}.modified() failed: {}", class_name, e))
-                },
-            )),
+            Rc::new(NativeFunction::new(label, Some(1), move |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(format!("{}.modified() expects string path", class_name)),
+                };
+                let resolved = resolve(&path, "modified")?;
+                metadata_policy(&resolved, follow)
+                    .and_then(|m| m.modified())
+                    .map(|t| {
+                        let duration = t.duration_since(std::time::UNIX_EPOCH).unwrap();
+                        Value::Int(duration.as_secs() as i64)
+                    })
+                    .map_err(|e| format!("{}.modified() failed: {}", class_name, e))
+            })),
         );
     }
 
@@ -857,27 +824,23 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.append", class_name);
         static_methods.insert(
             "append".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                Some(2),
-                move |args| {
-                    use std::io::Write;
-                    let path = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        _ => return Err(format!("{}.append() expects string path", class_name)),
-                    };
-                    let content = match &args[1] {
-                        Value::String(s) => s.clone(),
-                        other => other.to_string().into(),
-                    };
-                    let resolved = resolve(&path, "append")?;
-                    let mut file = open_for_append(&resolved, follow)
-                        .map_err(|e| format!("{}.append() failed to open: {}", class_name, e))?;
-                    file.write_all(content.as_bytes())
-                        .map(|_| Value::Bool(true))
-                        .map_err(|e| format!("{}.append() failed to write: {}", class_name, e))
-                },
-            )),
+            Rc::new(NativeFunction::new(label, Some(2), move |args| {
+                use std::io::Write;
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(format!("{}.append() expects string path", class_name)),
+                };
+                let content = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string().into(),
+                };
+                let resolved = resolve(&path, "append")?;
+                let mut file = open_for_append(&resolved, follow)
+                    .map_err(|e| format!("{}.append() failed to open: {}", class_name, e))?;
+                file.write_all(content.as_bytes())
+                    .map(|_| Value::Bool(true))
+                    .map_err(|e| format!("{}.append() failed to write: {}", class_name, e))
+            })),
         );
     }
 
@@ -886,24 +849,20 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.lines", class_name);
         static_methods.insert(
             "lines".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                Some(1),
-                move |args| {
-                    let path = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        _ => return Err(format!("{}.lines() expects string path", class_name)),
-                    };
-                    let resolved = resolve(&path, "lines")?;
-                    let content = read_to_string_policy(&resolved, follow)
-                        .map_err(|e| format!("{}.lines() failed: {}", class_name, e))?;
-                    let lines: Vec<Value> = content
-                        .lines()
-                        .map(|l| Value::String(l.to_string().into()))
-                        .collect();
-                    Ok(Value::Array(Rc::new(RefCell::new(lines))))
-                },
-            )),
+            Rc::new(NativeFunction::new(label, Some(1), move |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(format!("{}.lines() expects string path", class_name)),
+                };
+                let resolved = resolve(&path, "lines")?;
+                let content = read_to_string_policy(&resolved, follow)
+                    .map_err(|e| format!("{}.lines() failed: {}", class_name, e))?;
+                let lines: Vec<Value> = content
+                    .lines()
+                    .map(|l| Value::String(l.to_string().into()))
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(lines))))
+            })),
         );
     }
 
@@ -914,36 +873,30 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.copy", class_name);
         static_methods.insert(
             "copy".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                Some(2),
-                move |args| {
-                    let src = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        _ => {
-                            return Err(format!("{}.copy() expects string source path", class_name))
-                        }
-                    };
-                    let dest = match &args[1] {
-                        Value::String(s) => s.clone(),
-                        _ => {
-                            return Err(format!(
-                                "{}.copy() expects string destination path",
-                                class_name
-                            ))
-                        }
-                    };
-                    let src_resolved = resolve(&src, "copy")?;
-                    let dest_resolved = resolve(&dest, "copy")?;
-                    let mut src_f = open_for_read(&src_resolved, follow)
-                        .map_err(|e| format!("{}.copy() failed: {}", class_name, e))?;
-                    let mut dest_f = open_for_write_truncate(&dest_resolved, follow)
-                        .map_err(|e| format!("{}.copy() failed: {}", class_name, e))?;
-                    std::io::copy(&mut src_f, &mut dest_f)
-                        .map(|_| Value::Bool(true))
-                        .map_err(|e| format!("{}.copy() failed: {}", class_name, e))
-                },
-            )),
+            Rc::new(NativeFunction::new(label, Some(2), move |args| {
+                let src = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(format!("{}.copy() expects string source path", class_name)),
+                };
+                let dest = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => {
+                        return Err(format!(
+                            "{}.copy() expects string destination path",
+                            class_name
+                        ))
+                    }
+                };
+                let src_resolved = resolve(&src, "copy")?;
+                let dest_resolved = resolve(&dest, "copy")?;
+                let mut src_f = open_for_read(&src_resolved, follow)
+                    .map_err(|e| format!("{}.copy() failed: {}", class_name, e))?;
+                let mut dest_f = open_for_write_truncate(&dest_resolved, follow)
+                    .map_err(|e| format!("{}.copy() failed: {}", class_name, e))?;
+                std::io::copy(&mut src_f, &mut dest_f)
+                    .map(|_| Value::Bool(true))
+                    .map_err(|e| format!("{}.copy() failed: {}", class_name, e))
+            })),
         );
     }
 
@@ -952,29 +905,21 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.rename", class_name);
         static_methods.insert(
             "rename".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                Some(2),
-                move |args| {
-                    let old_path = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        _ => {
-                            return Err(format!("{}.rename() expects string old path", class_name))
-                        }
-                    };
-                    let new_path = match &args[1] {
-                        Value::String(s) => s.clone(),
-                        _ => {
-                            return Err(format!("{}.rename() expects string new path", class_name))
-                        }
-                    };
-                    let old_resolved = resolve(&old_path, "rename")?;
-                    let new_resolved = resolve(&new_path, "rename")?;
-                    fs::rename(&old_resolved, &new_resolved)
-                        .map(|_| Value::Bool(true))
-                        .map_err(|e| format!("{}.rename() failed: {}", class_name, e))
-                },
-            )),
+            Rc::new(NativeFunction::new(label, Some(2), move |args| {
+                let old_path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(format!("{}.rename() expects string old path", class_name)),
+                };
+                let new_path = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(format!("{}.rename() expects string new path", class_name)),
+                };
+                let old_resolved = resolve(&old_path, "rename")?;
+                let new_resolved = resolve(&new_path, "rename")?;
+                fs::rename(&old_resolved, &new_resolved)
+                    .map(|_| Value::Bool(true))
+                    .map_err(|e| format!("{}.rename() failed: {}", class_name, e))
+            })),
         );
     }
 
@@ -983,23 +928,19 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.glob", class_name);
         static_methods.insert(
             "glob".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                Some(1),
-                move |args| {
-                    let pattern_str = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        _ => return Err(format!("{}.glob() expects string pattern", class_name)),
-                    };
-                    let paths = glob_paths(&pattern_str, |dir| resolve(dir, "glob"))
-                        .map_err(|e| format!("{}.glob() {}", class_name, e))?;
-                    let matches: Vec<Value> = paths
-                        .into_iter()
-                        .map(|p| Value::String(p.to_string_lossy().to_string().into()))
-                        .collect();
-                    Ok(Value::Array(Rc::new(RefCell::new(matches))))
-                },
-            )),
+            Rc::new(NativeFunction::new(label, Some(1), move |args| {
+                let pattern_str = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(format!("{}.glob() expects string pattern", class_name)),
+                };
+                let paths = glob_paths(&pattern_str, |dir| resolve(dir, "glob"))
+                    .map_err(|e| format!("{}.glob() {}", class_name, e))?;
+                let matches: Vec<Value> = paths
+                    .into_iter()
+                    .map(|p| Value::String(p.to_string_lossy().to_string().into()))
+                    .collect();
+                Ok(Value::Array(Rc::new(RefCell::new(matches))))
+            })),
         );
     }
 
@@ -1008,52 +949,48 @@ fn register_file_class(env: &mut Environment, class_name: &'static str, policy: 
         let label = format!("{}.glob_recursive", class_name);
         static_methods.insert(
             "glob_recursive".to_string(),
-            Rc::new(NativeFunction::new(
-                Box::leak(label.into_boxed_str()),
-                Some(1),
-                move |args| {
-                    let pattern_str = match &args[0] {
-                        Value::String(s) => s.clone(),
-                        _ => {
-                            return Err(format!(
-                                "{}.glob_recursive() expects string pattern",
-                                class_name
-                            ))
-                        }
-                    };
-                    let pattern = Pattern::new(&pattern_str).map_err(|e| {
-                        format!("{}.glob_recursive() invalid pattern: {}", class_name, e)
-                    })?;
-                    let path = Path::new(&*pattern_str);
-                    let base_dir_str = path
-                        .parent()
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or(".".to_string());
-                    let resolved_base = resolve(&base_dir_str, "glob_recursive")?;
-                    let mut matches: Vec<Value> = Vec::new();
-                    for entry in walkdir::WalkDir::new(&resolved_base)
-                        .into_iter()
-                        .filter_map(|e| e.ok())
-                    {
-                        let path_str = entry.path().to_string_lossy().to_string();
-                        let base_str = resolved_base.to_string_lossy().to_string();
-                        let relative = if path_str.starts_with(&base_str) {
-                            let after = &path_str[base_str.len()..];
-                            if after.starts_with('/') || after.starts_with('\\') {
-                                after[1..].to_string()
-                            } else {
-                                after.to_string()
-                            }
-                        } else {
-                            path_str.clone()
-                        };
-                        if pattern.matches(&relative) || pattern.matches(&path_str) {
-                            matches.push(Value::String(path_str.into()));
-                        }
+            Rc::new(NativeFunction::new(label, Some(1), move |args| {
+                let pattern_str = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => {
+                        return Err(format!(
+                            "{}.glob_recursive() expects string pattern",
+                            class_name
+                        ))
                     }
-                    Ok(Value::Array(Rc::new(RefCell::new(matches))))
-                },
-            )),
+                };
+                let pattern = Pattern::new(&pattern_str).map_err(|e| {
+                    format!("{}.glob_recursive() invalid pattern: {}", class_name, e)
+                })?;
+                let path = Path::new(&*pattern_str);
+                let base_dir_str = path
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or(".".to_string());
+                let resolved_base = resolve(&base_dir_str, "glob_recursive")?;
+                let mut matches: Vec<Value> = Vec::new();
+                for entry in walkdir::WalkDir::new(&resolved_base)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
+                    let path_str = entry.path().to_string_lossy().to_string();
+                    let base_str = resolved_base.to_string_lossy().to_string();
+                    let relative = if path_str.starts_with(&base_str) {
+                        let after = &path_str[base_str.len()..];
+                        if after.starts_with('/') || after.starts_with('\\') {
+                            after[1..].to_string()
+                        } else {
+                            after.to_string()
+                        }
+                    } else {
+                        path_str.clone()
+                    };
+                    if pattern.matches(&relative) || pattern.matches(&path_str) {
+                        matches.push(Value::String(path_str.into()));
+                    }
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(matches))))
+            })),
         );
     }
 

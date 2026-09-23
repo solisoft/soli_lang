@@ -6,6 +6,7 @@
 //! the 403 response builder (`forbidden_csrf_response`) stays in `super`.
 
 use std::borrow::Cow;
+use std::sync::OnceLock;
 
 use hyper::header;
 
@@ -70,10 +71,10 @@ fn csrf_skipped_by_app(path: &str) -> bool {
 /// the set of paths the framework actually answers: a perfectly ordinary
 /// application route such as `POST /_internal/wipe` inherited the exemption
 /// and lost both the Origin gate and token verification. Single-underscore
-/// paths are a plausible app namespace, so only the three exact endpoints
-/// the framework owns there are listed; the `/__…` namespace is genuinely
-/// reserved and keeps prefix matching so new internal endpoints don't have
-/// to be enumerated here one by one.
+/// paths are a plausible app namespace and none of them is exempt; the `/__…`
+/// namespace is genuinely reserved (see [`is_reserved_framework_path`]) and
+/// keeps prefix matching so new internal endpoints don't have to be
+/// enumerated here one by one.
 ///
 /// An app that *wants* an exemption for its own route says so explicitly
 /// with `skip_csrf("/path[/*]")`.
@@ -87,11 +88,31 @@ fn is_framework_path(path: &str) -> bool {
     if is_jobs_dashboard_path(path) {
         return false;
     }
-    matches!(path, "/_health" | "/_ready" | "/_metrics" | "/__coverage__")
+    // `/_health`, `/_ready` and `/_metrics` used to be listed here too. The
+    // probes answer GET/HEAD only, which neither barrier checks, so the entry
+    // only ever exempted a *POST* to those paths — which can only reach an
+    // application route such as `post("/:slug")`.
+    is_reserved_framework_path(path)
+}
+
+/// The reserved `/__…` namespace the framework owns.
+///
+/// Exempt from both CSRF barriers (via [`is_framework_path`]), which is only
+/// sound if application code never sees these paths: `handle_hyper_request`
+/// answers 404 for anything in here that no framework handler claimed. Without
+/// that, production — where none of the dev endpoints exist — fell through to
+/// app routing and `POST /__soli/account/delete` matched
+/// `post("/:locale/account/delete")` with no CSRF check at all.
+///
+/// `/__livereload` is matched exactly (plus `/__livereload/…` and the
+/// `/__livereload_ws` socket), not as a bare prefix that also swallowed
+/// `/__livereloadanything`.
+pub(crate) fn is_reserved_framework_path(path: &str) -> bool {
+    matches!(path, "/__coverage__" | "/__livereload" | "/__livereload_ws")
         || path.starts_with("/__soli/")
         || path.starts_with("/__solidev/")
         || path.starts_with("/__dev/")
-        || path.starts_with("/__livereload")
+        || path.starts_with("/__livereload/")
 }
 
 /// The built-in jobs dashboard, which the Origin/Referer gate covers (see
@@ -128,11 +149,43 @@ fn is_jobs_dashboard_path(path: &str) -> bool {
 /// ```text
 /// SOLI_APP_HOSTS=app.example.com,www.app.example.com
 /// ```
-fn origin_matches_declared_host(origin_auth: &str) -> bool {
-    let Ok(raw) = std::env::var("SOLI_APP_HOSTS") else {
+pub(super) fn origin_matches_declared_host(origin_auth: &str) -> bool {
+    let Some(raw) = app_hosts_env() else {
         return false;
     };
     host_matches_declared(&raw, origin_auth)
+}
+
+// The CSRF settings are read on every state-changing request (and
+// `SOLI_APP_HOSTS` on every URL build), and none of them changes after boot:
+// `.env` is loaded once, before the listener opens. Each `std::env::var` takes
+// the process environment lock and allocates, so they are read once and kept.
+// Unit tests flip these variables at run time, so under `cfg(test)` every read
+// goes to the environment as before.
+static APP_HOSTS_ENV: OnceLock<Option<String>> = OnceLock::new();
+static DISABLE_CSRF_ENV: OnceLock<Option<String>> = OnceLock::new();
+static CSRF_TOKENS_ENV: OnceLock<Option<String>> = OnceLock::new();
+
+#[cfg(not(test))]
+fn cached_env_var(
+    slot: &'static OnceLock<Option<String>>,
+    name: &str,
+) -> Option<Cow<'static, str>> {
+    slot.get_or_init(|| std::env::var(name).ok())
+        .as_deref()
+        .map(Cow::Borrowed)
+}
+
+#[cfg(test)]
+fn cached_env_var(
+    _slot: &'static OnceLock<Option<String>>,
+    name: &str,
+) -> Option<Cow<'static, str>> {
+    std::env::var(name).ok().map(Cow::Owned)
+}
+
+fn app_hosts_env() -> Option<Cow<'static, str>> {
+    cached_env_var(&APP_HOSTS_ENV, "SOLI_APP_HOSTS")
 }
 
 /// The first host in `SOLI_APP_HOSTS`, when it is set and non-empty.
@@ -145,7 +198,7 @@ fn origin_matches_declared_host(origin_auth: &str) -> bool {
 /// link to the attacker's site, token attached. This is the value to fall back
 /// on when the request's host is not one we declared.
 pub fn primary_declared_host() -> Option<String> {
-    let raw = std::env::var("SOLI_APP_HOSTS").ok()?;
+    let raw = app_hosts_env()?;
     raw.split(',')
         .map(|host| host.trim())
         .find(|host| !host.is_empty())
@@ -158,8 +211,8 @@ pub fn primary_declared_host() -> Option<String> {
 /// case every host is accepted — the pre-existing behaviour, kept so a
 /// development server with no configuration still works.
 pub fn is_declared_host(candidate: &str) -> bool {
-    match std::env::var("SOLI_APP_HOSTS") {
-        Ok(raw) if raw.split(',').any(|h| !h.trim().is_empty()) => {
+    match app_hosts_env() {
+        Some(raw) if raw.split(',').any(|h| !h.trim().is_empty()) => {
             host_matches_declared(&raw, candidate)
         }
         _ => true,
@@ -185,8 +238,7 @@ fn host_matches_declared(raw: &str, origin_auth: &str) -> bool {
 /// `SOLI_DISABLE_CSRF` operator kill switch — turns off both the
 /// Origin/Referer gate and per-form token verification.
 fn csrf_disabled_by_env() -> bool {
-    std::env::var("SOLI_DISABLE_CSRF")
-        .ok()
+    cached_env_var(&DISABLE_CSRF_ENV, "SOLI_DISABLE_CSRF")
         .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
         .unwrap_or(false)
 }
@@ -194,8 +246,7 @@ fn csrf_disabled_by_env() -> bool {
 /// `SOLI_CSRF_TOKENS=require` strict mode: browser form posts
 /// (urlencoded/multipart bodies) MUST carry a valid per-form token.
 fn csrf_tokens_required() -> bool {
-    std::env::var("SOLI_CSRF_TOKENS")
-        .ok()
+    cached_env_var(&CSRF_TOKENS_ENV, "SOLI_CSRF_TOKENS")
         .map(|v| v.trim().eq_ignore_ascii_case("require"))
         .unwrap_or(false)
 }
@@ -317,10 +368,10 @@ pub(crate) fn verify_csrf_token(
 ///
 /// Rules:
 /// - Safe methods (GET/HEAD/OPTIONS) are always allowed.
-/// - Framework-served endpoints are exempt (see [`is_framework_path`]:
-///   the `/_health` / `/_ready` / `/_metrics` probes and the reserved
-///   `/__soli/`, `/__solidev/`, `/__dev/`, `/__livereload` namespaces),
-///   none of which are browser form targets. Application routes are never
+/// - Framework-served endpoints are exempt (see [`is_framework_path`]: the
+///   reserved `/__soli/`, `/__solidev/`, `/__dev/`, `/__livereload`
+///   namespaces, which application code never sees — the server answers 404
+///   for any of them no framework handler claims). Application routes are never
 ///   exempt implicitly — not even under `/_` — they opt out via
 ///   `skip_csrf`.
 /// - Paths matching a `skip_csrf("/pattern[/*]")` declaration in user
@@ -433,9 +484,6 @@ mod framework_path_tests {
     #[test]
     fn the_framework_endpoints_are_exempt() {
         for path in [
-            "/_health",
-            "/_ready",
-            "/_metrics",
             "/__coverage__",
             "/__soli/prefetch.js",
             "/__soli/inbox/clear",
@@ -461,9 +509,54 @@ mod framework_path_tests {
             "/__soli",
             "/__solidev",
             "/__soliboom/x",
+            "/__livereloadx",
+            "/__livereload_wsx",
             "/posts",
+            // The probes answer GET/HEAD only; a POST there is an app route.
+            "/_health",
+            "/_ready",
+            "/_metrics",
         ] {
             assert!(!is_framework_path(path), "expected NOT exempt: {path}");
+        }
+    }
+
+    /// Every exempt path must be one `handle_hyper_request` refuses to hand to
+    /// the application when no framework handler claimed it — otherwise
+    /// `POST /__soli/account/delete` reaches `post("/:locale/account/delete")`
+    /// with no CSRF check.
+    #[test]
+    fn the_reserved_namespace_is_exactly_the_exempt_one() {
+        use super::is_reserved_framework_path;
+        for path in [
+            "/__coverage__",
+            "/__soli/account/delete",
+            "/__soli/jobs/abc/retry",
+            "/__solidev/replay/abc",
+            "/__dev/repl",
+            "/__livereload",
+            "/__livereload/anything",
+            "/__livereload_ws",
+        ] {
+            assert!(
+                is_reserved_framework_path(path),
+                "expected reserved: {path}"
+            );
+        }
+        for path in [
+            "/__livereloadx",
+            "/__soli",
+            "/__soliboom/x",
+            "/_health",
+            "/_internal/probe",
+            "/en/account/delete",
+            "/",
+        ] {
+            assert!(
+                !is_reserved_framework_path(path),
+                "expected NOT reserved: {path}"
+            );
+            assert!(!is_framework_path(path), "exempt but not reserved: {path}");
         }
     }
 

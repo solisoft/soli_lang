@@ -424,18 +424,38 @@ fn like_match(text: &str, pattern: &str, case_insensitive: bool) -> bool {
 }
 
 fn like_glob(text: &str, pattern: &str) -> bool {
-    // `%` → any run, `_` → one character. Recursive is fine: include filters
-    // are short patterns typed by the developer.
-    fn rec(t: &[u8], p: &[u8]) -> bool {
-        match (t, p) {
-            (_, []) => t.is_empty(),
-            (_, [b'%', rest @ ..]) => (0..=t.len()).any(|i| rec(&t[i..], rest)),
-            ([_, t_rest @ ..], [b'_', p_rest @ ..]) => rec(t_rest, p_rest),
-            ([th, t_rest @ ..], [ph, p_rest @ ..]) if th == ph => rec(t_rest, p_rest),
-            _ => false,
+    // `%` → any run, `_` → one character (a `char`, so `_` matches one
+    // accented letter rather than one byte of it). Iterative two-pointer
+    // match with backtrack to the most recent `%`: O(len(text) · len(pattern))
+    // worst case. The previous recursive version tried every split at every
+    // `%`, which is exponential on patterns like `%a%a%a%a%a%b` against a long
+    // run of `a`s — and the pattern can come from a request param.
+    let t: Vec<char> = text.chars().collect();
+    let p: Vec<char> = pattern.chars().collect();
+    let (mut ti, mut pi) = (0usize, 0usize);
+    // Position of the last `%` seen, and the text index it is currently
+    // assumed to have consumed up to.
+    let mut star: Option<usize> = None;
+    let mut star_ti = 0usize;
+    while ti < t.len() {
+        if pi < p.len() && p[pi] == '%' {
+            star = Some(pi);
+            star_ti = ti;
+            pi += 1;
+        } else if pi < p.len() && (p[pi] == '_' || p[pi] == t[ti]) {
+            ti += 1;
+            pi += 1;
+        } else if let Some(sp) = star {
+            // Let the last `%` swallow one more character and retry.
+            pi = sp + 1;
+            star_ti += 1;
+            ti = star_ti;
+        } else {
+            return false;
         }
     }
-    rec(text.as_bytes(), pattern.as_bytes())
+    // Text exhausted: whatever pattern remains must be all `%`.
+    p[pi..].iter().all(|&c| c == '%')
 }
 
 thread_local! {
@@ -997,6 +1017,41 @@ mod tests {
         assert!(!like_match("INV-1", "inv%", false));
         assert!(like_match("abc", "a_c", false));
         assert!(!like_match("ac", "a_c", false));
+    }
+
+    #[test]
+    fn like_glob_semantics() {
+        assert!(like_glob("", ""));
+        assert!(like_glob("", "%"));
+        assert!(like_glob("", "%%"));
+        assert!(!like_glob("", "_"));
+        assert!(!like_glob("a", ""));
+        assert!(like_glob("abc", "%"));
+        assert!(like_glob("abc", "a%"));
+        assert!(like_glob("abc", "%c"));
+        assert!(like_glob("abc", "%b%"));
+        assert!(like_glob("abcbd", "%b_"));
+        assert!(!like_glob("abc", "%d%"));
+        assert!(like_glob("aXbXc", "a%b%c"));
+        assert!(!like_glob("aXbX", "a%b%c"));
+        assert!(like_glob("mississippi", "m%iss%pi"));
+        assert!(!like_glob("mississippi", "m%iss%pix"));
+        // `_` is one character, not one byte.
+        assert!(like_glob("café", "caf_"));
+        assert!(!like_glob("café", "caf__"));
+    }
+
+    /// A pattern that made the old recursive matcher exponential must return
+    /// promptly (this would take far longer than the test timeout before).
+    #[test]
+    fn like_glob_pathological_pattern_is_linear_ish() {
+        let text = "a".repeat(5_000);
+        let pattern = format!("{}b", "%a".repeat(30));
+        let started = std::time::Instant::now();
+        assert!(!like_glob(&text, &pattern));
+        let pattern_match = "%a".repeat(30);
+        assert!(like_glob(&text, &pattern_match));
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
     }
 }
 

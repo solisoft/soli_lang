@@ -98,4 +98,4 @@ The in-memory snapshot exists to prevent a deploy-time race: if you overwrite `p
 Cached 12 CSS/JS assets (438213 bytes) for prod-mode serving
 ```
 
-You'll see a line like the above on prod startup confirming the snapshot. Files larger than 10 MB are skipped (and read from disk on demand). Other extensions (images, fonts) continue to be read fresh from disk per request — only `.css` and `.js` are cached.
+You'll see a line like the above on prod startup confirming the snapshot. Files larger than 10 MB are skipped (and read from disk on demand). Other extensions (images, fonts) continue to be read fresh from disk per request — only `.css` and `.js` are cached. A file served from disk that is larger than 1 MiB is streamed rather than read into memory whole, so a large download does not hold its full size in a worker.

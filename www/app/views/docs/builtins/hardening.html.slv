@@ -112,7 +112,7 @@ SOLI_TRUSTED_PROXIES=10.0.0.0/8,127.0.0.1,::1</code></pre>
             <code class="text-orange-400">SOLI_MAX_BODY_SIZE</code> bounds <strong class="text-white">one</strong> request. Upload bytes stay in memory while the request runs, so the two limits multiply: without a second bound the server buffers one body per connection (<code class="text-orange-400">SOLI_MAX_CONNECTIONS</code>, 20&nbsp;000 by default), and every parsed request then waits in the worker queue still holding its payload.
         </p>
         <p class="text-gray-400 mb-4">
-            <code class="text-orange-400">SOLI_MAX_INFLIGHT_BODY_BYTES</code> caps the <strong class="text-white">sum</strong> of request-body bytes reserved at once. A request claims its share before any bytes are buffered and returns it when the request ends &mdash; including on error paths &mdash; so a burst of large uploads is refused instead of swapping the box.
+            <code class="text-orange-400">SOLI_MAX_INFLIGHT_BODY_BYTES</code> caps the <strong class="text-white">sum</strong> of request-body bytes reserved at once. A request is charged <strong class="text-white">as its bytes arrive</strong>: a 64&nbsp;KiB reservation up front, doubled as the body grows, up to <code class="text-orange-400">SOLI_MAX_BODY_SIZE</code> &mdash; rather than claiming the full cap before reading a byte, so a crowd of small bodies no longer exhausts the budget. The reservation is returned when the request ends &mdash; including on error paths &mdash; so a burst of large uploads is refused instead of swapping the box.
         </p>
         <div class="bg-[#171412] rounded-xl border border-gray-700 p-6 mb-6">
             <div class="flex items-center gap-3 mb-4">
@@ -126,6 +126,10 @@ SOLI_TRUSTED_PROXIES=10.0.0.0/8,127.0.0.1,::1</code></pre>
             <div class="p-4 overflow-x-auto"><pre><code class="language-bash text-sm">SOLI_MAX_INFLIGHT_BODY_BYTES=268435456   # 256 MiB across all requests</code></pre>
             </div>
         </div>
+        <h3 class="text-xl font-semibold text-white mt-8 mb-3">Stalled and broken bodies</h3>
+        <p class="text-gray-400 mb-4">
+            <code class="text-orange-400">SOLI_BODY_READ_TIMEOUT_SECS</code> (default <code class="text-orange-400">60</code>) bounds how long a whole body may take. <code class="text-orange-400">SOLI_BODY_IDLE_TIMEOUT_SECS</code> (default <code class="text-orange-400">10</code>) bounds the silence <strong class="text-white">between two frames</strong>: a body that stalls that long is answered <code class="text-orange-400">408 Request Timeout</code> and its reservation freed. A body cut off by a transport error is a <code class="text-orange-400">400 Bad Request</code> (it used to be reported as <code class="text-orange-400">413</code>).
+        </p>
     </section>
 
     <!-- set_max_body_size -->

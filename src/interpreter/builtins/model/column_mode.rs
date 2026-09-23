@@ -294,12 +294,8 @@ pub fn column_query_from_qb(
         }
     }
     if let Some((field, dir)) = &qb.order_by {
-        let field = crate::interpreter::symbol_string(*field)
-            .unwrap_or("unknown")
-            .to_string();
-        let dir = crate::interpreter::symbol_string(*dir)
-            .unwrap_or("asc")
-            .to_lowercase();
+        let field = field.clone();
+        let dir = dir.to_lowercase();
         q.order_desc = matches!(dir.as_str(), "desc" | "descending");
         q.order_field = Some(field);
     }

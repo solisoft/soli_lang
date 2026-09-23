@@ -684,22 +684,71 @@ pub fn inject_controller_instance_vars(data: &Value) {
 /// builtins environment at seed time (see `core_eval::get_builtins_rc`).
 pub(crate) const FORM_BUILDER_SOURCE: &str = include_str!("form_builder.sl");
 
-/// Evaluate the embedded form-builder Soli source into the template builtins
-/// environment so `form_with(...)` and friends resolve in every view.
+thread_local! {
+    /// The form builder's top-level definitions, evaluated once per thread.
+    ///
+    /// Evaluated into the template builtins environment itself, its functions
+    /// closed over that environment while it held them: a cycle, so every
+    /// hot reload (`core_eval::reset_builtins_rc`) leaked a whole builtins
+    /// registry. Like `retry::RETRY_CLASS`, they now live in an environment of
+    /// their own that lasts as long as the thread and is copied into each
+    /// template environment that asks.
+    static FORM_BUILDER_DEFS: RefCell<Option<Vec<(String, Value)>>> = const { RefCell::new(None) };
+}
+
+/// Define the embedded form-builder layer in `env` so `form_with(...)` and
+/// friends resolve in every view.
 pub fn register_form_builder(env: &Rc<RefCell<Environment>>) -> Result<(), String> {
+    let definitions = form_builder_definitions()?;
+    let mut env = env.borrow_mut();
+    for (name, value) in definitions {
+        env.define(name, value);
+    }
+    Ok(())
+}
+
+fn form_builder_definitions() -> Result<Vec<(String, Value)>, String> {
+    if let Some(definitions) = FORM_BUILDER_DEFS.with(|slot| slot.borrow().clone()) {
+        return Ok(definitions);
+    }
+
     let tokens = crate::lexer::Scanner::new(FORM_BUILDER_SOURCE)
         .scan_tokens()
         .map_err(|e| format!("form builder lexer error: {}", e))?;
     let program = crate::parser::Parser::new(tokens)
         .parse()
         .map_err(|e| format!("form builder parser error: {}", e))?;
-    let mut interpreter = crate::interpreter::Interpreter::with_environment(env.clone());
+
+    // The builder only calls builtins (`h`, `attr`, `csrf_token`, ...) and
+    // `__soli_form_names`; app helpers and route helpers are not needed.
+    let home = Rc::new(RefCell::new(Environment::with_builtins_capacity()));
+    {
+        let mut home_env = home.borrow_mut();
+        crate::interpreter::builtins::register_builtins(&mut home_env, false);
+        register_static_template_helpers(&mut home_env);
+    }
+    let mut interpreter = crate::interpreter::Interpreter::with_environment(home.clone());
     for stmt in &program.statements {
         interpreter
             .execute(stmt)
             .map_err(|e| format!("form builder eval error: {}", e))?;
     }
-    Ok(())
+
+    let mut definitions = Vec::new();
+    for stmt in &program.statements {
+        let name = match &stmt.kind {
+            crate::ast::stmt::StmtKind::Function(decl) => decl.name.clone(),
+            crate::ast::stmt::StmtKind::Class(decl) => decl.name.clone(),
+            _ => continue,
+        };
+        let value = home
+            .borrow()
+            .get(&name)
+            .ok_or_else(|| format!("form builder did not define {}", name))?;
+        definitions.push((name, value));
+    }
+    FORM_BUILDER_DEFS.with(|slot| *slot.borrow_mut() = Some(definitions.clone()));
+    Ok(definitions)
 }
 
 /// Register static template helpers into an Environment (called once per thread).
