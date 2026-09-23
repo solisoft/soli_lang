@@ -15,7 +15,7 @@ For request-edge knobs (`SOLI_TRUST_PROXY`, body size, CSRF tokens) see [Server 
 | Framework-reserved paths | Anything under `/__soli/`, `/__solidev/`, `/__dev/`, `/__coverage__` or `/__livereload` that the framework does not itself serve is a 404 — it never reaches an app route such as `/:slug`, and is not CSRF-exempt |
 | Generic 5xx messages | A custom `errors/5xx` template receives a generic `message` (`"Internal Server Error"`) in production, never the internal error text; the real error is logged. 4xx messages are unchanged |
 | `/_metrics` behind a proxy | Without `SOLI_METRICS_TOKEN`, refused (404) when the request carries `X-Forwarded-For` / `X-Real-IP` / `Forwarded` or `trust_proxy` is on |
-| Request body budget | Bodies are charged against `SOLI_MAX_INFLIGHT_BODY_BYTES` as they arrive; a body stalled `SOLI_BODY_IDLE_TIMEOUT_SECS` (10 s) between frames is a 408 |
+| Request body budget | Bodies are charged against `SOLI_MAX_INFLIGHT_BODY_BYTES` as they arrive, and one client may hold at most `SOLI_BODY_BUDGET_PER_IP_BYTES` of it (a quarter by default — behind a proxy, turn trust proxy on or every client shares the proxy's quarter); a body stalled `SOLI_BODY_IDLE_TIMEOUT_SECS` (10 s) between frames is a 408 |
 | Request body cap | 8 MiB (`SOLI_MAX_BODY_SIZE`); 413 when exceeded |
 | Attachment types | Default allowlist excludes `text/html`, SVG, XML; blob route sends `nosniff` + `Content-Disposition: attachment` for non-images |
 | SQL TLS | Postgres/MySQL `sslmode` / `ssl-mode` via rustls; default `prefer`. Outside `--dev`, a one-time warning is logged when a connection to a non-local host uses `disable`, `prefer` or `require` |
@@ -35,7 +35,7 @@ These are **not** implied by `soli serve` without env. Treat them as required fo
 | `SOLI_CSRF_TOKENS=require` | Tokens are *verified when present*; this makes a missing token a 403 for browser form posts. **`soli new` writes this into `.env`.** Existing apps stay optional until they set it. |
 | `permit(...)` / `attr_accessible` | Mass assignment is not blocked on `Model.create(params)` unless you whitelist |
 | `sslmode=verify-full` | Default `prefer` still allows a cleartext fallback if the server offers none, and `require` encrypts without checking who answers. `verify-full` is the only mode that silences the startup warning for a remote host |
-| `SOLI_TRUST_PROXY=1` | Only behind a proxy that **strips** inbound `X-Forwarded-*` then sets its own |
+| `SOLI_TRUST_PROXY=1` | Only behind a proxy that **strips** inbound `X-Forwarded-*` then sets its own. Pair it with `SOLI_TRUSTED_PROXIES`: the list is checked against the real TCP peer everywhere a forwarded header is read — including the CSRF Origin gate, WebSocket and live-reload upgrade origin checks, and the `--dev` same-origin check, which used to trust `X-Forwarded-Host` from any peer once trust proxy was on |
 | Reverse-proxy TLS | `soli serve` is HTTP. Terminate TLS at Caddy/nginx/ALB |
 | Rate limits on auth | `soli generate auth` includes per-IP throttling; other endpoints need `rate_limit` |
 

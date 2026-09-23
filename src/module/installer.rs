@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use super::lockfile::{LockEntry, LockFile};
 use super::package::{Dependency, Package};
 use super::tar_extract;
+use super::tree_hash;
 
 /// Cache directory for downloaded packages (~/.soli/packages/).
 fn cache_dir() -> PathBuf {
@@ -162,6 +163,78 @@ fn download_and_extract(url: &str, dest: &Path) -> Result<(), String> {
     tar_extract::extract_archive(&mut archive, dest, true)
 }
 
+/// Remove a partially or wrongly populated cache directory, best effort.
+///
+/// A half-extracted tree left behind would otherwise be taken for a complete
+/// download on the next run ("already downloaded") and have its hash
+/// recorded on trust.
+fn discard_cache_dir(cache_path: &Path) {
+    if cache_path.exists() {
+        let _ = fs::remove_dir_all(cache_path);
+    }
+}
+
+/// Check the extracted tree of `name` at `resolved_rev` against the content
+/// hash recorded in the lock file, or record it when there is none yet
+/// (trust on first use).
+///
+/// `freshly_downloaded` says whether `cache_path` was populated by this run;
+/// on a mismatch such a tree is removed, while a pre-existing cache is left
+/// in place for the user to inspect.
+fn verify_or_record_integrity(
+    name: &str,
+    resolved_rev: &str,
+    cache_path: &Path,
+    lock: &mut LockFile,
+    freshly_downloaded: bool,
+) -> Result<(), String> {
+    let actual = tree_hash::hash_tree(cache_path)
+        .map_err(|e| format!("Integrity check failed for module '{}': {}", name, e))?;
+
+    let expected = lock.integrity_for(name, resolved_rev).map(str::to_string);
+    match expected {
+        Some(expected) if expected != actual => {
+            if freshly_downloaded {
+                discard_cache_dir(cache_path);
+            }
+            let remedy = if freshly_downloaded {
+                format!(
+                    "The content served for this revision differs from what was locked. \
+                     If you trust the new content, delete the `#@integrity {}` line from soli.lock \
+                     and install again.",
+                    name
+                )
+            } else {
+                format!(
+                    "The cached copy at {} was modified after it was installed. \
+                     Delete that directory to download it again.",
+                    cache_path.display()
+                )
+            };
+            Err(format!(
+                "Integrity check failed for module '{}' at {}: soli.lock expects {}, \
+                 but the installed files hash to {}. Refusing to use it. {}",
+                name, resolved_rev, expected, actual, remedy
+            ))
+        }
+        Some(_) => Ok(()),
+        None => {
+            lock.set_integrity(name, resolved_rev, &actual);
+            Ok(())
+        }
+    }
+}
+
+/// Verify (or record) the content hash of a package the lock file already
+/// satisfies, using the revision and cache path the lock entry names.
+fn verify_cached_entry(name: &str, lock: &mut LockFile) -> Result<(), String> {
+    let (resolved_rev, cache_path) = match lock.packages.get(name) {
+        Some(entry) => (entry.resolved_rev.clone(), entry.cache_path.clone()),
+        None => return Ok(()),
+    };
+    verify_or_record_integrity(name, &resolved_rev, &cache_path, lock, false)
+}
+
 /// Install a single git dependency.
 fn install_git_dep(
     name: &str,
@@ -179,6 +252,7 @@ fn install_git_dep(
         rev: rev.clone(),
     };
     if lock.is_satisfied(name, &dep) {
+        verify_cached_entry(name, lock)?;
         println!("  {} (cached)", name);
         return Ok(());
     }
@@ -206,12 +280,19 @@ fn install_git_dep(
 
     // Check if we already have this exact SHA cached
     let cache_path = cache_dir().join(format!("{}-{}", name, short_sha));
-    if cache_path.exists() {
+    let freshly_downloaded = !cache_path.exists();
+    if !freshly_downloaded {
         println!("  {} (already downloaded at {})", name, short_sha);
     } else {
         println!("  {} (downloading {}...)", name, short_sha);
         let url = archive_url(&host, &sha);
-        download_and_extract(&url, &cache_path)?;
+        if let Err(e) = download_and_extract(&url, &cache_path) {
+            discard_cache_dir(&cache_path);
+            return Err(e);
+        }
+    }
+    verify_or_record_integrity(name, &sha, &cache_path, lock, freshly_downloaded)?;
+    if freshly_downloaded {
         println!("  {} (installed)", name);
     }
 
@@ -254,6 +335,7 @@ fn install_version_dep(name: &str, version: &str, lock: &mut LockFile) -> Result
 
     let dep = Dependency::Version(version.to_string());
     if lock.is_satisfied(name, &dep) {
+        verify_cached_entry(name, lock)?;
         println!("  {} (cached)", name);
         return Ok(());
     }
@@ -265,11 +347,18 @@ fn install_version_dep(name: &str, version: &str, lock: &mut LockFile) -> Result
     let info = registry::resolve_version(registry_url, name, version)?;
 
     let cache_path = cache_dir().join(format!("{}-{}", name, version));
-    if cache_path.exists() {
+    let freshly_downloaded = !cache_path.exists();
+    if !freshly_downloaded {
         println!("  {} (already downloaded at {})", name, version);
     } else {
         println!("  {} (downloading {}...)", name, version);
-        registry::download_package(registry_url, &info.download_url, &cache_path)?;
+        if let Err(e) = registry::download_package(registry_url, &info.download_url, &cache_path) {
+            discard_cache_dir(&cache_path);
+            return Err(e);
+        }
+    }
+    verify_or_record_integrity(name, version, &cache_path, lock, freshly_downloaded)?;
+    if freshly_downloaded {
         println!("  {} (installed)", name);
     }
 
@@ -485,6 +574,89 @@ mod tests {
         };
         let url = archive_url(&host, "abc123");
         assert_eq!(url, "https://github.com/user/repo/archive/abc123.tar.gz");
+    }
+
+    fn package_tree() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("soli.toml"), "[package]\nname = \"m\"\n").unwrap();
+        fs::create_dir_all(dir.path().join("src")).unwrap();
+        fs::write(dir.path().join("src/lib.sl"), "def f { 1 }\n").unwrap();
+        dir
+    }
+
+    #[test]
+    fn integrity_is_recorded_on_first_use() {
+        let tree = package_tree();
+        let mut lock = LockFile::default();
+        verify_or_record_integrity("math", "abc123", tree.path(), &mut lock, true).unwrap();
+        let recorded = lock.integrity_for("math", "abc123").unwrap().to_string();
+        assert_eq!(recorded, tree_hash::hash_tree(tree.path()).unwrap());
+        // A second pass against the recorded hash succeeds.
+        verify_or_record_integrity("math", "abc123", tree.path(), &mut lock, false).unwrap();
+    }
+
+    #[test]
+    fn integrity_mismatch_on_cached_tree_is_refused_and_kept() {
+        let tree = package_tree();
+        let mut lock = LockFile::default();
+        verify_or_record_integrity("math", "abc123", tree.path(), &mut lock, false).unwrap();
+        let expected = lock.integrity_for("math", "abc123").unwrap().to_string();
+
+        fs::write(tree.path().join("src/lib.sl"), "def f { 2 }\n").unwrap();
+        let actual = tree_hash::hash_tree(tree.path()).unwrap();
+        let err = verify_or_record_integrity("math", "abc123", tree.path(), &mut lock, false)
+            .unwrap_err();
+        assert!(err.contains("'math'"), "{}", err);
+        assert!(err.contains(&expected), "{}", err);
+        assert!(err.contains(&actual), "{}", err);
+        assert!(tree.path().exists(), "a pre-existing cache is not deleted");
+        // The recorded hash is not overwritten by the mismatching one.
+        assert_eq!(
+            lock.integrity_for("math", "abc123"),
+            Some(expected.as_str())
+        );
+    }
+
+    #[test]
+    fn integrity_mismatch_on_fresh_download_discards_it() {
+        let parent = tempfile::tempdir().unwrap();
+        let cache_path = parent.path().join("math-abc123");
+        fs::create_dir_all(&cache_path).unwrap();
+        fs::write(cache_path.join("lib.sl"), "tampered").unwrap();
+
+        let mut lock = LockFile::default();
+        lock.set_integrity(
+            "math",
+            "abc123",
+            "sha256-0000000000000000000000000000000000000000000000000000000000000000",
+        );
+        let err =
+            verify_or_record_integrity("math", "abc123", &cache_path, &mut lock, true).unwrap_err();
+        assert!(
+            err.contains("Integrity check failed for module 'math'"),
+            "{}",
+            err
+        );
+        assert!(
+            !cache_path.exists(),
+            "a mismatching fresh download is removed"
+        );
+    }
+
+    #[test]
+    fn integrity_for_another_revision_does_not_apply() {
+        let tree = package_tree();
+        let mut lock = LockFile::default();
+        lock.set_integrity(
+            "math",
+            "oldrev",
+            "sha256-0000000000000000000000000000000000000000000000000000000000000000",
+        );
+        verify_or_record_integrity("math", "newrev", tree.path(), &mut lock, false).unwrap();
+        assert_eq!(
+            lock.integrity_for("math", "newrev").map(str::to_string),
+            Some(tree_hash::hash_tree(tree.path()).unwrap())
+        );
     }
 
     #[test]

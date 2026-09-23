@@ -264,13 +264,10 @@ pub fn column_query_from_qb(
     }
     if q.hash_filter.is_none() {
         for (key, value) in &qb.bind_vars {
-            let field = crate::interpreter::symbol_string(*key)
-                .unwrap_or("")
-                .to_string();
-            if field.starts_with("__soli_") {
+            if key.starts_with("__soli_") {
                 continue;
             }
-            q.eq_filters.insert(field, value.clone());
+            q.eq_filters.insert(key.clone(), value.clone());
         }
         // A raw filter carries binds too (`.where("doc.age >= @age", {age: 18})`),
         // so its presence alone cannot distinguish it from the hash form. Validate

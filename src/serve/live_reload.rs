@@ -15,7 +15,7 @@ use http_body_util::Full;
 use hyper::{HeaderMap, Response, StatusCode};
 use tokio::sync::broadcast;
 
-use crate::serve::{box_full, full, websocket_origin_allowed, ResponseBody};
+use crate::serve::{box_full, full, websocket_origin_allowed_from, ResponseBody};
 
 // Re-export the WebSocket-based live reload script
 // Note: Using crate:: to avoid circular imports
@@ -42,6 +42,7 @@ pub fn is_live_reload_enabled() -> bool {
 pub(crate) async fn handle(
     path: &str,
     headers: &HeaderMap,
+    peer_ip: std::net::IpAddr,
     reload_tx: Option<&broadcast::Sender<()>>,
 ) -> Option<Response<ResponseBody>> {
     if path != "/__livereload" {
@@ -56,7 +57,7 @@ pub(crate) async fn handle(
     // `websocket_origin_allowed` requires Origin whenever a Cookie
     // is present (SEC-046) and otherwise requires it to match
     // `Host`; cookie-less curl from the dev box still works.
-    if !websocket_origin_allowed(headers) {
+    if !websocket_origin_allowed_from(headers, peer_ip) {
         return Some(
             Response::builder()
                 .status(StatusCode::FORBIDDEN)

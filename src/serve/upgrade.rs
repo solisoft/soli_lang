@@ -57,7 +57,7 @@ pub(super) async fn handle(
 ) -> Result<Response<ResponseBody>, hyper::Error> {
     // Handle live reload WebSocket endpoint
     if path == "/__livereload_ws" {
-        if !super::websocket_origin_allowed(req.headers()) {
+        if !super::websocket_origin_allowed_from(req.headers(), peer_addr.ip()) {
             return Ok(forbidden_websocket_origin_response());
         }
         if let Some(tx) = reload_tx {
@@ -77,7 +77,7 @@ pub(super) async fn handle(
     // registry and worker channel as LiveView; only the wire differs.
     #[cfg(feature = "eui")]
     if let Some(component) = path.strip_prefix("/_eui/session/") {
-        if !super::websocket_origin_allowed(req.headers()) {
+        if !super::websocket_origin_allowed_from(req.headers(), peer_addr.ip()) {
             return Ok(forbidden_websocket_origin_response());
         }
         let component = component.trim_end_matches('/').to_string();
@@ -119,7 +119,7 @@ pub(super) async fn handle(
 
     // Handle LiveView WebSocket endpoint
     if path == "/live/socket" || path.starts_with("/live/socket/") {
-        if !super::websocket_origin_allowed(req.headers()) {
+        if !super::websocket_origin_allowed_from(req.headers(), peer_addr.ip()) {
             return Ok(forbidden_websocket_origin_response());
         }
 
@@ -456,7 +456,11 @@ async fn handle_websocket_upgrade(
             .unwrap());
     }
 
-    if !super::websocket_origin_allowed(req.headers()) {
+    let origin_allowed = match peer_ip.parse::<std::net::IpAddr>() {
+        Ok(peer) => super::websocket_origin_allowed_from(req.headers(), peer),
+        Err(_) => super::websocket_origin_allowed(req.headers()),
+    };
+    if !origin_allowed {
         return Ok(forbidden_websocket_origin_response());
     }
 

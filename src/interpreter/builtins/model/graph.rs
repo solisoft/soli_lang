@@ -478,7 +478,7 @@ pub fn build_traverse_qb_from_seed(
         None => QueryBuilder::new(target_class_name, edge_collection.clone()),
     };
     qb.bind_vars.insert(
-        crate::interpreter::get_symbol(TRAVERSE_START_BIND),
+        TRAVERSE_START_BIND.to_string(),
         serde_json::Value::String(start_id),
     );
     qb.traversal = Some(TraversalClause {

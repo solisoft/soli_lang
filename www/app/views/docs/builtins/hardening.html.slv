@@ -126,6 +126,34 @@ SOLI_TRUSTED_PROXIES=10.0.0.0/8,127.0.0.1,::1</code></pre>
             <div class="p-4 overflow-x-auto"><pre><code class="language-bash text-sm">SOLI_MAX_INFLIGHT_BODY_BYTES=268435456   # 256 MiB across all requests</code></pre>
             </div>
         </div>
+        <h3 class="text-xl font-semibold text-white mt-8 mb-3">Per-client share</h3>
+        <p class="text-gray-400 mb-4">
+            <code class="text-orange-400">SOLI_BODY_BUDGET_PER_IP_BYTES</code> caps how much of that budget <strong class="text-white">one client</strong> may hold at once, so a single client uploading in parallel cannot take the whole budget and turn every other upload away. Over its share a client gets the same <code class="text-orange-400">503 Server busy: too many uploads in flight</code> with <code class="text-orange-400">Retry-After: 1</code>; everyone else is unaffected.
+        </p>
+        <div class="bg-[#171412] rounded-xl border border-gray-700 p-6 mb-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded">Default: a quarter of the global budget</span>
+            </div>
+            <p class="text-gray-400">
+                Never less than one <code class="text-orange-400">SOLI_MAX_BODY_SIZE</code> (a client can always send one maximum-size body), never more than the global budget, and <code class="text-orange-400">0</code> when the global budget is disabled. Set it to <code class="text-orange-400">0</code> to disable the per-client cap.
+            </p>
+        </div>
+        <p class="text-gray-400 mb-4">
+            The client is the TCP peer, or the right-most <code class="text-orange-400">X-Forwarded-For</code> entry when trust proxy is on &mdash; the same key the rate limiter uses. IPv6 clients are counted per <code class="text-orange-400">/64</code> (one host owns the whole prefix), and an IPv4-mapped IPv6 address counts as its IPv4 address.
+        </p>
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+            <div class="p-4 overflow-x-auto"><pre><code class="language-bash text-sm">SOLI_BODY_BUDGET_PER_IP_BYTES=67108864   # 64 MiB per client</code></pre>
+            </div>
+        </div>
+        <div class="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-5">
+            <p class="text-white font-semibold mb-2">Behind a proxy, turn trust proxy on</p>
+            <p class="text-gray-300 text-sm mb-2">
+                Without it every request comes from the proxy's address, so <strong class="text-white">all clients share one share</strong> &mdash; about a quarter of the total upload capacity by default. Enable trust proxy (with <code class="text-orange-400">SOLI_TRUSTED_PROXIES</code>), raise this variable, or set it to <code class="text-orange-400">0</code>.
+            </p>
+            <p class="text-gray-300 text-sm">
+                Do not set it below 64&nbsp;KiB: every upload claims a 64&nbsp;KiB first slice, so a smaller share answers every request with a body <code class="text-orange-400">503</code>.
+            </p>
+        </div>
         <h3 class="text-xl font-semibold text-white mt-8 mb-3">Stalled and broken bodies</h3>
         <p class="text-gray-400 mb-4">
             <code class="text-orange-400">SOLI_BODY_READ_TIMEOUT_SECS</code> (default <code class="text-orange-400">60</code>) bounds how long a whole body may take. <code class="text-orange-400">SOLI_BODY_IDLE_TIMEOUT_SECS</code> (default <code class="text-orange-400">10</code>) bounds the silence <strong class="text-white">between two frames</strong>: a body that stalls that long is answered <code class="text-orange-400">408 Request Timeout</code> and its reservation freed. A body cut off by a transport error is a <code class="text-orange-400">400 Bad Request</code> (it used to be reported as <code class="text-orange-400">413</code>).

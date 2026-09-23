@@ -445,6 +445,45 @@ soli 2.0.3
         </div>
     </section>
 
+    <!-- Lockfile Integrity -->
+    <section id="section-lockfile-integrity" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Lockfile Integrity</h2>
+        <p class="text-gray-400 leading-relaxed">
+            <code class="text-amber-300">soli install</code>, <code class="text-amber-300">soli add</code> and
+            <code class="text-amber-300">soli update</code> record, in <code class="text-amber-300">soli.lock</code>, a
+            <strong class="text-white">SHA-256 hash of each git or registry dependency's extracted file tree</strong>. It sits on a
+            comment line after the package's own line:
+        </p>
+
+<pre data-filename="soli.lock"><code class="language-text text-sm">math|https://github.com/user/math.sl|3f2a9c…|/home/me/.soli/packages/math/3f2a9c…|main
+#@integrity math|3f2a9c…|sha256-&lt;64 hex characters&gt;</code></pre>
+
+        <p class="text-gray-400 leading-relaxed mt-4">
+            Commit it with the rest of <code class="text-amber-300">soli.lock</code>. The model is
+            <strong class="text-white">trust on first use</strong>: the hash is recorded the first time a given resolved revision is
+            installed and checked on every install after that. A new commit &mdash; <code class="text-amber-300">soli update</code>, or a
+            branch/tag that moved &mdash; is a new revision and records a new hash. Path dependencies are not hashed, and resolving an
+            <code class="text-amber-300">import</code> at run time does not re-check; the check happens at install.
+        </p>
+        <p class="text-gray-400 leading-relaxed mt-4">When the installed files do not match, the install is refused:</p>
+
+<pre data-filename="Terminal"><code class="language-text text-sm">Integrity check failed for module 'math' at 3f2a9c…: soli.lock expects
+sha256-…, but the installed files hash to sha256-…. Refusing to use it.</code></pre>
+
+        <ul class="list-disc list-inside text-gray-400 leading-relaxed mt-4 space-y-2">
+            <li><strong class="text-white">A fresh download that does not match</strong> is deleted. If the new content is expected
+                (the upstream rewrote history, say), remove the <code class="text-amber-300">#@integrity math</code> line from
+                <code class="text-amber-300">soli.lock</code> and install again to accept it.</li>
+            <li><strong class="text-white">An existing cache that does not match</strong> is kept, so you can inspect it. Delete that
+                cache directory (under <code class="text-amber-300">~/.soli/packages/</code>) to re-download.</li>
+            <li><strong class="text-white">A failed download or extraction</strong> now removes the half-written cache directory; it
+                used to be taken as installed on the next run.</li>
+            <li><strong class="text-white">Older <code class="text-amber-300">soli</code> versions</strong> ignore <code class="text-amber-300">#</code>
+                lines, so the lockfile stays readable by them. If one rewrites the lockfile, the integrity lines are dropped and
+                recorded again by the next install with a current <code class="text-amber-300">soli</code>.</li>
+        </ul>
+    </section>
+
     <!-- Use Keyword -->
     <section id="section-use" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Use Keyword</h2>

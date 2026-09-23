@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use ahash::AHashMap;
 
-use crate::interpreter::value::{HashPairs, StrKey, Value};
+use crate::interpreter::value::{Function, HashPairs, StrKey, Value};
 
 /// Result of an `Environment::assign` call.
 ///
@@ -250,6 +250,137 @@ impl Environment {
 
         all_vars
     }
+}
+
+/// Strong references `func` holds on `target`: its `closure` field, plus its
+/// parked call env (`cached_env`, whose `enclosing` is that same closure)
+/// when nothing but the slot owns the parked env.
+fn refs_into(func: &Function, target: &Rc<RefCell<Environment>>) -> usize {
+    if !Rc::ptr_eq(&func.closure, target) {
+        return 0;
+    }
+    let mut refs = 1;
+    if let Ok(slot) = func.cached_env.try_borrow() {
+        if let Some(parked) = slot.as_ref() {
+            let parked_points_here = Rc::strong_count(parked) == 1
+                && parked.try_borrow().is_ok_and(|parked| {
+                    parked
+                        .enclosing
+                        .as_ref()
+                        .is_some_and(|up| Rc::ptr_eq(up, target))
+                });
+            if parked_points_here {
+                refs += 1;
+            }
+        }
+    }
+    refs
+}
+
+/// Break the `env -> binding -> Function -> closure -> env` cycle of a scope
+/// that is being abandoned, when — and only when — nothing else can reach it.
+///
+/// `held_by_caller` is how many strong references the caller itself holds on
+/// `env` (the frame that is about to let go of it). Returns `true` when the
+/// bindings were dropped.
+///
+/// This is trial deletion restricted to the one cycle shape the tree-walker
+/// creates on its own: a `def` or `fn` evaluated inside a scope captures that
+/// scope (`Function.closure` is a strong `Rc`) and is stored back into it.
+/// Every strong reference to `env` is accounted for, or nothing happens:
+///
+/// * A `Function` bound in `env` whose `Rc` count equals the number of times it
+///   is bound here is *internal*: no array, hash, instance field, global,
+///   return value, thrown value, other scope or Rust frame holds it, since each
+///   of those would own one more `Rc`.
+/// * An internal function contributes its `closure` (when that is `env`) and
+///   its parked call env (only when the slot is that env's sole owner).
+/// * One level of block nesting: an internal function whose closure is a
+///   scope `inner` directly inside `env` contributes `inner`'s `enclosing`
+///   pointer — but only when every strong reference to `inner` is itself one
+///   of those internal functions' closures or parked envs.
+///
+/// If the accounted references plus `held_by_caller` equal `env`'s strong
+/// count, every path to `env` runs through `env` itself: the scope is garbage
+/// that `Rc` alone cannot free, and clearing it is unobservable. Anything
+/// uncounted — a closure that escaped by any route, a function nested inside a
+/// collection, a live recursive frame whose scope chain passes through `env`,
+/// a borrowed `RefCell` — leaves the count short and the scope untouched.
+/// Over-counting is the only way this could be wrong, and every counted
+/// reference is a distinct `Rc` verified by pointer identity. No `Weak` to an
+/// environment or a `Function` exists in the interpreter, so a strong count of
+/// zero outside really means unreachable.
+pub fn break_self_cycle(env: &Rc<RefCell<Environment>>, held_by_caller: usize) -> bool {
+    let total = Rc::strong_count(env);
+    if total <= held_by_caller {
+        return false;
+    }
+    {
+        let Ok(scope) = env.try_borrow() else {
+            return false;
+        };
+        // Distinct functions bound here, with how many bindings hold each.
+        let mut bound: Vec<(&Rc<Function>, usize)> = Vec::new();
+        for value in scope.values.values().chain(scope.consts.values()) {
+            if let Value::Function(func) = value {
+                match bound.iter_mut().find(|(seen, _)| Rc::ptr_eq(*seen, func)) {
+                    Some(entry) => entry.1 += 1,
+                    None => bound.push((func, 1)),
+                }
+            }
+        }
+        // Borrows only — cloning an `Rc` here would itself skew the counts.
+        let internal: Vec<&Rc<Function>> = bound
+            .into_iter()
+            .filter(|&(func, bindings)| Rc::strong_count(func) == bindings)
+            .map(|(func, _)| func)
+            .collect();
+        if internal.is_empty() {
+            return false;
+        }
+
+        let mut accounted: usize = internal.iter().map(|&func| refs_into(func, env)).sum();
+
+        let mut inner_scopes: Vec<&Rc<RefCell<Environment>>> = Vec::new();
+        for &func in &internal {
+            let inner = &func.closure;
+            if Rc::ptr_eq(inner, env) || inner_scopes.iter().any(|&seen| Rc::ptr_eq(seen, inner)) {
+                continue;
+            }
+            let directly_inside = inner.try_borrow().is_ok_and(|inner| {
+                inner
+                    .enclosing
+                    .as_ref()
+                    .is_some_and(|up| Rc::ptr_eq(up, env))
+            });
+            if directly_inside {
+                inner_scopes.push(inner);
+            }
+        }
+        for inner in inner_scopes {
+            let held_internally: usize = internal.iter().map(|&func| refs_into(func, inner)).sum();
+            if Rc::strong_count(inner) == held_internally {
+                accounted += 1;
+            }
+        }
+
+        if accounted + held_by_caller != total {
+            return false;
+        }
+    }
+
+    // Move the bindings out and drop them only after the borrow is released:
+    // dropping them drops the internal functions, whose closures and parked
+    // envs decrement `env`'s count.
+    let released = match env.try_borrow_mut() {
+        Ok(mut scope) => (
+            std::mem::take(&mut scope.values),
+            std::mem::take(&mut scope.consts),
+        ),
+        Err(_) => return false,
+    };
+    drop(released);
+    true
 }
 
 impl Default for Environment {

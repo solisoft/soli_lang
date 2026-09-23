@@ -2069,6 +2069,8 @@ fn worker_loop(
             for _ in 0..server_constants::BATCH_SIZE {
                 match work_rx.try_recv() {
                     Ok(data) => {
+                        // A slot just freed: wake a request waiting for one.
+                        pipeline::queue_slot_freed();
                         dispatch_http_request(interpreter, &mut vm, data, dev_mode);
                     }
                     Err(channel::TryRecvError::Empty) => {
@@ -2106,6 +2108,7 @@ fn worker_loop(
                 let idx = oper.index();
                 if Some(idx) == work_idx {
                     if let Ok(data) = oper.recv(&work_rx) {
+                        pipeline::queue_slot_freed();
                         // Check hot reload before handling: a parked worker
                         // serves this request before the loop-top version scan
                         // runs, so clear both the template AST cache and this
@@ -2338,7 +2341,11 @@ async fn handle_hyper_request(
     // once per branch inside `upgrade`), so the early return doesn't fire on
     // those.
     if !hyper_tungstenite::is_upgrade_request(&req) {
-        if let Err(reason) = check_csrf_origin(req.headers(), &method, &path) {
+        if let Err(reason) =
+            crate::interpreter::builtins::trust_proxy::with_peer_ip(peer_addr.ip(), || {
+                check_csrf_origin(req.headers(), &method, &path)
+            })
+        {
             return Ok(forbidden_csrf_response(&reason));
         }
     }
@@ -2408,7 +2415,9 @@ async fn handle_hyper_request(
 
     // The live-reload long-poll, and the SEC-043 origin check in front of it.
     // See `live_reload`.
-    if let Some(response) = live_reload::handle(&path, req.headers(), reload_tx.as_ref()).await {
+    if let Some(response) =
+        live_reload::handle(&path, req.headers(), peer_addr.ip(), reload_tx.as_ref()).await
+    {
         return Ok(response);
     }
 
@@ -2492,7 +2501,7 @@ async fn handle_hyper_request(
         multipart_files,
         if_none_match,
         is_prefetch,
-    } = match pipeline::intake(req, method, raw_query.as_deref()).await {
+    } = match pipeline::intake(req, method, raw_query.as_deref(), peer_addr.ip()).await {
         Ok(intake) => intake,
         Err(response) => return Ok(*response),
     };
@@ -2547,6 +2556,17 @@ fn forbidden_csrf_response(reason: &str) -> Response<ResponseBody> {
         .header("Content-Type", "text/plain; charset=utf-8")
         .body(full(Bytes::from(format!("CSRF check failed: {}", reason))))
         .unwrap()
+}
+
+/// [`websocket_origin_allowed`] for a request from `peer`, so a
+/// `SOLI_TRUSTED_PROXIES` list decides whether `X-Forwarded-Host` counts.
+pub(crate) fn websocket_origin_allowed_from(
+    headers: &hyper::HeaderMap,
+    peer: std::net::IpAddr,
+) -> bool {
+    crate::interpreter::builtins::trust_proxy::with_peer_ip(peer, || {
+        websocket_origin_allowed(headers)
+    })
 }
 
 pub(crate) fn websocket_origin_allowed(headers: &hyper::HeaderMap) -> bool {

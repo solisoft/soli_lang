@@ -1106,7 +1106,7 @@ impl Interpreter {
                         join_soft_delete: resolution.join_soft_delete,
                     });
                     qb.bind_vars.insert(
-                        crate::interpreter::get_symbol(THROUGH_FK_BIND),
+                        THROUGH_FK_BIND.to_string(),
                         serde_json::Value::String(owner_key),
                     );
                     return Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))));

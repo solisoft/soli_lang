@@ -249,12 +249,8 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
                 // overwrite the first one's bound value with the second's.
                 let already_bound = {
                     let existing = qb.borrow();
-                    let names: std::collections::HashSet<String> = existing
-                        .bind_vars
-                        .keys()
-                        .filter_map(|k| crate::interpreter::symbol::symbol_string(*k))
-                        .map(|k| k.to_string())
-                        .collect();
+                    let names: std::collections::HashSet<String> =
+                        existing.bind_vars.keys().cloned().collect();
                     names
                 };
                 let (pred, filter, binds) =
@@ -332,9 +328,7 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
             new_qb.filter = Some(filter);
         }
         for (k, v) in bind_vars {
-            new_qb
-                .bind_vars
-                .insert(crate::interpreter::get_symbol(&k), v);
+            new_qb.bind_vars.insert(k, v);
         }
         if let Some(pred) = new_pred {
             new_qb.hash_filter = Some(match new_qb.hash_filter.take() {
@@ -1654,9 +1648,7 @@ through relation's records instead"
                             v, key, "having",
                         )
                         .map_err(|e| RuntimeError::General { message: e, span })?;
-                    new_qb
-                        .bind_vars
-                        .insert(crate::interpreter::get_symbol(key), json_val);
+                    new_qb.bind_vars.insert(key.to_string(), json_val);
                 }
             }
         } else if let Some(other) = arguments.get(1) {

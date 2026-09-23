@@ -45,6 +45,20 @@ pub fn set_current_peer_ip(ip: Option<std::net::IpAddr>) {
     CURRENT_PEER_IP.with(|c| *c.borrow_mut() = ip);
 }
 
+/// Run `f` with `peer` as this thread's current peer, then put back whatever
+/// was there. For the checks on the async side (the CSRF Origin gate, the
+/// WebSocket and live-reload origin checks): no worker has recorded a peer on
+/// a tokio thread, and a missing peer reads as "not an HTTP request", which
+/// trusted `X-Forwarded-*` from any client despite `SOLI_TRUSTED_PROXIES`.
+/// Scoped rather than set per connection because a task may resume on
+/// another thread after every `.await`.
+pub fn with_peer_ip<R>(peer: std::net::IpAddr, f: impl FnOnce() -> R) -> R {
+    let previous = CURRENT_PEER_IP.with(|c| c.replace(Some(peer)));
+    let out = f();
+    CURRENT_PEER_IP.with(|c| *c.borrow_mut() = previous);
+    out
+}
+
 /// Parsed `SOLI_TRUSTED_PROXIES` entries: an IP or a CIDR block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TrustedProxyEntry {
@@ -307,5 +321,19 @@ mod trusted_proxy_tests {
         assert!(parse_trusted_proxy_entry("not-an-ip").is_none());
         assert!(parse_trusted_proxy_entry("10.0.0.0/33").is_none());
         assert!(parse_trusted_proxy_entry("::1/129").is_none());
+    }
+
+    #[test]
+    fn with_peer_ip_scopes_the_peer_and_restores_the_previous_one() {
+        let current = || CURRENT_PEER_IP.with(|c| *c.borrow());
+        let outer: std::net::IpAddr = "10.0.0.1".parse().unwrap();
+        let inner: std::net::IpAddr = "203.0.113.9".parse().unwrap();
+        set_current_peer_ip(Some(outer));
+        let seen = with_peer_ip(inner, current);
+        assert_eq!(seen, Some(inner));
+        assert_eq!(current(), Some(outer));
+        set_current_peer_ip(None);
+        with_peer_ip(inner, || ());
+        assert_eq!(current(), None);
     }
 }

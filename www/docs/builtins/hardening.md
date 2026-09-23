@@ -76,6 +76,36 @@ SOLI_MAX_INFLIGHT_BODY_BYTES=268435456   # 256 MiB across all requests
 Raising `SOLI_MAX_BODY_SIZE` for an app that accepts big uploads raises this
 default with it, so the two stay in proportion unless you set it explicitly.
 
+### Per-client share
+
+`SOLI_BODY_BUDGET_PER_IP_BYTES` caps how much of that budget **one client** may
+hold at once, so a single client uploading in parallel cannot take the whole
+budget and turn every other upload away. Over its share, a client gets the same
+`503 Server busy: too many uploads in flight` with `Retry-After: 1`; everyone
+else is unaffected.
+
+**Default: a quarter of `SOLI_MAX_INFLIGHT_BODY_BYTES`** — never less than one
+`SOLI_MAX_BODY_SIZE` (a client can always send one maximum-size body), never
+more than the global budget, and `0` when the global budget is disabled. Set it
+to `0` to disable the per-client cap.
+
+The client is the TCP peer, or the right-most `X-Forwarded-For` entry when trust
+proxy is on — the same key the rate limiter uses. IPv6 clients are counted per
+`/64` (one host owns the whole prefix), and an IPv4-mapped IPv6 address counts
+as its IPv4 address.
+
+```bash
+SOLI_BODY_BUDGET_PER_IP_BYTES=67108864   # 64 MiB per client
+```
+
+> **Behind a proxy, turn trust proxy on.** Without it every request comes from
+> the proxy's address, so **all clients share one share** — about a quarter of
+> the total upload capacity by default. Enable trust proxy (with
+> `SOLI_TRUSTED_PROXIES`), raise this variable, or set it to `0`.
+>
+> Do not set it below 64 KiB: every upload claims a 64 KiB first slice, so a
+> smaller share answers every request with a body `503`.
+
 ### Stalled and broken bodies
 
 `SOLI_BODY_READ_TIMEOUT_SECS` (default `60`) bounds how long a whole body may
@@ -87,7 +117,7 @@ Request` (it used to be reported as `413`).
 ## Related env
 
 See [Configuration](/docs/getting-started/configuration) for `SOLI_CSRF_TOKENS`, `SOLI_DISABLE_CSRF`, `SOLI_FORCE_SECURE_COOKIES`, `SOLI_HTTP_MAX_RESPONSE_BYTES`, image and parallel-fan-out caps, `SOLI_MAX_UPLOAD_FILES`,
-`SOLI_MAX_INFLIGHT_BODY_BYTES`, `SOLI_BODY_IDLE_TIMEOUT_SECS`, and the HTTP/2
+`SOLI_MAX_INFLIGHT_BODY_BYTES`, `SOLI_BODY_BUDGET_PER_IP_BYTES`, `SOLI_BODY_IDLE_TIMEOUT_SECS`, and the HTTP/2
 `SOLI_H2_KEEPALIVE_SECS` / `SOLI_CONN_IDLE_TIMEOUT_SECS`.
 
 Response-side headers: [Security Headers](/docs/builtins/security-headers).

@@ -183,6 +183,12 @@ pub const BATCH_SIZE: usize = 64;
 /// Request timeout in seconds
 pub const REQUEST_TIMEOUT_SECS: u64 = 5;
 
+/// Upper bound on how long a request waiting for room in a full worker queue
+/// sleeps between checks. Room is signalled by the worker that frees it (see
+/// `pipeline::queue_slot_freed`), so this is not a polling period: it only
+/// bounds how late a waiter could notice a slot if a signal were ever missed.
+pub const QUEUE_SPACE_RECHECK_MS: u64 = 100;
+
 /// Maximum time the HTTP handler waits for a worker thread's response before
 /// giving up and returning 504. Bounds the otherwise-unbounded wait on the
 /// worker reply channel: if a worker parks in a blocking DB/HTTP call or a

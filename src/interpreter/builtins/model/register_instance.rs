@@ -840,7 +840,7 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                 None => QueryBuilder::new(target_class_name, spec.edge_collection.clone()),
             };
             qb.bind_vars.insert(
-                crate::interpreter::get_symbol(super::graph::TRAVERSE_START_BIND),
+                super::graph::TRAVERSE_START_BIND.to_string(),
                 serde_json::Value::String(start_id),
             );
             qb.traversal = Some(super::graph::TraversalClause {

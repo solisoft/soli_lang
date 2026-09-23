@@ -44,6 +44,9 @@
 * **security(db):** outside `--dev`, a one-time warning when a Postgres/MySQL connection to a non-local host uses `sslmode` `disable`/`prefer`/`require` (MySQL: below `VERIFY_IDENTITY`), recommending `verify-full`. The default is unchanged.
 * **security(crypto):** `Crypto.modexp` caps its operands — modulus and exponent at most 8192 bits, base at most 16384 bits — so a request-supplied operand cannot pin a worker.
 * **docs(security):** documented sharp edges: `Crypto.totp_verify` accepts ±1 step and has **no replay protection** (remember the last accepted step per user, and rate-limit); `jwt_verify` checks `aud` only when an expected audience is passed; `Crypto.pkcs1_unpad` is not constant-time (verification/interop only — never expose its errors from a decryption endpoint); `strip_html` is a naive tag stripper, not a sanitizer (escape its output; use `sanitize_html` for untrusted HTML).
+* **security(http):** **one client can no longer hold the whole upload budget.** New `SOLI_BODY_BUDGET_PER_IP_BYTES` caps the share of `SOLI_MAX_INFLIGHT_BODY_BYTES` a single client may have in flight; over it, the same `503 Server busy: too many uploads in flight` with `Retry-After: 1`. Default: a quarter of the global budget (never less than one `SOLI_MAX_BODY_SIZE`, never more than the global budget, `0` when the global budget is disabled); `0` disables. The client is the TCP peer, or the right-most `X-Forwarded-For` when trust proxy is on (the rate limiter's key); IPv6 is counted per `/64`, IPv4-mapped IPv6 as IPv4. Behind a proxy **without** trust proxy every client shares the proxy's one share — about a quarter of upload capacity by default — so enable trust proxy, raise the variable, or set `0`. Below 64 KiB every body request is a 503 (each upload claims a 64 KiB first slice).
+* **security(http):** **`SOLI_TRUSTED_PROXIES` is honoured by the async-side origin checks.** The CSRF Origin gate, the WebSocket upgrade origin checks, the live-reload origin check and the `--dev` same-origin check ignored the trusted-proxy list and believed `X-Forwarded-Host` from **any** peer whenever trust proxy was on; they now evaluate the list against the real TCP peer, like the rest of the request path.
+* **security(modules):** **`soli.lock` records a content hash for each git/registry dependency.** `soli install` / `add` / `update` write `#@integrity <name>|<resolved sha>|sha256-<hex>` after the package line — a SHA-256 of the extracted file tree, trust-on-first-use per resolved revision (a new commit records a new hash). A mismatch refuses the install: `Integrity check failed for module '<name>' at <rev>: soli.lock expects <expected>, but the installed files hash to <actual>. Refusing to use it.` A fresh download that mismatches is deleted (remove the `#@integrity <name>` line to accept new content); a mismatching existing cache is kept (delete that cache directory to re-download). Path dependencies are not checked, and import-time resolution does not re-check. Older soli ignores `#` lines; if one rewrites the lockfile the line is dropped and re-recorded on the next install. A download or extraction that fails half-way now removes its half-written cache directory instead of being treated as installed on the next run.
 
 ### Fixed
 
@@ -81,6 +84,8 @@
 * **fix(realtime):** an SSE subscriber that disconnects from a quiet topic is freed rather than held until the next publish; a WebSocket channel join arriving after the socket disconnected is ignored instead of registering a dead member.
 * **fix(forms):** the form builder (`form_with` and friends) is evaluated in its own environment, so its internal `h`/`attr`/… calls no longer resolve to an app helper that overrides those names.
 * **fix(http):** the undeclared-`Host` warning is logged once per host (at most 32 hosts) instead of on every request.
+* **fix(db):** query bind-variable names are no longer interned into the process-wide symbol table, so a client-chosen `where` key no longer leaks memory for the life of the worker. (`instance.traverse(name)` with a request-supplied edge name still interns the name.)
+* **fix(interpreter):** **a call's local environment is freed when only a non-escaping closure kept it alive.** A closure or nested `def` created inside a function captures that function's environment, and the environment holds the closure — a cycle, so every such call leaked its locals. When the closure does not escape (returned, or stored in a global, collection or field), the environment is now released at the end of the call.
 
 ### Performance
 
@@ -92,6 +97,7 @@
 * **perf(regex):** the regex cache hands out shared compiled regexes (keeping their search caches) behind a thread-local front cache.
 * **perf(config):** `SOLI_NAV`, `SOLI_PREFETCH`, `SOLI_PREFETCH_TTL`, `SOLIDB_HOST`, `SOLI_APP_HOSTS`, `SOLI_DISABLE_CSRF` and `SOLI_CSRF_TOKENS` are read once per process — changing one now requires a restart.
 * **perf(views):** in production a template lookup that failed stays cached as missing until reload/restart.
+* **perf(http):** a request queued behind busy workers is woken as soon as a worker frees a slot, instead of re-checking every 1 ms.
 
 ## [2.3.7] - 2026-09-17
 

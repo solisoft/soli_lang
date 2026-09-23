@@ -63,12 +63,15 @@ pub(super) struct Intake {
 }
 
 /// Read the request into the shape a worker takes, or the response to send
-/// instead — 413 for an oversize body, 503 when the in-flight body budget is
-/// exhausted, 408 for one that never finishes arriving.
+/// instead — 413 for an oversize body, 503 when the in-flight body budget (or
+/// this client's share of it) is exhausted, 408 for one that never finishes
+/// arriving. `peer_ip` is the TCP peer; see [`body_budget_client`] for how it
+/// becomes the client the budget is charged to.
 pub(super) async fn intake(
     req: Request<Incoming>,
     method: Cow<'static, str>,
     raw_query: Option<&str>,
+    peer_ip: std::net::IpAddr,
 ) -> Result<Intake, EarlyResponse> {
     // Parse query string into ordered pairs (order matters for bracket
     // arrays like tags[]=a&tags[]=b — the worker nests them Rack-style).
@@ -130,7 +133,13 @@ pub(super) async fn intake(
             .unwrap_or(INITIAL_BODY_RESERVATION)
             .min(INITIAL_BODY_RESERVATION)
             .min(max_body);
-        match crate::interpreter::builtins::body_limit::BodyReservation::try_acquire(want) {
+        // Charged to this client's share as well as to the whole, so one client
+        // cannot hold the entire budget and 503 everyone else.
+        let client = body_budget_client(peer_ip, &headers);
+        match crate::interpreter::builtins::body_limit::BodyReservation::try_acquire_for(
+            want,
+            Some(client),
+        ) {
             Some(reservation) => body_reservation = Some(reservation),
             None => return Err(Box::new(server_busy_response())),
         }
@@ -246,6 +255,36 @@ pub(super) async fn intake(
 /// bytes arrive, so a connection that sends nothing holds almost nothing.
 const INITIAL_BODY_RESERVATION: usize = 64 * 1024;
 
+/// The client a request body's budget is charged to.
+///
+/// The TCP peer, unless the application trusts its proxy — then the
+/// right-most `X-Forwarded-For` entry, the address the trusted hop recorded,
+/// exactly as the rate limiter (`rate_limit::extract_client_ip`) derives it.
+/// Without that, every client behind a reverse proxy would share the proxy's
+/// one share of the budget. An unparsable or absent header falls back to the
+/// peer.
+///
+/// `is_trust_proxy_enabled` narrows to `SOLI_TRUSTED_PROXIES` by the peer
+/// recorded in a thread-local that only worker threads set; it is set here for
+/// the one call and cleared again, so a direct client cannot pass for a
+/// trusted hop by sending the header itself.
+fn body_budget_client(
+    peer_ip: std::net::IpAddr,
+    headers: &hyper::header::HeaderMap,
+) -> std::net::IpAddr {
+    use crate::interpreter::builtins::trust_proxy;
+    trust_proxy::set_current_peer_ip(Some(peer_ip));
+    let trusted = trust_proxy::is_trust_proxy_enabled();
+    trust_proxy::set_current_peer_ip(None);
+    if !trusted {
+        return peer_ip;
+    }
+    header_str(headers, "x-forwarded-for")
+        .and_then(|xff| xff.rsplit(',').map(str::trim).find(|s| !s.is_empty()))
+        .and_then(|ip| ip.parse().ok())
+        .unwrap_or(peer_ip)
+}
+
 fn server_busy_response() -> Response<ResponseBody> {
     Response::builder()
         .status(StatusCode::SERVICE_UNAVAILABLE)
@@ -346,6 +385,69 @@ where
     })
 }
 
+/// Signalled once per request a worker takes off the queue, so an [`enqueue`]
+/// that found the queue full wakes when there is room instead of polling.
+///
+/// Per application: each tenant has its own worker pool and its own queue, and
+/// a wakeup for one tenant's free slot handed to a request waiting on another
+/// tenant's full queue would be a wakeup lost for the first. The async side
+/// reads it from inside the request's tenant scope; workers are bound to their
+/// tenant for life (`tenant::bind_current`).
+static QUEUE_SPACE: super::tenant::TenantValue<std::sync::Arc<tokio::sync::Notify>> =
+    super::tenant::TenantValue::new(new_queue_space_signal);
+
+fn new_queue_space_signal() -> std::sync::Arc<tokio::sync::Notify> {
+    std::sync::Arc::new(tokio::sync::Notify::new())
+}
+
+/// How many [`enqueue`] calls, across every tenant, are waiting for a slot.
+///
+/// Lets a worker skip the notify — and the tenant lookup in front of it — on
+/// every dequeue while nobody is waiting, which is all the time the queue is
+/// not full.
+static QUEUE_WAITERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Holds one count in [`QUEUE_WAITERS`] for as long as an [`enqueue`] waits,
+/// however that wait ends (success, timeout, or the request future dropped).
+struct QueueWaiter;
+
+impl QueueWaiter {
+    fn register() -> Self {
+        QUEUE_WAITERS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        QueueWaiter
+    }
+}
+
+impl Drop for QueueWaiter {
+    fn drop(&mut self) {
+        QUEUE_WAITERS.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// Called by a worker thread each time it takes a request off the queue: a
+/// slot is free, so wake one [`enqueue`] waiting for it.
+///
+/// Callable from a plain thread — `Notify::notify_one` needs no runtime. The
+/// fence pairs with the one in [`enqueue`] (a Dekker handshake): either this
+/// load sees the waiter's registration, or the waiter's retry sees the slot
+/// this dequeue freed. Never neither, so a wakeup cannot be lost between the
+/// waiter's failed `try_send` and its wait.
+pub(super) fn queue_slot_freed() {
+    std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
+    if QUEUE_WAITERS.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+        QUEUE_SPACE.read(|space| space.notify_one());
+    }
+}
+
+fn queue_busy_response() -> EarlyResponse {
+    Box::new(
+        Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .body(full(Bytes::from("Server busy")))
+            .unwrap(),
+    )
+}
+
 /// Hand a request to the worker pool, or the 503 to send instead.
 ///
 /// Shared with the dev bar's request replay, which used to carry its own copy
@@ -354,42 +456,60 @@ pub(super) async fn enqueue(
     request_tx: &WorkerSender,
     data: RequestData,
 ) -> Result<(), EarlyResponse> {
-    // Non-blocking send: use try_send + async yield to avoid blocking tokio threads.
+    // Non-blocking send: try_send, and await room when the queue is full.
     // Blocking send() here would deadlock under high concurrency because:
     // - Full queues block tokio worker threads on send()
     // - Workers' Handle::block_on() futures need the tokio I/O driver to complete
     // - Blocked tokio threads can't drive the I/O driver → permanent deadlock
-    let mut pending_data = Some(data);
-    let deadline =
-        tokio::time::Instant::now() + Duration::from_secs(server_constants::REQUEST_TIMEOUT_SECS);
-    let send_ok = loop {
-        if let Some(data) = pending_data.take() {
-            match request_tx.try_send(data) {
-                Ok(()) => break true,
-                Err(crossbeam::channel::TrySendError::Full(returned)) => {
-                    if tokio::time::Instant::now() >= deadline {
-                        break false;
-                    }
-                    pending_data = Some(returned);
-                    tokio::time::sleep(Duration::from_millis(1)).await;
-                }
-                Err(crossbeam::channel::TrySendError::Disconnected(_)) => {
-                    break false;
-                }
-            }
-        }
+    //
+    // The wait used to be a 1 ms sleep-and-retry loop: under sustained
+    // overload every queued request woke a thousand times a second to find the
+    // queue still full. It now parks on `QUEUE_SPACE`, which a worker signals
+    // per dequeue (`queue_slot_freed`).
+    let mut data = match request_tx.try_send(data) {
+        Ok(()) => return Ok(()),
+        Err(crossbeam::channel::TrySendError::Full(returned)) => returned,
+        Err(crossbeam::channel::TrySendError::Disconnected(_)) => return Err(queue_busy_response()),
     };
 
-    if !send_ok {
-        return Err(Box::new(
-            Response::builder()
-                .status(StatusCode::SERVICE_UNAVAILABLE)
-                .body(full(Bytes::from("Server busy")))
-                .unwrap(),
-        ));
-    }
+    let deadline =
+        tokio::time::Instant::now() + Duration::from_secs(server_constants::REQUEST_TIMEOUT_SECS);
+    let space = QUEUE_SPACE.read(|space| space.clone());
+    let _waiting = QueueWaiter::register();
+    loop {
+        // Register interest *before* the retry: a slot freed between a failed
+        // `try_send` and the wait then still reaches this waiter (or leaves a
+        // permit that completes the wait at once). The fence is this side of
+        // the handshake described on `queue_slot_freed`.
+        let notified = space.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
 
-    Ok(())
+        match request_tx.try_send(data) {
+            Ok(()) => return Ok(()),
+            Err(crossbeam::channel::TrySendError::Full(returned)) => data = returned,
+            Err(crossbeam::channel::TrySendError::Disconnected(_)) => {
+                return Err(queue_busy_response())
+            }
+        }
+
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Err(queue_busy_response());
+        }
+        // The signal is the wakeup; the recheck interval is only a floor on
+        // how stale a missed one could leave this wait. A woken waiter whose
+        // slot was taken by a newer arrival simply waits again. Dropping a
+        // `Notified` that was signalled but not yet polled passes the wakeup
+        // on to the next waiter (tokio forwards `notify_one`), so a timeout
+        // racing a signal loses nothing either.
+        let wake_by = std::cmp::min(
+            deadline,
+            now + Duration::from_millis(server_constants::QUEUE_SPACE_RECHECK_MS),
+        );
+        let _ = tokio::time::timeout_at(wake_by, notified).await;
+    }
 }
 
 /// Wait for the worker's reply, or the response to send instead.
@@ -651,6 +771,137 @@ mod read_body_tests {
         let (outcome, _) = read(body, 1024, Duration::from_millis(50));
         assert_eq!(outcome.unwrap_err(), BodyReadError::TimedOut);
         assert!(started.elapsed() < Duration::from_secs(5));
+    }
+}
+
+#[cfg(test)]
+mod enqueue_tests {
+    use super::*;
+    use crate::serve::worker_pool::WorkerQueues;
+
+    fn request_data() -> RequestData {
+        let (response_tx, _rx) = oneshot::channel();
+        RequestData {
+            method: Cow::Borrowed("POST"),
+            path: "/queued".to_string(),
+            query: Vec::new(),
+            headers: hyper::HeaderMap::new(),
+            body: String::new(),
+            body_reservation: None,
+            multipart_form: None,
+            multipart_files: None,
+            peer_ip: "127.0.0.1".to_string(),
+            enqueued_at: None,
+            replay: false,
+            file_template: None,
+            response_tx,
+        }
+    }
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .expect("test runtime")
+    }
+
+    /// A request that finds the queue full is woken by the worker's dequeue
+    /// signal, not by the recheck floor: on a single-threaded runtime the
+    /// waiter completes as soon as it is scheduled after the signal, well
+    /// inside the recheck interval.
+    #[test]
+    fn a_full_queue_wakes_the_waiter_when_a_worker_dequeues() {
+        let queues = WorkerQueues::new(1, 1);
+        let sender = queues.get_sender();
+        let receiver = queues.get_receiver(0);
+        runtime().block_on(async move {
+            assert!(
+                enqueue(&sender, request_data()).await.is_ok(),
+                "fills the queue"
+            );
+            let waiting = {
+                let sender = sender.clone();
+                tokio::spawn(async move { enqueue(&sender, request_data()).await.is_ok() })
+            };
+            // Let the waiter find the queue full and park on the signal.
+            for _ in 0..4 {
+                tokio::task::yield_now().await;
+            }
+            assert!(!waiting.is_finished(), "the queue is still full");
+
+            // What a worker does: take one off the queue, then signal.
+            let _taken = receiver.try_recv().expect("the queued request");
+            queue_slot_freed();
+
+            let woke = tokio::time::timeout(
+                Duration::from_millis(server_constants::QUEUE_SPACE_RECHECK_MS / 2),
+                waiting,
+            )
+            .await
+            .expect("woken by the signal, not the recheck")
+            .expect("task ran");
+            assert!(woke, "the waiter's request went into the freed slot");
+            assert!(receiver.try_recv().is_ok());
+        });
+    }
+
+    /// A queue nobody drains any more answers 503 at once rather than waiting
+    /// out the timeout.
+    #[test]
+    fn a_disconnected_queue_is_refused_immediately() {
+        let queues = WorkerQueues::new(1, 1);
+        let sender = queues.get_sender();
+        drop(queues); // the last receiver
+        let refused = runtime().block_on(enqueue(&sender, request_data()));
+        let response = refused.expect_err("nobody is draining");
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+}
+
+#[cfg(test)]
+mod body_budget_client_tests {
+    use super::*;
+    use crate::interpreter::builtins::trust_proxy::TRUST_PROXY_ENABLED;
+    use crate::serve::tenant;
+
+    fn forwarded(value: &str) -> hyper::header::HeaderMap {
+        let mut headers = hyper::header::HeaderMap::new();
+        headers.insert("x-forwarded-for", value.parse().unwrap());
+        headers
+    }
+
+    /// Run in a tenant of its own, so flipping trust-proxy here cannot race
+    /// another test reading the primary tenant's flag.
+    fn with_trust_proxy<R>(on: bool, f: impl FnOnce() -> R) -> R {
+        let id = tenant::register(std::env::temp_dir());
+        tenant::scoped(id, || {
+            TRUST_PROXY_ENABLED.write(|enabled| *enabled = on);
+            f()
+        })
+    }
+
+    #[test]
+    fn without_trust_proxy_the_peer_is_the_client() {
+        let peer: std::net::IpAddr = "192.0.2.1".parse().unwrap();
+        let client = with_trust_proxy(false, || {
+            body_budget_client(peer, &forwarded("203.0.113.9"))
+        });
+        assert_eq!(client, peer, "a spoofed header must not pick the bucket");
+    }
+
+    #[test]
+    fn behind_a_trusted_proxy_the_rightmost_forwarded_entry_is_the_client() {
+        let peer: std::net::IpAddr = "10.0.0.2".parse().unwrap();
+        let (client, garbage, absent) = with_trust_proxy(true, || {
+            (
+                body_budget_client(peer, &forwarded("1.1.1.1, 203.0.113.9 ")),
+                body_budget_client(peer, &forwarded("not-an-ip")),
+                body_budget_client(peer, &hyper::header::HeaderMap::new()),
+            )
+        });
+        assert_eq!(client, "203.0.113.9".parse::<std::net::IpAddr>().unwrap());
+        assert_eq!(garbage, peer);
+        assert_eq!(absent, peer);
     }
 }
 

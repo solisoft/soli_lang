@@ -105,7 +105,12 @@ pub(super) async fn dispatch(
     // same-origin, and browsers send `Origin` on every POST. (`/__dev/repl`
     // is not in this set: its `X-Soli-Dev-Token` header already cannot be
     // sent cross-site without a CORS preflight nobody answers.)
-    if dev_diagnostics_path && method == "POST" && !is_same_origin_request(req.headers()) {
+    if dev_diagnostics_path
+        && method == "POST"
+        && !crate::interpreter::builtins::trust_proxy::with_peer_ip(peer_addr.ip(), || {
+            is_same_origin_request(req.headers())
+        })
+    {
         return Ok(Response::builder()
             .status(StatusCode::FORBIDDEN)
             .header("Content-Type", "text/plain; charset=utf-8")

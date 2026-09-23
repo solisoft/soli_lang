@@ -110,7 +110,7 @@ pub struct QueryBuilder {
     /// `filter.is_some()` cannot tell the two apart — and only the echo is safe
     /// for the SQL compiler to drop in favour of `hash_filter`.
     pub has_raw_where: bool,
-    pub bind_vars: HashMap<SymbolId, serde_json::Value>,
+    pub bind_vars: HashMap<String, serde_json::Value>,
     /// `(field, direction)`, owned rather than interned: the field is often a
     /// request parameter (`Post.order(params["sort"])`), and every distinct
     /// string interned into the process-wide symbol table stays there for good.
@@ -380,20 +380,13 @@ impl QueryBuilder {
         // Internal machinery binds (`__soli_`-prefixed, e.g. the traversal
         // start vertex) must survive a later .where(); user binds keep the
         // historical replace semantics.
-        let preserved: Vec<(SymbolId, serde_json::Value)> = self
+        let preserved: Vec<(String, serde_json::Value)> = self
             .bind_vars
             .iter()
-            .filter(|(k, _)| {
-                crate::interpreter::symbol_string(**k)
-                    .map(|s| s.starts_with("__soli_"))
-                    .unwrap_or(false)
-            })
-            .map(|(k, v)| (*k, v.clone()))
+            .filter(|(k, _)| k.starts_with("__soli_"))
+            .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
-        self.bind_vars = bind_vars
-            .into_iter()
-            .map(|(k, v)| (crate::interpreter::get_symbol(&k), v))
-            .collect();
+        self.bind_vars = bind_vars;
         for (k, v) in preserved {
             self.bind_vars.insert(k, v);
         }
@@ -418,10 +411,8 @@ impl QueryBuilder {
     /// `list_query_from_qb`, count/exists -- carries it without knowing about
     /// keyset paging.
     pub fn set_keyset_after(&mut self, key: serde_json::Value) {
-        self.bind_vars.insert(
-            crate::interpreter::get_symbol(BATCH_AFTER_BIND),
-            key.clone(),
-        );
+        self.bind_vars
+            .insert(BATCH_AFTER_BIND.to_string(), key.clone());
         self.keyset_after = Some(key);
     }
 
@@ -486,8 +477,7 @@ impl QueryBuilder {
                 return;
             }
             for (k, v) in &bind_vars {
-                self.bind_vars
-                    .insert(crate::interpreter::get_symbol(k), v.clone());
+                self.bind_vars.insert(k.clone(), v.clone());
             }
             self.includes[idx] = IncludeClause {
                 relation_name,
@@ -500,8 +490,7 @@ impl QueryBuilder {
             return;
         }
         for (k, v) in &bind_vars {
-            self.bind_vars
-                .insert(crate::interpreter::get_symbol(k), v.clone());
+            self.bind_vars.insert(k.clone(), v.clone());
         }
         self.includes.push(IncludeClause {
             relation_name,
@@ -534,8 +523,7 @@ impl QueryBuilder {
                 return;
             }
             for (k, v) in &bind_vars {
-                self.bind_vars
-                    .insert(crate::interpreter::get_symbol(k), v.clone());
+                self.bind_vars.insert(k.clone(), v.clone());
             }
             self.joins[idx] = JoinClause {
                 relation_name,
@@ -547,8 +535,7 @@ impl QueryBuilder {
             return;
         }
         for (k, v) in &bind_vars {
-            self.bind_vars
-                .insert(crate::interpreter::get_symbol(k), v.clone());
+            self.bind_vars.insert(k.clone(), v.clone());
         }
         self.joins.push(JoinClause {
             relation_name,
@@ -688,18 +675,7 @@ impl QueryBuilder {
             ));
         }
 
-        let bind_vars_str: HashMap<String, serde_json::Value> = self
-            .bind_vars
-            .iter()
-            .map(|(k, v)| {
-                (
-                    crate::interpreter::symbol_string(*k)
-                        .unwrap_or("")
-                        .to_string(),
-                    v.clone(),
-                )
-            })
-            .collect();
+        let bind_vars_str: HashMap<String, serde_json::Value> = self.bind_vars.clone();
 
         (query, bind_vars_str)
     }
@@ -726,18 +702,7 @@ impl QueryBuilder {
 
         query.push_str(" LIMIT 1 RETURN true");
 
-        let bind_vars_str: HashMap<String, serde_json::Value> = self
-            .bind_vars
-            .iter()
-            .map(|(k, v)| {
-                (
-                    crate::interpreter::symbol_string(*k)
-                        .unwrap_or("")
-                        .to_string(),
-                    v.clone(),
-                )
-            })
-            .collect();
+        let bind_vars_str: HashMap<String, serde_json::Value> = self.bind_vars.clone();
 
         (query, bind_vars_str)
     }
@@ -764,18 +729,7 @@ impl QueryBuilder {
             group_field, agg_expr
         ));
 
-        let bind_vars_str: HashMap<String, serde_json::Value> = self
-            .bind_vars
-            .iter()
-            .map(|(k, v)| {
-                (
-                    crate::interpreter::symbol_string(*k)
-                        .unwrap_or("")
-                        .to_string(),
-                    v.clone(),
-                )
-            })
-            .collect();
+        let bind_vars_str: HashMap<String, serde_json::Value> = self.bind_vars.clone();
 
         (query, bind_vars_str)
     }
@@ -1993,18 +1947,7 @@ fn execute_sql_aggregate(
 }
 
 fn list_query_from_qb(qb: &QueryBuilder, collection: &str) -> Result<crate::db::ListQuery, String> {
-    let bind_vars: HashMap<String, serde_json::Value> = qb
-        .bind_vars
-        .iter()
-        .map(|(k, v)| {
-            (
-                crate::interpreter::symbol_string(*k)
-                    .unwrap_or("")
-                    .to_string(),
-                v.clone(),
-            )
-        })
-        .collect();
+    let bind_vars: HashMap<String, serde_json::Value> = qb.bind_vars.clone();
     let (order_field, order_desc) = match &qb.order_by {
         Some((f, d)) => {
             let field = f.clone();
@@ -2402,7 +2345,7 @@ fn execute_similar_pushdown(
         None => key_filter,
     });
     fetch_qb.bind_vars.insert(
-        crate::interpreter::get_symbol("__soli_sim_keys"),
+        "__soli_sim_keys".to_string(),
         serde_json::Value::Array(keys),
     );
 
@@ -2530,18 +2473,7 @@ fn execute_query_builder_count_inner(qb: &QueryBuilder) -> Value {
     }
     let mut query = qb.for_head();
 
-    let bind_vars_str: HashMap<String, serde_json::Value> = qb
-        .bind_vars
-        .iter()
-        .map(|(k, v)| {
-            (
-                crate::interpreter::symbol_string(*k)
-                    .unwrap_or("")
-                    .to_string(),
-                v.clone(),
-            )
-        })
-        .collect();
+    let bind_vars_str: HashMap<String, serde_json::Value> = qb.bind_vars.clone();
 
     // Join filters for count queries too
     for join in &qb.joins {
@@ -2642,18 +2574,7 @@ fn execute_query_builder_delete_all_inner(qb: &QueryBuilder) -> Value {
     }
     let mut query = format!("FOR doc IN {}", collection);
 
-    let bind_vars_str: HashMap<String, serde_json::Value> = qb
-        .bind_vars
-        .iter()
-        .map(|(k, v)| {
-            (
-                crate::interpreter::symbol_string(*k)
-                    .unwrap_or("")
-                    .to_string(),
-                v.clone(),
-            )
-        })
-        .collect();
+    let bind_vars_str: HashMap<String, serde_json::Value> = qb.bind_vars.clone();
 
     for join in &qb.joins {
         query.push_str(&QueryBuilder::build_join_existence_filter(
@@ -2741,18 +2662,7 @@ fn execute_query_builder_update_all_inner(
     }
     let mut query = format!("FOR doc IN {}", collection);
 
-    let mut bind_vars_str: HashMap<String, serde_json::Value> = qb
-        .bind_vars
-        .iter()
-        .map(|(k, v)| {
-            (
-                crate::interpreter::symbol_string(*k)
-                    .unwrap_or("")
-                    .to_string(),
-                v.clone(),
-            )
-        })
-        .collect();
+    let mut bind_vars_str: HashMap<String, serde_json::Value> = qb.bind_vars.clone();
 
     for join in &qb.joins {
         query.push_str(&QueryBuilder::build_join_existence_filter(
@@ -2820,18 +2730,7 @@ fn execute_query_builder_exists_inner(qb: &QueryBuilder) -> Value {
     }
     let mut query = format!("FOR doc IN {}", collection);
 
-    let bind_vars_str: HashMap<String, serde_json::Value> = qb
-        .bind_vars
-        .iter()
-        .map(|(k, v)| {
-            (
-                crate::interpreter::symbol_string(*k)
-                    .unwrap_or("")
-                    .to_string(),
-                v.clone(),
-            )
-        })
-        .collect();
+    let bind_vars_str: HashMap<String, serde_json::Value> = qb.bind_vars.clone();
 
     // Join filters for exists queries too
     for join in &qb.joins {
@@ -2955,18 +2854,7 @@ pub fn build_aggregation_query(
 ) -> (String, HashMap<String, serde_json::Value>) {
     let mut query = qb.for_head();
 
-    let bind_vars_str: HashMap<String, serde_json::Value> = qb
-        .bind_vars
-        .iter()
-        .map(|(k, v)| {
-            (
-                crate::interpreter::symbol_string(*k)
-                    .unwrap_or("")
-                    .to_string(),
-                v.clone(),
-            )
-        })
-        .collect();
+    let bind_vars_str: HashMap<String, serde_json::Value> = qb.bind_vars.clone();
 
     if let Some(filter) = &qb.filter {
         let aql_filter = filter.replace(" && ", " AND ").replace(" || ", " OR ");
@@ -3066,18 +2954,7 @@ pub fn execute_query_builder_group_by(
         .to_string();
     let mut query = format!("FOR doc IN {}", collection);
 
-    let bind_vars_str: HashMap<String, serde_json::Value> = qb
-        .bind_vars
-        .iter()
-        .map(|(k, v)| {
-            (
-                crate::interpreter::symbol_string(*k)
-                    .unwrap_or("")
-                    .to_string(),
-                v.clone(),
-            )
-        })
-        .collect();
+    let bind_vars_str: HashMap<String, serde_json::Value> = qb.bind_vars.clone();
 
     if let Some(filter) = &qb.filter {
         let aql_filter = filter.replace(" && ", " AND ").replace(" || ", " OR ");
@@ -3153,18 +3030,7 @@ impl QueryBuilder {
             return_fields.join(", ")
         ));
 
-        let bind_vars_str: HashMap<String, serde_json::Value> = self
-            .bind_vars
-            .iter()
-            .map(|(k, v)| {
-                (
-                    crate::interpreter::symbol_string(*k)
-                        .unwrap_or("")
-                        .to_string(),
-                    v.clone(),
-                )
-            })
-            .collect();
+        let bind_vars_str: HashMap<String, serde_json::Value> = self.bind_vars.clone();
 
         (query, bind_vars_str)
     }
@@ -3499,18 +3365,7 @@ impl QueryBuilder {
         }
         query.push_str(&format!(" RETURN {{{}}}", return_fields.join(", ")));
 
-        let bind_vars_str: HashMap<String, serde_json::Value> = self
-            .bind_vars
-            .iter()
-            .map(|(k, v)| {
-                (
-                    crate::interpreter::symbol_string(*k)
-                        .unwrap_or("")
-                        .to_string(),
-                    v.clone(),
-                )
-            })
-            .collect();
+        let bind_vars_str: HashMap<String, serde_json::Value> = self.bind_vars.clone();
 
         Ok((query, bind_vars_str))
     }
@@ -4043,6 +3898,56 @@ mod tests {
         assert!(binds.contains_key("a"));
     }
 
+    /// Bind-var names are derived from `.where` hash keys, which are often
+    /// request parameters (`Post.where(params)`). They stay owned strings:
+    /// interning them would leak each distinct name into the process-wide
+    /// symbol table for the life of the worker.
+    #[test]
+    fn bind_var_names_are_not_interned() {
+        let suffix = uuid::Uuid::new_v4().simple().to_string();
+        let where_name = format!("never_interned_where_{}__eq_1", suffix);
+        let include_name = format!("never_interned_include_{}", suffix);
+        let join_name = format!("never_interned_join_{}", suffix);
+
+        let mut qb = make_qb("Post", "posts");
+        qb.set_keyset_after(serde_json::json!("k1"));
+        let mut where_binds = HashMap::new();
+        where_binds.insert(where_name.clone(), serde_json::json!(1));
+        qb.set_filter(format!("doc.x == @{}", where_name), where_binds);
+
+        let rel = build_relation(
+            "Post",
+            "user",
+            RelationType::BelongsTo,
+            &RelationOptions::default(),
+        );
+        let mut include_binds = HashMap::new();
+        include_binds.insert(include_name.clone(), serde_json::json!(true));
+        qb.add_include(
+            "user".to_string(),
+            rel.clone(),
+            Some(format!("active = @{}", include_name)),
+            include_binds,
+            None,
+        );
+        let mut join_binds = HashMap::new();
+        join_binds.insert(join_name.clone(), serde_json::json!(true));
+        qb.add_join(
+            "user".to_string(),
+            rel,
+            Some(format!("active = @{}", join_name)),
+            join_binds,
+        );
+
+        let (_, binds) = qb.build_query();
+        for name in [&where_name, &include_name, &join_name] {
+            assert!(binds.contains_key(name.as_str()), "missing bind {}", name);
+            assert!(crate::interpreter::symbol::lookup_symbol(name).is_none());
+        }
+        // `__soli_` machinery binds survive the `.where` replacement.
+        assert_eq!(binds.get(BATCH_AFTER_BIND), Some(&serde_json::json!("k1")));
+    }
+
     #[test]
     fn test_include_with_fields() {
         let mut qb = make_qb("User", "users");
@@ -4175,7 +4080,7 @@ mod tests {
     fn make_traversal_qb(direction: super::super::graph::TraversalDirection) -> QueryBuilder {
         let mut qb = make_qb("User", "follows");
         qb.bind_vars.insert(
-            crate::interpreter::get_symbol(super::super::graph::TRAVERSE_START_BIND),
+            super::super::graph::TRAVERSE_START_BIND.to_string(),
             serde_json::Value::String("users/alice".to_string()),
         );
         qb.traversal = Some(TraversalClause {
@@ -4351,10 +4256,8 @@ mod tests {
             },
         ];
         qb.having = Some("total > @min".to_string());
-        qb.bind_vars.insert(
-            crate::interpreter::get_symbol("min"),
-            serde_json::json!(1000),
-        );
+        qb.bind_vars
+            .insert("min".to_string(), serde_json::json!(1000));
         qb.set_order("total".to_string(), "desc".to_string());
         qb.set_limit(20);
         let (query, binds) = qb.build_grouped_query().unwrap();

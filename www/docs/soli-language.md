@@ -3650,6 +3650,44 @@ does not switch for them.
 > chose*. Soli therefore always prints the version and the manifest before
 > fetching, and never fetches for `--version` or `--help`.
 
+#### Lockfile integrity
+
+`soli install`, `soli add` and `soli update` record, in `soli.lock`, a
+**SHA-256 hash of each git or registry dependency's extracted file tree**. It
+sits on a comment line after the package's own line:
+
+```
+math|https://github.com/user/math.sl|3f2a9c…|/home/me/.soli/packages/math/3f2a9c…|main
+#@integrity math|3f2a9c…|sha256-<64 hex characters>
+```
+
+Commit it with the rest of `soli.lock`. The model is **trust on first use**:
+the hash is recorded the first time a given resolved revision is installed and
+checked on every install after that. A new commit — `soli update`, or a
+branch/tag that moved — is a new revision and records a new hash. Path
+dependencies are not hashed, and resolving an `import` at run time does not
+re-check; the check happens at install.
+
+When the installed files do not match, the install is refused:
+
+```
+Integrity check failed for module 'math' at 3f2a9c…: soli.lock expects
+sha256-…, but the installed files hash to sha256-…. Refusing to use it.
+```
+
+- **A fresh download that does not match** is deleted. If the new content is
+  expected (the upstream rewrote history, say), remove the `#@integrity math`
+  line from `soli.lock` and install again to accept it.
+- **An existing cache that does not match** is kept, so you can inspect it.
+  Delete that cache directory (under `~/.soli/packages/`) to re-download.
+
+A download or extraction that fails half-way now removes the half-written cache
+directory; it used to be taken as installed on the next run.
+
+Older `soli` versions ignore `#` lines, so the lockfile stays readable by them.
+If an older `soli` rewrites the lockfile, the integrity lines are dropped and
+recorded again by the next install with a current `soli`.
+
 ---
 
 ## Built-in Functions

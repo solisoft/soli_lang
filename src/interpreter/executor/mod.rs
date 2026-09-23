@@ -31,7 +31,7 @@ use crate::ast::*;
 use crate::coverage::CoverageTracker;
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::register_builtins;
-use crate::interpreter::environment::Environment;
+use crate::interpreter::environment::{break_self_cycle, Environment};
 use crate::interpreter::value::{value_matches_type, Function, HashKey, Value};
 use crate::span::Span;
 
@@ -665,7 +665,18 @@ impl Interpreter {
             other => other,
         };
 
-        self.environment = previous;
+        let block_env = std::mem::replace(&mut self.environment, previous);
+        // This frame owned the block's scope. Anything still holding it
+        // captured it — usually legitimately, but a `fn`/`def` bound in the
+        // block that captures the block is a cycle `Rc` never frees; see
+        // `break_self_cycle` for when dropping the bindings is unobservable.
+        // Must run after the restore (the replaced `self.environment` was one
+        // more reference) and before `result` is dropped (a returned or
+        // thrown closure is one more reference on the function, which is
+        // what marks it as escaped).
+        if Rc::strong_count(&block_env) > 1 {
+            break_self_cycle(&block_env, 1);
+        }
         result
     }
 
@@ -840,6 +851,24 @@ impl Interpreter {
         // (self.environment was restored, dropping that reference). A nested
         // (recursive) call may have already populated the slot — in that case
         // we simply drop env_for_capture and keep the slot's current value.
+        // Memory leak M4. A nested `def helper` or `helper = fn(x) {...}`
+        // binds, in this call's env, a Function whose `closure` is that same
+        // env: env -> binding -> Function -> closure -> env. With no cycle
+        // collector the env — and every local in it, query results included —
+        // outlived every such call. When the only remaining references are
+        // that cycle's own (`break_self_cycle` proves it by counting: each
+        // internal function referenced by nothing but this env's bindings,
+        // each reference to the env one of theirs, plus `env_for_capture`),
+        // no Soli code can reach the env again, so dropping its bindings is
+        // unobservable and lets the env be parked below. A closure that
+        // escaped by any route (returned — `result` still holds it here —
+        // stored in a global, array, hash or field, thrown, or the scope of a
+        // recursive frame still running) is one reference the proof cannot
+        // account for, so the env is left alone exactly as before.
+        if Rc::strong_count(&env_for_capture) > 1 {
+            break_self_cycle(&env_for_capture, 1);
+        }
+
         if func.cached_env.borrow().is_none() && Rc::strong_count(&env_for_capture) == 1 {
             // Empty it before parking it: the slot lives as long as the
             // function, so a cached env still holding this call's locals kept
@@ -1373,6 +1402,194 @@ mod interpreter_drop_tests {
             "a local outlived its call"
         );
         assert!(parked.get("x").is_none(), "a parameter outlived its call");
+    }
+
+    fn run_source(interp: &mut Interpreter, source: &str) {
+        let tokens = crate::lexer::Scanner::new(source).scan_tokens().unwrap();
+        let program = crate::parser::Parser::new(tokens).parse().unwrap();
+        interp.interpret(&program).unwrap();
+    }
+
+    fn user_fn(interp: &Interpreter, name: &str) -> Rc<Function> {
+        let found = interp.environment.borrow().get(name);
+        match found {
+            Some(Value::Function(func)) => func,
+            _ => panic!("{name} is not a function"),
+        }
+    }
+
+    fn global(interp: &Interpreter, name: &str) -> Value {
+        let found = interp.environment.borrow().get(name);
+        found.unwrap_or(Value::Null)
+    }
+
+    fn rows(count: i64) -> Rc<RefCell<Vec<Value>>> {
+        Rc::new(RefCell::new((0..count).map(Value::Int).collect()))
+    }
+
+    // M4: a nested `def` and a `fn` bound in a call's env capture that env,
+    // which closes a cycle `Rc` alone never frees. When neither escapes, the
+    // call must not keep its locals (here: the argument array) alive.
+    #[test]
+    fn a_call_env_with_a_non_escaping_closure_is_freed() {
+        let mut interp = Interpreter::new();
+        run_source(
+            &mut interp,
+            r#"
+def work(rows) {
+    helper = fn(n) { n + rows.length }
+    def nested(n) { helper(n) * 2 }
+    nested(1)
+}
+
+def work_in_block(rows) {
+    total = 0
+    if true {
+        inner = fn(n) { n + rows.length }
+        total = inner(1)
+    }
+    total
+}
+
+def depth(n) {
+    helper = fn() { n }
+    if n == 0 {
+        return helper()
+    }
+    depth(n - 1) + helper()
+}
+"#,
+        );
+
+        let work = user_fn(&interp, "work");
+        let argument = rows(3);
+        let watched = Rc::downgrade(&argument);
+        let value = interp
+            .call_function(&work, vec![Value::Array(argument)])
+            .unwrap();
+        assert_eq!(value, Value::Int(8));
+        assert!(
+            watched.upgrade().is_none(),
+            "a call env holding a nested def and a lambda outlived its call"
+        );
+        let parked = work
+            .cached_env
+            .borrow()
+            .clone()
+            .expect("the freed env is parked for reuse");
+        assert!(parked.borrow().get("helper").is_none());
+        drop(parked);
+        // The parked env serves the next call correctly.
+        let again = interp
+            .call_function(&work, vec![Value::Array(rows(5))])
+            .unwrap();
+        assert_eq!(again, Value::Int(12));
+
+        let in_block = user_fn(&interp, "work_in_block");
+        let argument = rows(4);
+        let watched = Rc::downgrade(&argument);
+        let value = interp
+            .call_function(&in_block, vec![Value::Array(argument)])
+            .unwrap();
+        assert_eq!(value, Value::Int(5));
+        assert!(
+            watched.upgrade().is_none(),
+            "a block scope holding a lambda outlived its function call"
+        );
+
+        // Recursion: every frame's helper is live while the deeper frames
+        // run, and each frame still reads its own `n`.
+        let depth = user_fn(&interp, "depth");
+        let value = interp.call_function(&depth, vec![Value::Int(3)]).unwrap();
+        assert_eq!(value, Value::Int(6));
+    }
+
+    // A returned closure is not garbage: its env must survive, and two calls
+    // must still produce independent captured state.
+    #[test]
+    fn a_returned_closure_keeps_its_env() {
+        let mut interp = Interpreter::new();
+        run_source(
+            &mut interp,
+            r#"
+def make_adder(rows) {
+    offset = rows.length
+    adder = fn(x) { x + offset }
+    def unused(x) { x }
+    adder
+}
+"#,
+        );
+        let make_adder = user_fn(&interp, "make_adder");
+        let argument = rows(3);
+        let watched = Rc::downgrade(&argument);
+        let Value::Function(add_three) = interp
+            .call_function(&make_adder, vec![Value::Array(argument)])
+            .unwrap()
+        else {
+            panic!("make_adder did not return a function");
+        };
+        let Value::Function(add_ten) = interp
+            .call_function(&make_adder, vec![Value::Array(rows(10))])
+            .unwrap()
+        else {
+            panic!("make_adder did not return a function");
+        };
+        assert!(
+            watched.upgrade().is_some(),
+            "the env of a returned closure was cleared"
+        );
+        assert_eq!(
+            interp
+                .call_function(&add_three, vec![Value::Int(1)])
+                .unwrap(),
+            Value::Int(4)
+        );
+        assert_eq!(
+            interp.call_function(&add_ten, vec![Value::Int(1)]).unwrap(),
+            Value::Int(11)
+        );
+    }
+
+    // A closure stored into a global or into an array escaped: its env must
+    // survive the call and the closure must keep reading its locals.
+    #[test]
+    fn a_closure_stored_outside_keeps_its_env() {
+        let mut interp = Interpreter::new();
+        run_source(
+            &mut interp,
+            r#"
+stash = []
+saved_handler = null
+
+def register(rows) {
+    count = rows.length
+    handler = fn(x) { x + count }
+    pushed = fn(x) { x * count }
+    saved_handler = handler
+    stash.push(pushed)
+    0
+}
+"#,
+        );
+        let register = user_fn(&interp, "register");
+        let argument = rows(3);
+        let watched = Rc::downgrade(&argument);
+        interp
+            .call_function(&register, vec![Value::Array(argument)])
+            .unwrap();
+        assert!(
+            watched.upgrade().is_some(),
+            "the env of an escaped closure was cleared"
+        );
+        run_source(
+            &mut interp,
+            r#"
+stashed = stash[0]
+result = saved_handler(1) + stashed(2)
+"#,
+        );
+        assert_eq!(global(&interp, "result"), Value::Int(10));
     }
 
     #[test]
