@@ -16,6 +16,10 @@
 
 * **perf(orm):** **plain SoliDB reads decode their rows once, straight into Soli values.** On the native driver (`SOLI_DB_DRIVER=1`), `Model.all`, `pluck(...).all` and every non-hydrated query builder read now ask `solidb-client` for Soli `Value`s directly (`query_as`), where the rows used to become a `serde_json::Value` tree first and then be converted. A profile of the benchmark's `/db-template` put decoding the response at 35–40% of Soli's CPU for that route, and the interpreter under 1%. Together with the client's own decode fix (solidb-client v1.2.0, now pinned here), the framework suite at c=200 goes from 59.9k to 79.3k req/s on `/db` (CPU per request 123 → 85 µs) and from 57.7k to 74.9k on `/db-template` (125 → 89 µs), which also clears the few-percent slowdown `/db-template` had picked up since v2.3.7. Output is byte-identical. Mocks, SQL adapters, a collection that must be created first, and the HTTP transport keep the previous path
 
+### Fixed
+
+* **fix(fmt):** **`soli fmt` no longer writes a stray `;` line that does not parse.** A postfix guard whose value wraps — `return [true, false, false, false] if which == "t"` — is printed as a block (`if … end`), but the formatter still treated it as a line ending in an expression and, because the next statement started with `[`, added a disambiguating `;`. It landed on a line of its own after the guard's blank line, and `\n;` is a parse error, so the formatted file no longer loaded. A guard printed as a block ends with `end` and gets no `;`; one that stays on a single line keeps it. `fmt_corpus_test` caught it on the scaffolded `eui_builders_tw.sl`, which had turned CI red
+
 ## [2.4.2] - 2026-09-24
 
 ### Fixed

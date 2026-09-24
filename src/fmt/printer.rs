@@ -545,10 +545,18 @@ fn ends_in_expression(stmt: &Stmt) -> bool {
             else_branch: None,
             then_branch,
             ..
-        } => matches!(
-            &then_branch.kind,
-            StmtKind::Expression(_) | StmtKind::Return(_) | StmtKind::Throw(_)
-        ),
+        } => {
+            matches!(
+                &then_branch.kind,
+                StmtKind::Expression(_) | StmtKind::Return(_) | StmtKind::Throw(_)
+            )
+            // A postfix guard whose value will wrap is printed as a block
+            // (`if cond … end`, see `postfix_payload_breaks`), which ends with
+            // `end` like any other block: nothing to disambiguate. Asking for a
+            // `;` anyway put it on a line of its own after the guard's blank
+            // line, and `\n;` does not parse.
+            && !super::statements::postfix_payload_breaks(then_branch)
+        }
         _ => false,
     }
 }

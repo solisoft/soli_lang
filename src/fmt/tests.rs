@@ -1081,3 +1081,27 @@ fn single_line_sdbql_still_collapses_to_postfix() {
     assert_round_trip(src);
     assert_idempotent(src);
 }
+
+#[test]
+fn postfix_guard_expanded_to_a_block_takes_no_semicolon_before_a_bracket_line() {
+    // `return [..4 items..] if …` wraps, so the formatter prints it as a
+    // block; the `[` line after it must not get a stray `;` of its own.
+    let input = "def tw_sides(which)\n  return [true, false, false, false] if which == \"t\"\n  return [false, true, false, false] if which == \"r\"\n\n  [true, true, true, true]\nend\n";
+    let out = format_source(input).expect("format_source failed");
+    assert!(!out.contains("\n;"), "stray semicolon line:\n{out}");
+    let tokens = crate::lexer::Scanner::new(&out).scan_tokens().expect("lex");
+    crate::parser::Parser::new(tokens)
+        .parse()
+        .unwrap_or_else(|e| panic!("formatted output does not parse: {e:?}\n{out}"));
+    assert_idempotent(input);
+}
+
+#[test]
+fn postfix_guard_that_stays_postfix_keeps_its_semicolon_before_a_bracket_line() {
+    // Kept on one line, the guard ends in an expression, so the `;` still
+    // stops the next line's `[` from being read as an index into it.
+    assert_fmt(
+        "def h(w)\n  return [1, 2] if w == \"a\"\n\n  [3]\nend\n",
+        "def h(w)\n  return [1, 2] if w == \"a\";\n\n  [3]\nend\n",
+    );
+}
