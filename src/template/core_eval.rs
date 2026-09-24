@@ -592,9 +592,11 @@ mod tests {
         // The form builder still resolves in the rebuilt env.
         let data = make_hash(vec![]);
         let mut interp = create_template_interpreter(&data);
-        let form_with =
-            evaluate_with_interpreter(&Expr::Var("form_with".to_string()), &mut interp).unwrap();
-        assert!(!matches!(form_with, Value::Null));
+        let form_with = evaluate_with_interpreter(&Expr::Var("form_with".to_string()), &mut interp);
+        assert!(
+            form_with.is_ok_and(|value| !matches!(value, Value::Null)),
+            "form_with no longer resolves after a reset"
+        );
         reset_builtins_rc();
     }
 
