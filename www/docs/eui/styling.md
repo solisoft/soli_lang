@@ -119,3 +119,51 @@ stack({}, [
   box({"position": "pointer", "bg": "surface.overlay", "pad": 2}, [text(hover_label, {})])
 ])
 ```
+
+## Tailwind classes
+
+The scaffolded catalogue has a sixth file, `eui_builders_tw.sl`, and in it
+`tw("...")`: a style written in Tailwind's classes. It is plain Soli and adds
+nothing to the wire — every class becomes one of the keys above, a colour
+becomes a role, a spacing step becomes an index of the space scale.
+
+```soli
+row({"tw": "items-center gap-4 px-4 py-4 border-b border-gray-200 hover:bg-gray-50"}, [
+  text(person["name"], tw_style("text-sm font-semibold text-gray-900")),
+  text(person["mail"], tw_style("text-xs text-gray-500 truncate"))
+])
+```
+
+`tw(classes)` returns `{"s", "hover", "press", "focus", "disabled", "props"}`:
+the resting style and the four states as deltas over it. A `"tw"` key in any
+style given to `node`, `column`, `row` or `stack` is read the same way, and the
+states become local handlers, so a hover costs no round trip; `control({"tw":
+...})` and `stateful(base, "hover:...", on)` take classes too. `tw_style` is
+the resting style alone, for a `text` node.
+
+| Tailwind | EUI |
+|----------|-----|
+| `p-4`, `px-2`, `gap-3` | `pad` / `margin` / `gap` space indices: 0, 0.5, 1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 24 are indices 0 – 12 |
+| `w-64`, `w-1/2`, `w-full`, `max-w-md` | px (N × 4), percent, `"100%"`, Tailwind's max widths |
+| `text-sm` … `text-4xl`, `font-semibold` | `size` 0 – 7, `weight` |
+| `bg-white`, `bg-gray-50`, `bg-gray-100` | `surface.raised`, `surface.base`, `surface.sunken` |
+| `text-gray-900`, `text-gray-500`, `text-gray-400` | `text.default`, `text.muted`, `text.disabled` |
+| `border-gray-200` / `300` / `400` | `border.subtle` / `default` / `strong` |
+| `bg-indigo-600` / `500` / `700` | `accent.base` / `hover` / `active` |
+| `red`, `green`, `yellow`, `blue` `-50` / `-600` | `danger`, `success`, `warning`, `info` `.subtle` / `.base` |
+| `ring-1 ring-gray-300` | a 1 px border in `border.default` |
+| `rounded-md`, `rounded-xl`, `rounded-full` | `radius` 2, 3, 4 |
+| `shadow-sm`, `shadow-md`, `shadow-lg` | `shadow` 1, 2, 3 |
+| `hover:`, `active:`, `focus:`, `disabled:` | local states |
+
+A class with no equivalent raises, naming the class and the reason, rather
+than being dropped: `tracking-*`, `leading-*`, gradients, per-corner radius,
+`divide-*` and `space-*`, transforms, breakpoints (`md:` — branch on the
+viewport instead) and `dark:` (roles already follow the theme). The whole
+table, the approximations and every refusal are in the EUI repository's
+`doc/docs/eui/tailwind.md`.
+
+The rest of the catalogue is drawn the way Tailwind UI draws an application:
+14 px labels and body text, white fields and secondary buttons inside a
+`border.default` hairline, cards at radius 2 with a small shadow, dialogs and
+menus a step up.

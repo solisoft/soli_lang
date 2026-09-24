@@ -104,7 +104,7 @@ pub fn create_routes_file(app_path: &Path, eui: bool) -> Result<(), String> {
 /// difference between a new application and the upstream it will want to
 /// take fixes from.
 ///
-/// It arrives as four files that load into one namespace, in no
+/// It arrives as six files that load into one namespace, in no
 /// particular order; `templates::eui::EUI_BUILDERS` names them.
 #[cfg(feature = "eui")]
 pub fn create_eui(app_path: &Path) -> Result<(), String> {
@@ -707,7 +707,7 @@ pub fn print_eui_message() {
     println!("  \x1b[1mThe window:\x1b[0m");
     println!();
     println!("    \x1b[2mapp/controllers/\x1b[0meui_controller.sl  \x1b[2ma component: a handler and a view\x1b[0m");
-    println!("    \x1b[2mapp/controllers/\x1b[0meui_builders*.sl   \x1b[2m343 widgets in four files, all of them plain Soli\x1b[0m");
+    println!("    \x1b[2mapp/controllers/\x1b[0meui_builders*.sl   \x1b[2m531 definitions in six files, all of them plain Soli\x1b[0m");
     println!();
     println!("  With the server up, open the component in a native window:");
     println!();

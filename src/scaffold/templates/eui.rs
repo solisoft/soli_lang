@@ -4,17 +4,17 @@
 //! component has no use for the 8 000 lines of catalogue, and the flag
 //! that writes them is refused there.
 
-/// The reference catalogue, spec/03-widgets.md §4 — 438 definitions
+/// The reference catalogue, spec/03-widgets.md §4 — 531 definitions
 /// composed from the primitives, all of it plain Soli. The site's
 /// `/components` counts the ones a caller reaches for, which is fewer:
 /// this is every `def`, helpers included.
 ///
-/// Five files, byte for byte the copies in the EUI repository under
+/// Six files, byte for byte the copies in the EUI repository under
 /// `examples/demo-app/app/controllers/`, which is where they are edited;
 /// `scripts/sync-catalogue.sh` there copies them here. They load into one
 /// namespace and none depends on which loads first, so the order below is
 /// only the order a new application sees them listed in.
-pub const EUI_BUILDERS: [(&str, &str); 5] = [
+pub const EUI_BUILDERS: [(&str, &str); 6] = [
     ("eui_builders.sl", include_str!("eui/eui_builders.sl")),
     (
         "eui_builders_forms.sl",
@@ -32,6 +32,9 @@ pub const EUI_BUILDERS: [(&str, &str); 5] = [
         "eui_builders_markdown.sl",
         include_str!("eui/eui_builders_markdown.sl"),
     ),
+    // `tw("...")`: Tailwind-style class strings as EUI styles. `node()` in
+    // the first file reads a `"tw"` key through it, so it is not optional.
+    ("eui_builders_tw.sl", include_str!("eui/eui_builders_tw.sl")),
 ];
 
 /// A first component: a counter, its handler and its view.

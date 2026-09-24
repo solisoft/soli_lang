@@ -74,4 +74,32 @@ shared_element("cust:" + one["id"], initial_avatar(one["initial"], one["tone"], 
             </tbody>
         </table>
     </div>
+    <h2 id="tailwind" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Tailwind classes</h2>
+    <p class="text-gray-400 mb-6">The scaffolded catalogue has a sixth file, <code>eui_builders_tw.sl</code>, and in it <code class="text-cyan-400">tw("...")</code>: a style written in Tailwind's classes. It is plain Soli and adds nothing to the wire &mdash; every class becomes one of the keys above, a colour becomes a role, a spacing step becomes an index of the space scale.</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6"><div class="p-4 overflow-x-auto"><pre><code class="language-soli text-sm">row({"tw": "items-center gap-4 px-4 py-4 border-b border-gray-200 hover:bg-gray-50"}, [
+  text(person["name"], tw_style("text-sm font-semibold text-gray-900")),
+  text(person["mail"], tw_style("text-xs text-gray-500 truncate"))
+])</code></pre></div></div>
+    <p class="text-gray-400 mb-6"><code class="text-cyan-400">tw(classes)</code> returns <code>{"s", "hover", "press", "focus", "disabled", "props"}</code>: the resting style and the four states as deltas over it. A <code>"tw"</code> key in any style given to <code>node</code>, <code>column</code>, <code>row</code> or <code>stack</code> is read the same way, and the states become local handlers, so a hover costs no round trip; <code>control({"tw": ...})</code> and <code>stateful(base, "hover:...", on)</code> take classes too. <code class="text-cyan-400">tw_style</code> is the resting style alone, for a <code>text</code> node.</p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead><tr class="border-b border-white/10"><th class="text-left py-3 px-4 text-gray-400 font-semibold">Tailwind</th><th class="text-left py-3 px-4 text-gray-400 font-semibold">EUI</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-3 px-4"><code class="text-amber-300">p-4</code> <code class="text-amber-300">px-2</code> <code class="text-amber-300">gap-3</code></td><td class="py-3 px-4 text-gray-400"><code>pad</code> / <code>margin</code> / <code>gap</code> space indices: steps 0, 0.5, 1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 24 are indices 0 &ndash; 12.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">w-64</code> <code class="text-amber-300">w-1/2</code> <code class="text-amber-300">w-full</code> <code class="text-amber-300">max-w-md</code></td><td class="py-3 px-4 text-gray-400">px (N &times; 4), percent, <code>"100%"</code>, Tailwind's max widths.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">text-sm</code> &hellip; <code class="text-amber-300">text-4xl</code> <code class="text-amber-300">font-semibold</code></td><td class="py-3 px-4 text-gray-400"><code>size</code> 0 &ndash; 7, <code>weight</code>.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">bg-white</code> <code class="text-amber-300">bg-gray-50</code> <code class="text-amber-300">bg-gray-100</code></td><td class="py-3 px-4 text-gray-400"><code>surface.raised</code>, <code>surface.base</code>, <code>surface.sunken</code>.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">text-gray-900</code> <code class="text-amber-300">text-gray-500</code> <code class="text-amber-300">text-gray-400</code></td><td class="py-3 px-4 text-gray-400"><code>text.default</code>, <code>text.muted</code>, <code>text.disabled</code>.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">border-gray-200</code> / <code class="text-amber-300">300</code> / <code class="text-amber-300">400</code></td><td class="py-3 px-4 text-gray-400"><code>border.subtle</code> / <code>default</code> / <code>strong</code>.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">bg-indigo-600</code> / <code class="text-amber-300">500</code> / <code class="text-amber-300">700</code></td><td class="py-3 px-4 text-gray-400"><code>accent.base</code> / <code>hover</code> / <code>active</code>.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">red</code> <code class="text-amber-300">green</code> <code class="text-amber-300">yellow</code> <code class="text-amber-300">blue</code> <code>-50</code> / <code>-600</code></td><td class="py-3 px-4 text-gray-400"><code>danger</code>, <code>success</code>, <code>warning</code>, <code>info</code> <code>.subtle</code> / <code>.base</code>.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">ring-1 ring-gray-300</code></td><td class="py-3 px-4 text-gray-400">A 1 px border in <code>border.default</code>.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">rounded-md</code> <code class="text-amber-300">rounded-xl</code> <code class="text-amber-300">rounded-full</code></td><td class="py-3 px-4 text-gray-400"><code>radius</code> 2, 3, 4.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">shadow-sm</code> <code class="text-amber-300">shadow-md</code> <code class="text-amber-300">shadow-lg</code></td><td class="py-3 px-4 text-gray-400"><code>shadow</code> 1, 2, 3.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">hover:</code> <code class="text-amber-300">active:</code> <code class="text-amber-300">focus:</code> <code class="text-amber-300">disabled:</code></td><td class="py-3 px-4 text-gray-400">Local states.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-6">A class with no equivalent raises, naming the class and the reason, rather than being dropped: <code>tracking-*</code>, <code>leading-*</code>, gradients, per-corner radius, <code>divide-*</code> and <code>space-*</code>, transforms, breakpoints (<code>md:</code> &mdash; branch on the viewport instead) and <code>dark:</code> (roles already follow the theme). The whole table, the approximations and every refusal are in the EUI repository's <code>doc/docs/eui/tailwind.md</code>.</p>
+    <p class="text-gray-400 mb-12">The rest of the catalogue is drawn the way Tailwind UI draws an application: 14 px labels and body text, white fields and secondary buttons inside a <code>border.default</code> hairline, cards at radius 2 with a small shadow, dialogs and menus a step up.</p>
 </div>

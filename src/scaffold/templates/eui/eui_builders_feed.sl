@@ -189,7 +189,8 @@ def tag_well(tags, draft, bad, o)
       "border": 1,
       "border_color": tgw_edge,
       "radius": 2,
-      "bg": "surface.sunken",
+      "bg": "surface.raised",
+      "shadow": 1,
       "cursor": "text",
       "transition": "fast"
     },

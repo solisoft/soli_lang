@@ -163,9 +163,9 @@ def popover(anchor, content, open)
       "s": {
         "position": "absolute",
         "margin": [2, 0, 0, 0],
-        "pad": 3,
-        "radius": 2,
-        "shadow": 2,
+        "pad": 4,
+        "radius": 3,
+        "shadow": 3,
         "bg": "surface.overlay",
         "border": 1,
         "border_color": "border.subtle",
@@ -179,9 +179,9 @@ end
 def toolbar(children)
   row(
     {
-      "gap": 2,
+      "gap": 3,
       "align": "center",
-      "pad": [1, 2, 1, 2],
+      "pad": [2, 4, 2, 4],
       "bg": "surface.raised",
       "border": [0, 0, 1, 0],
       "border_color": "border.subtle"
@@ -190,29 +190,34 @@ def toolbar(children)
   )
 end
 
+# Tailwind UI's top bar: white over a `gray-200` rule, the product's name in
+# semibold, and the destinations as quiet pills — the one you are on on the
+# grey wash in the default ink, the rest muted until the pointer reaches them.
 def navbar(brand, links, active, on_go)
   items = links.map(fn(l) {
-    {
-      "k": "text",
-      "t": l,
-      "s": l == active ? {"weight": "semibold"} : {
-        "fg": "text.muted",
-        "cursor": "pointer"
-      },
+    nb_here = l == active
+    control({
+      "key": "navbar:" + l.to_s,
+      "tone": "quiet",
+      "size": "md",
+      "selected": nb_here,
+      "shape": {"border": 0, "min_width": 0, "pad": [2, 4, 2, 4], "fg": nb_here ? "text.default" : "text.muted"},
       "on": {"click": on_go},
-      "p": {"path": l}
-    }
+      "props": {"path": l},
+      "a11y": {"role": "link", "label": l.to_s, "current": nb_here},
+      "c": [text(l, {"size": 1, "weight": "medium"})]
+    })
   })
   row(
     {
-      "gap": 5,
+      "gap": 1,
       "align": "center",
-      "pad": [2, 4, 2, 4],
+      "pad": [3, 5, 3, 5],
       "bg": "surface.raised",
       "border": [0, 0, 1, 0],
       "border_color": "border.subtle"
     },
-    [text(brand, {"weight": "bold"})].concat(items)
+    [text(brand, {"weight": "semibold", "size": 3}), node("box", {"width": 24, "shrink": 0}, [])].concat(items)
   )
 end
 
@@ -232,8 +237,8 @@ def sidebar(links, active, on_go, icons = {})
   column(
     {
       "gap": 1,
-      "pad": 3,
-      "width": 200,
+      "pad": 4,
+      "width": 240,
       "bg": "surface.raised",
       "border": [0, 1, 0, 0],
       "border_color": "border.subtle"
@@ -248,30 +253,31 @@ def sidebar(links, active, on_go, icons = {})
         "bg": here ? "accent.base" : "none"
       }}
       glyph = icon(icons[l] ?? "dot", {
-        "width": 16,
-        "height": 16,
+        "width": 20,
+        "height": 20,
         "shrink": 0,
-        "fg": here ? "accent.base" : "text.muted"
+        "fg": here ? "accent.base" : "text.disabled"
       })
-      {
-        "k": "box",
-        "s": {
-          "display": "row",
-          "align": "center",
-          "gap": 2,
-          "pad": [2, 3, 2, 2],
-          "radius": 2,
-          "bg": here ? "surface.sunken" : "none",
-          "cursor": "pointer",
-          "transition": "fast"
+      # Tailwind UI's: `rounded-md p-2 text-sm font-semibold gap-x-3`, the
+      # current row on the grey wash in the accent, the others in the
+      # default ink, washing grey under the pointer. The wash is `control`'s
+      # quiet tone, so it is local and costs no round trip.
+      control({
+        "key": "sidebar:" + l.to_s,
+        "tone": "quiet",
+        "selected": here,
+        "shape": {
+          "justify": "start",
+          "gap": 3,
+          "pad": [3, 3, 3, 2],
+          "border": 0,
+          "min_width": 0,
+          "fg": here ? "accent.base" : "text.default"
         },
         "on": {"click": on_go},
-        "p": {"path": l, "label": l, "current": here},
-        "c": [mark, glyph, text(l, here ? {
-          "weight": "semibold",
-          "fg": "accent.base"
-        } : {"fg": "text.default"})]
-      }
+        "props": {"path": l, "label": l, "current": here},
+        "c": [mark, glyph, text(l, {"weight": "semibold", "size": 1})]
+      })
     })
   )
 end
@@ -479,21 +485,21 @@ def select(options, value, open, on_toggle, on_pick, o = {})
 end
 
 def select_sized(options, value, open, on_toggle, on_pick, min_width, grow, o = {})
-  # The same surface as the box you type into, for the same reason: a select
-  # the colour of the card it sits on reads as a label until it is clicked.
-  # The hover is the neutral tone's, so a select and a button answer the
-  # pointer with the same two colours.
+  # The same surface as the box you type into — white inside a hairline, the
+  # way a web form draws a select. The hover is the neutral tone's, so a
+  # select and a secondary button answer the pointer with the same grey.
   s = {
     "display": "row",
     "align": "center",
     "gap": 2,
-    "pad": [2, 3, 2, 3],
+    "pad": [2, 4, 2, 4],
     "min_width": min_width,
     "min_height": field_height(o),
     "border": 1,
     "border_color": "border.default",
     "radius": 2,
-    "bg": "surface.sunken",
+    "bg": "surface.raised",
+    "shadow": 1,
     "cursor": "pointer",
     "transition": "fast"
   }
@@ -510,28 +516,37 @@ def select_sized(options, value, open, on_toggle, on_pick, min_width, grow, o = 
     "key": o["key"] ?? ("sel:" + on_toggle.to_s),
     "s": s,
     "on": stateful(s, TONES["neutral"], {"click": on_toggle}),
-    "c": [text(value, {"grow": 1}), icon(
+    "c": [text(value, {"grow": 1, "size": 1}), icon(
       "chevron_down",
-      {"fg": "text.muted", "width": 14, "height": 14}
+      {"fg": "text.muted", "width": 16, "height": 16}
     )]
   }
   anchor["p"] = props if props.keys().length() > 0
   dropdown(anchor, options.map(fn(opt) { select_option(opt, opt == value, on_pick, min_width, props) }), open, DROPDOWN_MAX_PX, on_toggle)
 end
 
+# Tailwind's listbox option: `text-sm`, the chosen one semibold with a tick
+# at the end, and a grey wash under the pointer — local, on `self`.
 def select_option(label, selected, on_pick, min_width, props = {})
+  so_base = {
+    "display": "row",
+    "align": "center",
+    "gap": 2,
+    "pad": [2, 4, 2, 4],
+    "radius": 1,
+    "min_width": min_width,
+    "bg": "none",
+    "cursor": "pointer",
+    "transition": "fast"
+  }
+  so_kids = [text(label, {"size": 1, "grow": 1, "weight": selected ? "semibold" : "regular"})]
+  so_kids = so_kids.concat([icon("check", {"width": 16, "height": 16, "fg": "accent.base", "shrink": 0})]) if selected
   {
     "k": "box",
-    "s": {
-      "pad": [1, 3, 1, 3],
-      "radius": 1,
-      "min_width": min_width,
-      "bg": selected ? "surface.sunken" : "none",
-      "cursor": "pointer"
-    },
+    "s": so_base,
     "p": props.merge({"value": label}),
-    "on": {"click": on_pick},
-    "c": [text(label, {"weight": selected ? "bold" : "regular"})]
+    "on": stateful(so_base, TONES["quiet"], {"click": on_pick}),
+    "c": so_kids
   }
 end
 
@@ -586,8 +601,8 @@ def dropdown(anchor, content, open, max_px = 0, on_close = "")
         "position": "absolute",
         "margin": [2, 0, 0, 0],
         "pad": 1,
-        "radius": 2,
-        "shadow": 2,
+        "radius": 3,
+        "shadow": 3,
         "bg": "surface.overlay",
         "border": 1,
         "border_color": "border.subtle",
@@ -641,13 +656,14 @@ def combobox(options, value, o = {})
     "display": "row",
     "align": "center",
     "gap": 2,
-    "pad": [2, 3, 2, 3],
+    "pad": [2, 4, 2, 4],
     "min_width": cb_min,
     "min_height": field_height(o),
     "border": 1,
     "border_color": "border.default",
     "radius": 2,
-    "bg": "surface.sunken",
+    "bg": "surface.raised",
+    "shadow": 1,
     "cursor": "pointer",
     "transition": "fast"
   }
@@ -663,9 +679,9 @@ def combobox(options, value, o = {})
       "label": o["label"] ?? value.to_s
     },
     "on": stateful(s, TONES["neutral"], {"click": o["on_toggle"]}),
-    "c": [text(value, {"grow": 1}), icon(
+    "c": [text(value, {"grow": 1, "size": 1}), icon(
       "chevron_down",
-      {"fg": "text.muted", "width": 14, "height": 14}
+      {"fg": "text.muted", "width": 16, "height": 16}
     )]
   }
   return anchor unless cb_open
@@ -1525,7 +1541,8 @@ def multi_select_anchor(options, sel, open, on_toggle, on_pick, o)
     "border": 1,
     "border_color": "border.default",
     "radius": 2,
-    "bg": "surface.sunken",
+    "bg": "surface.raised",
+    "shadow": 1,
     "cursor": "pointer",
     "transition": "fast"
   }
@@ -1718,7 +1735,7 @@ def currency_field(label, value, on_change, o = {})
     "gap": 1, "align": "center", "width": o["width"] ?? "100%",
     "min_height": field_height(o), "pad": [0, 3, 0, 3], "radius": 2,
     "border": 1, "border_color": cf_bad ? "danger.base" : "border.default",
-    "bg": "surface.sunken"
+    "bg": "surface.raised", "shadow": 1
   }, (o["unit_after"] == true ? [cf_box, muted(cf_unit)] : [muted(cf_unit), cf_box]))
   field_shell(label, cf_shell, o.merge({"error": cf_error}))
 end
@@ -1777,7 +1794,7 @@ def kbd(key)
       "display": "row", "justify": "center", "align": "center",
       "bg": "surface.sunken", "border": 1, "border_color": "border.default", "shrink": 0
     },
-    "c": [text(key.to_s, {"size": 0, "weight": "semibold", "fg": "text.muted"})]
+    "c": [text(key.to_s, {"size": 0, "weight": "medium", "fg": "text.muted"})]
   }
 end
 
@@ -2239,9 +2256,11 @@ def field_note(o)
   hint == "" ? [] : [muted(hint)]
 end
 
+# Label, control, note: Tailwind's `block text-sm font-medium` label with
+# `mt-2` of room before the control, and the note `mt-2` under it.
 def field_shell(label, control, o)
-  head = (label ?? "") == "" ? [] : [muted(label)]
-  column({"gap": 1, "width": "100%"}, head.concat([control]).concat(field_note(o)))
+  head = (label ?? "") == "" ? [] : [field_label(label)]
+  column({"gap": 3, "width": "100%"}, head.concat([control]).concat(field_note(o)))
 end
 
 # The style every field control shares. It fills its column unless a width was
@@ -2422,7 +2441,8 @@ def otp_cell(i, said, at, n, key, on_input, o)
     "radius": 2,
     "border": 1,
     "border_color": live ? "accent.base" : "border.default",
-    "bg": "surface.sunken"
+    "bg": "surface.raised",
+    "shadow": 1
   }
   return otp_live_cell(i, ch, n, key, on_input, o, shell) if live
 
@@ -2644,8 +2664,8 @@ def file_drop(label, accept, on_pick, o = {})
     "pad": 5,
     "radius": 3,
     "border": 1,
-    "border_color": over ? "accent.base" : "border.subtle",
-    "bg": over ? "accent.hover" : "surface.sunken",
+    "border_color": over ? "accent.base" : "border.default",
+    "bg": over ? "accent.hover" : "surface.base",
     "fg": fd_ink,
     "transition": "fast"
   }
@@ -2809,10 +2829,10 @@ def picker_field(o, caption, empty, make)
       "gap": 2,
       "width": o["width"] ?? "100%",
       "min_height": field_height(o),
-      # No `bg`: the neutral tone rests on `surface.sunken` and hovers to
-      # `surface.raised`, which is what every other field does now. Naming
-      # `raised` here made the resting state the hover state, so a date field
-      # sat flat on its card and answered the pointer with nothing.
+      # No `bg`: the neutral tone rests on `surface.raised` inside its
+      # hairline and hovers to `surface.base`, which is what every other field
+      # and every secondary button does. A `bg` named here would be the same in
+      # both states, and the field would answer the pointer with nothing.
       "border_color": bad ? "danger.base" : "border.default"
     },
     "on": {"click": o["on_toggle"]},
@@ -2823,7 +2843,7 @@ def picker_field(o, caption, empty, make)
       "expanded": open
     },
     "c": [
-      text(caption, {"grow": 1, "fg": empty ? "text.muted" : "text.default"}),
+      text(caption, {"grow": 1, "size": 1, "fg": empty ? "text.muted" : "text.default"}),
       icon("calendar", {"fg": "text.muted", "width": 16, "height": 16})
     ]
   })
@@ -2886,7 +2906,7 @@ end
 
 # A titled card, so a picker reads as one thing.
 def labelled(title, child)
-  card({"gap": 3}, [text(title, {"weight": "bold"}), child])
+  card({"gap": 4}, [text(title, {"weight": "semibold", "size": 2}), child])
 end
 
 # ---- The dev bar --------------------------------------------------------
