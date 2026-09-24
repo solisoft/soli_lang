@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-09-24
+
 ### Added
 
 * **feat(ops):** **built-in error tracking at `/__soli/errors`.** Every request that ends in a 500 is grouped by fingerprint (message with ids, numbers and quoted values stripped, plus the raising frame without its line number, paths relative to the app root) into a `_soli_errors` table in the app's own database — SoliDB, Postgres, MySQL or SQLite. Each group keeps its count, first/last seen and its five newest occurrences (stack, request, handler locals, and a `curl` line that replays it locally), redacted like the stderr error log. Groups are `open`, `resolved` (a new occurrence reopens it as **regressed**) or `ignored` (keeps counting, off the list). Recording is off the request path: a bounded queue feeds one writer thread per app that batches for a second and writes one update per group; overflow is dropped and counted on the page. On by default; `SOLI_ERRORS=off` disables it and `APP_ENV=test` leaves it off unless `SOLI_ERRORS=on`. The page is linked from the dev bar's tools panel. Docs: `www/docs/observability.md` → "Error tracking".
