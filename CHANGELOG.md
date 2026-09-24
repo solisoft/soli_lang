@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [2.5.1] - 2026-09-24
+## [2.5.2] - 2026-09-24
 
 ### Added
 
@@ -16,6 +16,10 @@
 ### Fixed
 
 * **fix(security):** **the raw request body no longer reaches the error log's `env:` line.** The locals dump redacted `req.form` and `req.json` field by field, but `req.body` — the raw `password=…&…` string — has no field name to match and was printed in full, to stderr and into any log shipper behind it. A hash shaped like a request (`method`, `path`, `headers`) now has its `body`/`raw_body` replaced by `[REDACTED]`, as the request snapshot already did.
+
+## [2.5.1] - 2026-09-24 [NOT PUBLISHED]
+
+Tagged with a `Cargo.lock` missing its eui `source` lines, which `--locked` builds reject; never published. Its changes shipped in 2.5.2.
 
 ## [2.5.0] - 2026-09-24
 

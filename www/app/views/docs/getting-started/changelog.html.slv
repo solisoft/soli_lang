@@ -20,20 +20,21 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.5.1.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.5.2.</p>
 
     </section>
 
-    <section id="v2-5-1" class="mb-16 scroll-mt-24">
-        <h2 class="text-3xl font-bold text-white mb-4">v2.5.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-24</span></h2>
+    <section id="v2-5-2" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.5.2 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-24</span></h2>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">v2.5.1 was tagged but never published (its lock file was broken); these changes shipped here.</p>
 
-        <h3 id="v2-5-1-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <h3 id="v2-5-2-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Built-in error tracking at <code class="text-cyan-400">/__soli/errors</code>.</strong> Every request that ends in a 500 is grouped by fingerprint and stored in the app&rsquo;s own database (SoliDB, Postgres, MySQL or SQLite) &mdash; a self-hosted stand-in for Sentry with nothing to install. Ids, numbers and quoted values don&rsquo;t split a group, and neither does editing code above the bug. Each group keeps its count, first and last seen, and its five newest occurrences with stack, request, locals and a <code class="text-cyan-400">curl</code> line to replay it locally, all redacted before storage. Resolve, ignore or delete a group; a resolved one that fails again comes back <em>regressed</em>. Recording happens off the request path, in one-second batches. On by default (<code class="text-cyan-400">SOLI_ERRORS=off</code> to stop); in production the page stays <code class="text-cyan-400">404</code> until <code class="text-cyan-400">SOLI_ERRORS_USER</code>/<code class="text-cyan-400">_PASSWORD</code> or <code class="text-cyan-400">SOLI_ERRORS_TOKEN</code> is set. See <a href="/docs/development-tools/observability#error-tracking" class="text-amber-400 hover:underline">Observability</a>.</li>
             <li><strong class="text-white">The <code class="text-cyan-400">/__soli/*</code> pages share one look.</strong> Errors, jobs, the mail inbox and the mailer and component catalogs now have a common top bar to move between them, readable sans-serif text with monospace kept for code and ids, status tags, and proper empty states. The error list shows how long ago each group was seen, a 24-hour trend, the last request that hit it, and a count on each tab.</li>
         </ul>
 
-        <h3 id="v2-5-1-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <h3 id="v2-5-2-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">One set of credentials for every operator page.</strong> <code class="text-cyan-400">SOLI_ADMIN_USER</code> / <code class="text-cyan-400">SOLI_ADMIN_PASSWORD</code> / <code class="text-cyan-400">SOLI_ADMIN_TOKEN</code> open both <code class="text-cyan-400">/__soli/jobs</code> and <code class="text-cyan-400">/__soli/errors</code>, beside each page&rsquo;s own variables.</li>
             <li><strong class="text-white">The raw request body no longer reaches the error log.</strong> The <code class="text-cyan-400">env:</code> line of a production error redacted form and JSON fields by name, but printed <code class="text-cyan-400">req.body</code> &mdash; the raw <code class="text-cyan-400">password=&hellip;</code> string &mdash; in full. It is now <code class="text-cyan-400">[REDACTED]</code>, as the request snapshot above it already was.</li>
