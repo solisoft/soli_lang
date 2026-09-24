@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-09-24
+
 ### Added
 
 * **feat(eui):** **styles in Tailwind's classes** — the scaffolded catalogue gains a sixth file, `eui_builders_tw.sl`, and `tw("flex items-center gap-3 rounded-lg bg-white px-4 py-2 shadow-sm hover:bg-gray-50")`, which answers `{"s", "hover", "press", "focus", "disabled", "props"}`: the resting style and the four states as deltas over it. A `"tw"` key in the style given to `node`/`column`/`row`/`stack` is read the same way and its states become local handlers (no round trip); `control({"tw": ...})` and `stateful(base, "hover:...", on)` take classes too, and `tw_style` is the resting style alone for a `text` node. Plain Soli, nothing new on the wire: spacing steps are space-scale indices, `text-xs`…`text-4xl` are sizes 0–7, a colour is a role (`bg-white` `surface.raised`, `text-gray-500` `text.muted`, `border-gray-300` `border.default`, `indigo-600` `accent.base`, `red-600` `danger.base`…), `ring-1` is a 1 px border. A class with no equivalent — `tracking-*`, `leading-*`, gradients, per-corner radius, transforms, `dark:` — raises with its name and the reason rather than being dropped. Each distinct string is parsed once per process. Docs: `www/docs/eui/styling.md` → "Tailwind classes".
