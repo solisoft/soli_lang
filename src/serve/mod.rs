@@ -4828,16 +4828,13 @@ fn call_class_method(
                     buf.push_str(method_name);
                     vm.failed_handlers.contains(buf.as_str())
                 });
-            if !demoted {
+            // Only a method that takes `(req)` runs on the VM. A zero-parameter
+            // action (`def index`) reads the request through the `req` global
+            // and stays on the tree-walker: 2.4.0 sent it to the VM, and
+            // actions that had always worked there failed in production.
+            if !demoted && !method.params.is_empty() {
                 crate::interpreter::builtins::model::crud::clear_durable_commit();
-                // Mirror the interpreter path below: a zero-parameter action
-                // (`def index`) reads the request through the `req` global, so
-                // it is called with no argument rather than skipping the VM.
-                let action_arg = if method.params.is_empty() {
-                    None
-                } else {
-                    Some(request_hash.clone())
-                };
+                let action_arg = Some(request_hash.clone());
                 match vm.call_method_bound(&method, instance.clone(), action_arg, Span::default()) {
                     Ok(result) => {
                         vm.reset();

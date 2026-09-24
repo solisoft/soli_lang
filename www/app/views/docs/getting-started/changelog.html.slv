@@ -20,7 +20,23 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.4.1.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.4.2.</p>
+
+        <h3 id="unreleased-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">SoliDB reads decode their rows once, straight into Soli values.</strong> On the native driver (<code class="text-cyan-400">SOLI_DB_DRIVER=1</code>), <code class="text-cyan-400">Model.all</code>, <code class="text-cyan-400">pluck(...).all</code> and other plain query-builder reads now receive Soli values directly from <code class="text-cyan-400">solidb-client</code>, instead of building a JSON tree and converting it. Decoding had been 35&ndash;40% of the CPU on a database-backed page; with the client&rsquo;s own fix in v1.2.0, the framework suite at 200 concurrent connections goes from 59.9k to 79.3k req/s on <code class="text-cyan-400">/db</code> and from 57.7k to 74.9k on <code class="text-cyan-400">/db-template</code>, with CPU per request down by about 30%. Output is byte-identical; mocks, SQL adapters and the HTTP transport are unchanged.</li>
+        </ul>
+
+    </section>
+
+    <section id="v2-4-2" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.4.2 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-24</span></h2>
+
+        <h3 id="v2-4-2-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A zero-argument action runs on the tree-walker again.</strong> 2.4.0 sent the scaffold&rsquo;s <code class="text-cyan-400">def index</code> to the bytecode VM, and actions that had always worked failed there in production &mdash; while the same code ran fine as a script and on 2.3.6. They are back where they ran through 2.3.x; an action that takes <code class="text-cyan-400">(req)</code> still runs on the VM.</li>
+            <li><strong class="text-white">A model instance reads by key on the VM.</strong> <code class="text-cyan-400">user["_key"]</code> and <code class="text-cyan-400">current_user()["_key"]</code> answered &ldquo;Cannot access property &lsquo;get&rsquo; on User&rdquo; once a handler ran on the VM, wherever the instance came from; the tree-walker always read them.</li>
+        </ul>
 
     </section>
 

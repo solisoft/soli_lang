@@ -1193,6 +1193,12 @@ impl Vm {
                                     let st = st.clone();
                                     self.vm_call_string_method(&st, "get", &[arg], span)?
                                 }
+                                // Un modèle se lit aussi par clé — `user["_key"]`,
+                                // `current_user()["_key"]`. `GetIndex` le sait ; ce
+                                // raccourci ne le savait pas, et répondait
+                                // « Cannot access property 'get' on User » dès
+                                // qu'un gestionnaire tournait sur le VM.
+                                Value::Instance(_) => self.op_get_index(&receiver, &arg, span)?,
                                 _ => {
                                     return Err(RuntimeError::NoSuchProperty {
                                         value_type: receiver.type_name(),
@@ -1329,6 +1335,12 @@ impl Vm {
                                     let st = st.clone();
                                     self.vm_call_string_method(&st, "get", &[arg], span)?
                                 }
+                                // Un modèle se lit aussi par clé — `user["_key"]`,
+                                // `current_user()["_key"]`. `GetIndex` le sait ; ce
+                                // raccourci ne le savait pas, et répondait
+                                // « Cannot access property 'get' on User » dès
+                                // qu'un gestionnaire tournait sur le VM.
+                                Value::Instance(_) => self.op_get_index(&receiver, &arg, span)?,
                                 _ => {
                                     return Err(RuntimeError::NoSuchProperty {
                                         value_type: receiver.type_name(),
@@ -1504,6 +1516,12 @@ impl Vm {
                                     let st = st.clone();
                                     self.vm_call_string_method(&st, "get", &[arg], span)?
                                 }
+                                // Un modèle se lit aussi par clé — `user["_key"]`,
+                                // `current_user()["_key"]`. `GetIndex` le sait ; ce
+                                // raccourci ne le savait pas, et répondait
+                                // « Cannot access property 'get' on User » dès
+                                // qu'un gestionnaire tournait sur le VM.
+                                Value::Instance(_) => self.op_get_index(&receiver, &arg, span)?,
                                 _ => {
                                     return Err(RuntimeError::NoSuchProperty {
                                         value_type: receiver.type_name(),
@@ -3450,6 +3468,11 @@ impl Vm {
                 let st = st.clone();
                 self.vm_call_string_method(&st, "get", &[arg], span)
             }
+            // Un modèle se lit aussi par clé : même chemin que `GetIndex`.
+            Value::Instance(_) => {
+                let span = self.current_span();
+                self.op_get_index(receiver, &Value::String(key.into()), span)
+            }
             other => Err(RuntimeError::NoSuchProperty {
                 value_type: other.type_name(),
                 property: "get".to_string(),
@@ -3630,6 +3653,14 @@ impl Vm {
                         length: chars.len(),
                         span,
                     })
+            }
+            // Une instance indexée par une chaîne : lecture dynamique du champ,
+            // comme l'interpréteur (`access/index.rs`) — `user["_key"]`, ou un
+            // nom de champ calculé. Sans ce cas, le VM refusait ce que
+            // l'interpréteur accepte, et un gestionnaire changeait de résultat
+            // selon le moteur qui le servait.
+            (Value::Instance(inst), Value::String(key)) => {
+                Ok(inst.borrow().get(key).unwrap_or(Value::Null))
             }
             _ => Err(RuntimeError::type_error(
                 format!(
@@ -4633,6 +4664,55 @@ mod tests {
         vm.globals.insert("record".to_string(), record);
         vm.execute(&module.main).expect("save should run on the VM");
         assert_eq!(vm.globals.get("x"), Some(&Value::Bool(true)));
+    }
+
+    /// `user["_key"]` sur une instance de modèle, sur le VM.
+    ///
+    /// Une clé chaîne constante se compile en `HashGetConst` (et ses variantes
+    /// locale et globale), qui ne savaient lire qu'un hachage, un tableau ou une
+    /// chaîne : sur une instance, elles répondaient « Cannot access property
+    /// 'get' on User ». `organisations#choose` lit `current_user()["_key"]`, et
+    /// répondait 500 dès qu'il tournait sur le VM — un échec intermittent, qui
+    /// disparaissait dès qu'on instrumentait l'action (le `try` la faisait
+    /// retomber sur l'interpréteur).
+    #[test]
+    fn test_vm_const_key_read_on_model_instance() {
+        use crate::interpreter::value::{Class, Instance};
+
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let record_class = Rc::new(Class {
+            name: "User".to_string(),
+            superclass: Some(model_base),
+            ..Default::default()
+        });
+        let mut instance = Instance::new(record_class);
+        instance
+            .fields
+            .insert("_key".into(), Value::String("abc".into()));
+        let record = Value::Instance(Rc::new(RefCell::new(instance)));
+
+        let source = "fn courant() { return record }\n\
+                      fn locale() { let r = record\n return r[\"_key\"] }\n\
+                      let par_appel = courant()[\"_key\"];\n\
+                      let par_globale = record[\"_key\"];\n\
+                      let par_locale = locale();";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals.insert("record".to_string(), record);
+        vm.execute(&module.main)
+            .expect("a model instance reads by key on the VM");
+        for name in ["par_appel", "par_globale", "par_locale"] {
+            assert_eq!(
+                vm.globals.get(name),
+                Some(&Value::String("abc".into())),
+                "{name}"
+            );
+        }
     }
 
     #[test]

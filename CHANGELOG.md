@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Performance
+
+* **perf(orm):** **plain SoliDB reads decode their rows once, straight into Soli values.** On the native driver (`SOLI_DB_DRIVER=1`), `Model.all`, `pluck(...).all` and every non-hydrated query builder read now ask `solidb-client` for Soli `Value`s directly (`query_as`), where the rows used to become a `serde_json::Value` tree first and then be converted. A profile of the benchmark's `/db-template` put decoding the response at 35–40% of Soli's CPU for that route, and the interpreter under 1%. Together with the client's own decode fix (solidb-client v1.2.0, now pinned here), the framework suite at c=200 goes from 59.9k to 79.3k req/s on `/db` (CPU per request 123 → 85 µs) and from 57.7k to 74.9k on `/db-template` (125 → 89 µs), which also clears the few-percent slowdown `/db-template` had picked up since v2.3.7. Output is byte-identical. Mocks, SQL adapters, a collection that must be created first, and the HTTP transport keep the previous path
+
+## [2.4.2] - 2026-09-24
+
+### Fixed
+
+* **fix(serve):** zero-argument controller actions — the scaffold's `def index` — run on the tree-walker again, as they did through 2.3.x. 2.4.0 sent them to the bytecode VM, and actions that had always worked failed there in production: the same code ran fine as a standalone script and on 2.3.6, and renaming the variable only moved the error to the new name. An action that takes `(req)` still runs on the VM
+* **fix(vm):** a model instance reads by key on the VM — `user["_key"]`, `current_user()["_key"]`, whether the instance comes from a call, a global or a local. The tree-walker's `GetIndex` handled it; the VM's constant-key shortcut did not, and answered `Cannot access property 'get' on User` as soon as a handler ran on the VM
+
 ## [2.4.1] - 2026-09-24
 
 v2.4.0 was tagged and never published: its CI failed before the release jobs ran. Everything listed under 2.4.0 ships in this release.
