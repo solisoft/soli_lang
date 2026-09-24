@@ -769,6 +769,11 @@ impl Encoder {
     }
 
     fn style(&mut self, record: StyleRecord) -> u32 {
+        // 05 §2: `space` indices 13-17 are version 6. A session that
+        // settled lower is sent the older step each falls back to -- its
+        // client would refuse the batch otherwise -- and every `DefStyle`
+        // passes through here, so this is the one place it is done.
+        let record = record.for_protocol(self.protocol());
         if record == StyleRecord::default() {
             return 0;
         }
@@ -2824,6 +2829,47 @@ mod tests {
             .collect();
         let names = handler_names(&new, &ops);
         assert!(names.contains(&"vu".to_string()), "{names:?}");
+    }
+
+    /// Every `DefStyle` record in a render, in the order defined.
+    fn defined_styles(enc: &mut Encoder, view: &serde_json::Value) -> Vec<StyleRecord> {
+        enc.render(view, false)
+            .unwrap()
+            .into_iter()
+            .flat_map(|b| b.ops)
+            .filter_map(|op| match op {
+                Op::DefStyle { record, .. } => Some(record),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_space_step_an_older_client_lacks_falls_back() {
+        // 05 §2: `space` 13-17 (Tailwind's 1.5 2.5 3.5 20 32) are version
+        // 6. A session at 5 gets the nearest older step, ties down; one at
+        // 6 gets the step the view wrote.
+        let view = json!({"k": "box", "s": {"gap": 13, "pad": [14, 15, 16, 17], "margin": 4, "width": "sp:13"}});
+
+        let mut old = Encoder::default();
+        old.set_protocol(5);
+        let got = defined_styles(&mut old, &view);
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert_eq!(got[0].gap, 2, "6 px is 4 px below version 6");
+        assert_eq!(got[0].padding, [3, 4, 11, 12]);
+        assert_eq!(got[0].margin, [4; 4], "an older step is left alone");
+        assert_eq!(got[0].width, eui_proto::Dim::Space(2));
+
+        let mut new = Encoder::default();
+        new.set_protocol(6);
+        let got = defined_styles(&mut new, &view);
+        assert_eq!(got[0].gap, 13);
+        assert_eq!(got[0].padding, [14, 15, 16, 17]);
+        assert_eq!(got[0].width, eui_proto::Dim::Space(13));
+
+        // And a render with no handshake behind it is at ours.
+        let got = defined_styles(&mut Encoder::default(), &view);
+        assert_eq!(got[0].gap, 13);
     }
 
     #[test]

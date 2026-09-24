@@ -784,7 +784,7 @@ end
 # Its locals are named for it alone: a bare assignment in a callee writes
 # the caller's variable of that name, and this recurses.
 MD_LINE_PX = [16, 18, 22, 24, 28, 32, 38, 46]
-MD_SPACE_PX = [0, 2, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 96]
+MD_SPACE_PX = [0, 2, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 96, 6, 10, 14, 80, 128]
 
 # A `pad` is one space index for every side or a list of four; either way,
 # the px of side `side` (0 top, 2 bottom).

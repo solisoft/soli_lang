@@ -421,10 +421,12 @@ end
 # ---- Scales ------------------------------------------------------------------
 
 # Tailwind's spacing steps, and the index of the space scale (05 §2) each one
-# is. Only the steps both scales share: 1.5 is 6 px, and the space scale has 4
-# and 8, so it is an error rather than a guess.
+# is. Only the steps both scales share: 7 is 28 px, and the space scale has 24
+# and 32, so it is an error rather than a guess. 1.5, 2.5, 3.5, 20 and 32 are
+# the version-6 steps at 13-17, out of index order because they were appended;
+# the keys stay in pixel order, which is what `tw_space_near` walks.
 def tw_space_steps()
-  {"0": 0, "0.5": 1, "1": 2, "2": 3, "3": 4, "4": 5, "5": 6, "6": 7, "8": 8, "10": 9, "12": 10, "16": 11, "24": 12}
+  {"0": 0, "0.5": 1, "1": 2, "1.5": 13, "2": 3, "2.5": 14, "3": 4, "3.5": 15, "4": 5, "5": 6, "6": 7, "8": 8, "10": 9, "12": 10, "16": 11, "20": 16, "24": 12, "32": 17}
 end
 
 def tw_text_sizes()
@@ -1254,6 +1256,7 @@ end
 def tw_examples()
   [
     "p-0", "p-0.5", "p-1", "p-2", "p-3", "p-4", "p-5", "p-6", "p-8", "p-10", "p-12", "p-16", "p-24",
+    "py-1.5", "px-2.5", "gap-3.5", "p-20", "py-32", "flex-col space-y-1.5",
     "px-4", "py-2", "pt-1", "pr-2", "pb-3", "pl-6", "m-2", "mx-4", "my-1", "mt-2", "mr-3", "mb-4", "ml-1", "gap-3",
     "w-64", "h-10", "w-1.5", "w-full", "w-auto", "w-px", "w-1/2", "w-2/3", "w-[320px]", "h-[50%]", "size-8",
     "basis-0", "basis-1/3", "min-w-0", "min-h-0", "min-w-full", "max-w-sm", "max-w-7xl", "max-w-full", "max-h-96",

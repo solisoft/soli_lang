@@ -335,7 +335,7 @@ BP = {
 # when it has to predict a box's width instead of being told: a canvas is
 # drawn at a size the server chooses, so it can only fill its parent if
 # the server can work out what the parent will give it.
-SPACE = [0, 2, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 96]
+SPACE = [0, 2, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 96, 6, 10, 14, 80, 128]
 
 def space_px(ix, density)
   factor = 1.0

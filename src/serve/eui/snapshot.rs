@@ -683,6 +683,57 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_one_shot_render_is_sent_the_space_steps_its_version_has() {
+        // 01 §2.4 puts the client's version in the query, and 05 §2 says a
+        // session below 6 is sent a fallback for `space` 13-17. `eui_render`
+        // and `GET /_eui/view` both come through here with that version.
+        use base64::Engine as _;
+        let tree = crate::interpreter::value::json_to_value(
+            serde_json::json!({"k": "box", "s": {"pad": [13, 14, 15, 17]}}),
+        )
+        .unwrap();
+        let styles = |version: u32| -> (u32, Vec<eui_proto::StyleRecord>) {
+            let out = render_once(&tree, version, None).unwrap();
+            let Value::Hash(h) = out else {
+                panic!("a response hash")
+            };
+            let key = crate::interpreter::value::HashKey::String("body_base64".into());
+            let Some(Value::String(b)) = h.borrow().get(&key).cloned() else {
+                panic!("a body")
+            };
+            let body = base64::engine::general_purpose::STANDARD
+                .decode(b.as_bytes())
+                .unwrap();
+            let (mut at, mut welcomed, mut records) = (0, 0, Vec::new());
+            while at < body.len() {
+                let (frame, used) = Frame::decode_prefix(&body[at..]).unwrap();
+                at += used;
+                match frame {
+                    Frame::Welcome(w) => welcomed = w.version,
+                    Frame::Batch(b) => {
+                        records.extend(b.ops.into_iter().filter_map(|op| match op {
+                            eui_proto::Op::DefStyle { record, .. } => Some(record),
+                            _ => None,
+                        }))
+                    }
+                    _ => {}
+                }
+            }
+            (welcomed, records)
+        };
+        let (v, old) = styles(5);
+        assert_eq!(v, 5);
+        assert_eq!(old[0].padding, [2, 3, 4, 12], "the older steps at 5");
+        let (v, new) = styles(6);
+        assert_eq!(v, 6);
+        assert_eq!(
+            new[0].padding,
+            [13, 14, 15, 17],
+            "the steps as written at 6"
+        );
+    }
+
+    #[test]
     fn a_cache_control_with_a_newline_in_it_is_refused() {
         // Header injection. The value is written into a response header
         // verbatim, so this is the one check that is not cosmetic.

@@ -144,7 +144,7 @@ the resting style alone, for a `text` node.
 
 | Tailwind | EUI |
 |----------|-----|
-| `p-4`, `px-2`, `gap-3` | `pad` / `margin` / `gap` space indices: 0, 0.5, 1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 24 are indices 0 – 12 |
+| `p-4`, `px-2`, `gap-3`, `py-1.5` | `pad` / `margin` / `gap` space indices: 0, 0.5, 1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 24 are indices 0 – 12, and 1.5, 2.5, 3.5, 20, 32 are 13 – 17 |
 | `w-64`, `w-1/2`, `w-full`, `max-w-md` | px (N × 4), percent, `"100%"`, Tailwind's max widths |
 | `text-sm` … `text-4xl`, `font-semibold` | `size` 0 – 7, `weight` |
 | `bg-white`, `bg-gray-50`, `bg-gray-100` | `surface.raised`, `surface.base`, `surface.sunken` |
@@ -176,10 +176,17 @@ tw("hidden lg:flex", vw)
 `tw(classes)` with one argument is unchanged for everything else. A string is
 memoised once per breakpoint its width falls in, not per width.
 
+The half steps `1.5`, `2.5` and `3.5`, and `20` and `32`, are space indices
+13 – 17, which EUI protocol version 6 added. You write them the same way for
+every client: a session with a client older than 6 is sent the nearest step
+it has instead, rounding down on a tie — `py-1.5` draws as `py-1` (4 px),
+`px-2.5` as `px-2`, `gap-3.5` as `gap-3`, `20` as `16` and `32` as `24`. The
+same goes for a raw `{"pad": 13}`.
+
 A class with no equivalent raises, naming the class and the reason, rather
 than being dropped: `tracking-*`, `leading-*`, gradients, per-corner radius,
-transforms, `italic`, a half step such as `py-1.5` (the message names the two
-nearest), a `space-y` on a row or a gap-x and gap-y that differ where both
+transforms, `italic`, a step the space scale does not have such as `p-7`
+(the message names the two nearest), a `space-y` on a row or a gap-x and gap-y that differ where both
 axes are spaced, and `dark:` (roles already follow the theme). The whole
 table, the approximations and every refusal are in the EUI repository's
 `doc/docs/eui/tailwind.md`.
