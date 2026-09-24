@@ -349,6 +349,12 @@ impl Interpreter {
         else {
             return;
         };
+        // The render data is redacted exactly as handler locals are: it reaches
+        // the same `env:` log line and the same `_soli_errors` sample, and
+        // `render("users/reset", {"reset_token": t})` is an ordinary call. The
+        // redactor replaces every secret-looking key's value at any depth,
+        // including the top-level render keys hoisted below.
+        let view_data = crate::redaction::redact_value_for_debug(&view_data);
 
         // Collect existing variable names to avoid duplicates
         let existing_names: std::collections::HashSet<String> = json_parts
@@ -1601,5 +1607,55 @@ result = saved_handler(1) + stashed(2)
             globals.upgrade().is_none(),
             "the builtins registry outlived its interpreter"
         );
+    }
+}
+
+#[cfg(test)]
+mod view_debug_redaction_tests {
+    use super::*;
+    use crate::interpreter::value::HashPairs;
+    use std::cell::RefCell;
+
+    fn hash(pairs: Vec<(&str, Value)>) -> Value {
+        let mut out = HashPairs::default();
+        for (k, v) in pairs {
+            out.insert(HashKey::String(k.into()), v);
+        }
+        Value::Hash(Rc::new(RefCell::new(out)))
+    }
+
+    /// A template that fails mid-render leaves its `render()` data behind for
+    /// the error page and the error tracker. It must be redacted like the
+    /// handler's own locals, on both serializers.
+    #[test]
+    fn render_data_is_redacted_in_the_debug_environment() {
+        let data = hash(vec![
+            ("reset_token", Value::String("tok-live-123".into())),
+            (
+                "user",
+                hash(vec![
+                    ("password", Value::String("hunter2".into())),
+                    ("name", Value::String("bob".into())),
+                ]),
+            ),
+            ("title", Value::String("Reset your password".into())),
+        ]);
+        crate::interpreter::builtins::template::set_view_debug_context(Some(data));
+        let interp = Interpreter::new();
+        let dumps = [
+            interp.serialize_environment_for_debug(),
+            interp.serialize_environment(&std::collections::HashMap::new()),
+        ];
+        crate::interpreter::builtins::template::clear_view_debug_context();
+        for json in dumps {
+            assert!(
+                !json.contains("tok-live-123"),
+                "render token leaked: {json}"
+            );
+            assert!(!json.contains("hunter2"), "nested password leaked: {json}");
+            assert!(json.contains("bob"), "non-secret context lost: {json}");
+            assert!(json.contains("Reset your password"), "{json}");
+            assert!(json.contains("\"reset_token\": \"[REDACTED]\""), "{json}");
+        }
     }
 }

@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Security
+
+* **fix(security):** **the data passed to `render()` is redacted in error samples.** A template that failed mid-render left its `render()` hash behind for the error page, and `append_view_debug_context` wrote it — as `_view_data` and as hoisted top-level keys — without the redaction handler locals get. `render("users/reset", {"reset_token": t})` failing mid-template stored the token in `_soli_errors.samples[].env`, showed it on `/__soli/errors` and printed it on the stderr `env:` line. The render data now goes through the same redactor, keys and nested values alike.
+* **fix(security):** **`X-Api-Key` and `api-key` are secrets.** The secret-key rule matched substrings spelled with underscores (`api_key`), so a hyphenated header or param passed: the `req` global's `x-api-key` header was stored in error samples and replayed on the dashboard's `curl` line, and `?api-key=` passed the query redaction. Key names now match with separators ignored (`api_key`, `api-key`, `apiKey`, `X_API_KEY` are one name), a request hash's `headers` also get the exact header list (`authorization`, `cookie`, `x-api-key`, `api-key`, …), and the `curl` builder never emits a credential header or secret-named param even from a sample stored before this fix.
+
+### Fixed
+
+* **fix(ops):** **error tracking keeps at most 1000 groups per app.** A message is partly the caller's words, so a client able to choose an error's text could mint a new group per request and grow `_soli_errors` without bound. Past 1000 groups an occurrence of a new fingerprint is counted in one overflow group (key `0000000000000000`, each sample keeping its own message); stored groups keep counting, the list says the limit is reached, and deleting groups makes room.
+* **fix(ops):** **an apostrophe no longer breaks error grouping.** `'` was read as a quote anywhere, so `can't find X` and `can't divide` were one group (`can?`) and `User's email 'bob'` put `bob` into the fingerprint. A single quote now opens only at the start of a word and closes only at the end of one; `"` still always quotes.
+* **fix(ops):** **a panic in the error writer no longer stops tracking silently.** Each write is fenced by `catch_unwind` and counted as failed; a writer found dead is forgotten and restarted on the next error (the occurrence retried once) instead of every later error being counted as queue overflow until a restart. The page now names dropped (queue full), failed (database error or caught panic) and restarted/lost occurrences separately, and the counters are per app rather than one process-wide number shared by every tenant.
+* **fix(ops):** **a SoliDB read error is not a missing group.** The tracker's `get` turned every error into "not found", so a transient failure made the writer insert a fresh group over one it merely could not read. Only a 404/not-found reads as absent now. The dashboard's own read and action failures answer `500` instead of `200`.
+
 ## [2.5.2] - 2026-09-24
 
 ### Added

@@ -20,9 +20,9 @@ For request-edge knobs (`SOLI_TRUST_PROXY`, body size, CSRF tokens) see [Server 
 | Attachment types | Default allowlist excludes `text/html`, SVG, XML; blob route sends `nosniff` + `Content-Disposition: attachment` for non-images |
 | SQL TLS | Postgres/MySQL `sslmode` / `ssl-mode` via rustls; default `prefer`. Outside `--dev`, a one-time warning is logged when a connection to a non-local host uses `disable`, `prefer` or `require` |
 | Panic containment | A panicking handler is a 500; the worker stays up (`catch_unwind`) |
-| Log redaction | Credential-looking params, binds, locals, and HTTP URLs are `[REDACTED]` |
+| Log redaction | Credential-looking params, binds, locals (and the data passed to a failing `render()`), and HTTP URLs are `[REDACTED]`; `api_key`, `api-key` and `apiKey` are one name |
 | Jobs dashboard | 404 in production unless `SOLI_JOBS_USER`/`PASSWORD`, `SOLI_JOBS_TOKEN` or `SOLI_ADMIN_*` is set |
-| Errors dashboard (`/__soli/errors`) | 404 in production unless `SOLI_ERRORS_USER`/`PASSWORD`, `SOLI_ERRORS_TOKEN` or `SOLI_ADMIN_*` is set; stored samples are redacted (auth headers, cookies, secret-named params, raw body) |
+| Errors dashboard (`/__soli/errors`) | 404 in production unless `SOLI_ERRORS_USER`/`PASSWORD`, `SOLI_ERRORS_TOKEN` or `SOLI_ADMIN_*` is set; stored samples are redacted (auth and API-key headers, cookies, secret-named params and locals — including `render()` data — at any depth, raw body); the replay `curl` line never carries credential headers; at most 1000 groups per app, new fingerprints beyond that fold into one overflow group |
 | Production boot gate | `APP_ENV=production` (or `prod`) **refuses to start** without `SOLI_APP_HOSTS` (at least one hostname) and `SOLI_SESSION_SECRET` of 32+ characters. `--dev` and non-production env skip the gate |
 
 ## You still set (today)

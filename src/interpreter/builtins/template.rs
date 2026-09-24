@@ -289,7 +289,7 @@ pub fn get_view_debug_context() -> Option<Value> {
 }
 
 /// Set the view context for debugging.
-fn set_view_debug_context(data: Option<Value>) {
+pub(crate) fn set_view_debug_context(data: Option<Value>) {
     VIEW_DEBUG_CONTEXT.with(|ctx| {
         *ctx.borrow_mut() = data;
     });

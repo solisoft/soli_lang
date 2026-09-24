@@ -22,6 +22,20 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.5.2.</p>
 
+        <h3 id="unreleased-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">The data passed to <code class="text-cyan-400">render()</code> is redacted in error samples.</strong> When a template failed mid-render, its <code class="text-cyan-400">render()</code> hash reached the stored error sample, the <code class="text-cyan-400">/__soli/errors</code> page and the stderr <code class="text-cyan-400">env:</code> line unredacted &mdash; a <code class="text-cyan-400">reset_token</code> passed to the view was shown in full. It now gets the same redaction as the handler&rsquo;s locals.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">X-Api-Key</code> and <code class="text-cyan-400">api-key</code> are secrets.</strong> Secret names only matched with underscores, so a hyphenated API-key header or param was stored in error samples and replayed on the dashboard&rsquo;s <code class="text-cyan-400">curl</code> line. Names now match whatever the separator, request headers also get the exact credential-header list, and the <code class="text-cyan-400">curl</code> line never carries <code class="text-cyan-400">Authorization</code>, <code class="text-cyan-400">Cookie</code> or API-key headers.</li>
+        </ul>
+
+        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Error tracking keeps at most 1000 groups per app.</strong> Past the limit, new kinds of error are counted together in one overflow group, each sample keeping its own message; stored groups keep counting and deleting groups makes room. A client that chooses an error&rsquo;s wording can no longer grow the table without bound.</li>
+            <li><strong class="text-white">An apostrophe no longer breaks grouping.</strong> <code class="text-cyan-400">can't find X</code> and <code class="text-cyan-400">can't divide</code> were one group, and a quoted value after <code class="text-cyan-400">User's</code> leaked into the fingerprint. A single quote now quotes only at word boundaries.</li>
+            <li><strong class="text-white">A crash in the error writer no longer stops tracking silently.</strong> A panic in one write is caught and counted; a writer that stopped is restarted on the next error. The page reports dropped, failed and lost occurrences separately, per app.</li>
+            <li><strong class="text-white">A database hiccup is not a missing error group.</strong> A transient SoliDB read error no longer makes the tracker insert a new group over an existing one, and the dashboard answers <code class="text-cyan-400">500</code> when it cannot read or update a group.</li>
+        </ul>
+
     </section>
 
     <section id="v2-5-2" class="mb-16 scroll-mt-24">

@@ -259,10 +259,10 @@ soli serve</code></pre>
         Every request that ends in a 500 is recorded, grouped, and shown at <code>/__soli/errors</code> &mdash; a built-in, self-hosted stand-in for Sentry. No service to sign up for, no SDK: it is on by default and writes to the app's own database (SoliDB, Postgres, MySQL or SQLite), in a <code>_soli_errors</code> table.
     </p>
     <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-6">
-        <li><strong class="text-white">Grouping.</strong> A fingerprint from the message and the frame that raised it. Numbers, ids, UUIDs and quoted values are stripped from the message and the line number from the frame, so <code>Order 42 not found</code> and <code>Order 97 not found</code> are one group, and editing code above the bug keeps its history. Paths are relative to the app root.</li>
-        <li><strong class="text-white">What a group holds.</strong> Count, first and last seen, and the five newest occurrences: stack, request, the handler's local variables, and a <code>curl</code> line that replays it locally. Auth headers, cookies, secret-looking params and the raw body are <code>[REDACTED]</code> before anything is stored. Redaction goes by field name &mdash; a field called <code>card</code> is not recognised as a secret.</li>
+        <li><strong class="text-white">Grouping.</strong> A fingerprint from the message and the frame that raised it. Numbers, ids, UUIDs and quoted values are stripped from the message and the line number from the frame, so <code>Order 42 not found</code> and <code>Order 97 not found</code> are one group, and editing code above the bug keeps its history. A single quote quotes only at the start of a word, so the apostrophe in <code>can't</code> stays text. Paths are relative to the app root.</li>
+        <li><strong class="text-white">What a group holds.</strong> Count, first and last seen, and the five newest occurrences: stack, request, the handler's local variables, and a <code>curl</code> line that replays it locally. Auth and API-key headers, cookies, secret-looking keys at any depth and the raw body are <code>[REDACTED]</code> before anything is stored &mdash; in the request, the handler's locals, and the data passed to a <code>render()</code> that failed mid-template. <code>api-key</code>, <code>apiKey</code> and <code>x-api-key</code> count as <code>api_key</code>, and the <code>curl</code> line never carries <code>Authorization</code>, <code>Cookie</code> or API-key headers. Redaction goes by field name &mdash; a field called <code>card</code> is not recognised as a secret.</li>
         <li><strong class="text-white">Triage.</strong> <code>open</code>, <code>resolved</code> or <code>ignored</code>. A resolved group that fails again comes back <strong class="text-white">regressed</strong>; an ignored one keeps counting off the list; <strong class="text-white">delete</strong> forgets it.</li>
-        <li><strong class="text-white">Cost.</strong> The request never waits: samples go to a background writer over a bounded queue and are written in one-second batches, one update per group. Overflow is dropped and counted on the page.</li>
+        <li><strong class="text-white">Cost.</strong> The request never waits: samples go to a background writer over a bounded queue and are written in one-second batches, one update per group. Overflow is dropped and counted on the page. Failed writes and writer restarts are counted separately: a panic inside one write is caught, and a writer that stopped is started again on the next error.</li>
     </ul>
     <p class="text-gray-400 mb-4">
         <strong class="text-white">Access</strong> is the jobs page's gate. In <code>--dev</code> the page is open to this machine only (loopback, local host name) and linked from the dev bar's tools panel. Everyone else needs credentials; with none configured the path answers <code>404</code>:
@@ -278,8 +278,11 @@ SOLI_ADMIN_TOKEN=&lt;long random string&gt;</code></pre>
     <p class="text-gray-400 mb-4">
         The triage buttons are same-origin form posts: a cross-site <code>POST</code> gets <code>403</code> even though the browser would attach the Basic credentials. <code>SOLI_ERRORS=off</code> stops recording; under <code>APP_ENV=test</code> it is off unless <code>SOLI_ERRORS=on</code>.
     </p>
-    <p class="text-gray-400 mb-12">
+    <p class="text-gray-400 mb-4">
         <strong class="text-white">Limits.</strong> HTTP request failures only &mdash; job failures stay on <code>/__soli/jobs</code>, LiveView/EUI event errors are not captured yet. No alerts. Counts are exact within one process; several hosts writing one group at the same moment can undercount it. Groups are kept until deleted.
+    </p>
+    <p class="text-gray-400 mb-12">
+        <strong class="text-white">Retention.</strong> At most <strong class="text-white">1000 groups</strong> per app, plus one overflow group. Past the limit, an occurrence whose fingerprint is not already stored is counted in the overflow group, its own message kept in the sample; stored groups keep counting, and the list says the limit is reached. Deleting groups makes room &mdash; resolving or ignoring does not. Each group keeps its five newest samples and 24 hours of hourly counts.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Dev vs production</h2>

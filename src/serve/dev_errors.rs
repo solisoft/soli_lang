@@ -124,11 +124,16 @@ fn handle_index(query: Option<&str>) -> Response<ResponseBody> {
 <code>APP_ENV=test</code>). Existing groups are still listed.</p>",
         );
     }
-    let dropped = error_tracker::dropped();
-    if dropped > 0 {
+    body.push_str(&recording_notices(&error_tracker::stats()));
+    if let Ok(Some(overflow)) = error_tracker::get(error_tracker::OVERFLOW_FINGERPRINT) {
+        let count = overflow.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
         body.push_str(&format!(
-            "<p class=\"notice\">{dropped} occurrence(s) dropped since this process started: \
-errors arrived faster than they could be written.</p>"
+            "<p class=\"notice bad\">The group limit is reached: at most {max} groups are kept per app, \
+and {count} occurrence(s) of new kinds of error are counted together in \
+<a href=\"{BASE}/{fp}\">the overflow group</a>, each sample keeping its own message. \
+Groups already stored keep counting. Delete groups you no longer need to make room.</p>",
+            max = error_tracker::MAX_GROUPS,
+            fp = error_tracker::OVERFLOW_FINGERPRINT,
         ));
     }
 
@@ -151,6 +156,7 @@ errors arrived faster than they could be written.</p>"
                     error_tracker::ERRORS_COLLECTION,
                     esc(&e)
                 ));
+                return html_status(StatusCode::INTERNAL_SERVER_ERROR, errors_page(&body));
             }
             return html_ok(errors_page(&body));
         }
@@ -309,7 +315,12 @@ fn handle_show(key: &str) -> Response<ResponseBody> {
     let group = match error_tracker::get(key) {
         Ok(Some(group)) => group,
         Ok(None) => return not_found("No such error."),
-        Err(e) => return html_ok(errors_page(&format!("<p class=\"err\">{}</p>", esc(&e)))),
+        Err(e) => {
+            return html_status(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                errors_page(&format!("<p class=\"err\">{}</p>", esc(&e))),
+            )
+        }
     };
     let status = str_field(&group, "status");
     let now = chrono::Utc::now();
@@ -440,7 +451,7 @@ fn reproducible_request(sample: &serde_json::Value) -> Option<&serde_json::Value
 }
 
 /// A `curl` line that re-sends the sample against a local server. Redacted
-/// headers are left out — a `[REDACTED]` value would only fail differently —
+/// and credential-bearing headers and params are left out — a `[REDACTED]` value would only fail differently —
 /// and so are the ones curl sets itself.
 fn curl_command(request: &serde_json::Value) -> String {
     let method = str_field(request, "method");
@@ -450,7 +461,7 @@ fn curl_command(request: &serde_json::Value) -> String {
         let pairs: Vec<String> = query
             .iter()
             .filter_map(|(k, v)| v.as_str().map(|v| (k, v)))
-            .filter(|(_, v)| *v != "[REDACTED]")
+            .filter(|(k, v)| *v != "[REDACTED]" && !crate::redaction::looks_sensitive(k))
             .map(|(k, v)| format!("{}={}", urlencoding::encode(k), urlencoding::encode(v)))
             .collect();
         if !pairs.is_empty() {
@@ -464,7 +475,11 @@ fn curl_command(request: &serde_json::Value) -> String {
             let Some(value) = value.as_str() else {
                 continue;
             };
+            // A credential header is never replayed, whether or not the
+            // stored copy was redacted: samples written before the header
+            // rule caught `X-Api-Key` hold it in the clear.
             if value == "[REDACTED]"
+                || crate::redaction::header_is_secret(name)
                 || matches!(
                     name.as_str(),
                     "host" | "content-length" | "connection" | "accept-encoding"
@@ -550,11 +565,50 @@ fn handle_action(rest: &str, query: Option<&str>) -> Response<ResponseBody> {
                 .unwrap()
         }
         Ok(false) => not_found("No such error."),
-        Err(e) => html_ok(errors_page(&format!(
-            "<p class=\"err\">{}</p><p><a href=\"{BASE}/{key}\">back</a></p>",
-            esc(&e)
-        ))),
+        Err(e) => html_status(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            errors_page(&format!(
+                "<p class=\"err\">{}</p><p><a href=\"{BASE}/{key}\">back</a></p>",
+                esc(&e)
+            )),
+        ),
     }
+}
+
+/// What went wrong with recording itself, each fault in its own words: a
+/// full queue is load, a failed write is the database, a restarted writer is a
+/// bug. Reporting them all as "arrived faster than they could be written"
+/// hid the last two.
+fn recording_notices(stats: &error_tracker::StatsSnapshot) -> String {
+    let mut out = String::new();
+    if stats.dropped > 0 {
+        out.push_str(&format!(
+            "<p class=\"notice\">{} occurrence(s) dropped since this process started: \
+errors arrived faster than they could be written.</p>",
+            stats.dropped
+        ));
+    }
+    if stats.failed > 0 {
+        out.push_str(&format!(
+            "<p class=\"notice bad\">{} occurrence(s) could not be written since this process started \
+(see the <code>[errors]</code> lines on stderr).</p>",
+            stats.failed
+        ));
+    }
+    if stats.restarts > 0 || stats.lost > 0 {
+        out.push_str(&format!(
+            "<p class=\"notice bad\">The error writer stopped unexpectedly and was restarted {} time(s); \
+{} occurrence(s) were lost.</p>",
+            stats.restarts, stats.lost
+        ));
+    }
+    out
+}
+
+fn html_status(status: StatusCode, html: String) -> Response<ResponseBody> {
+    let mut response = html_ok(html);
+    *response.status_mut() = status;
+    response
 }
 
 fn not_found(message: &str) -> Response<ResponseBody> {
@@ -625,6 +679,30 @@ mod tests {
     }
 
     #[test]
+    fn curl_never_replays_a_credential_even_when_stored_in_the_clear() {
+        let request = serde_json::json!({
+            "method": "GET",
+            "path": "/v1/items",
+            "query": {"api-key": "ak_q", "page": "1"},
+            "headers": {
+                "Authorization": "Bearer live",
+                "cookie": "sid=abc",
+                "x-api-key": "ak_h",
+                "api-key": "ak_h2",
+                "accept": "application/json",
+            },
+        });
+        let curl = curl_command(&request);
+        for leak in ["Bearer live", "sid=abc", "ak_q", "ak_h", "ak_h2"] {
+            assert!(!curl.contains(leak), "{leak} replayed: {curl}");
+        }
+        assert!(
+            curl.contains("page=1") && curl.contains("accept: application/json"),
+            "{curl}"
+        );
+    }
+
+    #[test]
     fn reproduce_prefers_the_handlers_req() {
         let sample = serde_json::json!({
             "request": {"method": "GET", "path": "/a", "query": {}},
@@ -671,6 +749,51 @@ mod tests {
         assert_eq!(short_count(1_234), "1.2k");
         assert_eq!(short_count(45_000), "45k");
         assert_eq!(short_count(2_500_000), "2.5M");
+    }
+
+    #[test]
+    fn recording_faults_are_named_apart() {
+        assert_eq!(
+            recording_notices(&error_tracker::StatsSnapshot::default()),
+            ""
+        );
+        let html = recording_notices(&error_tracker::StatsSnapshot {
+            dropped: 0,
+            failed: 3,
+            restarts: 1,
+            lost: 2,
+            overflowed: 0,
+        });
+        assert!(
+            !html.contains("faster than"),
+            "a failure is not overload: {html}"
+        );
+        assert!(
+            html.contains("3 occurrence(s) could not be written"),
+            "{html}"
+        );
+        assert!(
+            html.contains("restarted 1 time(s)") && html.contains("2 occurrence(s) were lost"),
+            "{html}"
+        );
+        let html = recording_notices(&error_tracker::StatsSnapshot {
+            dropped: 7,
+            ..Default::default()
+        });
+        assert!(html.contains("7 occurrence(s) dropped"), "{html}");
+    }
+
+    #[test]
+    fn an_action_on_a_malformed_key_is_a_404() {
+        assert_eq!(
+            handle_action("not-a-key/resolve", None).status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(handle_show("zz").status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            html_status(StatusCode::INTERNAL_SERVER_ERROR, String::new()).status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
     }
 
     #[test]

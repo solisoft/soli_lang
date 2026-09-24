@@ -23,6 +23,16 @@
 //! A new occurrence of a `resolved` group reopens it and stamps `regressed_at`;
 //! an `ignored` group keeps counting and stays ignored.
 //!
+//! An application keeps at most [`MAX_GROUPS`] groups. Past that, occurrences
+//! of a fingerprint not already stored are counted in one overflow group
+//! ([`OVERFLOW_FINGERPRINT`]) instead of each starting its own, so a client
+//! that can choose an error's words cannot grow the table without bound.
+//!
+//! Every write is fenced by `catch_unwind`, and a writer found dead is
+//! replaced on the next error. The dashboard reports dropped (queue full),
+//! failed (write error or caught panic), restarted and overflowed occurrences
+//! separately.
+//!
 //! Samples carry the request snapshot the stderr block already prints — auth
 //! headers, secret-looking params and the body redacted — so the table holds
 //! nothing the log did not.
@@ -37,7 +47,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
@@ -69,12 +79,85 @@ const MAX_ENV_CHARS: usize = 16 * 1024;
 /// The statuses a group can be in. Also the whitelist the dashboard filters on.
 pub(crate) const STATUSES: [&str; 3] = ["open", "resolved", "ignored"];
 
-static DROPPED: AtomicU64 = AtomicU64::new(0);
+/// Groups one application may hold, not counting the overflow group. A message is partly the caller's words
+/// (`normalize_message` takes out digits and quoted values, not every word),
+/// so a client that can make a request fail with text of its choosing could
+/// otherwise mint a new group per request and grow the table without bound.
+/// Once this many groups exist, an occurrence of a *new* fingerprint is
+/// counted in the one [`OVERFLOW_FINGERPRINT`] group instead, its own message
+/// kept in the sample. Groups already stored keep counting as usual, and
+/// deleting groups makes room again.
+pub(crate) const MAX_GROUPS: u64 = 1000;
 
-/// Samples dropped because the writer's queue was full, since the process
-/// started.
-pub(crate) fn dropped() -> u64 {
-    DROPPED.load(Ordering::Relaxed)
+/// The group that collects new fingerprints once [`MAX_GROUPS`] is reached.
+/// Sixteen hex digits, so the dashboard's routes accept it; no SHA-256 prefix
+/// is expected to be all zeroes.
+pub(crate) const OVERFLOW_FINGERPRINT: &str = "0000000000000000";
+
+const OVERFLOW_MESSAGE: &str = "Too many error groups: new kinds of error are counted here";
+
+/// What went wrong with recording itself, per application, since the process
+/// started. Kept apart from the writer so a restarted writer keeps the counts.
+#[derive(Default)]
+pub(crate) struct Stats {
+    /// Queue full: errors arrived faster than the writer could store them.
+    dropped: AtomicU64,
+    /// Occurrences whose write failed (a database error, or a panic in the
+    /// writer caught around that write).
+    failed: AtomicU64,
+    /// Times the writer was found gone and started again.
+    restarts: AtomicU64,
+    /// Occurrences lost because no writer could take them.
+    lost: AtomicU64,
+    /// Occurrences of a new fingerprint counted in the overflow group.
+    overflowed: AtomicU64,
+}
+
+/// A copy of [`Stats`] for the dashboard.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StatsSnapshot {
+    pub dropped: u64,
+    pub failed: u64,
+    pub restarts: u64,
+    pub lost: u64,
+    pub overflowed: u64,
+}
+
+impl Stats {
+    fn snapshot(&self) -> StatsSnapshot {
+        StatsSnapshot {
+            dropped: self.dropped.load(Ordering::Relaxed),
+            failed: self.failed.load(Ordering::Relaxed),
+            restarts: self.restarts.load(Ordering::Relaxed),
+            lost: self.lost.load(Ordering::Relaxed),
+            overflowed: self.overflowed.load(Ordering::Relaxed),
+        }
+    }
+}
+
+/// One application's writer: its channel, a generation that tells a stale
+/// sender from its replacement, and the counters that outlive both.
+struct Writer {
+    sender: Option<SyncSender<Occurrence>>,
+    generation: u64,
+    stats: Arc<Stats>,
+}
+
+type Registry = Mutex<HashMap<TenantId, Writer>>;
+
+fn registry() -> &'static Registry {
+    static WRITERS: OnceLock<Registry> = OnceLock::new();
+    WRITERS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// This application's recording counters, since the process started.
+pub(crate) fn stats() -> StatsSnapshot {
+    let tenant = super::tenant::current_id();
+    let writers = registry().lock().unwrap_or_else(|e| e.into_inner());
+    writers
+        .get(&tenant)
+        .map(|w| w.stats.snapshot())
+        .unwrap_or_default()
 }
 
 /// Whether failures are recorded at all.
@@ -113,9 +196,6 @@ pub(super) fn record(
     if !enabled() {
         return;
     }
-    let Some(sender) = sender_for_current_tenant() else {
-        return;
-    };
     let message = truncate_chars(error_msg, MAX_MESSAGE_CHARS);
     // Paths relative to the app, so the same bug deployed to another
     // directory stays in its group.
@@ -154,42 +234,100 @@ pub(super) fn record(
         at,
         sample,
     };
-    match sender.try_send(occurrence) {
-        Ok(()) => {}
-        Err(TrySendError::Full(_)) | Err(TrySendError::Disconnected(_)) => {
-            DROPPED.fetch_add(1, Ordering::Relaxed);
+    deliver(super::tenant::current_id(), occurrence, &spawn_writer);
+}
+
+/// Hand an occurrence to the application's writer, starting it if needed.
+///
+/// A full queue drops the occurrence and counts it as `dropped`. A writer that
+/// is gone (its thread died) is a different fault: its sender is forgotten, a
+/// new writer is started and the occurrence retried once — before, the dead
+/// sender stayed registered and every later error was counted as a queue
+/// overflow while nothing was recorded again until a restart.
+fn deliver(
+    tenant: TenantId,
+    occurrence: Occurrence,
+    spawn: &dyn Fn(TenantId, Receiver<Occurrence>, Arc<Stats>) -> bool,
+) {
+    let mut occurrence = occurrence;
+    for attempt in 0..2 {
+        let Some((sender, generation, stats)) = writer_for(tenant, spawn) else {
+            return;
+        };
+        match sender.try_send(occurrence) {
+            Ok(()) => return,
+            Err(TrySendError::Full(_)) => {
+                stats.dropped.fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+            Err(TrySendError::Disconnected(back)) => {
+                forget_writer(tenant, generation);
+                stats.restarts.fetch_add(1, Ordering::Relaxed);
+                eprintln!("[errors] the error tracker's writer had stopped; starting it again");
+                if attempt == 1 {
+                    stats.lost.fetch_add(1, Ordering::Relaxed);
+                    return;
+                }
+                occurrence = back;
+            }
         }
     }
 }
 
-/// One writer per application, started by its first failure. The writer's
-/// database calls need the application's tenant and the server's runtime, and
-/// neither crosses `spawn` on its own.
-fn sender_for_current_tenant() -> Option<SyncSender<Occurrence>> {
-    static SENDERS: OnceLock<Mutex<HashMap<TenantId, SyncSender<Occurrence>>>> = OnceLock::new();
-    let tenant = super::tenant::current_id();
-    let mut senders = SENDERS
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    if let Some(sender) = senders.get(&tenant) {
-        return Some(sender.clone());
+/// The live sender for `tenant`, starting a writer when there is none. The
+/// writer's database calls need the application's tenant and the server's
+/// runtime, and neither crosses `spawn` on its own.
+fn writer_for(
+    tenant: TenantId,
+    spawn: &dyn Fn(TenantId, Receiver<Occurrence>, Arc<Stats>) -> bool,
+) -> Option<(SyncSender<Occurrence>, u64, Arc<Stats>)> {
+    let mut writers = registry().lock().unwrap_or_else(|e| e.into_inner());
+    let writer = writers.entry(tenant).or_insert_with(|| Writer {
+        sender: None,
+        generation: 0,
+        stats: Arc::new(Stats::default()),
+    });
+    if let Some(sender) = &writer.sender {
+        return Some((sender.clone(), writer.generation, writer.stats.clone()));
     }
-    let handle = super::get_tokio_handle()?;
     let (sender, receiver) = mpsc::sync_channel(QUEUE_CAP);
+    if !spawn(tenant, receiver, writer.stats.clone()) {
+        writer.stats.lost.fetch_add(1, Ordering::Relaxed);
+        return None;
+    }
+    writer.generation += 1;
+    writer.sender = Some(sender.clone());
+    Some((sender, writer.generation, writer.stats.clone()))
+}
+
+/// Drop a dead writer's sender, unless another thread already replaced it.
+fn forget_writer(tenant: TenantId, generation: u64) {
+    let mut writers = registry().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(writer) = writers.get_mut(&tenant) {
+        if writer.generation == generation {
+            writer.sender = None;
+        }
+    }
+}
+
+fn spawn_writer(tenant: TenantId, receiver: Receiver<Occurrence>, stats: Arc<Stats>) -> bool {
+    let Some(handle) = super::get_tokio_handle() else {
+        return false;
+    };
     let spawned = std::thread::Builder::new()
         .name("error-tracker".to_string())
         .spawn(move || {
             super::tenant::bind_current(tenant);
             super::set_tokio_handle(handle);
-            run_writer(receiver);
+            run_writer(receiver, &DbStore, &stats);
         });
-    if let Err(e) = spawned {
-        eprintln!("[errors] could not start the error tracker: {e}");
-        return None;
+    match spawned {
+        Ok(_) => true,
+        Err(e) => {
+            eprintln!("[errors] could not start the error tracker: {e}");
+            false
+        }
     }
-    senders.insert(tenant, sender.clone());
-    Some(sender)
 }
 
 /// Occurrences of one group gathered during a flush window.
@@ -206,8 +344,8 @@ struct Pending {
     samples: Vec<serde_json::Value>,
 }
 
-fn run_writer(receiver: Receiver<Occurrence>) {
-    let mut ensured = false;
+fn run_writer(receiver: Receiver<Occurrence>, store: &dyn Store, stats: &Stats) {
+    let mut flusher = Flusher::new(store, stats);
     // Blocks for the first occurrence, then gathers for FLUSH_EVERY.
     while let Ok(first) = receiver.recv() {
         let mut pending: HashMap<String, Pending> = HashMap::new();
@@ -221,15 +359,218 @@ fn run_writer(receiver: Receiver<Occurrence>) {
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         }
-        if !ensured {
-            ensured = ensure_collection();
+        flusher.flush(pending);
+    }
+}
+
+/// Where the writer keeps groups: the app's database, or a map in the tests.
+trait Store {
+    fn ensure(&self) -> Result<(), String>;
+    fn get(&self, fingerprint: &str) -> Result<Option<serde_json::Value>, String>;
+    fn insert(&self, fingerprint: &str, doc: serde_json::Value) -> Result<(), String>;
+    fn patch(&self, fingerprint: &str, fields: serde_json::Value) -> Result<(), String>;
+    fn count(&self) -> Result<u64, String>;
+}
+
+struct DbStore;
+
+impl Store for DbStore {
+    fn ensure(&self) -> Result<(), String> {
+        ensure_collection()
+    }
+    fn get(&self, fingerprint: &str) -> Result<Option<serde_json::Value>, String> {
+        get(fingerprint)
+    }
+    fn insert(&self, fingerprint: &str, doc: serde_json::Value) -> Result<(), String> {
+        if db::is_sql() {
+            db::sql::insert(ERRORS_COLLECTION, Some(fingerprint), doc)?;
+        } else {
+            crud::exec_insert(ERRORS_COLLECTION, Some(fingerprint), doc)?;
         }
+        Ok(())
+    }
+    fn patch(&self, fingerprint: &str, fields: serde_json::Value) -> Result<(), String> {
+        patch(fingerprint, fields)
+    }
+    fn count(&self) -> Result<u64, String> {
+        count_groups()
+    }
+}
+
+/// Writes gathered windows, one group at a time, and keeps track of how many
+/// groups exist so [`MAX_GROUPS`] can be enforced without a count per error.
+struct Flusher<'a> {
+    store: &'a dyn Store,
+    stats: &'a Stats,
+    ensured: bool,
+    /// Groups known to exist; `None` until counted.
+    groups: Option<u64>,
+    /// Whether the count was refreshed during this window already.
+    recounted: bool,
+}
+
+impl<'a> Flusher<'a> {
+    fn new(store: &'a dyn Store, stats: &'a Stats) -> Self {
+        Flusher {
+            store,
+            stats,
+            ensured: false,
+            groups: None,
+            recounted: false,
+        }
+    }
+
+    /// Write one window. Every write is fenced by `catch_unwind`: a panic in
+    /// one group's write (a malformed stored document, a driver bug) costs that
+    /// group's occurrences — counted as failed — and never the writer thread.
+    fn flush(&mut self, pending: HashMap<String, Pending>) {
+        self.recounted = false;
+        if !self.ensured {
+            let store = self.store;
+            self.ensured =
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| store.ensure())) {
+                    Ok(Ok(())) => true,
+                    Ok(Err(e)) => {
+                        eprintln!("[errors] could not prepare {ERRORS_COLLECTION}: {e}");
+                        false
+                    }
+                    Err(_) => false,
+                };
+        }
+        let mut overflow: Option<Pending> = None;
         for (fingerprint, group) in pending {
-            if let Err(e) = write_group(&fingerprint, group) {
-                eprintln!("[errors] could not record error group {fingerprint}: {e}");
+            let count = group.count;
+            match self.write_fenced(&fingerprint, group) {
+                Ok(None) => {}
+                Ok(Some(refused)) => {
+                    self.stats.overflowed.fetch_add(count, Ordering::Relaxed);
+                    fold_into_overflow(&mut overflow, refused);
+                }
+                Err(e) => {
+                    self.stats.failed.fetch_add(count, Ordering::Relaxed);
+                    eprintln!("[errors] could not record error group {fingerprint}: {e}");
+                }
+            }
+        }
+        if let Some(group) = overflow {
+            let count = group.count;
+            if let Err(e) = self.write_fenced(OVERFLOW_FINGERPRINT, group) {
+                self.stats.failed.fetch_add(count, Ordering::Relaxed);
+                eprintln!("[errors] could not record the overflow group: {e}");
             }
         }
     }
+
+    fn write_fenced(
+        &mut self,
+        fingerprint: &str,
+        group: Pending,
+    ) -> Result<Option<Pending>, String> {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.write_group(fingerprint, group)
+        })) {
+            Ok(result) => result,
+            Err(panic) => {
+                let what = panic
+                    .downcast_ref::<&str>()
+                    .map(|s| s.to_string())
+                    .or_else(|| panic.downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "panic".to_string());
+                Err(format!("the writer panicked: {what}"))
+            }
+        }
+    }
+
+    /// Store one group's window. `Ok(Some(group))` hands the window back when
+    /// it is a new fingerprint and there is no room for another group.
+    fn write_group(
+        &mut self,
+        fingerprint: &str,
+        group: Pending,
+    ) -> Result<Option<Pending>, String> {
+        if let Some(existing) = self.store.get(fingerprint)? {
+            self.store
+                .patch(fingerprint, merged_patch(&existing, group))?;
+            return Ok(None);
+        }
+        if fingerprint != OVERFLOW_FINGERPRINT && !self.has_room()? {
+            return Ok(Some(group));
+        }
+        let doc = serde_json::json!({
+            "message": group.message,
+            "location": group.location,
+            "status": "open",
+            "count": group.count,
+            "first_seen": group.first_at,
+            "last_seen": group.last_at,
+            "last_request": group.last_request,
+            "hourly": hourly_json(group.hourly),
+            "samples": group.samples,
+        });
+        self.store.insert(fingerprint, doc)?;
+        if let Some(n) = self
+            .groups
+            .as_mut()
+            .filter(|_| fingerprint != OVERFLOW_FINGERPRINT)
+        {
+            *n += 1;
+        }
+        Ok(None)
+    }
+
+    /// Whether another group fits. The cached count only grows here, and
+    /// groups deleted from the dashboard shrink the table behind its back, so
+    /// a full cache is re-counted — once per window, whatever the burst.
+    fn has_room(&mut self) -> Result<bool, String> {
+        match self.groups {
+            Some(n) if n < MAX_GROUPS => return Ok(true),
+            Some(_) if self.recounted => return Ok(false),
+            _ => {}
+        }
+        // The overflow group is not one of the MAX_GROUPS.
+        let overflow = self.store.get(OVERFLOW_FINGERPRINT)?.is_some();
+        let n = self.store.count()?.saturating_sub(overflow as u64);
+        self.groups = Some(n);
+        self.recounted = true;
+        Ok(n < MAX_GROUPS)
+    }
+}
+
+/// Add a refused window to the overflow group's window.
+fn fold_into_overflow(overflow: &mut Option<Pending>, group: Pending) {
+    let target = overflow.get_or_insert_with(|| Pending {
+        message: OVERFLOW_MESSAGE.to_string(),
+        location: String::new(),
+        count: 0,
+        first_at: group.first_at.clone(),
+        last_at: group.last_at.clone(),
+        last_request: String::new(),
+        hourly: BTreeMap::new(),
+        samples: Vec::new(),
+    });
+    target.count += group.count;
+    if group.first_at < target.first_at {
+        target.first_at = group.first_at;
+    }
+    if group.last_at >= target.last_at {
+        target.last_at = group.last_at;
+        target.last_request = group.last_request;
+    }
+    for (hour, n) in group.hourly {
+        *target.hourly.entry(hour).or_insert(0) += n;
+    }
+    target.samples.extend(group.samples);
+    // Newest first, whichever group each sample came from.
+    target.samples.sort_by(|a, b| {
+        let at = |v: &serde_json::Value| {
+            v.get("at")
+                .and_then(|a| a.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
+        at(b).cmp(&at(a))
+    });
+    target.samples.truncate(MAX_SAMPLES);
 }
 
 fn gather(pending: &mut HashMap<String, Pending>, occurrence: Occurrence) {
@@ -255,8 +596,8 @@ fn gather(pending: &mut HashMap<String, Pending>, occurrence: Occurrence) {
     group.samples.truncate(MAX_SAMPLES);
 }
 
-fn ensure_collection() -> bool {
-    let result = if db::is_sql() {
+fn ensure_collection() -> Result<(), String> {
+    if db::is_sql() {
         db::sql::ensure_table(ERRORS_COLLECTION).and_then(|_| {
             db::sql::ensure_doc_index(
                 ERRORS_COLLECTION,
@@ -269,38 +610,35 @@ fn ensure_collection() -> bool {
     } else {
         crud::ensure_collection(ERRORS_COLLECTION)
             .and_then(|_| crud::ensure_index(ERRORS_COLLECTION, "status"))
-    };
-    match result {
-        Ok(()) => true,
-        Err(e) => {
-            eprintln!("[errors] could not prepare {ERRORS_COLLECTION}: {e}");
-            false
-        }
     }
 }
 
-fn write_group(fingerprint: &str, group: Pending) -> Result<(), String> {
-    match get(fingerprint)? {
-        None => {
-            let doc = serde_json::json!({
-                "message": group.message,
-                "location": group.location,
-                "status": "open",
-                "count": group.count,
-                "first_seen": group.first_at,
-                "last_seen": group.last_at,
-                "last_request": group.last_request,
-                "hourly": hourly_json(group.hourly),
-                "samples": group.samples,
-            });
-            if db::is_sql() {
-                db::sql::insert(ERRORS_COLLECTION, Some(fingerprint), doc)?;
-            } else {
-                crud::exec_insert(ERRORS_COLLECTION, Some(fingerprint), doc)?;
-            }
-            Ok(())
-        }
-        Some(existing) => patch(fingerprint, merged_patch(&existing, group)),
+/// Groups stored for this application.
+fn count_groups() -> Result<u64, String> {
+    if db::is_sql() {
+        let query = db::ListQuery {
+            table: ERRORS_COLLECTION.to_string(),
+            eq_filters: std::collections::BTreeMap::new(),
+            hash_filter: None,
+            filter_sdbql: None,
+            having: None,
+            exists_filters: Vec::new(),
+            soft_delete: db::SqlSoftDeleteMode::WithDeleted,
+            is_soft_delete_model: false,
+            order_field: None,
+            order_desc: false,
+            limit: None,
+            offset: None,
+        };
+        return db::sql::count(&query).map(|n| n.max(0) as u64);
+    }
+    let rows = crud::exec_query(
+        ERRORS_COLLECTION,
+        format!("RETURN COLLECTION_COUNT(\"{ERRORS_COLLECTION}\")"),
+    )?;
+    match crate::interpreter::builtins::model::core::parse_count_result(&rows) {
+        crate::interpreter::value::Value::Int(n) => Ok(n.max(0) as u64),
+        other => Err(format!("unexpected count result: {other}")),
     }
 }
 
@@ -370,8 +708,23 @@ pub(crate) fn get(fingerprint: &str) -> Result<Option<serde_json::Value>, String
     if db::is_sql() {
         return db::sql::get(ERRORS_COLLECTION, fingerprint);
     }
-    // A missing document is a normal answer here, not an error.
-    Ok(crud::exec_get(ERRORS_COLLECTION, fingerprint).ok())
+    // A missing document is a normal answer here; anything else (a timeout,
+    // a refused connection) is an error. Reading every failure as "missing"
+    // made the writer insert over a group it merely could not read.
+    match crud::exec_get(ERRORS_COLLECTION, fingerprint) {
+        Ok(doc) => Ok(Some(doc)),
+        Err(e) if is_missing_document(&e) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Does this SoliDB error say the document (or its collection) is not there?
+fn is_missing_document(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("404")
+        || lower.contains("not found")
+        || lower.contains("notfound")
+        || lower.contains("does not exist")
 }
 
 fn patch(fingerprint: &str, fields: serde_json::Value) -> Result<(), String> {
@@ -494,34 +847,46 @@ fn strip_line(location: &str) -> &str {
 
 /// Quoted text becomes `?`, and any word holding a digit (ids, counts, UUIDs,
 /// timestamps, hex) becomes `#`.
+///
+/// `"` always quotes. `'` quotes only where a quotation can start — at the
+/// start of the message or after a space or punctuation — and closes only
+/// where one can end, so the apostrophe in `can't` or `User's` is text: read
+/// as a quote it swallowed the words after it, merging `can't find X` with
+/// `can't divide` and letting the value in `User's email 'bob'` into the
+/// fingerprint.
 fn normalize_message(message: &str) -> String {
+    let chars: Vec<char> = message.chars().collect();
+    let word_char = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
     let mut out = String::with_capacity(message.len());
-    let mut chars = message.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '"' || c == '\'' {
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        let opens = c == '"' || (c == '\'' && (i == 0 || !chars[i - 1].is_alphanumeric()));
+        if opens {
+            let mut j = i + 1;
             let mut closed = false;
-            for inner in chars.by_ref() {
-                if inner == c {
+            while j < chars.len() {
+                let closes = chars[j] == c
+                    && (c == '"' || chars.get(j + 1).is_none_or(|n| !n.is_alphanumeric()));
+                if closes {
                     closed = true;
                     break;
                 }
+                j += 1;
             }
             out.push('?');
             if !closed {
                 break;
             }
+            i = j + 1;
             continue;
         }
-        if c.is_alphanumeric() || c == '_' || c == '-' {
-            let mut word = String::from(c);
-            while let Some(&next) = chars.peek() {
-                if next.is_alphanumeric() || next == '_' || next == '-' {
-                    word.push(next);
-                    chars.next();
-                } else {
-                    break;
-                }
+        if word_char(c) {
+            let start = i;
+            while i < chars.len() && word_char(chars[i]) {
+                i += 1;
             }
+            let word: String = chars[start..i].iter().collect();
             if word.chars().any(|ch| ch.is_ascii_digit()) {
                 out.push('#');
             } else {
@@ -530,6 +895,7 @@ fn normalize_message(message: &str) -> String {
             continue;
         }
         out.push(c);
+        i += 1;
     }
     out
 }
@@ -575,7 +941,25 @@ mod tests {
             normalize_message("no job 550e8400-e29b-41d4-a716-446655440000 (0xff)"),
             "no job # (#)"
         );
-        assert_eq!(normalize_message("it's broken"), "it?");
+    }
+
+    #[test]
+    fn an_apostrophe_is_text_and_a_single_quote_still_quotes() {
+        assert_eq!(normalize_message("it's broken"), "it's broken");
+        assert_ne!(
+            fingerprint("can't find X", "show at a.sl:1"),
+            fingerprint("can't divide", "show at a.sl:1")
+        );
+        assert_eq!(
+            normalize_message("User's email 'bob' is taken"),
+            "User's email ? is taken"
+        );
+        assert_eq!(
+            fingerprint("User's email 'bob' is taken", "l"),
+            fingerprint("User's email 'alice' is taken", "l")
+        );
+        assert_eq!(normalize_message("no key 'o'brien' (x)"), "no key ? (x)");
+        assert_eq!(normalize_message("bad value: 'x"), "bad value: ?");
     }
 
     #[test]
@@ -683,6 +1067,178 @@ mod tests {
             patch["hourly"].is_array(),
             "stored as an array, not a mergeable object"
         );
+    }
+
+    /// An in-memory [`Store`], with a fingerprint whose write panics.
+    #[derive(Default)]
+    struct MemStore {
+        docs: std::cell::RefCell<BTreeMap<String, serde_json::Value>>,
+        panic_on: Option<String>,
+    }
+
+    impl Store for MemStore {
+        fn ensure(&self) -> Result<(), String> {
+            Ok(())
+        }
+        fn get(&self, fingerprint: &str) -> Result<Option<serde_json::Value>, String> {
+            Ok(self.docs.borrow().get(fingerprint).cloned())
+        }
+        fn insert(&self, fingerprint: &str, doc: serde_json::Value) -> Result<(), String> {
+            if self.panic_on.as_deref() == Some(fingerprint) {
+                panic!("boom in insert");
+            }
+            self.docs.borrow_mut().insert(fingerprint.to_string(), doc);
+            Ok(())
+        }
+        fn patch(&self, fingerprint: &str, fields: serde_json::Value) -> Result<(), String> {
+            let mut docs = self.docs.borrow_mut();
+            let doc = docs.get_mut(fingerprint).ok_or("missing")?;
+            for (k, v) in fields.as_object().unwrap() {
+                doc[k] = v.clone();
+            }
+            Ok(())
+        }
+        fn count(&self) -> Result<u64, String> {
+            Ok(self.docs.borrow().len() as u64)
+        }
+    }
+
+    fn window(fps: impl IntoIterator<Item = String>) -> HashMap<String, Pending> {
+        let mut pending = HashMap::new();
+        for fp in fps {
+            gather(
+                &mut pending,
+                Occurrence {
+                    fingerprint: fp.clone(),
+                    message: format!("error {fp}"),
+                    location: "l".into(),
+                    request_line: "GET /".into(),
+                    at: "2026-09-24T10:00:00Z".into(),
+                    sample: serde_json::json!({"at": "2026-09-24T10:00:00Z", "error": format!("error {fp}")}),
+                },
+            );
+        }
+        pending
+    }
+
+    #[test]
+    fn new_fingerprints_past_the_cap_fold_into_one_overflow_group() {
+        let store = MemStore::default();
+        let stats = Stats::default();
+        let mut flusher = Flusher::new(&store, &stats);
+        flusher.flush(window((1..=MAX_GROUPS).map(|i| format!("{i:016x}"))));
+        assert_eq!(store.count().unwrap(), MAX_GROUPS);
+
+        // Attacker-chosen words: every one a new fingerprint.
+        flusher.flush(window((0..50).map(|i| format!("new-{i}"))));
+        assert_eq!(
+            store.count().unwrap(),
+            MAX_GROUPS + 1,
+            "one overflow group, not fifty"
+        );
+        let overflow = store
+            .get(OVERFLOW_FINGERPRINT)
+            .unwrap()
+            .expect("overflow group");
+        assert_eq!(overflow["count"], 50);
+        assert_eq!(overflow["message"], OVERFLOW_MESSAGE);
+        assert_eq!(overflow["samples"].as_array().unwrap().len(), MAX_SAMPLES);
+        assert_eq!(stats.snapshot().overflowed, 50);
+
+        // A group already stored keeps counting past the cap.
+        flusher.flush(window([format!("{:016x}", 3)]));
+        assert_eq!(
+            store.get(&format!("{:016x}", 3)).unwrap().unwrap()["count"],
+            2
+        );
+
+        // Deleting a group makes room again (the full count is re-read).
+        store.docs.borrow_mut().remove(&format!("{:016x}", 7));
+        flusher.flush(window(["fresh".to_string()]));
+        assert!(
+            store.get("fresh").unwrap().is_some(),
+            "room made by a delete is used"
+        );
+    }
+
+    #[test]
+    fn a_panicking_write_is_counted_and_the_writer_carries_on() {
+        let store = MemStore {
+            panic_on: Some("bad".into()),
+            ..Default::default()
+        };
+        let stats = Stats::default();
+        let mut flusher = Flusher::new(&store, &stats);
+        flusher.flush(window([
+            "bad".to_string(),
+            "good".to_string(),
+            "bad".to_string(),
+        ]));
+        assert!(
+            store.get("good").unwrap().is_some(),
+            "the other group was still written"
+        );
+        assert_eq!(
+            stats.snapshot().failed,
+            2,
+            "both occurrences of the panicking group"
+        );
+        assert_eq!(
+            stats.snapshot().dropped,
+            0,
+            "a failure is not reported as overload"
+        );
+        flusher.flush(window(["later".to_string()]));
+        assert!(store.get("later").unwrap().is_some(), "the writer survived");
+    }
+
+    #[test]
+    fn a_dead_writer_is_replaced_not_reported_as_overflow() {
+        use std::sync::atomic::AtomicUsize;
+        let tenant = TenantId(0xE77_0001);
+        let spawned = AtomicUsize::new(0);
+        let kept: Mutex<Vec<Receiver<Occurrence>>> = Mutex::new(Vec::new());
+        let spawn = |_: TenantId, rx: Receiver<Occurrence>, _: Arc<Stats>| {
+            // The first writer dies at once; the second stays up.
+            if spawned.fetch_add(1, Ordering::SeqCst) > 0 {
+                kept.lock().unwrap().push(rx);
+            }
+            true
+        };
+        let occurrence = |fp: &str| Occurrence {
+            fingerprint: fp.into(),
+            message: "m".into(),
+            location: "l".into(),
+            request_line: "GET /".into(),
+            at: "t".into(),
+            sample: serde_json::Value::Null,
+        };
+        deliver(tenant, occurrence("a"), &spawn);
+        deliver(tenant, occurrence("b"), &spawn);
+        assert_eq!(
+            spawned.load(Ordering::SeqCst),
+            2,
+            "respawned once, then reused"
+        );
+        let received: Vec<String> = kept.lock().unwrap()[0]
+            .try_iter()
+            .map(|o| o.fingerprint)
+            .collect();
+        assert_eq!(received, vec!["a", "b"], "the retried occurrence arrived");
+        let stats = registry().lock().unwrap()[&tenant].stats.snapshot();
+        assert_eq!(stats.restarts, 1);
+        assert_eq!(stats.dropped, 0);
+        assert_eq!(stats.lost, 0);
+    }
+
+    #[test]
+    fn only_a_missing_document_reads_as_absent() {
+        assert!(is_missing_document("HTTP 404 Not Found http://db/x: {}"));
+        assert!(is_missing_document("driver get failed: document not found"));
+        assert!(!is_missing_document("HTTP error: connection refused"));
+        assert!(!is_missing_document(
+            "HTTP 503 Service Unavailable http://db/x: busy"
+        ));
     }
 
     #[test]

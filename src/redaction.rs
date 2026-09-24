@@ -49,9 +49,49 @@ pub(crate) const SECRET_KEY_SUBSTRINGS: &[&str] = &[
 pub(crate) const REDACTED: &str = "[REDACTED]";
 
 /// Does this key look like it holds a secret?
+///
+/// Separators are ignored on both sides, so `api_key`, `api-key`, `apiKey`,
+/// `x-api-key` and `X_API_KEY` are one name. The list is spelled with
+/// underscores, but header names and many query strings use hyphens, and a
+/// match that only knew one spelling let `X-Api-Key` into the error tracker's
+/// stored locals and `?api-key=` into its replay line.
 pub(crate) fn looks_sensitive(key: &str) -> bool {
-    let lower = key.to_ascii_lowercase();
-    SECRET_KEY_SUBSTRINGS.iter().any(|sub| lower.contains(sub))
+    let folded = fold_separators(key);
+    SECRET_KEY_SUBSTRINGS
+        .iter()
+        .any(|sub| folded.contains(fold_separators(sub).as_str()))
+}
+
+/// Lower-case, with `_`, `-`, `.` and spaces removed.
+fn fold_separators(key: &str) -> String {
+    key.chars()
+        .filter(|c| !matches!(c, '_' | '-' | '.' | ' '))
+        .map(|c| c.to_ascii_lowercase())
+        .collect()
+}
+
+/// Header names that carry a credential, matched exactly after lower-casing.
+/// [`header_is_secret`] also applies [`looks_sensitive`], so a custom header
+/// such as `X-Stripe-Api-Key` is caught without being listed; this list keeps
+/// the well-known names explicit, whatever the substring rule becomes.
+pub(crate) const SECRET_HEADER_NAMES: &[&str] = &[
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "set-cookie",
+    "x-api-key",
+    "api-key",
+    "x-auth-token",
+    "x-csrf-token",
+    "x-xsrf-token",
+    "x-session-token",
+    "x-coverage-token",
+];
+
+/// Does this header name carry a secret?
+pub(crate) fn header_is_secret(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    SECRET_HEADER_NAMES.iter().any(|n| *n == lower) || looks_sensitive(&lower)
 }
 
 /// Redact secret-bearing values in a URL's query string, keeping the rest
@@ -108,6 +148,13 @@ mod tests {
             "Authorization",
             "session_secret",
             "SECRET",
+            // Hyphenated and dotted spellings are the same names.
+            "api-key",
+            "x-api-key",
+            "X-Api-Key",
+            "private-key",
+            "session-id",
+            "session.id",
         ] {
             assert!(looks_sensitive(key), "{key} must be redacted");
         }
@@ -137,6 +184,35 @@ mod tests {
         // No query string, or a malformed one: returned unchanged, never dropped.
         assert_eq!(redact_url_query("https://x/y"), "https://x/y");
         assert_eq!(redact_url_query("https://x/y?flag"), "https://x/y?flag");
+        let hyphen = redact_url_query("https://x/y?api-key=ak_live_2&page=1");
+        assert!(
+            !hyphen.contains("ak_live_2"),
+            "hyphenated key leaked: {hyphen}"
+        );
+    }
+
+    #[test]
+    fn secret_headers_are_caught_by_list_and_by_substring() {
+        use super::header_is_secret;
+        for name in [
+            "Authorization",
+            "Cookie",
+            "X-Api-Key",
+            "Api-Key",
+            "X-Stripe-Api-Key",
+            "X-Auth-Token",
+        ] {
+            assert!(header_is_secret(name), "{name} must be redacted");
+        }
+        for name in [
+            "Accept",
+            "Content-Type",
+            "Host",
+            "User-Agent",
+            "X-Request-Id",
+        ] {
+            assert!(!header_is_secret(name), "{name} must pass");
+        }
     }
 
     /// Documented over-redaction: substring matching catches these, and that
@@ -212,6 +288,10 @@ fn redact_value(
                 let raw_body = is_request && matches!(key_text.as_str(), "body" | "raw_body");
                 let redacted = if raw_body || looks_sensitive(&key_text) {
                     Value::String(REDACTED.into())
+                } else if is_request && key_text == "headers" {
+                    // A request's headers get the header rule as well: the
+                    // exact list, not only the key-name substrings.
+                    redact_headers(val, depth + 1)
                 } else {
                     redact_value(val, depth + 1)
                 };
@@ -233,6 +313,38 @@ fn redact_value(
         // everything else is a scalar with no nested keys to walk.
         other => other.clone(),
     }
+}
+
+/// A request hash's `headers`: every secret header's value replaced, the rest
+/// walked as usual.
+fn redact_headers(
+    value: &crate::interpreter::value::Value,
+    depth: usize,
+) -> crate::interpreter::value::Value {
+    use crate::interpreter::value::{HashKey, HashPairs, Value};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let Value::Hash(pairs) = value else {
+        return redact_value(value, depth);
+    };
+    let Ok(borrowed) = pairs.try_borrow() else {
+        return Value::String("<borrowed>".into());
+    };
+    let mut out = HashPairs::default();
+    for (key, val) in borrowed.iter() {
+        let secret = match key {
+            HashKey::String(s) => header_is_secret(s),
+            other => header_is_secret(&other.to_value().to_string()),
+        };
+        let redacted = if secret {
+            Value::String(REDACTED.into())
+        } else {
+            redact_value(val, depth + 1)
+        };
+        out.insert(key.clone(), redacted);
+    }
+    Value::Hash(Rc::new(RefCell::new(out)))
 }
 
 #[cfg(test)]
@@ -302,6 +414,33 @@ mod redact_value_tests {
         // A `body` that is not a request's (a blog post's) is left alone.
         let post = hash(vec![("body", Value::String("Hello world".into()))]);
         assert!(dump(&post).contains("Hello world"));
+    }
+
+    /// `X-Api-Key` on the `req` global went into the tracker's stored locals
+    /// and its replay `curl` line: the substring list only knew `api_key`.
+    #[test]
+    fn a_requests_api_key_header_and_hyphenated_params_are_redacted() {
+        let request = hash(vec![
+            ("method", Value::String("GET".into())),
+            ("path", Value::String("/v1/items".into())),
+            (
+                "headers",
+                hash(vec![
+                    ("x-api-key", Value::String("ak_live_header".into())),
+                    ("x-stripe-api-key", Value::String("sk_live_custom".into())),
+                    ("accept", Value::String("application/json".into())),
+                ]),
+            ),
+            (
+                "query",
+                hash(vec![("api-key", Value::String("ak_live_query".into()))]),
+            ),
+        ]);
+        let json = dump(&request);
+        for leak in ["ak_live_header", "sk_live_custom", "ak_live_query"] {
+            assert!(!json.contains(leak), "{leak} leaked: {json}");
+        }
+        assert!(json.contains("application/json"), "{json}");
     }
 
     #[test]

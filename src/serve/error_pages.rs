@@ -895,29 +895,12 @@ fn dev_repl_token_for_html(peer_trusted: bool) -> String {
     }
 }
 
-/// SEC-083: secret-bearing header names. Match case-insensitively against
-/// the full header name (HTTP headers don't have substructure, so an
-/// exact-after-lowercase match is enough). Anything in this list gets
-/// replaced with `"[REDACTED]"` before the request snapshot is embedded
-/// in the dev error page's JavaScript.
-const REDACTED_HEADER_NAMES: &[&str] = &[
-    "authorization",
-    "proxy-authorization",
-    "cookie",
-    "set-cookie",
-    "x-api-key",
-    "x-auth-token",
-    "x-csrf-token",
-    "x-xsrf-token",
-    "x-session-token",
-    "x-coverage-token",
-];
-
-/// Lower-case match against the redaction list. `value`-side casing is
-/// irrelevant — we're inspecting the *key*.
+/// SEC-083: secret-bearing header names — the exact list in
+/// [`crate::redaction::SECRET_HEADER_NAMES`] plus the key-name substrings, so
+/// the request snapshot and the environment dump agree on what a secret
+/// header is.
 fn header_should_redact(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    REDACTED_HEADER_NAMES.iter().any(|n| *n == lower)
+    crate::redaction::header_is_secret(name)
 }
 
 fn param_should_redact(key: &str) -> bool {
