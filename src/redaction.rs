@@ -195,13 +195,22 @@ fn redact_value(
             let Ok(borrowed) = pairs.try_borrow() else {
                 return Value::String("<borrowed>".into());
             };
+            // The `req` global carries the raw request body next to its parsed
+            // forms. The parsed fields are redacted key by key below, but the
+            // raw string (`password=hunter2&…`) has no key to match, so it went
+            // out in full. Recognise the request by its shape and drop the raw
+            // body wholesale, as the request snapshot already does.
+            let is_request = ["method", "path", "headers"]
+                .iter()
+                .all(|k| borrowed.contains_key(&HashKey::String((*k).into())));
             let mut out = HashPairs::default();
             for (key, val) in borrowed.iter() {
                 let key_text = match key {
                     HashKey::String(s) => s.to_string(),
                     other => other.to_value().to_string(),
                 };
-                let redacted = if looks_sensitive(&key_text) {
+                let raw_body = is_request && matches!(key_text.as_str(), "body" | "raw_body");
+                let redacted = if raw_body || looks_sensitive(&key_text) {
                     Value::String(REDACTED.into())
                 } else {
                     redact_value(val, depth + 1)
@@ -274,6 +283,25 @@ mod redact_value_tests {
         assert!(json.contains("text/html"), "{json}");
         assert!(json.contains("user@example.com"), "{json}");
         assert!(json.contains(REDACTED), "{json}");
+    }
+
+    /// The parsed form is redacted field by field; the raw body beside it has
+    /// no field names, so a request-shaped hash drops it whole.
+    #[test]
+    fn the_raw_request_body_is_redacted() {
+        let request = hash(vec![
+            ("method", Value::String("POST".into())),
+            ("path", Value::String("/checkout".into())),
+            ("headers", hash(vec![])),
+            ("body", Value::String("card=4242&password=hunter2".into())),
+        ]);
+        let json = dump(&request);
+        assert!(!json.contains("hunter2"), "raw body leaked: {json}");
+        assert!(json.contains("/checkout"), "{json}");
+
+        // A `body` that is not a request's (a blog post's) is left alone.
+        let post = hash(vec![("body", Value::String("Hello world".into()))]);
+        assert!(dump(&post).contains("Hello world"));
     }
 
     #[test]

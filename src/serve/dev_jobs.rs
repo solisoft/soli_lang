@@ -1,48 +1,25 @@
 //! The job dashboard at `/__soli/jobs`: inspect queues, cancel pending
 //! work, and retry failed/dead rows.
 //!
-//! Open in `--dev` to a loopback peer on a local host name (anyone else needs
-//! the credentials below, as in production). In production it is served only when
-//! `SOLI_JOBS_USER` + `SOLI_JOBS_PASSWORD` and/or `SOLI_JOBS_TOKEN` are
-//! set; otherwise the path 404s. Auth is HTTP Basic and/or `Bearer`.
+//! Behind [`admin_auth`]: open in `--dev` to a local request; otherwise served
+//! only when `SOLI_JOBS_USER` + `SOLI_JOBS_PASSWORD`, `SOLI_JOBS_TOKEN` or the
+//! shared `SOLI_ADMIN_*` are set, and 404 when none is.
 
-use base64::Engine;
 use hyper::{header::HeaderMap, Response, StatusCode};
-
-use crate::interpreter::builtins::crypto::do_secure_compare;
 
 use crate::interpreter::builtins::server::parse_query_string;
 use crate::jobs::store;
 
-use super::{dev_bar, full, html_ok, Bytes, ResponseBody};
+use super::operator_shell::{self, Section};
+use super::{admin_auth, dev_bar, full, html_ok, Bytes, ResponseBody};
 
 const DEFAULT_PER_PAGE: usize = 25;
 
+const INTRO: &str = "Queue rows on the default connection. Cancel pending work, retry failed \
+or dead jobs \u{b7} also <code>soli jobs list</code>.";
+
 fn jobs_page(body: &str) -> String {
-    format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Soli \u{b7} Jobs</title>\
-<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
-<style>body{{margin:0;font-family:'JetBrains Mono',ui-monospace,monospace;background:#08090b;color:#c9d1d9;padding:1.5rem;}}\
-h1{{font-size:14px;letter-spacing:0.08em;color:#8b949e;font-weight:600;margin:0 0 0.75rem;}}\
-a{{color:#8be9fd;text-decoration:none;}}a:hover{{text-decoration:underline;}}\
-table{{border-collapse:collapse;width:100%;font-size:11px;}}\
-th,td{{border:1px solid #30363d;padding:0.35rem 0.5rem;text-align:left;vertical-align:top;}}\
-th{{background:#0b0d0f;color:#8b949e;}}tr:hover td{{background:#0e1013;}}\
-pre{{background:#0b0d0f;border:1px solid #30363d;border-radius:6px;padding:0.75rem;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:60vh;}}\
-input,select{{background:#0b0d0f;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:0.35rem 0.5rem;font:inherit;}}\
-button{{background:#1f6feb;color:#fff;border:0;border-radius:6px;padding:0.35rem 0.7rem;font:inherit;cursor:pointer;}}\
-button.ghost{{background:transparent;color:#8b949e;border:1px solid #30363d;}}\
-button.danger{{background:#da3633;}}\
-.muted{{color:#8b949e;font-size:11px;}}.err{{color:#ff6b6b;}}\
-.bar{{display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem;margin:0 0 0.75rem;}}\
-.grow{{flex:1 1 auto;}}\
-.pending,.scheduled{{color:#f0c674;}}.running{{color:#8be9fd;}}.failed{{color:#ff6b6b;}}\
-.dead{{color:#ff6b6b;}}.done{{color:#b8e986;}}\
-.tag{{border:1px solid #30363d;border-radius:999px;padding:0.05rem 0.5rem;font-size:10px;}}\
-</style></head><body>{back}<h1><a href=\"/__soli/jobs\">SOLI \u{b7} JOBS</a></h1>{body}</body></html>",
-        back = super::dev_catalog::BACK_TO_APP,
-        body = body,
-    )
+    operator_shell::page(Section::Jobs, "Jobs", INTRO, body)
 }
 
 fn cell(value: &str) -> String {
@@ -86,100 +63,6 @@ pub(crate) fn is_jobs_dashboard_path(method: &str, path: &str) -> bool {
     matches!(method, "GET" | "HEAD" | "POST")
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum DashAuth {
-    Allow,
-    NeedAuth,
-    Hidden,
-}
-
-fn env_nonempty(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|s| !s.is_empty())
-}
-
-fn configured_basic() -> Option<(String, String)> {
-    let user = env_nonempty("SOLI_JOBS_USER")?;
-    let password = env_nonempty("SOLI_JOBS_PASSWORD")?;
-    Some((user, password))
-}
-
-fn configured_token() -> Option<String> {
-    env_nonempty("SOLI_JOBS_TOKEN")
-}
-
-fn parse_basic(headers: &HeaderMap) -> Option<(String, String)> {
-    let raw = headers.get(hyper::header::AUTHORIZATION)?.to_str().ok()?;
-    let b64 = raw.strip_prefix("Basic ")?;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(b64.trim())
-        .ok()?;
-    let decoded = String::from_utf8(bytes).ok()?;
-    let (user, password) = decoded.split_once(':')?;
-    Some((user.to_string(), password.to_string()))
-}
-
-fn parse_bearer(headers: &HeaderMap) -> Option<String> {
-    let raw = headers.get(hyper::header::AUTHORIZATION)?.to_str().ok()?;
-    raw.strip_prefix("Bearer ").map(|s| s.trim().to_string())
-}
-
-fn authorize(headers: &HeaderMap, dev_mode: bool, peer_ip: std::net::IpAddr) -> DashAuth {
-    // `--dev` opens the dashboard without credentials only to the machine it
-    // runs on, under a name that cannot be DNS-rebound — the same rule as the
-    // rest of the dev bank. `--dev` binds 0.0.0.0, so "open in dev" used to
-    // mean anyone on the LAN could read job payloads and retry or cancel them.
-    // Anyone else falls through to the credential check below, exactly as in
-    // production.
-    let dev_local = dev_mode
-        && super::dev_routes::is_trusted_dev_peer(peer_ip)
-        && super::dev_routes::is_local_dev_host_header(headers);
-    authorize_with(headers, dev_local, configured_basic(), configured_token())
-}
-
-fn authorize_with(
-    headers: &HeaderMap,
-    dev_local: bool,
-    basic: Option<(String, String)>,
-    token: Option<String>,
-) -> DashAuth {
-    if dev_local {
-        return DashAuth::Allow;
-    }
-    if basic.is_none() && token.is_none() {
-        return DashAuth::Hidden;
-    }
-    if let (Some((want_user, want_pass)), Some((got_user, got_pass))) =
-        (basic.as_ref(), parse_basic(headers))
-    {
-        if do_secure_compare(want_user, &got_user) && do_secure_compare(want_pass, &got_pass) {
-            return DashAuth::Allow;
-        }
-    }
-    if let (Some(want), Some(got)) = (token.as_ref(), parse_bearer(headers)) {
-        if do_secure_compare(want, &got) {
-            return DashAuth::Allow;
-        }
-    }
-    DashAuth::NeedAuth
-}
-
-fn unauthorized() -> Response<ResponseBody> {
-    Response::builder()
-        .status(StatusCode::UNAUTHORIZED)
-        .header("WWW-Authenticate", "Basic realm=\"Soli jobs\"")
-        .header("Content-Type", "text/plain; charset=utf-8")
-        .body(full(Bytes::from("Unauthorized")))
-        .unwrap()
-}
-
-fn hidden_not_found() -> Response<ResponseBody> {
-    Response::builder()
-        .status(StatusCode::NOT_FOUND)
-        .header("Content-Type", "text/plain; charset=utf-8")
-        .body(full(Bytes::from("Not Found")))
-        .unwrap()
-}
-
 /// Serve `/__soli/jobs` when the path matches. `None` if this is not a
 /// jobs-dashboard request. Production without credentials is a plain 404.
 pub(crate) fn dispatch(
@@ -193,11 +76,11 @@ pub(crate) fn dispatch(
     if !is_jobs_dashboard_path(method, path) {
         return None;
     }
-    match authorize(headers, dev_mode, peer_ip) {
-        DashAuth::Allow => Some(route(method, path, query)),
-        DashAuth::NeedAuth => Some(unauthorized()),
-        DashAuth::Hidden => Some(hidden_not_found()),
+    let decision = admin_auth::authorize(headers, dev_mode, peer_ip, "JOBS");
+    if let Some(refused) = admin_auth::refusal(decision, "Soli jobs") {
+        return Some(refused);
     }
+    Some(route(method, path, query))
 }
 
 fn route(method: &str, path: &str, query: Option<&str>) -> Response<ResponseBody> {
@@ -274,10 +157,7 @@ connection in <code>config/database.toml</code>) to an admin key, then restart.<
     let pages = total.div_ceil(per).max(1);
     let slice = &matches[start..end];
 
-    let mut body = String::from(
-        "<p class=\"muted\">Queue rows on the default connection \u{b7} cancel pending work \
-or retry failed/dead jobs \u{b7} also available as <code>soli jobs list</code>.</p>",
-    );
+    let mut body = String::new();
 
     let queue_esc = dev_bar::html_escape(&queue);
     let state_esc = dev_bar::html_escape(&state);
@@ -294,14 +174,17 @@ or retry failed/dead jobs \u{b7} also available as <code>soli jobs list</code>.<
     ));
 
     if slice.is_empty() {
-        body.push_str("<p class=\"muted\">No jobs match.</p>");
+        body.push_str(
+            "<div class=\"empty\"><b>No jobs match.</b>\
+<span>Enqueued work shows up here; clear the filters to see every queue.</span></div>",
+        );
         return html_ok(jobs_page(&body));
     }
 
     body.push_str(
-        "<table><thead><tr>\
+        "<div class=\"table-wrap\"><table><thead><tr>\
 <th>id</th><th>state</th><th>queue</th><th>handler</th>\
-<th>tries</th><th>run_at</th><th></th>\
+<th>tries</th><th>run at</th><th></th>\
 </tr></thead><tbody>",
     );
     for row in slice {
@@ -315,9 +198,9 @@ or retry failed/dead jobs \u{b7} also available as <code>soli jobs list</code>.<
         let actions = action_forms(id, st);
         body.push_str(&format!(
             "<tr>\
-<td><a href=\"/__soli/jobs/{id_esc}\">{id_esc}</a></td>\
-<td><span class=\"{}\">{}</span></td>\
-<td>{}</td><td>{}</td>\
+<td class=\"mono\"><a href=\"/__soli/jobs/{id_esc}\">{id_esc}</a></td>\
+<td><span class=\"tag {}\">{}</span></td>\
+<td>{}</td><td class=\"mono\">{}</td>\
 <td>{}</td><td>{}</td>\
 <td style=\"white-space:nowrap;\">{actions}</td>\
 </tr>",
@@ -329,7 +212,7 @@ or retry failed/dead jobs \u{b7} also available as <code>soli jobs list</code>.<
             cell(run_at),
         ));
     }
-    body.push_str("</tbody></table>");
+    body.push_str("</tbody></table></div>");
 
     let mut nav = String::new();
     if page > 0 {
@@ -349,7 +232,7 @@ or retry failed/dead jobs \u{b7} also available as <code>soli jobs list</code>.<
     }
     if !nav.is_empty() {
         body.push_str(&format!(
-            "<p class=\"muted\" style=\"margin-top:0.75rem;\">page {}/{} \u{b7} {}</p>",
+            "<p class=\"pager\">page {}/{} \u{b7} {}</p>",
             page + 1,
             pages,
             nav
@@ -381,8 +264,8 @@ pub(crate) fn handle_show(id: &str) -> Response<ResponseBody> {
     let pretty = serde_json::to_string_pretty(&json).unwrap_or_else(|_| json.to_string());
     let actions = action_forms(&doc.key, doc.state.as_str());
     let body = format!(
-        "<p class=\"muted\">{} \u{b7} <span class=\"{}\">{}</span> \u{b7} {}</p>\
-<p>{}</p>\
+        "<div class=\"bar\"><span class=\"mono\">{}</span><span class=\"tag {}\">{}</span>\
+<span class=\"muted mono\">{}</span><span class=\"grow\"></span><span class=\"actions\">{}</span></div>\
 <pre>{}</pre>",
         cell(&doc.key),
         state_class(doc.state.as_str()),
@@ -391,7 +274,12 @@ pub(crate) fn handle_show(id: &str) -> Response<ResponseBody> {
         actions,
         dev_bar::html_escape(&pretty),
     );
-    html_ok(jobs_page(&body))
+    html_ok(operator_shell::page(
+        Section::Jobs,
+        "Job",
+        "<a href=\"/__soli/jobs\">\u{2190} All jobs</a>",
+        &body,
+    ))
 }
 
 /// `POST /__soli/jobs/:id/cancel` or `/retry`.
@@ -490,91 +378,5 @@ mod tests {
         assert!(!is_jobs_dashboard_path("GET", "/__soli/inbox"));
         assert!(!is_jobs_dashboard_path("POST", "/__soli/jobs"));
         assert!(!is_jobs_dashboard_path("GET", "/jobs"));
-    }
-
-    fn headers_with(value: &str) -> HeaderMap {
-        let mut h = HeaderMap::new();
-        h.insert(hyper::header::AUTHORIZATION, value.parse().expect("header"));
-        h
-    }
-
-    #[test]
-    fn prod_hidden_without_credentials() {
-        assert_eq!(
-            authorize_with(&HeaderMap::new(), false, None, None),
-            DashAuth::Hidden
-        );
-        assert_eq!(
-            authorize_with(&HeaderMap::new(), true, None, None),
-            DashAuth::Allow
-        );
-    }
-
-    /// `--dev` binds 0.0.0.0: a LAN peer (or a DNS-rebound page) must not get
-    /// the credential-free dashboard.
-    #[test]
-    fn dev_mode_opens_the_dashboard_only_to_a_local_request() {
-        let loopback: std::net::IpAddr = "127.0.0.1".parse().unwrap();
-        let lan: std::net::IpAddr = "192.168.1.30".parse().unwrap();
-        let mut local = HeaderMap::new();
-        local.insert(hyper::header::HOST, "localhost:5011".parse().unwrap());
-        let mut rebound = HeaderMap::new();
-        rebound.insert(hyper::header::HOST, "rebind.attacker.test".parse().unwrap());
-
-        let dev_local = |headers: &HeaderMap, ip| {
-            super::super::dev_routes::is_trusted_dev_peer(ip)
-                && super::super::dev_routes::is_local_dev_host_header(headers)
-        };
-        assert!(dev_local(&local, loopback));
-        assert!(!dev_local(&local, lan));
-        assert!(!dev_local(&rebound, loopback));
-
-        // Not local and nothing configured: hidden, as in production.
-        assert_eq!(
-            authorize_with(&local, dev_local(&local, lan), None, None),
-            DashAuth::Hidden
-        );
-    }
-
-    #[test]
-    fn prod_basic_auth() {
-        let creds = Some(("ops".into(), "s3cret".into()));
-        let ok = base64::engine::general_purpose::STANDARD.encode("ops:s3cret");
-        let bad = base64::engine::general_purpose::STANDARD.encode("ops:wrong");
-        assert_eq!(
-            authorize_with(
-                &headers_with(&format!("Basic {ok}")),
-                false,
-                creds.clone(),
-                None
-            ),
-            DashAuth::Allow
-        );
-        assert_eq!(
-            authorize_with(
-                &headers_with(&format!("Basic {bad}")),
-                false,
-                creds.clone(),
-                None
-            ),
-            DashAuth::NeedAuth
-        );
-        assert_eq!(
-            authorize_with(&HeaderMap::new(), false, creds, None),
-            DashAuth::NeedAuth
-        );
-    }
-
-    #[test]
-    fn prod_bearer_token() {
-        let token = Some("tok-xyz".into());
-        assert_eq!(
-            authorize_with(&headers_with("Bearer tok-xyz"), false, None, token.clone()),
-            DashAuth::Allow
-        );
-        assert_eq!(
-            authorize_with(&headers_with("Bearer nope"), false, None, token),
-            DashAuth::NeedAuth
-        );
     }
 }

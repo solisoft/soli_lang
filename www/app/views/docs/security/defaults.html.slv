@@ -34,7 +34,8 @@
                     <tr><td class="py-3 px-4 text-white">SQL TLS</td><td class="py-3 px-4">Postgres/MySQL via rustls; default <code>prefer</code>. Outside <code>--dev</code>, a one-time warning when a connection to a non-local host uses <code>disable</code>, <code>prefer</code> or <code>require</code></td></tr>
                     <tr><td class="py-3 px-4 text-white">Panic containment</td><td class="py-3 px-4">A panicking handler is a 500; the worker stays up</td></tr>
                     <tr><td class="py-3 px-4 text-white">Log redaction</td><td class="py-3 px-4">Credential-looking params, binds, locals, and HTTP URLs are redacted</td></tr>
-                    <tr><td class="py-3 px-4 text-white">Jobs dashboard</td><td class="py-3 px-4">404 in production unless jobs credentials are set</td></tr>
+                    <tr><td class="py-3 px-4 text-white">Jobs dashboard</td><td class="py-3 px-4">404 in production unless jobs credentials (or <code>SOLI_ADMIN_*</code>) are set</td></tr>
+                    <tr><td class="py-3 px-4 text-white">Errors dashboard (<code>/__soli/errors</code>)</td><td class="py-3 px-4">404 in production unless errors credentials (or <code>SOLI_ADMIN_*</code>) are set; stored samples are redacted (auth headers, cookies, secret-named params, raw body)</td></tr>
                     <tr><td class="py-3 px-4 text-white">Production boot gate</td><td class="py-3 px-4"><code>APP_ENV=production</code> (or <code>prod</code>) <strong class="text-white">refuses to start</strong> without <code>SOLI_APP_HOSTS</code> (at least one hostname) and <code>SOLI_SESSION_SECRET</code> of 32+ characters. <code>--dev</code> and non-production env skip the gate</td></tr>
                 </tbody>
             </table>

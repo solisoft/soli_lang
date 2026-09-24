@@ -6,6 +6,7 @@
 
 use hyper::Response;
 
+use super::operator_shell::{self, Section};
 use super::{dev_bar, html_ok, vfs_read_to_string, vfs_walk_dir, ResponseBody};
 
 /// A preview page is rendered two ways: standalone (it's directly linkable) and
@@ -17,7 +18,7 @@ fn preview_is_framed(query: Option<&str>) -> bool {
 }
 
 /// The back link for a preview page, empty when the page is framed. Previews
-/// render on white, so this doesn't reuse the dark-theme [`BACK_TO_APP`].
+/// render on white, so the link is styled for a light page.
 /// Shared with the mailer preview, which lives in the serve module.
 pub(crate) fn preview_back_link(query: Option<&str>) -> &'static str {
     if preview_is_framed(query) {
@@ -99,25 +100,12 @@ fn component_declared_props(raw: &str) -> Vec<String> {
     out
 }
 
-/// Link out of a dev tool and back into the app being developed. These pages
-/// are opened from the dev bar or by URL, so without it the only way back is
-/// the browser's back button.
-pub(crate) const BACK_TO_APP: &str = "<p style=\"font-size:11px;margin:0 0 0.5rem;\">\
-<a href=\"/\" style=\"color:#8be9fd;text-decoration:none;\">&larr; back to the app</a></p>";
+const PREVIEW_NOTE: &str = "Dev-only. Previews render with the built-in helpers and any \
+<code>&lt;%# preview: {...} %&gt;</code> data at the top of the file; app-defined view helpers \
+and request context aren\u{2019}t available here.";
 
-fn catalog_shell(heading: &str, body: &str) -> String {
-    format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Soli \u{b7} {heading}</title>\
-<style>body{{margin:0;font-family:'JetBrains Mono',ui-monospace,monospace;background:#08090b;color:#c9d1d9;padding:1.5rem;}}\
-h1{{font-size:14px;letter-spacing:0.08em;color:#8b949e;font-weight:600;margin:0 0 0.25rem;}}\
-a:hover{{text-decoration:underline;}}</style></head>\
-<body>{BACK_TO_APP}<h1>SOLI \u{b7} {heading}</h1>\
-<p style=\"font-size:11px;color:#8b949e;margin:0 0 1.25rem;\">Dev-only. Previews render with built-in helpers plus any \
-<code>&lt;%# preview: {{...}} %&gt;</code> data; app-defined view helpers and request context aren't available here.</p>\
-{body}</body></html>",
-        heading = heading,
-        body = body,
-    )
+fn catalog_shell(section: Section, heading: &str, body: &str) -> String {
+    operator_shell::page(section, heading, PREVIEW_NOTE, body)
 }
 
 /// Dev-only component catalog index (`GET /__soli/components`).
@@ -126,9 +114,10 @@ pub(crate) fn handle_component_catalog() -> Response<ResponseBody> {
         Ok(c) => c,
         Err(e) => {
             return html_ok(catalog_shell(
-                "COMPONENT CATALOG",
+                Section::Components,
+                "Components",
                 &format!(
-                    "<p style=\"color:#ff6b6b\">Template cache unavailable: {}</p>",
+                    "<p class=\"notice bad\">Template cache unavailable: {}</p>",
                     dev_bar::html_escape(&e)
                 ),
             ))
@@ -155,8 +144,10 @@ pub(crate) fn handle_component_catalog() -> Response<ResponseBody> {
 
     if names.is_empty() {
         return html_ok(catalog_shell(
-            "COMPONENT CATALOG",
-            "<p style=\"color:#8b949e\">No components found in <code>app/views/components/</code>.</p>",
+            Section::Components,
+            "Components",
+            "<div class=\"empty\"><b>No components yet.</b><span>Add one under \
+<code>app/views/components/</code>, or run <code>soli generate component card</code>.</span></div>",
         ));
     }
 
@@ -169,23 +160,23 @@ pub(crate) fn handle_component_catalog() -> Response<ResponseBody> {
             String::new()
         } else {
             format!(
-                "<div style=\"font-size:11px;color:#8b949e;margin-top:0.2rem;\">props: {}</div>",
+                "<span class=\"muted mono\">props: {}</span>",
                 dev_bar::html_escape(&declared.join(", "))
             )
         };
         cards.push_str(&format!(
-            "<div style=\"border:1px solid #30363d;border-radius:6px;overflow:hidden;\">\
-<div style=\"padding:0.5rem 0.75rem;border-bottom:1px solid #30363d;background:#0b0d0f;\">\
-<a href=\"/__soli/components/{esc}\" style=\"color:#8be9fd;text-decoration:none;font-weight:600;\">{esc}</a>{declared_html}\
-</div>\
-<iframe src=\"/__soli/components/{esc}?framed=1\" style=\"width:100%;height:190px;border:0;background:#fff;\" title=\"{esc}\"></iframe>\
+            "<div class=\"card\"><div class=\"card-head\">\
+<a href=\"/__soli/components/{esc}\">{esc}</a>{declared_html}</div>\
+<iframe src=\"/__soli/components/{esc}?framed=1\" style=\"height:190px;\" title=\"{esc}\" loading=\"lazy\"></iframe>\
 </div>",
         ));
     }
     html_ok(catalog_shell(
-        "COMPONENT CATALOG",
+        Section::Components,
+        "Components",
         &format!(
-            "<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;\">{}</div>",
+            "<p class=\"summary\">{} component(s)</p><div class=\"gallery\">{}</div>",
+            names.len(),
             cards
         ),
     ))
@@ -258,9 +249,10 @@ pub(crate) fn handle_mailer_catalog() -> Response<ResponseBody> {
         Ok(c) => c,
         Err(e) => {
             return html_ok(catalog_shell(
-                "MAILER PREVIEWS",
+                Section::Mailers,
+                "Mailers",
                 &format!(
-                    "<p style=\"color:#ff6b6b\">Template cache unavailable: {}</p>",
+                    "<p class=\"notice bad\">Template cache unavailable: {}</p>",
                     dev_bar::html_escape(&e)
                 ),
             ))
@@ -273,15 +265,16 @@ pub(crate) fn handle_mailer_catalog() -> Response<ResponseBody> {
 
     // Templates with fake data live here; what the app actually sent lives in
     // the dev inbox, so cross-link the two.
-    let inbox_link = "<p style=\"font-size:11px;margin:0 0 1.25rem;\">\
-Looking for mail the app really sent? <a href=\"/__soli/inbox\" style=\"color:#8be9fd;\">/__soli/inbox</a></p>";
+    let inbox_link = "<p class=\"summary\">Templates with example data. \
+Mail the app really sent is in the <a href=\"/__soli/inbox\">Inbox</a>.</p>";
 
     if names.is_empty() {
         return html_ok(catalog_shell(
-            "MAILER PREVIEWS",
+            Section::Mailers,
+            "Mailers",
             &format!(
-                "{inbox_link}<p style=\"color:#8b949e\">No mailer views found. Generate one with \
-<code>soli generate mailer user welcome</code>.</p>"
+                "{inbox_link}<div class=\"empty\"><b>No mailer views yet.</b><span>Generate one with \
+<code>soli generate mailer user welcome</code>.</span></div>"
             ),
         ));
     }
@@ -290,20 +283,16 @@ Looking for mail the app really sent? <a href=\"/__soli/inbox\" style=\"color:#8
     for rel in &names {
         let esc = dev_bar::html_escape(rel);
         cards.push_str(&format!(
-            "<div style=\"border:1px solid #30363d;border-radius:6px;overflow:hidden;\">\
-<div style=\"padding:0.5rem 0.75rem;border-bottom:1px solid #30363d;background:#0b0d0f;\">\
-<a href=\"/__soli/mailers/{esc}\" style=\"color:#8be9fd;text-decoration:none;font-weight:600;\">{esc}</a>\
-</div>\
-<iframe src=\"/__soli/mailers/{esc}?framed=1\" style=\"width:100%;height:320px;border:0;background:#fff;\" title=\"{esc}\"></iframe>\
+            "<div class=\"card\"><div class=\"card-head\">\
+<a href=\"/__soli/mailers/{esc}\">{esc}</a></div>\
+<iframe src=\"/__soli/mailers/{esc}?framed=1\" style=\"height:320px;\" title=\"{esc}\" loading=\"lazy\"></iframe>\
 </div>",
         ));
     }
     html_ok(catalog_shell(
-        "MAILER PREVIEWS",
-        &format!(
-            "{inbox_link}<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:1rem;\">{}</div>",
-            cards
-        ),
+        Section::Mailers,
+        "Mailers",
+        &format!("{inbox_link}<div class=\"gallery wide\">{}</div>", cards),
     ))
 }
 

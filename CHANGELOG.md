@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+
+* **feat(ops):** **built-in error tracking at `/__soli/errors`.** Every request that ends in a 500 is grouped by fingerprint (message with ids, numbers and quoted values stripped, plus the raising frame without its line number, paths relative to the app root) into a `_soli_errors` table in the app's own database — SoliDB, Postgres, MySQL or SQLite. Each group keeps its count, first/last seen and its five newest occurrences (stack, request, handler locals, and a `curl` line that replays it locally), redacted like the stderr error log. Groups are `open`, `resolved` (a new occurrence reopens it as **regressed**) or `ignored` (keeps counting, off the list). Recording is off the request path: a bounded queue feeds one writer thread per app that batches for a second and writes one update per group; overflow is dropped and counted on the page. On by default; `SOLI_ERRORS=off` disables it and `APP_ENV=test` leaves it off unless `SOLI_ERRORS=on`. The page is linked from the dev bar's tools panel. Docs: `www/docs/observability.md` → "Error tracking".
+* **feat(ops):** **`SOLI_ADMIN_USER` / `SOLI_ADMIN_PASSWORD` / `SOLI_ADMIN_TOKEN`** — one set of credentials accepted by every built-in operator page (`/__soli/jobs`, `/__soli/errors`), beside each page's own `SOLI_<PAGE>_*`. Both pages share one gate (`src/serve/admin_auth.rs`): open in `--dev` only to a local request, otherwise Basic or Bearer, and 404 when nothing is configured. `/__soli/errors` also keeps both CSRF barriers, like the jobs page.
+
+### Changed
+
+* **dev tools:** **the `/__soli/*` pages share one look.** Errors, jobs, the mail inbox and the mailer and component catalogs render through one shell (`src/serve/operator_shell.rs`): a top bar that moves between them (inbox, mailers and components only under `--dev`, where they exist), a heading, and one stylesheet — sans-serif interface text with monospace kept for code, paths and ids, status tags, tables that scroll on a phone, real empty states. Each page had carried its own drifted copy of a dark stylesheet and a "SOLI · NAME" header. The error list shows relative times, a 24-hour trend per group, the last request that hit it, and a count on every status tab.
+
+### Fixed
+
+* **fix(security):** **the raw request body no longer reaches the error log's `env:` line.** The locals dump redacted `req.form` and `req.json` field by field, but `req.body` — the raw `password=…&…` string — has no field name to match and was printed in full, to stderr and into any log shipper behind it. A hash shaped like a request (`method`, `path`, `headers`) now has its `body`/`raw_body` replaced by `[REDACTED]`, as the request snapshot already did.
+
 ## [2.5.0] - 2026-09-24
 
 ### Added

@@ -737,6 +737,7 @@ fn render_bar(ctx: &DevBarContext) -> String {
                 ""
             ),
             ("/__soli/jobs", "jobs", "queue, cancel, retry", ""),
+            ("/__soli/errors", "errors", "grouped failures, triage", ""),
         ]
         .iter()
         .map(|(href, name, note, badge)| format!(
@@ -1830,6 +1831,7 @@ mod tests {
             "/__soli/mailers",
             "/__soli/components",
             "/__soli/jobs",
+            "/__soli/errors",
         ] {
             assert!(
                 out.contains(&format!("href=\"{href}\" target=\"_blank\"")),

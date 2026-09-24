@@ -21,7 +21,8 @@ For request-edge knobs (`SOLI_TRUST_PROXY`, body size, CSRF tokens) see [Server 
 | SQL TLS | Postgres/MySQL `sslmode` / `ssl-mode` via rustls; default `prefer`. Outside `--dev`, a one-time warning is logged when a connection to a non-local host uses `disable`, `prefer` or `require` |
 | Panic containment | A panicking handler is a 500; the worker stays up (`catch_unwind`) |
 | Log redaction | Credential-looking params, binds, locals, and HTTP URLs are `[REDACTED]` |
-| Jobs dashboard | 404 in production unless `SOLI_JOBS_USER`/`PASSWORD` or `SOLI_JOBS_TOKEN` is set |
+| Jobs dashboard | 404 in production unless `SOLI_JOBS_USER`/`PASSWORD`, `SOLI_JOBS_TOKEN` or `SOLI_ADMIN_*` is set |
+| Errors dashboard (`/__soli/errors`) | 404 in production unless `SOLI_ERRORS_USER`/`PASSWORD`, `SOLI_ERRORS_TOKEN` or `SOLI_ADMIN_*` is set; stored samples are redacted (auth headers, cookies, secret-named params, raw body) |
 | Production boot gate | `APP_ENV=production` (or `prod`) **refuses to start** without `SOLI_APP_HOSTS` (at least one hostname) and `SOLI_SESSION_SECRET` of 32+ characters. `--dev` and non-production env skip the gate |
 
 ## You still set (today)

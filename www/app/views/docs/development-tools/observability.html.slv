@@ -55,6 +55,11 @@
                     <td class="py-3 px-4">always on</td>
                     <td class="py-3 px-4"><code>GET /_health</code>, <code>GET /_ready</code></td>
                 </tr>
+                <tr>
+                    <td class="py-3 px-4 text-white font-medium">Errors</td>
+                    <td class="py-3 px-4">on (<code>SOLI_ERRORS=off</code> to stop)</td>
+                    <td class="py-3 px-4"><code>_soli_errors</code> table, shown at <code>/__soli/errors</code></td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -249,6 +254,34 @@ soli serve</code></pre>
         Soli always samples when tracing is enabled (flags bit <code>0x01</code>). Configure sampling, batching, and retention on the collector (Grafana Tempo, Jaeger, Datadog agent, OpenTelemetry Collector, &hellip;) rather than in the Soli process.
     </p>
 
+    <h2 id="error-tracking" class="text-2xl font-bold text-white mb-6">Error tracking (<code>/__soli/errors</code>)</h2>
+    <p class="text-gray-400 mb-4">
+        Every request that ends in a 500 is recorded, grouped, and shown at <code>/__soli/errors</code> &mdash; a built-in, self-hosted stand-in for Sentry. No service to sign up for, no SDK: it is on by default and writes to the app's own database (SoliDB, Postgres, MySQL or SQLite), in a <code>_soli_errors</code> table.
+    </p>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-6">
+        <li><strong class="text-white">Grouping.</strong> A fingerprint from the message and the frame that raised it. Numbers, ids, UUIDs and quoted values are stripped from the message and the line number from the frame, so <code>Order 42 not found</code> and <code>Order 97 not found</code> are one group, and editing code above the bug keeps its history. Paths are relative to the app root.</li>
+        <li><strong class="text-white">What a group holds.</strong> Count, first and last seen, and the five newest occurrences: stack, request, the handler's local variables, and a <code>curl</code> line that replays it locally. Auth headers, cookies, secret-looking params and the raw body are <code>[REDACTED]</code> before anything is stored. Redaction goes by field name &mdash; a field called <code>card</code> is not recognised as a secret.</li>
+        <li><strong class="text-white">Triage.</strong> <code>open</code>, <code>resolved</code> or <code>ignored</code>. A resolved group that fails again comes back <strong class="text-white">regressed</strong>; an ignored one keeps counting off the list; <strong class="text-white">delete</strong> forgets it.</li>
+        <li><strong class="text-white">Cost.</strong> The request never waits: samples go to a background writer over a bounded queue and are written in one-second batches, one update per group. Overflow is dropped and counted on the page.</li>
+    </ul>
+    <p class="text-gray-400 mb-4">
+        <strong class="text-white">Access</strong> is the jobs page's gate. In <code>--dev</code> the page is open to this machine only (loopback, local host name) and linked from the dev bar's tools panel. Everyone else needs credentials; with none configured the path answers <code>404</code>:
+    </p>
+    <pre class="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-gray-300 overflow-x-auto mb-4"><code>SOLI_ERRORS_USER=ops
+SOLI_ERRORS_PASSWORD=&lt;long random string&gt;
+SOLI_ERRORS_TOKEN=&lt;long random string&gt;   # Authorization: Bearer &hellip;
+
+# or one set for both /__soli/jobs and /__soli/errors
+SOLI_ADMIN_USER=ops
+SOLI_ADMIN_PASSWORD=&lt;long random string&gt;
+SOLI_ADMIN_TOKEN=&lt;long random string&gt;</code></pre>
+    <p class="text-gray-400 mb-4">
+        The triage buttons are same-origin form posts: a cross-site <code>POST</code> gets <code>403</code> even though the browser would attach the Basic credentials. <code>SOLI_ERRORS=off</code> stops recording; under <code>APP_ENV=test</code> it is off unless <code>SOLI_ERRORS=on</code>.
+    </p>
+    <p class="text-gray-400 mb-12">
+        <strong class="text-white">Limits.</strong> HTTP request failures only &mdash; job failures stay on <code>/__soli/jobs</code>, LiveView/EUI event errors are not captured yet. No alerts. Counts are exact within one process; several hosts writing one group at the same moment can undercount it. Groups are kept until deleted.
+    </p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Dev vs production</h2>
     <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-12">
         <table class="w-full text-left text-sm">
@@ -266,6 +299,7 @@ soli serve</code></pre>
                 <tr><td class="py-3 px-4 text-white">Span tree</td><td class="py-3 px-4">flamegraph</td><td class="py-3 px-4">OTLP when OTEL on</td></tr>
                 <tr><td class="py-3 px-4 text-white">Metrics</td><td class="py-3 px-4">opt-in</td><td class="py-3 px-4">opt-in</td></tr>
                 <tr><td class="py-3 px-4 text-white">Health endpoints</td><td class="py-3 px-4">on</td><td class="py-3 px-4">on</td></tr>
+                <tr><td class="py-3 px-4 text-white">Error tracking (<code>/__soli/errors</code>)</td><td class="py-3 px-4">on, open to this machine</td><td class="py-3 px-4">on, behind <code>SOLI_ERRORS_*</code> / <code>SOLI_ADMIN_*</code></td></tr>
             </tbody>
         </table>
     </div>

@@ -7,6 +7,7 @@
 //! - Middleware support for request interception
 
 mod accept;
+mod admin_auth;
 mod asset_cache;
 mod builtin_endpoints;
 pub mod camera;
@@ -15,6 +16,7 @@ mod coverage;
 mod csrf;
 pub mod dev_bar;
 mod dev_catalog;
+mod dev_errors;
 mod dev_inbox;
 mod dev_jobs;
 mod dev_routes;
@@ -32,6 +34,7 @@ pub mod middleware_log;
 pub mod native;
 pub mod nav;
 pub mod openapi;
+mod operator_shell;
 mod origin;
 pub mod otel;
 pub mod phase_log;
@@ -65,6 +68,7 @@ pub mod engine_loader;
 pub mod env_loader;
 mod error_logging;
 mod error_pages;
+mod error_tracker;
 mod file_tracker;
 pub(crate) mod file_upload;
 pub mod job_worker;
@@ -2426,6 +2430,19 @@ async fn handle_hyper_request(
     // are configured (Basic and/or Bearer). Unconfigured production 404s
     // so the route does not advertise itself.
     if let Some(resp) = dev_jobs::dispatch(
+        &method,
+        &path,
+        req.uri().query(),
+        req.headers(),
+        dev_mode,
+        peer_addr.ip(),
+    ) {
+        return Ok(resp);
+    }
+
+    // Error dashboard: the failures `error_tracker` grouped, behind the same
+    // gate as the jobs page. See `dev_errors`.
+    if let Some(resp) = dev_errors::dispatch(
         &method,
         &path,
         req.uri().query(),

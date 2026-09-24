@@ -33,6 +33,9 @@ pub(super) fn log_production_error(
     stack_trace: &[String],
     env_json: Option<&str>,
 ) {
+    // Grouped for `/__soli/errors`; queued, so it costs the request nothing.
+    super::error_tracker::record(request_id, request_data, error_msg, stack_trace, env_json);
+
     let snapshot = redacted_request_snapshot(request_data, /* redact_body = */ true);
 
     match log_format() {

@@ -13,35 +13,18 @@ use hyper::{Response, StatusCode};
 use crate::interpreter::builtins::mail_outbox::{self, CapturedMail, Status};
 use crate::interpreter::builtins::server::parse_query_string;
 
+use super::operator_shell::{self, Section};
 use super::{dev_bar, full, html_ok, Bytes, ResponseBody};
 
 /// Messages per page before the `per` query parameter overrides it.
 const DEFAULT_PER_PAGE: usize = 25;
 
-/// Dark, dev-bar-styled page chrome, matching the preview catalogs.
+const INTRO: &str =
+    "Every mail this dev server delivered, newest first \u{b7} captured even with no \
+SMTP configured \u{b7} the last 100, in memory, cleared on restart.";
+
 fn inbox_page(body: &str) -> String {
-    format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Soli \u{b7} Inbox</title>\
-<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
-<style>body{{margin:0;font-family:'JetBrains Mono',ui-monospace,monospace;background:#08090b;color:#c9d1d9;padding:1.5rem;}}\
-h1{{font-size:14px;letter-spacing:0.08em;color:#8b949e;font-weight:600;margin:0 0 0.75rem;}}\
-a{{color:#8be9fd;text-decoration:none;}}a:hover{{text-decoration:underline;}}\
-table{{border-collapse:collapse;width:100%;font-size:11px;}}\
-th,td{{border:1px solid #30363d;padding:0.35rem 0.5rem;text-align:left;vertical-align:top;}}\
-th{{background:#0b0d0f;color:#8b949e;}}tr:hover td{{background:#0e1013;}}\
-pre{{background:#0b0d0f;border:1px solid #30363d;border-radius:6px;padding:0.75rem;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:60vh;}}\
-input,select{{background:#0b0d0f;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:0.35rem 0.5rem;font:inherit;}}\
-button{{background:#1f6feb;color:#fff;border:0;border-radius:6px;padding:0.4rem 0.9rem;font:inherit;cursor:pointer;}}\
-button.ghost{{background:transparent;color:#8b949e;border:1px solid #30363d;}}\
-iframe{{width:100%;height:60vh;border:1px solid #30363d;border-radius:6px;background:#fff;}}\
-.muted{{color:#8b949e;font-size:11px;}}.err{{color:#ff6b6b;}}\
-.bar{{display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem;margin:0 0 0.75rem;}}\
-.grow{{flex:1 1 auto;}}.sent{{color:#b8e986;}}.captured{{color:#f0c674;}}.failed{{color:#ff6b6b;}}\
-.subj{{color:#e6e6e6;}}.tag{{border:1px solid #30363d;border-radius:999px;padding:0.05rem 0.5rem;font-size:10px;}}\
-</style></head><body>{back}<h1><a href=\"/__soli/inbox\">SOLI \u{b7} INBOX</a></h1>{body}</body></html>",
-        back = super::dev_catalog::BACK_TO_APP,
-        body = body,
-    )
+    operator_shell::page(Section::Inbox, "Inbox", INTRO, body)
 }
 
 /// Escaped, `—` when empty — the inbox shows a placeholder rather than a hole.
@@ -104,10 +87,7 @@ pub(crate) fn handle_index(query: Option<&str>) -> Response<ResponseBody> {
     let (page, start, end) = paginate(total, per, requested_page);
     let pages = total.div_ceil(per).max(1);
 
-    let mut body = String::from(
-        "<p class=\"muted\">Every mail this dev server delivered, newest first \u{b7} captured even with no SMTP \
-configured \u{b7} kept in memory (last 100), cleared on restart.</p>",
-    );
+    let mut body = String::new();
 
     // Search + clear toolbar. The search form carries `per` so a chosen page
     // size survives a query, and always resets to page 0.
@@ -122,7 +102,7 @@ style=\"flex:1 1 18rem;\" autofocus>\
 </form>\
 <a id=\"__soli_newmail\" href=\"/__soli/inbox\" class=\"tag\" style=\"display:none;color:#b8e986;\"></a>\
 <form method=\"post\" action=\"/__soli/inbox/clear\" style=\"margin:0;\">\
-<button type=\"submit\" class=\"ghost\">Clear inbox</button></form>\
+<button type=\"submit\" class=\"danger\">Clear inbox</button></form>\
 </div>",
         needle = dev_bar::html_escape(&needle),
         per = per,
@@ -135,12 +115,14 @@ style=\"flex:1 1 18rem;\" autofocus>\
 
     if total == 0 {
         body.push_str(&if needle.trim().is_empty() {
-            "<p class=\"muted\">No mail yet. Send one with <code>UserMailer.welcome(user).deliver_now</code>, \
-or preview the templates at <a href=\"/__soli/mailers\">/__soli/mailers</a>.</p>"
+            "<div class=\"empty\"><b>No mail yet.</b><span>Send one with \
+<code>UserMailer.welcome(user).deliver_now</code>, or preview the templates in \
+<a href=\"/__soli/mailers\">Mailers</a>.</span></div>"
                 .to_string()
         } else {
             format!(
-                "<p class=\"muted\">No message matches <b>{}</b>.</p>",
+                "<div class=\"empty\"><b>No message matches \u{201c}{}\u{201d}.</b>\
+<span><a href=\"/__soli/inbox\">Clear the search</a></span></div>",
                 dev_bar::html_escape(&needle)
             )
         });
@@ -148,7 +130,7 @@ or preview the templates at <a href=\"/__soli/mailers\">/__soli/mailers</a>.</p>
     }
 
     body.push_str(&format!(
-        "<p class=\"muted\">{total} message(s){filtered} \u{b7} showing {first}\u{2013}{last} \u{b7} page {page} of {pages}</p>",
+        "<p class=\"summary\">{total} message(s){filtered} \u{b7} showing {first}\u{2013}{last} \u{b7} page {page} of {pages}</p>",
         total = total,
         filtered = if needle.trim().is_empty() {
             String::new()
@@ -162,13 +144,12 @@ or preview the templates at <a href=\"/__soli/mailers\">/__soli/mailers</a>.</p>
     ));
 
     body.push_str(
-        "<div style=\"overflow-x:auto;\"><table><thead><tr>\
-<th style=\"width:9rem;\">Date</th><th style=\"width:5rem;\">Status</th><th>Subject</th>\
-<th style=\"width:14rem;\">From</th><th style=\"width:16rem;\">To</th></tr></thead><tbody>",
+        "<div class=\"table-wrap\"><table><thead><tr>\
+<th>Date</th><th>Status</th><th>Subject</th><th>From</th><th>To</th></tr></thead><tbody>",
     );
     for mail in &matches[start..end] {
         body.push_str(&format!(
-            "<tr><td class=\"muted\">{at}</td><td><span class=\"{status}\">{status}</span></td>\
+            "<tr><td class=\"muted mono\" style=\"white-space:nowrap;\">{at}</td><td><span class=\"tag {status}\">{status}</span></td>\
 <td><a class=\"subj\" href=\"/__soli/inbox/{id}\">{subject}</a>{attachments}</td>\
 <td>{from}</td><td>{to}</td></tr>",
             at = dev_bar::html_escape(&mail.at),
@@ -203,7 +184,7 @@ or preview the templates at <a href=\"/__soli/mailers\">/__soli/mailers</a>.</p>
         ));
     }
     if !nav.is_empty() {
-        body.push_str(&format!("<p style=\"margin-top:0.75rem;\">{}</p>", nav));
+        body.push_str(&format!("<p class=\"pager\">{}</p>", nav));
     }
 
     // Poll for arrivals so a mail sent from another tab announces itself
@@ -252,7 +233,7 @@ fn inbox_error(message: &str) -> Response<ResponseBody> {
         .status(StatusCode::NOT_FOUND)
         .header("Content-Type", "text/html; charset=utf-8")
         .body(full(Bytes::from(inbox_page(&format!(
-            "<p class=\"err\">{}</p><p><a href=\"/__soli/inbox\">back to the inbox</a></p>",
+            "<p class=\"notice bad\">{}</p><p><a href=\"/__soli/inbox\">\u{2190} Back to the inbox</a></p>",
             dev_bar::html_escape(message)
         )))))
         .unwrap()
@@ -315,10 +296,7 @@ the message), or it was too large to retain.",
 
 /// One message: headers, attachments, and HTML / text / raw tabs.
 fn render_detail(mail: &CapturedMail) -> Response<ResponseBody> {
-    let mut body = format!(
-        "<p class=\"muted\"><a href=\"/__soli/inbox\">inbox</a> / message #{id}</p>",
-        id = dev_bar::html_escape(&mail.id)
-    );
+    let mut body = String::new();
 
     let mut rows = String::new();
     let mut row = |label: &str, value: String| {
@@ -332,13 +310,13 @@ fn render_detail(mail: &CapturedMail) -> Response<ResponseBody> {
         "Status",
         match &mail.status {
             Status::Failed(err) => format!(
-                "<span class=\"failed\">failed</span> <span class=\"muted\">{}</span>",
+                "<span class=\"tag failed\">failed</span> <span class=\"muted\">{}</span>",
                 dev_bar::html_escape(err)
             ),
-            Status::Sent => "<span class=\"sent\">sent</span> \
+            Status::Sent => "<span class=\"tag sent\">sent</span> \
 <span class=\"muted\">accepted by the SMTP server</span>"
                 .to_string(),
-            Status::Captured => "<span class=\"captured\">captured</span> \
+            Status::Captured => "<span class=\"tag captured\">captured</span> \
 <span class=\"muted\">never sent \u{2014} no SMTP configured, or a test/logger delivery method</span>"
                 .to_string(),
         },
@@ -371,7 +349,10 @@ fn render_detail(mail: &CapturedMail) -> Response<ResponseBody> {
             .join("<br>");
         row("Attachments", list);
     }
-    body.push_str(&format!("<table>{}</table>", rows));
+    body.push_str(&format!(
+        "<div class=\"table-wrap\"><table>{}</table></div>",
+        rows
+    ));
 
     // Only offer the tabs this message actually has a body for.
     let mut tabs: Vec<(&str, &str)> = Vec::new();
@@ -386,12 +367,12 @@ fn render_detail(mail: &CapturedMail) -> Response<ResponseBody> {
     }
     if tabs.is_empty() {
         body.push_str(
-            "<p class=\"muted\" style=\"margin-top:1rem;\">This message has no body.</p>",
+            "<div class=\"empty\" style=\"margin-top:16px;\"><b>This message has no body.</b></div>",
         );
-        return html_ok(inbox_page(&body));
+        return html_ok(detail_page(mail, &body));
     }
 
-    body.push_str("<div class=\"bar\" style=\"margin:1rem 0 0.5rem;\">");
+    body.push_str("<div class=\"bar\" style=\"margin:16px 0 10px;\">");
     for (key, label) in &tabs {
         body.push_str(&format!(
             "<button class=\"ghost __soli_tab\" data-tab=\"{key}\">{label}</button>"
@@ -408,7 +389,7 @@ fn render_detail(mail: &CapturedMail) -> Response<ResponseBody> {
     if mail.html.is_some() {
         body.push_str(&format!(
             "<div class=\"__soli_pane\" data-pane=\"html\">\
-<iframe src=\"/__soli/inbox/{}/html\" sandbox title=\"HTML body\"></iframe></div>",
+<iframe class=\"mail\" src=\"/__soli/inbox/{}/html\" sandbox title=\"HTML body\"></iframe></div>",
             dev_bar::html_escape(&mail.id)
         ));
     }
@@ -429,13 +410,28 @@ fn render_detail(mail: &CapturedMail) -> Response<ResponseBody> {
         "<script>(function(){var tabs=document.querySelectorAll('.__soli_tab');\
 var panes=document.querySelectorAll('.__soli_pane');\
 function show(key){panes.forEach(function(p){p.style.display=p.getAttribute('data-pane')===key?'':'none';});\
-tabs.forEach(function(t){var on=t.getAttribute('data-tab')===key;t.style.color=on?'#e6e6e6':'#8b949e';\
-t.style.borderColor=on?'#8be9fd':'#30363d';});}\
+tabs.forEach(function(t){var on=t.getAttribute('data-tab')===key;t.setAttribute('aria-pressed',on?'true':'false');\
+t.style.color=on?'#e6e9ee':'';t.style.background=on?'#161a21':'';t.style.borderColor=on?'#79c0ff':'';});}\
 tabs.forEach(function(t){t.addEventListener('click',function(){show(t.getAttribute('data-tab'));});});\
 if(tabs.length)show(tabs[0].getAttribute('data-tab'));})();</script>",
     );
 
-    html_ok(inbox_page(&body))
+    html_ok(detail_page(mail, &body))
+}
+
+/// A message's own page: its subject as the heading, the way back under it.
+fn detail_page(mail: &CapturedMail, body: &str) -> String {
+    let subject = if mail.subject.trim().is_empty() {
+        "(no subject)"
+    } else {
+        mail.subject.as_str()
+    };
+    operator_shell::page(
+        Section::Inbox,
+        subject,
+        "<a href=\"/__soli/inbox\">\u{2190} Inbox</a>",
+        body,
+    )
 }
 
 #[cfg(test)]

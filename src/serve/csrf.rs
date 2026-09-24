@@ -79,13 +79,14 @@ fn csrf_skipped_by_app(path: &str) -> bool {
 /// An app that *wants* an exemption for its own route says so explicitly
 /// with `skip_csrf("/path[/*]")`.
 fn is_framework_path(path: &str) -> bool {
-    // `/__soli/jobs` is deliberately NOT exempt. It is the one endpoint in the
-    // reserved namespace that is both state-changing and reachable in
-    // production: `POST /__soli/jobs/<id>/retry` (and `/cancel`) behind Basic
-    // auth, which a browser attaches automatically — so a blanket exemption
-    // made it cross-site-forgeable against a logged-in operator. Its own forms
-    // are same-origin, so the Origin/Referer gate passes for them.
-    if is_jobs_dashboard_path(path) {
+    // `/__soli/jobs` and `/__soli/errors` are deliberately NOT exempt. They are
+    // the endpoints in the reserved namespace that are both state-changing and
+    // reachable in production: `POST /__soli/jobs/<id>/retry` (and `/cancel`),
+    // `POST /__soli/errors/<id>/resolve` (and the rest) behind Basic auth,
+    // which a browser attaches automatically — so a blanket exemption made them
+    // cross-site-forgeable against a logged-in operator. Their own forms are
+    // same-origin, so the Origin/Referer gate passes for them.
+    if is_operator_dashboard_path(path) {
         return false;
     }
     // `/_health`, `/_ready` and `/_metrics` used to be listed here too. The
@@ -115,16 +116,18 @@ pub(crate) fn is_reserved_framework_path(path: &str) -> bool {
         || path.starts_with("/__livereload/")
 }
 
-/// The built-in jobs dashboard, which the Origin/Referer gate covers (see
-/// [`is_framework_path`]) but the per-form token layer cannot.
+/// The built-in operator pages (jobs, errors), which the Origin/Referer gate
+/// covers (see [`is_framework_path`]) but the per-form token layer cannot.
 ///
-/// Its retry/cancel forms are rendered by the framework itself, behind Basic
+/// Their action forms are rendered by the framework itself, behind Basic
 /// auth rather than a cookie session — so there is no session CSRF token to
 /// embed in them, and `SOLI_CSRF_TOKENS=require` would 403 every one of the
 /// framework's own buttons. Same-origin enforcement stays; only the mandatory
 /// *token* is lifted.
-fn is_jobs_dashboard_path(path: &str) -> bool {
-    path == "/__soli/jobs" || path.starts_with("/__soli/jobs/")
+fn is_operator_dashboard_path(path: &str) -> bool {
+    ["/__soli/jobs", "/__soli/errors"]
+        .iter()
+        .any(|base| path == *base || path.strip_prefix(base).is_some_and(|r| r.starts_with('/')))
 }
 
 /// Public hostnames this app is served under, from `SOLI_APP_HOSTS`.
@@ -354,7 +357,7 @@ pub(crate) fn verify_csrf_token(
         },
         None if csrf_tokens_required()
             && is_form_content_type(content_type)
-            && !is_jobs_dashboard_path(path) =>
+            && !is_operator_dashboard_path(path) =>
         {
             Err("missing CSRF token (SOLI_CSRF_TOKENS=require)".to_string())
         }
@@ -560,21 +563,25 @@ mod framework_path_tests {
         }
     }
 
-    /// The jobs dashboard is the one production-reachable, state-changing
-    /// endpoint in the reserved namespace. It sits behind Basic auth, which a
-    /// browser attaches automatically, so exempting it made
+    /// The jobs and errors pages are the production-reachable, state-changing
+    /// endpoints in the reserved namespace. They sit behind Basic auth, which a
+    /// browser attaches automatically, so exempting them made
     /// `POST /__soli/jobs/<id>/retry` forgeable from any other site.
     #[test]
-    fn the_jobs_dashboard_keeps_both_csrf_barriers() {
+    fn the_operator_dashboards_keep_both_csrf_barriers() {
         for path in [
             "/__soli/jobs",
             "/__soli/jobs/abc/retry",
             "/__soli/jobs/abc/cancel",
+            "/__soli/errors",
+            "/__soli/errors/0123456789abcdef/resolve",
+            "/__soli/errors/0123456789abcdef/delete",
         ] {
             assert!(!is_framework_path(path), "expected NOT exempt: {path}");
         }
-        // Its siblings in the namespace stay exempt.
+        // Their siblings in the namespace stay exempt.
         assert!(is_framework_path("/__soli/jobsomething"));
+        assert!(is_framework_path("/__soli/errorsomething"));
     }
 }
 

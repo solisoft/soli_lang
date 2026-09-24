@@ -1,6 +1,6 @@
 # Observability
 
-Soli ships three production signals out of the box: **metrics**, **structured logs**, and **distributed traces**. All are opt-in so a quiet process pays nothing until you turn a channel on.
+Soli ships three production signals out of the box: **metrics**, **structured logs**, and **distributed traces**. All are opt-in so a quiet process pays nothing until you turn a channel on. Alongside them, **error tracking** groups every failed request into a triage page inside the app.
 
 | Signal | Enable | Where it goes |
 |--------|--------|---------------|
@@ -8,6 +8,7 @@ Soli ships three production signals out of the box: **metrics**, **structured lo
 | Logs | `SOLI_LOG=…` (+ optional `SOLI_LOG_FORMAT=json`) | stdout / stderr |
 | Traces | `SOLI_OTEL=1` or `OTEL_EXPORTER_OTLP_*` | OTLP/HTTP JSON to your collector |
 | Health | always on | `GET /_health`, `GET /_ready` |
+| Errors | on (`SOLI_ERRORS=off` to stop) | `_soli_errors` table, shown at `/__soli/errors` |
 
 For the full env-var table see [Configuration](configuration.md). This page is the operator guide: what each signal means, how to turn it on, and how the pieces correlate.
 
@@ -196,6 +197,37 @@ JSON access lines include `trace_id` and `span_id` matching the exported root sp
 
 Soli always samples when tracing is enabled (flags bit `0x01`). Configure sampling, batching, and retention on the collector (Grafana Tempo, Jaeger, Datadog agent, OpenTelemetry Collector, …) rather than in the Soli process.
 
+## Error tracking (`/__soli/errors`)
+
+Every request that ends in a 500 is recorded, grouped, and shown at `/__soli/errors` — a self-hosted, built-in stand-in for Sentry. There is no service to sign up for and no SDK: it is on by default and writes to the app's own database (SoliDB, Postgres, MySQL or SQLite), in a `_soli_errors` table.
+
+**Grouping.** Each failure gets a fingerprint from its message and the frame that raised it. Numbers, ids, UUIDs and quoted values are stripped from the message first, and the line number from the frame, so `Order 42 not found` and `Order 97 not found` are one group, and editing code above the bug does not start a new one. File paths are stored relative to the app root, so deploying to another directory keeps the history.
+
+**What a group holds.** Count, first and last seen, and the five newest occurrences, each with its stack, the request, the handler's local variables, and a `curl` line that replays it against a local server. Auth headers, cookies, secret-looking params (`password`, `token`, `api_key`, …) and the raw request body are replaced by `[REDACTED]` before anything is stored — the same redaction the stderr error log uses. Redaction goes by field name: a field called `card` is not recognised as a secret, so don't put card numbers in forms you do not control.
+
+**Triage.** A group is `open`, `resolved` or `ignored`. **resolve** moves it out of the open list; if it fails again it comes back **regressed**. **ignore** keeps counting in the background without listing it. **delete** forgets it.
+
+**Cost.** Recording never slows the request: the sample is handed to a background writer over a bounded queue and written in one-second batches, one update per group. If errors arrive faster than they can be written, the extra samples are dropped and the page says how many.
+
+**Access.** Same gate as `/__soli/jobs`. In `--dev` the page is open to the machine it runs on (loopback, local host name) and linked from the dev bar's tools panel. Anyone else — every request in production — needs credentials, and with none configured the path answers `404`:
+
+```bash
+SOLI_ERRORS_USER=ops
+SOLI_ERRORS_PASSWORD=<long random string>
+SOLI_ERRORS_TOKEN=<long random string>   # Authorization: Bearer … for scripts
+
+# or one set for both /__soli/jobs and /__soli/errors
+SOLI_ADMIN_USER=ops
+SOLI_ADMIN_PASSWORD=<long random string>
+SOLI_ADMIN_TOKEN=<long random string>
+```
+
+The triage buttons are same-origin form posts: a cross-site `POST` is refused with `403` even though the browser would attach the Basic credentials.
+
+**Turning it off.** `SOLI_ERRORS=off` stops recording (the page still lists what is there). Under `APP_ENV=test` it is off unless `SOLI_ERRORS=on`, so spec runs do not fill the table.
+
+**Limits.** Only HTTP request failures are recorded — job failures stay on `/__soli/jobs`, and LiveView/EUI event errors are not captured yet. There are no alerts or notifications. Counts are exact within one process; several hosts writing the same group at the same moment can undercount it. Groups are kept until you delete them.
+
 ## Dev vs production
 
 | | `--dev` | Production |
@@ -206,6 +238,7 @@ Soli always samples when tracing is enabled (flags bit `0x01`). Configure sampli
 | Span tree | flamegraph | OTLP when OTEL on |
 | Metrics | opt-in | opt-in |
 | Health endpoints | on | on |
+| Error tracking (`/__soli/errors`) | on, open to this machine | on, behind `SOLI_ERRORS_*` / `SOLI_ADMIN_*` |
 
 Production logging reuses the same channel buffers as the dev bar (`query`, `http`, `kv`, `timing`) without paying for hot-reload, the bar injection, or the interpreter demotion that `--dev` implies.
 
