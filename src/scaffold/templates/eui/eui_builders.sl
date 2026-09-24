@@ -59,6 +59,8 @@ def stack(style, children)
 end
 
 def text(content, style)
+  return tw_text(content, style) unless style.nil? || style["tw_case"].nil?
+
   {
     "k": "text",
     "t": content,

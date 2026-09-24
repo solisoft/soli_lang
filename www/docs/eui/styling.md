@@ -134,8 +134,9 @@ row({"tw": "items-center gap-4 px-4 py-4 border-b border-gray-200 hover:bg-gray-
 ])
 ```
 
-`tw(classes)` returns `{"s", "hover", "press", "focus", "disabled", "props"}`:
-the resting style and the four states as deltas over it. A `"tw"` key in any
+`tw(classes, width = nil)` returns `{"s", "hover", "press", "focus", "disabled",
+"props", "gaps", "divide"}`: the resting style and the four states as deltas
+over it. A `"tw"` key in any
 style given to `node`, `column`, `row` or `stack` is read the same way, and the
 states become local handlers, so a hover costs no round trip; `control({"tw":
 ...})` and `stateful(base, "hover:...", on)` take classes too. `tw_style` is
@@ -154,12 +155,32 @@ the resting style alone, for a `text` node.
 | `ring-1 ring-gray-300` | a 1 px border in `border.default` |
 | `rounded-md`, `rounded-xl`, `rounded-full` | `radius` 2, 3, 4 |
 | `shadow-sm`, `shadow-md`, `shadow-lg` | `shadow` 1, 2, 3 |
-| `hover:`, `active:`, `focus:`, `disabled:` | local states |
+| `hover:`, `active:`, `focus:`, `disabled:` | local states; `focus-visible:` is `focus:`, and its `outline-*`/`ring-*` are the client's own keyboard ring |
+| `sm:` `md:` `lg:` `xl:` `2xl:` | resolved on the server against the viewport width you pass, mobile first |
+| `space-x-4` on a row, `space-y-2` on a column, `gap-x-4` / `gap-y-2` | `gap`, where the two are the same thing |
+| `divide-y divide-gray-200`, `divide-x` | a border on every child but the first, laid on by `node()` |
+| `uppercase`, `lowercase`, `capitalize` | the string, transformed by `text()` |
+| `mx-auto` · `my-auto` · `block` · `relative`, `static` | `self: center` · `self: center` · `display: column` · `position: flow` |
+
+Breakpoints need the viewport's width, which the view is given on `connect`
+and on every resize and `tw()` is not — so pass it, and a class under a
+breakpoint without one raises rather than guessing:
+
+```soli
+vw = state["viewport"]["width"]
+node("box", {"tw": "flex flex-col gap-4 sm:flex-row sm:items-end", "vw": vw}, [title, actions])
+text(label, tw_style("text-sm md:text-base", false, vw))
+tw("hidden lg:flex", vw)
+```
+
+`tw(classes)` with one argument is unchanged for everything else. A string is
+memoised once per breakpoint its width falls in, not per width.
 
 A class with no equivalent raises, naming the class and the reason, rather
 than being dropped: `tracking-*`, `leading-*`, gradients, per-corner radius,
-`divide-*` and `space-*`, transforms, breakpoints (`md:` — branch on the
-viewport instead) and `dark:` (roles already follow the theme). The whole
+transforms, `italic`, a half step such as `py-1.5` (the message names the two
+nearest), a `space-y` on a row or a gap-x and gap-y that differ where both
+axes are spaced, and `dark:` (roles already follow the theme). The whole
 table, the approximations and every refusal are in the EUI repository's
 `doc/docs/eui/tailwind.md`.
 

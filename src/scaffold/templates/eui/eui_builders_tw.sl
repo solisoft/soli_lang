@@ -6,12 +6,16 @@
 # answers
 #
 #   {"s": base, "hover": {...}, "press": {...}, "focus": {...},
-#    "disabled": {...}, "props": {...}}
+#    "disabled": {...}, "props": {...}, "gaps": {}, "divide": {}}
 #
 # `s` is an ordinary EUI style hash. The four states are *deltas* over it, the
 # same shape a `TONES` entry has, so a `tw()` result can be handed to
 # `stateful()` as a tone. `props` carries what Tailwind says in a class and EUI
-# says in a prop — only `grid-cols-N` so far.
+# says in a prop — only `grid-cols-N` so far. `gaps` and `divide` are what a
+# class says about the children rather than the box (`space-y-4`, `divide-y`):
+# they need the box's final direction and its children, so `node()` settles
+# them, and a bare `tw()` settles `gaps` from the classes' own `flex`/`flex-col`
+# and refuses `divide`.
 #
 # It is plain Soli and adds nothing to the wire: every class becomes the style
 # keys and values spec 02 already has, colours become the roles of spec 05, and
@@ -20,9 +24,14 @@
 # class and saying why, rather than being dropped: a page that silently loses
 # half its classes looks almost right, which is the expensive kind of wrong.
 #
+# `sm:` to `2xl:` need the viewport's width, which the view is given and tw()
+# is not: `tw(classes, width)`, `tw_style(classes, false, width)`, or `"vw":
+# width` beside `"tw"` on a node. Without it a breakpoint class raises.
+#
 # `doc/docs/eui/tailwind.md` has the table. Part of the reference catalogue —
 # `eui_builders.sl` has the header that explains the whole of it; `node()`,
-# `stateful()` and `control()` there take a `"tw"` string and call in here.
+# `text()`, `stateful()` and `control()` there take a `"tw"` string or a
+# `tw_style()` and call in here.
 #
 # Every local below carries its function's prefix. A bare assignment in a
 # callee writes the caller's variable of the same name, and these functions
@@ -44,17 +53,42 @@ end
 # shared hash would carry that write into every later node. The memo stops
 # growing at `TW_MEMO_CAP` strings, so a view that builds its classes out of
 # data (`"w-[" + str(px) + "px]"`) costs a parse each time and nothing more.
+# A string with a breakpoint in it is kept once per breakpoint the width falls
+# in, never per width: a window dragged across 300 widths is six entries.
 TW_MEMO = {}
 TW_MEMO_CAP = 1024
 
-def tw(classes)
-  tw_key = classes.class == "array" ? classes.join(" ") : classes.to_s
-  tw_hit = TW_MEMO[tw_key]
-  return tw_copy(tw_hit) unless tw_hit.nil?
+# The classes as a style, with `gaps` settled against the classes' own
+# direction and nothing left that only a node can place.
+def tw(classes, width = nil)
+  tw_t = tw_raw(classes, width)
+  tw_dv = tw_t["divide"]
+  if tw_dv.keys().length() > 0
+    throw tw_no(tw_dv["c"], "a divider borders the children, so it is written where they are: node(), row() or column() with \"tw\"")
+  end
+  if tw_t["gaps"].keys().length() > 0
+    tw_dir = tw_t["s"]["display"]
+    if tw_dir.nil?
+      tw_first = tw_t["gaps"][tw_t["gaps"].keys()[0]]["c"]
+      throw tw_no(tw_first, "spacing children depends on which way they run: write flex or flex-col with it, or put it on row() or column()")
+    end
+    tw_t["s"] = tw_gap_settle(tw_t["s"], tw_t["gaps"], tw_dir)
+    tw_t["gaps"] = {}
+  end
+  tw_t
+end
 
-  tw_fresh = tw_parse(classes)
-  TW_MEMO[tw_key] = tw_fresh if TW_MEMO.keys().length() < TW_MEMO_CAP
-  tw_copy(tw_fresh)
+# What was parsed, memoised, before anything is settled against a node.
+def tw_raw(classes, width)
+  twr_key = classes.class == "array" ? classes.join(" ") : classes.to_s
+  twr_rank = tw_screen(width)
+  twr_key = twr_key + " @" + str(twr_rank) if tw_responsive?(twr_key)
+  twr_hit = TW_MEMO[twr_key]
+  return tw_copy(twr_hit) unless twr_hit.nil?
+
+  twr_fresh = tw_parse(classes, twr_rank)
+  TW_MEMO[twr_key] = twr_fresh if TW_MEMO.keys().length() < TW_MEMO_CAP
+  tw_copy(twr_fresh)
 end
 
 def tw_copy(t)
@@ -64,31 +98,134 @@ def tw_copy(t)
     "press": t["press"].merge({}),
     "focus": t["focus"].merge({}),
     "disabled": t["disabled"].merge({}),
-    "props": t["props"].merge({})
+    "props": t["props"].merge({}),
+    "gaps": t["gaps"].merge({}),
+    "divide": t["divide"].merge({})
   }
 end
 
-def tw_parse(classes)
-  tw_words = tw_split(classes)
-  tw_out = {"s": {}, "hover": {}, "press": {}, "focus": {}, "disabled": {}, "props": {}}
-  # Resting classes first, whatever order they were written in, so that a
-  # state which patches one side (`hover:pt-4`) starts from the resting sides.
-  for tw_word in tw_words
-    tw_out = tw_take(tw_out, "s", tw_word, tw_word) if tw_word.index_of(":") < 0
-  end
-  for tw_word in tw_words
-    tw_colon = tw_word.index_of(":")
-    if tw_colon >= 0
-      tw_state = tw_variant(tw_word.substring(0, tw_colon), tw_word)
-      tw_out = tw_take(tw_out, tw_state, tw_word.substring(tw_colon + 1, tw_word.length()), tw_word)
+def tw_blank()
+  {"s": {}, "hover": {}, "press": {}, "focus": {}, "disabled": {}, "props": {}, "gaps": {}, "divide": {}}
+end
+
+# ---- Breakpoints -------------------------------------------------------------
+
+# Tailwind's screens, the same rungs as `BP`: sm 640, md 768, lg 1024, xl 1280,
+# 2xl 1536. A rank is how many of them a width has passed; -1 is no width.
+def tw_screen(width)
+  return -1 if width.nil?
+  return 5 if width >= 1536
+  return 4 if width >= 1280
+  return 3 if width >= 1024
+  return 2 if width >= 768
+  return 1 if width >= 640
+
+  0
+end
+
+def tw_screen_rank(prefix)
+  return 1 if prefix == "sm"
+  return 2 if prefix == "md"
+  return 3 if prefix == "lg"
+  return 4 if prefix == "xl"
+  return 5 if prefix == "2xl"
+
+  0
+end
+
+def tw_screen_px(rank)
+  return 640 if rank == 1
+  return 768 if rank == 2
+  return 1024 if rank == 3
+  return 1280 if rank == 4
+
+  1536
+end
+
+# Whether a string may hold a breakpoint, so its memo entry names the width's
+# rank. A false positive costs an entry, never a wrong answer.
+def tw_responsive?(key)
+  key.index_of("sm:") >= 0 || key.index_of("md:") >= 0 || key.index_of("lg:") >= 0 || key.index_of("xl:") >= 0
+end
+
+# `md:hover:bg-gray-50` as its breakpoint rank, its state and its class. The
+# prefixes may come in either order, as in Tailwind; one of each at most.
+def tw_word(word)
+  twwd_bits = word.split(":")
+  twwd_bp = 0
+  twwd_state = "s"
+  twwd_said = ""
+  for twwd_i in range(0, twwd_bits.length() - 1)
+    twwd_pre = twwd_bits[twwd_i]
+    twwd_rank = tw_screen_rank(twwd_pre)
+    if twwd_rank > 0
+      throw tw_no(word, "one breakpoint per class; the larger one alone says the same") if twwd_bp > 0
+      twwd_bp = twwd_rank
+    else
+      throw tw_no(word, "one state per class; hover:focus: is two states at once") if twwd_state != "s"
+      twwd_state = tw_variant(twwd_pre, word)
+      twwd_said = twwd_pre
     end
   end
-  tw_out
+  twwd_name = twwd_bits[twwd_bits.length() - 1]
+  {"bp": twwd_bp, "state": twwd_state, "name": twwd_name, "whole": word, "noop": tw_focus_ring?(twwd_said, twwd_name)}
+end
+
+# The classes that style a focus ring. The client draws its own -- 2 px in
+# `focus.ring`, outside the border box, when focus came from the keyboard
+# (03 §3) -- which is what `focus-visible:` asks for, so these say nothing it
+# does not already do: `outline-none` anywhere, any `outline-*` under `focus:`
+# or `focus-visible:`, and any `ring-*` under `focus-visible:`. A `focus:ring-2`
+# is still a border, the way `ring-2` at rest is.
+def tw_focus_ring?(said, name)
+  return true if name == "outline-none"
+  return true if (said == "focus" || said == "focus-visible") && name.starts_with?("outline")
+  return true if said == "focus-visible" && name.starts_with?("ring")
+
+  false
+end
+
+def tw_needs_width(whole, rank)
+  "tw: '" + whole + "' needs the viewport width — a breakpoint class applies from " + str(tw_screen_px(rank)) + " px up, and tw() was not given one: write tw(classes, width), tw_style(classes, false, width), or \"vw\": width beside \"tw\" on a node"
+end
+
+# Mobile first, as Tailwind's stylesheet orders it: every resting class, the
+# unprefixed ones and then each breakpoint the width has reached from the
+# smallest up, then the states in the same order -- so `p-2 md:p-4` is 4 from
+# 768 px, whatever order the two were written in, and `hover:pt-4` starts from
+# the resting sides at this width. A breakpoint the width has not reached is
+# still parsed, so a refused class raises at every width, not only on a wide
+# screen.
+def tw_parse(classes, rank)
+  twp_words = tw_split(classes).map(fn(w) { tw_word(w) })
+  if rank < 0
+    for twp_w in twp_words
+      throw tw_needs_width(twp_w["whole"], twp_w["bp"]) if twp_w["bp"] > 0
+    end
+  end
+  twp_out = tw_blank()
+  for twp_pass in ["rest", "state"]
+    for twp_level in range(0, 6)
+      for twp_w in twp_words
+        twp_stated = twp_w["state"] != "s"
+        if twp_w["noop"] != true && twp_w["bp"] == twp_level && twp_stated == (twp_pass == "state")
+          if twp_level <= rank || twp_level == 0
+            twp_out = tw_take(twp_out, twp_w["state"], twp_w["name"], twp_w["whole"])
+          else
+            tw_take(tw_blank(), twp_w["state"], twp_w["name"], twp_w["whole"])
+          end
+        end
+      end
+    end
+  end
+  twp_out
 end
 
 # Just the resting style, with the `disabled:` delta laid over it when asked.
-def tw_style(classes, disabled = false)
-  ts_all = tw(classes)
+# A text transform (`uppercase`) stays in it as `tw_case`, which `text()` reads
+# and removes; it is not a style key, and the encoder would refuse it.
+def tw_style(classes, disabled = false, width = nil)
+  ts_all = tw(classes, width)
   return ts_all["s"].merge(ts_all["disabled"]) if disabled == true
 
   ts_all["s"]
@@ -101,19 +238,26 @@ def tw_stateful?(t)
   st_n > 0
 end
 
-# What `node(kind, {"tw": ...}, children)` does with the string. The style's
-# own keys win over the classes, so a builder can pin `display` after the
-# fact the way `column` and `row` do.
+# What `node(kind, {"tw": ..., "vw": width}, children)` does with the string.
+# The style's own keys win over the classes, so a builder can pin `display`
+# after the fact the way `column` and `row` do; spacing is settled against that
+# final direction, and a divider is laid onto the children.
 def tw_node(n)
   tn_style = n["s"]
-  tn_t = tw(tn_style["tw"])
+  tn_t = tw_raw(tn_style["tw"], tn_style["vw"])
   tn_rest = {}
   for tn_key in tn_style.keys()
-    tn_rest[tn_key] = tn_style[tn_key] unless tn_key == "tw"
+    tn_rest[tn_key] = tn_style[tn_key] unless tn_key == "tw" || tn_key == "vw"
   end
   tn_base = tn_t["s"].merge(tn_rest)
+  tn_case = tn_base["tw_case"]
+  unless tn_case.nil?
+    throw tw_no(tw_case_class(tn_case), "a text transform changes a string, and a box has none: put it on the text, text(s, tw_style(\"" + tw_case_class(tn_case) + "\"))")
+  end
+  tn_base = tw_gap_settle(tn_base, tn_t["gaps"], tn_base["display"] ?? "row")
   n["s"] = tn_base
   n["p"] = (n["p"] ?? {}).merge(tn_t["props"]) if tn_t["props"].keys().length() > 0
+  n["c"] = tw_divide(n["c"] ?? [], tn_t["divide"]) if tn_t["divide"].keys().length() > 0
   n["on"] = tw_wire(tn_base, tn_t, n["on"] ?? {}) if tw_stateful?(tn_t)
   n
 end
@@ -158,11 +302,14 @@ def tw_variant(prefix, whole)
   return "press" if prefix == "active"
   return "focus" if prefix == "focus"
   return "disabled" if prefix == "disabled"
+  # The client draws the keyboard ring itself; what else a focus-visible:
+  # class changes is laid on whenever the node has focus, as focus: is.
+  return "focus" if prefix == "focus-visible"
 
-  tv_why = "a variant tw() does not know; hover:, active:, focus: and disabled: are the four states"
-  tv_why = "there are no media queries: branch on bp(width) with the viewport the view is given" if ["sm", "md", "lg", "xl", "2xl"].includes?(prefix)
+  tv_why = "a variant tw() does not know; hover:, active:, focus:, focus-visible: and disabled: are the states, sm: to 2xl: the breakpoints"
+  tv_why = "breakpoints are mobile first: write the narrow classes bare and the wider ones under sm:, md:, lg:, xl: or 2xl:" if prefix.starts_with?("max-") || prefix.starts_with?("min-")
   tv_why = "colours are roles and already follow the viewer's theme; drop the dark: classes" if prefix == "dark"
-  tv_why = "the client draws its own ring for keyboard focus; write focus: for the rest" if prefix == "focus-visible" || prefix == "focus-within"
+  tv_why = "a local handler restyles the node it is on, not an ancestor; focus: on the field, and a key on the box if it must change too" if prefix == "focus-within"
   tv_why = "there are no group or peer states: a local handler restyles one node, by key" if prefix.starts_with?("group") || prefix.starts_with?("peer")
   tv_why = "there are no structural selectors: style the first or last child where it is built" if ["first", "last", "odd", "even", "only"].includes?(prefix)
   tv_why = "there are no pseudo-elements: build the node" if ["before", "after", "placeholder", "file", "marker", "selection"].includes?(prefix)
@@ -186,11 +333,6 @@ def tw_refused(name)
     "rounded-r": "radius is one byte for all four corners",
     "rounded-s": "radius is one byte for all four corners",
     "rounded-e": "radius is one byte for all four corners",
-    "divide-": "there are no child selectors; put border-b on each row",
-    "space-x-": "there are no child selectors; write gap-N on the parent",
-    "space-y-": "there are no child selectors; write gap-N on the parent",
-    "gap-x-": "a box has one gap, for both axes; write gap-N",
-    "gap-y-": "a box has one gap, for both axes; write gap-N",
     "translate-": "EUI has no transforms",
     "rotate-": "EUI has no transforms",
     "scale-": "EUI has no transforms",
@@ -226,12 +368,12 @@ def tw_refused(name)
     "content-": "a wrapped row packs its lines from the start",
     "justify-items-": "write items-* on the box",
     "justify-self-": "write self-* on the child",
-    "whitespace-": "text wraps at the box edge, and clamp decides how far",
+    "whitespace-": "text wraps at its box's width; truncate keeps it to one line with an ellipsis, or give the box the width",
     "break-": "text wraps at the box edge, and clamp decides how far",
     "aspect-": "there is no aspect ratio; give the box a width and a height",
     "object-": "an image fills the box it is given",
-    "pointer-events-": "every node with a handler takes the pointer",
-    "select-": "only editable nodes select text",
+    "pointer-events-": "the topmost node takes the pointer, handler or not, and an event walks up from it, never through it to a sibling below",
+    "select-": "only editable nodes select text; select-none is what every other node already is",
     "appearance-": "there is no native appearance to reset",
     "resize": "a textarea grows with its content",
     "overflow-x-": "overflow is one value for both axes; scrolling is a scroll() node",
@@ -260,11 +402,12 @@ end
 
 # Classes refused by exact name.
 def tw_refused_exact(name)
-  return "there are no auto margins; centre with justify-center, items-center or self-center" if ["m-auto", "mx-auto", "my-auto", "mt-auto", "mr-auto", "mb-auto", "ml-auto"].includes?(name)
-  return "there are no positioning schemes; absolute is the one there is, inside a stack" if ["relative", "static", "fixed", "sticky"].includes?(name)
-  return "there is no block or inline flow; a box is flex, flex-col, grid or hidden" if ["block", "inline", "inline-block", "table", "contents", "flow-root"].includes?(name)
+  return "an auto margin along the parent's line pushes its siblings away, and there are no auto margins: put spacer() before the node (ml-auto, mt-auto) or after it (mr-auto, mb-auto), or justify-between on the parent" if ["mt-auto", "mr-auto", "mb-auto", "ml-auto"].includes?(name)
+  return "an auto margin on both axes centres the node both ways: self-center on it, and justify-center on its parent" if name == "m-auto"
+  return "there are no positioning schemes; absolute is the one there is, inside a stack" if name == "fixed" || name == "sticky"
+  return "there is no inline flow; a box is flex, flex-col, block, grid or hidden, and text wraps inside its own node" if ["inline", "inline-block", "table", "contents", "flow-root"].includes?(name)
   return "the client ships no italic face" if name == "italic" || name == "not-italic"
-  return "there are no text transforms; change the string" if ["uppercase", "lowercase", "capitalize", "normal-case"].includes?(name)
+  return "Inter's figures are drawn proportional and the client selects no OpenType feature; font-mono sets figures that line up" if name == "tabular-nums" || name == "proportional-nums" || name == "lining-nums" || name == "oldstyle-nums"
   return "children are drawn in the order they are given; reverse the list" if name == "flex-row-reverse" || name == "flex-col-reverse"
   return "the view is given the viewport's size; use it" if ["w-screen", "h-screen", "min-h-screen", "min-w-screen", "max-w-screen"].includes?(name)
   return "a bare ring is three pixels; write ring-1 or ring-2, which become a border" if name == "ring"
@@ -297,7 +440,27 @@ def tw_space(value, whole)
   sc_ix = sc_steps[value]
   return sc_ix unless sc_ix.nil?
 
-  throw tw_no(whole, "'" + value + "' is not on the space scale; the steps are " + sc_steps.keys().join(", "))
+  throw tw_no(whole, "'" + value + "' is not on the space scale; " + tw_space_near(value) + "the steps are " + sc_steps.keys().join(", "))
+end
+
+# "the nearest are 1 (4 px) and 2 (8 px); " for a step between two the scale
+# has, so a half step is one edit away from a class that is.
+def tw_space_near(value)
+  return "" unless tw_numeric?(value)
+
+  sn_want = float(value)
+  sn_below = ""
+  sn_above = ""
+  for sn_step in tw_space_steps().keys()
+    sn_at = float(sn_step)
+    sn_below = sn_step if sn_at < sn_want
+    sn_above = sn_step if sn_at > sn_want && sn_above == ""
+  end
+  return "" if sn_below == "" && sn_above == ""
+  return "the nearest is " + sn_below + " (" + str(int(float(sn_below) * 4.0)) + " px); " if sn_above == ""
+  return "the nearest is " + sn_above + " (" + str(int(float(sn_above) * 4.0)) + " px); " if sn_below == ""
+
+  "the nearest are " + sn_below + " (" + str(int(float(sn_below) * 4.0)) + " px) and " + sn_above + " (" + str(int(float(sn_above) * 4.0)) + " px); "
 end
 
 def tw_numeric?(value)
@@ -635,7 +798,30 @@ def tw_exact()
     "backdrop-blur-2xl": {"blur": 40},
     "backdrop-blur-3xl": {"blur": 64},
     # A ring is drawn inside the box, and so is an EUI border; see `ring-1`.
-    "ring-inset": {}
+    "ring-inset": {},
+    # A block's children stack down it at its full width, which is a column
+    # stretching them; its margins never collapse, as no EUI margin does.
+    "block": {"display": "column"},
+    # In flow, placed by its parent. What `relative` adds in a browser -- a
+    # box an absolute child is placed against -- is what a `stack` is (04 §5).
+    "relative": {"position": "flow"},
+    "static": {"position": "flow"},
+    # Every box already paints its children above itself and z orders only
+    # siblings (04: no z-index across containers), so there is no stacking
+    # context to isolate.
+    "isolate": {},
+    # Only editable nodes select text (06 §3).
+    "select-none": {},
+    # An auto margin on the cross axis centres the node on it: mx-auto in a
+    # column, which is where Tailwind writes it (a centred container in block
+    # flow), and my-auto in a row. On the main axis it is a spacer instead.
+    "mx-auto": {"self": "center"},
+    "my-auto": {"self": "center"},
+    # Text transforms, which text() applies to its string; see tw_text.
+    "uppercase": {"tw_case": "upper"},
+    "lowercase": {"tw_case": "lower"},
+    "capitalize": {"tw_case": "capital"},
+    "normal-case": {"tw_case": "none"}
   }
 end
 
@@ -725,6 +911,19 @@ def tw_family(name, whole)
     return tw_edge("margin", fa_head.substring(1, fa_head.length()), tw_space(fa_rest, whole))
   end
   return {"set": {"gap": tw_space(fa_rest, whole)}} if fa_head == "gap" && fa_rest.index_of("-") < 0
+
+  # gap-x-4, space-y-2, divide-y, divide-gray-200: what a box says about the
+  # space and the rules between its children. Settled by tw_gap_settle and
+  # laid on by tw_divide, once the box's direction and children are known.
+  if (fa_head == "gap" || fa_head == "space") && (fa_rest.starts_with?("x-") || fa_rest.starts_with?("y-"))
+    fa_axis = fa_rest.substring(0, 1)
+    fa_step = fa_rest.substring(2, fa_rest.length())
+    throw tw_no(whole, "children are drawn in the order they are given; reverse the list") if fa_step == "reverse"
+
+    fa_kind = fa_head == "gap" ? fa_axis : "space_" + fa_axis
+    return {"set": {}, "gap": {"k": fa_kind, "v": tw_space(fa_step, whole)}}
+  end
+  return tw_divider(fa_rest, whole) if fa_head == "divide"
 
   # w-64, h-10, size-8, basis-1/2, min-w-0, max-w-md
   return {"set": {"width": tw_length(fa_rest, whole)}} if fa_head == "w"
@@ -831,6 +1030,17 @@ def tw_take(out, variant, name, whole)
     tk_style = tk_style.merge({})
     tk_style[tk_key] = tw_edges(tk_from, tk_patch["sides"], tk_patch["v"])
   end
+  tk_gap = tk_patch["gap"]
+  tk_rule = tk_patch["divide"]
+  if !tk_gap.nil? || !tk_rule.nil?
+    throw tw_no(whole, "the space and the rules between children are laid out once and have no states; write it without the state") if variant != "s"
+
+    out["gaps"][tk_gap["k"]] = {"v": tk_gap["v"], "c": whole} unless tk_gap.nil?
+    out["divide"] = out["divide"].merge(tk_rule).merge({"c": whole}) unless tk_rule.nil?
+  end
+  if variant != "s" && !(tk_patch["set"] ?? {})["tw_case"].nil?
+    throw tw_no(whole, "a text transform changes the string, which a state cannot; write it without the state")
+  end
   tk_props = tk_patch["props"] ?? {}
   if tk_props.keys().length() > 0
     throw tw_no(whole, "a prop has no states; write grid-cols-N without a variant") if variant != "s"
@@ -839,6 +1049,204 @@ def tw_take(out, variant, name, whole)
   end
   out[variant] = tk_style
   out
+end
+
+# ---- Between children ----------------------------------------------------------
+
+# `divide-y`, `divide-x-2`, `divide-gray-200`, as `{"divide": {...}}`.
+def tw_divider(rest, whole)
+  if rest == "x" || rest == "y"
+    dr_one = {}
+    dr_one[rest] = 1
+    return {"set": {}, "divide": dr_one}
+  end
+  if rest.starts_with?("x-") || rest.starts_with?("y-")
+    dr_width = rest.substring(2, rest.length())
+    throw tw_no(whole, "children are drawn in the order they are given; reverse the list") if dr_width == "reverse"
+
+    dr_rule = {}
+    dr_rule[rest.substring(0, 1)] = tw_border_width(dr_width, whole)
+    return {"set": {}, "divide": dr_rule}
+  end
+  if ["solid", "dashed", "dotted", "double", "none"].includes?(rest)
+    throw tw_no(whole, "a border is always solid; divide-y-0 removes the rules")
+  end
+  {"set": {}, "divide": {"color": tw_colour("border", rest, whole)}}
+end
+
+# `gap-x-*`, `gap-y-*`, `space-x-*` and `space-y-*` as the one `gap` a box
+# has, against the direction it finally runs in -- or a refusal saying why
+# the two are not the same. `gap-x` is the gap between columns and `gap-y`
+# between rows, overriding `gap-N` on its axis, as in the stylesheet:
+#
+# - a row that does not wrap spaces its children with its gap-x, and a column
+#   with its gap-y. The other one spaces nothing, and is taken only when it is
+#   0 or the same, since writing it says the author expected it to show;
+# - a wrapping row or column, and a grid, space both ways, so the two must be
+#   equal;
+# - `space-x-N` is a left margin on every child but the first, which is the
+#   gap exactly on a row that does not wrap and has no gap of its own -- and
+#   nothing like it across the line, on a wrapped one (whose next lines start
+#   indented), or added to a gap, where the browser draws the sum. `-0` is
+#   nothing anywhere.
+def tw_gap_settle(style, gaps, display)
+  return style if gaps.keys().length() == 0 || display == "none"
+
+  gs_out = style.merge({})
+  gs_wraps = style["wrap"] == "wrap" || style["wrap"] == "wrap_reverse"
+  gs_flow = display == "row" || display == "column"
+  gs_main = display == "column" ? "y" : "x"
+  gs_cross = display == "column" ? "x" : "y"
+  gs_gx = gaps["x"]
+  gs_gy = gaps["y"]
+  if !gs_gx.nil? || !gs_gy.nil?
+    gs_some = (gs_gx ?? gs_gy)["c"]
+    throw tw_no(gs_some, "a stack lays its children over each other and has no gap") if display == "stack"
+
+    gs_col = gs_gx.nil? ? (style["gap"] ?? 0) : gs_gx["v"]
+    gs_row = gs_gy.nil? ? (style["gap"] ?? 0) : gs_gy["v"]
+    if gs_flow && !gs_wraps
+      gs_along = gs_main == "x" ? gs_col : gs_row
+      gs_other = gaps[gs_cross]
+      if !gs_other.nil? && gs_other["v"] != 0 && gs_other["v"] != gs_along
+        throw tw_no(gs_other["c"], "EUI has one gap, and this " + display + " runs along " + gs_main + ": gap-" + gs_cross + " spaces nothing on it that does not wrap; write gap-" + gs_main + "-N or gap-N")
+      end
+      gs_out["gap"] = gs_along
+    else
+      if gs_col != gs_row
+        gs_what = gs_flow ? "a wrapping " + display + " spaces its lines as well as its children" : "a grid spaces its rows as well as its columns"
+        throw tw_no(gs_some, "EUI has one gap for both axes, and " + gs_what + "; write gap-N, or gap-x and gap-y the same")
+      end
+      gs_out["gap"] = gs_col
+    end
+  end
+  for gs_axis in ["x", "y"]
+    gs_space = gaps["space_" + gs_axis]
+    if !gs_space.nil? && gs_space["v"] != 0
+      gs_cls = gs_space["c"]
+      throw tw_no(gs_cls, "space-" + gs_axis + " is a margin on every child but the first, and a " + display + " does not lay its children in a line; write gap-N") unless gs_flow
+      if gs_axis != gs_main
+        throw tw_no(gs_cls, "on a " + display + ", space-" + gs_axis + " puts a margin across the line, not between the children along it; write space-" + gs_main + "-N, or turn the box with " + (gs_main == "x" ? "flex-col" : "flex"))
+      end
+      throw tw_no(gs_cls, "on a wrapping " + display + ", space-" + gs_axis + " leaves the wrapped lines unspaced and their first child indented; write gap-N") if gs_wraps
+      if (gs_out["gap"] ?? 0) != 0
+        throw tw_no(gs_cls, "a gap and a space add up, and EUI has one gap; write one of them")
+      end
+      gs_out["gap"] = gs_space["v"]
+    end
+  end
+  gs_out
+end
+
+# `divide-y` and its kin, laid onto the children: every child but the first
+# takes the rule on its leading edge (top for y, left for x) and none on the
+# trailing one, which is Tailwind's `> * ~ *` rule -- each axis on its own, so
+# `divide-y md:divide-y-0 md:divide-x` is a left rule and no top one from md
+# -- and `divide-<colour>` as
+# its border colour. With no colour the child keeps its own, or has
+# `border.subtle` -- the gray-200 Tailwind's preflight gives every border --
+# since an EUI border with no colour is not drawn at all.
+#
+# A child is copied, never written: the same hash may be a child somewhere
+# else. Its key and handlers go with it, and a local handler that restyles
+# the node itself (`self.style = @hover`, what tw_wire and stateful write)
+# has the rule laid onto each style it can switch to, or the rule would
+# vanish on hover.
+def tw_divide(kids, rule)
+  dv_out = []
+  dv_seen = false
+  for dv_kid in kids
+    if dv_kid.nil? || dv_seen == false
+      dv_out = dv_out.concat([dv_kid])
+      dv_seen = true unless dv_kid.nil?
+    else
+      dv_out = dv_out.concat([tw_divide_kid(dv_kid, rule)])
+    end
+  end
+  dv_out
+end
+
+def tw_divide_kid(kid, rule)
+  dk_new = kid.merge({})
+  dk_new["s"] = tw_divide_style(kid["s"] ?? {}, rule)
+  dk_on = kid["on"]
+  return dk_new if dk_on.nil? || dk_on.class != "hash"
+
+  dk_handlers = {}
+  for dk_event in dk_on.keys()
+    dk_handlers[dk_event] = tw_divide_handler(dk_on[dk_event], rule)
+  end
+  dk_new["on"] = dk_handlers
+  dk_new
+end
+
+def tw_divide_handler(h, rule)
+  return h unless h.class == "hash"
+  return h unless h["local"].class == "string" && h["styles"].class == "hash"
+  return h unless h["local"].starts_with?("self.style = @")
+
+  dh_styles = {}
+  for dh_name in h["styles"].keys()
+    dh_styles[dh_name] = tw_divide_style(h["styles"][dh_name], rule)
+  end
+  h.merge({"styles": dh_styles})
+end
+
+def tw_divide_style(st, rule)
+  ds_out = st.merge({})
+  unless rule["y"].nil?
+    ds_ruled = tw_edges(ds_out["border"], [true, false, false, false], rule["y"])
+    ds_out["border"] = tw_edges(ds_ruled, [false, false, true, false], 0)
+  end
+  unless rule["x"].nil?
+    ds_ruled = tw_edges(ds_out["border"], [false, false, false, true], rule["x"])
+    ds_out["border"] = tw_edges(ds_ruled, [false, true, false, false], 0)
+  end
+  ds_out["border_color"] = rule["color"] ?? (st["border_color"] ?? "border.subtle")
+  ds_out
+end
+
+# ---- Text transforms ---------------------------------------------------------
+
+def tw_case_class(mode)
+  return "uppercase" if mode == "upper"
+  return "lowercase" if mode == "lower"
+  return "capitalize" if mode == "capital"
+
+  "normal-case"
+end
+
+# CSS's transforms, applied to the string on the server: capitalize raises
+# the first letter after each space and leaves the rest as written.
+def tw_case_apply(content, mode)
+  return content.upcase() if mode == "upper"
+  return content.downcase() if mode == "lower"
+  return content unless mode == "capital"
+
+  ca_out = ""
+  ca_prev = " "
+  for ca_ch in content.chars()
+    ca_start = ca_prev == " " || ca_prev == "\n" || ca_prev == "\t"
+    ca_out = ca_out + (ca_start ? ca_ch.upcase() : ca_ch)
+    ca_prev = ca_ch
+  end
+  ca_out
+end
+
+# What `text(content, tw_style("uppercase ..."))` builds: the string
+# transformed, and the style without the marker, which is no style key.
+def tw_text(content, style)
+  twt_mode = style["tw_case"]
+  twt_style = {}
+  for twt_key in style.keys()
+    twt_style[twt_key] = style[twt_key] unless twt_key == "tw_case"
+  end
+  twt_said = content.class == "string" ? tw_case_apply(content, twt_mode) : content
+  {
+    "k": "text",
+    "t": twt_said,
+    "s": twt_style
+  }
 end
 
 # Every class tw() accepts, one of each shape. `tests/tw_spec.sl` sends each
@@ -878,6 +1286,11 @@ def tw_examples()
     "overflow-hidden", "overflow-clip", "overflow-visible",
     "transition", "transition-colors", "transition-none", "duration-150", "duration-300", "duration-1000",
     "absolute", "z-10", "animate-spin", "backdrop-blur", "backdrop-blur-sm", "backdrop-blur-lg",
-    "hover:bg-gray-50", "active:bg-gray-100", "focus:border-indigo-600", "disabled:opacity-50"
+    "hover:bg-gray-50", "active:bg-gray-100", "focus:border-indigo-600", "disabled:opacity-50",
+    "focus-visible:bg-gray-50", "focus-visible:outline-2", "focus-visible:ring-2", "focus:outline-none", "outline-none",
+    "sm:flex", "md:flex-row", "lg:px-8", "xl:max-w-7xl", "2xl:text-lg", "md:hover:bg-gray-50",
+    "flex space-x-4", "flex-col space-y-2", "block space-y-4", "flex gap-x-4", "flex-col gap-y-2", "grid gap-x-4 gap-y-4",
+    "block", "relative", "static", "isolate", "select-none", "mx-auto", "my-auto",
+    "uppercase", "lowercase", "capitalize", "normal-case"
   ]
 end
