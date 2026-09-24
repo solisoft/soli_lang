@@ -75,26 +75,6 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-      # The native driver (`solidb-driver`, on by default) is exercised end to
-      # end by tests/solidb_driver_test.rs: rows decoded straight into Soli
-      # values must equal the JSON path's. Mapped to 16745, not SoliDB's 6745 or
-      # the spec runner's 6799, so no other test that probes those ports starts
-      # talking to it. `SOLIDB_HOST` is the listen address inside the container
-      # (the image's CMD passes no `--host`, and loopback would be unreachable).
-      solidb:
-        image: ghcr.io/solisoft/solidb:v1.1.0
-        ports:
-          - 16745:6745
-        env:
-          SOLIDB_HOST: 0.0.0.0
-          SOLIDB_ADMIN_PASSWORD: admin
-          JWT_SECRET: ci-only-jwt-secret-for-the-test-container
-        options: >-
-          --health-cmd "curl -f http://localhost:6745/_api/health"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-
     env:
       PG_DATABASE_URL: postgres://soli:soli@localhost:5432/soli_test
       MYSQL_URL: mysql://root:soli@127.0.0.1:3306/soli_test
@@ -155,6 +135,29 @@ jobs:
             -c "SELECT pg_reload_conf()"
           rm -f server.key server.crt
           test "$(docker exec "$cid" psql -U soli -d soli_test -tAc 'show ssl')" = on
+
+      # SoliDB for tests/solidb_driver_test.rs, which checks the native driver
+      # (`solidb-driver`, on by default) end to end: rows decoded straight into
+      # Soli values must equal the JSON path's. Not a service container: the
+      # published image (ghcr.io/solisoft/solidb:v1.1.0) puts a binary built
+      # for glibc 2.39 on a bookworm base (2.36) and exits on start. The
+      # release binary runs on the runner itself (ubuntu-latest, glibc 2.39).
+      # Port 16745, not 6745 or the spec runner's 6799, so nothing that probes
+      # those ports starts talking to it. `--host` is explicit because SoliDB
+      # reads a `.env` from any parent directory, and a `SOLIDB_HOST` URL meant
+      # for its clients would become its listen address.
+      - name: Start SoliDB (native driver test)
+        run: |
+          curl -fsSL -o /tmp/solidb.tgz https://github.com/solisoft/solidb/releases/download/v1.1.0/solidb-linux-amd64.tar.gz
+          mkdir -p /tmp/solidb && tar -xzf /tmp/solidb.tgz -C /tmp/solidb
+          SOLIDB_ADMIN_PASSWORD=admin JWT_SECRET=ci-only-jwt-secret-for-the-test-server \
+            nohup /tmp/solidb/solidb --host 127.0.0.1 --port 16745 --data-dir /tmp/solidb/data > /tmp/solidb/server.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://127.0.0.1:16745/_api/health && exit 0
+            sleep 1
+          done
+          cat /tmp/solidb/server.log
+          exit 1
 
       - name: Run tests
         run: cargo test --locked
