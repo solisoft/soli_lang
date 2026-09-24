@@ -275,9 +275,9 @@ The levers, cheapest first:
 | `lsp` | on | `soli lsp`, the language server (`tower-lsp`) |
 | `eui` | on | EUI components — `router_eui`, `eui_capabilities`, `eui_stats` and the `/_eui` session endpoint (`eui-proto`, `blake3`, `ring`) |
 | `sql` | off | Alias for `postgres` + `mysql` + `sqlite` |
-| `solidb-driver` | off | Native SoliDB TCP driver (needs `solidb-client`) |
+| `solidb-driver` | on | Native SoliDB TCP driver (MessagePack over pooled TCP). Compiled in by default; a server uses it only with `SOLI_DB_DRIVER=1` |
 | `eui-desktop` | off | `soli desktop build --eui` — the native EUI window (`eui-client`, winit, wgpu) |
-| `full` | off | Default set + `solidb-driver` |
+| `full` | off | Alias for the default set (it used to add `solidb-driver`, which is now in it) |
 
 SoliDB (HTTP) and the rest of the runtime always stay linked. A SoliDB-only install without PASETO or SQL clients:
 
@@ -389,6 +389,8 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLIDB_API_KEY` | API-key auth for SoliDB where supported. | unset |
 | `SOLIDB_USERNAME` | Username for SolidB login/basic auth. | unset |
 | `SOLIDB_PASSWORD` | Password paired with `SOLIDB_USERNAME`. | unset |
+| `SOLI_DB_DRIVER` | `1` routes the model layer over SoliDB's native MessagePack driver (pooled TCP on the `SOLIDB_HOST` port) instead of HTTP: document CRUD and queries, with plain reads decoded straight into Soli values. Uses the same credentials. A driver that cannot connect falls back to HTTP for that worker; a `https://` host is refused rather than downgraded. Read once per process. | unset (HTTP) |
+| `SOLI_DB_DRIVER_QUERY` | `0` keeps queries on HTTP while `SOLI_DB_DRIVER=1` routes document CRUD over the driver. | queries on the driver |
 
 ## Sessions
 

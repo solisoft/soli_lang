@@ -51,8 +51,9 @@ default = [
     "lsp",
     "mail",
     "eui",
+    "solidb-driver",
 ]
-# Kitchen-sink alias (default set + native SoliDB driver).
+# Kitchen-sink alias (default set; the native SoliDB driver is now part of it).
 full = [
     "embedding",
     "llm",
@@ -80,9 +81,10 @@ llm = []
 # a lean standalone runtime that never indexes foreign codebases.
 codegraph = ["dep:soli-codegraph"]
 # Native SoliDB driver transport for the model layer (src/solidb_driver.rs),
-# switched on at runtime with SOLI_DB_DRIVER=1. Off by default because it needs
-# the SoliDB checkout beside this one: `solidb-client` is not published, so a
-# path dependency would break `cargo install --path .` for anyone without it.
+# switched on at runtime with SOLI_DB_DRIVER=1. In the default set: it used to
+# be off because `solidb-client` was a path dependency on a sibling checkout,
+# but it is a git dependency now, so release binaries, the Docker image and
+# `cargo install` all carry it. Without it SOLI_DB_DRIVER=1 did nothing.
 solidb-driver = ["dep:solidb-client"]
 # PASETO v4 builtins (`Paseto` class). Omit to drop `pasetors` from the link.
 paseto = ["dep:pasetors"]

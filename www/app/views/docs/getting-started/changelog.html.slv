@@ -22,6 +22,11 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.4.2.</p>
 
+        <h3 id="unreleased-build" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Build</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">The native SoliDB driver ships in every build.</strong> Release binaries, the Docker image and <code class="text-cyan-400">cargo install</code> now include the MessagePack driver. Until now, <code class="text-cyan-400">SOLI_DB_DRIVER=1</code> on a published binary silently stayed on HTTP, so the read speed-ups below never reached you. Nothing changes unless you opt in: set <code class="text-cyan-400">SOLI_DB_DRIVER=1</code> to use it. CI now tests it against a real SoliDB. See <a href="/docs/getting-started/configuration" class="text-amber-400 hover:underline">Configuration</a> for <code class="text-cyan-400">SOLI_DB_DRIVER</code> and <code class="text-cyan-400">SOLI_DB_DRIVER_QUERY</code>.</li>
+        </ul>
+
         <h3 id="unreleased-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">SoliDB reads decode their rows once, straight into Soli values.</strong> On the native driver (<code class="text-cyan-400">SOLI_DB_DRIVER=1</code>), <code class="text-cyan-400">Model.all</code>, <code class="text-cyan-400">pluck(...).all</code> and other plain query-builder reads now receive Soli values directly from <code class="text-cyan-400">solidb-client</code>, instead of building a JSON tree and converting it. Decoding had been 35&ndash;40% of the CPU on a database-backed page; with the client&rsquo;s own fix in v1.2.0, the framework suite at 200 concurrent connections goes from 59.9k to 79.3k req/s on <code class="text-cyan-400">/db</code> and from 57.7k to 74.9k on <code class="text-cyan-400">/db-template</code>, with CPU per request down by about 30%. Output is byte-identical; mocks, SQL adapters and the HTTP transport are unchanged.</li>

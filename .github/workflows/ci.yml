@@ -75,12 +75,33 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      # The native driver (`solidb-driver`, on by default) is exercised end to
+      # end by tests/solidb_driver_test.rs: rows decoded straight into Soli
+      # values must equal the JSON path's. Mapped to 16745, not SoliDB's 6745 or
+      # the spec runner's 6799, so no other test that probes those ports starts
+      # talking to it. `SOLIDB_HOST` is the listen address inside the container
+      # (the image's CMD passes no `--host`, and loopback would be unreachable).
+      solidb:
+        image: ghcr.io/solisoft/solidb:v1.1.0
+        ports:
+          - 16745:6745
+        env:
+          SOLIDB_HOST: 0.0.0.0
+          SOLIDB_ADMIN_PASSWORD: admin
+          JWT_SECRET: ci-only-jwt-secret-for-the-test-container
+        options: >-
+          --health-cmd "curl -f http://localhost:6745/_api/health"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
     env:
       PG_DATABASE_URL: postgres://soli:soli@localhost:5432/soli_test
       MYSQL_URL: mysql://root:soli@127.0.0.1:3306/soli_test
       SOLI_REQUIRE_DB: "1"
       SOLIKV_RESP_HOST: 127.0.0.1
       SOLIKV_RESP_PORT: "6380"
+      SOLIDB_DRIVER_TEST_HOST: 127.0.0.1:16745
 
     steps:
       - uses: actions/checkout@v5

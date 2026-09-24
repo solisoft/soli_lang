@@ -61,8 +61,9 @@ pub use sql_compile::{
 /// *exactly* like a run that exercised both adapters. `SOLI_REQUIRE_DB=1` turns
 /// that silence into a failure: CI sets it alongside its service containers, so
 /// a broken or missing server breaks the build instead of quietly halving the
-/// suite. It covers the SQL adapters only — SoliDB-backed tests have their own
-/// skips and CI runs no SoliDB.
+/// suite. It covers the SQL adapters here; the native SoliDB driver test
+/// (`tests/solidb_driver_test.rs`) applies the same rule against CI's SoliDB
+/// service.
 #[cfg(test)]
 pub(crate) fn skip_unless_required(reason: &str) {
     if std::env::var("SOLI_REQUIRE_DB").is_ok_and(|flag| flag == "1") {
