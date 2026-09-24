@@ -24,6 +24,12 @@
 # class and saying why, rather than being dropped: a page that silently loses
 # half its classes looks almost right, which is the expensive kind of wrong.
 #
+# `bg-gradient-to-*`, `from-*`, `via-*` and `to-*` compose into one `bg`
+# gradient (eui 02 §5.3) once every class of a state is in, in whatever order
+# they were written, as Tailwind's custom properties compose; `from-10%` and
+# the like place a stop. `animate-spin`, `animate-pulse` and `animate-bounce`
+# are bits and combine.
+#
 # `sm:` to `2xl:` need the viewport's width, which the view is given and tw()
 # is not: `tw(classes, width)`, `tw_style(classes, false, width)`, or `"vw":
 # width` beside `"tw"` on a node. Without it a breakpoint class raises.
@@ -218,7 +224,7 @@ def tw_parse(classes, rank)
       end
     end
   end
-  twp_out
+  tw_grad_settle(twp_out)
 end
 
 # Just the resting style, with the `disabled:` delta laid over it when asked.
@@ -322,10 +328,6 @@ def tw_refused(name)
   rf_why = {
     "tracking-": "EUI has no letter-spacing; the 64-byte style record has no byte for it",
     "leading-": "line height comes with the text size; there is no independent line-height",
-    "bg-gradient": "EUI has no gradients",
-    "from-": "EUI has no gradients",
-    "via-": "EUI has no gradients",
-    "to-": "EUI has no gradients",
     "ring-offset": "a ring is written as a border, and a border has no offset",
     "rounded-t": "radius is one byte for all four corners",
     "rounded-b": "radius is one byte for all four corners",
@@ -386,7 +388,7 @@ def tw_refused(name)
     "sr-only": "there is no visually hidden text; put the label in props",
     "not-sr-only": "there is no visually hidden text; put the label in props",
     "backdrop-": "backdrop-blur is the one backdrop filter",
-    "animate-": "the one animation is animate-spin; entrances are the enter animation",
+    "animate-": "the animations are animate-spin, animate-pulse and animate-bounce; an entrance is the enter animation",
     "font-": "the weights are font-normal, font-medium, font-semibold and font-bold, and the faces font-sans and font-mono",
     "shadow-": "shadow-sm, shadow, shadow-md, shadow-lg and shadow-xl are the shadows, and a shadow takes no colour",
     "rounded-": "rounded-none, -sm, rounded, -md, -lg, -xl, -2xl, -3xl and -full are the radii",
@@ -790,6 +792,8 @@ def tw_exact()
     "transition-none": {"transition": "none"},
     "absolute": {"position": "absolute"},
     "animate-spin": {"animation": "spin"},
+    "animate-pulse": {"animation": "pulse"},
+    "animate-bounce": {"animation": "bounce"},
     "animate-none": {"animation": "none"},
     "backdrop-blur-none": {"blur": 0},
     "backdrop-blur-sm": {"blur": 4},
@@ -952,8 +956,13 @@ def tw_family(name, whole)
     return nil
   end
 
+  # bg-gradient-to-r, from-indigo-600, via-50%, to-pink-500: the pieces of a
+  # gradient, settled into one `bg` by tw_grad_settle.
+  return tw_grad_direction(fa_rest, whole) if fa_head == "bg" && fa_rest.starts_with?("gradient")
+  return tw_grad_stop(fa_head, fa_rest, whole) if ["from", "via", "to"].includes?(fa_head)
+
   # bg-*, text-* (sizes and aligns are exact), border-*, ring-*
-  return {"set": {"bg": tw_colour("bg", fa_rest, whole)}} if fa_head == "bg" && !fa_rest.starts_with?("gradient")
+  return {"set": {"bg": tw_colour("bg", fa_rest, whole)}} if fa_head == "bg"
   if fa_head == "text"
     if tw_text_sizes()[fa_rest].nil? && ["5xl", "6xl", "7xl", "8xl", "9xl"].includes?(fa_rest)
       throw tw_no(whole, "the text scale stops at text-4xl, index 7")
@@ -1040,6 +1049,14 @@ def tw_take(out, variant, name, whole)
     out["gaps"][tk_gap["k"]] = {"v": tk_gap["v"], "c": whole} unless tk_gap.nil?
     out["divide"] = out["divide"].merge(tk_rule).merge({"c": whole}) unless tk_rule.nil?
   end
+  # animate-spin animate-pulse: the animation is a bit set (03 §5), so two
+  # animate-* classes are both bits rather than the last one written.
+  tk_anim = (tk_patch["set"] ?? {})["animation"]
+  tk_had = out[variant]["animation"]
+  if !tk_anim.nil? && tk_anim != "none" && !tk_had.nil? && tk_had != "none"
+    tk_bits = tk_had.class == "array" ? tk_had.filter(fn(b) { b != tk_anim }) : [tk_had].filter(fn(b) { b != tk_anim })
+    tk_style["animation"] = tk_bits.concat([tk_anim])
+  end
   if variant != "s" && !(tk_patch["set"] ?? {})["tw_case"].nil?
     throw tw_no(whole, "a text transform changes the string, which a state cannot; write it without the state")
   end
@@ -1050,6 +1067,93 @@ def tw_take(out, variant, name, whole)
     out["props"] = out["props"].merge(tk_props)
   end
   out[variant] = tk_style
+  out
+end
+
+# ---- Gradients ---------------------------------------------------------------
+
+# `bg-gradient-to-r` as the side or corner CSS says (eui 02 §5.3). A corner
+# is the box's own diagonal, as in CSS, not 45 degrees.
+def tw_grad_direction(rest, whole)
+  gd_sides = {"t": "top", "tr": "top right", "r": "right", "br": "bottom right", "b": "bottom", "bl": "bottom left", "l": "left", "tl": "top left"}
+  gd_side = rest.starts_with?("gradient-to-") ? gd_sides[rest.substring(12, rest.length())] : nil
+  throw tw_no(whole, "a gradient goes to a side or a corner: bg-gradient-to-t, -tr, -r, -br, -b, -bl, -l or -tl") if gd_side.nil?
+
+  {"set": {"tw_grad_dir": gd_side, "tw_grad_c": whole}}
+end
+
+# `from-indigo-600`, `via-[#ff80b5]`, `to-10%`: a stop's colour, which is a
+# background colour (grays by what they paint behind), or its position.
+def tw_grad_stop(head, rest, whole)
+  gs_key = head == "to" ? "tw_grad_end" : "tw_grad_" + head
+  if rest.ends_with?("%")
+    gs_pct = rest.substring(0, rest.length() - 1)
+    if tw_numeric?(gs_pct) && float(gs_pct) <= 100.0
+      gs_at = {}
+      gs_at[gs_key + "_at"] = int((float(gs_pct) * 255.0 / 100.0).round())
+      gs_at["tw_grad_c"] = whole
+      return {"set": gs_at}
+    end
+    throw tw_no(whole, "a stop's position is 0% to 100%")
+  end
+  gs_colour = tw_colour("bg", rest, whole)
+  throw tw_no(whole, "a stop is a colour, and a role has no transparent version to fade to; give the gradient a to-* colour") if gs_colour == "none"
+
+  gs_set = {}
+  gs_set[gs_key] = gs_colour
+  gs_set["tw_grad_c"] = whole
+  {"set": gs_set}
+end
+
+def tw_grad_any?(style)
+  style.keys().filter(fn(k) { k.starts_with?("tw_grad_") }).length() > 0
+end
+
+# The gradient pieces a style holds, and nothing else.
+def tw_grad_pieces(style)
+  gp_out = {}
+  for gp_key in style.keys()
+    gp_out[gp_key] = style[gp_key] if gp_key.starts_with?("tw_grad_")
+  end
+  gp_out
+end
+
+# The pieces as one `bg`. A state's pieces lie over the resting ones, so
+# `hover:to-pink-500` changes one stop of the gradient the box already has.
+def tw_grad_build(style, p)
+  gb_c = p["tw_grad_c"]
+  throw tw_no(gb_c, "a colour stop belongs to a gradient, and bg-gradient-to-* is what starts one") if p["tw_grad_dir"].nil?
+  throw tw_no(gb_c, "a gradient starts from a colour: write from-*") if p["tw_grad_from"].nil?
+  throw tw_no(gb_c, "a gradient ends at a colour: write to-* (a role has no transparent version to fade to)") if p["tw_grad_end"].nil?
+  throw tw_no(gb_c, "via-N% places the middle stop, and there is no via-* colour") if p["tw_grad_via"].nil? && !p["tw_grad_via_at"].nil?
+
+  gb_from_at = p["tw_grad_from_at"] ?? 0
+  gb_end_at = p["tw_grad_end_at"] ?? 255
+  gb_stops = [ [p["tw_grad_from"], gb_from_at] ]
+  unless p["tw_grad_via"].nil?
+    gb_via_at = p["tw_grad_via_at"] ?? 128
+    throw tw_no(gb_c, "the stops go forwards: from-N% <= via-N% <= to-N%") if gb_via_at < gb_from_at || gb_end_at < gb_via_at
+    gb_stops = gb_stops.concat([ [p["tw_grad_via"], gb_via_at] ])
+  end
+  throw tw_no(gb_c, "the stops go forwards: from-N% <= to-N%") if gb_end_at < gb_from_at
+  gb_stops = gb_stops.concat([ [p["tw_grad_end"], gb_end_at] ])
+  gb_out = {}
+  for gb_key in style.keys()
+    gb_out[gb_key] = style[gb_key] unless gb_key.starts_with?("tw_grad_")
+  end
+  gb_out["bg"] = {"gradient": {"to": p["tw_grad_dir"], "stops": gb_stops}}
+  gb_out
+end
+
+# Every state's pieces into its `bg`, the states first, while the resting
+# style still holds the pieces they lie over.
+def tw_grad_settle(out)
+  for gt_state in ["hover", "press", "focus", "disabled"]
+    if tw_grad_any?(out[gt_state])
+      out[gt_state] = tw_grad_build(out[gt_state], tw_grad_pieces(out["s"]).merge(tw_grad_pieces(out[gt_state])))
+    end
+  end
+  out["s"] = tw_grad_build(out["s"], tw_grad_pieces(out["s"])) if tw_grad_any?(out["s"])
   out
 end
 
@@ -1288,7 +1392,10 @@ def tw_examples()
     "cursor-grabbing", "cursor-col-resize", "cursor-row-resize",
     "overflow-hidden", "overflow-clip", "overflow-visible",
     "transition", "transition-colors", "transition-none", "duration-150", "duration-300", "duration-1000",
-    "absolute", "z-10", "animate-spin", "backdrop-blur", "backdrop-blur-sm", "backdrop-blur-lg",
+    "absolute", "z-10", "animate-spin", "animate-pulse", "animate-bounce", "animate-spin animate-pulse",
+    "bg-gradient-to-r from-indigo-600 to-[#ff80b5]", "bg-gradient-to-br from-accent via-info to-[#ff80b5]",
+    "bg-gradient-to-t from-gray-50 from-10% to-white to-90%", "bg-gradient-to-tl from-red-600 via-yellow-600 via-40% to-green-600",
+    "bg-gradient-to-b from-blue-600 to-blue-50 hover:to-indigo-600", "backdrop-blur", "backdrop-blur-sm", "backdrop-blur-lg",
     "hover:bg-gray-50", "active:bg-gray-100", "focus:border-indigo-600", "disabled:opacity-50",
     "focus-visible:bg-gray-50", "focus-visible:outline-2", "focus-visible:ring-2", "focus:outline-none", "outline-none",
     "sm:flex", "md:flex-row", "lg:px-8", "xl:max-w-7xl", "2xl:text-lg", "md:hover:bg-gray-50",

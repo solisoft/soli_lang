@@ -23,6 +23,22 @@
     </div>
     <p class="text-gray-400 mb-6">The <code class="text-cyan-400">series.*</code> family exists so a chart names a categorical series rather than hard-coding a hex, and so two charts agree on which colour the second series is. A view naming a role that does not exist is refused &mdash; <code>EUI: unknown colour role 'series.9'</code> &mdash; rather than quietly drawn in a default.</p>
 
+    <h2 id="gradients" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Gradients</h2>
+    <p class="text-gray-400 mb-6"><code class="text-cyan-400">bg</code> &mdash; and only <code class="text-cyan-400">bg</code> &mdash; may be a hash naming a linear gradient of two or three stops, drawn as CSS draws <code>linear-gradient()</code>: under the node&rsquo;s corners, border, shadow and opacity like any fill, its stops mixed in sRGB.</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6"><div class="p-4 overflow-x-auto"><pre><code class="language-soli text-sm">banner = {"bg": {"gradient": {"to": "right", "stops": ["accent.base", ["#ff80b5", 255]]}}, "pad": 6, "radius": 3}
+tilted = {"bg": {"gradient": {"angle": 45, "stops": [ ["accent.base", 26], ["info.base", 128], "danger.base"]}}}</code></pre></div></div>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead><tr class="border-b border-white/10"><th class="text-left py-3 px-4 text-gray-400 font-semibold">Key</th><th class="text-left py-3 px-4 text-gray-400 font-semibold">Values</th></tr></thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-3 px-4"><code class="text-amber-300">to</code></td><td class="py-3 px-4 text-gray-400"><code class="text-amber-300">"top"</code> <code class="text-amber-300">"right"</code> <code class="text-amber-300">"bottom"</code> <code class="text-amber-300">"left"</code>, or a corner &mdash; <code class="text-amber-300">"top right"</code> &hellip; &mdash; whose direction is the box&rsquo;s own diagonal, as in CSS. The default is <code class="text-amber-300">"bottom"</code>.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">angle</code></td><td class="py-3 px-4 text-gray-400">Whole degrees, 0 to 359, clockwise from the top: 90 is <code class="text-amber-300">"right"</code>. Give <code>to</code> or <code>angle</code>, not both.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">stops</code></td><td class="py-3 px-4 text-gray-400">Two or three: a colour (a role or <code>"#RRGGBB"</code>, never <code>"none"</code>), or <code>[colour, at]</code> with <code>at</code> in 255ths of the way along. Stops without a position are spread evenly, and positions go forwards.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">Stops that are roles follow the viewer&rsquo;s dark mode like any role, and each distinct gradient is defined once per session. A gradient&rsquo;s colours do not ease: a <code class="text-cyan-400">transition</code> into or out of one changes them at once and fades only the opacity. Gradients are EUI protocol 6; a client older than that is sent the first stop as a solid <code>bg</code>. A list of pairs wants a space after its opening bracket &mdash; <code>[ ["accent.base", 26], &hellip;]</code> &mdash; because <code>[[</code> opens a raw string.</p>
+
     <h2 id="transitions" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Transitions</h2>
     <p class="text-gray-400 mb-6"><code class="text-cyan-400">transition</code> names how long a node takes to settle into a change of style, in the client's own scale rather than milliseconds &mdash; the viewer's reduced-motion setting is the client's to honour.</p>
     <div class="overflow-x-auto mb-6">
@@ -45,7 +61,7 @@
         <table class="w-full text-sm">
             <thead><tr class="border-b border-white/10"><th class="text-left py-3 px-4 text-gray-400 font-semibold">Key</th><th class="text-left py-3 px-4 text-gray-400 font-semibold">Values</th></tr></thead>
             <tbody class="divide-y divide-white/5">
-                <tr><td class="py-3 px-4"><code class="text-amber-300">animation</code></td><td class="py-3 px-4 text-gray-400"><code class="text-amber-300">"spin"</code> <code class="text-amber-300">"enter"</code> <code class="text-amber-300">"exit"</code> &mdash; a list, so <code class="text-amber-300">["enter", "exit"]</code> is the ordinary spelling of a page.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">animation</code></td><td class="py-3 px-4 text-gray-400"><code class="text-amber-300">"spin"</code> <code class="text-amber-300">"enter"</code> <code class="text-amber-300">"exit"</code> <code class="text-amber-300">"pulse"</code> <code class="text-amber-300">"bounce"</code> &mdash; a list, so <code class="text-amber-300">["enter", "exit"]</code> is the ordinary spelling of a page.</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-amber-300">motion</code></td><td class="py-3 px-4 text-gray-400"><code class="text-amber-300">"fade"</code> <code class="text-amber-300">"leading"</code> <code class="text-amber-300">"trailing"</code> <code class="text-amber-300">"top"</code> <code class="text-amber-300">"bottom"</code> <code class="text-amber-300">"scale"</code> <code class="text-amber-300">"paired"</code></td></tr>
             </tbody>
         </table>
@@ -102,6 +118,8 @@ shared_element("cust:" + one["id"], initial_avatar(one["initial"], one["tone"], 
                 <tr><td class="py-3 px-4"><code class="text-amber-300">divide-y divide-gray-200</code> <code class="text-amber-300">divide-x</code></td><td class="py-3 px-4 text-gray-400">A border on every child but the first, laid on by <code>node()</code>.</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-amber-300">uppercase</code> <code class="text-amber-300">lowercase</code> <code class="text-amber-300">capitalize</code></td><td class="py-3 px-4 text-gray-400">The string, transformed by <code>text()</code>.</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-amber-300">mx-auto</code> <code class="text-amber-300">my-auto</code> <code class="text-amber-300">block</code> <code class="text-amber-300">relative</code> <code class="text-amber-300">static</code></td><td class="py-3 px-4 text-gray-400"><code>self: center</code>, <code>self: center</code>, <code>display: column</code>, <code>position: flow</code>.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">bg-gradient-to-r</code> &hellip; <code class="text-amber-300">-tl</code> <code class="text-amber-300">from-*</code> <code class="text-amber-300">via-*</code> <code class="text-amber-300">to-*</code> <code class="text-amber-300">from-10%</code></td><td class="py-3 px-4 text-gray-400">One <code>bg</code> gradient, in any class order; <code>to-*</code> is required, since a role has no transparent copy to fade to.</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-300">animate-spin</code> <code class="text-amber-300">animate-pulse</code> <code class="text-amber-300">animate-bounce</code></td><td class="py-3 px-4 text-gray-400"><code>animation</code>, and two of them are both: <code>["spin", "pulse"]</code>.</td></tr>
             </tbody>
         </table>
     </div>
@@ -111,6 +129,6 @@ shared_element("cust:" + one["id"], initial_avatar(one["initial"], one["tone"], 
 node("box", {"tw": "flex flex-col gap-4 sm:flex-row sm:items-end", "vw": vw}, [title, actions])
 text(label, tw_style("text-sm md:text-base", false, vw))
 tw("hidden lg:flex", vw)</code></pre></div></div>
-    <p class="text-gray-400 mb-6">A class with no equivalent raises, naming the class and the reason, rather than being dropped: <code>tracking-*</code>, <code>leading-*</code>, gradients, per-corner radius, transforms, <code>italic</code>, a step the space scale does not have such as <code>p-7</code> (the message names the two nearest), a <code>space-y</code> on a row or a <code>gap-x</code> and <code>gap-y</code> that differ where both axes are spaced, and <code>dark:</code> (roles already follow the theme). The whole table, the approximations and every refusal are in the EUI repository's <code>doc/docs/eui/tailwind.md</code>.</p>
+    <p class="text-gray-400 mb-6">A class with no equivalent raises, naming the class and the reason, rather than being dropped: <code>tracking-*</code>, <code>leading-*</code>, a gradient with no <code>from-*</code> or <code>to-*</code>, per-corner radius, transforms, <code>italic</code>, a step the space scale does not have such as <code>p-7</code> (the message names the two nearest), a <code>space-y</code> on a row or a <code>gap-x</code> and <code>gap-y</code> that differ where both axes are spaced, and <code>dark:</code> (roles already follow the theme). The whole table, the approximations and every refusal are in the EUI repository's <code>doc/docs/eui/tailwind.md</code>.</p>
     <p class="text-gray-400 mb-12">The rest of the catalogue is drawn the way Tailwind UI draws an application: 14 px labels and body text, white fields and secondary buttons inside a <code>border.default</code> hairline, cards at radius 2 with a small shadow, dialogs and menus a step up.</p>
 </div>

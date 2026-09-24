@@ -40,6 +40,31 @@ column({"bg": "surface.raised", "pad": 4}, [
 ])
 ```
 
+## Gradients
+
+`bg` — and only `bg` — may be a hash naming a linear gradient of two or three
+stops, drawn as CSS draws `linear-gradient()`: under the node's corners,
+border, shadow and opacity like any fill, its stops mixed in sRGB.
+
+```soli
+banner = {"bg": {"gradient": {"to": "right", "stops": ["accent.base", ["#ff80b5", 255]]}}, "pad": 6, "radius": 3}
+tilted = {"bg": {"gradient": {"angle": 45, "stops": [ ["accent.base", 26], ["info.base", 128], "danger.base"]}}}
+```
+
+| Key | Values |
+|-----|--------|
+| `to` | `"top"` `"right"` `"bottom"` `"left"`, or a corner — `"top right"` … — whose direction is the box's own diagonal, as in CSS. The default is `"bottom"` |
+| `angle` | Whole degrees, `0` to `359`, clockwise from the top: `90` is `"right"`. Give `to` or `angle`, not both |
+| `stops` | Two or three: a colour (a role or `"#RRGGBB"`, never `"none"`), or `[colour, at]` with `at` in 255ths of the way along. Stops without a position are spread evenly, and positions go forwards |
+
+Stops that are roles follow the viewer's dark mode like any role. Each
+distinct gradient is defined once per session, like a literal colour. A
+gradient's colours do not ease: a `transition` into or out of one changes
+them at once and fades only the opacity. A gradient is EUI protocol **6**; a
+client older than that is sent the first stop as a solid `bg`. (A list of
+pairs wants a space after its opening bracket — `[ ["accent.base", 26], …]` —
+because `[[` opens a raw string.)
+
 ## Transitions
 
 `transition` names how long a node takes to settle into a change of style, in
@@ -66,7 +91,7 @@ says which way:
 
 | Key | Values |
 |-----|--------|
-| `animation` | `"spin"`, `"enter"`, `"exit"` — a list, so `["enter", "exit"]` is the ordinary spelling of a page |
+| `animation` | `"spin"`, `"enter"`, `"exit"`, `"pulse"`, `"bounce"` — a list, so `["enter", "exit"]` is the ordinary spelling of a page |
 | `motion` | `"fade"` `"leading"` `"trailing"` `"top"` `"bottom"` `"scale"` `"paired"` |
 
 Only the arriving side names a direction. Whatever is leaving beside it takes
@@ -77,6 +102,18 @@ refused, because it is a direction with nothing to direct.
 
 ```soli
 nav_page("detail", customer_page(state), {"motion": "trailing"})
+```
+
+`"pulse"` and `"bounce"` are Tailwind's `animate-pulse` and `animate-bounce`
+(EUI protocol 6): the node and everything in it dips to half opacity and back
+every two seconds, or is lifted a quarter of its own height and let fall once
+a second. Both run on the client's clock like `"spin"` — nothing crosses the
+wire while they play, and the node is laid out and pressed where it rests.
+A client older than protocol 6 is sent the style without them.
+
+```soli
+column({"gap": 2, "animation": "pulse"}, skeleton_lines)          # loading
+box({"radius": 4, "bg": "accent.base", "animation": "bounce"}, [icon("arrow_down", {})])
 ```
 
 ### A shared element
@@ -161,6 +198,8 @@ the resting style alone, for a `text` node.
 | `divide-y divide-gray-200`, `divide-x` | a border on every child but the first, laid on by `node()` |
 | `uppercase`, `lowercase`, `capitalize` | the string, transformed by `text()` |
 | `mx-auto` · `my-auto` · `block` · `relative`, `static` | `self: center` · `self: center` · `display: column` · `position: flow` |
+| `bg-gradient-to-r` … `-tl`, `from-*`, `via-*`, `to-*`, `from-10%` … | one `bg` gradient, in any class order; `to-*` is required, since a role has no transparent copy to fade to |
+| `animate-spin`, `animate-pulse`, `animate-bounce` | `animation`, and two of them are both: `["spin", "pulse"]` |
 
 Breakpoints need the viewport's width, which the view is given on `connect`
 and on every resize and `tw()` is not — so pass it, and a class under a
@@ -184,7 +223,8 @@ it has instead, rounding down on a tie — `py-1.5` draws as `py-1` (4 px),
 same goes for a raw `{"pad": 13}`.
 
 A class with no equivalent raises, naming the class and the reason, rather
-than being dropped: `tracking-*`, `leading-*`, gradients, per-corner radius,
+than being dropped: `tracking-*`, `leading-*`, a gradient with no `from-*` or
+`to-*`, per-corner radius,
 transforms, `italic`, a step the space scale does not have such as `p-7`
 (the message names the two nearest), a `space-y` on a row or a gap-x and gap-y that differ where both
 axes are spaced, and `dark:` (roles already follow the theme). The whole

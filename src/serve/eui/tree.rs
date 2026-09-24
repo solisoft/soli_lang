@@ -23,8 +23,8 @@ use crate::interpreter::value::{HashKey, Value};
 
 use eui_proto::{
     AlignItems, AlignSelf, Batch, ColorRef, Cursor, Dim, Display, EventKind, FlatNode, FontFamily,
-    FontWeight, Handler, Justify, Motion, NodeKind, Op, Overflow, Position, StyleRecord, Subtree,
-    TextAlign, TextRef, Value as WireValue, Wrap, Writer,
+    FontWeight, Gradient, GradientStop, Handler, Justify, Motion, NodeKind, Op, Overflow, Position,
+    StyleRecord, Subtree, TextAlign, TextRef, Value as WireValue, Wrap, Writer,
 };
 use serde_json::Value as Json;
 
@@ -157,6 +157,9 @@ pub struct Encoder {
     /// cold render spent per node.
     style_fingerprints: HashMap<[u8; 16], u32>,
     colors: HashMap<u32, u32>,
+    /// Gradients by value (eui 02 §5.3): defined once per session, like the
+    /// colours their stops may name, and never for a session below 6.
+    gradients: HashMap<Gradient, u32>,
     chunks: HashMap<Vec<u8>, u32>,
     /// Chunk ids by local-handler source (and what the compile depended
     /// on), so a `local("…")` seen once is a lookup, not a lex, a parse and
@@ -522,6 +525,105 @@ impl Encoder {
         ColorRef::literal(id as u16)
     }
 
+    /// A `bg`: a colour as [`Encoder::color`] reads one, or a hash naming a
+    /// linear gradient (eui 02 §5.3):
+    ///
+    /// ```text
+    /// {"gradient": {"to": "right", "stops": ["accent.base", ["#ff80b5", 255]]}}
+    /// {"gradient": {"angle": 45, "stops": [["accent.base", 26], "info.base"]}}
+    /// ```
+    ///
+    /// `to` is a side or a corner as CSS writes it (`top right`), `angle`
+    /// whole degrees; neither means `bottom`, as in CSS. A stop is a colour,
+    /// or `[colour, at]` with `at` in 255ths of the way along; a stop given
+    /// no position is spread evenly, as CSS spreads them. Two or three.
+    ///
+    /// Interned per session by value. A session below version 6 cannot
+    /// decode one, so it is sent the first stop as a solid `bg` instead —
+    /// the colour the gradient starts from, rather than a refused batch.
+    fn bg(&mut self, v: &Json) -> Result<ColorRef, String> {
+        let Some(obj) = v.as_object() else {
+            return self.color(v);
+        };
+        let spec = match (obj.len(), obj.get("gradient")) {
+            (1, Some(Json::Object(g))) => g,
+            _ => {
+                return Err(
+                    "EUI: a bg hash is {\"gradient\": {\"to\": ..., \"stops\": [...]}}".into(),
+                )
+            }
+        };
+        let angle = match (spec.get("to"), spec.get("angle")) {
+            (Some(_), Some(_)) => {
+                return Err("EUI: a gradient takes `to` or `angle`, not both".into())
+            }
+            (Some(to), None) => gradient_to(to)?,
+            (None, Some(a)) => a
+                .as_u64()
+                .filter(|d| *d < 360)
+                .map(|d| d as u16)
+                .ok_or("EUI: a gradient's angle is whole degrees, 0 to 359")?,
+            (None, None) => 180,
+        };
+        for key in spec.keys() {
+            if !["to", "angle", "stops"].contains(&key.as_str()) {
+                return Err(format!(
+                    "EUI: a gradient has `to` or `angle`, and `stops`; not `{key}`"
+                ));
+            }
+        }
+        let raw = spec
+            .get("stops")
+            .and_then(Json::as_array)
+            .ok_or("EUI: a gradient needs `stops`, a list of two or three colours")?;
+        if !(2..=eui_proto::limits::MAX_GRADIENT_STOPS).contains(&raw.len()) {
+            return Err(format!(
+                "EUI: a gradient has two or three stops, not {}",
+                raw.len()
+            ));
+        }
+        let last = raw.len() - 1;
+        let mut stops = Vec::with_capacity(raw.len());
+        for (i, stop) in raw.iter().enumerate() {
+            let (colour, at) = match stop {
+                Json::Array(pair) if pair.len() == 2 => {
+                    let at = pair[1]
+                        .as_u64()
+                        .and_then(|n| u8::try_from(n).ok())
+                        .ok_or("EUI: a gradient stop's position is 0 to 255")?;
+                    (&pair[0], at)
+                }
+                Json::Array(_) => {
+                    return Err("EUI: a gradient stop is a colour or [colour, position]".into())
+                }
+                other => (other, ((i * 255 + last / 2) / last) as u8),
+            };
+            let color = self.color(colour)?;
+            if color.is_none() {
+                return Err("EUI: a gradient stop is a colour, not none".into());
+            }
+            stops.push(GradientStop { color, at });
+        }
+        if stops.windows(2).any(|w| w[1].at < w[0].at) {
+            return Err("EUI: a gradient's stops go forwards along it".into());
+        }
+        let gradient =
+            Gradient::new(angle, &stops).ok_or("EUI: a gradient has two or three stops")?;
+        if self.protocol() < 6 {
+            return Ok(gradient.first());
+        }
+        if let Some(id) = self.gradients.get(&gradient) {
+            return Ok(ColorRef::gradient(*id as u16));
+        }
+        let id = self.gradients.len() as u32 + 1;
+        if id > eui_proto::limits::MAX_GRADIENTS {
+            self.overflowed("gradients", eui_proto::limits::MAX_GRADIENTS);
+        }
+        self.gradients.insert(gradient, id);
+        self.pending.push(Op::DefGradient { id, gradient });
+        Ok(ColorRef::gradient(id as u16))
+    }
+
     /// Intern a chunk by its bytes, delivering it inline on first use.
     fn chunk(&mut self, bytes: Vec<u8>) -> u32 {
         if let Some(id) = self.chunks.get(&bytes) {
@@ -772,7 +874,10 @@ impl Encoder {
         // 05 §2: `space` indices 13-17 are version 6. A session that
         // settled lower is sent the older step each falls back to -- its
         // client would refuse the batch otherwise -- and every `DefStyle`
-        // passes through here, so this is the one place it is done.
+        // passes through here, so this is the one place it is done. The
+        // same call takes off the version-6 `animation` bits, pulse and
+        // bounce (03 §5); a gradient `bg` was already replaced by its first
+        // stop where it was read (`bg`).
         let record = record.for_protocol(self.protocol());
         if record == StyleRecord::default() {
             return 0;
@@ -1626,7 +1731,7 @@ impl Encoder {
                 "max_height" => r.max_height = dim_of(v)?,
                 "pad" => r.padding = edges_of(v)?,
                 "margin" => r.margin = edges_of(v)?,
-                "bg" => r.bg = self.color(v)?,
+                "bg" => r.bg = self.bg(v)?,
                 "fg" => r.fg = self.color(v)?,
                 "border_color" => r.border_color = self.color(v)?,
                 "border" => r.border_width = edges_of(v)?,
@@ -1849,6 +1954,31 @@ fn fingerprint_of(v: &Value) -> Option<[u8; 16]> {
     })
 }
 
+/// A gradient's `to`, as CSS writes it (eui 02 §5.3): a side is its angle,
+/// and a corner is one of the four codes whose angle the box decides.
+fn gradient_to(v: &Json) -> Result<u16, String> {
+    const SIDES: &[(&str, u16)] = &[
+        ("top", 0),
+        ("right", 90),
+        ("bottom", 180),
+        ("left", 270),
+        ("top right", Gradient::TO_TOP_RIGHT),
+        ("right top", Gradient::TO_TOP_RIGHT),
+        ("bottom right", Gradient::TO_BOTTOM_RIGHT),
+        ("right bottom", Gradient::TO_BOTTOM_RIGHT),
+        ("bottom left", Gradient::TO_BOTTOM_LEFT),
+        ("left bottom", Gradient::TO_BOTTOM_LEFT),
+        ("top left", Gradient::TO_TOP_LEFT),
+        ("left top", Gradient::TO_TOP_LEFT),
+    ];
+    let s = v
+        .as_str()
+        .ok_or("EUI: a gradient's `to` is a side or a corner")?;
+    SIDES.iter().find(|(n, _)| *n == s).map(|(_, a)| *a).ok_or_else(|| {
+        format!("EUI: a gradient goes to top, right, bottom, left or a corner (top right); not '{s}'")
+    })
+}
+
 /// `animation`, which is a bit set rather than one name (03 §5).
 ///
 /// One name still works, and every existing view keeps meaning what it did:
@@ -1857,7 +1987,16 @@ fn fingerprint_of(v: &Value) -> Option<[u8; 16]> {
 /// op that removes a node is the only op there is — and two is written as a
 /// list: `["enter", "exit"]`.
 fn animation_of(v: &Json) -> Result<u8, String> {
-    const NAMES: &[(&str, u8)] = &[("none", 0), ("spin", 1), ("enter", 2), ("exit", 4)];
+    // `pulse` and `bounce` are version 6; `Encoder::style` takes them off a
+    // record for a session below it (`StyleRecord::for_protocol`).
+    const NAMES: &[(&str, u8)] = &[
+        ("none", 0),
+        ("spin", 1),
+        ("enter", 2),
+        ("exit", 4),
+        ("pulse", 8),
+        ("bounce", 16),
+    ];
     match v.as_array() {
         Some(items) => items
             .iter()
@@ -2961,6 +3100,161 @@ mod tests {
         // And a render with no handshake behind it is at ours.
         let got = defined_styles(&mut Encoder::default(), &view);
         assert_eq!(got[0].gap, 13);
+    }
+
+    fn all_ops(enc: &mut Encoder, view: &serde_json::Value) -> Vec<Op> {
+        enc.render(view, false)
+            .unwrap()
+            .into_iter()
+            .flat_map(|b| b.ops)
+            .collect()
+    }
+
+    #[test]
+    fn a_gradient_background_is_defined_once_per_session() {
+        // eui 02 §5.3: a `bg` hash naming a gradient becomes one
+        // `DefGradient`, before the `DefStyle` that names it, and the same
+        // gradient written again -- here by a second node, and by a second
+        // render -- is the same id and no second definition.
+        let card = json!({"bg": {"gradient": {"to": "right", "stops": ["accent.base", ["#ff80b5", 255]]}}, "pad": 5});
+        let view = json!({"k": "box", "c": [{"k": "box", "s": card}, {"k": "box", "s": {"bg": {"gradient": {"angle": 90, "stops": [["accent.base", 0], ["#ff80b5", 255]]}}}}]});
+        let mut enc = Encoder::default();
+        let ops = all_ops(&mut enc, &view);
+        let defs: Vec<(usize, u32, Gradient)> = ops
+            .iter()
+            .enumerate()
+            .filter_map(|(i, op)| match op {
+                Op::DefGradient { id, gradient } => Some((i, *id, *gradient)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            defs.len(),
+            1,
+            "`to right` and 90 degrees are one gradient: {ops:?}"
+        );
+        let (at, id, g) = defs[0];
+        assert_eq!((id, g.angle, g.count), (1, 90, 2));
+        assert_eq!(
+            g.stops()[0].color,
+            ColorRef::role(role_id("accent.base").unwrap())
+        );
+        assert!(g.stops()[1].color.is_literal() && g.stops()[1].at == 255);
+        let colour = ops
+            .iter()
+            .position(|op| {
+                matches!(
+                    op,
+                    Op::DefColor {
+                        rgba: 0xFF80B5FF,
+                        ..
+                    }
+                )
+            })
+            .unwrap();
+        let style = ops
+            .iter()
+            .position(|op| matches!(op, Op::DefStyle { record, .. } if record.bg == ColorRef::gradient(1)))
+            .unwrap();
+        assert!(
+            colour < at && at < style,
+            "the colour, then the gradient, then the style"
+        );
+        let again = all_ops(&mut enc, &json!({"k": "box", "s": card}));
+        assert!(
+            !again.iter().any(|op| matches!(op, Op::DefGradient { .. })),
+            "defined once"
+        );
+
+        // Positions spread evenly when none is given; a corner is its code.
+        let mut enc = Encoder::default();
+        let ops = all_ops(
+            &mut enc,
+            &json!({"k": "box", "s": {"bg": {"gradient": {"to": "top right", "stops": ["accent.base", "info.base", "danger.base"]}}}}),
+        );
+        let g = ops
+            .iter()
+            .find_map(|op| match op {
+                Op::DefGradient { gradient, .. } => Some(*gradient),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(g.angle, Gradient::TO_TOP_RIGHT);
+        assert_eq!(
+            g.stops().iter().map(|s| s.at).collect::<Vec<_>>(),
+            [0, 128, 255]
+        );
+        // And the shapes it refuses, each saying why.
+        for (bad, why) in [
+            (
+                json!({"gradient": {"stops": ["accent.base"]}}),
+                "two or three stops",
+            ),
+            (
+                json!({"gradient": {"to": "up", "stops": ["accent.base", "info.base"]}}),
+                "goes to top",
+            ),
+            (
+                json!({"gradient": {"angle": 360, "stops": ["accent.base", "info.base"]}}),
+                "0 to 359",
+            ),
+            (
+                json!({"gradient": {"stops": [["accent.base", 200], ["info.base", 100]]}}),
+                "forwards",
+            ),
+            (
+                json!({"gradient": {"stops": ["none", "info.base"]}}),
+                "not none",
+            ),
+            (
+                json!({"gradient": {"stops": ["accent.base", "info.base"], "via": "x"}}),
+                "not `via`",
+            ),
+            (json!({"linear": 1}), "a bg hash"),
+        ] {
+            let err = Encoder::default()
+                .render(&json!({"k": "box", "s": {"bg": bad}}), false)
+                .unwrap_err();
+            assert!(err.contains(why), "{why}: {err}");
+        }
+    }
+
+    #[test]
+    fn an_older_session_is_sent_a_gradients_first_stop_and_no_pulse_or_bounce() {
+        // eui 02 §5.3 and 03 §5: `DefGradient`, the gradient range and the
+        // `animation` bits 8 and 16 are version 6. A session at 5 gets the
+        // first stop as a solid `bg` and the bits it knows.
+        let view = json!({"k": "box", "s": {"bg": {"gradient": {"to": "bottom", "stops": ["#123456", "info.base"]}}, "animation": ["spin", "pulse", "bounce"]}});
+        let mut old = Encoder::default();
+        old.set_protocol(5);
+        let ops = all_ops(&mut old, &view);
+        assert!(
+            !ops.iter().any(|op| matches!(op, Op::DefGradient { .. })),
+            "{ops:?}"
+        );
+        let got = defined_styles(
+            &mut Encoder {
+                version: 5,
+                ..Encoder::default()
+            },
+            &view,
+        );
+        assert!(
+            got[0].bg.is_literal(),
+            "the first stop, #123456: {:?}",
+            got[0].bg
+        );
+        assert_eq!(
+            got[0].animation, 1,
+            "spin, and nothing a version-5 client refuses"
+        );
+
+        let mut new = Encoder::default();
+        new.set_protocol(6);
+        let got = defined_styles(&mut new, &view);
+        assert_eq!(got[0].bg, ColorRef::gradient(1));
+        assert_eq!(got[0].animation, 1 | 8 | 16);
+        assert_eq!(animation_of(&json!("bounce")).unwrap(), 16);
     }
 
     #[test]

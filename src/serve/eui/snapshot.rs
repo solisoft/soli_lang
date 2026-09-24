@@ -683,6 +683,65 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_one_shot_render_below_6_carries_no_gradient_and_no_pulse() {
+        // eui 02 §5.3 and 03 §5 through `render_once`, the path `eui_render`
+        // and `GET /_eui/view?v=` share: at 5 the body decodes under the
+        // version-5 rules -- no `DefGradient`, a solid first stop, no bit 8
+        // -- and at 6 it carries the gradient.
+        use base64::Engine as _;
+        let tree = crate::interpreter::value::json_to_value(serde_json::json!(
+            {"k": "box", "s": {"bg": {"gradient": {"to": "right", "stops": ["accent.base", "danger.base"]}}, "animation": "pulse"}}
+        ))
+        .unwrap();
+        let ops = |version: u32| -> Vec<eui_proto::Op> {
+            let out = render_once(&tree, version, None).unwrap();
+            let Value::Hash(h) = out else {
+                panic!("a response hash")
+            };
+            let key = crate::interpreter::value::HashKey::String("body_base64".into());
+            let Some(Value::String(b)) = h.borrow().get(&key).cloned() else {
+                panic!("a body")
+            };
+            let body = base64::engine::general_purpose::STANDARD
+                .decode(b.as_bytes())
+                .unwrap();
+            let (mut at, mut ops) = (0, Vec::new());
+            while at < body.len() {
+                let (frame, used) = Frame::decode_prefix(&body[at..]).unwrap();
+                at += used;
+                if let Frame::Batch(b) = frame {
+                    ops.extend(b.ops);
+                }
+            }
+            ops
+        };
+        let style = |ops: &[eui_proto::Op]| {
+            ops.iter()
+                .find_map(|op| match op {
+                    eui_proto::Op::DefStyle { record, .. } => Some(*record),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let old = ops(5);
+        assert!(!old
+            .iter()
+            .any(|op| matches!(op, eui_proto::Op::DefGradient { .. })));
+        assert_eq!(
+            style(&old).bg,
+            eui_proto::ColorRef::role(9),
+            "accent.base, solid"
+        );
+        assert_eq!(style(&old).animation, 0);
+        let new = ops(6);
+        assert!(new
+            .iter()
+            .any(|op| matches!(op, eui_proto::Op::DefGradient { .. })));
+        assert!(style(&new).bg.is_gradient());
+        assert_eq!(style(&new).animation, eui_proto::ANIMATION_PULSE);
+    }
+
+    #[test]
     fn a_one_shot_render_is_sent_the_space_steps_its_version_has() {
         // 01 §2.4 puts the client's version in the query, and 05 §2 says a
         // session below 6 is sent a fallback for `space` 13-17. `eui_render`
