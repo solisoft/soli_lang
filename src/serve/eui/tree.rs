@@ -2559,6 +2559,97 @@ mod tests {
         assert_ne!(before, after, "the pointer outlived its contents");
     }
 
+    /// The trap a mail reader's cursor was blamed on (eui memory, September
+    /// 2026): a row whose only change is its style was said to receive no
+    /// `SetStyle`. It does, keyed or not, through the path a Soli view
+    /// takes — two ops, one per row that changed, and nothing else. What
+    /// was actually seen was the snapshot tool photographing the first
+    /// frame of the row's `transition`; the pin is here so the claim cannot
+    /// come back as folklore.
+    #[test]
+    fn a_style_only_change_is_one_set_style_per_row_keyed_or_not() {
+        for keyed in [false, true] {
+            let row = |i: i64, sel: i64| {
+                let bg = if i == sel {
+                    "danger.base"
+                } else {
+                    "surface.raised"
+                };
+                let mut pairs = vec![
+                    ("k", s("box")),
+                    (
+                        "s",
+                        h(vec![
+                            ("height", Value::Int(40)),
+                            ("bg", s(bg)),
+                            ("transition", s("fast")),
+                        ]),
+                    ),
+                    (
+                        "c",
+                        list(vec![h(vec![
+                            ("k", s("text")),
+                            ("t", s(&format!("Row {i}"))),
+                        ])]),
+                    ),
+                ];
+                if keyed {
+                    pairs.push(("key", s(&format!("r{i}"))));
+                }
+                h(pairs)
+            };
+            let view = |sel: i64| {
+                h(vec![
+                    ("k", s("box")),
+                    ("c", list((0..3).map(|i| row(i, sel)).collect())),
+                ])
+            };
+            let session = if keyed {
+                "style-only-keyed"
+            } else {
+                "style-only"
+            };
+            let mut enc = Encoder::default();
+            enc.render_value(session, &view(0), false).unwrap();
+            let rows: Vec<u32> = enc
+                .prev
+                .as_ref()
+                .unwrap()
+                .children
+                .iter()
+                .map(|c| c.id)
+                .collect();
+            let lit = enc.prev.as_ref().unwrap().children[0].style;
+            let ops: Vec<Op> = enc
+                .render_value(session, &view(1), false)
+                .unwrap()
+                .into_iter()
+                .flat_map(|b| b.ops)
+                .collect();
+            let restyled: Vec<(u32, u32)> = ops
+                .iter()
+                .filter_map(|o| match o {
+                    Op::SetStyle { node, style } => Some((*node, *style)),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                restyled.len(),
+                2,
+                "keyed={keyed}: one per row that changed, got {ops:?}"
+            );
+            assert_eq!(ops.len(), 2, "keyed={keyed}: and nothing else, got {ops:?}");
+            assert!(
+                restyled.contains(&(rows[1], lit)),
+                "keyed={keyed}: the lit record moved to row 1"
+            );
+            assert!(
+                restyled.iter().any(|(n, st)| *n == rows[0] && *st != lit),
+                "keyed={keyed}: and left row 0"
+            );
+        }
+    }
+
     #[test]
     fn a_local_handler_is_compiled_once_per_source_however_it_is_keyed() {
         let mut enc = Encoder::default();

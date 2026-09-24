@@ -117,12 +117,13 @@
     <p class="text-gray-400 mb-8">Editable fields are the <code>input</code> and <code>textarea</code> primitives; everything else is composed. A field reports its value through the event it names.</p>
     <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
         <div class="px-5 py-3 border-b border-white/5">
-            <code class="text-cyan-400 text-sm font-semibold">input(value, on_change)</code>
+            <code class="text-cyan-400 text-sm font-semibold">input(value, on_change, o = {})</code>
             <p class="text-gray-400 text-sm mt-1.5">A single-line field. The event fires per keystroke with the value in <code>params</code>.</p>
+            <p class="text-gray-400 text-sm mt-1.5"><code>o["placeholder"]</code> is the hint the field shows while it is empty — drawn by the client in <code>text.muted</code>, gone at the first character, back when the field is emptied, and announced to a screen reader as the field's placeholder. It is never the value: nothing the field sends carries it. <code>textarea</code>, <code>field</code> and every <code>*_field</code> below take it the same way.</p>
         </div>
         <div class="grid md:grid-cols-2 gap-0">
             <div class="p-4 bg-[#171412] overflow-x-auto">
-<pre><code class="language-soli text-sm">input(state["email"], "email_changed")</code></pre>
+<pre><code class="language-soli text-sm">input(state["email"], "email_changed", {"placeholder": "you@example.com"})</code></pre>
             </div>
             <div class="p-5 flex items-center justify-center border-t md:border-t-0 md:border-l border-white/5">
                 <div style="background:#17161c;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;width:220px"><div style="background:#1f1e26;border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:8px 10px;color:#e5e7eb;font:13px system-ui">alice@example.com</div></div>
@@ -145,8 +146,8 @@
     </div>
     <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
         <div class="px-5 py-3 border-b border-white/5">
-            <code class="text-cyan-400 text-sm font-semibold">field(label, value, on_change)</code>
-            <p class="text-gray-400 text-sm mt-1.5">A labelled input &mdash; <code>labelled</code> plus <code>input</code>.</p>
+            <code class="text-cyan-400 text-sm font-semibold">field(label, value, on_change, o = {})</code>
+            <p class="text-gray-400 text-sm mt-1.5">A labelled input &mdash; <code>labelled</code> plus <code>input</code>. <code>o</code> is handed to the <code>input</code>, so <code>{"placeholder": …}</code> works here too.</p>
         </div>
         <div class="grid md:grid-cols-2 gap-0">
             <div class="p-4 bg-[#171412] overflow-x-auto">
@@ -371,7 +372,7 @@
     <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
         <div class="px-5 py-3 border-b border-white/5">
             <code class="text-cyan-400 text-sm font-semibold">field_props(label, error, bad, o)</code>
-            <p class="text-gray-400 text-sm mt-1.5">What the field says about itself. The client reads `label`, `description`, `required` and `invalid` by name (03 §4), so a wrong value is announced as wrong rather than only painted that way, and the sentence a sighted person reads under the field is the one a screen reader is given.</p>
+            <p class="text-gray-400 text-sm mt-1.5">What the field says about itself. The client reads `label`, `description`, `required` and `invalid` by name (03 §4), so a wrong value is announced as wrong rather than only painted that way, and the sentence a sighted person reads under the field is the one a screen reader is given. <code>o["placeholder"]</code> becomes the <code>placeholder</code> prop &mdash; an example inside the empty box, beside <code>o["hint"]</code>, the sentence under it that stays.</p>
         </div>
 <div class="p-4 bg-[#171412] overflow-x-auto">
 <pre><code class="language-soli text-sm">"props": field_props(label, error, bad, o)</code></pre>
@@ -381,7 +382,7 @@
     <div class="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden mb-6">
         <div class="px-5 py-3 border-b border-white/5">
             <code class="text-cyan-400 text-sm font-semibold">text_field(label, value, on_change, o = {})</code>
-            <p class="text-gray-400 text-sm mt-1.5">A line of anything. It judges nothing on its own; `o["error"]` and `o["required"]` are the only ways it goes wrong.</p>
+            <p class="text-gray-400 text-sm mt-1.5">A line of anything. It judges nothing on its own; `o["error"]` and `o["required"]` are the only ways it goes wrong. <code>o["placeholder"]</code> is the hint in the empty box.</p>
         </div>
 <div class="p-4 bg-[#171412] overflow-x-auto">
 <pre><code class="language-soli text-sm">text_field("Reference", state["nf_ref"], "nf_ref", {</code></pre>

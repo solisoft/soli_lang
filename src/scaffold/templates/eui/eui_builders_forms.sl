@@ -2283,6 +2283,10 @@ def field_props(label, error, bad, o)
   props["description"] = note if note != ""
   props["invalid"] = true if bad
   props["required"] = true if o["required"] == true
+  # The hint an empty field shows in its own box (03 §3). Beside `hint`, not
+  # instead of it: that one is a sentence under the field that stays, this is
+  # an example inside it that goes the moment anything is typed.
+  props["placeholder"] = o["placeholder"] if (o["placeholder"] ?? "") != ""
   props
 end
 

@@ -78,12 +78,14 @@ local_button("+", "state.count += 1", "increment")
 
 Editable fields are the `input` and `textarea` primitives; everything else is composed. A field reports its value through the event it names.
 
-#### `input(value, on_change)`
+#### `input(value, on_change, o = {})`
 
 A single-line field. The event fires per keystroke with the value in `params`.
 
+`o["placeholder"]` is the hint the field shows while it is empty — drawn by the client in `text.muted`, gone at the first character, back when the field is emptied, and announced to a screen reader as the field's placeholder. It is never the value: nothing the field sends carries it. `textarea`, `field` and every `*_field` below take it the same way.
+
 ```soli
-input(state["email"], "email_changed")
+input(state["email"], "email_changed", {"placeholder": "you@example.com"})
 ```
 
 #### `sized_input(value, on_change, width)`
@@ -94,9 +96,9 @@ The same field at a fixed width, for inline and grid editing.
 sized_input(cell, "cell_changed", 120)
 ```
 
-#### `field(label, value, on_change)`
+#### `field(label, value, on_change, o = {})`
 
-A labelled input — `labelled` plus `input`.
+A labelled input — `labelled` plus `input`. `o` is handed to the `input`, so `{"placeholder": …}` works here too.
 
 ```soli
 field("Email", state["email"], "email_changed")
@@ -273,7 +275,7 @@ The style every field control shares. It fills its column unless a width was ask
 
 #### `field_props(label, error, bad, o)`
 
-What the field says about itself. The client reads `label`, `description`, `required` and `invalid` by name (03 §4), so a wrong value is announced as wrong rather than only painted that way, and the sentence a sighted person reads under the field is the one a screen reader is given.
+What the field says about itself. The client reads `label`, `description`, `required` and `invalid` by name (03 §4), so a wrong value is announced as wrong rather than only painted that way, and the sentence a sighted person reads under the field is the one a screen reader is given. `o["placeholder"]` becomes the `placeholder` prop — an example inside the empty box, beside `o["hint"]`, the sentence under it that stays.
 
 ```soli
 "props": field_props(label, error, bad, o)
@@ -283,7 +285,7 @@ What the field says about itself. The client reads `label`, `description`, `requ
 
 #### `text_field(label, value, on_change, o = {})`
 
-A line of anything. It judges nothing on its own; `o["error"]` and `o["required"]` are the only ways it goes wrong.
+A line of anything. It judges nothing on its own; `o["error"]` and `o["required"]` are the only ways it goes wrong. `o["placeholder"]` is the hint in the empty box.
 
 ```soli
 text_field("Reference", state["nf_ref"], "nf_ref", {

@@ -172,7 +172,9 @@ end
 # `o` narrows a field without its caller having to reach into the hash
 # afterwards: `style` is merged over the resting style, `props` is the
 # identity and the semantics the handler and the screen reader read back,
-# `key` names the node, and `on` adds handlers beside `change`.
+# `key` names the node, `on` adds handlers beside `change`, and
+# `placeholder` is the hint the client draws in `text.muted` while the field
+# is empty (03 §3) -- never the value, and never sent back.
 #
 # `change` is not one per keystroke. The client sends it when the field is
 # left or `Enter` is pressed, and only when the value differs from the one
@@ -242,6 +244,8 @@ def editable(kind, value, on_change, o)
     n["on"] = editable_states(style, key, n["on"])
   end
   props = o["props"] ?? {}
+  hint = o["placeholder"] ?? ""
+  props = props.merge({"placeholder": hint}) if hint != ""
   n["p"] = props if props.keys().length() > 0
   n
 end
@@ -1410,8 +1414,8 @@ def field_label(label)
   text(label, {"size": 1, "weight": "medium", "fg": "text.default"})
 end
 
-def field(label, value, on_change)
-  column({"gap": 3}, [field_label(label), input(value, on_change)])
+def field(label, value, on_change, o = {})
+  column({"gap": 3}, [field_label(label), input(value, on_change, o)])
 end
 
 def form(children, submit_label, on_submit)
