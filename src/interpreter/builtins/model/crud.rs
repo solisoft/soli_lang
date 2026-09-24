@@ -1398,13 +1398,49 @@ pub fn exec_with_auto_collection(
 
 /// Execute query returning Value with automatic collection creation.
 pub fn exec_auto_collection(sdbql: String, collection_name: &str) -> Value {
-    match exec_with_auto_collection(sdbql, None, collection_name) {
-        Ok(results) => {
-            let values: Vec<Value> = results.into_iter().map(json_to_value_owned).collect();
-            Value::Array(Rc::new(RefCell::new(values)))
-        }
+    match exec_values_with_auto_collection(sdbql, None, collection_name) {
+        Ok(values) => Value::Array(Rc::new(RefCell::new(values))),
         Err(e) => Value::String(format!("Error: {}", e).into()),
     }
+}
+
+/// [`exec_with_auto_collection`] for a caller that wants Soli values.
+///
+/// On the native driver the rows are decoded straight from MessagePack into
+/// Soli values (`driver::query_values`), skipping the `serde_json::Value`
+/// tree the JSON path builds and then converts — the largest per-row cost of
+/// a plain read. Everything that path does not cover (a registered mock, a
+/// SQL adapter, a missing collection to create, the HTTP transport) takes the
+/// JSON path below, unchanged.
+fn exec_values_with_auto_collection(
+    sdbql: String,
+    bind_vars: Option<HashMap<String, serde_json::Value>>,
+    collection_name: &str,
+) -> Result<Vec<Value>, String> {
+    if driver::query_may_handle() && !crate::db::is_sql() && get_mock_for_query(&sdbql).is_none() {
+        let started = super::query_log::is_enabled().then(std::time::Instant::now);
+        let log_binds = if started.is_some() {
+            bind_vars.clone()
+        } else {
+            None
+        };
+        if let Some(result) = driver::query_values(&sdbql, bind_vars.clone()) {
+            if let Some(started) = started {
+                super::query_log::record(
+                    sdbql.clone(),
+                    log_binds,
+                    started.elapsed().as_secs_f64() * 1000.0,
+                );
+            }
+            match result {
+                // Let the JSON path create the collection and retry.
+                Err(ref e) if is_missing_collection_or_database_error(e) => {}
+                other => return other,
+            }
+        }
+    }
+    exec_with_auto_collection(sdbql, bind_vars, collection_name)
+        .map(|rows| rows.into_iter().map(json_to_value_owned).collect())
 }
 
 /// Execute query with binds returning Value with automatic collection creation.
@@ -1413,11 +1449,8 @@ pub fn exec_auto_collection_with_binds(
     bind_vars: HashMap<String, serde_json::Value>,
     collection_name: &str,
 ) -> Value {
-    match exec_with_auto_collection(sdbql, Some(bind_vars), collection_name) {
-        Ok(results) => {
-            let values: Vec<Value> = results.into_iter().map(json_to_value_owned).collect();
-            Value::Array(Rc::new(RefCell::new(values)))
-        }
+    match exec_values_with_auto_collection(sdbql, Some(bind_vars), collection_name) {
+        Ok(values) => Value::Array(Rc::new(RefCell::new(values))),
         Err(e) => Value::String(format!("Error: {}", e).into()),
     }
 }
@@ -1493,6 +1526,20 @@ mod driver {
     ) -> Option<Result<Vec<Value>, String>> {
         #[cfg(feature = "solidb-driver")]
         return imp::try_query(sdbql, binds);
+        #[cfg(not(feature = "solidb-driver"))]
+        {
+            let _ = (sdbql, binds);
+            None
+        }
+    }
+
+    /// [`query`], with rows decoded straight into Soli values.
+    pub fn query_values(
+        sdbql: &str,
+        binds: Option<std::collections::HashMap<String, Value>>,
+    ) -> Option<Result<Vec<crate::interpreter::value::Value>, String>> {
+        #[cfg(feature = "solidb-driver")]
+        return imp::try_query_values(sdbql, binds);
         #[cfg(not(feature = "solidb-driver"))]
         {
             let _ = (sdbql, binds);

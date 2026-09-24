@@ -7257,8 +7257,8 @@ dependencies = [
 
 [[package]]
 name = "sdbql-core"
-version = "0.10.1"
-source = "git+https://github.com/solisoft/solidb#068b403b58f2902fbb9a48111d4e7e5fa7ec725f"
+version = "1.1.0"
+source = "git+https://github.com/solisoft/solidb#ef1679bb5df9f10837091811a9b9c6d188ffb9a1"
 dependencies = [
  "chrono",
  "regex",
@@ -7707,8 +7707,8 @@ dependencies = [
 
 [[package]]
 name = "solidb-client"
-version = "0.9.1"
-source = "git+https://github.com/solisoft/solidb#068b403b58f2902fbb9a48111d4e7e5fa7ec725f"
+version = "1.1.0"
+source = "git+https://github.com/solisoft/solidb#ef1679bb5df9f10837091811a9b9c6d188ffb9a1"
 dependencies = [
  "chrono",
  "dirs",

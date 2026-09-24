@@ -274,6 +274,30 @@ pub fn try_query(
     })
 }
 
+/// [`try_query`], but the rows are decoded straight from the wire into Soli
+/// values — no `serde_json::Value` in between. For a plain read that is one
+/// decode of the result set instead of two, the dominant cost of a small
+/// query on this transport.
+pub fn try_query_values(
+    sdbql: &str,
+    bind_vars: Option<std::collections::HashMap<String, Value>>,
+) -> Option<Result<Vec<crate::interpreter::value::Value>, String>> {
+    if !query_enabled() {
+        return None;
+    }
+    let q = sdbql.to_string();
+    let db = get_database_name();
+    let cache = !no_query_cache();
+    with_client(move |client| {
+        block_on_db(async move {
+            client
+                .query_as::<crate::interpreter::value::Value>(&db, &q, bind_vars, cache)
+                .await
+                .map_err(|e| format!("driver query failed: {e}"))
+        })
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Result ordering: no difference (an earlier note here said otherwise)
 // ---------------------------------------------------------------------------
