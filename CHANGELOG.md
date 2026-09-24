@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-09-24
+
+v2.4.0 was tagged and never published: its CI failed before the release jobs ran. Everything listed under 2.4.0 ships in this release.
+
+### Fixed
+
+* **fix(ci):** the unwrap ratchet counts tests too, and one had grown it. A test added to `src/template` took the template module to 242 `.unwrap()`/`.expect()` calls against a baseline of 241, so the clippy job's `scripts/lint_unwraps.sh` step failed on every push — v2.4.0's tag included, which is why no binaries, GitHub release or Docker image were built for it. The assertion now reads the `Result` instead of unwrapping it, and the baseline takes the parser's drop from 130 to 128
+
 ## [2.4.0] - 2026-09-24
 
 ### Added

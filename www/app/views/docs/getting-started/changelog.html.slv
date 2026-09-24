@@ -20,12 +20,23 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.4.0.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.4.1.</p>
+
+    </section>
+
+    <section id="v2-4-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.4.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-24</span></h2>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">v2.4.0 was tagged and never published; everything listed under it ships in this release.</p>
+
+        <h3 id="v2-4-1-tooling" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Tooling</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">The unwrap ratchet counts tests too, and one had grown it.</strong> A test added to <code class="text-cyan-400">src/template</code> took the module one <code class="text-cyan-400">.unwrap()</code> over its baseline, so the CI step that freezes those counts failed on every push &mdash; v2.4.0&rsquo;s tag included, which is why nothing was built for it. The assertion reads the <code class="text-cyan-400">Result</code> now, and the baseline locks in the parser&rsquo;s drop from 130 to 128.</li>
+        </ul>
 
     </section>
 
     <section id="v2-4-0" class="mb-16 scroll-mt-24">
-        <h2 class="text-3xl font-bold text-white mb-4">v2.4.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-24</span></h2>
+        <h2 class="text-3xl font-bold text-white mb-4">v2.4.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-24</span> <span class="text-amber-400/70 text-base font-normal">&mdash; tagged, never published</span></h2>
 
         <h3 id="v2-4-0-mail" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Mail</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
