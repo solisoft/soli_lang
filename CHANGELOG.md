@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+
+* **feat(test):** **`mock_http_route(path, status, body)` and `mock_http_last_body(path)` script the test HTTP server.** `mock_http_server_start()` answered `{"ok":true}` on every path, which was enough to test the `HTTP` client and nothing else. A scripted path now answers its own status and body (for any method; the query string is ignored), unscripted paths keep the old answer, and the body of the last request on each path is kept (up to 64 KiB) for the spec to read back. The listener is a real loopback socket, so the app's test server — another process — reaches it as it would a third-party service: an app used it to stand in for an OpenID provider (discovery document, JWKS, token endpoint), drive its SSO flow end to end, and prove the PKCE verifier sent to the token endpoint matches the challenge. Test-only, like the rest of the test DSL. Tests: `mock_http::tests::scripted_routes_answer_and_keep_the_posted_body`.
+* **feat(test):** **worker rows name specs by their folder.** The live grid showed `api_debit_spec` where the spec is `controllers/api/api_debit_spec`, so two parts of a split spec, or two same-stem specs in different folders, could not be told apart. Rows now show the path under the tested directory, and a squeezed row drops leading folders (`…import/referentiel_import_depart_spec`) instead of the filename. Tests: `spec_label_keeps_the_folder_under_the_tested_directory`, `a_narrow_worker_row_keeps_the_end_of_the_path`.
+
+### Fixed
+
+* **fix(coverage):** **lambda bodies are counted in the file that defines them.** A lambda was stamped with the *entry script* (the running spec, or the request's controller) instead of its own file, so every line it ran was keyed to its caller and reported as never hit. A service that builds results in lambdas sat at 72 % with its fifteen result shapes "uncovered" while every one was rendered by a passing test; in a controller the entry script happens to be the controller, which hid the bug there. The lambda now takes the calling frame's file, as statement coverage already did. Tests: `tests/coverage_lambda_test.rs`.
+* **fix(test):** **the run summary no longer prints `/file_spec.sl`.** A spec at the top of the tested directory has an empty parent path, not `.`, and the summary joined it as a folder. Test: `relative_parent_is_none_at_the_top_of_the_tested_directory`.
+* **fix(views):** **the rendered-page cache is keyed by locale and skipped for requests with a session.** Each worker's response cache keyed a body by `(template, layout, data signature)`. `t()` reads the locale from a thread-local, not from the data, so after a language switch a worker that had rendered a page in `fr` kept serving that body to `en` requests. The pages flipped language depending on which worker answered. The locale is now in the key. A layout that reads the session (`current_user`, `signed_in?`) was also cached across people whose controller data hashed the same, so a request with a session no longer reads or fills the cache. Anonymous pages keep it. Tests: `response_cache::tests::the_locale_is_part_of_the_key`, `a_session_marks_the_request_personal`.
+
 ## [2.5.4] - 2026-09-25
 
 ### Added

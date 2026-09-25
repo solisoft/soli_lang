@@ -144,7 +144,12 @@ impl TemplateCache {
         // proportional to the whole result set — and for a layout containing
         // `csrf_meta_tag()` (the `soli new` default) the result is discarded
         // every time. See `response_cache::is_known_uncacheable`.
-        if response_cache::is_known_uncacheable(&template_path, layout_name) {
+        // A request with a session skips it too: the layout can read the
+        // session (`current_user`, `signed_in?`), which the data signature
+        // cannot see, so one person's page would be served to the next.
+        if response_cache::request_has_session()
+            || response_cache::is_known_uncacheable(&template_path, layout_name)
+        {
             return self.render_uncached(template_name, data, layout, &template_path, layout_name);
         }
 

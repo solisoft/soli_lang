@@ -4,7 +4,7 @@
 //! — the default `soli new` `HomeController#index` is the canonical
 //! example — every request would otherwise re-walk the template AST and
 //! re-derive the same ETag. This cache short-circuits that work by
-//! indexing the rendered body by `(template_path, layout_name,
+//! indexing the rendered body by `(template_path, layout_name, locale,
 //! data_signature)`.
 //!
 //! The data signature is a 64-bit FNV-1a hash of the data `Value`
@@ -24,6 +24,14 @@
 //!   data changes between requests.
 //! * Both flags reset on the next call to [`reset_for_new_request`]
 //!   (wired into `handle_request`).
+//! * The active locale is part of the key. A view's `t()` calls read it
+//!   from a thread-local, not from the data, so without it a worker that
+//!   first rendered a page in `fr` served that `fr` body to every later
+//!   `en` request with the same data.
+//! * A request with a session never touches the cache
+//!   ([`request_has_session`]): a layout that reads the session
+//!   (`current_user`, `signed_in?`) renders per person, and the data
+//!   signature cannot see that.
 //! * The cache is per-thread, sized at 64 entries, LRU-evicted. It
 //!   never spans workers, so the same request could be served a
 //!   freshly-cached body or re-rendered on first hit depending on
@@ -39,12 +47,13 @@ use lru::LruCache;
 
 const MAX_CACHE_SIZE: NonZero<usize> = NonZero::new(64).unwrap();
 
-/// `(template path, layout name, data signature)`. `Arc<PathBuf>` keeps
+/// `(template path, layout name, locale, data signature)`. `Arc<PathBuf>` keeps
 /// the key cheap to construct on a hit (no path clone per request).
 #[derive(Clone)]
 struct CacheKey {
     template_path: Arc<PathBuf>,
     layout: Option<Arc<str>>,
+    locale: String,
     data_sig: u64,
 }
 
@@ -52,6 +61,7 @@ impl PartialEq for CacheKey {
     fn eq(&self, other: &Self) -> bool {
         self.data_sig == other.data_sig
             && self.layout == other.layout
+            && self.locale == other.locale
             && self.template_path == other.template_path
     }
 }
@@ -62,6 +72,7 @@ impl std::hash::Hash for CacheKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.template_path.hash(state);
         self.layout.hash(state);
+        self.locale.hash(state);
         self.data_sig.hash(state);
     }
 }
@@ -127,6 +138,12 @@ fn mark_uncacheable(template_path: Arc<PathBuf>, layout: Option<&str>) {
     });
 }
 
+/// Whether the current request carries a session, in which case its render
+/// may depend on who is asking and must not be cached or served from cache.
+pub fn request_has_session() -> bool {
+    crate::interpreter::builtins::session::get_current_session_id().is_some()
+}
+
 /// Reset per-request cacheability state. Called at the top of
 /// `handle_request` so each request starts with both dirty flags
 /// cleared.
@@ -186,6 +203,7 @@ pub fn get(
     let key = CacheKey {
         template_path,
         layout: layout.map(Arc::from),
+        locale: crate::interpreter::builtins::i18n::helpers::get_locale(),
         data_sig,
     };
     RESPONSE_CACHE.with(|c| c.borrow_mut().get(&key).cloned())
@@ -210,6 +228,7 @@ pub fn put(
     let key = CacheKey {
         template_path,
         layout: layout.map(Arc::from),
+        locale: crate::interpreter::builtins::i18n::helpers::get_locale(),
         data_sig,
     };
     let value = CachedResponse { body, etag };
@@ -383,6 +402,46 @@ mod tests {
         );
         clear_cache();
         assert!(get(path, Some("application"), 42).is_none());
+    }
+
+    /// `t()` reads the locale from a thread-local, not from the render data,
+    /// so a body rendered in one locale must not answer a request in another.
+    #[test]
+    fn the_locale_is_part_of_the_key() {
+        use crate::interpreter::builtins::i18n::helpers::set_locale;
+        reset_for_new_request();
+        clear_cache();
+        let path = Arc::new(PathBuf::from("app/views/mesures/index.html.slv"));
+
+        set_locale("fr");
+        put(
+            path.clone(),
+            Some("application"),
+            7,
+            "Mesures".into(),
+            String::new(),
+        );
+        set_locale("en");
+        assert!(
+            get(path.clone(), Some("application"), 7).is_none(),
+            "an en request must not get the fr body"
+        );
+        set_locale("fr");
+        assert_eq!(
+            get(path, Some("application"), 7).map(|c| c.body),
+            Some("Mesures".to_string())
+        );
+        set_locale("");
+    }
+
+    #[test]
+    fn a_session_marks_the_request_personal() {
+        use crate::interpreter::builtins::session::set_current_session_id;
+        set_current_session_id(None);
+        assert!(!request_has_session());
+        set_current_session_id(Some("abc".into()));
+        assert!(request_has_session());
+        set_current_session_id(None);
     }
 
     /// A render site whose render trips a dirty flag must be remembered as
