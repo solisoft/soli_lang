@@ -101,9 +101,16 @@ impl TypeChecker {
                 body,
             } => self.check_lambda_expr(body, params, return_type),
             ExprKind::Throw(inner) => self.check_throw_expr(inner),
+            // `expr rescue fallback` yields either side, so its type is the
+            // two widened together — as the branches of a ternary are. Typing
+            // it as the fallback alone made `v = embed_batch(t) rescue null`
+            // a `Null`, and the `v[0]` that follows a nil check was refused
+            // as "cannot index Null": the whole script failed before its
+            // first line ran.
             ExprKind::Rescue { expr, fallback } => {
-                self.check_expr(expr)?;
-                self.check_expr(fallback)
+                let expr_type = self.check_expr(expr)?;
+                let fallback_type = self.check_expr(fallback)?;
+                Ok(self.widen_types(&expr_type, &fallback_type))
             }
 
             // String interpolation

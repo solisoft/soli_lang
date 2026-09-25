@@ -130,7 +130,15 @@ impl TypeChecker {
         // Auto-define: if target is an undefined variable, define it with the RHS type
         if let ExprKind::Variable(name) = &target.kind {
             if self.env.get(name).is_none() {
-                self.env.define(name.clone(), value_type.clone());
+                // Same reading as `let x = nil` (see `statements.rs`): a bare
+                // `x = nil` says nothing is known yet. Defining it as `Null`
+                // refused the next `x = records` as "expected Null, found …"
+                // — and the bare form is the one the conventions recommend.
+                let defined_type = match value_type {
+                    Type::Null => Type::Any,
+                    ref other => other.clone(),
+                };
+                self.env.define(name.clone(), defined_type);
                 return Ok(value_type);
             }
         }
