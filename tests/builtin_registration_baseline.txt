@@ -69,6 +69,8 @@ Factory.sequence
 it
 login
 logout
+mock_http_last_body
+mock_http_route
 mock_http_server_start
 pending
 # `current_user`, `render`, `redirect` and `request` only mean anything inside a
@@ -176,6 +178,8 @@ jwt_decode
 live_rooms
 locale
 max_body_size
+mock_http_last_body
+mock_http_route
 mock_http_server_start
 model_uploader_config
 model_uploader_fields

@@ -479,14 +479,51 @@ describe("Model Integration Tests", fn()
 end)
 ```
 
+## Mock HTTP Services
+
+When the code under test calls **another** service — a payment API, an
+OpenID provider, a webhook receiver — start the local mock server and script
+what it answers:
+
+```soli
+let port = mock_http_server_start()
+let base = "http://127.0.0.1:" + port.to_s
+
+# Any method on this path answers 200 with this body. The query string is
+# ignored; scripting the same path again replaces the answer.
+mock_http_route("/idp/.well-known/openid-configuration", 200, json_stringify({
+  "issuer": base + "/idp",
+  "token_endpoint": base + "/idp/token",
+  "jwks_uri": base + "/idp/keys"
+}))
+mock_http_route("/idp/token", 400, "{\"error\":\"invalid_grant\"}")
+
+# ... drive the app ...
+
+# What the app SENT is often the thing to prove.
+let sent = mock_http_last_body("/idp/token")
+assert(sent.includes?("code_verifier="))
+```
+
+- The server is a real socket on `127.0.0.1`, so the app's **test server** —
+  a separate process — reaches it exactly as it would reach the real service.
+  Point the app at `base` through whatever configuration it reads.
+- A path that was never scripted answers `200` with `{"ok":true}`.
+- `mock_http_last_body(path)` returns the body of the last request on that
+  path (up to 64 KiB), or `nil` if none arrived.
+- Routes are shared by the whole spec file. Give each test its own path
+  prefix so one test's answers never reply in another's place.
+- Test-only: none of the three exists in a served app.
+
 ## Test Results
 
 While the suite runs, each worker gets a row and the aggregate bar at the bottom
-carries the running totals:
+carries the running totals. A row names its spec by its path under the tested
+directory, and a narrow terminal shortens the folders before the filename:
 
 ```
- W0  [████████░░░░░░] ⠇ users_spec                       2.4s  6
- W1  [██████░░░░░░░░] ⠹ buildings_pages_spec            10.0s  4
+ W0  [████████░░░░░░] ⠇ models/users_spec                2.4s  6
+ W1  [██████░░░░░░░░] ⠹ controllers/buildings/pages_spec 10.0s  4
 
 [██████████░░░░░░░░░░░░░░░░░░░░] ⠇ 41/158 1 204 tests · 6 018 assertions
 ```

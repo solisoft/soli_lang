@@ -1014,6 +1014,35 @@ persisted = Factory.insert("user")</code></pre>
             </p>
         </div>
 
+        <h2 class="text-2xl font-bold text-white mb-6" id="section-mock-http">Mock HTTP Services</h2>
+        <p class="text-gray-400 mb-4">When the code under test calls <strong class="text-white">another</strong> service &mdash; a payment API, an OpenID provider, a webhook receiver &mdash; start the local mock server and script what it answers:</p>
+
+        <pre data-filename="tests/sso_spec.sl"><code class="language-soli text-sm">let port = mock_http_server_start()
+let base = "http://127.0.0.1:" + port.to_s
+
+# Any method on this path answers 200 with this body. The query string is
+# ignored; scripting the same path again replaces the answer.
+mock_http_route("/idp/.well-known/openid-configuration", 200, json_stringify({
+  "issuer": base + "/idp",
+  "token_endpoint": base + "/idp/token",
+  "jwks_uri": base + "/idp/keys"
+}))
+mock_http_route("/idp/token", 400, "{\"error\":\"invalid_grant\"}")
+
+# ... drive the app ...
+
+# What the app SENT is often the thing to prove.
+let sent = mock_http_last_body("/idp/token")
+assert(sent.includes?("code_verifier="))</code></pre>
+
+        <ul class="space-y-2 text-gray-400 text-sm leading-relaxed mb-8 list-disc pl-5">
+            <li>The server is a real socket on <code class="text-cyan-400">127.0.0.1</code>, so the app&rsquo;s <strong class="text-white">test server</strong> &mdash; a separate process &mdash; reaches it exactly as it would reach the real service. Point the app at <code class="text-cyan-400">base</code> through whatever configuration it reads.</li>
+            <li>A path that was never scripted answers <code class="text-cyan-400">200</code> with <code class="text-cyan-400">{"ok":true}</code>.</li>
+            <li><code class="text-cyan-400">mock_http_last_body(path)</code> returns the body of the last request on that path (up to 64 KiB), or <code class="text-cyan-400">nil</code> if none arrived.</li>
+            <li>Routes are shared by the whole spec file. Give each test its own path prefix so one test&rsquo;s answers never reply in another&rsquo;s place.</li>
+            <li>Test-only: none of the three exists in a served app.</li>
+        </ul>
+
         <h2 class="text-2xl font-bold text-white mb-6">Parallel Execution</h2>
         <p class="text-gray-400 mb-4">Tests run in parallel by default:</p>
 
@@ -1022,10 +1051,10 @@ soli test --jobs=4           # 4 workers
 soli test --jobs=1           # Sequential (debug)</code></pre>
 
         <h2 class="text-2xl font-bold text-white mb-6">Live Progress</h2>
-        <p class="text-gray-400 mb-4">While the suite runs, each worker gets a row and the aggregate bar at the bottom carries the running totals:</p>
+        <p class="text-gray-400 mb-4">While the suite runs, each worker gets a row and the aggregate bar at the bottom carries the running totals. A row names its spec by its path under the tested directory, and a narrow terminal shortens the folders before the filename:</p>
 
-        <pre data-filename="soli test"><code class="language-text text-sm"> W0  [████████░░░░░░] ⠇ users_spec                       2.4s  6
- W1  [██████░░░░░░░░] ⠹ buildings_pages_spec            10.0s  4
+        <pre data-filename="soli test"><code class="language-text text-sm"> W0  [████████░░░░░░] ⠇ models/users_spec                2.4s  6
+ W1  [██████░░░░░░░░] ⠹ controllers/buildings/pages_spec 10.0s  4
 
 [██████████░░░░░░░░░░░░░░░░░░░░] ⠇ 41/158 1 204 tests · 6 018 assertions</code></pre>
 

@@ -25,9 +25,13 @@ impl Interpreter {
             closure: self.environment.clone(),
             is_method: false,
             span: Some(span),
+            // The file the lambda is written in: the calling frame's, not
+            // `current_source_path`, which is the entry script (the spec, the
+            // request's controller). Stamped with the entry script, a lambda
+            // built in a service had every line keyed to its caller and
+            // reported as never run (tests/coverage_lambda_test.rs).
             source_path: self
-                .current_source_path
-                .as_ref()
+                .current_file_path()
                 .map(|p| p.to_string_lossy().to_string()),
             defining_superclass: None,
             return_type: return_type.as_deref().cloned(),

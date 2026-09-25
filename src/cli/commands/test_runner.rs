@@ -51,7 +51,10 @@ impl WorkerSlot {
     }
 }
 
-fn truncate_chars(s: &str, max: usize) -> String {
+/// Truncates to `max` visible characters, keeping the *end*: a spec path
+/// loses its leading folders before its filename, which is the part that
+/// identifies it.
+fn truncate_chars_left(s: &str, max: usize) -> String {
     if max == 0 {
         return String::new();
     }
@@ -59,9 +62,40 @@ fn truncate_chars(s: &str, max: usize) -> String {
     if count <= max {
         return s.to_string();
     }
-    let mut t: String = s.chars().take(max.saturating_sub(1)).collect();
-    t.push('…');
+    let mut t = String::from('…');
+    t.extend(s.chars().skip(count - max.saturating_sub(1)));
     t
+}
+
+/// The folder of a spec relative to the directory under test, or `None` when
+/// it sits at the top. `Path::parent` of a bare filename is `Some("")`, not
+/// `"."`, which is how the report once printed `/architecture_acces_spec.sl`.
+fn relative_parent(path: &Path, test_dir: &Path) -> Option<String> {
+    let relative = path.strip_prefix(test_dir).unwrap_or(path);
+    let parent = relative.parent()?.to_string_lossy().to_string();
+    if parent.is_empty() || parent == "." {
+        None
+    } else {
+        Some(parent)
+    }
+}
+
+/// What a worker row shows for a spec: its path under the directory being
+/// tested, without the `.sl` extension or a `_test` suffix — enough to tell
+/// `controllers/api/api_debit_spec` from a `models/` spec of the same stem.
+fn spec_label(path: &Path, test_dir: &Path) -> String {
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string_lossy().to_string());
+    let stem = stem
+        .strip_suffix("_test")
+        .map(str::to_string)
+        .unwrap_or(stem);
+    match relative_parent(path, test_dir) {
+        Some(parent) => format!("{parent}/{stem}"),
+        None => stem,
+    }
 }
 
 fn pad_chars(s: &str, width: usize) -> String {
@@ -192,7 +226,7 @@ fn render_worker_row(
         }
     });
 
-    let file_truncated = truncate_chars(&file_text, file_w);
+    let file_truncated = truncate_chars_left(&file_text, file_w);
     let file_padded = pad_chars(&file_truncated, file_w);
 
     let bar = if bar_len > 0 {
@@ -1102,6 +1136,7 @@ pub fn run_test(
             let rt_handle = shared_rt_handle.clone();
             let env = env.clone();
             let slots = worker_slots.clone();
+            let test_dir = test_dir.clone();
 
             handles.push(s.spawn(move || {
                 if let Some(handle) = rt_handle {
@@ -1121,17 +1156,9 @@ pub fn run_test(
                             None => break,
                         }
                     };
-                    // Mark this worker as running `file`. Strip the `_test.sl`
-                    // suffix when present so the cell shows what's under
-                    // test, not the suffix.
-                    let display_name = file
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().to_string())
-                        .unwrap_or_else(|| file.to_string_lossy().to_string());
-                    let display_name = display_name
-                        .strip_suffix("_test")
-                        .map(|s| s.to_string())
-                        .unwrap_or(display_name);
+                    // Mark this worker as running `file`, named by its path
+                    // under the tested directory (see `spec_label`).
+                    let display_name = spec_label(&file, &test_dir);
                     {
                         let mut slot = slots[worker_idx].lock().unwrap();
                         slot.current_file = Some(display_name);
@@ -1294,16 +1321,10 @@ pub fn run_test(
     let display_rows: Vec<String> = all_results
         .iter()
         .map(|(path, _, _, _, _)| {
-            let relative_to_test_dir = path.strip_prefix(&test_dir).unwrap_or(path);
-            let parent_str = relative_to_test_dir
-                .parent()
-                .and_then(|p| p.to_str())
-                .unwrap_or(".");
             let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-            if parent_str == "." {
-                file_name.to_string()
-            } else {
-                format!("{}/{}", parent_str, file_name)
+            match relative_parent(path, &test_dir) {
+                Some(parent) => format!("{}/{}", parent, file_name),
+                None => file_name.to_string(),
             }
         })
         .collect();
@@ -1319,18 +1340,13 @@ pub fn run_test(
         all_results.iter().zip(display_rows.iter())
     {
         let parent = path.parent().unwrap_or(path).to_path_buf();
-        let relative_to_test_dir = path.strip_prefix(&test_dir).unwrap_or(path);
-        let parent_str = relative_to_test_dir
-            .parent()
-            .and_then(|p| p.to_str())
-            .unwrap_or(".");
 
         if current_dir.as_ref().map(|d| d != &parent).unwrap_or(true) {
             if current_dir.is_some() {
                 println!();
             }
             current_dir = Some(parent.clone());
-            if parent_str != "." {
+            if let Some(parent_str) = relative_parent(path, &test_dir) {
                 println!("{}", parent_str);
             }
         }
@@ -2447,6 +2463,57 @@ mod tests {
         }
     }
 
+    /// A worker row names the spec by its folder, so two parts of a split
+    /// spec — or two same-stem specs in different folders — can be told apart.
+    #[test]
+    fn spec_label_keeps_the_folder_under_the_tested_directory() {
+        let tests = Path::new("tests");
+        assert_eq!(
+            spec_label(Path::new("tests/controllers/api/api_debit_spec.sl"), tests),
+            "controllers/api/api_debit_spec"
+        );
+        assert_eq!(
+            spec_label(Path::new("tests/unit_spec.sl"), tests),
+            "unit_spec"
+        );
+        assert_eq!(
+            spec_label(Path::new("tests/models/user_test.sl"), tests),
+            "models/user"
+        );
+    }
+
+    /// `Path::parent` of a bare filename is `Some("")`: the report must not
+    /// turn that into a folder called "" and print `/file_spec.sl`.
+    #[test]
+    fn relative_parent_is_none_at_the_top_of_the_tested_directory() {
+        let dir = Path::new("tests/system/architecture");
+        assert_eq!(
+            relative_parent(
+                Path::new("tests/system/architecture/architecture_forme_spec.sl"),
+                dir
+            ),
+            None
+        );
+        assert_eq!(
+            relative_parent(Path::new("tests/system/architecture/deep/x_spec.sl"), dir),
+            Some("deep".to_string())
+        );
+    }
+
+    /// Squeezed, a row drops leading folders, never the filename.
+    #[test]
+    fn a_narrow_worker_row_keeps_the_end_of_the_path() {
+        let path = "controllers/referentiel_import/referentiel_import_depart_spec";
+        let row = render_worker_row(&slot_running(0, path, 0), 40, 6, 40, '⠧', false);
+        assert!(row.contains("…"), "expected a truncated path in {row:?}");
+        assert!(
+            row.contains("depart_spec"),
+            "the filename was cut from {row:?}"
+        );
+        assert_eq!(truncate_chars_left("abcdef", 4), "…def");
+        assert_eq!(truncate_chars_left("abc", 4), "abc");
+    }
+
     #[test]
     fn aggregate_bar_never_reaches_the_last_column() {
         let state = ProgressState {
@@ -2474,7 +2541,8 @@ mod tests {
     #[test]
     fn narrow_terminals_spend_their_cells_on_the_filename() {
         let long = "dossiers_individuels_admin_integration";
-        // How many leading characters of the name survived truncation.
+        // How many characters of the name survived truncation — its end, now
+        // that a squeezed row keeps the filename rather than the folders.
         let name_at = |width: usize| {
             let row = render_worker_row(&slot_running(0, long, 9), 40, 6, width, '⠧', false);
             let plain: String = {
@@ -2497,7 +2565,8 @@ mod tests {
                 .rev()
                 .find(|n| {
                     let prefix: String = long.chars().take(*n).collect();
-                    plain.contains(&prefix)
+                    let suffix: String = long.chars().skip(long.chars().count() - *n).collect();
+                    plain.contains(&prefix) || plain.contains(&suffix)
                 })
                 .unwrap_or(0)
         };
