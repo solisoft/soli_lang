@@ -113,7 +113,7 @@
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-amber-400 mb-2">Frontend without a toolchain</h3>
-            <p class="text-gray-400 text-sm">Auto-escaped server templates, vendored htmx + Alpine, Turbo-Drive-class instant navigation and hover prefetching with ETag revalidation &mdash; zero Node, zero config.</p>
+            <p class="text-gray-400 text-sm">Auto-escaped server templates, vendored htmx + Alpine, Turbo-Drive-class instant navigation (body swap, or an opt-in morph that keeps unchanged nodes) and hover prefetching with ETag revalidation &mdash; zero Node, zero config.</p>
         </div>
         <div class="p-6 rounded-xl bg-white/5 border border-white/10">
             <h3 class="text-lg font-semibold text-amber-400 mb-2">Shipping to a device</h3>

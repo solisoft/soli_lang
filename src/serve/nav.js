@@ -17,6 +17,15 @@
 //   - per page:            <meta name="soli-nav" content="off">
 //   - globally:            SOLI_NAV=off (server stops injecting this script)
 //
+// Morph (opt-in): <meta name="soli-nav" content="morph"> on the incoming page,
+// or SOLI_NAV=morph for every page (a page can still say content="swap"),
+// patches the current <body> into the new one instead of replacing it. Nodes
+// that did not change stay the same DOM nodes — a layout's header and
+// sidebar keep their scroll position, open <details>, typed input and running
+// transitions. Elements are paired by id first, then by tag in order. Alpine
+// components (x-data) are replaced whole rather than patched, so their state
+// resets as with a swap; pages with x-teleport fall back to a swap.
+//
 // Events (on document):
 //   - soli:visit          cancelable; fired before a visit starts
 //   - soli:before-render  cancelable; fired with {newDocument} before swap
@@ -47,6 +56,20 @@
     var me = document.querySelector('script[src^="/__soli/nav.js"]');
     var prefetchOn = !(me && me.getAttribute("data-prefetch") === "off");
     var ttlMs = ((me && parseInt(me.getAttribute("data-prefetch-ttl"), 10)) || 30) * 1000;
+    var morphByDefault = !!(me && me.getAttribute("data-mode") === "morph");
+
+    // Morph or swap for this incoming page. The page's own meta wins over the
+    // server-wide default; Alpine teleports on either side force a swap (see
+    // render()).
+    function wantsMorph(doc) {
+        var m = doc.querySelector('meta[name="soli-nav"]');
+        var mode = m ? (m.getAttribute("content") || "").toLowerCase() : "";
+        var morph = mode === "morph" || (morphByDefault && mode !== "swap");
+        return morph && !hasTeleport(document) && !hasTeleport(doc);
+    }
+    function hasTeleport(doc) {
+        return !!doc.querySelector("template[x-teleport]");
+    }
 
     // We restore scroll ourselves on popstate (the browser's automatic
     // restoration fires before we've swapped the old body back in).
@@ -379,7 +402,12 @@
             // action "none": popstate already moved the history entry.
             lastRenderedUrl = location.href;
 
-            var doSwap = function () { swap(doc); };
+            // A morph reports which scripts and Alpine subtrees it brought
+            // in; a swap brings in the whole body.
+            var morphed = null;
+            var doSwap = wantsMorph(doc)
+                ? function () { morphed = morph(doc); }
+                : function () { swap(doc); };
             // Scripts run AFTER the body is attached, sequentially, and the
             // Alpine/htmx re-init waits for them (see executeScripts). The
             // view transition wraps only the DOM swap — awaiting script
@@ -387,12 +415,15 @@
             // on the old-page snapshot until a CDN responds.
             var finish = function () {
                 scrollAndFocus(opts);
-                executeScripts(document.body).then(function () {
+                var scripts = morphed
+                    ? morphed.scripts
+                    : Array.prototype.slice.call(document.body.querySelectorAll("script"));
+                executeScripts(scripts).then(function () {
                     // One macrotask later: replayed listeners (DOMContentLoaded,
                     // alpine:init) were scheduled via setTimeout during script
                     // execution and must run before Alpine.initTree sees the
                     // new body.
-                    setTimeout(initNewBody, 0);
+                    setTimeout(function () { initNewBody(morphed); }, 0);
                 });
             };
             // View transitions are opt-in via the same meta tag Turbo uses.
@@ -433,7 +464,11 @@
     }
 
     function swap(doc) {
-        // ---- head merge ----
+        mergeHead(doc);
+        swapBody(doc);
+    }
+
+    function mergeHead(doc) {
         document.title = doc.title;
 
         var newHrefs = new Set();
@@ -468,6 +503,9 @@
             var key = m.getAttribute("name") || m.getAttribute("property");
             if (!SKIP_META.test(key)) document.head.appendChild(document.adoptNode(m));
         });
+    }
+
+    function swapBody(doc) {
 
         // ---- permanent elements ----
         // Elements tagged [data-soli-permanent] (with an id) are lifted out of
@@ -511,6 +549,166 @@
         document.documentElement.replaceChild(newBody, document.body);
     }
 
+    // ------------------------------------------------------------------ morph
+
+    // Patch the live body into the new one. Returns the scripts it inserted
+    // (to run, in document order) and the element subtrees it inserted (for
+    // Alpine to initialize once those scripts have run).
+    function morph(doc) {
+        mergeHead(doc);
+        var ctx = { scripts: [], alpineRoots: [] };
+        morphAttributes(document.body, doc.body);
+        morphChildren(document.body, doc.body, ctx);
+        return ctx;
+    }
+
+    // Two nodes can be patched one into the other: same kind, same tag, and
+    // the same id — an element with an id only ever pairs with its namesake.
+    function compatible(a, b) {
+        if (a.nodeType !== b.nodeType) return false;
+        if (a.nodeType !== 1) return true;
+        return a.tagName === b.tagName && (a.id || "") === (b.id || "");
+    }
+
+    function morphChildren(oldParent, newParent, ctx) {
+        var byId = Object.create(null);
+        for (var c = oldParent.firstChild; c; c = c.nextSibling) {
+            if (c.nodeType === 1 && c.id) byId[c.id] = c;
+        }
+        var cursor = oldParent.firstChild;
+        // Snapshot: inserting a node adopts it out of newParent.
+        var incoming = Array.prototype.slice.call(newParent.childNodes);
+        incoming.forEach(function (fresh) {
+            var match = null;
+            if (fresh.nodeType === 1 && fresh.id) {
+                var named = byId[fresh.id];
+                if (named && named.tagName === fresh.tagName) match = named;
+            } else if (cursor && compatible(cursor, fresh)) {
+                match = cursor;
+            } else if (cursor) {
+                // Skip past a few nodes the new page no longer has (a flash
+                // message, a banner) rather than rebuilding everything after.
+                var probe = cursor.nextSibling;
+                for (var n = 0; probe && n < 3 && !match; n++, probe = probe.nextSibling) {
+                    if (compatible(probe, fresh)) match = probe;
+                }
+            }
+            if (match) {
+                if (match.id) delete byId[match.id];
+                if (match === cursor) cursor = cursor.nextSibling;
+                else oldParent.insertBefore(match, cursor);
+                morphNode(match, fresh, ctx);
+            } else {
+                oldParent.insertBefore(adopt(fresh, ctx), cursor);
+            }
+        });
+        while (cursor) {
+            var next = cursor.nextSibling;
+            discard(cursor);
+            cursor = next;
+        }
+    }
+
+    function morphNode(old, fresh, ctx) {
+        if (old.nodeType !== 1) {
+            if (old.nodeValue !== fresh.nodeValue) old.nodeValue = fresh.nodeValue;
+            return;
+        }
+        // Carried over untouched, exactly as a swap grafts it.
+        if (old.id && old.hasAttribute("data-soli-permanent")) return;
+        // A script that did not change has run and must not run again; one
+        // that changed is new code and is replaced, to be run.
+        if (old.tagName === "SCRIPT") {
+            if (!sameScript(old, fresh)) replaceNode(old, fresh, ctx);
+            return;
+        }
+        // Alpine rewrites what it renders, so the live DOM of a component no
+        // longer matches any server HTML to diff against: replace it whole.
+        if (window.Alpine && (old.hasAttribute("x-data") || fresh.hasAttribute("x-data"))) {
+            replaceNode(old, fresh, ctx);
+            return;
+        }
+        if (old.isEqualNode(fresh)) return;
+        var serverValue = old.getAttribute("value");
+        morphAttributes(old, fresh);
+        if (old.tagName === "INPUT") {
+            // Keep what the user typed, unless the server changed the value.
+            if (fresh.getAttribute("value") !== serverValue) old.value = fresh.value;
+            if (old.checked !== fresh.hasAttribute("checked") &&
+                old.defaultChecked === fresh.hasAttribute("checked")) {
+                old.checked = fresh.hasAttribute("checked");
+            }
+            return;
+        }
+        if (old.tagName === "TEXTAREA") {
+            if (old.defaultValue !== fresh.defaultValue) {
+                old.defaultValue = fresh.defaultValue;
+                old.value = fresh.defaultValue;
+            }
+            return;
+        }
+        if (old.tagName === "TEMPLATE") {
+            old.innerHTML = fresh.innerHTML;
+            return;
+        }
+        morphChildren(old, fresh, ctx);
+    }
+
+    function morphAttributes(old, fresh) {
+        // `open` on <details>/<dialog> is the reader's, like a typed value:
+        // opening one writes the attribute, and the server's HTML never has it.
+        var keepOpen = old.tagName === "DETAILS" || old.tagName === "DIALOG";
+        var i, attr;
+        for (i = old.attributes.length - 1; i >= 0; i--) {
+            attr = old.attributes[i];
+            if (keepOpen && attr.name === "open") continue;
+            if (!fresh.hasAttribute(attr.name)) old.removeAttribute(attr.name);
+        }
+        for (i = 0; i < fresh.attributes.length; i++) {
+            attr = fresh.attributes[i];
+            if (keepOpen && attr.name === "open") continue;
+            if (old.getAttribute(attr.name) !== attr.value) old.setAttribute(attr.name, attr.value);
+        }
+    }
+
+    function sameScript(a, b) {
+        return a.getAttribute("src") === b.getAttribute("src") &&
+            a.getAttribute("type") === b.getAttribute("type") &&
+            a.textContent === b.textContent;
+    }
+
+    function replaceNode(old, fresh, ctx) {
+        var node = adopt(fresh, ctx);
+        destroyAlpine(old);
+        old.parentNode.replaceChild(node, old);
+    }
+
+    // Bring a node from the parsed page into this document. Its scripts are
+    // queued to run; with Alpine present it is x-ignored until those scripts
+    // have registered their components (see swapBody for why).
+    function adopt(fresh, ctx) {
+        var node = document.adoptNode(fresh);
+        if (node.nodeType !== 1) return node;
+        if (node.tagName === "SCRIPT") ctx.scripts.push(node);
+        else Array.prototype.push.apply(ctx.scripts, node.querySelectorAll("script"));
+        if (window.Alpine) {
+            node.setAttribute("x-ignore", "");
+            ctx.alpineRoots.push(node);
+        }
+        return node;
+    }
+
+    function discard(node) {
+        destroyAlpine(node);
+        node.parentNode.removeChild(node);
+    }
+
+    function destroyAlpine(node) {
+        if (node.nodeType === 1 && window.Alpine && window.Alpine.destroyTree) {
+            try { window.Alpine.destroyTree(node); } catch (e) { /* older 3.x */ }
+        }
+    }
+
     // Re-execute the new body's scripts SEQUENTIALLY in document order,
     // awaiting each external before moving on — the same ordering the parser
     // guarantees on a full load. Naively activating them all at once inverts
@@ -522,9 +720,9 @@
     // resolves when every script has run, so Alpine/htmx re-init can't race
     // a page-specific external (e.g. an editor bundle registering
     // Alpine.data components) that hasn't loaded yet.
-    function executeScripts(root) {
+    function executeScripts(scripts) {
         var queue = [];
-        root.querySelectorAll("script").forEach(function (old) {
+        scripts.forEach(function (old) {
             // Scripts inside a permanent element are carried over live and have
             // already executed — re-running them would double-fire.
             if (old.closest("[data-soli-permanent]")) return;
@@ -594,11 +792,17 @@
     // registrations and freshly-loaded externals exist before the tree
     // initializes — initializing earlier evaluates x-data scopes that aren't
     // registered yet and every binding throws ReferenceError.
-    function initNewBody() {
+    function initNewBody(morphed) {
         if (window.Alpine) {
-            document.body.removeAttribute("x-ignore");
-            try { delete document.body._x_ignore; } catch (e) { /* ignore */ }
-            if (window.Alpine.initTree) window.Alpine.initTree(document.body);
+            // A swap initializes the whole new body; a morph only the subtrees
+            // it inserted — the kept ones are live and already initialized.
+            var roots = morphed ? morphed.alpineRoots : [document.body];
+            roots.forEach(function (root) {
+                if (!root.isConnected) return;
+                root.removeAttribute("x-ignore");
+                try { delete root._x_ignore; } catch (e) { /* ignore */ }
+                if (window.Alpine.initTree) window.Alpine.initTree(root);
+            });
         }
         if (window.htmx && window.htmx.process) {
             window.htmx.process(document.body);

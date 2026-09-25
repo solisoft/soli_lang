@@ -20,6 +20,12 @@
 //! Disable globally with `SOLI_NAV=off`; per link with `<a data-no-nav>` (or
 //! any ancestor carrying that attribute); per page with
 //! `<meta name="soli-nav" content="off">`.
+//!
+//! Morph instead of swap — patch the live body into the new page so unchanged
+//! nodes (a layout's header, sidebar, their scroll and input state) survive —
+//! per page with `<meta name="soli-nav" content="morph">`, or for every page
+//! with `SOLI_NAV=morph`, which stamps `data-mode="morph"` on the script tag
+//! (a page can still ask for `content="swap"`).
 
 use bytes::Bytes;
 use http_body_util::Full;
@@ -67,6 +73,13 @@ fn read_is_enabled() -> bool {
     }
 }
 
+/// `SOLI_NAV=morph`: every page morphs unless it says otherwise.
+fn morph_by_default() -> bool {
+    std::env::var("SOLI_NAV")
+        .map(|v| v.trim().eq_ignore_ascii_case("morph"))
+        .unwrap_or(false)
+}
+
 /// The `<script>` tag to inject. It embeds the `SOLI_PREFETCH` /
 /// `SOLI_PREFETCH_TTL` state as data attributes the client script reads; both
 /// are fixed for the process, so [`inject_nav_tag`] caches the result (tests,
@@ -77,10 +90,16 @@ fn nav_tag() -> String {
     } else {
         " data-prefetch=\"off\""
     };
+    let mode_attr = if morph_by_default() {
+        " data-mode=\"morph\""
+    } else {
+        ""
+    };
     format!(
-        "<!-- __soli_nav_injected --><script src=\"/__soli/nav.js?v={:016x}\" defer{} data-prefetch-ttl=\"{}\"></script>",
+        "<!-- __soli_nav_injected --><script src=\"/__soli/nav.js?v={:016x}\" defer{}{} data-prefetch-ttl=\"{}\"></script>",
         nav_hash(),
         prefetch_attr,
+        mode_attr,
         prefetch::prefetch_ttl()
     )
 }
@@ -190,6 +209,31 @@ mod tests {
         let tag = nav_tag();
         assert!(tag.contains("data-prefetch=\"off\""), "tag: {tag}");
         assert!(tag.contains("data-prefetch-ttl=\"5\""), "tag: {tag}");
+    }
+
+    #[test]
+    fn soli_nav_morph_stamps_the_mode_and_keeps_nav_on() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _g = EnvGuard::set("SOLI_NAV", Some("morph"));
+        assert!(is_enabled(), "morph is a way of navigating, not off");
+        assert!(nav_tag().contains("data-mode=\"morph\""));
+        let _g = EnvGuard::set("SOLI_NAV", None);
+        assert!(!nav_tag().contains("data-mode"), "swap stays the default");
+    }
+
+    #[test]
+    fn script_morphs_on_request_and_falls_back_to_a_swap() {
+        // Opt-in per page or server-wide; a page can refuse it; teleports force a swap.
+        assert!(NAV_SCRIPT.contains("mode === \"morph\""));
+        assert!(NAV_SCRIPT.contains("mode !== \"swap\""));
+        assert!(NAV_SCRIPT.contains("data-mode"));
+        assert!(NAV_SCRIPT.contains("template[x-teleport]"));
+        // Pairing by id first, then by tag in order.
+        assert!(NAV_SCRIPT.contains("function compatible("));
+        assert!(NAV_SCRIPT.contains("byId[fresh.id]"));
+        // Unchanged scripts are not re-run; Alpine components are replaced whole.
+        assert!(NAV_SCRIPT.contains("sameScript(old, fresh)"));
+        assert!(NAV_SCRIPT.contains("hasAttribute(\"x-data\")"));
     }
 
     #[test]
@@ -330,7 +374,7 @@ mod tests {
         assert!(NAV_SCRIPT.contains("queue.reduce"));
         assert!(NAV_SCRIPT.contains("fresh.onload = fresh.onerror"));
         assert!(
-            NAV_SCRIPT.contains("setTimeout(initNewBody, 0)"),
+            NAV_SCRIPT.contains("setTimeout(function () { initNewBody(morphed); }, 0)"),
             "Alpine/htmx re-init must run after the script queue AND one \
              macrotask later, so replayed alpine:init registrations land first"
         );

@@ -11,6 +11,8 @@ post("/form", "pages#submit")
 get("/dynamic", "pages#dynamic")
 get("/slow", "pages#slow")
 get("/broken", "pages#broken")
+get("/morph/a", "pages#morph_a")
+get("/morph/b", "pages#morph_b")
 
 # LiveView: the socket endpoint plus the page that mounts it.
 router_live("counter", "live#counter")

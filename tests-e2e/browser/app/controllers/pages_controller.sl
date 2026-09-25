@@ -49,6 +49,15 @@ class PagesController extends Controller
         render("pages/live", {"title": "Live"})
     end
 
+    # Two pages on a layout that opts into morphing instead of body swapping.
+    def morph_a(req)
+        render("pages/morph_a", {"title": "Morph A", "layout": "layouts/morph"})
+    end
+
+    def morph_b(req)
+        render("pages/morph_b", {"title": "Morph B", "layout": "layouts/morph"})
+    end
+
     # Throws in the page, for the page-error assertions.
     def broken(req)
         render("pages/broken", {"title": "Broken"})

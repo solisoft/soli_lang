@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title><%= h(title) %></title>
+  <!-- Opts these pages into morphing: unchanged nodes survive navigation. -->
+  <meta name="soli-nav" content="morph">
+</head>
+<body>
+  <aside id="sidebar" style="height: 80px; overflow: auto;">
+    <input id="sidebar-search" type="text">
+    <details id="sidebar-more"><summary>More</summary><p>Tucked away.</p></details>
+    <div style="height: 400px;">A sidebar tall enough to scroll.</div>
+  </aside>
+  <nav>
+    <a href="/morph/a" id="morph-a">Morph A</a>
+    <a href="/morph/b" id="morph-b">Morph B</a>
+    <a href="/about" id="morph-about">About</a>
+  </nav>
+  <script>window.__layoutRuns = (window.__layoutRuns || 0) + 1;</script>
+  <main id="content">
+    <%= yield %>
+  </main>
+</body>
+</html>

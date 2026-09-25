@@ -379,6 +379,26 @@ SOLI_NAV=off soli serve .
 
 The element persists only between pages that **both** declare it (same `id` + `data-soli-permanent`); navigate to a page without the matching placeholder and it's discarded with the old body. Any inline `<script>` *inside* a permanent element is carried over live and is **not** re-executed on the swap (it already ran). This is the right tool when re-initializing on `soli:load` would mean an expensive rebuild — prefer it over the re-init hook for maps and media players.
 
+**Morph instead of swap (opt-in).** A swap rebuilds the whole body, so everything the layout shares between pages is rebuilt too: a scrolled sidebar jumps back to the top, an open `<details>` closes, text typed in a search box is gone. Ask for a *morph* and the framework patches the live body into the new page instead — nodes that did not change stay the **same DOM nodes**, and only what differs is touched:
+
+```erb
+<!-- In the layout: every page rendered with it morphs -->
+<meta name="soli-nav" content="morph">
+```
+
+```bash
+# Or for every page — a page can still ask for content="swap"
+SOLI_NAV=morph soli serve .
+```
+
+The incoming page's meta decides. Elements are paired by `id` first, then by tag in document order, so giving the stable parts of a layout an `id` (`<aside id="sidebar">`, `<nav id="menu">`) makes the pairing exact. What a morph keeps that a swap loses: the scroll position of kept elements, an open `<details>`/`<dialog>`, what the reader typed into a kept `<input>`/`<textarea>` (unless the server sent a different `value`), focus, running CSS transitions, and loaded `<iframe>`/`<video>` elements that did not change.
+
+The rules that differ from a swap:
+
+- **Scripts:** a `<script>` that is identical on both pages has already run and is **not** run again; a new or changed one runs, in document order, with the same external-script and `DOMContentLoaded` handling as a swap.
+- **Alpine:** a component (`x-data`) is **replaced whole**, not patched — Alpine rewrites what it renders, so there is no server HTML left to compare against. Its state resets exactly as with a swap; use `data-soli-permanent` for a component that must keep its state. Components the morph brings in are initialized after the scripts have run; the ones it removes are destroyed.
+- **Fallbacks:** a page with an Alpine `x-teleport` on either side is swapped, not morphed. `data-soli-permanent` works in both modes.
+
 **History and scrolling:** back/forward are handled via `popstate` with a refetch — which the ETag machinery answers with a cheap `304`, served from the browser's HTTP cache. Scroll position is restored on back-navigation; forward visits scroll to the top (or to the `#fragment` target if the link had one).
 
 **View Transitions (opt-in):** add the same meta tag Turbo uses and swaps animate with the [View Transition API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API) in supporting browsers:

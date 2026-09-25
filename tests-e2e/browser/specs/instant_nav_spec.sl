@@ -116,3 +116,64 @@ describe("instant-nav", fn() {
         assert_no_page_errors()
     })
 })
+
+# Morph mode: a layout that says <meta name="soli-nav" content="morph"> is
+# patched into the next page instead of replaced, so what did not change stays
+# the same DOM node. A property set on a node is the evidence: a swap builds a
+# new node and the property is gone.
+describe("instant-nav morph", fn() {
+    test("keeps unchanged nodes and changes the rest", fn() {
+        visit("/morph/a")
+        evaluate("document.getElementById('sidebar').__kept = 'yes'")
+
+        click_link("Morph B")
+        assert_page_path("/morph/b")
+        assert_text("The second morphing page.")
+        assert_no_text("The first morphing page.")
+        assert_eq(page_title(), "Morph B")
+        assert_eq(evaluate("document.getElementById('sidebar').__kept"), "yes")
+    })
+
+    test("keeps typed input, open details and scroll position", fn() {
+        visit("/morph/a")
+        evaluate("document.getElementById('sidebar-search').value = 'draft'")
+        evaluate("document.getElementById('sidebar-more').open = true")
+        evaluate("document.getElementById('sidebar').scrollTop = 60")
+
+        click_link("Morph B")
+        assert_page_path("/morph/b")
+        assert_eq(evaluate("document.getElementById('sidebar-search').value"), "draft")
+        assert_eq(evaluate("document.getElementById('sidebar-more').open"), true)
+        assert_eq(evaluate("document.getElementById('sidebar').scrollTop"), 60)
+    })
+
+    test("runs the new page's scripts but not the unchanged layout script again", fn() {
+        visit("/morph/a")
+        assert_eq(evaluate("window.__layoutRuns"), 1)
+
+        click_link("Morph B")
+        assert_text("B script ran")
+        assert_eq(evaluate("window.__layoutRuns"), 1)
+    })
+
+    test("a page without the meta is still swapped in", fn() {
+        visit("/morph/a")
+        evaluate("window.__sentinel = 'alive'")
+
+        click_link("About")
+        assert_page_path("/about")
+        assert_text("somewhere to go")
+        assert_eq(evaluate("window.__sentinel"), "alive")
+    })
+
+    test("back and forth leaves no JavaScript errors behind", fn() {
+        visit("/morph/a")
+        click_link("Morph B")
+        assert_page_path("/morph/b")
+        click_link("Morph A")
+        assert_page_path("/morph/a")
+        evaluate("history.back()")
+        assert_page_path("/morph/b")
+        assert_no_page_errors()
+    })
+})

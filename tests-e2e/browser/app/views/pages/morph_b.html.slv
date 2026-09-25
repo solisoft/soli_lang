@@ -1,0 +1,4 @@
+<h1 id="page-title">Morph B</h1>
+<p>The second morphing page.</p>
+<div id="b-mounted"></div>
+<script>document.getElementById("b-mounted").textContent = "B script ran";</script>
