@@ -122,8 +122,13 @@ end
 # run (`soli serve www --dev` on localhost / *.localhost / 127.0.0.1) shows them
 # anyway, badged with their date. Keyed on the Host rather than on --dev itself:
 # production pins a soli (deploy-www.yml) that no dev-mode builtin can be assumed in.
+# X-Forwarded-Host wins: in production soli-proxy dials the app on localhost, so
+# Host is always local there and the public name only arrives in that header
+# (the proxy overwrites any value a client sends).
 def blog_preview?
-    host = (req["headers"]["host"] || "").split(":")[0].downcase()
+    headers = req["headers"]
+    authority = (headers["x-forwarded-host"] || headers["host"] || "").split(",")[0].trim()
+    host = authority.split(":")[0].downcase()
     host == "localhost" or host.ends_with?(".localhost") or host == "127.0.0.1"
 end
 
