@@ -1,6 +1,6 @@
 # Observability
 
-Soli ships three production signals out of the box: **metrics**, **structured logs**, and **distributed traces**. All are opt-in so a quiet process pays nothing until you turn a channel on. Alongside them, **error tracking** groups every failed request into a triage page inside the app.
+Soli ships three production signals out of the box: **metrics**, **structured logs**, and **distributed traces**. All are opt-in so a quiet process pays nothing until you turn a channel on. Alongside them, **error tracking** groups every failed request into a triage page inside the app, **slow-query tracking** does the same for database queries over a threshold, and **notifications** tell someone by webhook, email or a job of your own.
 
 | Signal | Enable | Where it goes |
 |--------|--------|---------------|
@@ -9,6 +9,8 @@ Soli ships three production signals out of the box: **metrics**, **structured lo
 | Traces | `SOLI_OTEL=1` or `OTEL_EXPORTER_OTLP_*` | OTLP/HTTP JSON to your collector |
 | Health | always on | `GET /_health`, `GET /_ready` |
 | Errors | on (`SOLI_ERRORS=off` to stop) | `_soli_errors` table, shown at `/__soli/errors` |
+| Slow queries | on at 200 ms (`SOLI_SLOW_QUERY_MS`, `SOLI_SLOW_QUERIES=off`) | `_soli_slow_queries` table, shown at `/__soli/slow_queries` |
+| Notifications | `SOLI_NOTIFY_WEBHOOKS` / `SOLI_NOTIFY_EMAILS` / a `SoliNotificationJob` | Slack, Teams, Discord, Google Chat, any URL, email, your job |
 
 For the full env-var table see [Configuration](configuration.md). This page is the operator guide: what each signal means, how to turn it on, and how the pieces correlate.
 
@@ -226,9 +228,102 @@ The triage buttons are same-origin form posts: a cross-site `POST` is refused wi
 
 **Turning it off.** `SOLI_ERRORS=off` stops recording (the page still lists what is there). Under `APP_ENV=test` it is off unless `SOLI_ERRORS=on`, so spec runs do not fill the table.
 
-**Limits.** Only HTTP request failures are recorded — job failures stay on `/__soli/jobs`, and LiveView/EUI event errors are not captured yet. There are no alerts or notifications. Counts are exact within one process; several hosts writing the same group at the same moment can undercount it. Groups are kept until you delete them.
+**Limits.** Only HTTP request failures are recorded — job failures stay on `/__soli/jobs`, and LiveView/EUI event errors are not captured yet. To be told when something fails, see [Notifications](#notifications). Counts are exact within one process; several hosts writing the same group at the same moment can undercount it. Groups are kept until you delete them.
 
 **Retention.** An app keeps at most **1000 groups** (plus one overflow group). Once that many exist, an occurrence whose fingerprint is not already stored is counted in a single *overflow* group instead of starting a new one, with its own message kept in the sample; groups already stored keep counting as usual. The list says when the limit has been reached. Deleting groups makes room again — resolving or ignoring them does not. Each group keeps its five newest samples and 24 hours of hourly counts.
+
+## Slow queries (`/__soli/slow_queries`)
+
+Every database query that takes `SOLI_SLOW_QUERY_MS` (default **200 ms**) or longer is recorded, grouped by shape, and shown at `/__soli/slow_queries`. It covers every query the ORM runs — SoliDB over HTTP or the native driver, and the Postgres, MySQL and SQLite adapters — in requests and in background jobs, and writes to the app's own database in a `_soli_slow_queries` table. On by default, like error tracking.
+
+**Grouping.** A query's *shape* is the query with its literals taken out: numbers become `?`, a list of values becomes one `?`, whitespace collapses, and in SDBQL quoted strings become `?` too. So `FILTER u.id == 42` and `FILTER u.id == 97` are one group, and `IN (1, 2, 3)` is the same shape as `IN (7)`. In the adapters' SQL, a quoted name is an identifier or a JSON key the adapter wrote (`doc ->> 'tag'`) — values are always binds — so those are kept, and a filter on `tag` stays apart from a filter on `name`. Placeholders (`@name`, `$1`, `?`) are kept as written.
+
+**What a group holds.** How many slow runs, their average, slowest and total time, the request or job that ran the last one (`GET /orders → orders#index`, `job ReportJob`), first and last seen, 24 hours of hourly counts, and the **five slowest runs**, each with the query as it ran, its bind values and where it came from. Bind values under a secret-looking name (`password`, `token`, …) are replaced by `[REDACTED]` and long values are cut to 200 characters; `SOLI_SLOW_QUERY_BINDS=off` stores no bind values at all. SQL binds are numbered (`$1`, `?`), so their names say nothing — turn binds off if your queries filter on personal data you do not want in the table.
+
+**Reading the list.** Four orders: **impact** (total time spent — the default, and usually where to start), **slowest** (the single worst run), **frequent** (most slow runs) and **recent**. **delete** forgets a shape; it comes back on its next slow run.
+
+**Cost.** A fast query pays one comparison: the query text and its binds are only read and copied once the query is over the threshold. Slow runs go to a background writer over a bounded queue and are written in one-second batches, one update per shape — the same machinery as error tracking, with the same notices when samples are dropped or a write fails. The writer's own queries, and any query on the framework's `_soli_*` tables, are never recorded.
+
+**Access.** Same gate as `/__soli/errors`: open to this machine in `--dev` (and linked from the dev bar's tools panel), and `404` in production unless credentials are set:
+
+```bash
+SOLI_SLOW_QUERIES_USER=ops
+SOLI_SLOW_QUERIES_PASSWORD=<long random string>
+SOLI_SLOW_QUERIES_TOKEN=<long random string>
+
+# or the shared set, accepted by every operator page
+SOLI_ADMIN_USER=ops
+SOLI_ADMIN_PASSWORD=<long random string>
+```
+
+**Turning it off.** `SOLI_SLOW_QUERIES=off` stops recording; under `APP_ENV=test` it is off unless `SOLI_SLOW_QUERIES=on`. The threshold is read once per process — change it and restart.
+
+**Limits.** The time measured is the whole round trip seen from Soli — network, queueing in the pool, the database's own work — not the database's execution time alone. It says *which* query is slow, not why: run it with `EXPLAIN` on the database. At most **1000 shapes** are kept per app; slow runs of a new shape past that are counted on the page but not stored. Raw `db_query()` strings that inline different identifiers are different shapes.
+
+## Notifications
+
+Errors and slow queries can tell someone instead of waiting to be looked at. Four events are sent, each after its group is stored:
+
+| Event | When |
+|-------|------|
+| `error.new` | an error whose fingerprint has never been seen |
+| `error.regressed` | an error you marked **resolved** fails again |
+| `error.spike` | one error group reaches `SOLI_NOTIFY_SPIKE` occurrences within a window (default `50/5m`); not sent for **ignored** groups |
+| `slow_query.new` | a query shape crosses `SOLI_SLOW_QUERY_MS` for the first time |
+
+**Where they go.** Set any of these; every event goes to all of them:
+
+```bash
+# Slack, Microsoft Teams, Discord, Google Chat or any URL — comma-separated
+SOLI_NOTIFY_WEBHOOKS=https://hooks.slack.com/services/T000/B000/XXXX,https://acme.webhook.office.com/webhookb2/...
+
+# Addresses, sent through the app's own mailer (SOLI_SMTP_*)
+SOLI_NOTIFY_EMAILS=oncall@example.com,cto@example.com
+SOLI_NOTIFY_FROM=alerts@example.com        # default: SOLI_SMTP_FROM
+
+# Links in messages point here (default: https:// + the first SOLI_APP_HOSTS)
+SOLI_NOTIFY_URL=https://shop.example.com
+```
+
+Webhooks are recognised by host and sent the message each product expects: Slack incoming webhooks (`hooks.slack.com`) get formatted text with a link, Microsoft Teams (`*.webhook.office.com`, and Workflows URLs on `*.logic.azure.com` / `*.powerplatform.com`) an Adaptive Card with an **Open in Soli** button, Discord and Google Chat a text message. Any other URL receives the event as JSON:
+
+```json
+{
+  "event": "error.new",
+  "app": "shop",
+  "fingerprint": "25ea121f5ce571ea",
+  "summary": "Cannot access property 'total' on null at 14:3",
+  "detail": "raised in boom at app/controllers/items_controller.sl:14",
+  "context": "GET /boom",
+  "count": 1,
+  "at": "2026-09-25T07:39:58Z",
+  "url": "https://shop.example.com/__soli/errors/25ea121f5ce571ea"
+}
+```
+
+with an `X-Soli-Event` header, and — when `SOLI_NOTIFY_SECRET` is set — `X-Soli-Signature`, the hex HMAC-SHA256 of the body under that secret. Webhook URLs go through the same SSRF guard as `Webhook.enqueue`; a receiver on a private address has to be allowed with `SOLI_HTTP_ALLOW_HOSTS`. In `--dev` without an SMTP host, emails land in the dev inbox at `/__soli/inbox`.
+
+**Anything else, in Soli.** If the app has `app/jobs/soli_notification_job.sl`, every event is also enqueued to it with the same hash as the JSON above — for PagerDuty, an SMS, a ticket, or a filter of your own:
+
+```soli
+# app/jobs/soli_notification_job.sl
+class SoliNotificationJob
+  static def perform(event)
+    return unless event["event"] == "error.spike"
+    HTTP.post("https://events.pagerduty.com/v2/enqueue", {
+      "routing_key": getenv("PAGERDUTY_KEY"),
+      "event_action": "trigger",
+      "payload": {"summary": event["summary"], "source": event["app"], "severity": "error"}
+    })
+  end
+end
+```
+
+**Not every time.** One event per group is sent at most once per `SOLI_NOTIFY_THROTTLE` (default `15m`; `90s`, `1h` also work), so a burst of the same failure is one message. `SOLI_NOTIFY_EVENTS=error.new,error.regressed` narrows which events are sent. `SOLI_NOTIFY_SPIKE=off` turns spike detection off. `SOLI_NOTIFY_APP_NAME` names the app in messages (default: its directory name).
+
+**Cost.** Sending happens on a per-app notifier thread with a bounded queue: a slow or unreachable webhook never delays a request or the trackers. A failed send is logged as a `[notify]` line on stderr and counted on the errors and slow-queries pages, which also say where notifications currently go.
+
+**Limits.** Throttling and spike windows are counted per process, so several hosts can each send the same event once. A failed send is not retried (use the job for that — jobs retry). There is no per-user routing or on-call schedule: that is what the job hook, or the tool on the other end of the webhook, is for.
 
 ## Dev vs production
 
@@ -241,6 +336,8 @@ The triage buttons are same-origin form posts: a cross-site `POST` is refused wi
 | Metrics | opt-in | opt-in |
 | Health endpoints | on | on |
 | Error tracking (`/__soli/errors`) | on, open to this machine | on, behind `SOLI_ERRORS_*` / `SOLI_ADMIN_*` |
+| Slow queries (`/__soli/slow_queries`) | on, open to this machine | on, behind `SOLI_SLOW_QUERIES_*` / `SOLI_ADMIN_*` |
+| Notifications | when `SOLI_NOTIFY_*` is set (emails go to the dev inbox without SMTP) | when `SOLI_NOTIFY_*` is set |
 
 Production logging reuses the same channel buffers as the dev bar (`query`, `http`, `kv`, `timing`) without paying for hot-reload, the bar injection, or the interpreter demotion that `--dev` implies.
 

@@ -28,37 +28,29 @@ use crate::interpreter::builtins::model::query_log;
 const MAX_BIND_CHARS: usize = 200;
 
 /// An in-flight statement. Records when dropped.
-pub struct Trace {
+///
+/// Holds the statement and its binds by reference, so a fast query in
+/// production pays for an `Instant` and nothing else: the text is only copied
+/// when the dev log is on or the query turns out slow.
+pub struct Trace<'a> {
     started: Instant,
-    /// Only populated when the query log is on, so production pays nothing but
-    /// the `Instant`.
-    logged: Option<Logged>,
-}
-
-struct Logged {
-    sql: String,
-    binds: Option<HashMap<String, serde_json::Value>>,
+    sql: &'a str,
+    params: &'a [SqlBind],
 }
 
 /// Begin tracing a statement. Always returns a guard: the duration feeds the
-/// production metric even when the per-query log is off.
-pub fn start(sql: &str, params: &[SqlBind]) -> Trace {
-    let logged = if query_log::is_enabled() {
-        Some(Logged {
-            sql: sql.to_string(),
-            binds: render_binds(params),
-        })
-    } else {
-        None
-    };
+/// production metric and the slow-query tracker even when the per-query log is
+/// off.
+pub fn start<'a>(sql: &'a str, params: &'a [SqlBind]) -> Trace<'a> {
     Trace {
         started: Instant::now(),
-        logged,
+        sql,
+        params,
     }
 }
 
 /// Trace a statement that takes no bind parameters (DDL, `table_exists`).
-pub fn start_plain(sql: &str) -> Trace {
+pub fn start_plain(sql: &str) -> Trace<'_> {
     start(sql, &[])
 }
 
@@ -100,18 +92,25 @@ fn truncate(value: &str) -> String {
     format!("{head}… ({} chars)", value.chars().count())
 }
 
-impl Drop for Trace {
+impl Drop for Trace<'_> {
     fn drop(&mut self) {
         let elapsed = self.started.elapsed();
         // Coarse production counter, as on the SoliDB path.
         crate::metrics::Metrics::global().record_db_queries(elapsed);
 
-        let Some(logged) = self.logged.take() else {
-            return;
-        };
         let ms = elapsed.as_secs_f64() * 1000.0;
+        crate::serve::slow_queries::observe(
+            self.sql,
+            crate::serve::slow_queries::Dialect::Sql,
+            ms,
+            || render_binds(self.params),
+        );
+
+        if !query_log::is_enabled() {
+            return;
+        }
         // The flamegraph groups by a short name; the panel shows the full SQL.
-        let span_name: String = logged.sql.chars().take(80).collect();
+        let span_name: String = self.sql.chars().take(80).collect();
         crate::serve::span_log::record(
             &span_name,
             crate::serve::span_log::SpanKind::Db,
@@ -119,7 +118,7 @@ impl Drop for Trace {
             (ms * 1000.0).max(0.0) as u64,
             None,
         );
-        query_log::record(logged.sql, logged.binds, ms);
+        query_log::record(self.sql.to_string(), render_binds(self.params), ms);
     }
 }
 

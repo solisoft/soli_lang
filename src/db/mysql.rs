@@ -419,7 +419,8 @@ fn get_on(conn: &mut MyConn, table: &str, key: &str) -> Result<Option<serde_json
     let sql = format!("SELECT doc FROM {table_q} WHERE _key = ?");
     // Traced here rather than in `get`: this is the per-key lookup a loop turns
     // into an N+1, and write paths read back through it too.
-    let _trace = super::trace::start(&sql, &[SqlBind::Text(key.to_string())]);
+    let key_bind = [SqlBind::Text(key.to_string())];
+    let _trace = super::trace::start(&sql, &key_bind);
     let row: Option<String> = conn
         .exec_first(&sql, (key,))
         .map_err(|e| my_error("mysql get", &e))?;
@@ -1136,7 +1137,6 @@ fn read_back(
     pk: &serde_json::Value,
 ) -> Result<Option<serde_json::Value>, String> {
     let compiled = cols::compile_get_cols(Dialect::Mysql, schema, pk)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     let params = to_mysql_params(&compiled.params);
     let row: Option<mysql::Row> = conn

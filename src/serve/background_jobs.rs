@@ -320,6 +320,7 @@ fn run_one(job: &BackgroundJob, interpreter: &mut Interpreter, runner: &Value) -
         Err(e) => return Some(format!("invalid args JSON: {e}")),
     };
 
+    super::slow_queries::set_context(&format!("job {}", job.class_name));
     let start = Instant::now();
     let call_args = vec![Value::String(job.class_name.clone().into()), args];
     let result = catch_unwind(AssertUnwindSafe(|| {

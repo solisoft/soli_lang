@@ -760,11 +760,9 @@ pub fn exec_async_query_with_binds(
         None
     };
     let log_binds = if log_enabled { bind_vars.clone() } else { None };
-    let started = if log_enabled {
-        Some(std::time::Instant::now())
-    } else {
-        None
-    };
+    // Always timed: the slow-query tracker needs the duration of every query,
+    // and an `Instant` is all a fast one costs.
+    let started = std::time::Instant::now();
 
     // Native driver: one MessagePack round trip on a pooled connection instead of
     // an HTTP cursor POST. Returns None unless the flag is on, in which case
@@ -773,38 +771,41 @@ pub fn exec_async_query_with_binds(
     // the query — off by default, and the copy is per query.
     if driver::query_may_handle() {
         if let Some(result) = driver::query(&sdbql, bind_vars.clone()) {
+            let ms = started.elapsed().as_secs_f64() * 1000.0;
+            crate::serve::slow_queries::observe(
+                &sdbql,
+                crate::serve::slow_queries::Dialect::Sdbql,
+                ms,
+                || bind_vars,
+            );
             if log_enabled {
-                super::query_log::record(
-                    log_query.unwrap_or_default(),
-                    log_binds,
-                    started
-                        .map(|s| s.elapsed().as_secs_f64() * 1000.0)
-                        .unwrap_or(0.0),
-                );
+                super::query_log::record(log_query.unwrap_or_default(), log_binds, ms);
             }
             return result;
         }
     }
 
-    let future = async move {
-        let mut payload = serde_json::json!({ "query": sdbql });
-        // Diagnostic: SoliDB memoizes read-only cursor results per (db, query,
-        // binds) and serves repeats with executionTimeMs 0. Measured worth 2.26x
-        // on the benchmark's 50-row read (97,856 vs 43,356 req/s at the cursor
-        // endpoint), and no other stack in that comparison has an equivalent —
-        // PostgreSQL re-plans and re-executes every request. Set
-        // SOLI_DB_NO_QUERY_CACHE=1 to opt out and see the uncached cost.
-        if no_query_cache() {
-            payload["cache"] = serde_json::Value::Bool(false);
-        }
-        if let Some(bv) = bind_vars {
-            // Moved into the payload, not re-serialised from a borrow.
-            payload["bindVars"] = serde_json::Value::Object(bv.into_iter().collect());
-        }
-        // `Bytes`, so each (auth-retry) attempt shares the body instead of
-        // copying it.
-        let body = bytes::Bytes::from(payload.to_string());
+    let mut payload = serde_json::json!({ "query": sdbql });
+    // Diagnostic: SoliDB memoizes read-only cursor results per (db, query,
+    // binds) and serves repeats with executionTimeMs 0. Measured worth 2.26x
+    // on the benchmark's 50-row read (97,856 vs 43,356 req/s at the cursor
+    // endpoint), and no other stack in that comparison has an equivalent —
+    // PostgreSQL re-plans and re-executes every request. Set
+    // SOLI_DB_NO_QUERY_CACHE=1 to opt out and see the uncached cost.
+    if no_query_cache() {
+        payload["cache"] = serde_json::Value::Bool(false);
+    }
+    if let Some(bv) = bind_vars {
+        // Moved into the payload, not re-serialised from a borrow.
+        payload["bindVars"] = serde_json::Value::Object(bv.into_iter().collect());
+    }
+    // `Bytes`, so each (auth-retry) attempt shares the body instead of
+    // copying it — and the slow-query tracker can read the query back out of
+    // it afterwards without the fast path keeping a copy.
+    let body = bytes::Bytes::from(payload.to_string());
+    let sent_body = body.clone();
 
+    let future = async move {
         let resp = send_with_db_auth_retry(|| {
             client
                 .post(&url)
@@ -869,14 +870,18 @@ pub fn exec_async_query_with_binds(
 
     let result = run_db_future(future);
 
-    let db_duration = if let (Some(q), Some(t0)) = (log_query, started) {
-        let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+    let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+    if crate::serve::slow_queries::is_slow(elapsed) {
+        observe_sent_query(&sent_body, elapsed);
+    }
+
+    let db_duration = if let Some(q) = log_query {
         let dur_us = (elapsed * 1000.0).max(0.0) as u64;
         let span_name: String = q.chars().take(80).collect();
         crate::serve::span_log::record(
             &span_name,
             crate::serve::span_log::SpanKind::Db,
-            t0,
+            started,
             dur_us,
             None,
         );
@@ -905,6 +910,26 @@ pub fn exec_async_query(sdbql: String) -> Value {
     }
 }
 
+/// Hand a slow cursor query to the slow-query tracker, reading the query and
+/// its binds back out of the request body that was sent.
+fn observe_sent_query(body: &[u8], ms: f64) {
+    let Ok(payload) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return;
+    };
+    let query = payload.get("query").and_then(|q| q.as_str()).unwrap_or("");
+    crate::serve::slow_queries::observe(
+        query,
+        crate::serve::slow_queries::Dialect::Sdbql,
+        ms,
+        || {
+            payload
+                .get("bindVars")
+                .and_then(|b| b.as_object())
+                .map(|b| b.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+        },
+    );
+}
+
 /// Async query returning raw JSON string (no Value conversion - fastest).
 /// Uses same HTTP client as HTTP.request for consistency.
 pub fn exec_async_query_raw(sdbql: String) -> Value {
@@ -925,11 +950,10 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
     } else {
         None
     };
-    let started = if log_enabled {
-        Some(std::time::Instant::now())
-    } else {
-        None
-    };
+    let started = std::time::Instant::now();
+    // `Bytes`: each attempt and the slow-query tracker share one buffer.
+    let body = bytes::Bytes::from(body);
+    let sent_body = body.clone();
 
     let client = crate::interpreter::builtins::http_class::db_http_client();
     let result = match run_db_future(async move {
@@ -958,14 +982,18 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
         Err(e) => Value::String(format!("Error: {}", e).into()),
     };
 
-    let db_duration = if let (Some(q), Some(t0)) = (log_query, started) {
-        let elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+    let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+    if crate::serve::slow_queries::is_slow(elapsed) {
+        observe_sent_query(&sent_body, elapsed);
+    }
+
+    let db_duration = if let Some(q) = log_query {
         let dur_us = (elapsed * 1000.0).max(0.0) as u64;
         let span_name: String = q.chars().take(80).collect();
         crate::serve::span_log::record(
             &span_name,
             crate::serve::span_log::SpanKind::Db,
-            t0,
+            started,
             dur_us,
             None,
         );
@@ -1418,19 +1446,19 @@ fn exec_values_with_auto_collection(
     collection_name: &str,
 ) -> Result<Vec<Value>, String> {
     if driver::query_may_handle() && !crate::db::is_sql() && get_mock_for_query(&sdbql).is_none() {
-        let started = super::query_log::is_enabled().then(std::time::Instant::now);
-        let log_binds = if started.is_some() {
-            bind_vars.clone()
-        } else {
-            None
-        };
+        let log_enabled = super::query_log::is_enabled();
+        let log_binds = if log_enabled { bind_vars.clone() } else { None };
+        let started = std::time::Instant::now();
         if let Some(result) = driver::query_values(&sdbql, bind_vars.clone()) {
-            if let Some(started) = started {
-                super::query_log::record(
-                    sdbql.clone(),
-                    log_binds,
-                    started.elapsed().as_secs_f64() * 1000.0,
-                );
+            let ms = started.elapsed().as_secs_f64() * 1000.0;
+            crate::serve::slow_queries::observe(
+                &sdbql,
+                crate::serve::slow_queries::Dialect::Sdbql,
+                ms,
+                || bind_vars.clone(),
+            );
+            if log_enabled {
+                super::query_log::record(sdbql.clone(), log_binds, ms);
             }
             match result {
                 // Let the JSON path create the collection and retry.

@@ -45,18 +45,20 @@
 //! `APP_ENV=test` unless `SOLI_ERRORS=on`, so spec runs do not fill the table.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 
 use super::error_pages::redacted_request_snapshot;
+use super::internal_store;
+use super::notify;
 use super::tenant::TenantId;
+pub(crate) use super::tenant_writer::StatsSnapshot;
+use super::tenant_writer::{self, Stats, Writers};
 use super::RequestData;
-use crate::db;
-use crate::interpreter::builtins::model::crud;
 
 pub(crate) const ERRORS_COLLECTION: &str = "_soli_errors";
 
@@ -96,68 +98,12 @@ pub(crate) const OVERFLOW_FINGERPRINT: &str = "0000000000000000";
 
 const OVERFLOW_MESSAGE: &str = "Too many error groups: new kinds of error are counted here";
 
-/// What went wrong with recording itself, per application, since the process
-/// started. Kept apart from the writer so a restarted writer keeps the counts.
-#[derive(Default)]
-pub(crate) struct Stats {
-    /// Queue full: errors arrived faster than the writer could store them.
-    dropped: AtomicU64,
-    /// Occurrences whose write failed (a database error, or a panic in the
-    /// writer caught around that write).
-    failed: AtomicU64,
-    /// Times the writer was found gone and started again.
-    restarts: AtomicU64,
-    /// Occurrences lost because no writer could take them.
-    lost: AtomicU64,
-    /// Occurrences of a new fingerprint counted in the overflow group.
-    overflowed: AtomicU64,
-}
-
-/// A copy of [`Stats`] for the dashboard.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StatsSnapshot {
-    pub dropped: u64,
-    pub failed: u64,
-    pub restarts: u64,
-    pub lost: u64,
-    pub overflowed: u64,
-}
-
-impl Stats {
-    fn snapshot(&self) -> StatsSnapshot {
-        StatsSnapshot {
-            dropped: self.dropped.load(Ordering::Relaxed),
-            failed: self.failed.load(Ordering::Relaxed),
-            restarts: self.restarts.load(Ordering::Relaxed),
-            lost: self.lost.load(Ordering::Relaxed),
-            overflowed: self.overflowed.load(Ordering::Relaxed),
-        }
-    }
-}
-
-/// One application's writer: its channel, a generation that tells a stale
-/// sender from its replacement, and the counters that outlive both.
-struct Writer {
-    sender: Option<SyncSender<Occurrence>>,
-    generation: u64,
-    stats: Arc<Stats>,
-}
-
-type Registry = Mutex<HashMap<TenantId, Writer>>;
-
-fn registry() -> &'static Registry {
-    static WRITERS: OnceLock<Registry> = OnceLock::new();
-    WRITERS.get_or_init(|| Mutex::new(HashMap::new()))
-}
+/// Occurrences waiting to be written, one writer per application.
+static WRITERS: Writers<Occurrence> = Writers::new("errors", QUEUE_CAP);
 
 /// This application's recording counters, since the process started.
 pub(crate) fn stats() -> StatsSnapshot {
-    let tenant = super::tenant::current_id();
-    let writers = registry().lock().unwrap_or_else(|e| e.into_inner());
-    writers
-        .get(&tenant)
-        .map(|w| w.stats.snapshot())
-        .unwrap_or_default()
+    WRITERS.stats(super::tenant::current_id())
 }
 
 /// Whether failures are recorded at all.
@@ -234,100 +180,13 @@ pub(super) fn record(
         at,
         sample,
     };
-    deliver(super::tenant::current_id(), occurrence, &spawn_writer);
-}
-
-/// Hand an occurrence to the application's writer, starting it if needed.
-///
-/// A full queue drops the occurrence and counts it as `dropped`. A writer that
-/// is gone (its thread died) is a different fault: its sender is forgotten, a
-/// new writer is started and the occurrence retried once — before, the dead
-/// sender stayed registered and every later error was counted as a queue
-/// overflow while nothing was recorded again until a restart.
-fn deliver(
-    tenant: TenantId,
-    occurrence: Occurrence,
-    spawn: &dyn Fn(TenantId, Receiver<Occurrence>, Arc<Stats>) -> bool,
-) {
-    let mut occurrence = occurrence;
-    for attempt in 0..2 {
-        let Some((sender, generation, stats)) = writer_for(tenant, spawn) else {
-            return;
-        };
-        match sender.try_send(occurrence) {
-            Ok(()) => return,
-            Err(TrySendError::Full(_)) => {
-                stats.dropped.fetch_add(1, Ordering::Relaxed);
-                return;
-            }
-            Err(TrySendError::Disconnected(back)) => {
-                forget_writer(tenant, generation);
-                stats.restarts.fetch_add(1, Ordering::Relaxed);
-                eprintln!("[errors] the error tracker's writer had stopped; starting it again");
-                if attempt == 1 {
-                    stats.lost.fetch_add(1, Ordering::Relaxed);
-                    return;
-                }
-                occurrence = back;
-            }
-        }
-    }
-}
-
-/// The live sender for `tenant`, starting a writer when there is none. The
-/// writer's database calls need the application's tenant and the server's
-/// runtime, and neither crosses `spawn` on its own.
-fn writer_for(
-    tenant: TenantId,
-    spawn: &dyn Fn(TenantId, Receiver<Occurrence>, Arc<Stats>) -> bool,
-) -> Option<(SyncSender<Occurrence>, u64, Arc<Stats>)> {
-    let mut writers = registry().lock().unwrap_or_else(|e| e.into_inner());
-    let writer = writers.entry(tenant).or_insert_with(|| Writer {
-        sender: None,
-        generation: 0,
-        stats: Arc::new(Stats::default()),
-    });
-    if let Some(sender) = &writer.sender {
-        return Some((sender.clone(), writer.generation, writer.stats.clone()));
-    }
-    let (sender, receiver) = mpsc::sync_channel(QUEUE_CAP);
-    if !spawn(tenant, receiver, writer.stats.clone()) {
-        writer.stats.lost.fetch_add(1, Ordering::Relaxed);
-        return None;
-    }
-    writer.generation += 1;
-    writer.sender = Some(sender.clone());
-    Some((sender, writer.generation, writer.stats.clone()))
-}
-
-/// Drop a dead writer's sender, unless another thread already replaced it.
-fn forget_writer(tenant: TenantId, generation: u64) {
-    let mut writers = registry().lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(writer) = writers.get_mut(&tenant) {
-        if writer.generation == generation {
-            writer.sender = None;
-        }
-    }
+    WRITERS.deliver(super::tenant::current_id(), occurrence, &spawn_writer);
 }
 
 fn spawn_writer(tenant: TenantId, receiver: Receiver<Occurrence>, stats: Arc<Stats>) -> bool {
-    let Some(handle) = super::get_tokio_handle() else {
-        return false;
-    };
-    let spawned = std::thread::Builder::new()
-        .name("error-tracker".to_string())
-        .spawn(move || {
-            super::tenant::bind_current(tenant);
-            super::set_tokio_handle(handle);
-            run_writer(receiver, &DbStore, &stats);
-        });
-    match spawned {
-        Ok(_) => true,
-        Err(e) => {
-            eprintln!("[errors] could not start the error tracker: {e}");
-            false
-        }
-    }
+    tenant_writer::spawn_thread("error-tracker", tenant, move || {
+        run_writer(receiver, &DbStore, &stats)
+    })
 }
 
 /// Occurrences of one group gathered during a flush window.
@@ -376,24 +235,19 @@ struct DbStore;
 
 impl Store for DbStore {
     fn ensure(&self) -> Result<(), String> {
-        ensure_collection()
+        internal_store::ensure(ERRORS_COLLECTION, "status")
     }
     fn get(&self, fingerprint: &str) -> Result<Option<serde_json::Value>, String> {
         get(fingerprint)
     }
     fn insert(&self, fingerprint: &str, doc: serde_json::Value) -> Result<(), String> {
-        if db::is_sql() {
-            db::sql::insert(ERRORS_COLLECTION, Some(fingerprint), doc)?;
-        } else {
-            crud::exec_insert(ERRORS_COLLECTION, Some(fingerprint), doc)?;
-        }
-        Ok(())
+        internal_store::insert(ERRORS_COLLECTION, fingerprint, doc)
     }
     fn patch(&self, fingerprint: &str, fields: serde_json::Value) -> Result<(), String> {
         patch(fingerprint, fields)
     }
     fn count(&self) -> Result<u64, String> {
-        count_groups()
+        internal_store::count(ERRORS_COLLECTION)
     }
 }
 
@@ -407,6 +261,8 @@ struct Flusher<'a> {
     groups: Option<u64>,
     /// Whether the count was refreshed during this window already.
     recounted: bool,
+    /// Recent occurrences per group, for the `error.spike` notification.
+    spikes: notify::SpikeWatch,
 }
 
 impl<'a> Flusher<'a> {
@@ -417,6 +273,7 @@ impl<'a> Flusher<'a> {
             ensured: false,
             groups: None,
             recounted: false,
+            spikes: notify::SpikeWatch::default(),
         }
     }
 
@@ -427,15 +284,13 @@ impl<'a> Flusher<'a> {
         self.recounted = false;
         if !self.ensured {
             let store = self.store;
-            self.ensured =
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| store.ensure())) {
-                    Ok(Ok(())) => true,
-                    Ok(Err(e)) => {
-                        eprintln!("[errors] could not prepare {ERRORS_COLLECTION}: {e}");
-                        false
-                    }
-                    Err(_) => false,
-                };
+            self.ensured = match tenant_writer::fenced(|| store.ensure()) {
+                Ok(()) => true,
+                Err(e) => {
+                    eprintln!("[errors] could not prepare {ERRORS_COLLECTION}: {e}");
+                    false
+                }
+            };
         }
         let mut overflow: Option<Pending> = None;
         for (fingerprint, group) in pending {
@@ -466,19 +321,7 @@ impl<'a> Flusher<'a> {
         fingerprint: &str,
         group: Pending,
     ) -> Result<Option<Pending>, String> {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.write_group(fingerprint, group)
-        })) {
-            Ok(result) => result,
-            Err(panic) => {
-                let what = panic
-                    .downcast_ref::<&str>()
-                    .map(|s| s.to_string())
-                    .or_else(|| panic.downcast_ref::<String>().cloned())
-                    .unwrap_or_else(|| "panic".to_string());
-                Err(format!("the writer panicked: {what}"))
-            }
-        }
+        tenant_writer::fenced(|| self.write_group(fingerprint, group))
     }
 
     /// Store one group's window. `Ok(Some(group))` hands the window back when
@@ -489,13 +332,53 @@ impl<'a> Flusher<'a> {
         group: Pending,
     ) -> Result<Option<Pending>, String> {
         if let Some(existing) = self.store.get(fingerprint)? {
+            let status = existing
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let regressed = status == "resolved";
+            let ignored = status == "ignored";
+            let event = |kind| {
+                notify::Event::error(
+                    kind,
+                    fingerprint,
+                    &group.message,
+                    &group.location,
+                    &group.last_request,
+                    None,
+                )
+            };
+            let mut events = Vec::new();
+            if regressed {
+                events.push(event(notify::Kind::ErrorRegressed));
+            }
+            let spike = notify::spike_rule().and_then(|rule| {
+                self.spikes
+                    .add(fingerprint, group.count, Instant::now(), rule)
+            });
+            if let (Some(total), false) = (spike, ignored) {
+                let mut spiked = event(notify::Kind::ErrorSpike);
+                spiked.count = Some(total);
+                events.push(spiked);
+            }
             self.store
                 .patch(fingerprint, merged_patch(&existing, group))?;
+            events.into_iter().for_each(notify::emit);
             return Ok(None);
         }
         if fingerprint != OVERFLOW_FINGERPRINT && !self.has_room()? {
             return Ok(Some(group));
         }
+        let new_error = (fingerprint != OVERFLOW_FINGERPRINT).then(|| {
+            notify::Event::error(
+                notify::Kind::ErrorNew,
+                fingerprint,
+                &group.message,
+                &group.location,
+                &group.last_request,
+                Some(group.count),
+            )
+        });
         let doc = serde_json::json!({
             "message": group.message,
             "location": group.location,
@@ -514,6 +397,9 @@ impl<'a> Flusher<'a> {
             .filter(|_| fingerprint != OVERFLOW_FINGERPRINT)
         {
             *n += 1;
+        }
+        if let Some(event) = new_error {
+            notify::emit(event);
         }
         Ok(None)
     }
@@ -596,52 +482,6 @@ fn gather(pending: &mut HashMap<String, Pending>, occurrence: Occurrence) {
     group.samples.truncate(MAX_SAMPLES);
 }
 
-fn ensure_collection() -> Result<(), String> {
-    if db::is_sql() {
-        db::sql::ensure_table(ERRORS_COLLECTION).and_then(|_| {
-            db::sql::ensure_doc_index(
-                ERRORS_COLLECTION,
-                &["status".to_string()],
-                "idx__soli_errors_status",
-                false,
-            )
-            .map(|_| ())
-        })
-    } else {
-        crud::ensure_collection(ERRORS_COLLECTION)
-            .and_then(|_| crud::ensure_index(ERRORS_COLLECTION, "status"))
-    }
-}
-
-/// Groups stored for this application.
-fn count_groups() -> Result<u64, String> {
-    if db::is_sql() {
-        let query = db::ListQuery {
-            table: ERRORS_COLLECTION.to_string(),
-            eq_filters: std::collections::BTreeMap::new(),
-            hash_filter: None,
-            filter_sdbql: None,
-            having: None,
-            exists_filters: Vec::new(),
-            soft_delete: db::SqlSoftDeleteMode::WithDeleted,
-            is_soft_delete_model: false,
-            order_field: None,
-            order_desc: false,
-            limit: None,
-            offset: None,
-        };
-        return db::sql::count(&query).map(|n| n.max(0) as u64);
-    }
-    let rows = crud::exec_query(
-        ERRORS_COLLECTION,
-        format!("RETURN COLLECTION_COUNT(\"{ERRORS_COLLECTION}\")"),
-    )?;
-    match crate::interpreter::builtins::model::core::parse_count_result(&rows) {
-        crate::interpreter::value::Value::Int(n) => Ok(n.max(0) as u64),
-        other => Err(format!("unexpected count result: {other}")),
-    }
-}
-
 /// The update an existing group receives for a window's occurrences.
 fn merged_patch(existing: &serde_json::Value, group: Pending) -> serde_json::Value {
     let count = existing.get("count").and_then(|v| v.as_u64()).unwrap_or(0) + group.count;
@@ -705,35 +545,11 @@ pub(crate) fn parse_hourly(value: Option<&serde_json::Value>) -> BTreeMap<String
 
 /// One group, or `None` when the fingerprint is unknown.
 pub(crate) fn get(fingerprint: &str) -> Result<Option<serde_json::Value>, String> {
-    if db::is_sql() {
-        return db::sql::get(ERRORS_COLLECTION, fingerprint);
-    }
-    // A missing document is a normal answer here; anything else (a timeout,
-    // a refused connection) is an error. Reading every failure as "missing"
-    // made the writer insert over a group it merely could not read.
-    match crud::exec_get(ERRORS_COLLECTION, fingerprint) {
-        Ok(doc) => Ok(Some(doc)),
-        Err(e) if is_missing_document(&e) => Ok(None),
-        Err(e) => Err(e),
-    }
-}
-
-/// Does this SoliDB error say the document (or its collection) is not there?
-fn is_missing_document(error: &str) -> bool {
-    let lower = error.to_ascii_lowercase();
-    lower.contains("404")
-        || lower.contains("not found")
-        || lower.contains("notfound")
-        || lower.contains("does not exist")
+    internal_store::get(ERRORS_COLLECTION, fingerprint)
 }
 
 fn patch(fingerprint: &str, fields: serde_json::Value) -> Result<(), String> {
-    if db::is_sql() {
-        db::sql::update(ERRORS_COLLECTION, fingerprint, fields, true)?;
-    } else {
-        crud::exec_update(ERRORS_COLLECTION, fingerprint, fields, true)?;
-    }
-    Ok(())
+    internal_store::patch(ERRORS_COLLECTION, fingerprint, fields)
 }
 
 /// Groups in `status`, most recently seen first, without their samples.
@@ -741,42 +557,24 @@ pub(crate) fn list(status: &str, limit: usize) -> Result<Vec<serde_json::Value>,
     if !STATUSES.contains(&status) {
         return Err(format!("unknown status {status:?}"));
     }
-    let mut rows = if db::is_sql() {
-        let mut eq = std::collections::BTreeMap::new();
-        eq.insert("status".to_string(), serde_json::Value::from(status));
-        let query = db::ListQuery {
-            table: ERRORS_COLLECTION.to_string(),
-            eq_filters: eq,
-            hash_filter: None,
-            filter_sdbql: Some("doc.status == @status".to_string()),
-            having: None,
-            exists_filters: Vec::new(),
-            soft_delete: db::SqlSoftDeleteMode::WithDeleted,
-            is_soft_delete_model: false,
-            order_field: Some("last_seen".to_string()),
-            order_desc: true,
-            limit: Some(limit),
-            offset: None,
-        };
-        db::sql::select(&query)?
-    } else {
-        // `status` is one of STATUSES, checked above, so it is safe to inline.
-        let sdbql = format!(
-            "FOR doc IN {ERRORS_COLLECTION} FILTER doc.status == \"{status}\" \
-             SORT doc.last_seen DESC LIMIT {limit} \
-             RETURN {{_key: doc._key, message: doc.message, location: doc.location, \
-             status: doc.status, count: doc.count, first_seen: doc.first_seen, \
-             last_seen: doc.last_seen, regressed_at: doc.regressed_at, \
-             last_request: doc.last_request, hourly: doc.hourly}}"
-        );
-        crud::exec_query(ERRORS_COLLECTION, sdbql)?
-    };
-    for row in &mut rows {
-        if let Some(map) = row.as_object_mut() {
-            map.remove("samples");
-        }
-    }
-    Ok(rows)
+    internal_store::list(
+        ERRORS_COLLECTION,
+        Some(("status", status)),
+        "last_seen",
+        true,
+        limit,
+        &[
+            "message",
+            "location",
+            "status",
+            "count",
+            "first_seen",
+            "last_seen",
+            "regressed_at",
+            "last_request",
+            "hourly",
+        ],
+    )
 }
 
 /// Move a group to `status`. `false` when the group does not exist.
@@ -797,15 +595,7 @@ pub(crate) fn set_status(fingerprint: &str, status: &str) -> Result<bool, String
 
 /// Forget a group. `false` when it did not exist.
 pub(crate) fn delete(fingerprint: &str) -> Result<bool, String> {
-    if get(fingerprint)?.is_none() {
-        return Ok(false);
-    }
-    if db::is_sql() {
-        db::sql::delete(ERRORS_COLLECTION, fingerprint)?;
-    } else {
-        crud::exec_delete(ERRORS_COLLECTION, fingerprint)?;
-    }
-    Ok(true)
+    internal_store::delete(ERRORS_COLLECTION, fingerprint)
 }
 
 /// Whether `value` has the shape [`fingerprint`] produces.
@@ -1190,55 +980,6 @@ mod tests {
         );
         flusher.flush(window(["later".to_string()]));
         assert!(store.get("later").unwrap().is_some(), "the writer survived");
-    }
-
-    #[test]
-    fn a_dead_writer_is_replaced_not_reported_as_overflow() {
-        use std::sync::atomic::AtomicUsize;
-        let tenant = TenantId(0xE77_0001);
-        let spawned = AtomicUsize::new(0);
-        let kept: Mutex<Vec<Receiver<Occurrence>>> = Mutex::new(Vec::new());
-        let spawn = |_: TenantId, rx: Receiver<Occurrence>, _: Arc<Stats>| {
-            // The first writer dies at once; the second stays up.
-            if spawned.fetch_add(1, Ordering::SeqCst) > 0 {
-                kept.lock().unwrap().push(rx);
-            }
-            true
-        };
-        let occurrence = |fp: &str| Occurrence {
-            fingerprint: fp.into(),
-            message: "m".into(),
-            location: "l".into(),
-            request_line: "GET /".into(),
-            at: "t".into(),
-            sample: serde_json::Value::Null,
-        };
-        deliver(tenant, occurrence("a"), &spawn);
-        deliver(tenant, occurrence("b"), &spawn);
-        assert_eq!(
-            spawned.load(Ordering::SeqCst),
-            2,
-            "respawned once, then reused"
-        );
-        let received: Vec<String> = kept.lock().unwrap()[0]
-            .try_iter()
-            .map(|o| o.fingerprint)
-            .collect();
-        assert_eq!(received, vec!["a", "b"], "the retried occurrence arrived");
-        let stats = registry().lock().unwrap()[&tenant].stats.snapshot();
-        assert_eq!(stats.restarts, 1);
-        assert_eq!(stats.dropped, 0);
-        assert_eq!(stats.lost, 0);
-    }
-
-    #[test]
-    fn only_a_missing_document_reads_as_absent() {
-        assert!(is_missing_document("HTTP 404 Not Found http://db/x: {}"));
-        assert!(is_missing_document("driver get failed: document not found"));
-        assert!(!is_missing_document("HTTP error: connection refused"));
-        assert!(!is_missing_document(
-            "HTTP 503 Service Unavailable http://db/x: busy"
-        ));
     }
 
     #[test]

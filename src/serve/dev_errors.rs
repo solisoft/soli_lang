@@ -125,6 +125,7 @@ fn handle_index(query: Option<&str>) -> Response<ResponseBody> {
         );
     }
     body.push_str(&recording_notices(&error_tracker::stats()));
+    body.push_str(&super::notify::status_html());
     if let Ok(Some(overflow)) = error_tracker::get(error_tracker::OVERFLOW_FINGERPRINT) {
         let count = overflow.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
         body.push_str(&format!(
@@ -142,10 +143,7 @@ Groups already stored keep counting. Delete groups you no longer need to make ro
         Ok(rows) => rows,
         Err(e) => {
             // Nothing has failed yet, so the collection does not exist.
-            if e.contains("404")
-                || e.to_lowercase().contains("not found")
-                || e.contains("no such table")
-            {
+            if super::internal_store::is_missing_collection(&e) {
                 body.push_str(
                     "<div class=\"empty\"><b>No errors recorded yet.</b>\
 <span>A request that fails with a 500 will show up here within a second.</span></div>",
@@ -240,7 +238,7 @@ Groups already stored keep counting. Delete groups you no longer need to make ro
 
 /// The keys of the last 24 hours, oldest first, in the tracker's `hour_of`
 /// shape (`2026-09-24T18`).
-fn last_hours(now: chrono::DateTime<chrono::Utc>) -> Vec<String> {
+pub(super) fn last_hours(now: chrono::DateTime<chrono::Utc>) -> Vec<String> {
     (0..error_tracker::HOURS_KEPT as i64)
         .rev()
         .map(|back| {
@@ -253,7 +251,10 @@ fn last_hours(now: chrono::DateTime<chrono::Utc>) -> Vec<String> {
 
 /// One bar per hour, scaled to the busiest hour. An hour with nothing is a
 /// dim tick, so the line reads as "quiet", not "missing".
-fn sparkline(hourly: &std::collections::BTreeMap<String, u64>, hours: &[String]) -> String {
+pub(super) fn sparkline(
+    hourly: &std::collections::BTreeMap<String, u64>,
+    hours: &[String],
+) -> String {
     const HEIGHT: u64 = 22;
     let counts: Vec<u64> = hours
         .iter()
@@ -284,7 +285,7 @@ fn sparkline(hourly: &std::collections::BTreeMap<String, u64>, hours: &[String])
 }
 
 /// `1234` → `1.2k`, so the count column keeps its width.
-fn short_count(n: u64) -> String {
+pub(super) fn short_count(n: u64) -> String {
     match n {
         0..=999 => n.to_string(),
         1_000..=9_999 => format!("{:.1}k", n as f64 / 1_000.0),
@@ -294,7 +295,7 @@ fn short_count(n: u64) -> String {
 }
 
 /// `2026-09-24T18:34:17Z` → `3 min ago`. Anything unparseable is shown as is.
-fn relative(iso: &str, now: chrono::DateTime<chrono::Utc>) -> String {
+pub(super) fn relative(iso: &str, now: chrono::DateTime<chrono::Utc>) -> String {
     let Ok(at) = chrono::DateTime::parse_from_rfc3339(iso) else {
         return iso.to_string();
     };
@@ -605,7 +606,7 @@ errors arrived faster than they could be written.</p>",
     out
 }
 
-fn html_status(status: StatusCode, html: String) -> Response<ResponseBody> {
+pub(super) fn html_status(status: StatusCode, html: String) -> Response<ResponseBody> {
     let mut response = html_ok(html);
     *response.status_mut() = status;
     response

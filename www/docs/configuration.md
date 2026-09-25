@@ -350,7 +350,7 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_FORCE_SECURE_COOKIES` | Set to `1`/`true`/`yes` to add `Secure` to **every** cookie the process emits — the framework's session cookie *and* anything the app sets through `set_cookie` — regardless of detected scheme. Use when the deployment is always on TLS but the proxy doesn't forward `X-Forwarded-Proto: https` (or `enable_trust_proxy()` isn't on). Equivalent runtime call: `enable_force_secure_cookies()`. | `false` |
 | `SOLI_MAX_BODY_SIZE` | Maximum buffered request body, in bytes. Requests over the cap return `413 Payload Too Large`. | `8388608` (8 MiB) |
 | `SOLI_DISABLE_CSRF` | Disables the same-origin CSRF check entirely when set to `true`. For API-only deployments where no cookie session is in play. Per-route opt-out via `skip_csrf("/path")` in `config/routes.sl` is preferred — see [Routing → CSRF Protection](/docs/routing#csrf-protection). Read once per process; changing it needs a restart. | unset |
-| `SOLI_CSRF_TOKENS` | Set to `require` to make per-form CSRF tokens mandatory for browser form posts (urlencoded/multipart) — a form post without a valid token returns 403. Tokens are always *verified when present* regardless of this setting. `soli new` writes `SOLI_CSRF_TOKENS=require` into `.env`; the runtime default remains unset for existing apps. The built-in jobs and errors pages (`/__soli/jobs`, `/__soli/errors`) are exempt from the requirement — they authenticate with Basic auth, not a cookie session, so they have no session token to embed — but keep the Origin/Referer gate. See [Forms & CSRF](/docs/core-concepts/forms). Read once per process; changing it needs a restart. | unset (new apps: `require`) |
+| `SOLI_CSRF_TOKENS` | Set to `require` to make per-form CSRF tokens mandatory for browser form posts (urlencoded/multipart) — a form post without a valid token returns 403. Tokens are always *verified when present* regardless of this setting. `soli new` writes `SOLI_CSRF_TOKENS=require` into `.env`; the runtime default remains unset for existing apps. The built-in jobs, errors and slow-queries pages (`/__soli/jobs`, `/__soli/errors`, `/__soli/slow_queries`) are exempt from the requirement — they authenticate with Basic auth, not a cookie session, so they have no session token to embed — but keep the Origin/Referer gate. See [Forms & CSRF](/docs/core-concepts/forms). Read once per process; changing it needs a restart. | unset (new apps: `require`) |
 | `SOLI_HTTP_MAX_RESPONSE_BYTES` | Maximum bytes Soli will buffer from a single outbound HTTP response (`HTTP.*`, `SOAP.*`). A malicious or compromised upstream returning a multi-GB body would otherwise OOM the worker. | `52428800` (50 MiB) |
 | `SOLI_IMAGE_MAX_ALLOC_BYTES` | Maximum bytes the image decoder will allocate for a single image (`Image.*`, plan execution). Defends against decompression bombs — a 100 KB PNG declaring 65535×65535 pixels would otherwise allocate ~16 GB of RGBA pixels. | `268435456` (256 MiB) |
 | `SOLI_IMAGE_MAX_DIMENSION_PX` | Maximum pixel dimension on either axis for any decoded image. Images declaring more are rejected before allocation. | `16384` |
@@ -433,7 +433,20 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_ERRORS_USER` | HTTP Basic username for the production `/__soli/errors` page. Must be paired with `SOLI_ERRORS_PASSWORD`. With no errors credentials and no `SOLI_ADMIN_*`, the route 404s outside `--dev`. | unset |
 | `SOLI_ERRORS_PASSWORD` | HTTP Basic password for `/__soli/errors`. | unset |
 | `SOLI_ERRORS_TOKEN` | Optional bearer token for `/__soli/errors`. | unset |
-| `SOLI_ADMIN_USER` / `SOLI_ADMIN_PASSWORD` / `SOLI_ADMIN_TOKEN` | One set of credentials accepted by every built-in operator page (`/__soli/jobs` and `/__soli/errors`), in addition to each page's own. | unset |
+| `SOLI_SLOW_QUERIES` | Slow-query tracking for [`/__soli/slow_queries`](observability.md#slow-queries-__solislow_queries). `off` stops recording; `on` forces it on under `APP_ENV=test`, where it is otherwise off. | on |
+| `SOLI_SLOW_QUERY_MS` | A query taking this many milliseconds or more is recorded as slow. Read once per process. | `200` |
+| `SOLI_SLOW_QUERY_BINDS` | `off` stores slow queries without their bind values. | on |
+| `SOLI_SLOW_QUERIES_USER` / `SOLI_SLOW_QUERIES_PASSWORD` / `SOLI_SLOW_QUERIES_TOKEN` | Credentials for the production `/__soli/slow_queries` page, like `SOLI_ERRORS_*`. With none and no `SOLI_ADMIN_*`, the route 404s outside `--dev`. | unset |
+| `SOLI_ADMIN_USER` / `SOLI_ADMIN_PASSWORD` / `SOLI_ADMIN_TOKEN` | One set of credentials accepted by every built-in operator page (`/__soli/jobs`, `/__soli/errors`, `/__soli/slow_queries`), in addition to each page's own. | unset |
+| `SOLI_NOTIFY_WEBHOOKS` | Comma-separated URLs that receive [notifications](observability.md#notifications). Slack, Microsoft Teams, Discord and Google Chat URLs get their own message format; any other URL gets the event as JSON. | unset |
+| `SOLI_NOTIFY_EMAILS` | Comma-separated addresses that receive notifications through the app's mailer (`SOLI_SMTP_*`). | unset |
+| `SOLI_NOTIFY_FROM` | Sender of notification emails. | `SOLI_SMTP_FROM` |
+| `SOLI_NOTIFY_EVENTS` | Which events are sent: any of `error.new`, `error.regressed`, `error.spike`, `slow_query.new`. | all four |
+| `SOLI_NOTIFY_THROTTLE` | At most one message per event and group within this window (`90s`, `15m`, `1h`). | `15m` |
+| `SOLI_NOTIFY_SPIKE` | `error.spike` rule, `<count>/<window>`; `off` disables it. | `50/5m` |
+| `SOLI_NOTIFY_SECRET` | Signs JSON webhook bodies: `X-Soli-Signature` is the hex HMAC-SHA256 of the body. | unset |
+| `SOLI_NOTIFY_URL` | Base URL for the links in notifications. | `https://` + first `SOLI_APP_HOSTS` |
+| `SOLI_NOTIFY_APP_NAME` | The app's name in notifications. | the app directory's name |
 
 ## Cache And KV
 

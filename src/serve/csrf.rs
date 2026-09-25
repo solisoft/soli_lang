@@ -79,7 +79,7 @@ fn csrf_skipped_by_app(path: &str) -> bool {
 /// An app that *wants* an exemption for its own route says so explicitly
 /// with `skip_csrf("/path[/*]")`.
 fn is_framework_path(path: &str) -> bool {
-    // `/__soli/jobs` and `/__soli/errors` are deliberately NOT exempt. They are
+    // `/__soli/jobs`, `/__soli/errors` and `/__soli/slow_queries` are deliberately NOT exempt. They are
     // the endpoints in the reserved namespace that are both state-changing and
     // reachable in production: `POST /__soli/jobs/<id>/retry` (and `/cancel`),
     // `POST /__soli/errors/<id>/resolve` (and the rest) behind Basic auth,
@@ -116,7 +116,7 @@ pub(crate) fn is_reserved_framework_path(path: &str) -> bool {
         || path.starts_with("/__livereload/")
 }
 
-/// The built-in operator pages (jobs, errors), which the Origin/Referer gate
+/// The built-in operator pages (jobs, errors, slow queries), which the Origin/Referer gate
 /// covers (see [`is_framework_path`]) but the per-form token layer cannot.
 ///
 /// Their action forms are rendered by the framework itself, behind Basic
@@ -125,7 +125,7 @@ pub(crate) fn is_reserved_framework_path(path: &str) -> bool {
 /// framework's own buttons. Same-origin enforcement stays; only the mandatory
 /// *token* is lifted.
 fn is_operator_dashboard_path(path: &str) -> bool {
-    ["/__soli/jobs", "/__soli/errors"]
+    ["/__soli/jobs", "/__soli/errors", "/__soli/slow_queries"]
         .iter()
         .any(|base| path == *base || path.strip_prefix(base).is_some_and(|r| r.starts_with('/')))
 }
@@ -576,6 +576,8 @@ mod framework_path_tests {
             "/__soli/errors",
             "/__soli/errors/0123456789abcdef/resolve",
             "/__soli/errors/0123456789abcdef/delete",
+            "/__soli/slow_queries",
+            "/__soli/slow_queries/0123456789abcdef/delete",
         ] {
             assert!(!is_framework_path(path), "expected NOT exempt: {path}");
         }

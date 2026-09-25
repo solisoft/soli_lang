@@ -432,7 +432,8 @@ fn get_on(conn: &mut SqConn, table: &str, key: &str) -> Result<Option<serde_json
     let sql = format!("SELECT doc FROM {table_q} WHERE _key = ?");
     // Traced here rather than in `get`: this is the per-key lookup a loop turns
     // into an N+1, and write paths read back through it too.
-    let _trace = super::trace::start(&sql, &[SqlBind::Text(key.to_string())]);
+    let key_bind = [SqlBind::Text(key.to_string())];
+    let _trace = super::trace::start(&sql, &key_bind);
     // Per-connection statement cache: the same few document statements run on
     // every request, and SQLite re-prepares a cached one itself on a schema change.
     let row: Option<String> = conn

@@ -20,6 +20,7 @@ mod dev_errors;
 mod dev_inbox;
 mod dev_jobs;
 mod dev_routes;
+mod dev_slow_queries;
 pub mod dev_store;
 mod error_response;
 mod file_watcher;
@@ -71,10 +72,14 @@ mod error_pages;
 mod error_tracker;
 mod file_tracker;
 pub(crate) mod file_upload;
+mod internal_store;
 pub mod job_worker;
 mod json;
+mod notify;
 mod repl_session;
+pub(crate) mod slow_queries;
 pub(crate) mod tailwind;
+mod tenant_writer;
 mod worker_pool;
 
 pub use crate::interpreter::builtins::router::{get_controllers, set_controllers};
@@ -2443,6 +2448,19 @@ async fn handle_hyper_request(
     // Error dashboard: the failures `error_tracker` grouped, behind the same
     // gate as the jobs page. See `dev_errors`.
     if let Some(resp) = dev_errors::dispatch(
+        &method,
+        &path,
+        req.uri().query(),
+        req.headers(),
+        dev_mode,
+        peer_addr.ip(),
+    ) {
+        return Ok(resp);
+    }
+
+    // Slow-query dashboard: the queries `slow_queries` grouped, behind the
+    // same gate. See `dev_slow_queries`.
+    if let Some(resp) = dev_slow_queries::dispatch(
         &method,
         &path,
         req.uri().query(),
@@ -5435,6 +5453,7 @@ fn handle_request(
     dev_mode: bool,
 ) -> ResponseData {
     request_scope::reset_worker_thread_locals(dev_mode);
+    slow_queries::begin_request(data.method.as_ref(), &data.path);
 
     // File mode: this request resolved to a `.slv`/`.erb` file in the served
     // folder. There is no route table, no session and no CSRF gate to run —
@@ -5591,6 +5610,7 @@ fn handle_request(
     // "requests" panel + the `X-Soli-Route` header. Early-outs on the gate in
     // production. 404s never reach here, so a miss leaves the route unset.
     route_log::record(&handler_name);
+    slow_queries::note_handler(&handler_name);
 
     let request_scope::Scope {
         cookie_pairs,

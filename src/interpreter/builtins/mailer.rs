@@ -818,6 +818,37 @@ fn mailer_deliver(args: &[Value]) -> Result<Value, String> {
     }
 }
 
+/// Send a plain operator mail from Rust (the notifier), through the same
+/// transport, delivery method and dev inbox as `Mailer.deliver`. `from` falls
+/// back to `SOLI_SMTP_FROM`.
+pub(crate) fn send_operator_mail(
+    to: &[String],
+    from: Option<&str>,
+    subject: &str,
+    text_body: &str,
+    html_body: &str,
+) -> Result<(), String> {
+    let from = from
+        .map(str::to_string)
+        .or_else(|| MAILER_CONFIG.read(|c| c.from.clone()))
+        .ok_or_else(|| "no sender: set SOLI_NOTIFY_FROM or SOLI_SMTP_FROM".to_string())?;
+    let mut mail = HashPairs::default();
+    let mut put = |key: &str, value: Value| {
+        mail.insert(HashKey::String(key.into()), value);
+    };
+    put("from", Value::String(from.into()));
+    put(
+        "to",
+        Value::Array(Rc::new(RefCell::new(
+            to.iter().map(|a| Value::String(a.clone().into())).collect(),
+        ))),
+    );
+    put("subject", Value::String(subject.into()));
+    put("text_body", Value::String(text_body.into()));
+    put("html_body", Value::String(html_body.into()));
+    mailer_deliver(&[Value::Hash(Rc::new(RefCell::new(mail)))]).map(|_| ())
+}
+
 /// `__mailer_deliveries()` — captured mail in test mode (newest last).
 fn mailer_deliveries(_args: &[Value]) -> Result<Value, String> {
     let list = DELIVERIES.with(|d| d.borrow().clone());

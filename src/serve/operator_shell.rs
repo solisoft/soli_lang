@@ -1,4 +1,4 @@
-//! The one look every built-in `/__soli/*` page shares: errors, jobs, the mail
+//! The one look every built-in `/__soli/*` page shares: errors, slow queries, jobs, the mail
 //! inbox, and the mailer and component catalogs.
 //!
 //! Each page used to carry its own copy of a dark stylesheet, and the copies
@@ -17,6 +17,7 @@ use super::dev_bar::html_escape;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Section {
     Errors,
+    SlowQueries,
     Jobs,
     Inbox,
     Mailers,
@@ -27,6 +28,7 @@ impl Section {
     fn href(self) -> &'static str {
         match self {
             Section::Errors => "/__soli/errors",
+            Section::SlowQueries => "/__soli/slow_queries",
             Section::Jobs => "/__soli/jobs",
             Section::Inbox => "/__soli/inbox",
             Section::Mailers => "/__soli/mailers",
@@ -37,6 +39,7 @@ impl Section {
     fn label(self) -> &'static str {
         match self {
             Section::Errors => "Errors",
+            Section::SlowQueries => "Slow queries",
             Section::Jobs => "Jobs",
             Section::Inbox => "Inbox",
             Section::Mailers => "Mailers",
@@ -52,8 +55,9 @@ impl Section {
     }
 }
 
-const SECTIONS: [Section; 5] = [
+const SECTIONS: [Section; 6] = [
     Section::Errors,
+    Section::SlowQueries,
     Section::Jobs,
     Section::Inbox,
     Section::Mailers,
@@ -249,6 +253,14 @@ iframe.mail{width:100%;height:60vh;border:1px solid var(--line);border-radius:10
 .when{display:grid;gap:3px;font-size:13px;color:var(--text-2);text-align:right;white-space:nowrap}
 .when .first{font-size:11px;color:var(--faint)}
 .actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+
+/* the slow-queries list: a query shape where an error has its message */
+.row.slow .count{color:var(--amber)}
+.row.slow .trend svg{fill:var(--amber)}
+.msg.query{font:13px/1.5 var(--mono);color:var(--text-2)}
+/* A query is read symbol by symbol: `->>` must not turn into an arrow. */
+pre,code,.mono,.meta,.msg.query{font-variant-ligatures:none}
+.ms{color:var(--text)}
 
 @media (max-width:760px){
   .top-in{padding:0 16px;gap:14px}

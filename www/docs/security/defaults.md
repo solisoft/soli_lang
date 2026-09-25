@@ -23,6 +23,8 @@ For request-edge knobs (`SOLI_TRUST_PROXY`, body size, CSRF tokens) see [Server 
 | Log redaction | Credential-looking params, binds, locals (and the data passed to a failing `render()`), and HTTP URLs are `[REDACTED]`; `api_key`, `api-key` and `apiKey` are one name |
 | Jobs dashboard | 404 in production unless `SOLI_JOBS_USER`/`PASSWORD`, `SOLI_JOBS_TOKEN` or `SOLI_ADMIN_*` is set |
 | Errors dashboard (`/__soli/errors`) | 404 in production unless `SOLI_ERRORS_USER`/`PASSWORD`, `SOLI_ERRORS_TOKEN` or `SOLI_ADMIN_*` is set; stored samples are redacted (auth and API-key headers, cookies, secret-named params and locals — including `render()` data — at any depth, raw body); the replay `curl` line never carries credential headers; at most 1000 groups per app, new fingerprints beyond that fold into one overflow group |
+| Slow-queries dashboard (`/__soli/slow_queries`) | 404 in production unless `SOLI_SLOW_QUERIES_USER`/`PASSWORD`, `SOLI_SLOW_QUERIES_TOKEN` or `SOLI_ADMIN_*` is set; bind values under secret-looking names are redacted and long values cut (`SOLI_SLOW_QUERY_BINDS=off` stores none); at most 1000 shapes per app |
+| Notifications (`SOLI_NOTIFY_*`) | Off until a destination is set; webhook URLs pass the same SSRF guard as `Webhook.enqueue`; JSON bodies signed with `X-Soli-Signature` when `SOLI_NOTIFY_SECRET` is set; the pages show destinations by product, never the webhook URL |
 | Production boot gate | `APP_ENV=production` (or `prod`) **refuses to start** without `SOLI_APP_HOSTS` (at least one hostname) and `SOLI_SESSION_SECRET` of 32+ characters. `--dev` and non-production env skip the gate |
 
 ## You still set (today)
