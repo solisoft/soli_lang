@@ -20,15 +20,20 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.5.4.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.5.5.</p>
 
-        <h3 id="unreleased-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
+    </section>
+
+    <section id="v2-5-5" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.5.5 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-25</span></h2>
+
+        <h3 id="v2-5-5-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Stand in for a third-party service with <code class="text-cyan-400">mock_http_route</code>.</strong> The test HTTP server used to answer <code class="text-cyan-400">{"ok":true}</code> on every path. <code class="text-cyan-400">mock_http_route(path, status, body)</code> now scripts what a path answers, and <code class="text-cyan-400">mock_http_last_body(path)</code> returns what the app sent there. The server is a real local socket, so your app&rsquo;s test server reaches it as it would reach the real service &mdash; enough to play an OpenID provider end to end and prove the PKCE verifier your app sends matches its challenge. See <a href="/docs/testing#section-mock-http" class="text-amber-400 hover:underline">Mock HTTP Services</a>.</li>
             <li><strong class="text-white">Worker rows show where a spec lives.</strong> The live grid printed <code class="text-cyan-400">api_debit_spec</code> for <code class="text-cyan-400">controllers/api/api_debit_spec</code>; it now shows the path under the tested directory, and a narrow terminal shortens the folders, not the filename.</li>
         </ul>
 
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <h3 id="v2-5-5-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Coverage counts lambda bodies.</strong> A lambda&rsquo;s lines were credited to the file that was <em>running</em> &mdash; the spec, or the request&rsquo;s controller &mdash; instead of the file it is written in, so they showed as never executed. A service building its results in lambdas could sit at 72&nbsp;% with every one of those lines exercised by a passing test. Expect the coverage of services and helpers that use lambdas to go up.</li>
             <li><strong class="text-white">No more <code class="text-cyan-400">/file_spec.sl</code> in the run summary.</strong> A spec at the top of the tested directory was printed with a stray leading slash.</li>

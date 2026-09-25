@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.5.5] - 2026-09-25
+
 ### Added
 
 * **feat(test):** **`mock_http_route(path, status, body)` and `mock_http_last_body(path)` script the test HTTP server.** `mock_http_server_start()` answered `{"ok":true}` on every path, which was enough to test the `HTTP` client and nothing else. A scripted path now answers its own status and body (for any method; the query string is ignored), unscripted paths keep the old answer, and the body of the last request on each path is kept (up to 64 KiB) for the spec to read back. The listener is a real loopback socket, so the app's test server — another process — reaches it as it would a third-party service: an app used it to stand in for an OpenID provider (discovery document, JWKS, token endpoint), drive its SSO flow end to end, and prove the PKCE verifier sent to the token endpoint matches the challenge. Test-only, like the rest of the test DSL. Tests: `mock_http::tests::scripted_routes_answer_and_keep_the_posted_body`.
