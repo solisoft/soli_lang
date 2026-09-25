@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.5.4] - 2026-09-25
+
 ### Added
 
 * **docs(scaffold):** the `CLAUDE.md` that `soli new` writes (and `soli update docs` refreshes) lists error tracking, the slow-query log, notifications and instant navigation in its "Built in" index, and `app/views/CLAUDE.md` gains an "Instant navigation" section: scripts per visit vs per tab, `soli:load`, `data-no-nav`, `data-soli-permanent`, and the `morph` layout meta.
