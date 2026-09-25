@@ -16013,6 +16013,22 @@
       "description": "The public-key pin for TLS certificate pinning: base64(SHA-256(SubjectPublicKeyInfo)) as sha256/<base64>. Pins the key, not the cert, so it survives a same-key renewal."
     },
     {
+      "title": "X509.info",
+      "type": "method",
+      "category": "Cryptography",
+      "path": "/docs/builtins/crypto#def-x509-info",
+      "signature": "X509.info(cert) -> Hash",
+      "description": "What a certificate says: subject, issuer, serial, not_before/not_after (ISO-8601 and unix), days_left (negative once expired), expired, SAN DNS names, pem."
+    },
+    {
+      "title": "X509.peer_certificate",
+      "type": "method",
+      "category": "Cryptography",
+      "path": "/docs/builtins/crypto#def-x509-peer-certificate",
+      "signature": "X509.peer_certificate(host, port = 443, timeout = 10) -> Hash",
+      "description": "TLS handshake with host:port; returns X509.info of the certificate the server presents, without validating the chain, so an expired certificate is reported. Certificate expiry probe, SSRF-guarded."
+    },
+    {
       "title": "Auto-Update (OTA)",
       "type": "page",
       "category": "Development Tools",

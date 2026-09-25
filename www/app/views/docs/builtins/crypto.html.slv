@@ -918,6 +918,37 @@ em  = Crypto.modexp(signature, key["e"], key["n"])   # RSA verify step</code></p
             </div>
         </section>
 
+        <section id="def-x509-info" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-x509-info" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">X509.info(cert)</code>
+                </a>
+                <p class="text-gray-400 mb-3">What a certificate says: its subject, issuer, serial number, validity dates and SAN DNS names. Accepts the same inputs as <code class="text-amber-400">X509.public_key</code> (PEM, bare base64, hex, DER byte array).</p>
+                <p class="text-gray-400 mb-3"><code>days_left</code> is whole days until <code>not_after</code>, floored, and <strong class="text-white">negative</strong> once the certificate has expired &mdash; so a threshold check like <code>days_left &lt;= 30</code> never reads &ldquo;expired yesterday&rdquo; as &ldquo;expires today&rdquo;.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">info = X509.info(File.read("cert.pem"))
+print("#{info["subject"]} expires #{info["not_after"]} (#{info["days_left"]} days)")</code></pre>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> - <code>subject</code>, <code>issuer</code>, <code>serial</code>, <code>not_before</code> / <code>not_after</code> (ISO-8601 UTC), <code>not_before_unix</code> / <code>not_after_unix</code>, <code>days_left</code>, <code>expired</code>, <code>not_yet_valid</code>, <code>dns_names</code> (Array), <code>pem</code>.</div>
+            </div>
+        </section>
+
+        <section id="def-x509-peer-certificate" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-x509-peer-certificate" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">X509.peer_certificate(host, port = 443, timeout = 10)</code>
+                </a>
+                <p class="text-gray-400 mb-3">Completes a TLS handshake with <code>host:port</code> and returns <code class="text-amber-400">X509.info</code> of the certificate the server presents. No application data is sent. This is what an expiry probe needs: watch your own endpoints without shelling out to <code>openssl</code>.</p>
+                <p class="text-gray-400 mb-3">The chain is <strong class="text-white">not validated</strong>, on purpose: an expiry probe has to be able to report an expired or self-signed certificate, which a validating client would refuse before showing it. The handshake signature is still checked, so the server must hold the key of the certificate it presents.</p>
+                <p class="text-gray-400 mb-3">It goes through the same SSRF guard as <code class="text-amber-400">HTTP</code> &mdash; loopback and private ranges are refused outside <code>soli test</code> and <code>SOLI_DEV_ALLOW_SSRF</code> &mdash; tries every resolved address in turn, and raises on refusal, DNS failure, timeout or a failed handshake. <code>timeout</code> is in seconds, up to 60.</p>
+                <pre data-filename="Warn before a certificate expires"><code class="language-soli text-sm">peer = X509.peer_certificate("example.com")
+if peer["days_left"] &lt;= 30
+  alert("renew #{peer["host"]}: expires #{peer["not_after"]}")
+end</code></pre>
+                <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> - the fields of <code>X509.info</code>, plus <code>host</code>, <code>port</code> and <code>chain_length</code>.</div>
+            </div>
+        </section>
+
         <section id="def-deflate" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-deflate" class="group flex items-center gap-2 mb-3">
