@@ -357,6 +357,29 @@ DOM (modals, dropdowns, tabs), use Alpine. Mix freely — they don't conflict.
 See `docs/client-interactivity.md` (bundled in every Soli app) for the
 deeper end of either library.
 
+## Instant navigation — every link click
+
+The server injects `/__soli/nav.js` into every page: a same-origin link click
+fetches the next page and swaps it into the current `<body>` instead of doing
+a full page load (Turbo-Drive style). Write views knowing that:
+
+- **Inline `<script>`s run on every visit; external `<script src>` run once
+  per tab.** Code in an external file that sets up widgets must re-run on
+  `document.addEventListener("soli:load", init)`. `DOMContentLoaded`
+  listeners registered by inline scripts are replayed, so they keep working.
+- **Opt out** per link or container with `data-no-nav`, per page with
+  `<meta name="soli-nav" content="off">`.
+- **Keep a live widget** (map, video, editor) across pages with an `id` and
+  `data-soli-permanent` on both pages.
+- **Keep the layout's state** (sidebar scroll, open `<details>`, typed search
+  text): put `<meta name="soli-nav" content="morph">` in the layout. Pages
+  are then patched instead of swapped, and unchanged nodes survive. Give the
+  stable parts of the layout an `id`, so they pair exactly. Alpine
+  components (`x-data`) are still replaced whole, so their state resets, and
+  pages with `x-teleport` are swapped anyway.
+
+Full reference: `docs/views.md` → "Instant Navigation".
+
 ## Layouts
 
 Every render runs inside a layout unless explicitly opted out.
@@ -426,6 +449,7 @@ app/views/
 | Use `#{expr}` for interpolation in strings inside `.sl` blocks | Use `\(expr)` — the lexer rejects that                       |
 | Keep templates thin; push logic into helpers              | Embed business rules in `<% %>` blocks                              |
 | Put cross-cutting markup in `_partials.html.slv`         | Copy-paste header/nav across every action's view                    |
+| Re-initialize widgets from external JS on `soli:load`    | Assume every page load re-runs your external scripts — with instant nav they run once per tab |
 
 ## Before you're done
 

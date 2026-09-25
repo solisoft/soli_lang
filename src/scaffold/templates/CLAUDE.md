@@ -104,6 +104,10 @@ may still exist under another name — try a synonym before writing it by hand.
 | HTTP client, SOAP, JSON, Markdown, TOML/YAML | `HTTP.*`, `SOAP`, `JSON`, `Markdown`, `Toml`, `Yaml` | `docs/builtins.md` |
 | Legacy text encodings, Base64 | `Encoding`, `Base64` | `docs/encoding.md`, `docs/base64.md` |
 | Metrics, structured logs, traces | opt-in via env | `docs/observability.md` |
+| Error tracking (Sentry-like, self-hosted) | on by default: failed requests grouped at `/__soli/errors` | `docs/observability.md` → Error tracking |
+| Slow query log | on by default (≥ 200 ms, `SOLI_SLOW_QUERY_MS`): grouped by shape at `/__soli/slow_queries` | `docs/observability.md` → Slow queries |
+| Alerts to Slack / Teams / Discord / email | `SOLI_NOTIFY_WEBHOOKS`, `SOLI_NOTIFY_EMAILS`, or `app/jobs/soli_notification_job.sl` | `docs/observability.md` → Notifications |
+| SPA-like page navigation, state kept across pages | on by default (`/__soli/nav.js`); `<meta name="soli-nav" content="morph">`, `data-soli-permanent` | `docs/views.md` → Instant Navigation |
 | Custom error pages | `app/views/errors/404.html.slv` etc. | `docs/error-pages.md` |
 | Mountable sub-apps | engines | `docs/engines.md` |
 | Native mobile / desktop shells | `soli generate client`, `soli desktop build` | `docs/native/*.md`, `docs/native-bridge.md`, `docs/desktop.md`, `docs/auto-update.md` |
