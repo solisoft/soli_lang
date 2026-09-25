@@ -20,15 +20,25 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.5.2.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.5.3.</p>
 
-        <h3 id="unreleased-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+    </section>
+
+    <section id="v2-5-3" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.5.3 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-25</span></h2>
+
+        <h3 id="v2-5-3-added" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Added</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">X509.info(cert)</code> and <code class="text-cyan-400">X509.peer_certificate(host, port?, timeout?)</code>.</strong> Watch certificate expiry without shelling out to <code class="text-cyan-400">openssl</code>: <code class="text-cyan-400">info</code> reads the validity dates, <code class="text-cyan-400">days_left</code> (negative once expired), subject, issuer and SAN names; <code class="text-cyan-400">peer_certificate</code> does a TLS handshake and returns the same for the certificate a server presents &mdash; <em>without</em> validating the chain, so an expired or self-signed certificate is reported instead of refused. It goes through the same SSRF guard as <code class="text-cyan-400">HTTP</code>. See <a href="/docs/builtins" class="text-amber-400 hover:underline">Built-ins</a>.</li>
+        </ul>
+
+        <h3 id="v2-5-3-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">The data passed to <code class="text-cyan-400">render()</code> is redacted in error samples.</strong> When a template failed mid-render, its <code class="text-cyan-400">render()</code> hash reached the stored error sample, the <code class="text-cyan-400">/__soli/errors</code> page and the stderr <code class="text-cyan-400">env:</code> line unredacted &mdash; a <code class="text-cyan-400">reset_token</code> passed to the view was shown in full. It now gets the same redaction as the handler&rsquo;s locals.</li>
             <li><strong class="text-white"><code class="text-cyan-400">X-Api-Key</code> and <code class="text-cyan-400">api-key</code> are secrets.</strong> Secret names only matched with underscores, so a hyphenated API-key header or param was stored in error samples and replayed on the dashboard&rsquo;s <code class="text-cyan-400">curl</code> line. Names now match whatever the separator, request headers also get the exact credential-header list, and the <code class="text-cyan-400">curl</code> line never carries <code class="text-cyan-400">Authorization</code>, <code class="text-cyan-400">Cookie</code> or API-key headers.</li>
         </ul>
 
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <h3 id="v2-5-3-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Error tracking keeps at most 1000 groups per app.</strong> Past the limit, new kinds of error are counted together in one overflow group, each sample keeping its own message; stored groups keep counting and deleting groups makes room. A client that chooses an error&rsquo;s wording can no longer grow the table without bound.</li>
             <li><strong class="text-white">An apostrophe no longer breaks grouping.</strong> <code class="text-cyan-400">can't find X</code> and <code class="text-cyan-400">can't divide</code> were one group, and a quoted value after <code class="text-cyan-400">User's</code> leaked into the fingerprint. A single quote now quotes only at word boundaries.</li>

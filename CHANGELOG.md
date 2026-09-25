@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [2.5.3] - 2026-09-25
+
+### Added
+
+* **feat(x509):** **`X509.info(cert)` and `X509.peer_certificate(host, port?, timeout?)`** — enough to watch certificate expiry without shelling out to `openssl`. `info` reads validity dates (ISO-8601 and unix), `days_left` (floored, negative once expired), subject, issuer, serial and SAN DNS names. `peer_certificate` does a TLS handshake over rustls and returns the same for the certificate a server presents, **without validating the chain** so an expired or self-signed certificate is reported rather than refused (handshake signatures are still checked); it goes through the `HTTP` SSRF guard and tries every resolved address. Tested against a local rustls server presenting an expired certificate.
+
 ### Security
 
 * **fix(security):** **the data passed to `render()` is redacted in error samples.** A template that failed mid-render left its `render()` hash behind for the error page, and `append_view_debug_context` wrote it — as `_view_data` and as hoisted top-level keys — without the redaction handler locals get. `render("users/reset", {"reset_token": t})` failing mid-template stored the token in `_soli_errors.samples[].env`, showed it on `/__soli/errors` and printed it on the stderr `env:` line. The render data now goes through the same redactor, keys and nested values alike.
