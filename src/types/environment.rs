@@ -2337,6 +2337,26 @@ impl TypeEnvironment {
                 is_static: true,
             },
         );
+        x509_class.methods.insert(
+            "info".to_string(),
+            MethodInfo {
+                name: "info".to_string(),
+                params: vec![("cert".to_string(), Type::Any)],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
+        x509_class.methods.insert(
+            "peer_certificate".to_string(),
+            MethodInfo {
+                name: "peer_certificate".to_string(),
+                params: vec![("args".to_string(), Type::Any)],
+                return_type: Type::Any,
+                is_private: false,
+                is_static: true,
+            },
+        );
         self.classes.insert("X509".to_string(), x509_class);
 
         // HTTP class

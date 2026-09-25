@@ -2241,6 +2241,42 @@ pinning that survives renewal, pin the key with `X509.spki_pin` instead.
 
 **Returns:** String — hex digest.
 
+#### X509.info(cert)
+
+What a certificate says: `subject`, `issuer`, `serial`, `not_before`,
+`not_after` (ISO-8601 UTC), `not_before_unix`, `not_after_unix`, `days_left`,
+`expired`, `not_yet_valid`, `dns_names` (the SAN DNS entries) and `pem`.
+
+`days_left` is whole days until `not_after`, floored, and **negative** once the
+certificate has expired — so a threshold check (`days_left <= 30`) never reads
+"expired yesterday" as "expires today".
+
+```soli
+info = X509.info(File.read("cert.pem"))
+print("#{info["subject"]} expires #{info["not_after"]} (#{info["days_left"]} days)")
+```
+
+#### X509.peer_certificate(host, port = 443, timeout = 10)
+
+Completes a TLS handshake with `host:port` and returns `X509.info` of the
+certificate the server presents, plus `host`, `port` and `chain_length`. No
+application data is sent.
+
+The chain is **not validated**, on purpose: this is for watching certificates,
+and an expiry probe must be able to report an expired or self-signed
+certificate that a validating client would refuse before showing it. The
+handshake signature is still checked, so the server must hold the key of the
+certificate it presents. It goes through the same SSRF guard as `HTTP`
+(loopback and private ranges refused outside `soli test` and
+`SOLI_DEV_ALLOW_SSRF`), tries every resolved address in turn, and raises on
+refusal, DNS failure, timeout or a failed handshake. `timeout` is in seconds,
+up to 60.
+
+```soli
+peer = X509.peer_certificate("example.com")
+alert("renew #{peer["host"]}") if peer["days_left"] <= 30
+```
+
 #### X509.spki_pin(cert)
 
 The public-key pin for TLS certificate pinning:

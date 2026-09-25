@@ -12,16 +12,38 @@
 //!
 //! Accepts PEM (`-----BEGIN CERTIFICATE-----`), bare base64, hex, or a raw
 //! DER byte array.
+//!
+//! Two more read what a certificate *says* rather than what key it carries —
+//! enough to watch expirations without shelling out to `openssl`:
+//!
+//! ```text
+//! info = X509.info(pem)                      # subject, issuer, not_before, not_after, days_left, …
+//! peer = X509.peer_certificate("example.com") # the same, for the cert a server presents
+//! ```
+//!
+//! `peer_certificate` completes a TLS handshake WITHOUT validating the chain:
+//! a probe has to be able to report an expired or self-signed certificate,
+//! which a validating client would refuse before showing it. It only reads —
+//! nothing is sent after the handshake — and it goes through the same SSRF
+//! guard as `HTTP`.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
 
 use base64::Engine;
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use x509_parser::prelude::*;
 use x509_parser::public_key::PublicKey;
+
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::crypto::{verify_tls12_signature, verify_tls13_signature, CryptoProvider};
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::{ClientConfig, ClientConnection, DigitallySignedStruct, SignatureScheme};
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{hash_from_pairs, Class, NativeFunction, Value};
@@ -95,6 +117,219 @@ fn strip_leading_zeros(bytes: &[u8]) -> &[u8] {
     } else {
         trimmed
     }
+}
+
+/// ISO-8601 UTC, second precision: `2026-09-25T00:00:00Z`.
+fn iso_utc(unix: i64) -> String {
+    chrono::DateTime::from_timestamp(unix, 0)
+        .map(|d| d.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+        .unwrap_or_default()
+}
+
+/// DER → PEM, 64 columns, the way `openssl x509` writes it.
+fn der_to_pem(der: &[u8]) -> String {
+    let body = base64::engine::general_purpose::STANDARD.encode(der);
+    let mut out = String::from("-----BEGIN CERTIFICATE-----\n");
+    for chunk in body.as_bytes().chunks(64) {
+        out.push_str(std::str::from_utf8(chunk).unwrap_or_default());
+        out.push('\n');
+    }
+    out.push_str("-----END CERTIFICATE-----\n");
+    out
+}
+
+/// What a certificate says, as `(key, value)` pairs, judged against `now`
+/// (unix seconds) — a parameter so tests do not depend on the clock.
+///
+/// `days_left` is whole days until `not_after`, floored, negative once the
+/// certificate has expired: a probe compares it to a threshold, and "zero"
+/// must not mean both "expires today" and "expired yesterday".
+fn cert_info_pairs(der: &[u8], now: i64) -> Result<Vec<(String, Value)>, String> {
+    let (_, cert) =
+        X509Certificate::from_der(der).map_err(|e| format!("invalid certificate: {}", e))?;
+    let validity = cert.validity();
+    let not_before = validity.not_before.timestamp();
+    let not_after = validity.not_after.timestamp();
+
+    let mut dns_names = Vec::new();
+    if let Ok(Some(san)) = cert.subject_alternative_name() {
+        for name in &san.value.general_names {
+            if let GeneralName::DNSName(dns) = name {
+                dns_names.push(Value::String((*dns).to_string().into()));
+            }
+        }
+    }
+
+    Ok(vec![
+        (
+            "subject".to_string(),
+            Value::String(cert.subject().to_string().into()),
+        ),
+        (
+            "issuer".to_string(),
+            Value::String(cert.issuer().to_string().into()),
+        ),
+        (
+            "serial".to_string(),
+            Value::String(cert.raw_serial_as_string().into()),
+        ),
+        (
+            "not_before".to_string(),
+            Value::String(iso_utc(not_before).into()),
+        ),
+        (
+            "not_after".to_string(),
+            Value::String(iso_utc(not_after).into()),
+        ),
+        ("not_before_unix".to_string(), Value::Int(not_before)),
+        ("not_after_unix".to_string(), Value::Int(not_after)),
+        (
+            "days_left".to_string(),
+            Value::Int((not_after - now).div_euclid(86_400)),
+        ),
+        ("expired".to_string(), Value::Bool(now > not_after)),
+        ("not_yet_valid".to_string(), Value::Bool(now < not_before)),
+        (
+            "dns_names".to_string(),
+            Value::Array(Rc::new(RefCell::new(dns_names))),
+        ),
+        ("pem".to_string(), Value::String(der_to_pem(der).into())),
+    ])
+}
+
+/// A verifier that accepts any certificate but still checks the handshake
+/// signatures: the peer must hold the key of the certificate it presents,
+/// otherwise we would be reporting a certificate it merely replayed.
+#[derive(Debug)]
+struct RecordOnly {
+    provider: Arc<CryptoProvider>,
+}
+
+impl ServerCertVerifier for RecordOnly {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        verify_tls12_signature(
+            message,
+            cert,
+            dss,
+            &self.provider.signature_verification_algorithms,
+        )
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        verify_tls13_signature(
+            message,
+            cert,
+            dss,
+            &self.provider.signature_verification_algorithms,
+        )
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.provider
+            .signature_verification_algorithms
+            .supported_schemes()
+    }
+}
+
+/// Complete a TLS handshake with `host:port` and return the presented chain
+/// (leaf first), as DER. No application data is exchanged. `check_ssrf`
+/// is off only in unit tests, which talk to a server on loopback.
+fn fetch_peer_chain(
+    host: &str,
+    port: u16,
+    timeout: Duration,
+    check_ssrf: bool,
+) -> Result<Vec<Vec<u8>>, String> {
+    let host = host.trim();
+    if host.is_empty() {
+        return Err("host cannot be empty".to_string());
+    }
+    if check_ssrf {
+        let authority = if host.contains(':') {
+            format!("[{}]", host.trim_start_matches('[').trim_end_matches(']'))
+        } else {
+            host.to_string()
+        };
+        crate::interpreter::builtins::http_class::validate_url_for_ssrf(&format!(
+            "https://{}:{}/",
+            authority, port
+        ))?;
+    }
+
+    let bare = host.trim_start_matches('[').trim_end_matches(']');
+    // Every resolved address in turn: `localhost` answers `::1` first, and a
+    // host whose IPv6 route is broken must still be read over IPv4.
+    let addrs: Vec<_> = (bare, port)
+        .to_socket_addrs()
+        .map_err(|e| format!("DNS resolution failed for {}:{}: {}", bare, port, e))?
+        .collect();
+    if addrs.is_empty() {
+        return Err(format!("no address found for {}:{}", bare, port));
+    }
+    let mut last_error = String::new();
+    let mut connected = None;
+    for addr in &addrs {
+        match TcpStream::connect_timeout(addr, timeout) {
+            Ok(stream) => {
+                connected = Some(stream);
+                break;
+            }
+            Err(e) => last_error = e.to_string(),
+        }
+    }
+    let mut tcp =
+        connected.ok_or_else(|| format!("connect to {}:{} failed: {}", bare, port, last_error))?;
+    let _ = tcp.set_read_timeout(Some(timeout));
+    let _ = tcp.set_write_timeout(Some(timeout));
+
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let config = ClientConfig::builder_with_provider(provider.clone())
+        .with_safe_default_protocol_versions()
+        .map_err(|e| format!("TLS init failed: {}", e))?
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(RecordOnly { provider }))
+        .with_no_client_auth();
+    let server_name = ServerName::try_from(bare.to_string())
+        .map_err(|_| format!("invalid TLS server name: {}", bare))?;
+    let mut conn = ClientConnection::new(Arc::new(config), server_name)
+        .map_err(|e| format!("TLS setup failed: {}", e))?;
+    while conn.is_handshaking() {
+        conn.complete_io(&mut tcp)
+            .map_err(|e| format!("TLS handshake with {}:{} failed: {}", bare, port, e))?;
+    }
+    let chain: Vec<Vec<u8>> = conn
+        .peer_certificates()
+        .ok_or_else(|| format!("{}:{} presented no certificate", bare, port))?
+        .iter()
+        .map(|c| c.as_ref().to_vec())
+        .collect();
+    conn.send_close_notify();
+    let _ = conn.complete_io(&mut tcp);
+    if chain.is_empty() {
+        return Err(format!("{}:{} presented no certificate", bare, port));
+    }
+    Ok(chain)
 }
 
 pub fn register_x509_builtins(env: &mut Environment) {
@@ -190,6 +425,69 @@ pub fn register_x509_builtins(env: &mut Environment) {
         })),
     );
 
+    // X509.info(cert) -> { subject, issuer, serial, not_before, not_after,
+    //                      not_before_unix, not_after_unix, days_left,
+    //                      expired, not_yet_valid, dns_names, pem }
+    methods.insert(
+        "info".to_string(),
+        Rc::new(NativeFunction::new("X509.info", Some(1), |args| {
+            let der = to_der(&args[0]).map_err(|e| format!("X509.info(): {}", e))?;
+            let now = chrono::Utc::now().timestamp();
+            let pairs = cert_info_pairs(&der, now).map_err(|e| format!("X509.info(): {}", e))?;
+            Ok(hash_from_pairs(pairs))
+        })),
+    );
+
+    // X509.peer_certificate(host, port = 443, timeout_seconds = 10)
+    //   -> X509.info of the leaf, plus host, port and chain_length.
+    methods.insert(
+        "peer_certificate".to_string(),
+        Rc::new(NativeFunction::new("X509.peer_certificate", None, |args| {
+            if args.is_empty() || args.len() > 3 {
+                return Err(format!(
+                    "X509.peer_certificate() expects 1-3 arguments (host, port?, timeout?), got {}",
+                    args.len()
+                ));
+            }
+            let host = match &args[0] {
+                Value::String(s) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "X509.peer_certificate() expects a string host, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let port = match args.get(1) {
+                None | Some(Value::Null) => 443,
+                Some(Value::Int(n)) if (1..=65535).contains(n) => *n as u16,
+                Some(other) => {
+                    return Err(format!(
+                        "X509.peer_certificate(): port must be an Int 1-65535, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let timeout = match args.get(2) {
+                None | Some(Value::Null) => Duration::from_secs(10),
+                Some(Value::Int(n)) if *n > 0 && *n <= 60 => Duration::from_secs(*n as u64),
+                Some(Value::Float(f)) if *f > 0.0 && *f <= 60.0 => Duration::from_secs_f64(*f),
+                Some(_) => {
+                    return Err("X509.peer_certificate(): timeout must be 0-60 seconds".to_string())
+                }
+            };
+            let chain = fetch_peer_chain(&host, port, timeout, true)
+                .map_err(|e| format!("X509.peer_certificate(): {}", e))?;
+            let now = chrono::Utc::now().timestamp();
+            let mut pairs = cert_info_pairs(&chain[0], now)
+                .map_err(|e| format!("X509.peer_certificate(): {}", e))?;
+            pairs.push(("host".to_string(), Value::String(host.into())));
+            pairs.push(("port".to_string(), Value::Int(port as i64)));
+            pairs.push(("chain_length".to_string(), Value::Int(chain.len() as i64)));
+            Ok(hash_from_pairs(pairs))
+        })),
+    );
+
     let class = Class {
         name: "X509".to_string(),
         superclass: None,
@@ -274,5 +572,133 @@ IZV30Dp1
         assert_eq!(hex_to_bytes("00ff10").unwrap(), vec![0x00, 0xff, 0x10]);
         assert_eq!(bytes_to_hex(&[0x00, 0xff, 0x10]), "00ff10");
         assert!(hex_to_bytes("abc").is_err());
+    }
+
+    // Two self-signed P-256 certificates with known dates, generated once with
+    // `openssl req -x509 -not_before … -not_after …` (tests/fixtures/x509/).
+    const EXPIRED_CERT: &str = include_str!("../../../tests/fixtures/x509/expire.pem");
+    const EXPIRED_KEY: &str = include_str!("../../../tests/fixtures/x509/expire.key");
+    const VALID_CERT: &str = include_str!("../../../tests/fixtures/x509/valide.pem");
+
+    // 2026-01-01T00:00:00Z
+    const NEW_YEAR_2026: i64 = 1_767_225_600;
+
+    fn field(pairs: &[(String, Value)], key: &str) -> Value {
+        pairs
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.clone())
+            .unwrap_or_else(|| panic!("no field {}", key))
+    }
+
+    fn text(v: Value) -> String {
+        match v {
+            Value::String(s) => s.to_string(),
+            other => panic!("expected a string, got {}", other.type_name()),
+        }
+    }
+
+    #[test]
+    fn info_reads_the_validity_dates_and_names() {
+        let der = to_der(&Value::String(EXPIRED_CERT.into())).unwrap();
+        let pairs = cert_info_pairs(&der, NEW_YEAR_2026).unwrap();
+        assert_eq!(text(field(&pairs, "not_before")), "2020-01-01T00:00:00Z");
+        assert_eq!(text(field(&pairs, "not_after")), "2021-01-01T00:00:00Z");
+        assert!(text(field(&pairs, "subject")).contains("expire.test"));
+        assert!(matches!(field(&pairs, "expired"), Value::Bool(true)));
+        // 2021-01-01 → 2026-01-01 is 1826 days; expired, so negative.
+        assert!(matches!(field(&pairs, "days_left"), Value::Int(-1826)));
+        match field(&pairs, "dns_names") {
+            Value::Array(a) => {
+                let names: Vec<String> = a.borrow().iter().cloned().map(text).collect();
+                assert_eq!(
+                    names,
+                    vec!["expire.test".to_string(), "localhost".to_string()]
+                );
+            }
+            other => panic!("dns_names is {}", other.type_name()),
+        }
+        // The PEM we hand back parses to the same certificate.
+        let again = to_der(&field(&pairs, "pem")).unwrap();
+        assert_eq!(again, der);
+    }
+
+    #[test]
+    fn days_left_counts_whole_days_until_expiry() {
+        let der = to_der(&Value::String(VALID_CERT.into())).unwrap();
+        let pairs = cert_info_pairs(&der, NEW_YEAR_2026).unwrap();
+        // 2026-01-01 → 2036-01-01: ten years, two of them leap (2028, 2032).
+        assert!(matches!(field(&pairs, "days_left"), Value::Int(3652)));
+        assert!(matches!(field(&pairs, "expired"), Value::Bool(false)));
+        // One second before expiry is day 0, not day 1; one second after is -1.
+        let not_after = 2_082_758_400; // 2036-01-01T00:00:00Z
+        let last = cert_info_pairs(&der, not_after - 1).unwrap();
+        assert!(matches!(field(&last, "days_left"), Value::Int(0)));
+        let past = cert_info_pairs(&der, not_after + 1).unwrap();
+        assert!(matches!(field(&past, "days_left"), Value::Int(-1)));
+        assert!(matches!(field(&past, "expired"), Value::Bool(true)));
+    }
+
+    /// The reason this function exists: a server presenting an EXPIRED
+    /// certificate must be read, not refused — a validating client would fail
+    /// the handshake and the probe would report an error instead of a date.
+    #[test]
+    fn peer_certificate_reads_an_expired_certificate_from_a_live_server() {
+        use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
+        use std::net::TcpListener;
+
+        let cert_der = to_der(&Value::String(EXPIRED_CERT.into())).unwrap();
+        let key_der = to_der(&Value::String(EXPIRED_KEY.into())).unwrap();
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let server_config = rustls::ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(
+                vec![CertificateDer::from(cert_der.clone())],
+                PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key_der)),
+            )
+            .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut conn = rustls::ServerConnection::new(Arc::new(server_config)).unwrap();
+            while conn.is_handshaking() {
+                if conn.complete_io(&mut socket).is_err() {
+                    return;
+                }
+            }
+            let _ = conn.complete_io(&mut socket);
+        });
+
+        let chain = fetch_peer_chain("localhost", port, Duration::from_secs(5), false).unwrap();
+        server.join().unwrap();
+        assert_eq!(chain.len(), 1);
+        assert_eq!(chain[0], cert_der);
+        let pairs = cert_info_pairs(&chain[0], NEW_YEAR_2026).unwrap();
+        assert!(matches!(field(&pairs, "expired"), Value::Bool(true)));
+        assert_eq!(text(field(&pairs, "not_after")), "2021-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn peer_certificate_reports_a_closed_port_as_an_error() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let err = fetch_peer_chain("127.0.0.1", port, Duration::from_secs(2), false).unwrap_err();
+        assert!(err.contains("failed"), "{}", err);
+    }
+
+    /// Loopback is refused outside the test runner, like `HTTP`. The flag is
+    /// process-global and other tests turn it on, so the assertion only runs
+    /// while it is off.
+    #[test]
+    fn peer_certificate_goes_through_the_ssrf_guard() {
+        if crate::interpreter::builtins::http_class::ssrf_test_mode() {
+            return;
+        }
+        let err = fetch_peer_chain("127.0.0.1", 443, Duration::from_secs(1), true).unwrap_err();
+        assert!(err.contains("not allowed"), "{}", err);
     }
 }
