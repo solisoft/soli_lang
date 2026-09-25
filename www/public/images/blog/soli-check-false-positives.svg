@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="576" viewBox="0 0 1024 576" role="img" aria-label="Before: a hand-kept list of known globals drifts from the runtime; pdf_merge, Image, router_eui, middleware and describe are missing, so soli check reports 237 errors on a 247-file application, all false. After: register_builtins fills a throwaway environment, six Soli preludes are parsed, and the checker reads the result; 0 false errors. Footer: parity baseline type-checker section 312 to 62 names; soli new demo --eui 176 to 13 errors; 0.4 seconds for 247 files.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+  <rect width="1024" height="576" fill="url(#bg)"/>
+
+  <text x="40" y="52" font-family="ui-sans-serif, system-ui, sans-serif" font-size="26" font-weight="700" fill="#e5e7eb">soli check <tspan fill="#f59e0b">·</tspan> the runtime's namespace, from the runtime</text>
+  <text x="40" y="80" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" fill="#8b929e">one 247-file application, before and after</text>
+
+  <!-- BEFORE -->
+  <rect x="40" y="104" width="456" height="340" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="64" y="138" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#ef4444" letter-spacing="1.5">BEFORE · A SECOND LIST</text>
+
+  <rect x="64" y="156" width="176" height="176" rx="10" fill="#0b0d10" stroke="#2b3038"/>
+  <text x="80" y="180" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">register_builtins</text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#e5e7eb">
+    <text x="80" y="206">pdf_merge</text>
+    <text x="80" y="228">Image</text>
+    <text x="80" y="250">router_eui</text>
+    <text x="80" y="272">middleware</text>
+    <text x="80" y="294">describe</text>
+    <text x="80" y="316" fill="#8b929e">…</text>
+  </g>
+
+  <rect x="296" y="156" width="176" height="176" rx="10" fill="#0b0d10" stroke="#2b3038" stroke-dasharray="5 4"/>
+  <text x="312" y="180" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">hand-kept list</text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#ef4444">
+    <text x="312" y="206">✗ pdf_merge</text>
+    <text x="312" y="228">✗ Image</text>
+    <text x="312" y="250">✗ router_eui</text>
+    <text x="312" y="272">✗ middleware</text>
+    <text x="312" y="294">✗ describe</text>
+  </g>
+  <text x="312" y="316" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">drifts, silently</text>
+  <path d="M244 244 H290" stroke="#2b3038" stroke-width="2" stroke-dasharray="4 4"/>
+
+  <text x="64" y="398" font-family="ui-sans-serif, system-ui, sans-serif" font-size="52" font-weight="800" fill="#ef4444">237</text>
+  <text x="170" y="380" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" fill="#e5e7eb">errors reported</text>
+  <text x="170" y="402" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" fill="#8b929e">all false · Undefined variable</text>
+  <text x="64" y="428" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">140 of them named a runtime global</text>
+
+  <!-- AFTER -->
+  <rect x="528" y="104" width="456" height="340" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="552" y="138" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#22c55e" letter-spacing="1.5">AFTER · ASK THE RUNTIME</text>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
+    <rect x="552" y="156" width="196" height="54" rx="10" fill="#0b0d10" stroke="#2b3038"/>
+    <text x="566" y="179" fill="#e5e7eb">register_builtins</text>
+    <text x="566" y="198" fill="#8b929e">(env, false)</text>
+
+    <rect x="764" y="156" width="196" height="54" rx="10" fill="#0b0d10" stroke="#2b3038"/>
+    <text x="778" y="179" fill="#e5e7eb">6 Soli preludes</text>
+    <text x="778" y="198" fill="#8b929e">parsed, not copied</text>
+
+    <path d="M650 214 V246" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M862 214 V246" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="552" y="252" width="408" height="54" rx="10" fill="#0b0d10" stroke="#d97706"/>
+    <text x="566" y="275" fill="#f59e0b">runtime_globals()</text>
+    <text x="566" y="294" fill="#8b929e">+ test DSL (specs) · + request scope (app/)</text>
+
+    <path d="M756 310 V340" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="772" y="330" fill="#8b929e" font-size="12">type checker</text>
+  </g>
+
+  <text x="552" y="398" font-family="ui-sans-serif, system-ui, sans-serif" font-size="52" font-weight="800" fill="#22c55e">0</text>
+  <text x="600" y="380" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" fill="#e5e7eb">false errors, same application</text>
+  <text x="600" y="402" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" fill="#8b929e">I18n.tarnslate is still an error</text>
+  <text x="552" y="428" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">a builtin added anywhere is known on the next build</text>
+
+  <!-- FOOTER STATS -->
+  <g font-family="ui-sans-serif, system-ui, sans-serif">
+    <rect x="40" y="468" width="304" height="72" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="60" y="496" font-size="13" fill="#8b929e">parity baseline [type-checker]</text>
+    <text x="60" y="524" font-size="22" font-weight="700" fill="#e5e7eb">312 <tspan fill="#f59e0b">→</tspan> 62 <tspan font-size="14" font-weight="400" fill="#8b929e">names</tspan></text>
+
+    <rect x="360" y="468" width="304" height="72" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="380" y="496" font-size="13" fill="#8b929e">soli new demo --eui, unedited</text>
+    <text x="380" y="524" font-size="22" font-weight="700" fill="#e5e7eb">176 <tspan fill="#f59e0b">→</tspan> 13 <tspan font-size="14" font-weight="400" fill="#8b929e">errors</tspan></text>
+
+    <rect x="680" y="468" width="304" height="72" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="700" y="496" font-size="13" fill="#8b929e">check pass over 247 files</text>
+    <text x="700" y="524" font-size="22" font-weight="700" fill="#e5e7eb">0.4 s</text>
+  </g>
+</svg>

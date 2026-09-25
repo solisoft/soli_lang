@@ -34,11 +34,19 @@ def tag_gradient_class(tag)
     "from-indigo-500/25 via-indigo-600/10 to-slate-950"
 end
 
-def get_blog_posts()
-    let posts = []
-
-    # Simple list - ordered manually (newest first)
-    let blog_info = [
+# Simple list - ordered manually (newest first)
+def blog_manifest()
+    [
+        {"slug": "native-solidb-driver", "file": "docs/blog/native-solidb-driver.md", "desc": "Plain SoliDB reads on the native driver now decode each row once, straight from MessagePack into Soli values, instead of going through a serde_json tree first. Which reads qualify and which don't, why the driver used to be missing from release builds, how to turn it on with SOLI_DB_DRIVER=1, and how CI tests it against a real SoliDB.", "tag": "Deep Dive", "image": "native-solidb-driver.svg", "publish_on": "2026-10-04"},
+        {"slug": "closure-cycles", "file": "docs/blog/closure-cycles.md", "desc": "A closure stored on `this` captures the environment that holds `this`, so instance and closure keep each other alive and reference counting never frees either: 362 MiB for 200,000 instances against 34 MiB with a method name. The new smell/closure-cycle lint rule, its fixes and blind spots, and the same cycle inside the runtime.", "tag": "Deep Dive", "image": "closure-cycles.svg", "publish_on": "2026-10-03"},
+        {"slug": "imap-xoauth2", "file": "docs/blog/imap-xoauth2.md", "desc": "A support-inbox job that works when app passwords are switched off: Imap.new with an XOAUTH2 token, headers-only listing so bodies and attachments stay on the server until needed, the new uid_* verbs because a sequence number shifts as soon as a message moves, and replies that thread through the mailer's headers and alternatives.", "tag": "Guide", "image": "imap-xoauth2.svg", "publish_on": "2026-10-02"},
+        {"slug": "splitting-the-request-path", "file": "docs/blog/splitting-the-request-path.md", "desc": "The largest god function, register_model_class at 4,329 lines, was split first as a pure move, and the four in the HTTP server followed: the listener, the dispatch cascade, the worker pipeline and the 276-line closure that finished every request. Nothing a Soli program can see changed, except one bug the split surfaced.", "tag": "Architecture", "image": "splitting-the-request-path.svg", "publish_on": "2026-10-01"},
+        {"slug": "pdf-previews", "file": "docs/blog/pdf-previews.md", "desc": "Turn the same PDF template into page images for thumbnails, review screens and emails. pdf_preview paints the layout engine's own laid-out page, so the image cannot drift from the PDF: dpi, width/height and page selection, WebP at 51 KB against 165 KB of PNG, and an invoice controller with a thumbnail cache.", "tag": "Feature", "image": "pdf-previews.svg", "publish_on": "2026-09-30"},
+        {"slug": "soli-check-false-positives", "file": "docs/blog/soli-check-false-positives.md", "desc": "On a 247-file application soli check reported 237 errors, all false, which is how a checker gets switched off. How the known-globals list stopped being hand-kept and is now read from the runtime, why a directory is checked as one namespace the way the server loads it, and why a lint rule must propose a pure rename or say it isn't one.", "tag": "Philosophy", "image": "soli-check-false-positives.svg", "publish_on": "2026-09-29"},
+        {"slug": "eui-islands-and-resumable-sessions", "file": "docs/blog/eui-islands-and-resumable-sessions.md", "desc": "A socket costs a session per reader, even one who is only reading. An EUI view can now be served as one cacheable render, keep the tree the client already fetched, carry a live island inside a cached page, and resume a dropped socket with only the batches it missed.", "tag": "Deep Dive", "image": "eui-islands-and-resumable-sessions.svg", "publish_on": "2026-09-28"},
+        {"slug": "security-audit-41-findings", "file": "docs/blog/security-audit-41-findings.md", "desc": "A static audit of Soli's server, builtins, ORM and interpreter came back with 41 findings — most of them checks that existed but weren't where the request actually went. What changed, the leaks fixed in long-lived workers, the advisories no longer waived, and what to set after upgrading.", "tag": "Security", "image": "security-audit-41-findings.svg", "publish_on": "2026-09-27"},
+        {"slug": "eui-tailwind-classes", "file": "docs/blog/eui-tailwind-classes.md", "desc": "tw() in the scaffolded EUI catalogue takes Tailwind class strings and turns them into styles for a native client, with nothing new on the wire. Colours become theme roles, sm:–2xl: resolve on the server, a class with no equivalent raises by name, and the half steps were added because they were the most frequent refusals.", "tag": "Feature", "image": "eui-tailwind-classes.svg", "publish_on": "2026-09-26"},
+        {"slug": "error-tracking", "file": "docs/blog/error-tracking.md", "desc": "Every request that ends in a 500 is grouped by fingerprint into a table in your app's own database and shown at /__soli/errors — no SDK, no third party. How the fingerprint is built, why recording never blocks a request, how redaction and the admin gate work, and what it doesn't do compared with Sentry.", "tag": "Feature", "image": "error-tracking.svg", "publish_on": "2026-09-25"},
         {"slug": "eui-notes-app", "file": "docs/blog/eui-notes-app.md", "desc": "Build a notes app that opens in a native window — no HTML, no CSS, no JavaScript. An EUI component is a handler and a view that returns plain Soli hashes; the runtime diffs the tree and sends the difference. Motion, local handlers, assets, capabilities and scenes.", "tag": "Tutorial", "image": "eui-notes-app.svg"},
         {"slug": "whats-unreleased", "file": "docs/blog/whats-unreleased.md", "desc": "A tour of everything that shipped in v2.0.0: SQL as a real backend, in-process jobs, LiveView rooms and hardening, unless/end, and auth that no longer helps attackers.", "tag": "Guide", "image": "whats-unreleased.svg"},
         {"slug": "stripe-checkout", "file": "docs/blog/stripe-checkout.md", "desc": "Take payments with Stripe Checkout in a Soli app — no generator. Create a session, send the buyer to Stripe, and mark the order paid only after a signed webhook. HTTP.post, Crypto.hmac, skip_csrf.", "tag": "Tutorial", "image": "stripe-checkout.svg"},
@@ -78,10 +86,15 @@ def get_blog_posts()
         {"slug": "htmx-integration", "file": "docs/blog/htmx-integration.md", "desc": "How HTMx brings simplicity to Soli web apps with server-rendered partials.", "tag": "Guide", "image": "htmx-integration.jpg"},
         {"slug": "soli-minimal-lang", "file": "docs/blog/soli-minimal-lang.md", "desc": "Why Soli is designed as a minimal, focused language for web development.", "tag": "Philosophy"}
     ]
-    
-    for info in blog_info
+end
+
+def get_blog_posts()
+    let posts = []
+
+    for info in blog_manifest()
         let path = info["file"]
-        
+        next unless blog_visible?(info)
+
         if file_exists(path)
             let content = slurp(path)
             if content != nil and content != ""
@@ -94,13 +107,40 @@ def get_blog_posts()
                     "tag": info["tag"],
                     "tag_chip": tag_chip_class(info["tag"]),
                     "tag_gradient": tag_gradient_class(info["tag"]),
-                    "image": info["image"] ?? null
+                    "image": info["image"] ?? null,
+                    "scheduled_on": blog_scheduled_on(info)
                 })
             end
         end
     end
     
     posts
+end
+
+# Scheduling: an entry with "publish_on": "YYYY-MM-DD" stays off the index and
+# answers 404 until that day, so a week of posts can ship in one deploy. A local
+# run (`soli serve www --dev` on localhost / *.localhost / 127.0.0.1) shows them
+# anyway, badged with their date. Keyed on the Host rather than on --dev itself:
+# production pins a soli (deploy-www.yml) that no dev-mode builtin can be assumed in.
+def blog_preview?
+    host = (req["headers"]["host"] || "").split(":")[0].downcase()
+    host == "localhost" or host.ends_with?(".localhost") or host == "127.0.0.1"
+end
+
+def blog_scheduled_on(info)
+    publish_on = info["publish_on"]
+    return null if publish_on.nil?
+    return null if publish_on <= DateTime.now().format("%Y-%m-%d")
+    publish_on
+end
+
+# A slug that is in the manifest but not yet visible — the show action 404s it.
+def blog_scheduled_slug?(slug)
+    blog_manifest().any?(fn(info) info["slug"] == slug and not blog_visible?(info))
+end
+
+def blog_visible?(info)
+    blog_scheduled_on(info).nil? or blog_preview?
 end
 
 def extract_title(markdown)
@@ -123,9 +163,10 @@ def show
     end
     
     let path = "docs/blog/" + slug + ".md"
+    let manifest_entry = find_blog_post(slug)
     let exists = file_exists(path)
-    
-    if not exists
+
+    if not exists or blog_scheduled_slug?(slug)
         return {
             "status": 404,
             "headers": {"Content-Type": "text/html"},
@@ -144,6 +185,7 @@ def show
         "content": html,
         "slug": slug,
         "og_image": blog_og_image(slug),
+        "scheduled_on": manifest_entry.nil? ? null : manifest_entry["scheduled_on"],
         "og_description": blog_og_description(slug)
     })
 end

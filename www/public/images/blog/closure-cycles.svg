@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="Two versions of the same class. On the left, a closure stored on this: the instance holds the closure in a field, the closure captures the method environment, and the environment binds this back to the instance. The three form a cycle whose reference counts never reach zero. On the right, the field holds the method name send_receipt as a string: nothing points back, and the instance is freed when the request lets go. Below, peak memory after creating 200,000 instances: 362 MiB with the closure, 34 MiB with the method name.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0.32" y1="0.28" x2="1" y2="1">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="0.55" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#c2620c"/>
+    </linearGradient>
+    <marker id="red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444"/>
+    </marker>
+    <marker id="green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#22c55e"/>
+    </marker>
+    <marker id="grey" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b616b"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg)"/>
+
+  <!-- title -->
+  <circle cx="64" cy="56" r="8" fill="url(#sun)"/>
+  <text x="82" y="62" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="19" fill="#e5e7eb" font-weight="600">leaks a closure can hide</text>
+  <text x="56" y="88" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#8b929e">smell/closure-cycle: a closure stored on `this` keeps `this` alive</text>
+
+  <!-- LEFT PANEL: the cycle -->
+  <rect x="40" y="112" width="460" height="296" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="62" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#ef4444">@on_paid = fn(order) { … }</text>
+
+  <!-- request handler, letting go -->
+  <text x="62" y="176" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">request handler</text>
+  <path d="M 110 184 L 110 214" fill="none" stroke="#5b616b" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#grey)"/>
+  <line x1="98" y1="192" x2="122" y2="206" stroke="#8b929e" stroke-width="1.6"/>
+  <text x="128" y="203" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5b616b">let go</text>
+
+  <!-- instance -->
+  <rect x="62" y="220" width="160" height="58" rx="10" fill="#16130f" stroke="#5a3d0c"/>
+  <text x="78" y="244" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5" fill="#f59e0b">OrderNotifier</text>
+  <text x="78" y="264" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">instance</text>
+
+  <!-- closure -->
+  <rect x="318" y="220" width="160" height="58" rx="10" fill="#16130f" stroke="#5a3d0c"/>
+  <text x="334" y="244" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5" fill="#f59e0b">fn(order)</text>
+  <text x="334" y="264" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">closure</text>
+
+  <!-- env -->
+  <rect x="190" y="334" width="160" height="58" rx="10" fill="#16130f" stroke="#5a3d0c"/>
+  <text x="206" y="358" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5" fill="#f59e0b">new() env</text>
+  <text x="206" y="378" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">this, mailer, …</text>
+
+  <!-- cycle arrows -->
+  <path d="M 222 249 L 314 249" fill="none" stroke="#ef4444" stroke-width="1.8" marker-end="url(#red)"/>
+  <text x="236" y="240" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#e5e7eb">field</text>
+  <path d="M 398 278 L 398 318 Q 398 362 354 362" fill="none" stroke="#ef4444" stroke-width="1.8" marker-end="url(#red)"/>
+  <text x="406" y="316" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#e5e7eb">captures</text>
+  <path d="M 190 362 Q 142 362 142 318 L 142 282" fill="none" stroke="#ef4444" stroke-width="1.8" marker-end="url(#red)"/>
+  <text x="70" y="316" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#e5e7eb">binds this</text>
+
+  <text x="290" y="176" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#ef4444">each count stays ≥ 1:</text>
+  <text x="290" y="194" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#ef4444">never freed</text>
+
+  <!-- RIGHT PANEL: the fix -->
+  <rect x="524" y="112" width="460" height="296" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="546" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#22c55e">@on_paid = "send_receipt"</text>
+
+  <text x="546" y="176" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">request handler</text>
+  <path d="M 594 184 L 594 214" fill="none" stroke="#5b616b" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#grey)"/>
+  <line x1="582" y1="192" x2="606" y2="206" stroke="#8b929e" stroke-width="1.6"/>
+  <text x="612" y="203" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5b616b">let go</text>
+
+  <rect x="546" y="220" width="160" height="58" rx="10" fill="#16130f" stroke="#2b3038"/>
+  <text x="562" y="244" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5" fill="#e5e7eb">OrderNotifier</text>
+  <text x="562" y="264" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">instance</text>
+
+  <rect x="802" y="220" width="160" height="58" rx="10" fill="#16130f" stroke="#2b3038"/>
+  <text x="818" y="244" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5" fill="#e5e7eb">"send_receipt"</text>
+  <text x="818" y="264" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">a string</text>
+
+  <path d="M 706 249 L 798 249" fill="none" stroke="#22c55e" stroke-width="1.8" marker-end="url(#green)"/>
+  <text x="720" y="240" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#e5e7eb">field</text>
+
+  <text x="546" y="326" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11.5" fill="#8b929e">nothing points back</text>
+  <text x="546" y="350" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11.5" fill="#22c55e">freed when the request lets go</text>
+  <text x="546" y="382" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">call it with this.send(@on_paid, order)</text>
+
+  <!-- BOTTOM: measurement -->
+  <rect x="40" y="428" width="944" height="116" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="62" y="456" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">peak RSS after creating 200,000 instances</text>
+
+  <text x="62" y="490" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#e5e7eb">closure on this</text>
+  <rect x="210" y="478" width="680" height="16" rx="4" fill="#ef4444" opacity="0.85"/>
+  <text x="900" y="491" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#ef4444">362 MiB</text>
+
+  <text x="62" y="522" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#e5e7eb">method name</text>
+  <rect x="210" y="510" width="64" height="16" rx="4" fill="#22c55e" opacity="0.85"/>
+  <text x="284" y="523" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#22c55e">34 MiB</text>
+</svg>

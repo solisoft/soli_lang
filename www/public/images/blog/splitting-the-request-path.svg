@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="Before-and-after line counts for four Rust functions: register_model_class 4,329 to 22, handle_hyper_request 1,457 to 263, run_hyper_server_worker_pool 1,173 to 557, handle_request 1,108 to 258. Beside them, the seventeen modules the server code moved into, with route_match marked as the home of the 404 that dropped its session cookie.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="1023" height="575" fill="none" stroke="#1c1f26"/>
+
+  <!-- Title -->
+  <text x="48" y="68" font-family="'Bricolage Grotesque', system-ui, sans-serif" font-size="34" font-weight="700" fill="#f4f4f5">The 4,329-line function</text>
+  <text x="48" y="100" font-family="system-ui, sans-serif" font-size="17" fill="#8b929e">Four god functions split into modules that say what they hold, with no change a Soli program can see.</text>
+
+  <!-- Left card: before / after bars. Scale: 380px = 4,329 lines -->
+  <rect x="40" y="130" width="500" height="400" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="64" y="162" font-family="system-ui, sans-serif" font-size="12" letter-spacing="1.5" fill="#f59e0b">LINES, BEFORE → AFTER</text>
+  <g font-family="system-ui, sans-serif" font-size="11" fill="#8b929e">
+    <rect x="370" y="152" width="12" height="10" rx="2" fill="url(#amber)"/>
+    <text x="388" y="161">before</text>
+    <rect x="440" y="152" width="12" height="10" rx="2" fill="#22c55e"/>
+    <text x="458" y="161">after</text>
+  </g>
+
+  <g font-family="ui-monospace, 'SF Mono', Menlo, monospace">
+    <!-- register_model_class -->
+    <text x="64" y="202" font-size="14" fill="#e5e7eb">register_model_class</text>
+    <text x="516" y="202" font-size="12" fill="#8b929e" text-anchor="end">model/core.rs</text>
+    <rect x="64" y="212" width="380" height="14" rx="3" fill="url(#amber)"/>
+    <text x="452" y="224" font-size="12" fill="#f59e0b">4,329</text>
+    <rect x="64" y="231" width="3" height="10" rx="1" fill="#22c55e"/>
+    <text x="74" y="240" font-size="12" fill="#22c55e">22</text>
+
+    <!-- handle_hyper_request -->
+    <text x="64" y="284" font-size="14" fill="#e5e7eb">handle_hyper_request</text>
+    <text x="516" y="284" font-size="12" fill="#8b929e" text-anchor="end">serve/mod.rs</text>
+    <rect x="64" y="294" width="128" height="14" rx="3" fill="url(#amber)"/>
+    <text x="200" y="306" font-size="12" fill="#f59e0b">1,457</text>
+    <rect x="64" y="313" width="23" height="10" rx="1" fill="#22c55e"/>
+    <text x="95" y="322" font-size="12" fill="#22c55e">263</text>
+
+    <!-- run_hyper_server_worker_pool -->
+    <text x="64" y="366" font-size="14" fill="#e5e7eb">run_hyper_server_worker_pool</text>
+    <text x="516" y="366" font-size="12" fill="#8b929e" text-anchor="end">serve/mod.rs</text>
+    <rect x="64" y="376" width="103" height="14" rx="3" fill="url(#amber)"/>
+    <text x="175" y="388" font-size="12" fill="#f59e0b">1,173</text>
+    <rect x="64" y="395" width="49" height="10" rx="1" fill="#22c55e"/>
+    <text x="121" y="404" font-size="12" fill="#22c55e">557</text>
+
+    <!-- handle_request -->
+    <text x="64" y="448" font-size="14" fill="#e5e7eb">handle_request</text>
+    <text x="516" y="448" font-size="12" fill="#8b929e" text-anchor="end">serve/mod.rs</text>
+    <rect x="64" y="458" width="97" height="14" rx="3" fill="url(#amber)"/>
+    <text x="169" y="470" font-size="12" fill="#f59e0b">1,108</text>
+    <rect x="64" y="477" width="23" height="10" rx="1" fill="#22c55e"/>
+    <text x="95" y="486" font-size="12" fill="#22c55e">258</text>
+  </g>
+  <text x="64" y="514" font-family="system-ui, sans-serif" font-size="11.5" fill="#6b7280">Counts as recorded in the commits of the series.</text>
+
+  <!-- Right card: modules -->
+  <rect x="560" y="130" width="424" height="400" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="584" y="162" font-family="system-ui, sans-serif" font-size="12" letter-spacing="1.5" fill="#f59e0b">SRC/SERVE/ — WHERE IT WENT</text>
+
+  <g font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="13" fill="#e5e7eb">
+    <!-- column 1 x=584, column 2 x=784; chip width 184, height 28, pitch 36 -->
+    <rect x="584" y="180" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="598" y="199">accept.rs</text>
+    <rect x="584" y="216" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="598" y="235">probes.rs</text>
+    <rect x="584" y="252" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="598" y="271">framework_assets.rs</text>
+    <rect x="584" y="288" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="598" y="307">static_files.rs</text>
+    <rect x="584" y="324" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="598" y="343">upgrade.rs</text>
+    <rect x="584" y="360" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="598" y="379">dev_routes.rs</text>
+    <rect x="584" y="396" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="598" y="415">coverage.rs</text>
+    <rect x="584" y="432" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="598" y="451">pipeline.rs</text>
+    <rect x="584" y="468" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="598" y="487">file_watcher.rs</text>
+
+    <rect x="784" y="180" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="798" y="199">app_loader.rs</text>
+    <rect x="784" y="216" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="798" y="235">middleware.rs</text>
+    <rect x="784" y="252" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="798" y="271">error_response.rs</text>
+    <rect x="784" y="288" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="798" y="307">builtin_endpoints.rs</text>
+    <rect x="784" y="324" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="798" y="343">request_scope.rs</text>
+    <rect x="784" y="360" width="184" height="28" rx="7" fill="#1a1214" stroke="#ef4444"/><text x="798" y="379" fill="#fca5a5">route_match.rs</text>
+    <rect x="784" y="396" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="798" y="415">request_input.rs</text>
+    <rect x="784" y="432" width="184" height="28" rx="7" fill="#12151b" stroke="#2b3038"/><text x="798" y="451">finalize.rs</text>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="11.5">
+    <text x="784" y="484" fill="#ef4444">route_match: the wildcard-miss 404</text>
+    <text x="784" y="499" fill="#ef4444">that dropped its session cookie</text>
+    <text x="784" y="514" fill="#8b929e">fixed in 8223f821</text>
+  </g>
+
+  <text x="512" y="558" font-family="system-ui, sans-serif" font-size="12.5" fill="#8b929e" text-anchor="middle">Each step checked old binary against new on a running server; the only differences were ones the old binary shows against itself.</text>
+</svg>

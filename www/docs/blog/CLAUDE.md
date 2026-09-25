@@ -4,6 +4,15 @@ Posts are markdown files in this directory (`www/docs/blog/<slug>.md`), served a
 `/docs/blog/<slug>` by `blog#show`. Each post is also listed in the manual
 `blog_info` manifest in `www/app/controllers/blog_controller.sl` (newest first).
 
+## Scheduling posts
+
+Add `"publish_on": "YYYY-MM-DD"` to a manifest entry to hold it back: until that
+day the post is off the index and `/docs/blog/<slug>` answers 404, so several
+posts can ship in one deploy and go live one per day. A request on a local host
+(`localhost`, `*.localhost`, `127.0.0.1` — i.e. `soli serve www --dev`) sees
+scheduled posts anyway, with a "Scheduled · date" badge. Order the manifest by
+publish date, newest first.
+
 ## Every post MUST have a hero image
 
 A post without an image looks unfinished on the index and at the top of the page.

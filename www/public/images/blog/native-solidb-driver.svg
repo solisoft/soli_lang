@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="Two pipelines for a plain SoliDB read on the native driver. Before: MessagePack bytes are decoded into a serde_json::Value tree, then converted by json_to_value_owned into Soli values. After: query_as of Value decodes the MessagePack bytes directly into Soli values. Framework suite at 200 connections: /db goes from 59.9k to 79.3k requests per second, CPU per request 123 to 85 microseconds; /db-template from 57.7k to 74.9k requests per second, 125 to 89 microseconds.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0.32" y1="0.28" x2="1" y2="1">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="0.55" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#c2620c"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrow-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+    </marker>
+    <marker id="arrow-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#22c55e"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg)"/>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <!-- title -->
+    <circle cx="64" cy="56" r="9" fill="url(#sun)"/>
+    <text x="84" y="62" font-size="19" fill="#e5e7eb" font-weight="600">decoding rows once</text>
+    <text x="56" y="90" font-size="13" fill="#8b929e">plain SoliDB reads on the native driver · SOLI_DB_DRIVER=1 · pluck(...).all</text>
+
+    <!-- BEFORE lane -->
+    <text x="56" y="136" font-size="12" fill="#8b929e" letter-spacing="1">BEFORE</text>
+    <rect x="56" y="148" width="180" height="64" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="146" y="176" font-size="13" fill="#e5e7eb" text-anchor="middle">MessagePack</text>
+    <text x="146" y="196" font-size="11" fill="#8b929e" text-anchor="middle">bytes off the wire</text>
+
+    <line x1="236" y1="180" x2="286" y2="180" stroke="#6b7280" stroke-width="1.6" marker-end="url(#arrow-dim)"/>
+
+    <rect x="290" y="148" width="210" height="64" rx="14" fill="#101319" stroke="#ef4444" stroke-dasharray="5 4"/>
+    <text x="395" y="176" font-size="13" fill="#e5e7eb" text-anchor="middle">serde_json::Value</text>
+    <text x="395" y="196" font-size="11" fill="#ef4444" text-anchor="middle">a whole tree, per row</text>
+
+    <line x1="500" y1="180" x2="550" y2="180" stroke="#6b7280" stroke-width="1.6" marker-end="url(#arrow-dim)"/>
+
+    <rect x="554" y="148" width="210" height="64" rx="14" fill="#101319" stroke="#ef4444" stroke-dasharray="5 4"/>
+    <text x="659" y="176" font-size="13" fill="#e5e7eb" text-anchor="middle">json_to_value_owned</text>
+    <text x="659" y="196" font-size="11" fill="#ef4444" text-anchor="middle">walk it again</text>
+
+    <line x1="764" y1="180" x2="814" y2="180" stroke="#6b7280" stroke-width="1.6" marker-end="url(#arrow-dim)"/>
+
+    <rect x="818" y="148" width="150" height="64" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="893" y="176" font-size="13" fill="#e5e7eb" text-anchor="middle">Soli Value</text>
+    <text x="893" y="196" font-size="11" fill="#8b929e" text-anchor="middle">array of hashes</text>
+
+    <!-- AFTER lane -->
+    <text x="56" y="256" font-size="12" fill="#f59e0b" letter-spacing="1">AFTER</text>
+    <rect x="56" y="268" width="180" height="64" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="146" y="296" font-size="13" fill="#e5e7eb" text-anchor="middle">MessagePack</text>
+    <text x="146" y="316" font-size="11" fill="#8b929e" text-anchor="middle">bytes off the wire</text>
+
+    <line x1="236" y1="300" x2="812" y2="300" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="370" y="282" width="308" height="36" rx="10" fill="#0d0f12" stroke="#d97706"/>
+    <text x="524" y="305" font-size="14" fill="#f59e0b" text-anchor="middle">query_as::&lt;Value&gt;()</text>
+    <text x="524" y="346" font-size="11" fill="#8b929e" text-anchor="middle">one decode · serde visitor builds Soli values directly</text>
+
+    <rect x="818" y="268" width="150" height="64" rx="14" fill="#101319" stroke="#22c55e"/>
+    <text x="893" y="296" font-size="13" fill="#e5e7eb" text-anchor="middle">Soli Value</text>
+    <text x="893" y="316" font-size="11" fill="#22c55e" text-anchor="middle">same output</text>
+
+    <!-- numbers -->
+    <rect x="56" y="392" width="440" height="116" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="80" y="424" font-size="15" fill="#e5e7eb" font-weight="600">/db</text>
+    <text x="80" y="458" font-size="14" fill="#8b929e">59.9k <tspan fill="#f59e0b">→</tspan> <tspan fill="#22c55e" font-weight="600">79.3k</tspan> req/s</text>
+    <text x="80" y="488" font-size="13" fill="#8b929e">CPU/req 123 <tspan fill="#f59e0b">→</tspan> <tspan fill="#22c55e">85 µs</tspan></text>
+
+    <rect x="528" y="392" width="440" height="116" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="552" y="424" font-size="15" fill="#e5e7eb" font-weight="600">/db-template</text>
+    <text x="552" y="458" font-size="14" fill="#8b929e">57.7k <tspan fill="#f59e0b">→</tspan> <tspan fill="#22c55e" font-weight="600">74.9k</tspan> req/s</text>
+    <text x="552" y="488" font-size="13" fill="#8b929e">CPU/req 125 <tspan fill="#f59e0b">→</tspan> <tspan fill="#22c55e">89 µs</tspan></text>
+
+    <text x="56" y="540" font-size="11" fill="#6b7280">framework suite · c=200 · fat-LTO builds · median of 3 · includes solidb-client v1.2.0's own decode fix</text>
+  </g>
+</svg>

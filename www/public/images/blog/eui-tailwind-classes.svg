@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="576" viewBox="0 0 1024 576" role="img" aria-label="A Tailwind class string, flex items-center gap-3 rounded-lg bg-white px-4 py-2 shadow-sm hover:bg-gray-50, goes through tw() in plain Soli on the server and comes out as an EUI style hash: display row, align center, gap 4, radius 2, bg surface.raised, pad 3 5 3 5, shadow 1, with a hover delta bg surface.base wired as a local handler. Below, three cases: p-2 md:p-4 resolves to pad 3 at 500 px and pad 5 at 800 px; py-1.5 is space index 13, 6 px, sent as index 2, 4 px, to a client older than protocol 6; tracking-wide raises because EUI has no letter-spacing.">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bgGrad)"/>
+
+  <!-- Title -->
+  <text x="48" y="58" font-family="Inter, system-ui, sans-serif" font-size="26" font-weight="700" fill="#e5e7eb">Tailwind classes, a native UI, no CSS</text>
+  <text x="48" y="86" font-family="Inter, system-ui, sans-serif" font-size="15" fill="#8b929e">tw() is plain Soli in the scaffolded catalogue. Every class becomes a style key the encoder already takes.</text>
+
+  <!-- Left card: the class string -->
+  <rect x="48" y="118" width="360" height="236" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="72" y="150" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" fill="#f59e0b" letter-spacing="1">WHAT YOU WRITE</text>
+  <text font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15" fill="#e5e7eb">
+    <tspan x="72" y="190">tw("flex items-center</tspan>
+    <tspan x="72" y="214">    gap-3 rounded-lg</tspan>
+    <tspan x="72" y="238">    bg-white px-4 py-2</tspan>
+    <tspan x="72" y="262">    shadow-sm</tspan>
+    <tspan x="72" y="286" fill="#f59e0b">    hover:bg-gray-50</tspan>
+    <tspan x="72" y="310">")</tspan>
+  </text>
+  <text x="72" y="338" font-family="Inter, system-ui, sans-serif" font-size="12.5" fill="#8b929e">parsed once per distinct string, per process</text>
+
+  <!-- Arrow -->
+  <line x1="418" y1="236" x2="500" y2="236" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="459" y="224" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#f59e0b">tw()</text>
+  <text x="459" y="258" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="11.5" fill="#8b929e">server</text>
+
+  <!-- Right card: the style -->
+  <rect x="510" y="118" width="466" height="236" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="534" y="150" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" fill="#f59e0b" letter-spacing="1">WHAT THE ENCODER GETS</text>
+  <text font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14.5" fill="#e5e7eb">
+    <tspan x="534" y="186">"s":  display row · align center</tspan>
+    <tspan x="534" y="210">      gap 4 · radius 2 · shadow 1</tspan>
+    <tspan x="534" y="234">      bg surface.raised</tspan>
+    <tspan x="534" y="258">      pad [3, 5, 3, 5]</tspan>
+    <tspan x="534" y="290" fill="#f59e0b">"hover": bg surface.base</tspan>
+  </text>
+  <text x="534" y="318" font-family="Inter, system-ui, sans-serif" font-size="12.5" fill="#8b929e">spacing = space-scale indices · colours = theme roles</text>
+  <text x="534" y="338" font-family="Inter, system-ui, sans-serif" font-size="12.5" fill="#8b929e">hover becomes a local handler: no round trip</text>
+
+  <!-- Bottom cards -->
+  <!-- Breakpoints -->
+  <rect x="48" y="384" width="296" height="148" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="70" y="414" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" fill="#f59e0b" letter-spacing="1">BREAKPOINTS, ON THE SERVER</text>
+  <text font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#e5e7eb">
+    <tspan x="70" y="446">tw("p-2 md:p-4", width)</tspan>
+    <tspan x="70" y="474" fill="#8b929e">width 500 → </tspan><tspan fill="#22c55e">pad 3</tspan>
+    <tspan x="70" y="498" fill="#8b929e">width 800 → </tspan><tspan fill="#22c55e">pad 5</tspan>
+  </text>
+  <text x="70" y="520" font-family="Inter, system-ui, sans-serif" font-size="12" fill="#8b929e">no width given → it raises</text>
+
+  <!-- Half steps -->
+  <rect x="364" y="384" width="296" height="148" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="386" y="414" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" fill="#f59e0b" letter-spacing="1">HALF STEPS, PROTOCOL 6</text>
+  <text font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#e5e7eb">
+    <tspan x="386" y="446">py-1.5 → index 13 (6 px)</tspan>
+    <tspan x="386" y="474" fill="#8b929e">client below 6 gets</tspan>
+    <tspan x="386" y="498">index 2 (4 px)</tspan>
+  </text>
+  <text x="386" y="520" font-family="Inter, system-ui, sans-serif" font-size="12" fill="#8b929e">nearest older step, ties down</text>
+
+  <!-- Refusal -->
+  <rect x="680" y="384" width="296" height="148" rx="14" fill="#101319" stroke="#ef4444" stroke-opacity="0.6"/>
+  <text x="702" y="414" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" fill="#ef4444" letter-spacing="1">REFUSED BY NAME</text>
+  <text font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#e5e7eb">
+    <tspan x="702" y="446">tw("tracking-wide")</tspan>
+    <tspan x="702" y="474" fill="#ef4444">raises: EUI has no</tspan>
+    <tspan x="702" y="498" fill="#ef4444">letter-spacing</tspan>
+  </text>
+  <text x="702" y="520" font-family="Inter, system-ui, sans-serif" font-size="12" fill="#8b929e">never silently dropped</text>
+</svg>

@@ -49,6 +49,9 @@
                     </span>
                     <% end %>
                 </div>
+                <% if posts[0]["scheduled_on"] %>
+                <p class="mb-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border border-rose-500/30 bg-rose-500/15 text-rose-300">Scheduled &middot; <%= posts[0]["scheduled_on"] %></p>
+                <% end %>
                 <h2 class="text-2xl sm:text-3xl lg:text-[1.75rem] font-bold text-white mb-4 leading-tight group-hover:text-amber-200 transition-colors duration-200">
                     <%= posts[0]["title"] %>
                 </h2>
@@ -106,6 +109,9 @@
                         <%= posts[i]["tag"] %>
                     </span>
                 </div>
+                <% end %>
+                <% if posts[i]["scheduled_on"] %>
+                <p class="mb-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border border-rose-500/30 bg-rose-500/15 text-rose-300">Scheduled &middot; <%= posts[i]["scheduled_on"] %></p>
                 <% end %>
                 <h3 class="text-lg font-semibold text-white mb-2 leading-snug group-hover:text-amber-300 transition-colors duration-200">
                     <%= posts[i]["title"] %>

@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="A support-inbox job in three steps. 1, authenticate: LOGIN with an app password is refused, AUTHENTICATE XOAUTH2 with an access token is accepted, via Imap.new(host, user, empty password, xoauth2 token). 2, list headers only: fetch_headers_set(&quot;102:*&quot;) sends one UID FETCH for SUBJECT FROM TO DATE, RFC822.SIZE and BODYSTRUCTURE, returning UID 102 with no attachment and UID 103 with one. 3, act by UID: 102 is fetched, answered with In-Reply-To, marked seen and moved to Handled; 103 is moved to Needs a human without its body being downloaded. Below, the sequence-number trap: before uid_move(102) sequence number 2 is UID 102, after it sequence number 2 is UID 103, so mark_seen(2) would flag the wrong message while uid_mark_seen(103) still means 103.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="1023" height="575" fill="none" stroke="#1c1f26"/>
+
+  <text x="40" y="52" font-family="'Bricolage Grotesque', system-ui, sans-serif" font-size="30" font-weight="700" fill="#f4f4f5">Read the inbox, act by UID</text>
+  <text x="40" y="80" font-family="system-ui, sans-serif" font-size="15" fill="#8b929e">A token where the password used to be, four header lines where the whole message used to be, and numbers that do not move.</text>
+
+  <!-- arrows between cards -->
+  <line x1="346" y1="228" x2="358" y2="228" stroke="#f59e0b" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="666" y1="228" x2="678" y2="228" stroke="#f59e0b" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- Card 1: authenticate -->
+  <g>
+    <rect x="40" y="104" width="304" height="248" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="58" y="134" font-family="system-ui, sans-serif" font-size="15" font-weight="700" fill="#f59e0b">1 · Authenticate</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+      <rect x="56" y="150" width="272" height="48" rx="8" fill="#1a1012" stroke="#5b1f24"/>
+      <text x="68" y="170" fill="#fca5a5">LOGIN user app-password</text>
+      <text x="68" y="189" fill="#ef4444">NO · app passwords switched off</text>
+      <rect x="56" y="206" width="272" height="48" rx="8" fill="#0f1a13" stroke="#1f5b33"/>
+      <text x="68" y="226" fill="#bbf7d0">AUTHENTICATE XOAUTH2 dXNlcj1…</text>
+      <text x="68" y="245" fill="#22c55e">OK</text>
+      <rect x="56" y="266" width="272" height="68" rx="8" fill="#0b0d0f" stroke="#2b3038"/>
+      <text x="68" y="292" fill="#e5e7eb">Imap.new(host, user, "",</text>
+      <text x="68" y="314" fill="#e5e7eb">  { <tspan fill="#f59e0b">"xoauth2"</tspan>: token })</text>
+    </g>
+  </g>
+
+  <!-- Card 2: list headers only -->
+  <g>
+    <rect x="360" y="104" width="304" height="248" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="378" y="134" font-family="system-ui, sans-serif" font-size="15" font-weight="700" fill="#f59e0b">2 · List, headers only</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+      <text x="378" y="162" font-size="13" fill="#e5e7eb">fetch_headers_set(<tspan fill="#f59e0b">"102:*"</tspan>)</text>
+      <rect x="376" y="174" width="272" height="86" rx="8" fill="#0b0d0f" stroke="#2b3038"/>
+      <g font-size="11" fill="#8b929e">
+        <text x="388" y="194">UID FETCH 102:* (UID FLAGS</text>
+        <text x="388" y="211">  BODY.PEEK[HEADER.FIELDS</text>
+        <text x="388" y="228">    (SUBJECT FROM TO DATE)]</text>
+        <text x="388" y="245">  RFC822.SIZE BODYSTRUCTURE)</text>
+      </g>
+      <g font-size="11">
+        <rect x="376" y="272" width="272" height="28" rx="6" fill="#141820" stroke="#2b3038"/>
+        <text x="388" y="290" fill="#e5e7eb"><tspan fill="#f59e0b">102</tspan>  Where is my refund?</text>
+        <text x="636" y="290" text-anchor="end" fill="#22c55e">clips 0</text>
+        <rect x="376" y="308" width="272" height="28" rx="6" fill="#141820" stroke="#2b3038"/>
+        <text x="388" y="326" fill="#e5e7eb"><tspan fill="#f59e0b">103</tspan>  Invoice attached</text>
+        <text x="636" y="326" text-anchor="end" fill="#f59e0b">clips 1</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Card 3: act by UID -->
+  <g>
+    <rect x="680" y="104" width="304" height="248" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="698" y="134" font-family="system-ui, sans-serif" font-size="15" font-weight="700" fill="#f59e0b">3 · Act by UID</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+      <rect x="696" y="150" width="272" height="116" rx="8" fill="#0b0d0f" stroke="#2b3038"/>
+      <text x="708" y="172" fill="#e5e7eb">fetch_uid(<tspan fill="#f59e0b">102</tspan>)</text>
+      <text x="708" y="196" fill="#e5e7eb">Mailer.deliver(… <tspan fill="#f59e0b">In-Reply-To</tspan> …)</text>
+      <text x="708" y="220" fill="#e5e7eb">uid_mark_seen(<tspan fill="#f59e0b">102</tspan>)</text>
+      <text x="708" y="244" fill="#22c55e">uid_move(102, "Handled")</text>
+      <rect x="696" y="278" width="272" height="56" rx="8" fill="#0b0d0f" stroke="#2b3038"/>
+      <text x="708" y="300" fill="#f59e0b">uid_move(103, "Needs a human")</text>
+      <text x="708" y="322" font-family="system-ui, sans-serif" font-size="12" fill="#8b929e">its 8 KB PDF never downloaded</text>
+    </g>
+  </g>
+
+  <!-- Bottom: the sequence-number trap -->
+  <g>
+    <rect x="40" y="372" width="944" height="172" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="58" y="402" font-family="system-ui, sans-serif" font-size="15" font-weight="700" fill="#e5e7eb">A sequence number is a position</text>
+    <text x="318" y="402" font-family="system-ui, sans-serif" font-size="13" fill="#8b929e">and it shifts as soon as anything before it leaves the mailbox</text>
+
+    <g font-family="system-ui, sans-serif" font-size="12" fill="#8b929e">
+      <text x="58" y="434">before</text>
+      <text x="498" y="434">after</text>
+    </g>
+
+    <!-- before boxes -->
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+      <rect x="58" y="444" width="96" height="60" rx="8" fill="#0b0d0f" stroke="#2b3038"/>
+      <text x="106" y="466" text-anchor="middle" font-size="12" fill="#8b929e">seq 1</text>
+      <text x="106" y="490" text-anchor="middle" font-size="14" fill="#e5e7eb">UID 101</text>
+
+      <rect x="164" y="444" width="96" height="60" rx="8" fill="#1a1406" stroke="#d97706"/>
+      <text x="212" y="466" text-anchor="middle" font-size="12" fill="#f59e0b">seq 2</text>
+      <text x="212" y="490" text-anchor="middle" font-size="14" fill="#e5e7eb">UID 102</text>
+
+      <rect x="270" y="444" width="96" height="60" rx="8" fill="#0b0d0f" stroke="#2b3038"/>
+      <text x="318" y="466" text-anchor="middle" font-size="12" fill="#8b929e">seq 3</text>
+      <text x="318" y="490" text-anchor="middle" font-size="14" fill="#e5e7eb">UID 103</text>
+    </g>
+
+    <line x1="378" y1="474" x2="484" y2="474" stroke="#f59e0b" stroke-width="2" marker-end="url(#arr)"/>
+    <text x="431" y="464" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#f59e0b">uid_move(102)</text>
+
+    <!-- after boxes -->
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+      <rect x="498" y="444" width="96" height="60" rx="8" fill="#0b0d0f" stroke="#2b3038"/>
+      <text x="546" y="466" text-anchor="middle" font-size="12" fill="#8b929e">seq 1</text>
+      <text x="546" y="490" text-anchor="middle" font-size="14" fill="#e5e7eb">UID 101</text>
+
+      <rect x="604" y="444" width="96" height="60" rx="8" fill="#1a1012" stroke="#ef4444"/>
+      <text x="652" y="466" text-anchor="middle" font-size="12" fill="#ef4444">seq 2</text>
+      <text x="652" y="490" text-anchor="middle" font-size="14" fill="#e5e7eb">UID 103</text>
+    </g>
+
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+      <text x="724" y="464" fill="#ef4444">mark_seen(2)</text>
+      <text x="724" y="482" font-family="system-ui, sans-serif" fill="#8b929e">now flags UID 103</text>
+      <text x="724" y="508" fill="#22c55e">uid_mark_seen(103)</text>
+      <text x="724" y="526" font-family="system-ui, sans-serif" fill="#8b929e">means 103 before and after</text>
+    </g>
+  </g>
+</svg>

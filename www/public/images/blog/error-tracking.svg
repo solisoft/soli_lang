@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="Three failing requests, GET /orders/42, /orders/97 and /orders/13, raise the same error. The message is normalized to Cannot access property ? on null at #:#, the raising frame total_for at app/controllers/orders_controller.sl loses its line number, and both hash to the fingerprint ca84884f39150dba. Request workers hand samples to a bounded queue of 1024 with try_send; overflow is dropped and counted. One writer thread per app gathers for one second and writes one update per group into the _soli_errors table in the app's own database, which the /__soli/errors page reads.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#ef4444"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="1023" height="575" fill="none" stroke="#1c1f26"/>
+
+  <!-- Title -->
+  <text x="48" y="64" font-family="'Bricolage Grotesque', system-ui, sans-serif" font-size="32" font-weight="700" fill="#f4f4f5">Your 500s, grouped</text>
+  <text x="48" y="94" font-family="system-ui, sans-serif" font-size="16" fill="#8b929e">Same bug, different ids: one fingerprint, one row in the app's own database.</text>
+
+  <!-- Left: three failing requests -->
+  <g font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="14">
+    <rect x="48" y="130" width="230" height="44" rx="12" fill="#1a1113" stroke="#ef4444" stroke-opacity="0.7"/>
+    <text x="64" y="157" fill="#e5e7eb">GET /orders/42</text>
+    <text x="262" y="157" text-anchor="end" fill="#ef4444">500</text>
+
+    <rect x="48" y="186" width="230" height="44" rx="12" fill="#1a1113" stroke="#ef4444" stroke-opacity="0.7"/>
+    <text x="64" y="213" fill="#e5e7eb">GET /orders/97</text>
+    <text x="262" y="213" text-anchor="end" fill="#ef4444">500</text>
+
+    <rect x="48" y="242" width="230" height="44" rx="12" fill="#1a1113" stroke="#ef4444" stroke-opacity="0.7"/>
+    <text x="64" y="269" fill="#e5e7eb">GET /orders/13</text>
+    <text x="262" y="269" text-anchor="end" fill="#ef4444">500</text>
+  </g>
+  <text x="48" y="312" font-family="system-ui, sans-serif" font-size="12.5" fill="#8b929e">each: Cannot access property 'sum'</text>
+  <text x="48" y="329" font-family="system-ui, sans-serif" font-size="12.5" fill="#8b929e">on null at 3:3</text>
+
+  <path d="M286 208 L 330 208" fill="none" stroke="#f59e0b" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- Middle: fingerprint card -->
+  <g>
+    <rect x="338" y="124" width="348" height="222" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="358" y="152" font-family="system-ui, sans-serif" font-size="12" letter-spacing="1.5" fill="#f59e0b">FINGERPRINT</text>
+    <g font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="12.5">
+      <text x="358" y="180" fill="#8b929e">message, variable parts out</text>
+      <text x="358" y="200" fill="#e5e7eb">Cannot access property <tspan fill="#f59e0b">?</tspan> on null at <tspan fill="#f59e0b">#</tspan>:<tspan fill="#f59e0b">#</tspan></text>
+      <text x="358" y="230" fill="#8b929e">raising frame, line number out</text>
+      <text x="358" y="250" fill="#e5e7eb">total_for at app/controllers/</text>
+      <text x="358" y="268" fill="#e5e7eb">orders_controller.sl<tspan fill="#ef4444" text-decoration="line-through">:3</tspan></text>
+      <line x1="358" y1="286" x2="666" y2="286" stroke="#2b3038"/>
+      <text x="358" y="310" fill="#8b929e">sha256 → first 8 bytes</text>
+      <text x="358" y="332" font-size="17" fill="#f59e0b">ca84884f39150dba</text>
+    </g>
+  </g>
+
+  <!-- Right: stored group -->
+  <path d="M694 236 L 736 236" fill="none" stroke="#f59e0b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <g>
+    <rect x="744" y="124" width="232" height="222" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="764" y="152" font-family="system-ui, sans-serif" font-size="12" letter-spacing="1.5" fill="#f59e0b">ONE GROUP</text>
+    <g font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="13">
+      <text x="764" y="182" fill="#8b929e">status <tspan fill="#22c55e">open</tspan></text>
+      <text x="764" y="206" fill="#8b929e">count  <tspan fill="#e5e7eb">3</tspan></text>
+      <text x="764" y="230" fill="#8b929e">hourly <tspan fill="#e5e7eb">24 h trend</tspan></text>
+      <text x="764" y="254" fill="#8b929e">samples <tspan fill="#e5e7eb">≤ 5, newest</tspan></text>
+    </g>
+    <text x="764" y="284" font-family="system-ui, sans-serif" font-size="12" fill="#8b929e">each sample: stack, request,</text>
+    <text x="764" y="302" font-family="system-ui, sans-serif" font-size="12" fill="#8b929e">locals, curl replay — redacted</text>
+    <text x="764" y="328" font-family="system-ui, sans-serif" font-size="12" fill="#6b7280">resolved → regressed on return</text>
+  </g>
+
+  <!-- Bottom: off the request path -->
+  <text x="48" y="392" font-family="system-ui, sans-serif" font-size="12" letter-spacing="1.5" fill="#f59e0b">OFF THE REQUEST PATH</text>
+  <g font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="13">
+    <rect x="48" y="410" width="170" height="64" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="64" y="436" fill="#e5e7eb">request worker</text>
+    <text x="64" y="458" fill="#8b929e">try_send only</text>
+
+    <path d="M222 442 L 262 442" fill="none" stroke="#f59e0b" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+    <rect x="270" y="410" width="170" height="64" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="286" y="436" fill="#e5e7eb">bounded queue</text>
+    <text x="286" y="458" fill="#8b929e">1024 samples</text>
+
+    <path d="M355 478 L 355 512" fill="none" stroke="#ef4444" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#arrowRed)"/>
+    <text x="368" y="528" font-family="system-ui, sans-serif" font-size="12" fill="#ef4444">full → dropped, counted on the page</text>
+
+    <path d="M444 442 L 484 442" fill="none" stroke="#f59e0b" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+    <rect x="492" y="410" width="200" height="64" rx="14" fill="#101319" stroke="#2b3038"/>
+    <text x="508" y="436" fill="#e5e7eb">writer thread</text>
+    <text x="508" y="458" fill="#8b929e">1 per app, batches 1 s</text>
+
+    <path d="M696 442 L 736 442" fill="none" stroke="#f59e0b" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+    <rect x="744" y="410" width="232" height="64" rx="14" fill="#12151b" stroke="#3a2f14"/>
+    <text x="760" y="436" fill="#f59e0b">_soli_errors</text>
+    <text x="760" y="458" font-family="system-ui, sans-serif" font-size="12" fill="#8b929e">SoliDB · Postgres · MySQL · SQLite</text>
+  </g>
+  <text x="976" y="528" text-anchor="end" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="13" fill="#e5e7eb">read at /__soli/errors</text>
+</svg>
