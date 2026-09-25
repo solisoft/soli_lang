@@ -702,6 +702,55 @@ fn rescue_typechecks() {
 }
 
 #[test]
+fn rescue_null_fallback_does_not_make_the_value_null() {
+    // The shape that failed a whole script before its first line: the
+    // fallback's `Null` became the variable's type, so the index after the
+    // nil check was refused as "cannot index Null".
+    check_ok(
+        r#"
+def vectors_for(texts)
+  return [[1.0, 2.0]]
+end
+
+def first_vector
+  vectors = vectors_for([]) rescue null
+  if vectors.nil?
+    return null
+  end
+  return vectors[0]
+end
+"#,
+    );
+}
+
+#[test]
+fn rescue_with_same_type_on_both_sides_keeps_it() {
+    // Widening, not erasure: two `Int`s stay an `Int`, so a wrong
+    // annotation is still caught.
+    check_ok(r#"let x: Int = 1 rescue 0;"#);
+    let errors = check_err(r#"let x: String = 1 rescue 0;"#);
+    assert_any(
+        &errors,
+        |e| matches!(e, TypeError::Mismatch { .. }),
+        "Mismatch on let x: String = 1 rescue 0",
+    );
+}
+
+#[test]
+fn bare_nil_assignment_can_be_reassigned() {
+    // `x = nil` without `let` reads like `let x = nil`: nothing known yet.
+    check_ok(
+        r#"
+def load
+  records = null
+  records = [[1.0]]
+  return records[0]
+end
+"#,
+    );
+}
+
+#[test]
 fn nullish_coalescing_typechecks() {
     check_ok(r#"let x: Int = null ?? 0;"#);
 }

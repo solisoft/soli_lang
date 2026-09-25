@@ -22,6 +22,11 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.5.3.</p>
 
+        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">x = f() rescue nil</code> no longer makes <code class="text-cyan-400">x</code> a <code class="text-cyan-400">Null</code>.</strong> The type checker gave a postfix <code class="text-cyan-400">rescue</code> the type of its fallback alone, so the <code class="text-cyan-400">x[0]</code> that follows a nil check was refused as <em>cannot index Null</em> &mdash; before the script's first line ran, with none of its output printed. The two sides are now widened together, as a ternary's branches are: <code class="text-cyan-400">1 rescue 0</code> stays an <code class="text-cyan-400">Int</code>, anything <code class="text-cyan-400">rescue nil</code> is <code class="text-cyan-400">Any</code>. A bare <code class="text-cyan-400">x = nil</code> now reads like <code class="text-cyan-400">let x = nil</code>, so the next assignment is no longer refused as <em>expected Null</em>.</li>
+        </ul>
+
     </section>
 
     <section id="v2-5-3" class="mb-16 scroll-mt-24">

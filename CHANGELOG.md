@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+* **fix(check):** **`x = f() rescue nil` no longer types `x` as `Null`.** The checker typed `expr rescue fallback` as the fallback alone, so `vectors = embed_batch(texts) rescue null` was a `Null` and the `vectors[0]` after its nil check was refused as `cannot index Null` — a type error raised before the script's first line, which ran none of it and printed none of its output (a production embedding script failed this way on every run). Both sides are now widened together, as a ternary's branches are (`widen_types`): `1 rescue 0` stays an `Int`, so a wrong annotation is still caught; anything `rescue nil` is `Any`. The same reading now covers a bare `x = nil`, which defined `x` as `Null` and refused the next assignment as `expected Null, found …` — `let x = nil` had been fixed in 2.4.0, the bare form the conventions recommend had not. Tests: `tests/type_checker_test.rs` (`rescue_null_fallback_does_not_make_the_value_null`, `rescue_with_same_type_on_both_sides_keeps_it`, `bare_nil_assignment_can_be_reassigned`).
+
 ## [2.5.3] - 2026-09-25
 
 ### Added
