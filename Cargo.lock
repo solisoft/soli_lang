@@ -1437,7 +1437,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2435,7 +2435,7 @@ dependencies = [
 [[package]]
 name = "eui-audio"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 dependencies = [
  "eui-proto",
  "symphonia",
@@ -2444,7 +2444,7 @@ dependencies = [
 [[package]]
 name = "eui-client"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -2474,6 +2474,7 @@ dependencies = [
  "notify 7.0.0",
  "png 0.17.16",
  "pollster",
+ "rayon-core",
  "rfd",
  "ring",
  "rustix 1.1.4",
@@ -2498,7 +2499,7 @@ dependencies = [
 [[package]]
 name = "eui-cursor"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 dependencies = [
  "objc2 0.5.2",
  "objc2-app-kit 0.2.2",
@@ -2509,7 +2510,7 @@ dependencies = [
 [[package]]
 name = "eui-layout"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 dependencies = [
  "eui-proto",
  "eui-theme",
@@ -2519,12 +2520,12 @@ dependencies = [
 [[package]]
 name = "eui-proto"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 
 [[package]]
 name = "eui-render"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 dependencies = [
  "bytemuck",
  "eui-layout",
@@ -2539,7 +2540,7 @@ dependencies = [
 [[package]]
 name = "eui-shader"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 dependencies = [
  "naga",
 ]
@@ -2547,7 +2548,7 @@ dependencies = [
 [[package]]
 name = "eui-text"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 dependencies = [
  "cosmic-text",
  "eui-layout",
@@ -2557,7 +2558,7 @@ dependencies = [
 [[package]]
 name = "eui-theme"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 dependencies = [
  "eui-proto",
 ]
@@ -2565,7 +2566,7 @@ dependencies = [
 [[package]]
 name = "eui-tree"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 dependencies = [
  "eui-proto",
 ]
@@ -2573,7 +2574,7 @@ dependencies = [
 [[package]]
 name = "eui-uikit"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 dependencies = [
  "objc2 0.5.2",
  "objc2-ui-kit",
@@ -2582,7 +2583,7 @@ dependencies = [
 [[package]]
 name = "eui-video"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 dependencies = [
  "gif 0.13.3",
  "image-webp",
@@ -2591,7 +2592,7 @@ dependencies = [
 [[package]]
 name = "eui-vm"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 dependencies = [
  "eui-proto",
 ]
@@ -2599,7 +2600,7 @@ dependencies = [
 [[package]]
 name = "eui-wayland"
 version = "0.1.0"
-source = "git+https://github.com/solisoft/eui?rev=3995713#399571318676d6c178ce6513b5ea72999feafeb5"
+source = "git+https://github.com/solisoft/eui?rev=5bf0354#5bf0354c0906389ac334045745b234a5d633f955"
 dependencies = [
  "rustix 1.1.4",
  "wayland-backend",
@@ -5528,7 +5529,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9752,7 +9753,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
