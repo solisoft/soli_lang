@@ -258,7 +258,23 @@ SOLI_DEV_REPL_ALLOW_REMOTE=1 SOLI_DEV_REPL_SECRET=<long-random-string> \
 | Hot reload | enabled | disabled |
 | Stack traces | detailed | minimal |
 | `dev_queries()` | populated | always `[]` |
+| `dev_mode?()` | `true` | `false` |
 | Flamegraph, requests panel, inbox | present | not mounted |
+
+`dev_mode?()` is how the app asks which of the two it is — to serve a screen only
+while it is being built, for instance. It reads the `--dev` flag, not an
+environment variable, so a `.env` copied to production cannot turn it on, and
+`--dev` itself is refused when `APP_ENV` names production. `soli test` runs its
+server without `--dev`, so it answers `false` in specs; a route gated on it needs
+a second, test-only door if its specs are to reach it.
+
+```soli
+def before_action(req)
+  return {"status": 404, "body": ""} unless dev_mode?()
+
+  req
+end
+```
 
 The dev bar is injected into `text/html` responses only, never into JSON, and
 never in production — where no `X-Soli-Route` header is sent and no script is

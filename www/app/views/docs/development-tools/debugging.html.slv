@@ -577,9 +577,14 @@ SOLI_DEV_REPL_ALLOW_REMOTE=1 SOLI_DEV_REPL_SECRET=&lt;long-random-string&gt; sol
                     <tr><td class="py-2 px-4 text-gray-400">Hot Reload</td><td class="py-2 px-4 text-emerald-400">Enabled</td><td class="py-2 px-4 text-red-400">Disabled</td></tr>
                     <tr><td class="py-2 px-4 text-gray-400">Stack Traces</td><td class="py-2 px-4 text-emerald-400">Detailed</td><td class="py-2 px-4 text-amber-400">Minimal</td></tr>
                     <tr><td class="py-2 px-4 text-gray-400">AQL Query Log (<code>dev_queries()</code>)</td><td class="py-2 px-4 text-emerald-400">Captured per request</td><td class="py-2 px-4 text-red-400">Always returns []</td></tr>
+                    <tr><td class="py-2 px-4 text-gray-400"><code>dev_mode?()</code></td><td class="py-2 px-4 text-emerald-400">true</td><td class="py-2 px-4 text-red-400">false</td></tr>
                 </tbody>
             </table>
         </div>
+
+        <p class="text-gray-400 mb-6">
+            <code class="text-cyan-400">dev_mode?()</code> is how the app asks which of the two it is &mdash; to serve a screen only while it is being built, for instance. It reads the <code class="text-cyan-400">--dev</code> flag, not an environment variable, so a <code>.env</code> copied to production cannot turn it on. <code class="text-cyan-400">soli test</code> runs its server without <code>--dev</code>, so it answers <code>false</code> in specs.
+        </p>
 
         <div class="rounded-xl bg-red-500/10 border border-red-500/20 p-4 mb-6">
             <div class="flex items-start gap-3">

@@ -2145,6 +2145,21 @@ mod assigns_capture_tests {
 
 /// Register template-related builtin functions.
 pub fn register_template_builtins(env: &mut Environment) {
+    // dev_mode?() — is this process `soli serve --dev`?
+    //
+    // A builtin rather than an environment variable because the question is
+    // about the flag, not the configuration: a `.env` copied to production
+    // carries its variables along, and `--dev` is refused there
+    // (`check_production_boot`). An app that serves a screen only in
+    // development — a sign-up it is not ready to sell yet — asks this.
+    // `soli test` runs its server without `--dev`, so it answers false there.
+    env.define(
+        "dev_mode?".to_string(),
+        Value::NativeFunction(NativeFunction::new("dev_mode?", Some(0), |_| {
+            Ok(Value::Bool(is_dev_mode()))
+        })),
+    );
+
     // render(template, data, options?) - Render a template with data
     // Returns a response hash with status, headers, and body
     env.define(
@@ -2823,6 +2838,15 @@ mod tests {
             panic!("expected native function");
         };
         (function.func)(args)
+    }
+
+    // Reads the flag without setting it: `DEV_MODE` is process-global and
+    // the test binary runs in parallel, so flipping it here would change how
+    // `grouped {}` behaves in whichever test happens to run meanwhile.
+    #[test]
+    fn dev_mode_question_reads_the_serve_flag() {
+        let answer = call_builtin("dev_mode?", &[]).unwrap();
+        assert!(matches!(answer, Value::Bool(b) if b == is_dev_mode()));
     }
 
     fn response_location(response: &Value) -> Option<String> {

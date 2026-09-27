@@ -213,6 +213,7 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "env",
     "getenv",
     "hasenv",
+    "dev_mode?",
     "dotenv",
     // HTTP response helpers
     "halt",
