@@ -159,6 +159,34 @@ impl Vm {
         )
     }
 
+    /// Whether `name` is a scope declared on a model class (`Measure.t`,
+    /// `Post.published`). The tree-walker's `class_member_access` checks the
+    /// scope registry before the statics; the VM's class branch did not, so
+    /// the read fell through to "Cannot access property" — and, under
+    /// `soli serve`, to a 500 once the handler had written.
+    pub(crate) fn is_model_class_scope(
+        class: &crate::interpreter::value::Class,
+        name: &str,
+    ) -> bool {
+        class.is_model_subclass()
+            && crate::interpreter::builtins::model::scopes::lookup_scope(&class.name, name)
+                .is_some()
+    }
+
+    /// A model scope bound to a fresh builder for the class, resolved by the
+    /// tree-walker. The interpreter carries the VM's globals: a scope closure
+    /// is user code, and a tenant scope calls `Current` or an app helper.
+    pub(crate) fn model_class_scope(
+        &self,
+        class_val: &Value,
+        name: &str,
+        span: Span,
+    ) -> Result<(Interpreter, Value), RuntimeError> {
+        let mut interp = Interpreter::for_vm_fragment(&self.globals);
+        let scope = interp.evaluate_member_on_value(class_val.clone(), name, span)?;
+        Ok((interp, scope))
+    }
+
     /// An interpreter for query-builder work. Scopes are user closures that
     /// may call application helpers, so they get the VM's globals; everything
     /// else reads only the builder and the database.
@@ -376,6 +404,14 @@ impl Vm {
                 })
             }
             Value::Class(class) => {
+                // A named scope on a model class comes first, as in the
+                // tree-walker's `class_member_access`. A bare read runs the
+                // scope (`Measure.t.where(...)`), under the same paren-free
+                // rule the tree-walker applies to a member.
+                if Self::is_model_class_scope(class, name) {
+                    let (mut interp, scope) = self.model_class_scope(object, name, span)?;
+                    return interp.auto_invoke_member(scope, span);
+                }
                 // Static field access
                 if let Some(val) = class.static_fields.borrow().get(name) {
                     return Ok(val.clone());

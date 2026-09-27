@@ -1526,6 +1526,19 @@ impl Vm {
         if let Some(class) = class_receiver {
             let is_model = class.is_model_subclass();
             if is_model {
+                // `Model.scope_name(args)` — `Post.by_user(5)`, `Measure.t()`.
+                // The property path runs a bare scope read; a call must pass
+                // its arguments to the scope closure instead, as
+                // `call_query_builder_method` does for a scope on a builder.
+                if Self::is_model_class_scope(&class, name) {
+                    let span = self.current_span();
+                    let args = self.stack.split_off(receiver_idx + 1);
+                    let receiver = self.stack.pop().expect("receiver below the arguments");
+                    let (mut interp, scope) = self.model_class_scope(&receiver, name, span)?;
+                    let result = interp.call_value(scope, args, span)?;
+                    self.push(result);
+                    return Ok(());
+                }
                 if name == "transaction"
                     && argc == 1
                     && Self::is_callable_block(&self.stack[receiver_idx + 1])

@@ -104,7 +104,11 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             };
 
             // Parse options
-            let mut expires_in: Option<u64> = None;
+            // Signed: a negative `expires_in` signs a token that is already
+            // expired (how a spec builds one). As `u64` it wrapped to a huge
+            // value and `now + secs` overflowed — a panic in debug builds,
+            // and the right answer only by accident of wrapping in release.
+            let mut expires_in: Option<i64> = None;
             let mut algorithm = Algorithm::HS256;
             let mut pem_key: Option<String> = None;
             let mut kid: Option<String> = None;
@@ -122,7 +126,7 @@ pub fn register_jwt_builtins(env: &mut Environment) {
                             match key.as_ref() {
                                 "expires_in" => {
                                     if let Value::Int(secs) = v {
-                                        expires_in = Some(*secs as u64);
+                                        expires_in = Some(*secs);
                                     }
                                 }
                                 "algorithm" => {
@@ -242,7 +246,8 @@ pub fn register_jwt_builtins(env: &mut Environment) {
             if let Some(exp) = absolute_exp {
                 claims.insert("exp".to_string(), JsonValue::from(exp));
             } else if let Some(secs) = expires_in {
-                claims.insert("exp".to_string(), JsonValue::from(now + secs));
+                let exp = i64::try_from(now).unwrap_or(i64::MAX).saturating_add(secs);
+                claims.insert("exp".to_string(), JsonValue::from(exp));
             }
             if let Some(nbf) = not_before {
                 claims.insert("nbf".to_string(), JsonValue::from(nbf));
@@ -1102,6 +1107,32 @@ mod tests {
             Some(Value::Int(4_102_444_800))
         );
         assert_eq!(verify_claim(&token, &[], "nbf"), Some(Value::Int(1000)));
+    }
+
+    /// A negative `expires_in` signs an already-expired token: `exp` sits that
+    /// many seconds before `iat`, with no overflow (it panicked in debug
+    /// builds, reached from grc's SSO spec).
+    #[test]
+    fn jwt_sign_negative_expires_in_is_already_expired() {
+        let env = fresh_env();
+        let token = sign_with(
+            &[("sub", Value::String("u1".into()))],
+            &[("expires_in", Value::Int(-3600))],
+        );
+        let decode = jwt_fn(&env, "jwt_decode_unsafe");
+        // The unverified claims sit under `claims`, by design (SEC-029).
+        let claims = match (decode.func)(&[Value::String(token.into())]).unwrap() {
+            Value::Hash(h) => match h.borrow().get(&HashKey::String("claims".into())) {
+                Some(Value::Hash(inner)) => inner.borrow().clone(),
+                other => panic!("expected a claims hash, got {other:?}"),
+            },
+            other => panic!("expected a hash, got {other:?}"),
+        };
+        let read = |name: &str| match claims.get(&HashKey::String(name.into())) {
+            Some(Value::Int(n)) => *n,
+            other => panic!("expected int {name}, got {other:?}"),
+        };
+        assert_eq!(read("exp"), read("iat") - 3600);
     }
 
     /// The two are different units (absolute vs. relative); silently letting

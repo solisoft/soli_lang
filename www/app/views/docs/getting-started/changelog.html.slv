@@ -22,6 +22,12 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.6.2.</p>
 
+        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A model's named scopes work under <code class="text-cyan-400">soli serve</code>.</strong> <code class="text-cyan-400">Measure.t</code>, <code class="text-cyan-400">Post.published</code> and <code class="text-cyan-400">Post.by_user(5)</code> raised <em>Cannot access property</em> on the bytecode VM. The server re-ran the action on the interpreter, which hid it &mdash; until the action had already written, and then it answered 500. An action that recorded an audit entry and then read through a tenant scope failed every time.</li>
+            <li><strong class="text-white">A negative <code class="text-cyan-400">expires_in</code> no longer overflows.</strong> <code class="text-cyan-400">jwt_sign(&hellip;, {"expires_in": -3600})</code>, the usual way to build an expired token in a test, panicked in debug builds; it now signs a token that expired an hour ago.</li>
+        </ul>
+
     </section>
 
     <section id="v2-6-2" class="mb-16 scroll-mt-24">
