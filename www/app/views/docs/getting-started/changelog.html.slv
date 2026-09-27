@@ -20,20 +20,25 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.6.1.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.6.2.</p>
 
-        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+    </section>
+
+    <section id="v2-6-2" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.6.2 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-27</span></h2>
+
+        <h3 id="v2-6-2-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">The installer says which versions it saw.</strong> <code class="text-cyan-400">install.sh</code> reports the <code class="text-cyan-400">soli</code> it replaces, the version it downloaded and the one it installed, and warns when your shell would run a different <code class="text-cyan-400">soli</code> first on the <code class="text-cyan-400">PATH</code>, naming its version. When GitHub's API does not answer, it downloads the latest release directly instead of falling back to a years-old v0.20.0. See <a href="/docs/getting-started/installation" class="text-amber-400 hover:underline">Installation</a>.</li>
         </ul>
 
-        <h3 id="unreleased-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
+        <h3 id="v2-6-2-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Every controller action runs on the bytecode VM.</strong> Almost none did. The VM compiled a bare assignment to a new name (<code class="text-cyan-400">total = 0</code>, with no <code class="text-cyan-400">let</code>) as a write to an undefined global, which failed, and the server quietly re-ran the action on the tree-walking interpreter &mdash; or answered 500 when the action had already written to the database. Zero-parameter actions (<code class="text-cyan-400">def index</code>) were kept off the VM altogether after exactly that broke them in 2.4.0. The VM now declares those names as locals, closes the gaps that surfaced after a write (see Fixes), and runs every action, with or without <code class="text-cyan-400">(req)</code>. An action filtering and summarizing 100 records: <strong class="text-white">40.7k &rarr; 106.3k req/s</strong>. <code class="text-cyan-400">SOLI_VM_OPTIONAL_LET=0</code> restores the old assignment behavior.</li>
             <li><strong class="text-white">The interpreter no longer copies a file path for every expression it evaluates.</strong> Line coverage looked up the current file &mdash; a fresh heap copy of its path &mdash; before checking whether coverage was being collected, which in <code class="text-cyan-400">soli serve</code> it never is. Views, <code class="text-cyan-400">soli test</code> without coverage, scripts and any action that falls back to the interpreter benefit: the 100-record action, measured on the interpreter, went from <strong class="text-white">41.3k to 57.1k req/s</strong>.</li>
         </ul>
 
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <h3 id="v2-6-2-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">A trailing <code class="text-cyan-400">if</code> gives an action its value on the VM.</strong> An action ending in <code class="text-cyan-400">if req["method"] == "POST" &hellip; redirect("/") end</code> returned null under <code class="text-cyan-400">soli serve</code> and rendered its form again instead of redirecting.</li>
             <li><strong class="text-white">Model instances and query builders behave the same on both engines.</strong> Relations (<code class="text-cyan-400">card.project</code>), an unset <code class="text-cyan-400">rec._errors</code>, uploader and HABTM helpers, <code class="text-cyan-400">Post.where(&hellip;).order(&hellip;).all</code>, scopes and aggregates now resolve through the same code under <code class="text-cyan-400">soli serve</code> as under <code class="text-cyan-400">soli test</code>.</li>

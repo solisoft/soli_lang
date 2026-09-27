@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.6.2] - 2026-09-27
+
 ### Changed
 
 * **install:** **`install.sh` says which versions it saw.** It printed the tag it meant to install and then ran whichever `soli` came first on the `PATH` as its "result" — which may be another copy entirely (on a machine with a development build ahead of `~/.local/bin`, installing 2.5.5 reported 2.6.0). It now reports the `soli` already in the install directory, the downloaded binary's own `--version`, and the installed file's, and names any other `soli` the shell would run first, with its version. When the GitHub API does not answer, it downloads through `releases/latest/download/` instead of falling back to v0.20.0, a years-old release it used to install behind a one-line warning. Checked against the live releases with a scratch `HOME`, and with the API refused. Docs: `www/docs/installation.md` and its page.
