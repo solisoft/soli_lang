@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.6.3] - 2026-09-27
+
 ### Fixed
 
 * **fix(vm):** **a model's named scope resolves on the VM.** `Measure.t`, `Post.published` and `Post.by_user(5)` are looked up in the scope registry by the tree-walker's `class_member_access`, before the statics; the VM's class branch (`op_get_property`, `vm_classes.rs`) had no such check and answered *Cannot access property 't' on Measure*. Under `soli serve` that error re-ran the action on the tree-walker, so it stayed hidden until an action had written: then it answered 500. An action that recorded an audit row and then read through a tenant scope failed on every request (a GRC app's organisation export, and six more actions). A bare read resolves the scope through the tree-walker's member access, with the program's globals (a scope closure calls `Current` or an app helper), and auto-invokes it; a call with arguments (`call_method_slow_path`, `vm_calls.rs`) passes them to the scope, as a scope on a builder already did. A `scope(...)` written directly in a class body is a separate gap, left open: under `--vm` no class-body DSL (`validates`, `belongs_to`, `scope`…) receives its class, while `soli serve` loads model files on the tree-walker. Test: `vm_model_scope_test`.
