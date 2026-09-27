@@ -4,12 +4,23 @@
   <meta property="og:title" content="<%= title %>">
   <meta property="og:description" content="<%= og_description %>">
   <meta property="og:url" content="https://soli.solisoft.net/docs/blog/<%= slug %>">
+  <link rel="canonical" href="https://soli.solisoft.net/docs/blog/<%= slug %>">
+  <% if published_on %>
+  <meta property="article:published_time" content="<%= published_on %>">
+  <% end %>
   <meta name="twitter:title" content="<%= title %>">
   <meta name="twitter:description" content="<%= og_description %>">
   <% if og_image %>
   <meta property="og:image" content="<%= og_image %>">
+  <meta property="og:image:alt" content="<%= title %>">
+  <% if og_image_size %>
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="<%= og_image_size["width"] %>">
+  <meta property="og:image:height" content="<%= og_image_size["height"] %>">
+  <% end %>
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:image" content="<%= og_image %>">
+  <meta name="twitter:image:alt" content="<%= title %>">
   <% end %>
   <% if slug == "liveview-desk" %>
   <%- csrf_meta_tag() %>

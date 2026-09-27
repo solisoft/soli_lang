@@ -32,6 +32,16 @@ When you add or update a post, always ship an illustration:
    ```
 3. **Register it** in the manifest entry: add `"image": "<slug>.svg"` alongside
    `"slug"`, `"file"`, `"desc"`, `"tag"`.
+4. **Render the social card.** X, LinkedIn, Facebook and Slack ignore an SVG
+   `og:image`, so an SVG hero needs a 1200×630 PNG next to it. `blog#show`
+   picks up `public/images/blog/og/<slug>.png` automatically (and adds its
+   size/type tags); without it the link preview has no picture:
+   ```bash
+   rsvg-convert -w 1200 public/images/blog/<slug>.svg \
+     | magick - -gravity center -crop 1200x630+0+0 +repage -strip public/images/blog/og/<slug>.png
+   ```
+   Keep the hero's content inside its middle 540px of height: the crop trims
+   about 20px (in 1024×576 units) off the top and bottom.
 
 ### Image style (match the site's solar theme)
 

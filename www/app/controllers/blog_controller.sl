@@ -109,6 +109,7 @@ def get_blog_posts()
                     "tag_gradient": tag_gradient_class(info["tag"]),
                     "image": info["image"] ?? null,
                     "scheduled_on": blog_scheduled_on(info)
+                    "publish_on": info["publish_on"] ?? null,
                 })
             end
         end
@@ -191,6 +192,8 @@ def show
         "slug": slug,
         "og_image": blog_og_image(slug),
         "scheduled_on": manifest_entry.nil? ? null : manifest_entry["scheduled_on"],
+        "og_image_size": blog_og_image_size(slug),
+        "published_on": manifest_entry.nil? ? null : manifest_entry["publish_on"],
         "og_description": blog_og_description(slug)
     })
 end
@@ -206,13 +209,26 @@ def find_blog_post(slug)
 end
 
 def blog_og_image(slug)
+# X, LinkedIn, Facebook and Slack don't render an SVG og:image, so a post whose
+# hero is an SVG shares a 1200x630 PNG render of it from images/blog/og/<slug>.png
+# (rsvg-convert -w 1200 <slug>.svg | magick - -gravity center -crop 1200x630+0+0).
     let post = find_blog_post(slug)
     return null if post == null
     return null if post["image"] == null
+    return "https://soli.solisoft.net/images/blog/og/" + slug + ".png" if blog_og_card?(slug)
     return "https://soli.solisoft.net/images/blog/" + post["image"]
 end
 
 def blog_og_description(slug)
+def blog_og_card?(slug)
+    file_exists("public/images/blog/og/" + slug + ".png")
+end
+
+def blog_og_image_size(slug)
+    return {"width": 1200, "height": 630} if blog_og_card?(slug)
+    null
+end
+
     let post = find_blog_post(slug)
     return "" if post == null
     return post["description"]
