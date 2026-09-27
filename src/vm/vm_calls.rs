@@ -11,6 +11,9 @@ use crate::interpreter::value::{Class, Function, HashKey, Instance, NativeFuncti
 use crate::span::Span;
 
 use super::chunk::{Constant, FunctionProto};
+
+/// A compiled method and the class that defines it (for `super`).
+type MethodWithClass = (Rc<VmClosure>, Rc<Class>);
 use super::compiler::Compiler;
 use super::upvalue::VmClosure;
 use super::vm::{CallFrame, Vm};
@@ -1508,6 +1511,14 @@ impl Vm {
         argc: usize,
         name: &str,
     ) -> Result<(), RuntimeError> {
+        if matches!(self.stack[receiver_idx], Value::QueryBuilder(_)) {
+            let span = self.current_span();
+            let args = self.stack.split_off(receiver_idx + 1);
+            let receiver = self.stack.pop().expect("receiver below the arguments");
+            let result = self.call_query_builder_method(receiver, name, args, span)?;
+            self.push(result);
+            return Ok(());
+        }
         let class_receiver = match &self.stack[receiver_idx] {
             Value::Class(class) => Some(class.clone()),
             _ => None,
@@ -1574,7 +1585,17 @@ impl Vm {
         let compiled = match &self.stack[receiver_idx] {
             Value::Instance(inst) => {
                 let class = inst.borrow().class.clone();
-                class.find_vm_method_with_class(name)
+                match class.find_vm_method_with_class(name) {
+                    Some(found) => Some(found),
+                    None => {
+                        let shadowed_by_field = inst.borrow().fields.contains_key(name);
+                        if shadowed_by_field {
+                            None
+                        } else {
+                            self.compile_tree_walking_method(&class, name)?
+                        }
+                    }
+                }
             }
             // Statics compile as plain functions; the class value left in
             // the callee slot is ignored by the bytecode.
@@ -1688,6 +1709,46 @@ impl Vm {
         Ok(())
     }
 
+    /// Compile an instance method that exists only as AST — one inherited from
+    /// a class the VM never compiled, such as a controller's base class — as
+    /// a *method* and register the bytecode on the class that defines it, so
+    /// later calls take the compiled-method hot path.
+    ///
+    /// Without this the call fell through to `op_get_property`, which returns
+    /// the unbound `Function`, and `call_native_wrapper` compiled it as a plain
+    /// function and put the closure in the callee slot — the slot a method
+    /// reads as `this`. `this._base()` inside it then failed with
+    /// "Cannot access property '_base' on Function".
+    pub(crate) fn compile_tree_walking_method(
+        &self,
+        class: &Rc<Class>,
+        name: &str,
+    ) -> Result<Option<MethodWithClass>, RuntimeError> {
+        let mut defining = class.clone();
+        let method = loop {
+            let own = defining.methods.borrow().get(name).cloned();
+            if let Some(method) = own {
+                break method;
+            }
+            match defining.superclass.clone() {
+                Some(superclass) => defining = superclass,
+                None => return Ok(None),
+            }
+        };
+        let proto = jit_compile_method(&method, self.globals.keys().cloned()).map_err(|e| {
+            RuntimeError::EngineFallback(
+                format!("a method the VM cannot compile ({})", e),
+                self.current_span(),
+            )
+        })?;
+        let closure = Rc::new(VmClosure::new(proto, Vec::new()));
+        defining
+            .vm_methods
+            .borrow_mut()
+            .insert(name.to_string(), closure.clone());
+        Ok(Some((closure, defining)))
+    }
+
     fn call_builtin_method(
         &mut self,
         method_name: &str,
@@ -1712,6 +1773,23 @@ impl Vm {
             | Value::Decimal(_)
             | Value::DateTime(_, _) => {
                 self.vm_call_primitive_method(&receiver, method_name, &args, span)?
+            }
+            Value::QueryBuilder(_) => {
+                self.call_query_builder_method(receiver, method_name, args, span)?
+            }
+            // A model helper resolved by the tree-walker's instance access —
+            // uploader (`attach_file`), HABTM (`add_tag`) — comes back as a
+            // bound method; it runs where it was resolved.
+            Value::Instance(ref inst) if inst.borrow().class.is_model_subclass() => {
+                let method = Rc::new(crate::interpreter::value::ValueMethod {
+                    receiver: Box::new(receiver.clone()),
+                    method_name: method_name.to_string(),
+                });
+                // Seeded with the VM's globals: an uploader method calls the
+                // app's `attach_upload` helper.
+                let mut interp =
+                    crate::interpreter::executor::Interpreter::for_vm_fragment(&self.globals);
+                interp.call_method(method, args, span)?
             }
             _ => {
                 return Err(RuntimeError::NoSuchProperty {

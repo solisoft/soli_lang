@@ -22,21 +22,19 @@ pub type CompileResult<T> = Result<T, CompileError>;
 /// Whether the VM honors Soli's optional-`let` (bare assignment creates a
 /// binding) by hoisting function-locals and upserting globals.
 ///
-/// **Off by default.** When disabled, a bare assignment to an undeclared name
-/// compiles to `SetGlobal`, which raises "undefined variable" at runtime —
-/// causing the server to fall back to the tree-walking interpreter for that
-/// handler (the long-standing behavior). Enabling it (`SOLI_VM_OPTIONAL_LET=1`)
-/// lets such handlers run on the VM, but that also widens the VM's exposure to
-/// a class of latent control-flow/local-assignment bugs (e.g. assignment inside
-/// `for`-with-index and `try`/`catch` blocks) that are otherwise masked by the
-/// fallback. Keep it off until those are fixed and differentially tested.
+/// **On by default.** Without it a bare assignment to an undeclared name
+/// compiled to `SetGlobal`, which raised "undefined variable" at runtime. The
+/// server then re-ran the handler on the tree-walker, so nearly every real
+/// action ran there — and one that had already written to the database could
+/// not be re-run at all, so it answered 500. `SOLI_VM_OPTIONAL_LET=0` restores
+/// the old behavior, as an escape hatch.
 pub fn optional_let_enabled() -> bool {
     use std::sync::OnceLock;
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {
         std::env::var("SOLI_VM_OPTIONAL_LET")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false)
+            .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
+            .unwrap_or(true)
     })
 }
 

@@ -21,6 +21,12 @@ pub fn get_global_coverage_tracker() -> Option<Arc<Mutex<CoverageTracker>>> {
     GLOBAL_COVERAGE_TRACKER.get().cloned()
 }
 
+/// Whether a global tracker is installed. A load, with no `Arc` clone: the
+/// interpreter asks this on every expression it evaluates.
+pub fn global_coverage_tracker_installed() -> bool {
+    GLOBAL_COVERAGE_TRACKER.get().is_some()
+}
+
 pub fn clear_global_coverage_tracker() {
     if let Some(global) = GLOBAL_COVERAGE_TRACKER.get() {
         if let Ok(mut tracker) = global.lock() {

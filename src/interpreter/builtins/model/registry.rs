@@ -385,6 +385,19 @@ pub fn get_translated_fields(class_name: &str) -> Vec<String> {
     })
 }
 
+/// Whether reading `name` on an instance of `class_name` means more than
+/// returning the stored field: a declared relation (loaded, or converted from a
+/// preloaded hash) or a translated field (read in the current locale). One
+/// registry read for both, for the VM's field fast path.
+pub fn member_needs_model_resolution(class_name: &str, name: &str) -> bool {
+    MODEL_REGISTRY.read(|registry| {
+        registry.get(class_name).is_some_and(|m| {
+            m.relations.iter().any(|r| r.name == name)
+                || m.translated_fields.iter().any(|s| s == name)
+        })
+    })
+}
+
 pub fn is_translated_field(class_name: &str, field_name: &str) -> bool {
     MODEL_REGISTRY.read(|registry| {
         registry

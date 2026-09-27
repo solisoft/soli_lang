@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="Requests per second for a controller action that builds, filters and summarizes 100 records, shipped build, 100 connections. On v2.6.1 it ran on the interpreter: 41.4k req/s taking (req), 40.7k without. Now it runs on the VM: 106.4k and 106.3k. On the right, why: the bare assignment todo_list = TodoList.create compiled to SetGlobal, which raised Undefined variable after the row was inserted. Without a write the interpreter re-ran the action; with one, the request answered 500.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0.32" y1="0.28" x2="1" y2="1">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="0.55" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#c2620c"/>
+    </linearGradient>
+    <marker id="grey" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b616b"/>
+    </marker>
+    <marker id="red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444"/>
+    </marker>
+    <marker id="amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg)"/>
+
+  <!-- title -->
+  <circle cx="64" cy="56" r="8" fill="url(#sun)"/>
+  <text x="82" y="62" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="19" fill="#e5e7eb" font-weight="600">why actions skipped the vm</text>
+  <text x="56" y="88" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#8b929e">`name = value` without `let` compiled to SetGlobal, and SetGlobal raised</text>
+
+  <!-- LEFT PANEL: req/s -->
+  <rect x="40" y="112" width="580" height="330" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="62" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">req/s · build, filter, summarize 100 records · oha -c 100</text>
+
+  <!-- grid: 0 / 40k / 80k / 120k over x 200..560 -->
+  <g stroke="#2b3038" stroke-width="1">
+    <line x1="200" y1="158" x2="200" y2="382"/>
+    <line x1="320" y1="158" x2="320" y2="382" stroke-dasharray="3 4"/>
+    <line x1="440" y1="158" x2="440" y2="382" stroke-dasharray="3 4"/>
+    <line x1="560" y1="158" x2="560" y2="382" stroke-dasharray="3 4"/>
+  </g>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#5b616b" text-anchor="middle">
+    <text x="200" y="400">0</text>
+    <text x="320" y="400">40k</text>
+    <text x="440" y="400">80k</text>
+    <text x="560" y="400">120k</text>
+  </g>
+
+  <!-- group 1: def work(req) -->
+  <text x="62" y="180" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#e5e7eb">def work(req)</text>
+  <text x="62" y="210" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">v2.6.1</text>
+  <rect x="200" y="198" width="124" height="18" rx="3" fill="#b45309"/>
+  <text x="332" y="212" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#e5e7eb">41.4k</text>
+  <text x="62" y="240" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">now</text>
+  <rect x="200" y="228" width="319" height="18" rx="3" fill="#22c55e"/>
+  <text x="527" y="242" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#e5e7eb" font-weight="600">106.4k</text>
+
+  <!-- group 2: def work -->
+  <text x="62" y="290" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#e5e7eb">def work</text>
+  <text x="62" y="320" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">v2.6.1</text>
+  <rect x="200" y="308" width="122" height="18" rx="3" fill="#b45309"/>
+  <text x="330" y="322" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#e5e7eb">40.7k</text>
+  <text x="62" y="350" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">now</text>
+  <rect x="200" y="338" width="319" height="18" rx="3" fill="#22c55e"/>
+  <text x="527" y="352" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#e5e7eb" font-weight="600">106.3k</text>
+
+  <!-- legend -->
+  <rect x="62" y="418" width="10" height="10" rx="2" fill="#b45309"/>
+  <text x="80" y="427" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">interpreter</text>
+  <rect x="180" y="418" width="10" height="10" rx="2" fill="#22c55e"/>
+  <text x="198" y="427" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">bytecode VM</text>
+  <text x="598" y="427" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#22c55e" text-anchor="end">×2.6 on the VM</text>
+
+  <!-- RIGHT PANEL: the failure path -->
+  <rect x="640" y="112" width="344" height="330" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="662" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">one request, v2.6.1</text>
+
+  <rect x="662" y="156" width="300" height="44" rx="10" fill="#16130f" stroke="#5a3d0c"/>
+  <text x="678" y="183" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#f59e0b">VM  TodoList.create(…)</text>
+  <path d="M 812 200 L 812 222" fill="none" stroke="#5b616b" stroke-width="1.4" marker-end="url(#grey)"/>
+  <text x="822" y="215" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#8b929e">row inserted</text>
+
+  <rect x="662" y="226" width="300" height="52" rx="10" fill="#1a0f10" stroke="#7f1d1d"/>
+  <text x="678" y="248" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#ef4444">VM  SetGlobal todo_list</text>
+  <text x="678" y="266" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">Undefined variable 'todo_list'</text>
+
+  <path d="M 740 278 L 740 318" fill="none" stroke="#f59e0b" stroke-width="1.4" marker-end="url(#amber)"/>
+  <path d="M 884 278 L 884 318" fill="none" stroke="#ef4444" stroke-width="1.4" marker-end="url(#red)"/>
+  <text x="748" y="302" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#8b929e">no write</text>
+  <text x="892" y="302" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#8b929e">wrote</text>
+
+  <rect x="662" y="322" width="150" height="60" rx="10" fill="#16130f" stroke="#5a3d0c"/>
+  <text x="676" y="346" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#f59e0b">re-run on the</text>
+  <text x="676" y="364" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#f59e0b">interpreter</text>
+
+  <rect x="822" y="322" width="152" height="60" rx="10" fill="#1a0f10" stroke="#7f1d1d"/>
+  <text x="834" y="346" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#ef4444">500</text>
+  <text x="834" y="364" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">can't replay a write</text>
+
+  <text x="662" y="412" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b929e">demotion cached: later requests skip the VM</text>
+
+  <!-- bottom band: the fix -->
+  <rect x="40" y="462" width="944" height="72" rx="14" fill="#0f1a13" stroke="#14532d"/>
+  <text x="62" y="492" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#22c55e">fix: every action runs on the VM</text>
+  <text x="62" y="516" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">optional `let` compiled · model, query-builder and tail-return gaps closed · with or without (req)</text>
+</svg>

@@ -484,10 +484,39 @@ impl Vm {
                 Ok(max.clone())
             }
             "sort" => {
-                if !args.is_empty() {
-                    return Err(RuntimeError::wrong_arity(0, args.len(), span));
+                if args.len() > 1 {
+                    return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }
                 let mut sorted = arr.borrow().clone();
+                if let Some(comparator) = args.first() {
+                    // `names.sort do |a, b| … end`: the comparator's sign orders
+                    // the pair. Same reading as the tree-walker's `array_sort` —
+                    // a non-number, or an error, counts as equal — and the same
+                    // tolerant sort, since a user comparator can be
+                    // inconsistent and `slice::sort_by` panics on that.
+                    if !comparator.is_callable() {
+                        return Err(RuntimeError::type_error(
+                            "sort expects a function argument",
+                            span,
+                        ));
+                    }
+                    let comparator = comparator.clone();
+                    crate::interpreter::executor::calls::array_ops::stable_sort_by(
+                        &mut sorted,
+                        |a, b| match self.invoke_callable(
+                            comparator.clone(),
+                            &[a.clone(), b.clone()],
+                            span,
+                        ) {
+                            Ok(Value::Int(n)) => n.cmp(&0),
+                            Ok(Value::Float(n)) => {
+                                n.partial_cmp(&0.0).unwrap_or(std::cmp::Ordering::Equal)
+                            }
+                            _ => std::cmp::Ordering::Equal,
+                        },
+                    );
+                    return Ok(Value::Array(Rc::new(RefCell::new(sorted))));
+                }
                 // Tolerant sort: the default ordering answers `Equal` across
                 // types, which is not transitive, and `slice::sort_by` panics
                 // when it detects that.
@@ -499,6 +528,12 @@ impl Vm {
                             x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
                         }
                         (Value::String(x), Value::String(y)) => x.cmp(y),
+                        (Value::Int(x), Value::Float(y)) => (*x as f64)
+                            .partial_cmp(y)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                        (Value::Float(x), Value::Int(y)) => x
+                            .partial_cmp(&(*y as f64))
+                            .unwrap_or(std::cmp::Ordering::Equal),
                         _ => std::cmp::Ordering::Equal,
                     },
                 );

@@ -38,10 +38,13 @@ impl Interpreter {
         // `record_coverage` pour les expressions, et ce que fait la
         // localisation des ERREURS quelques centaines de lignes plus bas —
         // avec le meme commentaire, et pour la meme raison.
-        let source_path = stmt
-            .source_path
-            .clone()
-            .or_else(|| self.current_file_path());
+        let source_path = if self.coverage_active() {
+            stmt.source_path
+                .clone()
+                .or_else(|| self.current_file_path())
+        } else {
+            None
+        };
         if let Some(ref path) = source_path {
             if let Some(ref tracker) = self.coverage_tracker {
                 if let Ok(guard) = tracker.lock() {

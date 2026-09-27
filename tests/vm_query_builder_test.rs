@@ -1,21 +1,16 @@
-//! The VM must hand query-builder member access back to the tree-walker.
+//! Query builders on the VM.
 //!
 //! `where`, `limit`, `first`, `order`, the aggregates and scope chaining are
-//! implemented only in the interpreter's `query_builder_member_access`, and
-//! running them needs an `Interpreter`. The VM had no arm for
-//! `Value::QueryBuilder` at all, so its catch-all raised `NoSuchProperty`
-//! ("Cannot access property 'limit' on QueryBuilder").
-//!
-//! That error class is **catchable by user code**, which is what made it a
-//! production bug rather than a demotion: a handler with its own `try/catch`
-//! around a model call swallowed it and reported its own failure, so the error
-//! never reached the serve layer and the handler never demoted to the
-//! interpreter. `EngineFallback` is deliberately not catchable
-//! (`vm.rs`: `if !catchable || err.is_engine_fallback()`), so it propagates,
-//! the handler demotes once, and the code runs.
-//!
-//! These tests pin both halves: the VM refuses with a fallback, and user
-//! `try/catch` cannot intercept that refusal.
+//! implemented once, in the interpreter's `query_builder_member_access` and
+//! `call_query_builder_method`. The VM used to have no arm for
+//! `Value::QueryBuilder`: first its catch-all raised a catchable
+//! `NoSuchProperty` that user `try/catch` swallowed, then it refused with an
+//! `EngineFallback` so the handler re-ran on the interpreter. The refusal was
+//! harmless before a write and a 500 after one — an action that inserted a row
+//! and then queried could not be re-run. The VM now resolves builder members
+//! through the interpreter's code and runs block methods (`each`, `map`, …) on
+//! its own array methods. Only batch iteration (`find_each`, `in_batches`),
+//! which calls its block from inside the interpreter, still demotes.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -74,22 +69,23 @@ fn the_interpreter_runs_a_query_builder_chain() {
     );
 }
 
-/// The VM refuses, and the refusal must say it needs the interpreter — that is
-/// the marker `serve` keys the demotion off. The old "Cannot access property"
-/// wording was a plain runtime error and demoted nothing.
+/// The VM runs the chain itself. No database here either, so — as for the
+/// tree-walker — only a result is required: a failed read comes back in-band
+/// as an error string whose wording (and length) depends on why it failed.
 #[test]
-fn the_vm_refuses_with_an_engine_fallback_not_a_property_error() {
+fn the_vm_runs_a_query_builder_chain() {
     let run = run_script(CHAIN, true);
     let all = format!("{}{}", run.stdout, run.stderr);
 
     assert!(
-        all.contains("requires the interpreter"),
-        "the VM should ask for the interpreter: {all}"
+        !all.contains("requires the interpreter"),
+        "the VM should run the chain, not demote: {all}"
     );
     assert!(
         !all.contains("Cannot access property"),
         "a query-builder member must not read as a missing property: {all}"
     );
+    assert!(run.stdout.contains("rows="), "stdout: {all}");
 }
 
 /// The bug in one test.

@@ -605,18 +605,83 @@ impl Compiler {
         // Declare locals introduced by bare assignment (optional-`let`) up front.
         self.hoist_locals(body, body[0].span.line as usize);
 
-        let last_idx = body.len() - 1;
-        for (i, stmt) in body.iter().enumerate() {
-            if i == last_idx {
-                // Last statement: if it's an expression, compile it without Pop
-                // and emit Return so the value is returned implicitly
-                if let StmtKind::Expression(expr) = &stmt.kind {
-                    self.compile_expr(expr)?;
-                    self.emit(Op::Return, stmt.span.line as usize);
-                    return Ok(());
-                }
-            }
+        let (last, init) = body.split_last().expect("body is not empty");
+        for stmt in init {
             self.compile_stmt(stmt)?;
+        }
+        self.compile_tail_stmt(last)
+    }
+
+    /// Compile the statement whose value a function returns implicitly.
+    ///
+    /// The tree-walker's value for a function is its last statement's, and an
+    /// `if`/`unless` yields the value of the branch that ran (a block, its own
+    /// last statement's). So in tail position an expression returns, and an
+    /// `if`/`unless`/block passes tail position into its branches. A branch
+    /// that ends in anything else falls through to the caller's implicit
+    /// `return null`, as the tree-walker answers null for it.
+    ///
+    /// Only a trailing plain expression was handled, so
+    /// `def signup … if post … redirect("/") end end` returned null on the VM
+    /// and the server rendered the form again instead of redirecting.
+    pub(crate) fn compile_tail_stmt(&mut self, stmt: &Stmt) -> CompileResult<()> {
+        let line = stmt.span.line as usize;
+        match &stmt.kind {
+            StmtKind::Expression(expr) => {
+                self.compile_expr(expr)?;
+                self.emit(Op::Return, line);
+            }
+            StmtKind::Block(stmts) => {
+                self.begin_scope();
+                if let Some((last, init)) = stmts.split_last() {
+                    for s in init {
+                        self.compile_stmt(s)?;
+                    }
+                    self.compile_tail_stmt(last)?;
+                }
+                self.end_scope(line);
+            }
+            StmtKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.compile_tail_if(condition, then_branch, else_branch.as_deref(), false, line)?;
+            }
+            StmtKind::Unless {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.compile_tail_if(condition, then_branch, else_branch.as_deref(), true, line)?;
+            }
+            _ => self.compile_stmt(stmt)?,
+        }
+        Ok(())
+    }
+
+    /// `compile_if_stmt` with both branches in tail position.
+    fn compile_tail_if(
+        &mut self,
+        condition: &crate::ast::Expr,
+        then_branch: &Stmt,
+        else_branch: Option<&Stmt>,
+        invert: bool,
+        line: usize,
+    ) -> CompileResult<()> {
+        self.compile_expr(condition)?;
+        if invert {
+            self.emit(Op::Not, line);
+        }
+        let then_jump = self.emit_jump(Op::JumpIfFalse(0), line);
+        self.compile_tail_stmt(then_branch)?;
+        if let Some(else_stmt) = else_branch {
+            let else_jump = self.emit_jump(Op::Jump(0), line);
+            self.patch_jump(then_jump);
+            self.compile_tail_stmt(else_stmt)?;
+            self.patch_jump(else_jump);
+        } else {
+            self.patch_jump(then_jump);
         }
         Ok(())
     }

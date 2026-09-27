@@ -1168,6 +1168,27 @@ const CASES: &[(&str, &str)] = &[
         "interpolation_shapes",
         "let s = \"Alice\"\nlet long = \"Alice-the-quite-long-name-of-a-user\"\nprint(\"#{s}\")\nprint(\"#{42}\")\nprint(\"#{s}#{s}\")\nprint(\"Hi #{s}!\")\nprint(\"Dear #{long}, you have #{3} new messages\")\nlet f = 0.1 + 0.2\nprint(\"#{f}|#{1.0}|#{2.5}|#{-0.0}|#{19.99}|#{1.0 / 3.0}|#{100000000000000000.0}\")\nprint(\"#{true}-#{false}-#{null}-#{:sym}\")\nprint(\"a=#{[1, 2.5, \"x\"]} h=#{{\"k\": 1}}\")\ndef greet(n) { return \"hi #{n} and #{n.length}\" }\nprint(\"outer #{greet(s)} / #{greet(long)} end\")\nprint(\"#{s}\".length)",
     ),
+    // A zero-parameter static method read without parentheses is called, as a
+    // zero-parameter instance method is (`Assistant.history_messages`). The VM
+    // returned the method itself, so arithmetic on it failed.
+    (
+        "static_zero_arg_method_read_bare",
+        "class Limits\n  static def history\n    20\n  end\n  static def keep(n)\n    n * 2\n  end\nend\nprint(Limits.history + 1)\nprint(Limits.keep(4))\nlet kept = Limits.history\nprint(kept)",
+    ),
+    // `sort` with a comparator block. The VM's `sort` took no argument and
+    // raised "expected 0, got 1"; int/float mixes use the numeric order too.
+    (
+        "sort_with_comparator",
+        "names = [\"bb\", \"a\", \"ccc\"]\nlongest_first = names.sort do |a, b|\n  b.length() - a.length()\nend\nprint(longest_first)\nprint(names.sort(fn(a, b) a.length() - b.length()))\nprint([3, 1.5, 2].sort())\nprint([1, 2, 3].sort(fn(a, b) \"x\"))",
+    ),
+    // A function's value is its last statement's, and a trailing `if` /
+    // `unless` yields its taken branch's. The VM returned null unless the last
+    // statement was a plain expression — an action ending in
+    // `if post … redirect("/") end` rendered its form instead of redirecting.
+    (
+        "implicit_return_through_trailing_if",
+        "class Signup\n  def go(m)\n    @seen = true\n    if m == \"POST\"\n      done = 1\n      \"redirected\"\n    end\n  end\n  def pick(m)\n    if m == \"POST\"\n      \"yes\"\n    else\n      \"no\"\n    end\n  end\n  def nested(a, b)\n    unless a\n      \"not a\"\n    else\n      if b\n        \"a and b\"\n      end\n    end\n  end\nend\ndef top(m)\n  if m\n    \"top-yes\"\n  end\nend\ns = new Signup()\nprint(s.go(\"POST\"))\nprint(s.go(\"GET\"))\nprint(s.pick(\"GET\"))\nprint(s.nested(false, true))\nprint(s.nested(true, true))\nprint(s.nested(true, false))\nprint(top(true))\nprint(top(false))",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

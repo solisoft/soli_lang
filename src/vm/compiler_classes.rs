@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use crate::ast::stmt::{ClassDecl, ConstructorDecl, FieldDecl, MethodDecl};
-use crate::ast::StmtKind;
 
 use super::chunk::Constant;
 use super::compiler::{CompileResult, Compiler, FunctionType};
@@ -209,16 +208,13 @@ impl Compiler {
         // style returned null under `--vm` while the tree-walker returned the
         // value. Constructors are deliberately excluded: they return the
         // instance, not their last expression.
-        let last_idx = method.body.len().checked_sub(1);
-        for (i, stmt) in method.body.iter().enumerate() {
-            if Some(i) == last_idx {
-                if let StmtKind::Expression(expr) = &stmt.kind {
-                    self.compile_expr(expr)?;
-                    self.emit(Op::Return, stmt.span.line as usize);
-                    break;
-                }
+        // `compile_tail_stmt` also carries tail position into a trailing
+        // `if`/`unless`, whose taken branch gives the value.
+        if let Some((last, init)) = method.body.split_last() {
+            for stmt in init {
+                self.compile_stmt(stmt)?;
             }
-            self.compile_stmt(stmt)?;
+            self.compile_tail_stmt(last)?;
         }
         self.end_scope(line);
 

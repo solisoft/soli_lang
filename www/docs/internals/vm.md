@@ -32,6 +32,14 @@ impl Compiler {
 
 `compile_with_globals` is what serve uses: the worker already knows global names (`User`, `render`, …), so a bare assignment inside a handler becomes a local, matching the tree-walker.
 
+Soli's optional `let` — `total = 0` with no `let` creates the binding — is compiled by hoisting: `compiler_hoist.rs` collects every name a function body assigns bare, and `hoist_locals` declares each one as a local at the top of the body unless it is a parameter, an enclosing local (it stays an upvalue) or a known global (the assignment updates it). At file scope, `SetGlobal` defines a name that does not exist yet. Up to 2.6.1 this was off unless `SOLI_VM_OPTIONAL_LET=1`: a bare assignment to a new name compiled to `SetGlobal` and raised *Undefined variable* at run time, so nearly every real action was re-run on the interpreter — and one that had already written to the database could not be re-run, and answered 500. It is now on; `SOLI_VM_OPTIONAL_LET=0` restores the old behavior as an escape hatch.
+
+Every controller action runs on the VM, with or without a `(req)` parameter (`call_class_method` in `serve/mod.rs`); a zero-parameter action reads the request through the `req` global the worker publishes. An action that raises on the VM is re-run on the interpreter only while it has not written (`clear_durable_commit`); after a write the error is the response. So a VM gap is a 500 as soon as it follows a write, and the rule is to close gaps rather than rely on the fallback. Where the interpreter already holds the single definition of a behavior, the VM delegates to it instead of copying it:
+
+- **Model instances** — a member the VM would not answer the same way (a relation, a preload, a translated field, an unset column, uploader and HABTM helpers) goes through `Interpreter::instance_member_access` (`Vm::model_instance_member`); a bound helper it returns is called through `call_method` with the VM's globals.
+- **Query builders** — members resolve through `query_builder_member_access` and calls through `call_query_builder_method`. Methods taking a block (`each`, `map`, `filter`, …) materialize the rows and run on the VM's own array methods, so a compiled closure is always called by the VM that owns its upvalues. `find_each`/`in_batches` still demote.
+- **Methods that exist only as AST** — inherited from a class the VM never compiled — are compiled as methods on first use and cached in their defining class's `vm_methods` (`compile_tree_walking_method`), so `this` stays the receiver.
+
 On constructs the compiler cannot represent, it returns an engine fallback. The server then runs that handler on the interpreter (and `SOLI_FAIL_ON_VM_DEMOTION=1` turns that into a process exit in CI).
 
 ### What the compiler tracks

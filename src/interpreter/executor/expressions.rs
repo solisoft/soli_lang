@@ -715,6 +715,13 @@ impl Interpreter {
         Ok(val)
     }
 
+    /// Auto-invoke a value read as a member (`builder.count`), with the
+    /// member-access rules: for the VM, which resolves some members through
+    /// the tree-walker and must then apply the same paren-free convention.
+    pub(crate) fn auto_invoke_member(&mut self, val: Value, span: Span) -> RuntimeResult<Value> {
+        self.try_auto_invoke(val, span, AutoInvokeContext::Member)
+    }
+
     /// Evaluate a callee expression without auto-invoke, so that `func()` gets
     /// the raw function reference rather than the auto-invoked result.
     pub(crate) fn evaluate_callee(&mut self, expr: &Expr) -> RuntimeResult<Value> {

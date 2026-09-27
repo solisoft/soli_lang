@@ -1,10 +1,11 @@
 //! Class operations for the VM: property access, inheritance, instantiation.
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::RuntimeError;
 use crate::interpreter::executor::Interpreter;
-use crate::interpreter::value::{Class, HashKey, NativeFunction, Value, ValueMethod};
+use crate::interpreter::value::{Class, HashKey, Instance, NativeFunction, Value, ValueMethod};
 use crate::span::Span;
 
 use super::vm::Vm;
@@ -130,6 +131,110 @@ impl Vm {
         }
     }
 
+    /// Model-instance member access through the tree-walker's resolver. The
+    /// interpreter is built on an empty environment: resolving a member reads
+    /// the model registry and the database, not program globals, so the
+    /// builtin registration of `Interpreter::new` would be pure cost here.
+    pub(crate) fn model_instance_member(
+        inst: &Rc<RefCell<Instance>>,
+        name: &str,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let mut interp = Interpreter::with_environment(Rc::new(RefCell::new(
+            crate::interpreter::environment::Environment::new(),
+        )));
+        interp.instance_member_access(inst.clone(), name, span)
+    }
+
+    /// Whether `name` is a scope declared on the builder's model.
+    fn is_query_builder_scope(object: &Value, name: &str) -> bool {
+        let Value::QueryBuilder(qb) = object else {
+            return false;
+        };
+        crate::interpreter::symbol::symbol_string(qb.borrow().class_name).is_some_and(
+            |class_name| {
+                crate::interpreter::builtins::model::scopes::lookup_scope(class_name, name)
+                    .is_some()
+            },
+        )
+    }
+
+    /// An interpreter for query-builder work. Scopes are user closures that
+    /// may call application helpers, so they get the VM's globals; everything
+    /// else reads only the builder and the database.
+    fn query_builder_interpreter(&self, is_scope: bool) -> Interpreter {
+        if is_scope {
+            Interpreter::for_vm_fragment(&self.globals)
+        } else {
+            Interpreter::with_environment(Rc::new(RefCell::new(
+                crate::interpreter::environment::Environment::new(),
+            )))
+        }
+    }
+
+    fn query_builder_property(
+        &self,
+        object: &Value,
+        name: &str,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if matches!(name, "find_each" | "in_batches" | "find_in_batches") {
+            // These run a block per batch; see `call_query_builder_method`.
+            return Err(RuntimeError::EngineFallback(
+                format!("query builder batch iteration '{}'", name),
+                span,
+            ));
+        }
+        let mut interp = self.query_builder_interpreter(Self::is_query_builder_scope(object, name));
+        let member = interp.query_builder_member_access(name, span, object.clone())?;
+        interp.auto_invoke_member(member, span)
+    }
+
+    /// `builder.name(args)` on the VM. Methods that take a block (`each`,
+    /// `map`, `filter`, …) materialize the rows and run on the VM's own array
+    /// methods, so a compiled closure is called here, with its captured
+    /// variables, rather than from a second VM. The rest — chaining,
+    /// terminals, aggregates, writes, scopes — take plain data and run in the
+    /// tree-walker's query-builder code.
+    pub(crate) fn call_query_builder_method(
+        &mut self,
+        object: Value,
+        name: &str,
+        args: Vec<Value>,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let Value::QueryBuilder(qb) = &object else {
+            unreachable!("call_query_builder_method on a non-builder");
+        };
+        match name {
+            // Batch iteration walks a keyset cursor and calls the block per
+            // record or per batch from inside the tree-walker; a compiled block
+            // cannot be run from there. The handler demotes.
+            "find_each" | "in_batches" | "find_in_batches" => {
+                return Err(RuntimeError::EngineFallback(
+                    format!("query builder batch iteration '{}'", name),
+                    span,
+                ))
+            }
+            "each" | "map" | "filter" | "reduce" | "find" | "any?" | "all?" | "sort_by"
+                if args.iter().any(Value::is_callable) =>
+            {
+                let rows = crate::interpreter::builtins::model::execute_query_builder(&qb.borrow());
+                if let Value::Array(arr) = &rows {
+                    return self.vm_call_array_method(arr, name, &args, span);
+                }
+            }
+            _ => {}
+        }
+        let is_scope = Self::is_query_builder_scope(&object, name);
+        let mut interp = self.query_builder_interpreter(is_scope);
+        if is_scope {
+            let scope = interp.query_builder_member_access(name, span, object.clone())?;
+            return interp.call_value(scope, args, span);
+        }
+        interp.call_query_builder_method(qb.clone(), name, args, span)
+    }
+
     /// Get a property from a value.
     pub fn op_get_property(
         &self,
@@ -178,6 +283,25 @@ impl Vm {
             }
             Value::Instance(inst) => {
                 let inst_ref = inst.borrow();
+                // A model instance answers relations (`card.project`), preloads,
+                // translated fields, uploader and HABTM helpers, state-machine
+                // events and `nil` for an unset column. That logic lives once,
+                // in the tree-walker's `instance_member_access`; the VM hands it
+                // every model read it would not answer the same way itself.
+                // Raising here instead was harmless while a VM error re-ran
+                // the action on the interpreter — but not once the action has
+                // written, when it answered 500 (`rec._errors` after `create`).
+                if inst_ref.class.is_model_subclass()
+                    && (!inst_ref.fields.contains_key(name)
+                        || crate::interpreter::builtins::model::member_needs_model_resolution(
+                            &inst_ref.class.name,
+                            name,
+                        ))
+                    && inst_ref.class.find_method(name).is_none()
+                {
+                    drop(inst_ref);
+                    return Self::model_instance_member(inst, name, span);
+                }
                 // Check instance fields first
                 if let Some(val) = inst_ref.fields.get(name) {
                     // A field holding a `grouped {}` deferred query result is
@@ -417,20 +541,13 @@ impl Vm {
                     span,
                 }),
             },
-            // Query builders are the tree-walker's entirely: `where`, `limit`,
-            // `first`, `order`, the aggregates and scope chaining all live in
-            // `query_builder_member_access`, and executing them needs the
-            // interpreter. The VM had no arm at all, so any `Model.where(...)`
-            // chain inside a VM-compiled handler died with
-            // "Cannot access property 'limit' on QueryBuilder" — a hard error,
-            // not a demotion, because the catch-all below is not an
-            // `EngineFallback`. Punt via the same route class reflection and
-            // dynamic finders use; the handler demotes once and is then
-            // blacklisted, so this costs one re-run rather than one per request.
-            Value::QueryBuilder(_) => Err(RuntimeError::EngineFallback(
-                format!("query builder member '{}'", name),
-                span,
-            )),
+            // A bare member of a query builder (`Post.where(...).all`,
+            // `.count`, a scope) resolves through the tree-walker's
+            // `query_builder_member_access`, the single definition of what a
+            // builder answers, then auto-invokes zero-argument members as the
+            // tree-walker does. This used to be an `EngineFallback`: harmless
+            // before a write, a 500 after one.
+            Value::QueryBuilder(_) => self.query_builder_property(object, name, span),
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: object.type_name().to_string(),
                 property: name.to_string(),
@@ -462,10 +579,17 @@ impl Vm {
             let inst_ref = inst.borrow();
             let field_hit = inst_ref.fields.contains_key(name);
             if !field_hit {
-                let lookup = {
-                    let class = inst_ref.class.clone();
-                    class.find_vm_method_with_class(name)
+                let class = inst_ref.class.clone();
+                drop(inst_ref);
+                // A method that exists only as AST (inherited from a class the
+                // VM never compiled) is compiled here too: the tree-walker
+                // auto-invokes it (`@kpis = @_kpis`), and returning the unbound
+                // `Function` left a function in the field instead.
+                let lookup = match class.find_vm_method_with_class(name) {
+                    Some(found) => Some(found),
+                    None => self.compile_tree_walking_method(&class, name)?,
                 };
+                let inst_ref = inst.borrow();
                 if let Some((closure, defining_class)) = lookup {
                     drop(inst_ref);
                     if closure.proto.arity == 0 {
@@ -506,6 +630,18 @@ impl Vm {
                 return (func.func)(&[]).map_err(|msg| RuntimeError::new(msg, span));
             }
             return Ok(val);
+        }
+        // A zero-parameter static method read bare (`Assistant.history_messages`)
+        // is called, as the tree-walker's member auto-invoke does for methods.
+        if let Value::Class(_) = object {
+            let zero_arg_static = match &val {
+                Value::VmClosure(closure) => closure.proto.param_names.is_empty(),
+                Value::Function(func) => func.is_method && func.params.is_empty(),
+                _ => false,
+            };
+            if zero_arg_static {
+                return self.invoke_callable(val, &[], span);
+            }
         }
         let invoke = match &val {
             Value::Method(m)

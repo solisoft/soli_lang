@@ -202,8 +202,20 @@ impl Interpreter {
         self.current_source_path = Some(crate::coverage::coverage_path_key(&path));
     }
 
+    /// Whether any coverage tracker would record a hit. Checked before the
+    /// file path is looked up: that lookup copies the path into a fresh
+    /// `PathBuf`, and without a tracker (every `soli serve`) the copy was made
+    /// for every expression and statement evaluated, then dropped.
+    #[inline(always)]
+    pub(crate) fn coverage_active(&self) -> bool {
+        self.coverage_tracker.is_some() || crate::coverage::global_coverage_tracker_installed()
+    }
+
     #[inline(always)]
     pub fn record_coverage(&self, line: usize) {
+        if !self.coverage_active() {
+            return;
+        }
         if let Some(ref path) = self.current_file_path() {
             if let Some(ref tracker) = self.coverage_tracker {
                 if let Ok(guard) = tracker.lock() {

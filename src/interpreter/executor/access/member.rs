@@ -556,7 +556,7 @@ impl Interpreter {
     }
 
     #[allow(clippy::collapsible_match)]
-    fn instance_member_access(
+    pub(crate) fn instance_member_access(
         &mut self,
         inst: Rc<RefCell<Instance>>,
         name: &str,
@@ -2212,7 +2212,7 @@ impl Interpreter {
         }
     }
 
-    fn query_builder_member_access(
+    pub(crate) fn query_builder_member_access(
         &mut self,
         name: &str,
         span: Span,
