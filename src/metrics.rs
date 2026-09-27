@@ -40,6 +40,10 @@ pub struct Metrics {
     /// A non-zero value means some production handlers run on the slower
     /// engine; set `SOLI_ENGINE_LOG=1` to log which handler and why.
     pub vm_handler_demotions_total: AtomicU64,
+    /// Number of handlers that failed on the VM and then succeeded when re-run
+    /// on the tree-walker: the two engines disagree on the same code, which
+    /// is a VM bug whatever the error said. Should stay at zero.
+    pub vm_engine_divergences_total: AtomicU64,
     /// Number of requests whose handler panicked and was contained by the
     /// per-request `catch_unwind` in the worker loop (the client got a `500`
     /// and the worker survived). Any non-zero value is a bug worth chasing —
@@ -69,6 +73,7 @@ impl Metrics {
             db_query_duration_ns_total: AtomicU64::new(0),
             db_query_count: AtomicU64::new(0),
             vm_handler_demotions_total: AtomicU64::new(0),
+            vm_engine_divergences_total: AtomicU64::new(0),
             handler_panics_total: AtomicU64::new(0),
             start_time: std::sync::OnceLock::new(),
         }
@@ -197,6 +202,15 @@ impl Metrics {
         out.push_str(&format!(
             "soli_vm_handler_demotions_total {}\n",
             self.vm_handler_demotions_total.load(Ordering::Relaxed)
+        ));
+
+        out.push_str(
+            "# HELP soli_vm_engine_divergences_total Handlers that failed on the bytecode VM and succeeded when re-run on the tree-walking interpreter (a VM bug; should stay at zero).\n",
+        );
+        out.push_str("# TYPE soli_vm_engine_divergences_total counter\n");
+        out.push_str(&format!(
+            "soli_vm_engine_divergences_total {}\n",
+            self.vm_engine_divergences_total.load(Ordering::Relaxed)
         ));
 
         out.push_str(

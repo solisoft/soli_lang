@@ -51,6 +51,11 @@ impl ServerProcess {
             .arg("--workers")
             .arg("1")
             .env("SOLI_SESSION_SECRET", "e2e-test-secret-0123456789abcdef")
+            // Strict engines: a handler the VM refuses, or one that fails on
+            // the VM and succeeds on the interpreter, stops the server — the
+            // fallback would otherwise hide the VM gap, as it hid the model
+            // scope lookup until 2.6.3.
+            .env("SOLI_FAIL_ON_VM_DEMOTION", "1")
             .env("SOLI_DEFAULT_LOCALE", default_locale)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -84,6 +89,11 @@ impl ServerProcess {
             // For the signed/encrypted cookie-jar tests. Harmless to the
             // rest: the session driver stays in_memory.
             .env("SOLI_SESSION_SECRET", "e2e-test-secret-0123456789abcdef")
+            // Strict engines: a handler the VM refuses, or one that fails on
+            // the VM and succeeds on the interpreter, stops the server — the
+            // fallback would otherwise hide the VM gap, as it hid the model
+            // scope lookup until 2.6.3.
+            .env("SOLI_FAIL_ON_VM_DEMOTION", "1")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -204,6 +214,37 @@ fn render_json_evaluates_its_argument_once() {
         body_string(resp),
         r#"{"n":1}"#,
         "render_json evaluated its argument more than once"
+    );
+}
+
+/// Model scopes resolve in an action run on the VM: bare, with empty parens,
+/// and with an argument, each applied to the query (`to_query`). Before 2.6.3
+/// the VM could not look a model scope up; the server re-ran the action on the
+/// interpreter, so this answered 200 anyway — the strict flag set on every
+/// fixture server makes that re-run a hard failure.
+#[test]
+fn model_scopes_resolve_in_a_vm_action() {
+    let server = shared_server();
+    let resp = ureq::get(&server.url("/scopes"))
+        .timeout(Duration::from_secs(3))
+        .call()
+        .expect("scopes request (a strict server exits on an engine divergence)");
+    assert_eq!(resp.status(), 200);
+    let body = body_string(resp);
+    let lines: Vec<&str> = body.lines().collect();
+    assert_eq!(
+        lines.first(),
+        Some(&"gadget"),
+        "static next to scopes: {body}"
+    );
+    assert!(
+        lines[1].contains("doc.owner") && lines[1].contains("doc.size"),
+        "bare: {body}"
+    );
+    assert!(lines[2].contains("doc.owner"), "empty parens: {body}");
+    assert!(
+        lines[3].contains("doc.kind") && lines[3].contains("lamp"),
+        "argument: {body}"
     );
 }
 

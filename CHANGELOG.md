@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+* **serve:** **an action that fails on the VM and succeeds on the interpreter is an engine divergence, and `SOLI_FAIL_ON_VM_DEMOTION=1` stops on it.** The flag stopped only on a refusal (`EngineFallback`); any other VM error was treated as the handler's own and re-run on the tree-walker in silence. That is how the model-scope gap fixed in 2.6.3 stayed hidden: `Measure.t` raised *Cannot access property* on the VM, the re-run succeeded, and only an action that had written first — so could not be re-run — showed it, with a 500 in production. The server now remembers the VM's error (`note_possible_divergence`) and, if the re-run succeeds, reports the divergence (`settle_engine_divergence`): logged under `SOLI_ENGINE_LOG=1` or the strict flag, counted as `soli_vm_engine_divergences_total` on `/_metrics`, and a hard exit (70) under `SOLI_FAIL_ON_VM_DEMOTION=1`. A re-run that fails too is the app's own error and changes nothing; an action that committed before failing is not re-run, so it is not compared.
+
+### Tests
+
+* **The end-to-end servers run strict.** Every fixture server in `server_e2e_test` sets `SOLI_FAIL_ON_VM_DEMOTION=1`, so a VM refusal or divergence in the fixture app fails the suite instead of passing on the interpreter. The fixture gains a model whose scopes come from a module's `included` block (an app's tenant-scope shape) and an action reading them bare, with empty parentheses and with an argument (`model_scopes_resolve_in_a_vm_action`); with the 2.6.2 VM it fails, through the divergence stop.
+
 ## [2.6.3] - 2026-09-27
 
 ### Fixed

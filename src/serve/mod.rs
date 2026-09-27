@@ -4084,6 +4084,68 @@ fn record_vm_demotion(handler: &str, err: &RuntimeError) {
     }
 }
 
+thread_local! {
+    /// The VM's error for the handler being re-run on the tree-walker, until
+    /// the re-run's outcome is known (`settle_engine_divergence`).
+    static PENDING_DIVERGENCE: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+}
+
+/// Remember why the VM failed a handler that is about to be re-run on the
+/// tree-walker. A refusal (`EngineFallback`) is already reported by
+/// `record_vm_demotion`, and a 404/403 is the app's own outcome; any other
+/// error may be the handler's (`throw`) — or a VM bug, and only the re-run
+/// can tell.
+fn note_possible_divergence(handler: &str, err: &RuntimeError) {
+    if matches!(err, RuntimeError::EngineFallback(..))
+        || record_not_found_response(err).is_some()
+        || forbidden_response(err).is_some()
+    {
+        return;
+    }
+    PENDING_DIVERGENCE.with(|p| *p.borrow_mut() = Some((handler.to_string(), err.to_string())));
+}
+
+/// The tree-walker's re-run is done. If it succeeded where the VM failed, the
+/// two engines disagree on the same code: that is a VM bug, whatever the error
+/// said. The fallback used to hide exactly this — a model scope the VM could
+/// not resolve (`Measure.t`) was re-run silently until an action wrote first,
+/// and then answered 500 in production (2.6.3). Logged under
+/// `SOLI_ENGINE_LOG=1`, counted on `/_metrics`, and a hard stop under
+/// `SOLI_FAIL_ON_VM_DEMOTION=1` so a test suite cannot pass over it.
+fn settle_engine_divergence(tree_walker_succeeded: bool) {
+    let Some((handler, vm_error)) = PENDING_DIVERGENCE.with(|p| p.borrow_mut().take()) else {
+        return;
+    };
+    if !tree_walker_succeeded {
+        return;
+    }
+    crate::metrics::Metrics::global()
+        .vm_engine_divergences_total
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let message = format!(
+        "handler '{handler}' failed on the VM and succeeded on the interpreter — engine divergence: {vm_error}"
+    );
+    if engine_flag("SOLI_ENGINE_LOG") || engine_flag("SOLI_FAIL_ON_VM_DEMOTION") {
+        eprintln!("[soli engine] {message}");
+    }
+    if engine_flag("SOLI_FAIL_ON_VM_DEMOTION") {
+        eprintln!("[soli engine] SOLI_FAIL_ON_VM_DEMOTION: {message}");
+        let _ = std::io::Write::flush(&mut std::io::stderr());
+        std::process::exit(70);
+    }
+}
+
+/// The handler is not re-run (it committed before failing): drop the note.
+fn forget_possible_divergence() {
+    PENDING_DIVERGENCE.with(|p| p.borrow_mut().take());
+}
+
+fn engine_flag(name: &str) -> bool {
+    std::env::var(name)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
 /// Decide whether a failed VM handler may be retried on the tree-walker.
 ///
 /// Normally it may: the VM either refused the code or blew up before doing
@@ -4497,10 +4559,12 @@ fn call_handler(
                     }
                     Err(err) => {
                         record_vm_demotion(handler_name, &err);
+                        note_possible_divergence(handler_name, &err);
                         vm.failed_handlers.insert(handler_name.to_string());
                         vm.reset();
                         if let Some(resp) = no_retry_after_commit(handler_name, &err, request_data)
                         {
+                            forget_possible_divergence();
                             return resp;
                         }
                     }
@@ -4519,7 +4583,9 @@ fn call_handler(
             } else {
                 Vec::new()
             };
-            match interpreter.call_value(handler_value, args, Span::default()) {
+            let outcome = interpreter.call_value(handler_value, args, Span::default());
+            settle_engine_divergence(outcome.is_ok());
+            match outcome {
                 Ok(result) => {
                     interpreter.pop_frame();
                     let (status, headers, body) = extract_response(result);
@@ -4885,12 +4951,15 @@ fn call_class_method(
                     Err(err) => {
                         let handler_key = format!("{}#{}", class.name, method_name);
                         record_vm_demotion(&handler_key, &err);
+                        note_possible_divergence(&handler_key, &err);
                         vm.failed_handlers.insert(handler_key);
                         vm.reset();
                         // Committed already — re-running the action on the
                         // tree-walker would repeat the committed writes. See
                         // `no_retry_after_commit`.
                         if crate::interpreter::builtins::model::crud::had_durable_commit() {
+                            // No re-run, so nothing to compare against.
+                            forget_possible_divergence();
                             return Err(err);
                         }
                     }
@@ -4941,6 +5010,7 @@ fn call_class_method(
         };
         let result =
             interpreter.call_value(Value::Function(bound_method), action_args, method_span);
+        settle_engine_divergence(result.is_ok());
 
         // Capture environment BEFORE popping frame so we preserve local variables for debugging
         let result = match result {
