@@ -468,11 +468,25 @@ required-features = ["eui"]
 name = "hash_get_set"
 harness = false
 
+# Everyday optimized build: `cargo install --path .`, local perf checks, and
+# anything that iterates. ThinLTO over 16 codegen units runs on every core and
+# costs a few percent of runtime against `dist`. It is not the shipped binary:
+# `dist` below is.
 [profile.release]
 opt-level = 3
+lto = "thin"
+codegen-units = 16
+strip = "symbols"
+
+# The shipped binary: tag builds (`build-binaries` in ci.yml), the Docker image,
+# and `scripts/bench.sh`. Fat LTO over a single codegen unit optimizes the whole
+# crate graph as one serial unit. That is the last few percent of speed, and it
+# takes minutes on one core, which is why nothing that iterates builds it.
+# `cargo install solilang --profile dist` gets this build from crates.io.
+[profile.dist]
+inherits = "release"
 lto = "fat"
 codegen-units = 1
-strip = "symbols"
 
 # NOTE: do not set `panic = "abort"` here.
 #
@@ -494,7 +508,7 @@ strip = "symbols"
 # Those sweeps check semantics: that the two engines agree on an expression,
 # that `soli check` accepts calls that work, that hostile input does not panic.
 # None of that depends on how codegen is partitioned, but building it under
-# `release` did: fat LTO optimizes the whole crate graph as one serial unit, so
+# `release` (then fat LTO, now `dist`) did: fat LTO optimizes the whole crate graph as one serial unit, so
 # the build took 896s while the sweeps themselves took 62s — 90% of the job, and
 # the critical path of the entire CI run. `rust-cache` evicts the workspace
 # crate's own artifacts by design, so that cost was paid on every run, cache hit
@@ -505,7 +519,7 @@ strip = "symbols"
 # observable behavior, and they carry over untouched; `lto` and `codegen-units`
 # only decide how the work is split across cores. What the sweeps no longer test
 # is a byte-identical copy of the shipped binary, so an LTO-only miscompilation
-# would escape this job — `build-binaries` still does a true release build on
+# would escape this job — `build-binaries` still does a true `dist` build on
 # every tag.
 [profile.ci]
 inherits = "release"

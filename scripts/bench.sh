@@ -60,15 +60,15 @@ if [[ ! -d "$APP" ]]; then
 fi
 
 # Build release binary if stale or missing.
-LOCAL_BIN="$REPO_ROOT/target/release/soli"
+LOCAL_BIN="$REPO_ROOT/target/dist/soli"
 need_build=1
 if [[ "$SKIP_BUILD" == "1" ]]; then need_build=0; fi
 if [[ "$need_build" == "1" && -x "$LOCAL_BIN" && "$LOCAL_BIN" -nt "$REPO_ROOT/Cargo.toml" ]]; then
   need_build=0
 fi
 if [[ "$need_build" == "1" ]]; then
-  log "Building release binary (cargo build --release) ..."
-  ( cd "$REPO_ROOT" && cargo build --release ) > "$OUT_DIR/${LABEL}_build.log" 2>&1 \
+  log "Building shipped binary (cargo build --profile dist) ..."
+  ( cd "$REPO_ROOT" && cargo build --profile dist --locked ) > "$OUT_DIR/${LABEL}_build.log" 2>&1 \
     || fail "cargo build failed; see $OUT_DIR/${LABEL}_build.log"
 fi
 BIN_TO_USE="${SOLI_OVERRIDE:-$LOCAL_BIN}"

@@ -75,6 +75,16 @@ cargo build --release
 cargo install --path . --locked
 ```
 
+The default `release` profile builds on every core with ThinLTO. The published
+binaries use the `dist` profile instead. It uses fat LTO and a single codegen
+unit, so it runs a few percent faster but takes several minutes longer to build
+on one core. Use it for a production or benchmark build:
+
+```bash
+cargo install --path . --locked --profile dist   # binary in target/dist/
+cargo install solilang --locked --profile dist   # same, from crates.io
+```
+
 To shrink the binary (and baseline RSS) when you only need SoliDB, drop optional
 subsystems at build time — see [Configuration → Slim binary](configuration.md#slim-binary-cargo-features):
 
@@ -223,8 +233,8 @@ you prefer the official `--watch` incremental mode, install the CLI yourself at
 # deployed app ships it. To rebuild explicitly, touch a file under
 # app/assets/css/ and start the dev server once.
 
-# Build Soli application
-cargo build --release
+# Build the shipped (fat-LTO) binary: target/dist/soli
+cargo build --profile dist --locked
 ```
 
 ## Verifying Installation

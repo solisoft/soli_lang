@@ -550,7 +550,7 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: cargo build --profile dist --locked --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
@@ -567,8 +567,8 @@ jobs:
           # standalone builder looks for the matching name inside the tarball.
           BIN=soli
           if [ "${{ runner.os }}" = "Windows" ]; then BIN=soli.exe; fi
-          ls -la target/${{ matrix.target }}/release/$BIN
-          tar -czf ${{ matrix.artifact }}.tar.gz -C target/${{ matrix.target }}/release $BIN
+          ls -la target/${{ matrix.target }}/dist/$BIN
+          tar -czf ${{ matrix.artifact }}.tar.gz -C target/${{ matrix.target }}/dist $BIN
           # SEC-041: publish a `.sha256` sibling so `soli update` can
           # verify the downloaded tarball before extracting / chmod-ing.
           # No single checksum tool spans the matrix: macOS ships `shasum` but

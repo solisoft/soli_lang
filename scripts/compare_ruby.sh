@@ -17,7 +17,7 @@ export LANG=C
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-SOLI_BIN="${SOLI_BIN:-$REPO_ROOT/target/release/soli}"
+SOLI_BIN="${SOLI_BIN:-$REPO_ROOT/target/dist/soli}"
 RUBY_VERSION="${RUBY_VERSION:-4.0.6}"
 REPEATS="${REPEATS:-5}"
 OUT="${OUT:-/tmp/soli_vs_ruby_report.md}"
@@ -34,7 +34,7 @@ else
   RUBY="$(command -v ruby)"
 fi
 
-[[ -x "$SOLI_BIN" ]] || { echo "missing $SOLI_BIN — run cargo build --release" >&2; exit 1; }
+[[ -x "$SOLI_BIN" ]] || { echo "missing $SOLI_BIN — run cargo build --profile dist" >&2; exit 1; }
 [[ -x "$RUBY" ]] || { echo "missing ruby binary" >&2; exit 1; }
 
 SOLI_VER="$("$SOLI_BIN" --version 2>/dev/null || echo soli)"
@@ -233,7 +233,7 @@ done
   echo
   echo '```bash'
   echo "mise install ruby@$RUBY_VERSION"
-  echo "cargo build --release"
+  echo "cargo build --profile dist"
   echo "RUBY_BIN=\$(mise exec ruby@$RUBY_VERSION -- which ruby) REPEATS=$REPEATS ./scripts/compare_ruby.sh"
   echo '```'
 } >> "$OUT"

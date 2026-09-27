@@ -86,6 +86,13 @@ cargo install --path . --locked
 soli --version</code></pre>
 
     <p class="text-gray-400 mt-4 mb-2 text-sm">
+        The default <code class="text-amber-300">release</code> profile builds on every core with ThinLTO. The published binaries use the
+        <code class="text-amber-300">dist</code> profile instead. It uses fat LTO and a single codegen unit, so it runs a few percent faster
+        but takes several minutes longer to build on one core. Use it for a production or benchmark build:
+    </p>
+    <pre data-filename="Terminal"><code class="language-bash text-sm">cargo install --path . --locked --profile dist   # or: cargo install solilang --locked --profile dist</code></pre>
+
+    <p class="text-gray-400 mt-4 mb-2 text-sm">
         To shrink the binary when you only need SoliDB, drop optional subsystems at build time
         (see <a href="/docs/getting-started/configuration#keeping-memory-low" class="text-amber-400 hover:underline">Keeping memory low</a>):
     </p>

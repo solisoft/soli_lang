@@ -497,6 +497,8 @@ Use `#` for comments inside Soli code blocks in both `.md` and `.slv` (the `//` 
 
 5. **`CHANGELOG.md`** at the repo root, in the same change. The docs-site changelog above is *in addition to* it, not instead of it.
 
+6. **The Claude skills `~/.claude/skills/soli-lang/` and `~/.claude/skills/solidb/`** — they teach agents to write Soli apps and SDBQL, and every claim in them was checked against a running binary. Any change that alters behavior an app author sees (a builtin, a method's return shape, a parser rule, a model/controller/view/test-runner behavior, a scaffold template, a CLI flag, an ORM → SDBQL mapping) MUST be checked against both skills in the same change: grep `SKILL.md` and `references/*.md` for the feature, then fix, add or delete the entry. **A fix that removes a trap the skill warns about means deleting that warning** — a skill that warns against something that now works teaches workarounds nobody needs. Re-run any snippet you edit (`soli file.sl`, or the curl helper in the solidb skill). The skills live outside the repo, so say in the commit message which skill entries were updated, or that none needed to be.
+
 **Documentation is part of the change, not a follow-up.** Ship them together or the change is not finished: a docs site that describes a version nobody is running is worse than one that says nothing, because a reader cannot tell which half is stale. If a change turns out not to need any of these surfaces, that is worth a sentence in the commit message rather than silence.
 
 ### EUI reaches a second repository
@@ -581,11 +583,13 @@ you just made. Two things follow:
   deleted when compilation moved off this machine; only `target/remote/`
   survives. That is minutes of work for a result `rbuild lang` produces in
   about eighty seconds.
-- **The remote release binary is not the manifest's.** The server overrides
-  `lto` to `thin` and `codegen-units` to 16 to use all its cores, and a
-  `[profile.*]` table in a cargo config outranks `Cargo.toml` key by key. It
-  costs a few percent. Benchmark with `rbuild --faithful lang`, which restores
-  `lto = "fat"` and `codegen-units = 1` for that build.
+- **`release` is not the shipped binary; `dist` is.** `release` is ThinLTO
+  over 16 codegen units, the same thing the build server's override imposes. So
+  the remote release binary now matches the manifest. The tag build, the Docker
+  image, `scripts/bench.sh` and `scripts/compare_ruby.sh` use
+  `[profile.dist]` (fat LTO, one codegen unit, a few percent faster, minutes on
+  one core). To benchmark what ships, use `rbuild --faithful lang`, which forces
+  fat LTO and one codegen unit onto `release` for that build.
 
 `lang` patches `eui-proto`/`eui-client` to the sibling `../eui` checkout through
 the untracked `.cargo/config.toml`. Cargo does not warn about a stale sibling —
