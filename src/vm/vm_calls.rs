@@ -44,7 +44,14 @@ pub(crate) fn jit_compile_function<I: IntoIterator<Item = String>>(
         source_path: None,
     }]);
 
-    let module = Compiler::compile_with_globals(&program, globals).map_err(|e| e.to_string())?;
+    // The function's file travels with it, so a coverage build marks its lines
+    // (a service's static methods were compiled without one, and counted 0%).
+    let source_path = func
+        .source_path
+        .as_ref()
+        .map(|p| Arc::new(std::path::PathBuf::from(p)));
+    let module = Compiler::compile_with_globals_from(&program, globals, source_path)
+        .map_err(|e| e.to_string())?;
 
     // Extract the compiled FunctionProto from the module's constant pool.
     let proto = module

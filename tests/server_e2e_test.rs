@@ -66,6 +66,32 @@ impl ServerProcess {
         server
     }
 
+    /// A server collecting line coverage, as `soli test --coverage` starts
+    /// one, with the token its `/__coverage__` dump requires.
+    fn start_with_coverage(token: &str) -> Self {
+        let binary = PathBuf::from(env!("CARGO_BIN_EXE_soli"));
+        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/_e2e_app");
+        let port = pick_port();
+        let child = Command::new(&binary)
+            .arg("serve")
+            .arg(&fixture)
+            .arg("--port")
+            .arg(port.to_string())
+            .arg("--workers")
+            .arg("1")
+            .env("SOLI_SESSION_SECRET", "e2e-test-secret-0123456789abcdef")
+            .env("SOLI_FAIL_ON_VM_DEMOTION", "1")
+            .env("SOLI_COVERAGE_ENABLED", "1")
+            .env("SOLI_COVERAGE_TOKEN", token)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn soli serve");
+        let server = ServerProcess { child, port };
+        server.wait_ready();
+        server
+    }
+
     fn start() -> Self {
         // CARGO_BIN_EXE_<name> is set by cargo at compile time for integration
         // tests, so use env! (compile-time) — std::env::var (runtime) returns
@@ -245,6 +271,87 @@ fn model_scopes_resolve_in_a_vm_action() {
     assert!(
         lines[3].contains("doc.kind") && lines[3].contains("lamp"),
         "argument: {body}"
+    );
+}
+
+/// Lines run on the VM are counted. The VM had no line coverage: once every
+/// action ran there (2.6.2), `soli test --coverage` stopped seeing any code an
+/// action executed — an app suite covering 97% reported 63%. A coverage
+/// server now compiles `CoverLine` markers; the action's statements must show
+/// up as hit in the `/__coverage__` dump, as they do on the interpreter.
+#[test]
+fn vm_actions_record_line_coverage() {
+    let token = "e2e-coverage-token-0123456789";
+    let server = ServerProcess::start_with_coverage(token);
+    let resp = ureq::get(&server.url("/scopes"))
+        .timeout(Duration::from_secs(3))
+        .call()
+        .expect("scopes request");
+    assert_eq!(resp.status(), 200);
+
+    let source = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/_e2e_app/app/controllers/scopes_controller.sl"),
+    )
+    .expect("fixture controller");
+    let statement_line = source
+        .lines()
+        .position(|l| l.trim_start().starts_with("args = Gadget.of_kind"))
+        .expect("the action's third statement")
+        + 1;
+
+    let dump = ureq::get(&server.url("/__coverage__"))
+        .set("X-Coverage-Token", token)
+        .timeout(Duration::from_secs(3))
+        .call()
+        .expect("coverage dump");
+    let json: serde_json::Value = serde_json::from_str(&body_string(dump)).expect("json");
+    let files = json["files"].as_array().expect("files");
+    let controller = files
+        .iter()
+        .find(|f| {
+            f["path"]
+                .as_str()
+                .is_some_and(|p| p.ends_with("scopes_controller.sl"))
+        })
+        .unwrap_or_else(|| panic!("scopes_controller.sl not in the coverage dump: {json}"));
+    let hit_lines: Vec<u64> = controller["hits"]
+        .as_array()
+        .expect("hits")
+        .iter()
+        .filter_map(|h| h[0].as_u64())
+        .collect();
+    assert!(
+        hit_lines.contains(&(statement_line as u64)),
+        "line {statement_line} not counted; hits: {hit_lines:?}"
+    );
+
+    // A static method the action calls (`Gadget.label()`) is compiled from
+    // another file: its lines count too. They did not — a service is made of
+    // static methods, and grc's services read 0% on the VM.
+    let model_source = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/_e2e_app/app/models/gadget.sl"),
+    )
+    .expect("fixture model");
+    let static_line = model_source
+        .lines()
+        .position(|l| l.trim() == "return \"gadget\"")
+        .expect("the static method's body")
+        + 1;
+    let model = files
+        .iter()
+        .find(|f| f["path"].as_str().is_some_and(|p| p.ends_with("gadget.sl")))
+        .unwrap_or_else(|| panic!("gadget.sl not in the coverage dump: {json}"));
+    let model_hits: Vec<u64> = model["hits"]
+        .as_array()
+        .expect("hits")
+        .iter()
+        .filter_map(|h| h[0].as_u64())
+        .collect();
+    assert!(
+        model_hits.contains(&(static_line as u64)),
+        "static method line {static_line} not counted; hits: {model_hits:?}"
     );
 }
 

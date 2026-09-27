@@ -3048,6 +3048,23 @@ impl Vm {
 
                 Op::Nop => {}
 
+                // Line coverage (only compiled in under a coverage tracker —
+                // see `Op::CoverLine`). The fast tier does not handle it, so
+                // it lands here; an ordinary server never emits it.
+                Op::CoverLine(line) => {
+                    let path = self
+                        .frames
+                        .last()
+                        .and_then(|f| f.closure.proto.source_path.clone());
+                    if let (Some(path), Some(global)) =
+                        (path, crate::coverage::get_global_coverage_tracker())
+                    {
+                        if let Ok(guard) = global.lock() {
+                            guard.record_line_hit(&path, line as usize);
+                        }
+                    }
+                }
+
                 // Imports are resolved before VM execution; the opcode is a
                 // no-op marker at runtime.
                 Op::Import(_) => {}

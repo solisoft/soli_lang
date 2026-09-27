@@ -54,6 +54,10 @@ pub struct FunctionProto {
     pub upvalue_descriptors: Vec<UpvalueDescriptor>,
     /// Whether this is a method (has `this` in slot 0).
     pub is_method: bool,
+    /// The file this function was compiled from, for `Op::CoverLine`. Set for
+    /// methods compiled from the tree-walker's AST (actions, their helpers)
+    /// and inherited by the closures compiled inside them.
+    pub source_path: Option<std::sync::Arc<std::path::PathBuf>>,
 }
 
 impl FunctionProto {
@@ -67,6 +71,7 @@ impl FunctionProto {
             chunk: Chunk::new(),
             upvalue_descriptors: Vec::new(),
             is_method: false,
+            source_path: None,
         }
     }
 }

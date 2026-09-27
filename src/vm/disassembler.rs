@@ -226,6 +226,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             out.push_str(&format!("CALL_GLOBAL  {:>5} ({}) argc={}", idx, name, argc));
         }
         Op::Nop => out.push_str("NOP"),
+        Op::CoverLine(line) => out.push_str(&format!("COVER_LINE {line}")),
         Op::PopIter => out.push_str("POP_ITER"),
         Op::EnumPayload(sl, v, i) => {
             out.push_str(&format!("ENUM_PAYLOAD {:>4} {:>4} {:>3}", sl, v, i))

@@ -136,3 +136,70 @@ print("scoped=" + str(Thing.t.limit(1).all.length()))
         run.stderr
     );
 }
+
+/// A model class reached through a variable: `klass.new(attrs)`, the shape of
+/// a generic helper (`tenant_add(klass, attrs)`). The VM's class lookup had no
+/// `new` — it lives in the tree-walker's `class_member_access` — and answered
+/// "Cannot access property 'new'": after a write, a 500 (2.6.2). The VM now
+/// asks the tree-walker for any class member it does not resolve itself.
+const CLASS_THROUGH_VARIABLE: &str = r#"
+class Thing < Model
+end
+
+def build(klass, attrs)
+  let rec = klass.new(attrs)
+  return rec
+end
+
+print("built=" + build(Thing, {"title": "hello"}).title)
+print("direct=" + Thing.new({"title": "x"}).title)
+"#;
+
+#[test]
+fn the_interpreter_builds_a_model_through_a_variable() {
+    let run = run_script(CLASS_THROUGH_VARIABLE, false);
+    assert!(
+        run.stdout.contains("built=hello"),
+        "stdout: {}\nstderr: {}",
+        run.stdout,
+        run.stderr
+    );
+}
+
+#[test]
+fn the_vm_builds_a_model_through_a_variable() {
+    let run = run_script(CLASS_THROUGH_VARIABLE, true);
+    assert!(
+        run.stdout.contains("built=hello"),
+        "stdout: {}\nstderr: {}",
+        run.stdout,
+        run.stderr
+    );
+    assert!(
+        run.stdout.contains("direct=x"),
+        "stdout: {}\nstderr: {}",
+        run.stdout,
+        run.stderr
+    );
+}
+
+/// A member neither engine knows still raises on the VM, as on the
+/// interpreter — the fallback does not swallow a real mistake.
+#[test]
+fn the_vm_still_rejects_an_unknown_class_member() {
+    let run = run_script(
+        r#"
+class Thing < Model
+end
+let klass = Thing
+print(klass.nonexistent_member_xyz)
+"#,
+        true,
+    );
+    assert!(
+        run.stderr.contains("nonexistent_member_xyz"),
+        "stdout: {}\nstderr: {}",
+        run.stdout,
+        run.stderr
+    );
+}

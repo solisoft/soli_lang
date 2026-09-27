@@ -19,6 +19,8 @@ impl Compiler {
         // correct regardless of any drift during the prior statement.
         self.resync_stack_height();
         let line = stmt.span.line as usize;
+        self.last_cover_line = 0;
+        self.cover_line(line);
         match &stmt.kind {
             StmtKind::Expression(expr) => {
                 // `next` is a zero-argument builtin returning a sentinel the
@@ -626,6 +628,10 @@ impl Compiler {
     /// and the server rendered the form again instead of redirecting.
     pub(crate) fn compile_tail_stmt(&mut self, stmt: &Stmt) -> CompileResult<()> {
         let line = stmt.span.line as usize;
+        // The last statement of a function or branch is compiled here, not in
+        // `compile_stmt`: it needs its marker too.
+        self.last_cover_line = 0;
+        self.cover_line(line);
         match &stmt.kind {
             StmtKind::Expression(expr) => {
                 self.compile_expr(expr)?;

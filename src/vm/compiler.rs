@@ -59,6 +59,12 @@ pub enum FunctionType {
 
 /// The compiler: transforms AST into bytecode.
 pub struct Compiler {
+    /// Emit `Op::CoverLine` markers: a coverage tracker was installed when
+    /// compilation began (`soli test --coverage`). Off for `soli serve`.
+    pub coverage: bool,
+    /// The last line a `CoverLine` marker was emitted for, so a line spread
+    /// over several expressions is marked once.
+    pub last_cover_line: usize,
     /// The function prototype being built.
     pub proto: FunctionProto,
     /// Local variables in scope.
@@ -177,6 +183,8 @@ pub struct ClassContext {
 impl Compiler {
     pub fn new(function_type: FunctionType, name: String) -> Self {
         let mut compiler = Self {
+            coverage: crate::coverage::global_coverage_tracker_installed(),
+            last_cover_line: 0,
             proto: FunctionProto::new(name),
             locals: Vec::new(),
             scope_depth: 0,
@@ -222,8 +230,21 @@ impl Compiler {
         program: &Program,
         globals: I,
     ) -> CompileResult<CompiledModule> {
+        Self::compile_with_globals_from(program, globals, None)
+    }
+
+    /// `compile_with_globals` for code from a known file: the functions it
+    /// defines inherit `source_path`, which line coverage (`Op::CoverLine`)
+    /// needs. Used when the VM compiles a tree-walker function — a free
+    /// function or a static method, which a service is made of.
+    pub fn compile_with_globals_from<I: IntoIterator<Item = String>>(
+        program: &Program,
+        globals: I,
+        source_path: Option<Arc<std::path::PathBuf>>,
+    ) -> CompileResult<CompiledModule> {
         let mut compiler = Compiler::new(FunctionType::Script, String::new());
         compiler.known_globals.borrow_mut().extend(globals);
+        compiler.proto.source_path = source_path;
         for stmt in &program.statements {
             compiler.compile_stmt(stmt)?;
         }
@@ -251,6 +272,10 @@ impl Compiler {
     ) -> CompileResult<FunctionProto> {
         let mut compiler = Compiler::new(FunctionType::Method, func.name.clone());
         compiler.known_globals.borrow_mut().extend(globals);
+        compiler.proto.source_path = func
+            .source_path
+            .as_ref()
+            .map(|p| std::sync::Arc::new(std::path::PathBuf::from(p)));
         compiler.class_context = Some(ClassContext {
             has_superclass: func.defining_superclass.is_some(),
         });
@@ -287,6 +312,23 @@ impl Compiler {
         peephole_optimize_proto(&mut proto);
 
         Ok(proto)
+    }
+
+    /// Mark `line` as executed for line coverage (`Op::CoverLine`), unless it
+    /// was the line just marked. Only under a coverage tracker, and only for a
+    /// function that knows its source file. Called at each statement (after a
+    /// reset, so every statement is marked) and at each expression, so the
+    /// continuation lines of a multi-line hash or call are counted as the
+    /// tree-walker counts them.
+    pub(crate) fn cover_line(&mut self, line: usize) {
+        if self.coverage
+            && line > 0
+            && line != self.last_cover_line
+            && self.proto.source_path.is_some()
+        {
+            self.emit(Op::CoverLine(line as u32), line);
+            self.last_cover_line = line;
+        }
     }
 
     // --- Chunk helpers ---
@@ -524,6 +566,8 @@ impl Compiler {
     ) -> Box<Compiler> {
         let mut new_compiler = Compiler::new(function_type, name);
         new_compiler.class_context = self.class_context.clone();
+        // A closure lives in the file of the function that encloses it.
+        new_compiler.proto.source_path = self.proto.source_path.clone();
         // Nested functions share the module's known-globals set so they make
         // the same local-vs-global decision for bare assignments.
         new_compiler.known_globals = self.known_globals.clone();
@@ -939,7 +983,7 @@ fn stack_effect(op: Op) -> i32 {
         | HashGetGlobalConst2(_, _, _) => 1,
         HashSetGlobalConst(_, _) => -1,
         IncrLocal(_) | DecrLocal(_) | IncrLocalFast(_) | SwapSetLocal(_) | IsNull | NotNull
-        | PopNull | Nop => 0,
+        | PopNull | Nop | CoverLine(_) => 0,
         AddLocalLocal(_, _)
         | SubLocalLocal(_, _)
         | MulLocalLocal(_, _)

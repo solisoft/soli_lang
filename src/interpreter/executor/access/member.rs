@@ -28,6 +28,64 @@ use crate::span::Span;
 /// The wrapper builds a fresh environment parented to the function's closure,
 /// binds `this` and `self` to the receiver, binds positional args to params,
 /// then runs the body via a default `Interpreter`.
+/// The names `hash.name` reads as a builtin method rather than a key. Anything
+/// else is the key's value, or `null` when the key is absent. The ONE list,
+/// shared by the tree-walker (`hash_member_access`) and the VM
+/// (`op_get_property`): the VM used to answer a method for every absent key,
+/// so `if record._errors` was true on a hash with no `_errors` and a
+/// successful update took the error branch (2.6.2).
+pub(crate) fn is_hash_method_name(name: &str) -> bool {
+    matches!(
+        name,
+        "length"
+            | "len"
+            | "size"
+            | "map"
+            | "filter"
+            | "each"
+            | "get"
+            | "fetch"
+            | "invert"
+            | "transform_values"
+            | "transform_keys"
+            | "select"
+            | "reject"
+            | "slice"
+            | "except"
+            | "compact"
+            | "dig"
+            | "to_string"
+            | "to_json"
+            | "keys"
+            | "values"
+            | "has_key"
+            | "delete"
+            | "merge"
+            | "entries"
+            | "clear"
+            | "set"
+            | "empty?"
+            | "is_a?"
+            | "shift"
+            | "flatten"
+            | "values_at"
+            | "key"
+            | "has_value?"
+            | "value?"
+            | "to_h"
+            | "keep_if"
+            | "delete_if"
+            | "update"
+            | "all?"
+            | "any?"
+            | "assoc"
+            | "rassoc"
+            | "fetch_values"
+            | "each_key"
+            | "each_value"
+    )
+}
+
 pub(crate) fn bind_user_method_to_receiver(receiver: Value, func: Rc<Function>) -> Value {
     let name = format!("primitive::{}", func.name);
     // Arity is set from the user function's param count so the auto-invoke
@@ -2190,26 +2248,18 @@ impl Interpreter {
             _ => {}
         }
         // First check if it's a known method
-        match name {
-            "length" | "len" | "size" | "map" | "filter" | "each" | "get" | "fetch" | "invert"
-            | "transform_values" | "transform_keys" | "select" | "reject" | "slice" | "except"
-            | "compact" | "dig" | "to_string" | "to_json" | "keys" | "values" | "has_key"
-            | "delete" | "merge" | "entries" | "clear" | "set" | "empty?" | "is_a?" | "shift"
-            | "flatten" | "values_at" | "key" | "has_value?" | "value?" | "to_h" | "keep_if"
-            | "delete_if" | "update" | "all?" | "any?" | "assoc" | "rassoc" | "fetch_values"
-            | "each_key" | "each_value" => Ok(Value::method(ValueMethod {
+        if is_hash_method_name(name) {
+            return Ok(Value::method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
-            })),
-            _ => {
-                // Try to access as a hash key (dot notation for hash access)
-                // Use StrKey for zero-allocation lookup (hashes identically to HashKey::String)
-                if let Some(v) = hash.borrow().get(&crate::interpreter::value::StrKey(name)) {
-                    return Ok(v.clone());
-                }
-                Ok(Value::Null)
-            }
+            }));
         }
+        // Try to access as a hash key (dot notation for hash access)
+        // Use StrKey for zero-allocation lookup (hashes identically to HashKey::String)
+        if let Some(v) = hash.borrow().get(&crate::interpreter::value::StrKey(name)) {
+            return Ok(v.clone());
+        }
+        Ok(Value::Null)
     }
 
     pub(crate) fn query_builder_member_access(

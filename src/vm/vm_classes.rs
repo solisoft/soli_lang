@@ -494,22 +494,36 @@ impl Vm {
                 {
                     return Ok(bound);
                 }
-                Err(RuntimeError::NoSuchProperty {
-                    value_type: class.name.clone(),
-                    property: name.to_string(),
-                    span,
-                })
+                // Whatever the VM does not resolve itself is asked of the
+                // tree-walker's `class_member_access` — the one definition of
+                // class members — before answering "no such property". The
+                // case that shipped: `klass.new(attrs)` on a model class
+                // reached through a variable (a generic `tenant_add(klass,
+                // attrs)` helper) raised "Cannot access property 'new'", which
+                // after a write was a 500 in production (2.6.2). The
+                // interpreter answers the same NoSuchProperty for a member
+                // neither engine knows.
+                let mut interp = Interpreter::for_vm_fragment(&self.globals);
+                interp.evaluate_member_on_value(object.clone(), name, span)
             }
+            // The tree-walker's rule (`hash_member_access`), from the same
+            // list: a builtin method name reads as the method, anything else
+            // as the key's value — `null` when the key is absent. The VM used
+            // to answer a method for every absent key, so `if rec._errors` was
+            // true on a hash without `_errors` and a successful
+            // `Model.update(id, attrs)` took the error branch (2.6.2).
             Value::Hash(hash) => {
-                let hash = hash.borrow();
-                if let Some(val) = hash.get(&crate::interpreter::value::StrKey(name)) {
-                    Ok(val.clone())
-                } else {
-                    Ok(Value::method(ValueMethod {
+                if crate::interpreter::executor::access::member::is_hash_method_name(name) {
+                    return Ok(Value::method(ValueMethod {
                         receiver: Box::new(object.clone()),
                         method_name: name.to_string(),
-                    }))
+                    }));
                 }
+                let hash = hash.borrow();
+                Ok(hash
+                    .get(&crate::interpreter::value::StrKey(name))
+                    .cloned()
+                    .unwrap_or(Value::Null))
             }
             Value::Array(_) => {
                 // Array methods like .length, .map, .filter, etc.

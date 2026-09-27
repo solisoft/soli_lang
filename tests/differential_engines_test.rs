@@ -1189,6 +1189,29 @@ const CASES: &[(&str, &str)] = &[
         "implicit_return_through_trailing_if",
         "class Signup\n  def go(m)\n    @seen = true\n    if m == \"POST\"\n      done = 1\n      \"redirected\"\n    end\n  end\n  def pick(m)\n    if m == \"POST\"\n      \"yes\"\n    else\n      \"no\"\n    end\n  end\n  def nested(a, b)\n    unless a\n      \"not a\"\n    else\n      if b\n        \"a and b\"\n      end\n    end\n  end\nend\ndef top(m)\n  if m\n    \"top-yes\"\n  end\nend\ns = new Signup()\nprint(s.go(\"POST\"))\nprint(s.go(\"GET\"))\nprint(s.pick(\"GET\"))\nprint(s.nested(false, true))\nprint(s.nested(true, true))\nprint(s.nested(true, false))\nprint(top(true))\nprint(top(false))",
     ),
+    // A missing key read with a dot is null on the tree-walker; the VM answered
+    // a method object, which is truthy — `if rec._errors` was true on a hash
+    // without `_errors`, and a successful `Model.update(id, attrs)` took the
+    // error branch (a GRC app, 2.6.2). Builtin hash methods still read as
+    // methods on both engines, with or without parentheses.
+    (
+        "hash_missing_key_dot_is_null",
+        "h = {\"title\": \"x\", \"b\": 2}\nprint(h._errors)\nif h._errors\n  print(\"error branch\")\nelse\n  print(\"ok branch\")\nend\nprint(h.missing)\nprint(h.title)\nprint(h.keys)\nprint(h.length())\nprint(h.to_json())\nprint(h.dig(\"title\"))",
+    ),
+    // A model class reached through a variable — the generic
+    // `tenant_add(klass, attrs)` shape: `klass.new(attrs)` raised "Cannot
+    // access property 'new'" on the VM (2.6.2).
+    (
+        "model_new_through_a_variable",
+        "class Thing < Model\nend\ndef build(klass, attrs)\n  rec = klass.new(attrs)\n  return rec\nend\nprint(build(Thing, {\"title\": \"hello\"}).title)\nprint(Thing.new({\"title\": \"x\"}).title)",
+    ),
+    // Model scopes from a module's `included` block, read bare, with empty
+    // parens and with an argument. The VM had no scope lookup on a model class
+    // (2.6.3). `to_query` builds the query without a database.
+    (
+        "model_scope_from_an_included_module",
+        "module Scoped\n  included do\n    scope(\"owned\", fn() { this.where({\"owner\": \"o1\"}) })\n    scope(\"of_kind\", fn(kind) { this.where({\"kind\": kind}) })\n  end\nend\nclass Gadget < Model\n  include Scoped\nend\nprint(Gadget.owned.to_query)\nprint(Gadget.owned().to_query)\nprint(Gadget.of_kind(\"lamp\").to_query)",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

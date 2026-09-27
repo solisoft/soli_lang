@@ -241,6 +241,13 @@ pub enum Op {
     CallGlobal(u16, u8),
     /// No-op: does nothing (placeholder after peephole optimization)
     Nop,
+    /// Line coverage: record a hit for this line of the function's source file.
+    /// Emitted at the start of each statement ONLY when a coverage tracker was
+    /// installed at compile time (`soli test --coverage`), so an ordinary
+    /// `soli serve` compiles none and pays nothing. Without it, code run on
+    /// the VM was never counted: once every action ran there (2.6.2), a suite
+    /// that covered 97% of an app reported 63%.
+    CoverLine(u32),
     /// Combined property access + call: receiver is below args, method name from constant.
     /// Avoids allocating Value::Method intermediary.
     CallMethod(u16, u8),
