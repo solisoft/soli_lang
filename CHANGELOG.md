@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-09-27
+
 ### Added
 
 * **feat(eui):** **EUI protocol 7: an absolute child names the edge it sits against.** `"position"` takes `"absolute_start"`, `"absolute_center"` and `"absolute_end"`: an absolute child of a `stack` placed across at that edge whatever the stack's `justify` says — a badge at a card's top right beside children that start at the left. The encoder (`serve/eui/tree.rs`) maps the three words, and a session whose client is below 7 is sent plain `"absolute"`, placed by the stack's `justify` as before (`StyleRecord::for_protocol`). Needs the eui revision that makes `PROTOCOL_VERSION` 7. Docs: `www/docs/eui/styling.md`. Test: `an_absolute_child_naming_its_edge_is_plain_absolute_below_7`.
