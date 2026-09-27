@@ -200,6 +200,12 @@ the resting style alone, for a `text` node.
 | `mx-auto` · `my-auto` · `block` · `relative`, `static` | `self: center` · `self: center` · `display: column` · `position: flow` |
 | `bg-gradient-to-r` … `-tl`, `from-*`, `via-*`, `to-*`, `from-10%` … | one `bg` gradient, in any class order; `to-*` is required, since a role has no transparent copy to fade to |
 | `animate-spin`, `animate-pulse`, `animate-bounce` | `animation`, and two of them are both: `["spin", "pulse"]` |
+| `ml-auto`, `mr-auto`, `mt-auto`, `mb-auto`, `m-auto` | placed by the box the node is put in — any `row` or `column`, with classes or without: a spacer along its line, `self` across it |
+| `flex-row-reverse`, `flex-col-reverse` | on a node: the children in the other order, `justify` turned to match |
+| `border-b-2 border-b-indigo-600`, `border-x-gray-300` … | the box's one `border_color`, when every side that is drawn comes out the same colour; otherwise it raises, naming both |
+| `absolute top-2`, `right-0`, `bottom-0`, `left-4`, `inset-0`, `inset-x-0` in a `stack` | `self`, a `position` that names the edge across (`absolute_end` for `right-*`, EUI protocol 7), and a margin — or the full width or height |
+| `size-10 aspect-square`, `w-64 aspect-video` | the length not given, from the one that was, in px |
+| `flex-grow`, `flex-shrink-0`, `justify-normal`, `z-auto`, `max-w-none`, `ring-0`, `font-light`, `font-black` | `grow`, `shrink`, `start`, `0`, `auto`, no border, and the nearest of the four weights |
 
 Breakpoints need the viewport's width, which the view is given on `connect`
 and on every resize and `tw()` is not — so pass it, and a class under a

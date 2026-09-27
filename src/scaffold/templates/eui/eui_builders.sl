@@ -28,7 +28,9 @@
 # A style may also say `"tw": "flex items-center gap-3 hover:bg-gray-50"`, and
 # `node()` — so `column`, `row` and `stack` — turn the classes into those keys
 # and the `hover:`/`active:`/`focus:` ones into local handlers
-# (`eui_builders_tw.sl`). Keys written beside `tw` win over it.
+# (`eui_builders_tw.sl`). Keys written beside `tw` win over it. A child whose
+# classes say `ml-auto` and its kin is placed here, by whatever box it is
+# given to, with or without classes of its own.
 
 def node(kind, style, children)
   # Not `n`: a bare assignment here would write the caller's `n`, and half
@@ -38,9 +40,10 @@ def node(kind, style, children)
     "s": style,
     "c": children
   }
-  return nd_made if style.nil? || style["tw"].nil?
+  nd_made = tw_node(nd_made) unless style.nil? || style["tw"].nil?
+  return tw_auto_place(nd_made) if tw_autos?(nd_made["c"])
 
-  tw_node(nd_made)
+  nd_made
 end
 
 def column(style, children)

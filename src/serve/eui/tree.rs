@@ -1811,6 +1811,9 @@ impl Encoder {
                             ("flow", Position::Flow),
                             ("absolute", Position::Absolute),
                             ("pointer", Position::Pointer),
+                            ("absolute_start", Position::AbsoluteStart),
+                            ("absolute_center", Position::AbsoluteCenter),
+                            ("absolute_end", Position::AbsoluteEnd),
                         ],
                     )?
                 }
@@ -3100,6 +3103,36 @@ mod tests {
         // And a render with no handshake behind it is at ours.
         let got = defined_styles(&mut Encoder::default(), &view);
         assert_eq!(got[0].gap, 13);
+    }
+
+    #[test]
+    fn an_absolute_child_naming_its_edge_is_plain_absolute_below_7() {
+        // eui 04 §5: `absolute_end` (Tailwind's `right-0`) is version 7. A
+        // session at 6 is sent `absolute`, and its client places the node
+        // by the stack's `justify` as it always has.
+        let view = json!({"k": "box", "s": {"position": "absolute_end", "margin": [0, 2, 0, 0]}});
+        let mut old = Encoder::default();
+        old.set_protocol(6);
+        let got = defined_styles(&mut old, &view);
+        assert_eq!(got[0].position, Position::Absolute);
+        assert_eq!(got[0].margin, [0, 2, 0, 0]);
+
+        let mut new = Encoder::default();
+        new.set_protocol(7);
+        assert_eq!(
+            defined_styles(&mut new, &view)[0].position,
+            Position::AbsoluteEnd
+        );
+        for (word, want) in [
+            ("absolute_start", Position::AbsoluteStart),
+            ("absolute_center", Position::AbsoluteCenter),
+        ] {
+            let v = json!({"k": "box", "s": {"position": word}});
+            assert_eq!(
+                defined_styles(&mut Encoder::default(), &v)[0].position,
+                want
+            );
+        }
     }
 
     fn all_ops(enc: &mut Encoder, view: &serde_json::Value) -> Vec<Op> {
