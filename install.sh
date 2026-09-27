@@ -73,6 +73,17 @@ else
   echo "Error: curl or wget is required"; exit 1
 fi
 
+# --- What is installed now ---
+# Asked of the binary itself: `soli --version` has always been safe to run.
+# The copy in INSTALL_DIR is the one this replaces; a different `soli` first
+# on the PATH is the one a shell will actually run, which is worth knowing
+# before and after.
+OLD_VERSION=""
+if [ -x "${INSTALL_DIR}/soli" ]; then
+  OLD_VERSION=$("${INSTALL_DIR}/soli" --version 2>/dev/null | head -1)
+  echo "Installed now: ${OLD_VERSION:-unknown} (${INSTALL_DIR}/soli)"
+fi
+
 # --- Get latest version tag ---
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 TAG=""
@@ -82,16 +93,19 @@ if TAG=$(fetch "$API_URL" 2>/dev/null | grep '"tag_name"' | head -1 | sed 's/.*"
   fi
 fi
 
-if [ -z "$TAG" ]; then
-  echo "Warning: could not fetch latest release, falling back to v0.20.0"
-  TAG="v0.20.0"
-fi
-
-echo "Installing Soli ${TAG} ..."
-
 # --- Download and extract ---
 TARBALL="soli-${OS}-${ARCH}.tar.gz"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${TARBALL}"
+if [ -n "$TAG" ]; then
+  echo "Installing Soli ${TAG} ..."
+  DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${TARBALL}"
+else
+  # The API is rate-limited (60 calls an hour without a token), and this used
+  # to fall back to v0.20.0 -- installing a release years old behind a
+  # one-line warning. GitHub's `latest/download` link needs no API, and the
+  # binary says which version it is once it is here.
+  echo "Could not ask GitHub which release is latest; downloading it without asking ..."
+  DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${TARBALL}"
+fi
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -99,6 +113,9 @@ echo "Downloading ${DOWNLOAD_URL} ..."
 fetch "$DOWNLOAD_URL" > "${TMP_DIR}/${TARBALL}"
 
 tar xzf "${TMP_DIR}/${TARBALL}" -C "$TMP_DIR"
+
+NEW_VERSION=$("${TMP_DIR}/soli" --version 2>/dev/null | head -1)
+echo "Downloaded: ${NEW_VERSION:-a binary that did not say its version}"
 
 # --- Install binary ---
 if [ "$NEED_ELEVATION" = "1" ]; then
@@ -138,12 +155,22 @@ case ":${PATH}:" in
 esac
 
 # --- Verify ---
-if command -v soli >/dev/null 2>&1; then
+# The version is read from the file just installed, not from whatever `soli`
+# the PATH finds first -- which may be another copy, and used to be what
+# this printed as the result.
+echo ""
+echo "Soli installed to ${INSTALL_DIR}/soli"
+echo "  version: $("${INSTALL_DIR}/soli" --version 2>/dev/null | head -1)"
+if [ -n "$OLD_VERSION" ]; then
+  if [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
+    echo "  (the version that was already installed)"
+  else
+    echo "  was:     ${OLD_VERSION}"
+  fi
+fi
+FOUND=$(command -v soli 2>/dev/null || true)
+if [ -n "$FOUND" ] && [ "$FOUND" != "${INSTALL_DIR}/soli" ]; then
   echo ""
-  echo "Soli installed successfully!"
-  soli --version
-else
-  echo ""
-  echo "Soli installed to ${INSTALL_DIR}/soli"
-  echo "Run 'soli --version' to verify (you may need to reload your shell)."
+  echo "Note: your shell runs ${FOUND} first, which is $("$FOUND" --version 2>/dev/null | head -1)."
+  echo "Put ${INSTALL_DIR} earlier on your PATH, or remove that copy, to run this one."
 fi

@@ -49,6 +49,10 @@
     </p>
 
     <p class="text-gray-400 mt-4 mb-2 text-sm">
+        It says which versions it saw: the <code class="text-amber-300">soli</code> already in the install directory, the one it downloaded, and the one it installed, read from each binary with <code class="text-amber-300">soli --version</code>. When the shell would run a different <code class="text-amber-300">soli</code> first on your <code class="text-amber-300">PATH</code>, it names that copy and its version. If GitHub's API does not answer (it is rate-limited without a token), it downloads the latest release through GitHub's <code class="text-amber-300">latest/download</code> link instead.
+    </p>
+
+    <p class="text-gray-400 mt-4 mb-2 text-sm">
         When run as <strong class="text-white">root</strong> (e.g. through <code class="text-amber-300">sudo</code>, or inside a Docker image build),
         the installer automatically targets <code class="text-amber-300">/usr/local/bin</code> so every user can run <code class="text-amber-300">soli</code> — no <code class="text-amber-300">--system</code> flag needed:
     </p>

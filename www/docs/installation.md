@@ -20,6 +20,8 @@ curl -sSL https://raw.githubusercontent.com/solisoft/soli_lang/main/install.sh |
 
 This detects your OS and architecture, downloads the latest release binary, and installs it to `~/.local/bin`.
 
+It says which versions it saw: the `soli` already in the install directory, the one it downloaded, and the one it installed, read from each binary with `soli --version`. When the shell would run a different `soli` first on your `PATH`, it names that copy and its version, since that is the one your commands will reach. If GitHub's API does not answer (it is rate-limited without a token), it downloads the latest release through GitHub's `latest/download` link instead, and the version still comes from the binary.
+
 When run as **root** (e.g. through `sudo`, or inside a Docker image build), the installer
 automatically targets `/usr/local/bin` so every user on the machine can run `soli` — no
 `--system` flag needed:
