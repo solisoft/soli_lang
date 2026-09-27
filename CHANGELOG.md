@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-09-27
+
 ### Fixed
 
 * **fix(build):** **v2.6.0 did not build outside this checkout; pin eui at `5bf0354` (protocol 7).** The EUI protocol 7 change in v2.6.0 used `eui_proto::Position::AbsoluteStart/Center/End`, which existed only in a local `../eui` working tree reached through the untracked `.cargo/config.toml` patch; `Cargo.toml` still pinned eui at `3995713` (protocol 6). Every CI job failed to compile, so the v2.6.0 tag produced no binaries and no GitHub release. The eui protocol 7 work is now published (`solisoft/eui` `5bf0354`) and both `eui-proto` and `eui-client` are pinned to it, with `Cargo.lock` regenerated without the local patch. v2.6.1 is v2.6.0 as it should have shipped.
