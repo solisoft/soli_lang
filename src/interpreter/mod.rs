@@ -9,6 +9,7 @@ pub mod inline_cache;
 pub mod jsonp;
 pub mod limits;
 pub mod mixin_registry;
+pub mod small_map;
 pub mod symbol;
 pub mod taint;
 pub mod value;

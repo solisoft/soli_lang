@@ -717,7 +717,7 @@ impl Vm {
             "parse_json" => match crate::interpreter::value::parse_json(s) {
                 Ok(value) => Ok(value),
                 Err(_) => Ok(Value::Hash(Rc::new(RefCell::new(
-                    indexmap::IndexMap::with_hasher(ahash::RandomState::new()),
+                    crate::interpreter::value::HashPairs::default(),
                 )))),
             },
             // Parse JSON and only return a Hash; null when the input isn't

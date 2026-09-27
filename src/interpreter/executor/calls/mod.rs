@@ -8,6 +8,7 @@ pub(crate) mod decimal_methods;
 pub(crate) mod float_methods;
 pub(crate) mod function;
 mod hash_methods;
+pub mod hash_pure;
 pub(crate) mod int_methods;
 mod method;
 pub mod method_registry;

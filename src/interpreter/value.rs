@@ -9,7 +9,6 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
 use ahash::RandomState as AHasher;
-use indexmap::IndexMap;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use serde::ser::{SerializeMap, SerializeSeq};
@@ -264,8 +263,9 @@ pub fn empty_hash() -> Value {
     Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
 }
 
-/// Type alias for hash map storage — uses ahash for 3-5x faster hashing than SipHash.
-pub type HashPairs = IndexMap<HashKey, Value, AHasher>;
+/// Storage for a Soli hash: insertion-ordered, linear up to eight entries and
+/// an `IndexMap` (ahash) beyond — see [`super::small_map`].
+pub type HashPairs = super::small_map::SmallMap;
 
 #[inline]
 pub fn hash_get_value<'a>(hash: &'a HashPairs, key: &Value) -> Option<&'a Value> {
@@ -3172,8 +3172,7 @@ mod value_misc_tests {
             Value::Array(Rc::new(RefCell::new(Vec::new()))).type_name(),
             "array"
         );
-        let h: indexmap::IndexMap<HashKey, Value, ahash::RandomState> =
-            indexmap::IndexMap::default();
+        let h = HashPairs::default();
         assert_eq!(Value::Hash(Rc::new(RefCell::new(h))).type_name(), "hash");
         assert_eq!(Value::Symbol("x".into()).type_name(), "symbol");
     }
@@ -3191,8 +3190,7 @@ mod value_misc_tests {
         assert!(!Value::Int(0).is_truthy());
         assert!(!Value::String(String::new().into()).is_truthy());
         assert!(!Value::Array(Rc::new(RefCell::new(Vec::new()))).is_truthy());
-        let h: indexmap::IndexMap<HashKey, Value, ahash::RandomState> =
-            indexmap::IndexMap::default();
+        let h = HashPairs::default();
         assert!(!Value::Hash(Rc::new(RefCell::new(h))).is_truthy());
     }
 

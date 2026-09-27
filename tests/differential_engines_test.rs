@@ -406,6 +406,90 @@ const CASES: &[(&str, &str)] = &[
         "let h = {\"a\": 1}\nprint(h.shift())",
     ),
     (
+        // `delete` and `shift` keep the remaining keys in insertion order. The
+        // VM swapped the last key into the hole (both the literal-key opcode
+        // and the dynamic-key call), and both engines did it on `shift`.
+        "hash_delete_shift_keep_order",
+        "let h = {\"a\": 1, \"b\": 2, \"c\": 3, \"d\": 4}\nh.delete(\"a\")\nprint(h.keys())\nlet k = \"b\"\nh.delete(k)\nprint(h.keys())\nlet s = {:x => 1, :y => 2, :z => 3}\ns.delete(:x)\nprint(s.keys())\nlet g = {\"a\": 1, \"b\": 2, \"c\": 3}\nprint(g.shift())\nprint(g.keys())",
+    ),
+    (
+        // `except` keeps the survivors' order, ignores absent and unhashable
+        // keys, and leaves the receiver alone.
+        "hash_except_order_and_misses",
+        "let h = {\"a\": 1, \"b\": 2, \"c\": 3, 1: \"one\"}\nprint(h.except([\"c\", \"a\", \"zz\", 1.5, 1]))\nprint(h.except([]))\nprint(h.keys())\nlet e = h.except([\"b\"])\ne.set(\"n\", 9)\nprint(e.keys())\nprint(h.length())",
+    ),
+    (
+        // Borrowed-tier methods answered straight off the VM stack, including
+        // errors and the fall-through to a callable stored in the hash.
+        "hash_borrowed_methods",
+        "let h = {\"a\": 1, \"b\": {\"c\": [10, 20]}}\nprint(h.dig(\"b\", \"c\", -1))\nprint(h.slice([\"b\", \"a\", \"q\"]).keys())\nprint(h.values_at(\"a\", \"q\"))\nprint(h.merge({\"a\": 5, \"z\": 0}))\nprint(h.to_h() == h)\nprint(h.fetch(\"q\", 7))\nprint(h.fetch(\"q\") rescue \"missing\")\nlet t = {\"hi\": fn(n) n * 2}\nprint(t.hi(21))",
+    ),
+    (
+        // Templates (`Kernel` in `vm_callback_loop.rs`) evaluate pure callback bodies without a frame; every hand-off — overflow, floats, mixed types, strings, null, unhashable keys, a side-effecting body — must give what the frame path gives.
+        "callback_templates_match_the_frame_path",
+        "fn main() {\n  let big = 9223372036854775807\n  let a = [1, 2, 3, 4]\n  print(a.map(fn(x) x * 2))\n  print(a.map(fn(x) x))\n  print(a.filter(fn(x) x > 2))\n  print(a.filter(fn(x) x <= 2))\n  print([1.5, 2.5].map(fn(x) x * 2.0))\n  print([1, 2.5, 3].map(fn(x) x + 1))\n  print([1, \"s\", 3].filter(fn(x) x == 1))\n  try { print([1, big].map(fn(x) x * 2)) } catch e { print(\"overflow\") }\n  try { print([1, big].map(fn(x) x + 1)) } catch e { print(\"overflow2\") }\n  print([big, 1].map(fn(x) x - 1))\n  let h = {\"a\": 1, \"b\": 2.5, \"c\": 3}\n  print(h.map(fn(k, v) [k, v + 1]))\n  print({\"a\": 1, \"b\": 2}.map(fn(k, v) [v, k]))\n  print(h.filter(fn(k, v) v > 1))\n  print(h.any?(fn(k, v) v > 2))\n  print(h.all?(fn(k, v) v > 0))\n  print(h.transform_values(fn(v) v * 10))\n  print(h.transform_keys(fn(k) k))\n  print(h.each_value(fn(v) v) == h)\n  let n = {\"x\": null, \"y\": 1}\n  print(n.filter(fn(k, v) v))\n  try { print(n.transform_values(fn(v) v + 1)) } catch e { print(\"null+1\") }\n  try { print({\"a\": 1.5}.map(fn(k, v) [v, k])) } catch e { print(\"unhashable\") }\n  let ints = {1: 10, 2: 20}\n  print(ints.transform_keys(fn(k) k * 2))\n  print(ints.map(fn(k, v) [k, v * 2]))\n  let big12 = {}\n  for i in 0..12 { big12[\"k#{i}\"] = i }\n  print(big12.filter(fn(k, v) v >= 9))\n  print(big12.transform_values(fn(v) v - 1))\n  print(big12.any?(fn(k, v) v > 10))\n  let s = [3, 1, 2]\n  let calls = 0\n  print(s.map(fn(x) { calls = calls + 1\n    x * 2 }))\n  print(calls)\n  print([].map(fn(x) x * 2))\n  print({}.filter(fn(k, v) v > 1))\n}\nmain()",
+    ),
+    (
+        // The accumulator template (`total = total + v` in a loop callback) writes a captured variable: open and closed cells, ints, floats, a mixed and a string sum (frame path), overflow midway.
+        "callback_accumulator_template",
+        "fn make_counter() {\n  let n = 0\n  let add = fn(x) { n = n + x }\n  return [add, fn() { n }]\n}\nfn main() {\n  let row = {\"a\": 1, \"b\": 2, \"c\": 3}\n  let c = 0\n  row.each(fn(k, v) { c = c + 1 })\n  print(c)\n  let total = 0\n  row.each(fn(k, v) { total = total + v })\n  print(total)\n  let ft = 0.5\n  [1.5, 2.25].each(fn(x) { ft = ft + x })\n  print(ft)\n  let mix = 1\n  [1.5, 2].each(fn(x) { mix = mix + x })\n  print(mix)\n  let s = \"\"\n  [\"a\", \"b\"].each(fn(x) { s = s + x })\n  print(s)\n  let big = 9223372036854775800\n  try { [5, 5].each(fn(x) { big = big + x }) } catch e { print(\"overflow\") }\n  print(big)\n  let pair = make_counter()\n  [1, 2, 3].each(pair[0])\n  print(pair[1]())\n  let r = [10, 20].map(fn(x) { total = total + x })\n  print(r)\n  print(total)\n  let ks = 0\n  {1: \"x\", 2: \"y\"}.each(fn(k, v) { ks = ks + k })\n  print(ks)\n  let seen = 0\n  print({\"a\": 1, \"b\": 5}.any?(fn(k, v) { seen = seen + v }))\n  print(seen)\n}\nmain()",
+    ),
+    (
+        // `map` callbacks returning pairs: pooled arrays, a pair the callback keeps, nested and unhashable pairs.
+        "callback_map_pairs_and_pool",
+        "fn main() {\n  let h = {\"a\": 1, \"b\": 2, \"c\": 3}\n  print(h.map(fn(k, v) [k, v * 2]))\n  let saved = []\n  print(h.map(fn(k, v) { let p = [k + k, v]\n    saved.push(p)\n    p }))\n  print(saved)\n  let lits = []\n  for i in 0..3 { lits.push([i, i]) }\n  print(lits)\n  print(h.map(fn(k, v) [k, [v, v]]))\n  try { h.map(fn(k, v) [1.5, v]) } catch e { print(\"err\") }\n  print([1, 2].map(fn(x) [x, x]))\n}\nmain()",
+    ),
+    (
+        // `each |pair|` refills the previous pair in place only when the callback kept no reference to it.
+        "callback_pair_argument_reuse",
+        "fn main() {\n  let h = {\"a\": 1, \"b\": 2, \"c\": 3}\n  let kept = []\n  h.each(fn(p) { kept.push(p) })\n  print(kept)\n  let last = null\n  h.each(fn(p) { last = p })\n  print(last)\n  let firsts = []\n  h.each(fn(p) { firsts.push(p[0]) })\n  print(firsts)\n  h.each(fn(p) { p.push(9) })\n  let seen = []\n  h.each(fn(p) { seen.push(p.length()) })\n  print(seen)\n}\nmain()",
+    ),
+    (
+        // `GetLocal, Constant, <cmp>` fuses into `<Cmp>LocalConst`: int, float
+        // and mixed operands, strings, all four comparators, in expressions,
+        // `if`, `while` and a predicate callback.
+        "compare_local_with_constant",
+        "fn main() {\n  let i = 5\n  let f = 2.5\n  let s = \"abc\"\n  let n = null\n  print([i < 10, i <= 5, i > 4, i >= 6])\n  print([f < 3, f <= 2.5, f > 2.0, f >= 2.6])\n  print([i < 5.5, i > 4.9, f < 3, f > 2])\n  print([\"b\" < \"c\", s > \"abb\", s >= \"abc\", s <= \"a\"])\n  let c = 0\n  let k = 0\n  while k < 10 {\n    if k > 3 { c = c + k }\n    if k >= 8 { c = c + 100 }\n    k = k + 1\n  }\n  print(c)\n  print([1, 5, 12, 40].filter(fn(x) x > 10))\n  print({\"a\": 1, \"b\": 20}.any?(fn(k, v) v >= 20))\n}\nmain()",
+    ),
+    (
+        // Iterator methods with a compiled callback run their loop inside the
+        // VM's dispatch loop (`vm_callback_loop.rs`). Every kind, the
+        // `(k, v)` / `[k, v]` argument shapes, short-circuiting (the call
+        // count proves it), results and errors, empty receivers, mutation
+        // during iteration, a throw out of a callback, nesting and chaining.
+        "callback_loops_match_the_native_drivers",
+        "fn main() {\n  let h = {\"a\": 1, \"b\": 2, \"c\": 3}\n  let seen = []\n  let r = h.each(fn(k, v) { seen.push(\"#{k}=#{v}\") })\n  print(seen)\n  print(r == h)\n  let pairs = []\n  h.each(fn(p) { pairs.push(p) })\n  print(pairs)\n  let vals = []\n  print(h.each_value(fn(v) { vals.push(v * 10) }) == h)\n  print(vals)\n  let ks = []\n  h.each_key(fn(k) { ks.push(k) })\n  print(ks)\n  print(h.map(fn(k, v) [k + \"!\", v * 2]))\n  print(h.map(fn(k, v) { if v == 2 { return \"skip\" }\n    [k, v] }))\n  let failed = false\n  try { h.map(fn(k, v) [[1], v]) } catch e { failed = true }\n  print(failed)\n  print(h.filter(fn(k, v) v > 1))\n  print(h.select(fn(k, v) v != 2))\n  print(h.reject(fn(k, v) v > 1))\n  let calls = 0\n  print(h.any?(fn(k, v) { calls = calls + 1\n    v >= 2 }))\n  print(calls)\n  calls = 0\n  print(h.all?(fn(k, v) { calls = calls + 1\n    v < 2 }))\n  print(calls)\n  print(h.any?(fn(k, v) v > 99))\n  print(h.all?(fn(k, v) v > 0))\n  print(h.transform_values(fn(v) v * 100))\n  print(h.transform_keys(fn(k) k + k))\n  print({}.map(fn(k, v) [k, v]))\n  print({}.any?(fn(k, v) true))\n  print({}.all?(fn(k, v) false))\n  let a = [1, 2, 3, 4]\n  print(a.map(fn(x) x * x))\n  print(a.filter(fn(x) x % 2 == 0))\n  let acc = []\n  print(a.each(fn(x) { acc.push(x) }) == a)\n  print(acc)\n  print([].map(fn(x) x))\n  let grow = [1, 2]\n  grow.each(fn(x) { if x < 5 { grow.push(x + 10) } })\n  print(grow)\n  try { a.map(fn(x) { if x == 3 { throw {\"code\": 404} }\n    x }) } catch e { print(e) }\n  print(a.map(fn(x) a.map(fn(y) x * y).length()))\n  print(h.map(fn(k, v) [k, v]).length())\n  print(a.map(fn(x) x * 2).filter(fn(x) x > 4).map(fn(x) x + 1))\n}\nmain()",
+    ),
+    (
+        // Hash literals: distinct keys build directly (`HashWithKeys`); a
+        // repeated key keeps the first key's position with the last value;
+        // past eight entries the hash moves to its indexed form, same order.
+        "hash_literal_keys_small_and_large",
+        "let d = {\"a\": 1, \"b\": 2, \"a\": 3}\nprint(d)\nprint(d.keys())\nlet big = {\"k1\": 1, \"k2\": 2, \"k3\": 3, \"k4\": 4, \"k5\": 5, \"k6\": 6, \"k7\": 7, \"k8\": 8, \"k9\": 9, \"k10\": 10}\nprint(big.keys())\nbig.delete(\"k2\")\nprint(big[\"k9\"])\nprint(big.length())\nlet grow = {}\nfor i in 0..12 { grow[\"g#{i}\"] = i }\ngrow.delete(\"g0\")\nprint(grow.keys())\nprint({\"x\": 1, \"y\": 2} == {\"y\": 2, \"x\": 1})",
+    ),
+    (
+        // `a && <comparison>` inside an `if`: the `&&` short-circuit jumps
+        // onto the `if`'s `JumpIfFalse`, which the peephole must then leave
+        // unfused. An off-by-one in its jump-target guard fused it anyway, and
+        // the short-circuit landed inside the then-branch.
+        "and_with_comparison_rhs_in_if",
+        "fn f(cond) {\n  let t = 0\n  for k in 0..10 { if cond(k) { t = t + k } }\n  return t\n}\nlet t1 = 0\nfor k in 0..10 { if k > 4 && k != 7 { t1 = t1 + k } }\nprint(t1)\nlet t2 = 0\nfor k in 0..10 { if k > 4 && k < 7 { t2 = t2 + k } }\nprint(t2)\nlet t3 = 0\nfor k in 0..10 { if k != 7 && k > 4 { t3 = t3 + k } }\nprint(t3)\nlet t4 = 0\nfor k in 0..10 { if k < 3 || k >= 8 { t4 = t4 + k } }\nprint(t4)\nlet t5 = 0\nlet k = 0\nwhile k < 10 { if k > 1 && k <= 5 { t5 = t5 + k }\n  k = k + 1 }\nprint(t5)",
+    ),
+    (
+        // The VM's fast dispatch tier hands an op back to the general arm
+        // whenever it cannot finish it inline. Each line here takes one of
+        // those hand-offs: an overflow (the error must still carry the line),
+        // mixed int/float arithmetic and comparison, string `+`, float locals
+        // in the fused local ops, and string equality against a constant.
+        "fast_tier_hands_off_to_the_general_arm",
+        "fn f() {\n  let big = 9223372036854775807\n  try { print(big + 1) } catch e { print(\"overflow\") }\n  let s = \"\"\n  let i = 0\n  while i < 3 { s = s + \"ab\"\n    i = i + 1 }\n  print(s)\n  let x = 1.5\n  let y = 2\n  print(x + y)\n  print(y * x - 1)\n  print(y < x)\n  print(x <= 1.5)\n  print(x + x)\n  x += 1\n  print(x)\n  let name = \"soli\"\n  print(name == \"soli\")\n  print(name != \"ruby\")\n  let n = null\n  print(n == null)\n  let t = 0\n  for k in 0..10 { if k > 4 && k != 7 { t = t + k } }\n  print(t)\n}\nf()",
+    ),
+    (
+        // `hash.key` dot access: a hit, and a miss falling back to a method.
+        "hash_dot_access",
+        "let h = {\"name\": \"x\", \"n\": null}\nprint(h.name)\nprint(h.n)\nprint(h.length)",
+    ),
+    (
         "inspect_quotes_nested_strings",
         "print([1, \"a\"].inspect())\nprint({\"k\": \"v\"}.inspect())\nprint([[1, \"a\"], {\"k\": \"v\"}].inspect())",
     ),

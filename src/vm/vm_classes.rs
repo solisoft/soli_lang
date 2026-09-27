@@ -342,8 +342,7 @@ impl Vm {
             }
             Value::Hash(hash) => {
                 let hash = hash.borrow();
-                let key = HashKey::String(name.to_string().into());
-                if let Some(val) = hash.get(&key) {
+                if let Some(val) = hash.get(&crate::interpreter::value::StrKey(name)) {
                     Ok(val.clone())
                 } else {
                     Ok(Value::method(ValueMethod {

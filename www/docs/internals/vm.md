@@ -64,10 +64,25 @@ Helpers you will call if you add a statement:
 
 1. Variant on `Op`
 2. Emit site in the compiler
-3. Arm in `Vm::run` (the big `match`)
+3. Arm in `Vm::run_dispatch` (the big `match`)
 4. Disassembler string
+5. If it is hot and simple, an arm in `Vm::run_fast` too (see below)
 
-`vm.rs::run` is a large match by design (dispatch). Don’t split it for style.
+`vm.rs::run_dispatch` is a large match by design (dispatch). Don’t split it for style.
+
+### The fast tier (`run_fast`)
+
+Before the big `match`, `run_dispatch` calls `run_fast`, which runs the simple ops with the current frame's `ip`, code, constants and stack base held in locals — `&mut self` otherwise forces a reload of all of them through `self.frames` on every op. It covers locals, upvalues, global reads, constants, jumps, integer/float arithmetic and comparisons, the fused local super-instructions, and the common shape of `Call`/`CallGlobal`/`Return` (a compiled closure given exactly its arguments; a return that closes no upvalue and stays in this `run`), switching its cached state to the new frame.
+
+The rule that keeps the two tiers from disagreeing: **a fast arm either completes its op or hands it back untouched.** Type and overflow checks peek before anything is popped; anything else — a string `+`, an overflow, a native callee, an error to raise — `break`s out with the op, `ip` is written back, and the general arm runs it exactly as if the fast tier did not exist. So a new op needs only a general arm to be correct; a fast arm is an optimisation, and must never produce an error or a result the general arm would not. `tests/differential_engines_test.rs` (`fast_tier_hands_off_to_the_general_arm`) exercises the hand-offs.
+
+### Iterator callbacks (`vm_callback_loop.rs`)
+
+`h.each(fn …)`, `map`, `filter`/`reject`, `any?`/`all?`, `transform_values`/`transform_keys`, `each_value`/`each_key` and array `each`/`map`/`filter` — when the callback is a compiled closure taking exactly the arguments the method passes — do not loop in Rust. `CallMethod` hands them to `try_start_callback_loop`, which leaves a `CallbackLoop` on `iter_stack` and opens the first element's frame flagged `drives_loop`. When that frame returns, `Return` gives the result to the loop, which records it and refills the **same frame's** argument slots for the next element (`rerun_loop_callback`), or pops itself and pushes the method's result. Living on `iter_stack` is what makes a `throw` out of a callback safe: `Return` and exception unwinding already truncate that stack.
+
+A callback whose body is a **template** (`Kernel`) is not called at all: a parameter, `x + - * c`, `x < <= > >= c`, `[a, b + c]`, `[a, b]`, or `acc = acc + x` into a captured variable. The loop evaluates it per element in Rust. The same rule as the fast tier applies — a template computes only what its opcode's general arm answers inline (int with overflow checked, float with float); any other operand hands *that element* to the frame path, which runs the real opcodes. Templates are recognised from the exact bytecode shape (`Kernel::of`), so a peephole change that alters a callback's opcodes can make it stop matching: that is safe (it runs on the frame path), only slower.
+
+Everything else — a native or bound callee, a default parameter, a `[key, value]` pair argument to a template — keeps the native drivers in `vm_hash_methods.rs` / `vm_array_methods.rs`, whose semantics the loop mirrors element for element (live iteration, length fixed at the start, `any?` short-circuit, the same error messages). `tests/differential_engines_test.rs` holds a case for each path.
 
 ## `Vm`
 

@@ -1845,6 +1845,7 @@ impl Vm {
         self.stack.clear();
         self.frames.clear();
         self.open_upvalues.clear();
+        self.open_upvalue_top = 0;
         self.exception_handlers.clear();
         self.iter_stack.clear();
         self.return_depth = 0;

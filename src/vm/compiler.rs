@@ -950,6 +950,10 @@ fn stack_effect(op: Op) -> i32 {
         | LessEqualLocalLocal(_, _)
         | LessLocalLocal(_, _)
         | GreaterLocalLocal(_, _)
+        | LessLocalConst(_, _)
+        | LessEqualLocalConst(_, _)
+        | GreaterLocalConst(_, _)
+        | GreaterEqualLocalConst(_, _)
         | EqualLocalLocal(_, _)
         | NotEqualLocalLocal(_, _)
         | AddLocalConst(_, _)
@@ -1514,6 +1518,31 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
+        // Pattern: GetLocal(a), Constant(c), <cmp> → <Cmp>LocalConst(a, c):
+        // `x < 10`, `v > 100` — the most common comparison, and the whole body
+        // of a predicate callback. `if` then pairs it with one `JumpIfFalse`
+        // (2 ops) where it used to be `GetLocal, Constant, TestLessJump` (3).
+        if i + 2 < len {
+            if let (Op::GetLocal(slot), Op::Constant(cidx)) = (code[i], code[i + 1]) {
+                let fused = match code[i + 2] {
+                    Op::Less => Some(Op::LessLocalConst(slot, cidx)),
+                    Op::LessEqual => Some(Op::LessEqualLocalConst(slot, cidx)),
+                    Op::Greater => Some(Op::GreaterLocalConst(slot, cidx)),
+                    Op::GreaterEqual => Some(Op::GreaterEqualLocalConst(slot, cidx)),
+                    _ => None,
+                };
+                if let Some(fused) = fused {
+                    if !any_jump_target(&is_jump_target, i + 1, 3) {
+                        code[i] = fused;
+                        code[i + 1] = NOP;
+                        code[i + 2] = NOP;
+                        i += 3;
+                        continue;
+                    }
+                }
+            }
+        }
+
         // Pattern: GetLocal(a), GetLocal(b), Less → LessLocalLocal(a, b)
         if i + 2 < len {
             if let (Op::GetLocal(slot_a), Op::GetLocal(slot_b), Op::Less) =
@@ -1834,9 +1863,20 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
     compact_nops(chunk);
 }
 
-/// Check if any offset in range [start+1, start+count) is a jump target.
+/// Whether a branch lands inside a `count`-instruction pattern whose tail
+/// starts at `start` (callers pass the head's index + 1): any of the
+/// `count - 1` instructions the fusion would blank.
+///
+/// The range used to be `start + 1 .. start + count`, one too far on both
+/// ends: it skipped the instruction right after the head — the one a branch
+/// most often targets — and checked one past the pattern instead. In
+/// `if a && b < c` the `&&` short-circuit jumps to the `if`'s `JumpIfFalse`,
+/// which is exactly that instruction, so `Less, JumpIfFalse` was fused into
+/// `TestLessJump` anyway: the short-circuit then landed on the blanked slot's
+/// successor, inside the then-branch, and ran it with a stray `false` on the
+/// stack. `if k > 4 && k < 7` over `0..10` summed to 0 under `soli serve`.
 fn any_jump_target(targets: &[bool], start: usize, count: usize) -> bool {
-    for j in (start + 1)..(start + count) {
+    for j in start..(start + count - 1) {
         if j < targets.len() && targets[j] {
             return true;
         }

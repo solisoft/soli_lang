@@ -108,7 +108,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::RuntimeError;
-use crate::interpreter::value::{hash_get_value, HashKey, HashPairs, StrKey, Value};
+use crate::interpreter::value::{hash_get_value, HashKey, HashPairs, StrKey, SymKey, Value};
 use crate::span::Span;
 
 /// Dispatch a zero-arg string method by integer ID. Returns None if not handled.
@@ -374,18 +374,7 @@ pub fn hash_method_zero_arg(hash: &Rc<RefCell<HashPairs>>, mid: MethodId) -> Opt
         44 => Some(Value::Bool(!hash.borrow().is_empty())),    // present?
         84 => {
             // keys
-            let keys: Vec<Value> = hash
-                .borrow()
-                .keys()
-                .map(|k| match k {
-                    HashKey::String(s) => Value::String(s.clone()),
-                    HashKey::Symbol(s) => Value::Symbol(s.clone()),
-                    HashKey::Int(n) => Value::Int(*n),
-                    HashKey::Bool(b) => Value::Bool(*b),
-                    HashKey::Null => Value::Null,
-                    HashKey::Decimal(d) => Value::String(d.to_string().into()),
-                })
-                .collect();
+            let keys: Vec<Value> = hash.borrow().keys().map(HashKey::to_value).collect();
             Some(Value::Array(Rc::new(RefCell::new(keys))))
         }
         85 => {
@@ -425,10 +414,14 @@ pub fn hash_method_one_arg(
         }
         27 => {
             let removed = match arg {
-                Value::String(s) => hash.borrow_mut().swap_remove(&StrKey(s)),
-                Value::Int(n) => hash.borrow_mut().swap_remove(&HashKey::Int(*n)),
-                Value::Bool(b) => hash.borrow_mut().swap_remove(&HashKey::Bool(*b)),
-                Value::Null => hash.borrow_mut().swap_remove(&HashKey::Null),
+                // `shift_remove` keeps the remaining keys in insertion
+                // order, as the interpreter does.
+                Value::String(s) => hash.borrow_mut().shift_remove(&StrKey(s)),
+                Value::Symbol(s) => hash.borrow_mut().shift_remove(&SymKey(s)),
+                Value::Int(n) => hash.borrow_mut().shift_remove(&HashKey::Int(*n)),
+                Value::Bool(b) => hash.borrow_mut().shift_remove(&HashKey::Bool(*b)),
+                Value::Null => hash.borrow_mut().shift_remove(&HashKey::Null),
+                Value::Decimal(d) => hash.borrow_mut().shift_remove(&HashKey::Decimal(d.clone())),
                 _ => {
                     return Some(Err(RuntimeError::type_error(
                         format!("Cannot use {} as hash key", arg.type_name()),

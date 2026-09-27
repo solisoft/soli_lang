@@ -7,6 +7,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::error::RuntimeError;
+use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{
     hash_get_value, hash_set_value, Class, HashKey, HashPairs, StrKey, Value,
 };
@@ -57,6 +58,9 @@ pub struct CallFrame {
     /// parameters silently loses defaults past that point rather than
     /// misbinding — a limit no realistic signature reaches.
     supplied: u64,
+    /// This frame is the callback of an in-VM iterator loop: its `Return`
+    /// hands the result to `Vm::callback_returned` instead of the caller.
+    pub drives_loop: bool,
 }
 
 /// Build the supplied-parameter mask for a plain positional call of `argc`
@@ -92,6 +96,7 @@ impl CallFrame {
             code,
             code_len,
             supplied,
+            drives_loop: false,
         }
     }
 }
@@ -133,7 +138,13 @@ pub enum IterState {
         s: crate::interpreter::value::SoliStr,
         byte_offset: usize,
     },
+    /// An iterator method (`each`, `map`, …) whose callback runs in the
+    /// dispatch loop — see `vm_callback_loop.rs`.
+    Callback(Box<super::vm_callback_loop::CallbackLoop>),
 }
+
+/// Slots in `Vm::closure_cache`.
+const CLOSURE_CACHE_SLOTS: usize = 64;
 
 /// The bytecode VM.
 pub struct Vm {
@@ -145,6 +156,22 @@ pub struct Vm {
     pub globals: HashMap<String, Value>,
     /// Open upvalues (pointing to stack slots that are still live).
     pub open_upvalues: Vec<Rc<RefCell<Upvalue>>>,
+    /// One past the highest stack slot an open upvalue points at (0 when
+    /// none is open), so a return can tell in one comparison whether its
+    /// frame has anything to close. Kept by `capture_upvalue`,
+    /// `close_upvalues` and `reset` — the only writers of `open_upvalues`.
+    pub(crate) open_upvalue_top: usize,
+    /// The last finished iterator-method loop's state, kept for the next
+    /// one so starting a loop does not allocate (see `vm_callback_loop.rs`).
+    pub(crate) spare_callback_loop: Option<Box<super::vm_callback_loop::CallbackLoop>>,
+    /// Closures that capture nothing, one per `fn` expression, shared by
+    /// every evaluation of it — see `Op::Closure`. Direct-mapped by the
+    /// prototype's address; each entry keeps its prototype alive.
+    closure_cache: Box<[Option<Rc<VmClosure>>; CLOSURE_CACHE_SLOTS]>,
+    /// Emptied arrays nothing else references, handed back by an iterator
+    /// loop (a `map` callback's `[key, value]` pair once its entry is taken
+    /// out) for `Op::Array` to fill instead of allocating. Bounded.
+    pub(crate) array_pool: Vec<Rc<RefCell<Vec<Value>>>>,
     /// Exception handler stack.
     pub exception_handlers: Vec<ExceptionHandler>,
     /// Iterator state stack (for for-in loops).
@@ -185,6 +212,10 @@ impl Vm {
             frames: Vec::with_capacity(64),
             globals: HashMap::new(),
             open_upvalues: Vec::new(),
+            open_upvalue_top: 0,
+            spare_callback_loop: None,
+            closure_cache: Box::new([const { None }; CLOSURE_CACHE_SLOTS]),
+            array_pool: Vec::new(),
             exception_handlers: Vec::new(),
             iter_stack: Vec::new(),
             output: Vec::new(),
@@ -218,6 +249,29 @@ impl Vm {
             .copied()
             .unwrap_or(0);
         Span::new(0, 0, line, 0)
+    }
+
+    /// Answer a borrowed-tier hash method (`slice`, `merge`, `dig`, …)
+    /// straight off the operand stack: the receiver and arguments stay where
+    /// they are, so neither the `Rc` nor the arguments are copied. `None`
+    /// when the method needs the full dispatcher (callbacks, mutation).
+    #[inline]
+    fn hash_method_on_stack(
+        &self,
+        receiver_idx: usize,
+        argc: usize,
+        name: &str,
+    ) -> Option<Result<Value, RuntimeError>> {
+        let Value::Hash(hash) = &self.stack[receiver_idx] else {
+            return None;
+        };
+        let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+        crate::interpreter::executor::calls::hash_pure::hash_method_borrowed(
+            &hash.borrow(),
+            name,
+            args,
+            self.current_span(),
+        )
     }
 
     /// Read a string constant as an owned String (for global-map keys).
@@ -270,25 +324,623 @@ impl Vm {
         }
     }
 
+    /// The dispatch loop's fast tier: the stack, local, constant, jump,
+    /// integer/float arithmetic and comparison ops, run with the current
+    /// frame's instruction pointer, code, constants and stack base held in
+    /// locals.
+    ///
+    /// `run_dispatch` re-read all of that through `self.frames` on every op
+    /// — `&mut self` means the compiler cannot keep it in registers across
+    /// an op — and the reloads were a large share of what a simple op cost.
+    /// None of these ops can push or pop a frame, so the cached state stays
+    /// valid until this returns.
+    ///
+    /// An arm either completes its op or hands it back untouched: every
+    /// type and overflow check happens by peeking, before anything is
+    /// popped, and whatever it declines (a string `+`, an overflowing add,
+    /// a constant that needs allocating) is returned for `run_dispatch`'s
+    /// general arm to execute — so the two tiers cannot disagree on a
+    /// result or an error. `frame.ip` is written back before returning;
+    /// `Ok(None)` means the frame's code ran out.
+    #[inline(always)]
+    fn run_fast(&mut self) -> Result<Option<Op>, RuntimeError> {
+        /// Load the top frame's state into the cached locals.
+        macro_rules! load_frame {
+            () => {{
+                let frame = self.frames.last().unwrap();
+                (
+                    frame.code,
+                    frame.code_len,
+                    frame.closure.proto.chunk.constants.as_ptr(),
+                    frame.stack_base,
+                    frame.ip,
+                )
+            }};
+        }
+        let (mut code, mut code_len, mut constants, mut base, mut ip) = load_frame!();
+
+        /// Enter a compiled closure whose callee and exactly `argc` arguments
+        /// are on top of the stack — the case the general `Call` arm handles
+        /// with no default to fill and no error to raise — and switch the
+        /// cached state to it.
+        macro_rules! enter_closure {
+            ($closure:expr, $argc:expr) => {{
+                self.frames.last_mut().unwrap().ip = ip;
+                let stack_base = self.stack.len() - $argc - 1;
+                self.frames.push(CallFrame::new(
+                    $closure,
+                    stack_base,
+                    self.iter_stack.len(),
+                    None,
+                    positional_supplied_mask($argc),
+                ));
+                (code, code_len, constants, base, ip) = load_frame!();
+            }};
+        }
+
+        /// Replace the top two stack slots, both scalars, with `result`.
+        macro_rules! replace_top_two {
+            ($len:expr, $result:expr) => {{
+                let result = $result;
+                // SAFETY: both operands were just matched as Int/Float/Bool,
+                // which own no heap data, so overwriting the lower one
+                // without dropping it and forgetting the upper one leaks
+                // nothing; `len >= 2` held for the peek.
+                unsafe {
+                    std::ptr::write(self.stack.as_mut_ptr().add($len - 2), result);
+                    self.stack.set_len($len - 1);
+                }
+            }};
+        }
+
+        /// Peek at the two operands; `None` hands the op to the general arm.
+        macro_rules! peek_two {
+            () => {{
+                let len = self.stack.len();
+                (len, &self.stack[len - 2], &self.stack[len - 1])
+            }};
+        }
+
+        /// Pop two scalars that were matched by a peek.
+        macro_rules! drop_top_two {
+            ($len:expr) => {
+                // SAFETY: both were matched as Int/Float scalars (no heap
+                // data), and `len >= 2` held for the peek.
+                unsafe { self.stack.set_len($len - 2) }
+            };
+        }
+
+        let next = loop {
+            if ip >= code_len {
+                break None;
+            }
+            // SAFETY: `code`/`code_len` cache `closure.proto.chunk.code`, which
+            // the frame's own Rc keeps alive; `ip < code_len` was just checked,
+            // and chunks are immutable after compilation.
+            let op = unsafe { *code.add(ip) };
+            ip += 1;
+            match op {
+                Op::GetLocal(slot) => {
+                    let value = clone_scalar_fast(&self.stack[base + slot as usize]);
+                    self.stack.push(value);
+                }
+                Op::GetLocal2(slot_a, slot_b) => {
+                    let a = clone_scalar_fast(&self.stack[base + slot_a as usize]);
+                    let b = clone_scalar_fast(&self.stack[base + slot_b as usize]);
+                    self.stack.push(a);
+                    self.stack.push(b);
+                }
+                Op::SetLocal(slot) => {
+                    let value = clone_scalar_fast(self.stack.last().unwrap());
+                    discard(std::mem::replace(
+                        &mut self.stack[base + slot as usize],
+                        value,
+                    ));
+                }
+                Op::SetLocalPop(slot) => {
+                    let value = self.pop();
+                    discard(std::mem::replace(
+                        &mut self.stack[base + slot as usize],
+                        value,
+                    ));
+                }
+                Op::Pop => discard(self.pop()),
+                Op::PopNull => {
+                    discard(self.pop());
+                    self.stack.push(Value::Null);
+                }
+                Op::Dup => {
+                    let value = clone_scalar_fast(self.stack.last().unwrap());
+                    self.stack.push(value);
+                }
+                Op::Null => self.stack.push(Value::Null),
+                Op::True => self.stack.push(Value::Bool(true)),
+                Op::False => self.stack.push(Value::Bool(false)),
+                Op::Nop => {}
+                Op::Constant(idx) => {
+                    // SAFETY: `constants` points into the chunk the frame's Rc
+                    // keeps alive; the index was emitted by the compiler for
+                    // this chunk, as the general arm's indexing assumes.
+                    let constant = unsafe { &*constants.add(idx as usize) };
+                    let value = match constant {
+                        Constant::Int(n) => Value::Int(*n),
+                        Constant::Float(n) => Value::Float(*n),
+                        Constant::Bool(b) => Value::Bool(*b),
+                        Constant::Null => Value::Null,
+                        _ => break Some(op),
+                    };
+                    self.stack.push(value);
+                }
+                Op::Jump(offset) => ip += offset as usize,
+                Op::JumpIfFalse(offset) => {
+                    let value = self.stack.pop().unwrap();
+                    if !value.is_truthy() {
+                        ip += offset as usize;
+                    }
+                    discard(value);
+                }
+                Op::Loop(offset) => {
+                    if crate::interpreter::deadline::expired() {
+                        self.frames.last_mut().unwrap().ip = ip;
+                        return Err(RuntimeError::General {
+                            message: crate::interpreter::deadline::timeout_message(),
+                            span: self.current_span(),
+                        });
+                    }
+                    ip -= offset as usize;
+                }
+                Op::ForIterRange(exit_offset) => {
+                    let state = self.iter_stack.last_mut().unwrap();
+                    if let IterState::Range { current, end } = state {
+                        // Exclusive of `end`, matching the tree-walker.
+                        if *current < *end {
+                            let value = Value::Int(*current);
+                            *current += 1;
+                            self.stack.push(value);
+                        } else {
+                            self.iter_stack.pop();
+                            ip += exit_offset as usize;
+                        }
+                    } else {
+                        unreachable!("ForIterRange used with non-range iterator");
+                    }
+                }
+                Op::Add | Op::Subtract | Op::Multiply => {
+                    let (len, a, b) = peek_two!();
+                    let result = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => {
+                            let checked = match op {
+                                Op::Add => x.checked_add(*y),
+                                Op::Subtract => x.checked_sub(*y),
+                                _ => x.checked_mul(*y),
+                            };
+                            match checked {
+                                Some(n) => Value::Int(n),
+                                None => break Some(op),
+                            }
+                        }
+                        (Value::Float(_) | Value::Int(_), Value::Float(_) | Value::Int(_)) => {
+                            let x = match a {
+                                Value::Float(f) => *f,
+                                Value::Int(n) => *n as f64,
+                                _ => unreachable!(),
+                            };
+                            let y = match b {
+                                Value::Float(f) => *f,
+                                Value::Int(n) => *n as f64,
+                                _ => unreachable!(),
+                            };
+                            Value::Float(match op {
+                                Op::Add => x + y,
+                                Op::Subtract => x - y,
+                                _ => x * y,
+                            })
+                        }
+                        _ => break Some(op),
+                    };
+                    replace_top_two!(len, result);
+                }
+                Op::Less | Op::LessEqual | Op::Greater | Op::GreaterEqual => {
+                    let (len, a, b) = peek_two!();
+                    let Some(ordering) = scalar_ordering(a, b) else {
+                        break Some(op);
+                    };
+                    let result = match op {
+                        Op::Less => ordering.is_lt(),
+                        Op::LessEqual => ordering.is_le(),
+                        Op::Greater => ordering.is_gt(),
+                        _ => ordering.is_ge(),
+                    };
+                    replace_top_two!(len, Value::Bool(result));
+                }
+                Op::Equal | Op::NotEqual => {
+                    let (len, a, b) = peek_two!();
+                    let equal = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => x == y,
+                        (Value::Bool(x), Value::Bool(y)) => x == y,
+                        _ => break Some(op),
+                    };
+                    replace_top_two!(len, Value::Bool(equal == matches!(op, Op::Equal)));
+                }
+                Op::TestLessJump(offset)
+                | Op::TestLessEqualJump(offset)
+                | Op::TestGreaterJump(offset)
+                | Op::TestGreaterEqualJump(offset) => {
+                    let (len, a, b) = peek_two!();
+                    let Some(ordering) = scalar_ordering(a, b) else {
+                        break Some(op);
+                    };
+                    let holds = match op {
+                        Op::TestLessJump(_) => ordering.is_lt(),
+                        Op::TestLessEqualJump(_) => ordering.is_le(),
+                        Op::TestGreaterJump(_) => ordering.is_gt(),
+                        _ => ordering.is_ge(),
+                    };
+                    drop_top_two!(len);
+                    if !holds {
+                        ip += offset as usize;
+                    }
+                }
+                Op::IncrLocal(slot) | Op::IncrLocalFast(slot) => {
+                    let idx = base + slot as usize;
+                    match self.stack[idx] {
+                        Value::Int(n) if n != i64::MAX => self.stack[idx] = Value::Int(n + 1),
+                        _ => break Some(op),
+                    }
+                }
+                Op::AddLocalConst(slot, const_idx) => {
+                    // SAFETY: as for `Op::Constant`.
+                    let constant = unsafe { &*constants.add(const_idx as usize) };
+                    let sum = match (&self.stack[base + slot as usize], constant) {
+                        (Value::Int(x), Constant::Int(y)) => x.checked_add(*y),
+                        _ => None,
+                    };
+                    match sum {
+                        Some(n) => self.stack.push(Value::Int(n)),
+                        None => break Some(op),
+                    }
+                }
+                // Calls and returns stay in the tier for the common shape;
+                // anything else — a native or a class callee, omitted
+                // parameters, the depth limit, open upvalues, a return that
+                // leaves this `run` — goes to the general arms, which own
+                // every one of those rules and their errors.
+                Op::Call(argc) => {
+                    let argc = argc as usize;
+                    let closure = match &self.stack[self.stack.len() - 1 - argc] {
+                        Value::VmClosure(closure)
+                            if closure.proto.param_names.len() == argc
+                                && self.frames.len() < MAX_CALL_DEPTH =>
+                        {
+                            closure.clone()
+                        }
+                        _ => break Some(op),
+                    };
+                    enter_closure!(closure, argc);
+                }
+                Op::CallGlobal(name_idx, argc) => {
+                    let argc = argc as usize;
+                    // SAFETY: as for `Op::Constant`.
+                    let name = match unsafe { &*constants.add(name_idx as usize) } {
+                        Constant::String(name) => name.as_ref(),
+                        _ => break Some(op),
+                    };
+                    let closure = match self.globals.get(name) {
+                        Some(Value::VmClosure(closure))
+                            if closure.proto.param_names.len() == argc
+                                && self.frames.len() < MAX_CALL_DEPTH =>
+                        {
+                            closure.clone()
+                        }
+                        _ => break Some(op),
+                    };
+                    // The general arm inserts the callee below the arguments.
+                    let insert_at = self.stack.len() - argc;
+                    self.stack
+                        .insert(insert_at, Value::VmClosure(closure.clone()));
+                    enter_closure!(closure, argc);
+                }
+                Op::Return => {
+                    let depth_after = self.frames.len() - 1;
+                    // Only upvalues still open on *this* frame's slots need
+                    // closing (the general arm's job); captures of an outer
+                    // frame's locals — a callback inside a closure over the
+                    // caller's variables — do not stop the fast return.
+                    if depth_after <= self.return_depth || self.has_open_upvalues_from(base) {
+                        break Some(op);
+                    }
+                    let (drives_loop, params, iter_base) = {
+                        let frame = self.frames.last().unwrap();
+                        (
+                            frame.drives_loop,
+                            frame.closure.proto.param_names.len(),
+                            frame.iter_base,
+                        )
+                    };
+                    if drives_loop {
+                        // A loop callback: the frame is kept and run again for
+                        // the next element. Clean up exactly what a return
+                        // would — the callback's temporaries and locals above
+                        // its arguments, its `for` loops, its `try` handlers —
+                        // then let the loop record the result and refill the
+                        // argument slots. (No upvalue is open on this frame:
+                        // checked above.)
+                        let result = self.pop();
+                        self.stack.truncate(base + 1 + params);
+                        self.iter_stack.truncate(iter_base);
+                        while self
+                            .exception_handlers
+                            .last()
+                            .is_some_and(|handler| handler.frame_depth > depth_after)
+                        {
+                            self.exception_handlers.pop();
+                        }
+                        if self.rerun_loop_callback(result, base)? {
+                            ip = 0;
+                        } else {
+                            (code, code_len, constants, base, ip) = load_frame!();
+                        }
+                        continue;
+                    }
+                    // What the general arm does when it keeps running, in the
+                    // same order: result, frame, stack, iterators, handlers.
+                    let result = self.pop();
+                    let frame = self.frames.pop().unwrap();
+                    self.stack.truncate(frame.stack_base);
+                    self.iter_stack.truncate(frame.iter_base);
+                    while self
+                        .exception_handlers
+                        .last()
+                        .is_some_and(|handler| handler.frame_depth > depth_after)
+                    {
+                        self.exception_handlers.pop();
+                    }
+                    self.stack.push(result);
+                    (code, code_len, constants, base, ip) = load_frame!();
+                }
+                Op::GetUpvalue(idx) => {
+                    let value = {
+                        let frame = self.frames.last().unwrap();
+                        let upvalue = frame.closure.upvalues[idx as usize].borrow();
+                        match &*upvalue {
+                            Upvalue::Open(slot) => self.stack[*slot].clone(),
+                            Upvalue::Closed(value) => value.clone(),
+                        }
+                    };
+                    self.stack.push(value);
+                }
+                Op::SetUpvalue(idx) => {
+                    let value = self.stack.last().unwrap().clone();
+                    let upvalue =
+                        self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
+                    let mut cell = upvalue.borrow_mut();
+                    match &mut *cell {
+                        Upvalue::Open(slot) => self.stack[*slot] = value,
+                        Upvalue::Closed(closed) => *closed = value,
+                    }
+                }
+                Op::GetGlobal(idx) => {
+                    // SAFETY: as for `Op::Constant`.
+                    let name = match unsafe { &*constants.add(idx as usize) } {
+                        Constant::String(name) => name.as_ref(),
+                        _ => break Some(op),
+                    };
+                    // A miss is the general arm's to report.
+                    let Some(value) = self.globals.get(name).cloned() else {
+                        break Some(op);
+                    };
+                    self.stack.push(value);
+                }
+                Op::AddLocalLocal(slot_a, slot_b)
+                | Op::SubLocalLocal(slot_a, slot_b)
+                | Op::MulLocalLocal(slot_a, slot_b) => {
+                    let a = &self.stack[base + slot_a as usize];
+                    let b = &self.stack[base + slot_b as usize];
+                    let result = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => match op {
+                            Op::AddLocalLocal(..) => x.checked_add(*y),
+                            Op::SubLocalLocal(..) => x.checked_sub(*y),
+                            _ => x.checked_mul(*y),
+                        }
+                        .map(Value::Int),
+                        (Value::Float(x), Value::Float(y)) => Some(Value::Float(match op {
+                            Op::AddLocalLocal(..) => x + y,
+                            Op::SubLocalLocal(..) => x - y,
+                            _ => x * y,
+                        })),
+                        _ => None,
+                    };
+                    match result {
+                        Some(value) => self.stack.push(value),
+                        None => break Some(op),
+                    }
+                }
+                Op::SubLocalConst(slot, const_idx) | Op::MulLocalConst(slot, const_idx) => {
+                    // SAFETY: as for `Op::Constant`.
+                    let constant = unsafe { &*constants.add(const_idx as usize) };
+                    let result = match (&self.stack[base + slot as usize], constant) {
+                        (Value::Int(x), Constant::Int(y)) => match op {
+                            Op::SubLocalConst(..) => x.checked_sub(*y),
+                            _ => x.checked_mul(*y),
+                        },
+                        _ => None,
+                    };
+                    match result {
+                        Some(n) => self.stack.push(Value::Int(n)),
+                        None => break Some(op),
+                    }
+                }
+                Op::AddLocalInt(slot, n) => match self.stack[base + slot as usize] {
+                    Value::Int(x) => match x.checked_add(n as i64) {
+                        Some(sum) => self.stack.push(Value::Int(sum)),
+                        None => break Some(op),
+                    },
+                    _ => break Some(op),
+                },
+                Op::AddLocalsInPlace(a, b) => {
+                    let (ia, ib) = (base + a as usize, base + b as usize);
+                    let sum = match (&self.stack[ia], &self.stack[ib]) {
+                        (Value::Int(x), Value::Int(y)) => x.checked_add(*y).map(Value::Int),
+                        (Value::Float(x), Value::Float(y)) => Some(Value::Float(x + y)),
+                        _ => None,
+                    };
+                    match sum {
+                        Some(value) => self.stack[ia] = value,
+                        None => break Some(op),
+                    }
+                }
+                Op::Array(n) => {
+                    let array = self.array_from_stack(n as usize);
+                    self.stack.push(array);
+                }
+                Op::LessLocalConst(slot, const_idx)
+                | Op::LessEqualLocalConst(slot, const_idx)
+                | Op::GreaterLocalConst(slot, const_idx)
+                | Op::GreaterEqualLocalConst(slot, const_idx) => {
+                    // SAFETY: as for `Op::Constant`.
+                    let constant = unsafe { &*constants.add(const_idx as usize) };
+                    let ordering = match (&self.stack[base + slot as usize], constant) {
+                        (Value::Int(x), Constant::Int(y)) => Some(x.cmp(y)),
+                        (Value::Float(x), Constant::Float(y)) => x.partial_cmp(y),
+                        _ => None,
+                    };
+                    let Some(ordering) = ordering else {
+                        break Some(op);
+                    };
+                    let result = match op {
+                        Op::LessLocalConst(..) => ordering.is_lt(),
+                        Op::LessEqualLocalConst(..) => ordering.is_le(),
+                        Op::GreaterLocalConst(..) => ordering.is_gt(),
+                        _ => ordering.is_ge(),
+                    };
+                    self.stack.push(Value::Bool(result));
+                }
+                Op::LessLocalLocal(slot_a, slot_b)
+                | Op::LessEqualLocalLocal(slot_a, slot_b)
+                | Op::GreaterLocalLocal(slot_a, slot_b) => {
+                    let ordering = scalar_ordering(
+                        &self.stack[base + slot_a as usize],
+                        &self.stack[base + slot_b as usize],
+                    );
+                    let Some(ordering) = ordering else {
+                        break Some(op);
+                    };
+                    let result = match op {
+                        Op::LessLocalLocal(..) => ordering.is_lt(),
+                        Op::LessEqualLocalLocal(..) => ordering.is_le(),
+                        _ => ordering.is_gt(),
+                    };
+                    self.stack.push(Value::Bool(result));
+                }
+                Op::EqualLocalLocal(slot_a, slot_b) | Op::NotEqualLocalLocal(slot_a, slot_b) => {
+                    let equal = match (
+                        &self.stack[base + slot_a as usize],
+                        &self.stack[base + slot_b as usize],
+                    ) {
+                        (Value::Int(x), Value::Int(y)) => x == y,
+                        (Value::Bool(x), Value::Bool(y)) => x == y,
+                        _ => break Some(op),
+                    };
+                    let want_equal = matches!(op, Op::EqualLocalLocal(..));
+                    self.stack.push(Value::Bool(equal == want_equal));
+                }
+                Op::EqualLocalConst(slot, const_idx) | Op::NotEqualLocalConst(slot, const_idx) => {
+                    // SAFETY: as for `Op::Constant`.
+                    let constant = unsafe { &*constants.add(const_idx as usize) };
+                    let equal = match (&self.stack[base + slot as usize], constant) {
+                        (Value::Int(x), Constant::Int(y)) => x == y,
+                        (Value::String(x), Constant::String(y)) => x == y,
+                        _ => break Some(op),
+                    };
+                    let want_equal = matches!(op, Op::EqualLocalConst(..));
+                    self.stack.push(Value::Bool(equal == want_equal));
+                }
+                Op::TestNotEqualJump(offset) => {
+                    let (len, a, b) = peek_two!();
+                    let not_equal = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => x != y,
+                        (Value::Bool(x), Value::Bool(y)) => x != y,
+                        _ => break Some(op),
+                    };
+                    drop_top_two!(len);
+                    if !not_equal {
+                        ip += offset as usize;
+                    }
+                }
+                Op::IsTruthyLocal(slot) => {
+                    let truthy = self.stack[base + slot as usize].is_truthy();
+                    self.stack.push(Value::Bool(truthy));
+                }
+                Op::IsFalsyLocal(slot) | Op::NotLocal(slot) => {
+                    let truthy = self.stack[base + slot as usize].is_truthy();
+                    self.stack.push(Value::Bool(!truthy));
+                }
+                Op::IsZeroLocal(slot) | Op::NotZeroLocal(slot) => {
+                    let zero = match &self.stack[base + slot as usize] {
+                        Value::Int(x) => *x == 0,
+                        Value::Float(x) => *x == 0.0,
+                        _ => false,
+                    };
+                    let want_zero = matches!(op, Op::IsZeroLocal(_));
+                    self.stack.push(Value::Bool(zero == want_zero));
+                }
+                Op::Not => {
+                    let truthy = self.stack.last().unwrap().is_truthy();
+                    *self.stack.last_mut().unwrap() = Value::Bool(!truthy);
+                }
+                Op::JumpIfFalseNoPop(offset) => {
+                    if !self.stack.last().unwrap().is_truthy() {
+                        ip += offset as usize;
+                    }
+                }
+                Op::JumpIfTrueNoPop(offset) => {
+                    if self.stack.last().unwrap().is_truthy() {
+                        ip += offset as usize;
+                    }
+                }
+                Op::IsNull | Op::NotNull => {
+                    let null = matches!(self.stack.last().unwrap(), Value::Null);
+                    self.stack
+                        .push(Value::Bool(null == matches!(op, Op::IsNull)));
+                }
+                Op::JumpIfNull(offset) => {
+                    if matches!(self.stack.last().unwrap(), Value::Null) {
+                        ip += offset as usize;
+                    }
+                }
+                Op::JumpIfNotNull(offset) => {
+                    if !matches!(self.stack.last().unwrap(), Value::Null) {
+                        ip += offset as usize;
+                    }
+                }
+                Op::GetAndNullLocal(slot) => {
+                    let value =
+                        std::mem::replace(&mut self.stack[base + slot as usize], Value::Null);
+                    self.stack.push(value);
+                }
+                Op::SwapSetLocal(slot) => {
+                    let new_value = self.pop();
+                    let old_value =
+                        std::mem::replace(&mut self.stack[base + slot as usize], new_value);
+                    self.stack.push(old_value);
+                }
+                _ => break Some(op),
+            }
+        };
+        self.frames.last_mut().unwrap().ip = ip;
+        Ok(next)
+    }
+
     fn run_dispatch(&mut self) -> Result<Value, RuntimeError> {
         let _guard = VmTimingGuard::new();
         loop {
-            // Fetch opcode and advance IP in a scoped borrow. Uses the
-            // frame's cached code pointer — the closure→proto→chunk→code[ip]
-            // chain cost three pointer hops plus a bounds check on every
-            // executed instruction.
-            let op = {
-                let frame = self.frames.last_mut().unwrap();
-                let ip = frame.ip;
-                if ip >= frame.code_len {
-                    return Ok(Value::Null);
-                }
-                // SAFETY: `code`/`code_len` cache `closure.proto.chunk.code`,
-                // which the frame's own Rc keeps alive; `ip < code_len` was
-                // just checked, and chunks are immutable after compilation.
-                let op = unsafe { *frame.code.add(ip) };
-                frame.ip = ip + 1;
-                op
+            // Run the simple ops in `run_fast`, which keeps the frame's state
+            // in registers; it returns the first op it does not handle, with
+            // `frame.ip` already past it — exactly what the fetch here used
+            // to leave behind — and every arm below runs unchanged.
+            let op = match self.run_fast()? {
+                Some(op) => op,
+                None => return Ok(Value::Null),
             };
             // self is now fully available for mutation
 
@@ -682,6 +1334,21 @@ impl Vm {
                     };
                     self.stack.push(Value::Bool(result));
                 }
+                Op::LessLocalConst(slot, const_idx)
+                | Op::LessEqualLocalConst(slot, const_idx)
+                | Op::GreaterLocalConst(slot, const_idx)
+                | Op::GreaterEqualLocalConst(slot, const_idx) => {
+                    // Exactly `GetLocal(slot), Constant(const_idx), <cmp>`: the
+                    // same inline cases, then the same comparator and error.
+                    let base = self.frames.last().unwrap().stack_base;
+                    let a = self.stack[base + slot as usize].clone();
+                    let b = {
+                        let frame = self.frames.last().unwrap();
+                        constant_to_value(&frame.closure.proto.chunk.constants[const_idx as usize])
+                    };
+                    let result = self.compare_fused(op, &a, &b)?;
+                    self.stack.push(Value::Bool(result));
+                }
 
                 Op::Not => {
                     let val = self.stack.last().unwrap();
@@ -818,33 +1485,30 @@ impl Vm {
                     // User-method fast-path guard: gate on the per-type bit in
                     // USER_METHOD_FLAGS. Zero overhead when no user methods exist.
                     use crate::interpreter::executor::calls::user_methods::{
-                        has_user_methods as _has_um, lookup_user_method as _lookup_um, PrimType,
+                        lookup_user_method as _lookup_um, PrimType,
                     };
-                    let user_prim = if _has_um(PrimType::Int)
-                        || _has_um(PrimType::Float)
-                        || _has_um(PrimType::Bool)
-                        || _has_um(PrimType::Null)
-                        || _has_um(PrimType::Decimal)
-                        || _has_um(PrimType::String)
-                        || _has_um(PrimType::Array)
-                        || _has_um(PrimType::Hash)
-                        || _has_um(PrimType::Symbol)
-                    {
-                        match &self.stack[receiver_idx] {
-                            Value::Int(_) => Some(PrimType::Int),
-                            Value::Float(_) => Some(PrimType::Float),
-                            Value::Bool(_) => Some(PrimType::Bool),
-                            Value::Null => Some(PrimType::Null),
-                            Value::Decimal(_) => Some(PrimType::Decimal),
-                            Value::String(_) => Some(PrimType::String),
-                            Value::Array(_) => Some(PrimType::Array),
-                            Value::Hash(_) => Some(PrimType::Hash),
-                            Value::Symbol(_) => Some(PrimType::Symbol),
-                            _ => None,
-                        }
-                    } else {
-                        None
-                    };
+                    // One load of the whole mask: nine per-type loads (all false,
+                    // so none short-circuited) on every method call before.
+                    let user_prim =
+                        if crate::interpreter::executor::calls::user_methods::USER_METHOD_FLAGS
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                            != 0
+                        {
+                            match &self.stack[receiver_idx] {
+                                Value::Int(_) => Some(PrimType::Int),
+                                Value::Float(_) => Some(PrimType::Float),
+                                Value::Bool(_) => Some(PrimType::Bool),
+                                Value::Null => Some(PrimType::Null),
+                                Value::Decimal(_) => Some(PrimType::Decimal),
+                                Value::String(_) => Some(PrimType::String),
+                                Value::Array(_) => Some(PrimType::Array),
+                                Value::Hash(_) => Some(PrimType::Hash),
+                                Value::Symbol(_) => Some(PrimType::Symbol),
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
                     if let Some(t) = user_prim {
                         if let Some(f) = _lookup_um(t, name) {
                             let span = self.current_span();
@@ -910,6 +1574,15 @@ impl Vm {
                             self.call_method_slow_path(receiver_idx, argc, name)?;
                         }
                         Value::Array(_) => {
+                            // An iterator method with a compiled callback runs
+                            // its loop in this dispatch loop; checked first so
+                            // it skips the name matching below.
+                            if argc == 1
+                                && matches!(self.stack[receiver_idx + 1], Value::VmClosure(_))
+                                && self.try_start_callback_loop(receiver_idx, argc, name)?
+                            {
+                                continue;
+                            }
                             // Fast path for common zero-arg array methods
                             let result = if argc == 0 {
                                 let arr = match &self.stack[receiver_idx] {
@@ -951,6 +1624,15 @@ impl Vm {
                             }
                         }
                         Value::Hash(_) => {
+                            // An iterator method with a compiled callback runs
+                            // its loop in this dispatch loop; checked first so
+                            // it skips the name matching below.
+                            if argc == 1
+                                && matches!(self.stack[receiver_idx + 1], Value::VmClosure(_))
+                                && self.try_start_callback_loop(receiver_idx, argc, name)?
+                            {
+                                continue;
+                            }
                             // Fast path for common zero-arg hash methods
                             let result = if argc == 0 {
                                 let hash = match &self.stack[receiver_idx] {
@@ -971,7 +1653,12 @@ impl Vm {
                             } else {
                                 None
                             };
+                            let result = match result {
+                                Some(result) => Some(Ok(result)),
+                                None => self.hash_method_on_stack(receiver_idx, argc, name),
+                            };
                             if let Some(result) = result {
+                                let result = result?;
                                 self.stack.truncate(receiver_idx);
                                 self.stack.push(result);
                             } else {
@@ -1125,6 +1812,14 @@ impl Vm {
                             self.stack.push(result);
                         }
                         Value::Hash(_) => {
+                            if let Some(result) =
+                                self.hash_method_on_stack(receiver_idx, argc, name)
+                            {
+                                let result = result?;
+                                self.stack.truncate(receiver_idx);
+                                self.stack.push(result);
+                                continue;
+                            }
                             let hash = match &self.stack[receiver_idx] {
                                 Value::Hash(h) => h.clone(),
                                 _ => unreachable!(),
@@ -1248,7 +1943,7 @@ impl Vm {
                         Value::Hash(hash) => {
                             let value = hash
                                 .borrow_mut()
-                                .swap_remove(&StrKey(key))
+                                .shift_remove(&StrKey(key))
                                 .unwrap_or(Value::Null);
                             self.push(value);
                         }
@@ -1425,7 +2120,7 @@ impl Vm {
                     let result = match &self.stack[base + slot as usize] {
                         Value::Hash(hash) => hash
                             .borrow_mut()
-                            .swap_remove(&StrKey(key))
+                            .shift_remove(&StrKey(key))
                             .unwrap_or(Value::Null),
                         other => {
                             return Err(RuntimeError::NoSuchProperty {
@@ -1598,7 +2293,7 @@ impl Vm {
                         Some(Value::Hash(hash)) => {
                             let value = hash
                                 .borrow_mut()
-                                .swap_remove(&StrKey(key))
+                                .shift_remove(&StrKey(key))
                                 .unwrap_or(Value::Null);
                             self.push(value);
                         }
@@ -1667,6 +2362,25 @@ impl Vm {
                     let frame = self.frames.last().unwrap();
                     let constant = &frame.closure.proto.chunk.constants[idx as usize];
                     if let Constant::Function(proto) = constant {
+                        // A closure that captures nothing is immutable, and a
+                        // closure's identity is never observable (two closures
+                        // are never `==`), so one instance per `fn` expression
+                        // serves every evaluation: a callback literal inside a
+                        // loop — `h.each(fn(k, v) …)` — no longer allocates on
+                        // each pass.
+                        if proto.upvalue_descriptors.is_empty() {
+                            let slot = (Arc::as_ptr(proto) as usize >> 4) % CLOSURE_CACHE_SLOTS;
+                            let closure = match &self.closure_cache[slot] {
+                                Some(cached) if Arc::ptr_eq(&cached.proto, proto) => cached.clone(),
+                                _ => {
+                                    let fresh = Rc::new(VmClosure::new(proto.clone(), Vec::new()));
+                                    self.closure_cache[slot] = Some(fresh.clone());
+                                    fresh
+                                }
+                            };
+                            self.stack.push(Value::VmClosure(closure));
+                            continue;
+                        }
                         let proto = proto.clone();
                         let mut upvalues = Vec::with_capacity(proto.upvalue_descriptors.len());
 
@@ -1729,6 +2443,11 @@ impl Vm {
                         self.exception_handlers.pop();
                     }
 
+                    if frame.drives_loop {
+                        self.callback_returned(result)?;
+                        continue;
+                    }
+
                     if self.frames.len() <= self.return_depth {
                         return Ok(result);
                     }
@@ -1738,13 +2457,8 @@ impl Vm {
 
                 // --- Collections ---
                 Op::Array(n) => {
-                    let len = self.stack.len();
-                    let start = len - n as usize;
-                    let mut elements = self.stack.split_off(start);
-                    // split_off preserves order, no reverse needed
-                    let _ = &mut elements; // ensure move
-                    self.stack
-                        .push(Value::Array(Rc::new(RefCell::new(elements))));
+                    let array = self.array_from_stack(n as usize);
+                    self.stack.push(array);
                 }
                 Op::ArrayPush => {
                     let value = self.stack.pop().unwrap();
@@ -1788,13 +2502,9 @@ impl Vm {
                     // SAFETY: constants live for the whole frame execution.
                     let keys: &Vec<HashKey> = unsafe { &*keys };
                     let base = self.stack.len() - n;
-                    let mut map = HashPairs::with_capacity_and_hasher(n, AHasher::default());
-                    let mut drained = self.stack.drain(base..);
-                    for k in keys {
-                        let v = drained.next().unwrap();
-                        map.insert(k.clone(), v);
-                    }
-                    drop(drained);
+                    // The compiler emits this op only for distinct literal
+                    // keys, so the entries go in without a duplicate search.
+                    let map = HashPairs::from_distinct(keys, self.stack.drain(base..));
                     self.stack.push(Value::Hash(Rc::new(RefCell::new(map))));
                 }
                 Op::Range => {
@@ -1896,6 +2606,29 @@ impl Vm {
                             let val = self.force_field_hit(val)?;
                             self.stack.push(val);
                             continue;
+                        }
+                    }
+                    // Fast path: `hash.key` hit. A user-defined Hash method
+                    // outranks the key, so only take it when none exist; a
+                    // miss falls through to the method-value path below.
+                    if let Value::Hash(hash) = &object {
+                        use crate::interpreter::executor::calls::user_methods::{
+                            has_user_methods, PrimType,
+                        };
+                        if !has_user_methods(PrimType::Hash) {
+                            let hit = {
+                                let frame = self.frames.last().unwrap();
+                                match &frame.closure.proto.chunk.constants[idx as usize] {
+                                    Constant::String(name) => {
+                                        hash.borrow().get(&StrKey(name.as_ref())).cloned()
+                                    }
+                                    _ => None,
+                                }
+                            };
+                            if let Some(val) = hit {
+                                self.stack.push(val);
+                                continue;
+                            }
                         }
                     }
                     let name = self.read_string_constant_owned(idx);
@@ -3168,7 +3901,82 @@ impl Vm {
         // Create a new open upvalue
         let upvalue = Rc::new(RefCell::new(Upvalue::Open(slot)));
         self.open_upvalues.push(upvalue.clone());
+        self.open_upvalue_top = self.open_upvalue_top.max(slot + 1);
         upvalue
+    }
+
+    /// Build an array of the top `n` stack values, in order — taking an
+    /// emptied array from `array_pool` when there is one.
+    #[inline]
+    pub(crate) fn array_from_stack(&mut self, n: usize) -> Value {
+        let start = self.stack.len() - n;
+        match self.array_pool.pop() {
+            Some(array) => {
+                {
+                    let mut cells = array.borrow_mut();
+                    cells.reserve(n);
+                    // SAFETY: move the top `n` values into the array bitwise:
+                    // `reserve` made room after its `len`, the ranges do not
+                    // overlap (different allocations), and shortening the
+                    // stack without dropping hands their ownership over.
+                    // `Drain` + `extend` did the same through an iterator
+                    // costing more than the allocation this pool saves.
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(
+                            self.stack.as_ptr().add(start),
+                            cells.as_mut_ptr().add(cells.len()),
+                            n,
+                        );
+                        let filled = cells.len() + n;
+                        cells.set_len(filled);
+                        self.stack.set_len(start);
+                    }
+                }
+                Value::Array(array)
+            }
+            None => Value::Array(Rc::new(RefCell::new(self.stack.split_off(start)))),
+        }
+    }
+
+    /// The comparison of a `<Cmp>LocalConst` op, identical to the unfused
+    /// `Less` / `LessEqual` / `Greater` / `GreaterEqual` arms: the same inline
+    /// int/int and float/float cases, the same comparator otherwise, and for
+    /// `>` / `>=` the same operand swap with the error naming the operands in
+    /// source order.
+    fn compare_fused(&self, op: Op, a: &Value, b: &Value) -> Result<bool, RuntimeError> {
+        if let Some(ordering) = scalar_ordering(a, b) {
+            return Ok(match op {
+                Op::LessLocalConst(..) => ordering.is_lt(),
+                Op::LessEqualLocalConst(..) => ordering.is_le(),
+                Op::GreaterLocalConst(..) => ordering.is_gt(),
+                _ => ordering.is_ge(),
+            });
+        }
+        // A NaN leaves `scalar_ordering` empty: the unfused arms compare two
+        // floats inline, where every comparison with NaN is false.
+        if let (Value::Float(_), Value::Float(_)) = (a, b) {
+            return Ok(false);
+        }
+        let span = self.current_span();
+        let source_order = |_| {
+            RuntimeError::type_error(
+                format!("Cannot compare {} and {}", a.type_name(), b.type_name()),
+                span,
+            )
+        };
+        match op {
+            Op::LessLocalConst(..) => self.op_compare_less(a, b, span),
+            Op::LessEqualLocalConst(..) => self.op_compare_less_equal(a, b, span),
+            Op::GreaterLocalConst(..) => self.op_compare_less(b, a, span).map_err(source_order),
+            _ => self.op_compare_less_equal(b, a, span).map_err(source_order),
+        }
+    }
+
+    /// Whether any upvalue is still open on a stack slot at or above
+    /// `from_slot` — what `close_upvalues(from_slot)` would close.
+    #[inline]
+    pub(crate) fn has_open_upvalues_from(&self, from_slot: usize) -> bool {
+        self.open_upvalue_top > from_slot
     }
 
     pub fn close_upvalues(&mut self, from_slot: usize) {
@@ -3198,12 +4006,25 @@ impl Vm {
                 i += 1;
             }
         }
+        // Everything still open points below `from_slot`.
+        self.open_upvalue_top = self
+            .open_upvalues
+            .iter()
+            .filter_map(|upvalue| match *upvalue.borrow() {
+                Upvalue::Open(slot) => Some(slot + 1),
+                Upvalue::Closed(_) => None,
+            })
+            .max()
+            .unwrap_or(0);
     }
 
     /// Advance the current iterator, returning the next value or None if exhausted.
     fn iter_next(&mut self) -> Option<Value> {
         let state = self.iter_stack.last_mut()?;
         match state {
+            // A loop callback's `for` loops push above it; the loop itself
+            // is only ever on top between two callbacks, when no `ForIter` runs.
+            IterState::Callback(_) => unreachable!("ForIter on an iterator-method loop"),
             IterState::Array { values, index } => {
                 let arr = values.borrow();
                 if *index < arr.len() {
@@ -3760,6 +4581,50 @@ fn constant_to_value(constant: &Constant) -> Value {
             // Never loaded as a Value — only consumed by Op::CallNamed/NewNamed.
             unreachable!("ArgNames constant should not be loaded as a Value")
         }
+    }
+}
+
+/// Order two numeric scalars for the fast tier's comparisons: `Int`/`Int`
+/// and `Float`/`Float`, the two pairs the general arms compare inline.
+/// Anything else — mixed numbers, strings, a NaN — is `None`, and the op
+/// goes to the general arm, whose comparator owns those rules and errors.
+#[inline(always)]
+fn scalar_ordering(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
+    match (a, b) {
+        (Value::Int(x), Value::Int(y)) => Some(x.cmp(y)),
+        (Value::Float(x), Value::Float(y)) => x.partial_cmp(y),
+        _ => None,
+    }
+}
+
+/// Drop a value the fast tier has finished with. `Value`'s drop glue is an
+/// out-of-line jump table even for a scalar, and the ops in `run_fast` —
+/// `Pop`, `SetLocal`, a popped jump condition — discard a scalar far more
+/// often than not.
+/// `Value::clone` with the scalars copied inline: the derived impl is a
+/// call through a jump table even for an integer, and the fast tier copies
+/// a local on nearly every op.
+#[inline(always)]
+pub(crate) fn clone_scalar_fast(value: &Value) -> Value {
+    match value {
+        Value::Int(n) => Value::Int(*n),
+        Value::Float(f) => Value::Float(*f),
+        Value::Bool(b) => Value::Bool(*b),
+        Value::Null => Value::Null,
+        other => other.clone(),
+    }
+}
+
+#[inline(always)]
+pub(crate) fn discard(value: Value) {
+    if matches!(
+        value,
+        Value::Int(_) | Value::Float(_) | Value::Bool(_) | Value::Null
+    ) {
+        // Owns no heap data: nothing to release.
+        std::mem::forget(value);
+    } else {
+        drop(value);
     }
 }
 

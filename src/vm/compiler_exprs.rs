@@ -829,7 +829,12 @@ impl Compiler {
         // Fast path: if every key is a literal, precompute the HashKey list
         // and store it as a constant. The runtime then only needs values on
         // the stack — no key push/convert per element.
-        if let Some(keys) = self.literal_hash_keys(pairs) {
+        // Only for distinct keys: `HashWithKeys` builds the entries without
+        // looking for duplicates, so `{"a": 1, "a": 2}` takes the general path
+        // below, where the last value wins at the first key's position.
+        if let Some(keys) = self.literal_hash_keys(pairs).filter(|keys| {
+            keys.iter().collect::<std::collections::HashSet<_>>().len() == keys.len()
+        }) {
             let keys_idx = self.add_constant(Constant::HashKeys(std::sync::Arc::new(keys)));
             for (_, value) in pairs {
                 self.compile_expr(value)?;

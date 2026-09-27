@@ -33,7 +33,7 @@ Every Soli value is this enum (`src/interpreter/value.rs`). The VM uses the **sa
 | `Symbol(SoliStr)` | `:name` | cheap clone |
 | `Bool` / `Null` | | copy |
 | `Array(Rc<RefCell<Vec<Value>>>)` | Array | shared, mutable |
-| `Hash(Rc<RefCell<HashPairs>>)` | Ordered hash | shared, mutable |
+| `Hash(Rc<RefCell<HashPairs>>)` | Ordered hash — `SmallMap`: a linear `Vec` up to 8 entries, an `IndexMap` beyond (`small_map.rs`) | shared, mutable |
 | `Function(Rc<Function>)` | Soli closure (AST) | |
 | `NativeFunction` | Rust `fn(&[Value]) -> Result<Value, String>` | |
 | `Class(Rc<Class>)` | Class object | |

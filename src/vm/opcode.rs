@@ -308,6 +308,15 @@ pub enum Op {
     LessLocalLocal(u16, u16),
     /// Compare locals: push(local[a] > local[b])
     GreaterLocalLocal(u16, u16),
+    /// Compare a local with a constant: push(local[slot] < constants[c]).
+    /// The fused form of `GetLocal, Constant, Less`.
+    LessLocalConst(u16, u16),
+    /// push(local[slot] <= constants[c])
+    LessEqualLocalConst(u16, u16),
+    /// push(local[slot] > constants[c])
+    GreaterLocalConst(u16, u16),
+    /// push(local[slot] >= constants[c])
+    GreaterEqualLocalConst(u16, u16),
     /// Check if local != constant, push bool
     NotEqualLocalConst(u16, u16),
     /// Check if local == constant, push bool

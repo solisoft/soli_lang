@@ -431,12 +431,12 @@ pub(crate) fn group_by_field(items: &[Value], field: &Value) -> Value {
     for item in items {
         let key = key_or_null(&field_of(item, field));
         match out.entry(key) {
-            indexmap::map::Entry::Occupied(mut e) => {
+            crate::interpreter::small_map::Entry::Occupied(mut e) => {
                 if let Value::Array(a) = e.get_mut() {
                     a.borrow_mut().push(item.clone());
                 }
             }
-            indexmap::map::Entry::Vacant(e) => {
+            crate::interpreter::small_map::Entry::Vacant(e) => {
                 e.insert(Value::Array(Rc::new(RefCell::new(vec![item.clone()]))));
             }
         }
@@ -460,12 +460,12 @@ pub(crate) fn count_by(items: &[Value], field: &Value) -> Value {
     for item in items {
         let key = key_or_null(&field_of(item, field));
         match out.entry(key) {
-            indexmap::map::Entry::Occupied(mut e) => {
+            crate::interpreter::small_map::Entry::Occupied(mut e) => {
                 if let Value::Int(n) = e.get_mut() {
                     *n += 1;
                 }
             }
-            indexmap::map::Entry::Vacant(e) => {
+            crate::interpreter::small_map::Entry::Vacant(e) => {
                 e.insert(Value::Int(1));
             }
         }
@@ -479,12 +479,12 @@ pub(crate) fn tally(items: &[Value]) -> Value {
     for item in items {
         let key = key_or_null(item);
         match out.entry(key) {
-            indexmap::map::Entry::Occupied(mut e) => {
+            crate::interpreter::small_map::Entry::Occupied(mut e) => {
                 if let Value::Int(n) = e.get_mut() {
                     *n += 1;
                 }
             }
-            indexmap::map::Entry::Vacant(e) => {
+            crate::interpreter::small_map::Entry::Vacant(e) => {
                 e.insert(Value::Int(1));
             }
         }

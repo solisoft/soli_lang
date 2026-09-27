@@ -1862,7 +1862,8 @@ print(doubled);  # [10, 20]
 
 **Lookup and conversion methods:**
 
-- `.shift` — remove and return first [key, value] pair (mutates)
+- `.shift` — remove and return first [key, value] pair (mutates); the remaining keys keep their order
+- `.delete(key)` — remove a key and return its value (null when absent); the remaining keys keep their insertion order
 - `.flatten` — convert to array of [key, value] sub-arrays
 - `.values_at(*keys)` — array of values for given keys (null for missing)
 - `.fetch_values(*keys)` — array of values (raises if any missing)

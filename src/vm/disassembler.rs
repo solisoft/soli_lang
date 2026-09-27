@@ -343,6 +343,12 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::GetLocal2(a, b) => out.push_str(&format!("GET_LOCAL_2  {:>3},{:>3}", a, b)),
         Op::LessLocalLocal(a, b) => out.push_str(&format!("LESS_LL      {:>3},{:>3}", a, b)),
         Op::GreaterLocalLocal(a, b) => out.push_str(&format!("GREATER_LL   {:>3},{:>3}", a, b)),
+        Op::LessLocalConst(a, c) => out.push_str(&format!("LESS_LC      {:>3},{:>3}", a, c)),
+        Op::LessEqualLocalConst(a, c) => out.push_str(&format!("LESS_EQ_LC   {:>3},{:>3}", a, c)),
+        Op::GreaterLocalConst(a, c) => out.push_str(&format!("GREATER_LC   {:>3},{:>3}", a, c)),
+        Op::GreaterEqualLocalConst(a, c) => {
+            out.push_str(&format!("GREATER_EQ_LC {:>3},{:>3}", a, c))
+        }
         Op::NotEqualLocalConst(slot, cidx) => {
             out.push_str(&format!("NE_LC        {:>3},{:>3}", slot, cidx))
         }
