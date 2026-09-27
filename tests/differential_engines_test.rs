@@ -1159,6 +1159,15 @@ const CASES: &[(&str, &str)] = &[
         "return_in_fn_is_not_a_program_return",
         "def f() { return 1 }\nprint(f())\nprint(\"still running\")",
     ),
+    // String interpolation: every shape the fast paths special-case — a
+    // lone string part (shared, not copied), a lone non-string part, results
+    // on both sides of the 15-byte inline limit, floats on and off the ryu
+    // path, a part that itself interpolates (re-entrant build buffer), and
+    // non-scalar parts.
+    (
+        "interpolation_shapes",
+        "let s = \"Alice\"\nlet long = \"Alice-the-quite-long-name-of-a-user\"\nprint(\"#{s}\")\nprint(\"#{42}\")\nprint(\"#{s}#{s}\")\nprint(\"Hi #{s}!\")\nprint(\"Dear #{long}, you have #{3} new messages\")\nlet f = 0.1 + 0.2\nprint(\"#{f}|#{1.0}|#{2.5}|#{-0.0}|#{19.99}|#{1.0 / 3.0}|#{100000000000000000.0}\")\nprint(\"#{true}-#{false}-#{null}-#{:sym}\")\nprint(\"a=#{[1, 2.5, \"x\"]} h=#{{\"k\": 1}}\")\ndef greet(n) { return \"hi #{n} and #{n.length}\" }\nprint(\"outer #{greet(s)} / #{greet(long)} end\")\nprint(\"#{s}\".length)",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

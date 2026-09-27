@@ -1039,18 +1039,33 @@ impl Compiler {
         parts: &[InterpolatedPart],
         line: usize,
     ) -> CompileResult<()> {
-        let count = parts.len();
+        // Adjacent literals fold into one constant and empty ones vanish, so
+        // `BuildString` only ever concatenates what the source can't know
+        // statically; an all-literal string compiles to a plain constant.
+        let mut count = 0usize;
+        let mut pending = String::new();
         for part in parts {
             match part {
-                InterpolatedPart::Literal(s) => {
-                    self.emit_constant(Constant::String(s.clone().into()), line);
-                }
+                InterpolatedPart::Literal(s) => pending.push_str(s),
                 InterpolatedPart::Expression(expr) => {
+                    if !pending.is_empty() {
+                        let text = std::mem::take(&mut pending);
+                        self.emit_constant(Constant::String(text.into()), line);
+                        count += 1;
+                    }
                     self.compile_expr(expr)?;
+                    count += 1;
                 }
             }
         }
-        self.emit(Op::BuildString(count as u16), line);
+        let only_literal = count == 0;
+        if !pending.is_empty() || only_literal {
+            self.emit_constant(Constant::String(pending.into()), line);
+            count += 1;
+        }
+        if !only_literal {
+            self.emit(Op::BuildString(count as u16), line);
+        }
         Ok(())
     }
 

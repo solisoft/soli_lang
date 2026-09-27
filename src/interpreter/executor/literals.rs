@@ -1,7 +1,7 @@
 //! Literal expression evaluation.
 
 use crate::ast::ExprKind;
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{build_interpolated, Value};
 use crate::span::Span;
 
 use super::{Interpreter, RuntimeResult};
@@ -36,35 +36,36 @@ impl Interpreter {
         parts: &Vec<crate::ast::expr::InterpolatedPart>,
         _span: Span,
     ) -> RuntimeResult<Value> {
-        // Fast path: single literal (no interpolation)
-        if parts.len() == 1 {
-            if let crate::ast::expr::InterpolatedPart::Literal(s) = &parts[0] {
-                return Ok(Value::String(s.clone().into()));
-            }
+        use crate::ast::expr::InterpolatedPart;
+
+        if let [only] = parts.as_slice() {
+            return Ok(match only {
+                InterpolatedPart::Literal(s) => Value::String(s.as_str().into()),
+                // `"#{s}"` of a string is the string itself — share it.
+                InterpolatedPart::Expression(expr) => match self.evaluate(expr)? {
+                    string @ Value::String(_) => string,
+                    other => Value::String(build_interpolated(std::slice::from_ref(&other))),
+                },
+            });
         }
 
-        // Pre-allocate with estimated capacity
+        // Parts are only known once evaluated, so size from the literal text
+        // plus a guess per expression and copy once into the `SoliStr`.
         let capacity: usize = parts
             .iter()
-            .map(|p| match p {
-                crate::ast::expr::InterpolatedPart::Literal(s) => s.len(),
-                _ => 16, // estimate for expression results
+            .map(|part| match part {
+                InterpolatedPart::Literal(s) => s.len(),
+                InterpolatedPart::Expression(_) => 16,
             })
             .sum();
-        let mut result = String::with_capacity(capacity);
-
+        let mut buf = String::with_capacity(capacity);
         for part in parts {
             match part {
-                crate::ast::expr::InterpolatedPart::Literal(s) => {
-                    result.push_str(s);
-                }
-                crate::ast::expr::InterpolatedPart::Expression(expr) => {
-                    let value = self.evaluate(expr)?;
-                    value.append_to_string(&mut result);
-                }
+                InterpolatedPart::Literal(s) => buf.push_str(s),
+                InterpolatedPart::Expression(expr) => self.evaluate(expr)?.append_to(&mut buf),
             }
         }
-        Ok(Value::String(result.into()))
+        Ok(Value::String(buf.as_str().into()))
     }
 
     /// Evaluate a literal value from an expression kind.

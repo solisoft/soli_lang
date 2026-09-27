@@ -1907,6 +1907,8 @@ impl Parser {
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b == b'_')
             && !trimmed.bytes().next().unwrap_or(0).is_ascii_digit()
+            // `true`/`null`/`this`/… are tokens, not variables.
+            && crate::lexer::token::TokenKind::keyword(trimmed).is_none()
         {
             let span = self.previous_span();
             return Ok(Expr::new(ExprKind::Variable(trimmed.to_string()), span));

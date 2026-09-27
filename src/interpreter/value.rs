@@ -649,23 +649,30 @@ impl Value {
 
     /// Append this value's string representation directly into `out`.
     /// Avoids the intermediate `to_string()` allocation and the `fmt::Display`
-    /// machinery for primitive types — used on the string-interpolation hot path.
-    #[inline]
-    pub fn append_to_string(&self, out: &mut String) {
-        use std::fmt::Write;
+    /// machinery for primitive types — used on the string-interpolation hot
+    /// path (see `build_interpolated`).
+    ///
+    /// Only the cheap arms live here so the whole thing inlines into the
+    /// build loop; a call per part measurably slowed multi-part strings.
+    #[inline(always)]
+    pub fn append_to<W: std::fmt::Write>(&self, out: &mut W) {
+        // `write_str` on `String`/`EcoString` never fails.
+        let _ = match self {
+            Value::String(s) => out.write_str(s),
+            Value::Int(n) => out.write_str(itoa::Buffer::new().format(*n)),
+            Value::Bool(true) => out.write_str("true"),
+            Value::Bool(false) => out.write_str("false"),
+            Value::Null => out.write_str("null"),
+            _ => self.append_uncommon_to(out),
+        };
+    }
+
+    #[inline(never)]
+    fn append_uncommon_to<W: std::fmt::Write>(&self, out: &mut W) -> fmt::Result {
         match self {
-            Value::String(s) => out.push_str(s),
-            Value::Int(n) => out.push_str(itoa::Buffer::new().format(*n)),
-            Value::Bool(true) => out.push_str("true"),
-            Value::Bool(false) => out.push_str("false"),
-            Value::Null => out.push_str("null"),
-            Value::Symbol(s) => {
-                out.push(':');
-                out.push_str(s);
-            }
-            other => {
-                let _ = write!(out, "{}", other);
-            }
+            Value::Float(n) => write_float(*n, out),
+            Value::Symbol(s) => out.write_char(':').and_then(|()| out.write_str(s)),
+            other => write!(out, "{}", other),
         }
     }
 
@@ -1067,6 +1074,94 @@ fn with_depth<T>(
     let result = body();
     counter.with(|d| d.set(d.get() - 1));
     result
+}
+
+/// Concatenate already-evaluated interpolation parts into one `SoliStr`
+/// (the VM's `BuildString`).
+///
+/// The strategy depends on the length, which is known up front for strings
+/// and the cheap scalars. Measured under the release profile (fat LTO,
+/// mimalloc, where a small malloc/free pair is nearly free):
+/// - A result within `SoliStr`'s inline limit (15 bytes) is pushed straight
+///   into a `SoliStr`, with no heap at all.
+/// - Anything longer, or of unknown length, is built in an exactly-sized
+///   `String` and copied once. Pushing into a spilled `SoliStr` pays a
+///   uniqueness and capacity check per push and loses by 20–30% there.
+///
+/// A stack buffer and a thread-local reusable `String` were both tried and
+/// measured no faster. Out of line so the VM's dispatch loop only carries a
+/// call.
+#[inline(never)]
+pub fn build_interpolated(parts: &[Value]) -> SoliStr {
+    let mut len = 0;
+    for part in parts {
+        // Measured inline rather than through `display_len`, whose recursive
+        // container arms keep it from inlining: a call per part cost the
+        // multi-part case more than the build saves.
+        len += match part {
+            Value::String(s) => s.len(),
+            Value::Int(n) => {
+                let digits = n
+                    .unsigned_abs()
+                    .checked_ilog10()
+                    .map_or(1, |l| l as usize + 1);
+                digits + usize::from(*n < 0)
+            }
+            Value::Bool(true) | Value::Null => 4,
+            Value::Bool(false) => 5,
+            Value::Symbol(s) => s.len() + 1,
+            // Unknown until formatted: count past the inline limit.
+            _ => SoliStr::INLINE_LIMIT + 1,
+        };
+    }
+    if len <= SoliStr::INLINE_LIMIT {
+        let mut out = SoliStr::new();
+        for part in parts {
+            part.append_to(&mut out);
+        }
+        out
+    } else {
+        let mut out = String::with_capacity(len);
+        for part in parts {
+            part.append_to(&mut out);
+        }
+        SoliStr::from(out.as_str())
+    }
+}
+
+/// Write `n` exactly as `format!("{}", n)` would, but through `ryu` for the
+/// common case.
+///
+/// Both produce the shortest digits that round-trip, and differ in notation:
+/// ryu prints `1.0` where Display prints `1`, and switches to exponent form
+/// (`1e16`) where Display writes every digit. The first is normalised, the
+/// second handed back to Display.
+///
+/// They can also differ in the digits themselves. When the shortest form
+/// needs 16–17 significant digits, two candidates may both round-trip and
+/// the two libraries break the tie differently (`1658206780088562.2` vs
+/// `…562.3`). With at most 15 there is only one candidate: 15-digit decimals
+/// sit at least 1e-15 apart relative to the value, while the round-trip
+/// interval is one ulp, at most 2.2e-16. So ryu's answer is only taken at 15
+/// digits or fewer, which covers the floats people actually print.
+#[inline]
+pub(crate) fn write_float<W: std::fmt::Write + ?Sized>(n: f64, out: &mut W) -> fmt::Result {
+    const UNIQUE_SHORTEST_DIGITS: usize = 15;
+    if n.is_finite() {
+        let mut buf = ryu::Buffer::new();
+        let formatted = buf.format_finite(n);
+        let bytes = formatted.as_bytes();
+        // Counting trailing zeros too only makes the check stricter.
+        let significant = bytes
+            .iter()
+            .filter(|b| b.is_ascii_digit())
+            .skip_while(|&&b| b == b'0')
+            .count();
+        if significant <= UNIQUE_SHORTEST_DIGITS && !bytes.contains(&b'e') {
+            return out.write_str(formatted.strip_suffix(".0").unwrap_or(formatted));
+        }
+    }
+    write!(out, "{}", n)
 }
 
 impl fmt::Display for Value {
@@ -3529,5 +3624,126 @@ mod sensitive_name_tests {
                 "{name} should NOT be treated as sensitive"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod interpolation_format_tests {
+    use super::{build_interpolated, write_float, Value};
+
+    fn via_ryu(n: f64) -> String {
+        let mut out = String::new();
+        write_float(n, &mut out).unwrap();
+        out
+    }
+
+    /// Interpolation must print a float byte-for-byte as `str()`/Display does;
+    /// the ryu fast path is only allowed to be faster, never different.
+    #[test]
+    fn ryu_float_path_matches_display() {
+        let edges = [
+            0.0,
+            -0.0,
+            1.0,
+            -1.0,
+            0.1 + 0.2,
+            2.5,
+            12.375,
+            1e15,
+            1e16,
+            1e17,
+            123456789012345680.0,
+            1e-4,
+            1e-5,
+            1e-7,
+            5e-324,
+            2.2250738585072014e-308,
+            f64::MIN_POSITIVE,
+            f64::MAX,
+            f64::MIN,
+            f64::EPSILON,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ];
+        for n in edges {
+            assert_eq!(via_ryu(n), format!("{}", n), "bits {:#x}", n.to_bits());
+        }
+        // xorshift over raw bit patterns: every exponent, sign and mantissa shape.
+        let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
+        for _ in 0..200_000 {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            let n = f64::from_bits(state);
+            assert_eq!(via_ryu(n), format!("{}", n), "bits {:#x}", state);
+        }
+        // Short decimals — the fast path — at every magnitude: prices,
+        // ratios, measurements, integral floats.
+        for _ in 0..500_000 {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            let mantissa = (state % 1_000_000_000_000_000) as i64 >> (state % 50);
+            let scale = 10f64.powi((state >> 56) as i32 % 40 - 20);
+            let n = mantissa as f64 * scale;
+            assert_eq!(via_ryu(n), format!("{}", n), "bits {:#x}", n.to_bits());
+            assert_eq!(via_ryu(-n), format!("{}", -n));
+        }
+        for i in -100_000i64..100_000 {
+            for divisor in [1.0, 8.0, 100.0, 1000.0] {
+                let n = i as f64 / divisor;
+                assert_eq!(via_ryu(n), format!("{}", n));
+            }
+        }
+    }
+
+    #[test]
+    fn build_interpolated_matches_display_on_both_paths() {
+        // Known length within the inline limit: built straight into `SoliStr`.
+        let short = [
+            Value::String("v=".into()),
+            Value::Int(-42),
+            Value::Symbol("ok".into()),
+            Value::Null,
+        ];
+        assert_eq!(build_interpolated(&short).as_str(), "v=-42:oknull");
+        // One byte over, and exactly at, the limit.
+        let edge = [Value::String("x".repeat(15).into()), Value::Bool(true)];
+        assert_eq!(
+            build_interpolated(&edge).as_str(),
+            format!("{}true", "x".repeat(15))
+        );
+        let exact = [Value::String("x".repeat(13).into()), Value::Int(10)];
+        assert_eq!(
+            build_interpolated(&exact).as_str(),
+            format!("{}10", "x".repeat(13))
+        );
+
+        let parts = [
+            Value::String("a".into()),
+            Value::Int(-42),
+            Value::Float(1.5),
+            Value::Bool(true),
+            Value::Null,
+        ];
+        let built = build_interpolated(&parts);
+        assert_eq!(built.as_str(), "a-421.5truenull");
+
+        let long = [Value::String("x".repeat(40).into()), Value::Float(1e20)];
+        // Crossing the stack buffer mid-part, and multi-byte UTF-8 on both sides.
+        let wide = [
+            Value::String("é".repeat(60).into()),
+            Value::Int(7),
+            Value::String("ü".repeat(100).into()),
+        ];
+        assert_eq!(
+            build_interpolated(&wide).as_str(),
+            format!("{}7{}", "é".repeat(60), "ü".repeat(100))
+        );
+        assert_eq!(
+            build_interpolated(&long).as_str(),
+            format!("{}{}", "x".repeat(40), 1e20)
+        );
     }
 }

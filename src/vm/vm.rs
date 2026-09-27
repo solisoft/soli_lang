@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::error::RuntimeError;
 use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{
-    hash_get_value, hash_set_value, Class, HashKey, HashPairs, StrKey, Value,
+    build_interpolated, hash_get_value, hash_set_value, Class, HashKey, HashPairs, StrKey, Value,
 };
 use crate::metrics::VmTimingGuard;
 use crate::span::Span;
@@ -2565,20 +2565,13 @@ impl Vm {
                 Op::BuildString(n) => {
                     let len = self.stack.len();
                     let start = len - n as usize;
-                    let mut capacity = 0;
-                    for i in start..len {
-                        if let Value::String(s) = &self.stack[i] {
-                            capacity += s.len();
-                        } else {
-                            capacity += 8;
-                        }
+                    // `"#{s}"` of a string is the string itself — share it.
+                    if n == 1 && matches!(self.stack[start], Value::String(_)) {
+                        continue;
                     }
-                    let mut result = String::with_capacity(capacity);
-                    for i in start..len {
-                        self.stack[i].append_to_string(&mut result);
-                    }
+                    let result = build_interpolated(&self.stack[start..]);
                     self.stack.truncate(start);
-                    self.stack.push(Value::String(result.into()));
+                    self.stack.push(Value::String(result));
                 }
                 Op::Spread => {
                     // Spread is handled by the array/hash/call compilation
