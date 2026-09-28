@@ -20,13 +20,17 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.6.5.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.6.6.</p>
 
-        <h3 id="unreleased-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
+    </section>
+
+    <section id="v2-6-6" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.6.6 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-28</span></h2>
+
+        <h3 id="v2-6-6-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Every <code class="text-cyan-400">soli test</code> worker database has the app&rsquo;s indexes.</strong> Since 2.6.5 the base test database is migrated, but the other worker databases only received its collections &mdash; so a unique index existed on one worker, and a spec with duplicate fixture values failed or passed depending on where it ran. The runner now copies the base database&rsquo;s indexes to each worker. The generated <code class="text-cyan-400">CLAUDE.md</code> guides no longer tell specs to call a <code class="text-cyan-400">db_migrate</code> that does not exist.</li>
         </ul>
-
     </section>
 
     <section id="v2-6-5" class="mb-16 scroll-mt-24">
