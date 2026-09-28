@@ -109,8 +109,8 @@ def get_blog_posts()
                     "tag_chip": tag_chip_class(info["tag"]),
                     "tag_gradient": tag_gradient_class(info["tag"]),
                     "image": info["image"] ?? null,
-                    "scheduled_on": blog_scheduled_on(info)
                     "publish_on": info["publish_on"] ?? null,
+                    "scheduled_on": blog_scheduled_on(info)
                 })
             end
         end
@@ -174,11 +174,12 @@ def show
     let exists = file_exists(path)
 
     if not exists or blog_scheduled_slug?(slug)
-        return {
-            "status": 404,
-            "headers": {"Content-Type": "text/html"},
-            "body": "<h1>404 - Blog post not found</h1>"
-        }
+        return render("blog/not_found", {
+            "title": "Post not found",
+            "layout": "layouts/docs",
+            "breadcrumb_href": "/docs/blog",
+            "recent_posts": get_blog_posts().take(3)
+        }, {"status": 404})
     end
     
     let content = slurp(path)
@@ -192,9 +193,9 @@ def show
         "content": html,
         "slug": slug,
         "og_image": blog_og_image(slug),
-        "scheduled_on": manifest_entry.nil? ? null : manifest_entry["scheduled_on"],
         "og_image_size": blog_og_image_size(slug),
         "published_on": manifest_entry.nil? ? null : manifest_entry["publish_on"],
+        "scheduled_on": manifest_entry.nil? ? null : manifest_entry["scheduled_on"],
         "og_description": blog_og_description(slug)
     })
 end
@@ -209,18 +210,17 @@ def find_blog_post(slug)
     return null
 end
 
-def blog_og_image(slug)
 # X, LinkedIn, Facebook and Slack don't render an SVG og:image, so a post whose
 # hero is an SVG shares a 1200x630 PNG render of it from images/blog/og/<slug>.png
 # (rsvg-convert -w 1200 <slug>.svg | magick - -gravity center -crop 1200x630+0+0).
+def blog_og_image(slug)
     let post = find_blog_post(slug)
     return null if post == null
-    return null if post["image"] == null
     return "https://soli.solisoft.net/images/blog/og/" + slug + ".png" if blog_og_card?(slug)
+    return null if post["image"] == null
     return "https://soli.solisoft.net/images/blog/" + post["image"]
 end
 
-def blog_og_description(slug)
 def blog_og_card?(slug)
     file_exists("public/images/blog/og/" + slug + ".png")
 end
@@ -230,6 +230,7 @@ def blog_og_image_size(slug)
     null
 end
 
+def blog_og_description(slug)
     let post = find_blog_post(slug)
     return "" if post == null
     return post["description"]
