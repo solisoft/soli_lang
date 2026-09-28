@@ -158,7 +158,9 @@ when the tight test loop matters more than the leftovers.
 The base test database is created with the app's schema: when `soli test` creates (or
 recreates) it, it runs `db/migrations` against it and truncates any rows they seed, so
 every collection exists before the first spec runs. A failed migration is reported and the
-run continues; collections are then created on first write, as before.
+run continues; collections are then created on first write, as before. Because the migrations
+also create the app's indexes, a spec that inserts a duplicate value into a uniquely indexed
+field fails as it would in production — give such fixtures distinct values.
 
 `SOLI_TEST_SOLIDB_HOST` sends test runs to a SoliDB of their own, overriding the
 `SOLIDB_HOST` from `.env.test` for the runner and its test servers. Set it in the shell on a

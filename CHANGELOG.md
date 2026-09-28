@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.6.5] - 2026-09-28
+
 ### Performance
 
 * **perf(strings):** **`buf = buf + piece`, `buf += piece` and `buf << piece` append in place.** A loop that built a string with `+` copied the whole buffer on every iteration. When the variable is the string's only owner the buffer grows; a second variable that already holds the previous value is left unchanged. Any piece qualifies — a literal, an interpolation, a call — as does a variable a closure captured. On the VM, `name = name + <expr>` / `name += <expr>` compile to one fused op (`AddAssignLocal`/`Upvalue`/`Global`) when no peephole already covers the right-hand side; ints and floats stay in the fast dispatch loop. On the tree-walker a block now releases a statement's value before running the next, so a clone of `buf` kept as the "last value" no longer forces the next append to copy. The variable is read before the right-hand side on both engines, as for `+`. `<<` onto a string takes a string and needs a plain variable (`+=` on a field or hash entry); on an array it still pushes. 100k appends of `"<li>#{i}</li>"`: 1.3 s → 19 ms (VM), 38 ms (tree-walker); integer accumulators unchanged (±2%). Tests: `tests/language/string_append_spec.sl`, `differential_engines_test` (`string_shovel_on_a_captured_variable`, `append_reads_the_variable_before_the_right_hand_side`, `add_assign_with_a_computed_right_hand_side`). Docs: `www/docs/soli-language.md`.
@@ -17,7 +19,7 @@
 
 ### Testing
 
-* **`soli test` runs `db/migrations` on a freshly created base test database**, then truncates seeded rows: every collection exists before the first spec, so a query over a collection nothing had written yet no longer fails with `CollectionNotFound` on a fresh SoliDB. A failed migration is reported and the run continues.
+* **`soli test` runs `db/migrations` on a freshly created base test database**, then truncates seeded rows: every collection exists before the first spec, so a query over a collection nothing had written yet no longer fails with `CollectionNotFound` on a fresh SoliDB. A failed migration is reported and the run continues. The test databases now carry the app's real indexes, so a spec that inserts duplicate values into a uniquely indexed field fails the way production would (seen in two apps: a unique `user_id` on people, a unique `siret` on providers).
 * **`SOLI_TEST_SOLIDB_HOST`** overrides `SOLIDB_HOST` for `soli test` (and is pinned for its test servers), so a workstation's suite can use its own SoliDB instead of the shared dev instance. Docs: `www/docs/testing.md`.
 
 ### Changed
