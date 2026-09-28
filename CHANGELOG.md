@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.6.4] - 2026-09-28
+
 ### Fixed
 
 * **fix(vm):** **a missing hash key read with a dot is `null` on the VM, as on the interpreter.** `h.name` on a hash without `name` answered a method object — truthy — where the tree-walker answers `null`, so `if rec._errors` was true on a hash with no `_errors`: a successful `Model.update(id, attrs)` took its error branch (an update's audit entry never written; a recurring task never generating its next occurrence). The builtin method names now live in one list, `is_hash_method_name`, shared by `hash_member_access` and the VM's `op_get_property`; any other name is the key's value or `null`. Test: `differential_engines_test` (`hash_missing_key_dot_is_null`).
