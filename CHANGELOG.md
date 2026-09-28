@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+* **`soli test` worker databases get the base database's indexes.** Worker DBs past the first were built from the migrated base DB's collection list only, so its indexes — unique ones included — existed on worker 0 alone: a spec inserting a duplicate value failed or passed depending on which worker ran it (seen in two apps as failures that moved between runs). After the collections, the runner now copies every index the base DB has and a worker lacks, by name; a DB kept by `SOLI_TEST_KEEP_DB` converges the same way. syndic: 232 indexes over 2 workers in 44 ms.
+* **scaffold docs:** `db/migrations/CLAUDE.md` and `tests/CLAUDE.md` said the runner never migrates and told specs to call `db_migrate("up")`, a builtin that does not exist. They now describe what `soli test` does since 2.6.5.
+
 ## [2.6.5] - 2026-09-28
 
 ### Performance

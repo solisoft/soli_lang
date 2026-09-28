@@ -1869,7 +1869,145 @@ fn ensure_test_databases(db_names: &[String], app_dir: &Path) {
             create_started.elapsed().as_millis()
         );
     }
+    copy_template_indexes(
+        &host,
+        &auth_header,
+        base_database,
+        &databases[1..],
+        &template_collections,
+    );
     println!();
+}
+
+/// Give every sibling worker DB the indexes the base DB has.
+///
+/// Worker DBs are built from the base DB's collection list alone, so the
+/// indexes its migrations create — unique ones included — existed only in the
+/// base DB: a spec inserting a duplicate value failed on worker 0 and passed
+/// on the others, and which one ran it changed with the file count. An index
+/// a worker already has, by name, is left as it is, so a DB kept by
+/// `SOLI_TEST_KEEP_DB` converges the same way a new one does.
+fn copy_template_indexes(
+    host: &str,
+    auth_header: &Option<String>,
+    base_database: &str,
+    workers: &[&String],
+    template_collections: &[(String, String)],
+) {
+    if workers.is_empty() {
+        return;
+    }
+    let template: Vec<(&str, Vec<serde_json::Value>)> = template_collections
+        .iter()
+        .filter_map(|(name, _)| {
+            let indexes = list_indexes(host, auth_header, base_database, name).ok()?;
+            (!indexes.is_empty()).then_some((name.as_str(), indexes))
+        })
+        .collect();
+    if template.is_empty() {
+        return;
+    }
+
+    let started = std::time::Instant::now();
+    let mut created = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+    for worker in workers {
+        for (collection, indexes) in &template {
+            let existing: std::collections::HashSet<String> =
+                list_indexes(host, auth_header, worker, collection)
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|index| index["name"].as_str().map(str::to_string))
+                    .collect();
+            for index in indexes {
+                let Some(name) = index["name"].as_str() else {
+                    continue;
+                };
+                if existing.contains(name) {
+                    continue;
+                }
+                match create_index(host, auth_header, worker, collection, index) {
+                    Ok(()) => created += 1,
+                    Err(err) => errors.push(format!("{}/{}.{}: {}", worker, collection, name, err)),
+                }
+            }
+        }
+    }
+    if created > 0 {
+        println!(
+            "  ✓ {} index(es) copied from {} to {} worker DB(s) ({}ms)",
+            created,
+            base_database,
+            workers.len(),
+            started.elapsed().as_millis()
+        );
+    }
+    // Not fatal: a spec that needs a missing index fails on its own, and
+    // the others still run.
+    for err in errors.iter().take(3) {
+        println!("  ⚠ {}", err);
+    }
+    if errors.len() > 3 {
+        println!("  ⚠ … and {} more index error(s)", errors.len() - 3);
+    }
+}
+
+/// The indexes of one collection, as SoliDB lists them (`name`, `fields`,
+/// `index_type`, `unique`, …). Vector indexes live on another route and are
+/// not included.
+fn list_indexes(
+    host: &str,
+    auth_header: &Option<String>,
+    database: &str,
+    collection: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    let agent = solilang::interpreter::builtins::http_class::ureq_agent();
+    let url = format!("{}/_api/database/{}/index/{}", host, database, collection);
+    let mut req = agent.get(&url);
+    if let Some(auth) = auth_header {
+        req = req.set("Authorization", auth);
+    }
+    let body = req
+        .call()
+        .map_err(|err| format!("list indexes failed: {}", err))?
+        .into_string()
+        .map_err(|err| format!("list indexes failed: {}", err))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|err| format!("list indexes failed: {}", err))?;
+    Ok(json["indexes"].as_array().cloned().unwrap_or_default())
+}
+
+/// Recreate one listed index on another database. The listing reports the
+/// type as `index_type` ("Hash", "Persistent", …); the create route takes it
+/// lowercased as `type`. 409 (already exists) counts as success.
+fn create_index(
+    host: &str,
+    auth_header: &Option<String>,
+    database: &str,
+    collection: &str,
+    index: &serde_json::Value,
+) -> Result<(), String> {
+    let index_type = index["index_type"]
+        .as_str()
+        .or_else(|| index["type"].as_str())
+        .unwrap_or("hash")
+        .to_ascii_lowercase();
+    let payload = serde_json::json!({
+        "name": index["name"],
+        "type": index_type,
+        "fields": index["fields"],
+        "unique": index["unique"].as_bool().unwrap_or(false),
+    });
+    let agent = solilang::interpreter::builtins::http_class::ureq_agent();
+    let url = format!("{}/_api/database/{}/index/{}", host, database, collection);
+    let mut req = agent.post(&url).set("Content-Type", "application/json");
+    if let Some(auth) = auth_header {
+        req = req.set("Authorization", auth);
+    }
+    match req.send_string(&payload.to_string()) {
+        Ok(_) | Err(ureq::Error::Status(409, _)) => Ok(()),
+        Err(err) => Err(format!("create index failed: {}", err)),
+    }
 }
 
 /// A 401 with no configured credentials is the normal state for a project that

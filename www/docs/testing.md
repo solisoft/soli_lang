@@ -160,7 +160,9 @@ recreates) it, it runs `db/migrations` against it and truncates any rows they se
 every collection exists before the first spec runs. A failed migration is reported and the
 run continues; collections are then created on first write, as before. Because the migrations
 also create the app's indexes, a spec that inserts a duplicate value into a uniquely indexed
-field fails as it would in production — give such fixtures distinct values.
+field fails as it would in production — give such fixtures distinct values. Every other worker
+database gets the base database's collections and indexes, so a spec sees the same schema
+whichever worker runs it.
 
 `SOLI_TEST_SOLIDB_HOST` sends test runs to a SoliDB of their own, overriding the
 `SOLIDB_HOST` from `.env.test` for the runner and its test servers. Set it in the shell on a

@@ -252,19 +252,21 @@ that does the inverse.
 
 ## Test database lifecycle
 
-The test runner **does not** auto-run migrations. Each test worker gets a
-fresh database (`<base>_w<i>_<suffix>`) dropped and recreated before the
-suite starts. If your tests need schema, run migrations explicitly in a
-`before_all` block:
+`soli test` gives the suite the schema these migrations build — nothing to
+call from a spec:
 
-```soli
-before_all() do
-  db_migrate("up")
-end
-```
+- When it creates the base test database (`<base>_test`), it runs every
+  migration here against it, then empties the rows they seeded. A failing
+  migration is reported and the run continues.
+- Each extra worker database (`<base>_w<i>_test`) gets the base database's
+  collections (blob types included) and its indexes.
+- The databases are dropped when the suite ends. `SOLI_TEST_KEEP_DB=1` keeps
+  them and truncates instead; `SOLI_TEST_FRESH_DB=1` (with it) rebuilds them.
 
-(Or set this up once at the top of `tests/spec_helper.sl` and require it
-from each spec — whatever your project convention is.)
+The indexes are the production ones, unique ones included: two fixtures with
+the same value in a uniquely indexed field fail on the second `create` (its
+`_key` comes back null), as they would in production. Give each fixture its
+own value.
 
 ## Style
 

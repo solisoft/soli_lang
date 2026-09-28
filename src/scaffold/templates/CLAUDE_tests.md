@@ -371,10 +371,13 @@ comment out a whole `describe` block.
 
 ## Test database lifecycle
 
-- Before the suite starts, each worker's database is **dropped and recreated**.
-- Migrations are **not** auto-run by the test runner. Either:
-  - Run them yourself: `before_all() do db_migrate("up") end`, or
-  - Let the test helper crate handle it if your project sets one up.
+- Before the suite starts, each worker's database is **created fresh**, with
+  the app's schema: the runner runs `db/migrations` on the base test database
+  (then empties the rows they seeded) and gives every other worker database
+  the same collections and indexes. Nothing to call from a spec.
+- Those are the production indexes, unique ones included — two fixtures with
+  the same value in a uniquely indexed field fail on the second `create`.
+  Give each fixture its own value.
 - Between tests, state from earlier specs in the same worker may persist.
   Use `before_each` to set up known starting state — don't rely on alphabetic
   ordering between tests.
