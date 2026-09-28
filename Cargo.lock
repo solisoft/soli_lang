@@ -7728,7 +7728,7 @@ dependencies = [
 
 [[package]]
 name = "solilang"
-version = "2.6.5"
+version = "2.6.6"
 dependencies = [
  "aes-gcm",
  "ahash",
