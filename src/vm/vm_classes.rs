@@ -506,25 +506,15 @@ impl Vm {
                 let mut interp = Interpreter::for_vm_fragment(&self.globals);
                 interp.evaluate_member_on_value(object.clone(), name, span)
             }
-            // The tree-walker's rule (`hash_member_access`), from the same
-            // list: a builtin method name reads as the method, anything else
-            // as the key's value — `null` when the key is absent. The VM used
-            // to answer a method for every absent key, so `if rec._errors` was
-            // true on a hash without `_errors` and a successful
-            // `Model.update(id, attrs)` took the error branch (2.6.2).
-            Value::Hash(hash) => {
-                if crate::interpreter::executor::access::member::is_hash_method_name(name) {
-                    return Ok(Value::method(ValueMethod {
-                        receiver: Box::new(object.clone()),
-                        method_name: name.to_string(),
-                    }));
-                }
-                let hash = hash.borrow();
-                Ok(hash
-                    .get(&crate::interpreter::value::StrKey(name))
-                    .cloned()
-                    .unwrap_or(Value::Null))
-            }
+            // The tree-walker's rule, by the same function
+            // (`Interpreter::hash_member_value`): user methods, the universal
+            // members (`nil?`, `blank?`, `present?`…), then a builtin method
+            // name reads as the method and anything else as the key's value —
+            // `null` when the key is absent. The VM used to answer a method for
+            // every absent key, so `if rec._errors` was true on a hash without
+            // `_errors` (2.6.2); then it skipped the universal members, so
+            // `h.present?` was `null` (2.6.4).
+            Value::Hash(hash) => Ok(Interpreter::hash_member_value(hash, name, object.clone())),
             Value::Array(_) => {
                 // Array methods like .length, .map, .filter, etc.
                 Ok(Value::method(ValueMethod {

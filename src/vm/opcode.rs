@@ -232,7 +232,38 @@ pub enum Op {
     /// carries drop glue (five variants hold an `Rc`), so a push/pop pair is a
     /// 24-byte move plus a drop check, not a register spill. Accumulator loops
     /// (`s = s + i`) are the single most common shape in hot Soli code.
+    ///
+    /// String locals append with `EcoString::push_str`, which grows the buffer
+    /// in place when this slot is the string's only owner. `buf = buf + piece`
+    /// in a loop is then linear.
     AddLocalsInPlace(u16, u16),
+    /// `local[slot] += string_constant`, in place. Same growth rule as
+    /// [`Op::AddLocalsInPlace`] for strings. Other types of local fall back
+    /// to a normal add against that constant.
+    AppendLocalConst(u16, u16),
+    /// `local[slot] << value`. Pops the value and, below it, the local as it
+    /// was read before the value ran. An array is pushed into; a string local
+    /// appends a string. The resulting local is pushed, matching `<<`
+    /// returning its left operand.
+    AppendLocal(u16),
+    /// `global << value`. Same as [`Op::AppendLocal`] for a global name.
+    AppendGlobal(u16),
+    /// `upvalue << value`. Same as [`Op::AppendLocal`] for a captured
+    /// variable, so a closure appending to an outer string edits that string.
+    AppendUpvalue(u16),
+    /// `local = local + value` (and `local += value`) with a right-hand side
+    /// the peepholes above do not cover. Pops the value and, below it, the
+    /// local as read before the value ran; stores and pushes the sum. A string
+    /// grows in place when the local still holds it, as for
+    /// [`Op::AppendLocal`]; any other pair adds like [`Op::Add`].
+    AddAssignLocal(u16),
+    /// [`Op::AddAssignLocal`] for a captured variable.
+    AddAssignUpvalue(u16),
+    /// [`Op::AddAssignLocal`] for a global name (a string constant index).
+    AddAssignGlobal(u16),
+    /// `global = global + string_constant`, appending into the global when it
+    /// is a string. No stack traffic.
+    AppendGlobalConst(u16, u16),
     /// Combined LessEqual + JumpIfFalse: pop two, compare <=, jump if false.
     TestLessEqualJump(u16),
     /// Combined Less + JumpIfFalse: pop two, compare <, jump if false.

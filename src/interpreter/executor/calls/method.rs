@@ -9,6 +9,54 @@ use crate::interpreter::executor::{ControlFlow, Interpreter, RuntimeResult};
 use crate::interpreter::value::{HashKey, HashPairs, Value, ValueMethod};
 use crate::span::Span;
 
+/// A slice (a snapshot, or a pipeline temporary) or the live receiver.
+///
+/// Closure-taking methods read one element at a time and drop the borrow
+/// before running user code, matching the VM: a callback that shrinks the
+/// array stops the loop at the new length, and one that grows it cannot
+/// extend the loop past the length captured at the start.
+trait ArrayView {
+    fn len(&self) -> usize;
+    fn get(&self, index: usize) -> Option<Value>;
+    fn to_vec(&self) -> Vec<Value>;
+    fn view_array(&self) -> Value;
+}
+
+impl ArrayView for [Value] {
+    fn len(&self) -> usize {
+        <[Value]>::len(self)
+    }
+    fn get(&self, index: usize) -> Option<Value> {
+        <[Value]>::get(self, index).cloned()
+    }
+    fn to_vec(&self) -> Vec<Value> {
+        <[Value]>::to_vec(self)
+    }
+    fn view_array(&self) -> Value {
+        Value::Array(Rc::new(RefCell::new(<[Value]>::to_vec(self))))
+    }
+}
+
+impl ArrayView for Rc<RefCell<Vec<Value>>> {
+    fn len(&self) -> usize {
+        self.borrow().len()
+    }
+    fn get(&self, index: usize) -> Option<Value> {
+        let borrowed = self.borrow();
+        if index >= borrowed.len() {
+            None
+        } else {
+            Some(borrowed[index].clone())
+        }
+    }
+    fn to_vec(&self) -> Vec<Value> {
+        self.borrow().clone()
+    }
+    fn view_array(&self) -> Value {
+        Value::Array(Rc::clone(self))
+    }
+}
+
 impl Interpreter {
     pub(crate) fn call_hash_method_on_rc(
         &mut self,
@@ -204,10 +252,34 @@ impl Interpreter {
                         return self.call_array_method(&items, method_name, arguments, span);
                     }
                 }
-                // Closure-taking methods iterate over a snapshot so a
-                // user closure mutating the receiver mid-iteration
-                // (`arr.push(...)` inside `map`) stays well-defined
-                // instead of panicking on a RefCell double-borrow.
+                // Live, like the VM. The length is captured inside each
+                // method; the borrow is dropped before the callback runs, so
+                // a push or pop in the closure cannot double-borrow.
+                self.call_array_user_method(arr, method_name, arguments, span)
+            }
+        }
+    }
+
+    /// Closure-taking array methods against the live receiver. Anything not
+    /// listed still runs on a snapshot (a comparator that sorts a copy).
+    fn call_array_user_method(
+        &mut self,
+        arr: &Rc<RefCell<Vec<Value>>>,
+        method_name: &str,
+        arguments: Vec<Value>,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        match method_name {
+            "map" => self.array_map(arr, arguments, span),
+            "filter" | "select" => self.array_filter(arr, arguments, method_name, span),
+            "each" => self.array_each(arr, arguments, span),
+            "each_with_index" => self.array_each_with_index(arr, arguments, span),
+            "reduce" | "fold" => self.array_reduce(arr, arguments, method_name, span),
+            "find" => self.array_find(arr, arguments, span),
+            "any?" => self.array_any(arr, arguments, span),
+            "all?" => self.array_all(arr, arguments, span),
+            "sort_by" => self.array_sort_by(arr, arguments, span),
+            _ => {
                 let items = arr.borrow().clone();
                 self.call_array_method(&items, method_name, arguments, span)
             }
@@ -358,14 +430,11 @@ impl Interpreter {
     }
 
     /// Array methods that invoke a user-supplied closure while iterating.
-    /// These must operate on a SNAPSHOT of the array: the closure can
-    /// re-entrantly mutate the receiver (`arr.push(...)` inside `map`),
-    /// which would panic on a RefCell double-borrow under a live borrow.
-    /// Everything else in `call_array_method` is pure Rust and is invoked
-    /// on the live borrow, skipping the O(n) snapshot clone. Keep this
-    /// list in sync with `call_array_method`: when adding a new
-    /// closure-taking method there, add it here too — omitting one is a
-    /// runtime panic when a closure mutates the receiver, not a perf bug.
+    /// They walk the live receiver one index at a time (the VM's rule): the
+    /// length is captured up front, the borrow is dropped before the
+    /// callback, and a shrink past the current index ends the loop. A method
+    /// missing from this list and from `call_array_user_method` still runs
+    /// on a snapshot. Keep both lists in step with `call_array_method`.
     fn array_method_runs_user_code(name: &str) -> bool {
         matches!(
             name,
@@ -707,9 +776,9 @@ impl Interpreter {
         }
     }
 
-    fn array_map(
+    fn array_map<A: ArrayView + ?Sized>(
         &mut self,
-        items: &[Value],
+        items: &A,
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
@@ -738,11 +807,11 @@ impl Interpreter {
             .borrow_mut()
             .define(param_name.clone(), Value::Null);
 
-        let mut result = Vec::with_capacity(items.len());
-        for item in items {
-            call_env_rc
-                .borrow_mut()
-                .define_or_update(&param_name, item.clone());
+        let n = items.len();
+        let mut result = Vec::with_capacity(n);
+        for i in 0..n {
+            let Some(item) = items.get(i) else { break };
+            call_env_rc.borrow_mut().define_or_update(&param_name, item);
 
             match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => result.push(v),
@@ -760,9 +829,9 @@ impl Interpreter {
         Ok(Value::Array(Rc::new(RefCell::new(result))))
     }
 
-    fn array_filter(
+    fn array_filter<A: ArrayView + ?Sized>(
         &mut self,
-        items: &[Value],
+        items: &A,
         arguments: Vec<Value>,
         method_name: &str,
         span: Span,
@@ -792,8 +861,10 @@ impl Interpreter {
             .borrow_mut()
             .define(param_name.clone(), Value::Null);
 
-        let mut result = Vec::with_capacity(items.len());
-        for item in items {
+        let n = items.len();
+        let mut result = Vec::with_capacity(n);
+        for i in 0..n {
+            let Some(item) = items.get(i) else { break };
             call_env_rc
                 .borrow_mut()
                 .define_or_update(&param_name, item.clone());
@@ -811,16 +882,16 @@ impl Interpreter {
             };
 
             if result_value.is_truthy() {
-                result.push(item.clone());
+                result.push(item);
             }
         }
 
         Ok(Value::Array(Rc::new(RefCell::new(result))))
     }
 
-    fn array_each(
+    fn array_each<A: ArrayView + ?Sized>(
         &mut self,
-        items: &[Value],
+        items: &A,
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
@@ -849,10 +920,10 @@ impl Interpreter {
             .borrow_mut()
             .define(param_name.clone(), Value::Null);
 
-        for item in items {
-            call_env_rc
-                .borrow_mut()
-                .define_or_update(&param_name, item.clone());
+        let n = items.len();
+        for i in 0..n {
+            let Some(item) = items.get(i) else { break };
+            call_env_rc.borrow_mut().define_or_update(&param_name, item);
 
             match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(_)
@@ -868,12 +939,12 @@ impl Interpreter {
             }
         }
 
-        Ok(Value::Array(Rc::new(RefCell::new(items.to_vec()))))
+        Ok(items.view_array())
     }
 
-    fn array_each_with_index(
+    fn array_each_with_index<A: ArrayView + ?Sized>(
         &mut self,
-        items: &[Value],
+        items: &A,
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
@@ -901,15 +972,17 @@ impl Interpreter {
             call_env_rc.borrow_mut().define(n.clone(), Value::Null);
         }
 
-        for (i, item) in items.iter().enumerate() {
+        let n = items.len();
+        for i in 0..n {
+            let Some(item) = items.get(i) else { break };
             match (&param0_name, &param1_name) {
                 (Some(n0), Some(n1)) => {
                     let mut env = call_env_rc.borrow_mut();
-                    env.define_or_update(n0, item.clone());
+                    env.define_or_update(n0, item);
                     env.define_or_update(n1, Value::Int(i as i64));
                 }
                 (Some(n0), None) => {
-                    call_env_rc.borrow_mut().define_or_update(n0, item.clone());
+                    call_env_rc.borrow_mut().define_or_update(n0, item);
                 }
                 _ => {}
             }
@@ -928,12 +1001,12 @@ impl Interpreter {
             }
         }
 
-        Ok(Value::Array(Rc::new(RefCell::new(items.to_vec()))))
+        Ok(items.view_array())
     }
 
-    fn array_reduce(
+    fn array_reduce<A: ArrayView + ?Sized>(
         &mut self,
-        items: &[Value],
+        items: &A,
         arguments: Vec<Value>,
         method_name: &str,
         span: Span,
@@ -951,10 +1024,11 @@ impl Interpreter {
             }
         };
 
+        let n = items.len();
         let mut acc = if arguments.len() == 2 {
             arguments[1].clone()
-        } else if !items.is_empty() {
-            items[0].clone()
+        } else if n > 0 {
+            items.get(0).unwrap_or(Value::Null)
         } else {
             return Err(RuntimeError::type_error(
                 "reduce on empty array requires initial value",
@@ -975,7 +1049,8 @@ impl Interpreter {
             call_env_rc.borrow_mut().define(n.clone(), Value::Null);
         }
 
-        for item in items.iter().skip(start_idx) {
+        for i in start_idx..n {
+            let Some(item) = items.get(i) else { break };
             match (&param0_name, &param1_name) {
                 (Some(n0), Some(n1)) => {
                     let mut env = call_env_rc.borrow_mut();
@@ -1005,9 +1080,9 @@ impl Interpreter {
         Ok(acc)
     }
 
-    fn array_find(
+    fn array_find<A: ArrayView + ?Sized>(
         &mut self,
-        items: &[Value],
+        items: &A,
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
@@ -1036,7 +1111,9 @@ impl Interpreter {
             .borrow_mut()
             .define(param_name.clone(), Value::Null);
 
-        for item in items {
+        let n = items.len();
+        for i in 0..n {
+            let Some(item) = items.get(i) else { break };
             call_env_rc
                 .borrow_mut()
                 .define_or_update(&param_name, item.clone());
@@ -1054,16 +1131,16 @@ impl Interpreter {
             };
 
             if result_value.is_truthy() {
-                return Ok(item.clone());
+                return Ok(item);
             }
         }
 
         Ok(Value::Null)
     }
 
-    fn array_any(
+    fn array_any<A: ArrayView + ?Sized>(
         &mut self,
-        items: &[Value],
+        items: &A,
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
@@ -1092,10 +1169,10 @@ impl Interpreter {
             .borrow_mut()
             .define(param_name.clone(), Value::Null);
 
-        for item in items {
-            call_env_rc
-                .borrow_mut()
-                .define_or_update(&param_name, item.clone());
+        let n = items.len();
+        for i in 0..n {
+            let Some(item) = items.get(i) else { break };
+            call_env_rc.borrow_mut().define_or_update(&param_name, item);
 
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
@@ -1117,9 +1194,9 @@ impl Interpreter {
         Ok(Value::Bool(false))
     }
 
-    fn array_all(
+    fn array_all<A: ArrayView + ?Sized>(
         &mut self,
-        items: &[Value],
+        items: &A,
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
@@ -1148,10 +1225,10 @@ impl Interpreter {
             .borrow_mut()
             .define(param_name.clone(), Value::Null);
 
-        for item in items {
-            call_env_rc
-                .borrow_mut()
-                .define_or_update(&param_name, item.clone());
+        let n = items.len();
+        for i in 0..n {
+            let Some(item) = items.get(i) else { break };
+            call_env_rc.borrow_mut().define_or_update(&param_name, item);
 
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
@@ -1245,9 +1322,9 @@ impl Interpreter {
         Ok(Value::Array(Rc::new(RefCell::new(result))))
     }
 
-    fn array_sort_by(
+    fn array_sort_by<A: ArrayView + ?Sized>(
         &mut self,
-        items: &[Value],
+        items: &A,
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
@@ -1284,8 +1361,10 @@ impl Interpreter {
                     .borrow_mut()
                     .define(param_name.clone(), Value::Null);
 
-                let mut keyed: Vec<(Value, Value)> = Vec::with_capacity(result.len());
-                for item in &result {
+                let n = items.len();
+                let mut keyed: Vec<(Value, Value)> = Vec::with_capacity(n);
+                for i in 0..n {
+                    let Some(item) = items.get(i) else { break };
                     call_env_rc
                         .borrow_mut()
                         .define_or_update(&param_name, item.clone());
@@ -1309,7 +1388,7 @@ impl Interpreter {
                         }
                         ControlFlow::Continue | ControlFlow::Break => Value::Null,
                     };
-                    keyed.push((item.clone(), key_val));
+                    keyed.push((item, key_val));
                 }
 
                 keyed.sort_by(|a, b| Self::compare_sort_values(&a.1, &b.1));

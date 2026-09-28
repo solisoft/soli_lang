@@ -409,6 +409,14 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             let bulk_sql = super::crud::collection_is_sql(&collection)
                 && !super::column_mode::is_column_mode(&collection);
             let mut bulk_rows: Vec<(String, serde_json::Value)> = Vec::new();
+            // SoliDB (and the HTTP fallback) insert the whole batch in one
+            // round trip. An open transaction stays on the per-row path:
+            // bulk insert does not join the transaction.
+            // A column-mode SQL model is not `bulk_sql` but is still SQL: it
+            // keeps the per-row `exec_insert` path, which writes its columns.
+            let solidb_bulk = !super::crud::collection_is_sql(&collection)
+                && super::crud::get_current_tx_id().is_none();
+            let mut solidb_docs: Vec<serde_json::Value> = Vec::new();
 
             for item in &items {
                 let doc = match item {
@@ -456,8 +464,37 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                     bulk_rows.push((key, doc));
                     continue;
                 }
+                if solidb_bulk {
+                    // The document goes as-is, like the per-row
+                    // `exec_insert(.., None, ..)` it replaces: without a
+                    // `_key` of its own, the server stamps one.
+                    let mut doc = doc;
+                    super::registry::encrypt_document_fields(&collection, &mut doc)?;
+                    solidb_docs.push(doc);
+                    continue;
+                }
                 if super::crud::exec_insert(&collection, None, doc).is_ok() {
                     created += 1;
+                }
+            }
+
+            if !solidb_docs.is_empty() {
+                match super::crud::exec_insert_many(&collection, solidb_docs) {
+                    Ok(n) => created += n as i64,
+                    Err(e) => {
+                        let mut result = crate::interpreter::value::HashPairs::default();
+                        result.insert(
+                            crate::interpreter::value::HashKey::String("created".into()),
+                            Value::Int(created),
+                        );
+                        result.insert(
+                            crate::interpreter::value::HashKey::String("errors".into()),
+                            Value::Array(Rc::new(RefCell::new(vec![Value::String(
+                                format!("create_many failed: {e}").into(),
+                            )]))),
+                        );
+                        return Ok(Value::Hash(Rc::new(RefCell::new(result))));
+                    }
                 }
             }
 

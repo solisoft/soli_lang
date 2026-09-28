@@ -6,7 +6,7 @@ use crate::ast::{Expr, ExprKind};
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::model::is_translated_field;
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{HashKey, Value};
+use crate::interpreter::value::{same_string, HashKey, Value};
 use crate::span::Span;
 
 use std::cell::RefCell;
@@ -246,34 +246,13 @@ impl Interpreter {
 
     /// Evaluate assignment expression.
     fn evaluate_assign(&mut self, target: &Expr, value: &Expr) -> RuntimeResult<Value> {
+        if let Some(appended) = self.try_inplace_string_assign(target, value)? {
+            return Ok(appended);
+        }
         let new_value = self.evaluate(value)?;
 
         match &target.kind {
-            ExprKind::Variable(name) => {
-                use crate::interpreter::environment::AssignResult;
-                // Single chain walk: distinguish reassignment-of-const (error)
-                // from not-yet-defined (fall through to define). Avoids a
-                // separate is_const pre-check that walked the chain twice.
-                let result = self
-                    .environment
-                    .borrow_mut()
-                    .assign(name, new_value.clone());
-                match result {
-                    AssignResult::Assigned => {}
-                    AssignResult::IsConst => {
-                        return Err(RuntimeError::type_error(
-                            format!("cannot reassign constant '{}'", name),
-                            target.span,
-                        ));
-                    }
-                    AssignResult::NotFound => {
-                        self.environment
-                            .borrow_mut()
-                            .define(name.clone(), new_value.clone());
-                    }
-                }
-                Ok(new_value)
-            }
+            ExprKind::Variable(name) => self.store_variable(name, new_value, target.span),
             ExprKind::Member { object, name } => {
                 let obj_val = self.evaluate(object)?;
                 match obj_val {
@@ -374,6 +353,143 @@ impl Interpreter {
         }
     }
 
+    /// Append `rhs` into the string bound to `name`, in place, when the
+    /// binding still holds `before` — the value read *before* the right-hand
+    /// side ran. Operands keep their left-to-right order: a right-hand side
+    /// that reassigned `name` sees the fallback compute `before + rhs`, as a
+    /// plain `+` would. `before` is dropped ahead of the append so the
+    /// binding is the buffer's only owner and grows without a copy.
+    ///
+    /// `Ok(Err(before))` means the fast path does not apply; the caller does
+    /// the ordinary add with the value it gets back.
+    pub(crate) fn append_to_unchanged_binding(
+        &mut self,
+        name: &str,
+        before: Value,
+        rhs: &Value,
+        span: Span,
+    ) -> RuntimeResult<Result<Value, Value>> {
+        use crate::interpreter::environment::AppendString;
+
+        let (Value::String(old), Value::String(extra)) = (&before, rhs) else {
+            return Ok(Err(before));
+        };
+        let unchanged = match self.environment.borrow().get(name) {
+            Some(Value::String(current)) => same_string(&current, old),
+            _ => false,
+        };
+        if !unchanged {
+            return Ok(Err(before));
+        }
+        drop(before);
+        match self.environment.borrow_mut().append_string(name, extra) {
+            AppendString::Done(updated) => Ok(Ok(updated)),
+            AppendString::IsConst => Err(RuntimeError::type_error(
+                format!("cannot reassign constant '{name}'"),
+                span,
+            )),
+            // Bound somewhere `append_string` does not write (a view's data
+            // hash). The binding is unchanged, so it is still `before`.
+            AppendString::NotFound | AppendString::NotString => Ok(Err(self
+                .environment
+                .borrow()
+                .get(name)
+                .unwrap_or(Value::Null))),
+        }
+    }
+
+    /// `name = name + rhs` when both sides are strings: append into the
+    /// binding instead of allocating a new string. Returns `None` when the
+    /// shape is not that assignment, so the caller evaluates `value` normally.
+    ///
+    /// When the shape matches but the values are not both strings, this still
+    /// finishes the assignment — the right-hand side has already run, and
+    /// evaluating `value` again would repeat its side effects.
+    fn try_inplace_string_assign(
+        &mut self,
+        target: &Expr,
+        value: &Expr,
+    ) -> RuntimeResult<Option<Value>> {
+        let ExprKind::Variable(name) = &target.kind else {
+            return Ok(None);
+        };
+        let ExprKind::Binary {
+            left,
+            operator,
+            right,
+        } = &value.kind
+        else {
+            return Ok(None);
+        };
+        if *operator != crate::ast::BinaryOp::Add {
+            return Ok(None);
+        }
+        let ExprKind::Variable(left_name) = &left.kind else {
+            return Ok(None);
+        };
+        if left_name != name {
+            return Ok(None);
+        }
+
+        // The left first, as `+` reads it: an undefined name raises here.
+        // Futures resolve as `+` resolves them; the check keeps the call
+        // (a large function) off the path of every numeric add.
+        let before = self.evaluate(left)?;
+        let before = if matches!(before, Value::Future(_)) {
+            before
+                .resolve()
+                .map_err(|e| RuntimeError::new(e, target.span))?
+        } else {
+            before
+        };
+        let rhs = self.evaluate(right)?;
+        let rhs = if matches!(rhs, Value::Future(_)) {
+            rhs.resolve()
+                .map_err(|e| RuntimeError::new(e, target.span))?
+        } else {
+            rhs
+        };
+        // Only two strings can append; a number skips the call.
+        let left_val = if matches!((&before, &rhs), (Value::String(_), Value::String(_))) {
+            match self.append_to_unchanged_binding(name, before, &rhs, target.span)? {
+                Ok(updated) => return Ok(Some(updated)),
+                Err(left_val) => left_val,
+            }
+        } else {
+            before
+        };
+        let result =
+            self.evaluate_binary_values(&left_val, crate::ast::BinaryOp::Add, &rhs, target.span)?;
+        self.store_variable(name, result, target.span).map(Some)
+    }
+
+    /// `name = value` for a bare variable: assign up the scope chain, or define
+    /// it here when no scope has it. Returns the value, as an assignment does.
+    fn store_variable(&mut self, name: &str, value: Value, span: Span) -> RuntimeResult<Value> {
+        use crate::interpreter::environment::AssignResult;
+        // Single chain walk: distinguish reassignment-of-const (error) from
+        // not-yet-defined (fall through to define). Avoids a separate
+        // is_const pre-check that walked the chain twice.
+        // Bound first: a borrow in the `match` head would live through the
+        // arms, and the define arm borrows again.
+        let assigned = self.environment.borrow_mut().assign(name, value.clone());
+        match assigned {
+            AssignResult::Assigned => {}
+            AssignResult::IsConst => {
+                return Err(RuntimeError::type_error(
+                    format!("cannot reassign constant '{}'", name),
+                    span,
+                ));
+            }
+            AssignResult::NotFound => {
+                self.environment
+                    .borrow_mut()
+                    .define(name.to_string(), value.clone());
+            }
+        }
+        Ok(value)
+    }
+
     /// Evaluate compound assignment (+=, -=, *=, /=, %=).
     fn evaluate_compound_assign(
         &mut self,
@@ -383,6 +499,29 @@ impl Interpreter {
         span: Span,
     ) -> RuntimeResult<Value> {
         use crate::ast::expr::CompoundOp;
+
+        // `buf += "x"` on a string variable appends in place when the
+        // right-hand side left `buf` alone.
+        if op == CompoundOp::Add {
+            if let ExprKind::Variable(name) = &target.kind {
+                // No `resolve` here, as before this path existed: the add
+                // below resolves nothing either.
+                let before = self.evaluate(target)?;
+                let rhs = self.evaluate(value)?;
+                // Only two strings can append; a number skips the call.
+                let current = if matches!((&before, &rhs), (Value::String(_), Value::String(_))) {
+                    match self.append_to_unchanged_binding(name, before, &rhs, span)? {
+                        Ok(updated) => return Ok(updated),
+                        Err(current) => current,
+                    }
+                } else {
+                    before
+                };
+                let result =
+                    self.evaluate_binary_values(&current, crate::ast::BinaryOp::Add, &rhs, span)?;
+                return self.store_variable(name, result, span);
+            }
+        }
 
         let current = match self.evaluate(target) {
             // `obj.x ||= v` on a property nothing has set yet reads as Null,
@@ -476,7 +615,12 @@ impl Interpreter {
     }
 
     /// Assign a value to a target expression (variable, member, or index).
-    fn assign_to_target(&mut self, target: &Expr, value: Value, span: Span) -> RuntimeResult<()> {
+    pub(crate) fn assign_to_target(
+        &mut self,
+        target: &Expr,
+        value: Value,
+        span: Span,
+    ) -> RuntimeResult<()> {
         match &target.kind {
             ExprKind::Variable(name) => {
                 use crate::interpreter::environment::AssignResult;

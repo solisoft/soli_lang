@@ -468,6 +468,11 @@ required-features = ["eui"]
 name = "hash_get_set"
 harness = false
 
+# Check, clippy and `cargo test` typecheck this crate as one unit. Line tables
+# keep panic locations; full debuginfo is most of the compile and link cost.
+[profile.dev]
+debug = "line-tables-only"
+
 # Everyday optimized build: `cargo install --path .`, local perf checks, and
 # anything that iterates. ThinLTO over 16 codegen units runs on every core and
 # costs a few percent of runtime against `dist`. It is not the shipped binary:

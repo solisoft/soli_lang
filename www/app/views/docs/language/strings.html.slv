@@ -118,7 +118,7 @@ ORDER BY created_at DESC""";</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Join strings together using the + operator. Non-string values are automatically converted.</p>
+                    <p class="text-gray-400 mb-3">Join strings together using the + operator. Non-string values are automatically converted. Assigning the result back onto the same variable (<code class="text-amber-300">buf = buf + piece</code>, <code class="text-amber-300">buf += piece</code>, or <code class="text-amber-300">buf &lt;&lt; piece</code>) grows that binding in place, so a loop that builds a string is linear &mdash; for any piece (a literal, an interpolation, a call) and for a variable a closure captured. 100,000 appends of <code class="text-amber-300">"&lt;li&gt;#{i}&lt;/li&gt;"</code> take about 20&nbsp;ms instead of 1.3&nbsp;s. A second variable that already holds the previous string is left unchanged. <code class="text-amber-300">&lt;&lt;</code> needs a plain variable; on a field or a hash entry, use <code class="text-amber-300">+=</code>.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Basic concatenation
 greeting = "Hello, " + "World!";  # "Hello, World!"
 

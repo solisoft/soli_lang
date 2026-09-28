@@ -975,7 +975,10 @@ fn stack_effect(op: Op) -> i32 {
         | HashHasKeyLocalConst(_, _)
         | HashDeleteLocalConst(_, _)
         | HashGetLocalConst2(_, _, _) => 1,
-        AddLocalsInPlace(_, _) => 0,
+        AddLocalsInPlace(_, _) | AppendLocalConst(_, _) | AppendGlobalConst(_, _) => 0,
+        // Pops the variable's value and the RHS, pushes the updated variable.
+        AppendLocal(_) | AppendGlobal(_) | AppendUpvalue(_) => -1,
+        AddAssignLocal(_) | AddAssignUpvalue(_) | AddAssignGlobal(_) => -1,
         HashSetLocalConst(_, _) => -1,
         HashGetGlobalConst(_, _)
         | HashHasKeyGlobalConst(_, _)
@@ -1308,6 +1311,39 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             if slot1 == slot2 && !any_jump_target(&is_jump_target, i + 1, 5) {
                 if let Some(Constant::Int(1)) = constants.get(cidx as usize) {
                     code[i] = Op::IncrLocal(slot1);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    code[i + 4] = NOP;
+                    i += 5;
+                    continue;
+                }
+                // `buf = buf + "x"` — append into the local instead of allocating
+                // a new string on every iteration.
+                if let Some(Constant::String(_)) = constants.get(cidx as usize) {
+                    code[i] = Op::AppendLocalConst(slot1, cidx);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    code[i + 4] = NOP;
+                    i += 5;
+                    continue;
+                }
+            }
+        }
+
+        // Top-level `buf = buf + "x"` — the name is a global, not a local.
+        if let (
+            Op::GetGlobal(name_idx),
+            Op::Constant(cidx),
+            Op::Add,
+            Op::SetGlobal(slot2),
+            Op::Pop,
+        ) = (code[i], code[i + 1], code[i + 2], code[i + 3], code[i + 4])
+        {
+            if name_idx == slot2 && !any_jump_target(&is_jump_target, i + 1, 5) {
+                if let Some(Constant::String(_)) = constants.get(cidx as usize) {
+                    code[i] = Op::AppendGlobalConst(name_idx, cidx);
                     code[i + 1] = NOP;
                     code[i + 2] = NOP;
                     code[i + 3] = NOP;

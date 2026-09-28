@@ -22,6 +22,25 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.6.4.</p>
 
+        <h3 id="unreleased-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Building a string in a loop no longer copies it every time.</strong> <code class="text-cyan-400">buf = buf + piece</code>, <code class="text-cyan-400">buf += piece</code> and <code class="text-cyan-400">buf &lt;&lt; piece</code> grow that variable's buffer, on both engines, for any piece &mdash; a literal, an interpolation or a call &mdash; and for a variable a closure captured. 100,000 appends of <code class="text-cyan-400">"&lt;li&gt;#{i}&lt;/li&gt;"</code>: 1.3&nbsp;s &rarr; 19&nbsp;ms on the VM, 38&nbsp;ms on the tree-walker. A second variable that already holds the previous text stays as it was. <code class="text-cyan-400">&lt;&lt;</code> onto a string takes a string and needs a plain variable (use <code class="text-cyan-400">+=</code> on a field or hash entry); on an array it still pushes. Integer and float accumulators run at the same speed as before.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">Model.create_many</code> is one round trip on SoliDB.</strong> The native driver sends one bulk insert; without it, one <code class="text-cyan-400">INSERT</code> query does the same. Inside a transaction each row is still written on its own, so it joins the transaction. <code class="text-cyan-400">Model.create</code> inside <code class="text-cyan-400">grouped</code> still writes immediately, because you get the stored row back. The batch succeeds or reports one error; rows before the failing one may already be stored, so wrap it in <code class="text-cyan-400">transaction</code> for all-or-nothing.</li>
+        </ul>
+
+        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">h.present?</code>, <code class="text-cyan-400">h.blank?</code> and <code class="text-cyan-400">h.nil?</code> on a hash answer under <code class="text-cyan-400">soli serve</code>.</strong> The VM read them as absent keys &mdash; <code class="text-cyan-400">null</code> &mdash; so a guard written <code class="text-cyan-400">if bounce.present? return bounce end</code> let the request through. Both engines now share one rule.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">defined("Name")</code> and <code class="text-cyan-400">const_get("Name")</code> see the app's classes on the VM.</strong> <code class="text-cyan-400">defined("ShopChannel")</code> was <code class="text-cyan-400">false</code> for a loaded class, and an action took the branch meant for an app without it.</li>
+            <li><strong class="text-white">Array methods that take a closure behave the same on both engines when the closure changes the array.</strong> <code class="text-cyan-400">each</code>, <code class="text-cyan-400">map</code>, <code class="text-cyan-400">filter</code>, <code class="text-cyan-400">reduce</code>, <code class="text-cyan-400">find</code>, <code class="text-cyan-400">any?</code>, <code class="text-cyan-400">all?</code> and <code class="text-cyan-400">sort_by</code> read the live array and stop once a callback shrinks it past the current index; the interpreter used to iterate a copy.</li>
+        </ul>
+
+        <h3 id="unreleased-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">soli test</code> runs <code class="text-cyan-400">db/migrations</code> on a freshly created test database.</strong> Collections existed only once a spec wrote to them, so a query reading a collection nothing had written yet failed with <em>CollectionNotFound</em> on a fresh SoliDB and passed where a kept database remembered earlier runs. Rows the migrations seed are truncated; a failed migration is reported and the run goes on.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">SOLI_TEST_SOLIDB_HOST</code> sends a machine's test runs to their own SoliDB</strong>, whatever <code class="text-cyan-400">.env.test</code> says &mdash; so a suite does not create and drop databases on the dev instance every <code class="text-cyan-400">soli serve --dev</code> shares. Set it in the shell; CI leaves it unset.</li>
+        </ul>
+
     </section>
 
     <section id="v2-6-4" class="mb-16 scroll-mt-24">

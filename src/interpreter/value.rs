@@ -71,6 +71,17 @@ impl Hash for DecimalValue {
 /// dominated the clone savings on construction-heavy workloads.)
 pub type SoliStr = ecow::EcoString;
 
+/// Whether `current` is still the string `before` was read as, in O(1) for a
+/// long one. With `before` still held, a heap buffer at the same address and
+/// length cannot have changed (copy-on-write detaches on any edit). A short
+/// string may be stored inline, so it has no shared address; compare its
+/// bytes. `false` is always safe — the caller then does an ordinary add.
+pub fn same_string(current: &str, before: &str) -> bool {
+    current.len() == before.len()
+        && (std::ptr::eq(current.as_ptr(), before.as_ptr())
+            || (current.len() <= 32 && current == before))
+}
+
 /// A hashable key type for use in IndexMap.
 /// This wraps primitive Value types that can be used as hash keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2154,6 +2165,15 @@ const MAX_SERIALIZE_DEPTH: usize = 512;
 
 impl serde::Serialize for Value {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Leaves (ints, strings, bools) cannot recurse. The depth counter is a
+        // thread-local read and write, and a JSON array of small objects pays
+        // it once per field. Only containers can nest.
+        if !matches!(
+            self,
+            Value::Array(_) | Value::Hash(_) | Value::Instance(_) | Value::Deferred(_)
+        ) {
+            return self.serialize_inner(serializer);
+        }
         let depth = SERIALIZE_DEPTH.with(|d| {
             d.set(d.get() + 1);
             d.get()
@@ -2213,15 +2233,14 @@ impl Value {
                 // via the model `enum_field` DSL and `Enum.from(value)`.
                 if let Some(tag) = enum_variant_tag(&borrow) {
                     use serde::ser::SerializeMap;
-                    let payload: Vec<(&SoliStr, &Value)> = borrow
+                    let payload = borrow
                         .fields
                         .iter()
-                        .filter(|(k, _)| k.as_str() != "__variant")
-                        .collect();
-                    if payload.is_empty() {
+                        .filter(|(k, _)| k.as_str() != "__variant");
+                    if borrow.fields.len() == 1 {
                         return serializer.serialize_str(tag);
                     }
-                    let mut map = serializer.serialize_map(Some(payload.len() + 1))?;
+                    let mut map = serializer.serialize_map(None)?;
                     map.serialize_entry("variant", tag)?;
                     for (k, v) in payload {
                         map.serialize_entry(k, v)?;
@@ -2234,14 +2253,11 @@ impl Value {
                 // names match common-sensitive patterns and most
                 // `_`-prefixed framework internals; apps that need the
                 // raw shape can serialise explicitly via a Hash literal.
-                let visible: Vec<(&SoliStr, &Value)> = borrow
-                    .fields
-                    .iter()
-                    .filter(|(k, _)| is_safe_serialised_field(k))
-                    .collect();
-                let mut map = serializer.serialize_map(Some(visible.len()))?;
-                for (k, v) in visible {
-                    map.serialize_entry(k, v)?;
+                let mut map = serializer.serialize_map(None)?;
+                for (k, v) in borrow.fields.iter() {
+                    if is_safe_serialised_field(k) {
+                        map.serialize_entry(k, v)?;
+                    }
                 }
                 map.end()
             }

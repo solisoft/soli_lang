@@ -100,6 +100,45 @@ impl Interpreter {
         use crate::interpreter::builtins::model::habtm::{
             habtm_add, match_habtm_method, to_singular_method_name,
         };
+        // `name << "x"` appends into the variable. Strings are values, so this
+        // has to write the binding back; pushing into a clone would not.
+        if let ExprKind::Variable(name) = &left.kind {
+            let before = self.evaluate(left)?;
+            let before = before.resolve().map_err(|e| RuntimeError::new(e, span))?;
+            let right_val = self.evaluate(right)?;
+            let right_val = right_val
+                .resolve()
+                .map_err(|e| RuntimeError::new(e, span))?;
+            // Only two strings can append; a number skips the call.
+            let left_val = if matches!((&before, &right_val), (Value::String(_), Value::String(_)))
+            {
+                match self.append_to_unchanged_binding(name, before, &right_val, span)? {
+                    Ok(updated) => return Ok(updated),
+                    Err(left_val) => left_val,
+                }
+            } else {
+                before
+            };
+            if matches!(left_val, Value::String(_)) {
+                if matches!(right_val, Value::String(_)) {
+                    // The right-hand side rebound `name`: append to the
+                    // string read first, like `name = name + rhs`.
+                    let joined = self.evaluate_binary_values(
+                        &left_val,
+                        crate::ast::BinaryOp::Add,
+                        &right_val,
+                        span,
+                    )?;
+                    self.assign_to_target(left, joined.clone(), span)?;
+                    return Ok(joined);
+                }
+                return Err(RuntimeError::type_error(
+                    format!("string << expects a string, got {}", right_val.type_name()),
+                    span,
+                ));
+            }
+            return self.shovel_array_push(&left_val, right_val, span);
+        }
 
         // Special case: `<instance>.<relation> << <value>` for HABTM and
         // has_many through: associations.

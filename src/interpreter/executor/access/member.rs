@@ -2224,6 +2224,19 @@ impl Interpreter {
         _span: Span,
         obj_val: Value,
     ) -> RuntimeResult<Value> {
+        Ok(Self::hash_member_value(hash, name, obj_val))
+    }
+
+    /// What `hash.name` reads, on both engines: the tree-walker above and the
+    /// VM's `op_get_property`. The VM took only the last two steps (method
+    /// list, then key), so `h.present?`, `h.blank?` and `h.nil?` read as the
+    /// absent keys — `null` — and `if bounce.present? return bounce end` let
+    /// a non-manager through a guard (2.6.4).
+    pub(crate) fn hash_member_value(
+        hash: &Rc<RefCell<crate::interpreter::value::HashPairs>>,
+        name: &str,
+        obj_val: Value,
+    ) -> Value {
         use crate::interpreter::executor::calls::user_methods::{
             has_user_methods, lookup_user_method, PrimType,
         };
@@ -2233,33 +2246,33 @@ impl Interpreter {
         // monkey-patching precedence.
         if has_user_methods(PrimType::Hash) {
             if let Some(f) = lookup_user_method(PrimType::Hash, name) {
-                return Ok(bind_user_method_to_receiver(obj_val, f));
+                return bind_user_method_to_receiver(obj_val, f);
             }
         }
         // Universal methods
         match name {
-            "class" => return Ok(Value::String("hash".into())),
-            "nil?" => return Ok(Value::Bool(false)),
+            "class" => return Value::String("hash".into()),
+            "nil?" => return Value::Bool(false),
             "inspect" => {
-                return Ok(Value::String(Self::inspect_value(&obj_val).into()));
+                return Value::String(Self::inspect_value(&obj_val).into());
             }
-            "blank?" => return Ok(Value::Bool(hash.borrow().is_empty())),
-            "present?" => return Ok(Value::Bool(!hash.borrow().is_empty())),
+            "blank?" => return Value::Bool(hash.borrow().is_empty()),
+            "present?" => return Value::Bool(!hash.borrow().is_empty()),
             _ => {}
         }
         // First check if it's a known method
         if is_hash_method_name(name) {
-            return Ok(Value::method(ValueMethod {
+            return Value::method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
-            }));
+            });
         }
         // Try to access as a hash key (dot notation for hash access)
         // Use StrKey for zero-allocation lookup (hashes identically to HashKey::String)
-        if let Some(v) = hash.borrow().get(&crate::interpreter::value::StrKey(name)) {
-            return Ok(v.clone());
-        }
-        Ok(Value::Null)
+        hash.borrow()
+            .get(&crate::interpreter::value::StrKey(name))
+            .cloned()
+            .unwrap_or(Value::Null)
     }
 
     pub(crate) fn query_builder_member_access(

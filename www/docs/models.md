@@ -348,7 +348,7 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 | Method | Description |
 |--------|-------------|
 | `Model.create(data)` | Insert a new document |
-| `Model.create_many([data, ...])` | Batch insert multiple documents, returns `{ created, errors }` |
+| `Model.create_many([data, ...])` | Batch insert multiple documents in one round trip (one SQL statement per chunk, or one SoliDB `BulkInsert` / one `INSERT` query), returns `{ created, errors }`. An open transaction inserts one row at a time so each row joins the transaction. On SoliDB the batch succeeds or reports one error in `errors`; rows before the failing one may already be stored, so wrap it in `transaction` when you need all-or-nothing. |
 | `Model.find(id)` | Get document by ID. **Raises** `RecordNotFound` if missing (auto-mapped to a 404 HTTP response). Use `find_by` for optional lookups. A key that is empty, `.` or `..` is refused (`invalid document key`) here and in `update`/`delete` — as are such collection names in the raw SoliDB client (`invalid path segment`) — so a request-supplied id can never address a different path. |
 | `Model.find_by(field, value)` | Find first record by field value. Returns `null` when missing. |
 | `Model.first_by(field, value)` | Find first record by field with ordering |

@@ -482,7 +482,7 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.create_many([data, ...])</code></td>
-                    <td class="py-3 px-4 text-gray-400">Batch insert multiple documents, returns <code>{ "created": n }</code></td>
+                    <td class="py-3 px-4 text-gray-400">Batch insert in one round trip (one SQL statement per chunk, or one SoliDB bulk insert). Returns <code>{ "created": n }</code>, plus an <code>"errors"</code> array when the insert fails. On SoliDB the batch succeeds or reports one error; rows before the failing one may already be stored, so wrap it in <code>transaction</code> when you need all-or-nothing. Inside a transaction each row is inserted on its own so it joins the transaction. <code>Model.create</code> is still one write, including inside <code>grouped</code>, because the caller receives the stored row.</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.find(id)</code></td>

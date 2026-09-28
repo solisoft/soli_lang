@@ -219,6 +219,18 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         }
         Op::SetLocalPop(slot) => out.push_str(&format!("SET_LOCAL_POP {:>4}", slot)),
         Op::AddLocalsInPlace(a, b) => out.push_str(&format!("ADD_LOCALS_IP {:>4} {:>4}", a, b)),
+        Op::AppendLocalConst(slot, cidx) => {
+            out.push_str(&format!("APPEND_LC    {:>3},{:>3}", slot, cidx))
+        }
+        Op::AppendLocal(slot) => out.push_str(&format!("APPEND_LOCAL {:>4}", slot)),
+        Op::AppendGlobal(idx) => out.push_str(&format!("APPEND_GLOBAL {:>3}", idx)),
+        Op::AppendUpvalue(idx) => out.push_str(&format!("APPEND_UPVAL {:>4}", idx)),
+        Op::AddAssignLocal(slot) => out.push_str(&format!("ADD_ASSIGN_L {:>4}", slot)),
+        Op::AddAssignUpvalue(idx) => out.push_str(&format!("ADD_ASSIGN_U {:>4}", idx)),
+        Op::AddAssignGlobal(idx) => out.push_str(&format!("ADD_ASSIGN_G {:>4}", idx)),
+        Op::AppendGlobalConst(name, cidx) => {
+            out.push_str(&format!("APPEND_GC    {:>3},{:>3}", name, cidx))
+        }
         Op::TestLessEqualJump(offset) => out.push_str(&format!("TEST_LE_JUMP {:>5}", offset)),
         Op::TestLessJump(offset) => out.push_str(&format!("TEST_LT_JUMP {:>5}", offset)),
         Op::CallGlobal(idx, argc) => {

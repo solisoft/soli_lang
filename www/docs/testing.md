@@ -153,7 +153,24 @@ running many projects doesn't accumulate one empty `*_spec` database per worker 
 app. Set `SOLI_TEST_KEEP_DB=1` to keep them and truncate their collections instead.
 Dropping is serialised server-side and the next run has to recreate the schema, which
 costs little on a small app but grows with the collection count — use `SOLI_TEST_KEEP_DB=1`
-when the tight test loop matters more than the leftovers. For **per-example** isolation inside a spec, wrap DB writes in `with_transaction` — it begins a SolidB transaction, runs your block, then **always rolls back** (even when the block succeeds):
+when the tight test loop matters more than the leftovers.
+
+The base test database is created with the app's schema: when `soli test` creates (or
+recreates) it, it runs `db/migrations` against it and truncates any rows they seed, so
+every collection exists before the first spec runs. A failed migration is reported and the
+run continues; collections are then created on first write, as before.
+
+`SOLI_TEST_SOLIDB_HOST` sends test runs to a SoliDB of their own, overriding the
+`SOLIDB_HOST` from `.env.test` for the runner and its test servers. Set it in the shell on a
+workstation whose `localhost:6745` is the dev instance every `soli serve --dev` shares —
+a suite that creates, truncates and drops databases there runs at its pace, not yours. CI
+leaves it unset and keeps `.env.test`.
+
+```bash
+SOLI_TEST_SOLIDB_HOST=http://localhost:6746 soli test
+```
+
+For **per-example** isolation inside a spec, wrap DB writes in `with_transaction` — it begins a SolidB transaction, runs your block, then **always rolls back** (even when the block succeeds):
 
 ```soli
 describe("User model", fn() {

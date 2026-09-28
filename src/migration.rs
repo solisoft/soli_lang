@@ -343,6 +343,9 @@ pub struct MigrationRunner {
     migrations_path: PathBuf,
     /// `--connection NAME` from the CLI: restricts the run to that database.
     connection_filter: Option<String>,
+    /// No per-migration lines: `soli test` migrates a fresh test database
+    /// and reports one summary line instead.
+    quiet: bool,
 }
 
 impl MigrationRunner {
@@ -352,7 +355,14 @@ impl MigrationRunner {
             app_path: app_path.to_path_buf(),
             migrations_path: app_path.join("db/migrations"),
             connection_filter: None,
+            quiet: false,
         }
+    }
+
+    /// Silence the per-migration progress lines of `migrate_up`.
+    pub fn quiet(mut self, quiet: bool) -> Self {
+        self.quiet = quiet;
+        self
     }
 
     /// Restrict the run to one named connection (`db:migrate up -c legacy`).
@@ -885,13 +895,15 @@ let db = MigrationDb();
                 continue;
             }
 
-            match &migration.connection {
-                Some(name) => println!(
-                    "  \x1b[33mMigrating\x1b[0m {} \x1b[90m[{}]\x1b[0m",
-                    migration.full_name(),
-                    name
-                ),
-                None => println!("  \x1b[33mMigrating\x1b[0m {}", migration.full_name()),
+            if !self.quiet {
+                match &migration.connection {
+                    Some(name) => println!(
+                        "  \x1b[33mMigrating\x1b[0m {} \x1b[90m[{}]\x1b[0m",
+                        migration.full_name(),
+                        name
+                    ),
+                    None => println!("  \x1b[33mMigrating\x1b[0m {}", migration.full_name()),
+                }
             }
 
             self.run_on(target.as_deref(), || {
@@ -903,7 +915,9 @@ let db = MigrationDb();
                 applied.push(migration.version.clone());
             }
 
-            println!("  \x1b[32m   Applied\x1b[0m {}", migration.full_name());
+            if !self.quiet {
+                println!("  \x1b[32m   Applied\x1b[0m {}", migration.full_name());
+            }
             applied_migrations.push(migration.full_name());
         }
 

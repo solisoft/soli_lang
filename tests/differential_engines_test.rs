@@ -1212,6 +1212,49 @@ const CASES: &[(&str, &str)] = &[
         "model_scope_from_an_included_module",
         "module Scoped\n  included do\n    scope(\"owned\", fn() { this.where({\"owner\": \"o1\"}) })\n    scope(\"of_kind\", fn(kind) { this.where({\"kind\": kind}) })\n  end\nend\nclass Gadget < Model\n  include Scoped\nend\nprint(Gadget.owned.to_query)\nprint(Gadget.owned().to_query)\nprint(Gadget.of_kind(\"lamp\").to_query)",
     ),
+    // The universal members on a hash, read bare. The VM's hash branch went
+    // straight to the method list and the key, so `h.present?` was `null` and
+    // a guard written `if bounce.present? return bounce end` let a
+    // non-manager through (2.6.4).
+    (
+        "hash_universal_members_read_bare",
+        "def probe(h)\n  return [h.present?, h.blank?, h.nil?, h.class, h.empty?, h.present?()]\nend\nprint(probe({\"status\": 302}))\nprint(probe({}))\nbounce = {\"status\": 302}\nif bounce.present?\n  print(\"bounced\")\nend",
+    ),
+    // `defined` / `const_get` on a loaded class, from inside a method. They
+    // read the tree-walker's `CURRENT_ENV`, which the VM never set: an app
+    // testing `defined("ShopChannel")` took its "absent" branch (2.6.4).
+    (
+        "defined_and_const_get_see_a_class",
+        "class Foo\n  static def label -> String\n    return \"foo\"\n  end\nend\nclass Bar\n  static def probe -> String\n    return str(defined(\"Foo\")) + \" \" + str(defined(\"Nope\"))\n  end\n  static def fetch -> String\n    return const_get(\"Foo\").label()\n  end\nend\nprint(Bar.probe())\nprint(Bar.fetch())\nprint(defined(\"Foo\"))",
+    ),
+    // A closure that shrinks the array it is iterating. The tree-walker used
+    // to snapshot the elements first (so `each` emptied the array) while the
+    // VM stopped at the live length. Both now follow the VM. The tail also
+    // checks string append, which both engines must print as "abc".
+    (
+        "array_mutation_during_iteration",
+        "a = [1, 2, 3]\na.each(fn(x) { a.pop() })\nprint(a)\nb = [1, 2, 3]\nprint(b.map(fn(x) { b.pop(); x }))\nprint(b)\nc = [1, 2, 3]\nprint(c.reduce(fn(acc, x) { c.pop(); acc + x }, 0))\nbuf = \"\"\nbuf = buf + \"a\"\nbuf = buf + \"b\"\nbuf << \"c\"\nprint(buf)",
+    ),
+    // `<<` on a variable a closure captured. The VM sent an upvalue to the
+    // generic ArrayPush ("can only push to arrays") while the tree-walker
+    // appended.
+    (
+        "string_shovel_on_a_captured_variable",
+        "def run()\n  buf = \"a\"\n  add = fn() { buf << \"x\" }\n  add()\n  add()\n  return buf\nend\nprint(run())",
+    ),
+    // The variable is read before the right-hand side, as for any binary
+    // operator — so a right-hand side that rebinds it does not change which
+    // value is appended to. Both engines, for `<<`, `+` and `+=`.
+    (
+        "append_reads_the_variable_before_the_right_hand_side",
+        "def run()\n  items = [1]\n  swap = fn() { items = [9]; 2 }\n  items << swap()\n  s = \"ab\"\n  f = fn() { s = \"zz\"; \"!\" }\n  s = s + f()\n  t = \"cd\"\n  g = fn() { t = \"yy\"; \"?\" }\n  t << g()\n  u = \"ef\"\n  h = fn() { u = \"ww\"; \".\" }\n  u += h()\n  return [items, s, t, u]\nend\nprint(run())",
+    ),
+    // `name = name + <expr>` and `name += <expr>` with a right-hand side the
+    // peepholes do not cover: one fused op on the VM, for every type `+` takes.
+    (
+        "add_assign_with_a_computed_right_hand_side",
+        "def run()\n  total = 0\n  total = total + [1, 2].length\n  total += 3 * 2\n  f = 1.5\n  f = f + [1].length\n  arr = [1]\n  arr = arr + [[2].first]\n  label = \"n=\"\n  label = label + str(total)\n  label += \"#{f}\"\n  up = \"u\"\n  bump = fn() { up = up + \"#{1 + 1}\"; up += str(3) }\n  bump()\n  alias = label\n  label += \"!\"\n  return [total, f, arr, label, alias, up]\nend\nprint(run())\ng = \"g\"\ng = g + \"#{1}\"\ng += str(2)\nprint(g)",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

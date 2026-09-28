@@ -63,7 +63,7 @@
                     </tr>
                     <tr id="op-shovel" class="scroll-mt-20">
                         <td class="py-2 px-4"><a href="#op-shovel" class="text-amber-400 font-mono hover:text-amber-300">&lt;&lt;</a></td>
-                        <td class="py-2 px-4 text-gray-400">Array push (shovel)</td>
+                        <td class="py-2 px-4 text-gray-400">Array push, or append to a string variable</td>
                         <td class="py-2 px-4 text-gray-500">[1, 2] &lt;&lt; 3 = [1, 2, 3]</td>
                     </tr>
                 </tbody>
@@ -81,7 +81,7 @@
             </span>
             Shovel Operator
         </h2>
-        <p class="text-gray-400 mb-4">The <code class="text-amber-400">&lt;&lt;</code> (shovel) operator appends an element to an array. It modifies the array in place and returns the array.</p>
+        <p class="text-gray-400 mb-4">The <code class="text-amber-400">&lt;&lt;</code> (shovel) operator appends an element to an array, or appends a string onto a string variable. It modifies that variable and returns it. On a string, the right-hand side must be a string, and the left must be a plain variable &mdash; on a field or a hash entry, use <code class="text-amber-400">+=</code> (<code class="text-amber-400">@html += piece</code>). The variable is read before the right-hand side runs, as with <code class="text-amber-400">+</code>.</p>
         <pre data-filename="Example"><code class="language-soli text-sm"># Append element to array
 arr = [1, 2, 3]
 arr << 4
@@ -94,7 +94,13 @@ print(names);  # ["Alice", "Bob", "Charlie"]
 
 # Returns the array for chaining
 result = [1] << 2 << 3
-print(result);  # [1, 2, 3]</code></pre>
+print(result);  # [1, 2, 3]
+
+# Append onto a string variable. Another name that already holds the
+# previous value is left unchanged.
+buf = "ab"
+buf << "c"
+print(buf);  # "abc"</code></pre>
     </section>
 
     <!-- Comparison Operators -->

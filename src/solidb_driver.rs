@@ -168,6 +168,20 @@ fn with_client<T>(
     })
 }
 
+/// Insert many documents in one driver command. `None` means "not handled — use HTTP".
+pub fn try_bulk_insert(collection: &str, documents: Vec<Value>) -> Option<Result<usize, String>> {
+    let coll = collection.to_string();
+    let db = get_database_name();
+    with_client(move |client| {
+        block_on_db(async move {
+            client
+                .bulk_insert(&db, &coll, documents)
+                .await
+                .map_err(|e| format!("driver bulk insert failed: {e}"))
+        })
+    })
+}
+
 /// Insert one document. `None` means "not handled — use HTTP".
 pub fn try_insert(
     collection: &str,

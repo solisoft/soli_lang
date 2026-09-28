@@ -72,17 +72,21 @@ pub fn hash_method_borrowed(
             if !arguments.is_empty() {
                 return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
             }
-            let values: Vec<Value> = entries.values().cloned().collect();
+            let mut values = Vec::with_capacity(entries.len());
+            values.extend(entries.values().cloned());
             Some(Ok(Value::Array(Rc::new(RefCell::new(values)))))
         }
         "entries" => {
             if !arguments.is_empty() {
                 return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
             }
-            let pairs: Vec<Value> = entries
-                .iter()
-                .map(|(k, v)| Value::Array(Rc::new(RefCell::new(vec![k.to_value(), v.clone()]))))
-                .collect();
+            let mut pairs = Vec::with_capacity(entries.len());
+            for (k, v) in entries.iter() {
+                pairs.push(Value::Array(Rc::new(RefCell::new(vec![
+                    k.to_value(),
+                    v.clone(),
+                ]))));
+            }
             Some(Ok(Value::Array(Rc::new(RefCell::new(pairs)))))
         }
         "merge" => {

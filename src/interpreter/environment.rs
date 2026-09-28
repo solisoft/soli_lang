@@ -20,6 +20,18 @@ pub enum AssignResult {
     NotFound,
 }
 
+/// Result of [`Environment::append_string`].
+///
+/// `Done` carries the string after the append. The other variants mean the
+/// caller should use the ordinary `+` path: the binding is missing, const,
+/// or not a string.
+pub enum AppendString {
+    Done(Value),
+    NotString,
+    IsConst,
+    NotFound,
+}
+
 /// A runtime environment containing variable bindings.
 ///
 /// Internal storage uses `ahash::AHashMap` rather than `std::HashMap` (SipHash)
@@ -168,6 +180,38 @@ impl Environment {
             return enclosing.borrow().get_const(name);
         }
         None
+    }
+
+    /// Append `extra` onto the string bound to `name`, growing that binding's
+    /// buffer in place when it is the only owner.
+    ///
+    /// `SoliStr` (`EcoString`) copies on write: `push_str` mutates the buffer
+    /// when the refcount is 1 and otherwise detaches first. A loop of
+    /// `buf = buf + "x"` stays linear for the unique case and still leaves a
+    /// second variable that aliased `buf` unchanged.
+    pub fn append_string(&mut self, name: &str, extra: &str) -> AppendString {
+        if !self.consts.is_empty() && self.consts.contains_key(name) {
+            return AppendString::IsConst;
+        }
+        if let Some(slot) = self.values.get_mut(name) {
+            if let Value::String(text) = slot {
+                text.push_str(extra);
+            } else {
+                return AppendString::NotString;
+            }
+            return AppendString::Done(self.values.get(name).unwrap().clone());
+        }
+        // `get` answers from the view's data hash before the enclosing
+        // scope; appending further up would edit a different binding.
+        if let Some(ref hash) = self.data_hash {
+            if hash.borrow().get(&StrKey(name)).is_some() {
+                return AppendString::NotString;
+            }
+        }
+        if let Some(ref enclosing) = self.enclosing {
+            return enclosing.borrow_mut().append_string(name, extra);
+        }
+        AppendString::NotFound
     }
 
     /// Assign to an existing variable, searching up the scope chain.

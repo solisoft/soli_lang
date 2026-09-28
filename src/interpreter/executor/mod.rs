@@ -559,6 +559,12 @@ impl Interpreter {
         let previous = std::mem::replace(&mut self.environment, env);
         let mut result = Ok(ControlFlow::Normal(Value::Null));
         for stmt in statements {
+            // Release the previous statement's value first. Held across the
+            // next statement, a copy of `buf` from `buf = buf + x` shares the
+            // buffer, so the following `buf << y` has to copy the whole string.
+            if let Ok(ControlFlow::Normal(value)) = &mut result {
+                *value = Value::Null;
+            }
             result = self.execute(stmt);
             match result {
                 Err(_) => break,
@@ -584,6 +590,12 @@ impl Interpreter {
 
         let mut result = Ok(ControlFlow::Normal(Value::Null));
         for stmt in statements {
+            // Release the previous statement's value first. Held across the
+            // next statement, a copy of `buf` from `buf = buf + x` shares the
+            // buffer, so the following `buf << y` has to copy the whole string.
+            if let Ok(ControlFlow::Normal(value)) = &mut result {
+                *value = Value::Null;
+            }
             result = self.execute(stmt);
             match result {
                 Err(_) => break,

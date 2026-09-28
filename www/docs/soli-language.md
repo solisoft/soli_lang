@@ -348,6 +348,21 @@ greeting = "Hello, " + "World!";    # "Hello, World!"
 message = "Value: " + 42;           # "Value: 42" (auto-conversion)
 path = "/home/" + "user";           # "/home/user"
 
+# Appending to a variable is linear. `buf = buf + piece`, `buf += piece` and
+# `buf << piece` grow that binding's buffer when nothing else still shares it —
+# for any piece (a literal, an interpolation, a call) and for a variable a
+# closure captured. A second variable that already holds the old string is
+# left unchanged. 100,000 appends of "<li>#{i}</li>" take ~20 ms, not ~1.3 s.
+buf = ""
+buf += "ab"
+buf = buf + "c"
+buf << "d"                          # "abcd"
+buf << "<li>#{buf.length}</li>"     # any string piece
+
+# `<<` onto a string takes a string, and needs a plain variable: on a field or
+# a hash entry it raises. Use `+=` there (`@html += piece`, `h["k"] += piece`).
+# The variable is read before the piece is computed, as with `+`.
+
 # String methods
 text = "  Hello, World!  ";
 print(text.trim());        # "Hello, World!" (removes whitespace)

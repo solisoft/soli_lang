@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Performance
+
+* **perf(strings):** **`buf = buf + piece`, `buf += piece` and `buf << piece` append in place.** A loop that built a string with `+` copied the whole buffer on every iteration. When the variable is the string's only owner the buffer grows; a second variable that already holds the previous value is left unchanged. Any piece qualifies — a literal, an interpolation, a call — as does a variable a closure captured. On the VM, `name = name + <expr>` / `name += <expr>` compile to one fused op (`AddAssignLocal`/`Upvalue`/`Global`) when no peephole already covers the right-hand side; ints and floats stay in the fast dispatch loop. On the tree-walker a block now releases a statement's value before running the next, so a clone of `buf` kept as the "last value" no longer forces the next append to copy. The variable is read before the right-hand side on both engines, as for `+`. `<<` onto a string takes a string and needs a plain variable (`+=` on a field or hash entry); on an array it still pushes. 100k appends of `"<li>#{i}</li>"`: 1.3 s → 19 ms (VM), 38 ms (tree-walker); integer accumulators unchanged (±2%). Tests: `tests/language/string_append_spec.sl`, `differential_engines_test` (`string_shovel_on_a_captured_variable`, `append_reads_the_variable_before_the_right_hand_side`, `add_assign_with_a_computed_right_hand_side`). Docs: `www/docs/soli-language.md`.
+* **perf(orm):** **`Model.create_many` is one round trip on SoliDB.** SQL already inserted a chunk in one statement. SoliDB now sends one `BulkInsert` on the native driver, or one `FOR d IN @docs INSERT` query over HTTP. An open transaction still inserts one row at a time so each row joins it. `Model.create` inside `grouped` still writes immediately, because the caller receives the stored row. Keys stay server-generated, as with per-row inserts. A failed batch returns `{created, errors}`; rows before the failing one may already be stored. A SQL model in column mode keeps the per-row path. Docs: `www/docs/models.md`.
+* **perf(json):** JSON encoding no longer takes the nesting-depth thread-local on ints, strings and bools, and an instance is written without first collecting its fields into a vector.
+* **perf(vm):** `Hash.values` and `Hash.entries` size their result before filling it. Closure-taking array methods on the tree-walker (`each`, `map`, `filter`, `reduce`, `find`, `sort_by`, …) follow the VM: they read the live array and stop if a callback shrinks it past the current index.
+
+### Fixed
+
+* **fix(vm):** **`h.present?`, `h.blank?` and `h.nil?` on a hash answer on the VM.** `op_get_property` went straight to the method list and the key, so they read as absent keys (`null`) and `if bounce.present? return bounce end` let a request through. Both engines now call `Interpreter::hash_member_value`. Test: `differential_engines_test` (`hash_universal_members_read_bare`).
+* **fix(vm):** **`defined` / `const_get` see the app's classes on the VM.** They read the tree-walker's `CURRENT_ENV`, which the VM never sets; the VM's globals now answer first. Test: `differential_engines_test` (`defined_and_const_get_see_a_class`).
+* **fix(interpreter):** closure-taking array methods (`each`, `map`, `filter`, `reduce`, `find`, `any?`, `all?`, `sort_by`) read the live array, like the VM, instead of a snapshot. Test: `differential_engines_test` (`array_mutation_during_iteration`).
+
+### Testing
+
+* **`soli test` runs `db/migrations` on a freshly created base test database**, then truncates seeded rows: every collection exists before the first spec, so a query over a collection nothing had written yet no longer fails with `CollectionNotFound` on a fresh SoliDB. A failed migration is reported and the run continues.
+* **`SOLI_TEST_SOLIDB_HOST`** overrides `SOLIDB_HOST` for `soli test` (and is pinned for its test servers), so a workstation's suite can use its own SoliDB instead of the shared dev instance. Docs: `www/docs/testing.md`.
+
+### Changed
+
+* **dev builds** compile with line-tables-only debug info. Panic locations stay; full debuginfo was most of the compile and link cost of this crate. Release and dist profiles are unchanged.
+
 ## [2.6.4] - 2026-09-28
 
 ### Fixed

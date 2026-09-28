@@ -9,7 +9,8 @@ use std::sync::Arc;
 use crate::error::RuntimeError;
 use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{
-    build_interpolated, hash_get_value, hash_set_value, Class, HashKey, HashPairs, StrKey, Value,
+    build_interpolated, hash_get_value, hash_set_value, same_string, Class, HashKey, HashPairs,
+    StrKey, Value,
 };
 use crate::metrics::VmTimingGuard;
 use crate::span::Span;
@@ -186,6 +187,99 @@ pub struct Vm {
     pub return_depth: usize,
 }
 
+/// `stack[ia] = stack[ia] + stack[ib]` when both are strings.
+///
+/// Appends into the left slot. `EcoString::push_str` grows in place when that
+/// slot is the only owner, and detaches first when another value still shares
+/// the buffer — so `b = a; a = a + "x"` leaves `b` unchanged.
+fn append_strings_in_place(stack: &mut [Value], ia: usize, ib: usize) {
+    if ia == ib {
+        let extra = match &stack[ia] {
+            Value::String(text) => text.clone(),
+            _ => return,
+        };
+        if let Value::String(text) = &mut stack[ia] {
+            text.push_str(&extra);
+        }
+        return;
+    }
+    let extra = match &stack[ib] {
+        Value::String(text) => text.clone(),
+        _ => return,
+    };
+    if let Value::String(text) = &mut stack[ia] {
+        text.push_str(&extra);
+    }
+}
+
+/// `before << rhs`, writing into `slot`, the variable `before` was read from
+/// ahead of the right-hand side. Returns what `<<` yields: the left operand.
+///
+/// An array is pushed into (it is the one read first, even if the right-hand
+/// side rebound the variable). A string appends in place when the variable
+/// still holds it — `before` is dropped first, so the variable is the buffer's
+/// only owner and grows without a copy; otherwise the variable gets
+/// `before + rhs`, as the tree-walker's `name = name + rhs` gives it.
+fn shovel_into(slot: &mut Value, before: Value, rhs: Value) -> Result<Value, String> {
+    match before {
+        Value::Array(arr) => {
+            arr.borrow_mut().push(rhs);
+            Ok(Value::Array(arr))
+        }
+        Value::String(old) => {
+            let extra = match rhs {
+                Value::String(extra) => extra,
+                other => {
+                    return Err(format!(
+                        "string << expects a string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let unchanged = matches!(&*slot, Value::String(current) if same_string(current, &old));
+            if unchanged {
+                drop(old);
+                if let Value::String(text) = slot {
+                    text.push_str(&extra);
+                }
+            } else {
+                let mut joined = old;
+                joined.push_str(&extra);
+                *slot = Value::String(joined);
+            }
+            Ok(slot.clone())
+        }
+        other => Err(format!(
+            "<< expects an array or a string on the left, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `before + rhs` for two strings, stored into `slot`, the variable `before`
+/// was read from ahead of the right-hand side. Appends in place when the
+/// variable still holds `before` (see [`shovel_into`]). Any other pair is
+/// handed back for an ordinary add.
+fn add_strings_into(slot: &mut Value, before: Value, rhs: Value) -> Result<Value, (Value, Value)> {
+    match (before, rhs) {
+        (Value::String(old), Value::String(extra)) => {
+            let unchanged = matches!(&*slot, Value::String(current) if same_string(current, &old));
+            if unchanged {
+                drop(old);
+                if let Value::String(text) = slot {
+                    text.push_str(&extra);
+                }
+            } else {
+                let mut joined = old;
+                joined.push_str(&extra);
+                *slot = Value::String(joined);
+            }
+            Ok(slot.clone())
+        }
+        pair => Err(pair),
+    }
+}
+
 impl Vm {
     /// Materialise a `grouped {}` deferred result read out of an instance
     /// field.
@@ -249,6 +343,40 @@ impl Vm {
             .copied()
             .unwrap_or(0);
         Span::new(0, 0, line, 0)
+    }
+
+    /// `a + b` by [`Op::Add`]'s rules, for the fused add-assign ops.
+    fn add_values(&self, a: Value, b: Value) -> Result<Value, RuntimeError> {
+        match (&a, &b) {
+            (Value::Int(x), Value::Int(y)) => match x.checked_add(*y) {
+                Some(sum) => Ok(Value::Int(sum)),
+                None => Err(crate::interpreter::executor::operators::int_overflow(
+                    *x,
+                    "+",
+                    *y,
+                    self.current_span(),
+                )),
+            },
+            (Value::Float(x), Value::Float(y)) => Ok(Value::Float(x + y)),
+            (Value::Int(x), Value::Float(y)) => Ok(Value::Float(*x as f64 + y)),
+            (Value::Float(x), Value::Int(y)) => Ok(Value::Float(x + *y as f64)),
+            _ => self.op_add(a, b, self.current_span()),
+        }
+    }
+
+    /// `name << rhs` for a global; see [`shovel_into`]. The result is
+    /// pushed, matching `<<` returning its left operand.
+    fn append_named(&mut self, name: &str, before: Value, rhs: Value) -> Result<(), RuntimeError> {
+        let Some(slot) = self.globals.get_mut(name) else {
+            return Err(RuntimeError::undefined_variable(
+                name.to_string(),
+                self.current_span(),
+            ));
+        };
+        let result = shovel_into(slot, before, rhs)
+            .map_err(|m| RuntimeError::type_error(m, self.current_span()))?;
+        self.stack.push(result);
+        Ok(())
     }
 
     /// Answer a borrowed-tier hash method (`slice`, `merge`, `dig`, …)
@@ -779,15 +907,45 @@ impl Vm {
                 },
                 Op::AddLocalsInPlace(a, b) => {
                     let (ia, ib) = (base + a as usize, base + b as usize);
-                    let sum = match (&self.stack[ia], &self.stack[ib]) {
-                        (Value::Int(x), Value::Int(y)) => x.checked_add(*y).map(Value::Int),
-                        (Value::Float(x), Value::Float(y)) => Some(Value::Float(x + y)),
-                        _ => None,
-                    };
-                    match sum {
-                        Some(value) => self.stack[ia] = value,
-                        None => break Some(op),
+                    enum Pair {
+                        Int(i64, i64),
+                        Float(f64, f64),
+                        Str,
+                        Other,
                     }
+                    let pair = match (&self.stack[ia], &self.stack[ib]) {
+                        (Value::Int(x), Value::Int(y)) => Pair::Int(*x, *y),
+                        (Value::Float(x), Value::Float(y)) => Pair::Float(*x, *y),
+                        (Value::String(_), Value::String(_)) => Pair::Str,
+                        _ => Pair::Other,
+                    };
+                    match pair {
+                        Pair::Int(x, y) => match x.checked_add(y) {
+                            Some(sum) => self.stack[ia] = Value::Int(sum),
+                            None => break Some(op),
+                        },
+                        Pair::Float(x, y) => self.stack[ia] = Value::Float(x + y),
+                        Pair::Str => append_strings_in_place(&mut self.stack, ia, ib),
+                        Pair::Other => break Some(op),
+                    }
+                }
+                // Numbers stay in this loop, as `Add` + `SetLocal` did before
+                // the fused op existed; a string (or anything else) is the
+                // general arm's.
+                Op::AddAssignLocal(slot) => {
+                    let (len, a, b) = peek_two!();
+                    let sum = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => match x.checked_add(*y) {
+                            Some(n) => Value::Int(n),
+                            None => break Some(op),
+                        },
+                        (Value::Float(x), Value::Float(y)) => Value::Float(x + y),
+                        (Value::Int(x), Value::Float(y)) => Value::Float(*x as f64 + y),
+                        (Value::Float(x), Value::Int(y)) => Value::Float(x + *y as f64),
+                        _ => break Some(op),
+                    };
+                    self.stack[base + slot as usize] = sum.clone();
+                    replace_top_two!(len, sum);
                 }
                 Op::Array(n) => {
                     let array = self.array_from_stack(n as usize);
@@ -3183,21 +3341,172 @@ impl Vm {
                 Op::AddLocalsInPlace(a, b) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let (ia, ib) = (base + a as usize, base + b as usize);
-                    match (&self.stack[ia], &self.stack[ib]) {
-                        (Value::Int(x), Value::Int(y)) => {
-                            let r = x.wrapping_add(*y);
-                            self.stack[ia] = Value::Int(r);
+                    enum Pair {
+                        Int(i64, i64),
+                        Float(f64, f64),
+                        Str,
+                        Other,
+                    }
+                    let pair = match (&self.stack[ia], &self.stack[ib]) {
+                        (Value::Int(x), Value::Int(y)) => Pair::Int(*x, *y),
+                        (Value::Float(x), Value::Float(y)) => Pair::Float(*x, *y),
+                        (Value::String(_), Value::String(_)) => Pair::Str,
+                        _ => Pair::Other,
+                    };
+                    match pair {
+                        Pair::Int(x, y) => {
+                            self.stack[ia] = Value::Int(x.wrapping_add(y));
                         }
-                        (Value::Float(x), Value::Float(y)) => {
-                            let r = x + y;
-                            self.stack[ia] = Value::Float(r);
+                        Pair::Float(x, y) => {
+                            self.stack[ia] = Value::Float(x + y);
                         }
-                        _ => {
+                        Pair::Str => append_strings_in_place(&mut self.stack, ia, ib),
+                        Pair::Other => {
                             let (x, y) = (self.stack[ia].clone(), self.stack[ib].clone());
                             let span = self.current_span();
                             self.stack[ia] = self.op_add(x, y, span)?;
                         }
                     }
+                }
+                Op::AppendGlobal(idx) => {
+                    let rhs = self.pop();
+                    let before = self.pop();
+                    let name = self.read_string_constant_owned(idx);
+                    self.append_named(&name, before, rhs)?;
+                }
+                Op::AppendGlobalConst(name_idx, cidx) => {
+                    let (name, extra) = {
+                        let frame = self.frames.last().unwrap();
+                        let constants = &frame.closure.proto.chunk.constants;
+                        let name = match &constants[name_idx as usize] {
+                            Constant::String(text) => text.to_string(),
+                            _ => String::new(),
+                        };
+                        let extra = match &constants[cidx as usize] {
+                            Constant::String(text) => text.clone(),
+                            _ => {
+                                return Err(RuntimeError::type_error(
+                                    "internal: AppendGlobalConst constant is not a string",
+                                    self.current_span(),
+                                ));
+                            }
+                        };
+                        (name, extra)
+                    };
+                    if let Some(Value::String(text)) = self.globals.get_mut(&name) {
+                        text.push_str(&extra);
+                    } else {
+                        let left = self.globals.get(&name).cloned().unwrap_or(Value::Null);
+                        let span = self.current_span();
+                        let updated = self.op_add(left, Value::String(extra), span)?;
+                        self.globals.insert(name, updated);
+                    }
+                }
+                Op::AppendLocalConst(slot, cidx) => {
+                    let extra = {
+                        let frame = self.frames.last().unwrap();
+                        match &frame.closure.proto.chunk.constants[cidx as usize] {
+                            Constant::String(text) => text.clone(),
+                            _ => {
+                                return Err(RuntimeError::type_error(
+                                    "internal: AppendLocalConst constant is not a string",
+                                    self.current_span(),
+                                ));
+                            }
+                        }
+                    };
+                    let base = self.frames.last().unwrap().stack_base;
+                    let idx = base + slot as usize;
+                    if let Value::String(text) = &mut self.stack[idx] {
+                        text.push_str(&extra);
+                    } else {
+                        let left = self.stack[idx].clone();
+                        let span = self.current_span();
+                        self.stack[idx] = self.op_add(left, Value::String(extra), span)?;
+                    }
+                }
+                Op::AppendLocal(slot) => {
+                    let rhs = self.pop();
+                    let before = self.pop();
+                    let idx = self.frames.last().unwrap().stack_base + slot as usize;
+                    let result = shovel_into(&mut self.stack[idx], before, rhs)
+                        .map_err(|m| RuntimeError::type_error(m, self.current_span()))?;
+                    self.stack.push(result);
+                }
+                Op::AddAssignLocal(slot) => {
+                    let rhs = self.pop();
+                    let before = self.pop();
+                    let idx = self.frames.last().unwrap().stack_base + slot as usize;
+                    let result = match add_strings_into(&mut self.stack[idx], before, rhs) {
+                        Ok(updated) => updated,
+                        Err((before, rhs)) => {
+                            let sum = self.add_values(before, rhs)?;
+                            self.stack[idx] = sum.clone();
+                            sum
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::AddAssignUpvalue(idx) => {
+                    let rhs = self.pop();
+                    let before = self.pop();
+                    let upvalue =
+                        self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
+                    let appended = {
+                        let mut cell = upvalue.borrow_mut();
+                        match &mut *cell {
+                            Upvalue::Open(slot) => {
+                                add_strings_into(&mut self.stack[*slot], before, rhs)
+                            }
+                            Upvalue::Closed(value) => add_strings_into(value, before, rhs),
+                        }
+                    };
+                    let result = match appended {
+                        Ok(updated) => updated,
+                        Err((before, rhs)) => {
+                            let sum = self.add_values(before, rhs)?;
+                            match &mut *upvalue.borrow_mut() {
+                                Upvalue::Open(slot) => self.stack[*slot] = sum.clone(),
+                                Upvalue::Closed(value) => *value = sum.clone(),
+                            }
+                            sum
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::AddAssignGlobal(idx) => {
+                    let rhs = self.pop();
+                    let before = self.pop();
+                    let name = self.read_string_constant_owned(idx);
+                    let appended = match self.globals.get_mut(&name) {
+                        Some(slot) => add_strings_into(slot, before, rhs),
+                        None => Err((before, rhs)),
+                    };
+                    let result = match appended {
+                        Ok(updated) => updated,
+                        Err((before, rhs)) => {
+                            let sum = self.add_values(before, rhs)?;
+                            self.globals.insert(name, sum.clone());
+                            sum
+                        }
+                    };
+                    self.stack.push(result);
+                }
+                Op::AppendUpvalue(idx) => {
+                    let rhs = self.pop();
+                    let before = self.pop();
+                    let upvalue =
+                        self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
+                    let outcome = {
+                        let mut cell = upvalue.borrow_mut();
+                        match &mut *cell {
+                            Upvalue::Open(slot) => shovel_into(&mut self.stack[*slot], before, rhs),
+                            Upvalue::Closed(value) => shovel_into(value, before, rhs),
+                        }
+                    };
+                    let result =
+                        outcome.map_err(|m| RuntimeError::type_error(m, self.current_span()))?;
+                    self.stack.push(result);
                 }
                 Op::AddLocalConst(slot, const_idx) => {
                     let base = self.frames.last().unwrap().stack_base;

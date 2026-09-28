@@ -442,6 +442,24 @@ impl Vm {
         if native.name == "with_transaction" {
             return self.call_with_transaction_block(args, span);
         }
+        // `defined` and `const_get` read the tree-walker's `CURRENT_ENV`,
+        // which the VM never sets: on the VM, `defined("ShopChannel")` was
+        // false for a class the app had loaded, and an action took the branch
+        // meant for an app without it. The VM's globals answer first; a name
+        // they lack still goes to the native, as before.
+        if native.name == "defined" || native.name == "const_get" {
+            if let Some(Value::String(name)) = args.first() {
+                if let Some(value) = self.globals.get(name.as_str()) {
+                    let result = if native.name == "defined" {
+                        Value::Bool(true)
+                    } else {
+                        value.clone()
+                    };
+                    self.push(result);
+                    return Ok(());
+                }
+            }
+        }
 
         // Call the native function. Wrap in a flamegraph `Fn` span when
         // the native is on the request-path whitelist (see

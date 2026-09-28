@@ -437,6 +437,25 @@ impl Compiler {
         right: &Expr,
         line: usize,
     ) -> CompileResult<()> {
+        // `name << value` writes the variable back. A string has no `Rc`
+        // identity, so the generic ArrayPush (which edits the value sitting on
+        // the stack) would append to a copy and leave the variable behind. The
+        // variable is still read first, as for any binary operator.
+        if op == BinaryOp::Shovel {
+            if let ExprKind::Variable(name) = &left.kind {
+                let append = match self.resolve_variable(name) {
+                    VariableAccess::Local(slot) => Op::AppendLocal(slot),
+                    VariableAccess::Upvalue(idx) => Op::AppendUpvalue(idx),
+                    VariableAccess::Global(global_name) => {
+                        Op::AppendGlobal(self.add_string_constant(&global_name))
+                    }
+                };
+                self.compile_expr(left)?;
+                self.compile_expr(right)?;
+                self.emit(append, line);
+                return Ok(());
+            }
+        }
         self.compile_expr(left)?;
         self.compile_expr(right)?;
         match op {
@@ -905,6 +924,52 @@ impl Compiler {
     fn compile_assign(&mut self, target: &Expr, value: &Expr, line: usize) -> CompileResult<()> {
         match &target.kind {
             ExprKind::Variable(name) => {
+                // `name = name + <expr>` (and `name += <expr>`, desugared to
+                // it): one op reads, adds and stores, so a string grows in
+                // place instead of being copied per iteration. A variable or
+                // literal right-hand side is left to the peepholes
+                // (`AddLocalsInPlace`, `AppendLocalConst`, `IncrLocal`, …).
+                if let ExprKind::Binary {
+                    left,
+                    operator: BinaryOp::Add,
+                    right,
+                } = &value.kind
+                {
+                    let self_add =
+                        matches!(&left.kind, ExprKind::Variable(left_name) if left_name == name);
+                    let simple_rhs = matches!(
+                        right.kind,
+                        ExprKind::Variable(_)
+                            | ExprKind::IntLiteral(_)
+                            | ExprKind::FloatLiteral(_)
+                            | ExprKind::StringLiteral(_)
+                    );
+                    // `acc = acc + h[keys[k]]` over locals is `AddNestedIndex`'s.
+                    let nested_index_of_variables = matches!(
+                        &right.kind,
+                        ExprKind::Index { object, index }
+                            if matches!(object.kind, ExprKind::Variable(_))
+                                && matches!(&index.kind, ExprKind::Index { object, index }
+                                    if matches!(object.kind, ExprKind::Variable(_))
+                                        && matches!(index.kind, ExprKind::Variable(_)))
+                    );
+                    if self_add && !simple_rhs && !nested_index_of_variables {
+                        let add_assign = match self.resolve_variable(name) {
+                            VariableAccess::Local(slot) => Op::AddAssignLocal(slot),
+                            VariableAccess::Upvalue(idx) => Op::AddAssignUpvalue(idx),
+                            VariableAccess::Global(global_name) => {
+                                if self.scope_depth == 0 {
+                                    self.known_globals.borrow_mut().insert(global_name.clone());
+                                }
+                                Op::AddAssignGlobal(self.add_string_constant(&global_name))
+                            }
+                        };
+                        self.compile_expr(left)?;
+                        self.compile_expr(right)?;
+                        self.emit(add_assign, line);
+                        return Ok(());
+                    }
+                }
                 self.compile_expr(value)?;
                 let name_clone = name.clone();
                 match self.resolve_variable(&name_clone) {

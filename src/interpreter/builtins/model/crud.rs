@@ -1507,6 +1507,16 @@ mod driver {
         }
     }
 
+    pub fn bulk_insert(c: &str, docs: Vec<Value>) -> Option<Result<usize, String>> {
+        #[cfg(feature = "solidb-driver")]
+        return imp::try_bulk_insert(c, docs);
+        #[cfg(not(feature = "solidb-driver"))]
+        {
+            let _ = (c, docs);
+            None
+        }
+    }
+
     pub fn update(c: &str, key: &str, doc: &Value) -> Option<Result<Value, String>> {
         #[cfg(feature = "solidb-driver")]
         return imp::try_update(c, key, doc);
@@ -1687,6 +1697,63 @@ fn sql_write_in_tx_error(collection: &str) -> String {
          transaction is a SoliDB transaction — writes cannot span both. Move this write \
          outside the transaction block."
     )
+}
+
+/// Insert every document in one round trip.
+///
+/// The native driver sends `BulkInsert`. Without it, one SDBQL
+/// `FOR d IN @docs INSERT d INTO …` statement does the same job. A single
+/// `Model.create` still writes immediately — its return value is the stored
+/// row, including the key the server stamped — so a `grouped` block does not
+/// defer creates. `create_many` is the batch.
+pub fn exec_insert_many(
+    collection: &str,
+    documents: Vec<serde_json::Value>,
+) -> Result<usize, String> {
+    if documents.is_empty() {
+        return Ok(0);
+    }
+    if get_current_tx_id().is_some() {
+        return Err(
+            "bulk insert cannot run inside a transaction; insert one row at a time".to_string(),
+        );
+    }
+    let attempt = |docs: &[serde_json::Value]| -> Result<usize, String> {
+        match driver::bulk_insert(collection, docs.to_vec()) {
+            Some(result) => result,
+            None => insert_many_via_aql(collection, docs),
+        }
+    };
+    let result = match attempt(&documents) {
+        Err(ref e) if is_missing_collection_or_database_error(e) => {
+            create_collection_sync(collection)?;
+            attempt(&documents)
+        }
+        other => other,
+    };
+    if result.is_ok() {
+        mark_durable_write();
+        crate::live::live_query::notify_change(collection, None);
+    }
+    result
+}
+
+fn insert_many_via_aql(collection: &str, documents: &[serde_json::Value]) -> Result<usize, String> {
+    if collection.is_empty()
+        || !collection
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return Err(format!("invalid collection name '{collection}'"));
+    }
+    let sdbql = format!("FOR d IN @docs INSERT d INTO {collection}");
+    let mut binds = HashMap::new();
+    binds.insert(
+        "docs".to_string(),
+        serde_json::Value::Array(documents.to_vec()),
+    );
+    exec_with_auto_collection(sdbql, Some(binds), collection)?;
+    Ok(documents.len())
 }
 
 /// Execute an insert with automatic collection creation.

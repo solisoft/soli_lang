@@ -601,6 +601,7 @@ pub fn run_test(
         process::exit(1);
     }
     solilang::serve::env_loader::load_env_files(&app_dir);
+    apply_test_solidb_host_override();
 
     solilang::interpreter::builtins::model::init_db_config();
 
@@ -784,7 +785,7 @@ pub fn run_test(
     // leaves `{stem}_w{N}` databases nothing will ever reuse. The post-suite
     // drop cannot catch those — it only knows the names of the run it ends.
     sweep_orphaned_worker_databases(&worker_databases);
-    ensure_test_databases(&worker_databases);
+    ensure_test_databases(&worker_databases, &app_dir);
 
     #[derive(Clone)]
     struct WorkerEnv {
@@ -926,8 +927,10 @@ pub fn run_test(
                 .env("SOLIDB_PASSWORD", &solidb_pass)
                 // Pin SOLIDB_DATABASE so the server's `.env.test` reload
                 // (override_existing=true) doesn't clobber the per-worker
-                // value we just set.
-                .env("SOLI_PROTECT_ENV", "SOLIDB_DATABASE")
+                // value we just set — and SOLIDB_HOST, so a server talks to
+                // the same SoliDB as the runner that created its database
+                // (`SOLI_TEST_SOLIDB_HOST`, see `apply_test_solidb_host_override`).
+                .env("SOLI_PROTECT_ENV", "SOLIDB_DATABASE,SOLIDB_HOST")
                 // Fixture passwords are hashed at a cost meant for real ones.
                 // A suite pays it twice per authenticated test — once here,
                 // creating the user, once on the server verifying the login —
@@ -1651,6 +1654,94 @@ fn worker_database_names(num_workers: usize, base_database_name: &str) -> Vec<St
     names
 }
 
+/// `SOLI_TEST_SOLIDB_HOST` sends a machine's test runs to their own SoliDB,
+/// whatever `.env.test` says. `.env.test` is committed and names the SoliDB CI
+/// starts (`localhost:6745`); on a workstation that port is usually the dev
+/// instance, shared with every `soli serve --dev` — and a suite that creates,
+/// truncates and drops databases there runs at its pace, not the test's
+/// (measured: 50 creates, 545 ms on a busy dev instance, 20 ms on a fresh one).
+/// Set in the shell, never in a file: CI does not set it and keeps `.env.test`.
+fn apply_test_solidb_host_override() {
+    if let Ok(host) = std::env::var("SOLI_TEST_SOLIDB_HOST") {
+        let host = host.trim();
+        if !host.is_empty() {
+            // SAFETY: single-threaded here — called right after
+            // `load_env_files`, before any worker or server is spawned.
+            unsafe { std::env::set_var("SOLIDB_HOST", host) };
+        }
+    }
+}
+
+/// Give a base test database that was just created the app's schema.
+///
+/// The base DB's collections are the template every sibling worker DB is
+/// created from, and the suite drops its databases on exit — so on any run
+/// without `SOLI_TEST_KEEP_DB` the template was empty, and a collection
+/// existed only once a spec had written to it. A query that reads a
+/// collection nothing had written yet (an activity feed over ten
+/// collections) answered *CollectionNotFound*: the suite passed only where
+/// a kept database remembered earlier runs (rbuild), and failed on a fresh
+/// SoliDB. Running `db/migrations` here builds the schema production has.
+///
+/// Rows a migration seeds are truncated afterwards — the baseline is "every
+/// collection, no rows". A failed migration is reported and the run goes on:
+/// the lazy path still creates collections on first write, as before.
+fn migrate_fresh_base_database(
+    app_dir: &Path,
+    host: &str,
+    auth_header: &Option<String>,
+    database: &str,
+) {
+    let migrations_dir = app_dir.join("db/migrations");
+    let has_migrations = std::fs::read_dir(&migrations_dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .any(|entry| entry.path().extension().is_some_and(|ext| ext == "sl"))
+        })
+        .unwrap_or(false);
+    if !has_migrations {
+        return;
+    }
+
+    let mut config = solilang::migration::DbConfig::new(host, database);
+    if let (Ok(user), Ok(pass)) = (
+        std::env::var("SOLIDB_USERNAME"),
+        std::env::var("SOLIDB_PASSWORD"),
+    ) {
+        config = config.with_auth(&user, &pass);
+    }
+    let started = std::time::Instant::now();
+    let runner = solilang::migration::MigrationRunner::new(config, app_dir).quiet(true);
+    match runner.migrate_up() {
+        Ok(result) => {
+            let collections = list_collections(host, auth_header, database)
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            let rows: Vec<(String, String)> = collections
+                .into_iter()
+                .filter(|(name, _)| name != "_migrations")
+                .collect();
+            let errors = truncate_collections(host, auth_header, database, &rows);
+            println!(
+                "  ✓ {} migrated: {} ({}ms, {} collection(s))",
+                database,
+                result.message,
+                started.elapsed().as_millis(),
+                rows.len()
+            );
+            if let Some(first) = errors.first() {
+                eprintln!("  ⚠ {} — {} (seeded rows may remain)", database, first);
+            }
+        }
+        Err(err) => eprintln!(
+            "  ⚠ {} — migrations failed, collections will be created on first write: {}",
+            database, err
+        ),
+    }
+}
+
 fn test_db_host() -> String {
     std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string())
 }
@@ -1670,7 +1761,7 @@ fn test_db_auth_header() -> Option<String> {
     }
 }
 
-fn ensure_test_databases(db_names: &[String]) {
+fn ensure_test_databases(db_names: &[String], app_dir: &Path) {
     let databases: Vec<&String> = db_names.iter().filter(|name| *name != "default").collect();
     if databases.is_empty() {
         return;
@@ -1696,6 +1787,10 @@ fn ensure_test_databases(db_names: &[String]) {
     let base_started = std::time::Instant::now();
     let base_outcome = prepare_test_database(&host, &auth_header, base_database, &[]);
     print_reset_outcome(base_database, base_started.elapsed(), &base_outcome);
+    if matches!(&base_outcome, Ok((detail, _)) if detail == "created" || detail.starts_with("recreated"))
+    {
+        migrate_fresh_base_database(app_dir, &host, &auth_header, base_database);
+    }
 
     let template_collections: Vec<(String, String)> =
         list_collections(&host, &auth_header, base_database)
