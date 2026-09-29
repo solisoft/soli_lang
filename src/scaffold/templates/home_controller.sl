@@ -3,7 +3,7 @@
 class HomeController < Controller
   # GET /
   def index
-    render("home/index", {"title": "Welcome"})
+    @title = "Welcome"
   end
 
   # GET /health

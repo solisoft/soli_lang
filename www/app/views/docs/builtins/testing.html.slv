@@ -519,7 +519,7 @@ println(admin["name"])  # "Test User" (from factory)</code></pre>
                     <a href="#def-assigns" class="group flex items-center gap-2">
                         <code class="font-mono text-amber-400">assigns()</code>
                     </a>
-                    <p class="text-gray-400 text-sm mt-1">All view locals as a hash (<code>{}</code> if none)</p>
+                    <p class="text-gray-400 text-sm mt-1">All view locals as a hash (<code>{}</code> if none): the controller&rsquo;s <code>@fields</code> (not <code>_</code>-prefixed), with or without an explicit <code>render(...)</code>, plus any <code>render</code> data keys</p>
                 </section>
 
                 <section id="def-assign" class="scroll-mt-20">

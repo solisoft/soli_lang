@@ -102,23 +102,25 @@ class PostController < Controller
     this.layout = "application"
   }
 
+  # @fields reach the view and layout; posts/<action> renders by itself
   def index
-    posts = Post.all
-    render("posts/index", { "posts": posts, "title": "PostController" })
+    @posts = Post.all
+    @title = "PostController"
   end
 
   def show
-    post = Post.find(params["id"])
-    render("posts/show", { "post": post, "title": "View Post" })
+    @post = Post.find(params["id"])
+    @title = "View Post"
   end
 
   def create
-    permitted = this._permit_params(params)
-    post = Post.create(permitted)
-    if post._errors
-      return render("posts/new", { "post": post, "title": "New Post" })
+    @post = Post.create(this._permit_params(params))
+    if @post._errors
+      @title = "New Post"
+      return render("posts/new", {}, { "status": 422 })
     end
-    return redirect("/posts")
+
+    redirect("/posts")
   end
 
   def _permit_params(params)

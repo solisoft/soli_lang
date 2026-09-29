@@ -134,10 +134,10 @@ own params:
 ```soli
 # app/controllers/docs_controller.sl
 def show
-  page = Doc.find(req["params"]["slug"])
+  @page = Doc.find(params["slug"])
   respond_to(req, fn(format) {
-    format.html(fn() render("docs/show", {"page": page}))
-    format.eui(fn()  eui_render(doc_view(page)))
+    format.html(fn() render("docs/show"))
+    format.eui(fn()  eui_render(doc_view(@page)))
   })
 end
 ```

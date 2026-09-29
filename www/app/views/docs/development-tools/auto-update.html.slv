@@ -161,10 +161,9 @@ updated to v1.1.0</code></pre>
 
     <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
         <pre data-filename="app/controllers/home_controller.sl"><code class="language-soli text-sm">def index(req) {
-  info = Updater.check()
+  @update = Updater.check()   # the view reads @update
   # { "configured": true, "available": true,
   #   "current": "1.0.0", "latest": "1.1.0", "notes": "…" }
-  return render("home/index", { "update": info })
 }
 
 def install_update(req) {

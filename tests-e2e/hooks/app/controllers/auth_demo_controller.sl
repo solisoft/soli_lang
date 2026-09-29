@@ -34,4 +34,14 @@ class AuthDemoController extends Controller
         @user_id = user_id;
         @widgets = ["inbox", "tasks"];
     end
+
+    # The recommended explicit form: `@vars`, then `render` with no data hash
+    # — here to pass a status. assigns() must still see the `@vars`.
+    def fields(req)
+        @title = "Fields Dashboard";
+        @user_id = 0;
+        @widgets = ["inbox"];
+        @_scratch = "not a view local";
+        render("auth_demo/auto", {}, {"status": 422})
+    end
 end

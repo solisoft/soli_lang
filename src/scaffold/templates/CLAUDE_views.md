@@ -44,12 +44,15 @@ content; reach for `<%- %>` only when you can prove the value is trusted.
    <article><%= @post.body %></article>
    ```
 
-2. **Explicit data hash on `render`**. Use this when you want to render a
-   different template, or pass a value under a name that doesn't match a
-   controller field.
+2. **Rendering another template**: set the fields, then name the view.
+   Don't pass a data hash — `@fields` are injected automatically, and a
+   second channel for the same data only makes the view harder to trace.
+   The second argument stays `{}` when you need options:
 
    ```soli
-   render("posts/show_summary", { "summary_text": build_summary(@post) })
+   @summary_text = build_summary(@post)
+   render("posts/show_summary")
+   render("posts/edit", {}, { "status": 422 })
    ```
 
 3. **`locals[...]` for collisions**. When a local name shadows a builtin or

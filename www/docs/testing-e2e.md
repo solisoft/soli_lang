@@ -417,7 +417,7 @@ Assigns helpers inspect data passed to views during template rendering. These he
 
 ### Accessing Assigns
 
-**assigns()** returns all assigns as a hash:
+**assigns()** returns all assigns as a hash: the controller's `@fields` (those not prefixed with `_`), whether the view rendered by convention or through an explicit `render("posts/new", {}, { "status": 422 })`, plus any keys of a `render` data hash, which win:
 
 ```soli
 response = get("/users/1");

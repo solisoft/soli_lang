@@ -79,10 +79,11 @@ Inherited from `Model` (don't override them). Full reference in
 | `Model.<scope>` | Invoke a named `scope(...)` — returns a QueryBuilder. |
 
 ```soli
-user = User.create({ "name": "Alice", "email": "alice@example.com" })
-if user._errors
-  # re-render the form; _errors is an array of {field, message}
-  return render("users/new", { "user": user })
+@user = User.create({ "name": "Alice", "email": "alice@example.com" })
+if @user._errors
+  # in a controller action: re-render the form (it reads @user);
+  # _errors is an array of {field, message}
+  return render("users/new", {}, { "status": 422 })
 end
 
 alice = User.find_by("email", "alice@example.com")   # nil if absent

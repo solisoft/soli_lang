@@ -174,7 +174,8 @@ session_destroy()</code></pre>
     return redirect("/dashboard")
   end
 
-  render("login", { "error": "Invalid credentials" })
+  @error = "Invalid credentials"
+  render("login", {}, { "status": 401 })
 end</code></pre>
             </div>
         </div>

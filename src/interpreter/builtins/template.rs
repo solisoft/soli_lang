@@ -683,6 +683,35 @@ pub fn inject_controller_instance_vars(data: &Value) {
     }
 }
 
+/// The locals `assigns()` reports for an explicit `render(...)`: the data hash
+/// plus the controller's `@fields`, the same set the implicit render captures.
+/// Without the fields, an action written the recommended way (set `@post`,
+/// call `render("posts/show", {}, {"status": 422})`) showed the e2e client an
+/// empty `assigns()`. Explicit data wins; framework and `_`-prefixed fields
+/// stay out, as they do on the implicit path.
+fn with_controller_assigns(data: &Value) -> Value {
+    let Value::Hash(hash) = data else {
+        return data.clone();
+    };
+    let mut pairs = hash.borrow().clone();
+    if let Some(Value::Instance(inst)) =
+        crate::interpreter::builtins::controller::registry::get_current_controller()
+    {
+        for (name, value) in &inst.borrow().fields {
+            if name.starts_with('_')
+                || matches!(name.as_str(), "req" | "params" | "session" | "headers")
+            {
+                continue;
+            }
+            let key = HashKey::String(name.clone());
+            if !pairs.contains_key(&key) {
+                pairs.insert(key, value.clone());
+            }
+        }
+    }
+    Value::Hash(Rc::new(RefCell::new(pairs)))
+}
+
 /// Pure-Soli form-builder layer (`form_with` / `FormBuilder` / `csrf_field`
 /// / `csrf_meta_tag` / `button_to`), evaluated into the shared template
 /// builtins environment at seed time (see `core_eval::get_builtins_rc`).
@@ -2210,7 +2239,7 @@ pub fn register_template_builtins(env: &mut Environment) {
             // otherwise it's a single atomic load with zero further cost.
             let captured_assigns: Option<(String, bool)> =
                 if crate::interpreter::builtins::test_server::is_test_runner_process() {
-                    Some(capture_assigns_json(&data))
+                    Some(capture_assigns_json(&with_controller_assigns(&data)))
                 } else {
                     None
                 };

@@ -226,10 +226,11 @@ canonical form.)
 exposed to the view — useful for state shared between hooks and actions that
 shouldn't leak into templates.
 
-Because of this, you usually don't pass a data hash to `render` at all — set
-`@fields` and let the framework do the rest. Reach for `render(view, {...})`
-only when you need to render a *different* view than the default, or when you
-want to override a field's name for the template.
+Because of this, don't pass a data hash to `render` — set `@fields` and let
+the framework do the rest. Call `render("posts/new")` only to render a
+*different* view than the default, and keep the data argument `{}` when you
+need options: `render("posts/new", {}, { "status": 422 })`. The e2e
+`assigns()` helper reports the `@fields` either way.
 
 ### Group the reads: one round-trip, not one per `@`-var
 

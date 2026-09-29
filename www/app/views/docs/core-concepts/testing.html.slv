@@ -505,7 +505,7 @@ assert_eq(res_status(response), 200)</code></pre>
         <div class="grid-cols-1 md:grid-cols-2 gap-4 mb-12" style="display: grid;">
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-emerald-300 font-bold">assigns()</code>
-                <p class="text-sm text-gray-400 mt-1">Returns all assigns as a hash</p>
+                <p class="text-sm text-gray-400 mt-1">Returns all assigns as a hash: the controller&rsquo;s <code>@fields</code>, whether the view rendered by convention or through an explicit <code>render(...)</code></p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-emerald-300 font-bold">assign(key)</code>

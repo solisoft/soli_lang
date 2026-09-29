@@ -16,52 +16,39 @@ class {controller_name} < Controller
     this.layout = "application"
   }}
 
-  # GET /{resource}
+  # GET /{resource} — every @field reaches the view and the layout, and the
+  # matching {resource}/<action> view renders by itself: no render() needed.
   def index
-    {model_var}s = {model_name}.all
-    render("{resource}/index", {{
-      "{model_var}s": {model_var}s,
-      "title": "{controller_name}"
-    }})
+    @{model_var}s = {model_name}.all
+    @title = "{controller_name}"
   end
 
   # GET /{resource}/:id — Model.find raises on miss, framework maps to 404.
   def show
-    {model_var} = {model_name}.find(params["id"])
-    render("{resource}/show", {{
-      "{model_var}": {model_var},
-      "title": "View {model_name}"
-    }})
+    @{model_var} = {model_name}.find(params["id"])
+    @title = "View {model_name}"
   end
 
   # GET /{resource}/new
   def new
-    {model_var} = {model_name}.new()
-    render("{resource}/new", {{
-      "{model_var}": {model_var}
-    }})
+    @{model_var} = {model_name}.new()
   end
 
   # GET /{resource}/:id/edit
   def edit
-    {model_var} = {model_name}.find(params["id"])
-    render("{resource}/edit", {{
-      "{model_var}": {model_var},
-      "title": "Edit {model_name}"
-    }})
+    @{model_var} = {model_name}.find(params["id"])
+    @title = "Edit {model_name}"
   end
 
   # POST /{resource}
   def create
-    permitted = this._permit_params(params)
-    {model_var} = {model_name}.create(permitted)
-    if {model_var}._errors
-      return render("{resource}/new", {{
-        "{model_var}": {model_var},
-        "title": "New {model_name}"
-      }})
+    @{model_var} = {model_name}.create(this._permit_params(params))
+    if @{model_var}._errors
+      @title = "New {model_name}"
+      return render("{resource}/new", {{}}, {{ "status": 422 }})
     end
-    return redirect("/{resource}")
+
+    redirect("/{resource}")
   end
 
   # PATCH/PUT /{resource}/:id

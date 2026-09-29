@@ -138,7 +138,7 @@ Admin.where({ "email": "a@x.co" })    # AND type IN ('Admin', …)</code></pre>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class UsersController < Controller
   def index
-    render("users/index", { "users": User.all })
+    @users = User.all
   end
 end</code></pre>
         </div>
@@ -1493,36 +1493,27 @@ end
 class UsersController < Controller
   def index(req: Any)
     # Eager load posts and profiles to avoid N+1 queries
-    users = User.includes("posts", "profile").all
-    render("users/index", { "users": users })
+    @users = User.includes("posts", "profile").all
   end
 
   def show(req: Any)
-    id = req["params"]["id"]
-    user = User.includes("posts").find(id)
-    render("users/show", { "user": user })
+    @user = User.includes("posts").find(params["id"])
   end
 
   def active(req: Any)
     # Find active users who have at least one post
-    users = User.join("posts")
+    @users = User.join("posts")
       .where("active = @a", { "a": true })
       .order("created_at", "desc")
       .limit(10)
       .all
-    render("users/active", { "users": users })
   end
 
   def create(req: Any)
-    user = User.create({
-      "name": req["params"]["name"],
-      "email": req["params"]["email"]
-    })
-    if user._errors
-      render("users/new", { "errors": user._errors })
-    else
-      return redirect("/users/" + user._key)
-    end
+    @user = User.create(permit(params, { "name": true, "email": true }))
+    return render("users/new", {}, { "status": 422 }) if @user._errors
+
+    redirect("/users/" + @user._key)
   end
 
   def update(req: Any)
@@ -1548,8 +1539,8 @@ end</code></pre>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def index
-  users = User.where("doc.active == true").all
-  render("users/index", { "users": users, "queries": dev_queries() })
+  @users = User.where("doc.active == true").all
+  @queries = dev_queries()
 end
 
 # dev_queries() returns Array&lt;Hash&gt; with keys: query, bind_vars, duration_ms.

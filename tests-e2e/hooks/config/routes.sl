@@ -27,3 +27,4 @@ get("/api/middleware_stamp", "api_test#echo_middleware_stamp");
 # Authenticated dashboard for the auth + view-introspection e2e spec.
 get("/auth_demo/dashboard", "auth_demo#dashboard");
 get("/auth_demo/auto", "auth_demo#auto");
+get("/auth_demo/fields", "auth_demo#fields");

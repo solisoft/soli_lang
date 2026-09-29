@@ -222,17 +222,8 @@ You can also handle errors explicitly in your controllers by returning appropria
 
 ```soli
 def show
-  id = req["params"]["id"]
-  user = database.get_user(id)
-  
-  if user == null
-    return {
-      "status": 404,
-      "body": "User not found"
-    }
-  end
-  
-  render("users/show.html.slv", { "user": user })
+  @user = database.get_user(params["id"])
+  return { "status": 404, "body": "User not found" } if @user.nil?
 end
 ```
 

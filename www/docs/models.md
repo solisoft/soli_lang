@@ -114,7 +114,7 @@ Every `.sl` file under `app/models/` is loaded automatically at startup — by `
 # app/controllers/users_controller.sl — no import needed
 class UsersController < Controller
   def index
-    render("users/index", { "users": User.all })
+    @users = User.all
   end
 end
 ```
@@ -2728,38 +2728,27 @@ end
 class UsersController < Controller
   def index
     # Eager load posts and profiles to avoid N+1 queries
-    users = User.includes("posts", "profile").all;
-    render("users/index", { "users": users })
+    @users = User.includes("posts", "profile").all
   end
 
   def show
-    id = req["params"]["id"];
-    user = User.includes("posts").find(id);
-    render("users/show", { "user": user })
+    @user = User.includes("posts").find(params["id"])
   end
 
   def active
     # Find active users who have at least one post
-    users = User.join("posts")
+    @users = User.join("posts")
       .where("active = @a", { "a": true })
       .order("created_at", "desc")
       .limit(10)
-      .all;
-    render("users/active", { "users": users })
+      .all
   end
 
   def create
-    user = User.create({
-      "name": req["params"]["name"],
-      "email": req["params"]["email"],
-      "age": req["params"]["age"]
-    });
+    @user = User.create(permit(params, { "name": true, "email": true, "age": true }))
+    return render("users/new", {}, { "status": 422 }) if @user._errors
 
-    if user._errors
-      render("users/new", { "errors": user._errors })
-    else
-      redirect("/users/" + user.id)
-    end
+    redirect("/users/" + @user._key)
   end
 end
 ```

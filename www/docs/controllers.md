@@ -170,7 +170,7 @@ end
 class AdminUsersController < AdminController
   def index
     # Inherits: ApplicationController's auth + AdminController's admin check
-    render("admin/users/index", { "users": User.all })
+    @users = User.all
   end
 end
 ```
@@ -297,13 +297,8 @@ The request object is automatically injected into your controller:
 ```soli
 class PostsController < Controller
   def show
-    # Access params directly
-    id = params["id"];
-
-    # Or access via this (after injection)
-    post = this.get_controller_field(req, "post");
-
-    render("posts/show", { "post": post })
+    # `params` and `req` are in scope in every action
+    @post = Post.find(params["id"])
   end
 end
 ```
@@ -618,19 +613,19 @@ For actions that need to serve multiple formats (HTML, JSON, CSV, PDF, XLSX, par
 
 ```soli
 def show
-  post = Post.find(req["params"]["id"]);
+  @post = Post.find(params["id"])
   respond_to(req, fn(format) {
-    format.html(fn()  render("posts/show", {"post": post}));
-    format.json(fn()  render_json(post));
-    format.csv(fn()   render_csv_for(post));
-    format.pdf(fn()   render_pdf_for(post));
-    format.excel(fn() render_xlsx_for(post));
-    format.htmx(fn()  render("posts/_show_partial", {"post": post}, {"layout": false}));
-    format.xhr(fn()   render_json({"id": post.id}));
-    format.eui(fn()   eui_render(post_view(post)));           # an EUI client
-    format.any(fn()   render("posts/show", {"post": post}));  // optional catch-all
+    format.html(fn()  render("posts/show"))
+    format.json(fn()  render_json(@post))
+    format.csv(fn()   render_csv_for(@post))
+    format.pdf(fn()   render_pdf_for(@post))
+    format.excel(fn() render_xlsx_for(@post))
+    format.htmx(fn()  render("posts/_show_partial", {}, { "layout": false }))
+    format.xhr(fn()   render_json({ "id": @post.id }))
+    format.eui(fn()   eui_render(post_view(@post)))   # an EUI client
+    format.any(fn()   render("posts/show"))           # optional catch-all
   })
-}
+end
 ```
 
 The `eui` branch answers `application/vnd.eui.frames` — an EUI client asking
@@ -645,8 +640,8 @@ A terser hash form is also supported:
 
 ```soli
 respond_to(req, {
-  "html": fn() render("posts/show", {"post": post}),
-  "json": fn() render_json(post)
+  "html": fn() render("posts/show"),
+  "json": fn() render_json(@post)
 })
 ```
 
@@ -666,15 +661,10 @@ respond_to(req, {
 
 ```soli
 def show
-  id = params["id"];
-  if id == "" {
-    return halt(400, "Missing ID");
-  }
-  user = find_user(id);
-  if user == null {
-    return halt(404, "User not found");
-  }
-  render("users/show", {"user": user})
+  return halt(400, "Missing ID") if params["id"].blank?
+
+  @user = find_user(params["id"])
+  return halt(404, "User not found") if @user.nil?
 end
 ```
 
@@ -695,9 +685,7 @@ class PostsController < Controller
 
   def show
     # Access the post set by before_action
-    post = req["post"];
-
-    render("posts/show", { "post": post })
+    @post = req["post"]
   end
 
   # Access request parameters

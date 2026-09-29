@@ -146,10 +146,9 @@ the terminal, use the `Updater` class from any controller or view:
 
 ```soli
 def index(req) {
-  info = Updater.check()
+  @update = Updater.check()   # the view reads @update
   # { "configured": true, "available": true,
   #   "current": "1.0.0", "latest": "1.1.0", "notes": "…" }
-  return render("home/index", { "update": info })
 }
 
 def install_update(req) {

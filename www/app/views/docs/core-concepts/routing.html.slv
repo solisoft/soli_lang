@@ -194,13 +194,13 @@ get("/files/*filepath", "files#serve");</code></pre>
     this.layout = "docs"
   end
 
-  def routing(req: Any)
-    path = req["params"]["path"];  # "/routing"
-    render("docs/routing", {"active_page": "routing"})
+  # docs/routing and docs/installation render by convention
+  def routing
+    @active_page = "routing"
   end
 
-  def installation(req: Any)
-    render("docs/installation", {"active_page": "installation"})
+  def installation
+    @active_page = "installation"
   end
 end</code></pre>
         </div>

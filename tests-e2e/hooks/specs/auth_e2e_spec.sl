@@ -54,6 +54,15 @@ describe("Auth + view introspection (e2e)", fn() {
         assert_eq(assign("user_id"), 7);
     });
 
+    test("an explicit render with no data hash reports the @vars in assigns()", fn() {
+        let res = get("/auth_demo/fields");
+        assert_eq(res_status(res), 422);
+        assert_eq(view_path(), "auth_demo/auto.html");
+        assert_eq(assign("title"), "Fields Dashboard");
+        assert_hash_has_key(assigns(), "widgets");
+        assert_not(assigns().has_key("_scratch"));
+    });
+
     test("a JSON response reports no rendered template", fn() {
         post("/api/login", {"user_id": 7});
 

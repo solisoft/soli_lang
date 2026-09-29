@@ -177,16 +177,15 @@ def pay(req)
   render_json({ "can_ship": order.can_ship() })   # true
 end
 
-def show(req)
-  order = Order.find(req["params"]["id"])
-  # `order.status` comes back as a Status value, not a raw string:
-  label = match order.status
+def show
+  @order = Order.find(params["id"])
+  # `@order.status` comes back as a Status value, not a raw string:
+  @label = match @order.status
     Status.Pending(r)   => "Pending: " + r,
     Status.Paid         => "Paid",
     Status.Shipped      => "Shipped",
     Status.Cancelled(r) => "Cancelled: " + r,
   end
-  render("orders/show", { "order": order, "label": label })
 end</code></pre>
             </div>
         </div>

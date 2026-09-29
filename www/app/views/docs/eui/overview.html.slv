@@ -104,10 +104,10 @@ end</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/controllers/docs_controller.sl</label>
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">def show
-  page = Doc.find(req["params"]["slug"])
+  @page = Doc.find(params["slug"])
   respond_to(req, fn(format) {
-    format.html(fn() render("docs/show", {"page": page}))
-    format.eui(fn()  eui_render(doc_view(page)))
+    format.html(fn() render("docs/show"))
+    format.eui(fn()  eui_render(doc_view(@page)))
   })
 end</code></pre>
         </div>

@@ -184,12 +184,10 @@ When a record failed a `create`/`save`, its `_errors` drive three things:
 
 ```soli
 def create(req)
-  post = Post.create(this._permit_params(params))
-  if post._errors
-    return render("posts/new", { "post": post })
-  end
+  @post = Post.create(this._permit_params(params))
+  return render("posts/new", {}, { "status": 422 }) if @post._errors
 
-  return redirect("/posts/" + post._key)
+  redirect("/posts/" + @post._key)
 end
 ```
 
