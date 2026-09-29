@@ -1,6 +1,7 @@
-//! The slow-query dashboard at `/__soli/slow_queries`: the queries
-//! [`slow_queries`] grouped by shape, their timings, and the slowest runs of
-//! each with the request or job that ran them.
+//! The query dashboard at `/__soli/slow_queries`. Its default view, every
+//! query by the time it took, is [`dev_query_stats`]; the "slow runs" view here
+//! is the queries [`slow_queries`] grouped by shape, their timings, and the
+//! slowest runs of each with the request or job that ran them.
 //!
 //! Behind [`admin_auth`] like the errors page: open in `--dev` to a local
 //! request; otherwise served only when `SOLI_SLOW_QUERIES_USER` +
@@ -9,6 +10,7 @@
 //! same-origin POST, which the Origin/Referer gate checks.
 //!
 //! [`slow_queries`]: super::slow_queries
+//! [`dev_query_stats`]: super::dev_query_stats
 
 use hyper::{header::HeaderMap, Response, StatusCode};
 
@@ -19,7 +21,33 @@ use super::operator_shell::{self, Section};
 use super::slow_queries::{self, ORDERS};
 use super::{admin_auth, dev_bar, full, html_ok, Bytes, ResponseBody};
 
-const BASE: &str = "/__soli/slow_queries";
+pub(super) const BASE: &str = "/__soli/slow_queries";
+
+/// The page's two views.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum View {
+    /// Every query, by the time it took ([`super::dev_query_stats`]).
+    All,
+    /// Runs over the threshold, with their samples.
+    Slow,
+}
+
+/// The tabs between the two views.
+pub(super) fn view_tabs(current: View) -> String {
+    let tab = |view: View, href: String, label: String| {
+        let on = if view == current { " on" } else { "" };
+        format!("<a class=\"tab{on}\" href=\"{href}\">{label}</a>")
+    };
+    format!(
+        "<nav class=\"tabs\">{}{}</nav>",
+        tab(View::All, BASE.to_string(), "all queries".to_string()),
+        tab(
+            View::Slow,
+            format!("{BASE}?order=impact"),
+            format!("slow runs \u{2265} {} ms", slow_queries::threshold_ms())
+        ),
+    )
+}
 
 /// Groups listed. What is cut is what matters least in the chosen order.
 const LIST_LIMIT: usize = 200;
@@ -49,7 +77,7 @@ fn num_field(row: &serde_json::Value, field: &str) -> f64 {
 }
 
 /// `1234.5` → `1.2 s`, `87.3` → `87 ms`.
-fn duration(ms: f64) -> String {
+pub(super) fn duration(ms: f64) -> String {
     if ms >= 1000.0 {
         format!("{:.1} s", ms / 1000.0)
     } else {
@@ -89,11 +117,23 @@ pub(crate) fn dispatch(
         return Some(refused);
     }
     if path == BASE {
-        return Some(handle_index(query));
+        // The sort orders belong to the slow view; without one, the default
+        // view is every query.
+        let slow = query
+            .map(parse_query_string)
+            .is_some_and(|params| params.contains_key("order"));
+        return Some(if slow {
+            handle_index(query)
+        } else {
+            super::dev_query_stats::handle_index()
+        });
     }
     let rest = path.strip_prefix("/__soli/slow_queries/").unwrap_or("");
     if method == "POST" {
         return Some(handle_action(rest));
+    }
+    if let Some(key) = rest.strip_prefix("q/") {
+        return Some(super::dev_query_stats::handle_show(key));
     }
     Some(handle_show(rest))
 }
@@ -114,16 +154,17 @@ fn order_from_query(query: Option<&str>) -> &'static str {
 fn handle_index(query: Option<&str>) -> Response<ResponseBody> {
     let order = order_from_query(query);
     let now = chrono::Utc::now();
-    let mut body = String::new();
+    let mut body = view_tabs(View::Slow);
 
-    body.push_str("<nav class=\"tabs\">");
+    body.push_str("<div class=\"bar\"><span class=\"muted\">sort by</span>");
     for (name, _) in ORDERS {
-        let on = if name == order { " on" } else { "" };
-        body.push_str(&format!(
-            "<a class=\"tab{on}\" href=\"{BASE}?order={name}\">{name}</a>"
-        ));
+        if name == order {
+            body.push_str(&format!("<b>{name}</b>"));
+        } else {
+            body.push_str(&format!("<a href=\"{BASE}?order={name}\">{name}</a>"));
+        }
     }
-    body.push_str("</nav>");
+    body.push_str("</div>");
 
     if !slow_queries::enabled() {
         body.push_str(
@@ -282,7 +323,7 @@ fn handle_show(key: &str) -> Response<ResponseBody> {
     html_ok(operator_shell::page(
         Section::SlowQueries,
         "Slow query",
-        &format!("<a href=\"{BASE}\">\u{2190} All slow queries</a>"),
+        &format!("<a href=\"{BASE}?order=impact\">\u{2190} All slow queries</a>"),
         &body,
     ))
 }
@@ -334,7 +375,7 @@ fn handle_action(rest: &str) -> Response<ResponseBody> {
     match slow_queries::delete(key) {
         Ok(true) => Response::builder()
             .status(StatusCode::SEE_OTHER)
-            .header("Location", BASE)
+            .header("Location", format!("{BASE}?order=impact"))
             .body(full(Bytes::new()))
             .unwrap(),
         Ok(false) => not_found("No such query."),
@@ -390,7 +431,7 @@ fn not_found(message: &str) -> Response<ResponseBody> {
         .status(StatusCode::NOT_FOUND)
         .header("Content-Type", "text/html; charset=utf-8")
         .body(full(Bytes::from(slow_page(&format!(
-            "<p class=\"err\">{}</p><p><a href=\"{BASE}\">back to slow queries</a></p>",
+            "<p class=\"err\">{}</p><p><a href=\"{BASE}?order=impact\">back to slow queries</a></p>",
             esc(message)
         )))))
         .unwrap()

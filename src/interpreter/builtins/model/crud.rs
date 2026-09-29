@@ -772,6 +772,11 @@ pub fn exec_async_query_with_binds(
     if driver::query_may_handle() {
         if let Some(result) = driver::query(&sdbql, bind_vars.clone()) {
             let ms = started.elapsed().as_secs_f64() * 1000.0;
+            crate::serve::query_stats::record(
+                &sdbql,
+                crate::serve::slow_queries::Dialect::Sdbql,
+                ms,
+            );
             crate::serve::slow_queries::observe(
                 &sdbql,
                 crate::serve::slow_queries::Dialect::Sdbql,
@@ -785,6 +790,9 @@ pub fn exec_async_query_with_binds(
         }
     }
 
+    // Taken before the text moves into the body; read back from the body the
+    // first time this thread meets it.
+    let stats_key = crate::serve::query_stats::key(&sdbql);
     let mut payload = serde_json::json!({ "query": sdbql });
     // Diagnostic: SoliDB memoizes read-only cursor results per (db, query,
     // binds) and serves repeats with executionTimeMs 0. Measured worth 2.26x
@@ -871,6 +879,12 @@ pub fn exec_async_query_with_binds(
     let result = run_db_future(future);
 
     let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+    crate::serve::query_stats::record_key(
+        stats_key,
+        crate::serve::slow_queries::Dialect::Sdbql,
+        elapsed,
+        || sent_query(&sent_body),
+    );
     if crate::serve::slow_queries::is_slow(elapsed) {
         observe_sent_query(&sent_body, elapsed);
     }
@@ -910,6 +924,12 @@ pub fn exec_async_query(sdbql: String) -> Value {
     }
 }
 
+/// The query text of a cursor request body that was sent.
+fn sent_query(body: &[u8]) -> Option<String> {
+    let payload = serde_json::from_slice::<serde_json::Value>(body).ok()?;
+    payload.get("query")?.as_str().map(str::to_string)
+}
+
 /// Hand a slow cursor query to the slow-query tracker, reading the query and
 /// its binds back out of the request body that was sent.
 fn observe_sent_query(body: &[u8], ms: f64) {
@@ -939,6 +959,7 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
     // escaped correctly. The previous `format!` used a `r#"\"#` replacement
     // (a single backslash), which produced malformed JSON for any quoted
     // SDBQL and let a `"` in the input inject sibling fields into the body.
+    let stats_key = crate::serve::query_stats::key(&sdbql);
     let body = match serde_json::to_string(&serde_json::json!({ "query": sdbql })) {
         Ok(b) => b,
         Err(e) => return Value::String(format!("Error: {}", e).into()),
@@ -983,6 +1004,12 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
     };
 
     let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+    crate::serve::query_stats::record_key(
+        stats_key,
+        crate::serve::slow_queries::Dialect::Sdbql,
+        elapsed,
+        || sent_query(&sent_body),
+    );
     if crate::serve::slow_queries::is_slow(elapsed) {
         observe_sent_query(&sent_body, elapsed);
     }
@@ -1451,6 +1478,11 @@ fn exec_values_with_auto_collection(
         let started = std::time::Instant::now();
         if let Some(result) = driver::query_values(&sdbql, bind_vars.clone()) {
             let ms = started.elapsed().as_secs_f64() * 1000.0;
+            crate::serve::query_stats::record(
+                &sdbql,
+                crate::serve::slow_queries::Dialect::Sdbql,
+                ms,
+            );
             crate::serve::slow_queries::observe(
                 &sdbql,
                 crate::serve::slow_queries::Dialect::Sdbql,

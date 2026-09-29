@@ -326,6 +326,7 @@ fn run_one(job: &BackgroundJob, interpreter: &mut Interpreter, runner: &Value) -
     let result = catch_unwind(AssertUnwindSafe(|| {
         interpreter.call_value(runner.clone(), call_args, Span::default())
     }));
+    super::slow_queries::end_unit();
 
     let error = match result {
         // The runner returns null on success, an error string on failure.

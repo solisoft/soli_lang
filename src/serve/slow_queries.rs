@@ -136,6 +136,7 @@ pub(crate) fn stats() -> StatsSnapshot {
 
 /// Start a request's context: `GET /orders`.
 pub(crate) fn begin_request(method: &str, path: &str) {
+    super::query_stats::begin_unit();
     CONTEXT.with(|c| {
         let mut c = c.borrow_mut();
         c.clear();
@@ -156,11 +157,19 @@ pub(crate) fn note_handler(handler: &str) {
 
 /// Name what this worker thread is about to run outside a request: `job ReportJob`.
 pub(crate) fn set_context(label: &str) {
+    super::query_stats::begin_unit();
     CONTEXT.with(|c| {
         let mut c = c.borrow_mut();
         c.clear();
         c.push_str(label);
     });
+}
+
+/// The request or job begun by [`begin_request`] / [`set_context`] is over:
+/// [`query_stats`](super::query_stats) folds its per-request counts under
+/// this context.
+pub(crate) fn end_unit() {
+    CONTEXT.with(|c| super::query_stats::end_unit(&c.borrow()));
 }
 
 /// Whether a query that took `ms` is worth a second look. The one check every
@@ -509,7 +518,7 @@ pub(crate) fn valid_fingerprint(value: &str) -> bool {
 
 // --- grouping ----------------------------------------------------------------
 
-fn fingerprint(shape: &str) -> String {
+pub(crate) fn fingerprint(shape: &str) -> String {
     let digest = Sha256::digest(shape.as_bytes());
     digest[..8].iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -624,7 +633,7 @@ fn cut_value(value: serde_json::Value) -> serde_json::Value {
     serde_json::Value::String(format!("{head}\u{2026} ({chars} chars)"))
 }
 
-fn truncate_chars(s: &str, max: usize) -> String {
+pub(crate) fn truncate_chars(s: &str, max: usize) -> String {
     match s.char_indices().nth(max) {
         Some((idx, _)) => format!("{}\u{2026}", &s[..idx]),
         None => s.to_string(),

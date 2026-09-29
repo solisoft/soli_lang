@@ -9,6 +9,7 @@ Soli ships three production signals out of the box: **metrics**, **structured lo
 | Traces | `SOLI_OTEL=1` or `OTEL_EXPORTER_OTLP_*` | OTLP/HTTP JSON to your collector |
 | Health | always on | `GET /_health`, `GET /_ready` |
 | Errors | on (`SOLI_ERRORS=off` to stop) | `_soli_errors` table, shown at `/__soli/errors` |
+| Query time | on (`SOLI_QUERY_STATS=off` to stop) | `_soli_query_stats` table, shown at `/__soli/slow_queries` |
 | Slow queries | on at 200 ms (`SOLI_SLOW_QUERY_MS`, `SOLI_SLOW_QUERIES=off`) | `_soli_slow_queries` table, shown at `/__soli/slow_queries` |
 | Notifications | `SOLI_NOTIFY_WEBHOOKS` / `SOLI_NOTIFY_EMAILS` / a `SoliNotificationJob` | Slack, Teams, Discord, Google Chat, any URL, email, your job |
 
@@ -207,6 +208,8 @@ Every request that ends in a 500 is recorded, grouped, and shown at `/__soli/err
 
 **What a group holds.** Count, first and last seen, and the five newest occurrences, each with its stack, the request, the handler's local variables, and a `curl` line that replays it against a local server. Auth headers (`Authorization`, `Cookie`, `X-Api-Key` and any header whose name looks secret), secret-looking keys at any depth (`password`, `token`, `api_key`, …) and the raw request body are replaced by `[REDACTED]` before anything is stored — in the request, in the handler's locals, and in the data passed to `render()` when a template fails mid-render — the same redaction the stderr error log uses. Key names match whatever the separator, so `api-key`, `apiKey` and `x-api-key` count as `api_key`. The replay `curl` line never carries `Authorization`, `Cookie` or API-key headers, nor a secret-named query param. Redaction goes by field name: a field called `card` is not recognised as a secret, so don't put card numbers in forms you do not control.
 
+**Finding one failure.** The production 500 page shows an *Error ID* — the request id, also on the `[ERROR] request_id=…` log line. Paste it into the search box at the top of the list (or open `/__soli/errors?q=<id>`) to land on its group with that occurrence opened. Only the five newest occurrences of a group are kept, so an older id is not found; the page says so, and the log line still has it. On Postgres, MySQL and SQLite the lookup reads every stored group; on SoliDB it is one filtered query.
+
 **Triage.** A group is `open`, `resolved` or `ignored`. **resolve** moves it out of the open list; if it fails again it comes back **regressed**. **ignore** keeps counting in the background without listing it. **delete** forgets it.
 
 **Cost.** Recording never slows the request: the sample is handed to a background writer over a bounded queue and written in one-second batches, one update per group. If errors arrive faster than they can be written, the extra samples are dropped and the page says how many. The page reports each recording fault separately: samples dropped because the queue was full, samples whose write to the database failed, and restarts of the writer — a panic inside one write is caught and counted as a failed write, and a writer that stopped anyway is started again on the next error.
@@ -232,6 +235,23 @@ The triage buttons are same-origin form posts: a cross-site `POST` is refused wi
 
 **Retention.** An app keeps at most **1000 groups** (plus one overflow group). Once that many exist, an occurrence whose fingerprint is not already stored is counted in a single *overflow* group instead of starting a new one, with its own message kept in the sample; groups already stored keep counting as usual. The list says when the limit has been reached. Deleting groups makes room again — resolving or ignoring them does not. Each group keeps its five newest samples and 24 hours of hourly counts.
 
+## Query time and N+1 (`/__soli/slow_queries`)
+
+A query that takes 3 ms is never slow, but run forty times a request on every request it can be most of your database time. So every query the ORM runs — the fast ones too, same coverage as [slow queries](#slow-queries-__solislow_queries) — is counted by shape, and the page's default view, **all queries**, ranks the shapes by the time they took over the **last 24 hours**:
+
+```
+301  FOR doc IN posts FILTER doc.n == @n__eq_1 LIMIT ? RETURN doc   39 ms · 91%  avg 0.1 ms  N+1 · 16×  GET /feed → home#feed
+ 20  FOR doc IN posts RETURN doc                                     2 ms · 4%   avg 0.1 ms
+```
+
+**What a row says.** Calls in the last 24 hours, the time they took and its share of all query time, the average, an hourly trend of time, and the **most times one request or job ran that shape** — with the request that did it (`GET /feed → home#feed`). From 10 runs in one request the row is tagged **N+1**, which is the production counterpart of the dev bar's N+1 badge and `assert_no_n_plus_one`. A row links to the shape's hour-by-hour table, and to its slow runs when it has some. No bind value is ever stored, only the shape.
+
+**Counting.** Only runs inside a request or a job count towards the per-request figure, so a WebSocket or LiveView worker's stream of events is never read as one request running a query a thousand times. The job engine's own polling (claims, leases, cron) is not counted; the jobs it runs are. Neither is anything on the framework's `_soli_*` tables.
+
+**Cost.** One hash of the query text and one counter update per query — about 20 ns, against a database round trip of tens of microseconds. Each worker thread keeps its own table; the text is turned into a shape only the first time a thread meets it. Totals are written once a minute, one update per shape, by the same kind of background writer as error tracking. A query that builds its values into the text instead of binding them is a new text on every call: past 2048 live texts per thread, those are counted in one *not broken down* row rather than normalised.
+
+**Retention.** At most 1000 shapes per app; when the table is full, shapes nothing has run for 7 days are removed to make room. Each shape keeps 24 hours of hourly totals, so a fixed N+1 stops being flagged once its hours age out. `SOLI_QUERY_STATS=off` stops counting; like the other trackers it is off under `APP_ENV=test` unless `SOLI_QUERY_STATS=on`.
+
 ## Slow queries (`/__soli/slow_queries`)
 
 Every database query that takes `SOLI_SLOW_QUERY_MS` (default **200 ms**) or longer is recorded, grouped by shape, and shown at `/__soli/slow_queries`. It covers every query the ORM runs — SoliDB over HTTP or the native driver, and the Postgres, MySQL and SQLite adapters — in requests and in background jobs, and writes to the app's own database in a `_soli_slow_queries` table. On by default, like error tracking.
@@ -240,7 +260,7 @@ Every database query that takes `SOLI_SLOW_QUERY_MS` (default **200 ms**) or lon
 
 **What a group holds.** How many slow runs, their average, slowest and total time, the request or job that ran the last one (`GET /orders → orders#index`, `job ReportJob`), first and last seen, 24 hours of hourly counts, and the **five slowest runs**, each with the query as it ran, its bind values and where it came from. Bind values under a secret-looking name (`password`, `token`, …) are replaced by `[REDACTED]` and long values are cut to 200 characters; `SOLI_SLOW_QUERY_BINDS=off` stores no bind values at all. SQL binds are numbered (`$1`, `?`), so their names say nothing — turn binds off if your queries filter on personal data you do not want in the table.
 
-**Reading the list.** Four orders: **impact** (total time spent — the default, and usually where to start), **slowest** (the single worst run), **frequent** (most slow runs) and **recent**. **delete** forgets a shape; it comes back on its next slow run.
+**Reading the list.** The page opens on [all queries](#query-time-and-n1-__solislow_queries); slow runs are its second tab (`?order=impact`). Four orders: **impact** (total time spent in slow runs — usually where to start), **slowest** (the single worst run), **frequent** (most slow runs) and **recent**. **delete** forgets a shape; it comes back on its next slow run.
 
 **Cost.** A fast query pays one comparison: the query text and its binds are only read and copied once the query is over the threshold. Slow runs go to a background writer over a bounded queue and are written in one-second batches, one update per shape — the same machinery as error tracking, with the same notices when samples are dropped or a write fails. The writer's own queries, and any query on the framework's `_soli_*` tables, are never recorded.
 

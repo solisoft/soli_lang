@@ -157,6 +157,49 @@ pub(crate) fn list(
     Ok(rows)
 }
 
+/// The key of the first document whose `array_field` holds an object with
+/// `item_field == value`, or `None`. SoliDB answers it with one filtered read;
+/// the SQL adapters store documents whole, so there every document is read and
+/// searched here — these collections are capped, and this is an operator page.
+pub(crate) fn find_key_by_array_item(
+    collection: &str,
+    array_field: &str,
+    item_field: &str,
+    value: &str,
+) -> Result<Option<String>, String> {
+    let rows = if db::is_sql() {
+        db::sql::select(&list_query(collection, None, None, false, None))?
+            .into_iter()
+            .filter(|doc| array_holds(doc, array_field, item_field, value))
+            .take(1)
+            .collect()
+    } else {
+        crud::exec_query(
+            collection,
+            format!(
+                "FOR doc IN {collection} FILTER {} IN doc.{array_field}[*].{item_field} \
+                 LIMIT 1 RETURN {{_key: doc._key}}",
+                serde_json::Value::from(value)
+            ),
+        )?
+    };
+    Ok(rows
+        .first()
+        .and_then(|row| row.get("_key"))
+        .and_then(|key| key.as_str())
+        .map(str::to_string))
+}
+
+fn array_holds(doc: &serde_json::Value, array_field: &str, item_field: &str, value: &str) -> bool {
+    doc.get(array_field)
+        .and_then(|items| items.as_array())
+        .is_some_and(|items| {
+            items
+                .iter()
+                .any(|item| item.get(item_field).and_then(|v| v.as_str()) == Some(value))
+        })
+}
+
 fn list_query(
     collection: &str,
     filter: Option<(&str, &str)>,
@@ -198,5 +241,17 @@ mod tests {
         assert!(!is_missing_document(
             "HTTP 503 Service Unavailable http://db/x: busy"
         ));
+    }
+
+    #[test]
+    fn an_array_item_matches_on_its_field_only() {
+        let doc = serde_json::json!({
+            "samples": [{"request_id": "a-1"}, {"request_id": "b-2"}, "stray"],
+            "request_id": "top",
+        });
+        assert!(array_holds(&doc, "samples", "request_id", "b-2"));
+        assert!(!array_holds(&doc, "samples", "request_id", "top"));
+        assert!(!array_holds(&doc, "samples", "request_id", "a"));
+        assert!(!array_holds(&doc, "missing", "request_id", "a-1"));
     }
 }

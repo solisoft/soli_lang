@@ -76,7 +76,62 @@ pub(crate) fn dispatch(
     if method == "POST" {
         return Some(handle_action(rest, query));
     }
-    Some(handle_show(rest))
+    Some(handle_show(rest, request_id_from_query(query).as_deref()))
+}
+
+fn query_param(query: Option<&str>, name: &str) -> Option<String> {
+    query
+        .map(parse_query_string)
+        .and_then(|params| params.get(name).cloned())
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+}
+
+/// The `request_id` a search landed on, so the group's page opens that sample.
+fn request_id_from_query(query: Option<&str>) -> Option<String> {
+    query_param(query, "request_id").filter(|id| error_tracker::valid_request_id(id))
+}
+
+/// `?q=<error id>`: where the group holding that request's sample is, or the
+/// notice that says why there is none. Request ids are minted lowercase; a
+/// pasted one may not be.
+fn search(query: Option<&str>) -> Option<Result<String, String>> {
+    let wanted = query_param(query, "q")?;
+    let shown = esc(&wanted);
+    if !error_tracker::valid_request_id(&wanted) {
+        return Some(Err(format!(
+            "<p class=\"notice\"><code>{shown}</code> is not an error ID. Paste the one a failed \
+request's error page shows, or its <code>request_id=</code> from the log.</p>"
+        )));
+    }
+    let not_kept = format!(
+        "<p class=\"notice\">No stored occurrence has error ID <code>{shown}</code>. Each group \
+keeps only its {kept} latest occurrences, so an older one is only in the server log \
+(<code>request_id={shown}</code>).</p>",
+        kept = error_tracker::MAX_SAMPLES,
+    );
+    Some(match error_tracker::find_by_request_id(&wanted) {
+        Ok(Some(key)) if error_tracker::valid_fingerprint(&key) => {
+            Ok(format!("{BASE}/{key}?request_id={wanted}#r-{wanted}"))
+        }
+        Ok(_) => Err(not_kept),
+        Err(e) if super::internal_store::is_missing_collection(&e) => Err(not_kept),
+        Err(e) => Err(format!(
+            "<p class=\"notice bad\">Could not search {}: {}</p>",
+            error_tracker::ERRORS_COLLECTION,
+            esc(&e)
+        )),
+    })
+}
+
+fn search_form(query: Option<&str>) -> String {
+    format!(
+        "<form method=\"get\" action=\"{BASE}\" class=\"bar\">\
+<input type=\"search\" name=\"q\" value=\"{value}\" placeholder=\"Find by error ID\" \
+aria-label=\"Error ID\" style=\"flex:1 1 22rem;\" spellcheck=\"false\" autocomplete=\"off\">\
+<button type=\"submit\">Find</button></form>",
+        value = esc(&query_param(query, "q").unwrap_or_default()),
+    )
 }
 
 fn status_from_query(query: Option<&str>) -> &'static str {
@@ -93,6 +148,17 @@ fn status_from_query(query: Option<&str>) -> &'static str {
 
 /// `GET /__soli/errors` — groups in one status, most recently seen first.
 fn handle_index(query: Option<&str>) -> Response<ResponseBody> {
+    let search_notice = match search(query) {
+        Some(Ok(location)) => {
+            return Response::builder()
+                .status(StatusCode::SEE_OTHER)
+                .header("Location", location)
+                .body(full(Bytes::new()))
+                .unwrap()
+        }
+        Some(Err(notice)) => notice,
+        None => String::new(),
+    };
     let status = status_from_query(query);
     let now = chrono::Utc::now();
     let mut body = String::new();
@@ -117,6 +183,8 @@ fn handle_index(query: Option<&str>) -> Response<ResponseBody> {
         ));
     }
     body.push_str("</nav>");
+    body.push_str(&search_form(query));
+    body.push_str(&search_notice);
 
     if !error_tracker::enabled() {
         body.push_str(
@@ -309,7 +377,8 @@ pub(super) fn relative(iso: &str, now: chrono::DateTime<chrono::Utc>) -> String 
 }
 
 /// `GET /__soli/errors/:fingerprint` — one group and its latest samples.
-fn handle_show(key: &str) -> Response<ResponseBody> {
+/// `wanted` is the request a search came for: its sample is the one opened.
+fn handle_show(key: &str, wanted: Option<&str>) -> Response<ResponseBody> {
     if !error_tracker::valid_fingerprint(key) {
         return not_found("No such error.");
     }
@@ -368,8 +437,18 @@ fn handle_show(key: &str) -> Response<ResponseBody> {
         samples.len(),
         if samples.len() == 1 { "" } else { "s" }
     ));
+    let found = wanted.filter(|id| {
+        samples
+            .iter()
+            .any(|sample| str_field(sample, "request_id") == *id)
+    });
     for (i, sample) in samples.iter().enumerate() {
-        body.push_str(&render_sample(sample, i == 0));
+        let hit = found.is_some_and(|id| str_field(sample, "request_id") == id);
+        body.push_str(&render_sample(
+            sample,
+            hit || (found.is_none() && i == 0),
+            hit,
+        ));
     }
     html_ok(operator_shell::page(
         Section::Errors,
@@ -379,7 +458,7 @@ fn handle_show(key: &str) -> Response<ResponseBody> {
     ))
 }
 
-fn render_sample(sample: &serde_json::Value, open: bool) -> String {
+fn render_sample(sample: &serde_json::Value, open: bool, hit: bool) -> String {
     let stack = sample
         .get("stack")
         .and_then(|v| v.as_array())
@@ -397,10 +476,12 @@ fn render_sample(sample: &serde_json::Value, open: bool) -> String {
             .filter(|v| !v.is_null())
             .map(|v| serde_json::to_string_pretty(v).unwrap_or_default())
     };
+    // The id is the anchor a search lands on.
     let mut out = format!(
-        "<details{open}><summary><span class=\"mono\">{method} {path}</span> \u{b7} \
+        "<details id=\"r-{request_id}\"{hit}{open}><summary><span class=\"mono\">{method} {path}</span> \u{b7} \
 <span title=\"{at}\">{at_rel}</span> <span class=\"muted mono\">{request_id}</span></summary>\
 <pre>{error}</pre>",
+        hit = if hit { " class=\"hit\"" } else { "" },
         open = if open { " open" } else { "" },
         at = esc(str_field(sample, "at")),
         at_rel = esc(&relative(str_field(sample, "at"), chrono::Utc::now())),
@@ -790,10 +871,51 @@ mod tests {
             handle_action("not-a-key/resolve", None).status(),
             StatusCode::NOT_FOUND
         );
-        assert_eq!(handle_show("zz").status(), StatusCode::NOT_FOUND);
+        assert_eq!(handle_show("zz", None).status(), StatusCode::NOT_FOUND);
         assert_eq!(
             html_status(StatusCode::INTERNAL_SERVER_ERROR, String::new()).status(),
             StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn only_an_id_shaped_query_reaches_the_store() {
+        assert!(error_tracker::valid_request_id(
+            "3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f"
+        ));
+        assert!(!error_tracker::valid_request_id(""));
+        assert!(!error_tracker::valid_request_id("\" OR true"));
+        assert!(!error_tracker::valid_request_id(&"a".repeat(65)));
+
+        assert!(search(None).is_none());
+        assert!(search(Some("q=%20%20")).is_none());
+        let Some(Err(notice)) = search(Some("q=%3Cscript%3E")) else {
+            panic!("a malformed id is a notice, not a lookup");
+        };
+        assert!(notice.contains("not an error ID") && !notice.contains("<script>"));
+    }
+
+    #[test]
+    fn a_pasted_id_is_trimmed_and_lowercased() {
+        assert_eq!(
+            request_id_from_query(Some("request_id=%20AB-12%20")).as_deref(),
+            Some("ab-12")
+        );
+        assert_eq!(request_id_from_query(Some("request_id=a%22b")), None);
+        assert!(search_form(Some("q=%22%3E")).contains("value=\"&quot;&gt;\""));
+    }
+
+    #[test]
+    fn the_searched_sample_is_marked_and_anchored() {
+        let sample =
+            serde_json::json!({"at": "t", "method": "GET", "path": "/", "request_id": "ab-12"});
+        let html = render_sample(&sample, true, true);
+        assert!(
+            html.starts_with("<details id=\"r-ab-12\" class=\"hit\" open>"),
+            "{html}"
+        );
+        assert!(
+            render_sample(&sample, false, false).starts_with("<details id=\"r-ab-12\"><summary>")
         );
     }
 
@@ -803,7 +925,7 @@ mod tests {
             "at": "t", "method": "GET", "path": "/<script>", "request_id": "r",
             "error": "<img src=x>", "stack": ["a at b.sl:1"],
         });
-        let html = render_sample(&sample, true);
+        let html = render_sample(&sample, true, false);
         assert!(!html.contains("<script>"));
         assert!(!html.contains("<img"));
     }

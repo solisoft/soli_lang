@@ -39,7 +39,7 @@ impl Section {
     fn label(self) -> &'static str {
         match self {
             Section::Errors => "Errors",
-            Section::SlowQueries => "Slow queries",
+            Section::SlowQueries => "Queries",
             Section::Jobs => "Jobs",
             Section::Inbox => "Inbox",
             Section::Mailers => "Mailers",
@@ -214,6 +214,7 @@ td .muted{font-size:12px}
 pre{background:var(--sunken);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow:auto;white-space:pre-wrap;word-break:break-word;max-height:60vh;margin:4px 0 14px;line-height:1.55;color:var(--text-2)}
 details{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:0 14px;margin:0 0 10px}
 details[open]{padding-bottom:6px}
+details.hit{border-color:var(--amber)}
 summary{cursor:pointer;padding:12px 0;font-size:13px;color:var(--text-2);list-style-position:outside}
 summary:hover{color:var(--text)}
 dl{display:grid;grid-template-columns:max-content 1fr;gap:8px 20px;font-size:13px;margin:0 0 20px}

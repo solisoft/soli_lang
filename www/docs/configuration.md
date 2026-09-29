@@ -433,6 +433,7 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_ERRORS_USER` | HTTP Basic username for the production `/__soli/errors` page. Must be paired with `SOLI_ERRORS_PASSWORD`. With no errors credentials and no `SOLI_ADMIN_*`, the route 404s outside `--dev`. | unset |
 | `SOLI_ERRORS_PASSWORD` | HTTP Basic password for `/__soli/errors`. | unset |
 | `SOLI_ERRORS_TOKEN` | Optional bearer token for `/__soli/errors`. | unset |
+| `SOLI_QUERY_STATS` | Per-shape totals of every query (calls, time, most runs in one request) for the default view of [`/__soli/slow_queries`](observability.md#query-time-and-n1-__solislow_queries). `off` stops counting; `on` forces it on under `APP_ENV=test`, where it is otherwise off. | on |
 | `SOLI_SLOW_QUERIES` | Slow-query tracking for [`/__soli/slow_queries`](observability.md#slow-queries-__solislow_queries). `off` stops recording; `on` forces it on under `APP_ENV=test`, where it is otherwise off. | on |
 | `SOLI_SLOW_QUERY_MS` | A query taking this many milliseconds or more is recorded as slow. Read once per process. | `200` |
 | `SOLI_SLOW_QUERY_BINDS` | `off` stores slow queries without their bind values. | on |

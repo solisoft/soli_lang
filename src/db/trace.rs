@@ -99,6 +99,7 @@ impl Drop for Trace<'_> {
         crate::metrics::Metrics::global().record_db_queries(elapsed);
 
         let ms = elapsed.as_secs_f64() * 1000.0;
+        crate::serve::query_stats::record(self.sql, crate::serve::slow_queries::Dialect::Sql, ms);
         crate::serve::slow_queries::observe(
             self.sql,
             crate::serve::slow_queries::Dialect::Sql,

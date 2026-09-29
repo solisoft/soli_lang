@@ -19,6 +19,7 @@ mod dev_catalog;
 mod dev_errors;
 mod dev_inbox;
 mod dev_jobs;
+mod dev_query_stats;
 mod dev_routes;
 mod dev_slow_queries;
 pub mod dev_store;
@@ -76,6 +77,7 @@ pub(crate) mod internal_store;
 pub mod job_worker;
 mod json;
 mod notify;
+pub(crate) mod query_stats;
 mod repl_session;
 pub(crate) mod slow_queries;
 pub(crate) mod tailwind;
@@ -4344,6 +4346,7 @@ fn dispatch_http_request(
         &method,
         &path,
     );
+    slow_queries::end_unit();
 
     match crate::interpreter::builtins::streaming::take_pending_stream() {
         Some(spec) => {

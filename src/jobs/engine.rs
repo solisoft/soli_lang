@@ -110,6 +110,9 @@ pub fn start(pool_slots: usize, runtime_handle: tokio::runtime::Handle, dev_mode
     let spawned = builder.spawn(move || {
         crate::serve::tenant::bind_current(tenant);
         crate::serve::set_tokio_handle(runtime_handle);
+        // Claims, leases and cron ticks: the queue's own traffic, which no app
+        // can act on. The jobs themselves run elsewhere and are counted.
+        crate::serve::query_stats::ignore_this_thread();
         ensure_queue_collections();
         run_poller(cfg)
     });

@@ -577,6 +577,23 @@ pub(crate) fn list(status: &str, limit: usize) -> Result<Vec<serde_json::Value>,
     )
 }
 
+/// The group holding the sample of request `request_id` — the "Error ID" the
+/// production 500 page shows. `None` once the sample has aged out: a group
+/// keeps only its [`MAX_SAMPLES`] latest.
+pub(crate) fn find_by_request_id(request_id: &str) -> Result<Option<String>, String> {
+    internal_store::find_key_by_array_item(ERRORS_COLLECTION, "samples", "request_id", request_id)
+}
+
+/// Whether `value` could be a request id: what [`find_by_request_id`] accepts,
+/// so a pasted query never reaches the database as anything but an id.
+pub(crate) fn valid_request_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
 /// Move a group to `status`. `false` when the group does not exist.
 pub(crate) fn set_status(fingerprint: &str, status: &str) -> Result<bool, String> {
     if !STATUSES.contains(&status) {

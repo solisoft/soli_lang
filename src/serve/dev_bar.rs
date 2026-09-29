@@ -740,8 +740,8 @@ fn render_bar(ctx: &DevBarContext) -> String {
             ("/__soli/errors", "errors", "grouped failures, triage", ""),
             (
                 "/__soli/slow_queries",
-                "slow queries",
-                "queries over the threshold, by shape",
+                "queries",
+                "time spent by shape, N+1, slow runs",
                 ""
             ),
         ]
