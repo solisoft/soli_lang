@@ -14,6 +14,7 @@
 # and PSS are not the same metric, so the Laravel rows are comparable to each
 # other and only indicative against the rest.
 set -u
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 unset NO_COLOR 2>/dev/null || true
 
 pss_pat() {
@@ -49,8 +50,9 @@ pss_guard() {
 cmem() {
   local total=0 v
   for c in "$@"; do
-    v=$(docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' 2>/dev/null \
-        | awk -v n="$c" '$1==n {print $2}' | sed 's/MiB//; s/GiB/*1024/')
+    # Docker Compose names a container laravel-php-1, podman-compose laravel_php_1.
+    v=$(ctr stats --no-stream --format '{{.Name}} {{.MemUsage}}' 2>/dev/null \
+        | awk -v n="$c" '{m=$1; gsub(/_/, "-", m)} m==n {print $2}' | sed 's/MiB//; s/MB//; s/GiB/*1024/; s/GB/*1000/')
     [ -z "$v" ] && v=0
     total=$(python3 -c "print(round($total + ($v), 1))")
   done

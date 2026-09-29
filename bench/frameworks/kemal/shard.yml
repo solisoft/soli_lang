@@ -1,0 +1,19 @@
+name: bench
+version: 0.1.0
+
+targets:
+  bench:
+    main: src/bench.cr
+
+dependencies:
+  kemal:
+    github: kemalcr/kemal
+    version: ~> 1.14.0
+  jennifer:
+    github: imdrasil/jennifer.cr
+    version: ~> 0.13.0
+  pg:
+    github: will/crystal-pg
+    version: ~> 0.30.0
+
+crystal: ">= 1.21.0"

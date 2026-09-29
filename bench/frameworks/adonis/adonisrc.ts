@@ -1,42 +1,20 @@
+import { indexEntities } from '@adonisjs/core/generators'
 import { defineConfig } from '@adonisjs/core/app'
 
 export default defineConfig({
-  /*
-  |--------------------------------------------------------------------------
-  | Experimental flags
-  |--------------------------------------------------------------------------
-  |
-  | The following features will be enabled by default in the next major release
-  | of AdonisJS. You can opt into them today to avoid any breaking changes
-  | during upgrade.
-  |
-  */
-  experimental: {
-    mergeMultipartFieldsAndFiles: true,
-    shutdownInReverseOrder: true,
-  },
+  experimental: {},
 
-  /*
-  |--------------------------------------------------------------------------
-  | Commands
-  |--------------------------------------------------------------------------
-  |
-  | List of ace commands to register from packages. The application commands
-  | will be scanned automatically from the "./commands" directory.
-  |
-  */
+  /**
+   * Ace commands registered from packages.
+   */
   commands: [
-    () => import('@adonisjs/lucid/commands'),() => import('@adonisjs/core/commands')],
+    () => import('@adonisjs/core/commands'),
+    () => import('@adonisjs/lucid/commands'),
+  ],
 
-  /*
-  |--------------------------------------------------------------------------
-  | Service providers
-  |--------------------------------------------------------------------------
-  |
-  | List of service providers to import and register when booting the
-  | application
-  |
-  */
+  /**
+   * Same provider set as the AdonisJS 6 app.
+   */
   providers: [
     () => import('@adonisjs/core/providers/app_provider'),
     () => import('@adonisjs/core/providers/hash_provider'),
@@ -53,34 +31,21 @@ export default defineConfig({
     () => import('@adonisjs/lucid/database_provider'),
   ],
 
-  /*
-  |--------------------------------------------------------------------------
-  | Preloads
-  |--------------------------------------------------------------------------
-  |
-  | List of modules to import before starting the application.
-  |
-  */
-  preloads: [() => import('#start/pg_types'), () => import('#start/routes'), () => import('#start/kernel')],
+  preloads: [
+    () => import('#start/pg_types'),
+    () => import('#start/routes'),
+    () => import('#start/kernel'),
+  ],
 
-  /*
-  |--------------------------------------------------------------------------
-  | Tests
-  |--------------------------------------------------------------------------
-  |
-  | List of test suites to organize tests by their type. Feel free to remove
-  | and add additional suites.
-  |
-  */
   tests: {
     suites: [
       {
-        files: ['tests/unit/**/*.spec(.ts|.js)'],
+        files: ['tests/unit/**/*.spec.ts'],
         name: 'unit',
         timeout: 2000,
       },
       {
-        files: ['tests/functional/**/*.spec(.ts|.js)'],
+        files: ['tests/functional/**/*.spec.ts'],
         name: 'functional',
         timeout: 30000,
       },
@@ -99,8 +64,8 @@ export default defineConfig({
     },
   ],
 
-  assetsBundler: false,
   hooks: {
-    onBuildStarting: [() => import('@adonisjs/vite/build_hook')],
+    init: [indexEntities()],
+    buildStarting: [() => import('@adonisjs/vite/build_hook')],
   },
 })

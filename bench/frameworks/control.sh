@@ -12,6 +12,7 @@
 # against 16,116 (-25%), because other tenants on the box had woken up. Nothing
 # in the harness noticed; the numbers just looked like a regression.
 set -u
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 unset NO_COLOR 2>/dev/null || true
 TOLERANCE="${TOLERANCE:-8}"
 

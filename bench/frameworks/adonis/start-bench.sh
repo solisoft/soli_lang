@@ -2,6 +2,7 @@
 # Start the built AdonisJS app with 16 cluster workers on port 5102.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$HERE/../lib.sh"
 PORT="${PORT:-5102}"
 
 for p in $(pgrep -f 'bin/cluster.js' 2>/dev/null); do kill -9 "$p" 2>/dev/null; done
@@ -14,7 +15,7 @@ cp "$HERE/.env" "$HERE/build/.env"
 cp "$HERE/bin/cluster.js" "$HERE/build/bin/cluster.js"
 
 cd "$HERE/build" || exit 1
-setsid nohup node bin/cluster.js > /tmp/bench-adonis.log 2>&1 < /dev/null &
+on_server_cpus setsid nohup node bin/cluster.js > /tmp/bench-adonis.log 2>&1 < /dev/null &
 disown
 
 for _ in $(seq 1 60); do

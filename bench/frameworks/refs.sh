@@ -15,6 +15,7 @@ unset NO_COLOR 2>/dev/null || true
 #   phoenix /db-hydrated   50 Ecto structs instead of a select map
 #   express /db            the raw node-postgres driver, no Sequelize
 #   express /db-template   the same, rendered
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 OUT="${OUT:-/tmp/bench-results-refs}"
 mkdir -p "$OUT"
 
@@ -39,6 +40,15 @@ echo "### Django — hydrated models vs .values()"
 cell django  5099 /db-hydrated
 echo "### Phoenix — hydrated structs vs a select map"
 cell phoenix 5104 /db-hydrated
+# SoliDB memoizes read-only cursor results, which no other stack's database
+# does; the published Soli rows run with SOLI_DB_NO_QUERY_CACHE=1, and this is
+# the same app with the cache left on, started by start.sh on 5081 when
+# SOLI_CACHED_REF=1.
+if curl -sf -o /dev/null "http://localhost:5081/db" 2>/dev/null; then
+  echo "### Soli — SoliDB's query-result cache left on"
+  cell soli-cached 5081 /db
+  cell soli-cached 5081 /db-template
+fi
 echo "### Express — raw driver vs Sequelize"
 cell express 5097 /db
 cell express 5097 /db-template

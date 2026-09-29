@@ -7,7 +7,14 @@ use App\Models\Wpost;
 // The same matched workloads the other three stacks serve, on Eloquent + Blade.
 class BenchController extends Controller
 {
-    private const WPOOL = 800000;
+    // WPOOL (default 800,000) is the size of the write table, read once at boot
+    // (the container passes it through; see docker-compose.yml).
+    private static ?int $wpool = null;
+
+    private static function wpool(): int
+    {
+        return self::$wpool ??= (int) (getenv('WPOOL') ?: 800000);
+    }
 
     /** 50 in-memory rows, identical to the other stacks. */
     private function rows(): array
@@ -49,13 +56,13 @@ class BenchController extends Controller
 
     public function wUpdate()
     {
-        Wpost::where('id', random_int(1, self::WPOOL))->update(['views' => 42]);
+        Wpost::where('id', random_int(1, self::wpool()))->update(['views' => 42]);
         return response('', 200);
     }
 
     public function wDelete()
     {
-        Wpost::where('id', random_int(1, self::WPOOL))->delete();
+        Wpost::where('id', random_int(1, self::wpool()))->delete();
         return response('', 200);
     }
 }

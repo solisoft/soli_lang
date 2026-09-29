@@ -3,8 +3,7 @@
 | HTTP kernel file
 |--------------------------------------------------------------------------
 |
-| The HTTP kernel file is used to register the middleware with the server
-| or the router.
+| Same middleware stack as the AdonisJS 6 app.
 |
 */
 

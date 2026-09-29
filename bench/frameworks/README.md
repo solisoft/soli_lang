@@ -95,6 +95,13 @@ Phoenix needs Elixir + Erlang/OTP and a one-off `MIX_ENV=prod mix compile` in
 `config/prod.exs` **removes** the generated `force_ssl` — left in, every request
 becomes a 301 and `oha` reports a wall of them as 100% success.
 
+[Kemal](kemal/) (Crystal, port 5105) is an **opt-in stack that is not published**: a
+micro-framework with no sessions, CSRF or security headers, whose ORM and escaping were
+added for the benchmark, so it is not comparable feature for feature. It is not in the
+default `STACKS` and `start.sh` does not start it; build it once (`shards install &&
+shards build --release --production` in `kemal/`, Crystal pinned in `mise.toml`), start
+`kemal/start-bench.sh` and measure with `STACKS=kemal`.
+
 Requires `oha`, `psql`, a PostgreSQL on `127.0.0.1:5433` (user/db `bench`) and a
 SoliDB on `6745`. Override with `PGURL` and `SDB`.
 
@@ -128,6 +135,28 @@ docker run -d --name benchpg --network host \
 The data lives in an external volume and survives. Restart every stack
 afterwards — their pooled connections point at a container that no longer
 exists, and most pools will not notice until a request fails.
+
+## Running on another box
+
+`lib.sh`, sourced by every script, holds the knobs that let the suite run somewhere other than
+the box a session was calibrated on. All default to the original behaviour.
+
+| Variable | What it does |
+|---|---|
+| `SERVER_CPUS` | cpu list (`taskset -c` syntax) every stack is started on; container processes are re-pinned after start |
+| `CLIENT_CPUS` | cpu list `oha` runs on |
+| `SDB_PORT` | the SoliDB the Soli app reads, the seeds write and the sweep charges CPU to (default 6745) |
+| `WPOOL` | rows in the write table (default 800,000); every app reads it at boot, so set it before `start.sh`. A box fast enough to empty the table inside a 30 s delete cell needs more — the published delete row uses 20,000,000 |
+| `WORKLOADS` / `WRITES` | narrow `sweep.sh` to some rows, e.g. `WORKLOADS="" WRITES=DELETE` |
+| `CONTROLS` | the two control cells and their expected values, for `control.sh` |
+
+Without a Docker daemon, `compose` in `lib.sh` runs Laravel under rootless Podman with the
+`*.podman.yml` overlays, which map the container user onto yours so php-fpm can write the
+bind-mounted `storage/`. `mise.toml` pins the runtimes the published session used.
+
+Kill-by-name is not enough to restart a stack: `start.sh` kills every stack by the port it
+listens on, because a `SOLI_BIN` not named exactly `soli` once survived every restart and the
+memory table read a server that had been under load for hours.
 
 ## Rules the comparison depends on
 

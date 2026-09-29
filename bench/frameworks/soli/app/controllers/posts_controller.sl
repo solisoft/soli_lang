@@ -3,6 +3,10 @@
 #   /template -> the same 50 objects, through the ERB engine + layout
 #   /db       -> the same 50 objects, read from SoliDB, serialised to JSON
 # The differences between rows are therefore the template engine and the database.
+# WPOOL (default 800,000) is the size of the write table, read once at boot — the
+# delete row needs a pool no stack can exhaust in a 30s cell.
+const WPOOL = int(getenv("WPOOL") || "800000")
+
 class PostsController < Controller
   def rows
     return (0..50).map(fn(i) { return { "id": i + 1, "title": "Post title #{i + 1}", "views": (i + 1) * 7 } })
@@ -36,7 +40,7 @@ class PostsController < Controller
   # Cle tiree au hasard dans le meme intervalle 1..800000 pour les trois stacks,
   # donc chaque requete adresse une ligne par sa cle primaire.
   def w_key
-    return str(int(Math.random() * 800000) + 1)
+    return str(int(Math.random() * WPOOL) + 1)
   end
 
   def w_create(req: Any) -> Any {

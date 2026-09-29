@@ -13,6 +13,7 @@ services:
       # paths, so the two runtimes must agree on where the app lives.
       - ./app:/var/www/html
     environment:
+      WPOOL: "${WPOOL:-800000}"
       # storage/ is a bind mount owned by the host user; keep Octane's runtime
       # state on the container's own writable tmpfs instead.
       OCTANE_STATE_FILE: /tmp/octane-server-state.json

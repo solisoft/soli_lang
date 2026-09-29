@@ -1,0 +1,7 @@
+[tools]
+ruby = "4.0.7"
+node = "26.10.0"
+python = "3.14.7"
+erlang = "29.1.1"
+elixir = "1.20.4-otp-29"
+crystal = "1.21.1"

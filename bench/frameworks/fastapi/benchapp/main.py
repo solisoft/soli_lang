@@ -20,6 +20,7 @@ on the results page rather than hidden:
   does build 50 mapped objects.
 """
 
+import os
 import random
 from pathlib import Path
 
@@ -46,7 +47,8 @@ templates = Jinja2Templates(
     )
 )
 
-WPOOL = 800_000
+# WPOOL (default 800,000) is the size of the write table, read once at boot.
+WPOOL = int(os.environ.get("WPOOL", 800_000))
 
 # Projection without hydrating mapped objects — compiled once, not per request.
 POSTS = select(Post.id, Post.title, Post.views)

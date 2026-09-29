@@ -1,3 +1,4 @@
+import os
 import random
 
 from django.http import HttpResponse, JsonResponse
@@ -7,7 +8,8 @@ from django.views.decorators.http import require_http_methods
 
 from .models import Post, Wpost
 
-WPOOL = 800_000
+# WPOOL (default 800,000) is the size of the write table, read once at boot.
+WPOOL = int(os.environ.get("WPOOL", 800_000))
 
 # json.dumps defaults to ', ' / ': ' separators, which would make Django's
 # payload 299 bytes larger than every other stack's for the same 50 rows.

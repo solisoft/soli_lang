@@ -3,7 +3,8 @@ import Post from '#models/post'
 import Wpost from '#models/wpost'
 import db from '@adonisjs/lucid/services/db'
 
-const WPOOL = 800_000
+// WPOOL (default 800,000) is the size of the write table, read once at boot.
+const WPOOL = Number(process.env.WPOOL || 800_000)
 
 export default class BenchController {
   /** 50 in-memory rows, identical to the other stacks. */

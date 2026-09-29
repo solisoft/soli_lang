@@ -9,7 +9,7 @@ unset NO_COLOR 2>/dev/null || true
 OUT="${OUT:-/tmp/bench-results}"
 mkdir -p "$OUT"
 PGURL="${PGURL:-postgres://bench:bench@127.0.0.1:5433/bench}"
-SDB="${SDB:-http://localhost:6745/_api/database/default}"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 listener() { ss -ltnp 2>/dev/null | grep ":$1 " | grep -oP 'pid=\K[0-9]+' | head -1; }
 cpu_grp() {
@@ -25,7 +25,7 @@ cpu_pat() {  # sum over every process matching a pattern (Laravel: fpm + nginx)
   echo "$t"
 }
 cpu_one() { local u s; read -r _ _ _ _ _ _ _ _ _ _ _ _ _ u s _ < /proc/$1/stat 2>/dev/null || { echo 0; return; }; echo $((u+s)); }
-DBPID=$(listener 6745)
+DBPID=$(listener "$SDB_PORT")
 
 # phoenix also stays on the default branch, for the opposite reason to fastapi:
 # the BEAM is a single OS process (16 scheduler threads inside it), and
@@ -37,6 +37,8 @@ DBPID=$(listener 6745)
 # `cpu_pat 'benchapp.main'` matches the supervisor alone and reported 8 ticks
 # where the real process group had 88. They do share the supervisor's pgid, so
 # the default cpu_grp branch counts all 17. Leave it there.
+# kemal takes the same default branch: its 16 processes and the start-bench.sh
+# that launched them share one process group (start.sh starts it under setsid).
 # octane needs a pattern for the opposite reason to fastapi: its processes live in
 # a container, so `ss -ltnp` cannot see the listener's pid as a normal user and
 # cpu_grp silently summed nothing — the column read 0us for every Octane cell.
@@ -48,15 +50,16 @@ srv_cpu() { case "$1" in laravel) cpu_pat 'php-fpm|nginx';; django) cpu_pat 'gun
 
 pg_count()  { psql "$PGURL" -tAc "SELECT count(*) FROM wposts;"; }
 sdb_count() { curl -s -u admin:admin -X POST $SDB/cursor -H 'Content-Type: application/json' \
-                -d '{"query":"RETURN COUNT(FOR d IN wposts RETURN 1)"}' \
+                -d '{"query":"RETURN COLLECTION_COUNT(\"wposts\")"}' \
               | python3 -c "import json,sys; print(json.load(sys.stdin)['result'][0])"; }
 reset_pg()  { psql "$PGURL" -qc "TRUNCATE wposts;" \
-    -c "INSERT INTO wposts (id,title,views) SELECT g,'Post title '||g,g*7 FROM generate_series(1,800000) g;" \
-    -c "SELECT setval(pg_get_serial_sequence('wposts','id'),900000);" >/dev/null; }
+    -c "INSERT INTO wposts (id,title,views) SELECT g,'Post title '||g,g*7 FROM generate_series(1,$WPOOL) g;" \
+    -c "SELECT setval(pg_get_serial_sequence('wposts','id'),$((WPOOL + 100000)));" >/dev/null; }
 reset_sdb() {
   curl -s -u admin:admin -X DELETE $SDB/collection/wposts >/dev/null
   curl -s -u admin:admin -X POST $SDB/collection -H 'Content-Type: application/json' -d '{"name":"wposts"}' >/dev/null
-  for b in 0 1 2 3 4 5 6 7; do lo=$((b*100000+1)); hi=$(((b+1)*100000))
+  local lo hi
+  for (( lo=1; lo<=WPOOL; lo+=100000 )); do hi=$(( lo + 99999 )); [ "$hi" -gt "$WPOOL" ] && hi=$WPOOL
     curl -s -u admin:admin -X POST $SDB/cursor -H 'Content-Type: application/json' \
       -d "{\"query\":\"FOR i IN $lo..$hi INSERT { _key: TO_STRING(i), title: CONCAT(\\\"Post title \\\", i), views: i * 7 } INTO wposts RETURN 1\"}" -o /dev/null
   done
@@ -93,15 +96,17 @@ print(f\"  {os.environ['S']:<8} {d['summary']['requestsPerSec']:>9,.0f} req/s  p
 # off by default: STACKS="soli rails express laravel django adonis octane" adds it.
 STACKS="${STACKS:-soli rails express laravel django adonis fastapi phoenix}"
 
-declare -A PORT=([soli]=5080 [rails]=5096 [express]=5097 [laravel]=5098 [django]=5099 [adonis]=5102 [octane]=5100 [fastapi]=5103 [phoenix]=5104)
+declare -A PORT=([soli]=5080 [rails]=5096 [express]=5097 [laravel]=5098 [django]=5099 [adonis]=5102 [octane]=5100 [fastapi]=5103 [phoenix]=5104 [kemal]=5105)
 # Express serves the ORM form of the DB routes; the others use their only form.
 url_for() { case "$1:$2" in express:/db) echo /db-orm;; express:/db-template) echo /db-template-orm;; *) echo "$2";; esac; }
 
-for wl in /json /template /db /db-template; do
+# WORKLOADS / WRITES narrow a sweep to some rows — re-measuring one row after a
+# harness fix, say — without re-running the whole grid.
+for wl in ${WORKLOADS-/json /template /db /db-template}; do
   echo "### $wl"
   for s in $STACKS; do cell "$s" "${PORT[$s]}" GET "$(url_for $s $wl)"; done
 done
-for m in POST PATCH DELETE; do
+for m in ${WRITES-POST PATCH DELETE}; do
   echo "### $m /w"
   for s in $STACKS; do cell "$s" "${PORT[$s]}" "$m" /w w; done
 done

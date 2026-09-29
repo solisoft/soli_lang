@@ -15,7 +15,19 @@ defmodule BenchWebWeb.BenchController do
 
   alias BenchWeb.{Post, Repo, Wpost}
 
-  @wpool 800_000
+  # WPOOL (default 800,000) is the size of the write table, read once at boot
+  # into :persistent_term, so a request pays a constant-time lookup, not getenv.
+  defp wpool do
+    case :persistent_term.get({__MODULE__, :wpool}, nil) do
+      nil ->
+        n = String.to_integer(System.get_env("WPOOL", "800000"))
+        :persistent_term.put({__MODULE__, :wpool}, n)
+        n
+
+      n ->
+        n
+    end
+  end
 
   # Projection without loading structs. Built once at compile time.
   @posts from(p in Post, select: %{id: p.id, title: p.title, views: p.views})
@@ -57,7 +69,7 @@ defmodule BenchWebWeb.BenchController do
   # The key is drawn from the same 1..800000 range as every other stack, so each
   # request addresses one row by primary key.
 
-  defp wkey, do: :rand.uniform(@wpool)
+  defp wkey, do: :rand.uniform(wpool())
 
   def w_create(conn, _params) do
     Repo.insert!(%Wpost{title: "Post title 0", views: 7})

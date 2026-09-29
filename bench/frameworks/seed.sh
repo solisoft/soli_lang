@@ -5,8 +5,8 @@
 #
 # PostgreSQL serves Rails, Express, Laravel and Django; SoliDB serves Soli.
 set -u
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 PGURL="${PGURL:-postgres://bench:bench@127.0.0.1:5433/bench}"
-SDB="${SDB:-http://localhost:6745/_api/database/default}"
 SDB_AUTH="${SDB_AUTH:-admin:admin}"
 
 pg_reset_reads() {
@@ -17,8 +17,8 @@ pg_reset_reads() {
 pg_reset_writes() {
   psql "$PGURL" -qc "DROP TABLE IF EXISTS wposts;" \
     -c "CREATE TABLE wposts (id serial PRIMARY KEY, title text, views int);" \
-    -c "INSERT INTO wposts (id,title,views) SELECT g,'Post title '||g,g*7 FROM generate_series(1,800000) g;" \
-    -c "SELECT setval(pg_get_serial_sequence('wposts','id'),900000);" >/dev/null
+    -c "INSERT INTO wposts (id,title,views) SELECT g,'Post title '||g,g*7 FROM generate_series(1,$WPOOL) g;" \
+    -c "SELECT setval(pg_get_serial_sequence('wposts','id'),$((WPOOL + 100000)));" >/dev/null
 }
 sdb_reset() {  # $1 = collection, $2 = row count
   curl -s -u "$SDB_AUTH" -X DELETE "$SDB/collection/$1" >/dev/null
@@ -35,10 +35,24 @@ sdb_reset() {  # $1 = collection, $2 = row count
   done
 }
 
+# The read rows carry an `id` field, which is what the Soli app plucks — the
+# write rows are addressed by `_key` alone. Their keys are zero-padded so that
+# key order, which is what an unsorted read returns, is 1..50 as it is for the
+# other stacks; unpadded, "10" sorts before "2" and the payload is no longer the
+# same bytes.
+sdb_reset_reads() {
+  curl -s -u "$SDB_AUTH" -X DELETE "$SDB/collection/posts" >/dev/null
+  curl -s -u "$SDB_AUTH" -X POST "$SDB/collection" -H 'Content-Type: application/json' \
+       -d '{"name":"posts"}' >/dev/null
+  curl -s -u "$SDB_AUTH" -X POST "$SDB/cursor" -H 'Content-Type: application/json' \
+    -d "{\"query\":\"FOR i IN 1..50 INSERT { _key: RIGHT(CONCAT(\\\"00\\\", i), 2), id: i, title: CONCAT(\\\"Post title \\\", i), views: i * 7 } INTO posts RETURN 1\"}" \
+    -o /dev/null
+}
+
 case "${1:-all}" in
-  reads)  pg_reset_reads; sdb_reset posts 50 ;;
-  writes) pg_reset_writes; sdb_reset wposts 800000 ;;
-  all)    pg_reset_reads; sdb_reset posts 50; pg_reset_writes; sdb_reset wposts 800000 ;;
+  reads)  pg_reset_reads; sdb_reset_reads ;;
+  writes) pg_reset_writes; sdb_reset wposts "$WPOOL" ;;
+  all)    pg_reset_reads; sdb_reset_reads; pg_reset_writes; sdb_reset wposts "$WPOOL" ;;
   *) echo "usage: $0 [reads|writes|all]"; exit 1 ;;
 esac
 echo "seeded: $(psql "$PGURL" -tAc 'SELECT count(*) FROM posts')/50 posts, $(psql "$PGURL" -tAc 'SELECT count(*) FROM wposts') wposts (PostgreSQL)"

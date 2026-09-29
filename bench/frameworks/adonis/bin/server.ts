@@ -9,8 +9,8 @@
 |
 */
 
-import 'reflect-metadata'
-import { Ignitor, prettyPrintError } from '@adonisjs/core'
+await import('reflect-metadata')
+const { Ignitor, prettyPrintError } = await import('@adonisjs/core/ignitor')
 
 /**
  * URL to the application root. AdonisJS need it to resolve

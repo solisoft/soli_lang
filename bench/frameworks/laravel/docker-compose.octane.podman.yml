@@ -1,0 +1,6 @@
+# Rootless Podman overlay for docker-compose.octane.yml — see
+# docker-compose.podman.yml.
+services:
+  octane:
+    userns_mode: keep-id
+    user: "${BENCH_UID:-1000}:${BENCH_GID:-1000}"

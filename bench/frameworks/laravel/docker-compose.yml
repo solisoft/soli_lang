@@ -8,9 +8,12 @@ services:
     user: "1778654605:1778654605"
     volumes:
       - ./app:/var/www/html
+    environment:
+      # Size of the write table; fpm-pool.conf's clear_env = no hands it on.
+      WPOOL: "${WPOOL:-800000}"
     restart: unless-stopped
   nginx:
-    image: nginx:alpine
+    image: docker.io/library/nginx:alpine
     network_mode: host
     volumes:
       - ./app:/var/www/html:ro

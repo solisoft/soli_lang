@@ -1,0 +1,8 @@
+# Rootless Podman overlay for docker-compose.yml, applied by `compose` in
+# ../lib.sh when no Docker daemon answers. Rootless containers see our uid as
+# root, so the numeric `user:` of the Docker file would be a stranger to the
+# bind mount; keep-id maps the container user onto ours instead.
+services:
+  php:
+    userns_mode: keep-id
+    user: "${BENCH_UID:-1000}:${BENCH_GID:-1000}"

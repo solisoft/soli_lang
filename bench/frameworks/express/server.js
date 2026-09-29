@@ -80,7 +80,8 @@ if (cluster.isPrimary) {
     title: DataTypes.STRING,
     views: DataTypes.INTEGER,
   }, { tableName: 'wposts', timestamps: false });
-  const WPOOL = 800000;
+  // WPOOL (default 800,000) is the size of the write table, read once at boot.
+  const WPOOL = Number(process.env.WPOOL || 800000);
   const wkey = () => Math.floor(Math.random() * WPOOL) + 1;
 
   app.post('/w', async (req, res) => {

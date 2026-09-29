@@ -33,7 +33,8 @@ class PostsController < ApplicationController
   # Random key over the same 1..800000 range as the other two stacks, so every
   # request addresses one row by primary key. update_all/delete_all are the
   # ORM's single-statement forms — the analogue of Soli's Model.update/delete.
-  WPOOL = 800_000
+  # WPOOL (default 800,000) is the size of the write table, read once at boot.
+  WPOOL = Integer(ENV.fetch("WPOOL", 800_000))
 
   def w_create
     Wpost.create!(title: "Post title 0", views: 7)

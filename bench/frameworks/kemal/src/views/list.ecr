@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title><%= HTML.escape(title) %></title>
+</head>
+<body>
+<h1>Posts</h1>
+<table>
+<% items.each do |item| %><tr><td><%= item[:id] %></td><td><%= HTML.escape(item[:title]) %></td><td><%= item[:views] %></td></tr>
+<% end %></table>
+</body>
+</html>

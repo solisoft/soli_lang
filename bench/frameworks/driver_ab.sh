@@ -17,7 +17,7 @@ WARM="${WARM:-8s}"
 DUR="${DUR:-20s}"
 CONC="${CONC:-200}"
 REPS="${REPS:-2}"
-SDB="${SDB:-http://localhost:6745/_api/database/default}"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 reset_sdb() {
   curl -s -u admin:admin -X DELETE "$SDB/collection/wposts" >/dev/null
@@ -65,7 +65,7 @@ cpu_of_port() {
 }
 db_cpu() {
   local lp t=0 u s
-  lp=$(ss -ltnp 2>/dev/null | grep ':6745 ' | grep -oP 'pid=\K[0-9]+' | head -1)
+  lp=$(ss -ltnp 2>/dev/null | grep ":$SDB_PORT " | grep -oP 'pid=\K[0-9]+' | head -1)
   read -r _ _ _ _ _ _ _ _ _ _ _ _ _ u s _ < /proc/${lp:-0}/stat 2>/dev/null && t=$((u+s))
   echo "$t"
 }
