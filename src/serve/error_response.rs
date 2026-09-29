@@ -33,7 +33,7 @@ pub(super) fn html(status: u16, body: String) -> ResponseData {
             "Content-Type".to_string(),
             "text/html; charset=utf-8".to_string(),
         )],
-        body: body.into_bytes(),
+        body: body.into(),
     }
 }
 
@@ -43,7 +43,7 @@ pub(super) fn text(status: u16, body: &'static str) -> ResponseData {
     ResponseData {
         status,
         headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
-        body: body.as_bytes().to_vec(),
+        body: body.as_bytes().to_vec().into(),
     }
 }
 

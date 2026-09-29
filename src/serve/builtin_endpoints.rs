@@ -58,7 +58,7 @@ fn openapi(path: &str) -> ResponseData {
                 "Content-Type".to_string(),
                 "application/json; charset=utf-8".to_string(),
             )],
-            body: openapi_spec::generate_spec_json().into_bytes(),
+            body: openapi_spec::generate_spec_json().into(),
         }
     } else {
         error_response::html(200, openapi_spec::ui_page())

@@ -418,7 +418,9 @@ pub(crate) fn header_str<'a>(headers: &'a hyper::header::HeaderMap, name: &str) 
 pub(crate) struct ResponseData {
     pub(crate) status: u16,
     pub(crate) headers: Vec<(String, String)>,
-    pub(crate) body: Vec<u8>,
+    /// `Bytes` so a body that already lives in a reference-counted string
+    /// (a cached page) reaches hyper without being copied.
+    pub(crate) body: Bytes,
 }
 
 /// Worker → service reply. Buffered responses carry a complete `ResponseData`;
@@ -2020,28 +2022,25 @@ fn worker_loop(
 
         // Drain all pending events non-blockingly before sleeping
 
-        // Process WebSocket events (quick non-blocking check)
+        // Process WebSocket events in a batch, as the HTTP queue is below. One
+        // event per pass sent every message on a busy socket through a fresh
+        // `Select` — a waker registered and unregistered on every channel,
+        // each under that channel's lock — and a park, while the next events
+        // were already waiting. BATCH_SIZE caps the drain so HTTP still gets
+        // its turn.
         if let (Some(ref mut rx), Some(_registry)) =
             (ws_event_rx_inner.as_mut(), ws_registry_inner.as_ref())
         {
-            match rx.try_recv() {
-                Ok(data) => {
-                    handle_websocket_event(interpreter, &data, &runtime_handle);
-                    let _ = data.response_tx.send(WebSocketActionData {
-                        join: None,
-                        leave: None,
-                        send: None,
-                        broadcast: None,
-                        broadcast_room: None,
-                        close: None,
-                        track: None,
-                        untrack: None,
-                        set_presence: None,
-                    });
-                }
-                Err(channel::TryRecvError::Empty) => {}
-                Err(channel::TryRecvError::Disconnected) => {
-                    ws_event_rx_inner = None;
+            for _ in 0..server_constants::BATCH_SIZE {
+                match rx.try_recv() {
+                    Ok(data) => {
+                        handle_websocket_event(interpreter, &data, &runtime_handle);
+                    }
+                    Err(channel::TryRecvError::Empty) => break,
+                    Err(channel::TryRecvError::Disconnected) => {
+                        ws_event_rx_inner = None;
+                        break;
+                    }
                 }
             }
         }
@@ -2137,17 +2136,6 @@ fn worker_loop(
                     if let Some(ref rx) = ws_event_rx_inner {
                         if let Ok(data) = oper.recv(rx) {
                             handle_websocket_event(interpreter, &data, &runtime_handle);
-                            let _ = data.response_tx.send(WebSocketActionData {
-                                join: None,
-                                leave: None,
-                                send: None,
-                                broadcast: None,
-                                broadcast_room: None,
-                                close: None,
-                                track: None,
-                                untrack: None,
-                                set_presence: None,
-                            });
                         }
                     }
                 } else if Some(idx) == lv_idx {
@@ -2188,7 +2176,10 @@ struct WebSocketEventData {
     /// promised `headers`, `params` and `query` on the event and none were
     /// delivered.
     context: Arc<WebSocketContext>,
-    response_tx: oneshot::Sender<WebSocketActionData>,
+    /// This socket's own outbound queue, so a handler's `send` reaches it
+    /// without a registry lookup — see the send action in
+    /// `handle_websocket_event`.
+    sender: Arc<tokio::sync::mpsc::Sender<Result<tungstenite::Message, tungstenite::Error>>>,
 }
 
 /// What the HTTP upgrade knew about a socket, kept for the life of the
@@ -2904,16 +2895,27 @@ fn handle_websocket_event(
                 });
             }
 
-            // Process send action
+            // Process send action. The reply goes straight into this socket's
+            // own queue: it used to spawn a task per message that took the
+            // registry's global lock to look the sender up again, so every
+            // echo paid a spawn, a contended lock and a second wake — and two
+            // replies in a row raced each other through separate tasks. Only
+            // a full queue (a client not reading) falls back to an awaited
+            // send, which applies backpressure without blocking this worker.
             if let Some(ref msg) = action.send {
-                let registry_clone = registry.clone();
-                let msg_clone = msg.clone();
-                runtime_handle.spawn(async move {
-                    registry_clone
-                        .send_to(&connection_id, &msg_clone)
-                        .await
-                        .ok();
-                });
+                use tokio::sync::mpsc::error::TrySendError;
+                match data
+                    .sender
+                    .try_send(Ok(tungstenite::Message::text(msg.clone())))
+                {
+                    Ok(()) | Err(TrySendError::Closed(_)) => {}
+                    Err(TrySendError::Full(pending)) => {
+                        let sender = data.sender.clone();
+                        runtime_handle.spawn(async move {
+                            let _ = sender.send(pending).await;
+                        });
+                    }
+                }
             }
 
             // Process broadcast_room action: fan the payload out to everyone in
@@ -3098,7 +3100,7 @@ fn handle_live_upload(data: &RequestData) -> ResponseData {
         return ResponseData {
             status: 400,
             headers: vec![("Content-Type".to_string(), "application/json".to_string())],
-            body: br#"{"error":"no file"}"#.to_vec(),
+            body: Bytes::from_static(br#"{"error":"no file"}"#),
         };
     }
     let chunk_id = header_str(&data.headers, "x-soli-upload-id").map(|s| s.to_string());
@@ -3136,7 +3138,7 @@ fn handle_live_upload(data: &RequestData) -> ResponseData {
                 return ResponseData {
                     status: 413,
                     headers: vec![("Content-Type".to_string(), "application/json".to_string())],
-                    body: serde_json::json!({ "error": e }).to_string().into_bytes(),
+                    body: serde_json::json!({ "error": e }).to_string().into(),
                 };
             }
         }
@@ -3149,7 +3151,7 @@ fn handle_live_upload(data: &RequestData) -> ResponseData {
     ResponseData {
         status: 200,
         headers: vec![("Content-Type".to_string(), "application/json".to_string())],
-        body: payload.to_string().into_bytes(),
+        body: payload.to_string().into(),
     }
 }
 
@@ -4280,7 +4282,7 @@ fn panic_response() -> ResponseData {
             "Content-Type".to_string(),
             "text/plain; charset=utf-8".to_string(),
         )],
-        body: b"Internal Server Error".to_vec(),
+        body: Bytes::from_static(b"Internal Server Error"),
     }
 }
 
@@ -5102,7 +5104,7 @@ fn execute_before_actions(
                 return Some(ResponseData {
                     status: 500,
                     headers: vec![],
-                    body: format!("Before action error: {}", e).into_bytes(),
+                    body: format!("Before action error: {}", e).into(),
                 });
             }
         }
@@ -5274,7 +5276,7 @@ fn check_for_response(value: &Value) -> Option<ResponseData> {
         return Some(ResponseData {
             status: status as u16,
             headers,
-            body,
+            body: body.into(),
         });
     }
     None
@@ -5929,7 +5931,7 @@ mod tests {
                     ResponseData {
                         status: 200,
                         headers: vec![],
-                        body: format!("ok {}", i).into_bytes(),
+                        body: format!("ok {}", i).into(),
                     }
                 },
                 "GET",

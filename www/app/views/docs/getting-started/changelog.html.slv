@@ -22,6 +22,12 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.6.6.</p>
 
+        <h3 id="unreleased-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">WebSocket replies are 1.85&times; faster.</strong> When a handler answers the socket that sent the message &mdash; <code class="text-cyan-400">{"send": &hellip;}</code>, an echo or a request/reply &mdash; the reply now goes straight into that socket's queue instead of through a new task and a lock on every connection. An echo benchmark with 1,000 connections went from 610,403 to 1,134,393 messages per second, with the median round trip down from 1.54 to 0.70&nbsp;ms. Replies to one socket also leave in the order the handler produced them, which was not guaranteed before.</li>
+            <li><strong class="text-white">A page served from the response cache is 17% faster.</strong> When a page comes out of the response cache, Soli now reuses the finished response &mdash; its injected scripts and its ETag included &mdash; instead of re-scanning and re-hashing the body on every request, and no longer copies it on its way to the socket. View helpers are added to the render data only when a page is really rendered. On <code class="text-cyan-400">GET /</code> of a <code class="text-cyan-400">soli new</code> app: 651k &rarr; 765k req/s, p99 1.04 &rarr; 0.94&nbsp;ms. <code class="text-cyan-400">public_path</code> no longer calls <code class="text-cyan-400">stat</code> each time once the asset is known. Responses are byte-for-byte the same; production only, <code class="text-cyan-400">--dev</code> is unchanged.</li>
+        </ul>
+
     </section>
 
     <section id="v2-6-6" class="mb-16 scroll-mt-24">

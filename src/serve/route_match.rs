@@ -183,6 +183,6 @@ fn eui_browser_fallback(method: &str, data: &RequestData) -> Option<ResponseData
             // that exists to say a machine is doing too much.
             (NO_INJECT_HEADER.to_string(), "1".to_string()),
         ],
-        body: body.into_bytes(),
+        body: body.into(),
     })
 }

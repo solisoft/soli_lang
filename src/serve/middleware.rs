@@ -459,7 +459,7 @@ pub(crate) fn run(
                             "Content-Type".to_string(),
                             "text/html; charset=utf-8".to_string(),
                         )],
-                        body: error_html.into_bytes(),
+                        body: error_html.into(),
                     });
                 }
                 Step::Halt(middleware_prod_error_string(
@@ -512,7 +512,7 @@ pub(crate) fn run(
                         "Content-Type".to_string(),
                         "text/html; charset=utf-8".to_string(),
                     )],
-                    body: error_html.into_bytes(),
+                    body: error_html.into(),
                 });
             }
             Step::Halt(middleware_prod_error_runtime(

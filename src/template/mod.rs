@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{Instant, SystemTime};
 
-use crate::interpreter::value::Value;
+use crate::interpreter::value::{SoliStr, Value};
 use crate::serve::{vfs_exists, vfs_read_to_string};
 use parser::parse_template;
 use renderer::{render_nodes_with_path, render_with_interpreter};
@@ -138,24 +138,13 @@ impl TemplateCache {
         };
         let template_path = self.resolve_template_path(template_name)?;
 
-        // Skip the cache machinery entirely for render sites already known to
-        // be uncacheable. `data_signature` is a full recursive walk that hashes
-        // every byte of every string in `data`, so on a list page it is
-        // proportional to the whole result set — and for a layout containing
-        // `csrf_meta_tag()` (the `soli new` default) the result is discarded
-        // every time. See `response_cache::is_known_uncacheable`.
-        // A request with a session skips it too: the layout can read the
-        // session (`current_user`, `signed_in?`), which the data signature
-        // cannot see, so one person's page would be served to the next.
-        if response_cache::request_has_session()
-            || response_cache::is_known_uncacheable(&template_path, layout_name)
-        {
+        let Some(data_sig) = Self::cache_signature(&template_path, layout_name, data) else {
             return self.render_uncached(template_name, data, layout, &template_path, layout_name);
-        }
-
-        let data_sig = response_cache::data_signature(data);
-        if let Some(cached) = response_cache::get(template_path.clone(), layout_name, data_sig) {
-            return Ok(cached.body);
+        };
+        if let Some(cached) =
+            response_cache::get(template_path.clone(), layout_name, data_sig, false)
+        {
+            return Ok(cached.body.to_string());
         }
         let body =
             self.render_uncached(template_name, data, layout, &template_path, layout_name)?;
@@ -165,10 +154,86 @@ impl TemplateCache {
             template_path,
             layout_name,
             data_sig,
-            body.clone(),
-            String::new(),
+            false,
+            SoliStr::from(body.as_str()),
+            SoliStr::new(),
         );
         Ok(body)
+    }
+
+    /// `render` followed by [`html_response`], for a controller's
+    /// `render(...)`. In production the finished response — scripts injected,
+    /// ETag computed — is what gets cached, so a hit neither re-renders nor
+    /// re-scans or re-hashes the page, and hands out the body without copying
+    /// it. The `render` builtin keeps dev mode on `render` + `html_response`.
+    ///
+    /// `before_render` runs only when the page is actually rendered, never on
+    /// a hit, so it may add to `data` whatever the signature can ignore —
+    /// values that are the same for every request of the process.
+    pub fn render_html_response(
+        &self,
+        template_name: &str,
+        data: &Value,
+        layout: Option<Option<&str>>,
+        status: i64,
+        before_render: impl FnOnce(),
+    ) -> Result<Value, String> {
+        let layout_name: Option<&str> = match layout {
+            Some(Some(name)) => Some(name),
+            _ => None,
+        };
+        let template_path = self.resolve_template_path(template_name)?;
+
+        let Some(data_sig) = Self::cache_signature(&template_path, layout_name, data) else {
+            before_render();
+            let body =
+                self.render_uncached(template_name, data, layout, &template_path, layout_name)?;
+            return Ok(html_response(body, status));
+        };
+        if let Some(cached) =
+            response_cache::get(template_path.clone(), layout_name, data_sig, true)
+        {
+            return Ok(html_response_parts(cached.body, cached.etag, status));
+        }
+        before_render();
+        let body =
+            self.render_uncached(template_name, data, layout, &template_path, layout_name)?;
+        let (body, etag) = finish_html(body);
+        let (body, etag) = (SoliStr::from(body), SoliStr::from(etag));
+        response_cache::put(
+            template_path,
+            layout_name,
+            data_sig,
+            true,
+            body.clone(),
+            etag.clone(),
+        );
+        Ok(html_response_parts(body, etag, status))
+    }
+
+    /// The response-cache signature of this render, or `None` when the site
+    /// must not be cached.
+    ///
+    /// Render sites already known to be uncacheable skip the cache machinery
+    /// entirely. `data_signature` is a full recursive walk that hashes every
+    /// byte of every string in `data`, so on a list page it is proportional to
+    /// the whole result set — and for a layout containing `csrf_meta_tag()`
+    /// the result is discarded every time. See
+    /// `response_cache::is_known_uncacheable`. A request with a session skips
+    /// it too: the layout can read the session (`current_user`, `signed_in?`),
+    /// which the data signature cannot see, so one person's page would be
+    /// served to the next.
+    fn cache_signature(
+        template_path: &Arc<PathBuf>,
+        layout_name: Option<&str>,
+        data: &Value,
+    ) -> Option<u64> {
+        if response_cache::request_has_session()
+            || response_cache::is_known_uncacheable(template_path, layout_name)
+        {
+            return None;
+        }
+        Some(response_cache::data_signature(data))
     }
 
     /// Internal: do the actual template render. Wrapped by `render`
@@ -747,9 +812,14 @@ impl TemplateCache {
 
 /// Create a response hash for rendered HTML content.
 pub fn html_response(body: String, status: i64) -> Value {
-    use crate::interpreter::value::{HashKey, HashPairs};
-    use ahash::RandomState as AHasher;
+    let (body, etag) = finish_html(body);
+    html_response_parts(SoliStr::from(body), SoliStr::from(etag), status)
+}
 
+/// The bytes an HTML page goes out as, and their ETag: the rendered body with
+/// every script the server injects. A pure function of the body and of
+/// process-wide settings, which is what lets a finished response be cached.
+fn finish_html(body: String) -> (String, String) {
     // Inject live reload script if enabled
     let body = if crate::serve::live_reload::is_live_reload_enabled() {
         crate::serve::live_reload::inject_live_reload_script(&body)
@@ -795,13 +865,20 @@ pub fn html_response(body: String, status: i64) -> Value {
     // after all script injections so the ETag reflects the exact bytes we
     // send over the wire.
     let etag = etag_for_body(&body);
+    (body, etag)
+}
+
+/// The response hash for a finished HTML body and its ETag.
+fn html_response_parts(body: SoliStr, etag: SoliStr, status: i64) -> Value {
+    use crate::interpreter::value::{HashKey, HashPairs};
+    use ahash::RandomState as AHasher;
 
     let mut headers: HashPairs = HashPairs::with_capacity_and_hasher(3, AHasher::default());
     headers.insert(
         HashKey::String("Content-Type".into()),
         Value::String("text/html; charset=utf-8".into()),
     );
-    headers.insert(HashKey::String("ETag".into()), Value::String(etag.into()));
+    headers.insert(HashKey::String("ETag".into()), Value::String(etag));
     // `private`: browser may cache, shared caches (CDN, reverse proxy) may not.
     // `no-cache`: cache entry must be revalidated with If-None-Match before
     // reuse — so any prefetched response survives, but a stale one doesn't.
@@ -816,7 +893,7 @@ pub fn html_response(body: String, status: i64) -> Value {
         HashKey::String("headers".into()),
         Value::Hash(Rc::new(RefCell::new(headers))),
     );
-    result.insert(HashKey::String("body".into()), Value::String(body.into()));
+    result.insert(HashKey::String("body".into()), Value::String(body));
 
     Value::Hash(Rc::new(RefCell::new(result)))
 }

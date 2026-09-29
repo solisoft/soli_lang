@@ -6,7 +6,9 @@ use std::rc::Rc;
 use std::sync::OnceLock;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{stringify_to_string, HashKey, HashPairs, NativeFunction, Value};
+use crate::interpreter::value::{
+    stringify_to_string, HashKey, HashPairs, NativeFunction, SoliStr, Value,
+};
 
 /// Coerce a WebSocket message argument to a transport string.
 /// Strings pass through unchanged; anything else is JSON-serialized. This lets
@@ -20,6 +22,7 @@ fn ws_message_to_string(value: &Value, fn_name: &str) -> Result<String, String> 
     }
 }
 use ahash::RandomState as AHasher;
+use bytes::Bytes;
 
 /// A registered route with its handler.
 /// For worker threads, we use a separate struct without middleware Values.
@@ -1369,9 +1372,12 @@ fn build_unified_params_refs(
 ///   binary payloads (image/file bytes served back to the client). Any entry
 ///   outside that range is clamped via `as u8`.
 /// - Anything else → `format!("{}", v)` as UTF-8 bytes (fallback).
-fn body_value_to_bytes(v: Value) -> Vec<u8> {
+///
+/// A string body is shared, not copied: the `Bytes` holds the reference-counted
+/// string, so a page served from the response cache goes out without a copy.
+fn body_value_to_bytes(v: Value) -> Bytes {
     match v {
-        Value::String(s) => s.as_bytes().to_vec(),
+        Value::String(s) => Bytes::from_owner(StrBody(s)),
         Value::Array(arr) => {
             let borrowed = arr.borrow();
             let mut out = Vec::with_capacity(borrowed.len());
@@ -1385,28 +1391,37 @@ fn body_value_to_bytes(v: Value) -> Vec<u8> {
                 }
             }
             if all_bytes {
-                out
+                out.into()
             } else {
                 drop(borrowed);
-                format!("{}", Value::Array(arr)).into_bytes()
+                format!("{}", Value::Array(arr)).into()
             }
         }
-        other => format!("{}", other).into_bytes(),
+        other => format!("{}", other).into(),
+    }
+}
+
+/// A string body lent to [`Bytes::from_owner`], which wants raw bytes.
+struct StrBody(SoliStr);
+
+impl AsRef<[u8]> for StrBody {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_bytes()
     }
 }
 
 /// Extract response data from a response hash returned by a handler.
 /// Checks fast-path thread-local first (set by render_json/render_text).
 /// Returns Vec instead of HashMap since all callers need Vec<(String, String)>.
-pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>) {
+pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Bytes) {
     // Fast path: if render_json/render_text set a pre-built response, use it directly
     if let Some(fast) = take_fast_path_response() {
-        return (fast.status, fast.headers, fast.body.into_bytes());
+        return (fast.status, fast.headers, fast.body.into());
     }
 
     let mut status = 200u16;
     let mut headers = Vec::new();
-    let mut body: Vec<u8> = Vec::new();
+    let mut body = Bytes::new();
     // A `body_base64` key carries a BINARY body (PDFs, images…) as base64 —
     // Soli has no bytes type. Decoded after the loop so it deterministically
     // wins over a plain `body` regardless of hash iteration order.
@@ -1449,7 +1464,7 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>
                     }
                 }
                 if let Some(b64) = body_b64 {
-                    body = decode_body_base64(&b64);
+                    body = decode_body_base64(&b64).into();
                 }
                 default_content_type(&mut headers, &body);
                 return (status, headers, body);
@@ -1501,7 +1516,7 @@ pub fn extract_response(response: Value) -> (u16, Vec<(String, String)>, Vec<u8>
     }
 
     if let Some(b64) = body_b64 {
-        body = decode_body_base64(&b64);
+        body = decode_body_base64(&b64).into();
     }
     default_content_type(&mut headers, &body);
     (status, headers, body)
@@ -2079,7 +2094,7 @@ mod body_base64_tests {
         ]);
         let (status, _, body) = extract_response(response);
         assert_eq!(status, 200);
-        assert_eq!(body, payload);
+        assert_eq!(&body[..], payload);
     }
 
     #[test]
@@ -2091,7 +2106,7 @@ mod body_base64_tests {
             ("body_base64", Value::String(b64.into())),
         ]);
         let (_, _, body) = extract_response(response);
-        assert_eq!(body, b"BIN", "body_base64 deterministically wins");
+        assert_eq!(&body[..], b"BIN", "body_base64 deterministically wins");
     }
 
     #[test]

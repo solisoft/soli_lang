@@ -522,7 +522,6 @@ async fn handle_websocket_upgrade(
         ws_registry.register(connection).await;
 
         // Send connect event
-        let (response_tx, _) = oneshot::channel();
         let connect_event = WebSocketEventData {
             path: path.clone(),
             connection_id,
@@ -530,7 +529,7 @@ async fn handle_websocket_upgrade(
             message: None,
             channel: None,
             context: ws_context.clone(),
-            response_tx,
+            sender: ws_tx_arc.clone(),
         };
         if !enqueue_ws_event(&ws_event_tx, connect_event).await {
             eprintln!("[WS] realtime queue saturated, dropping connection {connection_id}");
@@ -571,7 +570,6 @@ async fn handle_websocket_upgrade(
                             break;
                         }
                         if let Ok(text) = msg.to_text() {
-                            let (response_tx, _) = oneshot::channel();
                             let msg_event = WebSocketEventData {
                                 path: path.clone(),
                                 connection_id,
@@ -579,7 +577,7 @@ async fn handle_websocket_upgrade(
                                 message: Some(text.to_string()),
                                 channel: None,
                                 context: ws_context.clone(),
-                                response_tx,
+                                sender: ws_tx_arc.clone(),
                             };
                             if !enqueue_ws_event(&ws_event_tx, msg_event).await {
                                 eprintln!(
@@ -597,7 +595,6 @@ async fn handle_websocket_upgrade(
         }
 
         // Send disconnect event
-        let (response_tx, _) = oneshot::channel();
         let disconnect_event = WebSocketEventData {
             path: path.clone(),
             connection_id,
@@ -605,7 +602,7 @@ async fn handle_websocket_upgrade(
             message: None,
             channel: None,
             context: ws_context.clone(),
-            response_tx,
+            sender: ws_tx_arc.clone(),
         };
         enqueue_ws_event(&ws_event_tx, disconnect_event).await;
 

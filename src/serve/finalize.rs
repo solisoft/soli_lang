@@ -306,7 +306,7 @@ fn dev_snapshot(f: &Finalizer, method: &str, path: &str, resp: &mut ResponseData
     // would append a second one into the live DOM on each swap.
     if is_html && !f.is_htmx {
         if let Ok(body_str) = std::str::from_utf8(&resp.body) {
-            resp.body = dev_bar::inject_dev_bar(body_str, &ctx).into_bytes();
+            resp.body = dev_bar::inject_dev_bar(body_str, &ctx).into();
         }
     }
 }

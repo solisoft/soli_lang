@@ -464,7 +464,14 @@ fn get_file_mtime_cached(path: &PathBuf) -> Result<String, String> {
         let mut cache = cache.borrow_mut();
         let dev_mode = DEV_MODE.load(Ordering::Relaxed);
 
-        // Get current mtime
+        // Production never refreshes a cached mtime, so a hit must not stat:
+        // the lookup has to come before the syscall, not after it.
+        if !dev_mode {
+            if let Some(cached) = cache.get(path) {
+                return Ok(cached.mtime_secs.to_string());
+            }
+        }
+
         let metadata =
             std::fs::metadata(path).map_err(|e| format!("Failed to stat file: {}", e))?;
         let modified = metadata
@@ -474,13 +481,6 @@ fn get_file_mtime_cached(path: &PathBuf) -> Result<String, String> {
             .duration_since(SystemTime::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-
-        // In production, return cached value if available
-        if !dev_mode {
-            if let Some(cached) = cache.get(path) {
-                return Ok(cached.mtime_secs.to_string());
-            }
-        }
 
         // Store and return
         if cache.len() >= FILE_MTIME_CACHE_MAX_SIZE {
@@ -2286,9 +2286,6 @@ pub fn register_template_builtins(env: &mut Environment) {
             // becomes a bare `title` local in the view). Explicit render() data wins.
             inject_controller_instance_vars(&data);
 
-            // Inject template helper functions into data context (in-place, no clone)
-            inject_template_helpers(&data);
-
             // Convert layout option for render call
             let layout_arg = match &layout {
                 Some(Some(name)) => Some(Some(name.as_ref())),
@@ -2299,13 +2296,28 @@ pub fn register_template_builtins(env: &mut Environment) {
             // Set view context for debugging (in case of error)
             set_view_debug_context(Some(data.clone()));
 
-            let result = {
+            // Production caches the finished response; dev keeps the plain
+            // render, so its view timing and hot reload are exactly as before.
+            let result = if is_dev_mode() {
+                // Inject template helper functions into data context (in-place, no clone)
+                inject_template_helpers(&data);
+                let rendered = {
+                    let _phase = crate::serve::phase_log::PhaseTimer::start("view");
+                    cache.render(&template_name, &data, layout_arg)
+                };
+                rendered.map(|body| html_response(body, status))
+            } else {
                 let _phase = crate::serve::phase_log::PhaseTimer::start("view");
-                cache.render(&template_name, &data, layout_arg)
+                // The helpers are injected only when the page is actually
+                // rendered: they never change in production, so a cached
+                // response does not depend on them and skips copying them.
+                cache.render_html_response(&template_name, &data, layout_arg, status, || {
+                    inject_template_helpers(&data)
+                })
             };
 
             match result {
-                Ok(rendered) => {
+                Ok(response) => {
                     // Clear context on success
                     clear_current_request();
                     set_view_debug_context(None);
@@ -2319,7 +2331,7 @@ pub fn register_template_builtins(env: &mut Environment) {
                             partial,
                         );
                     }
-                    Ok(html_response(rendered, status))
+                    Ok(response)
                 }
                 Err(e) => {
                     // Keep context set for debugging

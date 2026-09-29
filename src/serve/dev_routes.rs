@@ -558,7 +558,7 @@ async fn handle_replay(id: &str, request_tx: &WorkerSender) -> Response<Response
     // Materialize the response (streaming replays are collected — dev-only and
     // small) and tag it so the dev bar can show a replay badge.
     let (status, headers, body) = match worker_response {
-        WorkerResponse::Buffered(rd) => (rd.status, rd.headers, Bytes::from(rd.body)),
+        WorkerResponse::Buffered(rd) => (rd.status, rd.headers, rd.body),
         WorkerResponse::Stream {
             status,
             headers,

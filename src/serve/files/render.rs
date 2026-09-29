@@ -40,7 +40,7 @@ pub(crate) fn render(data: &RequestData, relative: &str) -> ResponseData {
                 "Content-Type".to_string(),
                 "text/html; charset=utf-8".to_string(),
             )],
-            body: body.into_bytes(),
+            body: body.into(),
         },
         Err(error) => failure(relative, &error),
     }
@@ -91,6 +91,6 @@ fn failure(relative: &str, error: &str) -> ResponseData {
             "Content-Type".to_string(),
             "text/html; charset=utf-8".to_string(),
         )],
-        body: body.into_bytes(),
+        body: body.into(),
     }
 }

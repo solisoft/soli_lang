@@ -681,14 +681,14 @@ pub(super) fn assemble(
     // Inject live reload script for HTML responses (only in dev mode).
     // HTML is UTF-8, so we can safely view the body as &str for injection.
     // Binary responses (images/files) skip this path via the content-type guard.
-    let body: Vec<u8> = if live_reload && !no_inject {
+    let body: Bytes = if live_reload && !no_inject {
         let is_html = resp_data
             .headers
             .iter()
             .any(|(k, v)| k.eq_ignore_ascii_case("content-type") && v.contains("text/html"));
         if is_html {
             match std::str::from_utf8(&resp_data.body) {
-                Ok(html) => live_reload::inject_live_reload_script(html).into_bytes(),
+                Ok(html) => live_reload::inject_live_reload_script(html).into(),
                 Err(_) => resp_data.body,
             }
         } else {
@@ -698,7 +698,7 @@ pub(super) fn assemble(
         resp_data.body
     };
 
-    finish_response(builder, Bytes::from(body))
+    finish_response(builder, body)
 }
 
 #[cfg(test)]
@@ -917,7 +917,7 @@ mod tests {
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
-            body: body.as_bytes().to_vec(),
+            body: Bytes::copy_from_slice(body.as_bytes()),
         })
     }
 

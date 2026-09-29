@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Performance
+
+* **perf(ws):** **a handler's reply to its own socket goes straight into that socket's queue: WebSocket echo is 1.85x faster.** `{"send": …}` used to spawn a tokio task per message, which took the registry's global lock over every connection to look the sender up again and then woke the socket's writer task — a spawn, a contended lock and two wakes per reply, and two replies in a row raced through separate tasks. Each event now carries its socket's own sender; the worker `try_send`s the reply and only a full queue (a client not reading) falls back to an awaited send, so backpressure never blocks a worker and replies leave in order. A worker also drains up to `BATCH_SIZE` queued WebSocket events before it blocks, as it already did for HTTP, and the never-awaited `oneshot` every event carried is gone. Echo, 1,000 connections, two A/Bs of three alternating rounds on the benchmark box: 610,403 → 1,134,393 msg/s, p50 1.54 → 0.70 ms (the batching alone: +0.6%). p99 is unchanged at ~3.6 ms. Tests: the 47 `websocket` tests.
+
+* **perf(views):** **a page served from the response cache skips everything after the lookup.** The cache now holds the finished response — scripts injected, ETag computed — instead of the raw render, so a hit no longer runs the six `contains` scans of the injectors (nav, prefetch, native, camera, sensors) or hashes the body for its ETag, and hands the body out as a shared `SoliStr` rather than a copy. View helpers from `app/helpers` are copied into the render data only when the page is actually rendered, since they never change in production. `ResponseData.body` is `Bytes`, so a string body reaches hyper without a copy. `public_path` looks up its mtime cache before calling `stat`, not after: production made a syscall per call for a value it then discarded. Production only; `--dev` keeps the previous path. `GET /` of a `soli new` app, 16 server cores against 16 load cores (Ryzen 9 9950X): 651k → 765k req/s (+17%), p99 1.04 → 0.94 ms; `/health` is 805–815k. Responses are byte-identical, ETag and 304 included. Test: `response_cache::tests::raw_and_finished_entries_do_not_collide`.
+
 ## [2.6.6] - 2026-09-28
 
 ### Fixed

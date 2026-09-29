@@ -45,21 +45,28 @@ use std::sync::Arc;
 
 use lru::LruCache;
 
+use crate::interpreter::value::SoliStr;
+
 const MAX_CACHE_SIZE: NonZero<usize> = NonZero::new(64).unwrap();
 
-/// `(template path, layout name, locale, data signature)`. `Arc<PathBuf>` keeps
-/// the key cheap to construct on a hit (no path clone per request).
+/// `(template path, layout name, locale, data signature, finished)`.
+/// `Arc<PathBuf>` keeps the key cheap to construct on a hit (no path clone per
+/// request). `finished` separates the two things stored here: the raw body of
+/// a `TemplateCache::render`, and the HTML response built from it, with its
+/// scripts injected and its ETag computed. The same site can hold both.
 #[derive(Clone)]
 struct CacheKey {
     template_path: Arc<PathBuf>,
     layout: Option<Arc<str>>,
     locale: String,
     data_sig: u64,
+    finished: bool,
 }
 
 impl PartialEq for CacheKey {
     fn eq(&self, other: &Self) -> bool {
         self.data_sig == other.data_sig
+            && self.finished == other.finished
             && self.layout == other.layout
             && self.locale == other.locale
             && self.template_path == other.template_path
@@ -74,19 +81,18 @@ impl std::hash::Hash for CacheKey {
         self.layout.hash(state);
         self.locale.hash(state);
         self.data_sig.hash(state);
+        self.finished.hash(state);
     }
 }
 
-/// Cached `(body, etag)` for a given `(template, layout, data)`. The
-/// `etag` field is currently unused by `render` — we keep it on the
-/// struct so a future change can store the pre-computed ETag without
-/// a cache-format break. Callers that pass `etag: ""` to `put` are
-/// saying "don't bother computing the ETag now; `html_response` will
-/// derive it on every request".
+/// Cached `(body, etag)` for a given `(template, layout, data)`. Both are
+/// `SoliStr`, so a hit hands out a reference-counted clone instead of copying
+/// the page. A raw render stores an empty `etag`; a finished HTML response
+/// stores the ETag of the exact bytes it sends.
 #[derive(Clone)]
 pub struct CachedResponse {
-    pub body: String,
-    pub etag: String,
+    pub body: SoliStr,
+    pub etag: SoliStr,
 }
 
 thread_local! {
@@ -196,6 +202,7 @@ pub fn get(
     template_path: Arc<PathBuf>,
     layout: Option<&str>,
     data_sig: u64,
+    finished: bool,
 ) -> Option<CachedResponse> {
     if is_response_dirty() || is_data_dirty() {
         return None;
@@ -205,6 +212,7 @@ pub fn get(
         layout: layout.map(Arc::from),
         locale: crate::interpreter::builtins::i18n::helpers::get_locale(),
         data_sig,
+        finished,
     };
     RESPONSE_CACHE.with(|c| c.borrow_mut().get(&key).cloned())
 }
@@ -215,8 +223,9 @@ pub fn put(
     template_path: Arc<PathBuf>,
     layout: Option<&str>,
     data_sig: u64,
-    body: String,
-    etag: String,
+    finished: bool,
+    body: SoliStr,
+    etag: SoliStr,
 ) {
     if is_response_dirty() || is_data_dirty() {
         // The render itself tripped a dirty flag, so this site cannot be
@@ -230,6 +239,7 @@ pub fn put(
         layout: layout.map(Arc::from),
         locale: crate::interpreter::builtins::i18n::helpers::get_locale(),
         data_sig,
+        finished,
     };
     let value = CachedResponse { body, etag };
     RESPONSE_CACHE.with(|c| c.borrow_mut().put(key, value));
@@ -393,15 +403,16 @@ mod tests {
             path.clone(),
             Some("application"),
             42,
-            "old body".to_string(),
-            String::new(),
+            false,
+            SoliStr::from("old body"),
+            SoliStr::new(),
         );
         assert_eq!(
-            get(path.clone(), Some("application"), 42).map(|c| c.body),
-            Some("old body".to_string())
+            get(path.clone(), Some("application"), 42, false).map(|c| c.body),
+            Some(SoliStr::from("old body"))
         );
         clear_cache();
-        assert!(get(path, Some("application"), 42).is_none());
+        assert!(get(path, Some("application"), 42, false).is_none());
     }
 
     /// `t()` reads the locale from a thread-local, not from the render data,
@@ -418,20 +429,56 @@ mod tests {
             path.clone(),
             Some("application"),
             7,
-            "Mesures".into(),
-            String::new(),
+            false,
+            SoliStr::from("Mesures"),
+            SoliStr::new(),
         );
         set_locale("en");
         assert!(
-            get(path.clone(), Some("application"), 7).is_none(),
+            get(path.clone(), Some("application"), 7, false).is_none(),
             "an en request must not get the fr body"
         );
         set_locale("fr");
         assert_eq!(
-            get(path, Some("application"), 7).map(|c| c.body),
-            Some("Mesures".to_string())
+            get(path, Some("application"), 7, false).map(|c| c.body),
+            Some(SoliStr::from("Mesures"))
         );
         set_locale("");
+    }
+
+    /// A raw render body and the finished HTML response built from it share a
+    /// site and a signature. Each must answer only its own kind of lookup: a
+    /// raw hit served as a response would ship a page without its scripts or
+    /// ETag, and a response served to `render()` would inject them twice.
+    #[test]
+    fn raw_and_finished_entries_do_not_collide() {
+        reset_for_new_request();
+        clear_cache();
+        let path = Arc::new(PathBuf::from("app/views/home/index.html.slv"));
+
+        put(
+            path.clone(),
+            Some("application"),
+            5,
+            false,
+            SoliStr::from("raw"),
+            SoliStr::new(),
+        );
+        assert!(get(path.clone(), Some("application"), 5, true).is_none());
+
+        put(
+            path.clone(),
+            Some("application"),
+            5,
+            true,
+            SoliStr::from("finished"),
+            SoliStr::from("W/\"0123456789abcdef\""),
+        );
+        let raw = get(path.clone(), Some("application"), 5, false).unwrap();
+        let finished = get(path, Some("application"), 5, true).unwrap();
+        assert_eq!(raw.body, "raw");
+        assert_eq!(finished.body, "finished");
+        assert_eq!(finished.etag, "W/\"0123456789abcdef\"");
     }
 
     #[test]
@@ -469,8 +516,9 @@ mod tests {
             path.clone(),
             Some("application"),
             7,
-            "body".to_string(),
-            String::new(),
+            false,
+            SoliStr::from("body"),
+            SoliStr::new(),
         );
 
         assert!(
@@ -479,7 +527,7 @@ mod tests {
         );
         // The refusal itself must still hold: nothing was cached.
         reset_for_new_request();
-        assert!(get(path.clone(), Some("application"), 7).is_none());
+        assert!(get(path.clone(), Some("application"), 7, false).is_none());
 
         // The mark is per (template, layout) — a different layout is its own
         // decision, since cacheability usually comes from the layout.
@@ -507,14 +555,15 @@ mod tests {
             path.clone(),
             Some("docs"),
             99,
-            "rendered".to_string(),
-            String::new(),
+            false,
+            SoliStr::from("rendered"),
+            SoliStr::new(),
         );
 
         assert!(!is_known_uncacheable(&path, Some("docs")));
         assert_eq!(
-            get(path, Some("docs"), 99).map(|c| c.body),
-            Some("rendered".to_string())
+            get(path, Some("docs"), 99, false).map(|c| c.body),
+            Some(SoliStr::from("rendered"))
         );
     }
 }
