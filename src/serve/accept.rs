@@ -72,6 +72,8 @@ pub(super) fn spawn(server: Server) {
         bound_port_tx,
     } = server;
 
+    raise_open_files_limit();
+
     thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(tokio_worker_threads)
@@ -173,6 +175,9 @@ async fn accept_loop(
     router: Arc<vhost::Router<TenantRuntime>>,
     connection_limiter: Arc<tokio::sync::Semaphore>,
 ) {
+    // When the last exhaustion warning was printed, so a long run of them logs
+    // once per interval instead of once per failed accept.
+    let mut last_exhaustion_warning: Option<std::time::Instant> = None;
     loop {
         // The accept loop deliberately keeps running during a drain.
         // Breaking out would return from the enclosing `block_on`,
@@ -182,6 +187,27 @@ async fn accept_loop(
         // away; a closed listener gives it a TCP refusal instead.
         let (stream, peer_addr) = match listener.accept().await {
             Ok(conn) => conn,
+            Err(e) if accept_error_is_exhaustion(&e) => {
+                // Out of file descriptors (or kernel memory): the pending
+                // connection stays in the backlog and accept fails again at
+                // once, so retrying straight away spins this thread at 100%
+                // until something closes. Back off and say why, instead.
+                let now = std::time::Instant::now();
+                if last_exhaustion_warning
+                    .is_none_or(|t| now.duration_since(t) >= ACCEPT_EXHAUSTION_WARN_EVERY)
+                {
+                    eprintln!(
+                        "[serve] cannot accept connections: {e}; retrying every {} ms \
+                         (raise the open-files limit, `ulimit -n`)",
+                        ACCEPT_EXHAUSTION_BACKOFF.as_millis()
+                    );
+                    last_exhaustion_warning = Some(now);
+                }
+                tokio::time::sleep(ACCEPT_EXHAUSTION_BACKOFF).await;
+                continue;
+            }
+            // Per-connection failures (a peer that reset before we got to
+            // it): nothing is exhausted, take the next one.
             Err(_) => continue,
         };
         // Disable Nagle's algorithm: without this, small responses
@@ -211,6 +237,59 @@ async fn accept_loop(
         tokio::spawn(serve_connection(io, router, peer_addr, connection_permit));
     }
 }
+
+/// How long the accept loop waits after a resource-exhaustion error.
+const ACCEPT_EXHAUSTION_BACKOFF: Duration = Duration::from_millis(50);
+/// How often it says so while the condition lasts.
+const ACCEPT_EXHAUSTION_WARN_EVERY: Duration = Duration::from_secs(10);
+
+/// Errors that mean the process or the kernel is out of something, rather than
+/// that one connection went wrong: retrying immediately cannot succeed.
+fn accept_error_is_exhaustion(e: &std::io::Error) -> bool {
+    matches!(
+        e.raw_os_error(),
+        Some(libc::EMFILE) | Some(libc::ENFILE) | Some(libc::ENOBUFS) | Some(libc::ENOMEM)
+    )
+}
+
+/// Raise the soft open-files limit to the hard one, once, at startup.
+///
+/// Every connection, WebSocket, database pool socket and log file is a
+/// descriptor, and many distributions still default the soft limit to 1,024
+/// while allowing far more: a server holding a thousand WebSockets plus its
+/// database pools crosses it, and `accept` starts failing. The hard limit is
+/// what the operator allowed; the soft one is only where the shell started.
+#[cfg(unix)]
+fn raise_open_files_limit() {
+    // SAFETY: getrlimit/setrlimit only read and write the struct passed in.
+    unsafe {
+        let mut limit = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) != 0 || limit.rlim_cur >= limit.rlim_max
+        {
+            return;
+        }
+        // macOS reports an unlimited hard limit but refuses a soft limit above
+        // OPEN_MAX; a bounded target works everywhere.
+        let target = limit.rlim_max.min(1 << 20);
+        let raised = libc::rlimit {
+            rlim_cur: target,
+            rlim_max: limit.rlim_max,
+        };
+        if libc::setrlimit(libc::RLIMIT_NOFILE, &raised) != 0 && target > 10_240 {
+            let fallback = libc::rlimit {
+                rlim_cur: 10_240,
+                rlim_max: limit.rlim_max,
+            };
+            libc::setrlimit(libc::RLIMIT_NOFILE, &fallback);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn raise_open_files_limit() {}
 
 /// One connection, for as long as it is open.
 async fn serve_connection(
@@ -436,5 +515,31 @@ async fn dispatch(
             Ok(response)
         }
         (result, _) => result,
+    }
+}
+
+#[cfg(test)]
+mod accept_error_tests {
+    use super::accept_error_is_exhaustion;
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn running_out_of_descriptors_is_exhaustion() {
+        for code in [libc::EMFILE, libc::ENFILE, libc::ENOBUFS, libc::ENOMEM] {
+            assert!(
+                accept_error_is_exhaustion(&Error::from_raw_os_error(code)),
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_connection_that_went_away_is_not() {
+        assert!(!accept_error_is_exhaustion(&Error::from_raw_os_error(
+            libc::ECONNABORTED
+        )));
+        assert!(!accept_error_is_exhaustion(&Error::from(
+            ErrorKind::ConnectionReset
+        )));
     }
 }
