@@ -1,0 +1,177 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs" class="text-gray-400 hover:text-white transition-colors">Development Tools</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">OpenAPI &amp; API Reference</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">OpenAPI &amp; API Reference</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Soli describes your app as an <a href="https://spec.openapis.org/oas/v3.0.3" class="text-amber-400 hover:text-amber-300">OpenAPI 3</a>
+            document, built from its routes, and serves a browsable API reference over it.
+            Nothing to write, nothing to install: add a route, reload, and it is in the spec.
+        </p>
+    </div>
+
+    <div class="overflow-x-auto mb-12">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-2 pr-4 text-gray-400 font-medium">URL</th>
+                    <th class="text-left py-2 text-gray-400 font-medium">What it serves</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-300">
+                <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>GET /openapi.json</code></td><td class="py-2">The OpenAPI 3.0.3 document, generated from the route table</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>GET /openapi</code></td><td class="py-2">A <a href="https://scalar.com" class="text-amber-400 hover:text-amber-300">Scalar</a> API reference over that document</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Quick start -->
+    <section id="section-quick-start" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Quick start</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <pre data-filename="Terminal"><code class="language-bash text-sm">soli serve . --dev
+# then open http://localhost:&lt;port&gt;/openapi</code></pre>
+        </div>
+        <p class="text-gray-400">Under <code>--dev</code> both endpoints are on by default, and the dev bar&rsquo;s <strong class="text-white">tools</strong> panel links the reference (&ldquo;api&rdquo;).</p>
+    </section>
+
+    <!-- On / off -->
+    <section id="section-enabling" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Turning it on and off</h2>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-2 pr-4 text-gray-400 font-medium">Situation</th>
+                        <th class="text-left py-2 text-gray-400 font-medium">Result</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-300">
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>soli serve . --dev</code></td><td class="py-2">on</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>SOLI_OPENAPI=0 soli serve . --dev</code></td><td class="py-2">off (404)</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>soli serve</code> (production)</td><td class="py-2">off (404)</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>SOLI_OPENAPI=1 soli serve</code></td><td class="py-2">on, in every environment</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400"><code>SOLI_OPENAPI</code> wins when it is set: <code>1</code> or <code>true</code> turns the endpoints on, anything else turns them off. Without it, <code>--dev</code> decides. <code>SOLI_OPENAPI_TITLE</code> sets the document title (default <code>Soli API</code>).</p>
+    </section>
+
+    <!-- Contents -->
+    <section id="section-contents" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">What the spec contains</h2>
+        <p class="text-gray-400 mb-4">Every route in <code>config/routes.sl</code> becomes an operation:</p>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-2 pr-4 text-gray-400 font-medium">From the route</th>
+                        <th class="text-left py-2 text-gray-400 font-medium">In the spec</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-300">
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">path <code>/posts/:id</code></td><td class="py-2">path <code>/posts/{id}</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">wildcard <code>/files/*path</code></td><td class="py-2">path <code>/files/{path}</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">each <code>:param</code> / <code>*param</code></td><td class="py-2">a path parameter: <code>in: path</code>, <code>required: true</code>, <code>type: string</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">method (<code>get</code>, <code>post</code>, <code>put</code>, <code>patch</code>, <code>delete</code>, <code>head</code>, <code>options</code>)</td><td class="py-2">the operation&rsquo;s method</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>posts#show</code></td><td class="py-2"><code>summary: posts#show</code>, <code>operationId: get_posts_show</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">the controller (<code>posts</code>)</td><td class="py-2">the tag, so the reference groups operations by controller</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">&mdash;</td><td class="py-2">one generic response, <code>200 OK</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">Routes sharing a path collapse into one path item with several methods. Framework paths (anything starting with <code>/_</code>, including <code>/__soli/*</code>) and WebSocket routes are left out.</p>
+        <p class="text-gray-400 mb-4">A scaffolded <code>posts</code> resource gives, for <code>/posts/{id}</code>:</p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <pre data-filename="GET /openapi.json"><code class="language-json text-sm">{
+  "openapi": "3.0.3",
+  "info": { "title": "Soli API", "version": "1.0.0" },
+  "paths": {
+    "/posts/{id}": {
+      "get": {
+        "operationId": "get_posts_show",
+        "summary": "posts#show",
+        "tags": ["posts"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      },
+      "put":    { "operationId": "put_posts_update",    "summary": "posts#update", "...": "..." },
+      "delete": { "operationId": "delete_posts_delete", "summary": "posts#delete", "...": "..." }
+    }
+  }
+}</code></pre>
+        </div>
+        <p class="text-gray-400">The document is valid OpenAPI 3.0.3 (<code>redocly lint</code> with the <code>minimal</code> ruleset passes). Stricter rulesets flag what the generator does not describe &mdash; no <code>servers</code>, no <code>security</code>, no 4xx responses.</p>
+    </section>
+
+    <!-- Browsing -->
+    <section id="section-browsing" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Browsing it</h2>
+        <p class="text-gray-400 mb-4"><code>/openapi</code> is a Scalar page pointed at <code>/openapi.json</code>: operations grouped by controller, a search box, and a request panel to try an endpoint against the running server. Scalar loads from a CDN, so the page needs network access in the browser; <code>/openapi.json</code> itself does not.</p>
+        <p class="text-gray-400">Any OpenAPI viewer can load the same URL &mdash; Swagger UI, Redoc, or your API client&rsquo;s import.</p>
+    </section>
+
+    <!-- Using -->
+    <section id="section-using" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Using the spec</h2>
+        <h3 class="text-lg font-semibold text-white mb-2">TypeScript types for a frontend</h3>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <pre data-filename="Terminal"><code class="language-bash text-sm">npx openapi-typescript http://localhost:&lt;port&gt;/openapi.json -o src/api.d.ts</code></pre>
+        </div>
+        <p class="text-gray-400 mb-6">This produces a <code>paths</code> interface with one entry per route and the path parameters typed.</p>
+
+        <h3 class="text-lg font-semibold text-white mb-2">An API client</h3>
+        <p class="text-gray-400 mb-6">Postman, Insomnia, Bruno or Hoppscotch: import from the URL <code>http://localhost:&lt;port&gt;/openapi.json</code>. Clients that group by tag show one group per controller.</p>
+
+        <h3 class="text-lg font-semibold text-white mb-2">A route-change check in CI</h3>
+        <p class="text-gray-400 mb-4">Commit a snapshot and diff it, so a pull request shows the routes it adds or removes:</p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <pre data-filename="CI"><code class="language-bash text-sm">SOLI_OPENAPI=1 soli serve . --port 5099 --strict-port &amp;
+sleep 2
+curl -s localhost:5099/openapi.json &gt; openapi.json
+git diff --exit-code openapi.json</code></pre>
+        </div>
+    </section>
+
+    <!-- Production -->
+    <section id="section-production" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">In production</h2>
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/30 p-5">
+            <p class="text-gray-300 mb-3">Once <code>SOLI_OPENAPI=1</code> is set, the endpoints answer in every environment, like <code>/_metrics</code>. They are answered <strong class="text-white">before the application runs</strong> &mdash; before middleware, sessions and controllers &mdash; so a <code>before_action</code> or an authentication middleware does <strong class="text-white">not</strong> protect them. Anyone who can reach the server can read the full route table.</p>
+            <p class="text-gray-300">Keep them off in production (the default), or put them behind your reverse proxy&rsquo;s access rules if you need the reference there.</p>
+        </div>
+    </section>
+
+    <!-- Limits -->
+    <section id="section-limits" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Limits</h2>
+        <p class="text-gray-400 mb-4">The spec is <strong class="text-white">structural</strong>: Soli actions take an untyped <code>req</code>, so the generator knows which endpoints exist and their path parameters, not what they accept or return.</p>
+        <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-4">
+            <li>No request bodies, query parameters, headers or response schemas.</li>
+            <li>Every path parameter is a <code>string</code>, whatever the action does with it.</li>
+            <li>Every operation declares one <code>200</code> response, including redirects and errors.</li>
+            <li>HTML routes (<code>/posts/new</code>, <code>/posts/{id}/edit</code>) are listed alongside JSON ones: the route table does not say which is which.</li>
+        </ul>
+        <p class="text-gray-400">It is a map of the API and a seed for generated clients, not a hand-written contract.</p>
+    </section>
+
+    <!-- See also -->
+    <section id="section-see-also" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">See also</h2>
+        <ul class="list-disc pl-6 space-y-2 text-gray-400">
+            <li><a href="/docs/core-concepts/routing" class="text-amber-400 hover:text-amber-300">Routing</a> &mdash; the routes the spec is built from</li>
+            <li><a href="/docs/getting-started/configuration" class="text-amber-400 hover:text-amber-300">Configuration</a> &mdash; <code>SOLI_OPENAPI</code>, <code>SOLI_OPENAPI_TITLE</code></li>
+            <li><a href="/docs/development-tools/debugging" class="text-amber-400 hover:text-amber-300">Debugging</a> &mdash; the dev bar and its tools panel</li>
+        </ul>
+    </section>
+</div>

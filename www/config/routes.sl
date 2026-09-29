@@ -90,6 +90,7 @@ get("/docs/internals/rust-api", "docs#internals_rust_api")
 # Development Tools
 get("/docs/development-tools/live-reload", "docs#development_tools_live_reload")
 get("/docs/development-tools/static-server", "docs#development_tools_static_server")
+get("/docs/development-tools/openapi", "docs#development_tools_openapi")
 get("/docs/development-tools/debugging", "docs#development_tools_debugging")
 get("/docs/development-tools/observability", "docs#development_tools_observability")
 get("/docs/development-tools/scaffold", "docs#development_tools_scaffold")

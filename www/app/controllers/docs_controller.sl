@@ -323,6 +323,10 @@ def development_tools_static_server
   )
 end
 
+def development_tools_openapi
+  render_docs("docs/development-tools/openapi", "OpenAPI & API Reference", "development_tools", "openapi")
+end
+
 def development_tools_debugging
   render_docs("docs/development-tools/debugging", "Debugging", "development_tools", "debugging")
 end

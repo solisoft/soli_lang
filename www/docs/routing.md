@@ -304,7 +304,7 @@ Every route becomes a path + method; a `:id` segment becomes a required `{id}` p
 
 Because Soli actions take an untyped `req` and there is no annotation layer, the spec is **structural** — it lists what endpoints exist and their path params, not request/response body schemas. It's a discoverability aid and a client-generation seed, not a hand-authored contract.
 
-Outside `--dev` the endpoints are **opt-in** (404 unless `SOLI_OPENAPI` is set) and, once enabled, are served in every environment — production included, like `/_metrics`. The `/openapi` UI loads Scalar from a CDN, so that page needs network access in the browser (the raw `/openapi.json` does not).
+Outside `--dev` the endpoints are **opt-in** (404 unless `SOLI_OPENAPI` is set) and, once enabled, are served in every environment — production included, like `/_metrics`. The `/openapi` UI loads Scalar from a CDN, so that page needs network access in the browser (the raw `/openapi.json` does not). The full guide — what each field means, generating TypeScript types, a CI route-change check, and why the endpoints bypass middleware — is [OpenAPI & API Reference](openapi.md).
 
 ## Best Practices
 

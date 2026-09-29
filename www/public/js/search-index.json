@@ -17759,7 +17759,7 @@
       "title": "OpenAPI / Swagger spec",
       "type": "feature",
       "category": "Routing",
-      "path": "/docs/core-concepts/routing#openapi",
+      "path": "/docs/development-tools/openapi",
       "signature": "GET /openapi.json \u00b7 GET /openapi",
       "description": "An OpenAPI 3 spec generated from your routes at /openapi.json, and a browsable Scalar API reference (a Swagger UI alternative) at /openapi. On under --dev; opt in with SOLI_OPENAPI=1 in production.",
       "keywords": [
@@ -17790,6 +17790,30 @@
         "api docs",
         "env",
         "environment variable",
+        "SOLI_OPENAPI_TITLE"
+      ]
+    },
+    {
+      "title": "OpenAPI & API Reference",
+      "type": "guide",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/openapi",
+      "signature": "GET /openapi.json \u00b7 GET /openapi",
+      "description": "Guide to the OpenAPI 3 spec Soli generates from your routes and the Scalar reference over it: turning it on, what each route becomes, TypeScript types, API clients, a CI route check, production exposure and limits.",
+      "keywords": [
+        "openapi",
+        "swagger",
+        "swagger ui",
+        "redoc",
+        "scalar",
+        "api reference",
+        "api docs",
+        "api documentation",
+        "openapi-typescript",
+        "postman",
+        "insomnia",
+        "client generation",
+        "SOLI_OPENAPI",
         "SOLI_OPENAPI_TITLE"
       ]
     }

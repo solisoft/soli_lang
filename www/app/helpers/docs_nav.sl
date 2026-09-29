@@ -103,6 +103,7 @@ def docs_nav_sections()
         { "path": "/docs/development-tools/static-server", "label": "Static & Markdown Server" },
         { "path": "/docs/development-tools/debugging", "label": "Debugging" },
         { "path": "/docs/development-tools/observability", "label": "Observability" },
+        { "path": "/docs/development-tools/openapi", "label": "OpenAPI & API Reference" },
         { "path": "/docs/development-tools/scaffold", "label": "Scaffold Generator" },
         { "path": "/docs/development-tools/editor-integration", "label": "Editor Integration" },
         { "path": "/docs/development-tools/formatting", "label": "Formatting" },
