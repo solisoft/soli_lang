@@ -391,7 +391,7 @@
     <meta property="og:title" content="<%= title %> — Soli">
     <meta property="og:description" content="<%= docs_og["description"] %>">
     <meta property="og:url" content="<%= docs_og["url"] %>">
-    <meta property="og:image" content="<%= docs_og["image"] %>">
+    <meta property="og:image" content="https://soli.solisoft.net<%= public_path(docs_og["image_path"]) %>">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -399,7 +399,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="<%= title %> — Soli">
     <meta name="twitter:description" content="<%= docs_og["description"] %>">
-    <meta name="twitter:image" content="<%= docs_og["image"] %>">
+    <meta name="twitter:image" content="https://soli.solisoft.net<%= public_path(docs_og["image_path"]) %>">
     <% end %>
 
     <!-- Per-page <head> injection (og:image and friends from blog posts, etc.) -->

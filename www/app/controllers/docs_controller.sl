@@ -29,13 +29,16 @@ end
 # public/images/og/<view without "docs/", slashes as dashes>.png — so
 # docs/getting-started/benchmarks is og/getting-started-benchmarks.png (its SVG
 # source sits beside it). The layout turns it into og:/twitter: tags. Blog posts
-# set their own tags, which is why this is not called `og_image`.
+# set their own tags, which is why this is not called `og_image`. The layout
+# versions the image URL with public_path(): a card fetched before its file was
+# deployed got the catch-all route's 200 page, which Cloudflare then kept for
+# four hours — a versioned URL is one no cache holds yet.
 def docs_og(view)
   file = "images/og/" + view.replace("docs/", "").replace("/", "-") + ".png"
   return nil unless file_exists("public/" + file)
 
   {
-    "image": "https://soli.solisoft.net/" + file,
+    "image_path": file,
     "url": "https://soli.solisoft.net/" + view,
     "description": docs_og_description(view)
   }
