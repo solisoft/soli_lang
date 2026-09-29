@@ -690,7 +690,7 @@ def update
   let user = User.find(req["params"]["id"]);
   let safe = req["json"].slice(["name", "bio"]);
   user.update(safe);
-  return redirect("/users/" + user._key);
+  redirect("/users/" + user._key);
 end
 ```
 
@@ -1660,7 +1660,7 @@ An idiomatic named relation over a traversal is just a plain method:
 ```soli
 class User < Model
   def followers()
-    return this.traverse(Follow, { "direction": "in" })
+    this.traverse(Follow, { "direction": "in" })
   end
 end
 

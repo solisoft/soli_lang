@@ -54,10 +54,8 @@ describe("PostsController") do
 end
 ```
 
-> `assigns()` after an **explicit** `render("view")` holds only the hash passed to
-> `render` — not the controller's `@fields` (the view still gets them). With the
-> implicit render (no `render` call) the `@fields` are there. Assert on the body
-> when the action must call `render`.
+> `assigns()` holds the controller's `@fields` whether the view rendered by
+> convention or through `render("posts/new", {}, {"status": 422})`.
 
 Keywords:
 

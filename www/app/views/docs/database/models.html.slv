@@ -1352,7 +1352,7 @@ path = alice.shortest_path("users/bob-key", via: Follow, direction: "out")</code
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">class User &lt; Model
   def followers()
-    return this.traverse(Follow, { "direction": "in" })
+    this.traverse(Follow, { "direction": "in" })
   end
 end
 

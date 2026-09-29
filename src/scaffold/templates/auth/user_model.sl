@@ -32,14 +32,14 @@ const AUTH_IP_WINDOW_SECONDS = 300
 def auth_base_url
   return getenv("APP_BASE_URL").to_s if getenv("APP_BASE_URL").present?
 
-  return "http://localhost:5011"
+  "http://localhost:5011"
 end
 
 # Require a confirmed email before sign-in. Flip to true once SMTP is
 # configured (SOLI_SMTP_* env vars — see the mailer docs) so users can
 # actually receive the confirmation link.
 def auth_require_confirmed_email
-  return false
+  false
 end
 
 class User < Model
@@ -87,14 +87,14 @@ class User < Model
     if value.length() < AUTH_MIN_PASSWORD_LENGTH
       return "Password must be at least #{AUTH_MIN_PASSWORD_LENGTH} characters"
     end
-    return null
+    null
   end
 
   # True when `plaintext` matches the stored Argon2id digest.
   def authenticate(plaintext)
     return false if this.password_digest.blank?
 
-    return Crypto.password_verify(plaintext, this.password_digest)
+    Crypto.password_verify(plaintext, this.password_digest)
   end
 
   # Spend the same Argon2id work as a real `authenticate` without having an
@@ -109,7 +109,7 @@ class User < Model
   end
 
   def admin?
-    return this.role == "admin"
+    this.role == "admin"
   end
 
   # --- Password reset ---------------------------------------------------------
@@ -121,13 +121,13 @@ class User < Model
     this.reset_token_digest = Crypto.sha256(token)
     this.reset_sent_at = DateTime.utc().to_unix()
     this.update()
-    return token
+    token
   end
 
   def reset_token_expired?
     return true if this.reset_sent_at.nil?
 
-    return DateTime.utc().to_unix() - this.reset_sent_at > AUTH_RESET_TOKEN_TTL
+    DateTime.utc().to_unix() - this.reset_sent_at > AUTH_RESET_TOKEN_TTL
   end
 
   # Set the new password, burn the token, and clear any lockout.
@@ -151,13 +151,13 @@ class User < Model
     # who was already signed in stayed signed in through the victim's reset —
     # which is the one thing a password reset is supposed to stop.
     this.session_version = (this.session_version ?? 0) + 1
-    return this.update()
+    this.update()
   end
 
   # Bumped whenever every existing session must be invalidated (a password
   # reset today; add other events here as they appear).
   def current_session_version
-    return this.session_version ?? 0
+    this.session_version ?? 0
   end
 
   # --- Email confirmation -----------------------------------------------------
@@ -166,7 +166,7 @@ class User < Model
     this.confirmation_token_digest = Crypto.sha256(token)
     this.confirmation_sent_at = DateTime.utc().to_unix()
     this.update()
-    return token
+    token
   end
 
   # Confirmation links expire like reset links do.
@@ -178,18 +178,18 @@ class User < Model
   def confirmation_token_expired?
     return true if this.confirmation_sent_at.nil?
 
-    return DateTime.utc().to_unix() - this.confirmation_sent_at > AUTH_CONFIRMATION_TOKEN_TTL
+    DateTime.utc().to_unix() - this.confirmation_sent_at > AUTH_CONFIRMATION_TOKEN_TTL
   end
 
   def confirm_email
     this.confirmed_at = DateTime.utc().to_unix()
     this.confirmation_token_digest = null
     this.confirmation_sent_at = null
-    return this.update()
+    this.update()
   end
 
   def confirmed?
-    return !this.confirmed_at.nil?
+    !this.confirmed_at.nil?
   end
 
   # --- Remember me ------------------------------------------------------------
@@ -197,20 +197,20 @@ class User < Model
     token = uuid_v4()
     this.remember_token_digest = Crypto.sha256(token)
     this.update()
-    return token
+    token
   end
 
   def forget_me
     return true if this.remember_token_digest.blank?
 
     this.remember_token_digest = null
-    return this.update()
+    this.update()
   end
 
   def remembered_by?(token)
     return false if this.remember_token_digest.blank?
 
-    return Crypto.secure_compare(Crypto.sha256(token.to_s), this.remember_token_digest)
+    Crypto.secure_compare(Crypto.sha256(token.to_s), this.remember_token_digest)
   end
 
   # --- Account lockout --------------------------------------------------------
@@ -224,7 +224,7 @@ class User < Model
       this.update()
       return false
     end
-    return true
+    true
   end
 
   def register_failed_attempt
@@ -257,7 +257,7 @@ class User < Model
       }
     end
 
-    return true
+    true
   end
 
   def clear_failed_attempts

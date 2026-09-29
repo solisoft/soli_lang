@@ -17,5 +17,5 @@
 def add_cors_headers(req) -> Any
   # Add CORS headers to the request context
   # These will be included in the response
-  return {"continue": true, "request": req}
+  {"continue": true, "request": req}
 end

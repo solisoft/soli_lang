@@ -37,7 +37,7 @@ class ApplicationPolicy
 
   # `new?` mirrors `create?` and `edit?` mirrors `update?` by convention.
   def new?
-    return this.send("create?")
+    this.send("create?")
   end
 
   def update?
@@ -45,7 +45,7 @@ class ApplicationPolicy
   end
 
   def edit?
-    return this.send("update?")
+    this.send("update?")
   end
 
   def destroy?
@@ -54,7 +54,7 @@ class ApplicationPolicy
 
   # Handy in subclasses: any signed-in user.
   def signed_in?
-    return !this.user.nil?
+    !this.user.nil?
   end
 end
 
@@ -63,7 +63,7 @@ end
 def policy_for(record)
   policy_class = const_get(record.class + "Policy")
   forbidden("No policy class '" + record.class + "Policy'. Add app/policies/<model>_policy.sl") if policy_class.nil?
-  return policy_class.new({"user": current_user(), "record": record})
+  policy_class.new({"user": current_user(), "record": record})
 end
 
 # Authorize `record` for the current action (or an explicit one). Returns the
@@ -73,16 +73,16 @@ def authorize(record, action = null)
   act = "show" if act.blank?
   policy = policy_for(record)
   forbidden("Not authorized to " + act + " this " + record.class) if !policy.send(act + "?")
-  return record
+  record
 end
 
 # The signed-in user for the current request, or nil. Populated by the
 # `load_current_user` middleware. Defined here (global scope) so controllers
 # and policies can call it; views use the copy in app/helpers/auth_helper.sl.
 def current_user
-  return req["current_user"] rescue null
+  req["current_user"] rescue null
 end
 
 def signed_in?
-  return !current_user().nil?
+  !current_user().nil?
 end

@@ -26,7 +26,7 @@ class OauthSessionsController < Controller
 
     return redirect_external(destination) unless destination.blank?
 
-    return redirect("/")
+    redirect("/")
   end
 
   # Did this request actually ask to log out, rather than merely load a URL?
@@ -35,7 +35,7 @@ class OauthSessionsController < Controller
   def _request_confirms_logout
     return true if req["method"].to_s.upcase() == "POST"
 
-    return false
+    false
   end
 
   def _post_logout_destination
@@ -55,6 +55,6 @@ class OauthSessionsController < Controller
     return "" if client.nil?
     return "" unless client.redirect_uri_allowed?(requested)
 
-    return requested
+    requested
   end
 end

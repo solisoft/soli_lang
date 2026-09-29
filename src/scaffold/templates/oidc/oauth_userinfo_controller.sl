@@ -18,7 +18,7 @@ class OauthUserinfoController < Controller
     body = oidc_user_claims(user, scopes)
     body["sub"] = user["_key"]
 
-    return oidc_json(body, 200)
+    oidc_json(body, 200)
   end
 
   # RFC 6750 §3: a bad bearer token is answered with a challenge, so the client

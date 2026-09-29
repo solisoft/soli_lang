@@ -43,15 +43,15 @@ def oidc_issuer
   # parties compare the `iss` claim against this string byte for byte.
   return getenv("SOLI_OIDC_ISSUER").to_s if getenv("SOLI_OIDC_ISSUER").present?
 
-  return "http://localhost:5011"  # TODO: set your production issuer
+  "http://localhost:5011"  # TODO: set your production issuer
 end
 
 def oidc_private_key
-  return getenv("SOLI_OIDC_PRIVATE_KEY").to_s
+  getenv("SOLI_OIDC_PRIVATE_KEY").to_s
 end
 
 def oidc_public_key
-  return getenv("SOLI_OIDC_PUBLIC_KEY").to_s
+  getenv("SOLI_OIDC_PUBLIC_KEY").to_s
 end
 
 # The previous public key, kept in the JWKS during a rotation so tokens signed
@@ -62,7 +62,7 @@ end
 #   2. SOLI_OIDC_PRIVATE_KEY / SOLI_OIDC_PUBLIC_KEY = the new pair; deploy
 #   3. once OIDC_ID_TOKEN_TTL has elapsed, unset the previous key
 def oidc_previous_public_key
-  return getenv("SOLI_OIDC_PREVIOUS_PUBLIC_KEY").to_s
+  getenv("SOLI_OIDC_PREVIOUS_PUBLIC_KEY").to_s
 end
 
 # Key id, derived from the public key so it is stable across restarts and
@@ -70,11 +70,11 @@ end
 def oidc_kid(public_pem)
   return "" if public_pem.blank?
 
-  return Crypto.sha256(public_pem).substring(0, 16)
+  Crypto.sha256(public_pem).substring(0, 16)
 end
 
 def oidc_active_kid
-  return oidc_kid(oidc_public_key())
+  oidc_kid(oidc_public_key())
 end
 
 # Claims released to the userinfo endpoint and the id_token, gated by the
@@ -94,5 +94,5 @@ def oidc_user_claims(user, scopes)
     claims["email_verified"] = !user["confirmed_at"].nil?
   end
 
-  return claims
+  claims
 end

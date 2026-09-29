@@ -75,11 +75,11 @@ class PostPolicy < ApplicationPolicy
   def update?
     return false unless this.signed_in?()   # guard the nil user first
 
-    return this.user["_key"] == this.record["author_id"]
+    this.user["_key"] == this.record["author_id"]
   end
 
   def destroy?
-    return this.update?()                   # same rule as update
+    this.update?()                   # same rule as update
   end
 end
 ```
@@ -101,7 +101,7 @@ class PostsController < Controller
     post = Post.find(params["id"])
     authorize(post)                          # 403 unless PostPolicy#update? is true
     post.update(this._permit_params(params))
-    return redirect(post_path(post))
+    redirect(post_path(post))
   end
 end
 ```
@@ -136,7 +136,7 @@ Use `forbidden()` directly for coarse checks that aren't tied to a record:
 ```soli
 def admin_dashboard
   forbidden("Admins only") unless current_user()&.admin?()
-  return render("admin/dashboard")
+  render("admin/dashboard")
 end
 ```
 

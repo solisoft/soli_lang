@@ -20,7 +20,7 @@ class OauthTokensController < Controller
     return this._authorization_code_grant(auth["client"]) if grant_type == "authorization_code"
     return this._refresh_token_grant(auth["client"]) if grant_type == "refresh_token"
 
-    return oidc_token_error("unsupported_grant_type", "Unsupported grant_type: #{grant_type}", 400)
+    oidc_token_error("unsupported_grant_type", "Unsupported grant_type: #{grant_type}", 400)
   end
 
   # POST /oauth/revoke (RFC 7009)
@@ -36,7 +36,7 @@ class OauthTokensController < Controller
       OauthRefreshToken.revoke_chain(token["chain_id"], "client_revoked")
     end
 
-    return oidc_json({}, 200)
+    oidc_json({}, 200)
   end
 
   # --- grants ----------------------------------------------------------------
@@ -54,7 +54,7 @@ class OauthTokensController < Controller
     user = User.find_by("_key", row["user_key"])
     return oidc_token_error("invalid_grant", "The user no longer exists", 400) if user.nil?
 
-    return this._issue_tokens(client, user, scopes, row["refresh_chain_id"], row["nonce"], row["auth_time"])
+    this._issue_tokens(client, user, scopes, row["refresh_chain_id"], row["nonce"], row["auth_time"])
   end
 
   # A code that did not burn was either never valid, or already used. The
@@ -64,7 +64,7 @@ class OauthTokensController < Controller
     used = OauthAuthorizationCode.find_used(code)
     OauthRefreshToken.revoke_chain(used["refresh_chain_id"], "code_replayed") if !used.nil?
 
-    return oidc_token_error("invalid_grant", "Authorization code is invalid, expired or used", 400)
+    oidc_token_error("invalid_grant", "Authorization code is invalid, expired or used", 400)
   end
 
   # Every binding made at authorization time is re-checked here. A code is only
@@ -91,7 +91,7 @@ class OauthTokensController < Controller
     )
     return null if verified
 
-    return oidc_token_error("invalid_grant", "code_verifier does not match code_challenge", 400)
+    oidc_token_error("invalid_grant", "code_verifier does not match code_challenge", 400)
   end
 
   def _refresh_token_grant(client)
@@ -127,7 +127,7 @@ class OauthTokensController < Controller
       return oidc_token_error("invalid_grant", "Refresh token was already used", 400)
     end
 
-    return this._issue_tokens(client, user, scopes["scopes"], token["chain_id"], null, null)
+    this._issue_tokens(client, user, scopes["scopes"], token["chain_id"], null, null)
   end
 
   # A refresh may narrow the scope but never widen it (RFC 6749 §6).
@@ -145,7 +145,7 @@ class OauthTokensController < Controller
       )}
     end
 
-    return {"response": null, "scopes": requested}
+    {"response": null, "scopes": requested}
   end
 
   # --- issuing ---------------------------------------------------------------
@@ -170,7 +170,7 @@ class OauthTokensController < Controller
       body["refresh_token"] = OauthRefreshToken.issue(chain_id, client.client_id, user["_key"], scopes, jti)
     end
 
-    return oidc_json(body, 200)
+    oidc_json(body, 200)
   end
 
   # --- client authentication -------------------------------------------------
@@ -193,7 +193,7 @@ class OauthTokensController < Controller
     client = OauthClient.find_active(client_id)
     return {"response": this._client_auth_failure(!basic.nil?, "Unknown client")} if client.nil?
 
-    return this._verify_secret(client, secret, !basic.nil?)
+    this._verify_secret(client, secret, !basic.nil?)
   end
 
   def _verify_secret(client, secret, used_basic)
@@ -211,7 +211,7 @@ class OauthTokensController < Controller
       return {"response": this._client_auth_failure(used_basic, "Invalid client credentials")}
     end
 
-    return {"response": null, "client": client}
+    {"response": null, "client": client}
   end
 
   # RFC 6749 §5.2: a failed *Basic* authentication is a 401 carrying
@@ -242,6 +242,6 @@ class OauthTokensController < Controller
 
     parts = decoded.split(":")
 
-    return {"client_id": url_decode(parts[0]), "client_secret": url_decode(parts.slice(1, parts.length()).join(":"))}
+    {"client_id": url_decode(parts[0]), "client_secret": url_decode(parts.slice(1, parts.length()).join(":"))}
   end
 end

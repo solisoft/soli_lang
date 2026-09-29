@@ -56,14 +56,14 @@ class {controller_name} < Controller
     id = params["id"]
     permitted = this._permit_params(params)
     {model_name}.update(id, permitted)
-    return redirect("/{resource}")
+    redirect("/{resource}")
   end
 
   # DELETE /{resource}/:id
   def delete
     id = params["id"]
     {model_name}.delete(id)
-    return redirect("/{resource}")
+    redirect("/{resource}")
   end
 
   # Mass-assignment whitelist: permit() keeps exactly this shape and drops

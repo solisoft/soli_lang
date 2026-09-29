@@ -41,5 +41,5 @@ def load_current_user(req)
       req["current_user"] = user
     end
   end
-  return {"continue": true, "request": req}
+  {"continue": true, "request": req}
 end

@@ -613,7 +613,7 @@ action.create("Hello", "World")</code></pre>
 
   class Cache
     def get(key: String) -> String?
-      return null
+      null
     end
   end
 end

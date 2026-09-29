@@ -65,7 +65,7 @@ class RegistrationsController < Controller
     session_set("user_id", user["_key"])
     # Stamped so a later password reset can invalidate this session.
     session_set("session_version", user.current_session_version())
-    return redirect("/")
+    redirect("/")
   end
 
   # Re-render the sign-up form with an error and an accurate status code.

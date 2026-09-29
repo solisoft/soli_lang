@@ -60,19 +60,19 @@ class OauthRefreshToken < Model
     return false unless this.rotated_at.nil?
     return false if this.expires_at.nil?
 
-    return DateTime.utc().to_unix() < this.expires_at
+    DateTime.utc().to_unix() < this.expires_at
   end
 
   # Already rotated = this token was superseded by a newer one. Seeing it again
   # is the reuse signal.
   def reused?
-    return !this.rotated_at.nil?
+    !this.rotated_at.nil?
   end
 
   def mark_rotated
     this.rotated_at = DateTime.utc().to_unix()
 
-    return this.update()
+    this.update()
   end
 
   # Claim a refresh token for rotation, atomically.
@@ -108,6 +108,6 @@ class OauthRefreshToken < Model
   end
 
   def scopes
-    return oidc_scope_list(this.scope)
+    oidc_scope_list(this.scope)
   end
 end

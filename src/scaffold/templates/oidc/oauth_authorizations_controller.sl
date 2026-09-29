@@ -72,7 +72,7 @@ class OauthAuthorizationsController < Controller
 
     OauthConsent.grant(user["_key"], client.client_id, scopes)
 
-    return this._issue_code(context, user, scopes)
+    this._issue_code(context, user, scopes)
   end
 
   # --- internals -------------------------------------------------------------
@@ -131,7 +131,7 @@ class OauthAuthorizationsController < Controller
       return {"code": "unauthorized_client", "description": "This client may not use the authorization code grant"}
     end
 
-    return this._pkce_error(client)
+    this._pkce_error(client)
   end
 
   def _pkce_error(client)
@@ -150,7 +150,7 @@ class OauthAuthorizationsController < Controller
       return {"code": "invalid_request", "description": "code_challenge_method must be S256"}
     end
 
-    return null
+    null
   end
 
   def _issue_code(context, user, scopes)
@@ -172,6 +172,6 @@ class OauthAuthorizationsController < Controller
     # defense, and rewriting it in any way would break that.
     location = "#{location}&state=#{url_encode(context["state"])}" unless context["state"].blank?
 
-    return redirect_external(location)
+    redirect_external(location)
   end
 end

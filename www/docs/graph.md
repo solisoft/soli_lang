@@ -217,7 +217,7 @@ def create(req: Any) -> Any {
     let user = User.find_by("email", req["email"])  # binds user → User
     user.authenticate(req["password"])              # calls → User#authenticate
     partial("sessions/form")                        # renders → sessions/_form (or form)
-    return redirect("/dashboard")                   # redirects → matching route
+    redirect("/dashboard")                   # redirects → matching route
 }
 ```
 

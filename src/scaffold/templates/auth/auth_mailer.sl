@@ -9,13 +9,13 @@ class AuthMailer < Mailer
   def reset_password(user, token)
     @user = user
     @reset_url = auth_base_url() + "/password/edit?token=" + token
-    return this.mail(to: user.email, subject: "Reset your password")
+    this.mail(to: user.email, subject: "Reset your password")
   end
 
   def confirm_email(user, token)
     @user = user
     @confirm_url = auth_base_url() + "/confirm_email?token=" + token
-    return this.mail(to: user.email, subject: "Confirm your email address")
+    this.mail(to: user.email, subject: "Confirm your email address")
   end
 
   # Sent once, when the lockout trips. The sign-in response deliberately says
@@ -26,6 +26,6 @@ class AuthMailer < Mailer
     @user = user
     @lock_minutes = lock_minutes
     @reset_url = auth_base_url() + "/password/new"
-    return this.mail(to: user.email, subject: "Your account is temporarily locked")
+    this.mail(to: user.email, subject: "Your account is temporarily locked")
   end
 end

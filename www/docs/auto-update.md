@@ -154,7 +154,7 @@ def index(req) {
 def install_update(req) {
   result = Updater.apply()
   # { "status": "updated", "restart_required": true, "message": "updated to v1.1.0" }
-  return { "status": 200, "body": result.to_json() }
+  { "status": 200, "body": result.to_json() }
 }
 ```
 

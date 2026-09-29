@@ -31,7 +31,7 @@ def oidc_token_error(code, description, status)
   body = {"error": code}
   body["error_description"] = description unless description.blank?
 
-  return oidc_json(body, status)
+  oidc_json(body, status)
 end
 
 # An OAuth error at the *authorization* endpoint that is safe to hand back to
@@ -45,13 +45,13 @@ def oidc_authorize_error(redirect_uri, code, description, state)
   location = "#{location}&error_description=#{url_encode(description)}" unless description.blank?
   location = "#{location}&state=#{url_encode(state.to_s)}" unless state.blank?
 
-  return redirect_external(location)
+  redirect_external(location)
 end
 
 # An error we must NOT redirect for: the client is unknown, or the redirect_uri
 # is not one it registered. Rendered in place, as a plain page.
 def oidc_authorize_fatal(message)
-  return render("oauth_authorizations/error", {"message": message}, {"status": 400})
+  render("oauth_authorizations/error", {"message": message}, {"status": 400})
 end
 
 # A registered redirect_uri may already carry a query string, and RFC 6749
@@ -59,7 +59,7 @@ end
 def oidc_query_separator(uri)
   return "&" if uri.to_s.contains("?")
 
-  return "?"
+  "?"
 end
 
 # --- Encoding ----------------------------------------------------------------
@@ -68,7 +68,7 @@ end
 # before encoding — base64url of the hex *text* is a different, wrong value of
 # twice the length.
 def oidc_b64_digest(hex_digest)
-  return Base64.urlsafe_encode(Hex.decode(hex_digest))
+  Base64.urlsafe_encode(Hex.decode(hex_digest))
 end
 
 # --- Keys --------------------------------------------------------------------
@@ -110,13 +110,13 @@ def oidc_id_token(user, client_id, scopes, nonce, auth_time, access_token)
   claims["auth_time"] = auth_time unless auth_time.nil?
   claims["at_hash"] = oidc_at_hash(access_token) unless access_token.blank?
 
-  return jwt_sign(claims, "", options)
+  jwt_sign(claims, "", options)
 end
 
 # Left-most 128 bits of the SHA-256 of the access token, base64url (OIDC Core
 # §3.1.3.6).
 def oidc_at_hash(access_token)
-  return Base64.urlsafe_encode(Hex.decode(Crypto.sha256(access_token)).take(16))
+  Base64.urlsafe_encode(Hex.decode(Crypto.sha256(access_token)).take(16))
 end
 
 # Mint an access token. RFC 9068 profile: `at+jwt` typed, with the scope and a
@@ -133,7 +133,7 @@ def oidc_access_token(user_key, client_id, scopes, jti)
     "expires_in": OIDC_ACCESS_TOKEN_TTL
   }
 
-  return jwt_sign({"sub": user_key, "scope": scopes.join(" ")}, "", options)
+  jwt_sign({"sub": user_key, "scope": scopes.join(" ")}, "", options)
 end
 
 # Verify an access token presented as a Bearer credential. Returns the claims,
@@ -165,7 +165,7 @@ def oidc_verify_access_token(token)
   return null if claims["scope"].nil?
   return null if OauthRevocation.revoked?(claims["jti"])
 
-  return claims
+  claims
 end
 
 # Pull a Bearer token out of the Authorization header. Header names arrive
@@ -174,7 +174,7 @@ def oidc_bearer_token(req)
   header = req["headers"]["authorization"].to_s
   return "" unless header.starts_with("Bearer ")
 
-  return header.substring(7, header.length()).trim()
+  header.substring(7, header.length()).trim()
 end
 
 # Human-readable scope text for the consent screen. A user cannot make a
@@ -186,11 +186,11 @@ def scope_description(scope)
   return "See your email address" if scope == "email"
   return "Stay signed in when you are away" if scope == "offline_access"
 
-  return scope.to_s
+  scope.to_s
 end
 
 def oidc_scope_list(scope_string)
   return [] if scope_string.blank?
 
-  return scope_string.to_s.trim().split(" ").filter(fn(s) { s.present? })
+  scope_string.to_s.trim().split(" ").filter(fn(s) { s.present? })
 end

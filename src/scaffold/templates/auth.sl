@@ -42,5 +42,5 @@ def authenticate(req) -> Any
   end
 
   # Authentication passed, continue to handler
-  return {"continue": true, "request": req}
+  {"continue": true, "request": req}
 end

@@ -89,11 +89,11 @@ soli serve . --dev        # then visit /signup, /login</code></pre>
   def update?
     return false unless this.signed_in?()   # guard the nil user first
 
-    return this.user["_key"] == this.record["author_id"]
+    this.user["_key"] == this.record["author_id"]
   end
 
   def destroy?
-    return this.update?()                   # same rule as update
+    this.update?()                   # same rule as update
   end
 end</code></pre>
             </div>

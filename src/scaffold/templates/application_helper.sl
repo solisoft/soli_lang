@@ -3,13 +3,13 @@
 # Truncate text to a maximum length with ellipsis
 def truncate_text(text: String, length: Int, suffix: String) -> String
   return text if len(text) <= length
-  return substring(text, 0, length - len(suffix)) + suffix
+  substring(text, 0, length - len(suffix)) + suffix
 end
 
 # Capitalize first letter of a string
 def capitalize(text: String) -> String
   return text if len(text) == 0
-  return upcase(substring(text, 0, 1)) + substring(text, 1, len(text))
+  upcase(substring(text, 0, 1)) + substring(text, 1, len(text))
 end
 
 # SEC-012: Reject href values that would let an attacker run JS through
@@ -31,33 +31,33 @@ def _is_safe_link_url(url)
   cut = q if q != -1 && q < cut
   h = lower.index_of("#")
   cut = h if h != -1 && h < cut
-  return !lower.substring(0, cut).contains(":")
+  !lower.substring(0, cut).contains(":")
 end
 
 def _safe_link_url(url)
   return url if _is_safe_link_url(url)
-  return "#"
+  "#"
 end
 
 # Generate an HTML link
 def link_to(text: String, url: String) -> String
-  return "<a href=\"" + html_escape(_safe_link_url(url)) + "\">" + html_escape(text) + "</a>"
+  "<a href=\"" + html_escape(_safe_link_url(url)) + "\">" + html_escape(text) + "</a>"
 end
 
 # Generate an HTML link with CSS class
 def link_to_class(text: String, url: String, css_class: String) -> String
   let href = html_escape(_safe_link_url(url))
-  return "<a href=\"" + href + "\" class=\"" + html_escape(css_class) + "\">" + html_escape(text) + "</a>"
+  "<a href=\"" + href + "\" class=\"" + html_escape(css_class) + "\">" + html_escape(text) + "</a>"
 end
 
 # Pluralize a word based on count
 def pluralize(count: Int, singular: String, plural: String) -> String
   return str(count) + " " + singular if count == 1
-  return str(count) + " " + plural
+  str(count) + " " + plural
 end
 
 # Simple pluralize (adds 's')
 def pluralize_simple(count: Int, word: String) -> String
   return str(count) + " " + word if count == 1
-  return str(count) + " " + word + "s"
+  str(count) + " " + word + "s"
 end

@@ -212,7 +212,7 @@ end
 ```soli
 this.before_action = fn(req) {
   if req.session["user_id"] == null {
-    return redirect("/login");
+    redirect("/login");
   }
   req  # Continue to action
 }

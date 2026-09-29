@@ -982,7 +982,7 @@ errors work:
 ```soli
 def find_user(id: Int) -> Hash
   throw {"code": 404, "message": "no such user"} if id < 1
-  return {"id": id}
+  {"id": id}
 end
 
 try

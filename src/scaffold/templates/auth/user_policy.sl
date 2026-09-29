@@ -7,32 +7,32 @@
 
 class UserPolicy < ApplicationPolicy
   def index?
-    return this.admin?()
+    this.admin?()
   end
 
   def show?
-    return this.owner_or_admin?()
+    this.owner_or_admin?()
   end
 
   def update?
-    return this.owner_or_admin?()
+    this.owner_or_admin?()
   end
 
   def create?
-    return this.admin?()
+    this.admin?()
   end
 
   def destroy?
-    return this.admin?()
+    this.admin?()
   end
 
   def admin?
-    return this.signed_in?() && this.user.admin?()
+    this.signed_in?() && this.user.admin?()
   end
 
   def owner_or_admin?
     return false unless this.signed_in?()
 
-    return this.user.admin?() || this.user["_key"] == this.record["_key"]
+    this.user.admin?() || this.user["_key"] == this.record["_key"]
   end
 end

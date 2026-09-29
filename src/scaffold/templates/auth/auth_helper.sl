@@ -6,9 +6,9 @@
 # globals in app/policies/application_policy.sl.
 
 def current_user
-  return req["current_user"] rescue null
+  req["current_user"] rescue null
 end
 
 def signed_in?
-  return !current_user().nil?
+  !current_user().nil?
 end

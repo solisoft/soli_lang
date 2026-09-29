@@ -291,8 +291,10 @@ Terse, idiomatic Soli. These rules hold across the app, specs included.
   `render` call, the action renders `controller/action` implicitly; otherwise
   `render("posts/new")`, or `render("posts/new", {}, {"status": 422})`. Avoid
   `@method` / `@view` (framework-ish names).
-  Specs: after an explicit `render`, `assigns()` sees only the hash passed to
-  `render`, not the `@fields` — assert on the body, or keep the implicit render.
+  Specs: `assigns()` sees the `@fields` with or without an explicit `render`.
+- **`return` is optional in a method** — its last expression is its value, so
+  end with `redirect("/")`, `@user.admin?()` or `{"continue": true}`, not
+  `return …`. Write `return` only for an early exit (`return x if …`).
 - **Ruby-style blocks for iteration** — `xs.map { |x| x * 2 }`,
   `xs.filter { |u| u.active }`, `xs.each do |x| … end` — not
   `xs.map(fn(x) { return x * 2 })`. A block's last expression is its value: no
@@ -301,6 +303,12 @@ Terse, idiomatic Soli. These rules hold across the app, specs included.
   line swallows the next statement) — and for `reduce(fn(acc, x) acc + x, 0)`:
   Ruby's `reduce(0) { |acc, x| … }` is not supported. Ranges are **exclusive**:
   Ruby's `(1..50).map` is `(1..51).map` here.
+- **No `return` on a method's last line** — the last expression is the value.
+  Keep it for a guard clause, inside a final `if`/`else` (`if` is a statement,
+  not an expression, so the method would return nothing), and before an
+  expression that would start the line with `(` or `fn(` (read as a call on
+  the previous line / a named function declaration — the server then refuses
+  to start). A `{…}` hash on the last line is fine.
 - **A blank line after every guard clause** (`return … if/unless …`,
   `next if …`), unless the next line is `end`, `else`/`elsif` or another guard.
 - **`[[` opens a raw string**: write `[ [a, b].max(), c ]`.

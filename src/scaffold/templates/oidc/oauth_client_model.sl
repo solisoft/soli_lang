@@ -78,7 +78,7 @@ class OauthClient < Model
   end
 
   def public?
-    return this.client_type == "public"
+    this.client_type == "public"
   end
 
   # Exact match against a registered URI — byte for byte, no prefix matching,
@@ -87,14 +87,14 @@ class OauthClient < Model
   def redirect_uri_allowed?(candidate)
     return false if candidate.to_s.blank?
 
-    return (this.redirect_uris ?? []).includes?(candidate.to_s)
+    (this.redirect_uris ?? []).includes?(candidate.to_s)
   end
 
   def authenticate_secret(secret)
     return false if this.client_secret_digest.blank?
     return false if secret.to_s.blank?
 
-    return Crypto.argon2_verify(secret.to_s, this.client_secret_digest)
+    Crypto.argon2_verify(secret.to_s, this.client_secret_digest)
   end
 
   # Narrow a requested scope set to what this client may actually have. An
@@ -102,10 +102,10 @@ class OauthClient < Model
   def allowed_scopes(requested)
     granted = this.scopes ?? []
 
-    return requested.filter(fn(scope) { granted.includes?(scope) && OIDC_SUPPORTED_SCOPES.includes?(scope) })
+    requested.filter(fn(scope) { granted.includes?(scope) && OIDC_SUPPORTED_SCOPES.includes?(scope) })
   end
 
   def supports_grant?(grant_type)
-    return (this.grant_types ?? []).includes?(grant_type.to_s)
+    (this.grant_types ?? []).includes?(grant_type.to_s)
   end
 end

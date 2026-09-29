@@ -641,7 +641,7 @@ end
 
 class User < Model
   def followers()
-    return this.traverse(Follow, { "direction": "in" })
+    this.traverse(Follow, { "direction": "in" })
   end
 end
 

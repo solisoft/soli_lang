@@ -4883,7 +4883,7 @@ The cache is thread-local and cleared automatically when view helpers hot-reload
 def locale_table(locale)
     cached = I18n.cached_table(locale)
     return cached unless cached.nil?
-    return I18n.cache_table(locale, build_table(locale))  # built once per thread
+    I18n.cache_table(locale, build_table(locale))  # built once per thread
 end
 ```
 
@@ -6447,7 +6447,7 @@ def upload
   medium.to_file("public/uploads/avatar_medium.jpg")
   small.to_file("public/uploads/avatar_small.jpg")
 
-  return { "status": 200, "body": "Upload complete" }
+  { "status": 200, "body": "Upload complete" }
 end
 ```
 

@@ -201,6 +201,6 @@ def notify
     getenv("VAPID_PUBLIC_KEY"),
     "mailto:ops@example.com"
   )
-  return { "status": result["status"] }
+  { "status": result["status"] }
 end
 ```

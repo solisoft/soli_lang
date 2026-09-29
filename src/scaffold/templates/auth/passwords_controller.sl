@@ -111,7 +111,7 @@ class PasswordsController < Controller
     session_set("user_id", user["_key"])
     # Stamped so a later password reset can invalidate this session.
     session_set("session_version", user.current_session_version())
-    return redirect("/")
+    redirect("/")
   end
 
   # Re-render the "choose a new password" form with an error, keeping the
@@ -135,6 +135,6 @@ class PasswordsController < Controller
     user = User.find_by("reset_token_digest", Crypto.sha256(token.to_s))
     return null if user.nil?
     return null if user.reset_token_expired?()
-    return user
+    user
   end
 end

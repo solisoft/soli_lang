@@ -15,7 +15,7 @@ def update
   post = Post.find(params["id"])
   authorize(post)            # 403 unless PostPolicy#update? is true
   post.update(this._permit_params(params))
-  return redirect(post_path(post))
+  redirect(post_path(post))
 end
 ```
 
@@ -33,7 +33,7 @@ class PostPolicy < ApplicationPolicy
   def update?
     return false unless signed_in?()      # `this.user` is the current user
 
-    return this.user["_key"] == this.record["author_id"]
+    this.user["_key"] == this.record["author_id"]
   end
 end
 ```

@@ -100,7 +100,7 @@ class SessionsController < Controller
       })
     end
 
-    return redirect("/")
+    redirect("/")
   end
 
   # Re-render the sign-in form with an error and an accurate status code.
@@ -133,6 +133,6 @@ class SessionsController < Controller
       "secure": true
     })
     session_destroy()
-    return redirect("/login")
+    redirect("/login")
   end
 end

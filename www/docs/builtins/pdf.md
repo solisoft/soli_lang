@@ -62,7 +62,7 @@ Render **and** wrap as a ready HTTP response — return it straight from a contr
 def download
   let tpl  = slurp("pdf/invoice.json")
   let data = Invoice.find(params["id"]).to_json()
-  return pdf_response(tpl, data, { "filename": "invoice-" + params["id"] + ".pdf" })
+  pdf_response(tpl, data, { "filename": "invoice-" + params["id"] + ".pdf" })
 end
 ```
 
@@ -116,7 +116,7 @@ One page as a ready `image/png` response — the preview mirror of `pdf_response
 def thumbnail
   let tpl  = slurp("pdf/invoice.json")
   let data = Invoice.find(params["id"]).to_json()
-  return pdf_preview_response(tpl, data, { "page": 1, "width": 480 })
+  pdf_preview_response(tpl, data, { "page": 1, "width": 480 })
 end
 ```
 

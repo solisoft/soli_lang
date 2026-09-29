@@ -347,7 +347,7 @@ render_json({ "error": "Not found" }, 404)</code></pre>
                     </p>
                     <pre class="mt-2"><code class="language-soli text-sm">class User &lt; Model
   def as_json
-    return { "id": this._key, "email": this.email, "name": this.name }
+    { "id": this._key, "email": this.email, "name": this.name }
   end
 end
 
