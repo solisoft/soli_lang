@@ -55,7 +55,7 @@ pub fn check_nil_comparison(
     diagnostics.push(LintDiagnostic {
         rule: "idiom/nil-comparison",
         message: format!(
-            "prefer `{suggestion}` over `{op_str} null` — it reads better and \
+            "prefer `{suggestion}` over `{op_str} nil` — it reads better and \
              handles the nil case directly"
         ),
         span,

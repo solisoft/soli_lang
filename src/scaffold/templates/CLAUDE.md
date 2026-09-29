@@ -284,6 +284,8 @@ Terse, idiomatic Soli. These rules hold across the app, specs included.
     function `response()` for everyone, silently. Better: rename the variable
     (`request_url`, `request_opts`, `result`). Check a name with
     `soli -e 'print(defined("url"))'`.
+- **`nil`, not `null`** — the same value, but write `nil` (`rescue nil`,
+  `return nil if …`). `null` stays inside SDBQL strings and JSON.
 - **`@field`, not `this.field`** (`@method` too), in any instance method.
   `this` stays only in `static { … }` blocks (`this.layout = …`) and
   `static def`.
@@ -409,7 +411,7 @@ label = match value {
 
 # Postfix conditionals (idiomatic)
 print("adult") if age >= 18
-data = fetch() rescue null         # returns null if fetch() throws
+data = fetch() rescue nil          # nil if fetch() throws
 
 # Concise defaults and guards
 @balance ||= 0                     # ||= sets when nil/false
@@ -706,7 +708,7 @@ French and a JSON API in English do not share a message; they share a rule.
 
 ```soli
 # Model — the rule, and nothing about how it will be said
-static def conflicting(opening, point_of_sale_id)   # -> the clashing record, or null
+static def conflicting(opening, point_of_sale_id)   # -> the clashing record, or nil
 
 # Back-office                            # API
 return "cette plage en heurte une autre" # return "conflicts with an existing opening"
@@ -836,7 +838,7 @@ Key rules:
 - `smell/unreachable-code`, `smell/empty-catch`, `smell/duplicate-methods`, `smell/dangerous-server-builtin` (flags `db_query_raw` / `Trusted.*` / `System.shell` / backticks in `app/controllers/`, `app/middleware/`, `app/views/`)
 - `smell/deep-nesting` (≤4 levels)
 - `smell/undefined-local` — reads of a name never assigned in scope (catches typos)
-- `idiom/nil-comparison`, `idiom/prefer-blank` — prefer `.nil?`/`.present?`/`.blank?` over `== null` / `== ""`
+- `idiom/nil-comparison`, `idiom/prefer-blank` — prefer `.nil?`/`.present?`/`.blank?` over `== nil` / `== ""`
 - `idiom/prefer-includes` — replace 3+ same-value `==`/`!=` comparisons with `.includes?`
 - `idiom/manual-find-guard` — drop the nil-check after `Model.find` (it raises; use `find_by`/`first_by` for "or nil")
 - `security/unfiltered-mass-assignment` — `Model.create(params)` in controllers/services; whitelist with `permit` / `_permit_params`

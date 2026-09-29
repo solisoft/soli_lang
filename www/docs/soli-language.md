@@ -4217,7 +4217,7 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
 | `smell/duplicate-methods` | A class should not have two methods with the same name |
 | `smell/dangerous-server-builtin` | Calls to `db_query_raw`, `Trusted.*`, `System.shell` / `System.shell_sync`, or backtick command substitution from `app/controllers/`, `app/middleware/`, or `app/views/`. Suggests the safe alternative: parameterised `@sdbql{ ... #{value} ... }`, the jailed `File.*` API, or `System.run([...])` with an argv array. Models, migrations, and tests are out of scope. |
 | `style/redundant-model-import` | No `import "../models/*.sl"` inside `app/controllers/` — models are auto-loaded |
-| `idiom/nil-comparison` | Prefer `.nil?` / `.present?` over `== null` / `!= null` |
+| `idiom/nil-comparison` | Prefer `.nil?` / `!x.nil?` over `== nil` / `!= nil` (also catches `null`) |
 | `idiom/prefer-blank` | Prefer `.blank?` / `.present?` over comparing to an empty string (`.blank?` also covers nil) |
 | `idiom/prefer-includes` | Replace a chain of 3+ same-value `==`/`!=` comparisons with `.includes?` |
 | `idiom/prefer-to-s` | Prefer `.to_s` over `?? ""` — it renders nil as the empty string, and gives the expression one type instead of two |
@@ -4376,6 +4376,8 @@ Soli is written Ruby-style — in apps, specs, docs and `soli new` scaffolds ali
 - **A blank line after every guard clause** (`return … if/unless …`,
   `next if …`), unless the next line is `end`, `else`/`elsif` or another guard.
   `soli fmt` inserts it.
+- **`nil`, not `null`** — the same value (`nil == null`), but write `nil`;
+  `null` stays inside SDBQL strings and JSON, and is what `print` shows.
 - **No `let` by default, no semicolons** — `name = value`; `let` for a type
   annotation or to avoid mutating an outer variable.
 - **Ranges are exclusive**: `(1..51).map { |i| … }` yields 1 to 50 — Ruby's

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Documentation
+
+* **docs(style):** **`nil`, not `null`.** The two are the same value on both engines (`nil == null`, `.nil?`, `rescue nil`, `match nil`, `??`, `compact` checked), and the house style now writes `nil`: `CLAUDE.md`, the `soli new` guides, the language reference's Code Style and the Soli skill say so and their examples follow. `null` stays where it is not Soli — SDBQL strings (`where("doc.slug != null")`), JSON, quoted runtime errors, and what `print`/`type()` show. The `idiom/nil-comparison` message now reads ``prefer `x.nil?` over `== nil` `` (it catches `null` too), and the linting docs no longer show `!= null` → `.present?`, a rewrite the rule stopped suggesting because `"" != nil` is true while `"".present?` is false.
+
 ## [2.7.0] - 2026-09-29
 
 ### Dev tools

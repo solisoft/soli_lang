@@ -152,7 +152,7 @@ end
 
 # Postfix rescue - returns fallback if expr throws
 result = risky_operation() rescue "default"
-data = fetch_data() rescue null
+data = fetch_data() rescue nil
 ```
 
 ## Code style
@@ -193,6 +193,10 @@ Ruby-style, terse Soli — in code, specs, docs and scaffolds alike.
     "error"
   end
   ```
+- **`nil`, not `null`** — the same value (`nil == null`, `.nil?` on both), but
+  write `nil`: `rescue nil`, `x ?? nil`, `return nil if …`. `null` stays where
+  it is not Soli: SDBQL strings (`where("doc.slug != null")`), JSON, and what
+  `print`/`type()` show (`null`, `"null"`).
 - **No `let` by default, no semicolons** — `name = value`; `let` only for a type
   annotation or when a bare assignment would mutate an outer variable or shadow
   a function.
@@ -334,7 +338,7 @@ soli lint path/to/file.sl   # Lint specific file
 - `smell/deep-nesting` - nesting ≤4 levels
 - `smell/undefined-local` - reads of a bare name never assigned in the function scope (catches typos that bypass `let` because `let` is optional)
 - `smell/closure-cycle` - a closure assigned onto `this` (`this.x = fn…`, `@x = |y| …`, `this.h["k"] = fn…`) captures the env holding `this`, so instance and closure never free; store a method name or pass the closure per call
-- `idiom/nil-comparison` - prefer `.nil?` / `.present?` over `== null` / `!= null`
+- `idiom/nil-comparison` - prefer `.nil?` / `!x.nil?` over `== nil` / `!= nil` (also catches `null`)
 - `idiom/prefer-blank` - prefer `.blank?` / `.present?` over comparing to `""`
 - `idiom/prefer-includes` - replace a chain of 3+ same-value `==`/`!=` comparisons with `.includes?`
 - `idiom/prefer-to-s` - prefer `.to_s` over `?? ""` (a real fallback like `?? "Guest"` is left alone)
@@ -480,7 +484,7 @@ Soli provides session management with pluggable storage backends.
 ### Session Functions
 ```soli
 session_set("user_id", 123)      # Store value in session
-session_get("user_id")            # Retrieve value (returns null if not found)
+session_get("user_id")            # Retrieve value (returns nil if not found)
 session_has("user_id")            # Check if key exists
 session_delete("user_id")         # Remove a key from session
 session_destroy()                 # Destroy entire session
@@ -591,7 +595,7 @@ single = r"C:\Users\name"   # raw, single-line
 
 - **Files are executable top-to-bottom** - No separate `main()` function needed
 - **Semicolons optional** - Statements end at line breaks (but `;` is allowed)
-- **Truthiness** - `false`, `null`, `0`, `""`, `[]` and `{}` are falsy. Everything else is truthy — including `0.0`, which is *not* falsy even though `0` is. This is Python-like, not Ruby-like: `if xs.length` is a valid emptiness test, and `count ||= 10` replaces a zero count
+- **Truthiness** - `false`, `nil`, `0`, `""`, `[]` and `{}` are falsy. Everything else is truthy — including `0.0`, which is *not* falsy even though `0` is. This is Python-like, not Ruby-like: `if xs.length` is a valid emptiness test, and `count ||= 10` replaces a zero count
 - **Classes inherit from Object** - Built-in methods available on all objects
 - **HTML escaping** - `<%= %>` escapes automatically; `h()` there double-escapes. Use `<%- %>` only for markup you built yourself, and `json_script()` for JSON inside a `<script>`
 

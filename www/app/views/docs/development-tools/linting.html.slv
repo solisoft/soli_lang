@@ -204,14 +204,14 @@ this.on_save = "log"</code></pre>
         <div class="space-y-4 mb-8">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <code class="text-amber-400 font-mono text-sm">idiom/nil-comparison</code>
-                <p class="text-gray-400 mt-2">Prefer <code class="text-amber-400">.nil?</code> / <code class="text-amber-400">.present?</code> over comparing to <code>null</code>.</p>
+                <p class="text-gray-400 mt-2">Prefer <code class="text-amber-400">.nil?</code> / <code class="text-amber-400">!x.nil?</code> over comparing to <code>nil</code> (or <code>null</code>, the same value). <code>!x.nil?</code> rather than <code>.present?</code>: <code>"" != nil</code> is true while <code>"".present?</code> is false.</p>
                 <pre class="mt-3"><code class="language-soli text-sm"># Bad
-if user == null end
-return user != null
+if user == nil end
+return user != nil
 
 # Good
 if user.nil? end
-return user.present?</code></pre>
+return !user.nil?</code></pre>
             </div>
 
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">

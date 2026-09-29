@@ -122,7 +122,7 @@ Correct code that reads better with a builtin.
 
 | Rule | Instead of | Write |
 |---|---|---|
-| `idiom/nil-comparison` | `user == null` | `user.nil?` / `user.present?` |
+| `idiom/nil-comparison` | `user == nil` / `user != nil` (or `null`) | `user.nil?` / `!user.nil?` |
 | `idiom/prefer-blank` | `name == ""` | `name.blank?` (covers nil too) |
 | `idiom/prefer-includes` | three or more `==` on one value | `["up", "late"].includes?(status)` |
 | `idiom/prefer-to-s` | `record.title ?? ""` | `record.title.to_s` |

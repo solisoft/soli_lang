@@ -183,8 +183,8 @@ chain with one of:
 | `.pluck("field")`  | Array of values.                                          |
 | `.sum/avg/min/max("field")` | Numeric aggregate.                              |
 | `.group_by(field, func, agg_field)` | Array of `{group, result}` hashes.       |
-| `.delete_all`      | Bulk hard-delete every row matching the scope (one AQL `REMOVE`). Returns `null`. |
-| `.update_all({...})` | Bulk-patch every row matching the scope with the hash (one AQL `UPDATE`). Returns `null`. |
+| `.delete_all`      | Bulk hard-delete every row matching the scope (one AQL `REMOVE`). Returns `nil`. |
+| `.update_all({...})` | Bulk-patch every row matching the scope with the hash (one AQL `UPDATE`). Returns `nil`. |
 
 ```soli
 recent = Post
@@ -281,7 +281,7 @@ Pass an options hash to `validates`. All keys are optional; combine freely.
 
 | Option                 | Effect                                                                     |
 |------------------------|----------------------------------------------------------------------------|
-| `"presence": true`     | Required; rejects `null`, `""`, missing.                                    |
+| `"presence": true`     | Required; rejects `nil`, `""`, missing.                                     |
 | `"uniqueness": true`   | Best-effort pre-check + relies on a unique DB index for atomicity.          |
 | `"min_length": N`      | String length ≥ N.                                                          |
 | `"max_length": N`      | String length ≤ N.                                                          |
@@ -540,7 +540,7 @@ end
 
 `dev_queries()` returns the AQL stack issued for the current request when the
 server runs with `--dev`. Each entry is `{ "query": String, "bind_vars":
-Hash | null, "duration_ms": Float }`. Useful for building a debug bar or
+Hash | nil, "duration_ms": Float }`. Useful for building a debug bar or
 spotting N+1s.
 
 ```erb

@@ -265,7 +265,7 @@ call from a spec:
 
 The indexes are the production ones, unique ones included: two fixtures with
 the same value in a uniquely indexed field fail on the second `create` (its
-`_key` comes back null), as they would in production. Give each fixture its
+`_key` comes back nil), as they would in production. Give each fixture its
 own value.
 
 ## Style
