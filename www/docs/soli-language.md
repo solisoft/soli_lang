@@ -4349,130 +4349,126 @@ require('lspconfig').soli.setup({
 
 ## Best Practices
 
+### Code style
+
+Soli is written Ruby-style — in apps, specs, docs and `soli new` scaffolds alike.
+
+- **`@field`, not `this.field`** — and `@method()` to call a method on the
+  current object, in any instance method or constructor. `this` stays where there
+  is no instance: `static { … }` blocks, `static def`, `class_methods`, scope
+  bodies (`scope("x", fn() { this.where(...) })`), or the object itself as a
+  value (`validate(this)`).
+- **Ruby-style blocks for iteration** — `xs.map { |x| x * 2 }`,
+  `xs.each do |x| … end` — not `xs.map(fn(x) { return x * 2 })`. A block's last
+  expression is its value. Keep `fn` for a lambda kept in a variable (with
+  braces: `double = fn(x) { x * 2 }`), for `reduce(fn(acc, x) acc + x, 0)`,
+  `grouped(fn() { … })`, pipelines, and function values in a hash.
+- **Implicit returns** — the last expression is the value; `return` is for early
+  exits.
+- **A blank line after every guard clause** (`return … if/unless …`,
+  `next if …`), unless the next line is `end`, `else`/`elsif` or another guard.
+  `soli fmt` inserts it.
+- **No `let` by default, no semicolons** — `name = value`; `let` for a type
+  annotation or to avoid mutating an outer variable.
+- **Ranges are exclusive**: `(1..51).map { |i| … }` yields 1 to 50 — Ruby's
+  `(1..50)` gives 49 items here.
+
 ### Variables & Types
 
 ```soli
-# Good: Use type inference when obvious
-count = 10;
-name = "Alice";
+# Good: type inference when obvious
+count = 10
+name = "Alice"
 
-# Good: Add annotations for public API or complex types
-pub fn process_user(user_id: Int) -> User {
-  # ...
-}
+# Good: meaningful names
+items_per_page = 25
+max_retry_attempts = 3
 
-# Good: Use meaningful names
-items_per_page = 25;
-max_retry_attempts = 3;
-
-# Avoid: Single-letter names except for loop variables
-c = 10;           # Bad
-item_count = 10;  # Good
+# Avoid: single-letter names except loop indices and short blocks
+c = 10            # Bad
+item_count = 10   # Good
 ```
 
 ### Functions
 
 ```soli
-# Good: Single responsibility
-def validate_email(email: String) -> Bool {
+# Good: single responsibility, the last expression is the result
+def validate_email(email: String) -> Bool
   email.contains("@") && email.contains(".")
-}
+end
 
-# Good: Descriptive names
-def calculate_total_with_tax() -> Float {
-  # ...
-}
+# Good: guard clauses, then a blank line, then the main path
+def process_order(order: Hash) -> Hash
+  return {"error": "Missing items"} unless order.has_key("items")
+  return {"error": "Missing customer"} unless order.has_key("customer")
 
-# Good: Limit parameters
-def create_user(info: Hash) -> User {
-  # Instead of: def create_user(name, email, age, address, phone)
-}
+  {"total": order["items"].map { |item| item["price"] }.sum()}
+end
 
-# Good: Early returns for validation
-def process_order(order: Hash) -> Result {
-  if (!has_key(order, "items")) {
-    return {"error": "Missing items"};
-  }
-  if (!has_key(order, "customer")) {
-    return {"error": "Missing customer"};
-  }
-  # Main logic...
-}
+# Good: limit parameters — pass a hash instead of five positional ones
+def create_user(info: Hash) -> User
+  User.create(info)
+end
 ```
 
 ### Collections
 
 ```soli
-# Good: Initialize with known values
-weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+# Good: bounds check as a guard
+def safe_get(items: Array, index: Int) -> Any
+  return nil unless index >= 0 && index < items.length
 
-# Good: Check bounds
-def safe_get(arr: Array, index: Int) -> Any? {
-  if (index >= 0 && index < len(arr)) {
-    return arr[index];
-  }
-  null
-}
+  items[index]
+end
 
-# Good: Use functional methods for transformations
-doubled = numbers.map(fn(x) x * 2);
-evens = numbers.filter(fn(x) x % 2 == 0);
+# Good: Ruby-style blocks for transformations
+doubled = numbers.map { |x| x * 2 }
+evens = numbers.filter { |x| x % 2 == 0 }
+total = numbers.reduce(fn(sum, x) sum + x, 0)   # reduce takes the function first
 ```
 
 ### Classes
 
 ```soli
-# Good: Single responsibility
-class User {}
-class UserRepository {}
-class UserService {}
+# Good: @field inside the class, no `this.`
+class BankAccount
+  balance: Float
 
-# Good: Program to interfaces
-interface Repository {
-  def find(id: Int) -> Any?;
-  def save(entity: Any);
-}
+  new(balance: Float = 0.0)
+    @balance = balance
+  end
 
-# Good: Use private fields for encapsulation
-class BankAccount {
-  private balance: Float;
+  def deposit(amount: Float) -> Float
+    return @balance if amount <= 0
 
-  public def deposit(amount: Float) {
-    # ...
-  }
+    @balance += amount
+  end
 
-  public def get_balance() -> Float {
-    this.balance
-  }
-}
+  def statement -> String
+    "Balance: #{@balance}"
+  end
+end
 ```
 
 ### Control Flow
 
 ```soli
-# Good: Avoid deep nesting
-def process(data: Hash) -> Result {
-  if (data == null) {
-    return {"error": "No data"};
-  }
+# Good: guard clauses instead of nested ifs
+def process(data)
+  return {"error": "No data"} if data.nil?
+  return {"error": "Missing required field"} unless data.has_key("required")
 
-  if (!has_key(data, "required")) {
-    return {"error": "Missing required field"};
-  }
-
-  # Main logic at less indentation
   do_processing(data)
-}
+end
 
-# Good: Use pattern matching for complex conditions
-def handle_event(event: Hash) -> String {
+# Good: pattern matching for complex conditions (hash patterns use bare keys)
+def handle_event(event) -> String
   match event {
-    {"type": "click", "element": "button"} => "Button clicked",
-    {"type": "submit", "form": form} => "Form submitted",
-    {"type": "error", "message": msg} => "Error: " + msg,
-    _ => "Unknown event",
+    {type: "click"} => "Button clicked",
+    {type: "error", message: msg} => "Error: #{msg}",
+    _ => "Unknown event"
   }
-}
+end
 ```
 
 ---

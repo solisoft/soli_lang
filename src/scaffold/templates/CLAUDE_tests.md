@@ -54,6 +54,11 @@ describe("PostsController") do
 end
 ```
 
+> `assigns()` after an **explicit** `render("view")` holds only the hash passed to
+> `render` — not the controller's `@fields` (the view still gets them). With the
+> implicit render (no `render` call) the `@fields` are there. Assert on the body
+> when the action must call `render`.
+
 Keywords:
 
 | Keyword                         | What it does                                              |
@@ -104,12 +109,12 @@ as the dev bar's N+1 badge). Assert on them to keep a list/index endpoint from
 regressing into a query-per-row loop:
 
 ```soli
-test("posts index does not N+1", fn() {
-    let response = get("/posts")
-    assert_eq(res_status(response), 200)
-    assert_no_n_plus_one(response)     # preload with includes(...) if this trips
-    assert_max_queries(response, 3)    # or pin a budget
-})
+test("posts index does not N+1") do
+  response = get("/posts")
+  assert_eq(res_status(response), 200)
+  assert_no_n_plus_one(response)     # preload with includes(...) if this trips
+  assert_max_queries(response, 3)    # or pin a budget
+end
 ```
 
 **The check is opt-in, and that is the trap.** `assert_no_n_plus_one(response)`
@@ -187,8 +192,7 @@ def upload(path, field, filename, content_type, body)
   set_header("Content-Type", "multipart/form-data; boundary=#{boundary}")
   response = post(path, payload)
   clear_headers()
-
-  return response
+  response
 end
 ```
 

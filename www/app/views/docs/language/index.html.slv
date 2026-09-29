@@ -155,6 +155,52 @@ soli build --release</code></pre>
         </section>
     </section>
 
+    <!-- Code Style -->
+    <section id="section-code-style" class="scroll-mt-20 mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h10M4 18h16" />
+                </svg>
+            </span>
+            Code Style
+        </h2>
+        <p class="text-gray-400 mb-6">
+            Soli is written Ruby-style &mdash; in apps, specs, docs and the <code class="text-amber-400">soli new</code> scaffolds alike.
+        </p>
+        <ul class="space-y-3 text-gray-400 mb-8 list-disc pl-6">
+            <li><strong class="text-white"><code class="text-amber-400">@field</code>, not <code class="text-amber-400">this.field</code></strong> &mdash; and <code class="text-amber-400">@method()</code> to call a method on the current object, in any instance method or constructor. <code class="text-amber-400">this</code> stays where there is no instance: <code class="text-amber-400">static { &hellip; }</code> blocks, <code class="text-amber-400">static def</code>, <code class="text-amber-400">class_methods</code>, scope bodies, or the object itself as a value.</li>
+            <li><strong class="text-white">Ruby-style blocks for iteration</strong> &mdash; <code class="text-amber-400">xs.map { |x| x * 2 }</code>, <code class="text-amber-400">xs.each do |x| &hellip; end</code> &mdash; not <code class="text-amber-400">xs.map(fn(x) { return x * 2 })</code>. Keep <code class="text-amber-400">fn</code> for a lambda kept in a variable (with braces: <code class="text-amber-400">double = fn(x) { x * 2 }</code>), for <code class="text-amber-400">reduce(fn(acc, x) acc + x, 0)</code>, <code class="text-amber-400">grouped(fn() { &hellip; })</code> and pipelines.</li>
+            <li><strong class="text-white">Implicit returns</strong> &mdash; the last expression is the value; <code class="text-amber-400">return</code> is for early exits.</li>
+            <li><strong class="text-white">A blank line after every guard clause</strong> (<code class="text-amber-400">return &hellip; if/unless &hellip;</code>, <code class="text-amber-400">next if &hellip;</code>), unless the next line is <code class="text-amber-400">end</code>, <code class="text-amber-400">else</code>/<code class="text-amber-400">elsif</code> or another guard. <code class="text-amber-400">soli fmt</code> inserts it.</li>
+            <li><strong class="text-white">No <code class="text-amber-400">let</code> by default, no semicolons</strong> &mdash; <code class="text-amber-400">name = value</code>.</li>
+            <li><strong class="text-white">Ranges are exclusive</strong>: <code class="text-amber-400">(1..51).map { |i| &hellip; }</code> yields 1 to 50 &mdash; Ruby&rsquo;s <code class="text-amber-400">(1..50)</code> gives 49 items here.</li>
+        </ul>
+        <pre data-filename="style.sl"><code class="language-soli text-sm">class BankAccount
+  balance: Float
+
+  new(balance: Float = 0.0)
+    @balance = balance
+  end
+
+  def deposit(amount: Float) -> Float
+    return @balance if amount <= 0
+
+    @balance += amount
+  end
+end
+
+rows = (1..51).map { |i| { id: i, title: "Post title #{i}", views: i * 7 } }
+active_names = users.filter { |u| u.active }.map { |u| u.name }
+
+def status_label(code)
+  return "ok" if code == 200
+  return "moved" if code == 301
+
+  "error"
+end</code></pre>
+    </section>
+
     <!-- Quick Reference -->
     <section class="mb-16">
         <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">

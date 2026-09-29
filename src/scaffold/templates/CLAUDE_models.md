@@ -35,7 +35,7 @@ class Post < Model
 
   # Instance methods (your own logic)
   def normalize_title
-    this.title = this.title.trim()
+    @title = @title.trim()
   end
 
   def notify_subscribers
@@ -154,8 +154,8 @@ the hash form isn't expressive enough (range, OR, function calls).
 ### 3. Raw `@sdbql{ ... }` (when the ORM doesn't fit)
 
 ```soli
-let min_age = 18
-let users = @sdbql{
+min_age = 18
+users = @sdbql{
   FOR u IN users
   FILTER u.age >= #{min_age}
   SORT u.name ASC
@@ -187,13 +187,13 @@ chain with one of:
 | `.update_all({...})` | Bulk-patch every row matching the scope with the hash (one AQL `UPDATE`). Returns `null`. |
 
 ```soli
-let recent = Post
+recent = Post
   .where({ "status": "published" })
   .order("created_at", "desc")
   .limit(20)
   .all
 
-let total_views = Post.where({ "user_id": user.id }).sum("views")
+total_views = Post.where({ "user_id": user.id }).sum("views")
 ```
 
 `.delete_all` / `.update_all` are **scoped bulk writes** — they act only on the
@@ -288,7 +288,7 @@ Pass an options hash to `validates`. All keys are optional; combine freely.
 | `"format": "regex"`    | String matches the pattern.                                                 |
 | `"numericality": true` | Value is a number.                                                          |
 | `"min": N` / `"max": N`| Numeric bounds.                                                             |
-| `"custom": "method"`   | Calls `this.method()` for full custom checks; method appends to `_errors`.  |
+| `"custom": "method"`   | Calls `@method()` for full custom checks; method appends to `_errors`.       |
 
 ```soli
 class User < Model
@@ -297,9 +297,9 @@ class User < Model
   validates("name",  { "custom": "validate_name" })
 
   def validate_name
-    if this.name.blank? || this.name.length() < 2
-      this._errors.push({ "field": "name", "message": "too short" })
-    end
+    return unless @name.blank? || @name.length() < 2
+
+    @_errors.push({ "field": "name", "message": "too short" })
   end
 end
 ```
@@ -311,7 +311,7 @@ end
 ```soli
 @user = User.create(params)
 if @user._errors
-  @user._errors.each(fn(err) print("#{err.field}: #{err.message}"))
+  @user._errors.each { |err| print("#{err.field}: #{err.message}") }
 end
 ```
 
@@ -345,7 +345,7 @@ Conventions:
 Avoid N+1 by pre-loading on the query:
 
 ```soli
-let posts = Post.where({...}).includes("user", "comments").all
+posts = Post.where({...}).includes("user", "comments").all
 # posts[0].user and posts[0].comments are now materialized in memory
 ```
 
@@ -393,7 +393,7 @@ class Post < Model
   after_create("notify_subscribers")
 
   def normalize_title
-    this.title = this.title.trim()
+    @title = @title.trim()
   end
 
   def notify_subscribers
@@ -402,7 +402,7 @@ class Post < Model
 end
 ```
 
-A `before_*` callback that mutates `this._errors` (or returns `false`,
+A `before_*` callback that mutates `@_errors` (or returns `false`,
 depending on hook) aborts the operation.
 
 ## Other class-body helpers
@@ -481,10 +481,8 @@ error-rendering flow used by `Model.create` validation failures.
 
 ```soli
 def create
-  @contact = Contact.create(this._permit_params(params))
-  if @contact._errors
-    return render("contacts/new")
-  end
+  @contact = Contact.create(@_permit_params(params))
+  return render("contacts/new") if @contact._errors
 
   photo = find_uploaded_file(params, "photo")
   if !photo.nil? && !@contact.attach_photo(photo)

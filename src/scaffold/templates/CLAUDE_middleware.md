@@ -18,7 +18,7 @@ and orders them by per-function `# order:` directives.
 
 def authenticate(req)
   api_key = req["headers"]["x-api-key"].to_s
-  if api_key == ""
+  if api_key.blank?
     return {
       "continue": false,
       "response": {
@@ -29,7 +29,7 @@ def authenticate(req)
     }
   end
 
-  return { "continue": true, "request": req }
+  { "continue": true, "request": req }
 end
 ```
 
@@ -55,7 +55,7 @@ middleware feeds data forward:
 ```soli
 def attach_request_id(req)
   req["request_id"] = uuid()       # new field for downstream layers
-  return { "continue": true, "request": req }
+  { "continue": true, "request": req }
 end
 ```
 
@@ -175,7 +175,7 @@ middleware("authenticate", -> {
 
 def authenticate(req)
   user_id = session_get("user_id")
-  if user_id == nil
+  if user_id.nil?
     return {
       "continue": false,
       "response": { "status": 302, "headers": { "Location": "/login" }, "body": "" }
@@ -183,7 +183,7 @@ def authenticate(req)
   end
 
   req["current_user"] = User.find_by("id", user_id)
-  return { "continue": true, "request": req }
+  { "continue": true, "request": req }
 end
 ```
 
@@ -197,7 +197,7 @@ The handler reads `req["current_user"]` without needing to look it up again.
 
 def request_log(req)
   print("#{req[\"method\"]} #{req[\"path\"]}")
-  return { "continue": true, "request": req }
+  { "continue": true, "request": req }
 end
 ```
 
@@ -214,7 +214,8 @@ def rate_limit(req)
       "response": { "status": 429, "body": "Too many requests" }
     }
   end
-  return { "continue": true, "request": req }
+
+  { "continue": true, "request": req }
 end
 
 def _allow(key)    # private, not registered as middleware

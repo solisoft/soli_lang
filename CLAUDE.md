@@ -42,128 +42,172 @@ Prefer the bare `name = value` form. Reach for `let` only when it earns its keep
 
 ### Functions
 ```soli
-def add(a: Int, b: Int) -> Int {
-    return a + b;
-}
+def add(a: Int, b: Int) -> Int
+  a + b                         # the last expression is the return value
+end
 
-// Optional parentheses for no-param functions
-def greet {
-    "Hello!"
-}
+# Optional parentheses for no-param functions
+def greet
+  "Hello!"
+end
 
-// Default and named parameters
-def configure(host: String = "localhost", port: Int = 8080) -> Void {
-    print("Connecting to #{host}:#{port}");
-}
-configure(port: 3000, host: "example.com");  // Named params in any order
+# Default and named parameters
+def configure(host: String = "localhost", port: Int = 8080) -> Void
+  print("Connecting to #{host}:#{port}")
+end
+configure(port: 3000, host: "example.com")   # named params in any order
 ```
 
 ### Lambdas and Pipelines
 ```soli
-// fn() syntax
-let add = fn(a, b) { return a + b; };
+# A lambda kept in a variable: braces, no `return`
+add = fn(a, b) { a + b }
+double = |x| { x * 2 }
 
-// Pipe syntax
-let double = |x| { return x * 2; };
-
-// Pipeline for chaining
-let result = 5 |> double() |> addOne();
-[1, 2, 3] |> map(fn(x) x * 2) |> filter(fn(x) x > 2);
+# Pipelines feed your own functions (there is no global `map`)
+result = 5 |> double() |> add_one()
 ```
 
 ### Collections
 
 **Arrays:**
 ```soli
-let numbers = [1, 2, 3, 4, 5];
-let combined = [...a, ...b];
+numbers = [1, 2, 3, 4, 5]
+combined = [...a, ...b]
 
-numbers.map(fn(x) x * 2);
-numbers.filter(fn(x) x > 2);
-numbers.each(fn(x) print(x));
+numbers.map { |x| x * 2 }
+numbers.filter { |x| x > 2 }
+numbers.each do |x|
+  print(x)
+end
+
+# Ranges are exclusive: Ruby's (1..50) is (1..51) here — 50 rows
+rows = (1..51).map { |i| { id: i, title: "Post title #{i}", views: i * 7 } }
 ```
 
 **Hashes:**
 ```soli
-let person = {"name": "Alice", "age": 30};
-person.name;           // Dot notation preferred
-person["name"];        // Bracket notation also works
-person.keys();
-person.has_key("name");
+person = {"name": "Alice", "age": 30}
+person.name           # dot notation preferred
+person["name"]        # bracket notation also works
+person.keys()
+person.has_key("name")
 ```
 
 ### Classes
 ```soli
-class Person {
-    name: String;
-    age: Int;
-    
-    new(name: String, age: Int) {
-        this.name = name;
-        this.age = age;
-    }
-    
-    def greet() -> String {
-        return "Hello, I'm " + this.name;
-    }
-}
+class Person
+  name: String
+  age: Int
 
-class Employee extends Person {
-    salary: Float;
-    
-    new(name: String, age: Int, salary: Float) {
-        super(name, age);
-        this.salary = salary;
-    }
-}
+  new(name: String, age: Int)
+    @name = name
+    @age = age
+  end
+
+  def greet -> String
+    "Hello, I'm #{@name}"
+  end
+end
+
+class Employee < Person
+  salary: Float
+
+  new(name: String, age: Int, salary: Float)
+    super(name, age)
+    @salary = salary
+  end
+
+  def summary -> String
+    "#{@greet()} and I earn #{@salary}"      # @method() calls a method on self
+  end
+end
 ```
 
 ### Control Flow
 ```soli
-// Postfix conditionals (idiomatic)
-print("adult") if age >= 18;
-print("minor") unless age >= 18;
+# Postfix conditionals (idiomatic)
+print("adult") if age >= 18
+print("minor") unless age >= 18
 
-// Pattern matching
-let result = match value {
-    42 => "the answer",
-    n if n > 0 => "positive: " + str(n),
-    [first, ...rest] => "first: " + str(first),
-    {name: n, age: a} => n + " is " + str(a),
-    _ => "wildcard"
-};
+# Pattern matching
+result = match value {
+  42 => "the answer",
+  n if n > 0 => "positive: #{n}",
+  [first, ...rest] => "first: #{first}",
+  {name: n, age: a} => "#{n} is #{a}",
+  _ => "wildcard"
+}
 ```
 
 ### Error Handling
 ```soli
-try {
-    risky_operation();
-} catch error {
-    print("Error: " + str(error));
-} finally {
-    cleanup();
-}
+try
+  risky_operation()
+catch error
+  print("Error: #{error}")
+finally
+  cleanup()
+end
 
-// Postfix rescue - returns fallback if expr throws
-let result = risky_operation() rescue "default";
-let data = fetch_data() rescue null;
+# Postfix rescue - returns fallback if expr throws
+result = risky_operation() rescue "default"
+data = fetch_data() rescue null
 ```
+
+## Code style
+
+Ruby-style, terse Soli — in code, specs, docs and scaffolds alike.
+
+- **`@field`, not `this.field`** — `@method()` too, in any instance method or
+  constructor. `this` stays where there is no instance: `static { … }` blocks
+  (`this.layout = …`, `this.before_action …`), `static def`, `class_methods`, and
+  scope bodies (`scope("x", fn() { this.where(...) })`), plus passing the object
+  itself (`validate(this)`).
+- **Ruby-style blocks for iteration** — `xs.map { |x| x * 2 }`,
+  `xs.each do |x| … end` — not `xs.map(fn(x) { return x * 2 })`. A block's last
+  expression is its value: no `return`. Keep `fn` for a lambda stored in a
+  variable (**with braces**: `double = fn(x) { x * 2 }` — a brace-less
+  `fn(x) x * 2` or `|x| x * 2` on its own line swallows the next statement), for
+  `reduce(fn(acc, x) acc + x, 0)` (`reduce(0) { |acc, x| … }` is not supported),
+  `grouped(fn() { … })`, pipelines, and function values in a hash.
+- **Implicit returns** — the last expression of a method is its value; `return`
+  is for early exits.
+- **A blank line after every guard clause** (`return … if/unless …`,
+  `next if …`), unless the next line is `end`, `else`/`elsif` or another guard.
+  `soli fmt` inserts it.
+  ```soli
+  def status_label(code)
+    return "ok" if code == 200
+    return "moved" if code == 301
+
+    "error"
+  end
+  ```
+- **No `let` by default, no semicolons** — `name = value`; `let` only for a type
+  annotation or when a bare assignment would mutate an outer variable or shadow
+  a function.
+- **Two traps from Ruby habits:** ranges are exclusive (`(1..51)` for 1–50), and a
+  `def name` without parens whose body starts with `(` parses that line as the
+  parameter list — write `def name()` or start with `return (…)`.
 
 ## Best Practices
 
 1. **Use type annotations** - Catch errors early, improve readability
    ```soli
-   def process_user(user: Hash) -> Hash { ... }
+   def process_user(user: Hash) -> Hash
+     ...
+   end
    ```
 
 2. **Prefer immutability** - Use `const` for values that shouldn't change
 
 3. **Chain iteration methods** - Avoid manual loops when possible
    ```soli
-   let result = data
-       .filter(fn(x) x["active"])
-       .map(fn(x) x["name"])
-       .join(", ");
+   result = data
+     .filter { |x| x["active"] }
+     .map { |x| x["name"] }
+     .join(", ")
    ```
 
 4. **Use pattern matching** - Cleaner than nested if/elsif for complex conditionals
@@ -172,9 +216,9 @@ let data = fetch_data() rescue null;
 
 6. **Implicit returns** - Last expression in a function block is automatically returned
    ```soli
-   def get_greeting(name) {
-       "Hello, " + name + "!"  // No return needed
-   }
+   def get_greeting(name)
+     "Hello, " + name + "!"   # no return needed
+   end
    ```
 
 7. **Use pipelines** - For readable data transformation chains
@@ -182,50 +226,50 @@ let data = fetch_data() rescue null;
 8. **Use concise defaults and guards** - Prefer idiomatic short forms over verbose nil/empty checks
    ```soli
    # .blank? combines nil and empty-string into one check
-   this.email = this.email.trim().downcase() unless this.email.blank?
-   this.status = "up" if this.status.blank?
-   this.initials = this.initials_from(this.name) if this.initials.blank?
+   @email = @email.trim().downcase() unless @email.blank?
+   @status = "up" if @status.blank?
+   @initials = @initials_from(@name) if @initials.blank?
 
    # ||= for falsey defaults (handles nil and false)
-   this.balance ||= 0
-   this.is_council ||= false
+   @balance ||= 0
+   @is_council ||= false
 
    # || for inline defaults in expressions
-   let name = params["name"] || "Guest"
-   let timeout = config["timeout"] || 30
+   name = params["name"] || "Guest"
+   timeout = config["timeout"] || 30
    ```
 
 9. **Use `.includes?` for membership checks** - More readable than chained `||` comparisons
    ```soli
    # Instead of: if s != "a" && s != "b" && s != "c"
-   unless ["up", "late", "overdue"].includes?(this.status)
-       this._errors = this._errors ?? []
-       this._errors.push({"field": "status", "message": "invalid"})
-       return false
+   unless ["up", "late", "overdue"].includes?(@status)
+     @_errors = @_errors ?? []
+     @_errors.push({"field": "status", "message": "invalid"})
+     return false
    end
 
    # Positive check reads naturally too
    if ["admin", "moderator"].includes?(role)
-       grant_access()
+     grant_access()
    end
    ```
 
 10. **Use intelligible variable names** - No single-letter or cryptic short names. The name should make the intent obvious without having to scan back for the assignment.
    ```soli
    # Bad — what is p? r? pg? qb?
-   let p = params
-   let r = users_result(p["q"], p["sort"])
-   let pg = r["pagination"]
-   let qb = User.where(...)
+   p = params
+   r = users_result(p["q"], p["sort"])
+   pg = r["pagination"]
+   qb = User.where(...)
 
    # Good — read top-to-bottom and the meaning is clear.
-   let search_query   = params["q"]
-   let sort_column    = params["sort"]
-   let result         = users_result(search_query, sort_column)
-   let pagination     = result["pagination"]
-   let query_builder  = User.where(...)
+   search_query  = params["q"]
+   sort_column   = params["sort"]
+   result        = users_result(search_query, sort_column)
+   pagination    = result["pagination"]
+   query_builder = User.where(...)
    ```
-   Short names are only acceptable for true conventions: loop indices (`i`, `j`), block parameters whose role is obvious from context (`fn(x) x * 2`), and well-known math symbols inside their natural domain.
+   Short names are only acceptable for true conventions: loop indices (`i`, `j`), block parameters whose role is obvious from context (`{ |x| x * 2 }`), and well-known math symbols inside their natural domain.
 
 ## SOLID Principles
 
@@ -293,30 +337,29 @@ soli lint path/to/file.sl   # Lint specific file
 
 **Routes** (`config/routes.sl`):
 ```soli
-get("/", "home#index");
-post("/users", "users#create");
-resources("posts");  // RESTful routes
-cors("/api/*", {"origins": ["https://app.example.com"]});  // built-in CORS: preflights + headers + origin-checked CSRF opt-in
+get("/", "home#index")
+post("/users", "users#create")
+resources("posts")   # RESTful routes
+cors("/api/*", {"origins": ["https://app.example.com"]})   # built-in CORS: preflights + headers + origin-checked CSRF opt-in
 ```
 
 **Controller**:
 ```soli
-// app/controllers/posts_controller.sl
-import "../models/post.sl";
+# app/controllers/posts_controller.sl — models are auto-loaded, no import
+class PostsController < Controller
+  # GET /posts — no render call: posts/index renders with @posts
+  def index(req)
+    @posts = Post.all()
+  end
 
-def index(req: Any) -> Any {
-    let posts = Post.all();
-    return render("posts/index", {"posts": posts});
-}
+  # POST /posts
+  def create(req)
+    @post = Post.create(permit(params, {"title": true, "body": true}))
+    return render("posts/new", {}, {"status": 422}) if @post._errors
 
-def create(req: Any) -> Any {
-    let params = req["json"];
-    let result = Post.create(params);
-    if result["valid"] {
-        return redirect("/posts/" + str(result["id"]));
-    }
-    return {"status": 422, "body": json_stringify(result["errors"])};
-}
+    redirect(post_path(@post))
+  end
+end
 ```
 
 **Model**:
@@ -345,29 +388,29 @@ Batched: `all`, `.first`, `.count`, `.exists`, the aggregates, `find`, `find_by`
 
 **View** (ERB templates):
 ```erb
-<h1><%= title %></h1>
+<h1><%= @title %></h1>
 
-<% for post in posts %>
+<% for post in @posts %>
     <article>
-        <h2><%= post["title"] %></h2>
-        <%= content %>
+        <h2><%= post.title %></h2>
+        <%= post.body %>
     </article>
 <% end %>
 ```
 
 ## Testing Pattern
 ```soli
-describe("Feature Name", fn() {
-    before_each(fn() {
-        // Setup
-    });
+describe("Feature Name") do
+  before_each() do
+    # Setup
+  end
 
-    test("does something", fn() {
-        assert_eq(actual, expected);
-        assert(condition);
-        assert_null(value);
-    });
-});
+  test("does something") do
+    assert_eq(actual, expected)
+    assert(condition)
+    assert_null(value)
+  end
+end
 ```
 
 ## Forms
@@ -401,10 +444,10 @@ Soli exposes parsed cookies from the `Cookie` header as a global `cookies` hash,
 
 ### Cookies Functions
 ```soli
-cookies["theme"];                # Read a cookie (bracket access)
-cookies.theme;                   # Read a cookie (dot access)
-set_cookie("name", "value");     # Set a response cookie (Set-Cookie header)
-read_cookie("name");             # Read one cookie (raw), nil when absent
+cookies["theme"]                 # Read a cookie (bracket access)
+cookies.theme                    # Read a cookie (dot access)
+set_cookie("name", "value")      # Set a response cookie (Set-Cookie header)
+read_cookie("name")              # Read one cookie (raw), nil when absent
 ```
 
 Use `set_cookie` in controllers and middleware to write response cookies. An optional third options hash controls attributes: `set_cookie("name", "value", {"max_age": 86400, "http_only": true, "secure": true, "same_site": "Lax", "path": "/", "expires": "...", "domain": "..."})`. Without options the cookie is emitted with `Path=/` only; `max_age: 0` expires it immediately. Unknown option keys raise.
@@ -412,10 +455,10 @@ Use `set_cookie` in controllers and middleware to write response cookies. An opt
 ### Signed/Encrypted Cookies
 
 ```soli
-set_cookie("prefs", {"theme": "dark"}, {"encrypted": true, "max_age": 86400});  # AES-256-GCM, opaque
-set_cookie("uid", 42, {"signed": true});                                        # HMAC-SHA256, readable but tamper-proof
-read_cookie("prefs", {"encrypted": true});   # decoded value, or nil on tamper/expiry/forgery
-read_cookie("uid", {"signed": true});
+set_cookie("prefs", {"theme": "dark"}, {"encrypted": true, "max_age": 86400})   # AES-256-GCM, opaque
+set_cookie("uid", 42, {"signed": true})                                         # HMAC-SHA256, readable but tamper-proof
+read_cookie("prefs", {"encrypted": true})    # decoded value, or nil on tamper/expiry/forgery
+read_cookie("uid", {"signed": true})
 ```
 
 Sealed modes accept any JSON-serializable value. Keys are HKDF-derived from `SOLI_SESSION_SECRET` (32+ chars — sealing raises without it; rotating it invalidates sealed cookies *and* cookie-driver sessions). The cookie name is bound into the seal (no value-swapping between cookies) and `max_age` is embedded as an in-payload expiry. `signed`/`encrypted` are mutually exclusive. The reader states the trust requirement — a bare attacker-set cookie reads as `nil` through a sealed-mode `read_cookie`, so use it (not `cookies[...]`) for any value you need to trust.
@@ -426,16 +469,16 @@ Soli provides session management with pluggable storage backends.
 
 ### Session Functions
 ```soli
-session_set("user_id", 123);     // Store value in session
-session_get("user_id");           // Retrieve value (returns null if not found)
-session_has("user_id");           // Check if key exists
-session_delete("user_id");        // Remove a key from session
-session_destroy();                // Destroy entire session
-session_regenerate();            // Create new session ID (security after login)
-session_id();                    // Get current session ID
-session_driver();                // Returns current driver: "in_memory", "cookie", "disk", "solidb", "solikv"
-session_config();                // Returns configuration hash
-session_configure({"driver": "solidb", "solidb_host": "localhost:8080"});
+session_set("user_id", 123)      # Store value in session
+session_get("user_id")            # Retrieve value (returns null if not found)
+session_has("user_id")            # Check if key exists
+session_delete("user_id")         # Remove a key from session
+session_destroy()                 # Destroy entire session
+session_regenerate()             # Create new session ID (security after login)
+session_id()                     # Get current session ID
+session_driver()                 # Returns current driver: "in_memory", "cookie", "disk", "solidb", "solikv"
+session_config()                 # Returns configuration hash
+session_configure({"driver": "solidb", "solidb_host": "localhost:8080"})
 ```
 
 ### Storage Backends
@@ -463,15 +506,14 @@ session_configure({"driver": "solidb", "solidb_host": "localhost:8080"});
 
 ### Example
 ```soli
-def login(req) {
-    let user = authenticate(req["json"]["email"], req["json"]["password"]);
-    if user {
-        session_regenerate();  // New session ID after login
-        session_set("user_id", user["id"]);
-        return redirect("/dashboard");
-    }
-    return {"status": 401, "body": "Invalid credentials"};
-}
+def login(req)
+  user = authenticate(req["json"]["email"], req["json"]["password"])
+  return {"status": 401, "body": "Invalid credentials"} unless user
+
+  session_regenerate()   # new session ID after login
+  session_set("user_id", user["id"])
+  redirect("/dashboard")
+end
 ```
 
 ## Dev Tools
@@ -513,26 +555,26 @@ A protocol change also reaches `clients/eui-{ruby,python,php,node,go,rust}`, eac
 
 ## Imports
 ```soli
-import "./math.sl";           // Relative import
-import "/lib/utils.sl";       // Absolute import from stdlib
-import "erb";                  // Builtin module
+import "./math.sl"            # relative import
+import "/lib/utils.sl"        # absolute import from stdlib
+import "erb"                  # builtin module
 ```
 
 ## String Interpolation
 ```soli
-let name = "Alice";
-let greeting = "Hello #{name}!";  // "Hello Alice!"  (#{...} is the only interpolation form; \( is an invalid escape)
+name = "Alice"
+greeting = "Hello #{name}!"   # "Hello Alice!"  (#{...} is the only interpolation form; \( is an invalid escape)
 
-// Multi-line / raw strings — NOTE: `@"..."` is NOT a valid form.
-// Soli supports three raw / multiline string syntaxes:
-let lua_raw = [[
+# Multi-line / raw strings — NOTE: `@"..."` is NOT a valid form.
+# Soli supports three raw / multiline string syntaxes:
+lua_raw = [[
     This is a raw multi-line string.
     Backslashes are literal: \n stays as two chars.
-]];
-let triple  = """
+]]
+triple = """
     Triple-quoted, also raw, multi-line.
-""";
-let single  = r"C:\Users\name";   // raw, single-line
+"""
+single = r"C:\Users\name"   # raw, single-line
 ```
 
 ## Important Notes

@@ -160,7 +160,7 @@ the code you are writing — they are properties of the runtime.
 
 | Behaviour | Consequence | What to do |
 |---|---|---|
-| A `before_*` callback returning `false` **aborts persistence** | `this.flag \|\|= false` as the last line silently rejects every record | End every callback with an explicit `return true` |
+| A `before_*` callback returning `false` **aborts persistence** | `@flag \|\|= false` as the last line silently rejects every record | End every callback with an explicit `return true` |
 | `validates(..., { "custom": "method" })` **never fires** | A business rule declared that way is dead code that reads as protection | Put the rule in a method the controller calls, and render the 422 yourself |
 | `update(attrs)` / `save(attrs)` **skip callbacks** | Normalisation is lost on every update | Assign fields explicitly, then `save()` |
 | `_errors` is `nil` after a successful `create` but `[]` after a successful `save` | `if record._errors` is true after an update (`[]` is truthy) | Test `_errors.length() > 0` |
@@ -168,7 +168,7 @@ the code you are writing — they are properties of the runtime.
 | Free functions of the **same name in two files shadow each other** | Four copies of one helper, only one ever runs, chosen by load order | Put shared helpers on a base controller or a model, not in free functions |
 | Model classes are **not resolvable from `.slv` templates** | `Cart.total_of(...)` in a view raises and the page 500s | Compute in the controller, hand the view a plain value |
 | `setenv` was removed (SEC-033) | A spec cannot flip a mode read from the environment | Split the env read from the work — a named method the spec can call directly |
-| `.pluck(field)` returns a QueryBuilder, not an array | It lands in a bind variable and the query fails | `.all.map(fn(row) row.field)` |
+| `.pluck(field)` returns a QueryBuilder, not an array | It lands in a bind variable and the query fails | `.all.map { \|row\| row.field }` |
 | An invalid SDBQL query **returns an error string instead of raising** | A typo silently yields garbage | Prefer proven forms: `CONTAINS(LOWER(doc.x), @needle)` |
 | No scoped uniqueness | `"uniqueness": true` is global and best-effort | Composite unique index in the migration + a lookup for a readable message |
 | `permit` drops containers declared with `true` | Nested hashes and arrays vanish from the body | Describe the shape fully: `{"days": [{"hour": true}]}` |
@@ -254,24 +254,60 @@ tests/               # *_spec.sl test files
 
 ```soli
 # Bad — what is p? r? pg? qb?
-let p = params
-let r = users_result(p["q"], p["sort"])
-let pg = r["pagination"]
-let qb = User.where(...)
+p = params
+r = users_result(p["q"], p["sort"])
+pg = r["pagination"]
+qb = User.where(...)
 
 # Good — read top-to-bottom and the meaning is clear.
-let search_query  = params["q"]
-let sort_column   = params["sort"]
-let result        = users_result(search_query, sort_column)
-let pagination    = result["pagination"]
-let query_builder = User.where(...)
+search_query  = params["q"]
+sort_column   = params["sort"]
+result        = users_result(search_query, sort_column)
+pagination    = result["pagination"]
+query_builder = User.where(...)
 ```
 
-Short names are only acceptable for true conventions: loop indices (`i`, `j`), block parameters whose role is obvious from context (`fn(x) x * 2`), and well-known math symbols inside their natural domain.
+Short names are only acceptable for true conventions: loop indices (`i`, `j`), block parameters whose role is obvious from context (`{ |x| x * 2 }`), and well-known math symbols inside their natural domain.
+
+## Code style
+
+Terse, idiomatic Soli. These rules hold across the app, specs included.
+
+- **No `let` by default.** `name = value` declares the variable. Keep `let` only
+  where a bare assignment would change something other than a new local:
+  - inside a block (`each do`, `fn`) that reuses the name of an outer variable —
+    without `let` the assignment **mutates** the outer variable;
+  - when the name is also a **global function** — a top-level `def` of the app
+    or the specs, or a Soli builtin (`url`, `options`, `head`, `scope`,
+    `pending`, `index`, `response`…). Without `let`, `response = …` replaces the
+    function `response()` for everyone, silently. Better: rename the variable
+    (`request_url`, `request_opts`, `result`). Check a name with
+    `soli -e 'print(defined("url"))'`.
+- **`@field`, not `this.field`** (`@method()` too), in any instance method.
+  `this` stays only in `static { … }` blocks (`this.layout = …`) and
+  `static def`.
+- **Controllers pass view data through `@fields`**, never a hash in `render`:
+  the view **and the layout** receive them under the same name. With no
+  `render` call, the action renders `controller/action` implicitly; otherwise
+  `render("posts/new")`, or `render("posts/new", {}, {"status": 422})`. Avoid
+  `@method` / `@view` (framework-ish names).
+  Specs: after an explicit `render`, `assigns()` sees only the hash passed to
+  `render`, not the `@fields` — assert on the body, or keep the implicit render.
+- **Ruby-style blocks for iteration** — `xs.map { |x| x * 2 }`,
+  `xs.filter { |u| u.active }`, `xs.each do |x| … end` — not
+  `xs.map(fn(x) { return x * 2 })`. A block's last expression is its value: no
+  `return`. Keep `fn` for a lambda stored in a variable — and give it braces,
+  `double = fn(x) { x * 2 }` (a brace-less `fn(x) x * 2` or `|x| x * 2` on its own
+  line swallows the next statement) — and for `reduce(fn(acc, x) acc + x, 0)`:
+  Ruby's `reduce(0) { |acc, x| … }` is not supported. Ranges are **exclusive**:
+  Ruby's `(1..50).map` is `(1..51).map` here.
+- **A blank line after every guard clause** (`return … if/unless …`,
+  `next if …`), unless the next line is `end`, `else`/`elsif` or another guard.
+- **`[[` opens a raw string**: write `[ [a, b].max(), c ]`.
 
 ## Syntax basics
 
-Soli supports both Ruby-style (`def`/`end`, `class X < Y ... end`, `if cond ... end`) and C-style (`fn`/`{ }`, `class X extends Y { ... }`, `if cond { ... }`); they parse to the same AST. **The convention in this project is Ruby-style** for class declarations and control flow (`class Demo < Test ... end`, `if cond ... end`). Reserve `fn { ... }` for free-standing functions and lambdas. Match this style when writing new code.
+Soli supports both Ruby-style (`def`/`end`, `class X < Y ... end`, `if cond ... end`) and C-style (`fn`/`{ }`, `class X extends Y { ... }`, `if cond { ... }`); they parse to the same AST. **The convention in this project is Ruby-style** for class declarations and control flow (`class Demo < Test ... end`, `if cond ... end`). Blocks passed to iterators are Ruby blocks (`{ |x| … }`, `do |x| … end`); `fn` is for lambdas kept in a variable and the few calls that take a function argument (`reduce`, `grouped`, pipelines). Match this style when writing new code.
 
 ```soli
 # Variables
@@ -283,37 +319,48 @@ const MAX = 100           # Immutable
 # Prefer the bare `name = value` form. Reach for `let` only when it earns
 # its keep: a type annotation, or a hoisted declaration before `if`/`match`.
 
-# Free-standing functions
-fn add(a: Int, b: Int) -> Int {
-    return a + b;
-}
+# Functions — the last expression is the return value
+def add(a: Int, b: Int) -> Int
+  a + b
+end
 
-# Implicit return: the last expression in a block is returned
-fn greet(name) {
-    "Hello, " + name + "!"
-}
+def greet(name)
+  "Hello, " + name + "!"
+end
 
-# Lambdas
-let double = fn(x) { return x * 2; };
-let halve  = |x| { return x / 2; };
+# Guard clauses return early, then a blank line
+def status_label(code)
+  return "ok" if code == 200
+  return "moved" if code == 301
+
+  "error"
+end
+
+# Lambdas kept in a variable: braces, no `return`
+double = fn(x) { x * 2 }
+halve  = |x| { x / 2 }
 
 # String interpolation
-let msg = "Hi #{name}, age #{age}"
+msg = "Hi #{name}, age #{age}"
 
 # Multiline / raw strings (NO @"..." — that form does not exist)
-let lua_raw = [[
+lua_raw = [[
     Raw text. No escape processing.
     Good for queries with embedded "double quotes".
 ]]
-let triple = """
+triple = """
     Raw, multiline. Closes on """.
     Good for content with ] or ]] inside.
 """
-let single_raw = r"C:\Users\name"   # raw, single-line only
+single_raw = r"C:\Users\name"   # raw, single-line only
 
-# Collection iteration — Ruby-style block, no parens before `do`
-[1, 2, 3].map do |x| x * 2 end
-[1, 2, 3].filter do |x| x > 2 end
+# Collection iteration — Ruby-style blocks, no parens before the block
+[1, 2, 3].map { |x| x * 2 }                  # [2, 4, 6]
+[1, 2, 3].filter { |x| x > 2 }               # [3]
+(1..51).map { |i| { id: i, title: "Post title #{i}" } }   # 50 rows: .. is exclusive
+posts.each do |post|
+  print(post.title)
+end
 
 # `&:name` — the shorthand that replaces an accumulator loop. It reads a hash
 # key, reads a model field, OR calls a method; `.sum` terminates and returns 0
@@ -336,11 +383,11 @@ end
 # Array concatenation: `+` and `.concat` both work.
 first + rest
 
-# Pipelines (when chaining multiple stages)
-[1, 2, 3] |> map(fn(x) x * 2) |> filter(fn(x) x > 2)
+# Pipelines feed your own functions (there is no global `map`)
+5 |> double() |> add_one()
 
 # Pattern matching
-let label = match value {
+label = match value {
     42 => "the answer",
     n if n > 0 => "positive",
     [first, ...rest] => "head: " + str(first),
@@ -349,12 +396,12 @@ let label = match value {
 
 # Postfix conditionals (idiomatic)
 print("adult") if age >= 18
-let data = fetch() rescue null     # returns null if fetch() throws
+data = fetch() rescue null         # returns null if fetch() throws
 
 # Concise defaults and guards
-this.balance ||= 0                 # ||= sets when nil/false
-this.email = this.email.trim().downcase() unless this.email.blank?  # .blank? covers nil + ""
-unless ["up", "late", "overdue"].includes?(this.status)              # membership check
+@balance ||= 0                     # ||= sets when nil/false
+@email = @email.trim().downcase() unless @email.blank?  # .blank? covers nil + ""
+unless ["up", "late", "overdue"].includes?(@status)     # membership check
     add_error("invalid status")
 end
 ```
@@ -388,35 +435,32 @@ Controllers are classes that inherit from `Controller`. Action methods take a re
 ```soli
 # app/controllers/posts_controller.sl
 class PostsController < Controller
-    static
+    static {
         this.layout = "application"
-    end
+    }
 
-    # GET /posts
+    # GET /posts — no render call: posts/index renders, with @posts and @title
     def index(req)
-        let posts = Post.all()
-        return render("posts/index", { "posts": posts, "title": "Posts" })
+        @posts = Post.all()
+        @title = "Posts"
     end
 
     # GET /posts/:id — Model.find raises on miss; framework maps to 404
     def show(req)
-        let post = Post.find(req.params["id"])
-        return render("posts/show", { "post": post })
+        @post = Post.find(req.params["id"])
     end
 
     # POST /posts
     def create(req)
-        let permitted = this._permit_params(req.params)
-        let post = Post.create(permitted)
-        if post._errors
-            return render("posts/new", { "post": post })
-        end
-        return redirect(post_path(post))
+        @post = Post.create(@_permit_params(req.params))
+        return render("posts/new", {}, { "status": 422 }) if @post._errors
+
+        redirect(post_path(@post))
     end
 
     # Mass-assignment protection — whitelist allowed fields
     def _permit_params(params)
-        return { "title": params["title"], "body": params["body"] }
+        { "title": params["title"], "body": params["body"] }
     end
 end
 ```
@@ -430,7 +474,8 @@ end
 
 ### Response shapes
 
-- `render("view/name", {...})` — render `app/views/view/name.html.slv` with the given locals
+- No `render` call — the action renders `controller/action` with its `@fields`
+- `render("view/name")` — another view, same `@fields`; `render("view/name", {}, {"status": 422})` to set the status
 - `redirect("/path")` or `redirect(post_path(post))` — HTTP redirect
 - `{"status": 422, "headers": {...}, "body": "..."}` — raw response
 
@@ -460,7 +505,7 @@ class Post < Model
     before_save("normalize_title")
 
     def normalize_title
-        this.title = this.title.trim()
+        @title = @title.trim()
     end
 end
 ```
@@ -474,8 +519,8 @@ Drop down to raw SDBQL only when the ORM doesn't cover the case. **Always parame
 ```soli
 # `@sdbql{}` block — preferred for multi-line queries.
 # `#{expr}` is bound as a parameter, not interpolated as text.
-let min_age = 18
-let users = @sdbql{
+min_age = 18
+users = @sdbql{
     FOR u IN users
     FILTER u.age >= #{min_age}
     SORT u.name ASC
@@ -556,14 +601,15 @@ A middleware file declares one function. Per-file directive comments at the top 
 # scope_only: true   — only runs when wrapped in `middleware("authenticate", -> { ... })`
 
 def authenticate(req)
-    let key = req["headers"]["X-Api-Key"].to_s
-    if key == ""
+    key = req["headers"]["X-Api-Key"].to_s
+    if key.blank?
         return {
             "continue": false,
             "response": { "status": 401, "body": "Unauthorized" }
         }
     end
-    return { "continue": true, "request": req }
+
+    { "continue": true, "request": req }
 end
 ```
 
@@ -581,31 +627,31 @@ Specs live in `tests/` and run with `soli test`. Use the BDD DSL with `describe`
 
 ```soli
 # tests/posts_controller_spec.sl
-describe("PostsController", fn() {
-    before_each(fn() {
-        as_guest();
-    });
+describe("PostsController") do
+    before_each() do
+        as_guest()
+    end
 
-    describe("GET /posts", fn() {
-        test("returns list of posts", fn() {
-            let response = get("/posts");
-            assert_eq(res_status(response), 200);
-            assert_hash_has_key(assigns(), "posts");
-        });
-    });
+    describe("GET /posts") do
+        test("returns list of posts") do
+            response = get("/posts")
+            assert_eq(res_status(response), 200)
+            assert_hash_has_key(assigns(), "posts")
+        end
+    end
 
-    describe("POST /posts", fn() {
-        test("creates with valid data", fn() {
-            let response = post("/posts", { "title": "Hello", "body": "World" });
-            assert_eq(res_status(response), 302);
-        });
+    describe("POST /posts") do
+        test("creates with valid data") do
+            response = post("/posts", { "title": "Hello", "body": "World" })
+            assert_eq(res_status(response), 302)
+        end
 
-        test("rejects invalid data", fn() {
-            let response = post("/posts", {});
-            assert_eq(res_status(response), 422);
-        });
-    });
-});
+        test("rejects invalid data") do
+            response = post("/posts", {})
+            assert_eq(res_status(response), 422)
+        end
+    end
+end
 ```
 
 ### Test coverage requirement
@@ -826,24 +872,26 @@ soli routes --json                    # machine-readable (for scripts/agents)
 9. **Use `.blank?` for nil/empty checks** — replaces `x == nil || x == ""`.
 10. **Use `.nil?` over `== nil`** — `if x.nil?` / `unless x.nil?` reads as a question; keep `==`/`!=` for value comparisons.
 11. **Use `&.` to short-circuit on nil** — `user&._key` replaces `user == nil ? nil : user._key`; chain it (`user&.address&.city`) instead of nested guards.
-12. **Use `||=` for falsey defaults** — `this.balance ||= 0` instead of `if this.balance == nil`.
+12. **Use `||=` for falsey defaults** — `@balance ||= 0` instead of `if @balance == nil`.
 13. **Use `.includes?` for membership checks** — replaces chained `||` comparisons.
 14. **Test new features to >90% coverage** — non-negotiable, see above.
 15. **Put a blank line after a `return`** — unless the next line is another `return` or an `end`. This makes guard clauses (early returns) stand out from the code that follows. `soli fmt` inserts it for you, so you never have to hand-place it.
 
     ```soli
     def update(req)
-      let post = Post.find(req.params["id"])
+      post = Post.find(req.params["id"])
       return forbidden() unless can_edit?(post)  # guard clause
 
-      post.update(this._permit_params(req.params))
-      return redirect(post_path(post))
+      post.update(@_permit_params(req.params))
+      redirect(post_path(post))
     end
 
-    # Back-to-back returns and a return right before `end` need no blank line:
+    # Back-to-back guards need no blank line between them; the value after them
+    # is the last expression, no `return`:
     def status_label(code)
       return "ok" if code == 200
       return "moved" if code == 301
-      return "error"
+
+      "error"
     end
     ```

@@ -116,11 +116,13 @@ instance is auto-injected as a view local (see "@-variables" below).
 
 ```soli
 def create
-  permitted = this._permit_params(params)
+  permitted = @_permit_params(params)
   @post = Post.create(permitted)
   if @post._errors
-    return render("posts/new", { "title": "New post" })  # re-render form
+    @title = "New post"
+    return render("posts/new", {}, { "status": 422 })  # re-render form, @fields included
   end
+
   redirect(post_path(@post))
 end
 ```
@@ -287,12 +289,12 @@ class PostsController < Controller
 
   # POST /posts
   def create
-    permitted = this._permit_params(params)
-    @post = Post.create(permitted)
+    @post = Post.create(@_permit_params(params))
     if @post._errors
       @title = "New post"
       return render("posts/new")     # explicit: re-render the form view
     end
+
     redirect(post_path(@post))
   end
 
@@ -303,11 +305,9 @@ class PostsController < Controller
 
   # PATCH/PUT /posts/:id
   def update
-    permitted = this._permit_params(params)
-    @post.update(permitted)
-    if @post._errors
-      return render("posts/edit")
-    end
+    @post.update(@_permit_params(params))
+    return render("posts/edit") if @post._errors
+
     redirect(post_path(@post))
   end
 
@@ -350,9 +350,8 @@ the errors.
 
 ```soli
 @post = Post.create(permitted)
-if @post._errors
-  return render("posts/new")    # view reads @post._errors to show messages
-end
+return render("posts/new") if @post._errors    # view reads @post._errors to show messages
+
 redirect(post_path(@post))
 ```
 
@@ -392,10 +391,8 @@ stores the blob in SoliDB for you:
 
 ```soli
 def create
-  @contact = Contact.create(this._permit_params(params))
-  if @contact._errors
-    return render("contacts/new")
-  end
+  @contact = Contact.create(@_permit_params(params))
+  return render("contacts/new") if @contact._errors
 
   photo = find_uploaded_file(params, "photo")
   if !photo.nil? && !@contact.attach_photo(photo)
@@ -416,8 +413,9 @@ iterate `req["files"]` directly and attach one by one:
 def upload_batch
   @document = Document.find(params["id"])
   (req["files"] ?? [])
-    .filter(fn(file) file["name"] == "attachments")
-    .each(fn(file) @document.attach_attachments(file))    # array column; each call pushes one blob
+    .filter { |file| file["name"] == "attachments" }
+    .each { |file| @document.attach_attachments(file) }    # array column; each call pushes one blob
+
   redirect(document_path(@document))
 end
 ```
@@ -457,7 +455,7 @@ Sessions are read/write via builtins (storage backend configured in
 
 ```soli
 session_set("user_id", user.id)
-let uid = session_get("user_id")    # nil if not set
+uid = session_get("user_id")        # nil if not set
 session_has("user_id")              # bool
 session_delete("user_id")
 session_regenerate                  # after a successful login (security)
