@@ -95,7 +95,7 @@ Phoenix needs Elixir + Erlang/OTP and a one-off `MIX_ENV=prod mix compile` in
 `config/prod.exs` **removes** the generated `force_ssl` — left in, every request
 becomes a 301 and `oha` reports a wall of them as 100% success.
 
-[Kemal](kemal/) (Crystal, port 5105) is an **opt-in stack that is not published**: a
+[Kemal](kemal/) (Crystal, port 5105) is published, with a caveat printed beside it: a
 micro-framework with no sessions, CSRF or security headers, whose ORM and escaping were
 added for the benchmark, so it is not comparable feature for feature. It is not in the
 default `STACKS` and `start.sh` does not start it; build it once (`shards install &&

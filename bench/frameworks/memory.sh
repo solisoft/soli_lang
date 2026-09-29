@@ -73,8 +73,11 @@ printf '%-10s %10s %12s   %s\n' stack idle 'under load' method
 # fastapi goes through pss_port, not pss_pat: uvicorn's spawn children have no
 # app name in their cmdline (see sweep.sh's srv_cpu note) but do share the
 # supervisor's pgid.
-for e in soli:5080 rails:5096 express:5097 laravel:5098 octane:5100 django:5099 adonis:5102 fastapi:5103 phoenix:5104; do
+# STACKS narrows the table to some stacks, as it does for sweep.sh. Kemal is in
+# the list but, like its HTTP rows, needs kemal/start-bench.sh started by hand.
+for e in soli:5080 rails:5096 express:5097 laravel:5098 octane:5100 django:5099 adonis:5102 fastapi:5103 phoenix:5104 kemal:5105; do
   n=${e%%:*}; p=${e##*:}
+  [ -n "${STACKS:-}" ] && [[ " $STACKS " != *" $n "* ]] && continue
   case "$n" in laravel | octane) method="cgroup" ;; *) method="PSS" ;; esac
   idle=$(mem "$n" "$p")
   oha -z 30s -c 200 --no-tui --output-format quiet "http://localhost:$p/db-template" >/dev/null 2>&1

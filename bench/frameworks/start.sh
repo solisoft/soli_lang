@@ -8,8 +8,8 @@
 # AdonisJS (5102) needs a build step, so it stays in adonis/start-bench.sh.
 # Phoenix is 16 BEAM schedulers in one OS process rather than 16 workers — see
 # phoenix/start-bench.sh for why that is the matched configuration.
-# Kemal (5105) is opt-in and unpublished: start kemal/start-bench.sh by hand and
-# measure it with STACKS=kemal.
+# Kemal (5105) is published but launched by hand: start kemal/start-bench.sh and
+# add it with STACKS=kemal.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/lib.sh"

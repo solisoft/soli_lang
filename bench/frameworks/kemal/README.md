@@ -19,9 +19,10 @@ Express, and the column is named after both.
   (`Wpost.where { _id == key }.update(...)` / `.delete`), like Django's
   `filter(...).update()`. Keys are drawn from `1..WPOOL`.
 
-**Opt-in, not published**: Kemal is not comparable feature for feature (no sessions,
-CSRF or security headers; the ORM and escaping were added), so it is not in the default
-`STACKS` and `start.sh` does not start it. To measure it:
+**Published, launched by hand**: Kemal is not comparable feature for feature (no
+sessions, CSRF or security headers; the ORM and escaping were added), and the Benchmarks
+page says so beside its rows. It is not in the default `STACKS` and `start.sh` does not
+start it. To measure it:
 
 ```bash
 cd kemal && shards install && shards build --release --production
