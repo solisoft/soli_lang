@@ -26,7 +26,7 @@ module Publishable
   end
 
   def publish
-    self.published_at = DateTime.utc()
+    self.published_at = DateTime.utc
   end
 end
 ```

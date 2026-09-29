@@ -138,7 +138,7 @@ Worked tutorials live in `docs/blog/`.
 | `if (x) { … }`                             | `if x … end`                               | C-style parses, but Ruby-style is the convention here.                       |
 | `xs.forEach(…)`                            | `xs.each do \|x\| … end` or `for x in xs`  | No `forEach`.                                                                |
 | `x \|\| default`                           | `x ?? default`                             | `\|\|` returns the wrong side when `x` is `0` or `""` (those are TRUTHY).    |
-| `if (xs.length)`                           | `if xs.length() > 0`                       | Both work: `0` is falsy. Prefer the explicit form — it survives a refactor to a non-numeric value. |
+| `if (xs.length)`                           | `if xs.length > 0`                         | Both work: `0` is falsy. Prefer the explicit form — it survives a refactor to a non-numeric value. |
 | `import "../models/post.sl"` in controller | nothing — already auto-loaded              | Triggers `style/redundant-model-import` lint.                                |
 | Building URLs by hand                      | `posts_path()`, `post_path(post)`          | Named helpers come from `resources(...)` in `config/routes.sl`.              |
 | Overriding `Model.all` / `Model.find`      | don't                                      | Inherited from `Model`; the framework relies on it.                          |
@@ -148,7 +148,7 @@ Worked tutorials live in `docs/blog/`.
 | `user == nil ? nil : user._key`            | `user&._key`                               | Safe navigation short-circuits to `nil` if the receiver is `nil`.            |
 | `if s != "a" && s != "b" && s != "c"`      | `unless ["a", "b", "c"].includes?(s)`      | Intent is membership check, not a pile of `&&`.                              |
 | `x = x \|\| default`                       | `x \|\|= default`                          | `\|\|=` is a single operator for "set if nil/false".                         |
-| `for key, value in a_hash`                 | `for key in a_hash.keys()`                 | There is no two-variable hash iteration; the pair form silently fails.       |
+| `for key, value in a_hash`                 | `for key in a_hash.keys`                   | There is no two-variable hash iteration; the pair form silently fails.       |
 | `redirect(req["headers"]["referer"])`      | extract the path, then `redirect(path)`    | `redirect()` takes **local absolute paths only** and raises on a full URL.   |
 | several unrelated reads, one per line      | `grouped(fn() { … })` around them          | Each read is a round-trip; `grouped` combines them into one query. Don't read a result inside the block (auto-flush). |
 | `Model.all.slice(0, n)`                    | `Model.limit(n).all`                       | `slice` loads the whole collection into memory just to keep `n` rows.        |
@@ -163,7 +163,7 @@ the code you are writing — they are properties of the runtime.
 | A `before_*` callback returning `false` **aborts persistence** | `@flag \|\|= false` as the last line silently rejects every record | End every callback with an explicit `return true` |
 | `validates(..., { "custom": "method" })` **never fires** | A business rule declared that way is dead code that reads as protection | Put the rule in a method the controller calls, and render the 422 yourself |
 | `update(attrs)` / `save(attrs)` **skip callbacks** | Normalisation is lost on every update | Assign fields explicitly, then `save()` |
-| `_errors` is `nil` after a successful `create` but `[]` after a successful `save` | `if record._errors` is true after an update (`[]` is truthy) | Test `_errors.length() > 0` |
+| `_errors` is `nil` after a successful `create` but `[]` after a successful `save` | `if record._errors` is true after an update (`[]` is truthy) | Test `_errors.length > 0` |
 | `Model.delete_all` **without a scope** does not empty the collection | A spec that relies on it tests the wrong state and still passes | Loop and `delete()`, or scope it: `Model.where(...).delete_all` |
 | Free functions of the **same name in two files shadow each other** | Four copies of one helper, only one ever runs, chosen by load order | Put shared helpers on a base controller or a model, not in free functions |
 | Model classes are **not resolvable from `.slv` templates** | `Cart.total_of(...)` in a view raises and the page 500s | Compute in the controller, hand the view a plain value |
@@ -283,7 +283,7 @@ Terse, idiomatic Soli. These rules hold across the app, specs included.
     function `response()` for everyone, silently. Better: rename the variable
     (`request_url`, `request_opts`, `result`). Check a name with
     `soli -e 'print(defined("url"))'`.
-- **`@field`, not `this.field`** (`@method()` too), in any instance method.
+- **`@field`, not `this.field`** (`@method` too), in any instance method.
   `this` stays only in `static { … }` blocks (`this.layout = …`) and
   `static def`.
 - **Controllers pass view data through `@fields`**, never a hash in `render`:
@@ -292,9 +292,6 @@ Terse, idiomatic Soli. These rules hold across the app, specs included.
   `render("posts/new")`, or `render("posts/new", {}, {"status": 422})`. Avoid
   `@method` / `@view` (framework-ish names).
   Specs: `assigns()` sees the `@fields` with or without an explicit `render`.
-- **`return` is optional in a method** — its last expression is its value, so
-  end with `redirect("/")`, `@user.admin?()` or `{"continue": true}`, not
-  `return …`. Write `return` only for an early exit (`return x if …`).
 - **Ruby-style blocks for iteration** — `xs.map { |x| x * 2 }`,
   `xs.filter { |u| u.active }`, `xs.each do |x| … end` — not
   `xs.map(fn(x) { return x * 2 })`. A block's last expression is its value: no
@@ -303,12 +300,19 @@ Terse, idiomatic Soli. These rules hold across the app, specs included.
   line swallows the next statement) — and for `reduce(fn(acc, x) acc + x, 0)`:
   Ruby's `reduce(0) { |acc, x| … }` is not supported. Ranges are **exclusive**:
   Ruby's `(1..50).map` is `(1..51).map` here.
-- **No `return` on a method's last line** — the last expression is the value.
-  Keep it for a guard clause, inside a final `if`/`else` (`if` is a statement,
-  not an expression, so the method would return nothing), and before an
-  expression that would start the line with `(` or `fn(` (read as a call on
-  the previous line / a named function declaration — the server then refuses
-  to start). A `{…}` hash on the last line is fine.
+- **No `return` on a method's last line** — the last expression is the value,
+  a final `if`/`else` included (`redirect("/")`, `{"continue": true}`). Keep it
+  for a guard clause, and before an expression that would start the line with
+  `(` or `fn(` (read as a call on the previous line / a named function
+  declaration — the server then refuses to start). A `{…}` hash on the last
+  line is fine.
+- **No `()` on a zero-argument method call** — `Post.all`, `@post.save`,
+  `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`. Keep
+  them on a **bare function** (`current_user()`, `session_destroy()`): without
+  them the VM passes the function itself instead of calling it. Keep them
+  before an index too — `list.sort()[0]`: the type checker refuses
+  `list.sort[0]`. `.any?`, `.all?` and `.none?` take a block
+  (`xs.any? { |x| x.done }`); for emptiness write `xs.length > 0`.
 - **A blank line after every guard clause** (`return … if/unless …`,
   `next if …`), unless the next line is `end`, `else`/`elsif` or another guard.
 - **`[[` opens a raw string**: write `[ [a, b].max(), c ]`.
@@ -380,11 +384,11 @@ lines.map(&:total).sum                              #     — method, it is call
 # So this is not written any more:
 #   sum = 0
 #   for line in lines
-#     sum = sum + line.total()
+#     sum = sum + line.total
 #   end
 
 # Hashes have no two-variable iteration — go through the keys.
-for key in totals.keys()
+for key in totals.keys
     print(totals[key])
 end
 
@@ -408,7 +412,7 @@ data = fetch() rescue null         # returns null if fetch() throws
 
 # Concise defaults and guards
 @balance ||= 0                     # ||= sets when nil/false
-@email = @email.trim().downcase() unless @email.blank?  # .blank? covers nil + ""
+@email = @email.trim.downcase unless @email.blank?  # .blank? covers nil + ""
 unless ["up", "late", "overdue"].includes?(@status)     # membership check
     add_error("invalid status")
 end
@@ -449,7 +453,7 @@ class PostsController < Controller
 
     # GET /posts — no render call: posts/index renders, with @posts and @title
     def index(req)
-        @posts = Post.all()
+        @posts = Post.all
         @title = "Posts"
     end
 
@@ -495,8 +499,8 @@ Models inherit from `Model`; CRUD methods come with the inheritance — don't re
 # app/models/post.sl
 class Post < Model
     # Inherited from Model:
-    #   Post.all()              Post.find(id)        Post.find_by(field, val)
-    #   Post.where({...})       Post.create({...})   post.save()  post.delete()
+    #   Post.all              Post.find(id)        Post.find_by(field, val)
+    #   Post.where({...})       Post.create({...})   post.save  post.delete
     #
     # `Post.find(id)` RAISES RecordNotFound on miss — the framework converts
     # that to a 404 automatically. Don't add `if post.nil? { 404 }` after it;
@@ -513,7 +517,7 @@ class Post < Model
     before_save("normalize_title")
 
     def normalize_title
-        @title = @title.trim()
+        @title = @title.trim
     end
 end
 ```
@@ -754,7 +758,7 @@ one-liner, and everything below it becomes a named method a spec can call.
 
 ```soli
 static def open_session(cart, email, phone)
-  return PaymentGateway.stub_session(cart) unless PaymentGateway.remote?()
+  return PaymentGateway.stub_session(cart) unless PaymentGateway.remote?
 
   return PaymentGateway.remote_session(cart, email, phone)   # <- testable directly
 end

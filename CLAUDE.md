@@ -90,7 +90,7 @@ rows = (1..51).map { |i| { id: i, title: "Post title #{i}", views: i * 7 } }
 person = {"name": "Alice", "age": 30}
 person.name           # dot notation preferred
 person["name"]        # bracket notation also works
-person.keys()
+person.keys
 person.has_key("name")
 ```
 
@@ -119,7 +119,7 @@ class Employee < Person
   end
 
   def summary -> String
-    "#{@greet()} and I earn #{@salary}"      # @method() calls a method on self
+    "#{@greet} and I earn #{@salary}"      # @method calls a method on self
   end
 end
 ```
@@ -159,7 +159,7 @@ data = fetch_data() rescue null
 
 Ruby-style, terse Soli — in code, specs, docs and scaffolds alike.
 
-- **`@field`, not `this.field`** — `@method()` too, in any instance method or
+- **`@field`, not `this.field`** — `@method` too, in any instance method or
   constructor. `this` stays where there is no instance: `static { … }` blocks
   (`this.layout = …`, `this.before_action …`), `static def`, `class_methods`, and
   scope bodies (`scope("x", fn() { this.where(...) })`), plus passing the object
@@ -172,7 +172,16 @@ Ruby-style, terse Soli — in code, specs, docs and scaffolds alike.
   `reduce(fn(acc, x) acc + x, 0)` (`reduce(0) { |acc, x| … }` is not supported),
   `grouped(fn() { … })`, pipelines, and function values in a hash.
 - **Implicit returns** — the last expression of a method is its value; `return`
-  is for early exits.
+  is for early exits. Keep it before a last line that would start with `(` or
+  `fn(`: `(a + b) * 2` on its own line is read as a call on the line above, and
+  `fn(x) { … }` as a named function declaration.
+- **No `()` on a zero-argument method call** — `Post.all`, `@post.save`,
+  `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`. Keep
+  them on a **bare function** (`current_user()`, `session_destroy()`): without
+  them the VM passes the function itself instead of calling it. Keep them
+  before an index too — `list.sort()[0]`: the type checker refuses
+  `list.sort[0]`. `.any?`, `.all?` and `.none?` take a block
+  (`xs.any? { |x| x.done }`); for emptiness write `xs.length > 0`.
 - **A blank line after every guard clause** (`return … if/unless …`,
   `next if …`), unless the next line is `end`, `else`/`elsif` or another guard.
   `soli fmt` inserts it.
@@ -226,7 +235,7 @@ Ruby-style, terse Soli — in code, specs, docs and scaffolds alike.
 8. **Use concise defaults and guards** - Prefer idiomatic short forms over verbose nil/empty checks
    ```soli
    # .blank? combines nil and empty-string into one check
-   @email = @email.trim().downcase() unless @email.blank?
+   @email = @email.trim.downcase unless @email.blank?
    @status = "up" if @status.blank?
    @initials = @initials_from(@name) if @initials.blank?
 
@@ -349,7 +358,7 @@ cors("/api/*", {"origins": ["https://app.example.com"]})   # built-in CORS: pref
 class PostsController < Controller
   # GET /posts — no render call: posts/index renders with @posts
   def index(req)
-    @posts = Post.all()
+    @posts = Post.all
   end
 
   # POST /posts
@@ -384,7 +393,7 @@ grouped(fn() {
 # one round-trip; after the block the variables are ordinary values
 ```
 
-Batched: `all`, `.first`, `.count`, `.exists`, the aggregates, `find`, `find_by`, `first_by`. **Writes are not** — `create`/`save`/`update`/`delete` run immediately even inside the block (use `transaction` for atomic writes). Don't read a deferred result *inside* the block: that forces an auto-flush, which is still correct but costs the round-trip you were avoiding — keep `.present?` / `.length()` tests after the block. Under `--dev` the reads are deliberately not coalesced so the dev query log stays readable. Full reference: `www/docs/models.md` → "Coalescing Reads".
+Batched: `all`, `.first`, `.count`, `.exists`, the aggregates, `find`, `find_by`, `first_by`. **Writes are not** — `create`/`save`/`update`/`delete` run immediately even inside the block (use `transaction` for atomic writes). Don't read a deferred result *inside* the block: that forces an auto-flush, which is still correct but costs the round-trip you were avoiding — keep `.present?` / `.length` tests after the block. Under `--dev` the reads are deliberately not coalesced so the dev query log stays readable. Full reference: `www/docs/models.md` → "Coalescing Reads".
 
 **View** (ERB templates):
 ```erb

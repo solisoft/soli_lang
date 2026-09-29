@@ -78,11 +78,11 @@ content; reach for `<%- %>` only when you can prove the value is trusted.
   <p>#<%= i %>: <%= h(post.title) %></p>
 <% end %>
 
-<% if @posts.length() == 0 %>
+<% if @posts.length == 0 %>
   <p>No posts yet.</p>
 <% end %>
 
-<% unless @posts.length() == 0 %>
+<% unless @posts.length == 0 %>
   <a href="/posts/new">Write another</a>
 <% end %>
 ```
@@ -210,8 +210,8 @@ helper — returns a URL served by the framework's `AttachmentsController`.
 The URL hits SoliDB, decodes the blob, and streams it back.
 
 ```erb
-<% if !@contact.photo_url().nil? %>
-  <img src="<%= attr(@contact.photo_url()) %>" alt="<%= attr(@contact.name) %>">
+<% if !@contact.photo_url.nil? %>
+  <img src="<%= attr(@contact.photo_url) %>" alt="<%= attr(@contact.name) %>">
 <% end %>
 ```
 

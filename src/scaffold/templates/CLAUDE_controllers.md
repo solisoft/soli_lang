@@ -250,7 +250,7 @@ end
 ```
 
 Don't read a deferred `@`-var inside the block — that forces an auto-flush and
-costs the extra round-trip you were avoiding. Keep `if @programmes.length() == 0`
+costs the extra round-trip you were avoiding. Keep `if @programmes.length == 0`
 fallbacks *after* the block (and wrap several of them in a second `grouped`).
 Full contract, including what is and isn't batched: `app/models/CLAUDE.md` →
 **Coalescing reads (`grouped`)**.
@@ -344,7 +344,7 @@ Notes on the sample:
 
 ## Validation re-render flow
 
-`Model.create(attrs)` and `instance.save()` always return; on failure they
+`Model.create(attrs)` and `instance.save` always return; on failure they
 populate `_errors` on the returned instance. The controller checks `_errors`,
 re-renders the form view passing the invalid instance, and the view displays
 the errors.

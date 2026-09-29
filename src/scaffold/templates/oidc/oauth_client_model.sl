@@ -87,7 +87,7 @@ class OauthClient < Model
   def redirect_uri_allowed?(candidate)
     return false if candidate.to_s.blank?
 
-    (this.redirect_uris ?? []).includes?(candidate.to_s)
+    return (this.redirect_uris ?? []).includes?(candidate.to_s)
   end
 
   def authenticate_secret(secret)
@@ -106,6 +106,6 @@ class OauthClient < Model
   end
 
   def supports_grant?(grant_type)
-    (this.grant_types ?? []).includes?(grant_type.to_s)
+    return (this.grant_types ?? []).includes?(grant_type.to_s)
   end
 end

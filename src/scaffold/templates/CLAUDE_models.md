@@ -35,7 +35,7 @@ class Post < Model
 
   # Instance methods (your own logic)
   def normalize_title
-    @title = @title.trim()
+    @title = @title.trim
   end
 
   def notify_subscribers
@@ -69,7 +69,7 @@ module Publishable
   end
 
   def publish
-    self.published_at = DateTime.utc()
+    self.published_at = DateTime.utc
   end
 end
 
@@ -243,7 +243,7 @@ writes).
 
 One rule for the block body: **don't read a deferred result inside the block.**
 Doing so forces an auto-flush — correct data, but the extra round-trip you were
-trying to avoid. Keep every `if list.length() == 0` / `.present?` test *after*
+trying to avoid. Keep every `if list.length == 0` / `.present?` test *after*
 the block, and if the follow-up reads are themselves independent, wrap them in
 a second `grouped`:
 
@@ -255,8 +255,8 @@ grouped(fn() {
 # The fallbacks test the results, so they can't live in the block above —
 # but they still coalesce with each other.
 grouped(fn() {
-  @programmes = Programme.visible.limit(6).all if @programmes.length() == 0
-  @articles   = Article.limit(3).all if @articles.length() == 0
+  @programmes = Programme.visible.limit(6).all if @programmes.length == 0
+  @articles   = Article.limit(3).all if @articles.length == 0
 })
 ```
 
@@ -297,7 +297,7 @@ class User < Model
   validates("name",  { "custom": "validate_name" })
 
   def validate_name
-    return unless @name.blank? || @name.length() < 2
+    return unless @name.blank? || @name.length < 2
 
     @_errors.push({ "field": "name", "message": "too short" })
   end
@@ -393,7 +393,7 @@ class Post < Model
   after_create("notify_subscribers")
 
   def normalize_title
-    @title = @title.trim()
+    @title = @title.trim
   end
 
   def notify_subscribers
@@ -544,7 +544,7 @@ Hash | null, "duration_ms": Float }`. Useful for building a debug bar or
 spotting N+1s.
 
 ```erb
-<% if dev_queries().length() > 0 %>
+<% if dev_queries().length > 0 %>
   <div class="dev-bar">
     <% for q in dev_queries() %>
       <pre><%= q.query %> (<%= q.duration_ms %>ms)</pre>

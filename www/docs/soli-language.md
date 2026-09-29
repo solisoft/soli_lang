@@ -4363,7 +4363,15 @@ Soli is written Ruby-style — in apps, specs, docs and `soli new` scaffolds ali
   braces: `double = fn(x) { x * 2 }`), for `reduce(fn(acc, x) acc + x, 0)`,
   `grouped(fn() { … })`, pipelines, and function values in a hash.
 - **Implicit returns** — the last expression is the value; `return` is for early
-  exits.
+  exits, and before a last line that would start with `(` or `fn(` (read as a
+  call on the line above / a named function declaration).
+- **No `()` on a zero-argument method call** — `Post.all`, `@post.save`,
+  `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`. Keep
+  them on a **bare function** (`current_user()`, `session_destroy()`): without
+  them the VM passes the function itself instead of calling it. Keep them
+  before an index too — `list.sort()[0]`: the type checker refuses
+  `list.sort[0]`. `.any?`, `.all?` and `.none?` take a block
+  (`xs.any? { |x| x.done }`); for emptiness write `xs.length > 0`.
 - **A blank line after every guard clause** (`return … if/unless …`,
   `next if …`), unless the next line is `end`, `else`/`elsif` or another guard.
   `soli fmt` inserts it.

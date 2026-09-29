@@ -36,10 +36,10 @@ for data backfills — no `import` needed:
 
 ```soli
 def up(db)
-  for user in User.all()
+  for user in User.all
     next unless user.slug.blank?
-    user.slug = user.name.downcase().gsub(" ", "-")
-    user.save()
+    user.slug = user.name.downcase.gsub(" ", "-")
+    user.save
   end
 end
 ```
