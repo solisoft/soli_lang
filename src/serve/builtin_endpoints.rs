@@ -43,10 +43,11 @@ fn up() -> ResponseData {
     }
 }
 
-/// Opt-in OpenAPI (SOLI_OPENAPI): the spec + a Scalar UI over it, built from
-/// the app's registered routes (a per-worker thread-local, hence answered
-/// here on the worker rather than the async layer). Always-on when enabled,
-/// production included. 404 when disabled so it's invisible by default.
+/// OpenAPI (on under `--dev`, else opt-in with SOLI_OPENAPI): the spec + a
+/// Scalar UI over it, built from the app's registered routes (a per-worker
+/// thread-local, hence answered here on the worker rather than the async
+/// layer). Once enabled it is served in every environment, production
+/// included. 404 when disabled so it's invisible by default in production.
 fn openapi(path: &str) -> ResponseData {
     if !openapi_spec::openapi_enabled() {
         return error_response::text(404, "Not Found");

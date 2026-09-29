@@ -16758,6 +16758,1040 @@
         "locale",
         "display"
       ]
+    },
+    {
+      "title": "Introduction",
+      "type": "page",
+      "category": "Getting Started",
+      "path": "/docs/getting-started/introduction",
+      "signature": "",
+      "description": "Welcome to Soli, a dynamically-typed, high-performance web framework and programming language written in Rust. Soli combines the expressiveness of Ruby with a batteries-included MVC stack \u2014 170,000+ requests/second and sub-millisecond\u2026",
+      "keywords": [
+        "what is soli?",
+        "feature tour",
+        "language",
+        "web framework",
+        "data & persistence",
+        "realtime",
+        "batteries included",
+        "developer tools",
+        "the mvc pattern",
+        "model",
+        "view",
+        "controller",
+        "quick start",
+        "project structure",
+        "quick example"
+      ]
+    },
+    {
+      "title": "Installation",
+      "type": "page",
+      "category": "Getting Started",
+      "path": "/docs/getting-started/installation",
+      "signature": "",
+      "description": "Get Soli MVC up and running on your machine in minutes. Follow these steps to bootstrap your new project.",
+      "keywords": [
+        "1 prerequisites",
+        "node.js",
+        "npm",
+        "openssl",
+        "2 install soli cli",
+        "recommended quick install",
+        "via cargo",
+        "from source",
+        "updating",
+        "3 create your project",
+        "4 start development server",
+        "docker",
+        "run a soli app in a container",
+        "build the image yourself",
+        "project structure",
+        "install",
+        "installation",
+        "setup",
+        "download",
+        "curl"
+      ]
+    },
+    {
+      "title": "Configuration",
+      "type": "page",
+      "category": "Getting Started",
+      "path": "/docs/getting-started/configuration",
+      "signature": "",
+      "description": "A single reference for Soli environment variables: app environment, database, sessions, jobs, cache, S3, deployment, and development tooling.",
+      "keywords": [
+        "how environment files load",
+        "application environment",
+        "server and development",
+        "health checks and graceful shutdown",
+        "parsing and security limits",
+        "bundle protection",
+        "production logging (soli_log)",
+        "slow-request logging (soli_slow_request_ms)",
+        "opentelemetry tracing",
+        "db connection keep-warm",
+        "keeping memory low",
+        "hardening",
+        "database",
+        "sessions",
+        "jobs"
+      ]
+    },
+    {
+      "title": "Benchmarks",
+      "type": "page",
+      "category": "Getting Started",
+      "path": "/docs/getting-started/benchmarks",
+      "signature": "",
+      "description": "Seven HTTP workloads \u2014 a JSON API response, a rendered HTML page, a database read, a database-backed HTML page, and one create, update and delete per request \u2014 through nine full stacks and one reference configuration, on one machine,\u2026",
+      "keywords": [
+        "how these numbers were produced",
+        "the machine",
+        "how the machine was divided",
+        "what each request does",
+        "soli's settings",
+        "the protocol",
+        "setup",
+        "json \u2014 50 objects, 2,268 bytes, built in the handler",
+        "template \u2014 50-row html table + layout, ~3 kb",
+        "database read \u2014 50 rows, projected columns, 2,268 bytes",
+        "writes \u2014 create, update and delete, one row per request",
+        "create \u2014 one insert per request",
+        "update \u2014 one row by primary key",
+        "delete \u2014 one row by primary key, on a 20-million-row table",
+        "reference cells",
+        "benchmark",
+        "performance",
+        "req/s",
+        "rails",
+        "phoenix",
+        "laravel",
+        "express",
+        "django",
+        "throughput",
+        "latency"
+      ]
+    },
+    {
+      "title": "Changelog",
+      "type": "page",
+      "category": "Getting Started",
+      "path": "/docs/getting-started/changelog",
+      "signature": "",
+      "description": "Notable changes to Soli, newest first. Each release is a section below; the Unreleased block collects what's landed on main since the last tag. For the full commit-level history see CHANGELOG.md in the repository.",
+      "keywords": [
+        "dev tools",
+        "documentation",
+        "fixes",
+        "performance",
+        "v2.6.6 \u2014 2026-09-28",
+        "testing",
+        "v2.6.5 \u2014 2026-09-28",
+        "v2.6.4 \u2014 2026-09-28",
+        "changes",
+        "v2.6.3 \u2014 2026-09-27",
+        "v2.6.2 \u2014 2026-09-27",
+        "v2.6.1 \u2014 2026-09-27",
+        "v2.6.0 \u2014 2026-09-27",
+        "eui",
+        "build",
+        "changelog",
+        "release notes",
+        "what's new",
+        "versions",
+        "unreleased"
+      ]
+    },
+    {
+      "title": "Middleware",
+      "type": "page",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/middleware",
+      "signature": "",
+      "description": "Filter HTTP requests and responses. Middleware enables cross-cutting concerns like authentication, logging, and CORS handling.",
+      "keywords": [
+        "request logging",
+        "middleware attributes",
+        "creating middleware",
+        "return format",
+        "execution order",
+        "scoping middleware to routes",
+        "next steps",
+        "controllers \u2192",
+        "views \u2192",
+        "models \u2192",
+        "middleware",
+        "before",
+        "after",
+        "filter",
+        "cors",
+        "auth"
+      ]
+    },
+    {
+      "title": "EUI",
+      "type": "page",
+      "category": "EUI",
+      "path": "/docs/eui/overview",
+      "signature": "",
+      "description": "Native interfaces without HTML, CSS or JavaScript. An EUI component is a Live View component whose view returns a node tree as plain data; Soli diffs it against the tree it last sent and streams binary patches to a native client that\u2026",
+      "keywords": [
+        "a component is a live view component",
+        "who may connect",
+        "serving a page with no session",
+        "islands: a page with one live corner",
+        "the session that keeps the tree",
+        "limits, budgets and back-pressure",
+        "a socket that breaks is not an application that ended",
+        "local-first handlers",
+        "running it",
+        "the manifest",
+        "opening an application",
+        "what changed in soli"
+      ]
+    },
+    {
+      "title": "EUI \u2014 Styling",
+      "type": "page",
+      "category": "EUI",
+      "path": "/docs/eui/styling",
+      "signature": "",
+      "description": "There is no cascade and no selector. A style is a hash of the protocol's own vocabulary \u2014 display, gap, pad, bg, fg, size, weight, radius, width, align, justify, cursor, position \u2014 and colours are roles.",
+      "keywords": [
+        "the colour roles",
+        "gradients",
+        "transitions",
+        "arriving and leaving",
+        "a shared element",
+        "placement",
+        "tailwind classes"
+      ]
+    },
+    {
+      "title": "EUI \u2014 Events",
+      "type": "page",
+      "category": "EUI",
+      "path": "/docs/eui/events",
+      "signature": "",
+      "description": "\"on\": {\"click\": \"toggle\"} names a server event. When it fires, the handler's params carry the node id, the event kind, its payload, and \u2014 because the server kept the tree \u2014 the node's props. Nothing a client sends is trusted: three\u2026",
+      "keywords": [
+        "every event kind",
+        "waking a session",
+        "events",
+        "click",
+        "on",
+        "handler",
+        "server event"
+      ]
+    },
+    {
+      "title": "EUI \u2014 Assets",
+      "type": "page",
+      "category": "EUI",
+      "path": "/docs/eui/assets",
+      "signature": "",
+      "description": "Images travel as assets the client caches by hash, long lists are keyed so the differ can move rows instead of rebuilding them, and a view can move a scroll position as well as describe one.",
+      "keywords": [
+        "images and assets",
+        "keyed lists and virtualisation",
+        "moving pictures",
+        "the viewport",
+        "windowed lists",
+        "memoising a keyed child",
+        "moving the scroll position",
+        "moving the caret"
+      ]
+    },
+    {
+      "title": "EUI \u2014 Widgets: Layout",
+      "type": "page",
+      "category": "EUI",
+      "path": "/docs/eui/widgets-layout",
+      "signature": "",
+      "description": "There is no widget primitive. The protocol can express sixteen node kinds and nothing else \u2014 a button is a box with a click handler and a text child. Everything below is composed from those kinds by ordinary Soli functions that return\u2026",
+      "keywords": [
+        "the widget catalogue",
+        "layout and containers",
+        "overlays and structure",
+        "navigation",
+        "theme and responsiveness"
+      ]
+    },
+    {
+      "title": "EUI \u2014 Widgets: Input",
+      "type": "page",
+      "category": "EUI",
+      "path": "/docs/eui/widgets-input",
+      "signature": "",
+      "description": "Every button is a box with a click handler and a text child \u2014 there is no button primitive. The variants differ only in their style roles.",
+      "keywords": [
+        "actions",
+        "input",
+        "dates"
+      ]
+    },
+    {
+      "title": "EUI \u2014 Widgets: Content",
+      "type": "page",
+      "category": "EUI",
+      "path": "/docs/eui/widgets-data",
+      "signature": "",
+      "description": "Text is a leaf primitive; these are conventional sizes and roles on top of it.",
+      "keywords": [
+        "typography",
+        "media",
+        "data display",
+        "feedback and status",
+        "charts and canvas",
+        "dev bar"
+      ]
+    },
+    {
+      "title": "EUI \u2014 Widgets: Internals",
+      "type": "page",
+      "category": "EUI",
+      "path": "/docs/eui/widgets-internals",
+      "signature": "",
+      "description": "The functions the catalogue calls on itself. They are documented so the file reads end to end, not because they are API \u2014 copy eui_builders.sl into your application and they are yours to rename.",
+      "keywords": [
+        "internal helpers",
+        "widgets",
+        "internals",
+        "catalogue"
+      ]
+    },
+    {
+      "title": "Client Interactivity",
+      "type": "page",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/client-interactivity",
+      "signature": "",
+      "description": "Soli's default project template ships two complementary client-side libraries that, together, cover the bulk of frontend work without a JavaScript build step.",
+      "keywords": [
+        "see it in action",
+        "htmx v2.0.10",
+        "alpine.js v3.14.1",
+        "when to use what",
+        "htmx \u2014 ajax in html attributes",
+        "common directives",
+        "server side",
+        "helper functions (optional)",
+        "alpine.js \u2014 local state and behavior",
+        "tabs and modals",
+        "client-side validation",
+        "combined patterns",
+        "optimistic ui",
+        "swap, then re-init",
+        "mounting external libraries"
+      ]
+    },
+    {
+      "title": "Internationalization",
+      "type": "page",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/i18n",
+      "signature": "",
+      "description": "Build multilingual applications with ease. Soli provides built-in i18n support for translations, number formatting, currency, dates, and pluralization.",
+      "keywords": [
+        "setting the locale",
+        "basic translation",
+        "pluralization",
+        "number formatting",
+        "currency formatting",
+        "date formatting",
+        "datetime.format() with locale",
+        "translation files",
+        "supported locales",
+        "method reference",
+        "which locale a request runs in",
+        "plurals follow cldr"
+      ]
+    },
+    {
+      "title": "Error Pages",
+      "type": "page",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/error-pages",
+      "signature": "",
+      "description": "Custom error handling for production mode with support for branded error pages.",
+      "keywords": [
+        "production-ready error pages",
+        "1 development vs production mode",
+        "development mode",
+        "production mode",
+        "inspecting variables in the repl",
+        "error logging to stderr",
+        "2 default error pages",
+        "3 custom error pages",
+        "template variables",
+        "example: custom 404 page",
+        "example: custom 500 page",
+        "4 important notes",
+        "5 production deployment",
+        "production mode ensures:",
+        "best practices"
+      ]
+    },
+    {
+      "title": "Engines",
+      "type": "page",
+      "category": "Core Concepts",
+      "path": "/docs/core-concepts/engines",
+      "signature": "",
+      "description": "Engines are mini-applications that can be mounted at specific URL paths. Each engine has its own controllers, models, views, routes, and migrations\u2014completely isolated from the main application.",
+      "keywords": [
+        "engine structure",
+        "engine manifest",
+        "routes",
+        "mounting engines",
+        "creating engines",
+        "file resolution"
+      ]
+    },
+    {
+      "title": "Database Configuration",
+      "type": "page",
+      "category": "Database",
+      "path": "/docs/database/configuration",
+      "signature": "",
+      "description": "Soli uses SoliDB as the default full-featured backend. Configure a single connection with environment variables. For the Postgres, MySQL, and SQLite adapters and named multi-DB setups, see Multiple Databases \u2014 or the adapter pages:\u2026",
+      "keywords": [
+        "environment variables",
+        "required variables",
+        "optional variables",
+        ".env file",
+        "multiple environments",
+        "development",
+        "test",
+        "production",
+        "setting app_env",
+        "option 1: shell environment (recommended for ci/production)",
+        "option 2: in .env file (for local development)",
+        "file loading order",
+        "starting solidb",
+        "verifying connection",
+        "using models"
+      ]
+    },
+    {
+      "title": "Authentication with JWT",
+      "type": "page",
+      "category": "Security",
+      "path": "/docs/security/authentication",
+      "signature": "",
+      "description": "Implement secure, stateless authentication for your APIs and web applications using JSON Web Tokens.",
+      "keywords": [
+        "secure by default",
+        "1 creating tokens",
+        "2 verifying tokens",
+        "jwt",
+        "login",
+        "token",
+        "bearer",
+        "stateless",
+        "api auth"
+      ]
+    },
+    {
+      "title": "OAuth Client",
+      "type": "page",
+      "category": "Security",
+      "path": "/docs/security/oauth-client",
+      "signature": "",
+      "description": "Sign in with GitHub or Google. Scaffolded by soli generate oauth \u2014 the opposite of OIDC provider (your app as the IdP).",
+      "keywords": [
+        "prerequisites",
+        "what gets generated",
+        "environment",
+        "login button",
+        "security",
+        "ceiling"
+      ]
+    },
+    {
+      "title": "Production security defaults",
+      "type": "page",
+      "category": "Security",
+      "path": "/docs/security/defaults",
+      "signature": "",
+      "description": "What production already does, what you still have to set, and what the hardening program will fail closed. The long-term goal is that soli new + soli serve is safe on the public internet without a checklist.",
+      "keywords": [
+        "already on by default (production)",
+        "you still set (today)",
+        "under --dev",
+        "target (hardening program)"
+      ]
+    },
+    {
+      "title": "Rust internals",
+      "type": "page",
+      "category": "Internals",
+      "path": "/docs/internals",
+      "signature": "",
+      "description": "This section is for people who will change the Soli interpreter, not for people writing Soli apps. If you are a junior Rust engineer joining the repo, start here, then follow the sub-pages.",
+      "keywords": [
+        "mental model in one picture",
+        "where to stand when you open the repo",
+        "two binaries, one library",
+        "dual engine (the tax you will pay)",
+        "ownership patterns you will see everywhere",
+        "request vs script",
+        "sub-pages",
+        "how to add something (junior checklist)",
+        "crate module map (`src/`)"
+      ]
+    },
+    {
+      "title": "Lexer, parser, AST",
+      "type": "page",
+      "category": "Internals",
+      "path": "/docs/internals/pipeline",
+      "signature": "",
+      "description": "How Soli source becomes a program: the lexer's tokens, the parser, and the AST both engines run.",
+      "keywords": [
+        "spans",
+        "lexer (`src/lexer/`)",
+        "`scanner`",
+        "`token` / `tokenkind`",
+        "parser (`src/parser/`)",
+        "ast (`src/ast/`)",
+        "type checker (`src/types/`) \u2014 optional",
+        "modules (`src/module/resolver.rs`)",
+        "errors"
+      ]
+    },
+    {
+      "title": "Interpreter",
+      "type": "page",
+      "category": "Internals",
+      "path": "/docs/internals/interpreter",
+      "signature": "",
+      "description": "Used by --dev, soli test, the REPL, and as a fallback when the VM refuses a handler.",
+      "keywords": [
+        "`value` \u2014 the runtime",
+        "`class` / `instance`",
+        "`nativefunction`",
+        "`environment`",
+        "`interpreter`",
+        "call path (`executor/calls/`)",
+        "builtins (`src/interpreter/builtins/`)",
+        "hidden classes and inline caches",
+        "evaluating vs executing"
+      ]
+    },
+    {
+      "title": "Bytecode VM",
+      "type": "page",
+      "category": "Internals",
+      "path": "/docs/internals/vm",
+      "signature": "",
+      "description": "Production soli serve compiles each handler to bytecode and runs it on a stack machine. --dev does not.",
+      "keywords": [
+        "compile",
+        "what the compiler tracks",
+        "module / function prototype",
+        "`op`",
+        "the fast tier (`run_fast`)",
+        "iterator callbacks (`vm_callback_loop.rs`)",
+        "`vm`",
+        "native methods on the vm",
+        "seeding builtins"
+      ]
+    },
+    {
+      "title": "Serve / HTTP",
+      "type": "page",
+      "category": "Internals",
+      "path": "/docs/internals/serve",
+      "signature": "",
+      "description": "The request path through soli serve: the async layer, the worker pool, the built-in endpoints and the middleware pipeline.",
+      "keywords": [
+        "boot sequence (`serve_folder_with_options_and_hooks`)",
+        "dual engine on the server",
+        "builtins: one registry per consumer, on purpose",
+        "tenants",
+        "converting a global",
+        "done, and left",
+        "mounting a second application",
+        "which application serves a request",
+        "the request path's tenant bundle",
+        "the realtime, policy and staging state",
+        "deliberately left shared",
+        "left for the host (step 4)",
+        "still process-global",
+        "measuring memory",
+        "request path (happy path)"
+      ]
+    },
+    {
+      "title": "Database adapters",
+      "type": "page",
+      "category": "Internals",
+      "path": "/docs/internals/database",
+      "signature": "",
+      "description": "How Soli apps talk to data: the SoliDB driver and HTTP client, and the Postgres, MySQL and SQLite adapters behind the Model API.",
+      "keywords": [
+        "layout",
+        "types",
+        "`adapter`",
+        "`connectionspec` / `connectionregistry`",
+        "tls (`tls.rs`)",
+        "how a `user.where({ active: true }).all()` becomes sql",
+        "column mode",
+        "what is *not* in `src/db/`"
+      ]
+    },
+    {
+      "title": "Rust API catalog",
+      "type": "page",
+      "category": "Internals",
+      "path": "/docs/internals/rust-api",
+      "signature": "",
+      "description": "This is the map of types a junior should memorize. It is not rustdoc for every private helper (the crate has thousands of fns). For a symbol not listed here, rg \"struct Name\" src then read the impl block.",
+      "keywords": [
+        "crate root (`src/lib.rs`)",
+        "lexer",
+        "`scanner<'a>` (`lexer/scanner.rs`)",
+        "`token` (`lexer/token.rs`)",
+        "parser",
+        "`parser` (`parser/core.rs`)",
+        "ast",
+        "`expr` / `stmt`",
+        "`argument`",
+        "`program`",
+        "values (`interpreter/value.rs`)",
+        "`value` (enum)",
+        "`decimalvalue`",
+        "`hashkey`",
+        "`function`"
+      ]
+    },
+    {
+      "title": "Live Reload",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/live-reload",
+      "signature": "",
+      "description": "Experience instant feedback. Soli's development server automatically detects changes and updates your browser without a restart.",
+      "keywords": [
+        "how it works",
+        "1. file changed",
+        "2. recompile",
+        "3. refresh",
+        "what is watched",
+        "starting the server",
+        "styling with tailwind",
+        "production mode",
+        "next steps",
+        "installation \u2192",
+        "controllers \u2192"
+      ]
+    },
+    {
+      "title": "Scaffold Generator",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/scaffold",
+      "signature": "",
+      "description": "Quickly generate complete MVC resources with models, controllers, views, tests, and migrations.",
+      "keywords": [
+        "native / mobile generators",
+        "basic usage",
+        "what gets generated",
+        "field types",
+        "generated code",
+        "model",
+        "controller",
+        "views",
+        "migration",
+        "tests",
+        "auto-validations",
+        "mass assignment protection",
+        "security best practice",
+        "generated routes",
+        "example"
+      ]
+    },
+    {
+      "title": "Desktop Apps",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/desktop",
+      "signature": "",
+      "description": "Package an app as a single executable that carries its own database. The user double-clicks it; it starts a private database, opens their browser, and serves the app locally. No installer, no separate database, no configuration.",
+      "keywords": [
+        "deep links into a desktop artifact",
+        "a native window instead of a browser",
+        "what the artifact contains",
+        "requirements",
+        "options",
+        "shipping reference data",
+        "where user data lives",
+        "protecting data at rest",
+        "what this protects against, and what it does not",
+        "the local port",
+        "embedding in a native shell",
+        "cross-building",
+        "stopping",
+        "size",
+        "staying current"
+      ]
+    },
+    {
+      "title": "Device registration",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/native/devices",
+      "signature": "",
+      "description": "Store push targets so Push.deliver can reach a user on every platform.",
+      "keywords": [
+        "generate",
+        "layout",
+        "http contract",
+        "csrf",
+        "sending",
+        "checklist",
+        "related"
+      ]
+    },
+    {
+      "title": "Native clients",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/native/clients",
+      "signature": "",
+      "description": "Generate thin OS shells that load your deployed Soli app and speak the native bridge \u2014 not a second UI rewrite.",
+      "keywords": [
+        "end-to-end recipe",
+        "generate",
+        "platforms",
+        "free vs paid (apple)",
+        "related"
+      ]
+    },
+    {
+      "title": "Offline mobile",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/native/offline",
+      "signature": "",
+      "description": "Mobile shells are WebViews onto a remote deployment. True offline is a different product shape.",
+      "keywords": [
+        "v1: outbox + sync",
+        "out of v1",
+        "related"
+      ]
+    },
+    {
+      "title": "Platform limits",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/native/platform-limits",
+      "signature": "",
+      "description": "What the native bridge deliberately does not pretend to own.",
+      "keywords": [
+        "background location",
+        "in-app purchases",
+        "widgets / live activities",
+        "what is first-class"
+      ]
+    },
+    {
+      "title": "Editor Integration",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/editor-integration",
+      "signature": "",
+      "description": "Set up Soli language support in your favorite editor. Full LSP features including autocomplete, hover docs, and real-time linting.",
+      "keywords": [
+        "cursor & vs code",
+        "installation",
+        "settings",
+        "available lsp features",
+        "nova (macos)",
+        "install from source",
+        "install from the extension library",
+        "neovim",
+        "other editors",
+        "requirements",
+        "next steps",
+        "linting \u2192",
+        "introduction \u2192"
+      ]
+    },
+    {
+      "title": "Formatting",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/formatting",
+      "signature": "",
+      "description": "soli fmt rewrites your .sl files into Soli's canonical style \u2014 2-space indent, Ruby-style end, normalized operator spacing. Run it on save, in CI, or by hand.",
+      "keywords": [
+        "usage",
+        "style",
+        "generated code is already formatted",
+        "editor integration",
+        "ci usage",
+        "coverage & fallback",
+        "see also",
+        "linting \u2192",
+        "editor integration \u2192"
+      ]
+    },
+    {
+      "title": "AI Agents",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/ai-agents",
+      "signature": "",
+      "description": "soli new scaffolds a project that's ready for AI coding agents (Claude Code, Cursor, Aider, Copilot CLI, Codex CLI) from the first commit. This page describes what ships and how to use it.",
+      "keywords": [
+        "what you get",
+        "the verification loop",
+        "slash commands",
+        "permissions",
+        "keeping docs up to date",
+        "migrating an older project",
+        "customizing"
+      ]
+    },
+    {
+      "title": "Agents on Soli",
+      "type": "page",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/ai-evals",
+      "signature": "",
+      "description": "How we grade models on real Soli work. The table lives on /ai. Numbers only come from www/data/ai_evals.json.",
+      "keywords": [
+        "what is compared",
+        "corpus",
+        "grading",
+        "cost",
+        "reproduce"
+      ]
+    },
+    {
+      "title": "Soli Language Reference",
+      "type": "page",
+      "category": "Language Reference",
+      "path": "/docs/language",
+      "signature": "",
+      "description": "A comprehensive guide to the Soli programming language. Learn the syntax, types, control flow, functions, classes, and advanced features that make Soli unique.",
+      "keywords": [
+        "language topics",
+        "getting started",
+        "what is soli?",
+        "hello world",
+        "your first soli program",
+        "running soli code",
+        "code style",
+        "quick reference",
+        "ready to learn?"
+      ]
+    },
+    {
+      "title": "Symbols",
+      "type": "page",
+      "category": "Language Reference",
+      "path": "/docs/language/symbols",
+      "signature": "",
+      "description": "Lightweight identifiers for hash keys, constants and enum-like values: :name literals, comparison and conversion.",
+      "keywords": [
+        "creating symbols",
+        "equality & comparison",
+        "as hash keys",
+        "conversion methods",
+        "introspection methods",
+        "&:method shorthand",
+        "symbols in expressions"
+      ]
+    },
+    {
+      "title": "Block Syntax",
+      "type": "page",
+      "category": "Language Reference",
+      "path": "/docs/language/blocks",
+      "signature": "",
+      "description": "Soli supports two block termination styles: end keywords (Ruby style) and braces (C style). Both parse to the same AST.",
+      "keywords": [
+        "when to use each style",
+        "functions",
+        "using curly braces",
+        "using end keyword",
+        "if statements",
+        "while loops",
+        "for loops",
+        "classes",
+        "mixed usage",
+        "quick reference"
+      ]
+    },
+    {
+      "title": "Metaprogramming",
+      "type": "page",
+      "category": "Language Reference",
+      "path": "/docs/language/metaprogramming",
+      "signature": "",
+      "description": "Advanced runtime code generation and introspection: send, respond_to?, method_missing, define_method and friends.",
+      "keywords": [
+        "dynamic method dispatch: send()",
+        "soli",
+        "implementation notes",
+        "ghost methods: method_missing()",
+        "introspection: respond_to?()",
+        "dynamic methods: define_method()",
+        "extending primitive types",
+        "precedence and performance",
+        "named scopes: scope(name, fn)",
+        "method aliasing: alias_method()",
+        "inheritance hook: inherited()",
+        "contextual evaluation: instance_eval()",
+        "module hooks: included, extended, prepended",
+        "soli (planned)",
+        "introspection api"
+      ]
+    },
+    {
+      "title": "Built-in Functions",
+      "type": "page",
+      "category": "Built-in Functions",
+      "path": "/docs/builtins",
+      "signature": "",
+      "description": "Complete reference for all 170+ built-in functions in Soli. From I/O and string manipulation to HTTP requests, cryptography, testing utilities, caching, rate limiting, and security headers.",
+      "keywords": [
+        "function categories",
+        "category overview",
+        "core functions",
+        "system functions",
+        "http functions",
+        "s3 functions",
+        "soap class",
+        "json functions",
+        "ai functions",
+        "markdown class",
+        "cryptography functions",
+        "jwt functions",
+        "paseto tokens",
+        "regex functions",
+        "environment functions"
+      ]
+    },
+    {
+      "title": "PDF Playground",
+      "type": "page",
+      "category": "Built-in Functions",
+      "path": "/docs/builtins/pdf-playground",
+      "signature": "",
+      "description": "Edit a PDF layout template and its data side by side and see the rendered PDF update live.",
+      "keywords": [
+        "pdf",
+        "playground",
+        "layout",
+        "template",
+        "preview",
+        "live"
+      ]
+    },
+    {
+      "title": "Regex Functions",
+      "type": "page",
+      "category": "Built-in Functions",
+      "path": "/docs/builtins/regex",
+      "signature": "",
+      "description": "The Regex class: matching, finding, replacing, splitting and capture groups.",
+      "keywords": [
+        "pattern matching",
+        "replacing",
+        "splitting & capturing"
+      ]
+    },
+    {
+      "title": "Testing",
+      "type": "page",
+      "category": "Testing",
+      "path": "/docs/testing",
+      "signature": "",
+      "description": "Comprehensive testing guide for Soli MVC applications. Includes unit testing and end-to-end controller testing.",
+      "keywords": [
+        "testing topics",
+        "e2e controller testing",
+        "basic test structure",
+        "running tests",
+        "request helpers",
+        "http method functions",
+        "custom headers",
+        "authentication headers",
+        "cookie management",
+        "response helpers",
+        "status codes",
+        "response body",
+        "response headers",
+        "redirects",
+        "session helpers",
+        "test",
+        "spec",
+        "describe",
+        "e2e",
+        "assigns",
+        "coverage"
+      ]
+    },
+    {
+      "title": "Testing Quick Reference",
+      "type": "page",
+      "category": "Testing",
+      "path": "/docs/testing-quick-reference",
+      "signature": "",
+      "description": "Quick lookup for E2E controller testing helpers.",
+      "keywords": [
+        "request functions",
+        "header functions",
+        "response functions",
+        "session functions",
+        "assigns functions",
+        "complete example",
+        "running tests"
+      ]
+    },
+    {
+      "title": "OpenAPI / Swagger spec",
+      "type": "feature",
+      "category": "Routing",
+      "path": "/docs/core-concepts/routing#openapi",
+      "signature": "GET /openapi.json \u00b7 GET /openapi",
+      "description": "An OpenAPI 3 spec generated from your routes at /openapi.json, and a browsable Scalar API reference (a Swagger UI alternative) at /openapi. On under --dev; opt in with SOLI_OPENAPI=1 in production.",
+      "keywords": [
+        "openapi",
+        "swagger",
+        "swagger ui",
+        "openapi.json",
+        "api docs",
+        "api documentation",
+        "api reference",
+        "scalar",
+        "rest api",
+        "spec",
+        "client generation",
+        "SOLI_OPENAPI"
+      ]
+    },
+    {
+      "title": "SOLI_OPENAPI",
+      "type": "option",
+      "category": "Configuration",
+      "path": "/docs/getting-started/configuration",
+      "signature": "SOLI_OPENAPI=1 \u00b7 SOLI_OPENAPI_TITLE",
+      "description": "Expose the OpenAPI (Swagger) spec and the Scalar API reference. On by default under --dev (SOLI_OPENAPI=0 turns it off); opt-in in production. SOLI_OPENAPI_TITLE sets the document title.",
+      "keywords": [
+        "openapi",
+        "swagger",
+        "api docs",
+        "env",
+        "environment variable",
+        "SOLI_OPENAPI_TITLE"
+      ]
     }
   ]
 }

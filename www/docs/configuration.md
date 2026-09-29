@@ -54,7 +54,7 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 | `SOLI_DEV_FLAME_MAX` | Under `--dev`, how many spans the dev-bar flamegraph draws (the heaviest by duration). `0` draws all of them. `trace.json` is always complete. | `300` |
 | `SOLI_DEV_REPL_ALLOW_REMOTE` | Allows the token-protected dev error-page REPL from non-loopback clients when set to `1`, `true`, or `yes`. Requires `SOLI_DEV_REPL_SECRET` (SEC-051) — the server refuses to start otherwise. | `false` |
 | `SOLI_DEV_REPL_SECRET` | Pins the `/__dev/repl` token to an explicit shared secret instead of an auto-generated UUID. Required when `SOLI_DEV_REPL_ALLOW_REMOTE=1` so the credential is never embedded in dev-mode HTML error pages. | unset |
-| `SOLI_OPENAPI` | Set to `1`/`true` to expose an OpenAPI 3 spec at `/openapi.json` (generated from the routes) and a Scalar API-reference UI at `/openapi`. Opt-in (404 otherwise); served in every environment once on. See [Routing → OpenAPI](routing.md#openapi-soli_openapi). | unset |
+| `SOLI_OPENAPI` | Set to `1`/`true` to expose an OpenAPI 3 spec at `/openapi.json` (generated from the routes) and a Scalar API-reference UI at `/openapi`. On by default under `--dev` (`0` turns it off there); elsewhere opt-in (404 otherwise), then served in every environment. See [Routing → OpenAPI](routing.md#openapi-soli_openapi). | unset |
 | `SOLI_OPENAPI_TITLE` | Title of the generated OpenAPI document. | `Soli API` |
 | `SOLI_SHUTDOWN_GRACE_SECS` | How long a `SIGTERM`/`SIGINT` shutdown waits for in-flight requests to finish before exiting anyway. See [Health checks and graceful shutdown](#health-checks-and-graceful-shutdown). `0` exits immediately. | `25` |
 | `SOLI_TRACE_BOOT` | Prints boot timing trace when set. | unset |

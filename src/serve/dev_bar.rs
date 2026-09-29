@@ -744,8 +744,16 @@ fn render_bar(ctx: &DevBarContext) -> String {
                 "time spent by shape, N+1, slow runs",
                 ""
             ),
+            (
+                "/openapi",
+                "api",
+                "OpenAPI reference of the routes",
+                ""
+            ),
         ]
         .iter()
+        // `/openapi` is on under --dev unless SOLI_OPENAPI=0 turned it off.
+        .filter(|(href, ..)| *href != "/openapi" || crate::serve::openapi::openapi_enabled())
         .map(|(href, name, note, badge)| format!(
             "<a href=\"{href}\" target=\"_blank\" rel=\"noopener\" \
 style=\"display:block;border:1px solid #30363d;border-radius:0.25rem;padding:0.3rem 0.5rem;color:#8be9fd;text-decoration:none;\">\
@@ -1845,6 +1853,11 @@ mod tests {
                 "tools panel should link {href} in a new tab"
             );
         }
+        assert_eq!(
+            out.contains("href=\"/openapi\""),
+            crate::serve::openapi::openapi_enabled(),
+            "the API link follows whether /openapi answers"
+        );
     }
 
     #[test]

@@ -1,9 +1,11 @@
-//! Opt-in OpenAPI 3 generator.
+//! OpenAPI 3 generator.
 //!
 //! `GET /openapi.json` returns a spec built from the app's registered routes;
-//! `GET /openapi` serves a Scalar API-reference UI over it. Both are gated by
-//! `SOLI_OPENAPI` (off by default) so the route table isn't exposed unless the
-//! app opts in — then they're available in production too, like `/_metrics`.
+//! `GET /openapi` serves a Scalar API-reference UI over it. Both are on under
+//! `--dev` and off otherwise, so a production route table isn't exposed unless
+//! the app opts in with `SOLI_OPENAPI=1` — then they're available in
+//! production too, like `/_metrics`. An explicit `SOLI_OPENAPI=0` turns them
+//! off in dev as well.
 //!
 //! There is no annotation infrastructure to read types/bodies from, so the spec
 //! is structural: every route becomes a path + method with its handler as the
@@ -14,15 +16,27 @@ use std::sync::OnceLock;
 
 use crate::interpreter::builtins::server::get_routes;
 
-/// Whether the OpenAPI endpoints are enabled (`SOLI_OPENAPI=1`/`true`). Read
-/// once, process-wide — mirrors `metrics_enabled()`.
+/// Whether the OpenAPI endpoints are enabled: `SOLI_OPENAPI` when it is set
+/// (`1`/`true` on, anything else off), otherwise whether the server runs with
+/// `--dev`. The variable is read once, process-wide — mirrors
+/// `metrics_enabled()`; dev mode is a process-global set at startup.
 pub fn openapi_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("SOLI_OPENAPI")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false)
-    })
+    static EXPLICIT: OnceLock<Option<bool>> = OnceLock::new();
+    let explicit =
+        *EXPLICIT.get_or_init(|| std::env::var("SOLI_OPENAPI").ok().map(|v| parse_flag(&v)));
+    resolve_enabled(
+        explicit,
+        crate::interpreter::builtins::template::is_dev_mode(),
+    )
+}
+
+fn parse_flag(value: &str) -> bool {
+    value == "1" || value.eq_ignore_ascii_case("true")
+}
+
+/// An explicit `SOLI_OPENAPI` wins; without one, dev mode decides.
+fn resolve_enabled(explicit: Option<bool>, dev_mode: bool) -> bool {
+    explicit.unwrap_or(dev_mode)
 }
 
 /// The spec title (`SOLI_OPENAPI_TITLE`, default `"Soli API"`).
@@ -146,6 +160,24 @@ pub fn ui_page() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dev_mode_enables_it_unless_the_variable_says_otherwise() {
+        assert!(resolve_enabled(None, true), "on by default under --dev");
+        assert!(
+            !resolve_enabled(None, false),
+            "off by default in production"
+        );
+        assert!(
+            !resolve_enabled(Some(parse_flag("0")), true),
+            "SOLI_OPENAPI=0 wins in dev"
+        );
+        assert!(
+            resolve_enabled(Some(parse_flag("true")), false),
+            "SOLI_OPENAPI=true in production"
+        );
+        assert!(!resolve_enabled(Some(parse_flag("off")), false));
+    }
 
     #[test]
     fn openapi_path_templates_params() {
