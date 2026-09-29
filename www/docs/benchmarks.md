@@ -100,14 +100,14 @@ Every published sweep opened and closed with `control.sh`, which re-measures two
 (Express `/json`, Soli `/template`) and refuses the run on more than 8% drift. The main sweep
 closed at −5.2% and +0.3%; every follow-up pass was bracketed the same way.
 
-Soli's rows come from follow-up passes on the current build, and in every one of them the
-Soli control cell read **+6.6% to +7.6%** while Express's stayed between −4.6% and +5.6%. The
-box was not faster; the build is — the control cell measures Soli, and Soli got quicker between
-the main sweep and these passes. Soli's rows are therefore that build's own numbers, against
-the other stacks as the main sweep measured them. Every response's
-HTTP status was recorded, the JSON and DB payloads were compared byte for byte across all
-nine stacks before measuring, and every write cell counted its table before and after. The
-host's other workloads — a local LLM service among them — were stopped for the whole run.
+Soli's rows come from follow-up passes on the current build, the database rows from a
+same-session A/B that alternated SoliDB 2.0.3 and 2.0.4 twice each. In all of them the Soli
+control cell read **+6.0% to +7.6%** while Express's stayed between −4.6% and +5.6%. It is not
+the build: the build published before read +5% to +7% on the same cell in passes another
+session ran over the same hours. The cause is not established — the main sweep ran with five
+idle orphaned Soli servers on the stack cores, found and removed later, which is a candidate
+and nothing more — so **Soli's rows may be flattered by up to ~7%** against the stacks
+measured in the main sweep.
 
 ## Setup
 
@@ -200,8 +200,8 @@ there, noted rather than normalised away.
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | 290,279 | 1.19 ms | 37 µs (47 incl. SoliDB) | 9.4x |
-| Soli, SoliDB query cache off *(reference)* | 107,545 | 1.99 ms | 35 µs (103 incl. SoliDB) | 3.5x |
+| **Soli** | 296,064 | 1.15 ms | 37 µs (46 incl. SoliDB) | 9.6x |
+| Soli, SoliDB query cache off *(reference)* | 140,259 | 1.84 ms | 35 µs (86 incl. SoliDB) | 4.5x |
 | Express + EJS + Sequelize | 94,755 | 3.35 ms | 156 µs | 3.1x |
 | Phoenix + Ecto + HEEx | 67,843 | 4.86 ms | 220 µs | 2.2x |
 | AdonisJS + Lucid + Edge | 44,781 | 7.91 ms | 341 µs | 1.5x |
@@ -219,8 +219,8 @@ executes and serialises every request. The main Soli row is what an app gets by 
 reference row turns the memoization off with `SOLI_DB_NO_QUERY_CACHE=1` and is the
 like-for-like database comparison.
 
-**Without the cache, Soli still leads the ORM rows**: 107,545 req/s against Express's 94,755
-and Phoenix's 67,843, and **3.5x Rails**. Express on the raw `pg` driver, with no ORM in the
+**Without the cache, Soli still leads the ORM rows**: 140,259 req/s against Express's 94,755
+and Phoenix's 67,843, and **4.5x Rails**. Express on the raw `pg` driver, with no ORM in the
 path, reads faster still — 160,230 (reference cells below). Every other row here pays its ORM,
 and Soli's pays its model layer.
 
@@ -228,11 +228,11 @@ and Soli's pays its model layer.
 box, the uncached row read **38,086 req/s** — behind Phoenix, Express and AdonisJS — with
 SoliDB spending **184 µs** of CPU per request against Soli's own 35. That measurement is why
 2.0.2 exists: it cut SoliDB's CPU on this query by 65% and tripled the row (112,180). The
-versions since moved it little on this query: 2.0.3 read 116,013 and **2.0.4, published here,
-107,545** at 68 µs of SoliDB CPU. 2.0.4's own read improvement targets key lookups and
-uncached document reads, which a 50-row projection does not exercise; on this row it measured
-7% below 2.0.3, within what two passes an hour apart differ by, and not yet re-checked head to
-head.
+versions since: 2.0.3 left this row at 113,030, and **2.0.4, published here, reads 140,259 —
++24% over 2.0.3** in a same-session A/B that alternated the two versions twice each (SoliDB's
+CPU per request 64 → 50 µs; the cached read, create and update moved by about 3%). An earlier
+2.0.4 pass on a freshly copied data directory read 107,545; the alternating A/B, on a data
+directory 2.0.4 had already run on, did not reproduce it, and its figures are the ones above.
 
 > **The two rows are not the same query path, and the cached one is not a like-for-like
 > result.** A cached read is a key lookup and a copy; the nearest equivalent for the other
@@ -267,7 +267,7 @@ the only added variable.
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
 | **Soli** | 286,961 | 1.24 ms | 37 µs (48 incl. SoliDB) | 11.5x |
-| Soli, SoliDB query cache off *(reference)* | 106,994 | 2.19 ms | 36 µs (104 incl. SoliDB) | 4.3x |
+| Soli, SoliDB query cache off *(reference)* | 139,320 | 2.01 ms | 36 µs (87 incl. SoliDB) | 5.6x |
 | Phoenix + Ecto + HEEx | 72,263 | 4.40 ms | 208 µs | 2.9x |
 | Express + EJS + Sequelize | 70,143 | 4.04 ms | 214 µs | 2.8x |
 | AdonisJS + Lucid + Edge | 42,707 | 8.22 ms | 358 µs | 1.7x |
@@ -282,10 +282,10 @@ every request, but the page rendered from its result can still come out of the r
 because the result is the same each time. The uncached row therefore measures the database
 path in full and the render path at its best.
 
-Soli takes the row with or without its query cache — **4.3x Rails' throughput uncached**,
+Soli takes the row with or without its query cache — **5.6x Rails' throughput uncached**,
 ahead of Phoenix (72,263) and Express (70,143). What the render costs once a query is in the
 request differs sharply by stack: **nothing for Soli** — its uncached page and its uncached
-JSON read are the same 107k req/s — and nothing for Phoenix, whose page is slightly *faster*
+JSON read are the same 140k req/s — and nothing for Phoenix, whose page is slightly *faster*
 than its JSON read, but **26% for Express** (94,755 → 70,143) and 45% for Django.
 
 ## Writes — create, update and delete, one row per request
@@ -305,7 +305,7 @@ promises: survive a process crash, not a power cut. Neither column is "durable w
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | 253,586 | 2.42 ms | 26 µs (49 incl. SoliDB) | 8.0x |
+| **Soli** | 257,679 | 2.45 ms | 25 µs (47 incl. SoliDB) | 8.1x |
 | Phoenix + Ecto + HEEx | 124,305 | 3.65 ms | 114 µs | 3.9x |
 | Express + EJS + Sequelize | 91,537 | 3.45 ms | 162 µs | 2.9x |
 | AdonisJS + Lucid + Edge | 53,772 | 6.83 ms | 282 µs | 1.7x |
@@ -323,7 +323,7 @@ rather than re-run until clean. The delete run on the same stack, later, returne
 
 | Stack | req/s | p99 | CPU/req | vs Rails |
 |---|---:|---:|---:|---:|
-| **Soli** | 219,971 | 2.27 ms | 24 µs (54 incl. SoliDB) | 5.9x |
+| **Soli** | 223,663 | 2.30 ms | 24 µs (53 incl. SoliDB) | 6.0x |
 | Phoenix + Ecto + HEEx | 123,792 | 3.57 ms | 114 µs | 3.3x |
 | Express + EJS + Sequelize | 85,882 | 3.83 ms | 173 µs | 2.3x |
 | AdonisJS + Lucid + Edge | 58,444 | 6.36 ms | 259 µs | 1.6x |
@@ -367,7 +367,7 @@ real work at any table size, were not. The "rows removed" column is still measur
 assumed, so the remaining few percent of misses stay visible.
 
 **Soli leads all three write rows, by about 2x over Phoenix**, the nearest stack on every one:
-create 253,586 against 124,305 (8.0x Rails), update 219,971 against 123,792 (5.9x Rails), and
+create 257,679 against 124,305 (8.1x Rails), update 223,663 against 123,792 (6.0x Rails), and
 on delete 174,605 against Phoenix's 82,431 (4.5x Rails). Soli's rows-removed figure is the lowest in the table (88%) precisely because it made the most requests, so compare real deletes per second instead — about **154,000 for Soli, 77,000 for Phoenix, 71,000 for Express** — and the lead holds at 2.0x Phoenix. This is SoliDB 2.0.3's change more than Soli's: it stopped
 writing the replication sync log until something reads it, and on the same Soli build it
 lifted create from 136,132 to 235,967 and update from 131,804 to 218,333. Per write, Soli's
@@ -536,7 +536,7 @@ forks and copy-on-write shares the parent's modules.
 
 Trivial handlers measure fixed framework overhead, which is where the gaps are widest: 12x
 Rails on JSON, and 16x on the template, where Soli's response cache is also at work. On routes
-dominated by real database work the multiple compresses — 3.5x on the uncached read, 4.5–8x
+dominated by real database work the multiple compresses — 4.5x on the uncached read, 4.5–8x
 on the writes — because the database, the
 transport to it and the ORM take over the request, whatever framework issued it. The claim
 this page supports is: **Soli's framework overhead is a small fraction of every other stack's
