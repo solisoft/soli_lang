@@ -72,7 +72,7 @@ mod error_pages;
 mod error_tracker;
 mod file_tracker;
 pub(crate) mod file_upload;
-mod internal_store;
+pub(crate) mod internal_store;
 pub mod job_worker;
 mod json;
 mod notify;

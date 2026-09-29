@@ -95,8 +95,8 @@ data with a leading `<%# preview: {json} %>` header — the same convention as t
 <h1>Welcome, <%= user.name %>!</h1>
 ```
 
-Previews render the HTML part only (no layout) with built-in helpers plus the
-`preview` data; the action's real instance variables and request context aren't
+Previews render the HTML part only (no layout) with built-in helpers, the app's
+view helpers (`app/helpers/*.sl`) and the `preview` data; the action's real instance variables and request context aren't
 available. Views with no `preview` header still list, but show a render error
 where they reference missing locals. The gallery is dev-only — the routes don't
 exist in production.
@@ -141,9 +141,13 @@ tagged with what happened to it:
 A failed message is captured too, which is the point: a rejected recipient or a
 refused connection is exactly what you opened the inbox to look at.
 
-The inbox is dev-only and in-memory — it holds the last 100 messages and empties
-on restart. Outside `--dev` nothing is captured, the routes don't exist, and an
-unconfigured SMTP host is still a hard error.
+The inbox is dev-only and holds the last 100 messages. It is kept in the app's
+own database too, in the framework collection `_soli_mail_inbox` (next to
+`_soli_errors`), so a restart of `soli serve --dev` doesn't lose the link you
+were about to click; **Clear inbox** empties it there as well. Without a
+reachable database it stays in memory and empties on restart. Outside `--dev`
+nothing is captured, the routes don't exist, and an unconfigured SMTP host is
+still a hard error.
 
 ## Attachments
 

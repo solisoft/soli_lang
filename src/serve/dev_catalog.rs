@@ -39,6 +39,25 @@ fn component_raw_source(views_dir: &std::path::Path, name: &str) -> Option<Strin
     view_raw_source(views_dir, &format!("components/{}", name))
 }
 
+/// Load the app's view helpers (`app/helpers/*.sl`) on THIS thread.
+///
+/// Workers load them at start, but `/__soli/*` pages are answered in the async
+/// handler, before any worker: previews had only the built-in helpers, and a
+/// template calling an app helper (a translation helper such as `tr_in`, used
+/// by every localised email) rendered "Cannot call non-function value" in the
+/// gallery while the real email rendered fine. Reloaded on every preview — the
+/// pages are dev-only, and a helper edited in `--dev` shows on the next load.
+fn load_app_helpers_for_preview(views_dir: &std::path::Path) {
+    let Some(app_dir) = views_dir.parent() else {
+        return;
+    };
+    let helpers_dir = app_dir.join("helpers");
+    crate::interpreter::builtins::template::clear_view_helpers();
+    if let Err(e) = crate::interpreter::builtins::template::load_view_helpers(&helpers_dir) {
+        eprintln!("preview: could not load view helpers: {}", e);
+    }
+}
+
 /// Extract example preview data from a leading `<%# preview: {json} %>` header;
 /// an empty hash when absent or malformed.
 pub(crate) fn component_preview_data(raw: &str) -> crate::interpreter::value::Value {
@@ -100,9 +119,9 @@ fn component_declared_props(raw: &str) -> Vec<String> {
     out
 }
 
-const PREVIEW_NOTE: &str = "Dev-only. Previews render with the built-in helpers and any \
-<code>&lt;%# preview: {...} %&gt;</code> data at the top of the file; app-defined view helpers \
-and request context aren\u{2019}t available here.";
+const PREVIEW_NOTE: &str = "Dev-only. Previews render with the built-in helpers, the app\u{2019}s \
+view helpers (<code>app/helpers</code>) and any <code>&lt;%# preview: {...} %&gt;</code> data at \
+the top of the file; request context isn\u{2019}t available here.";
 
 fn catalog_shell(section: Section, heading: &str, body: &str) -> String {
     operator_shell::page(section, heading, PREVIEW_NOTE, body)
@@ -191,6 +210,7 @@ pub(crate) fn handle_component_preview(name: &str, query: Option<&str>) -> Respo
     let inner = match crate::interpreter::builtins::template::get_template_cache() {
         Ok(cache) => {
             let raw = component_raw_source(cache.views_dir(), name).unwrap_or_default();
+            load_app_helpers_for_preview(cache.views_dir());
             let data = component_preview_data(&raw);
             match cache.render_component(name, &data) {
                 Ok(html) => html,
@@ -306,6 +326,7 @@ pub(crate) fn handle_mailer_preview(rel: &str, query: Option<&str>) -> Response<
     let inner = match crate::interpreter::builtins::template::get_template_cache() {
         Ok(cache) => {
             let raw = view_raw_source(cache.views_dir(), rel).unwrap_or_default();
+            load_app_helpers_for_preview(cache.views_dir());
             let data = component_preview_data(&raw);
             match cache.render(rel, &data, Some(None)) {
                 Ok(html) => html,
