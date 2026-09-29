@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Soli benchmarks: nine full stacks, seven workloads, one machine. Soli serves a database-backed HTML page at 299k requests per second, 258k inserts per second, 142 MB under load. Against Rails and Puma it is 12.9 times faster on JSON, 17.3 on templates, 9.8 on database reads, 11.9 on a database page, 8.1 on create, 6.0 on update and 4.7 on delete.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.12" cy="0.1" r="0.75">
+      <stop offset="0" stop-color="#f59e0b" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="0.55" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#ea580c"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#fb923c"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" stroke-opacity="0.035" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- Left: title and headline figures -->
+  <g font-family="Adwaita Sans, Inter, Liberation Sans, sans-serif">
+    <text x="64" y="92" font-family="JetBrainsMono NF, JetBrains Mono, monospace" font-size="18" letter-spacing="3" fill="#fbbf24">SOLI · BENCHMARKS</text>
+    <text x="62" y="170" font-size="72" font-weight="800" fill="#ffffff">Benchmarks</text>
+    <text x="64" y="214" font-size="22" fill="#a8a29e">9 full stacks · 7 workloads · one quiet machine</text>
+    <text x="64" y="244" font-size="22" fill="#a8a29e">byte-identical payloads · every sweep control-checked</text>
+    <rect x="64" y="270" width="120" height="4" rx="2" fill="url(#sun)"/>
+
+    <g font-family="JetBrainsMono NF, JetBrains Mono, monospace">
+      <rect x="64" y="318" width="170" height="150" rx="14" fill="#ffffff" fill-opacity="0.04" stroke="#f59e0b" stroke-opacity="0.35"/>
+      <text x="84" y="376" font-size="44" font-weight="700" fill="url(#sun)">299k</text>
+      <text x="84" y="406" font-size="16" fill="#e7e5e4">req/s</text>
+      <text x="84" y="436" font-size="14" fill="#a8a29e">DB-backed page</text>
+      <text x="84" y="455" font-size="14" fill="#a8a29e">11.9× Rails</text>
+
+      <rect x="250" y="318" width="170" height="150" rx="14" fill="#ffffff" fill-opacity="0.04" stroke="#f59e0b" stroke-opacity="0.35"/>
+      <text x="270" y="376" font-size="44" font-weight="700" fill="url(#sun)">258k</text>
+      <text x="270" y="406" font-size="16" fill="#e7e5e4">inserts/s</text>
+      <text x="270" y="436" font-size="14" fill="#a8a29e">one per request</text>
+      <text x="270" y="455" font-size="14" fill="#a8a29e">8.1× Rails</text>
+
+      <rect x="436" y="318" width="170" height="150" rx="14" fill="#ffffff" fill-opacity="0.04" stroke="#f59e0b" stroke-opacity="0.35"/>
+      <text x="456" y="376" font-size="44" font-weight="700" fill="url(#sun)">142</text>
+      <text x="456" y="406" font-size="16" fill="#e7e5e4">MB under load</text>
+      <text x="456" y="436" font-size="14" fill="#a8a29e">one process,</text>
+      <text x="456" y="455" font-size="14" fill="#a8a29e">16 threads</text>
+    </g>
+  </g>
+
+  <!-- Right: Soli's multiple over Rails on every workload -->
+  <g font-family="JetBrainsMono NF, JetBrains Mono, monospace">
+    <rect x="650" y="64" width="486" height="404" rx="18" fill="#ffffff" fill-opacity="0.035" stroke="#ffffff" stroke-opacity="0.08"/>
+    <text x="678" y="108" font-size="17" fill="#e7e5e4">Soli vs Rails + Puma</text>
+    <text x="678" y="132" font-size="13" fill="#78716c">throughput multiple, all seven workloads</text>
+
+    <g font-size="15">
+      <!-- bar scale: 17.3x = 230 px, starting at x=832 -->
+      <text x="678" y="178" fill="#d6d3d1">JSON</text>
+      <rect x="832" y="164" width="172" height="18" rx="4" fill="url(#bar)"/>
+      <text x="1014" y="178" fill="#ffffff" font-weight="700">12.9×</text>
+
+      <text x="678" y="222" fill="#d6d3d1">Template</text>
+      <rect x="832" y="208" width="230" height="18" rx="4" fill="url(#bar)"/>
+      <text x="1072" y="222" fill="#ffffff" font-weight="700">17.3×</text>
+
+      <text x="678" y="266" fill="#d6d3d1">DB read</text>
+      <rect x="832" y="252" width="130" height="18" rx="4" fill="url(#bar)"/>
+      <text x="972" y="266" fill="#ffffff" font-weight="700">9.8×</text>
+
+      <text x="678" y="310" fill="#d6d3d1">DB page</text>
+      <rect x="832" y="296" width="158" height="18" rx="4" fill="url(#bar)"/>
+      <text x="1000" y="310" fill="#ffffff" font-weight="700">11.9×</text>
+
+      <text x="678" y="354" fill="#d6d3d1">Create</text>
+      <rect x="832" y="340" width="108" height="18" rx="4" fill="url(#bar)"/>
+      <text x="950" y="354" fill="#ffffff" font-weight="700">8.1×</text>
+
+      <text x="678" y="398" fill="#d6d3d1">Update</text>
+      <rect x="832" y="384" width="80" height="18" rx="4" fill="url(#bar)"/>
+      <text x="922" y="398" fill="#ffffff" font-weight="700">6.0×</text>
+
+      <text x="678" y="442" fill="#d6d3d1">Delete</text>
+      <rect x="832" y="428" width="62" height="18" rx="4" fill="url(#bar)"/>
+      <text x="904" y="442" fill="#ffffff" font-weight="700">4.7×</text>
+    </g>
+  </g>
+
+  <!-- Footer -->
+  <line x1="64" y1="530" x2="1136" y2="530" stroke="#ffffff" stroke-opacity="0.08"/>
+  <text x="64" y="572" font-family="JetBrainsMono NF, JetBrains Mono, monospace" font-size="18" fill="#a8a29e">soli.solisoft.net/docs/getting-started/benchmarks</text>
+  <text x="1136" y="572" text-anchor="end" font-family="Adwaita Sans, Inter, Liberation Sans, sans-serif" font-size="18" fill="#78716c">Ryzen 9 9950X · bare metal · 2026-09</text>
+</svg>

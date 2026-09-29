@@ -19,9 +19,33 @@ def render_docs(view, title, section, subsection, hide_toc = false)
       # (app/helpers/docs_nav.sl). Every docs route is exactly `/` + its view
       # name — checked across all 160 actions — so the view says the path.
       "nav_path": "/" + view,
+      "docs_og": docs_og(view),
       "layout": "layouts/docs"
     }
   )
+end
+
+# The OpenGraph card of a docs page, when it has one: a 1200x630 PNG at
+# public/images/og/<view without "docs/", slashes as dashes>.png — so
+# docs/getting-started/benchmarks is og/getting-started-benchmarks.png (its SVG
+# source sits beside it). The layout turns it into og:/twitter: tags. Blog posts
+# set their own tags, which is why this is not called `og_image`.
+def docs_og(view)
+  file = "images/og/" + view.replace("docs/", "").replace("/", "-") + ".png"
+  return nil unless file_exists("public/" + file)
+
+  {
+    "image": "https://soli.solisoft.net/" + file,
+    "url": "https://soli.solisoft.net/" + view,
+    "description": docs_og_description(view)
+  }
+end
+
+def docs_og_description(view)
+  descriptions = {
+    "docs/getting-started/benchmarks": "Soli against the full stacks people ship — Rails, Laravel, Django, FastAPI, Phoenix, AdonisJS, Express — on one quiet machine: seven workloads, byte-identical payloads, every sweep control-checked."
+  }
+  descriptions[view] ?? "Documentation for Soli MVC Framework - Build modern web applications with elegance and performance."
 end
 
 # ============================================================================

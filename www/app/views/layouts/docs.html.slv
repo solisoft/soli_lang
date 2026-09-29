@@ -384,6 +384,24 @@
         }
     </style>
 
+    <% if docs_og %>
+    <!-- OpenGraph card of a docs page (docs_controller: docs_og) -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Soli">
+    <meta property="og:title" content="<%= title %> — Soli">
+    <meta property="og:description" content="<%= docs_og["description"] %>">
+    <meta property="og:url" content="<%= docs_og["url"] %>">
+    <meta property="og:image" content="<%= docs_og["image"] %>">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="<%= title %> — Soli">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="<%= title %> — Soli">
+    <meta name="twitter:description" content="<%= docs_og["description"] %>">
+    <meta name="twitter:image" content="<%= docs_og["image"] %>">
+    <% end %>
+
     <!-- Per-page <head> injection (og:image and friends from blog posts, etc.) -->
     <%= yield "head" %>
 </head>
