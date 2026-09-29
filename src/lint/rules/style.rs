@@ -50,7 +50,7 @@ pub fn check_redundant_model_import(
     });
 }
 
-fn is_controller_path(file: &str) -> bool {
+pub(crate) fn is_controller_path(file: &str) -> bool {
     let normalised = file.replace('\\', "/");
     normalised.contains("/app/controllers/") || normalised.starts_with("app/controllers/")
 }

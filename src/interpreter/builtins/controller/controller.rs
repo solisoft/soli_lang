@@ -206,6 +206,10 @@ pub struct ControllerInfo {
     /// `this.layout("name", only: [...])` / `except: [...]`. Checked in
     /// order; the first matching rule wins, falling back to `layout`.
     pub action_layouts: Vec<LayoutRule>,
+    /// OpenAPI doc comments (and `permit` body shapes) by action name. See
+    /// `api_docs`. `default` keeps bundles built before it deserializing.
+    #[serde(default)]
+    pub docs: std::collections::HashMap<String, super::api_docs::ActionDoc>,
 }
 
 impl ControllerInfo {
@@ -219,6 +223,7 @@ impl ControllerInfo {
             after_actions: Vec::new(),
             layout: None,
             action_layouts: Vec::new(),
+            docs: std::collections::HashMap::new(),
         }
     }
 

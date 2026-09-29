@@ -2,8 +2,8 @@
 
 Soli describes your app as an [OpenAPI 3](https://spec.openapis.org/oas/v3.0.3)
 document, built from its routes, and serves a browsable API reference over it.
-There is nothing to write and nothing to install: add a route, reload, and it is
-in the spec.
+Add a route and it is in the spec; add a doc comment above the action and it is
+described — parameters, request body, responses.
 
 | URL | What it serves |
 |-----|----------------|
@@ -35,7 +35,8 @@ sets the document title (default `Soli API`).
 
 ## What the spec contains
 
-Every route in `config/routes.sl` becomes an operation:
+Every route in `config/routes.sl` becomes an operation. Without a doc comment
+([Documenting an action](#documenting-an-action)), this is all it has:
 
 | From the route | In the spec |
 |----------------|-------------|
@@ -78,6 +79,108 @@ A scaffolded `posts` resource gives, for `/posts/{id}`:
 The document is valid OpenAPI 3.0.3 (`redocly lint` with the `minimal`
 ruleset passes). Stricter rulesets flag what the generator does not describe —
 no `servers`, no `security`, no 4xx responses.
+
+## Documenting an action
+
+Write a comment block directly above the action. It becomes the operation's
+documentation **when it contains at least one `@tag` line** — an ordinary comment
+(`# GET /posts — lists them`) stays out of the spec.
+
+```soli
+class PostsController < Controller
+  # List posts.
+  # Newest first, 20 per page.
+  # @query page Int  Page number, from 1
+  # @query q String  Full-text filter
+  # @response 200 [{"_key": "42", "title": "Hello", "views": 3}]
+  def index
+    @posts = Post.all
+  end
+
+  # Show one post.
+  # @param id String  The post's key
+  # @response 200 {"_key": "42", "title": "Hello",
+  #                "tags": ["soli", "openapi"]}
+  # @response 404 No post with that key
+  def show
+    @post = Post.find(params["id"])
+  end
+
+  # Create a post.
+  # @header X-Request-Id String! Idempotency key
+  # @body {"title": "Hello", "tags": ["soli"]}
+  # @response 201 {"_key": "42", "title": "Hello"}
+  # @response 422 Validation failed
+  def create
+    ...
+  end
+
+  # @hidden
+  def delete
+    ...
+  end
+end
+```
+
+| Line | In the spec |
+|------|-------------|
+| first text line | `summary` (without one, the summary stays `controller#action`) |
+| further text lines | `description` |
+| `@param <name> <Type> <text>` | describes the `:name` path parameter — always required |
+| `@query <name> <Type> <text>` | a query parameter, optional |
+| `@header <name> <Type> <text>` | a header parameter, optional |
+| `Type!` (`String!`, `Int!`) | marks a `@query` / `@header` required |
+| `@body <JSON>` | the request body: the JSON is the example, its schema is inferred |
+| `@body <text>` | a request body described in words |
+| `@response <code> <JSON>` | a response with that example and its inferred schema |
+| `@response <code> <text>` | a response described in words |
+| `@tag <Name>` | the group in the reference, instead of the controller name |
+| `@deprecated` | `deprecated: true` |
+| `@hidden` | the operation is left out of the spec |
+
+- **Types** — `String`, `Int`, `Float`, `Bool`, `Array`, `Hash`; the type may be
+  omitted (`String`).
+- **JSON on several lines** — a `#` line that does not start with `@` continues the tag
+  above it, as in `show` above.
+- **Schemas from examples** — `"views": 3` becomes `integer`, `1.5` `number`,
+  `"x"` `string`, `true` `boolean`; arrays take their first item's schema; objects
+  nest.
+- **Responses** — once an action declares one, its `@response` lines replace the
+  default `200 OK`; a code without text is described by its standard reason
+  (`201` → `Created`).
+- Docs are read when the app boots and again on every `--dev` reload, so an edited
+  comment shows up on the next request to `/openapi.json`. `soli build --protect`
+  bundles keep them.
+
+### The request body from `permit()`
+
+An action with no `@body` gets its request body from its `permit(...)` whitelist —
+in the action itself or in the `_permit_params` helper it calls, which is what
+`soli generate scaffold` writes:
+
+```soli
+def create
+  @post = Post.create(permit(params, {"title": true, "tags": [], "author": {"name": true}}))
+  ...
+end
+```
+
+gives a JSON body with `title` (any value), `tags` (an array) and `author` (an object
+with `name`). This applies to `POST`, `PUT` and `PATCH` routes, with or without a doc
+block — so a scaffolded resource documents its create and update bodies with no
+comment at all. A `@body` line wins over the whitelist.
+
+### Checking doc comments
+
+`soli lint` reports mistakes in a controller's doc comments under the
+`docs/openapi` rule: an unknown tag (`@returns`), a `@response` without a status
+code, a `@param` without a name, and a `@body` / `@response` that starts like JSON
+but does not parse. The spec itself never fails on them — the bad part is dropped or
+used as text — which is why the lint rule exists.
+
+```text
+app/controllers/posts_controller.sl:61:1 - [docs/openapi] unknown doc tag `@hiden` (known: @param, @query, @header, @body, @response, @tag, @deprecated, @hidden)
+```
 
 ## Browsing it
 
@@ -127,18 +230,14 @@ proxy's access rules if you need the reference there.
 
 ## Limits
 
-The spec is **structural**: Soli actions take an untyped `req`, so the
-generator knows which endpoints exist and their path parameters, not what they
-accept or return.
-
-- No request bodies, query parameters, headers or response schemas.
-- Every path parameter is a `string`, whatever the action does with it.
-- Every operation declares one `200` response, including redirects and errors.
-- HTML routes (`/posts/new`, `/posts/{id}/edit`) are listed alongside JSON
-  ones: the route table does not say which is which.
-
-It is a map of the API and a seed for generated clients, not a hand-written
-contract.
+- The spec knows what the doc comments and `permit()` say, nothing more: an
+  undocumented action has path parameters, a `controller#action` summary and a
+  generic `200`.
+- Schemas are inferred from examples and whitelists, so they give types, not
+  constraints — no `required` fields inside a body, formats, enums or lengths.
+- Path parameters without a `@param` line are `string`s.
+- HTML routes (`/posts/new`, `/posts/{id}/edit`) are listed alongside JSON ones —
+  hide them with `@hidden` if the reference is for API clients only.
 
 ## See also
 

@@ -481,6 +481,29 @@ Custom routes named with `name: "..."` get the same treatment:
 `*_path` returns a relative path; `*_url` is the absolute form (and respects
 `enable_trust_proxy` if set in `config/application.sl`).
 
+## Documenting an action for OpenAPI
+
+Under `--dev`, `/openapi.json` (and the reference at `/openapi`) describe every
+route. A comment block right above an action documents it **when it contains a
+`@tag` line**; plain comments stay out:
+
+```soli
+# Show one post.
+# @param id String  The post's key
+# @query include String  Comma-separated relations
+# @response 200 {"_key": "42", "title": "Hello"}
+# @response 404 No post with that key
+def show
+  @post = Post.find(params["id"])
+end
+```
+
+Tags: `@param` (path), `@query`, `@header` (`Type!` = required), `@body <JSON>`,
+`@response <code> <JSON or text>`, `@tag`, `@deprecated`, `@hidden`. Without a
+`@body`, the `permit(...)` whitelist (here or in `_permit_params`) describes the
+request body. `soli lint` flags bad tags and bad JSON (`docs/openapi`). Full
+guide: `docs/openapi.md`.
+
 ## Spec location
 
 Every controller has a sibling spec at `tests/<name>_controller_spec.sl`
@@ -541,6 +564,8 @@ E2E helpers: `get` / `post` / `put` / `delete` to make requests; `res_status`,
   the action's scope (catches typos that bypass `let`).
 - `naming/pascal-case` — class name must be `PascalCase`.
 - `naming/snake-case` — action and helper names must be `snake_case`.
+- `docs/openapi` — a mistake in an action's OpenAPI doc comments: unknown tag,
+  `@response` without a status code, JSON that does not parse.
 
 Run `soli fmt` first — it settles indentation, spacing and line length on its
 own, so what lint reports afterwards is the part that needs a decision:

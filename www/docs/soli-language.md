@@ -4225,6 +4225,7 @@ app/main.sl:30:9 - [smell/unreachable-code] unreachable code after return statem
 | `idiom/redundant-template-escape` | `<%= h(x) %>` / `<%= attr(x) %>` / `<%= html_escape(x) %>` in a `.slv` — `<%= %>` already HTML-escapes, so this escapes twice and renders literal `&#x27;`/`&amp;`. Write the expression bare, or use `<%- %>` for pre-escaped HTML |
 | `security/unfiltered-mass-assignment` | `Model.create(params)` / `.update` / `.create_many` in `app/controllers/` or `app/services/` with the raw request hash. Whitelist with `permit(params, { "field": true })` or `this._permit_params(params)` |
 | `component/props` | A component's `props(...)` declaration must use string-literal names with no duplicates |
+| `docs/openapi` | A controller action's OpenAPI doc comments: unknown tag, `@response` without a status, `@param` without a name, JSON that does not parse |
 
 ### Suppressing Warnings
 

@@ -58,6 +58,11 @@ impl Linter {
 
     pub fn lint(mut self, program: &Program) -> Vec<LintDiagnostic> {
         rules::style::check_line_lengths(&self.source, &mut self.diagnostics);
+        rules::docs::check_openapi_docs(
+            &self.source,
+            self.file_path.as_deref(),
+            &mut self.diagnostics,
+        );
         rules::props::check_component_props(&program.statements, &mut self.diagnostics);
         rules::scope::collect_program_names(&program.statements, &mut self.program_names);
         self.collect_sibling_definitions();

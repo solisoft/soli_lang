@@ -314,6 +314,9 @@ pub(crate) fn parse_controller_source(
     // Extract public methods (actions)
     extract_actions(source, &actual_class_name, &mut info);
 
+    // OpenAPI doc comments and `permit` body shapes, for /openapi.json.
+    info.docs = super::api_docs::extract_action_docs(source);
+
     Ok(info)
 }
 

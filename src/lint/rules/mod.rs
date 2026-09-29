@@ -1,3 +1,4 @@
+pub mod docs;
 pub mod idiom;
 pub mod naming;
 pub mod props;

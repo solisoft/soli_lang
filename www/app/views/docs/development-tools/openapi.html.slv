@@ -14,7 +14,7 @@
         <p class="text-xl text-gray-300 leading-8">
             Soli describes your app as an <a href="https://spec.openapis.org/oas/v3.0.3" class="text-amber-400 hover:text-amber-300">OpenAPI 3</a>
             document, built from its routes, and serves a browsable API reference over it.
-            Nothing to write, nothing to install: add a route, reload, and it is in the spec.
+            Add a route and it is in the spec; add a doc comment above the action and it is described &mdash; parameters, request body, responses.
         </p>
     </div>
 
@@ -68,7 +68,7 @@
     <!-- Contents -->
     <section id="section-contents" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">What the spec contains</h2>
-        <p class="text-gray-400 mb-4">Every route in <code>config/routes.sl</code> becomes an operation:</p>
+        <p class="text-gray-400 mb-4">Every route in <code>config/routes.sl</code> becomes an operation. Without a doc comment (<a href="#section-documenting" class="text-amber-400 hover:text-amber-300">Documenting an action</a>), this is all it has:</p>
         <div class="overflow-x-auto mb-6">
             <table class="w-full text-sm">
                 <thead>
@@ -114,6 +114,95 @@
         <p class="text-gray-400">The document is valid OpenAPI 3.0.3 (<code>redocly lint</code> with the <code>minimal</code> ruleset passes). Stricter rulesets flag what the generator does not describe &mdash; no <code>servers</code>, no <code>security</code>, no 4xx responses.</p>
     </section>
 
+    <!-- Documenting an action -->
+    <section id="section-documenting" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Documenting an action</h2>
+        <p class="text-gray-400 mb-4">Write a comment block directly above the action. It becomes the operation&rsquo;s documentation <strong class="text-white">when it contains at least one <code>@tag</code> line</strong> &mdash; an ordinary comment (<code># GET /posts &mdash; lists them</code>) stays out of the spec.</p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">class PostsController &lt; Controller
+  # List posts.
+  # Newest first, 20 per page.
+  # @query page Int  Page number, from 1
+  # @query q String  Full-text filter
+  # @response 200 [{"_key": "42", "title": "Hello", "views": 3}]
+  def index
+    @posts = Post.all
+  end
+
+  # Show one post.
+  # @param id String  The post's key
+  # @response 200 {"_key": "42", "title": "Hello",
+  #                "tags": ["soli", "openapi"]}
+  # @response 404 No post with that key
+  def show
+    @post = Post.find(params["id"])
+  end
+
+  # Create a post.
+  # @header X-Request-Id String! Idempotency key
+  # @body {"title": "Hello", "tags": ["soli"]}
+  # @response 201 {"_key": "42", "title": "Hello"}
+  # @response 422 Validation failed
+  def create
+    ...
+  end
+
+  # @hidden
+  def delete
+    ...
+  end
+end</code></pre>
+        </div>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-2 pr-4 text-gray-400 font-medium">Line</th>
+                        <th class="text-left py-2 text-gray-400 font-medium">In the spec</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-300">
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">first text line</td><td class="py-2"><code>summary</code> (without one, the summary stays <code>controller#action</code>)</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4">further text lines</td><td class="py-2"><code>description</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>@param &lt;name&gt; &lt;Type&gt; &lt;text&gt;</code></td><td class="py-2">describes the <code>:name</code> path parameter &mdash; always required</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>@query &lt;name&gt; &lt;Type&gt; &lt;text&gt;</code></td><td class="py-2">a query parameter, optional</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>@header &lt;name&gt; &lt;Type&gt; &lt;text&gt;</code></td><td class="py-2">a header parameter, optional</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>Type!</code> (<code>String!</code>, <code>Int!</code>)</td><td class="py-2">marks a <code>@query</code> / <code>@header</code> required</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>@body &lt;JSON&gt;</code></td><td class="py-2">the request body: the JSON is the example, its schema is inferred</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>@body &lt;text&gt;</code></td><td class="py-2">a request body described in words</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>@response &lt;code&gt; &lt;JSON&gt;</code></td><td class="py-2">a response with that example and its inferred schema</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>@response &lt;code&gt; &lt;text&gt;</code></td><td class="py-2">a response described in words</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>@tag &lt;Name&gt;</code></td><td class="py-2">the group in the reference, instead of the controller name</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>@deprecated</code></td><td class="py-2"><code>deprecated: true</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>@hidden</code></td><td class="py-2">the operation is left out of the spec</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-8">
+            <li><strong class="text-white">Types</strong> &mdash; <code>String</code>, <code>Int</code>, <code>Float</code>, <code>Bool</code>, <code>Array</code>, <code>Hash</code>; the type may be omitted (<code>String</code>).</li>
+            <li><strong class="text-white">JSON on several lines</strong> &mdash; a <code>#</code> line that does not start with <code>@</code> continues the tag above it, as in <code>show</code> above.</li>
+            <li><strong class="text-white">Schemas from examples</strong> &mdash; <code>"views": 3</code> becomes <code>integer</code>, <code>1.5</code> <code>number</code>, <code>"x"</code> <code>string</code>, <code>true</code> <code>boolean</code>; arrays take their first item&rsquo;s schema; objects nest.</li>
+            <li><strong class="text-white">Responses</strong> &mdash; once an action declares one, its <code>@response</code> lines replace the default <code>200 OK</code>; a code without text is described by its standard reason (<code>201</code> &rarr; <code>Created</code>).</li>
+            <li>Docs are read when the app boots and again on every <code>--dev</code> reload, so an edited comment shows up on the next request to <code>/openapi.json</code>. <code>soli build --protect</code> bundles keep them.</li>
+        </ul>
+
+        <h3 id="section-permit" class="text-lg font-semibold text-white mb-2 scroll-mt-20">The request body from <code>permit()</code></h3>
+        <p class="text-gray-400 mb-4">An action with no <code>@body</code> gets its request body from its <code>permit(...)</code> whitelist &mdash; in the action itself or in the <code>_permit_params</code> helper it calls, which is what <code>soli generate scaffold</code> writes:</p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">def create
+  @post = Post.create(permit(params, {"title": true, "tags": [], "author": {"name": true}}))
+  ...
+end</code></pre>
+        </div>
+        <p class="text-gray-400 mb-8">gives a JSON body with <code>title</code> (any value), <code>tags</code> (an array) and <code>author</code> (an object with <code>name</code>). This applies to <code>POST</code>, <code>PUT</code> and <code>PATCH</code> routes, with or without a doc block &mdash; so a scaffolded resource documents its create and update bodies with no comment at all. A <code>@body</code> line wins over the whitelist.</p>
+
+        <h3 id="section-lint" class="text-lg font-semibold text-white mb-2 scroll-mt-20">Checking doc comments</h3>
+        <p class="text-gray-400 mb-4"><code>soli lint</code> reports mistakes in a controller&rsquo;s doc comments under the <code>docs/openapi</code> rule: an unknown tag (<code>@returns</code>), a <code>@response</code> without a status code, a <code>@param</code> without a name, and a <code>@body</code> / <code>@response</code> that starts like JSON but does not parse. The spec itself never fails on them &mdash; the bad part is dropped or used as text &mdash; which is why the lint rule exists.</p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <pre data-filename="soli lint"><code class="language-text text-sm">app/controllers/posts_controller.sl:61:1 - [docs/openapi] unknown doc tag `@hiden` (known: @param, @query, @header, @body, @response, @tag, @deprecated, @hidden)</code></pre>
+        </div>
+    </section>
+
     <!-- Browsing -->
     <section id="section-browsing" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Browsing it</h2>
@@ -155,14 +244,12 @@ git diff --exit-code openapi.json</code></pre>
     <!-- Limits -->
     <section id="section-limits" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Limits</h2>
-        <p class="text-gray-400 mb-4">The spec is <strong class="text-white">structural</strong>: Soli actions take an untyped <code>req</code>, so the generator knows which endpoints exist and their path parameters, not what they accept or return.</p>
-        <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-4">
-            <li>No request bodies, query parameters, headers or response schemas.</li>
-            <li>Every path parameter is a <code>string</code>, whatever the action does with it.</li>
-            <li>Every operation declares one <code>200</code> response, including redirects and errors.</li>
-            <li>HTML routes (<code>/posts/new</code>, <code>/posts/{id}/edit</code>) are listed alongside JSON ones: the route table does not say which is which.</li>
+        <ul class="list-disc pl-6 space-y-2 text-gray-400">
+            <li>The spec knows what the doc comments and <code>permit()</code> say, nothing more: an undocumented action has path parameters, a <code>controller#action</code> summary and a generic <code>200</code>.</li>
+            <li>Schemas are inferred from examples and whitelists, so they give types, not constraints &mdash; no <code>required</code> fields inside a body, formats, enums or lengths.</li>
+            <li>Path parameters without a <code>@param</code> line are <code>string</code>s.</li>
+            <li>HTML routes (<code>/posts/new</code>, <code>/posts/{id}/edit</code>) are listed alongside JSON ones &mdash; hide them with <code>@hidden</code> if the reference is for API clients only.</li>
         </ul>
-        <p class="text-gray-400">It is a map of the API and a seed for generated clients, not a hand-written contract.</p>
     </section>
 
     <!-- See also -->

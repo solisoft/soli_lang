@@ -341,6 +341,7 @@ soli lint path/to/file.sl   # Lint specific file
 - `idiom/manual-find-guard` - drop the nil-check after `Model.find` (it raises on a miss; use `find_by`/`first_by` for "or nil")
 - `security/unfiltered-mass-assignment` - `Model.create(params)` / `update` / `create_many` in `app/controllers/` or `app/services/` with raw request params; whitelist with `permit` first
 - `component/props` - a component's `props(...)` declaration must use string-literal names with no duplicates
+- `docs/openapi` - an action's OpenAPI doc comments (`# @param`, `# @body`, `# @response`…): unknown tag, missing status or name, JSON that does not parse
 
 ## MVC Pattern
 

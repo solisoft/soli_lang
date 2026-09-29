@@ -17799,7 +17799,7 @@
       "category": "Development Tools",
       "path": "/docs/development-tools/openapi",
       "signature": "GET /openapi.json \u00b7 GET /openapi",
-      "description": "Guide to the OpenAPI 3 spec Soli generates from your routes and the Scalar reference over it: turning it on, what each route becomes, TypeScript types, API clients, a CI route check, production exposure and limits.",
+      "description": "Guide to the OpenAPI 3 spec Soli generates from your routes and the Scalar reference over it: turning it on, documenting actions with doc comments (@param, @query, @body, @response), permit() body inference, TypeScript types, API clients, production exposure and limits.",
       "keywords": [
         "openapi",
         "swagger",
@@ -17814,7 +17814,59 @@
         "insomnia",
         "client generation",
         "SOLI_OPENAPI",
-        "SOLI_OPENAPI_TITLE"
+        "SOLI_OPENAPI_TITLE",
+        "doc comments",
+        "@param",
+        "@query",
+        "@header",
+        "@body",
+        "@response",
+        "@hidden",
+        "@deprecated",
+        "annotations",
+        "document an endpoint",
+        "request body",
+        "permit"
+      ]
+    },
+    {
+      "title": "OpenAPI doc comments",
+      "type": "feature",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/openapi#section-documenting",
+      "signature": "# @param id Int \u00b7 # @query page Int \u00b7 # @body {\u2026} \u00b7 # @response 404 \u2026",
+      "description": "Document a controller action for the OpenAPI spec with a comment block above it: summary, @param / @query / @header parameters, @body and @response JSON examples, @tag, @deprecated, @hidden. permit() whitelists describe request bodies.",
+      "keywords": [
+        "openapi",
+        "swagger",
+        "doc comments",
+        "annotations",
+        "@param",
+        "@query",
+        "@header",
+        "@body",
+        "@response",
+        "@tag",
+        "@hidden",
+        "@deprecated",
+        "api documentation",
+        "request body",
+        "response example",
+        "permit"
+      ]
+    },
+    {
+      "title": "docs/openapi",
+      "type": "feature",
+      "category": "Linting",
+      "path": "/docs/development-tools/linting",
+      "signature": "soli lint \u00b7 docs/openapi",
+      "description": "Lint rule for OpenAPI doc comments in controllers: unknown tag, @response without a status code, @param without a name, JSON that does not parse.",
+      "keywords": [
+        "lint",
+        "openapi",
+        "doc comments",
+        "docs/openapi"
       ]
     }
   ]

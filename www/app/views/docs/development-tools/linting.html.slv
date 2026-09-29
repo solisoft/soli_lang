@@ -279,6 +279,15 @@ props("title", x)         # not a string literal
 # Good
 props("title", "value")</code></pre>
             </div>
+
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <code class="text-amber-400 font-mono text-sm">docs/openapi</code>
+                <p class="text-gray-400 mt-2">In <code>app/controllers/</code>, a mistake in an action&rsquo;s <a href="/docs/development-tools/openapi#section-documenting" class="text-amber-400 hover:text-amber-300">OpenAPI doc comments</a>: an unknown tag, a <code>@response</code> without a status code, a <code>@param</code> without a name, or a <code>@body</code> / <code>@response</code> that starts like JSON but does not parse. The spec tolerates all of them, so without the rule a typo just disappears.</p>
+                <pre class="mt-3"><code class="language-soli text-sm"># @returns 200            # unknown tag — @response
+# @response ok Fine       # needs a status code
+# @body {"title": }       # not JSON
+def create</code></pre>
+            </div>
         </div>
     </section>
 

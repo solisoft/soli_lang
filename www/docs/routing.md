@@ -302,7 +302,16 @@ SOLI_OPENAPI=0 soli serve . --dev    # dev: opt out
 
 Every route becomes a path + method; a `:id` segment becomes a required `{id}` path parameter, the `controller#action` is the `operationId`/summary, and the controller is the tag (so operations group by controller). `SOLI_OPENAPI_TITLE` sets the document title (default `"Soli API"`).
 
-Because Soli actions take an untyped `req` and there is no annotation layer, the spec is **structural** — it lists what endpoints exist and their path params, not request/response body schemas. It's a discoverability aid and a client-generation seed, not a hand-authored contract.
+On its own the spec is structural — what endpoints exist and their path params. A doc comment above an action adds the rest (summary, typed query/header parameters, request body, responses), and an action's `permit(...)` whitelist describes its request body even without one:
+
+```soli
+# Show one post.
+# @param id String  The post's key
+# @response 404 No post with that key
+def show
+```
+
+See [OpenAPI & API Reference → Documenting an action](openapi.md#documenting-an-action).
 
 Outside `--dev` the endpoints are **opt-in** (404 unless `SOLI_OPENAPI` is set) and, once enabled, are served in every environment — production included, like `/_metrics`. The `/openapi` UI loads Scalar from a CDN, so that page needs network access in the browser (the raw `/openapi.json` does not). The full guide — what each field means, generating TypeScript types, a CI route-change check, and why the endpoints bypass middleware — is [OpenAPI & API Reference](openapi.md).
 

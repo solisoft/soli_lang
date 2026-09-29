@@ -180,6 +180,21 @@ props("title", x)         # not a string literal
 props("title", "value")   # good
 ```
 
+### OpenAPI doc comments
+
+`docs/openapi` — in `app/controllers/`, a mistake in an action's
+[OpenAPI doc comments](openapi.md#documenting-an-action): an unknown tag, a
+`@response` without a status code, a `@param` without a name, or a `@body` /
+`@response` that starts like JSON but does not parse. The spec tolerates all of
+them, so without the rule a typo just disappears.
+
+```soli
+# @returns 200            # unknown tag — @response
+# @response ok Fine       # needs a status code
+# @body {"title": }       # not JSON
+def create
+```
+
 ## Locale files are skipped
 
 Translation tables are data that happens to be written in Soli — long sentences
