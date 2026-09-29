@@ -474,8 +474,12 @@ mod tests {
             SoliStr::from("finished"),
             SoliStr::from("W/\"0123456789abcdef\""),
         );
-        let raw = get(path.clone(), Some("application"), 5, false).unwrap();
-        let finished = get(path, Some("application"), 5, true).unwrap();
+        let Some(raw) = get(path.clone(), Some("application"), 5, false) else {
+            panic!("the raw entry was evicted by the finished one");
+        };
+        let Some(finished) = get(path, Some("application"), 5, true) else {
+            panic!("the finished entry is missing");
+        };
         assert_eq!(raw.body, "raw");
         assert_eq!(finished.body, "finished");
         assert_eq!(finished.etag, "W/\"0123456789abcdef\"");
