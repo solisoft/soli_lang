@@ -129,7 +129,7 @@ async def json_encoded():
 end
 
 def json_only(conn, _params), do: json(conn, rows())</code></pre></div>
-<div data-panel="kemal" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-crystal"># 50 in-memory rows, identical to the other stacks.
+<div data-panel="kemal" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby"># 50 in-memory rows, identical to the other stacks.
 def rows : Array(Row)
   Array(Row).new(50) { |i| {id: i + 1, title: &quot;Post title #{i + 1}&quot;, views: (i + 1) * 7} }
 end
@@ -191,7 +191,7 @@ defp bare(conn), do: conn |&gt; put_root_layout(html: false) |&gt; put_layout(ht
 def template_only(conn, _params) do
   conn |&gt; bare() |&gt; render(:list, title: &quot;Posts&quot;, items: rows())
 end</code></pre></div>
-<div data-panel="kemal" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-crystal"># ECR compiles the view into the binary and does not escape, so the view calls
+<div data-panel="kemal" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby"># ECR compiles the view into the binary and does not escape, so the view calls
 # HTML.escape itself: every other engine here escapes by default.
 def page(items : Array(Row)) : String
   title = &quot;Posts&quot;
@@ -280,7 +280,7 @@ async def db_json():
 defp db_rows, do: Repo.all(@posts)
 
 def db_json(conn, _params), do: json(conn, db_rows())</code></pre></div>
-<div data-panel="kemal" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-crystal"># Jennifer&#x27;s pluck projects in the database without instantiating models.
+<div data-panel="kemal" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby"># Jennifer&#x27;s pluck projects in the database without instantiating models.
 def db_rows : Array(Row)
   Post.all.pluck(:id, :title, :views).map do |r|
     {id: r[0].as(Int32), title: r[1].as(String), views: r[2].as(Int32)}
@@ -348,7 +348,7 @@ async def db_template(request: Request):
 <div data-panel="phoenix" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-elixir">def db_template(conn, _params) do
   conn |&gt; bare() |&gt; render(:list, title: &quot;Posts&quot;, items: db_rows())
 end</code></pre></div>
-<div data-panel="kemal" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-crystal">get &quot;/db-template&quot; { |env| env.response.content_type = &quot;text/html&quot;; page(db_rows) }</code></pre></div>
+<div data-panel="kemal" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby">get &quot;/db-template&quot; { |env| env.response.content_type = &quot;text/html&quot;; page(db_rows) }</code></pre></div>
 </div>
 <p class="text-gray-400 leading-relaxed mb-4">The Template row's caveat applies here too: with the query cache off, Soli runs the query on every request, but the page rendered from its result can still come out of the response cache, because the result is the same each time. The uncached row therefore measures the database path in full and the render path at its best.</p>
 <p class="text-gray-400 leading-relaxed mb-4">Soli takes the row with or without its query cache &mdash; <strong class="text-white">8.9x Rails' throughput uncached</strong>, and 1.15x Kemal (192,564), ahead of Phoenix (72,263) and Express (70,143). What the render costs once a query is in the request differs sharply by stack: <strong class="text-white">nothing for Soli</strong> &mdash; its uncached page and its uncached JSON read are the same 222k req/s &mdash; nothing for Kemal (0.6%), whose ECR page is compiled code, and nothing for Phoenix, whose page is slightly <em>faster</em> than its JSON read, but <strong class="text-white">26% for Express</strong> (94,755 → 70,143) and 45% for Django.</p>
@@ -465,3 +465,26 @@ end</code></pre></div>
 <p class="text-gray-400 leading-relaxed mb-4">On a box other than the one a session was calibrated on, <code class="text-cyan-400">lib.sh</code> holds the knobs: <code class="text-cyan-400">SERVER_CPUS</code> and <code class="text-cyan-400">CLIENT_CPUS</code> pin the stacks and <code class="text-cyan-400">oha</code>, <code class="text-cyan-400">SDB_PORT</code> points at a dedicated SoliDB, <code class="text-cyan-400">WPOOL</code> sizes the write table (20,000,000 for the delete row above), and <code class="text-cyan-400">WORKLOADS</code>/<code class="text-cyan-400">WRITES</code> narrow a sweep to the rows being re-measured. Laravel runs under Docker Compose, or under rootless Podman with the <code class="text-cyan-400">*.podman.yml</code> overlays.</p>
 <p class="text-gray-400 leading-relaxed mb-4">Three checks before believing any result, including this one:</p>
 <ul class="list-disc pl-6 space-y-2 text-gray-400 leading-relaxed mb-6"><li><strong class="text-white">Verify status codes and payload bytes.</strong> Load generators report a wall of 301s or 500s as 100% "success", and two stacks returning different payloads are not running the same benchmark. This session's seed script produced a SoliDB read table without the <code class="text-cyan-400">id</code> field the Soli app reads; every Soli <code class="text-cyan-400">/db</code> response came back with <code class="text-cyan-400">&quot;id&quot;: null</code> in string-key order &mdash; 2,377 bytes where every other stack sent 2,268 &mdash; and only the byte comparison caught it.</li><li><strong class="text-white">Bracket every sweep with a control run.</strong> <code class="text-cyan-400">control.sh</code> re-measures two known cells before <em>and after</em> and refuses a drift of more than 8%. Load average is a lagging indicator; a box can degrade mid-run and produce uniformly lower, plausible-looking numbers.</li><li><strong class="text-white">Make sure the workload survives the run.</strong> A delete benchmark that empties its own table measures misses; a memory reading after a "restart" that did not happen measures retained heap. Both happened while this page was being built, and both looked like results.</li></ul>
+<script>
+// Result / per-stack code tabs. Each strip is independent; the code panels hold
+// the handler that produced the table beside them.
+document.querySelectorAll('[data-tabs]').forEach(function (root) {
+  var buttons = root.querySelectorAll('[data-tab]');
+  buttons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var name = btn.getAttribute('data-tab');
+      buttons.forEach(function (b) {
+        var on = b === btn;
+        b.className = on
+          ? 'px-3 py-1.5 text-sm rounded-lg bg-white/10 text-white font-medium transition'
+          : 'px-3 py-1.5 text-sm rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition';
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      root.querySelectorAll('[data-panel]').forEach(function (p) {
+        p.classList.toggle('hidden', p.getAttribute('data-panel') !== name);
+      });
+      if (window.hljs) root.querySelectorAll('pre code:not(.hljs)').forEach(function (el) { hljs.highlightElement(el); });
+    });
+  });
+});
+</script>
