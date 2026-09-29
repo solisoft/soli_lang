@@ -63,7 +63,7 @@ pub(super) fn handle(
     // Canonicalised once per thread, not twice per request (`exists()` plus
     // the `canonicalize` inside the jail check). No `public/` at all: nothing
     // to serve.
-    let canonical_public = canonical_public_dir(public_dir, false)?;
+    let canonical_public = canonical_public_dir(public_dir, false, dev_mode)?;
 
     // Production fast path, before any filesystem call: the startup asset
     // cache is keyed by canonical path, and for a traversal-free URL path that
@@ -83,12 +83,23 @@ pub(super) fn handle(
         }
     }
 
+    // Production: a path that was not a file a moment ago is answered from a
+    // per-thread memory, before any filesystem call. Every dynamic route —
+    // `/json`, `/posts/7` — reaches this function first, and resolving it
+    // costs a `realpath` (an lstat and a readlink per component) just to learn
+    // it is not a file: 18% of a JSON endpoint's CPU. A file created under
+    // `public/` at runtime is served at most STATIC_MISS_TTL later for a path
+    // that was requested just before it existed.
+    if !dev_mode && recently_missed(path) {
+        return None;
+    }
+
     let file_path = match resolve_static_file_in(path, public_dir, &canonical_public) {
         // The public directory may itself be (or sit under) a symlink that a
         // deploy re-pointed since the root was cached. Re-resolve the root
         // once and judge again against the fresh one — the jail is always
         // checked against the directory as it is now.
-        Err(()) => match canonical_public_dir(public_dir, true)
+        Err(()) => match canonical_public_dir(public_dir, true, dev_mode)
             .map(|fresh| resolve_static_file_in(path, public_dir, &fresh))
         {
             Some(Ok(resolved)) => resolved,
@@ -106,7 +117,12 @@ pub(super) fn handle(
         Ok(resolved) => resolved,
     };
     // Not a static file, fall through to route matching.
-    let file_path = file_path?;
+    let Some(file_path) = file_path else {
+        if !dev_mode {
+            remember_miss(path);
+        }
+        return None;
+    };
 
     // `file_path` is already canonical (see `resolve_static_file`).
     let mime_type = server_constants::get_mime_type(&file_path);
@@ -367,15 +383,64 @@ fn sanitized_relative_path(path: &str) -> Option<std::borrow::Cow<'_, str>> {
     Some(decoded_path)
 }
 
+/// How long a path that resolved to no static file is taken on trust.
+const STATIC_MISS_TTL: std::time::Duration = std::time::Duration::from_secs(1);
+/// Paths remembered per worker thread; the oldest is dropped past this.
+const STATIC_MISS_CAPACITY: usize = 1024;
+
+thread_local! {
+    static STATIC_MISSES: std::cell::RefCell<lru::LruCache<String, std::time::Instant>> =
+        std::cell::RefCell::new(lru::LruCache::new(
+            std::num::NonZeroUsize::new(STATIC_MISS_CAPACITY).expect("capacity is non-zero"),
+        ));
+}
+
+/// Whether `path` resolved to no static file less than STATIC_MISS_TTL ago.
+fn recently_missed(path: &str) -> bool {
+    STATIC_MISSES.with(|misses| {
+        let mut misses = misses.borrow_mut();
+        match misses.get(path) {
+            Some(at) if at.elapsed() < STATIC_MISS_TTL => true,
+            Some(_) => {
+                misses.pop(path);
+                false
+            }
+            None => false,
+        }
+    })
+}
+
+fn remember_miss(path: &str) {
+    STATIC_MISSES.with(|misses| {
+        misses
+            .borrow_mut()
+            .put(path.to_string(), std::time::Instant::now());
+    });
+}
+
 /// `public_dir`, canonicalised — cached per thread and per directory, since it
 /// is the same answer for every request. `refresh` re-resolves it (a deploy
 /// may have re-pointed a symlink on the way). `None` when the directory does
-/// not exist; that answer is not cached, so a `public/` created later is
-/// picked up.
-fn canonical_public_dir(public_dir: &Path, refresh: bool) -> Option<PathBuf> {
+/// not exist. In dev that answer is never cached; in production it is kept for
+/// STATIC_MISS_TTL, so a `public/` created later is picked up within that —
+/// an app with no `public/` otherwise paid a failing `realpath` (a readlink per
+/// path component) on every request, 18% of a JSON endpoint's CPU.
+fn canonical_public_dir(public_dir: &Path, refresh: bool, dev_mode: bool) -> Option<PathBuf> {
     thread_local! {
         static CANONICAL: std::cell::RefCell<Vec<(PathBuf, PathBuf)>> =
             const { std::cell::RefCell::new(Vec::new()) };
+        static MISSING: std::cell::RefCell<Vec<(PathBuf, std::time::Instant)>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+    }
+    if !dev_mode && !refresh {
+        let missing = MISSING.with(|m| {
+            m.borrow()
+                .iter()
+                .any(|(dir, at)| dir == public_dir && at.elapsed() < STATIC_MISS_TTL)
+        });
+        if missing {
+            return None;
+        }
     }
     CANONICAL.with(|cache| {
         let mut cache = cache.borrow_mut();
@@ -385,7 +450,17 @@ fn canonical_public_dir(public_dir: &Path, refresh: bool) -> Option<PathBuf> {
             }
         }
         cache.retain(|(dir, _)| dir != public_dir);
-        let canonical = std::fs::canonicalize(public_dir).ok()?;
+        let Ok(canonical) = std::fs::canonicalize(public_dir) else {
+            if !dev_mode {
+                MISSING.with(|m| {
+                    let mut m = m.borrow_mut();
+                    m.retain(|(dir, _)| dir != public_dir);
+                    m.push((public_dir.to_path_buf(), std::time::Instant::now()));
+                });
+            }
+            return None;
+        };
+        MISSING.with(|m| m.borrow_mut().retain(|(dir, _)| dir != public_dir));
         cache.push((public_dir.to_path_buf(), canonical.clone()));
         Some(canonical)
     })
@@ -717,19 +792,52 @@ mod tests {
     fn the_canonical_public_root_is_cached_and_refreshable() {
         let dir = tempfile::tempdir().unwrap();
         let public = dir.path().join("public");
+        // Dev: a missing directory is never cached as missing.
         assert!(
-            canonical_public_dir(&public, false).is_none(),
+            canonical_public_dir(&public, false, true).is_none(),
             "missing dir"
         );
         fs::create_dir(&public).unwrap();
-        // A missing directory was not cached as missing.
-        let first = canonical_public_dir(&public, false).expect("now exists");
+        let first = canonical_public_dir(&public, false, true).expect("now exists");
         assert_eq!(first, fs::canonicalize(&public).unwrap());
-        assert_eq!(canonical_public_dir(&public, false), Some(first.clone()));
-        assert_eq!(canonical_public_dir(&public, true), Some(first));
+        assert_eq!(
+            canonical_public_dir(&public, false, true),
+            Some(first.clone())
+        );
+        assert_eq!(canonical_public_dir(&public, true, true), Some(first));
+    }
+
+    #[test]
+    fn production_trusts_a_missing_public_dir_for_the_ttl() {
+        let dir = tempfile::tempdir().unwrap();
+        let public = dir.path().join("public");
+        assert!(canonical_public_dir(&public, false, false).is_none());
+        fs::create_dir(&public).unwrap();
+        // Created a moment ago: still answered from the negative cache...
+        assert!(canonical_public_dir(&public, false, false).is_none());
+        // ...but a refresh (or the TTL running out) re-resolves it.
+        let fresh = canonical_public_dir(&public, true, false).expect("refresh sees it");
+        assert_eq!(fresh, fs::canonicalize(&public).unwrap());
+        assert_eq!(canonical_public_dir(&public, false, false), Some(fresh));
     }
 
     // ---------- path resolution ----------
+
+    #[test]
+    fn a_miss_is_trusted_for_the_ttl_and_then_rechecked() {
+        let path = "/__static_miss_test/json";
+        assert!(!recently_missed(path));
+        remember_miss(path);
+        assert!(recently_missed(path));
+        STATIC_MISSES.with(|m| {
+            m.borrow_mut().put(
+                path.to_string(),
+                std::time::Instant::now() - STATIC_MISS_TTL,
+            );
+        });
+        assert!(!recently_missed(path), "an expired miss is re-resolved");
+        assert!(!recently_missed(path), "and forgotten");
+    }
 
     #[test]
     fn test_resolve_static_file_serves_existing_file() {

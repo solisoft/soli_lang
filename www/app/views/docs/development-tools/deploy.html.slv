@@ -119,6 +119,9 @@ proxy_url = "https://proxy.example.com"</code></pre>
         <p class="text-amber-200/80 text-sm">
             In production mode the server snapshots every <code class="text-amber-300">.css</code> and <code class="text-amber-300">.js</code> file under <code class="text-amber-300">public/</code> into memory at boot. If new asset bytes land on disk before the binary restarts, the running process keeps serving its frozen snapshot — preventing the classic mismatch where in-flight HTML references one asset version while the disk has another. The next binary start reloads from disk. See <a href="/docs/development-tools/live-reload" class="text-amber-400 underline">Production Mode</a> for details.
         </p>
+        <p class="text-amber-200/80 text-sm mt-3">
+            Other files under <code class="text-amber-300">public/</code> are read from disk on request. In production a path that was not a file a moment ago &mdash; every dynamic route is checked this way first &mdash; is taken on trust for one second, so a file written under <code class="text-amber-300">public/</code> while the server runs (an upload saved there, say) is served at most a second after a request for that same path found nothing.
+        </p>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6">Requirements</h2>

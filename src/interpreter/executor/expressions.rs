@@ -903,6 +903,7 @@ impl Interpreter {
             receiver: rx,
             kind: HttpFutureKind::SystemResult,
         };
+        crate::interpreter::value::note_future_created();
         Ok(Value::Future(Arc::new(Mutex::new(future_state))))
     }
 }

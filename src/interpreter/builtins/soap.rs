@@ -415,6 +415,7 @@ fn spawn_soap_future(url: String, headers: Vec<(String, String)>, envelope: Stri
         let _ = tx.send(Ok(result));
     });
 
+    crate::interpreter::value::note_future_created();
     Value::Future(Arc::new(Mutex::new(FutureState::Pending {
         receiver: rx,
         kind: HttpFutureKind::FullResponse,

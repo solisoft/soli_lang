@@ -92,6 +92,11 @@ New asset bytes landing on disk before the binary restarts do not affect the run
 keeps serving its snapshot, so in-flight HTML never references an asset version the process has
 already replaced. The next start reloads from disk. See [Production mode](live-reload.md).
 
+Other files under `public/` are read from disk on request. In production a path that was not a file
+a moment ago — every dynamic route is checked this way first — is taken on trust for one second,
+so a file written under `public/` while the server runs (an upload saved there, say) is served at
+most a second after a request for that same path found nothing.
+
 ## Immutable releases — `soli cloud`
 
 `soli deploy` updates a working tree in place. `soli cloud` does the opposite: it builds an

@@ -8,6 +8,20 @@ use std::rc::Rc;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
+/// Set the first time this process creates a `Value::Future`, and never
+/// cleared. Until then no value can hold one, so the walks that look for
+/// futures to resolve before rendering (`render_json`, `render`) are skipped —
+/// 50 hashes walked per JSON response for nothing in an app that never calls
+/// anything asynchronous. Every `Value::Future(Arc::new(..))` site calls
+/// [`note_future_created`].
+pub static FUTURES_CREATED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[inline]
+pub fn note_future_created() {
+    FUTURES_CREATED.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 use ahash::RandomState as AHasher;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;

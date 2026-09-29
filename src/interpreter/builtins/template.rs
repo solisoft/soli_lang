@@ -419,6 +419,10 @@ fn resolve_futures_in_value(value: Value) -> Value {
         Value::Future(_) | Value::Hash(_) | Value::Array(_) => {}
         _ => return value,
     }
+    // No future has ever been created in this process, so none can be in here.
+    if !crate::interpreter::value::FUTURES_CREATED.load(std::sync::atomic::Ordering::Relaxed) {
+        return value;
+    }
     // Slow path: check for and resolve futures
     match value {
         Value::Future(_) => match value.resolve() {

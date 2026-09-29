@@ -121,6 +121,7 @@ fn spawn_future(program: String, args_vec: Vec<String>) -> Value {
         receiver: rx,
         kind: crate::interpreter::value::HttpFutureKind::SystemResult,
     };
+    crate::interpreter::value::note_future_created();
     Value::Future(Arc::new(Mutex::new(future_state)))
 }
 

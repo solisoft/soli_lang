@@ -1040,6 +1040,7 @@ where
         let result = f();
         let _ = tx.send(result);
     });
+    crate::interpreter::value::note_future_created();
     Value::Future(Arc::new(Mutex::new(FutureState::Pending {
         receiver: rx,
         kind,
