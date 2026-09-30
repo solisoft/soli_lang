@@ -932,6 +932,18 @@ java -jar Mustang-CLI.jar --action validate --source invoice.pdf</code></pre>
         <p class="text-gray-400 mt-4">Both identifiers also reach the template as <code>company.registration</code> / <code>customer.registration</code> (and <code>company.vat_number</code> / <code>customer.vat_number</code>), so the visual PDF can print the statutory mentions the XML carries. The <code>invoice_compliant</code> sample does exactly this &mdash; <a href="/docs/builtins/pdf-playground?sample=invoice_compliant" class="text-teal-300 hover:underline">open it in the playground</a>.</p>
     </section>
 
+    <!-- From Ruby -->
+    <section id="section-ruby" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">From Ruby <span class="text-xs font-normal text-teal-300 align-middle">&middot; <code>soli-pdf</code> gem</span></h2>
+        <p class="text-gray-400 mb-4">Not on Soli? The <code>soli-pdf</code> gem wraps the standalone <code>render_pdf</code> binary, so any Ruby app can turn a JSON template + JSON data into a PDF.</p>
+        <pre data-filename="Ruby"><code class="language-ruby text-sm">require "soli/pdf"
+
+pdf = Soli::PDF.render(template: template_hash, data: { "invoice" => { "number" => "F-42" } })
+File.binwrite("invoice.pdf", pdf)</code></pre>
+        <p class="text-gray-400 mt-3">Options: <code>title</code>, <code>author</code>, <code>subject</code>, <code>password</code>, <code>owner_password</code>, <code>stationery:</code>, <code>attachments:</code>, <code>fonts:</code>, <code>images: false</code>, and <code>xml:</code> / <code>invoice:</code> for Factur-X. A failed render raises <code>Soli::PDF::RenderError</code> with the renderer's message. On first use the gem downloads <code>render-pdf-&lt;os&gt;-&lt;arch&gt;.tar.gz</code> from the Soli release (the binary plus the bundled fonts), verifies its SHA-256 and caches it under <code>~/.cache/soli-pdf/</code>; set <code>SOLI_PDF_BIN</code> to use your own build.</p>
+        <p class="text-gray-400 mt-3">The binary itself reads JSON from stdin and writes the PDF to stdout: <code>render_pdf --template t.json --data - -o - &lt; data.json &gt; out.pdf</code> (<code>-</code> may stand for one input only).</p>
+    </section>
+
     <!-- Performance -->
     <section id="section-performance" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">

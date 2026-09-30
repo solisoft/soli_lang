@@ -1022,6 +1022,23 @@ Both identifiers also reach the template as `company.registration` / `customer.r
 
 ---
 
+## From Ruby (`soli-pdf` gem)
+
+Not on Soli? The `soli-pdf` gem wraps the standalone `render_pdf` binary, so any Ruby app can turn a JSON template + JSON data into a PDF:
+
+```ruby
+require "soli/pdf"
+
+pdf = Soli::PDF.render(template: template_hash, data: { "invoice" => { "number" => "F-42" } })
+File.binwrite("invoice.pdf", pdf)
+```
+
+Options: `title`, `author`, `subject`, `password`, `owner_password`, `stationery:`, `attachments:`, `fonts:`, `images: false`, and `xml:` / `invoice:` for Factur-X. A failed render raises `Soli::PDF::RenderError` with the renderer's message. On first use the gem downloads `render-pdf-<os>-<arch>.tar.gz` from the Soli release (the binary plus the bundled fonts), verifies its SHA-256 and caches it under `~/.cache/soli-pdf/`; set `SOLI_PDF_BIN` to use your own build.
+
+The binary itself reads JSON from stdin and writes the PDF to stdout: `render_pdf --template t.json --data - -o - < data.json > out.pdf` (`-` may stand for one input only).
+
+---
+
 ## Performance
 
 Generation is in-process and CPU-bound. Benchmark a controller that renders an invoice on every request with [oha](https://github.com/hatoo/oha):

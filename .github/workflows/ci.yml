@@ -502,17 +502,21 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             artifact: soli-linux-amd64
+            pdf_artifact: render-pdf-linux-amd64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             artifact: soli-linux-arm64
+            pdf_artifact: render-pdf-linux-arm64
           - target: aarch64-apple-darwin
             os: macos-latest
             artifact: soli-darwin-arm64
+            pdf_artifact: render-pdf-darwin-arm64
           # Intel Mac. `soli update` has always resolved x86_64 macOS hosts to
           # this artifact name, so without it those users get a 404.
           - target: x86_64-apple-darwin
             os: macos-latest
             artifact: soli-darwin-amd64
+            pdf_artifact: render-pdf-darwin-amd64
           # Keep the .tar.gz + .sha256 convention on Windows too: the standalone
           # builder downloads and verifies that shape, and a .zip would mean a
           # second code path plus a zip dependency for cosmetics. Windows 10
@@ -521,6 +525,7 @@ jobs:
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             artifact: soli-windows-amd64
+            pdf_artifact: render-pdf-windows-amd64
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -582,6 +587,30 @@ jobs:
           fi
           cat ${{ matrix.artifact }}.tar.gz.sha256
 
+      - name: Build render_pdf
+        run: cargo build --release --locked --manifest-path pdf/Cargo.toml --bin render_pdf --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+
+      - name: Package render_pdf
+        # The standalone PDF renderer behind the `soli-pdf` Ruby gem. Fonts are
+        # loaded at runtime, so the tarball carries pdf/fonts next to the binary.
+        shell: bash
+        run: |
+          BIN=render_pdf
+          if [ "${{ runner.os }}" = "Windows" ]; then BIN=render_pdf.exe; fi
+          PKG=render-pdf-stage
+          mkdir -p $PKG
+          cp pdf/target/${{ matrix.target }}/release/$BIN $PKG/
+          cp -R pdf/fonts $PKG/fonts
+          tar -czf ${{ matrix.pdf_artifact }}.tar.gz -C $PKG .
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum ${{ matrix.pdf_artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.pdf_artifact }}.tar.gz.sha256
+          else
+            shasum -a 256 ${{ matrix.pdf_artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.pdf_artifact }}.tar.gz.sha256
+          fi
+
       - name: Upload to release
         shell: bash
         env:
@@ -589,6 +618,8 @@ jobs:
         run: |
           gh release upload --clobber ${{ github.ref_name }} ${{ matrix.artifact }}.tar.gz
           gh release upload --clobber ${{ github.ref_name }} ${{ matrix.artifact }}.tar.gz.sha256
+          gh release upload --clobber ${{ github.ref_name }} ${{ matrix.pdf_artifact }}.tar.gz
+          gh release upload --clobber ${{ github.ref_name }} ${{ matrix.pdf_artifact }}.tar.gz.sha256
 
   publish-release:
     needs: [build-binaries]

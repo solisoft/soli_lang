@@ -1,7 +1,8 @@
 //! CLI: render a PDF from a JSON template + data, optionally embedding a
 //! Factur-X CII XML to produce a PDF/A-3b invoice.
 
-use std::path::PathBuf;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -11,26 +12,27 @@ use time::OffsetDateTime;
 #[derive(Parser)]
 #[command(
     name = "render_pdf",
+    version,
     about = "Render a JSON template + data to a PDF, optionally embedding Factur-X XML."
 )]
 struct Args {
-    /// Path to the JSON layout template.
+    /// Path to the JSON layout template (`-` reads stdin).
     #[arg(long)]
     template: PathBuf,
-    /// Path to the JSON data document (for free-form template + data renders).
+    /// Path to the JSON data document (`-` reads stdin) for free-form template + data renders.
     #[arg(long, required_unless_present = "invoice")]
     data: Option<PathBuf>,
     /// Optional Factur-X CII XML to embed (produces a PDF/A-3b invoice).
     #[arg(long)]
     xml: Option<PathBuf>,
-    /// Path to a typed invoice JSON. Drives both the PDF and a computed,
+    /// Path to a typed invoice JSON (`-` reads stdin). Drives both the PDF and a computed,
     /// consistent EN 16931 CII XML — no separate --data/--xml needed.
     #[arg(long, conflicts_with_all = ["data", "xml"])]
     invoice: Option<PathBuf>,
     /// Factur-X profile (minimum, basicwl, basic, en16931, extended).
     #[arg(long, default_value = "en16931")]
     profile: String,
-    /// Output PDF path.
+    /// Output PDF path (`-` writes the PDF to stdout).
     #[arg(long, short)]
     out: PathBuf,
     /// Do not fetch http(s) images (skip them instead).
@@ -73,7 +75,9 @@ fn main() -> ExitCode {
             for w in &warnings {
                 eprintln!("warning: {w}");
             }
-            eprintln!("wrote {}", args.out.display());
+            if !is_stdio(&args.out) {
+                eprintln!("wrote {}", args.out.display());
+            }
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -83,8 +87,49 @@ fn main() -> ExitCode {
     }
 }
 
+fn is_stdio(path: &Path) -> bool {
+    path.as_os_str() == "-"
+}
+
+/// Read a file, or stdin when the path is `-`.
+fn read_input(path: &Path) -> std::io::Result<Vec<u8>> {
+    if !is_stdio(path) {
+        return std::fs::read(path);
+    }
+    let mut bytes = Vec::new();
+    std::io::stdin().lock().read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+/// Write a file, or stdout when the path is `-`.
+fn write_output(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if !is_stdio(path) {
+        return std::fs::write(path, bytes);
+    }
+    let mut stdout = std::io::stdout().lock();
+    stdout.write_all(bytes)?;
+    stdout.flush()
+}
+
 fn run(args: &Args) -> soli_pdf::Result<Vec<soli_pdf::RenderWarning>> {
-    let template = std::fs::read(&args.template)?;
+    let stdin_inputs = [
+        Some(&args.template),
+        args.data.as_ref(),
+        args.invoice.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|path| is_stdio(path))
+    .count();
+    if stdin_inputs > 1 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "stdin (`-`) can only feed one of --template, --data and --invoice",
+        )
+        .into());
+    }
+
+    let template = read_input(&args.template)?;
     let font_dirs = if args.font_dir.is_empty() {
         vec![PathBuf::from("fonts"), PathBuf::from("font")]
     } else {
@@ -144,17 +189,17 @@ fn run(args: &Args) -> soli_pdf::Result<Vec<soli_pdf::RenderWarning>> {
 
     // Single-source path: a typed invoice drives both the PDF and its CII XML.
     if let Some(invoice_path) = &args.invoice {
-        let invoice = Invoice::parse(&std::fs::read(invoice_path)?)?;
+        let invoice = Invoice::parse(&read_input(invoice_path)?)?;
         let data = serde_json::to_vec(&invoice.to_render_data())?;
         let rendered = render_with_warnings(&template, &data, &opts)?;
         let xml = invoice.to_cii_xml(profile)?;
         let pdf = facturx::embed_facturx(&rendered.pdf, xml.as_bytes(), profile, &meta)?;
-        std::fs::write(&args.out, &pdf)?;
+        write_output(&args.out, &pdf)?;
         return Ok(rendered.warnings);
     }
 
     // Free-form path: template + data, optionally embedding caller-provided XML.
-    let data = std::fs::read(args.data.as_ref().expect("clap requires data here"))?;
+    let data = read_input(args.data.as_ref().expect("clap requires data here"))?;
     let rendered = render_with_warnings(&template, &data, &opts)?;
     let pdf = match &args.xml {
         Some(xml_path) => {
@@ -163,6 +208,6 @@ fn run(args: &Args) -> soli_pdf::Result<Vec<soli_pdf::RenderWarning>> {
         }
         None => rendered.pdf.clone(),
     };
-    std::fs::write(&args.out, &pdf)?;
+    write_output(&args.out, &pdf)?;
     Ok(rendered.warnings)
 }
