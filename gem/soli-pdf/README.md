@@ -40,3 +40,10 @@ On first use the gem downloads `render-pdf-<os>-<arch>.tar.gz` (the `render_pdf`
 the bundled Titillium Web and JetBrains Mono fonts) from the Soli GitHub release matching
 `Soli::PDF::BINARY_VERSION`, checks it against the published `.sha256`, and caches it in
 `~/.cache/soli-pdf/`. To use your own build: `SOLI_PDF_BIN=/path/to/render_pdf` or `Soli::PDF.binary_path = ...`.
+
+Release builds exist for Linux (amd64, arm64), macOS (arm64, amd64) and Windows (amd64). The Linux
+binaries need **glibc 2.35 or later** (Ubuntu 22.04+, Debian 12+, RHEL/Rocky/Alma 10); on an older
+system — RHEL/Rocky/Alma 9, Amazon Linux 2023, Debian 11, or Alpine (musl) — every render raises
+`Soli::PDF::RenderError` with ``version `GLIBC_2.35' not found``. Build `render_pdf` on that system
+(`cargo build --release --bin render_pdf` in `pdf/`, with `pdf/fonts` copied next to it) and point
+`SOLI_PDF_BIN` at it.
