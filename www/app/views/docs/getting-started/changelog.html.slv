@@ -20,9 +20,14 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.9.0.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.9.1.</p>
 
-        <h3 id="unreleased-pdf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">PDF</h3>
+    </section>
+
+    <section id="v2-9-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.9.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-30</span></h2>
+
+        <h3 id="v2-9-1-pdf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">PDF</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">render_pdf</code> and the <code class="text-cyan-400">soli-pdf</code> gem draw file and URL images again.</strong> The standalone binary never installed an image-source policy, so it drew <code class="text-cyan-400">data:</code> URIs only and skipped every other image with <code class="text-cyan-400">no image-source policy installed</code>. It now installs one that mirrors Soli's: local paths are read inside the working directory or a directory given with the new <code class="text-cyan-400">--image-dir</code>, and <code class="text-cyan-400">http(s)</code> images are fetched from public addresses only, pinned against DNS rebinding, redirects re-checked. <a href="/docs/builtins/pdf#section-ruby" class="text-cyan-400 hover:underline">From Ruby</a></li>
         </ul>

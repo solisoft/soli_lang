@@ -30,7 +30,7 @@ Options: `title`, `author`, `subject`, `password`, `owner_password`, `stationery
 Failures raise `Soli::PDF::RenderError` (with `stderr`); `Soli::PDF.last_warnings` lists skipped images and missing glyphs.
 
 Images: `data:` URIs, files under the working directory, and `http(s)` URLs on public addresses
-(needs the `render_pdf` release that follows 2.9.0; 2.9.0 draws `data:` URIs only).
+(`render_pdf` 2.9.1 and later; 2.9.0 drew `data:` URIs only).
 
 Template reference: <https://soli-lang.org/docs/builtins/pdf>.
 

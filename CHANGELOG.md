@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.9.1] - 2026-09-30
+
 ### Fixed
 
 * **pdf:** **`render_pdf` (and so the `soli-pdf` gem) draws file and `http(s)` images again.** The library refuses every image source except `data:` URIs until its host installs a policy; `soli` installs its SSRF validator and app-root jail, but the standalone binary installed nothing, so every `file://` path, bare path and URL image was skipped with `no image-source policy installed`. `render_pdf` now installs its own policy, mirroring soli's: a local path is read only if it resolves (symlinks included) inside the working directory or a directory given with the new, repeatable `--image-dir`; an `http(s)` URL is fetched only if its host resolves to public addresses, with the connection pinned to the checked address (DNS rebinding) and every redirect hop re-checked; loopback, private, link-local (cloud metadata), shared and documentation ranges are refused. A missing `--image-dir` is an error rather than a silent skip of every image. `--no-images` is unchanged. [Docs](www/docs/builtins/pdf.md#from-ruby-soli-pdf-gem)
