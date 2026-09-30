@@ -143,7 +143,7 @@
 
         <div class="lp-split" style="align-items: start;">
             <div class="lp-table-wrap">
-                <table class="lp-table">
+                <table class="lp-table lp-stack">
                     <thead>
                         <tr><th>Path</th><th>Purpose</th></tr>
                     </thead>
@@ -178,13 +178,71 @@
     </div>
 </section>
 
+<!-- Code graph -->
+<section class="lp-section" id="code-graph">
+    <div class="lp-wrap">
+        <div style="display: flex; flex-direction: column; gap: 20px; max-width: 820px; margin-bottom: 48px;">
+            <div class="lp-eyebrow">Graph RAG</div>
+            <h2 class="lp-h2">A code graph your agent can query</h2>
+            <p class="lp-lead">
+                <code>soli graph build</code> turns your project into a graph: files, classes, models, controllers,
+                methods, routes and views, joined by what connects them (a route <em>routes to</em> an action, a method
+                <em>calls</em> another, an action <em>renders</em> a view). Every node is embedded. <code>soli graph query</code>
+                finds the code that matches a task, then walks one hop out, so the agent gets the neighbourhood,
+                not a random snippet.
+            </p>
+        </div>
+
+        <div class="lp-split lp-split-wide" style="align-items: start;">
+            <div class="lp-code">
+                <div class="lp-code-bar"><span>Terminal</span><span class="lp-tag">--json for agents</span></div>
+<pre><code><span class="ok">$</span> <span class="n">soli graph build</span>
+<span class="c"># nodes + edges + embeddings, stored in SoliDB</span>
+
+<span class="ok">$</span> <span class="n">soli graph query --json \</span>
+    <span class="s">"where is authentication handled?"</span>
+<span class="n">{</span> <span class="v">"mode"</span><span class="n">:</span> <span class="s">"semantic"</span><span class="n">, </span><span class="v">"results"</span><span class="n">: [{</span>
+    <span class="v">"qualified_name"</span><span class="n">:</span> <span class="s">"SessionsController#create"</span><span class="n">,</span>
+    <span class="v">"file"</span><span class="n">:</span> <span class="s">"app/controllers/sessions_controller.sl"</span><span class="n">,</span>
+    <span class="v">"line"</span><span class="n">: 12, </span><span class="v">"score"</span><span class="n">: 0.82,</span>
+    <span class="v">"neighbors"</span><span class="n">: [</span>
+      <span class="n">{ </span><span class="v">"edge_kind"</span><span class="n">:</span> <span class="s">"routes_to"</span><span class="n">, </span><span class="v">"name"</span><span class="n">:</span> <span class="s">"POST /login"</span> <span class="n">},</span>
+      <span class="n">{ </span><span class="v">"edge_kind"</span><span class="n">:</span> <span class="s">"calls"</span><span class="n">, </span><span class="v">"name"</span><span class="n">:</span> <span class="s">"User#authenticate"</span> <span class="n">},</span>
+      <span class="n">{ </span><span class="v">"edge_kind"</span><span class="n">:</span> <span class="s">"renders"</span><span class="n">, </span><span class="v">"name"</span><span class="n">:</span> <span class="s">"sessions/new"</span> <span class="n">}</span>
+    <span class="n">]</span>
+<span class="n">}]}</span></code></pre>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div class="lp-card">
+                    <h3 class="lp-h3" style="font-size: 20px;">Always current in dev</h3>
+                    <p>With an embedding key set, <code>soli serve --dev</code> reindexes on every save. It re-embeds only the nodes whose text changed, so a one-file edit costs a handful of embeddings, not thousands.</p>
+                </div>
+                <div class="lp-card">
+                    <h3 class="lp-h3" style="font-size: 20px;">Narrow the question</h3>
+                    <p><code>--path api/</code> keeps one side of a mono-repo, <code>--kind method,route</code> one kind of node, <code>--hops 2</code> walks further. Without embeddings it falls back to a weighted keyword search, so the command always answers.</p>
+                </div>
+                <div class="lp-card">
+                    <h3 class="lp-h3" style="font-size: 20px;">Not only Soli code</h3>
+                    <p>Point it at any repository and pick the file types with <code>--ext rb,erb</code>: a Rails app indexes like a Soli one. Same storage, same queries. The graph lives in SoliDB, which provides the graph and vector engines.</p>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 28px; margin-top: 32px;">
+            <a href="/docs/development-tools/graph" class="lp-link">Code graph docs &rarr;</a>
+            <a href="/docs/blog/code-graph-rag" class="lp-link">Code Graph RAG, the long version &rarr;</a>
+        </div>
+    </div>
+</section>
+
 <!-- AI in the product -->
 <section class="lp-section lp-night">
     <div class="lp-wrap">
         <div style="display: flex; flex-direction: column; gap: 20px; max-width: 800px; margin-bottom: 48px;">
             <div class="lp-eyebrow">In your app</div>
             <h2 class="lp-h2">AI in the product, not a sidecar</h2>
-            <p class="lp-lead">The binary that serves your app also talks to an OpenAI-compatible chat API, embeds rows and walks a code graph. No extra process.</p>
+            <p class="lp-lead">The binary that serves your app also talks to an OpenAI-compatible chat API, embeds and reranks rows, and grounds answers in your own data with <code>Model.rag</code>. No extra process.</p>
         </div>
 
         <div class="lp-grid-3" style="margin-bottom: 24px;">
@@ -197,8 +255,8 @@
                 <p>Embed on save, retrieve by cosine or hybrid search, ground the prompt. <a href="/docs/blog/rag-product-discovery" class="lp-link" style="display: inline;">Product discovery tutorial</a>.</p>
             </div>
             <div class="lp-card">
-                <h3 class="lp-h3" style="font-size: 20px;"><a href="/docs/development-tools/graph">soli graph</a></h3>
-                <p>Indexes routes, callers and views with embeddings, so an agent gets a neighbourhood, not a random snippet. <a href="/docs/blog/code-graph-rag" class="lp-link" style="display: inline;">Code Graph RAG</a>.</p>
+                <h3 class="lp-h3" style="font-size: 20px;"><a href="/docs/builtins/ai">embed &middot; rerank</a></h3>
+                <p><code>embed</code> and <code>embed_batch</code> turn text into vectors; <code>rerank</code> reorders rows against a query. OpenAI, or a self-hosted vLLM, Ollama or llama.cpp.</p>
             </div>
         </div>
 

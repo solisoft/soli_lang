@@ -121,3 +121,14 @@
 .lp-night .lp-card p code { background: rgba(232, 89, 12, 0.14); color: #F2A365; }
 .lp-night .lp-h3 a:hover { color: #F2A365; }
 .lp-page-head { padding: clamp(56px, 8vw, 104px) 0 clamp(48px, 6vw, 80px); border-bottom: 1px solid var(--line); }
+.lp-split-wide { grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); }
+.lp-split-wide .lp-code pre { font-size: 13.5px; }
+@media (max-width: 900px) { .lp-split-wide { grid-template-columns: 1fr; } }
+.lp-card p code { white-space: nowrap; }
+@media (max-width: 560px) {
+    .lp-table.lp-stack thead { display: none; }
+    .lp-table.lp-stack tr { display: block; padding: 14px 20px; border-top: 1px solid var(--line-soft); }
+    .lp-table.lp-stack tr:first-child { border-top: 0; }
+    .lp-table.lp-stack td { display: block; padding: 2px 0; border: 0; }
+}
+.lp-table code { white-space: nowrap; }
