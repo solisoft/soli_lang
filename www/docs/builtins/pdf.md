@@ -1024,7 +1024,11 @@ Both identifiers also reach the template as `company.registration` / `customer.r
 
 ## From Ruby (`soli-pdf` gem)
 
-Not on Soli? The `soli-pdf` gem wraps the standalone `render_pdf` binary, so any Ruby app can turn a JSON template + JSON data into a PDF:
+Not on Soli? The `soli-pdf` gem wraps the standalone `render_pdf` binary, so any Ruby app can turn a JSON template + JSON data into a PDF. It is not on RubyGems: add it to your `Gemfile` from the Soli repository, then `bundle install`:
+
+```ruby
+gem "soli-pdf", git: "https://github.com/solisoft/soli_lang", glob: "gem/soli-pdf/*.gemspec"
+```
 
 ```ruby
 require "soli/pdf"

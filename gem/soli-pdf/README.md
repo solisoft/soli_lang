@@ -2,6 +2,18 @@
 
 Generate PDFs from JSON in Ruby, with the [Soli](https://github.com/solisoft/soli_lang) renderer.
 
+## Installation
+
+The gem lives in the Soli repository (not on RubyGems). In your `Gemfile`:
+
+```ruby
+gem 'soli-pdf', git: 'https://github.com/solisoft/soli_lang', glob: 'gem/soli-pdf/*.gemspec'
+```
+
+then `bundle install`.
+
+## Usage
+
 ```ruby
 require 'soli/pdf'
 

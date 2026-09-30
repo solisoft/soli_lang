@@ -935,7 +935,8 @@ java -jar Mustang-CLI.jar --action validate --source invoice.pdf</code></pre>
     <!-- From Ruby -->
     <section id="section-ruby" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">From Ruby <span class="text-xs font-normal text-teal-300 align-middle">&middot; <code>soli-pdf</code> gem</span></h2>
-        <p class="text-gray-400 mb-4">Not on Soli? The <code>soli-pdf</code> gem wraps the standalone <code>render_pdf</code> binary, so any Ruby app can turn a JSON template + JSON data into a PDF.</p>
+        <p class="text-gray-400 mb-4">Not on Soli? The <code>soli-pdf</code> gem wraps the standalone <code>render_pdf</code> binary, so any Ruby app can turn a JSON template + JSON data into a PDF. It is not on RubyGems: add it to your <code>Gemfile</code> from the Soli repository, then <code>bundle install</code>:</p>
+        <pre data-filename="Gemfile"><code class="language-ruby text-sm">gem "soli-pdf", git: "https://github.com/solisoft/soli_lang", glob: "gem/soli-pdf/*.gemspec"</code></pre>
         <pre data-filename="Ruby"><code class="language-ruby text-sm">require "soli/pdf"
 
 pdf = Soli::PDF.render(template: template_hash, data: { "invoice" => { "number" => "F-42" } })
