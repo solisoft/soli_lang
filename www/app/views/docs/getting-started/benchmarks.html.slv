@@ -63,14 +63,14 @@
 <tr class="text-gray-500"><td class="py-3 px-4">Laravel + Octane <span class="text-xs uppercase tracking-wide">reference</span></td><td class="py-3 px-4 text-right">15,322</td><td class="py-3 px-4 text-right">19.00 ms</td><td class="py-3 px-4 text-right">1,010 &micro;s</td><td class="py-3 px-4 text-right">0.4&times;</td></tr>
 <tr><td class="py-3 px-4">Laravel + php-fpm</td><td class="py-3 px-4 text-right">8,140</td><td class="py-3 px-4 text-right">25.48 ms</td><td class="py-3 px-4 text-right">1,883 &micro;s</td><td class="py-3 px-4 text-right">0.2&times;</td></tr>
 </tbody></table></div></div>
-<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli">def rows
-  return (0..50).map(fn(i) {
-    return { &quot;id&quot;: i + 1, &quot;title&quot;: &quot;Post title #{i + 1}&quot;, &quot;views&quot;: (i + 1) * 7 }
-  })
+<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli"># GET /json
+def json_only
+  render_json(@_rows)
 end
 
-def json_only
-  render_json(this.rows())
+# Not an action: the `_` keeps it out of the router.
+def _rows()
+  (1..51).map { |i| { &quot;id&quot;: i, &quot;title&quot;: &quot;Post title #{i}&quot;, &quot;views&quot;: i * 7 } }
 end</code></pre></div>
 <div data-panel="rails" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby">def rows
   (1..50).map { |i| { id: i, title: &quot;Post title #{i}&quot;, views: i * 7 } }
@@ -152,8 +152,9 @@ get &quot;/json&quot; { |env| json(env, rows.to_json) }</code></pre></div>
 <tr><td class="py-3 px-4">Django + gunicorn</td><td class="py-3 px-4 text-right">13,134</td><td class="py-3 px-4 text-right">16.15 ms</td><td class="py-3 px-4 text-right">1,183 &micro;s</td><td class="py-3 px-4 text-right">0.4&times;</td></tr>
 <tr><td class="py-3 px-4">Laravel + php-fpm</td><td class="py-3 px-4 text-right">7,613</td><td class="py-3 px-4 text-right">27.20 ms</td><td class="py-3 px-4 text-right">2,017 &micro;s</td><td class="py-3 px-4 text-right">0.2&times;</td></tr>
 </tbody></table></div></div>
-<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli">def template_only
-  render(&quot;posts/list&quot;, { &quot;title&quot;: &quot;Posts&quot;, &quot;items&quot;: this.rows() })
+<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli"># GET /template
+def template_only
+  render(&quot;posts/list&quot;, { &quot;title&quot;: &quot;Posts&quot;, &quot;items&quot;: @_rows })
 end</code></pre></div>
 <div data-panel="rails" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby">def template_only
   @title = &quot;Posts&quot;
@@ -220,11 +221,9 @@ get &quot;/template&quot; { |env| env.response.content_type = &quot;text/html&qu
 <tr class="text-gray-500"><td class="py-3 px-4">Laravel + Octane <span class="text-xs uppercase tracking-wide">reference</span></td><td class="py-3 px-4 text-right">13,055</td><td class="py-3 px-4 text-right">17.35 ms</td><td class="py-3 px-4 text-right">1,126 &micro;s</td><td class="py-3 px-4 text-right">0.4&times;</td></tr>
 <tr><td class="py-3 px-4">Laravel + php-fpm</td><td class="py-3 px-4 text-right">6,537</td><td class="py-3 px-4 text-right">32.23 ms</td><td class="py-3 px-4 text-right">2,215 &micro;s</td><td class="py-3 px-4 text-right">0.2&times;</td></tr>
 </tbody></table></div></div>
-<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli"># The builder is bound to a local BEFORE render_json: passed inline as a call
-# argument it is evaluated twice and the query goes out twice.
+<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli"># GET /db — projected on the database side: only the three fields travel
 def db_json
-  let rows = Post.pluck(:id, :title, :views).all
-  return render_json(rows)
+  render_json(Post.pluck(:id, :title, :views).all)
 end</code></pre></div>
 <div data-panel="rails" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby"># pluck returns arrays, so the map is what makes the payload match the others.
 def db_json
@@ -317,7 +316,8 @@ get &quot;/db&quot; { |env| json(env, db_rows.to_json) }</code></pre></div>
 <tr><td class="py-3 px-4">Django + gunicorn</td><td class="py-3 px-4 text-right">10,896</td><td class="py-3 px-4 text-right">19.72 ms</td><td class="py-3 px-4 text-right">1,390 &micro;s</td><td class="py-3 px-4 text-right">0.4&times;</td></tr>
 <tr><td class="py-3 px-4">Laravel + php-fpm</td><td class="py-3 px-4 text-right">6,174</td><td class="py-3 px-4 text-right">34.08 ms</td><td class="py-3 px-4 text-right">2,352 &micro;s</td><td class="py-3 px-4 text-right">0.2&times;</td></tr>
 </tbody></table></div></div>
-<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli">def db_template
+<div data-panel="soli" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-soli"># GET /db-template
+def db_template
   render(&quot;posts/list&quot;, { &quot;title&quot;: &quot;Posts&quot;, &quot;items&quot;: Post.pluck(:id, :title, :views).all })
 end</code></pre></div>
 <div data-panel="rails" class="hidden"><pre class="bg-black/40 border border-white/10 rounded-xl p-4 overflow-x-auto"><code class="language-ruby">def db_template

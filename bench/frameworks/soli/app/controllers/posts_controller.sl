@@ -8,32 +8,30 @@
 const WPOOL = int(getenv("WPOOL") || "800000")
 
 class PostsController < Controller
-  def rows
-    return (0..50).map(fn(i) { return { "id": i + 1, "title": "Post title #{i + 1}", "views": (i + 1) * 7 } })
-  end
-
+  # GET /json — the 50 rows, serialised to JSON
   def json_only
-    render_json(this.rows())
+    render_json(@_rows)
   end
 
+  # GET /template — the same rows through the view and its layout
   def template_only
-    render("posts/list", { "title": "Posts", "items": this.rows() })
+    render("posts/list", { "title": "Posts", "items": @_rows })
   end
 
+  # GET /db — the 50 rows read from SoliDB (projected on the database side)
   def db_json
-    # Projection cote base : seuls les champs demandes traversent le reseau.
-    # La forme en ligne est correcte depuis le correctif de render_json (le
-    # builder n'est plus evalue deux fois) ; la locale reste pour que les
-    # chiffres publies correspondent exactement au code mesure.
-    let rows = Post.pluck(:id, :title, :views).all
-    return render_json(rows)
+    render_json(Post.pluck(:id, :title, :views).all)
   end
 
-  # La page rendue serveur telle qu'on l'ecrit vraiment : lecture DB puis rendu
-  # HTML. C'est /db et /template dans une seule requete, donc le cout des deux
-  # plus rien d'autre — la ligne la plus representative de la page reelle.
+  # GET /db-template — a database read, then an HTML render: /db and /template
+  # in one request, the row closest to a real server-rendered page.
   def db_template
     render("posts/list", { "title": "Posts", "items": Post.pluck(:id, :title, :views).all })
+  end
+
+  # Not an action: the `_` keeps it out of the router.
+  def _rows()
+    (1..51).map { |i| { "id": i, "title": "Post title #{i}", "views": i * 7 } }
   end
 
   # ---- Ecritures : une operation par requete, sur `wposts` (800 000 docs) ----
