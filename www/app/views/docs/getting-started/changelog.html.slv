@@ -22,6 +22,11 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.10.0.</p>
 
+        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">New directories are picked up without a restart.</strong> Adding <code class="text-cyan-400">app/services/</code> (or <code class="text-cyan-400">app/models/</code>, <code class="text-cyan-400">app/jobs/</code>, <code class="text-cyan-400">config/locales/</code>, &hellip;) to a running <code class="text-cyan-400">soli serve --dev</code> used to leave its classes undefined until a restart, because only directories present at boot were watched. It is now watched as soon as it appears, and loaded. <a href="/docs/development-tools/live-reload" class="text-cyan-400 hover:underline">Live reload</a></li>
+        </ul>
+
     </section>
 
     <section id="v2-10-0" class="mb-16 scroll-mt-24">

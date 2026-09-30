@@ -60,6 +60,12 @@ into the same environment (a policy refers to a model, a mailer to both), so a
 change in any of them reloads all four. Editing a policy or a mailer on its own
 used not to reload anything at all.
 
+A directory created while the server runs is picked up too: add
+`app/services/` (or `app/models/`, `app/jobs/`, `config/locales/`, …) to a
+running `--dev` server and it is watched from then on, and what it already
+holds is loaded — no restart. Only directories that existed at boot used to be
+watched, so a class in a new `app/services/` stayed undefined until a restart.
+
 When any watched file changes, the workers reload what changed and a reload
 signal is sent to connected browsers.
 

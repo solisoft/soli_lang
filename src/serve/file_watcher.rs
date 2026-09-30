@@ -76,6 +76,18 @@ impl WatchPaths {
     }
 }
 
+/// What a directory created after boot reloads (see `late_dirs` in [`spawn`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LateDir {
+    Controllers,
+    Views,
+    Middleware,
+    Helpers,
+    Models,
+    Jobs,
+    Locales,
+}
+
 /// Spawn the watcher. Dev only — the caller decides that.
 ///
 /// `hot_reload_versions` is what the workers read to notice they must reload;
@@ -233,6 +245,71 @@ pub(super) fn spawn(
             }
         }
 
+        // Directories an app may create after boot — `app/services/` added to
+        // a running `--dev` server left `SiteContent` undefined until a
+        // restart, because only directories that existed at boot were
+        // watched. `app/` and `config/` are watched non-recursively, so a new
+        // one shows up as an event: it is watched from then on, and its kind
+        // reloads, which loads whatever it already holds.
+        let mut late_dirs: Vec<(PathBuf, RecursiveMode, LateDir)> = [
+            (
+                &watch_controllers_dir,
+                RecursiveMode::Recursive,
+                LateDir::Controllers,
+            ),
+            (&watch_views_dir, RecursiveMode::Recursive, LateDir::Views),
+            (
+                &watch_middleware_dir,
+                RecursiveMode::NonRecursive,
+                LateDir::Middleware,
+            ),
+            (
+                &watch_helpers_dir,
+                RecursiveMode::NonRecursive,
+                LateDir::Helpers,
+            ),
+            (
+                &watch_components_dir,
+                RecursiveMode::NonRecursive,
+                LateDir::Helpers,
+            ),
+            (&watch_models_dir, RecursiveMode::Recursive, LateDir::Models),
+            (
+                &watch_services_dir,
+                RecursiveMode::Recursive,
+                LateDir::Models,
+            ),
+            (
+                &watch_policies_dir,
+                RecursiveMode::Recursive,
+                LateDir::Models,
+            ),
+            (
+                &watch_mailers_dir,
+                RecursiveMode::Recursive,
+                LateDir::Models,
+            ),
+            (&watch_jobs_dir, RecursiveMode::Recursive, LateDir::Jobs),
+            (
+                &watch_locales_dir,
+                RecursiveMode::Recursive,
+                LateDir::Locales,
+            ),
+        ]
+        .into_iter()
+        .filter(|(dir, _, _)| !dir.exists())
+        .map(|(dir, mode, kind)| (dir.clone(), mode, kind))
+        .collect();
+        let app_dir = watch_folder.join("app");
+        if late_dirs
+            .iter()
+            .any(|(dir, _, _)| dir.parent() == Some(app_dir.as_path()))
+            && app_dir.is_dir()
+            && watcher.watch(&app_dir, RecursiveMode::NonRecursive).is_ok()
+        {
+            watch_count += 1;
+        }
+
         println!(
             "Hot reload: Watching {} directories (event-driven)",
             watch_count
@@ -279,18 +356,18 @@ pub(super) fn spawn(
                 }
             }
 
-            // `config/locales` created after boot: `config/` is watched (for
-            // `routes.sl`), so its creation shows up here — watch it from now
-            // on, and load whatever it already holds.
-            let mut locales_dir_created = false;
-            if changed_paths.contains(&watch_locales_dir)
-                && watch_locales_dir.is_dir()
-                && watcher
-                    .watch(&watch_locales_dir, RecursiveMode::Recursive)
-                    .is_ok()
-            {
-                locales_dir_created = true;
-            }
+            // A watched-for directory created since boot (see `late_dirs`).
+            let mut created: Vec<LateDir> = Vec::new();
+            late_dirs.retain(|(dir, mode, kind)| {
+                if changed_paths.contains(dir) && dir.is_dir() && watcher.watch(dir, *mode).is_ok()
+                {
+                    println!("Hot reload: now watching {}", dir.display());
+                    created.push(*kind);
+                    false
+                } else {
+                    true
+                }
+            });
 
             // Filter to relevant extensions only
             let changed: Vec<PathBuf> = changed_paths
@@ -307,7 +384,7 @@ pub(super) fn spawn(
                 })
                 .collect();
 
-            if changed.is_empty() && !locales_dir_created {
+            if changed.is_empty() && created.is_empty() {
                 continue;
             }
 
@@ -324,16 +401,16 @@ pub(super) fn spawn(
             }
 
             println!("\n🔄 Hot reload triggered for:");
-            let mut views_changed = false;
-            let mut controllers_changed = false;
-            let mut middleware_changed = false;
-            let mut helpers_changed = false;
-            let mut models_changed = false;
-            let mut jobs_changed = false;
+            let mut views_changed = created.contains(&LateDir::Views);
+            let mut controllers_changed = created.contains(&LateDir::Controllers);
+            let mut middleware_changed = created.contains(&LateDir::Middleware);
+            let mut helpers_changed = created.contains(&LateDir::Helpers);
+            let mut models_changed = created.contains(&LateDir::Models);
+            let mut jobs_changed = created.contains(&LateDir::Jobs);
             let mut static_files_changed = false;
             let mut routes_changed = false;
             let mut asset_css_changed = false;
-            let mut locales_changed = locales_dir_created;
+            let mut locales_changed = created.contains(&LateDir::Locales);
 
             // Track the public/css output directory to distinguish
             // Tailwind output changes from source changes

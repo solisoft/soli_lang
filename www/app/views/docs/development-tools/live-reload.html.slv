@@ -109,6 +109,10 @@
         </table>
     </div>
 
+    <p class="text-gray-400 mb-6">
+        A directory created while the server runs is picked up too: add <code class="text-amber-400">app/services/</code> (or <code class="text-amber-400">app/models/</code>, <code class="text-amber-400">app/jobs/</code>, <code class="text-amber-400">config/locales/</code>, &hellip;) to a running <code class="text-amber-400">--dev</code> server and it is watched from then on, and what it already holds is loaded &mdash; no restart. Only directories that existed at boot used to be watched, so a class in a new <code class="text-amber-400">app/services/</code> stayed undefined until a restart.
+    </p>
+
     <p class="text-gray-400 mb-12">
         The four model-ish directories are <strong class="text-white">one signal</strong>: they load in a fixed
         order into the same environment (a policy refers to a model, a mailer to both), so a change in any of

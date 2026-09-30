@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+* **dev:** **A directory created while `soli serve --dev` runs is watched and loaded.** Only directories that existed at boot were watched, so adding `app/services/` (or `app/models/`, `app/jobs/`, `app/helpers/`, …) to a running dev server left its classes undefined — `Undefined variable 'SiteContent'` — until a restart. `app/` and `config/` are now watched for new directories; one that appears is watched from then on and its kind reloads. [Docs](www/docs/live-reload.md)
+
 ## [2.10.0] - 2026-09-30
 
 ### Added
