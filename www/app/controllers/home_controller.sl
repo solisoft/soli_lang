@@ -32,7 +32,7 @@ class HomeController extends Controller
         render("home/ai", {
             "title": "Soli is built for AI",
             "evals": evals
-        })
+        }, {"layout": "layouts/landing"})
     end
 
     # GET /health
