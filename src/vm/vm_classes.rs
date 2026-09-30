@@ -601,6 +601,67 @@ impl Vm {
     /// their result — matching the tree-walking interpreter — instead of
     /// yielding an (always-truthy) bound-method value. `obj.method()` with parens
     /// goes through CallMethod and is unaffected.
+    /// Is `name` a method of the instance `this` (compiled or not yet)?
+    pub(crate) fn has_instance_method(this: &Value, name: &str) -> bool {
+        match this {
+            Value::Instance(inst) => {
+                let class = inst.borrow().class.clone();
+                class.find_vm_method_with_class(name).is_some() || class.find_method(name).is_some()
+            }
+            _ => false,
+        }
+    }
+
+    /// The `this` of the method running now: the receiver slot of the nearest
+    /// method frame — dispatched with its class, or compiled as a method (a
+    /// served action enters through `call_method_bound`, with no class) —
+    /// looking past the blocks it runs.
+    fn current_this(&self) -> Option<&Value> {
+        self.frames
+            .iter()
+            .rev()
+            .find(|frame| frame.class.is_some() || frame.closure.proto.is_method)
+            .and_then(|frame| self.stack.get(frame.stack_base))
+    }
+
+    /// A private method is only callable on `self`: refuse `receiver.name`
+    /// when the receiver is another object. Free until some class declares a
+    /// private method.
+    pub(crate) fn check_private_value(
+        &self,
+        receiver: &Value,
+        name: &str,
+    ) -> Result<(), RuntimeError> {
+        let Value::Instance(inst) = receiver else {
+            return Ok(());
+        };
+        if !inst.borrow().class.refuses_outside_call(name) {
+            return Ok(());
+        }
+        if let Some(Value::Instance(this)) = self.current_this() {
+            if Rc::ptr_eq(this, inst) {
+                return Ok(());
+            }
+        }
+        Err(RuntimeError::General {
+            message: format!(
+                "private method '{}' called for an instance of {}",
+                name,
+                inst.borrow().class.name
+            ),
+            span: self.current_span(),
+        })
+    }
+
+    /// [`Self::check_private_value`] for the receiver sitting at `receiver_idx`.
+    pub(crate) fn check_private_receiver(
+        &self,
+        receiver_idx: usize,
+        name: &str,
+    ) -> Result<(), RuntimeError> {
+        self.check_private_value(&self.stack[receiver_idx], name)
+    }
+
     pub fn op_get_property_member(
         &mut self,
         object: &Value,

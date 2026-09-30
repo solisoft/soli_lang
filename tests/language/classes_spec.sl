@@ -417,7 +417,7 @@ describe("Private and Protected Visibility", fn() {
         assert_eq(s.password, "secret");
     });
 
-    test("private keyword is parsed on method", fn() {
+    test("a private method is callable on self only", fn() {
         class Container {
             private fn compute() -> Int {
                 return 42;
@@ -428,8 +428,8 @@ describe("Private and Protected Visibility", fn() {
         }
         let c = new Container();
         assert_eq(c.get_value(), 42);
-        let result = c.compute();
-        assert_eq(result, 42);
+        let result = c.compute() rescue "refused";
+        assert_eq(result, "refused");
     });
 
     test("protected keyword is parsed on field", fn() {

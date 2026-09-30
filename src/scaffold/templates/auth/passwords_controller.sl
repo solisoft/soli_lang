@@ -114,6 +114,8 @@ class PasswordsController < Controller
     redirect("/")
   end
 
+  private
+
   # Re-render the "choose a new password" form with an error, keeping the
   # token so the user doesn't have to click the emailed link again.
   def _reject_edit(message)

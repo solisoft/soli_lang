@@ -270,6 +270,22 @@ pub enum Op {
     TestLessJump(u16),
     /// Combined GetGlobal + Call: push global function and call it.
     CallGlobal(u16, u8),
+    /// A bare name inside an instance method that is no local and no global
+    /// the compiler knows (`_label`). Pops `this`; pushes the global of that
+    /// name when one exists, else `this.name` read like `@name` (a zero-arg
+    /// method runs). Neither: "Undefined variable".
+    SelfOrGlobal(u16),
+    /// After `Method`: mark that instance method private on the class left on
+    /// the stack (`private def x` or a method under a `private` section).
+    MarkPrivate(u16),
+    /// The callee half of a bare call inside an instance method (`_tax(2)`):
+    /// `this` is on the stack; replaced by the global when one exists, left in
+    /// place as the receiver when `this` has the method.
+    SelfOrGlobalCallee(u16),
+    /// The call half: calls the global, or dispatches the method on the
+    /// receiver `SelfOrGlobalCallee` left — a call on `self`, so a private
+    /// method is allowed.
+    CallSelfOrGlobal(u16, u8),
     /// No-op: does nothing (placeholder after peephole optimization)
     Nop,
     /// Line coverage: record a hit for this line of the function's source file.

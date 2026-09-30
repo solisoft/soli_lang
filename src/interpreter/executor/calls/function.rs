@@ -524,6 +524,7 @@ impl Interpreter {
                 if safe_navigation && matches!(obj_val, Value::Null) {
                     return Ok(Value::Null);
                 }
+                self.check_private_access(object, &obj_val, name, span)?;
 
                 // Model callback interceptors (Class.create/update, instance
                 // save/update/delete chains). Cheap name filters up front;

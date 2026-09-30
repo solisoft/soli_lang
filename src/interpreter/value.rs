@@ -1620,6 +1620,24 @@ pub struct Class {
     pub concern_static_methods: Rc<RefCell<HashMap<String, Rc<Function>>>>,
     /// Names of concern class methods (VM copies matching `vm_static_methods`).
     pub concern_method_names: Rc<RefCell<Vec<String>>>,
+    /// Instance methods declared `private` on this class (not its ancestors).
+    /// Callable only from inside an instance of the declaring class or a
+    /// subclass: `@name`, `this.name`, or the bare `name`. `Rc` so the VM's
+    /// per-method class rebuilds share one set.
+    pub private_methods: Rc<RefCell<HashSet<String>>>,
+}
+
+/// Set once any class declares a private instance method (see
+/// [`Class::refuses_outside_call`]).
+static PRIVATE_METHODS_DECLARED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+pub fn note_private_methods_declared() {
+    PRIVATE_METHODS_DECLARED.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn private_methods_declared() -> bool {
+    PRIVATE_METHODS_DECLARED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 impl Default for Class {
@@ -1650,6 +1668,7 @@ impl Default for Class {
             extended_hook_stmts: Rc::new(RefCell::new(Vec::new())),
             concern_static_methods: Rc::new(RefCell::new(HashMap::new())),
             concern_method_names: Rc::new(RefCell::new(Vec::new())),
+            private_methods: Rc::new(RefCell::new(HashSet::new())),
         }
     }
 }
@@ -1695,6 +1714,7 @@ impl Class {
             extended_hook_stmts: Rc::new(RefCell::new(Vec::new())),
             concern_static_methods: Rc::new(RefCell::new(HashMap::new())),
             concern_method_names: Rc::new(RefCell::new(Vec::new())),
+            private_methods: Rc::new(RefCell::new(HashSet::new())),
         }
     }
 
@@ -1706,6 +1726,32 @@ impl Class {
         self.superclass
             .as_ref()
             .and_then(|superclass| superclass.find_vm_method(name))
+    }
+
+    /// Is instance method `name` private for this class, and is the check worth
+    /// making at all? `false` without a lookup until some class declares a
+    /// private method, so an application with none pays one relaxed load.
+    pub fn refuses_outside_call(&self, name: &str) -> bool {
+        private_methods_declared() && self.is_private_method(name)
+    }
+
+    /// Is instance method `name` private for this class? The nearest class in
+    /// the chain that defines it decides: a subclass that redefines a private
+    /// method without `private` makes it public again.
+    pub fn is_private_method(&self, name: &str) -> bool {
+        let mut cursor: Option<&Class> = Some(self);
+        while let Some(class) = cursor {
+            if class.private_methods.borrow().contains(name) {
+                return true;
+            }
+            if class.methods.borrow().contains_key(name)
+                || class.vm_methods.borrow().contains_key(name)
+            {
+                return false;
+            }
+            cursor = class.superclass.as_deref();
+        }
+        false
     }
 
     /// Like `find_vm_method`, but also returns the class that defines the

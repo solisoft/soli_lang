@@ -68,6 +68,8 @@ class RegistrationsController < Controller
     redirect("/")
   end
 
+  private
+
   # Re-render the sign-up form with an error and an accurate status code.
   def _reject(user, message, status)
     return render(

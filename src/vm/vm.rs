@@ -1616,6 +1616,48 @@ impl Vm {
                         }
                     }
                 }
+                Op::SelfOrGlobal(name_idx) => {
+                    let name = self.read_string_constant_owned(name_idx);
+                    let this = self.pop();
+                    if let Some(value) = self.globals.get(&name).cloned() {
+                        self.push(value);
+                    } else if Self::has_instance_method(&this, &name) {
+                        let span = self.current_span();
+                        let value = self.op_get_property_member(&this, &name, span)?;
+                        self.push(value);
+                    } else {
+                        return Err(RuntimeError::undefined_variable(name, self.current_span()));
+                    }
+                }
+                Op::MarkPrivate(name_idx) => {
+                    let name = self.read_string_constant_owned(name_idx);
+                    if let Some(Value::Class(class)) = self.stack.last() {
+                        class.private_methods.borrow_mut().insert(name);
+                        crate::interpreter::value::note_private_methods_declared();
+                    }
+                }
+                Op::SelfOrGlobalCallee(name_idx) => {
+                    let name = self.read_string_constant_owned(name_idx);
+                    if let Some(value) = self.globals.get(&name).cloned() {
+                        let top = self.stack.len() - 1;
+                        self.stack[top] = value;
+                    } else if !Self::has_instance_method(self.stack.last().unwrap(), &name) {
+                        return Err(RuntimeError::undefined_variable(name, self.current_span()));
+                    }
+                }
+                Op::CallSelfOrGlobal(name_idx, argc) => {
+                    let argc = argc as usize;
+                    let name = self.read_string_constant_owned(name_idx);
+                    if self.globals.contains_key(&name) {
+                        let span = self.current_span();
+                        self.call_value(argc, span)?;
+                    } else {
+                        // `SelfOrGlobalCallee` left `this` as the receiver: a
+                        // call on self, so a private method is allowed.
+                        let receiver_idx = self.stack.len() - 1 - argc;
+                        self.call_method_slow_path(receiver_idx, argc, &name)?;
+                    }
+                }
                 Op::CallMethod(name_idx, argc) => {
                     let argc = argc as usize;
                     let receiver_idx = self.stack.len() - 1 - argc;
@@ -1729,6 +1771,7 @@ impl Vm {
                             }
                         }
                         Value::Instance(_) | Value::Class(_) | Value::VmClosure(_) => {
+                            self.check_private_receiver(receiver_idx, name)?;
                             self.call_method_slow_path(receiver_idx, argc, name)?;
                         }
                         Value::Array(_) => {
@@ -2006,6 +2049,7 @@ impl Vm {
                         }
                         _ => {
                             // Class instances, closures: fall back to property dispatch
+                            self.check_private_receiver(receiver_idx, name)?;
                             self.call_method_slow_path(receiver_idx, argc, name)?;
                         }
                     }
@@ -2783,6 +2827,7 @@ impl Vm {
                         }
                     }
                     let name = self.read_string_constant_owned(idx);
+                    self.check_private_value(&object, &name)?;
                     let span = self.current_span();
                     let result = self.op_get_property_member(&object, &name, span)?;
                     self.stack.push(result);

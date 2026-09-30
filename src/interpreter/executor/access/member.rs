@@ -414,6 +414,7 @@ impl Interpreter {
         span: Span,
     ) -> RuntimeResult<Value> {
         let obj_val = self.evaluate(object)?;
+        self.check_private_access(object, &obj_val, name, span)?;
         if matches!(obj_val, Value::Null) {
             return Ok(Value::Null);
         }
@@ -421,6 +422,34 @@ impl Interpreter {
     }
 
     /// Evaluate member access expression: object.name
+    /// `receiver.name` where `name` is a private method: only `self` may call
+    /// it — `@name`, `this.name`, or the bare `name` inside the class. Any
+    /// other receiver, another instance of the same class included, is refused.
+    pub(crate) fn check_private_access(
+        &self,
+        object: &crate::ast::Expr,
+        obj_val: &Value,
+        name: &str,
+        span: Span,
+    ) -> RuntimeResult<()> {
+        if matches!(object.kind, crate::ast::ExprKind::This) {
+            return Ok(());
+        }
+        if let Value::Instance(inst) = obj_val {
+            let inst = inst.borrow();
+            if inst.class.refuses_outside_call(name) {
+                return Err(RuntimeError::General {
+                    message: format!(
+                        "private method '{}' called for an instance of {}",
+                        name, inst.class.name
+                    ),
+                    span,
+                });
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn evaluate_member(
         &mut self,
         object: &Expr,
@@ -447,6 +476,7 @@ impl Interpreter {
             return Ok(v);
         }
         let obj_val = self.evaluate(object)?;
+        self.check_private_access(object, &obj_val, name, span)?;
         // Reading a field off an instance that holds a deferred query result
         // (`@posts`, `this.posts`) forces it, so for-loops/indexing/etc. see
         // materialised data. Producing a deferred via a class/QueryBuilder

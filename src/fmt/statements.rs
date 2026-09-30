@@ -857,10 +857,24 @@ impl Printer<'_> {
                     p.blank_line();
                 }
             }
-            // Methods
+            // Methods. Visibility is written as Ruby-style sections: a
+            // `private` / `protected` / `public` line wherever it changes, so
+            // `private def x` and a `private` section both come out the same
+            // way — and neither loses its meaning.
+            let mut section = Visibility::Public;
             for (i, m) in decl.methods.iter().enumerate() {
                 if i > 0 {
                     p.blank_line();
+                }
+                if m.visibility != section {
+                    p.write(match m.visibility {
+                        Visibility::Public => "public",
+                        Visibility::Private => "private",
+                        Visibility::Protected => "protected",
+                    });
+                    p.newline();
+                    p.blank_line();
+                    section = m.visibility;
                 }
                 // Flush comments that sit ABOVE this method declaration
                 // so they're emitted as leading comments to the method,

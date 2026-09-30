@@ -15,7 +15,9 @@ plus a `static { ... }` block for layout and lifecycle hooks.
 
 **Every public action documents its route** in a comment right above the
 `def`, one line per route that reaches it. Helpers are not actions: prefix
-them with `_` (the router skips them) and call them as `@_name(...)`.
+them with `_` (the router skips them), put them under a `private` line (a
+private method is never an action, and only callable on `self`), and call them
+as `@_name(...)` or just `_name(...)`.
 
 ```soli
 class PostsController < Controller

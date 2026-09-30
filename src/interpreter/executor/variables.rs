@@ -3,10 +3,11 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use crate::ast::Expr;
+use crate::ast::{Expr, ExprKind};
 use crate::error::RuntimeError;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::Value;
+use crate::span::Span;
 
 use super::{Interpreter, RuntimeResult};
 
@@ -81,6 +82,23 @@ impl Drop for TemplateLenientVarsGuard {
 }
 
 impl Interpreter {
+    /// Inside an instance method, is `name` — which resolved to no variable or
+    /// function — a method of `this`? Then the bare `name` means `@name`.
+    /// Only consulted after a lookup failed, so resolved names cost nothing.
+    pub(crate) fn implicit_self_method(&self, name: &str) -> bool {
+        match self.environment.borrow().get("this") {
+            Some(Value::Instance(inst)) => inst.borrow().class.find_method(name).is_some(),
+            _ => false,
+        }
+    }
+
+    /// `@name` for a bare `name` that resolved to nothing (see
+    /// [`Self::implicit_self_method`]): the member read, no auto-invoke.
+    pub(crate) fn implicit_self_member(&mut self, name: &str, span: Span) -> RuntimeResult<Value> {
+        let this = Expr::new(ExprKind::This, span);
+        self.evaluate_member(&this, name, span)
+    }
+
     /// Evaluate variable access expressions.
     pub(crate) fn evaluate_variable(&mut self, name: &str, expr: &Expr) -> RuntimeResult<Value> {
         let looked_up = self.environment.borrow().get(name);

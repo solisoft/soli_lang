@@ -27,6 +27,17 @@ impl TypeChecker {
                         return Ok(field.ty.clone());
                     }
                     if let Some(method) = class_def.find_method(name) {
+                        // A private method is only reachable on `self`: `@name`,
+                        // `this.name`, or the bare `name` inside the class.
+                        if method.is_private && !matches!(object.kind, ExprKind::This) {
+                            return Err(TypeError::General {
+                                message: format!(
+                                    "private method '{}' called for an instance of {}",
+                                    name, class.name
+                                ),
+                                span,
+                            });
+                        }
                         return Ok(collapse_zero_arg_method(Type::Function {
                             params: method.params.iter().map(|(_, t)| t.clone()).collect(),
                             return_type: Box::new(method.return_type.clone()),
@@ -667,7 +678,7 @@ impl TypeChecker {
 /// runtime (`s.length` evaluates to an Int, not a function), so type them
 /// as their return type. The explicit call form (`s.length()`) is accepted
 /// by the empty-args member-call leniency in `check_call_expr`.
-fn collapse_zero_arg_method(ty: Type) -> Type {
+pub(crate) fn collapse_zero_arg_method(ty: Type) -> Type {
     match ty {
         Type::Function {
             params,

@@ -1105,3 +1105,19 @@ fn postfix_guard_that_stays_postfix_keeps_its_semicolon_before_a_bracket_line() 
         "def h(w)\n  return [1, 2] if w == \"a\";\n\n  [3]\nend\n",
     );
 }
+
+#[test]
+fn private_methods_keep_their_visibility() {
+    // A `private` section, and the per-method modifier, both come out as a
+    // section — and neither is dropped (it used to be, making them public).
+    let section = "class A\n  def run\n    1\n  end\n\n  private\n\n  def _a\n    2\n  end\n\n  def _b\n    3\n  end\nend\n";
+    assert_fmt(section, section);
+    assert_idempotent(section);
+
+    let modifier = "class B\n  def a\n    1\n  end\n\n  private def b\n    2\n  end\n\n  def c\n    3\n  end\nend\n";
+    assert_fmt(
+        modifier,
+        "class B\n  def a\n    1\n  end\n\n  private\n\n  def b\n    2\n  end\n\n  public\n\n  def c\n    3\n  end\nend\n",
+    );
+    assert_idempotent(modifier);
+}

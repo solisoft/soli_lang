@@ -227,6 +227,9 @@ impl Compiler {
             self.emit(Op::StaticMethod(name_idx), line);
         } else {
             self.emit(Op::Method(name_idx), line);
+            if method.visibility == crate::ast::stmt::Visibility::Private {
+                self.emit(Op::MarkPrivate(name_idx), line);
+            }
         }
         Ok(())
     }

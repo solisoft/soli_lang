@@ -83,7 +83,7 @@ class PostsController < Controller
   def delete end
 ```
 
-**Note:** Methods starting with `_` are private and not exposed as routes.
+**Note:** Helpers are not actions. Methods starting with `_` get no automatic route, and a method under `private` (or declared `private def`) is never an action: a route that names one answers 404, and it can only be called on `self` (`@helper(...)` or the bare `helper(...)`). See [Private Methods](soli-language.md#private-methods).
 
 ## Controller Inheritance
 
@@ -791,7 +791,7 @@ Subdirectories are watched recursively in dev mode, so adding or editing a neste
 3. **Validate parameters before processing** - Use strong parameters pattern
 4. **Return appropriate HTTP status codes** - 200, 201, 400, 401, 404, 500
 5. **Use redirects after successful POST requests** - Prevent form resubmission
-6. **Use private helper methods** - Methods starting with `_` are not exposed
+6. **Use private helper methods** - Put helpers under a `private` section (or prefix them with `_`): they are never exposed as actions
 7. **Create ApplicationController** - Base class for shared configuration
 8. **Use layouts consistently** - Set default layout in ApplicationController
 

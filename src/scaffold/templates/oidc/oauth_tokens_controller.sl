@@ -111,6 +111,8 @@ class OauthTokensController < Controller
     oidc_json({"active": false}, 200)
   end
 
+  private
+
   def _access_token_body(claims)
     {
       "active": true,

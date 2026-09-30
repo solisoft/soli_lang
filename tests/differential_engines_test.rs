@@ -1255,6 +1255,27 @@ const CASES: &[(&str, &str)] = &[
         "add_assign_with_a_computed_right_hand_side",
         "def run()\n  total = 0\n  total = total + [1, 2].length\n  total += 3 * 2\n  f = 1.5\n  f = f + [1].length\n  arr = [1]\n  arr = arr + [[2].first]\n  label = \"n=\"\n  label = label + str(total)\n  label += \"#{f}\"\n  up = \"u\"\n  bump = fn() { up = up + \"#{1 + 1}\"; up += str(3) }\n  bump()\n  alias = label\n  label += \"!\"\n  return [total, f, arr, label, alias, up]\nend\nprint(run())\ng = \"g\"\ng = g + \"#{1}\"\ng += str(2)\nprint(g)",
     ),
+    // --- private methods and bare calls on self ---
+    (
+        "private_calls_on_self",
+        "class Invoice\n  total: Int\n\n  new(total: Int)\n    @total = total\n  end\n\n  def via_at\n    @_tax(2)\n  end\n\n  def via_bare\n    _tax(2)\n  end\n\n  def via_bare_zero\n    _label\n  end\n\n  def via_bare_zero_parens\n    _label()\n  end\n\n  def via_block\n    [1, 2].map { |n| _tax(n) }\n  end\n\n  def other(invoice)\n    invoice._tax(2) rescue \"refused\"\n  end\n\n  private\n\n  def _tax(rate)\n    @total * rate\n  end\n\n  def _label\n    \"invoice #{@total}\"\n  end\nend\ninv = new Invoice(10)\nprint(inv.via_at)\nprint(inv.via_bare)\nprint(inv.via_bare_zero)\nprint(inv.via_bare_zero_parens)\nprint(inv.via_block)",
+    ),
+    (
+        "private_refused_from_outside",
+        "class Invoice\n  total: Int\n\n  new(total: Int)\n    @total = total\n  end\n\n  def via_at\n    @_tax(2)\n  end\n\n  def via_bare\n    _tax(2)\n  end\n\n  def via_bare_zero\n    _label\n  end\n\n  def via_bare_zero_parens\n    _label()\n  end\n\n  def via_block\n    [1, 2].map { |n| _tax(n) }\n  end\n\n  def other(invoice)\n    invoice._tax(2) rescue \"refused\"\n  end\n\n  private\n\n  def _tax(rate)\n    @total * rate\n  end\n\n  def _label\n    \"invoice #{@total}\"\n  end\nend\ninv = new Invoice(10)\nprint(inv._tax(2) rescue \"refused\")\nprint(inv._label rescue \"refused\")\nprint(inv.other(new Invoice(3)))",
+    ),
+    (
+        "private_modifier_covers_one_method",
+        "class A\n  private def secret\n    1\n  end\n\n  def open\n    2\n  end\nend\na = new A()\nprint(a.open)\nprint(a.secret rescue \"refused\")",
+    ),
+    (
+        "private_bare_call_from_subclass",
+        "class Base\n  private\n\n  def _double(n)\n    n * 2\n  end\nend\n\nclass Child < Base\n  def run\n    _double(21)\n  end\nend\nprint(new Child().run)",
+    ),
+    (
+        "implicit_self_local_and_global_win",
+        "def shared\n  \"global\"\nend\n\nclass C\n  def run\n    label = \"local\"\n    [label, shared()]\n  end\n\n  def label\n    \"method\"\n  end\n\n  def shared\n    \"method\"\n  end\nend\nprint(new C().run)",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

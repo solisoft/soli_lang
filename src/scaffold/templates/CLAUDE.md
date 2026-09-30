@@ -299,7 +299,8 @@ Terse, idiomatic Soli. These rules hold across the app, specs included.
   above the `def`: `# GET /posts/:id`, one line per route that reaches it,
   optionally `— what it does`. Helpers are not actions: prefix them with `_`
   (`def _load_posts`, called as `@_load_posts`), which also keeps them out of
-  the router.
+  the router, and put them under a `private` line: a private method is never an
+  action and only callable on `self` (`@_load_posts` or the bare `_load_posts`).
 - **Ruby-style blocks for iteration** — `xs.map { |x| x * 2 }`,
   `xs.filter { |u| u.active }`, `xs.each do |x| … end` — not
   `xs.map(fn(x) { return x * 2 })`. A block's last expression is its value: no

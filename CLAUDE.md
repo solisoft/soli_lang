@@ -168,7 +168,9 @@ Ruby-style, terse Soli — in code, specs, docs and scaffolds alike.
   above the `def` — `# GET /posts/:id`, one line per route that reaches it,
   optionally followed by `— what it does`. Helpers are not actions: prefix them
   with `_` (`def _load_posts`, called as `@_load_posts`), which also keeps them
-  out of the router. This holds for scaffold templates and docs examples too.
+  out of the router, and put them under a `private` section: a private method
+  is never an action and can only be called on `self` (`@_load_posts`, or the
+  bare `_load_posts`). This holds for scaffold templates and docs examples too.
   A plain route comment stays out of the OpenAPI spec; only a block with an
   `@tag` line is read as OpenAPI docs.
 - **Ruby-style blocks for iteration** — `xs.map { |x| x * 2 }`,

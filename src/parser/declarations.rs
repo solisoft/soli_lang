@@ -244,11 +244,18 @@ impl Parser {
         let mut included_hooks = Vec::new();
         let mut extended_hooks = Vec::new();
         let mut concern_class_methods = Vec::new();
+        // Ruby-style section: a `private` / `protected` / `public` alone on its
+        // line applies to every method declared after it, until the next one.
+        let mut section_visibility = Visibility::Public;
 
         while !self.check(&TokenKind::RightBrace)
             && !self.check(&TokenKind::End)
             && !self.is_at_end()
         {
+            if let Some(section) = self.visibility_section() {
+                section_visibility = section;
+                continue;
+            }
             if self.check(&TokenKind::Static) {
                 // Check if this is a static block: static { ... }
                 if let Some(next) = self.tokens.get(self.current + 1) {
@@ -271,7 +278,8 @@ impl Parser {
                 }
             }
 
-            let (visibility, is_static, is_const) = self.parse_modifiers();
+            let (explicit_visibility, is_static, is_const) = self.parse_explicit_modifiers();
+            let visibility = explicit_visibility.unwrap_or(Visibility::Public);
 
             if self.check(&TokenKind::New) {
                 if is_module {
@@ -302,7 +310,8 @@ impl Parser {
             } else if self.parse_include_or_extend(&mut includes, &mut extends)? {
                 // `include Greetable` / `extend Persistable`
             } else if self.check(&TokenKind::Fn) {
-                methods.push(self.parse_method(visibility, is_static)?);
+                let method_visibility = explicit_visibility.unwrap_or(section_visibility);
+                methods.push(self.parse_method(method_visibility, is_static)?);
             } else if self.is_class_level_statement() {
                 // Parse class-level statements like validates(...), before_save(...)
                 class_statements.push(self.parse_class_level_statement()?);
@@ -784,17 +793,45 @@ impl Parser {
     }
 
     fn parse_modifiers(&mut self) -> (Visibility, bool, bool) {
-        let mut visibility = Visibility::Public;
+        let (visibility, is_static, is_const) = self.parse_explicit_modifiers();
+        (
+            visibility.unwrap_or(Visibility::Public),
+            is_static,
+            is_const,
+        )
+    }
+
+    /// A visibility keyword alone on its line (the next token starts a later
+    /// line), consumed as a section marker. `private def x` stays a modifier.
+    fn visibility_section(&mut self) -> Option<Visibility> {
+        let token = self.tokens.get(self.current)?;
+        let visibility = match token.kind {
+            TokenKind::Private => Visibility::Private,
+            TokenKind::Protected => Visibility::Protected,
+            TokenKind::Public => Visibility::Public,
+            _ => return None,
+        };
+        let next = self.tokens.get(self.current + 1)?;
+        if next.span.line <= token.span.line {
+            return None;
+        }
+        self.advance();
+        Some(visibility)
+    }
+
+    /// Modifiers before a member; the visibility is `None` when none was written.
+    fn parse_explicit_modifiers(&mut self) -> (Option<Visibility>, bool, bool) {
+        let mut visibility = None;
         let mut is_static = false;
         let mut is_const = false;
 
         loop {
             if self.match_token(&TokenKind::Public) {
-                visibility = Visibility::Public;
+                visibility = Some(Visibility::Public);
             } else if self.match_token(&TokenKind::Private) {
-                visibility = Visibility::Private;
+                visibility = Some(Visibility::Private);
             } else if self.match_token(&TokenKind::Protected) {
-                visibility = Visibility::Protected;
+                visibility = Some(Visibility::Protected);
             } else if self.match_token(&TokenKind::Static) {
                 is_static = true;
             } else if self.match_token(&TokenKind::Const) {

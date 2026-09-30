@@ -117,15 +117,28 @@ impl TypeChecker {
             // collapsed to the method's return type (bare zero-arg methods
             // auto-invoke at runtime, see collapse_zero_arg_method). The
             // runtime treats the call form like the bare form; mirror it.
+            // The same for a bare method name inside the class (`_label()`),
+            // which `check_variable` resolved as `@_label`.
             _ if arguments.is_empty()
-                && matches!(
+                && (matches!(
                     callee.kind,
                     ExprKind::Member { .. } | ExprKind::SafeMember { .. }
-                ) =>
+                ) || self.is_implicit_self_call(callee)) =>
             {
                 Ok(callee_type)
             }
             _ => Err(TypeError::NotCallable(format!("{}", callee_type), span)),
+        }
+    }
+
+    /// A bare name that is no variable or function in scope, inside an
+    /// instance method: `check_variable` resolved it as a method of `this`.
+    fn is_implicit_self_call(&self, callee: &Expr) -> bool {
+        match &callee.kind {
+            ExprKind::Variable(name) => {
+                self.env.get(name).is_none() && self.env.get("this").is_some()
+            }
+            _ => false,
         }
     }
 

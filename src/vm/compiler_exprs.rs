@@ -424,10 +424,37 @@ impl Compiler {
                     ));
                 }
                 let idx = self.add_string_constant(&name);
-                self.emit(Op::GetGlobal(idx), line);
+                if self.implicit_self_candidate(&name) {
+                    // A global of that name if one exists at run time, else
+                    // the method on `this` read like `@name`.
+                    self.compile_this(line)?;
+                    self.emit(Op::SelfOrGlobal(idx), line);
+                } else {
+                    self.emit(Op::GetGlobal(idx), line);
+                }
             }
         }
         Ok(())
+    }
+
+    /// Inside an instance method, or a block within one: could the bare `name`
+    /// — no local, no upvalue, no global the compiler knows — be a method of
+    /// `this`? Known globals (in `serve`, the worker's whole global table) and
+    /// capitalised names (classes) keep their plain global read.
+    fn implicit_self_candidate(&mut self, name: &str) -> bool {
+        if self.class_context.is_none()
+            || name == "this"
+            || name.starts_with(|c: char| c.is_ascii_uppercase())
+            || self.known_globals.borrow().contains(name)
+        {
+            return false;
+        }
+        if self.function_type == FunctionType::Method
+            || self.function_type == FunctionType::Constructor
+        {
+            return true;
+        }
+        !matches!(self.resolve_variable("this"), VariableAccess::Global(_))
     }
 
     fn compile_binary(
@@ -630,6 +657,31 @@ impl Compiler {
                 } else {
                     self.emit(Op::CallMethod(name_idx, argc), line);
                 }
+                return Ok(());
+            }
+        }
+
+        // `name(args)` inside an instance method, where `name` may be a method
+        // of `this` rather than a global: the slot below the arguments holds
+        // the global or, failing one, `this` as the receiver.
+        if let ExprKind::Variable(name) = &callee.kind {
+            let positional = arguments
+                .iter()
+                .all(|a| matches!(a, Argument::Positional(_) | Argument::Block(_)));
+            if positional
+                && arguments.len() <= 255
+                && matches!(self.resolve_variable(name), VariableAccess::Global(_))
+                && self.implicit_self_candidate(name)
+            {
+                let idx = self.add_string_constant(name);
+                self.compile_this(line)?;
+                self.emit(Op::SelfOrGlobalCallee(idx), line);
+                for arg in arguments {
+                    if let Argument::Positional(expr) | Argument::Block(expr) = arg {
+                        self.compile_expr(expr)?;
+                    }
+                }
+                self.emit(Op::CallSelfOrGlobal(idx, arguments.len() as u8), line);
                 return Ok(());
             }
         }

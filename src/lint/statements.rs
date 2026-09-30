@@ -197,16 +197,31 @@ impl Linter {
             }
         }
 
+        // Inside an instance method a bare name may be a method of the class
+        // (`total` reads like `@total`), so those names are not undefined locals.
+        let mut instance_scope_names = self.program_names.clone();
+        instance_scope_names.extend(
+            decl.methods
+                .iter()
+                .filter(|m| !m.is_static)
+                .map(|m| m.name.clone()),
+        );
+
         // Lint methods
         for method in &decl.methods {
             rules::naming::check_function_name(&method.name, method.span, &mut self.diagnostics);
             for param in &method.params {
                 rules::naming::check_variable_name(&param.name, param.span, &mut self.diagnostics);
             }
+            let visible_names = if method.is_static {
+                &self.program_names
+            } else {
+                &instance_scope_names
+            };
             rules::scope::check_undefined_locals(
                 &method.params,
                 &method.body,
-                &self.program_names,
+                visible_names,
                 &mut self.diagnostics,
             );
             self.lint_body(&method.body);
@@ -220,7 +235,7 @@ impl Linter {
             rules::scope::check_undefined_locals(
                 &ctor.params,
                 &ctor.body,
-                &self.program_names,
+                &instance_scope_names,
                 &mut self.diagnostics,
             );
             self.lint_body(&ctor.body);

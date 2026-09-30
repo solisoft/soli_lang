@@ -4851,6 +4851,15 @@ fn call_oop_controller_action(
         _ => return None,
     };
 
+    // A private method is not an action, even when a route names it: the
+    // request answers as if the action did not exist.
+    if class_rc.is_private_method(action_name) {
+        return Some(error_response::page(
+            404,
+            &format!("{class_name}#{action_name} is private, not an action"),
+        ));
+    }
+
     // Only read controller info from registry if controller has hooks (avoids RwLock per request)
     let controller_info = if controller_has_hooks(controller_key) {
         CONTROLLER_REGISTRY.read(|registry| registry.get(controller_key).cloned())

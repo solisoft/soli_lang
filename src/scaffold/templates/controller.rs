@@ -66,6 +66,8 @@ class {controller_name} < Controller
     redirect("/{resource}")
   end
 
+  private
+
   # Mass-assignment whitelist: permit() keeps exactly this shape and drops
   # everything else a client posts (true = scalar, [] = array of scalars,
   # a nested hash literal = nested whitelist).

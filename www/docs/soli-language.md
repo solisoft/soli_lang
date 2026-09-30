@@ -2446,79 +2446,77 @@ end
 
 The full `implements` keyword still works; pick whichever matches the style of the surrounding code.
 
-### Visibility Modifiers
+### Private Methods
+
+A private method can only be called on `self`: as `@name`, `this.name`, or just
+`name` inside the class. Called on any other receiver — from outside, or on
+another instance of the same class — it raises:
+
+```
+private method 'validate_amount' called for an instance of BankAccount
+```
+
+Mark one method with `private def`, or start a section with `private` alone on
+its line: every method below it is private, until a `public` (or `protected`)
+line.
 
 ```soli
 class BankAccount
-  # Fields with visibility
-  public account_number: String;
-  private balance: Float;
-  protected account_holder: String;
-  public status: String;
+  balance: Float
 
-  new(account_number: String, initial_deposit: Float)
-    this.account_number = account_number;
-    this.balance = initial_deposit;
-    this.account_holder = "";
-    this.status = "active";
+  new(initial: Float)
+    @balance = initial
   end
 
-  # Public method
-  public def deposit(amount: Float) -> Bool
-    if this.validate_amount(amount)
-      this.balance = this.balance + amount;
-      this.log_transaction("Deposit", amount);
-      return true;
-    end
-    false
+  def deposit(amount: Float) -> Bool
+    return false unless valid_amount?(amount)
+
+    @balance += amount
+    record("deposit", amount)
+    true
   end
 
-  # Public method
-  public def withdraw(amount: Float) -> Bool
-    if this.validate_amount(amount) && this.has_sufficient_funds(amount)
-      this.balance = this.balance - amount;
-      this.log_transaction("Withdrawal", -amount);
-      return true;
-    end
-    false
+  def balance_label -> String
+    "#{currency} #{@balance}"
   end
 
-  # Public getter
-  public def get_balance() -> Float
-    this.balance
-  end
+  private
 
-  # Private method - internal helper
-  private def validate_amount(amount: Float) -> Bool
+  def valid_amount?(amount: Float) -> Bool
     amount > 0
   end
 
-  # Private method
-  private def has_sufficient_funds(amount: Float) -> Bool
-    this.balance >= amount
+  def record(kind: String, amount: Float)
+    print("#{kind}: #{amount}")
   end
 
-  # Private method
-  private def log_transaction(type: String, amount: Float)
-    # Internal logging logic
-  end
-
-  # Protected method - for subclasses
-  protected def update_status(new_status: String)
-    this.status = new_status;
+  def currency
+    "EUR"
   end
 end
 
-# Using the class
-account = new BankAccount("123456789", 1000.0);
-
-account.deposit(500.0);           # Works - public method
-print(account.get_balance());     # 1500.0
-print(account.account_number);    # "123456789" - public field
-
-# account.balance;              # Error - private field
-# account.validate_amount(100); # Error - private method
+account = new BankAccount(100.0)
+account.deposit(50.0)            # true
+account.balance_label            # "EUR 150"
+account.valid_amount?(1.0)       # raises: private method 'valid_amount?' …
 ```
+
+- **Bare method calls.** Inside an instance method, a name that is no local
+  variable and no function in scope calls the method of that name on `self`:
+  `valid_amount?(amount)` is `@valid_amount?(amount)`, and `currency` (no
+  arguments) is `@currency`. Locals and functions keep priority, so a local
+  `currency = "USD"` wins over the method. This works for public and private
+  methods written in Soli, inherited ones included; a built-in method such as a
+  model's `save` still needs `@save`.
+- **Subclasses** call inherited private methods on `self` the same way. A
+  subclass that redefines the method without `private` makes it public again.
+- **Controllers.** A private method is not an action: a route that names one
+  answers 404. `_`-prefixed methods stay out of the automatic routes too.
+- **`soli fmt`** writes visibility as sections: a `private def` becomes a
+  `private` line above the method (and a `public` line above the next public
+  one).
+- **Not enforced yet:** `private` / `protected` on *fields*, and `protected` on
+  methods, are accepted and recorded but not checked — they behave as public.
 
 ### Static Members
 

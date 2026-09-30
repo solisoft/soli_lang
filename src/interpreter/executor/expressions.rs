@@ -51,10 +51,15 @@ impl Interpreter {
             ExprKind::Null => Ok(Value::Null),
 
             // Variables
-            ExprKind::Variable(name) => {
-                let val = self.evaluate_variable(name, expr)?;
-                self.try_auto_invoke(val, expr.span, AutoInvokeContext::Variable)
-            }
+            ExprKind::Variable(name) => match self.evaluate_variable(name, expr) {
+                Ok(val) => self.try_auto_invoke(val, expr.span, AutoInvokeContext::Variable),
+                // A bare method name inside the class reads like `@name`.
+                Err(RuntimeError::UndefinedVariable(..)) if self.implicit_self_method(name) => {
+                    let val = self.implicit_self_member(name, expr.span)?;
+                    self.try_auto_invoke(val, expr.span, AutoInvokeContext::Member)
+                }
+                Err(e) => Err(e),
+            },
 
             // Grouping
             ExprKind::Grouping(inner) => self.evaluate(inner),
@@ -870,7 +875,13 @@ impl Interpreter {
     /// the raw function reference rather than the auto-invoked result.
     pub(crate) fn evaluate_callee(&mut self, expr: &Expr) -> RuntimeResult<Value> {
         match &expr.kind {
-            ExprKind::Variable(name) => self.evaluate_variable(name, expr),
+            ExprKind::Variable(name) => match self.evaluate_variable(name, expr) {
+                // `name(args)` for a method of `this` calls it like `@name(args)`.
+                Err(RuntimeError::UndefinedVariable(..)) if self.implicit_self_method(name) => {
+                    self.implicit_self_member(name, expr.span)
+                }
+                other => other,
+            },
             ExprKind::Member { object, name } => self.evaluate_member(object, name, expr.span),
             ExprKind::SafeMember { object, name } => {
                 self.evaluate_safe_member(object, name, expr.span)

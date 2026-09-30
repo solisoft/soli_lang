@@ -570,7 +570,7 @@ end</code></pre>
             <svg class="w-6 h-6 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
             </svg>
-            <span class="text-gray-300">Prefix private helper methods with <code>_</code> to prevent them from becoming routes.</span>
+            <span class="text-gray-300">Put helper methods under a <code>private</code> section (or prefix them with <code>_</code>): a private method is never an action &mdash; a route naming it answers 404 &mdash; and is called on <code>self</code> only, as <code>@helper(...)</code> or the bare <code>helper(...)</code>.</span>
         </li>
     </ul>
 

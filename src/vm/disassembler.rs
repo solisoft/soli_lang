@@ -237,6 +237,25 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("CALL_GLOBAL  {:>5} ({}) argc={}", idx, name, argc));
         }
+        Op::SelfOrGlobal(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("SELF_OR_GLOBAL {:>3} ({})", idx, name));
+        }
+        Op::MarkPrivate(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("MARK_PRIVATE {:>5} ({})", idx, name));
+        }
+        Op::SelfOrGlobalCallee(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("SELF_OR_GLOBAL_CALLEE {:>3} ({})", idx, name));
+        }
+        Op::CallSelfOrGlobal(idx, argc) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!(
+                "CALL_SELF_OR_GLOBAL {:>3} ({}) argc={}",
+                idx, name, argc
+            ));
+        }
         Op::Nop => out.push_str("NOP"),
         Op::CoverLine(line) => out.push_str(&format!("COVER_LINE {line}")),
         Op::PopIter => out.push_str("POP_ITER"),

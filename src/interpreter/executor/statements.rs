@@ -645,6 +645,7 @@ impl Interpreter {
         // Collect methods
         let mut methods = HashMap::new();
         let mut static_methods = HashMap::new();
+        let mut private_methods = HashSet::new();
 
         let source_path = self
             .current_source_path
@@ -656,6 +657,9 @@ impl Interpreter {
             if method_decl.is_static {
                 static_methods.insert(method_decl.name.clone(), Rc::new(func));
             } else {
+                if method_decl.visibility == crate::ast::stmt::Visibility::Private {
+                    private_methods.insert(method_decl.name.clone());
+                }
                 let func = Rc::new(func);
                 // Modules also expose instance methods as module functions
                 // so `MyModule.hello()` works (Ruby `extend self`).
@@ -664,6 +668,10 @@ impl Interpreter {
                 }
                 methods.insert(method_decl.name.clone(), func);
             }
+        }
+
+        if !private_methods.is_empty() {
+            crate::interpreter::value::note_private_methods_declared();
         }
 
         // Create constructor if present
@@ -728,6 +736,7 @@ impl Interpreter {
             nested_classes: Rc::new(RefCell::new(HashMap::new())),
             const_fields,
             static_const_fields,
+            private_methods: Rc::new(RefCell::new(private_methods)),
             is_module: decl.is_module,
             ..Default::default()
         };

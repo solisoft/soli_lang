@@ -357,6 +357,7 @@ pub fn register_expectation_class(env: &mut Environment) {
         extended_hook_stmts: Rc::new(RefCell::new(Vec::new())),
         concern_static_methods: Rc::new(RefCell::new(HashMap::new())),
         concern_method_names: Rc::new(RefCell::new(Vec::new())),
+        private_methods: Rc::new(RefCell::new(HashSet::new())),
     };
 
     env.define(

@@ -87,71 +87,72 @@ end</code></pre>
                     </tr>
                     <tr id="kw-private" class="scroll-mt-20">
                         <td class="py-2 px-4"><a href="#kw-private" class="text-amber-400 font-mono hover:text-amber-300">private</a></td>
-                        <td class="py-2 px-4 text-gray-400">Intended for use only within the class</td>
+                        <td class="py-2 px-4 text-gray-400">Methods: callable on <code>self</code> only &mdash; <code>@name</code>, <code>this.name</code> or the bare <code>name</code> inside the class. Enforced.</td>
                     </tr>
                     <tr id="kw-protected" class="scroll-mt-20">
                         <td class="py-2 px-4"><a href="#kw-protected" class="text-amber-400 font-mono hover:text-amber-300">protected</a></td>
-                        <td class="py-2 px-4 text-gray-400">Intended for use within class and subclasses</td>
+                        <td class="py-2 px-4 text-gray-400">Accepted and recorded, not enforced yet (behaves as public)</td>
                     </tr>
                 </tbody>
             </table>
         </div>
 
-        <p class="text-gray-400 mb-4 text-sm"><strong class="text-yellow-400">Note:</strong> Visibility modifiers are currently parsed for documentation purposes but not enforced at runtime.</p>
-
-        <section id="private-method-convention" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h3 class="text-lg font-semibold text-white mb-3">Private Method Convention</h3>
-                <p class="text-gray-400 mb-3">In addition to the <code>private</code> keyword, Soli follows a naming convention where methods starting with an underscore (<code>_</code>)
-are considered internal/private helpers:</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">class PostsController < Controller
-  # Underscore prefix marks internal helper methods
-  def _permit_params(params: Any)
-    {
-      "title": params["title"],
-      "content": params["content"]
-    }
-  end
-
-  def create(req: Any)
-    # Using the private helper
-    permitted = this._permit_params(req["params"])
-    Posts.create(permitted)
-  end
-end</code></pre>
-                <p class="text-gray-400 mt-3 text-sm"><strong class="text-yellow-400">Recommendation:</strong> Use either <code>private def</code> keyword OR underscore prefix (<code>_</code>)
-for internal helper methods. The underscore convention is used throughout the codebase (e.g., <code>_authenticate</code>, <code>_build_post_params</code> in examples).</p>
-            </div>
-        </section>
-
-        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
-        <div class="p-4 overflow-x-auto">
+        <section id="private-methods" class="scroll-mt-20 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Private methods</h3>
+            <p class="text-gray-400 mb-3">A private method can only be called on <code>self</code>. Called on any other receiver &mdash; from outside, or on another instance of the same class &mdash; it raises <code>private method 'valid_amount?' called for an instance of BankAccount</code>.</p>
+            <p class="text-gray-400 mb-3">Mark one method with <code>private def</code>, or start a section with <code>private</code> alone on its line: every method below it is private, until a <code>public</code> (or <code>protected</code>) line.</p>
+            <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+            <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">class BankAccount
-  public account_number: String
-  private balance: Float
+  balance: Float
 
-  new(account_number: String, initial_deposit: Float)
-    this.account_number = account_number
-    this.balance = initial_deposit
+  new(initial: Float)
+    @balance = initial
   end
 
-  public def deposit(amount: Float) -> Bool
-    if this.validate_amount(amount)
-      this.balance = this.balance + amount
-      return true
-    end
-    return false
+  def deposit(amount: Float) -&gt; Bool
+    return false unless valid_amount?(amount)
+
+    @balance += amount
+    record("deposit", amount)
+    true
+  end
+
+  def balance_label -&gt; String
+    "#{currency} #{@balance}"
+  end
+
+  private
+
+  def valid_amount?(amount: Float) -&gt; Bool
+    amount &gt; 0
+  end
+
+  def record(kind: String, amount: Float)
+    print("#{kind}: #{amount}")
+  end
+
+  def currency
+    "EUR"
   end
 end
 
-account = new BankAccount("123456789", 1000.0)
-account.deposit(500.0)           # Works - public method
-print(account.get_balance())     # 1500.0</code></pre>
+account = new BankAccount(100.0)
+account.deposit(50.0)            # true
+account.balance_label            # "EUR 150"
+account.valid_amount?(1.0)       # raises: private method 'valid_amount?' …</code></pre>
             </div>
-        </div>
+            </div>
+            <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-4">
+                <li><strong class="text-white">Bare method calls.</strong> Inside an instance method, a name that is no local variable and no function in scope calls the method of that name on <code>self</code>: <code>valid_amount?(amount)</code> is <code>@valid_amount?(amount)</code>, and <code>currency</code> (no arguments) is <code>@currency</code>. Locals and functions keep priority, so a local <code>currency = "USD"</code> wins over the method. This works for public and private methods written in Soli, inherited ones included; a built-in method such as a model&rsquo;s <code>save</code> still needs <code>@save</code>.</li>
+                <li><strong class="text-white">Subclasses</strong> call inherited private methods on <code>self</code> the same way. A subclass that redefines the method without <code>private</code> makes it public again.</li>
+                <li><strong class="text-white">Controllers.</strong> A private method is not an action: a route that names one answers 404. <code>_</code>-prefixed methods stay out of the automatic routes too.</li>
+                <li><strong class="text-white"><code>soli fmt</code></strong> writes visibility as sections: a <code>private def</code> becomes a <code>private</code> line above the method (and a <code>public</code> line above the next public one).</li>
+                <li><strong class="text-white">Not enforced yet:</strong> <code>private</code> / <code>protected</code> on <em>fields</em>, and <code>protected</code> on methods, are accepted and recorded but not checked &mdash; they behave as public.</li>
+            </ul>
+        </section>
     </section>
 
-    <!-- Static Members -->
     <section id="section-static" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Static Members</h2>
 
