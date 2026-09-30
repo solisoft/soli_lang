@@ -241,6 +241,10 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("SELF_OR_GLOBAL {:>3} ({})", idx, name));
         }
+        Op::MarkProtected(idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!("MARK_PROTECTED {:>3} ({})", idx, name));
+        }
         Op::MarkPrivate(idx) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("MARK_PRIVATE {:>5} ({})", idx, name));

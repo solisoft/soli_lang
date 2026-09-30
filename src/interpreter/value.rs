@@ -1625,19 +1625,59 @@ pub struct Class {
     /// subclass: `@name`, `this.name`, or the bare `name`. `Rc` so the VM's
     /// per-method class rebuilds share one set.
     pub private_methods: Rc<RefCell<HashSet<String>>>,
+    /// Instance methods declared `protected` on this class: callable from
+    /// code running in an instance of the declaring class or a subclass, on
+    /// that instance or another one. `Rc` for the same reason as above.
+    pub protected_methods: Rc<RefCell<HashSet<String>>>,
 }
 
-/// Set once any class declares a private instance method (see
-/// [`Class::refuses_outside_call`]).
-static PRIVATE_METHODS_DECLARED: std::sync::atomic::AtomicBool =
+/// How far a restricted instance method reaches (see [`Class::restricted_method`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MethodAccess {
+    /// Only on `self`.
+    Private,
+    /// From code running in an instance of the declaring class or a subclass.
+    Protected,
+}
+
+impl MethodAccess {
+    pub fn label(self) -> &'static str {
+        match self {
+            MethodAccess::Private => "private",
+            MethodAccess::Protected => "protected",
+        }
+    }
+
+    /// May a call reach it? `on_self`: the receiver is the running method's
+    /// own `this`. `caller`: the class of that `this`, when there is one.
+    pub fn allows(self, defining_class: &str, on_self: bool, caller: Option<&Class>) -> bool {
+        on_self
+            || (self == MethodAccess::Protected
+                && caller.is_some_and(|class| class.is_or_inherits(defining_class)))
+    }
+
+    /// The error for a call it refuses.
+    pub fn refusal(self, name: &str, class_name: &str) -> String {
+        format!(
+            "{} method '{}' called for an instance of {}",
+            self.label(),
+            name,
+            class_name
+        )
+    }
+}
+
+/// Set once any class declares a private or protected instance method (see
+/// [`Class::restricted_method`]).
+static RESTRICTED_METHODS_DECLARED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-pub fn note_private_methods_declared() {
-    PRIVATE_METHODS_DECLARED.store(true, std::sync::atomic::Ordering::Relaxed);
+pub fn note_restricted_methods_declared() {
+    RESTRICTED_METHODS_DECLARED.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
-pub fn private_methods_declared() -> bool {
-    PRIVATE_METHODS_DECLARED.load(std::sync::atomic::Ordering::Relaxed)
+pub fn restricted_methods_declared() -> bool {
+    RESTRICTED_METHODS_DECLARED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 impl Default for Class {
@@ -1669,6 +1709,7 @@ impl Default for Class {
             concern_static_methods: Rc::new(RefCell::new(HashMap::new())),
             concern_method_names: Rc::new(RefCell::new(Vec::new())),
             private_methods: Rc::new(RefCell::new(HashSet::new())),
+            protected_methods: Rc::new(RefCell::new(HashSet::new())),
         }
     }
 }
@@ -1715,6 +1756,7 @@ impl Class {
             concern_static_methods: Rc::new(RefCell::new(HashMap::new())),
             concern_method_names: Rc::new(RefCell::new(Vec::new())),
             private_methods: Rc::new(RefCell::new(HashSet::new())),
+            protected_methods: Rc::new(RefCell::new(HashSet::new())),
         }
     }
 
@@ -1728,26 +1770,40 @@ impl Class {
             .and_then(|superclass| superclass.find_vm_method(name))
     }
 
-    /// Is instance method `name` private for this class, and is the check worth
-    /// making at all? `false` without a lookup until some class declares a
-    /// private method, so an application with none pays one relaxed load.
-    pub fn refuses_outside_call(&self, name: &str) -> bool {
-        private_methods_declared() && self.is_private_method(name)
-    }
-
-    /// Is instance method `name` private for this class? The nearest class in
-    /// the chain that defines it decides: a subclass that redefines a private
-    /// method without `private` makes it public again.
-    pub fn is_private_method(&self, name: &str) -> bool {
+    /// The restriction on instance method `name`, and the class that defines
+    /// it: `None` for a public method. The nearest class in the chain that
+    /// defines the method decides, so a subclass that redefines it without a
+    /// modifier makes it public again. Answers `None` without a lookup until
+    /// some class declares a private or protected method, so an application
+    /// with none pays one relaxed load.
+    pub fn restricted_method(&self, name: &str) -> Option<(MethodAccess, String)> {
+        if !restricted_methods_declared() {
+            return None;
+        }
         let mut cursor: Option<&Class> = Some(self);
         while let Some(class) = cursor {
             if class.private_methods.borrow().contains(name) {
-                return true;
+                return Some((MethodAccess::Private, class.name.clone()));
+            }
+            if class.protected_methods.borrow().contains(name) {
+                return Some((MethodAccess::Protected, class.name.clone()));
             }
             if class.methods.borrow().contains_key(name)
                 || class.vm_methods.borrow().contains_key(name)
             {
-                return false;
+                return None;
+            }
+            cursor = class.superclass.as_deref();
+        }
+        None
+    }
+
+    /// Is this class `name`, or does it inherit from it?
+    pub fn is_or_inherits(&self, name: &str) -> bool {
+        let mut cursor: Option<&Class> = Some(self);
+        while let Some(class) = cursor {
+            if class.name == name {
+                return true;
             }
             cursor = class.superclass.as_deref();
         }

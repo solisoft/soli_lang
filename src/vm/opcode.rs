@@ -278,6 +278,9 @@ pub enum Op {
     /// After `Method`: mark that instance method private on the class left on
     /// the stack (`private def x` or a method under a `private` section).
     MarkPrivate(u16),
+    /// After `Method`: mark that instance method protected on the class left
+    /// on the stack.
+    MarkProtected(u16),
     /// The callee half of a bare call inside an instance method (`_tax(2)`):
     /// `this` is on the stack; replaced by the global when one exists, left in
     /// place as the receiver when `this` has the method.

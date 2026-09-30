@@ -1255,6 +1255,15 @@ const CASES: &[(&str, &str)] = &[
         "add_assign_with_a_computed_right_hand_side",
         "def run()\n  total = 0\n  total = total + [1, 2].length\n  total += 3 * 2\n  f = 1.5\n  f = f + [1].length\n  arr = [1]\n  arr = arr + [[2].first]\n  label = \"n=\"\n  label = label + str(total)\n  label += \"#{f}\"\n  up = \"u\"\n  bump = fn() { up = up + \"#{1 + 1}\"; up += str(3) }\n  bump()\n  alias = label\n  label += \"!\"\n  return [total, f, arr, label, alias, up]\nend\nprint(run())\ng = \"g\"\ng = g + \"#{1}\"\ng += str(2)\nprint(g)",
     ),
+    // --- protected methods ---
+    (
+        "protected_reachable_in_class_and_subclass",
+        "class Account\n  cents: Int\n\n  new(cents: Int)\n    @cents = cents\n  end\n\n  def richer_than?(other)\n    balance > other.balance\n  end\n\n  protected\n\n  def balance\n    @cents\n  end\nend\n\nclass Savings < Account\n  def compare(other)\n    other.balance\n  end\nend\n\nclass Stranger\n  def peek(account)\n    account.balance\n  end\nend\nprint(new Account(10).richer_than?(new Account(5)))\nprint(new Savings(7).compare(new Account(5)))",
+    ),
+    (
+        "protected_refused_outside",
+        "class Account\n  cents: Int\n\n  new(cents: Int)\n    @cents = cents\n  end\n\n  def richer_than?(other)\n    balance > other.balance\n  end\n\n  protected\n\n  def balance\n    @cents\n  end\nend\n\nclass Savings < Account\n  def compare(other)\n    other.balance\n  end\nend\n\nclass Stranger\n  def peek(account)\n    account.balance\n  end\nend\na = new Account(10)\nprint(a.balance rescue \"refused\")\nprint(new Stranger().peek(a) rescue \"refused\")",
+    ),
     // --- private methods and bare calls on self ---
     (
         "private_calls_on_self",

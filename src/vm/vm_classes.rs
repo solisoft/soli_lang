@@ -624,9 +624,9 @@ impl Vm {
             .and_then(|frame| self.stack.get(frame.stack_base))
     }
 
-    /// A private method is only callable on `self`: refuse `receiver.name`
-    /// when the receiver is another object. Free until some class declares a
-    /// private method.
+    /// Refuse `receiver.name` for a restricted method the running code may not
+    /// reach: a private one off `self`, a protected one from outside the
+    /// declaring class and its subclasses. Free until some class declares one.
     pub(crate) fn check_private_value(
         &self,
         receiver: &Value,
@@ -635,20 +635,20 @@ impl Vm {
         let Value::Instance(inst) = receiver else {
             return Ok(());
         };
-        if !inst.borrow().class.refuses_outside_call(name) {
+        let Some((access, defining)) = inst.borrow().class.restricted_method(name) else {
+            return Ok(());
+        };
+        let (on_self, caller) = match self.current_this() {
+            Some(Value::Instance(this)) => {
+                (Rc::ptr_eq(this, inst), Some(this.borrow().class.clone()))
+            }
+            _ => (false, None),
+        };
+        if access.allows(&defining, on_self, caller.as_deref()) {
             return Ok(());
         }
-        if let Some(Value::Instance(this)) = self.current_this() {
-            if Rc::ptr_eq(this, inst) {
-                return Ok(());
-            }
-        }
         Err(RuntimeError::General {
-            message: format!(
-                "private method '{}' called for an instance of {}",
-                name,
-                inst.borrow().class.name
-            ),
+            message: access.refusal(name, &inst.borrow().class.name),
             span: self.current_span(),
         })
     }

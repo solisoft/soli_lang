@@ -422,9 +422,10 @@ impl Interpreter {
     }
 
     /// Evaluate member access expression: object.name
-    /// `receiver.name` where `name` is a private method: only `self` may call
-    /// it — `@name`, `this.name`, or the bare `name` inside the class. Any
-    /// other receiver, another instance of the same class included, is refused.
+    /// `receiver.name` where `name` is a restricted method. A private one only
+    /// `self` may call — `@name`, `this.name`, or the bare `name` inside the
+    /// class. A protected one, also code running in an instance of the
+    /// declaring class or a subclass, on any receiver. The rest is refused.
     pub(crate) fn check_private_access(
         &self,
         object: &crate::ast::Expr,
@@ -437,14 +438,17 @@ impl Interpreter {
         }
         if let Value::Instance(inst) = obj_val {
             let inst = inst.borrow();
-            if inst.class.refuses_outside_call(name) {
-                return Err(RuntimeError::General {
-                    message: format!(
-                        "private method '{}' called for an instance of {}",
-                        name, inst.class.name
-                    ),
-                    span,
-                });
+            if let Some((access, defining)) = inst.class.restricted_method(name) {
+                let caller = match self.environment.borrow().get("this") {
+                    Some(Value::Instance(this)) => Some(this.borrow().class.clone()),
+                    _ => None,
+                };
+                if !access.allows(&defining, false, caller.as_deref()) {
+                    return Err(RuntimeError::General {
+                        message: access.refusal(name, &inst.class.name),
+                        span,
+                    });
+                }
             }
         }
         Ok(())

@@ -2510,13 +2510,51 @@ account.valid_amount?(1.0)       # raises: private method 'valid_amount?' …
   model's `save` still needs `@save`.
 - **Subclasses** call inherited private methods on `self` the same way. A
   subclass that redefines the method without `private` makes it public again.
-- **Controllers.** A private method is not an action: a route that names one
-  answers 404. `_`-prefixed methods stay out of the automatic routes too.
+- **Controllers.** A private or protected method is not an action: a route that
+  names one answers 404. `_`-prefixed methods stay out of the automatic routes
+  too.
+- **A `_` prefix is only a naming convention.** It keeps a controller method out
+  of the automatic routes; it does not make the method private. Use `private`
+  for that.
 - **`soli fmt`** writes visibility as sections: a `private def` becomes a
   `private` line above the method (and a `public` line above the next public
   one).
-- **Not enforced yet:** `private` / `protected` on *fields*, and `protected` on
-  methods, are accepted and recorded but not checked — they behave as public.
+- **Not enforced yet:** `private` / `protected` on *fields* are accepted and
+  recorded but not checked — fields behave as public.
+
+### Protected Methods
+
+A protected method is reachable from code running in an instance of the class
+that declares it, or of a subclass — on `self`, or on another instance. From
+anywhere else it raises `protected method 'x' called for an instance of C`. It
+suits a method two instances compare each other by:
+
+```soli
+class Account
+  cents: Int
+
+  new(cents: Int)
+    @cents = cents
+  end
+
+  def richer_than?(other) -> Bool
+    balance > other.balance      # another instance: allowed, we are an Account
+  end
+
+  protected
+
+  def balance
+    @cents
+  end
+end
+
+new Account(10).richer_than?(new Account(5))   # true
+new Account(10).balance                        # raises: protected method 'balance' …
+```
+
+`protected def x` marks one method; `protected` alone on its line starts a
+section, like `private`. `soli check` does not report protected calls yet; the
+runtime does, on both engines.
 
 ### Static Members
 

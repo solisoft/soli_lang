@@ -1633,7 +1633,14 @@ impl Vm {
                     let name = self.read_string_constant_owned(name_idx);
                     if let Some(Value::Class(class)) = self.stack.last() {
                         class.private_methods.borrow_mut().insert(name);
-                        crate::interpreter::value::note_private_methods_declared();
+                        crate::interpreter::value::note_restricted_methods_declared();
+                    }
+                }
+                Op::MarkProtected(name_idx) => {
+                    let name = self.read_string_constant_owned(name_idx);
+                    if let Some(Value::Class(class)) = self.stack.last() {
+                        class.protected_methods.borrow_mut().insert(name);
+                        crate::interpreter::value::note_restricted_methods_declared();
                     }
                 }
                 Op::SelfOrGlobalCallee(name_idx) => {
@@ -2835,6 +2842,7 @@ impl Vm {
                 Op::GetPropertyOrNull(idx) => {
                     let object = self.stack.pop().unwrap();
                     let name = self.read_string_constant_owned(idx);
+                    self.check_private_value(&object, &name)?;
                     let span = self.current_span();
                     let result = match self.op_get_property_member(&object, &name, span) {
                         Err(RuntimeError::NoSuchProperty { ref property, .. })
@@ -4123,6 +4131,7 @@ impl Vm {
                     }
                     let object = self.stack[base + slot as usize].clone();
                     let name = self.read_string_constant_owned(idx);
+                    self.check_private_value(&object, &name)?;
                     let span = self.current_span();
                     let result = self.op_get_property_member(&object, &name, span)?;
                     self.stack.push(result);

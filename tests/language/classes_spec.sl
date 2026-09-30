@@ -440,15 +440,19 @@ describe("Private and Protected Visibility", fn() {
         assert_eq(b.value, 10);
     });
 
-    test("protected keyword is parsed on method", fn() {
+    test("a protected method is reachable from its class, not from outside", fn() {
         class Base {
             protected fn internal_method() -> String {
                 return "internal";
             }
+            fn peek(other) {
+                return other.internal_method();
+            }
         }
         let b = new Base();
-        let result = b.internal_method();
-        assert_eq(result, "internal");
+        assert_eq(b.peek(new Base()), "internal");
+        let result = b.internal_method() rescue "refused";
+        assert_eq(result, "refused");
     });
 
     test("private field with default value", fn() {

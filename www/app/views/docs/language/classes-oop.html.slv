@@ -91,7 +91,7 @@ end</code></pre>
                     </tr>
                     <tr id="kw-protected" class="scroll-mt-20">
                         <td class="py-2 px-4"><a href="#kw-protected" class="text-amber-400 font-mono hover:text-amber-300">protected</a></td>
-                        <td class="py-2 px-4 text-gray-400">Accepted and recorded, not enforced yet (behaves as public)</td>
+                        <td class="py-2 px-4 text-gray-400">Methods: callable from code running in an instance of the declaring class or a subclass, on any instance of it. Enforced.</td>
                     </tr>
                 </tbody>
             </table>
@@ -146,10 +146,41 @@ account.valid_amount?(1.0)       # raises: private method 'valid_amount?' …</c
             <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-4">
                 <li><strong class="text-white">Bare method calls.</strong> Inside an instance method, a name that is no local variable and no function in scope calls the method of that name on <code>self</code>: <code>valid_amount?(amount)</code> is <code>@valid_amount?(amount)</code>, and <code>currency</code> (no arguments) is <code>@currency</code>. Locals and functions keep priority, so a local <code>currency = "USD"</code> wins over the method. This works for public and private methods written in Soli, inherited ones included; a built-in method such as a model&rsquo;s <code>save</code> still needs <code>@save</code>.</li>
                 <li><strong class="text-white">Subclasses</strong> call inherited private methods on <code>self</code> the same way. A subclass that redefines the method without <code>private</code> makes it public again.</li>
-                <li><strong class="text-white">Controllers.</strong> A private method is not an action: a route that names one answers 404. <code>_</code>-prefixed methods stay out of the automatic routes too.</li>
+                <li><strong class="text-white">Controllers.</strong> A private or protected method is not an action: a route that names one answers 404. <code>_</code>-prefixed methods stay out of the automatic routes too.</li>
+                <li><strong class="text-white">A <code>_</code> prefix is only a naming convention.</strong> It keeps a controller method out of the automatic routes; it does not make the method private. Use <code>private</code> for that.</li>
                 <li><strong class="text-white"><code>soli fmt</code></strong> writes visibility as sections: a <code>private def</code> becomes a <code>private</code> line above the method (and a <code>public</code> line above the next public one).</li>
-                <li><strong class="text-white">Not enforced yet:</strong> <code>private</code> / <code>protected</code> on <em>fields</em>, and <code>protected</code> on methods, are accepted and recorded but not checked &mdash; they behave as public.</li>
+                <li><strong class="text-white">Not enforced yet:</strong> <code>private</code> / <code>protected</code> on <em>fields</em> are accepted and recorded but not checked &mdash; fields behave as public.</li>
             </ul>
+        </section>
+
+        <section id="protected-methods" class="scroll-mt-20 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Protected methods</h3>
+            <p class="text-gray-400 mb-3">A protected method is reachable from code running in an instance of the class that declares it, or of a subclass &mdash; on <code>self</code>, or on another instance. From anywhere else it raises <code>protected method 'x' called for an instance of C</code>. It suits a method two instances compare each other by:</p>
+            <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Account
+  cents: Int
+
+  new(cents: Int)
+    @cents = cents
+  end
+
+  def richer_than?(other) -&gt; Bool
+    balance &gt; other.balance      # another instance: allowed, we are an Account
+  end
+
+  protected
+
+  def balance
+    @cents
+  end
+end
+
+new Account(10).richer_than?(new Account(5))   # true
+new Account(10).balance                        # raises: protected method 'balance' …</code></pre>
+            </div>
+            </div>
+            <p class="text-gray-400 mb-3"><code>protected def x</code> marks one method; <code>protected</code> alone on its line starts a section, like <code>private</code>. <code>soli check</code> does not report protected calls yet; the runtime does, on both engines.</p>
         </section>
     </section>
 

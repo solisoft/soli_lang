@@ -69,3 +69,44 @@ describe("private methods") do
     assert_eq((new Ledger(1)._describe rescue "refused"), "refused")
   end
 end
+
+class Wallet
+  cents: Int
+
+  new(cents: Int)
+    @cents = cents
+  end
+
+  def richer_than?(other)
+    amount > other.amount
+  end
+
+  protected
+
+  def amount
+    @cents
+  end
+end
+
+class Purse < Wallet
+  def compare(other)
+    other.amount
+  end
+end
+
+describe("protected methods") do
+  test("reachable from the class and its subclasses, on any instance") do
+    assert(new Wallet(10).richer_than?(new Wallet(5)))
+    assert_eq(new Purse(1).compare(new Wallet(7)), 7)
+  end
+
+  test("refused from outside") do
+    message = ""
+    try
+      new Wallet(3).amount
+    catch error
+      message = "#{error}"
+    end
+    assert_contains(message, "protected method 'amount' called for an instance of Wallet")
+  end
+end

@@ -83,7 +83,7 @@ class PostsController < Controller
   def delete end
 ```
 
-**Note:** Helpers are not actions. Methods starting with `_` get no automatic route, and a method under `private` (or declared `private def`) is never an action: a route that names one answers 404, and it can only be called on `self` (`@helper(...)` or the bare `helper(...)`). See [Private Methods](soli-language.md#private-methods).
+**Note:** Helpers are not actions. Methods starting with `_` get no automatic route, and a method under `private` or `protected` (or declared `private def`) is never an action: a route that names one answers 404, and it can only be called on `self` (`@helper(...)` or the bare `helper(...)`). See [Private Methods](soli-language.md#private-methods).
 
 ## Controller Inheritance
 

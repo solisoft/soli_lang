@@ -4851,12 +4851,15 @@ fn call_oop_controller_action(
         _ => return None,
     };
 
-    // A private method is not an action, even when a route names it: the
-    // request answers as if the action did not exist.
-    if class_rc.is_private_method(action_name) {
+    // A private or protected method is not an action, even when a route names
+    // it: the request answers as if the action did not exist.
+    if let Some((access, _)) = class_rc.restricted_method(action_name) {
         return Some(error_response::page(
             404,
-            &format!("{class_name}#{action_name} is private, not an action"),
+            &format!(
+                "{class_name}#{action_name} is {}, not an action",
+                access.label()
+            ),
         ));
     }
 

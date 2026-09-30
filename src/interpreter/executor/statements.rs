@@ -646,6 +646,7 @@ impl Interpreter {
         let mut methods = HashMap::new();
         let mut static_methods = HashMap::new();
         let mut private_methods = HashSet::new();
+        let mut protected_methods = HashSet::new();
 
         let source_path = self
             .current_source_path
@@ -657,8 +658,14 @@ impl Interpreter {
             if method_decl.is_static {
                 static_methods.insert(method_decl.name.clone(), Rc::new(func));
             } else {
-                if method_decl.visibility == crate::ast::stmt::Visibility::Private {
-                    private_methods.insert(method_decl.name.clone());
+                match method_decl.visibility {
+                    crate::ast::stmt::Visibility::Private => {
+                        private_methods.insert(method_decl.name.clone());
+                    }
+                    crate::ast::stmt::Visibility::Protected => {
+                        protected_methods.insert(method_decl.name.clone());
+                    }
+                    crate::ast::stmt::Visibility::Public => {}
                 }
                 let func = Rc::new(func);
                 // Modules also expose instance methods as module functions
@@ -670,8 +677,8 @@ impl Interpreter {
             }
         }
 
-        if !private_methods.is_empty() {
-            crate::interpreter::value::note_private_methods_declared();
+        if !private_methods.is_empty() || !protected_methods.is_empty() {
+            crate::interpreter::value::note_restricted_methods_declared();
         }
 
         // Create constructor if present
@@ -737,6 +744,7 @@ impl Interpreter {
             const_fields,
             static_const_fields,
             private_methods: Rc::new(RefCell::new(private_methods)),
+            protected_methods: Rc::new(RefCell::new(protected_methods)),
             is_module: decl.is_module,
             ..Default::default()
         };
