@@ -20,31 +20,36 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.7.0.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.8.0.</p>
 
-        <h3 id="unreleased-controllers" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Controllers</h3>
+    </section>
+
+    <section id="v2-8-0" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.8.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-30</span></h2>
+
+        <h3 id="v2-8-0-controllers" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Controllers</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">render("new")</code> means the controller&rsquo;s own view.</strong> From <code class="text-cyan-400">PostsController</code> it renders <code class="text-cyan-400">posts/new</code>, the directory the automatic render already uses. The controller&rsquo;s file wins only when it exists, so a top-level view still resolves; a name with a <code class="text-cyan-400">/</code> is taken as written. When neither file exists, the error names both places it looked. <a href="/docs/core-concepts/controllers#bare-view-names" class="text-cyan-400 hover:underline">Bare view names</a></li>
         </ul>
 
-        <h3 id="unreleased-views" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Views</h3>
+        <h3 id="v2-8-0-views" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Views</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Component classes.</strong> <code class="text-cyan-400">app/components/stats_card_component.sl</code> defining <code class="text-cyan-400">StatsCardComponent</code> pairs with <code class="text-cyan-400">components/stats_card.html.slv</code>: props become the instance&rsquo;s fields, an optional <code class="text-cyan-400">before_render</code> derives values, and the template reaches the instance as <code class="text-cyan-400">this</code>. A component with no class renders as before; <code class="text-cyan-400">soli generate component NAME --class</code> writes both. <a href="/docs/core-concepts/views#component-classes" class="text-cyan-400 hover:underline">Component classes</a></li>
         </ul>
 
-        <h3 id="unreleased-uploads" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Uploads</h3>
+        <h3 id="v2-8-0-uploads" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Uploads</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Resumable uploads (tus 1.0.0).</strong> <code class="text-cyan-400">resumable_uploads()</code> in <code class="text-cyan-400">config/routes.sl</code> opens a tus endpoint that writes each chunk to disk; <code class="text-cyan-400">tus_take(id)</code> then <code class="text-cyan-400">attach_&lt;field&gt;</code> moves the finished file into a disk attachment or streams it to S3 without loading it into memory. Per-upload, per-session and global caps (a finished upload counts until it is taken); the owner is a session the store knows, stable under the <code class="text-cyan-400">cookie</code> driver too; uploads expire. <a href="/docs/database/models#large-uploads" class="text-cyan-400 hover:underline">Large uploads</a></li>
             <li><strong class="text-white">Direct-to-S3 uploads.</strong> <code class="text-cyan-400">direct_upload_start</code> validates and returns a presigned <code class="text-cyan-400">PUT</code>; <code class="text-cyan-400">direct_upload_finish</code> asks the bucket what it received, re-checks the limits, deletes an object that breaks them, and attaches it. Finish only accepts an id this session started for that field. <a href="/docs/database/models#large-uploads" class="text-cyan-400 hover:underline">Large uploads</a></li>
         </ul>
 
-        <h3 id="unreleased-realtime" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Real-time</h3>
+        <h3 id="v2-8-0-realtime" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Real-time</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">live_update</code> reaches LiveViews from anywhere, across processes.</strong> From a controller, a job or another <code class="text-cyan-400">soli serve</code>: <code class="text-cyan-400">live_update("board", assigns, {"room": "lobby"})</code>, narrowed by <code class="text-cyan-400">room</code>, <code class="text-cyan-400">session</code> or a nested <code class="text-cyan-400">child</code>. Local instances get it at once; other processes get it over a <code class="text-cyan-400">_live_bus</code> collection and SoliDB&rsquo;s changefeed. EUI components re-render their node tree. Fire and forget. <a href="/docs/core-concepts/liveview#live-update" class="text-cyan-400 hover:underline">live_update</a></li>
             <li><strong class="text-white">LiveView uploads pause and resume.</strong> A <code class="text-cyan-400">[soli-upload-pause]</code> button holds the next chunk; the client remembers each chunked upload per file, and picking the same file again (after a refresh or a dropped connection) asks <code class="text-cyan-400">GET /live/upload/status</code> and sends only the missing chunks. Partial uploads are kept 10 minutes (<code class="text-cyan-400">SOLI_LIVE_UPLOAD_PARTIAL_TTL</code>); one idle for 2 minutes gives its room up to a new upload that would otherwise be refused. <a href="/docs/core-concepts/liveview#pause-and-resume" class="text-cyan-400 hover:underline">Pause and resume</a></li>
         </ul>
 
-        <h3 id="unreleased-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
+        <h3 id="v2-8-0-testing" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Testing</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">soli test --filter</code> and <code class="text-cyan-400">--fail-fast</code>.</strong> <code class="text-cyan-400">--filter TEXT</code> (<code class="text-cyan-400">-n</code>) runs only tests whose full description &mdash; the enclosing <code class="text-cyan-400">describe</code> names plus the test name &mdash; contains the text, case-insensitively. <code class="text-cyan-400">--fail-fast</code> stops scheduling tests and files after the first failure. <a href="/docs/testing#filtering-and-fail-fast" class="text-cyan-400 hover:underline">Filtering and Fail-Fast</a></li>
             <li><strong class="text-white"><code class="text-cyan-400">soli test --watch</code>.</strong> Runs the suite, then reruns it in a fresh process whenever a <code class="text-cyan-400">.sl</code> or <code class="text-cyan-400">.slv</code> file changes. <a href="/docs/testing#filtering-and-fail-fast" class="text-cyan-400 hover:underline">Filtering and Fail-Fast</a></li>
@@ -54,19 +59,19 @@
             <li><strong class="text-white">Instance <code class="text-cyan-400">method_missing</code> takes any arity.</strong> A last parameter named <code class="text-cyan-400">args</code> receives every remaining argument as an array; parameters the call did not supply are <code class="text-cyan-400">nil</code>. <a href="/docs/language/metaprogramming" class="text-cyan-400 hover:underline">Metaprogramming</a></li>
         </ul>
 
-        <h3 id="unreleased-auth" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth</h3>
+        <h3 id="v2-8-0-auth" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">OAuth client: GitLab, Discord, LinkedIn, Microsoft.</strong> <code class="text-cyan-400">soli generate oauth gitlab|discord|linkedin|microsoft</code>. Providers are found by class name, so adding one never means editing the controller; Microsoft requires <code class="text-cyan-400">MICROSOFT_TENANT</code> and refuses multi-tenant endpoints. Fixed: <code class="text-cyan-400">/auth/:provider</code> redirected with <code class="text-cyan-400">redirect()</code>, which rejects external URLs, and answered 500. <a href="/docs/security/oauth-client" class="text-cyan-400 hover:underline">OAuth Client</a></li>
             <li><strong class="text-white">OIDC provider: introspection, dynamic registration, device grant, request objects.</strong> <code class="text-cyan-400">POST /oauth/introspect</code> (RFC 7662, confidential clients), <code class="text-cyan-400">POST /oauth/register</code> (RFC 7591, off until <code class="text-cyan-400">SOLI_OIDC_REGISTRATION_TOKEN</code> is set), the device authorization grant (RFC 8628) with its <code class="text-cyan-400">/oauth/device</code> approval page, and signed <code class="text-cyan-400">request=</code> objects (RFC 9101). Implicit and hybrid flows stay out on purpose. <a href="/docs/security/oidc-provider" class="text-cyan-400 hover:underline">OIDC Provider</a></li>
             <li><strong class="text-white">OIDC provider: <code class="text-cyan-400">client_credentials</code> grant.</strong> Opt in per confidential client through <code class="text-cyan-400">grant_types</code>; the token&rsquo;s <code class="text-cyan-400">sub</code> is the client, with no id or refresh token, and userinfo refuses it. Discovery advertises the grant. <a href="/docs/security/oidc-provider" class="text-cyan-400 hover:underline">OIDC Provider</a></li>
         </ul>
 
-        <h3 id="unreleased-database" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Database</h3>
+        <h3 id="v2-8-0-database" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Database</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">More ways to roll back.</strong> <code class="text-cyan-400">soli db:migrate down --step N</code> (or <code class="text-cyan-400">STEP=N</code>) reverts several migrations, <code class="text-cyan-400">down --to VERSION</code> reverts everything newer than a version, <code class="text-cyan-400">redo</code> reverts and re-runs the newest migration, and <code class="text-cyan-400">reset</code> rolls everything back then migrates up. <a href="/docs/database/migrations" class="text-cyan-400 hover:underline">Migrations</a></li>
         </ul>
 
-        <h3 id="unreleased-docs" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Documentation</h3>
+        <h3 id="v2-8-0-docs" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Documentation</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">nil</code>, not <code class="text-cyan-400">null</code>.</strong> They are the same value; the style guides and examples now write <code class="text-cyan-400">nil</code> (<code class="text-cyan-400">rescue nil</code>, <code class="text-cyan-400">return nil if &hellip;</code>). <code class="text-cyan-400">null</code> stays inside SDBQL strings and JSON. The <code class="text-cyan-400">idiom/nil-comparison</code> lint now says <code class="text-cyan-400">== nil</code>.</li>
         </ul>

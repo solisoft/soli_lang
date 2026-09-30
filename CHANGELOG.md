@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-09-30
+
 ### Added
 
 * **controllers:** **`render("new")` inside an action means the controller's own view.** From `PostsController`, `render("new")` renders `posts/new` (the directory the automatic render already uses); the controller's file wins only when it exists, so a top-level view still resolves, and a name with a `/` is taken as written. When neither exists the error names both (`… not found in app/views (looked for 'posts/nope' first)`). [Docs](www/docs/controllers.md#bare-view-names-resolve-to-the-controllers-directory)
