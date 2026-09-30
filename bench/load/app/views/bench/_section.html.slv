@@ -1,0 +1,8 @@
+<section class="demo-card demo-<%= h(kind) %>">
+  <h2 class="demo-card-title"><%= h(heading) %></h2>
+  <ul class="demo-list">
+    <% for row in items %>
+      <%- partial("bench/item", { "row": row, "kind": kind }) %>
+    <% end %>
+  </ul>
+</section>

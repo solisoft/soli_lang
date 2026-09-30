@@ -1,0 +1,5 @@
+<nav class="app-nav">
+  <% for link in nav_links() %>
+    <%- partial("shared/nav_link", { "link": link }) %>
+  <% end %>
+</nav>

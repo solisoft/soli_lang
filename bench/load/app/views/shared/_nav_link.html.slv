@@ -1,0 +1,1 @@
+<a class="app-nav-link<%= current_path?(link["href"]) ? " is-active" : "" %>" href="<%= attr(link["href"]) %>"><%= h(link["label"]) %></a>

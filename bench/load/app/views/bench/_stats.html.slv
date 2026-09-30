@@ -1,0 +1,7 @@
+<section class="demo-card">
+  <h2 class="demo-card-title">Summary</h2>
+  <div class="demo-stats">
+    <%- partial("bench/stat", { "label": "Rows scanned", "value": stats["rows"] }) %>
+    <%- partial("bench/stat", { "label": "Avg price", "value": stats["avg_price"] }) %>
+  </div>
+</section>

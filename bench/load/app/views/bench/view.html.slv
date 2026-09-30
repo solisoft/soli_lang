@@ -1,0 +1,21 @@
+<div class="bench-view">
+    <h1><%= h(title) %></h1>
+    <p><%= items.length() %> rows rendered server-side.</p>
+
+    <table>
+        <thead>
+            <tr><th>ID</th><th>Name</th><th>Category</th><th>Price</th><th>Active</th></tr>
+        </thead>
+        <tbody>
+            <% for item in items %>
+                <tr>
+                    <td><%= item["id"] %></td>
+                    <td><%= h(item["name"]) %></td>
+                    <td><%= h(item["category"]) %></td>
+                    <td><%= item["price"] %></td>
+                    <td><%= item["active"] %></td>
+                </tr>
+            <% end %>
+        </tbody>
+    </table>
+</div>

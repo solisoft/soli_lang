@@ -1,0 +1,130 @@
+<style>
+  .bench-wrap { max-width: 1320px; margin: 0 auto; padding: 2.5rem clamp(1rem, 4vw, 2.5rem); }
+  .bench-wrap h1 { font-size: 1.9rem; font-weight: 800; margin: 0 0 .35rem; letter-spacing: -.02em; }
+  .bench-meta { color: #9aa3bd; font-size: .9rem; margin-bottom: 2rem; }
+  .bench-meta code { background: #1a2138; padding: .12rem .45rem; border-radius: .35rem; color: #cbd3ee; }
+  .bench-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1rem; margin-bottom: 2.25rem; }
+  .bench-card { background: #141b30; border: 1px solid #232c47; border-radius: .85rem; padding: 1rem 1.15rem; }
+  .bench-card .label { font-size: .82rem; color: #9aa3bd; margin-bottom: .15rem; }
+  .bench-card .rps { font-size: 1.75rem; font-weight: 700; line-height: 1.1; }
+  .bench-card .rps small { font-size: .85rem; font-weight: 400; color: #9aa3bd; }
+  .bench-card .sub { font-size: .76rem; color: #7e88a6; margin-top: .35rem; }
+  .tag { display: inline-block; font-size: .66rem; font-weight: 700; text-transform: uppercase;
+         letter-spacing: .05em; padding: .14rem .55rem; border-radius: 1rem; color: #0b1020; margin-bottom: .5rem; }
+  .bench-tablewrap { overflow-x: auto; border: 1px solid #232c47; border-radius: .85rem; }
+  table.bench { border-collapse: collapse; width: 100%; font-size: .88rem; min-width: 760px; }
+  table.bench th, table.bench td { padding: .6rem .8rem; text-align: right; border-bottom: 1px solid #232c47; white-space: nowrap; }
+  table.bench th:nth-child(-n+3), table.bench td:nth-child(-n+3) { text-align: left; }
+  table.bench thead th { color: #9aa3bd; font-weight: 600; }
+  table.bench tbody tr:last-child td { border-bottom: none; }
+  table.bench tbody tr:hover { background: #10172a; }
+  table.bench code { color: #cbd3ee; font-size: .82rem; }
+  .bar { display: inline-block; height: .7rem; border-radius: .2rem; vertical-align: middle; margin-right: .45rem; min-width: 2px; }
+  .ok { color: #34d399; } .warn { color: #fbbf24; } .bad { color: #f87171; }
+  .empty { background: #141b30; border: 1px solid #232c47; border-radius: .85rem; padding: 2.5rem; text-align: center; color: #9aa3bd; }
+  .empty code { display: inline-block; background: #0b1020; border: 1px solid #232c47; color: #34d399;
+                padding: .5rem .85rem; border-radius: .5rem; margin-top: 1rem; font-family: 'JetBrains Mono', monospace; }
+  .history { margin-top: 2.5rem; }
+  .history h2 { font-size: .82rem; letter-spacing: .14em; text-transform: uppercase; color: #9aa3bd; margin: 0 0 .8rem; }
+  table.runs { border-collapse: collapse; width: 100%; font-size: .85rem; min-width: 560px; }
+  table.runs th, table.runs td { padding: .55rem .8rem; text-align: right; border-bottom: 1px solid #232c47; white-space: nowrap;
+                                 font-variant-numeric: tabular-nums; }
+  table.runs th:first-child, table.runs td:first-child { text-align: left; font-variant-numeric: normal; }
+  table.runs thead th { color: #9aa3bd; font-weight: 600; font-variant-numeric: normal; }
+  table.runs tbody tr:last-child td { border-bottom: none; }
+  table.runs tbody tr:hover { background: #10172a; }
+  table.runs a { color: #818cf8; text-decoration: none; }
+  table.runs a:hover { text-decoration: underline; }
+  table.runs tr.active td { background: #16203a; }
+  table.runs tr.active td:first-child { box-shadow: inset 3px 0 0 #34d399; }
+  .badge-current { font-size: .68rem; color: #34d399; margin-left: .45rem; }
+</style>
+
+<div class="bench-wrap">
+  <h1>Soli Benchmark</h1>
+
+  <% if @run.nil? %>
+    <div class="empty">
+      <p>No benchmark results yet.</p>
+      <p>Run the suite, then refresh this page:</p>
+      <code>./benchmarks/run_bench.sh</code>
+    </div>
+  <% else %>
+    <div class="bench-meta">
+      Showing run <code><%= h(@run.stamp) %></code> &nbsp;·&nbsp;
+      target <code><%= h(@run.base_url) %></code> &nbsp;·&nbsp;
+      <%= h(@run.duration) %> per workload &nbsp;·&nbsp;
+      <%= h(@run.connections) %> connections &nbsp;·&nbsp; tool <code>oha</code>
+    </div>
+
+    <div class="bench-cards">
+      <% for workload in @workloads %>
+        <div class="bench-card">
+          <span class="tag" style="background: <%= workload["color"] %>"><%= h(workload["group"]) %></span>
+          <div class="label"><%= h(workload["label"]) %></div>
+          <div class="rps"><%= h(workload["rps"]) %> <small>req/s</small></div>
+          <div class="sub">
+            p50 <%= h(workload["p50"]) %>ms · p99 <%= h(workload["p99"]) %>ms ·
+            <span class="<%= workload["success_class"] %>"><%= h(workload["success"]) %>% ok</span>
+          </div>
+        </div>
+      <% end %>
+    </div>
+
+    <div class="bench-tablewrap">
+      <table class="bench">
+        <thead>
+          <tr>
+            <th>Workload</th><th>Group</th><th>Endpoint</th>
+            <th>Req/s</th><th>Success</th><th>Requests</th>
+            <th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% for workload in @workloads %>
+            <tr>
+              <td><%= h(workload["label"]) %></td>
+              <td><span class="tag" style="background: <%= workload["color"] %>"><%= h(workload["group"]) %></span></td>
+              <td><%= h(workload["method"]) %> <code><%= h(workload["path"]) %></code></td>
+              <td>
+                <span class="bar" style="width: <%= workload["rps_pct"] %>px; max-width: 120px; background: <%= workload["color"] %>"></span>
+                <%= h(workload["rps"]) %>
+              </td>
+              <td class="<%= workload["success_class"] %>"><%= h(workload["success"]) %>%</td>
+              <td><%= h(workload["requests"]) %></td>
+              <td><%= h(workload["p50"]) %></td>
+              <td><%= h(workload["p90"]) %></td>
+              <td><%= h(workload["p99"]) %></td>
+              <td><%= h(workload["codes"]) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="history">
+      <h2>Run history (<%= @history.length() %>)</h2>
+      <div class="bench-tablewrap">
+        <table class="runs">
+          <thead>
+            <tr><th>Run</th><th>Peak req/s</th><th>Total requests</th><th>Duration</th><th>Connections</th></tr>
+          </thead>
+          <tbody>
+            <% for past in @history %>
+              <tr class="<%= past["key"] == @run._key ? "active" : "" %>">
+                <td>
+                  <a href="/?run=<%= attr(past["key"]) %>"><%= h(past["stamp"]) %></a>
+                  <% if past["key"] == @run._key %><span class="badge-current">current</span><% end %>
+                </td>
+                <td><%= h(past["peak_rps"]) %></td>
+                <td><%= h(past["total_requests"]) %></td>
+                <td><%= h(past["duration"]) %></td>
+                <td><%= h(past["connections"]) %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  <% end %>
+</div>

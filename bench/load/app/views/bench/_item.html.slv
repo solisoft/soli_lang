@@ -1,0 +1,5 @@
+<li class="demo-row">
+  <span class="demo-row-name"><%= h(row.name ?? "Widget") %></span>
+  <span class="demo-row-cat"><%= h(row.category ?? "general") %></span>
+  <span class="demo-row-price">$<%= row.price ?? 0 %></span>
+</li>

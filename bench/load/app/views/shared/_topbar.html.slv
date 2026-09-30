@@ -1,0 +1,4 @@
+<header class="app-topbar">
+  <a class="app-brand" href="/"><span class="app-brand-mark">S</span> Soli&nbsp;Bench</a>
+  <%- partial("shared/nav") %>
+</header>

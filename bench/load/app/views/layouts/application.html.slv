@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - Soli App</title>
+
+    <!-- Tailwind CSS (compiled) -->
+    <link rel="stylesheet" href="<%= public_path("css/application.css") %>">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <%- partial("shared/head_meta") %>
+
+    <style>
+      .app-topbar { display:flex; align-items:center; gap:1.5rem; padding:.7rem clamp(1rem,4vw,2.5rem);
+                    background:#0d1424; border-bottom:1px solid #222c44; position:sticky; top:0; z-index:10; }
+      .app-brand { font-weight:800; letter-spacing:-.01em; color:#e8ebf5; text-decoration:none; display:flex; align-items:center; gap:.5rem; }
+      .app-brand-mark { display:inline-flex; align-items:center; justify-content:center; width:1.6rem; height:1.6rem;
+                        border-radius:.4rem; background:linear-gradient(135deg,#6366f1,#a855f7); color:#fff; font-size:.9rem; }
+      .app-nav { display:flex; gap:.25rem; flex-wrap:wrap; }
+      .app-nav-link { color:#9aa3bd; text-decoration:none; font-size:.85rem; padding:.35rem .7rem; border-radius:.45rem; }
+      .app-nav-link:hover { color:#e8ebf5; background:#16203a; }
+      .app-nav-link.is-active { color:#fff; background:#222c44; }
+      .app-flash { display:flex; align-items:center; gap:.5rem; font-size:.76rem; color:#8b94b0;
+                   padding:.5rem clamp(1rem,4vw,2.5rem); background:#0b1120; border-bottom:1px solid #1a2238; }
+      .app-flash-dot { width:.5rem; height:.5rem; border-radius:50%; background:#34d399; }
+      .app-footer { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;
+                    padding:1.25rem clamp(1rem,4vw,2.5rem); margin-top:2rem; border-top:1px solid #222c44; color:#5b647f; font-size:.8rem; }
+      .app-footer-links { display:flex; gap:.25rem; }
+    </style>
+</head>
+<body class="min-h-full bg-slate-950 text-white font-sans antialiased">
+    <%- partial("shared/topbar") %>
+    <main class="app-main">
+        <%- partial("shared/flash") %>
+        <%= yield %>
+    </main>
+    <%- partial("shared/footer") %>
+
+    <!-- HTMx + Alpine.js (Soli's default client stack — see /docs/core-concepts/client-interactivity) -->
+    <script defer src="<%= public_path("js/htmx.min.js") %>"></script>
+    <script defer src="<%= public_path("js/alpine.min.js") %>"></script>
+</body>
+</html>

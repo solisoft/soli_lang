@@ -14,6 +14,7 @@ node_modules
 # start without one, so a fixture whose file is ignored passes locally and fails
 # on a clean checkout with "".env.test file not found". These hold no secrets.
 !tests-e2e/*/.env.test
+!bench/load/.env.test
 .claude/settings.local.json
 # Nested per-developer overrides too (e.g. www/.claude/): a pattern with a
 # slash is anchored to the repo root, so the line above never matched them.

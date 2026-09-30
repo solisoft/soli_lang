@@ -1,0 +1,12 @@
+{
+  "name": "bench",
+  "version": "1.0.0",
+  "description": "A Soli MVC application",
+  "scripts": {
+    "build:css": "npx @tailwindcss/cli -i ./app/assets/css/application.css -o ./public/css/application.css",
+    "watch:css": "npx @tailwindcss/cli -i ./app/assets/css/application.css -o ./public/css/application.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.1"
+  }
+}

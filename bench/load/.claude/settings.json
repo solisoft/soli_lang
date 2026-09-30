@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(soli lint*)",
+      "Bash(soli test*)",
+      "Bash(soli serve*)",
+      "Bash(soli generate *)",
+      "Bash(soli db:migrate *)",
+      "Bash(soli run *)"
+    ]
+  }
+}

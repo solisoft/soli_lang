@@ -1,0 +1,4 @@
+<div class="demo-stat" style="background:#0e1422;border:1px solid #1d2740;border-radius:.5rem;padding:.8rem 1rem;">
+  <div class="demo-stat-val" style="font-size:1.4rem;font-weight:700;font-family:ui-monospace,monospace;"><%= value %></div>
+  <div class="demo-stat-label" style="font-size:.74rem;color:#8b94b0;margin-top:.2rem;"><%= h(label) %></div>
+</div>

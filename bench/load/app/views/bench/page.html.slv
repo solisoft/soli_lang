@@ -1,0 +1,42 @@
+<style>
+  .demo { max-width: 1100px; margin: 0 auto; padding: 2.5rem clamp(1rem, 4vw, 2rem); }
+  .demo-head h1 { font-size: 1.7rem; font-weight: 800; margin: 0 0 .3rem; letter-spacing: -.02em; }
+  .demo-sub { color: #8b94b0; font-size: .9rem; margin: 0 0 2rem; }
+  .demo-card { background: #121829; border: 1px solid #222c44; border-radius: .8rem;
+               padding: 1.1rem 1.3rem; margin-bottom: 1.25rem; }
+  .demo-card-title { font-size: .78rem; letter-spacing: .12em; text-transform: uppercase;
+                     color: #8b94b0; margin: 0 0 .8rem; }
+  .demo-list { list-style: none; margin: 0; padding: 0; display: grid;
+               grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .5rem; }
+  .demo-row { display: flex; align-items: baseline; gap: .6rem; padding: .5rem .7rem;
+              background: #0e1422; border: 1px solid #1d2740; border-radius: .5rem; }
+  .demo-row-name { font-weight: 600; font-size: .9rem; }
+  .demo-row-cat { font-size: .72rem; color: #5b647f; text-transform: uppercase; letter-spacing: .04em; }
+  .demo-row-price { margin-left: auto; font-family: ui-monospace, monospace; color: #c4cbe4; font-size: .85rem; }
+  .demo-featured .demo-row { border-color: #3a2d12; background: #1a1407; }
+  .demo-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .75rem; }
+</style>
+
+<div class="demo">
+  <header class="demo-head">
+    <h1><%= h(title) %></h1>
+    <p class="demo-sub">
+      step <%= step %> of 4 · <%= step %> DB <%= step == 1 ? "query" : "queries" %> ·
+      rendered through the application layout with nested partials
+    </p>
+  </header>
+
+  <%- partial("bench/section", { "heading": "Products", "kind": "product", "items": products }) %>
+
+  <% if step >= 2 %>
+    <%- partial("bench/section", { "heading": "Recent", "kind": "recent", "items": recent }) %>
+  <% end %>
+
+  <% if step >= 3 %>
+    <%- partial("bench/section", { "heading": "Featured", "kind": "featured", "items": featured }) %>
+  <% end %>
+
+  <% if step >= 4 %>
+    <%- partial("bench/stats", { "stats": stats }) %>
+  <% end %>
+</div>

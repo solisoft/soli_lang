@@ -1,0 +1,4 @@
+<div class="app-flash">
+  <span class="app-flash-dot"></span>
+  Benchmark harness · <%= current_method() %> <%= h(current_path()) %>
+</div>
