@@ -20,9 +20,14 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.8.1.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.9.0.</p>
 
-        <h3 id="unreleased-language" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
+    </section>
+
+    <section id="v2-9-0" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.9.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-09-30</span></h2>
+
+        <h3 id="v2-9-0-language" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Private methods are enforced.</strong> <code class="text-cyan-400">private</code> used to be parsed and then ignored. A private method is now callable on <code class="text-cyan-400">self</code> only &mdash; <code class="text-cyan-400">@name</code>, <code class="text-cyan-400">this.name</code> or the bare <code class="text-cyan-400">name</code> &mdash; and any other receiver, another instance of the same class included, raises <code class="text-cyan-400">private method 'x' called for an instance of C</code>. <code class="text-cyan-400">private</code> alone on its line starts a section, as in Ruby; <code class="text-cyan-400">private def x</code> still marks one method. A private controller method is never an action (a route naming it answers 404). Both engines agree, served actions included. <strong class="text-white">Upgrading:</strong> code that calls a private method from outside its class now raises. A <code class="text-cyan-400">_</code> prefix stays a naming convention: it keeps a method out of the automatic routes but does not make it private. Fields follow the same rules: a <code class="text-cyan-400">private</code> field is readable and writable on <code class="text-cyan-400">self</code> only, a <code class="text-cyan-400">protected</code> one also from the class and its subclasses. <code class="text-cyan-400">soli check</code> reports private and protected calls and accesses when it knows the receiver&rsquo;s class &mdash; an annotated variable, or one assigned <code class="text-cyan-400">new C(...)</code>. <a href="/docs/language/classes-oop#private-methods" class="text-cyan-400 hover:underline">Private methods</a></li>
             <li><strong class="text-white"><code class="text-cyan-400">protected</code> is enforced.</strong> A protected method is reachable from code running in an instance of the declaring class or a subclass, on any instance of it &mdash; so two accounts can compare balances &mdash; and refused from outside with <code class="text-cyan-400">protected method 'x' called for an instance of C</code>. Like a private one, it is never an action. <a href="/docs/language/classes-oop#protected-methods" class="text-cyan-400 hover:underline">Protected methods</a></li>
@@ -30,12 +35,12 @@
             <li><strong class="text-white"><code class="text-cyan-400">soli fmt</code> keeps visibility.</strong> It used to drop <code class="text-cyan-400">private</code> without a word, making the method public; it now writes <code class="text-cyan-400">private</code> / <code class="text-cyan-400">public</code> sections.</li>
         </ul>
 
-        <h3 id="unreleased-pdf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">PDF</h3>
+        <h3 id="v2-9-0-pdf" class="text-xl font-semibold text-white mb-4 scroll-mt-24">PDF</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">A Ruby gem, <code class="text-cyan-400">soli-pdf</code>.</strong> <code class="text-cyan-400">Soli::PDF.render(template:, data:)</code> takes Hashes or JSON strings and returns the PDF bytes; a failed render raises <code class="text-cyan-400">Soli::PDF::RenderError</code> with the renderer's message. The gem downloads the standalone <code class="text-cyan-400">render_pdf</code> binary (with its fonts) from the release on first use, checks its SHA-256 and caches it. <code class="text-cyan-400">render_pdf</code> now reads one input from stdin (<code class="text-cyan-400">--data -</code>) and writes the PDF to stdout (<code class="text-cyan-400">-o -</code>), and every release publishes <code class="text-cyan-400">render-pdf-&lt;os&gt;-&lt;arch&gt;.tar.gz</code> for the five targets.</li>
         </ul>
 
-        <h3 id="unreleased-scaffold" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Scaffold</h3>
+        <h3 id="v2-9-0-scaffold" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Scaffold</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Every public controller action documents its route.</strong> The guidelines <code class="text-cyan-400">soli new</code> writes for your coding agent now ask for a <code class="text-cyan-400"># GET /posts/:id</code> line right above each action (one per route that reaches it) and a <code class="text-cyan-400">_</code> prefix on helpers, which the router already skips. The generated OAuth, EUI and password-reset controllers follow it.</li>
         </ul>

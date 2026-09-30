@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-09-30
+
 ### Added
 
 * **pdf:** **`soli-pdf` Ruby gem, and `render_pdf` ships with each release.** `gem/soli-pdf` wraps the standalone `render_pdf` binary: `Soli::PDF.render(template:, data:)` takes Hashes or JSON strings and returns the PDF bytes, raising `Soli::PDF::RenderError` with the renderer's message on failure. The gem downloads `render-pdf-<os>-<arch>.tar.gz` from the release on first use, checks its SHA-256 and caches it. To make that possible `render_pdf` now reads one input from stdin (`--data -`) and writes the PDF to stdout (`-o -`), and the release job publishes it with `pdf/fonts` for the five targets.
