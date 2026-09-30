@@ -3,8 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= title %> - Soli</title>
-    <meta name="description" content="Soli is a programming language with a complete MVC framework built in. Ruby's expressiveness, Rust's speed, one binary.">
+    <title><%= meta["title"] %></title>
+    <meta name="description" content="<%= meta["description"] %>">
+    <link rel="canonical" href="https://soli.solisoft.net<%= meta["path"] %>">
+    <meta name="theme-color" content="#F6F1E7" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#1C1814" media="(prefers-color-scheme: dark)">
+
+    <!-- OpenGraph / Twitter card: each landing action passes `meta` (title,
+         description, path). The card is public/images/og/home.png (its SVG
+         source sits beside it), versioned by public_path() so no CDN keeps a
+         copy fetched before the file was deployed. -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Soli">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:title" content="<%= meta["title"] %>">
+    <meta property="og:description" content="<%= meta["description"] %>">
+    <meta property="og:url" content="https://soli.solisoft.net<%= meta["path"] %>">
+    <meta property="og:image" content="https://soli.solisoft.net<%= public_path("images/og/home.png") %>">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Soli — Write it like Ruby. Serve it like Rust. A language with a web framework built in, in one binary.">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="<%= meta["title"] %>">
+    <meta name="twitter:description" content="<%= meta["description"] %>">
+    <meta name="twitter:image" content="https://soli.solisoft.net<%= public_path("images/og/home.png") %>">
+    <meta name="twitter:image:alt" content="Soli — Write it like Ruby. Serve it like Rust.">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

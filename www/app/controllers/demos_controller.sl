@@ -6,7 +6,14 @@ class DemosController < Controller
   # GET /demos
   # GET /demos/client-interactivity — the showcase page, on the landing layout.
   def index
-    render("demos/client_interactivity", {"title": "Client Interactivity Demo"}, {"layout": "layouts/landing"})
+    render("demos/client_interactivity", {
+      "title": "Client Interactivity Demo",
+      "meta": {
+        "title": "Client interactivity, no JavaScript written — Soli demos",
+        "description": "Ten live widgets built with HTMx and Alpine.js on server-rendered HTML, each answered by a Soli controller. Open the snippets to see how little it takes.",
+        "path": "/demos/client-interactivity"
+      }
+    }, {"layout": "layouts/landing"})
   end
 
   # 1. Optimistic Like button.

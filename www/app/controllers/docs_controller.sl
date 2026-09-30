@@ -35,7 +35,9 @@ end
 # four hours — a versioned URL is one no cache holds yet.
 def docs_og(view)
   file = "images/og/" + view.replace("docs/", "").replace("/", "-") + ".png"
-  return nil unless file_exists("public/" + file)
+  # No card of its own: the generic docs card (og/docs.png, SVG beside it),
+  # so every docs page shares with a title, a description and an image.
+  file = "images/og/docs.png" unless file_exists("public/" + file)
 
   {
     "image_path": file,
@@ -46,9 +48,10 @@ end
 
 def docs_og_description(view)
   descriptions = {
+    "docs/getting-started/introduction": "Start here: install Soli, create an app with `soli new`, and tour the language and the web framework that ship together in one binary.",
     "docs/getting-started/benchmarks": "Soli against the full stacks people ship — Rails, Laravel, Django, FastAPI, Phoenix, AdonisJS, Express — on one quiet machine: seven workloads, byte-identical payloads, every sweep control-checked."
   }
-  descriptions[view] ?? "Documentation for Soli MVC Framework - Build modern web applications with elegance and performance."
+  descriptions[view] ?? "Soli documentation: the language, the web framework, the ORM, views, jobs, mail, PDF, live views, testing and deploy — all in one binary."
 end
 
 # ============================================================================

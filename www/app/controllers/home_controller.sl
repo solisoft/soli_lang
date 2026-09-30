@@ -10,7 +10,12 @@ class HomeController extends Controller
     def index
         render("home/index", {
             "title": "Welcome",
-            "message": "The Modern MVC Framework for Soli"
+            "message": "The Modern MVC Framework for Soli",
+            "meta": {
+                "title": "Soli — Write it like Ruby. Serve it like Rust.",
+                "description": "Soli is a programming language with a web framework built in: models, auth, jobs, mail, PDF, live views and tests in one binary, at 1.2M+ requests/s.",
+                "path": "/"
+            }
         }, {"layout": "layouts/landing"})
     end
 
@@ -31,7 +36,12 @@ class HomeController extends Controller
         end
         render("home/ai", {
             "title": "Soli is built for AI",
-            "evals": evals
+            "evals": evals,
+            "meta": {
+                "title": "Soli is built for AI — agents, RAG and a code graph",
+                "description": "One way to do each thing, a short language and a full stack: code agents write in few tokens and humans can review, with the LLM and retrieval layer included.",
+                "path": "/ai"
+            }
         }, {"layout": "layouts/landing"})
     end
 

@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= title %> - Soli MVC Documentation</title>
-    <meta name="description" content="Documentation for Soli MVC Framework - Build modern web applications with elegance and performance.">
+    <title><%= title %> — Soli docs</title>
+    <meta name="description" content="<%= docs_og ? docs_og["description"] : "Soli documentation: the language, the web framework, the ORM, views, jobs, mail, PDF, live views, testing and deploy — all in one binary." %>">
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -387,18 +387,19 @@
 
     <% if docs_og %>
     <!-- OpenGraph card of a docs page (docs_controller: docs_og) -->
+    <link rel="canonical" href="<%= docs_og["url"] %>">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Soli">
-    <meta property="og:title" content="<%= title %> — Soli">
+    <meta property="og:title" content="<%= title %> — Soli docs">
     <meta property="og:description" content="<%= docs_og["description"] %>">
     <meta property="og:url" content="<%= docs_og["url"] %>">
     <meta property="og:image" content="https://soli.solisoft.net<%= public_path(docs_og["image_path"]) %>">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="<%= title %> — Soli">
+    <meta property="og:image:alt" content="<%= title %> — Soli docs">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="<%= title %> — Soli">
+    <meta name="twitter:title" content="<%= title %> — Soli docs">
     <meta name="twitter:description" content="<%= docs_og["description"] %>">
     <meta name="twitter:image" content="https://soli.solisoft.net<%= public_path(docs_og["image_path"]) %>">
     <% end %>
