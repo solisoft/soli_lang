@@ -1,0 +1,9 @@
+{
+  "label": "Rails + SQLite",
+  "setup": "rails new app --api --database=sqlite3 --skip-docker --skip-kamal --skip-thruster --skip-ci",
+  "requires": ["rails"],
+  "app_dir": "app",
+  "services": [],
+  "skills": [],
+  "notes": "Build it with Ruby on Rails, persisting to SQLite."
+}

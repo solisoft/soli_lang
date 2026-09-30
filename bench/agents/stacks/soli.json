@@ -1,0 +1,9 @@
+{
+  "label": "Soli + SoliDB",
+  "setup": "soli new app",
+  "app_dir": "app",
+  "services": ["solidb"],
+  "skills": ["~/.claude/skills/soli-lang", "~/.claude/skills/solidb"],
+  "env_file": ".env",
+  "notes": "Build it with the Soli web framework (`soli`) on SoliDB. The SoliDB connection settings are already in .env and in the environment (SOLIDB_HOST, SOLIDB_DATABASE, SOLIDB_USERNAME, SOLIDB_PASSWORD)."
+}

@@ -1,0 +1,9 @@
+{
+  "label": "Next.js + SQLite",
+  "setup": "npx --yes create-next-app@latest app --ts --app --eslint --no-tailwind --no-src-dir --use-npm --yes --disable-git",
+  "requires": ["npx"],
+  "app_dir": "app",
+  "services": [],
+  "skills": [],
+  "notes": "Build it with Next.js route handlers, persisting to SQLite (pick the library)."
+}
