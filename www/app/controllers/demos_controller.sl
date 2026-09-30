@@ -3,9 +3,10 @@
 # returns just the HTML HTMx will swap into the page.
 class DemosController < Controller
 
-  # Main showcase page (full layout).
-  def index()
-    render("demos/client_interactivity", {"title": "Client Interactivity Demo"})
+  # GET /demos
+  # GET /demos/client-interactivity — the showcase page, on the landing layout.
+  def index
+    render("demos/client_interactivity", {"title": "Client Interactivity Demo"}, {"layout": "layouts/landing"})
   end
 
   # 1. Optimistic Like button.

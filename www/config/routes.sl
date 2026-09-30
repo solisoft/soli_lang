@@ -249,6 +249,7 @@ router_websocket("/ws/chat", "websocket#chat_handler")
 # Client Interactivity Demo (HTMx + Alpine.js showcase)
 # ============================================================================
 
+get("/demos", "demos#index")
 get("/demos/client-interactivity", "demos#index")
 
 # Fragment endpoints called by HTMx widgets on the demo page.

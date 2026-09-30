@@ -132,3 +132,28 @@
     .lp-table.lp-stack td { display: block; padding: 2px 0; border: 0; }
 }
 .lp-table code { white-space: nowrap; }
+
+/* ---- Demos page ---- */
+[x-cloak] { display: none !important; }
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.shimmer { background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.05) 50%, transparent 100%); background-size: 200% 100%; animation: shimmer 2s infinite; }
+.lp-demos { padding-top: clamp(40px, 5vw, 64px); }
+.lp-demo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.lp-demo { gap: 18px; min-width: 0; }
+.lp-demo-wide { grid-column: span 2; }
+.lp-demo-head { display: flex; flex-direction: column; gap: 8px; }
+.lp-demo-head-row { flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.lp-demo-head-row > div { display: flex; flex-direction: column; gap: 8px; }
+.lp-demo kbd, .lp-demo p code { font-family: 'JetBrains Mono', monospace; font-size: 0.85em; padding: 1px 6px; border-radius: 6px; background: var(--paper-sunk); color: var(--ink); white-space: nowrap; }
+.lp-stage { padding: 16px; border-radius: 14px; min-width: 0; overflow-x: auto; }
+.lp-btn-sm { min-height: 40px; padding: 0 18px; font-size: 14px; border-width: 1px; }
+.lp-snippet { font-size: 14px; color: var(--ink-faint); }
+.lp-snippet summary { cursor: pointer; font-weight: 600; color: var(--sun-text); }
+.lp-snippet pre { margin: 10px 0 0; padding: 14px 16px; border-radius: 12px; overflow-x: auto; font-size: 13px; line-height: 1.6; color: #E9E2D6; }
+@media (max-width: 900px) {
+    .lp-demo-grid { grid-template-columns: minmax(0, 1fr); }
+    .lp-demo-wide { grid-column: auto; }
+}
+.lp-bar { fill: rgba(232, 89, 12, 0.6); transition: fill .15s; }
+.lp-bar:hover { fill: #E8590C; }
+.lp-demo p code { white-space: normal; overflow-wrap: anywhere; }

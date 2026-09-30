@@ -1,26 +1,22 @@
-<style>
-    [x-cloak] { display: none !important; }
-    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-    .shimmer { background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.05) 50%, transparent 100%); background-size: 200% 100%; animation: shimmer 2s infinite; }
-</style>
-
-<div class="max-w-6xl mx-auto px-4 py-12">
-    <header class="mb-12 text-center">
-        <h1 class="text-5xl font-bold tracking-tight text-white mb-4">
-            <span class="bg-gradient-to-r from-cyan-400 via-teal-400 to-emerald-400 bg-clip-text text-transparent">
-                Client Interactivity Demo
-            </span>
-        </h1>
-        <p class="text-xl text-gray-400 max-w-2xl mx-auto leading-relaxed">
-            Nine widgets, zero JavaScript written. Everything you see below is HTMx + Alpine.js composed declaratively on top of server-rendered HTML.
-        </p>
-        <div class="mt-6 flex flex-wrap justify-center gap-2 text-xs">
-            <span class="px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">HTMx v2.0.10</span>
-            <span class="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Alpine.js v3.14.1</span>
-            <span class="px-3 py-1 rounded-full bg-white/5 text-gray-400 border border-white/10">Tailwind CSS</span>
-            <a href="/docs/core-concepts/client-interactivity" class="px-3 py-1 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 hover:bg-amber-500/20">Read the docs &rarr;</a>
+<header class="lp-page-head">
+    <div class="lp-wrap">
+        <div style="display: flex; flex-direction: column; gap: 20px; max-width: 820px;">
+            <div class="lp-eyebrow">Demos &middot; HTMx + Alpine.js</div>
+            <h1 class="lp-h2" style="font-size: clamp(40px, 5.2vw, 64px);">Client interactivity, <span class="lp-em">no JavaScript written.</span></h1>
+            <p class="lp-lead">
+                Ten widgets, each HTMx and Alpine.js composed declaratively on top of server-rendered HTML. Every
+                request below is answered by a Soli controller; open the snippets to see how little it takes.
+            </p>
+            <div class="lp-chips">
+                <span>HTMx v2.0.10</span><span>Alpine.js v3.14.1</span><span>Server-rendered fragments</span>
+            </div>
+            <a href="/docs/core-concepts/client-interactivity" class="lp-link" style="align-self: flex-start;">Read the client interactivity docs &rarr;</a>
         </div>
-    </header>
+    </div>
+</header>
+
+<div class="lp-section lp-demos">
+<div class="lp-wrap">
 
     <!-- Global toast stack — receives `soli:toast` events from notify endpoint. -->
     <div x-data="toastStack()" @soli-toast.window="add($event.detail)"
@@ -33,12 +29,12 @@
                  x-transition:leave-start="opacity-100 translate-x-0"
                  x-transition:leave-end="opacity-0 translate-x-8"
                  :class="{
-                     'bg-emerald-500/15 border-emerald-500/40 text-emerald-100': t.kind === 'success',
-                     'bg-amber-500/15  border-amber-500/40  text-amber-100':    t.kind === 'warning',
-                     'bg-rose-500/15   border-rose-500/40   text-rose-100':     t.kind === 'error',
-                     'bg-sky-500/15    border-sky-500/40    text-sky-100':      t.kind === 'info'
+                     'border-emerald-500/60 text-emerald-100': t.kind === 'success',
+                     'border-amber-500/60   text-amber-100':   t.kind === 'warning',
+                     'border-rose-500/60    text-rose-100':    t.kind === 'error',
+                     'border-sky-500/60     text-sky-100':     t.kind === 'info'
                  }"
-                 class="rounded-lg border backdrop-blur-md px-4 py-3 shadow-lg flex items-start gap-3">
+                 class="bg-[#1C1814] rounded-xl border border-l-4 px-4 py-3 shadow-lg flex items-start gap-3">
                 <svg class="w-5 h-5 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 <p class="flex-1 text-sm" x-text="t.message"></p>
                 <button @click="dismiss(t.id)" class="text-current/60 hover:text-current"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
@@ -140,20 +136,21 @@
     }
     </script>
 
-    <div class="grid md:grid-cols-2 gap-6 mb-12">
+    <div class="lp-demo-grid">
 
         <!-- 1. Optimistic Like ============================================ -->
-        <section class="rounded-2xl bg-white/5 border border-white/10 p-6">
-            <header class="mb-4">
-                <h2 class="text-lg font-semibold text-white">1. Optimistic Like</h2>
-                <p class="text-sm text-gray-400">Alpine flips the heart immediately; HTMx posts and swaps the button with the server's truth.</p>
+        <section class="lp-card lp-demo">
+            <header class="lp-demo-head">
+                <span class="lp-num">01</span>
+                <h2 class="lp-h3">Optimistic Like</h2>
+                <p>Alpine flips the heart immediately; HTMx posts and swaps the button with the server's truth.</p>
             </header>
             <div class="flex items-center justify-center p-8 rounded-xl bg-[#0C0A09]">
                 <%- partial("demos/like_button", { "liked": false }) %>
             </div>
-            <details class="mt-4 text-xs text-gray-500">
-                <summary class="cursor-pointer hover:text-gray-300">show snippet</summary>
-                <pre class="mt-2 p-3 rounded bg-[#0C0A09] overflow-x-auto text-gray-300"><code>&lt;button x-data="{ liked: false }"
+            <details class="lp-snippet">
+                <summary>Show the snippet</summary>
+                <pre class="bg-[#0C0A09]"><code>&lt;button x-data="{ liked: false }"
         @click="liked = !liked"
         :class="liked && 'text-orange-500'"
         hx-post="/demos/api/like"
@@ -165,12 +162,13 @@
         </section>
 
         <!-- 2. Live Search =============================================== -->
-        <section class="rounded-2xl bg-white/5 border border-white/10 p-6">
-            <header class="mb-4">
-                <h2 class="text-lg font-semibold text-white">2. Live Debounced Search</h2>
-                <p class="text-sm text-gray-400"><code class="text-amber-400 text-xs">hx-trigger="keyup changed delay:300ms"</code> &mdash; one keystroke per request, server filters, fragment swaps.</p>
+        <section class="lp-card lp-demo">
+            <header class="lp-demo-head">
+                <span class="lp-num">02</span>
+                <h2 class="lp-h3">Live Debounced Search</h2>
+                <p><code>hx-trigger="keyup changed delay:300ms"</code> &mdash; one keystroke per request, server filters, fragment swaps.</p>
             </header>
-            <div class="space-y-3">
+            <div class="lp-stage bg-[#0C0A09] space-y-3">
                 <input type="search" name="q" placeholder="Type a fruit name…"
                        hx-get="/demos/api/search"
                        hx-trigger="keyup changed delay:300ms, search"
@@ -184,16 +182,17 @@
         </section>
 
         <!-- 3. Lazy tabs ================================================= -->
-        <section class="rounded-2xl bg-white/5 border border-white/10 p-6">
-            <header class="mb-4">
-                <h2 class="text-lg font-semibold text-white">3. Lazy-Loaded Tabs</h2>
-                <p class="text-sm text-gray-400">Alpine tracks the active tab; HTMx fetches each tab's body on first visit and caches it locally.</p>
+        <section class="lp-card lp-demo">
+            <header class="lp-demo-head">
+                <span class="lp-num">03</span>
+                <h2 class="lp-h3">Lazy-Loaded Tabs</h2>
+                <p>Alpine tracks the active tab; HTMx fetches each tab's body on first visit and caches it locally.</p>
             </header>
-            <div x-data="{ tab: 'overview' }">
+            <div x-data="{ tab: 'overview' }" class="lp-stage bg-[#0C0A09]">
                 <nav class="flex gap-1 mb-4 border-b border-white/10">
                     <template x-for="t in [{ id:'overview', label:'Overview' }, { id:'stats', label:'Stats' }, { id:'activity', label:'Activity' }]" :key="t.id">
                         <button @click="tab = t.id"
-                                :class="tab === t.id ? 'text-cyan-300 border-cyan-400' : 'text-gray-400 border-transparent hover:text-gray-200'"
+                                :class="tab === t.id ? 'text-orange-300 border-orange-400' : 'text-gray-400 border-transparent hover:text-gray-200'"
                                 class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
                                 x-text="t.label"></button>
                     </template>
@@ -208,10 +207,11 @@
         </section>
 
         <!-- 4. Inline edit =============================================== -->
-        <section class="rounded-2xl bg-white/5 border border-white/10 p-6">
-            <header class="mb-4">
-                <h2 class="text-lg font-semibold text-white">4. Inline Edit</h2>
-                <p class="text-sm text-gray-400">Click the text to edit. <kbd class="px-1 py-0.5 text-xs bg-white/10 rounded">Enter</kbd> saves, <kbd class="px-1 py-0.5 text-xs bg-white/10 rounded">Esc</kbd> cancels.</p>
+        <section class="lp-card lp-demo">
+            <header class="lp-demo-head">
+                <span class="lp-num">04</span>
+                <h2 class="lp-h3">Inline Edit</h2>
+                <p>Click the text to edit. <kbd>Enter</kbd> saves, <kbd>Esc</kbd> cancels.</p>
             </header>
             <div id="todo-row" class="p-4 rounded-xl bg-[#0C0A09]">
                 <%- partial("demos/todo_row", { "value": "Ship the demo page" }) %>
@@ -219,12 +219,13 @@
         </section>
 
         <!-- 5. Toast notifications ====================================== -->
-        <section class="rounded-2xl bg-white/5 border border-white/10 p-6">
-            <header class="mb-4">
-                <h2 class="text-lg font-semibold text-white">5. Toast Notifications</h2>
-                <p class="text-sm text-gray-400">Server responses include an <code class="text-amber-400 text-xs">HX-Trigger</code> header; Alpine listens for the event and spawns a toast.</p>
+        <section class="lp-card lp-demo">
+            <header class="lp-demo-head">
+                <span class="lp-num">05</span>
+                <h2 class="lp-h3">Toast Notifications</h2>
+                <p>Server responses include an <code>HX-Trigger</code> header; Alpine listens for the event and spawns a toast.</p>
             </header>
-            <div class="grid grid-cols-2 gap-2">
+            <div class="lp-stage bg-[#0C0A09] grid grid-cols-2 gap-2">
                 <button hx-post="/demos/api/notify?kind=success" hx-swap="none"
                         class="px-3 py-2 text-sm rounded-lg bg-emerald-500/15 text-emerald-200 border border-emerald-500/30 hover:bg-emerald-500/25 transition">Success</button>
                 <button hx-post="/demos/api/notify?kind=warning" hx-swap="none"
@@ -237,12 +238,13 @@
         </section>
 
         <!-- 6. Live counter ============================================== -->
-        <section class="rounded-2xl bg-white/5 border border-white/10 p-6">
-            <header class="mb-4">
-                <h2 class="text-lg font-semibold text-white">6. Live Counter (Polling)</h2>
-                <p class="text-sm text-gray-400">HTMx polls the server every 2&nbsp;seconds. Toggle on/off via Alpine to start and stop.</p>
+        <section class="lp-card lp-demo">
+            <header class="lp-demo-head">
+                <span class="lp-num">06</span>
+                <h2 class="lp-h3">Live Counter (Polling)</h2>
+                <p>HTMx polls the server every 2&nbsp;seconds. Toggle on/off via Alpine to start and stop.</p>
             </header>
-            <div x-data="{ live: true }" class="flex items-center gap-4">
+            <div x-data="{ live: true }" class="lp-stage bg-[#0C0A09] flex items-center gap-4">
                 <button @click="live = !live"
                         :class="live ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-white/5 text-gray-400 border-white/10'"
                         class="px-3 py-1.5 text-xs rounded-lg border transition">
@@ -264,12 +266,13 @@
         </section>
 
         <!-- 7. Confirm-dismiss list ====================================== -->
-        <section class="rounded-2xl bg-white/5 border border-white/10 p-6">
-            <header class="mb-4">
-                <h2 class="text-lg font-semibold text-white">7. Confirm-Dismiss</h2>
-                <p class="text-sm text-gray-400">Alpine collapses the row, HTMx <code class="text-amber-400 text-xs">DELETE</code>s after the transition completes.</p>
+        <section class="lp-card lp-demo">
+            <header class="lp-demo-head">
+                <span class="lp-num">07</span>
+                <h2 class="lp-h3">Confirm-Dismiss</h2>
+                <p>Alpine collapses the row, HTMx <code>DELETE</code>s after the transition completes.</p>
             </header>
-            <ul class="space-y-2">
+            <ul class="lp-stage bg-[#0C0A09] space-y-2">
                 <% for label in ["Approve invoice #4218", "Send weekly digest", "Re-run nightly backup"] %>
                     <li x-data="{ dismissed: false }"
                         x-show="!dismissed"
@@ -286,14 +289,15 @@
         </section>
 
         <!-- 8. Modal with HTMx-loaded form =============================== -->
-        <section class="rounded-2xl bg-white/5 border border-white/10 p-6">
-            <header class="mb-4">
-                <h2 class="text-lg font-semibold text-white">8. Modal With HTMx-Loaded Form</h2>
-                <p class="text-sm text-gray-400">The form HTML is fetched by HTMx the first time the modal opens; Alpine handles open/close state.</p>
+        <section class="lp-card lp-demo">
+            <header class="lp-demo-head">
+                <span class="lp-num">08</span>
+                <h2 class="lp-h3">Modal With HTMx-Loaded Form</h2>
+                <p>The form HTML is fetched by HTMx the first time the modal opens; Alpine handles open/close state.</p>
             </header>
             <div x-data="{ open: false }">
                 <button @click="open = true; htmx.ajax('GET', '/demos/api/modal-form', { target: $refs.body, swap: 'innerHTML' })"
-                        class="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-white text-sm font-medium transition">
+                        class="lp-btn lp-btn-solid lp-btn-sm">
                     Open modal
                 </button>
                 <div x-show="open" x-cloak @click.self="open = false"
@@ -318,11 +322,12 @@
         </section>
 
         <!-- 9. Live bar chart =========================================== -->
-        <section x-data="{ live: true }" class="rounded-2xl bg-white/5 border border-white/10 p-6 md:col-span-2">
-            <header class="mb-4 flex items-start justify-between gap-4">
+        <section x-data="{ live: true }" class="lp-card lp-demo lp-demo-wide">
+            <header class="lp-demo-head lp-demo-head-row">
                 <div>
-                    <h2 class="text-lg font-semibold text-white">9. Live Bar Chart (SVG)</h2>
-                    <p class="text-sm text-gray-400">HTMx polls every 2&nbsp;seconds; the server synthesizes a fresh 12-point window and renders SVG bars + sparkline. Hover a bar for its value.</p>
+                    <span class="lp-num">09</span>
+                <h2 class="lp-h3">Live Bar Chart (SVG)</h2>
+                    <p>HTMx polls every 2&nbsp;seconds; the server synthesizes a fresh 12-point window and renders SVG bars + sparkline. Hover a bar for its value.</p>
                 </div>
                 <button @click="live = !live"
                         :class="live ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-white/5 text-gray-400 border-white/10'"
@@ -338,25 +343,26 @@
                  class="p-4 rounded-xl bg-[#0C0A09] min-h-40">
                 <div class="h-32 flex items-center justify-center text-xs text-gray-600 shimmer rounded">Connecting…</div>
             </div>
-            <details class="mt-4 text-xs text-gray-500">
-                <summary class="cursor-pointer hover:text-gray-300">show snippet</summary>
-                <pre class="mt-2 p-3 rounded bg-[#0C0A09] overflow-x-auto text-gray-300"><code>&lt;div hx-get="/demos/api/chart"
+            <details class="lp-snippet">
+                <summary>Show the snippet</summary>
+                <pre class="bg-[#0C0A09]"><code>&lt;div hx-get="/demos/api/chart"
      hx-trigger="load, every 2s[this.dataset.live === 'true']"
      hx-swap="innerHTML"&gt;&lt;/div&gt;</code></pre>
             </details>
         </section>
 
         <!-- 10. Users Table (CRUD) ======================================== -->
-        <section x-data="{ addOpen: false }" @soli-add-user-close.window="addOpen = false" class="rounded-2xl bg-white/5 border border-white/10 p-6 md:col-span-2">
-            <header class="mb-4 flex items-start justify-between gap-4">
+        <section x-data="{ addOpen: false }" @soli-add-user-close.window="addOpen = false" class="lp-card lp-demo lp-demo-wide">
+            <header class="lp-demo-head lp-demo-head-row">
                 <div>
-                    <h2 class="text-lg font-semibold text-white">10. Users Table (CRUD)</h2>
-                    <p class="text-sm text-gray-400">
+                    <span class="lp-num">10</span>
+                <h2 class="lp-h3">Users Table (CRUD)</h2>
+                    <p>
                         Server-rendered datatable with sort, search, pagination, inline edit, status toggle, role select, delete with confirm, and add via modal.
                     </p>
                 </div>
             </header>
-            <div class="space-y-4">
+            <div class="lp-stage bg-[#0C0A09] space-y-4">
                 <div class="flex items-center gap-3">
                     <div class="relative flex-1">
                         <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -413,15 +419,11 @@
 
     </div>
 
-    <footer class="text-center text-sm text-gray-500 pt-8 border-t border-white/5">
-        <p>
-            Source:
-            <a href="https://github.com/solisoft/soli_lang/blob/main/www/app/controllers/demos_controller.sl" class="text-cyan-400 hover:underline" target="_blank" rel="noopener">demos_controller.sl</a>
-            ·
-            <a href="https://github.com/solisoft/soli_lang/blob/main/www/app/views/demos/client_interactivity.html.slv" class="text-cyan-400 hover:underline" target="_blank" rel="noopener">client_interactivity.html.slv</a>
-        </p>
-        <p class="mt-2">
-            Want to learn the patterns? Read the <a href="/docs/core-concepts/client-interactivity" class="text-cyan-400 hover:underline">Client Interactivity docs</a>.
-        </p>
-    </footer>
+    <p class="lp-note" style="margin-top: 48px; text-align: center;">
+        Source:
+        <a href="https://github.com/solisoft/soli_lang/blob/main/www/app/controllers/demos_controller.sl" class="lp-link" style="display: inline;" target="_blank" rel="noopener">demos_controller.sl</a>
+        &middot;
+        <a href="https://github.com/solisoft/soli_lang/blob/main/www/app/views/demos/client_interactivity.html.slv" class="lp-link" style="display: inline;" target="_blank" rel="noopener">client_interactivity.html.slv</a>
+    </p>
+</div>
 </div>
