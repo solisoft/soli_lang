@@ -51,6 +51,9 @@ impl TypeChecker {
                 };
 
                 self.env.define(name.clone(), var_type);
+                if type_annotation.is_none() {
+                    self.note_constructed_class(name, initializer.as_ref());
+                }
                 Ok(())
             }
 

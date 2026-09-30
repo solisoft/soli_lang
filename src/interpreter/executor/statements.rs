@@ -645,8 +645,8 @@ impl Interpreter {
         // Collect methods
         let mut methods = HashMap::new();
         let mut static_methods = HashMap::new();
-        let mut private_methods = HashSet::new();
-        let mut protected_methods = HashSet::new();
+        let mut private_members = HashSet::new();
+        let mut protected_members = HashSet::new();
 
         let source_path = self
             .current_source_path
@@ -660,10 +660,10 @@ impl Interpreter {
             } else {
                 match method_decl.visibility {
                     crate::ast::stmt::Visibility::Private => {
-                        private_methods.insert(method_decl.name.clone());
+                        private_members.insert(method_decl.name.clone());
                     }
                     crate::ast::stmt::Visibility::Protected => {
-                        protected_methods.insert(method_decl.name.clone());
+                        protected_members.insert(method_decl.name.clone());
                     }
                     crate::ast::stmt::Visibility::Public => {}
                 }
@@ -677,7 +677,7 @@ impl Interpreter {
             }
         }
 
-        if !private_methods.is_empty() || !protected_methods.is_empty() {
+        if !private_members.is_empty() || !protected_members.is_empty() {
             crate::interpreter::value::note_restricted_methods_declared();
         }
 
@@ -727,7 +727,19 @@ impl Interpreter {
                 if field.is_const {
                     const_fields.insert(field.name.clone());
                 }
+                match field.visibility {
+                    crate::ast::stmt::Visibility::Private => {
+                        private_members.insert(field.name.clone());
+                    }
+                    crate::ast::stmt::Visibility::Protected => {
+                        protected_members.insert(field.name.clone());
+                    }
+                    crate::ast::stmt::Visibility::Public => {}
+                }
             }
+        }
+        if !private_members.is_empty() || !protected_members.is_empty() {
+            crate::interpreter::value::note_restricted_methods_declared();
         }
 
         let class = Class {
@@ -743,8 +755,8 @@ impl Interpreter {
             nested_classes: Rc::new(RefCell::new(HashMap::new())),
             const_fields,
             static_const_fields,
-            private_methods: Rc::new(RefCell::new(private_methods)),
-            protected_methods: Rc::new(RefCell::new(protected_methods)),
+            private_members: Rc::new(RefCell::new(private_members)),
+            protected_members: Rc::new(RefCell::new(protected_members)),
             is_module: decl.is_module,
             ..Default::default()
         };

@@ -1,3 +1,12 @@
+// Reads `obj.<name>` through an untyped parameter: the static checker cannot
+// see the receiver's class, so the runtime's refusal is what gets tested.
+fn read_member(obj, name) {
+    if name == "password" { return obj.password rescue "refused"; }
+    if name == "value" { return obj.value rescue "refused"; }
+    if name == "email" { return obj.email rescue "refused"; }
+    return nil;
+}
+
 // ============================================================================
 // Classes Test Suite
 // ============================================================================
@@ -405,7 +414,7 @@ describe("Static Fields", fn() {
 });
 
 describe("Private and Protected Visibility", fn() {
-    test("private keyword is parsed on field", fn() {
+    test("a private field is reachable on self only", fn() {
         class Secret {
             private password: String = "secret";
             fn get_password() {
@@ -414,7 +423,7 @@ describe("Private and Protected Visibility", fn() {
         }
         let s = new Secret();
         assert_eq(s.get_password(), "secret");
-        assert_eq(s.password, "secret");
+        assert_eq(read_member(s, "password"), "refused");
     });
 
     test("a private method is callable on self only", fn() {
@@ -432,12 +441,16 @@ describe("Private and Protected Visibility", fn() {
         assert_eq(result, "refused");
     });
 
-    test("protected keyword is parsed on field", fn() {
+    test("a protected field is refused from outside", fn() {
         class Base {
             protected value: Int = 10;
+            fn value_of(other) {
+                return other.value;
+            }
         }
         let b = new Base();
-        assert_eq(b.value, 10);
+        assert_eq(b.value_of(new Base()), 10);
+        assert_eq(read_member(b, "value"), "refused");
     });
 
     test("a protected method is reachable from its class, not from outside", fn() {
@@ -493,7 +506,7 @@ describe("Private and Protected Visibility", fn() {
         }
         let u = new User(1, "test@example.com", "Alice");
         assert_eq(u.get_id(), 1);
-        assert_eq(u.email, "test@example.com");
+        assert_eq(read_member(u, "email"), "refused");
         assert_eq(u.name, "Alice");
     });
 

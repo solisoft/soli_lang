@@ -1620,15 +1620,15 @@ pub struct Class {
     pub concern_static_methods: Rc<RefCell<HashMap<String, Rc<Function>>>>,
     /// Names of concern class methods (VM copies matching `vm_static_methods`).
     pub concern_method_names: Rc<RefCell<Vec<String>>>,
-    /// Instance methods declared `private` on this class (not its ancestors).
-    /// Callable only from inside an instance of the declaring class or a
-    /// subclass: `@name`, `this.name`, or the bare `name`. `Rc` so the VM's
-    /// per-method class rebuilds share one set.
-    pub private_methods: Rc<RefCell<HashSet<String>>>,
-    /// Instance methods declared `protected` on this class: callable from
-    /// code running in an instance of the declaring class or a subclass, on
-    /// that instance or another one. `Rc` for the same reason as above.
-    pub protected_methods: Rc<RefCell<HashSet<String>>>,
+    /// Instance methods and fields declared `private` on this class (not its
+    /// ancestors): reachable on `self` only — `@name`, `this.name`, or the
+    /// bare `name` for a method. `Rc` so the VM's per-method class rebuilds
+    /// share one set.
+    pub private_members: Rc<RefCell<HashSet<String>>>,
+    /// Instance methods and fields declared `protected` on this class:
+    /// reachable from code running in an instance of the declaring class or a
+    /// subclass, on that instance or another one. `Rc` as above.
+    pub protected_members: Rc<RefCell<HashSet<String>>>,
 }
 
 /// How far a restricted instance method reaches (see [`Class::restricted_method`]).
@@ -1656,12 +1656,19 @@ impl MethodAccess {
                 && caller.is_some_and(|class| class.is_or_inherits(defining_class)))
     }
 
-    /// The error for a call it refuses.
-    pub fn refusal(self, name: &str, class_name: &str) -> String {
+    /// The error for a call (or, when `is_field`, a field access) it refuses.
+    pub fn refusal(self, name: &str, class_name: &str, is_field: bool) -> String {
+        let (kind, verb) = if is_field {
+            ("field", "accessed")
+        } else {
+            ("method", "called")
+        };
         format!(
-            "{} method '{}' called for an instance of {}",
+            "{} {} '{}' {} for an instance of {}",
             self.label(),
+            kind,
             name,
+            verb,
             class_name
         )
     }
@@ -1708,8 +1715,8 @@ impl Default for Class {
             extended_hook_stmts: Rc::new(RefCell::new(Vec::new())),
             concern_static_methods: Rc::new(RefCell::new(HashMap::new())),
             concern_method_names: Rc::new(RefCell::new(Vec::new())),
-            private_methods: Rc::new(RefCell::new(HashSet::new())),
-            protected_methods: Rc::new(RefCell::new(HashSet::new())),
+            private_members: Rc::new(RefCell::new(HashSet::new())),
+            protected_members: Rc::new(RefCell::new(HashSet::new())),
         }
     }
 }
@@ -1755,8 +1762,8 @@ impl Class {
             extended_hook_stmts: Rc::new(RefCell::new(Vec::new())),
             concern_static_methods: Rc::new(RefCell::new(HashMap::new())),
             concern_method_names: Rc::new(RefCell::new(Vec::new())),
-            private_methods: Rc::new(RefCell::new(HashSet::new())),
-            protected_methods: Rc::new(RefCell::new(HashSet::new())),
+            private_members: Rc::new(RefCell::new(HashSet::new())),
+            protected_members: Rc::new(RefCell::new(HashSet::new())),
         }
     }
 
@@ -1782,14 +1789,15 @@ impl Class {
         }
         let mut cursor: Option<&Class> = Some(self);
         while let Some(class) = cursor {
-            if class.private_methods.borrow().contains(name) {
+            if class.private_members.borrow().contains(name) {
                 return Some((MethodAccess::Private, class.name.clone()));
             }
-            if class.protected_methods.borrow().contains(name) {
+            if class.protected_members.borrow().contains(name) {
                 return Some((MethodAccess::Protected, class.name.clone()));
             }
             if class.methods.borrow().contains_key(name)
                 || class.vm_methods.borrow().contains_key(name)
+                || class.fields.contains_key(name)
             {
                 return None;
             }

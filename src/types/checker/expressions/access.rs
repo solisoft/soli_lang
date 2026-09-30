@@ -17,27 +17,68 @@ impl TypeChecker {
     ) -> TypeResult<Type> {
         let obj_type = self.check_expr(object)?;
 
+        // An unannotated `x = new C(...)` is typed loosely (members of `C`
+        // are not checked), but which class built it is known: enough to
+        // refuse a private or protected member, and nothing more.
+        if matches!(obj_type, Type::Any | Type::Unknown) {
+            if let Some(class_name) = self.constructed_class_of(object) {
+                if let Some(class_def) = self.env.get_class(&class_name).cloned() {
+                    if let Some((field, owner)) = class_def.find_field_with_owner(name) {
+                        self.check_member_visibility(
+                            object,
+                            "field",
+                            name,
+                            &class_name,
+                            owner,
+                            (field.is_private, field.is_protected),
+                            span,
+                        )?;
+                    } else if let Some((method, owner)) = class_def.find_method_with_owner(name) {
+                        self.check_member_visibility(
+                            object,
+                            "method",
+                            name,
+                            &class_name,
+                            owner,
+                            (method.is_private, method.is_protected),
+                            span,
+                        )?;
+                    }
+                }
+            }
+        }
+
         match obj_type {
             Type::Future(_inner) => Ok(Type::Any),
             Type::Class(class) => {
                 // Look up the class in the environment to get the full definition with methods
                 let class_def = self.env.get_class(&class.name);
                 if let Some(class_def) = class_def {
-                    if let Some(field) = class_def.find_field(name) {
+                    if let Some((field, owner)) = class_def.find_field_with_owner(name) {
+                        self.check_member_visibility(
+                            object,
+                            "field",
+                            name,
+                            &class.name,
+                            owner,
+                            (field.is_private, field.is_protected),
+                            span,
+                        )?;
                         return Ok(field.ty.clone());
                     }
-                    if let Some(method) = class_def.find_method(name) {
-                        // A private method is only reachable on `self`: `@name`,
-                        // `this.name`, or the bare `name` inside the class.
-                        if method.is_private && !matches!(object.kind, ExprKind::This) {
-                            return Err(TypeError::General {
-                                message: format!(
-                                    "private method '{}' called for an instance of {}",
-                                    name, class.name
-                                ),
-                                span,
-                            });
-                        }
+                    if let Some((method, owner)) = class_def.find_method_with_owner(name) {
+                        // Private: only on `self` (`@name`, `this.name`, the bare
+                        // `name`). Protected: also from code running in an
+                        // instance of the declaring class or a subclass.
+                        self.check_member_visibility(
+                            object,
+                            "method",
+                            name,
+                            &class.name,
+                            owner,
+                            (method.is_private, method.is_protected),
+                            span,
+                        )?;
                         return Ok(collapse_zero_arg_method(Type::Function {
                             params: method.params.iter().map(|(_, t)| t.clone()).collect(),
                             return_type: Box::new(method.return_type.clone()),
@@ -671,6 +712,85 @@ impl TypeChecker {
                 span,
             }),
         }
+    }
+}
+
+/// Where the checker notes the class an unannotated variable was built from:
+/// a name no Soli identifier can take, in the variable's own scope.
+fn constructed_key(name: &str) -> String {
+    format!("\u{0}new {name}")
+}
+
+impl TypeChecker {
+    /// Remember (or forget) that variable `name` holds a `new C(...)`.
+    pub(crate) fn note_constructed_class(&mut self, name: &str, value: Option<&Expr>) {
+        let class = match value.map(|v| &v.kind) {
+            Some(ExprKind::New { class_expr, .. }) => match &class_expr.kind {
+                ExprKind::Variable(class_name) => self.env.get_class(class_name).cloned(),
+                _ => None,
+            },
+            _ => None,
+        };
+        let noted = class.map(Type::Class).unwrap_or(Type::Unknown);
+        self.env.define(constructed_key(name), noted);
+    }
+
+    /// The class `object` was built from: `new C(...)` itself, or a variable
+    /// noted by [`Self::note_constructed_class`].
+    fn constructed_class_of(&self, object: &Expr) -> Option<String> {
+        match &object.kind {
+            ExprKind::New { class_expr, .. } => match &class_expr.kind {
+                ExprKind::Variable(class_name) => Some(class_name.clone()),
+                _ => None,
+            },
+            ExprKind::Variable(name) => match self.env.get(&constructed_key(name)) {
+                Some(Type::Class(class)) => Some(class.name),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// Refuse `receiver.name` on a private or protected member the code being
+    /// checked may not reach — the rule the runtime applies. `this.name` (and
+    /// `@name`) is always allowed.
+    #[allow(clippy::too_many_arguments)]
+    fn check_member_visibility(
+        &self,
+        object: &Expr,
+        kind: &str,
+        name: &str,
+        receiver_class: &str,
+        owner: &str,
+        (is_private, is_protected): (bool, bool),
+        span: Span,
+    ) -> TypeResult<()> {
+        if !(is_private || is_protected) || matches!(object.kind, ExprKind::This) {
+            return Ok(());
+        }
+        let inside_hierarchy = self.env.get("this").is_some()
+            && self
+                .env
+                .current_class_type()
+                .is_some_and(|current| current.is_or_inherits(owner));
+        if is_protected && inside_hierarchy {
+            return Ok(());
+        }
+        Err(TypeError::General {
+            message: format!(
+                "{} {} '{}' {} for an instance of {}",
+                if is_private { "private" } else { "protected" },
+                kind,
+                name,
+                if kind == "method" {
+                    "called"
+                } else {
+                    "accessed"
+                },
+                receiver_class
+            ),
+            span,
+        })
     }
 }
 

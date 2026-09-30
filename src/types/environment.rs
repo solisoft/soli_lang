@@ -112,6 +112,7 @@ impl TypeEnvironment {
                                 params: Vec::new(),
                                 return_type: Type::Any,
                                 is_private: false,
+                                is_protected: false,
                                 is_static: true,
                             },
                         );
@@ -1410,6 +1411,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Class(ClassType::new("DateTime".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1420,6 +1422,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Class(ClassType::new("DateTime".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1430,6 +1433,7 @@ impl TypeEnvironment {
                 params: vec![("s".to_string(), Type::String)],
                 return_type: Type::Class(ClassType::new("DateTime".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1440,6 +1444,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Class(ClassType::new("DateTime".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1450,6 +1455,7 @@ impl TypeEnvironment {
                 params: vec![("ts".to_string(), Type::Int)],
                 return_type: Type::Class(ClassType::new("DateTime".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1461,6 +1467,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Int,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1471,6 +1478,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Int,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1481,6 +1489,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Int,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1491,6 +1500,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Int,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1501,6 +1511,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Int,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1511,6 +1522,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Int,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1521,6 +1533,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Int,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1531,6 +1544,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1541,6 +1555,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Int,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1551,6 +1566,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1561,6 +1577,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1571,6 +1588,7 @@ impl TypeEnvironment {
                 params: vec![("days".to_string(), Type::Int)],
                 return_type: Type::Class(ClassType::new("DateTime".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1581,6 +1599,7 @@ impl TypeEnvironment {
                 params: vec![("hours".to_string(), Type::Int)],
                 return_type: Type::Class(ClassType::new("DateTime".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1591,6 +1610,7 @@ impl TypeEnvironment {
                 params: vec![("minutes".to_string(), Type::Int)],
                 return_type: Type::Class(ClassType::new("DateTime".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1601,6 +1621,7 @@ impl TypeEnvironment {
                 params: vec![("days".to_string(), Type::Int)],
                 return_type: Type::Class(ClassType::new("DateTime".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1611,6 +1632,7 @@ impl TypeEnvironment {
                 params: vec![("fmt".to_string(), Type::String)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1623,6 +1645,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Class(ClassType::new("DateTime".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1647,6 +1670,7 @@ impl TypeEnvironment {
                     params: vec![],
                     return_type: Type::Class(ClassType::new("DateTime".to_string())),
                     is_private: false,
+                    is_protected: false,
                     is_static: false,
                 },
             );
@@ -1671,6 +1695,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::Class(ClassType::new("Duration".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1681,6 +1706,7 @@ impl TypeEnvironment {
                 params: vec![("seconds".to_string(), Type::Float)],
                 return_type: Type::Class(ClassType::new("Duration".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1691,6 +1717,7 @@ impl TypeEnvironment {
                 params: vec![("minutes".to_string(), Type::Float)],
                 return_type: Type::Class(ClassType::new("Duration".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1701,6 +1728,7 @@ impl TypeEnvironment {
                 params: vec![("hours".to_string(), Type::Float)],
                 return_type: Type::Class(ClassType::new("Duration".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1711,6 +1739,7 @@ impl TypeEnvironment {
                 params: vec![("days".to_string(), Type::Float)],
                 return_type: Type::Class(ClassType::new("Duration".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1721,6 +1750,7 @@ impl TypeEnvironment {
                 params: vec![("weeks".to_string(), Type::Float)],
                 return_type: Type::Class(ClassType::new("Duration".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1732,6 +1762,7 @@ impl TypeEnvironment {
                 params: vec![("seconds".to_string(), Type::Float)],
                 return_type: Type::Class(ClassType::new("Duration".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1742,6 +1773,7 @@ impl TypeEnvironment {
                 params: vec![("minutes".to_string(), Type::Float)],
                 return_type: Type::Class(ClassType::new("Duration".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1752,6 +1784,7 @@ impl TypeEnvironment {
                 params: vec![("hours".to_string(), Type::Float)],
                 return_type: Type::Class(ClassType::new("Duration".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1762,6 +1795,7 @@ impl TypeEnvironment {
                 params: vec![("days".to_string(), Type::Float)],
                 return_type: Type::Class(ClassType::new("Duration".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1772,6 +1806,7 @@ impl TypeEnvironment {
                 params: vec![("weeks".to_string(), Type::Float)],
                 return_type: Type::Class(ClassType::new("Duration".to_string())),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1783,6 +1818,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Float,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1793,6 +1829,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Float,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1803,6 +1840,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Float,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1813,6 +1851,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::Float,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1823,6 +1862,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1833,6 +1873,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -1850,6 +1891,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::Bool,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1863,6 +1905,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1876,6 +1919,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::Array(Box::new(Type::Any)),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1890,6 +1934,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1904,6 +1949,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1917,6 +1963,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::Array(Box::new(Type::String)),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1930,6 +1977,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1940,6 +1988,7 @@ impl TypeEnvironment {
                 params: vec![("string".to_string(), Type::String)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1954,6 +2003,7 @@ impl TypeEnvironment {
                 params: vec![],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1964,6 +2014,7 @@ impl TypeEnvironment {
                 params: vec![("locale".to_string(), Type::String)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1978,6 +2029,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -1993,6 +2045,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2006,6 +2059,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2020,6 +2074,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2033,6 +2088,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2051,6 +2107,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2061,6 +2118,7 @@ impl TypeEnvironment {
                 params: vec![("body".to_string(), Type::String)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2071,6 +2129,7 @@ impl TypeEnvironment {
                 params: vec![("xml".to_string(), Type::String)],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2081,6 +2140,7 @@ impl TypeEnvironment {
                 params: vec![("text".to_string(), Type::String)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2091,6 +2151,7 @@ impl TypeEnvironment {
                 params: vec![("hash".to_string(), Type::Any)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2105,6 +2166,7 @@ impl TypeEnvironment {
                 params: vec![("json".to_string(), Type::String)],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2115,6 +2177,7 @@ impl TypeEnvironment {
                 params: vec![("value".to_string(), Type::Any)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2125,6 +2188,7 @@ impl TypeEnvironment {
                 params: vec![("jsonp".to_string(), Type::String)],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2177,6 +2241,7 @@ impl TypeEnvironment {
                         params: vec![("args".to_string(), Type::Any)],
                         return_type: ret.clone(),
                         is_private: false,
+                        is_protected: false,
                         is_static: true,
                     },
                 );
@@ -2214,6 +2279,7 @@ impl TypeEnvironment {
                             params: vec![("args".to_string(), Type::Any)],
                             return_type: ret.clone(),
                             is_private: false,
+                            is_protected: false,
                             is_static: true,
                         },
                     );
@@ -2233,6 +2299,7 @@ impl TypeEnvironment {
                 params: vec![("data".to_string(), Type::Any)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2243,6 +2310,7 @@ impl TypeEnvironment {
                 params: vec![("data".to_string(), Type::Any)],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2253,6 +2321,7 @@ impl TypeEnvironment {
                 params: vec![("data".to_string(), Type::Any)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2263,6 +2332,7 @@ impl TypeEnvironment {
                 params: vec![("data".to_string(), Type::String)],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2277,6 +2347,7 @@ impl TypeEnvironment {
                 params: vec![("data".to_string(), Type::Any)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2287,6 +2358,7 @@ impl TypeEnvironment {
                 params: vec![("hex".to_string(), Type::String)],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2301,6 +2373,7 @@ impl TypeEnvironment {
                 params: vec![("pem".to_string(), Type::String)],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2314,6 +2387,7 @@ impl TypeEnvironment {
                 params: vec![("cert".to_string(), Type::Any)],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2324,6 +2398,7 @@ impl TypeEnvironment {
                 params: vec![("args".to_string(), Type::Any)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2334,6 +2409,7 @@ impl TypeEnvironment {
                 params: vec![("args".to_string(), Type::Any)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2344,6 +2420,7 @@ impl TypeEnvironment {
                 params: vec![("cert".to_string(), Type::Any)],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2354,6 +2431,7 @@ impl TypeEnvironment {
                 params: vec![("args".to_string(), Type::Any)],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2436,6 +2514,7 @@ impl TypeEnvironment {
                     params,
                     return_type,
                     is_private: false,
+                    is_protected: false,
                     is_static: true,
                 },
             );
@@ -2459,6 +2538,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2481,6 +2561,7 @@ impl TypeEnvironment {
                 ],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2500,6 +2581,7 @@ impl TypeEnvironment {
                 params: vec![("command".to_string(), Type::Any)],
                 return_type: Type::Future(Box::new(Type::Any)),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2510,6 +2592,7 @@ impl TypeEnvironment {
                 params: vec![("command".to_string(), Type::Any)],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2524,6 +2607,7 @@ impl TypeEnvironment {
                 params: vec![("markdown".to_string(), Type::String)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2534,6 +2618,7 @@ impl TypeEnvironment {
                 params: vec![("markdown".to_string(), Type::String)],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2545,6 +2630,7 @@ impl TypeEnvironment {
                 params: vec![("markdown".to_string(), Type::String)],
                 return_type: Type::Array(Box::new(Type::Any)),
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2572,6 +2658,7 @@ impl TypeEnvironment {
                     params: vec![("args".to_string(), Type::Any)],
                     return_type: Type::Any,
                     is_private: false,
+                    is_protected: false,
                     is_static: true,
                 },
             );
@@ -2673,6 +2760,7 @@ impl TypeEnvironment {
                     params: vec![("args".to_string(), Type::Any)],
                     return_type: Type::Any,
                     is_private: false,
+                    is_protected: false,
                     is_static: true,
                 },
             );
@@ -2695,6 +2783,7 @@ impl TypeEnvironment {
                     params: vec![("args".to_string(), Type::Any)],
                     return_type,
                     is_private: false,
+                    is_protected: false,
                     is_static: true,
                 },
             );
@@ -2712,6 +2801,7 @@ impl TypeEnvironment {
                     params: vec![("args".to_string(), Type::Any)],
                     return_type,
                     is_private: false,
+                    is_protected: false,
                     is_static: true,
                 },
             );
@@ -2729,6 +2819,7 @@ impl TypeEnvironment {
                     params: vec![("args".to_string(), Type::Any)],
                     return_type,
                     is_private: false,
+                    is_protected: false,
                     is_static: true,
                 },
             );
@@ -2752,6 +2843,7 @@ impl TypeEnvironment {
                     params: vec![("args".to_string(), Type::Any)],
                     return_type,
                     is_private: false,
+                    is_protected: false,
                     is_static: true,
                 },
             );
@@ -2768,6 +2860,7 @@ impl TypeEnvironment {
                 params: vec![("args".to_string(), Type::Any)],
                 return_type: Type::Any,
                 is_private: false,
+                is_protected: false,
                 is_static: true,
             },
         );
@@ -2784,6 +2877,7 @@ impl TypeEnvironment {
                     params: vec![],
                     return_type: Type::Any,
                     is_private: false,
+                    is_protected: false,
                     is_static: true,
                 },
             );
@@ -2801,6 +2895,7 @@ impl TypeEnvironment {
                     params: vec![("args".to_string(), Type::Any)],
                     return_type: Type::String,
                     is_private: false,
+                    is_protected: false,
                     is_static: true,
                 },
             );
@@ -2817,6 +2912,7 @@ impl TypeEnvironment {
                     params: vec![],
                     return_type: Type::String,
                     is_private: false,
+                    is_protected: false,
                     is_static: true,
                 },
             );
@@ -2833,6 +2929,7 @@ impl TypeEnvironment {
                     params: vec![],
                     return_type: Type::String,
                     is_private: false,
+                    is_protected: false,
                     is_static: true,
                 },
             );
@@ -2852,6 +2949,7 @@ impl TypeEnvironment {
                     ],
                     return_type: Type::String,
                     is_private: false,
+                    is_protected: false,
                     is_static: true,
                 },
             );

@@ -139,8 +139,10 @@ impl TypeChecker {
                     ref other => other.clone(),
                 };
                 self.env.define(name.clone(), defined_type);
+                self.note_constructed_class(name, Some(value));
                 return Ok(value_type);
             }
+            self.note_constructed_class(name, Some(value));
         }
 
         // Writing a key into a hash. The value type of a hash literal is a

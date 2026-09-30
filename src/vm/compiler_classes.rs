@@ -168,6 +168,17 @@ impl Compiler {
             (false, true) => self.emit(Op::ConstField(name_idx), line),
             (false, false) => self.emit(Op::Field(name_idx), line),
         };
+        if !field.is_static {
+            match field.visibility {
+                crate::ast::stmt::Visibility::Private => {
+                    self.emit(Op::MarkPrivate(name_idx), line);
+                }
+                crate::ast::stmt::Visibility::Protected => {
+                    self.emit(Op::MarkProtected(name_idx), line);
+                }
+                crate::ast::stmt::Visibility::Public => {}
+            }
+        }
         Ok(())
     }
 

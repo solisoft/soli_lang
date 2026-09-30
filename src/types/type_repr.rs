@@ -240,6 +240,37 @@ impl ClassType {
         None
     }
 
+    /// `find_field`, plus the name of the class that declares the field.
+    pub fn find_field_with_owner(&self, name: &str) -> Option<(&FieldInfo, &str)> {
+        if let Some(field) = self.fields.get(name) {
+            return Some((field, self.name.as_str()));
+        }
+        self.superclass
+            .as_ref()
+            .and_then(|super_| super_.find_field_with_owner(name))
+    }
+
+    /// `find_method`, plus the name of the class that declares the method.
+    pub fn find_method_with_owner(&self, name: &str) -> Option<(&MethodInfo, &str)> {
+        if let Some(method) = self.methods.get(name) {
+            return Some((method, self.name.as_str()));
+        }
+        self.superclass
+            .as_ref()
+            .and_then(|super_| super_.find_method_with_owner(name))
+    }
+
+    /// Is this class `name`, or does it inherit from it (as far as this pass
+    /// can see the ancestry)?
+    pub fn is_or_inherits(&self, name: &str) -> bool {
+        if self.name == name || self.unresolved_superclass.as_deref() == Some(name) {
+            return true;
+        }
+        self.superclass
+            .as_ref()
+            .is_some_and(|super_| super_.is_or_inherits(name))
+    }
+
     /// Whether members this declaration does not carry may still exist at run
     /// time — so an unknown one is answered with `Any` rather than an error.
     pub fn has_members_elsewhere(&self) -> bool {
@@ -276,6 +307,7 @@ pub struct FieldInfo {
     pub name: String,
     pub ty: Type,
     pub is_private: bool,
+    pub is_protected: bool,
     pub is_static: bool,
 }
 
@@ -286,6 +318,7 @@ pub struct MethodInfo {
     pub params: Vec<(String, Type)>,
     pub return_type: Type,
     pub is_private: bool,
+    pub is_protected: bool,
     pub is_static: bool,
 }
 
@@ -602,6 +635,7 @@ mod tests {
                 name: "name".to_string(),
                 ty: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -621,6 +655,7 @@ mod tests {
                 params: vec![],
                 return_type: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -640,6 +675,7 @@ mod tests {
                 name: "n".to_string(),
                 ty: Type::Int,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );
@@ -650,6 +686,7 @@ mod tests {
                 name: "n".to_string(),
                 ty: Type::String,
                 is_private: false,
+                is_protected: false,
                 is_static: false,
             },
         );

@@ -1632,14 +1632,14 @@ impl Vm {
                 Op::MarkPrivate(name_idx) => {
                     let name = self.read_string_constant_owned(name_idx);
                     if let Some(Value::Class(class)) = self.stack.last() {
-                        class.private_methods.borrow_mut().insert(name);
+                        class.private_members.borrow_mut().insert(name);
                         crate::interpreter::value::note_restricted_methods_declared();
                     }
                 }
                 Op::MarkProtected(name_idx) => {
                     let name = self.read_string_constant_owned(name_idx);
                     if let Some(Value::Class(class)) = self.stack.last() {
-                        class.protected_methods.borrow_mut().insert(name);
+                        class.protected_members.borrow_mut().insert(name);
                         crate::interpreter::value::note_restricted_methods_declared();
                     }
                 }
@@ -2805,6 +2805,10 @@ impl Vm {
                             }
                         };
                         if let Some(val) = hit {
+                            if crate::interpreter::value::restricted_methods_declared() {
+                                let name = self.read_string_constant_owned(idx);
+                                self.check_private_value(&object, &name)?;
+                            }
                             let val = self.force_field_hit(val)?;
                             self.stack.push(val);
                             continue;
@@ -2856,6 +2860,14 @@ impl Vm {
                 }
                 Op::SetProperty(idx) => {
                     let value = self.stack.pop().unwrap();
+                    // A private/protected field written from outside: refused
+                    // like the read. One relaxed load while no class declares
+                    // a restricted member.
+                    if crate::interpreter::value::restricted_methods_declared() {
+                        let name = self.read_string_constant_owned(idx);
+                        let object = self.stack.last().unwrap().clone();
+                        self.check_private_value(&object, &name)?;
+                    }
                     // Fast path: in-place update of an EXISTING instance
                     // field — no name copy, no span. First-time sets (key
                     // absent) fall through to the general path, which needs
@@ -4125,6 +4137,11 @@ impl Vm {
                         }
                     };
                     if let Some(val) = hit {
+                        if crate::interpreter::value::restricted_methods_declared() {
+                            let object = self.stack[base + slot as usize].clone();
+                            let name = self.read_string_constant_owned(idx);
+                            self.check_private_value(&object, &name)?;
+                        }
                         let val = self.force_field_hit(val)?;
                         self.stack.push(val);
                         continue;

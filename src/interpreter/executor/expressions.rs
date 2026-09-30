@@ -260,6 +260,7 @@ impl Interpreter {
             ExprKind::Variable(name) => self.store_variable(name, new_value, target.span),
             ExprKind::Member { object, name } => {
                 let obj_val = self.evaluate(object)?;
+                self.check_private_access(object, &obj_val, name, target.span)?;
                 match obj_val {
                     Value::Instance(inst) => {
                         if inst.borrow().class.const_fields.contains(name.as_str()) {
@@ -646,6 +647,7 @@ impl Interpreter {
             }
             ExprKind::Member { object, name } => {
                 let obj_val = self.evaluate(object)?;
+                self.check_private_access(object, &obj_val, name, target.span)?;
                 match obj_val {
                     Value::Instance(inst) => {
                         if inst.borrow().class.const_fields.contains(name.as_str()) {

@@ -2519,8 +2519,15 @@ account.valid_amount?(1.0)       # raises: private method 'valid_amount?' …
 - **`soli fmt`** writes visibility as sections: a `private def` becomes a
   `private` line above the method (and a `public` line above the next public
   one).
-- **Not enforced yet:** `private` / `protected` on *fields* are accepted and
-  recorded but not checked — fields behave as public.
+- **Fields follow the same rules.** A `private` field is readable and writable
+  on `self` only (`@secret`, `this.secret`); a `protected` one also from code
+  running in an instance of the declaring class or a subclass. Anything else
+  raises `private field 'secret' accessed for an instance of Vault` — reads and
+  writes alike. Fields under a `private` section are private.
+- **`soli check`** reports these calls and accesses when it knows the
+  receiver's class: an annotated variable (`v: Vault`), or a variable
+  assigned `new Vault(...)`. A receiver it cannot type (an unannotated
+  parameter, say) is left to the runtime.
 
 ### Protected Methods
 
@@ -2553,8 +2560,7 @@ new Account(10).balance                        # raises: protected method 'balan
 ```
 
 `protected def x` marks one method; `protected` alone on its line starts a
-section, like `private`. `soli check` does not report protected calls yet; the
-runtime does, on both engines.
+section, like `private`.
 
 ### Static Members
 

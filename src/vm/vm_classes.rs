@@ -647,8 +647,9 @@ impl Vm {
         if access.allows(&defining, on_self, caller.as_deref()) {
             return Ok(());
         }
+        let inst = inst.borrow();
         Err(RuntimeError::General {
-            message: access.refusal(name, &inst.borrow().class.name),
+            message: access.refusal(name, &inst.class.name, inst.fields.contains_key(name)),
             span: self.current_span(),
         })
     }

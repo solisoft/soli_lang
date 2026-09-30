@@ -43,6 +43,7 @@ impl TypeChecker {
                     name: field.name.clone(),
                     ty,
                     is_private: matches!(field.visibility, Visibility::Private),
+                    is_protected: matches!(field.visibility, Visibility::Protected),
                     is_static: field.is_static,
                 },
             );
@@ -76,6 +77,7 @@ impl TypeChecker {
                     params,
                     return_type,
                     is_private: matches!(method.visibility, Visibility::Private),
+                    is_protected: matches!(method.visibility, Visibility::Protected),
                     is_static: method.is_static,
                 },
             );
@@ -159,6 +161,7 @@ impl TypeChecker {
             params,
             return_type,
             is_private: matches!(method.visibility, Visibility::Private),
+            is_protected: matches!(method.visibility, Visibility::Protected),
             is_static,
         }
     }

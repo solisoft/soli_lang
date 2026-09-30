@@ -1255,6 +1255,11 @@ const CASES: &[(&str, &str)] = &[
         "add_assign_with_a_computed_right_hand_side",
         "def run()\n  total = 0\n  total = total + [1, 2].length\n  total += 3 * 2\n  f = 1.5\n  f = f + [1].length\n  arr = [1]\n  arr = arr + [[2].first]\n  label = \"n=\"\n  label = label + str(total)\n  label += \"#{f}\"\n  up = \"u\"\n  bump = fn() { up = up + \"#{1 + 1}\"; up += str(3) }\n  bump()\n  alias = label\n  label += \"!\"\n  return [total, f, arr, label, alias, up]\nend\nprint(run())\ng = \"g\"\ng = g + \"#{1}\"\ng += str(2)\nprint(g)",
     ),
+    // --- field visibility ---
+    (
+        "field_visibility",
+        "class Vault\n  private secret: String\n  protected level: Int\n\n  new(secret: String, level: Int)\n    @secret = secret\n    @level = level\n  end\n\n  def reveal\n    @secret\n  end\n\n  def level_of(other)\n    other.level\n  end\nend\n\ndef read_secret(x)\n  x.secret rescue \"refused\"\nend\n\ndef read_level(x)\n  x.level rescue \"refused\"\nend\n\ndef write_secret(x)\n  try\n    x.secret = \"lead\"\n    return \"written\"\n  catch error\n    return \"refused\"\n  end\nend\nv = new Vault(\"gold\", 3)\nprint(v.reveal)\nprint(v.level_of(new Vault(\"x\", 7)))\nprint(read_secret(v))\nprint(read_level(v))\nprint(write_secret(v))\nprint(v.reveal)",
+    ),
     // --- protected methods ---
     (
         "protected_reachable_in_class_and_subclass",
@@ -1262,7 +1267,7 @@ const CASES: &[(&str, &str)] = &[
     ),
     (
         "protected_refused_outside",
-        "class Account\n  cents: Int\n\n  new(cents: Int)\n    @cents = cents\n  end\n\n  def richer_than?(other)\n    balance > other.balance\n  end\n\n  protected\n\n  def balance\n    @cents\n  end\nend\n\nclass Savings < Account\n  def compare(other)\n    other.balance\n  end\nend\n\nclass Stranger\n  def peek(account)\n    account.balance\n  end\nend\na = new Account(10)\nprint(a.balance rescue \"refused\")\nprint(new Stranger().peek(a) rescue \"refused\")",
+        "class Account\n  cents: Int\n\n  new(cents: Int)\n    @cents = cents\n  end\n\n  def richer_than?(other)\n    balance > other.balance\n  end\n\n  protected\n\n  def balance\n    @cents\n  end\nend\n\nclass Savings < Account\n  def compare(other)\n    other.balance\n  end\nend\n\nclass Stranger\n  def peek(account)\n    account.balance\n  end\nend\ndef balance_of(x)\n  x.balance rescue \"refused\"\nend\na = new Account(10)\nprint(balance_of(a))\nprint(new Stranger().peek(a) rescue \"refused\")",
     ),
     // --- private methods and bare calls on self ---
     (
@@ -1271,11 +1276,11 @@ const CASES: &[(&str, &str)] = &[
     ),
     (
         "private_refused_from_outside",
-        "class Invoice\n  total: Int\n\n  new(total: Int)\n    @total = total\n  end\n\n  def via_at\n    @_tax(2)\n  end\n\n  def via_bare\n    _tax(2)\n  end\n\n  def via_bare_zero\n    _label\n  end\n\n  def via_bare_zero_parens\n    _label()\n  end\n\n  def via_block\n    [1, 2].map { |n| _tax(n) }\n  end\n\n  def other(invoice)\n    invoice._tax(2) rescue \"refused\"\n  end\n\n  private\n\n  def _tax(rate)\n    @total * rate\n  end\n\n  def _label\n    \"invoice #{@total}\"\n  end\nend\ninv = new Invoice(10)\nprint(inv._tax(2) rescue \"refused\")\nprint(inv._label rescue \"refused\")\nprint(inv.other(new Invoice(3)))",
+        "class Invoice\n  total: Int\n\n  new(total: Int)\n    @total = total\n  end\n\n  def via_at\n    @_tax(2)\n  end\n\n  def via_bare\n    _tax(2)\n  end\n\n  def via_bare_zero\n    _label\n  end\n\n  def via_bare_zero_parens\n    _label()\n  end\n\n  def via_block\n    [1, 2].map { |n| _tax(n) }\n  end\n\n  def other(invoice)\n    invoice._tax(2) rescue \"refused\"\n  end\n\n  private\n\n  def _tax(rate)\n    @total * rate\n  end\n\n  def _label\n    \"invoice #{@total}\"\n  end\nend\ninv = new Invoice(10)\ndef tax_of(x)\n  x._tax(2) rescue \"refused\"\nend\n\ndef label_of(x)\n  x._label rescue \"refused\"\nend\nprint(tax_of(inv))\nprint(label_of(inv))\nprint(inv.other(new Invoice(3)))",
     ),
     (
         "private_modifier_covers_one_method",
-        "class A\n  private def secret\n    1\n  end\n\n  def open\n    2\n  end\nend\na = new A()\nprint(a.open)\nprint(a.secret rescue \"refused\")",
+        "class A\n  private def secret\n    1\n  end\n\n  def open\n    2\n  end\nend\ndef secret_of(x)\n  x.secret rescue \"refused\"\nend\na = new A()\nprint(a.open)\nprint(secret_of(a))",
     ),
     (
         "private_bare_call_from_subclass",

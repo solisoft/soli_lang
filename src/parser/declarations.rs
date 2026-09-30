@@ -279,7 +279,6 @@ impl Parser {
             }
 
             let (explicit_visibility, is_static, is_const) = self.parse_explicit_modifiers();
-            let visibility = explicit_visibility.unwrap_or(Visibility::Public);
 
             if self.check(&TokenKind::New) {
                 if is_module {
@@ -316,7 +315,8 @@ impl Parser {
                 // Parse class-level statements like validates(...), before_save(...)
                 class_statements.push(self.parse_class_level_statement()?);
             } else {
-                fields.push(self.parse_field(visibility, is_static, is_const)?);
+                let field_visibility = explicit_visibility.unwrap_or(section_visibility);
+                fields.push(self.parse_field(field_visibility, is_static, is_const)?);
             }
         }
 

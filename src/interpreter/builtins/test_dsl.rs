@@ -454,8 +454,8 @@ pub fn register_expectation_class(env: &mut Environment) {
         extended_hook_stmts: Rc::new(RefCell::new(Vec::new())),
         concern_static_methods: Rc::new(RefCell::new(HashMap::new())),
         concern_method_names: Rc::new(RefCell::new(Vec::new())),
-        private_methods: Rc::new(RefCell::new(HashSet::new())),
-        protected_methods: Rc::new(RefCell::new(HashSet::new())),
+        private_members: Rc::new(RefCell::new(HashSet::new())),
+        protected_members: Rc::new(RefCell::new(HashSet::new())),
     };
 
     let expectation_class_rc = Rc::new(expectation_class);
