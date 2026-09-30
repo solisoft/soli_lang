@@ -16,6 +16,7 @@ def oauth_service_for(provider)
   const_get("#{provider.capitalize}Oauth") rescue nil
 end
 
+# GET /auth/:provider — redirects to the provider with a fresh state and PKCE challenge.
 def start(req)
   provider = (req["params"]["provider"] || "").to_s().downcase()
   service = oauth_service_for(provider)
@@ -27,6 +28,7 @@ def start(req)
   redirect_external(service.authorize_url(state, challenge))
 end
 
+# GET /auth/:provider/callback — checks state, exchanges the code, signs the user in.
 def callback(req)
   provider = (req["params"]["provider"] || "").to_s().downcase()
   params = req["query"] || req["query_params"] || {}

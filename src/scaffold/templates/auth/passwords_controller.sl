@@ -60,7 +60,7 @@ class PasswordsController < Controller
 
   # GET /password/edit?token=... — the form behind the emailed link
   def edit
-    user = this.user_for_token(params["token"])
+    user = @_user_for_token(params["token"])
     if user.nil?
       return render(
         "passwords/new",
@@ -84,7 +84,7 @@ class PasswordsController < Controller
 
   # POST /password/update
   def update
-    user = this.user_for_token(params["token"])
+    user = @_user_for_token(params["token"])
     if user.nil?
       return render(
         "passwords/new",
@@ -128,8 +128,8 @@ class PasswordsController < Controller
     )
   end
 
-  # Resolve a reset token to its (non-expired) user, or nil.
-  def user_for_token(token)
+  # Resolve a reset token to its (non-expired) user, or nil. `_`: not an action.
+  def _user_for_token(token)
     return null if token.blank?
 
     user = User.find_by("reset_token_digest", Crypto.sha256(token.to_s))

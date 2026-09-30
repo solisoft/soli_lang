@@ -164,6 +164,13 @@ Ruby-style, terse Soli — in code, specs, docs and scaffolds alike.
   (`this.layout = …`, `this.before_action …`), `static def`, `class_methods`, and
   scope bodies (`scope("x", fn() { this.where(...) })`), plus passing the object
   itself (`validate(this)`).
+- **Every public controller action documents its route** in a comment right
+  above the `def` — `# GET /posts/:id`, one line per route that reaches it,
+  optionally followed by `— what it does`. Helpers are not actions: prefix them
+  with `_` (`def _load_posts`, called as `@_load_posts`), which also keeps them
+  out of the router. This holds for scaffold templates and docs examples too.
+  A plain route comment stays out of the OpenAPI spec; only a block with an
+  `@tag` line is read as OpenAPI docs.
 - **Ruby-style blocks for iteration** — `xs.map { |x| x * 2 }`,
   `xs.each do |x| … end` — not `xs.map(fn(x) { return x * 2 })`. A block's last
   expression is its value: no `return`. Keep `fn` for a lambda stored in a

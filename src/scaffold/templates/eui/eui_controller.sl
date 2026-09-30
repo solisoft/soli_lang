@@ -21,6 +21,7 @@
 # way, and a formatted copy is a 3 000-line difference from the file
 # any fix upstream will be written against.
 
+# router_eui("counter", "eui#counter", "eui#counter_view") — the handler: event + state → next state.
 def counter(event_data)
   event = event_data["event"]
   state = event_data["state"]
@@ -37,6 +38,7 @@ def counter(event_data)
   end
 end
 
+# router_eui("counter", …) — the view: state → node tree.
 def counter_view(state)
   count = state["count"] ?? 0
 

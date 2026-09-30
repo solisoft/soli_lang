@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+* **scaffold:** **every public controller action documents its route.** The guidelines `soli new` writes (`CLAUDE.md`, `app/controllers/CLAUDE.md`) now say so — a `# GET /posts/:id` line right above each action, one per route that reaches it, and `_`-prefixed helpers, which the router already skips — and the generated controllers follow it: the OAuth `start` / `callback` actions and the EUI handler and view name their routes, and the password-reset helper is `_user_for_token`.
+
 ## [2.8.1] - 2026-09-30
 
 * **fix(ci):** **v2.8.0 was tagged but never published; 2.8.1 is that release.** Its CI stopped at the unwrap-count ratchet: a template test added in the cycle used `.unwrap()`, taking `src/template` to 242 calls against a baseline of 241, so the release job never ran. The test now matches on `Ok(None)`. Everything listed under 2.8.0 ships here.

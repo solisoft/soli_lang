@@ -295,6 +295,11 @@ Terse, idiomatic Soli. These rules hold across the app, specs included.
   `render("new")`, or `render("posts/new", {}, {"status": 422})`. Avoid
   `@method` / `@view` (framework-ish names).
   Specs: `assigns()` sees the `@fields` with or without an explicit `render`.
+- **Every public controller action documents its route** in a comment right
+  above the `def`: `# GET /posts/:id`, one line per route that reaches it,
+  optionally `— what it does`. Helpers are not actions: prefix them with `_`
+  (`def _load_posts`, called as `@_load_posts`), which also keeps them out of
+  the router.
 - **Ruby-style blocks for iteration** — `xs.map { |x| x * 2 }`,
   `xs.filter { |u| u.active }`, `xs.each do |x| … end` — not
   `xs.map(fn(x) { return x * 2 })`. A block's last expression is its value: no

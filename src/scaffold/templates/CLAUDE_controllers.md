@@ -13,15 +13,24 @@ belong on the model — not here.
 Inherit from `Controller`. The class body holds action methods (one per route)
 plus a `static { ... }` block for layout and lifecycle hooks.
 
+**Every public action documents its route** in a comment right above the
+`def`, one line per route that reaches it. Helpers are not actions: prefix
+them with `_` (the router skips them) and call them as `@_name(...)`.
+
 ```soli
 class PostsController < Controller
   static {
     this.layout = "application"
   }
 
+  # GET /posts — every post, newest first
   def index
-    @posts = Post.all
+    @posts = @_recent_posts
     @title = "Posts"
+  end
+
+  def _recent_posts
+    Post.order("created_at", "desc").all
   end
 end
 ```
@@ -545,6 +554,7 @@ E2E helpers: `get` / `post` / `put` / `delete` to make requests; `res_status`,
 | Set `@fields` and let the framework auto-render          | Repeat `@field` in `render(...)`'s data hash                     |
 | Wrap an action's unrelated reads in `grouped(fn() {...})`| Pay a round-trip per `@`-var when one query would do            |
 | Use `_`-prefixed methods for non-routable helpers        | Expose helper methods as public actions                          |
+| Put `# GET /posts/:id` above every public action         | Leave an action's route to be guessed from `config/routes.sl`    |
 | Use `find_by` / `first_by` when you want nil-on-miss     | Add `if record.nil?` guards after `find` — they're unreachable   |
 |                                                          | `import "../models/*.sl"` — models are auto-loaded               |
 |                                                          | Use `db_query_raw` / backticks here — push raw SQL to the model  |
