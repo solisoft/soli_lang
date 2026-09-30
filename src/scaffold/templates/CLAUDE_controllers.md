@@ -78,8 +78,10 @@ end
 ```
 
 A `before_action` returning `req` proceeds; returning a response hash (one
-with a `"status"` key) short-circuits and that response is returned to the
-client.
+with a `"status"` key, e.g. `redirect(...)`) short-circuits and that response
+is returned to the client. So does raising one: `halt(401, "Login required")`
+needs no `return`, `forbidden()` answers 403, and a `Post.find` miss — as in
+the lookup above — answers 404.
 
 ## Reading the request
 
@@ -176,8 +178,13 @@ def admin
 end
 ```
 
-`halt(status, body)` immediately returns that response and skips the rest of
-the action.
+`halt(status, message)` **raises**: it stops the action on the spot and
+answers `status` with `message` as a `text/plain` body — no `return` needed
+(`return halt(...)` works too). It stops the request from wherever it is
+called: an action, a `before_action`, a middleware, or a `_helper` several
+calls deep. Because it is an exception, a `rescue` or `try/catch` around it
+catches it (the value is the message) and the request carries on — keep
+halting code outside them.
 
 ### 7. Raw hash — when you need full control
 
@@ -488,6 +495,10 @@ as globals. Use them — never concatenate URLs by hand.
 
 Custom routes named with `name: "..."` get the same treatment:
 `get("/about", "pages#about", name: "about")` → `about_path()` / `about_url()`.
+
+A record fills `:id` from its `id` field, else from `_key` — a record loaded
+by `find`/`all` from SoliDB carries only `_key`, and `post_path(post)` works
+on it all the same.
 
 `*_path` returns a relative path; `*_url` is the absolute form (and respects
 `enable_trust_proxy` if set in `config/application.sl`).

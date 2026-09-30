@@ -3,7 +3,7 @@
 # validate as BOTH PDF/A-3b and PDF/UA-1 — guarding the accessible+archival
 # composition AND the real L/Table structure tagging against regressions.
 
-tpl = [[
+tpl = """
 {
   "fonts": ["titillium"],
   "options": { "tagged": true, "lang": "en-US" },
@@ -20,7 +20,7 @@ tpl = [[
       ] }
   ]
 }
-]]
+"""
 
 pdf = pdf_render(tpl, "{}", { "font_dirs": ["font"], "pdfa": true, "title": "Accessibility Report" })
 file_write_base64("/tmp/vp_tagged_pdfa.pdf", pdf)

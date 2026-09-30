@@ -440,9 +440,26 @@ redirect("/posts/" + post["id"])</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 text-sm mb-3">Return an error response with the given HTTP status code and message.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">halt(404, "Page Not Found")
-halt(403, "Forbidden")</code></pre>
+                <p class="text-gray-400 text-sm mb-3">Stop the request and answer <code>status</code> with <code>message</code> as a <code>text/plain</code> body. Like Sinatra&rsquo;s <code>halt</code>, it <strong>raises</strong>: a bare <code>halt(...)</code> ends the action right there &mdash; and works the same from a <code>before_action</code>, a middleware, or a helper several calls deep.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">def show
+  halt(400, "Missing ID") if params["id"].blank?
+
+  @user = find_user(params["id"])
+  halt(404, "User not found") if @user.nil?
+end
+
+private
+
+def _require_owner(post)
+  halt(403, "Not your post") unless post.author_id == current_user().id
+end</code></pre>
+                <ul class="text-gray-400 text-sm mt-3 space-y-1 list-disc list-inside">
+                    <li><code>status</code> must be an <code>Int</code> between 100 and 599; anything else raises an ordinary error (500).</li>
+                    <li><code>return halt(...)</code> still works &mdash; the raise happens before the <code>return</code>.</li>
+                    <li><code>try</code>/<code>catch</code> and postfix <code>rescue</code> catch it like any other raise (the caught value is the message).</li>
+                    <li><code>forbidden()</code> and a <code>Model.find</code> miss raised inside a <code>before_action</code> or a middleware answer 403 / 404, exactly as inside an action.</li>
+                </ul>
+                <p class="text-gray-500 text-xs mt-3">Before, <code>halt</code> <em>returned</em> a response hash: only <code>return halt(...)</code> stopped anything, and a bare <code>halt(...)</code> statement fell through while the action carried on.</p>
             </div>
         </section>
 

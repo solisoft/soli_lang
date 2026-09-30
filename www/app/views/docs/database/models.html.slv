@@ -1225,7 +1225,8 @@ contact.photo_url({ "w": 200, "h": 200, "fit": "cover" })
             <pre><code class="language-soli text-sm">class AttachmentsController &lt; ApplicationController
   static {
     this.before_action(:create, :destroy, fn(req) {
-      return halt(403) unless req["current_user"].is_admin()
+      halt(403, "Forbidden") unless req["current_user"].admin?
+      req
     })
   }
   # ... or override individual actions

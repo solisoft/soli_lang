@@ -54,22 +54,24 @@ describe("Controller Base Class", fn() {
         assert(true);
     });
 
-    test("halt(status, message) builds a response hash the short-circuit logic accepts", fn() {
-        // Hooks use `return halt(403, "Forbidden")` to abort a request.
-        // The return value must be a hash with a `status` field so
-        // `check_for_response` in serve/mod.rs treats it as a response, not as
-        // a modified request hash. Regression guard against the builtin going
-        // missing (it was undefined for a while, causing hooks to silently
-        // no-op and let requests through). Named `halt` rather than `error`
-        // because `error` collides with the common local name in form partials.
-        let r = halt(403, "Forbidden");
-        assert_eq(r["status"], 403);
-        assert_eq(r["body"], "Forbidden");
-        assert_eq(r["headers"]["Content-Type"], "text/plain; charset=utf-8");
-
-        let r2 = halt(422, "Bad payload");
-        assert_eq(r2["status"], 422);
-        assert_eq(r2["body"], "Bad payload");
+    test("halt(status, message) raises, so a bare call stops the action", fn() {
+        // Sinatra's halt: it raises, and the request handler turns the raise
+        // into the response (serve/mod.rs `raised_response`). It used to
+        // return a response hash, so `halt(403, "Forbidden")` as a statement
+        // fell through and the action carried on; only `return halt(...)`
+        // stopped anything. Named `halt` rather than `error` because `error`
+        // collides with the common local name in form partials.
+        let reached = false;
+        let caught = nil;
+        try {
+            halt(403, "Forbidden");
+            reached = true;
+        } catch e {
+            caught = e;
+        }
+        assert(!reached);
+        # `catch` sees the message, not the routing sentinel.
+        assert_eq(caught, "Forbidden");
     });
 
     test("filtered before_action DSL parses at the language level", fn() {

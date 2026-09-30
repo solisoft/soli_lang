@@ -107,29 +107,12 @@ impl<'a> Scanner<'a> {
             ')' => Ok(self.make_token(TokenKind::RightParen)),
             '{' => Ok(self.make_token(TokenKind::LeftBrace)),
             '}' => Ok(self.make_token(TokenKind::RightBrace)),
-            '[' => {
-                // Distinguish between [[ multiline string and nested array [[...], ...]
-                // If after [[ we see: digit, minus (for negative numbers), or another [
-                // then it's a nested array. Otherwise, it's a multiline string.
-                // Note: [[]] is treated as empty string "" not nested empty array
-                if self.peek() == Some('[') {
-                    let next_next = self.peek_at(1);
-                    match next_next {
-                        // Nested array indicators
-                        Some(c) if c.is_ascii_digit() => {
-                            Ok(self.make_token(TokenKind::LeftBracket))
-                        }
-                        Some('-') | Some('[') => Ok(self.make_token(TokenKind::LeftBracket)),
-                        // Everything else (including ] for empty string) is a multiline string
-                        _ => {
-                            self.advance(); // consume second [
-                            self.scan_multiline_string()
-                        }
-                    }
-                } else {
-                    Ok(self.make_token(TokenKind::LeftBracket))
-                }
-            }
+            // `[` is always a bracket. `[[ … ]]` used to open a Lua-style raw
+            // string unless a digit, `-` or `[` followed, so `[["a", 1]]` and
+            // `[[x, y]]` — arrays of arrays — lexed as strings. Raw multi-line
+            // strings are `"""…"""`; the parser points a leftover `[[ … ]]`
+            // string there.
+            '[' => Ok(self.make_token(TokenKind::LeftBracket)),
             ']' => Ok(self.make_token(TokenKind::RightBracket)),
             ',' => Ok(self.make_token(TokenKind::Comma)),
             '.' => {
@@ -502,6 +485,19 @@ impl<'a> Scanner<'a> {
                             self.advance();
                             value.push('\'');
                         }
+                        Some('0') => {
+                            self.advance();
+                            value.push('\0');
+                        }
+                        // ESC, for ANSI sequences: "\e[1m".
+                        Some('e') => {
+                            self.advance();
+                            value.push('\u{1b}');
+                        }
+                        Some('u') => {
+                            self.advance();
+                            value.push(self.scan_unicode_escape()?);
+                        }
                         Some(c) => {
                             return Err(LexerError::invalid_escape(c, self.current_span()));
                         }
@@ -578,9 +574,16 @@ impl<'a> Scanner<'a> {
         Ok(Token::new(TokenKind::BacktickString(value), span))
     }
 
-    /// Scan a Lua-style multiline string delimited by [[ and ]].
+    /// Scan a triple-quoted multiline string delimited by """ and """.
     /// Content is raw (no escape sequences processed).
-    fn scan_multiline_string(&mut self) -> Result<Token, LexerError> {
+    ///
+    /// A run of three or more quotes closes it, and the quotes beyond the
+    /// last three belong to the content — `"""say "hi""""` is `say "hi"`, as
+    /// in Kotlin and Swift. A shorter run is content. The old rule closed only
+    /// on a quote run at the end of the file: `"""…"""` followed by `)` or a
+    /// newline and more code swallowed the rest of the file, so the syntax
+    /// was unusable anywhere but last.
+    fn scan_triple_quote_string(&mut self) -> Result<Token, LexerError> {
         let start_position = self.start_pos;
         let start_line = self.start_line;
         let mut value = String::new();
@@ -590,15 +593,17 @@ impl<'a> Scanner<'a> {
                 None => {
                     return Err(LexerError::unterminated_string(self.current_span()));
                 }
-                Some(']') => {
-                    if self.peek_next() == Some(']') {
-                        self.advance(); // consume first ]
-                        self.advance(); // consume second ]
-                        break;
-                    } else {
-                        value.push(']');
+                Some('"') => {
+                    let mut run = 0;
+                    while self.peek() == Some('"') {
                         self.advance();
+                        run += 1;
                     }
+                    if run >= 3 {
+                        value.extend(std::iter::repeat_n('"', run - 3));
+                        break;
+                    }
+                    value.extend(std::iter::repeat_n('"', run));
                 }
                 Some('\n') => {
                     value.push('\n');
@@ -620,106 +625,61 @@ impl<'a> Scanner<'a> {
         Ok(Token::new(TokenKind::StringLiteral(value), span))
     }
 
-    /// Scan a triple-quoted multiline string delimited by """ and """.
-    /// Content is raw (no escape sequences processed).
-    ///
-    /// Closing: """" (4 quotes) to allow """ inside content
-    fn scan_triple_quote_string(&mut self) -> Result<Token, LexerError> {
-        let start_position = self.start_pos;
-        let start_line = self.start_line;
-        let mut value = String::new();
-
-        loop {
-            match self.peek() {
-                None => {
-                    return Err(LexerError::unterminated_string(self.current_span()));
+    /// The character a `\u` escape names, the `\u` already consumed:
+    /// `\u{1F600}` (1 to 6 hex digits, as in Ruby and Rust) or `\u00e9`
+    /// (exactly 4, as in JSON and JavaScript — a UTF-16 surrogate pair
+    /// `\uD83D\uDE00` combines into one character). A surrogate on its own,
+    /// or a value that is no Unicode scalar, is an invalid escape.
+    fn scan_unicode_escape(&mut self) -> Result<char, LexerError> {
+        let invalid = |scanner: &Self| LexerError::invalid_escape('u', scanner.current_span());
+        let code = if self.peek() == Some('{') {
+            self.advance();
+            let mut digits = String::new();
+            while let Some(c) = self.peek() {
+                if c == '}' {
+                    break;
                 }
-                Some('"') => {
-                    // Check for at least 3 quotes (""")
-                    if self.peek_next() == Some('"') && self.peek_at(1) == Some('"') {
-                        // Check if it's exactly 3 or 4+ quotes
-                        if self.peek_at(2) == Some('"') {
-                            // We have at least 4 quotes starting here
-                            // Check what comes after the 4th quote
-                            let after_fourth = self.peek_at(3);
-
-                            if after_fourth.is_none() {
-                                // Nothing after 4th quote - closing
-                                self.advance();
-                                self.advance();
-                                self.advance();
-                                self.advance();
-                                break;
-                            } else if after_fourth == Some('"') {
-                                // 5+ quotes - closing (consume all)
-                                let mut count = 0;
-                                while self.peek_at(count) == Some('"') {
-                                    count += 1;
-                                }
-                                for _ in 0..count {
-                                    self.advance();
-                                }
-                                break;
-                            } else if after_fourth == Some(' ')
-                                || after_fourth == Some('\n')
-                                || after_fourth == Some('\t')
-                            {
-                                // Whitespace after 4 quotes - check if there's more content after whitespace
-                                // For now: treat as closing only if followed by nothing or whitespace+EOF
-                                // This is conservative but avoids the edge case
-                                let after_whitespace = self.peek_at(4);
-                                if after_whitespace.is_none() {
-                                    // Nothing after whitespace - closing
-                                    self.advance();
-                                    self.advance();
-                                    self.advance();
-                                    self.advance();
-                                    break;
-                                } else {
-                                    // There's something after whitespace - could be content
-                                    // For this edge case, just treat as content
-                                    value.push('"');
-                                    self.advance();
-                                    self.advance();
-                                    self.advance();
-                                }
-                            } else {
-                                // Non-whitespace after 4 quotes - content
-                                value.push('"');
-                                self.advance();
-                                self.advance();
-                                self.advance();
-                            }
-                        } else {
-                            // Exactly 3 quotes, treat as content
-                            value.push('"');
-                            self.advance();
-                            self.advance();
-                            self.advance();
-                        }
-                    } else {
-                        value.push('"');
-                        self.advance();
-                    }
+                if !c.is_ascii_hexdigit() || digits.len() == 6 {
+                    return Err(invalid(self));
                 }
-                Some('\n') => {
-                    value.push('\n');
-                    self.advance();
-                    self.line += 1;
-                    self.column = 1;
-                }
-                Some(c) => {
-                    value.push(c);
-                    self.advance();
-                }
+                digits.push(c);
+                self.advance();
             }
+            if self.peek() != Some('}') || digits.is_empty() {
+                return Err(invalid(self));
+            }
+            self.advance();
+            u32::from_str_radix(&digits, 16).map_err(|_| invalid(self))?
+        } else {
+            let high = self.scan_hex4().ok_or_else(|| invalid(self))?;
+            if (0xD800..0xDC00).contains(&high) {
+                // A high surrogate needs its low half: `\uD83D\uDE00`.
+                if self.peek() != Some('\\') || self.peek_next() != Some('u') {
+                    return Err(invalid(self));
+                }
+                self.advance();
+                self.advance();
+                let low = self.scan_hex4().ok_or_else(|| invalid(self))?;
+                if !(0xDC00..0xE000).contains(&low) {
+                    return Err(invalid(self));
+                }
+                0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00)
+            } else {
+                high
+            }
+        };
+        char::from_u32(code).ok_or_else(|| invalid(self))
+    }
+
+    /// Exactly four hex digits, consumed.
+    fn scan_hex4(&mut self) -> Option<u32> {
+        let mut code = 0u32;
+        for _ in 0..4 {
+            let digit = self.peek()?.to_digit(16)?;
+            self.advance();
+            code = code * 16 + digit;
         }
-
-        let end_position = self.current_pos;
-        let end_column = self.column;
-        let span = Span::new(start_position, end_position, start_line, end_column);
-
-        Ok(Token::new(TokenKind::StringLiteral(value), span))
+        Some(code)
     }
 
     /// Scan a raw string: r"..." - no escape sequences processed.
@@ -1230,6 +1190,39 @@ mod tests {
             .collect()
     }
 
+    fn string_of(source: &str) -> Result<String, LexerError> {
+        let tokens = Scanner::new(source).scan_tokens()?;
+        match &tokens[0].kind {
+            TokenKind::StringLiteral(s) => Ok(s.to_string()),
+            other => panic!("expected a string literal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unicode_and_control_escapes() {
+        assert_eq!(string_of(r#""café""#).ok().as_deref(), Some("café"));
+        assert_eq!(string_of(r#""\u{1F600}!""#).ok().as_deref(), Some("😀!"));
+        assert_eq!(string_of(r#""\u{e9}""#).ok().as_deref(), Some("é"));
+        assert_eq!(string_of(r#""😀""#).ok().as_deref(), Some("😀"));
+        assert_eq!(string_of(r#"'é'"#).ok().as_deref(), Some("é"));
+        assert_eq!(
+            string_of(r#""\e[1m\0""#).ok().as_deref(),
+            Some("\u{1b}[1m\0")
+        );
+        for bad in [
+            r#""\u12""#,
+            r#""\u{}""#,
+            r#""\u{1234567}""#,
+            r#""\u{110000}""#,
+            r#""\uD83D""#,
+            r#""\uD83Dx""#,
+            r#""\uDE00""#,
+            r#""\u{zz}""#,
+        ] {
+            assert!(string_of(bad).is_err(), "{bad} should be an invalid escape");
+        }
+    }
+
     #[test]
     fn colon_after_a_value_is_a_separator_not_a_symbol() {
         // Regression: `"key":false` (no space) used to lex `:false` as the
@@ -1400,52 +1393,26 @@ mod tests {
     }
 
     #[test]
-    fn test_multiline_string() {
+    fn double_bracket_is_two_brackets() {
+        // `[[ … ]]` is no longer a raw string: an array of arrays of strings
+        // (`[["a", 1]]`) or variables lexes as brackets like any other.
+        use TokenKind::*;
         assert_eq!(
-            scan("[[hello]]"),
+            scan(r#"[["a", x]]"#),
             vec![
-                TokenKind::StringLiteral("hello".to_string()),
-                TokenKind::Eof
+                LeftBracket,
+                LeftBracket,
+                StringLiteral("a".into()),
+                Comma,
+                Identifier("x".into()),
+                RightBracket,
+                RightBracket,
+                Eof,
             ]
         );
-    }
-
-    #[test]
-    fn test_multiline_string_with_newlines() {
-        assert_eq!(
-            scan("[[line1\nline2]]"),
-            vec![
-                TokenKind::StringLiteral("line1\nline2".to_string()),
-                TokenKind::Eof
-            ]
-        );
-    }
-
-    #[test]
-    fn test_multiline_string_raw() {
-        // Backslash-n should be literal, not a newline
-        assert_eq!(
-            scan(r"[[hello\nworld]]"),
-            vec![
-                TokenKind::StringLiteral(r"hello\nworld".to_string()),
-                TokenKind::Eof
-            ]
-        );
-    }
-
-    #[test]
-    fn test_multiline_string_with_single_bracket() {
-        assert_eq!(
-            scan("[[a]b]]"),
-            vec![TokenKind::StringLiteral("a]b".to_string()), TokenKind::Eof]
-        );
-    }
-
-    #[test]
-    fn test_empty_multiline_string() {
         assert_eq!(
             scan("[[]]"),
-            vec![TokenKind::StringLiteral("".to_string()), TokenKind::Eof]
+            vec![LeftBracket, LeftBracket, RightBracket, RightBracket, Eof]
         );
     }
 
@@ -1480,6 +1447,27 @@ mod tests {
                 TokenKind::StringLiteral("hello\\nworld".to_string()),
                 TokenKind::Eof
             ]
+        );
+    }
+
+    #[test]
+    fn triple_quote_closes_mid_file() {
+        use TokenKind::*;
+        assert_eq!(
+            scan("q(\"\"\"\nFOR p IN posts\n\"\"\")\nx"),
+            vec![
+                Identifier("q".into()),
+                LeftParen,
+                StringLiteral("\nFOR p IN posts\n".into()),
+                RightParen,
+                Identifier("x".into()),
+                Eof,
+            ]
+        );
+        // Quotes beyond the closing three are content; a shorter run is too.
+        assert_eq!(
+            scan("\"\"\"say \"hi\" \"\"twice\"\"\"\"\""),
+            vec![StringLiteral("say \"hi\" \"\"twice\"\"".into()), Eof]
         );
     }
 

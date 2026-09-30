@@ -19,12 +19,14 @@ use crate::parser::Parser;
 
 mod comments;
 mod expressions;
+mod migrate;
 mod printer;
 mod statements;
 
 #[cfg(test)]
 mod tests;
 
+pub use migrate::migrate_legacy_raw_strings;
 pub use printer::Printer;
 
 #[derive(Debug)]

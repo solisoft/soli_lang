@@ -35,7 +35,7 @@ describe("PDF toolkit: generation", fn() {
     });
 
     test("pdf_layout_map reports where every element landed", fn() {
-        let template = [[{"fonts": [], "content": [{"type": "paragraph", "value": "Hello #{name}"}]}]];
+        let template = """{"fonts": [], "content": [{"type": "paragraph", "value": "Hello #{name}"}]}""";
         let boxes = pdf_layout_map(template, "{\"name\": \"World\"}");
         assert(len(boxes) >= 1);
         let first = boxes[0];
@@ -257,7 +257,7 @@ describe("Geo static methods", fn() {
 
 describe("Xml.get_element_by_id", fn() {
     test("extracts a standalone fragment by ID attribute", fn() {
-        let xml = [[<envelope><signed ID="payload"><value>hi</value></signed></envelope>]];
+        let xml = """<envelope><signed ID="payload"><value>hi</value></signed></envelope>""";
         let fragment = Xml.get_element_by_id(xml, "payload");
         assert(fragment.contains("<value>hi</value>"));
         assert(fragment.contains("ID=\"payload\""));

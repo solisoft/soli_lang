@@ -1469,15 +1469,7 @@ end
 # columns, because a table of one column is a list and markdown already has
 # one of those.
 def md_edit_table(id)
-  # The space after the outer bracket is load-bearing. `[["a", "b"], …]`
-  # — an array of arrays whose first element is a *string* — lexes as a
-  # string in Soli 2.3.7 and comes out as one, silently:
-  #
-  #   [[1, 2], [3, 4]]   -> array          [["x", "y"], ["z"]] -> string
-  #   [ ["x"], ["y"] ]   -> array          [[], []]            -> string
-  #
-  # A space, a pair of parentheses or an intermediate variable all avoid it.
-  {"id": id, "kind": "table", "t": "", "rows": [ ["", ""], ["", ""] ]}
+  {"id": id, "kind": "table", "t": "", "rows": [["", ""], ["", ""]]}
 end
 
 # ---- moving a block ----------------------------------------------------

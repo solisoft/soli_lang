@@ -588,14 +588,12 @@ import "erb"                  # builtin module
 name = "Alice"
 greeting = "Hello #{name}!"   # "Hello Alice!"  (#{...} is the only interpolation form; \( is an invalid escape)
 
-# Multi-line / raw strings — NOTE: `@"..."` is NOT a valid form.
-# Soli supports three raw / multiline string syntaxes:
-lua_raw = [[
-    This is a raw multi-line string.
-    Backslashes are literal: \n stays as two chars.
-]]
+# Escapes in "…": \n \t \r \\ \" \' \0 \e (ESC) \u00e9 \u{1F600}
+# Raw strings — NOTE: `@"..."` is NOT a valid form, and `[[ … ]]` was removed
+# (it is a nested array now; `soli fmt --migrate-raw-strings` rewrites old code).
 triple = """
-    Triple-quoted, also raw, multi-line.
+    Triple-quoted: raw, multi-line.
+    Backslashes are literal: \n stays as two chars.
 """
 single = r"C:\Users\name"   # raw, single-line
 ```

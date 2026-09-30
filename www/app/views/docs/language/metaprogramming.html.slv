@@ -67,6 +67,36 @@ person.send("greet_with", "World")     # => "Hello, World!"</code></pre>
         </div>
     </section>
 
+    <section id="section-fields-by-name" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            </span>
+            Fields by Name: record[name]
+        </h2>
+
+        <p class="text-gray-400 mb-4">
+            <code class="text-amber-400">record[name]</code> reads a field whose name is only known at run time, and <code class="text-amber-400">record[name] = value</code> writes it &mdash; the same read and write as <code class="text-amber-400">record.name</code>, on any instance, models included.
+        </p>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-emerald-400 mb-3">Soli</h3>
+            <pre><code class="language-soli text-sm">def copy_fields(source, target, names)
+  names.each do |name|
+    target[name] = source[name]
+  end
+end
+
+copy_fields(draft, post, ["title", "body"])</code></pre>
+        </div>
+
+        <p class="text-gray-400 text-sm">
+            The write follows the rules of <code class="text-amber-400">record.name = value</code>: a <code class="text-amber-400">private</code> or <code class="text-amber-400">protected</code> field is refused from outside the class (<code class="text-amber-400">this[name]</code> inside it is fine), a <code class="text-amber-400">const</code> field cannot be reassigned, a model&rsquo;s <code class="text-amber-400">_</code>-prefixed metadata (<code class="text-amber-400">_key</code>, <code class="text-amber-400">_id</code>, &hellip;) is read-only, and a translated field is staged for the next save. A missing field reads as <code class="text-amber-400">nil</code>. Both engines agree, and the type checker accepts a String index on any instance.
+        </p>
+    </section>
+
     <!-- method_missing -->
     <section id="section-method-missing" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">

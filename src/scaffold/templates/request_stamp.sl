@@ -1,9 +1,13 @@
 # ============================================================================
-# CORS Middleware (Global)
+# Request Stamp Middleware (Global)
 # ============================================================================
 #
-# This middleware adds CORS headers to all responses.
-# It runs for ALL requests automatically.
+# This middleware runs for ALL requests, before any scoped middleware with a
+# higher order. It stamps the request with the time it arrived; the
+# controller reads it as `req["started_at"]`.
+#
+# CORS headers are declared in config/routes.sl with `cors("/api/*", {...})`,
+# not in a middleware.
 #
 # Configuration:
 # - `# order: N` - Execution order (lower runs first)
@@ -14,8 +18,7 @@
 # order: 5
 # global_only: true
 
-def add_cors_headers(req) -> Any
-  # Add CORS headers to the request context
-  # These will be included in the response
-  {"continue": true, "request": req}
+def stamp_request(req)
+  req["started_at"] = DateTime.utc.to_unix
+  req
 end

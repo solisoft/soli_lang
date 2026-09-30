@@ -71,6 +71,7 @@ impl Interpreter {
             // Used by generic helpers (e.g. uploader prelude) that need to
             // read fields like `<field>_blob_id` where `<field>` is a param.
             (Value::Instance(inst), Value::String(key)) => {
+                self.check_private_access(object, &obj_val, key, span)?;
                 Ok(inst.borrow().get(key).unwrap_or(Value::Null))
             }
             _ => Err(RuntimeError::type_error(
@@ -112,6 +113,20 @@ impl Interpreter {
                     });
                 }
                 arr[idx_usize] = new_value.clone();
+                Ok(new_value)
+            }
+            // `record[field] = value` with a runtime-computed name: the same
+            // write as `record.<field> = value` (private/protected, const,
+            // model read-only metadata and translated fields included). It
+            // used to be "invalid assignment target".
+            (Value::Instance(inst), Value::String(key)) => {
+                self.check_private_access(object, &obj_val, key, span)?;
+                crate::interpreter::executor::expressions::set_instance_field(
+                    inst,
+                    key,
+                    new_value.clone(),
+                )
+                .map_err(|message| RuntimeError::type_error(message, span))?;
                 Ok(new_value)
             }
             (Value::Hash(hash), key) => {

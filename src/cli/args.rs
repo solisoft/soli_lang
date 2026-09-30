@@ -274,6 +274,8 @@ pub enum Command {
         check: bool,
         /// Read source from stdin, write formatted output to stdout.
         stdin: bool,
+        /// Rewrite the removed `[[ … ]]` raw strings as `"""…"""` first.
+        migrate_raw_strings: bool,
     },
     Init,
     Add {
@@ -606,6 +608,9 @@ pub fn print_usage() {
     eprintln!("  lsp                  Start the Soli LSP server on stdio (for editor plugins)");
     eprintln!(
         "  fmt [paths...]       Format .sl files in place (--check to dry-run, --stdin to filter)"
+    );
+    eprintln!(
+        "                       --migrate-raw-strings: rewrite the removed [[ … ]] strings as \"\"\"…\"\"\""
     );
     eprintln!("  deploy [--folder <path>]  Deploy application to servers via deploy.toml");
     eprintln!(
@@ -2051,10 +2056,12 @@ pub fn parse_args() -> Options {
                 let mut paths: Vec<String> = Vec::new();
                 let mut check = false;
                 let mut stdin = false;
+                let mut migrate_raw_strings = false;
                 while i < args.len() {
                     match args[i].as_str() {
                         "--check" => check = true,
                         "--stdin" => stdin = true,
+                        "--migrate-raw-strings" => migrate_raw_strings = true,
                         s if !s.starts_with('-') => paths.push(args[i].clone()),
                         other => {
                             eprintln!("Unknown option for fmt: {}", other);
@@ -2068,6 +2075,7 @@ pub fn parse_args() -> Options {
                     paths,
                     check,
                     stdin,
+                    migrate_raw_strings,
                 };
                 return options;
             }

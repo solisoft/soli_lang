@@ -111,6 +111,29 @@ recorder.anything(1, 2, 3)   # "anything called with 3 argument(s)"
 
 A bare `obj.name` (no parentheses) evaluates to the bound method, not its result; call with `()`.
 
+## Fields by name
+
+`record[name]` reads a field whose name is only known at run time, and
+`record[name] = value` writes it — the same read and write as `record.name`,
+on any instance, models included:
+
+```soli
+def copy_fields(source, target, names)
+  names.each do |name|
+    target[name] = source[name]
+  end
+end
+
+copy_fields(draft, post, ["title", "body"])
+```
+
+The write follows the rules of `record.name = value`: a `private` or
+`protected` field is refused from outside the class (`this[name]` inside it is
+fine), a `const` field cannot be reassigned, a model's `_`-prefixed metadata
+(`_key`, `_id`, …) is read-only, and a translated field is staged for the next
+save. A missing field reads as `nil`. Both engines agree, and the type checker
+accepts a String index on any instance.
+
 ## Cross-references
 
 - [Models](models.md) — the full Model DSL (`validates`, `has_many`, `before_save`, etc.).

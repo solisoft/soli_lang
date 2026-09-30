@@ -122,24 +122,18 @@ pub(super) fn ast_inline_width(source: &str, e: &Expr) -> usize {
 /// The original source text of a *raw* string literal, when `expr` is one and
 /// those bytes provably denote `value`. Raw forms carry their content
 /// uninterpreted, so the source slice can be re-emitted as-is — which is the
-/// point: `[[ … ]]` is how a multi-line SDBQL query is written, and `r"…"` is
+/// point: `"""…"""` is how a multi-line SDBQL query is written, and `r"…"` is
 /// how a Windows path or a regex is written. Returns `None` for anything not
 /// recognised, leaving the caller on the escaping path.
 ///
-/// The two forms differ in what their span covers, hence the two branches:
-/// `scan_multiline_string` starts at the `[[`, while `scan_raw_string` starts
-/// at the first body byte, past the `r"` prefix. Rather than trust either end
-/// offset, the closing delimiter is located here and the enclosed bytes are
-/// compared against the lexed value — so a mismatch falls back instead of
-/// emitting a literal that means something else.
+/// Rather than trust the span's end offset, the closing delimiter is located
+/// here and the candidate literal is checked against the lexed value — so a
+/// mismatch falls back instead of emitting a literal that means something
+/// else.
 fn raw_string_source<'s>(source: &'s str, expr: &Expr, value: &str) -> Option<&'s str> {
     let start = expr.span.start_usize();
-    if source.get(start..)?.starts_with("[[") {
-        let body = start + 2;
-        let close = source.get(body..)?.find("]]")? + body;
-        if source.get(body..close)? == value {
-            return source.get(start..close + 2);
-        }
+    if let Some(literal) = triple_quoted_source(source, start, value) {
+        return Some(literal);
     }
     if source.get(start.checked_sub(2)?..start) == Some("r\"") {
         let close = source.get(start..)?.find('"')? + start;
@@ -150,10 +144,117 @@ fn raw_string_source<'s>(source: &'s str, expr: &Expr, value: &str) -> Option<&'
     None
 }
 
+/// The source text of a `"""…"""` literal whose span starts at `start` (at
+/// its opening quotes, or just past them), when it lexes to `value`. Each
+/// `"""` after the opening is tried as the close, longest run of quotes
+/// first, and the candidate is re-lexed: the triple-quote closing rules (a
+/// fourth quote, trailing whitespace) are the scanner's to decide.
+fn triple_quoted_source<'s>(source: &'s str, start: usize, value: &str) -> Option<&'s str> {
+    let open = if source.get(start..)?.starts_with("\"\"\"") {
+        start
+    } else if source.get(start.checked_sub(3)?..start) == Some("\"\"\"") {
+        start - 3
+    } else {
+        return None;
+    };
+    let body = open + 3;
+    let rest = source.get(body..)?;
+    let mut from = 0;
+    while let Some(found) = rest.get(from..)?.find("\"\"\"") {
+        let mut end = body + from + found + 3;
+        while source.as_bytes().get(end) == Some(&b'"') {
+            end += 1;
+        }
+        let candidate = source.get(open..end)?;
+        if let Ok(tokens) = crate::lexer::Scanner::new(candidate).scan_tokens() {
+            if let [token, eof] = tokens.as_slice() {
+                if matches!(eof.kind, crate::lexer::TokenKind::Eof)
+                    && matches!(&token.kind, crate::lexer::TokenKind::StringLiteral(s) if s.as_str() == value)
+                {
+                    return Some(candidate);
+                }
+            }
+        }
+        from += found + 3;
+    }
+    None
+}
+
+/// The source text of a double-quoted literal written with a `\u`, `\e` or
+/// `\0` escape, when re-lexing those bytes gives back `value`. The printer
+/// re-escapes only `\\ \" \n \r \t`, so it turned `"\u00a0"` into an
+/// invisible no-break space and `"\e[1m"` into a raw ESC byte in the file;
+/// such a literal is kept as the author wrote it. `None` leaves the caller on
+/// the escaping path.
+fn escaped_string_source<'s>(source: &'s str, expr: &Expr, value: &str) -> Option<&'s str> {
+    let start = expr.span.start_usize();
+    let open = if source.get(start..)?.starts_with('"') {
+        start
+    } else if source.get(start.checked_sub(1)?..start) == Some("\"") {
+        start - 1
+    } else {
+        return None;
+    };
+    let mut escaped = false;
+    let mut close = None;
+    for (i, c) in source.get(open + 1..)?.char_indices() {
+        match c {
+            _ if escaped => escaped = false,
+            '\\' => escaped = true,
+            '"' => {
+                close = Some(open + 1 + i);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let literal = source.get(open..=close?)?;
+    if !(literal.contains("\\u") || literal.contains("\\e") || literal.contains("\\0")) {
+        return None;
+    }
+    let tokens = crate::lexer::Scanner::new(literal).scan_tokens().ok()?;
+    match &tokens.first()?.kind {
+        crate::lexer::TokenKind::StringLiteral(lexed) if lexed.as_str() == value => Some(literal),
+        _ => None,
+    }
+}
+
+/// How the printer writes one character of a string literal's value, when it
+/// needs more than the character itself: the usual escapes, and control or
+/// invisible characters (NBSP, zero-width, BOM, bidi controls) as `\e`, `\0`
+/// or `\u{…}`, so the formatted file never carries an unprintable byte.
+fn escape_literal_char(c: char) -> Option<std::borrow::Cow<'static, str>> {
+    use std::borrow::Cow;
+    Some(match c {
+        '\\' => Cow::Borrowed("\\\\"),
+        '"' => Cow::Borrowed("\\\""),
+        '\n' => Cow::Borrowed("\\n"),
+        '\r' => Cow::Borrowed("\\r"),
+        '\t' => Cow::Borrowed("\\t"),
+        '\0' => Cow::Borrowed("\\0"),
+        '\u{1b}' => Cow::Borrowed("\\e"),
+        c if c.is_control()
+            || matches!(
+                c,
+                '\u{a0}'
+                    | '\u{ad}'
+                    | '\u{200b}'..='\u{200f}'
+                    | '\u{2028}'..='\u{202e}'
+                    | '\u{2060}'..='\u{2064}'
+                    | '\u{2066}'..='\u{2069}'
+                    | '\u{feff}'
+            ) =>
+        {
+            Cow::Owned(format!("\\u{{{:x}}}", c as u32))
+        }
+        _ => return None,
+    })
+}
+
 fn escaped_literal_width(s: &str) -> usize {
     s.bytes()
         .map(|b| match b {
-            b'\\' | b'"' | b'\n' | b'\r' | b'\t' => 2,
+            b'\\' | b'"' | b'\n' | b'\r' | b'\t' | b'\0' | 0x1b => 2,
             _ => 1,
         })
         .sum()
@@ -294,21 +395,19 @@ impl Printer<'_> {
             ExprKind::StringLiteral(s) => {
                 // A raw literal is re-emitted from its source bytes. Escaping it
                 // is semantics-preserving but destroys what it was for: a
-                // multi-line `[[ … ]]` SDBQL query collapses to one 200-plus
+                // multi-line `"""…"""` SDBQL query collapses to one 200-plus
                 // char line of `\n`s, which `style/line-length` then rejects.
-                if let Some(raw) = raw_string_source(self.source, expr, s) {
+                if let Some(raw) = raw_string_source(self.source, expr, s)
+                    .or_else(|| escaped_string_source(self.source, expr, s))
+                {
                     self.write(raw);
                     return;
                 }
                 self.write("\"");
                 for c in s.chars() {
-                    match c {
-                        '\\' => self.write("\\\\"),
-                        '"' => self.write("\\\""),
-                        '\n' => self.write("\\n"),
-                        '\r' => self.write("\\r"),
-                        '\t' => self.write("\\t"),
-                        c => {
+                    match escape_literal_char(c) {
+                        Some(escaped) => self.write(&escaped),
+                        None => {
                             let mut buf = [0u8; 4];
                             self.write(c.encode_utf8(&mut buf));
                         }
@@ -322,13 +421,9 @@ impl Printer<'_> {
                     match part {
                         InterpolatedPart::Literal(s) => {
                             for c in s.chars() {
-                                match c {
-                                    '\\' => self.write("\\\\"),
-                                    '"' => self.write("\\\""),
-                                    '\n' => self.write("\\n"),
-                                    '\r' => self.write("\\r"),
-                                    '\t' => self.write("\\t"),
-                                    c => {
+                                match escape_literal_char(c) {
+                                    Some(escaped) => self.write(&escaped),
+                                    None => {
                                         let mut buf = [0u8; 4];
                                         self.write(c.encode_utf8(&mut buf));
                                     }
@@ -547,12 +642,6 @@ impl Printer<'_> {
                     self.newline();
                     self.write("]");
                 } else {
-                    // `[[` is the lexer's raw-string opener, so the two
-                    // brackets must not meet. `Printer::write` keeps them
-                    // apart for every arm that can produce the sequence —
-                    // including this one, where the nested bracket may be a
-                    // method call's receiver rather than an element that is
-                    // itself an array.
                     self.write("[");
                     for (i, e) in elements.iter().enumerate() {
                         if i > 0 {

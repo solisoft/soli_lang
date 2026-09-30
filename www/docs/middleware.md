@@ -1,135 +1,193 @@
 # Middleware
 
-Middleware provides a way to filter HTTP requests and responses.
+Middleware runs before your controller action on every request it applies to. It
+can read or modify the request, or stop the request with its own response — the
+place for cross-cutting concerns like authentication, origin checks, rate limits
+or tagging requests.
 
 ## Creating Middleware
 
-Create a file in `app/middleware/`:
+Every `def` (or `fn`) in `app/middleware/*.sl` is registered as a middleware,
+named after the function. The files are loaded automatically — no import, no
+registration call. A function whose name starts with `_` is a helper and is
+never registered.
 
 ```soli
 # app/middleware/auth.sl
+
+# order: 20
+# scope_only: true
 def authenticate
-  token = req.headers["Authorization"];
+  return halt(401, "Unauthorized") if req["headers"]["authorization"].blank?
 
-  if token == null || token == ""
-    return error(401, "Unauthorized");
-  end
-
-  # Validate token...
   req
 end
 ```
 
-## Built-in Middleware
-
-### Logging
-
-Log all incoming requests:
+A middleware declared without a parameter list reads the current request
+through the `req` global, as an action does. Declare a parameter to receive it
+as an argument instead — both forms work:
 
 ```soli
-# app/middleware/logging.sl
-def log_request
-  timestamp = datetime::now();
-  println(timestamp + " " + req.method + " " + req.path);
+def authenticate(req)
+  # ...
   req
 end
 ```
 
-### CORS
+The request hash carries `method`, `path`, `headers` (lower-cased names),
+`query`, `params`, `cookies` and friends.
 
-Handle Cross-Origin Resource Sharing:
+## Directives
 
-```soli
-# app/middleware/cors.sl
-def cors
-  response = req;
-  response.headers["Access-Control-Allow-Origin"] = "*";
-  response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
-  response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
-  response
-end
-```
+Comments directly above the `def` configure it (`//` is also accepted; prefer `#`):
 
-### Authentication
+| Directive | Effect |
+|-----------|--------|
+| `# order: N` | Execution order, lower runs first. Default `100`. |
+| `# global_only: true` | Runs on every request and cannot be scoped to routes. |
+| `# scope_only: true` | Never runs globally — only on routes wrapped with `middleware(...)`. |
 
-```soli
-# app/middleware/auth.sl
-def auth
-  session = req.cookies["session"];
+That gives three kinds:
 
-  if session == null
-    return redirect("/login");
-  end
+- **Regular** (no `global_only`/`scope_only`) — runs on every request. It may
+  also be named in a route's `middleware(...)`; it then still runs once, not twice.
+- **`global_only`** — runs on every request, including routes that have scoped
+  middleware. Naming it in `middleware(...)` prints a warning and is ignored.
+- **`scope_only`** — runs only on the routes that name it.
 
-  # Verify session...
-  req
-end
-```
+## Scoping Middleware to Routes
 
-## Applying Middleware
-
-### In Routes
+Wrap routes in `middleware(...)` in `config/routes.sl`, with one name or a list:
 
 ```soli
 # config/routes.sl
-get("/dashboard", "dashboard#index", ["auth", "logging"]);
-get("/admin", "admin#panel", ["auth", "admin_only"]);
+get("/", "home#index")
+get("/login", "sessions#new")
+
+middleware("authenticate", -> {
+  get("/dashboard", "dashboard#index")
+  post("/settings", "users#update_settings")
+})
+
+middleware(["authenticate", "audit"], -> {
+  get("/admin", "admin#index")
+})
 ```
 
-### Global Middleware
+## Order
 
-Apply to all routes in `config/routes.sl`:
+For each request, the route's scoped middleware and the global middleware are
+merged into one list and sorted by `# order:`. At equal order a scoped
+middleware runs before a global one; scoped middleware keep their declaration
+order among themselves.
 
 ```soli
-# Apply logging to all routes
-use("middleware/logging");
+# app/middleware/origin.sl
 
-get("/", "home#index");
-get("/about", "home#about");
-```
+ALLOWED_ORIGINS = ["https://app.example.com"]
 
-## Middleware Stack Order
+# order: 5
+# global_only: true
+def check_origin
+  origin = req["headers"]["origin"]
+  if origin.present? && !ALLOWED_ORIGINS.includes?(origin)
+    return {"status": 403, "body": "Origin not allowed"}
+  end
 
-Middleware executes in the order it's applied:
-
-```
-Request -> Logging -> CORS -> Auth -> Controller -> Auth -> CORS -> Response
-```
-
-## Request/Response Modification
-
-### Modify Request
-
-```soli
-def add_locale
-  lang = req.query["lang"] ?? "en";
-  req.locale = lang;
+  req["origin"] = origin || "same-origin"
   req
 end
 ```
 
-### Modify Response
-
 ```soli
-def add_headers(req, response)
-  response.headers["X-Frame-Options"] = "SAMEORIGIN";
-  response.headers["X-Content-Type-Options"] = "nosniff";
-  response
+# app/middleware/stamp.sl
+
+# order: 10
+def stamp
+  req["started_at"] = DateTime.utc.to_unix
+  req
 end
 ```
 
-## Error Handling Middleware
+With `check_origin` (order 5, `global_only`), `stamp` (order 10, regular) and
+`authenticate` (order 20, `scope_only`):
+
+| Route | Runs |
+|-------|------|
+| `/dashboard` (inside `middleware("authenticate", ...)`) | `check_origin` → `stamp` → `authenticate` → action |
+| `/` | `check_origin` → `stamp` → action |
+
+Keys a middleware sets on the request (`req["origin"]`, `req["started_at"]`)
+are visible to later middleware and to the controller action.
+
+## Returning and Stopping
+
+What a middleware returns decides what happens next:
+
+| Return value | Effect |
+|--------------|--------|
+| The request hash (possibly modified) — `req` | Continue to the next middleware, then the action. |
+| A response hash — anything with a `status` key: `redirect("/login")`, `{"status": 401, "body": "..."}` | Stop; this is the response. |
+| `{"continue": true, "request": req}` | Continue (explicit form). |
+| `{"continue": false, "response": {"status": 401, "body": "..."}}` | Stop with that response (explicit form). |
+| Anything that is not a hash | `500`. |
 
 ```soli
-def handle_errors(req, error)
-  error(500, "Internal Server Error")
+# order: 30
+# scope_only: true
+def require_session
+  return redirect("/login") if session_get("user_id").nil?
+
+  req
 end
 ```
+
+`render_json` and `render_text` answer from a middleware too — whatever it
+renders is the response:
+
+```soli
+# order: 15
+# scope_only: true
+def require_api_key
+  return render_json({"error": "Unauthorized"}, 401) if req["headers"]["x-api-key"].blank?
+
+  req
+end
+```
+
+Raising also stops the chain, with the matching response:
+
+| Raised by | Response |
+|-----------|----------|
+| `halt(status, message)` | `status` with `message` as a plain-text body |
+| `forbidden(message?)` | `403` error page |
+| `Model.find` with an unknown id | `404` error page |
+| any other error | `500` — the full error page under `--dev`, a request id only in production |
+
+`halt` raises, so a bare `halt(429, "Slow down")` ends the middleware on its
+own; `return halt(...)` reads the same.
+
+## Request Logging
+
+Request logging is built into the server — always on under `--dev`, opt-in in
+production with `SOLI_REQUEST_LOG=1`:
+
+```
+[LOG] GET /users - 200 (1.234ms)
+[LOG] POST /login - 302 (12.876ms)
+```
+
+## CORS
+
+Middleware runs before the action and returns a request or a response — it
+does not add headers to the action's response. For CORS headers and preflights,
+use the built-in `cors("/api/*", {...})` route helper (see
+[Routing → CORS](routing.md#cors)).
 
 ## Best Practices
 
-1. Keep middleware focused and single-purpose
-2. Use middleware for cross-cutting concerns
-3. Order middleware logically (auth before business logic)
-4. Handle errors gracefully
-5. Don't leak sensitive information in logs
+1. Keep each middleware to one job; put shared code in `_`-prefixed helpers.
+2. Mark authentication `scope_only: true` so it never applies globally by accident.
+3. Use `global_only: true` for checks that must run on every request.
+4. Keep global middleware cheap — it runs on every request.

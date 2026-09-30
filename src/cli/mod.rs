@@ -152,7 +152,8 @@ pub fn run() {
             paths,
             check,
             stdin,
-        } => commands::run_fmt(paths, *check, *stdin),
+            migrate_raw_strings,
+        } => commands::run_fmt(paths, *check, *stdin, *migrate_raw_strings),
         Command::Cloud {
             action,
             folder,

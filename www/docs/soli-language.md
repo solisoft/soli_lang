@@ -118,15 +118,15 @@ scientific = 2.5e10;  # 25000000000.0
 # String - UTF-8 text
 greeting = "Hello, World!";
 multiline = "Line 1\nLine 2\tTabbed";
+accent = "caf\u00e9";         # \u + 4 hex digits, or \u{1F600} (1 to 6)
+bold = "\e[1mbold\e[0m";     # \e is ESC (ANSI codes), \0 is NUL
 raw = r"Path: C:\Users\name";  # Raw string (no escape processing)
 
 # Multiline strings
 poem = """The fog comes
 on little cat feet.""";
 
-story = [[Once upon
-a time in
-the wild west.]];
+line = """She said "hi"""";   # quotes before the closing three are content
 
 # Command substitution - execute shell commands
 files = `ls *.sl`;        # Returns Future<{stdout, stderr, exit_code}>
@@ -140,6 +140,14 @@ is_complete = false;
 # Null - Absence of value
 missing = null;
 ```
+
+**Escape sequences** in `"…"` and `'…'`: `\n`, `\t`, `\r`, `\\`, `\"`, `\'`,
+`\0` (NUL), `\e` (ESC, for ANSI codes), `\u{1F600}` (1 to 6 hex digits) and
+`\u00e9` (exactly 4, as in JSON — a surrogate pair such as `\uD83D\uDE00`
+makes one character). Any other backslash sequence is a syntax error. Raw
+strings (`r"…"`, `"""…"""`) process none; `[[ … ]]` is not a string (it was
+removed — `[[` opens a nested array). `soli fmt` keeps a literal
+written with `\u`, `\e` or `\0` as it is.
 
 ### Type Inference
 

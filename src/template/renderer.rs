@@ -1118,11 +1118,11 @@ mod tests {
 
     #[test]
     fn select_marks_current_value_selected_and_supports_pairs() {
-        // `[ [` with a space — a leading `[[` would lex as a Lua-style raw
-        // string, not a nested array literal.
+        // `[[` opens a nested array like any other pair of brackets (it was a
+        // Lua-style raw string until that syntax was removed).
         let record = make_hash(vec![("status", Value::String("late".into()))]);
         let html = render_form(
-            "<% f = form_with(rec, {\"url\": \"/x\"}) %><% choices = [ [\"On time\", \"up\"], [\"Late\", \"late\"] ] %><%- f.select(\"status\", choices) %>",
+            "<% f = form_with(rec, {\"url\": \"/x\"}) %><% choices = [[\"On time\", \"up\"], [\"Late\", \"late\"]] %><%- f.select(\"status\", choices) %>",
             vec![("rec", record)],
         );
         assert!(

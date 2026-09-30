@@ -47,13 +47,18 @@
     "strings": {
       "patterns": [
         {
+          "name": "string.quoted.triple.soli",
+          "begin": "\"\"\"",
+          "end": "\"\"\"+"
+        },
+        {
           "name": "string.quoted.double.soli",
           "begin": "\"",
           "end": "\"",
           "patterns": [
             {
               "name": "constant.character.escape.soli",
-              "match": "\\\\[\\\\\"'nrt0]|\\\\u[0-9a-fA-F]{4}|\\\\U[0-9a-fA-F]{8}"
+              "match": "\\\\[\\\\\\\"'nrte0]|\\\\u\\{[0-9a-fA-F]{1,6}\\}|\\\\u[0-9a-fA-F]{4}"
             },
             {
               "name": "variable.interpolation.soli",
@@ -68,14 +73,9 @@
           "patterns": [
             {
               "name": "constant.character.escape.soli",
-              "match": "\\\\[\\\\\"'nrt0]"
+              "match": "\\\\[\\\\\\\"'nrte0]|\\\\u\\{[0-9a-fA-F]{1,6}\\}|\\\\u[0-9a-fA-F]{4}"
             }
           ]
-        },
-        {
-          "name": "string.quoted.triple.soli",
-          "begin": "\\[\\[",
-          "end": "\\]\\]"
         }
       ]
     },

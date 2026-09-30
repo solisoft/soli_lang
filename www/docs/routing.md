@@ -83,10 +83,12 @@ Each one has a matching `*_url` variant (`posts_url()`, `post_url(post)`, ...) t
 `post_path` accepts the id in three shapes:
 
 ```soli
-post_path(post)         # reads post.id off the model instance
+post_path(post)         # reads post.id off the model instance (or its _key)
 post_path(42)           # raw int / string
 post_path({"id": 42})   # explicit hash
 ```
+
+When a record or hash has no `id` (or a `nil` one), `:id` is filled from its `_key` — a SoliDB document loaded by `find`/`all` carries only `_key`, so `post_path(Post.find(key))` builds `/posts/<key>`. A non-nil `id` still wins. (This used to raise `missing param :id` for any record not fresh from `create`.)
 
 For multi-param routes, pass either a hash or positional primitives in declaration order:
 
@@ -163,25 +165,37 @@ resources("users");
 
 See [Named Routes](#named-routes) for the auto-generated `*_path` / `*_url` helpers.
 
-## Middleware on Routes
+## Namespaces
 
-Apply middleware to specific routes:
-
-```soli
-get("/admin", "admin#dashboard", ["auth"]);
-get("/profile", "user#profile", ["auth", "verified"]);
-```
-
-## Route Groups
-
-Group routes with common prefixes:
+Group routes under a common prefix, like `/admin`:
 
 ```soli
-group("/api", [], fn()
-  get("/users", "api#users");
-  get("/posts", "api#posts");
-end);
+namespace("admin", ->
+  get("/dashboard", "admin#dashboard")
+  get("/users", "admin#users")
+  post("/users", "admin#create_user"))
 ```
+
+## Scoped Middleware
+
+Apply middleware only to the routes of a block (a name, or an array of names):
+
+```soli
+# Only these routes require authentication
+middleware("authenticate", ->
+  get("/admin", "admin#index")
+  get("/admin/users", "admin#users"))
+
+middleware(["authenticate", "audit"], ->
+  post("/admin/users", "admin#create_user"))
+
+# Public routes - no auth needed
+get("/", "home#index")
+```
+
+A route's scoped middleware runs together with the global middleware, all
+sorted by their `# order:`. The third argument of `get`/`post`/… is the route
+name, not a middleware list. See [Middleware](middleware.md).
 
 ## CSRF Protection
 
@@ -281,8 +295,8 @@ Sample output:
   requests against, so the table reads top-to-bottom as match precedence.
 - **HELPER** is the generated named-route helper (`post_path` also implies
   `post_url`); blank rows have no name.
-- **MIDDLEWARE** lists the middleware applied by route args or a
-  `middleware("...", fn() ... end)` scope.
+- **MIDDLEWARE** lists the middleware applied by a `middleware("...", -> ...)`
+  scope.
 - WebSocket routes appear with the `WS` method.
 
 The `--json` form emits `[{"method", "path", "handler", "name", "middleware"}]`

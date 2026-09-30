@@ -1314,7 +1314,7 @@ pub(super) fn expr_likely_breaks(e: &Expr) -> bool {
 /// True when printing `e` necessarily emits an embedded newline, whatever
 /// layout the formatter picks, because it carries a construct copied verbatim
 /// out of the source: an `@sdbql{ … }` block (`print_expr`'s `SdqlBlock`
-/// branch) or a raw string literal `[[ … ]]` / `r"…"` (`raw_string_source`).
+/// branch) or a raw string literal `"""…"""` / `r"…"` (`raw_string_source`).
 ///
 /// A guard-clause rewrite must refuse these. Postfix `expr if cond` puts the
 /// keyword *after* the value, so a multi-line value strands the `if` on the

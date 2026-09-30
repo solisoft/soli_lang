@@ -1,58 +1,66 @@
-// ============================================================================
-// Multiline Strings Test Suite
-// ============================================================================
+# ============================================================================
+# Multiline Strings Test Suite
+# `"""…"""` is the raw multi-line string. `[[ … ]]` was one too, and is a
+# pair of brackets now.
+# ============================================================================
 
 describe("Multiline Strings", fn() {
     test("basic multiline string", fn() {
-        let text = [[hello
-world]];
-        assert_contains(text, "hello");
-        assert_contains(text, "world");
-    });
+        text = """hello
+world"""
+        assert_contains(text, "hello")
+        assert_contains(text, "world")
+    })
 
     test("multiline string preserves newlines", fn() {
-        let text = [[line1
-line2]];
-        assert_contains(text, "\n");
-    });
+        text = """line1
+line2"""
+        assert_contains(text, "\n")
+    })
 
     test("multiline string is raw (no escape processing)", fn() {
-        let text = [[hello\nworld]];
-        assert_contains(text, "\\n");
-    });
+        text = """hello\nworld"""
+        assert_contains(text, "\\n")
+    })
 
-    test("multiline string with multiple lines", fn() {
-        let text = [[first
-second
-third]];
-        assert_contains(text, "first");
-        assert_contains(text, "second");
-        assert_contains(text, "third");
-    });
+    test("multiline string closes mid-expression", fn() {
+        # It used to close only at the end of the file, so a call argument
+        # swallowed everything after it.
+        query = [
+"""
+FOR p IN posts
+  RETURN p
+""", "second"]
+        assert_eq(query.length, 2)
+        assert_contains(query[0], "FOR p IN posts")
+        assert_eq(query[1], "second")
+    })
 
-    test("multiline string with single bracket", fn() {
-        let text = [[contains ] single bracket]];
-        assert_contains(text, "]");
-    });
+    test("quotes inside, and quotes before the closing ones", fn() {
+        text = """say "hi" and ""twice"""""
+        assert_eq(text, "say \"hi\" and \"\"twice\"\"")
+    })
 
     test("empty multiline string", fn() {
-        let text = [[]];
-        assert_eq(text, "");
-    });
-
-    test("multiline string with leading/trailing whitespace", fn() {
-        let text = [[
-    indented line
-]];
-        assert_contains(text, "indented line");
-    });
+        text = """"""
+        assert_eq(text, "")
+    })
 
     test("multiline string in hash value", fn() {
-        let h = {
-            "description" => [[This is a
-multiline description.]]
-        };
-        assert_contains(h["description"], "This is a");
-        assert_contains(h["description"], "multiline description");
-    });
-});
+        h = {
+            "description" => """This is a
+multiline description."""
+        }
+        assert_contains(h["description"], "This is a")
+        assert_contains(h["description"], "multiline description")
+    })
+
+    test("double brackets are a nested array", fn() {
+        pairs = [["a", 1], ["b", 2]]
+        assert_eq(pairs.length, 2)
+        assert_eq(pairs[0][0], "a")
+        names = [[x for x in ["p", "q"]]]
+        assert_eq(names[0], ["p", "q"])
+        assert_eq([[]].length, 1)
+    })
+})

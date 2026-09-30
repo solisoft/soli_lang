@@ -1244,6 +1244,208 @@ fn extract_options(options: Option<&Value>) -> Result<RequestOptions, String> {
     })
 }
 
+/// An outgoing request body: text (a String, or a Hash sent as JSON), raw
+/// bytes (an Array of Ints 0..=255 — what `slurp(path, "binary")` and
+/// `Base64.decode` return), or a `multipart/form-data` form (a Hash, with the
+/// `"multipart": true` option). There used to be no way to send bytes: an
+/// Array was refused by `HTTP.post` and stringified (`"[0, 1, …]"`) by
+/// `HTTP.request`, and a hand-built multipart body through a String
+/// re-encoded every byte ≥ 0x80 as UTF-8.
+#[derive(Debug, Clone, PartialEq)]
+enum OutgoingBody {
+    Text(String),
+    Bytes(Vec<u8>),
+    Multipart(Vec<MultipartPart>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct MultipartPart {
+    name: String,
+    data: MultipartData,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum MultipartData {
+    Text(String),
+    File {
+        bytes: Vec<u8>,
+        filename: Option<String>,
+        content_type: Option<String>,
+    },
+}
+
+impl OutgoingBody {
+    /// Put the body on the request. A multipart form sets its own
+    /// `Content-Type` (with the boundary), so it has no default here.
+    fn attach(self, builder: reqwest::RequestBuilder) -> Result<reqwest::RequestBuilder, String> {
+        Ok(match self {
+            OutgoingBody::Text(text) => builder.body(text),
+            OutgoingBody::Bytes(bytes) => builder.body(bytes),
+            OutgoingBody::Multipart(parts) => {
+                let mut form = reqwest::multipart::Form::new();
+                for part in parts {
+                    let built = match part.data {
+                        MultipartData::Text(text) => reqwest::multipart::Part::text(text),
+                        MultipartData::File {
+                            bytes,
+                            filename,
+                            content_type,
+                        } => {
+                            let mut file = reqwest::multipart::Part::bytes(bytes);
+                            if let Some(name) = filename {
+                                file = file.file_name(name);
+                            }
+                            file.mime_str(
+                                content_type
+                                    .as_deref()
+                                    .unwrap_or("application/octet-stream"),
+                            )
+                            .map_err(|e| format!("multipart content_type: {e}"))?
+                        }
+                    };
+                    form = form.part(part.name, built);
+                }
+                builder.multipart(form)
+            }
+        })
+    }
+}
+
+/// The body argument of `HTTP.post`/`put`/`patch`/`request`, and the
+/// `Content-Type` it implies (`None` for multipart, which sets its own).
+fn outgoing_body(
+    value: &Value,
+    options: Option<&Value>,
+    caller: &str,
+) -> Result<(OutgoingBody, Option<&'static str>), String> {
+    let multipart = matches!(options, Some(Value::Hash(h))
+        if matches!(h.borrow().get(&HashKey::String("multipart".into())), Some(Value::Bool(true))));
+    if multipart {
+        let Value::Hash(fields) = value else {
+            return Err(format!(
+                "{caller} with \"multipart\": true expects a hash of fields, got {}",
+                value.type_name()
+            ));
+        };
+        let mut parts = Vec::new();
+        for (key, field) in fields.borrow().iter() {
+            let HashKey::String(name) = key else {
+                return Err(format!("{caller}: multipart field names must be strings"));
+            };
+            match field {
+                // `tags[]`-style repeated fields.
+                Value::Array(items) => {
+                    for item in items.borrow().iter() {
+                        parts.push(multipart_part(name, item, caller)?);
+                    }
+                }
+                Value::Null => {}
+                other => parts.push(multipart_part(name, other, caller)?),
+            }
+        }
+        return Ok((OutgoingBody::Multipart(parts), None));
+    }
+    match value {
+        Value::String(s) => Ok((OutgoingBody::Text(s.to_string()), Some("text/plain"))),
+        Value::Hash(_) => Ok((
+            OutgoingBody::Text(value_to_json(value)?),
+            Some("application/json"),
+        )),
+        Value::Array(_) => Ok((
+            OutgoingBody::Bytes(bytes_from_array(value, caller)?),
+            Some("application/octet-stream"),
+        )),
+        other => Err(format!(
+            "{caller} expects a string, hash or byte-array body, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// An Array of Ints 0..=255 as bytes.
+fn bytes_from_array(value: &Value, caller: &str) -> Result<Vec<u8>, String> {
+    let Value::Array(items) = value else {
+        return Err(format!("{caller}: expected an array of bytes"));
+    };
+    items
+        .borrow()
+        .iter()
+        .map(|item| match item {
+            Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+            other => Err(format!(
+                "{caller}: a byte-array body holds Ints 0..=255, found {}",
+                match other {
+                    Value::Int(n) => n.to_string(),
+                    v => v.type_name(),
+                }
+            )),
+        })
+        .collect()
+}
+
+/// One multipart field. A scalar is a text part; a Hash is a file part —
+/// `{"path": "…"}` reads the file, `{"bytes": [...]}` or `{"content": "…"}`
+/// carries it inline, with optional `filename` and `content_type`.
+fn multipart_part(name: &str, value: &Value, caller: &str) -> Result<MultipartPart, String> {
+    let data = match value {
+        Value::String(s) => MultipartData::Text(s.to_string()),
+        Value::Int(_) | Value::Float(_) | Value::Decimal(_) | Value::Bool(_) => {
+            MultipartData::Text(value.to_string())
+        }
+        Value::Hash(spec) => {
+            let spec = spec.borrow();
+            let get = |k: &str| spec.get(&HashKey::String(k.into())).cloned();
+            let text = |k: &str| -> Result<Option<String>, String> {
+                match get(k) {
+                    None | Some(Value::Null) => Ok(None),
+                    Some(Value::String(s)) => Ok(Some(s.to_string())),
+                    Some(other) => Err(format!(
+                        "{caller}: multipart field \"{name}\" `{k}` must be a string, got {}",
+                        other.type_name()
+                    )),
+                }
+            };
+            let path = text("path")?;
+            let bytes = match (&path, get("bytes"), text("content")?) {
+                (Some(path), None, None) => std::fs::read(path).map_err(|e| {
+                    format!("{caller}: multipart field \"{name}\" cannot read {path}: {e}")
+                })?,
+                (None, Some(array), None) => bytes_from_array(&array, caller)?,
+                (None, None, Some(content)) => content.into_bytes(),
+                _ => {
+                    return Err(format!(
+                        "{caller}: multipart field \"{name}\" needs exactly one of \
+                         `path`, `bytes` or `content`"
+                    ))
+                }
+            };
+            let filename = text("filename")?.or_else(|| {
+                path.as_deref().and_then(|p| {
+                    std::path::Path::new(p)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                })
+            });
+            MultipartData::File {
+                bytes,
+                filename,
+                content_type: text("content_type")?,
+            }
+        }
+        other => {
+            return Err(format!(
+                "{caller}: multipart field \"{name}\" must be a string, number, bool or file \
+                 hash, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    Ok(MultipartPart {
+        name: name.to_string(),
+        data,
+    })
+}
+
 /// Send a reqwest request, recording method/url/status/duration in the
 /// per-request HTTP log when dev mode is on. Returns the response on success
 /// or the original error string on failure.
@@ -1409,22 +1611,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            let body = match &args[1] {
-                Value::String(s) => s.clone(),
-                Value::Hash(_) => value_to_json(&args[1])?.into(),
-                other => {
-                    return Err(format!(
-                        "HTTP.post() expects string or hash body, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let content_type = if args[1].type_name() == "Hash" {
-                "application/json".to_string()
-            } else {
-                "text/plain".to_string()
-            };
+            let (body, content_type) = outgoing_body(&args[1], args.get(2), "HTTP.post()")?;
 
             let opts = extract_options(args.get(2))?;
 
@@ -1432,10 +1619,11 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http(async move {
-                        let req = opts.apply(
-                            client.post(&*url).body(body.to_string()),
-                            &[("Content-Type", &content_type)],
-                        );
+                        let defaults: Vec<(&str, &str)> = content_type
+                            .map(|ct| ("Content-Type", ct))
+                            .into_iter()
+                            .collect();
+                        let req = opts.apply(body.attach(client.post(&*url))?, &defaults);
                         let resp = send_logged("POST", &url, req).await?;
 
                         let status = resp.status();
@@ -1453,11 +1641,12 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
+                            let defaults: Vec<(&str, &str)> = content_type
+                                .map(|ct| ("Content-Type", ct))
+                                .into_iter()
+                                .collect();
                             let resp = opts
-                                .apply(
-                                    client.post(&*url).body(body.to_string()),
-                                    &[("Content-Type", &content_type)],
-                                )
+                                .apply(body.attach(client.post(&*url))?, &defaults)
                                 .send()
                                 .await
                                 .map_err(|e| {
@@ -1495,22 +1684,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            let body = match &args[1] {
-                Value::String(s) => s.clone(),
-                Value::Hash(_) => value_to_json(&args[1])?.into(),
-                other => {
-                    return Err(format!(
-                        "HTTP.put() expects string or hash body, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let content_type = if args[1].type_name() == "Hash" {
-                "application/json".to_string()
-            } else {
-                "text/plain".to_string()
-            };
+            let (body, content_type) = outgoing_body(&args[1], args.get(2), "HTTP.put()")?;
 
             let opts = extract_options(args.get(2))?;
 
@@ -1518,10 +1692,11 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http(async move {
-                        let req = opts.apply(
-                            client.put(&*url).body(body.to_string()),
-                            &[("Content-Type", &content_type)],
-                        );
+                        let defaults: Vec<(&str, &str)> = content_type
+                            .map(|ct| ("Content-Type", ct))
+                            .into_iter()
+                            .collect();
+                        let req = opts.apply(body.attach(client.put(&*url))?, &defaults);
                         let resp = send_logged("PUT", &url, req).await?;
 
                         let status = resp.status();
@@ -1539,11 +1714,12 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
+                            let defaults: Vec<(&str, &str)> = content_type
+                                .map(|ct| ("Content-Type", ct))
+                                .into_iter()
+                                .collect();
                             let resp = opts
-                                .apply(
-                                    client.put(&*url).body(body.to_string()),
-                                    &[("Content-Type", &content_type)],
-                                )
+                                .apply(body.attach(client.put(&*url))?, &defaults)
                                 .send()
                                 .await
                                 .map_err(|e| {
@@ -1581,22 +1757,7 @@ pub fn register_http_class(env: &mut Environment) {
 
             validate_url_for_ssrf(&url)?;
 
-            let body = match &args[1] {
-                Value::String(s) => s.clone(),
-                Value::Hash(_) => value_to_json(&args[1])?.into(),
-                other => {
-                    return Err(format!(
-                        "HTTP.patch() expects string or hash body, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-
-            let content_type = if args[1].type_name() == "Hash" {
-                "application/json".to_string()
-            } else {
-                "text/plain".to_string()
-            };
+            let (body, content_type) = outgoing_body(&args[1], args.get(2), "HTTP.patch()")?;
 
             let opts = extract_options(args.get(2))?;
 
@@ -1604,10 +1765,11 @@ pub fn register_http_class(env: &mut Environment) {
                 Some(_) => {
                     let client = get_user_http_client().clone();
                     match block_on_user_http(async move {
-                        let req = opts.apply(
-                            client.patch(&*url).body(body.to_string()),
-                            &[("Content-Type", &content_type)],
-                        );
+                        let defaults: Vec<(&str, &str)> = content_type
+                            .map(|ct| ("Content-Type", ct))
+                            .into_iter()
+                            .collect();
+                        let req = opts.apply(body.attach(client.patch(&*url))?, &defaults);
                         let resp = send_logged("PATCH", &url, req).await?;
 
                         let status = resp.status();
@@ -1625,11 +1787,12 @@ pub fn register_http_class(env: &mut Environment) {
                 _ => Ok(spawn_http_future(
                     move || {
                         run_user_http_request(move |client| async move {
+                            let defaults: Vec<(&str, &str)> = content_type
+                                .map(|ct| ("Content-Type", ct))
+                                .into_iter()
+                                .collect();
                             let resp = opts
-                                .apply(
-                                    client.patch(&*url).body(body.to_string()),
-                                    &[("Content-Type", &content_type)],
-                                )
+                                .apply(body.attach(client.patch(&*url))?, &defaults)
                                 .send()
                                 .await
                                 .map_err(|e| {
@@ -2231,7 +2394,7 @@ pub fn register_http_class(env: &mut Environment) {
                             HashKey::String(s) => s.clone(),
                             _ => continue,
                         };
-                        if key_str.as_ref() == "timeout" || key_str.as_ref() == "headers" {
+                        if matches!(key_str.as_ref(), "timeout" | "headers" | "multipart") {
                             continue;
                         }
                         let value_str = match value {
@@ -2245,15 +2408,17 @@ pub fn register_http_class(env: &mut Environment) {
                 }
             }
 
-            let body_opt: Option<String> = if args.len() > 3 {
-                Some(match &args[3] {
-                    Value::String(s) => s.clone().to_string(),
-                    Value::Hash(_) => value_to_json(&args[3])?,
-                    Value::Null => String::new(),
-                    other => format!("{}", other),
-                })
-            } else {
-                None
+            // Same body rules as `HTTP.post` (a byte Array is sent raw, a
+            // Hash as JSON, or as multipart with `"multipart": true` in the
+            // 3rd argument) — except that no Content-Type is implied: the
+            // headers here are the caller's.
+            let body_opt: Option<OutgoingBody> = match args.get(3) {
+                None => None,
+                Some(Value::Null) => Some(OutgoingBody::Text(String::new())),
+                Some(v @ (Value::String(_) | Value::Hash(_) | Value::Array(_))) => {
+                    Some(outgoing_body(v, args.get(2), "HTTP.request()")?.0)
+                }
+                Some(other) => Some(OutgoingBody::Text(format!("{}", other))),
             };
 
             match get_tokio_handle() {
@@ -2278,7 +2443,7 @@ pub fn register_http_class(env: &mut Environment) {
                         }
 
                         if let Some(body) = body_opt_clone {
-                            request = request.body(body);
+                            request = body.attach(request)?;
                         }
 
                         let request = apply_timeout(request, timeout);
@@ -2333,7 +2498,7 @@ pub fn register_http_class(env: &mut Environment) {
                                 }
 
                                 if let Some(body) = body_opt_clone {
-                                    request = request.body(body);
+                                    request = body.attach(request)?;
                                 }
 
                                 let request = apply_timeout(request, timeout);
@@ -4005,6 +4170,82 @@ mod request_header_tests {
         assert_eq!(content_types[0], "application/x-www-form-urlencoded");
         assert_eq!(headers.get("accept").unwrap(), "application/json");
         assert_eq!(headers.get("x-custom").unwrap(), "yes");
+    }
+
+    fn byte_array(bytes: impl IntoIterator<Item = i64>) -> Value {
+        Value::Array(Rc::new(std::cell::RefCell::new(
+            bytes.into_iter().map(Value::Int).collect(),
+        )))
+    }
+
+    #[test]
+    fn a_byte_array_body_goes_out_byte_for_byte() {
+        let (body, content_type) = outgoing_body(&byte_array(0..256), None, "HTTP.post()").unwrap();
+        assert_eq!(content_type, Some("application/octet-stream"));
+        let req = body
+            .attach(reqwest::Client::new().post("http://example.invalid/"))
+            .unwrap()
+            .build()
+            .unwrap();
+        let sent = req.body().and_then(|b| b.as_bytes()).unwrap();
+        assert_eq!(sent, (0..=255u8).collect::<Vec<_>>().as_slice());
+
+        let err = outgoing_body(&byte_array([1, 256]), None, "HTTP.post()").unwrap_err();
+        assert!(err.contains("0..=255"), "{err}");
+    }
+
+    #[test]
+    fn a_multipart_body_carries_text_and_binary_parts() {
+        let file = opts(vec![
+            ("bytes", byte_array([0, 128, 255])),
+            ("filename", Value::String("a.bin".into())),
+            ("content_type", Value::String("image/png".into())),
+        ]);
+        let fields = opts(vec![
+            ("title", Value::String("hi".into())),
+            ("count", Value::Int(3)),
+            ("file", file),
+            (
+                "tags[]",
+                Value::Array(Rc::new(std::cell::RefCell::new(vec![
+                    Value::String("a".into()),
+                    Value::String("b".into()),
+                ]))),
+            ),
+        ]);
+        let multipart = opts(vec![("multipart", Value::Bool(true))]);
+        let (body, content_type) = outgoing_body(&fields, Some(&multipart), "HTTP.post()").unwrap();
+        assert_eq!(content_type, None, "multipart sets its own Content-Type");
+        let OutgoingBody::Multipart(parts) = &body else {
+            panic!("expected multipart, got {body:?}")
+        };
+        let names: Vec<_> = parts.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["title", "count", "file", "tags[]", "tags[]"]);
+        assert_eq!(
+            parts[2].data,
+            MultipartData::File {
+                bytes: vec![0, 128, 255],
+                filename: Some("a.bin".to_string()),
+                content_type: Some("image/png".to_string()),
+            }
+        );
+        let req = body
+            .attach(reqwest::Client::new().post("http://example.invalid/"))
+            .unwrap()
+            .build()
+            .unwrap();
+        let header = req.headers().get("content-type").unwrap().to_str().unwrap();
+        assert!(
+            header.starts_with("multipart/form-data; boundary="),
+            "{header}"
+        );
+
+        // A file part needs exactly one source.
+        let bad = opts(vec![(
+            "f",
+            opts(vec![("filename", Value::String("x".into()))]),
+        )]);
+        assert!(outgoing_body(&bad, Some(&multipart), "HTTP.post()").is_err());
     }
 
     /// Echoes the raw request head back as the response body so the test can

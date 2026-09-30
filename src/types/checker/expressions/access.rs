@@ -696,14 +696,16 @@ impl TypeChecker {
             // A Future resolves transparently at runtime (`HTTP.get(url)["status"]`),
             // the same way member access on one is permissive above.
             Type::Future(_) => Ok(Type::Any),
-            // A record reads its own attributes by name (`this[champ]`), and a
-            // class whose parent is not in this file may be one. Same reason
-            // member access is permissive on both.
+            // An instance reads and writes its fields by name — `this[champ]`,
+            // `record[field] = value` — as both engines do for any class. A
+            // class whose parent is not in this file may also be indexed by
+            // something else, as member access is permissive there too.
             Type::Class(class)
-                if self
-                    .env
-                    .get_class(&class.name)
-                    .is_some_and(|c| c.has_members_elsewhere()) =>
+                if matches!(idx_type, Type::String | Type::Any | Type::Unknown)
+                    || self
+                        .env
+                        .get_class(&class.name)
+                        .is_some_and(|c| c.has_members_elsewhere()) =>
             {
                 Ok(Type::Any)
             }

@@ -190,6 +190,52 @@ pub fn has_middleware() -> bool {
     MIDDLEWARE.with(|mw| !mw.borrow().is_empty())
 }
 
+/// Is `a` the same middleware function as `b`? A route stores the handler
+/// value it resolved from the registry, so identity is pointer identity.
+fn same_handler(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Function(x), Value::Function(y)) => Rc::ptr_eq(x, y),
+        (Value::NativeFunction(x), Value::NativeFunction(y)) => x.name == y.name,
+        _ => false,
+    }
+}
+
+/// The middleware a request runs, in order: the route's scoped middleware and
+/// the global ones, merged and sorted by `# order:`.
+///
+/// Scoped middleware used to run first, whatever its order, and a
+/// `global_only` middleware was skipped on every route that had any scoped
+/// middleware — so an `# order: 5` CORS or security-headers middleware
+/// silently stopped running on authenticated routes. A regular middleware
+/// scoped onto a route also ran twice (once scoped, once global); it now runs
+/// once. At equal order the scoped one runs first, as it always did, and a
+/// scoped function that is not in the registry takes the default order, 100.
+pub(crate) fn plan(scoped: &[Value], globals: &[Middleware]) -> Vec<(Value, Option<String>)> {
+    let mut steps: Vec<(i32, u8, Value, Option<String>)> = Vec::new();
+    for handler in scoped {
+        let registered = globals.iter().find(|m| same_handler(&m.handler, handler));
+        let order = registered.map_or(100, |m| m.order);
+        steps.push((
+            order,
+            0,
+            handler.clone(),
+            registered.map(|m| m.name.clone()),
+        ));
+    }
+    for mw in globals {
+        if mw.scope_only || scoped.iter().any(|h| same_handler(&mw.handler, h)) {
+            continue;
+        }
+        steps.push((mw.order, 1, mw.handler.clone(), Some(mw.name.clone())));
+    }
+    // Stable: equal keys keep route declaration / registry order.
+    steps.sort_by_key(|(order, global, _, _)| (*order, *global));
+    steps
+        .into_iter()
+        .map(|(_, _, handler, name)| (handler, name))
+        .collect()
+}
+
 /// Get a middleware by name (must be called from interpreter thread).
 pub fn get_middleware_by_name(name: &str) -> Option<Middleware> {
     MIDDLEWARE.with(|mw| {
@@ -239,6 +285,30 @@ pub fn extract_middleware_result(result: &Value) -> MiddlewareResult {
                     _ => {}
                 }
             }
+        }
+
+        // No `continue`/`request`/`response` key: the hash itself is the
+        // outcome, read the way a before_action's is — a response when it has
+        // a `status` (`redirect(...)`, `render_json(...)`), else the
+        // (modified) request, so `def authenticate` can end with `req`.
+        let has_protocol_key = hash.iter().any(|(k, _)| {
+            matches!(k, HashKey::String(key)
+                if matches!(key.as_ref(), "continue" | "request" | "response"))
+        });
+        if !has_protocol_key {
+            // A response has a `status`; the request hash always has `method`
+            // and `path`, so a request that carries a `status` field of its
+            // own (`req["status"] = "active"`) still reads as the request.
+            let has_key = |name: &str| {
+                hash.iter()
+                    .any(|(k, _)| matches!(k, HashKey::String(key) if key.as_ref() == name))
+            };
+            let is_response = has_key("status") && !(has_key("method") && has_key("path"));
+            return if is_response {
+                MiddlewareResult::Response(result.clone())
+            } else {
+                MiddlewareResult::Continue(result.clone())
+            };
         }
 
         if should_continue {
@@ -365,9 +435,15 @@ pub fn extract_middleware_functions(source: &str) -> Vec<(String, i32, bool, boo
         };
 
         if let Some(rest) = func_rest {
-            if let Some(paren_pos) = rest.find('(') {
-                let func_name = rest[..paren_pos].trim().to_string();
-
+            // The name runs to the first non-identifier character, so
+            // `def authenticate` (no parameter list — it reads the `req`
+            // global) registers like `def authenticate(req)`. It used to need
+            // a `(` on the line and was silently skipped without one.
+            let name_len = rest
+                .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '?' || c == '!'))
+                .unwrap_or(rest.len());
+            let func_name = rest[..name_len].to_string();
+            if !func_name.is_empty() {
                 // Skip private functions
                 if !func_name.starts_with('_') {
                     let order = pending_order.unwrap_or(100);
@@ -428,6 +504,19 @@ pub(crate) fn run(
         handler,
         request_hash,
     );
+    // `render_json(...)` / `render_text(...)` answer through a fast path and
+    // return nil, so a middleware ending on one answered 500 ("Middleware
+    // must return a hash, got null"). What it rendered is the response —
+    // and taking it here also keeps it from leaking into the action's.
+    if call_result.is_ok() {
+        if let Some(rendered) = crate::interpreter::builtins::server::take_fast_path_response() {
+            return Step::Halt(ResponseData {
+                status: rendered.status,
+                headers: rendered.headers,
+                body: rendered.body.into(),
+            });
+        }
+    }
     match call_result {
         Ok(result) => match extract_middleware_result(&result) {
             MiddlewareResult::Continue(modified_request) => Step::Continue(modified_request),
@@ -472,6 +561,11 @@ pub(crate) fn run(
             }
         },
         Err(e) => {
+            // `halt(...)`, `forbidden()` or a `find` miss: the answer, not a
+            // failure (it used to be a 500 here).
+            if let Some(response) = super::raised_response(&e) {
+                return Step::Halt(response);
+            }
             if dev_mode {
                 // Prefer the captured stack trace (populated by the inner
                 // call_function) over interpreter.get_stack_trace(), then
@@ -587,7 +681,20 @@ fn invoke_middleware_with_frame(
     if let Some(path) = source_path {
         interpreter.set_source_path(PathBuf::from(path));
     }
-    let result = interpreter.call_value(handler, vec![request_hash], span);
+    // `def name` without a parameter list reads the request through the `req`
+    // global, as an action does — so publish this request's hash there (it
+    // still holds the previous request's otherwise) and call with no argument.
+    let wants_request = !matches!(&handler, Value::Function(f) if f.full_arity() == 0);
+    let args = if wants_request {
+        vec![request_hash]
+    } else {
+        interpreter
+            .global_env()
+            .borrow_mut()
+            .define_or_update("req", request_hash);
+        Vec::new()
+    };
+    let result = interpreter.call_value(handler, args, span);
     interpreter.pop_frame();
 
     if let Some(start) = mw_start {
@@ -836,6 +943,184 @@ end
     }
 
     // ---------- running one ----------
+
+    #[test]
+    fn a_def_without_a_parameter_list_is_registered() {
+        let source = r#"
+# order: 7
+def authenticate
+  req
+end
+
+def stamp?(req)
+  req
+end
+
+def _helper
+  nil
+end
+"#;
+        let functions = extract_middleware_functions(source);
+        assert_eq!(
+            functions,
+            vec![
+                ("authenticate".to_string(), 7, false, false),
+                ("stamp?".to_string(), 100, false, false),
+            ]
+        );
+    }
+
+    fn native(name: &str) -> Value {
+        Value::NativeFunction(crate::interpreter::value::NativeFunction::new(
+            name,
+            Some(1),
+            |_| Ok(Value::Null),
+        ))
+    }
+
+    fn registered(name: &str, order: i32, global_only: bool, scope_only: bool) -> Middleware {
+        Middleware {
+            name: name.to_string(),
+            handler: native(name),
+            order,
+            global_only,
+            scope_only,
+        }
+    }
+
+    fn plan_names(scoped: &[&str], globals: &[Middleware]) -> Vec<String> {
+        let scoped: Vec<Value> = scoped.iter().map(|n| native(n)).collect();
+        plan(&scoped, globals)
+            .into_iter()
+            .map(|(_, name)| name.unwrap_or_else(|| "?".to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn scoped_and_global_middleware_run_in_order() {
+        let globals = vec![
+            registered("cors", 5, true, false),
+            registered("auth", 20, false, true),
+            registered("log", 50, false, false),
+        ];
+        // No scope: the globals, scope_only left out.
+        assert_eq!(plan_names(&[], &globals), vec!["cors", "log"]);
+        // A scoped auth at order 20 runs after the order-5 CORS, and the
+        // global_only CORS still runs on a scoped route.
+        assert_eq!(plan_names(&["auth"], &globals), vec!["cors", "auth", "log"]);
+        // A regular middleware scoped onto a route runs once, not twice.
+        assert_eq!(plan_names(&["log"], &globals), vec!["cors", "log"]);
+    }
+
+    #[test]
+    fn at_equal_order_the_scoped_middleware_runs_first() {
+        let globals = vec![
+            registered("global", 100, false, false),
+            registered("scoped", 100, false, true),
+        ];
+        assert_eq!(plan_names(&["scoped"], &globals), vec!["scoped", "global"]);
+    }
+
+    #[test]
+    fn halt_and_forbidden_in_a_middleware_are_the_response() {
+        let (mut interpreter, handler, request) = middleware_from(
+            r#"
+            fn mw(req) {
+                halt(429, "slow down")
+                return {"continue": true, "request": req}
+            }
+        "#,
+        );
+        let data = request_data();
+        match run(&mut interpreter, &data, handler, None, request, true) {
+            Step::Halt(response) => {
+                assert_eq!(response.status, 429);
+                assert_eq!(String::from_utf8_lossy(&response.body), "slow down");
+            }
+            Step::Continue(_) => panic!("halt must stop the chain"),
+        }
+
+        let (mut interpreter, handler, request) = middleware_from(
+            r#"
+            fn mw(req) {
+                forbidden("members only")
+            }
+        "#,
+        );
+        match run(&mut interpreter, &data, handler, None, request, false) {
+            Step::Halt(response) => assert_eq!(response.status, 403),
+            Step::Continue(_) => panic!("forbidden must stop the chain"),
+        }
+    }
+
+    #[test]
+    fn a_request_with_a_status_field_still_continues() {
+        let mut pairs = HashPairs::default();
+        for (k, v) in [("method", "GET"), ("path", "/x"), ("status", "active")] {
+            pairs.insert(HashKey::String(k.into()), Value::String(v.into()));
+        }
+        let request = Value::Hash(Rc::new(RefCell::new(pairs)));
+        assert!(matches!(
+            extract_middleware_result(&request),
+            MiddlewareResult::Continue(_)
+        ));
+        let mut pairs = HashPairs::default();
+        pairs.insert(HashKey::String("status".into()), Value::Int(302));
+        let response = Value::Hash(Rc::new(RefCell::new(pairs)));
+        assert!(matches!(
+            extract_middleware_result(&response),
+            MiddlewareResult::Response(_)
+        ));
+    }
+
+    #[test]
+    fn render_json_in_a_middleware_is_the_response() {
+        let (mut interpreter, handler, request) = middleware_from(
+            r#"
+            fn mw(req) {
+                return render_json({"error": "nope"}, 401)
+            }
+        "#,
+        );
+        let data = request_data();
+        match run(&mut interpreter, &data, handler, None, request, false) {
+            Step::Halt(response) => {
+                assert_eq!(response.status, 401);
+                assert!(String::from_utf8_lossy(&response.body).contains("nope"));
+            }
+            Step::Continue(_) => panic!("render_json must answer"),
+        }
+    }
+
+    #[test]
+    fn a_middleware_without_parameters_reads_the_req_global() {
+        let (mut interpreter, handler, _) = middleware_from(
+            r#"
+            def mw
+              req["stamp"] = "seen"
+              req
+            end
+        "#,
+        );
+        let mut pairs = HashPairs::default();
+        pairs.insert(HashKey::String("path".into()), Value::String("/x".into()));
+        let request = Value::Hash(Rc::new(RefCell::new(pairs)));
+        let data = request_data();
+        match run(&mut interpreter, &data, handler, None, request, false) {
+            Step::Continue(Value::Hash(hash)) => {
+                let hash = hash.borrow();
+                assert_eq!(
+                    hash.get(&HashKey::String("stamp".into())).cloned(),
+                    Some(Value::String("seen".into()))
+                );
+                assert_eq!(
+                    hash.get(&HashKey::String("path".into())).cloned(),
+                    Some(Value::String("/x".into()))
+                );
+            }
+            _ => panic!("expected the request back"),
+        }
+    }
 
     /// A `RequestData` with nothing interesting in it: the error paths below
     /// only read it to log, and the `response_tx` is never used.

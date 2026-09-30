@@ -127,7 +127,7 @@ println(feed["items"][0])</code></pre>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
-            <p class="text-gray-400 mb-3">Perform an HTTP POST request with a body. A hash body is sent as JSON, a string body as <code class="text-amber-400">text/plain</code>; a <code class="text-amber-400">Content-Type</code> in <code class="text-amber-400">options.headers</code> replaces that default.</p>
+            <p class="text-gray-400 mb-3">Perform an HTTP POST request with a body. A hash body is sent as JSON, a string body as <code class="text-amber-400">text/plain</code>, a byte array as <code class="text-amber-400">application/octet-stream</code>; a <code class="text-amber-400">Content-Type</code> in <code class="text-amber-400">options.headers</code> replaces that default. <code class="text-amber-400">"multipart": true</code> in the options sends the hash as a form &mdash; see <a href="#section-request-bodies" class="text-amber-400 hover:underline">Request bodies</a>.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.post(
   "https://api.example.com/users",
   "name=Alice",
@@ -208,6 +208,59 @@ println("wrote " + str(bytes))</code></pre>
         </section>
     </section>
 
+    <!-- Request bodies: bytes and multipart -->
+    <section id="section-request-bodies" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Request bodies: bytes &amp; multipart</h2>
+        <p class="text-gray-400 mb-4">
+            <code class="text-amber-400">HTTP.post</code>, <code class="text-amber-400">HTTP.put</code>, <code class="text-amber-400">HTTP.patch</code> and <code class="text-amber-400">HTTP.request</code> take the same body shapes:
+        </p>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-3 px-4 text-gray-400 font-semibold">Body</th>
+                        <th class="text-left py-3 px-4 text-gray-400 font-semibold">Sent as</th>
+                        <th class="text-left py-3 px-4 text-gray-400 font-semibold">Default <code>Content-Type</code></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4">String</td><td class="py-3 px-4">the text, as-is</td><td class="py-3 px-4"><code>text/plain</code></td></tr>
+                    <tr><td class="py-3 px-4">Hash</td><td class="py-3 px-4">JSON</td><td class="py-3 px-4"><code>application/json</code></td></tr>
+                    <tr><td class="py-3 px-4">Array of Ints 0&ndash;255</td><td class="py-3 px-4">the raw bytes</td><td class="py-3 px-4"><code>application/octet-stream</code></td></tr>
+                    <tr><td class="py-3 px-4">Hash + <code>"multipart": true</code></td><td class="py-3 px-4"><code>multipart/form-data</code></td><td class="py-3 px-4">set automatically, with the boundary</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h3 class="text-lg font-semibold text-white mb-3">Binary bodies</h3>
+        <p class="text-gray-400 mb-3">
+            A byte array is what <code class="text-amber-400">slurp(path, "binary")</code> and <code class="text-amber-400">Base64.decode</code> return, so a binary file or a decoded payload goes out byte for byte (an Int outside 0&ndash;255 raises):
+        </p>
+        <pre data-filename="Example"><code class="language-soli text-sm">pdf = slurp("tmp/report.pdf", "binary")
+HTTP.put("https://storage.example.com/reports/q3.pdf", pdf, {
+  "headers": { "Content-Type": "application/pdf" }
+})</code></pre>
+
+        <h3 class="text-lg font-semibold text-white mt-6 mb-3">Multipart forms</h3>
+        <p class="text-gray-400 mb-3">With <code class="text-amber-400">"multipart": true</code> in the options, each key of the body hash becomes a form part:</p>
+        <ul class="list-disc list-inside text-gray-400 mb-4 space-y-1">
+            <li>a String, number or bool is a text part;</li>
+            <li>an Array is the same field repeated (<code class="text-amber-400">"tags[]": ["a", "b"]</code>); a <code class="text-amber-400">nil</code> value is skipped;</li>
+            <li>a Hash is a file part, with exactly one of <code class="text-amber-400">"path"</code> (read from disk; the filename defaults to its basename), <code class="text-amber-400">"bytes"</code> (a byte array) or <code class="text-amber-400">"content"</code> (a String), plus optional <code class="text-amber-400">"filename"</code> and <code class="text-amber-400">"content_type"</code> (default <code>application/octet-stream</code>).</li>
+        </ul>
+        <pre data-filename="Example"><code class="language-soli text-sm">HTTP.post("https://api.example.com/upload", {
+  "title": "Q3",
+  "tags[]": ["finance", "quarterly"],
+  "file": { "path": "tmp/report.pdf", "content_type": "application/pdf" },
+  "thumb": { "bytes": Base64.decode(thumb_b64), "filename": "thumb.png", "content_type": "image/png" }
+}, { "multipart": true })</code></pre>
+        <p class="text-gray-400 mt-4 mb-3">
+            <code class="text-amber-400">HTTP.request</code> implies no <code>Content-Type</code> &mdash; its headers hash is the caller&rsquo;s &mdash; except for multipart, which always sets its own. There, put <code class="text-amber-400">"multipart": true</code> in the headers hash; like <code class="text-amber-400">timeout</code>, the key is consumed, not sent as a header:
+        </p>
+        <pre data-filename="Example"><code class="language-soli text-sm">HTTP.request("POST", url, { "Authorization": "Bearer " + token, "multipart": true }, { "file": { "path": "avatar.jpg" } })</code></pre>
+        <p class="text-gray-500 text-xs mt-3">Before, there was no multipart support and no way to send binary bytes: an array body was refused by <code>HTTP.post</code> and stringified by <code>HTTP.request</code>.</p>
+    </section>
+
     <!-- JSON HTTP Methods -->
     <section id="section-json-methods" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">JSON HTTP Methods</h2>
@@ -284,7 +337,7 @@ me = HTTP.get_json("https://api.example.com/me", {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
-            <p class="text-gray-400 mb-3">Perform any HTTP method (GET, POST, PUT, PATCH, DELETE, etc.). The headers hash accepts a <code class="text-amber-400">timeout</code> key (seconds) that is consumed as the per-call timeout rather than sent as a header.</p>
+            <p class="text-gray-400 mb-3">Perform any HTTP method (GET, POST, PUT, PATCH, DELETE, etc.). The headers hash accepts a <code class="text-amber-400">timeout</code> key (seconds) that is consumed as the per-call timeout rather than sent as a header. The body takes the same shapes as <code class="text-amber-400">HTTP.post</code> (string, hash as JSON, byte array, or multipart with <code class="text-amber-400">"multipart": true</code> in the headers hash), but no <code>Content-Type</code> is implied unless it is multipart.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.request("DELETE", "https://api.example.com/users/1")
 resp = HTTP.request("PATCH", url, headers, json)
 

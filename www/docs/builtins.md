@@ -924,12 +924,15 @@ Performs an HTTP POST request.
 
 **Parameters:**
 - `url` (String) - The URL to post to
-- `body` (String|Hash) - The request body
+- `body` (String|Hash|Array) - The request body: a String is sent as
+  `text/plain`, a Hash as JSON, a byte Array (Ints 0–255) raw as
+  `application/octet-stream` — see [Request bodies](#request-bodies-bytes-and-multipart)
 - `options` (Hash, optional) - Request options
   - `headers` (Hash) - Request headers (see `HTTP.get`). A `Content-Type`
     here overrides the default one (`application/json` for a hash body,
-    `text/plain` for a string body).
+    `text/plain` for a string body, `application/octet-stream` for bytes).
   - `timeout` (Int|Float) - Per-call timeout in seconds (see `HTTP.get`)
+  - `multipart` (Bool) - `true` sends the body hash as `multipart/form-data`
 
 **Returns:** Hash - `{ "status": Int, "body": String, "headers": Hash }`
 
@@ -1026,6 +1029,59 @@ HTTP.delete("https://api.example.com/users/1", {
 })
 ```
 
+### Request bodies: bytes and multipart
+
+`HTTP.post`, `HTTP.put`, `HTTP.patch` and `HTTP.request` take the same body
+shapes:
+
+| Body | Sent as | Default `Content-Type` |
+|------|---------|------------------------|
+| String | the text, as-is | `text/plain` |
+| Hash | JSON | `application/json` |
+| Array of Ints 0–255 | the raw bytes | `application/octet-stream` |
+| Hash + `"multipart": true` | `multipart/form-data` | set automatically, with the boundary |
+
+A byte Array is what `slurp(path, "binary")` and `Base64.decode` return, so a
+binary file or a decoded payload goes out byte for byte (an Int outside 0–255
+raises):
+
+```soli
+pdf = slurp("tmp/report.pdf", "binary")
+HTTP.put("https://storage.example.com/reports/q3.pdf", pdf, {
+  "headers": { "Content-Type": "application/pdf" }
+})
+```
+
+With `"multipart": true` in the options, each key of the body hash becomes a
+form part:
+
+- a String, number or bool is a text part;
+- an Array is the same field repeated (`"tags[]": ["a", "b"]`); a `nil` value is skipped;
+- a Hash is a file part, with exactly one of `"path"` (read from disk; the
+  filename defaults to its basename), `"bytes"` (a byte Array) or `"content"`
+  (a String), plus optional `"filename"` and `"content_type"` (default
+  `application/octet-stream`).
+
+```soli
+HTTP.post("https://api.example.com/upload", {
+  "title": "Q3",
+  "tags[]": ["finance", "quarterly"],
+  "file": { "path": "tmp/report.pdf", "content_type": "application/pdf" },
+  "thumb": { "bytes": Base64.decode(thumb_b64), "filename": "thumb.png", "content_type": "image/png" }
+}, { "multipart": true })
+```
+
+`HTTP.request` implies no `Content-Type` — its headers hash is the caller's —
+except for multipart, which always sets its own. There, put `"multipart": true`
+in the headers hash; like `timeout`, the key is consumed, not sent as a header:
+
+```soli
+HTTP.request("POST", url, { "Authorization": "Bearer " + token, "multipart": true }, { "file": { "path": "avatar.jpg" } })
+```
+
+Before, there was no multipart support and no way to send binary bytes: an
+Array body was refused by `HTTP.post` and stringified by `HTTP.request`.
+
 ### HTTP.request(method, url, headers?, body?)
 
 Performs a custom HTTP request.
@@ -1040,7 +1096,9 @@ Performs a custom HTTP request.
   works here too. Both the flat and the nested pairs go through the same
   validation as `HTTP.get`'s `headers` (bad name/value and framing
   headers raise up-front, `null` skips the header).
-- `body` (String|Hash, optional) - The request body
+- `body` (String|Hash|Array, optional) - The request body — same shapes as
+  `HTTP.post` (see [Request bodies](#request-bodies-bytes-and-multipart)), but
+  no `Content-Type` is implied unless it is multipart
 
 **Returns:** Hash - Response object
 

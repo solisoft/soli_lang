@@ -333,11 +333,13 @@ return redirect(post_path(post))
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">post_path(post)         # reads post.id off the model instance
+<pre><code class="language-soli text-sm">post_path(post)         # reads post.id off the model instance (or its _key)
 post_path(42)           # raw int / string
 post_path({"id": 42})   # explicit hash</code></pre>
         </div>
     </div>
+
+    <p class="text-gray-400 mb-4">When a record or hash has no <code>id</code> (or a <code>nil</code> one), <code>:id</code> is filled from its <code>_key</code> &mdash; a SoliDB document loaded by <code>find</code>/<code>all</code> carries only <code>_key</code>, so <code>post_path(Post.find(key))</code> builds <code>/posts/&lt;key&gt;</code>. A non-nil <code>id</code> still wins. (This used to raise <code>missing param :id</code> for any record not fresh from <code>create</code>.)</p>
 
     <p class="text-gray-400 mb-4">For multi-param routes, pass either a hash or positional primitives in declaration order:</p>
 
@@ -606,7 +608,7 @@ soli routes --json</code></pre>
 
     <ul class="list-disc list-inside text-gray-400 mb-12 space-y-2">
         <li><strong class="text-white">HELPER</strong> is the generated named-route helper (<code>post_path</code> also implies <code>post_url</code>); blank rows have no name.</li>
-        <li><strong class="text-white">MIDDLEWARE</strong> lists middleware applied by route args or a <code>middleware("...", fn() ... end)</code> scope.</li>
+        <li><strong class="text-white">MIDDLEWARE</strong> lists middleware applied by a <code>middleware("...", -&gt; ...)</code> scope.</li>
         <li>WebSocket routes appear with the <code>WS</code> method.</li>
         <li><code>--json</code> emits <code>[{"method", "path", "handler", "name", "middleware"}]</code> objects &mdash; stable input for scripts and coding agents.</li>
     </ul>

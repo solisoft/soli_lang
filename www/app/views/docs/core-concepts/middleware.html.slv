@@ -4,150 +4,101 @@
             <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Middleware</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Filter HTTP requests and responses. Middleware enables cross-cutting concerns like authentication, logging, and CORS handling.
+            Run code before your controller action: read or modify the request, or stop it with a response. The place for authentication, origin checks, rate limits and other cross-cutting concerns.
         </p>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Request Logging</h2>
-    <p class="text-gray-400 mb-6">Soli includes built-in request logging at the server level with timing information:</p>
+    <h2 class="text-2xl font-bold text-white mb-6" id="creating-middleware">Creating Middleware</h2>
+    <p class="text-gray-400 mb-6">Every <code class="text-amber-400">def</code> (or <code class="text-amber-400">fn</code>) in <code class="text-amber-400">app/middleware/*.sl</code> is registered as a middleware, named after the function. The files load automatically &mdash; no import, no registration call. A function whose name starts with <code class="text-amber-400">_</code> is a helper and is never registered.</p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Server Output</label>
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/middleware/auth.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm">[LOG] GET /users - 200 (1.234ms)
-[LOG] POST /login - 302 (12.876ms)
-[LOG] GET /missing - 404 (0.102ms)</code></pre>
+<pre><code class="language-soli text-sm"># order: 20
+# scope_only: true
+def authenticate
+  return halt(401, "Unauthorized") if req["headers"]["authorization"].blank?
+
+  req
+end</code></pre>
         </div>
     </div>
 
-    <p class="text-gray-400 mb-6">Request logging is <strong>always on in <code class="text-amber-400">--dev</code></strong> so every route shows up in the terminal as you work. In production it's opt-in via <code class="text-amber-400">SOLI_REQUEST_LOG=1</code>:</p>
+    <p class="text-gray-400 mb-6">A middleware declared without a parameter list reads the current request through the <code class="text-amber-400">req</code> global, as an action does. Declare a parameter to receive it as an argument instead &mdash; both forms work:</p>
 
-    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-bash text-sm"># Enable request logging in production
-SOLI_REQUEST_LOG=1 soli serve myapp
-
-# Or
-SOLI_REQUEST_LOG=true soli serve myapp</code></pre>
+<pre><code class="language-soli text-sm">def authenticate(req)
+  # ...
+  req
+end</code></pre>
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Middleware Attributes</h2>
-    <p class="text-gray-400 mb-6">Middleware files in <code class="text-amber-400">app/middleware/</code> are loaded automatically. Control behavior using special comment attributes:</p>
+    <p class="text-gray-400 mb-12">The request hash carries <code class="text-amber-400">method</code>, <code class="text-amber-400">path</code>, <code class="text-amber-400">headers</code> (lower-cased names), <code class="text-amber-400">query</code>, <code class="text-amber-400">params</code>, <code class="text-amber-400">cookies</code> and friends.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6" id="directives">Directives</h2>
+    <p class="text-gray-400 mb-6">Comments directly above the <code class="text-amber-400">def</code> configure it (<code class="text-amber-400">//</code> is also accepted; prefer <code class="text-amber-400">#</code>):</p>
 
     <div class="overflow-x-auto mb-8">
         <table class="min-w-full text-sm">
             <thead>
                 <tr class="border-b border-white/10">
-                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Attribute</th>
-                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Description</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Directive</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Effect</th>
                 </tr>
             </thead>
             <tbody class="text-gray-300">
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-amber-400">// order: N</td>
-                    <td class="py-3 px-4">Execution order (lower runs first, default: 100)</td>
+                    <td class="py-3 px-4 font-mono text-amber-400"># order: N</td>
+                    <td class="py-3 px-4">Execution order, lower runs first. Default <code>100</code>.</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-amber-400">// global_only: true</td>
-                    <td class="py-3 px-4">Runs for ALL requests, cannot be scoped to specific routes</td>
+                    <td class="py-3 px-4 font-mono text-amber-400"># global_only: true</td>
+                    <td class="py-3 px-4">Runs on every request &mdash; including routes with scoped middleware &mdash; and cannot be scoped.</td>
                 </tr>
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-amber-400">// scope_only: true</td>
-                    <td class="py-3 px-4">Only runs when explicitly scoped, never globally</td>
+                    <td class="py-3 px-4 font-mono text-amber-400"># scope_only: true</td>
+                    <td class="py-3 px-4">Never runs globally; only on routes wrapped with <code>middleware(...)</code>.</td>
                 </tr>
             </tbody>
         </table>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Creating Middleware</h2>
-    <p class="text-gray-400 mb-6">Middleware functions receive a request hash and return a result hash:</p>
+    <p class="text-gray-400 mb-4">That gives three kinds:</p>
 
-    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/middleware/cors.sl</label>
-        <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># order: 5
-# global_only: true
+    <ul class="text-gray-400 space-y-2 mb-12 list-disc pl-6">
+        <li><strong class="text-white">Regular</strong> (no directive) &mdash; runs on every request. It may also be named in a route&rsquo;s <code class="text-amber-400">middleware(...)</code>; it still runs once, not twice.</li>
+        <li><strong class="text-white"><code class="text-amber-400">global_only</code></strong> &mdash; runs on every request. Naming it in <code class="text-amber-400">middleware(...)</code> prints a warning and is ignored.</li>
+        <li><strong class="text-white"><code class="text-amber-400">scope_only</code></strong> &mdash; runs only on the routes that name it.</li>
+    </ul>
 
-def add_cors_headers(req: Any) -&gt; Any {
-  # Continue to next middleware/handler
-  return {
-    "continue": true,
-    "request": req
-  };
-}</code></pre>
-        </div>
-    </div>
+    <h2 class="text-2xl font-bold text-white mb-6" id="scoping">Scoping Middleware to Routes</h2>
+    <p class="text-gray-400 mb-6">Wrap routes in <code class="text-amber-400">middleware(...)</code> in <code class="text-amber-400">config/routes.sl</code>, with one name or a list:</p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/middleware/auth.sl</label>
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># order: 20
-# scope_only: true
+<pre><code class="language-soli text-sm">get("/", "home#index")
+get("/login", "sessions#new")
 
-def authenticate(req: Any) -&gt; Any {
-  headers = req["headers"];
-  api_key = "";
+# Protected routes
+middleware("authenticate", -&gt; {
+  get("/dashboard", "dashboard#index")
+  post("/settings", "users#update_settings")
+})
 
-  if (has_key(headers, "X-Api-Key")) {
-    api_key = headers["X-Api-Key"];
-  }
-
-  if (api_key == "") {
-    # Short-circuit with error response
-    return {
-      "continue": false,
-      "response": {
-        "status": 401,
-        "headers": {"Content-Type": "application/json"},
-        "body": json_stringify({
-          "error": "Unauthorized",
-          "message": "API key required"
-        })
-      }
-    };
-  }
-
-  # Continue to handler
-  return {
-    "continue": true,
-    "request": req
-  };
-}</code></pre>
+# Several middleware
+middleware(["authenticate", "audit"], -&gt; {
+  get("/admin", "admin#index")
+})</code></pre>
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Return Format</h2>
-    <p class="text-gray-400 mb-6">Middleware must return a hash with one of these formats:</p>
+    <h2 class="text-2xl font-bold text-white mb-6" id="order">Order</h2>
+    <p class="text-gray-400 mb-8">For each request, the route&rsquo;s scoped middleware and the global middleware are merged into one list and sorted by <code class="text-amber-400"># order:</code>. At equal order a scoped middleware runs before a global one; scoped middleware keep their declaration order among themselves.</p>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-        <div class="rounded-lg bg-[#171412] overflow-hidden">
-            <label class="block px-4 py-2 bg-green-500/10 text-xs text-green-400 font-mono border-b border-white/5">Continue Processing</label>
-            <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">{
-  "continue": true,
-  "request": req
-}</code></pre>
-            </div>
-        </div>
-        <div class="rounded-lg bg-[#171412] overflow-hidden">
-            <label class="block px-4 py-2 bg-red-500/10 text-xs text-red-400 font-mono border-b border-white/5">Short-circuit Response</label>
-            <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">{
-  "continue": false,
-  "response": {
-    "status": 401,
-    "body": "Unauthorized"
-  }
-}</code></pre>
-            </div>
-        </div>
-    </div>
-
-    <h2 class="text-2xl font-bold text-white mb-6">Execution Order</h2>
-    <p class="text-gray-400 mb-8">Each request flows through middleware layers before reaching your controller, then back out as a response.</p>
-
-    <div class="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent p-6 sm:p-8 mb-12">
+    <div class="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent p-6 sm:p-8 mb-8">
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-stretch">
             <!-- Request -->
             <div class="md:col-span-1 flex md:flex-col items-center justify-center gap-3 text-center">
@@ -166,24 +117,24 @@ def authenticate(req: Any) -&gt; Any {
             <div class="md:col-span-3 relative">
                 <div class="hidden md:block absolute inset-x-0 top-1/2 -translate-y-1/2 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/40 to-green-500/40"></div>
                 <div class="relative grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <!-- Step 1: Global -->
+                    <!-- Step 1: Merge -->
                     <div class="rounded-xl bg-[#171412]/80 border border-amber-500/30 p-4 backdrop-blur">
                         <div class="flex items-center gap-2 mb-2">
                             <span class="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold">1</span>
-                            <span class="text-xs font-mono uppercase tracking-wider text-amber-300">Global</span>
+                            <span class="text-xs font-mono uppercase tracking-wider text-amber-300">Merge</span>
                         </div>
-                        <div class="text-sm font-semibold text-white mb-1">Global Middleware</div>
-                        <div class="text-xs text-gray-400">Runs for every request, sorted by <code class="text-amber-300">order</code>.</div>
+                        <div class="text-sm font-semibold text-white mb-1">Global + Scoped</div>
+                        <div class="text-xs text-gray-400">The global middleware and the route&rsquo;s <code class="text-amber-300">middleware(...)</code> ones, each once.</div>
                     </div>
 
-                    <!-- Step 2: Scoped -->
+                    <!-- Step 2: Run -->
                     <div class="rounded-xl bg-[#171412]/80 border border-orange-500/30 p-4 backdrop-blur">
                         <div class="flex items-center gap-2 mb-2">
                             <span class="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500/20 text-orange-300 text-xs font-bold">2</span>
-                            <span class="text-xs font-mono uppercase tracking-wider text-orange-300">Scoped</span>
+                            <span class="text-xs font-mono uppercase tracking-wider text-orange-300">Run</span>
                         </div>
-                        <div class="text-sm font-semibold text-white mb-1">Route Middleware</div>
-                        <div class="text-xs text-gray-400">Only for routes wrapped in <code class="text-orange-300">middleware(...)</code>.</div>
+                        <div class="text-sm font-semibold text-white mb-1">Sorted by order</div>
+                        <div class="text-xs text-gray-400">Lower <code class="text-orange-300">order</code> first; each passes the request on or answers.</div>
                     </div>
 
                     <!-- Step 3: Controller -->
@@ -216,34 +167,186 @@ def authenticate(req: Any) -&gt; Any {
             <svg class="h-5 w-5 flex-none text-amber-300 mt-0.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
             </svg>
-            <p>Any middleware can short-circuit the chain by returning <code class="text-amber-300">{ "continue": false, "response": ... }</code>, skipping later layers and the controller entirely.</p>
+            <p>Any middleware can stop the chain by returning a response (a hash with a <code class="text-amber-300">status</code>) or raising <code class="text-amber-300">halt(...)</code>, skipping later middleware and the controller entirely.</p>
         </div>
     </div>
 
-    <h2 class="text-2xl font-bold text-white mb-6">Scoping Middleware to Routes</h2>
-    <p class="text-gray-400 mb-6">Use the <code class="text-amber-400">middleware()</code> function in routes to apply scope-only middleware:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/middleware/origin.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">ALLOWED_ORIGINS = ["https://app.example.com"]
+
+# order: 5
+# global_only: true
+def check_origin
+  origin = req["headers"]["origin"]
+  if origin.present? &amp;&amp; !ALLOWED_ORIGINS.includes?(origin)
+    return {"status": 403, "body": "Origin not allowed"}
+  end
+
+  req["origin"] = origin || "same-origin"
+  req
+end</code></pre>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/middleware/stamp.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># order: 10
+def stamp
+  req["started_at"] = DateTime.utc.to_unix
+  req
+end</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-6">With <code class="text-amber-400">check_origin</code> (order 5, <code class="text-amber-400">global_only</code>), <code class="text-amber-400">stamp</code> (order 10, regular) and <code class="text-amber-400">authenticate</code> (order 20, <code class="text-amber-400">scope_only</code>):</p>
+
+    <div class="overflow-x-auto mb-8">
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Route</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Runs</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-300">
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-amber-400">/dashboard</td>
+                    <td class="py-3 px-4"><code>check_origin</code> &rarr; <code>stamp</code> &rarr; <code>authenticate</code> &rarr; action <span class="text-gray-500">(inside <code>middleware("authenticate", ...)</code>)</span></td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-amber-400">/</td>
+                    <td class="py-3 px-4"><code>check_origin</code> &rarr; <code>stamp</code> &rarr; action</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-gray-400 mb-12">Keys a middleware sets on the request (<code class="text-amber-400">req["origin"]</code>, <code class="text-amber-400">req["started_at"]</code>) are visible to later middleware and to the controller action.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6" id="returning">Returning and Stopping</h2>
+    <p class="text-gray-400 mb-6">What a middleware returns decides what happens next:</p>
+
+    <div class="overflow-x-auto mb-8">
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Return value</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Effect</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-300">
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-amber-400">req</td>
+                    <td class="py-3 px-4">The request hash, possibly modified: continue to the next middleware, then the action.</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-amber-400">redirect("/login")</td>
+                    <td class="py-3 px-4">Any hash with a <code>status</code> key is a response: stop, and answer with it. <code>{"status": 401, "body": "..."}</code> works too.</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-amber-400">{"continue": true, "request": req}</td>
+                    <td class="py-3 px-4">Continue (explicit form).</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-amber-400">{"continue": false, "response": {...}}</td>
+                    <td class="py-3 px-4">Stop with that response (explicit form).</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-amber-400">anything else</td>
+                    <td class="py-3 px-4">Not a hash: <code>500</code>.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># order: 30
+# scope_only: true
+def require_session
+  return redirect("/login") if session_get("user_id").nil?
+
+  req
+end</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-6"><code class="text-amber-400">render_json</code> and <code class="text-amber-400">render_text</code> answer from a middleware too &mdash; whatever it renders is the response:</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># order: 15
+# scope_only: true
+def require_api_key
+  return render_json({"error": "Unauthorized"}, 401) if req["headers"]["x-api-key"].blank?
+
+  req
+end</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-6">Raising also stops the chain, with the matching response:</p>
+
+    <div class="overflow-x-auto mb-8">
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Raised by</th>
+                    <th class="text-left py-3 px-4 text-gray-400 font-medium">Response</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-300">
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-amber-400">halt(status, message)</td>
+                    <td class="py-3 px-4"><code>status</code>, with <code>message</code> as a plain-text body</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-amber-400">forbidden(message?)</td>
+                    <td class="py-3 px-4"><code>403</code> error page</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-amber-400">Model.find miss</td>
+                    <td class="py-3 px-4"><code>404</code> error page</td>
+                </tr>
+                <tr class="border-b border-white/5">
+                    <td class="py-3 px-4 font-mono text-amber-400">any other error</td>
+                    <td class="py-3 px-4"><code>500</code> &mdash; the full error page under <code>--dev</code>, a request id only in production</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-gray-400 mb-12"><code class="text-amber-400">halt</code> raises, so a bare <code class="text-amber-400">halt(429, "Slow down")</code> ends the middleware on its own; <code class="text-amber-400">return halt(...)</code> reads the same.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-6">Request Logging</h2>
+    <p class="text-gray-400 mb-6">Soli includes built-in request logging at the server level with timing information:</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Server Output</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">[LOG] GET /users - 200 (1.234ms)
+[LOG] POST /login - 302 (12.876ms)
+[LOG] GET /missing - 404 (0.102ms)</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-6">Request logging is <strong>always on in <code class="text-amber-400">--dev</code></strong> so every route shows up in the terminal as you work. In production it's opt-in via <code class="text-amber-400">SOLI_REQUEST_LOG=1</code>:</p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
-        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm"># Public routes (no auth required)
-get("/", "home#index");
-get("/login", "auth#login");
+<pre><code class="language-bash text-sm"># Enable request logging in production
+SOLI_REQUEST_LOG=1 soli serve myapp
 
-# Protected routes (auth middleware applied)
-middleware("authenticate", fn() {
-  get("/dashboard", "dashboard#index");
-  get("/profile", "users#profile");
-  post("/settings", "users#update_settings");
-});
-
-# Multiple middleware
-middleware(["authenticate", "admin_only"], fn() {
-  get("/admin", "admin#index");
-  get("/admin/users", "admin#users");
-});</code></pre>
+# Or
+SOLI_REQUEST_LOG=true soli serve myapp</code></pre>
         </div>
     </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6" id="cors">CORS</h2>
+    <p class="text-gray-400 mb-12">Middleware runs before the action and returns a request or a response &mdash; it does not add headers to the action&rsquo;s response. For CORS headers and preflights, use the built-in <code class="text-amber-400">cors("/api/*", {...})</code> route helper &mdash; see <a href="/docs/core-concepts/routing#cors" class="text-amber-400 hover:text-amber-300">Routing &rarr; CORS</a>.</p>
 
     <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
         <h4 class="text-lg font-semibold text-amber-400 mb-2 flex items-center gap-2">
@@ -254,10 +357,10 @@ middleware(["authenticate", "admin_only"], fn() {
         </h4>
         <ul class="text-amber-200/80 space-y-2 mt-2 text-sm">
             <li>&#8226; Middleware files in <code>app/middleware/</code> are loaded automatically &mdash; no imports needed</li>
-            <li>&#8226; Use <code>order</code> to control execution sequence (lower runs first)</li>
-            <li>&#8226; Use <code>global_only: true</code> for middleware that must run on every request (CORS, security headers)</li>
-            <li>&#8226; Use <code>scope_only: true</code> for authentication to prevent accidental global application</li>
-            <li>&#8226; Keep global middleware lightweight; expensive operations belong in scoped middleware</li>
+            <li>&#8226; Keep each middleware to one job; put shared code in <code>_</code>-prefixed helpers</li>
+            <li>&#8226; Mark authentication <code>scope_only: true</code> so it never applies globally by accident</li>
+            <li>&#8226; Use <code>global_only: true</code> for checks that must run on every request</li>
+            <li>&#8226; Keep global middleware cheap &mdash; it runs on every request</li>
         </ul>
     </div>
 

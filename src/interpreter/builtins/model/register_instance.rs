@@ -163,7 +163,9 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                 // Run validations
                 let inst_ref2 = instance.borrow();
                 let data_hash = instance_fields_to_hash(&inst_ref2);
-                let errors = run_validations(&class_name, &data_hash, Some(&key_str))?;
+                let class = inst_ref2.class.clone();
+                let errors =
+                    run_validations(&class_name, Some(&class), &data_hash, Some(&key_str))?;
                 if !errors.is_empty() {
                     let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
                     drop(inst_ref2);
@@ -394,7 +396,9 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                 }
 
                 // Run validations
-                let errors = run_validations(&class_name, &data_hash, key_opt.as_deref())?;
+                let class = instance.borrow().class.clone();
+                let errors =
+                    run_validations(&class_name, Some(&class), &data_hash, key_opt.as_deref())?;
                 if !errors.is_empty() {
                     let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
                     instance

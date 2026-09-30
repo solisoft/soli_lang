@@ -1857,6 +1857,7 @@ fn worker_loop(
     let mut last_static_files_version = hot_reload_versions.static_files.load(Ordering::Acquire);
     let mut last_routes_version = hot_reload_versions.routes.load(Ordering::Acquire);
     let mut last_jobs_version = hot_reload_versions.jobs.load(Ordering::Acquire);
+    let mut last_locales_version = hot_reload_versions.locales.load(Ordering::Acquire);
 
     loop {
         // Check for hot reload via the single generation counter: one
@@ -2035,6 +2036,15 @@ fn worker_loop(
             crate::template::core_eval::reset_builtins_rc();
         }
 
+        // Translations changed — reload them for this worker's application.
+        if scan_versions {
+            reload_locales_if_changed(
+                &hot_reload_versions,
+                &mut last_locales_version,
+                &routes_file,
+            );
+        }
+
         // Drain all pending events non-blockingly before sleeping
 
         // Process WebSocket events in a batch, as the HTTP queue is below. One
@@ -2138,6 +2148,11 @@ fn worker_loop(
                         // thread's rendered-body cache here — otherwise the
                         // first request after a view edit gets the stale body.
                         if dev_mode {
+                            reload_locales_if_changed(
+                                &hot_reload_versions,
+                                &mut last_locales_version,
+                                &routes_file,
+                            );
                             let current_views = hot_reload_versions.views.load(Ordering::Acquire);
                             if current_views != last_views_version {
                                 last_views_version = current_views;
@@ -4204,16 +4219,33 @@ thread_local! {
     static PENDING_DIVERGENCE: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
 }
 
+/// Dev hot reload: when a `config/locales/*.yml` file changed, reload the
+/// translations. The store is per application (tenant), so each worker does
+/// it for its own; `config/` is where `routes.sl` lives. The watcher also
+/// bumps the views counter, which clears the rendered pages holding the old
+/// strings.
+fn reload_locales_if_changed(
+    versions: &HotReloadVersions,
+    last_seen: &mut u64,
+    routes_file: &std::path::Path,
+) {
+    let current = versions.locales.load(Ordering::Acquire);
+    if current == *last_seen {
+        return;
+    }
+    *last_seen = current;
+    if let Some(config_dir) = routes_file.parent() {
+        crate::interpreter::builtins::i18n::helpers::load_locales_from_config_dir(config_dir);
+    }
+}
+
 /// Remember why the VM failed a handler that is about to be re-run on the
 /// tree-walker. A refusal (`EngineFallback`) is already reported by
 /// `record_vm_demotion`, and a 404/403 is the app's own outcome; any other
 /// error may be the handler's (`throw`) — or a VM bug, and only the re-run
 /// can tell.
 fn note_possible_divergence(handler: &str, err: &RuntimeError) {
-    if matches!(err, RuntimeError::EngineFallback(..))
-        || record_not_found_response(err).is_some()
-        || forbidden_response(err).is_some()
-    {
+    if matches!(err, RuntimeError::EngineFallback(..)) || raised_response(err).is_some() {
         return;
     }
     PENDING_DIVERGENCE.with(|p| *p.borrow_mut() = Some((handler.to_string(), err.to_string())));
@@ -4279,11 +4311,8 @@ fn no_retry_after_commit(
     if !crate::interpreter::builtins::model::crud::had_durable_commit() {
         return None;
     }
-    // A raised 404/403 is a deliberate outcome, not a failure to re-drive.
-    if let Some(resp) = record_not_found_response(err) {
-        return Some(resp);
-    }
-    if let Some(resp) = forbidden_response(err) {
+    // A raised 404/403/halt is a deliberate outcome, not a failure to re-drive.
+    if let Some(resp) = raised_response(err) {
         return Some(resp);
     }
     let request_id = Uuid::new_v4().to_string();
@@ -4673,6 +4702,14 @@ fn call_handler(
                         };
                     }
                     Err(err) => {
+                        // A deliberate 404/403/halt is the answer, not a VM
+                        // failure: demoting the handler would move it to the
+                        // tree-walker for good, and re-running it would repeat
+                        // whatever it did before raising.
+                        if let Some(resp) = raised_response(&err) {
+                            vm.reset();
+                            return resp;
+                        }
                         record_vm_demotion(handler_name, &err);
                         note_possible_divergence(handler_name, &err);
                         vm.failed_handlers.insert(handler_name.to_string());
@@ -4711,11 +4748,7 @@ fn call_handler(
                     }
                 }
                 Err(e) => {
-                    if let Some(resp) = record_not_found_response(&e) {
-                        interpreter.pop_frame();
-                        return resp;
-                    }
-                    if let Some(resp) = forbidden_response(&e) {
+                    if let Some(resp) = raised_response(&e) {
                         interpreter.pop_frame();
                         return resp;
                     }
@@ -4982,9 +5015,7 @@ fn call_oop_controller_action(
             }
         }
         Err(e) => {
-            if let Some(resp) = record_not_found_response(&e) {
-                resp
-            } else if let Some(resp) = forbidden_response(&e) {
+            if let Some(resp) = raised_response(&e) {
                 resp
             } else {
                 let stack_trace: Vec<String> = e
@@ -5079,6 +5110,12 @@ fn call_class_method(
                         return Ok(result);
                     }
                     Err(err) => {
+                        // Deliberate 404/403/halt: the caller maps it to the
+                        // response. No demotion, no re-run (see above).
+                        if raised_response(&err).is_some() {
+                            vm.reset();
+                            return Err(err);
+                        }
                         let handler_key = format!("{}#{}", class.name, method_name);
                         record_vm_demotion(&handler_key, &err);
                         note_possible_divergence(&handler_key, &err);
@@ -5229,6 +5266,10 @@ fn execute_before_actions(
                 }
             }
             Err(e) => {
+                if let Some(resp) = raised_response(&RuntimeError::new(e.clone(), Span::default()))
+                {
+                    return Some(resp);
+                }
                 return Some(ResponseData {
                     status: 500,
                     headers: vec![],
@@ -5336,6 +5377,32 @@ fn record_not_found_response(err: &RuntimeError) -> Option<ResponseData> {
 /// `app/views/errors/403.html.slv`). Returns None otherwise.
 fn forbidden_response(err: &RuntimeError) -> Option<ResponseData> {
     Some(error_response::page(403, &err.forbidden_message()?))
+}
+
+/// If the error is a `halt(status, message)`, that response: the status and
+/// the message as a plain-text body — what `halt` returned before it raised.
+fn halt_response(err: &RuntimeError) -> Option<ResponseData> {
+    let (status, message) = err.halt_parts()?;
+    Some(ResponseData {
+        status,
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/plain; charset=utf-8".to_string(),
+        )],
+        body: message.into(),
+    })
+}
+
+/// The response an error *deliberately* raised stands for — a `find` miss
+/// (404), `forbidden()` (403), `halt(...)` — or None for a real failure.
+/// Every place that runs app code during a request (action, before_action,
+/// middleware) routes through this, so the three behave the same wherever
+/// they are raised; a `forbidden()` in a before_action or a middleware used to
+/// answer 500.
+fn raised_response(err: &RuntimeError) -> Option<ResponseData> {
+    record_not_found_response(err)
+        .or_else(|| forbidden_response(err))
+        .or_else(|| halt_response(err))
 }
 
 fn check_for_response(value: &Value) -> Option<ResponseData> {
@@ -5871,34 +5938,14 @@ fn handle_request(
         );
     }
 
-    // Only clone middleware list if we need it
+    // Scoped and global middleware, merged and sorted by `# order:`.
     let global_middleware = get_middleware();
-
-    // Execute scoped (route-specific) middleware
-    for mw in &scoped_middleware {
-        match middleware::run(interpreter, data, mw.clone(), None, request_hash, dev_mode) {
-            middleware::Step::Continue(modified_request) => request_hash = modified_request,
-            middleware::Step::Halt(response) => {
-                return finalize::finish(&finalizer, method, path, response)
-            }
-        }
-    }
-
-    // Execute global middleware
-    let has_scoped_middleware = !scoped_middleware.is_empty();
-    for mw in global_middleware.iter() {
-        if has_scoped_middleware && mw.global_only {
-            continue;
-        }
-        if mw.scope_only {
-            continue;
-        }
-
+    for (handler, name) in middleware::plan(&scoped_middleware, &global_middleware) {
         match middleware::run(
             interpreter,
             data,
-            mw.handler.clone(),
-            Some(mw.name.as_str()),
+            handler,
+            name.as_deref(),
             request_hash,
             dev_mode,
         ) {

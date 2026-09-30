@@ -2750,11 +2750,15 @@ pub fn register_template_builtins(env: &mut Environment) {
         })),
     );
 
-    // halt(status, message) - Build a plain error response hash. Used to
-    // short-circuit before_action hooks (`return halt(403, "Forbidden")`) and
-    // from actions that want a terse error page. The return value is a
-    // response hash with `status`/`headers`/`body`, so it's recognized by
-    // `check_for_response` and terminates the request immediately.
+    // halt(status, message) - Stop the request here and answer `status` with
+    // `message` as a plain-text body. Like Sinatra's `halt` it RAISES, so a
+    // bare `halt(403, "Forbidden")` ends the action, the before_action, the
+    // middleware — or a helper several calls deep — without a `return`. It
+    // used to return a response hash, which only stopped anything when it
+    // was the returned value: `halt(...)` as a statement fell through and the
+    // action carried on. `return halt(...)` still works: the raise happens
+    // before the return. The request handler maps the sentinel to the
+    // response (see `RuntimeError::HALT_MARKER`).
     //
     // Named `halt` (Sinatra convention) specifically because `error` is the
     // most common local name in form/validation partials, and having a global
@@ -2764,7 +2768,8 @@ pub fn register_template_builtins(env: &mut Environment) {
         "halt".to_string(),
         Value::NativeFunction(NativeFunction::new("halt", Some(2), |args| {
             let status = match &args[0] {
-                Value::Int(n) => *n,
+                Value::Int(n) if (100..=599).contains(n) => *n,
+                Value::Int(n) => return Err(format!("halt() status must be 100..599, got {}", n)),
                 other => {
                     return Err(format!(
                         "halt() expects Int status as first argument, got {}",
@@ -2773,23 +2778,10 @@ pub fn register_template_builtins(env: &mut Environment) {
                 }
             };
             let message = match &args[1] {
-                Value::String(s) => s.clone(),
-                other => format!("{}", other).into(),
+                Value::String(s) => s.to_string(),
+                other => format!("{}", other),
             };
-
-            let mut headers_map: HashPairs = HashPairs::default();
-            headers_map.insert(
-                HashKey::String("Content-Type".into()),
-                Value::String("text/plain; charset=utf-8".into()),
-            );
-            let headers = Value::Hash(Rc::new(RefCell::new(headers_map)));
-
-            let mut response_map: HashPairs = HashPairs::default();
-            response_map.insert(HashKey::String("status".into()), Value::Int(status));
-            response_map.insert(HashKey::String("headers".into()), headers);
-            response_map.insert(HashKey::String("body".into()), Value::String(message));
-
-            Ok(Value::Hash(Rc::new(RefCell::new(response_map))))
+            Err(crate::error::RuntimeError::halt_sentinel(status, &message))
         })),
     );
 

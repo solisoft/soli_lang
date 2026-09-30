@@ -4,7 +4,7 @@
 
 # Helpers run in the page. `count_posts` wraps XMLHttpRequest so a spec can see
 # how many chunks were actually sent.
-const PAGE_HELPERS = [[
+const PAGE_HELPERS = """
 window.__posts = 0;
 (function () {
   const send = XMLHttpRequest.prototype.send;
@@ -27,7 +27,7 @@ window.__pick = function (name, size) {
   input.files = transfer.files;
   input.dispatchEvent(new Event('change', { bubbles: true }));
 };
-]]
+"""
 
 describe("liveview upload resume", fn() {
     test("a chunked upload completes and the handler sees the whole file", fn() {
@@ -68,7 +68,7 @@ describe("liveview upload resume", fn() {
         # Play the part of an interrupted earlier attempt: two of three chunks
         # already on the server, and the id remembered under the file's
         # fingerprint, exactly as the client would have left them.
-        evaluate([[
+        evaluate("""
           (function () {
             const id = 'resume-test-' + Date.now();
             const key = ['soli-upload', 'file', 'partial.bin', 716800, 1700000000000].join('|');
@@ -89,7 +89,7 @@ describe("liveview upload resume", fn() {
               document.body.appendChild(marker);
             });
           })()
-        ]])
+        """)
         wait_for("#seeded")
 
         evaluate("window.__pick('partial.bin', 716800)")

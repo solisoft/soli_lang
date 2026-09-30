@@ -1264,13 +1264,16 @@ pub fn run_check(paths: &[String]) {
     println!("No type errors. Checked {} file(s).", checked);
 }
 
-pub fn run_fmt(paths: &[String], check: bool, stdin: bool) {
+pub fn run_fmt(paths: &[String], check: bool, stdin: bool, migrate_raw_strings: bool) {
     use std::io::Read;
     if stdin {
         let mut source = String::new();
         if let Err(e) = std::io::stdin().read_to_string(&mut source) {
             eprintln!("Error reading stdin: {}", e);
             process::exit(1);
+        }
+        if migrate_raw_strings {
+            source = solilang::fmt::migrate_legacy_raw_strings(&source).0;
         }
         match solilang::fmt::format_source(&source) {
             Ok(formatted) => print!("{}", formatted),
@@ -1318,11 +1321,42 @@ pub fn run_fmt(paths: &[String], check: bool, stdin: bool) {
                 continue;
             }
         };
-        let formatted = match solilang::fmt::format_source(&source) {
+        // `--migrate-raw-strings`: the removed `[[ … ]]` strings become
+        // `"""…"""` before formatting. One that holds `"""` is left for a
+        // human, and named.
+        let migrated = if migrate_raw_strings {
+            let (migrated, converted, skipped) = solilang::fmt::migrate_legacy_raw_strings(&source);
+            if converted > 0 {
+                println!(
+                    "{}: {} `[[ … ]]` string(s) rewritten as \"\"\"…\"\"\"",
+                    file.display(),
+                    converted
+                );
+            }
+            for line in skipped {
+                eprintln!(
+                    "{}:{}: `[[ … ]]` string holds \"\"\" — rewrite it by hand",
+                    file.display(),
+                    line
+                );
+                errors += 1;
+            }
+            migrated
+        } else {
+            source.clone()
+        };
+        let formatted = match solilang::fmt::format_source(&migrated) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("{}: {}", file.display(), e);
                 errors += 1;
+                // The migration is worth keeping even when the file does not
+                // format (yet): it is what makes it parse again.
+                if !check && migrated != source {
+                    if let Err(e) = fs::write(file, &migrated) {
+                        eprintln!("{}: error writing: {}", file.display(), e);
+                    }
+                }
                 continue;
             }
         };

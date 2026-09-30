@@ -389,11 +389,10 @@ fn a_comment_inside_a_wrapped_guard_is_not_its_keyword() {
     );
 }
 
-/// `[[` opens a Lua-style raw string unless the next byte is a digit, `-` or
-/// `[`, so the printer must never put two brackets together — including when
-/// the inner one is a method call's receiver, which is how the EUI chart
-/// builders write a path list. This used to emit `concat([[` + a newline and
-/// swallow the rest of the file into a string.
+/// A nested array whose inner bracket is a method call's receiver — how the
+/// EUI chart builders write a path list — survives formatting. (When `[[`
+/// still opened a raw string, the printer emitted `concat([[` + a newline and
+/// swallowed the rest of the file into a string.)
 #[test]
 fn a_nested_array_never_becomes_a_raw_string() {
     let src = concat!(
@@ -403,11 +402,7 @@ fn a_nested_array_never_becomes_a_raw_string() {
         "end\n",
     );
     let once = format_source(src).expect("format_source failed");
-    assert!(
-        !once.contains("[[\n") && !once.contains("[[ "),
-        "two brackets met, which the lexer reads as a raw string:\n{once}"
-    );
-    // And what comes out is still the same program.
+    // What comes out is still the same program.
     assert_idempotent(src);
     let tokens = crate::lexer::Scanner::new(&once)
         .scan_tokens()
@@ -509,12 +504,12 @@ fn no_blank_line_added_under_an_attached_header_comment() {
 }
 
 #[test]
-fn multiline_raw_string_keeps_its_brackets() {
-    // Regression: a `[[ … ]]` SDBQL query was re-emitted as an escaped
+fn multiline_raw_string_keeps_its_quotes() {
+    // Regression: a multi-line raw SDBQL query was re-emitted as an escaped
     // double-quoted string — semantics preserved, but the query collapsed onto
     // one line whose length then tripped `style/line-length`. Raw literals are
     // copied from source instead.
-    let src = "def up(db)\n  db.query([[\n    FOR p IN posts\n      RETURN p\n  ]])\nend\n";
+    let src = "def up(db)\n  db.query(\"\"\"\n    FOR p IN posts\n      RETURN p\n  \"\"\")\nend\n";
     assert_fmt(src, src);
     assert_idempotent(src);
     let out = format_source(src).unwrap();
@@ -533,11 +528,22 @@ fn single_line_raw_string_keeps_its_r_prefix() {
 }
 
 #[test]
-fn raw_string_holding_a_single_bracket_round_trips() {
-    // `]` alone is content inside `[[ … ]]`; only `]]` closes. The value check
-    // in `raw_string_source` is what keeps this from mis-slicing.
-    assert_fmt("let odd = [[a]b]]\n", "let odd = [[a]b]]\n");
-    assert_round_trip("let odd = [[a]b]]\n");
+fn triple_quoted_string_holding_quotes_round_trips() {
+    // `"` and `""` are content inside `"""…"""`; the re-lex in
+    // `raw_string_source` is what keeps this from mis-slicing.
+    let src = "let odd = \"\"\"say \"hi\" and \"\"twice\"\" \"\"\"\n";
+    assert_fmt(src, src);
+    assert_round_trip(src);
+}
+
+#[test]
+fn double_brackets_are_a_nested_array() {
+    // `[[` no longer opens a raw string: the printer writes nested arrays with
+    // their brackets together.
+    assert_fmt(
+        "let pairs = [ [\"a\", 1], [\"b\", 2] ]\n",
+        "let pairs = [[\"a\", 1], [\"b\", 2]]\n",
+    );
 }
 
 #[test]
@@ -1054,9 +1060,10 @@ fn multiline_sdbql_block_blocks_the_postfix_rewrite() {
 
 #[test]
 fn multiline_raw_string_blocks_the_postfix_rewrite() {
-    // Same failure through the other verbatim-printed construct: `[[ … ]]` is
+    // Same failure through the other verbatim-printed construct: `"""…"""` is
     // re-emitted from source bytes, newlines included.
-    let src = "def f(c)\n  b = 1\n  if c {\n    b = [[\nraw1\nraw2\n]]\n  }\n  return b\nend\n";
+    let src =
+        "def f(c)\n  b = 1\n  if c {\n    b = \"\"\"\nraw1\nraw2\n\"\"\"\n  }\n  return b\nend\n";
     let out = format_source(src).expect("format failed");
     assert!(
         out.contains("if c\n"),
@@ -1120,4 +1127,19 @@ fn private_methods_keep_their_visibility() {
         "class B\n  def a\n    1\n  end\n\n  private\n\n  def b\n    2\n  end\n\n  public\n\n  def c\n    3\n  end\nend\n",
     );
     assert_idempotent(modifier);
+}
+
+#[test]
+fn unicode_and_control_escapes_survive_formatting() {
+    // A literal written with `\u` / `\e` / `\0` stays as written: re-escaping
+    // its value put an invisible no-break space or a raw ESC byte in the file.
+    let src = "a = \"caf\\u00e9\"\nb = \"\\e[1m\\u{1F600}\\0\"\nc = \"nbsp:\\u{a0}\"\n";
+    assert_fmt(src, src);
+    assert_idempotent(src);
+    // In an interpolated string the value is re-escaped: control and
+    // invisible characters come out as escapes, printable ones as themselves.
+    assert_fmt(
+        "d = \"#{x}\\e[0m\\u00e9\\u200b\"\n",
+        "d = \"#{x}\\e[0mé\\u{200b}\"\n",
+    );
 }

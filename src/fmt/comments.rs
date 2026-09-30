@@ -4,7 +4,7 @@
 //!
 //! Recognizes `#` line comments, `//` line comments, and `/* … */` block
 //! comments. Skips comment-like bytes that appear inside string literals
-//! (`"…"`, `'…'`, `@"…"`, `[[…]]`, ``` `…` ```) and inside `@sdbql{…}` blocks.
+//! (`"…"`, `'…'`, `@"…"`, ``` `…` ```) and inside `@sdbql{…}` blocks.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommentKind {
@@ -41,6 +41,27 @@ pub fn extract_comments(source: &str) -> Vec<Comment> {
             line += 1;
             col = 1;
             i += 1;
+            continue;
+        }
+
+        // `"""…"""` raw multi-line string: its body may hold lone quotes, so
+        // it is skipped to the closing run of quotes, not to the next `"`.
+        if bytes[i..].starts_with(b"\"\"\"") {
+            i += 3;
+            col += 3;
+            while i < bytes.len() && !bytes[i..].starts_with(b"\"\"\"") {
+                if bytes[i] == b'\n' {
+                    line += 1;
+                    col = 1;
+                } else {
+                    col += 1;
+                }
+                i += 1;
+            }
+            while i < bytes.len() && bytes[i] == b'"' {
+                i += 1;
+                col += 1;
+            }
             continue;
         }
 
@@ -126,26 +147,6 @@ pub fn extract_comments(source: &str) -> Vec<Comment> {
                 }
                 continue;
             }
-        }
-
-        // `[[…]]` multi-line string.
-        if b == b'[' && i + 1 < bytes.len() && bytes[i + 1] == b'[' {
-            i += 2;
-            col += 2;
-            while i + 1 < bytes.len() && !(bytes[i] == b']' && bytes[i + 1] == b']') {
-                if bytes[i] == b'\n' {
-                    line += 1;
-                    col = 1;
-                } else {
-                    col += 1;
-                }
-                i += 1;
-            }
-            if i + 1 < bytes.len() {
-                i += 2;
-                col += 2;
-            }
-            continue;
         }
 
         // Command substitution: `…`.
@@ -305,7 +306,7 @@ mod tests {
 
     #[test]
     fn ignores_comment_in_multiline_string() {
-        let src = "let s = [[\n# inside\n]]\n# real\n";
+        let src = "let s = \"\"\"\n\"quoted\" # inside\n\"\"\"\n# real\n";
         let cs = extract_comments(src);
         assert_eq!(cs.len(), 1);
         assert_eq!(cs[0].text, "# real");

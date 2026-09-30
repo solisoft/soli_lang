@@ -33,6 +33,10 @@ pub(crate) struct HotReloadVersions {
     pub models: AtomicU64,
     /// Incremented when app/jobs/*_job.sl files change
     pub jobs: AtomicU64,
+    /// Incremented when a `config/locales/*.yml` file changes. Each worker
+    /// reloads the translations for its own application (the store is per
+    /// tenant, so the watcher thread cannot do it for them).
+    pub locales: AtomicU64,
 }
 
 impl HotReloadVersions {
@@ -47,6 +51,7 @@ impl HotReloadVersions {
             helpers: AtomicU64::new(0),
             models: AtomicU64::new(0),
             jobs: AtomicU64::new(0),
+            locales: AtomicU64::new(0),
         }
     }
 }

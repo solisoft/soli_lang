@@ -4,16 +4,16 @@
 # test runner executes each test closure outside the describe body's scope.
 # ============================================================================
 
-let pdf_template = [[{
+let pdf_template = """{
   "fonts": ["titillium"],
   "content": [
     { "type": "paragraph", "value": "Invoice ${invoice.number}" }
   ]
-}]];
+}""";
 
-let pdf_data = [[{ "data": { "invoice": { "number": "F-42" } } }]];
+let pdf_data = """{ "data": { "invoice": { "number": "F-42" } } }""";
 
-let pdf_invoice = [[{
+let pdf_invoice = """{
   "number": "F-42",
   "issue_date": "2026-07-01",
   "due_date": "2026-08-01",
@@ -26,7 +26,7 @@ let pdf_invoice = [[{
   "allowances": [ { "reason": "Volume discount", "percent": 10, "vat_rate": 20.0 } ],
   "charges": [ { "reason": "Shipping", "amount": "20.00", "vat_rate": 20.0 } ],
   "payment_terms": "30 days net"
-}]];
+}""";
 
 describe("PDF builtins", fn() {
     test("pdf_render returns base64 PDF bytes", fn() {
@@ -65,13 +65,13 @@ describe("PDF builtins", fn() {
     });
 
     test("an invalid invoice is rejected", fn() {
-        let bad = [[{
+        let bad = """{
           "number": "F-1", "issue_date": "2026-07-01", "currency": "EUR",
           "seller": { "name": "A", "country": "FR" },
           "buyer": { "name": "B", "country": "FR" },
           "lines": [ { "name": "W", "unit_price": 100 } ],
           "allowances": [ { "reason": "broken" } ]
-        }]];
+        }""";
         let result = pdf_facturx_from_invoice(pdf_template, bad) rescue "REJECTED";
         assert_eq(result, "REJECTED");
     });
@@ -82,14 +82,14 @@ describe("PDF builtins", fn() {
 # bytes, the way "JVBERi" stands in for "%PDF-" above.
 # ============================================================================
 
-let pdf_template_2p = [[{
+let pdf_template_2p = """{
   "fonts": ["titillium"],
   "content": [
     { "type": "paragraph", "value": "Page one" },
     { "type": "page_break" },
     { "type": "paragraph", "value": "Page two" }
   ]
-}]];
+}""";
 
 describe("PDF page previews", fn() {
     test("pdf_preview returns one base64 PNG per page", fn() {
@@ -190,14 +190,14 @@ describe("PDF page previews", fn() {
     test("the page cap counts pages painted, not the document's length", fn() {
         # A long document must still be previewable one page at a time —
         # a thumbnail of page 1 of a long report is the whole point.
-        let many = [[{
+        let many = """{
           "fonts": ["titillium"],
           "content": [
             { "type": "paragraph", "value": "a" }, { "type": "page_break" },
             { "type": "paragraph", "value": "b" }, { "type": "page_break" },
             { "type": "paragraph", "value": "c" }
           ]
-        }]];
+        }""";
         let one = pdf_preview(many, pdf_data, {"width": 120, "pages": [1]});
         assert_eq(one.length(), 1);
     });

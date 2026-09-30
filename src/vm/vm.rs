@@ -2191,11 +2191,8 @@ impl Vm {
                             self.push(value);
                         }
                         other => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "set".to_string(),
-                                span: self.current_span(),
-                            });
+                            self.set_const_key_fallback(&other, key, value.clone())?;
+                            self.push(value);
                         }
                     }
                 }
@@ -2363,11 +2360,8 @@ impl Vm {
                             }
                         }
                         other => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "set".to_string(),
-                                span: self.current_span(),
-                            });
+                            let other = other.clone();
+                            self.set_const_key_fallback(&other, key, value.clone())?;
                         }
                     }
                     // The expression's value is the assigned value, matching the
@@ -2550,11 +2544,8 @@ impl Vm {
                             }
                         }
                         Some(other) => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "set".to_string(),
-                                span: self.current_span(),
-                            });
+                            let other = other.clone();
+                            self.set_const_key_fallback(&other, key, value.clone())?;
                         }
                         None => {
                             return Err(RuntimeError::undefined_variable(
@@ -4871,6 +4862,9 @@ impl Vm {
             // l'interpréteur accepte, et un gestionnaire changeait de résultat
             // selon le moteur qui le servait.
             (Value::Instance(inst), Value::String(key)) => {
+                if crate::interpreter::value::restricted_methods_declared() {
+                    self.check_private_value(object, key)?;
+                }
                 Ok(inst.borrow().get(key).unwrap_or(Value::Null))
             }
             _ => Err(RuntimeError::type_error(
@@ -4882,6 +4876,34 @@ impl Vm {
                 span,
             )),
         }
+    }
+
+    /// `x["k"] = v` / `x.set("k", v)` on a receiver that is not a hash (the
+    /// hash-set opcodes stand for both spellings). An instance takes the
+    /// general index write, as a computed key does — `record["title"] = v`
+    /// used to fail on the VM only. An instance whose class defines its own
+    /// `set`, and anything else, keep the refusal.
+    fn set_const_key_fallback(
+        &self,
+        receiver: &Value,
+        key: &str,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        if let Value::Instance(inst) = receiver {
+            let own_set = {
+                let class = &inst.borrow().class;
+                class.find_method("set").is_some() || class.find_vm_method("set").is_some()
+            };
+            if !own_set {
+                let key = Value::String(key.to_string().into());
+                return self.op_set_index(receiver, &key, value, self.current_span());
+            }
+        }
+        Err(RuntimeError::NoSuchProperty {
+            value_type: receiver.type_name(),
+            property: "set".to_string(),
+            span: self.current_span(),
+        })
     }
 
     fn op_set_index(
@@ -4909,6 +4931,15 @@ impl Vm {
                         span,
                     })
                 }
+            }
+            // `record[field] = value`: the write `record.<field> = value`
+            // does on the tree-walker (`access/index.rs`), checks included.
+            (Value::Instance(inst), Value::String(key)) => {
+                if crate::interpreter::value::restricted_methods_declared() {
+                    self.check_private_value(object, key)?;
+                }
+                crate::interpreter::executor::set_instance_field(inst, key, value)
+                    .map_err(|message| RuntimeError::type_error(message, span))
             }
             (Value::Hash(hash), key) => {
                 if crate::interpreter::value::hash_set_value(&mut hash.borrow_mut(), key, value) {

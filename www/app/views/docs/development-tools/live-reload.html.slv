@@ -98,6 +98,10 @@
                     <td class="px-4 py-3">the route table and the <code class="text-amber-400">&lt;name&gt;_path</code> helpers</td>
                 </tr>
                 <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">config/locales/</code> (<code>.yml</code>, <code>.yaml</code>)</td>
+                    <td class="px-4 py-3">the translations, and the rendered pages holding them</td>
+                </tr>
+                <tr>
                     <td class="px-4 py-3"><code class="text-amber-400">public/</code>, <code class="text-amber-400">app/assets/css/</code></td>
                     <td class="px-4 py-3">static assets; Tailwind recompiles</td>
                 </tr>

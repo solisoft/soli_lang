@@ -84,9 +84,19 @@ fn lookup(name: &str) -> Option<NamedRouteEntry> {
 }
 
 /// Read field `:id` (or another param name) off a Soli class instance.
+///
+/// `:id` falls back to `_key`: a SoliDB document has no `id` field, so a
+/// record loaded by `find`/`all` carries only `_key` — only `create` sets
+/// `id` — and `post_path(Post.find(k))` failed with "missing param :id".
 fn read_instance_field(value: &Value, field: &str) -> Option<String> {
     if let Value::Instance(inst) = value {
-        if let Some(v) = inst.borrow().get(field) {
+        let inst = inst.borrow();
+        let found = inst
+            .get(field)
+            .filter(|v| !matches!(v, Value::Null))
+            .or_else(|| (field == "id").then(|| inst.get("_key")).flatten())
+            .filter(|v| !matches!(v, Value::Null));
+        if let Some(v) = found {
             return Some(value_to_path_segment(&v));
         }
     }
@@ -94,15 +104,21 @@ fn read_instance_field(value: &Value, field: &str) -> Option<String> {
 }
 
 /// Read a key off a Soli hash. Tries the bare param name; falls back to
-/// the `:`-prefixed symbol form some users write.
+/// the `:`-prefixed symbol form some users write, and `:id` to `_key` (a
+/// SoliDB document read as a hash, or `to_h` of a loaded record).
 fn read_hash_key(value: &Value, key: &str) -> Option<String> {
     if let Value::Hash(h) = value {
         let pairs = h.borrow();
-        if let Some(v) = pairs.get(&HashKey::String(key.to_string().into())) {
-            return Some(value_to_path_segment(v));
-        }
-        if let Some(v) = pairs.get(&HashKey::Symbol(key.to_string().into())) {
-            return Some(value_to_path_segment(v));
+        let lookup = |k: &str| {
+            pairs
+                .get(&HashKey::String(k.to_string().into()))
+                .or_else(|| pairs.get(&HashKey::Symbol(k.to_string().into())))
+                .filter(|v| !matches!(v, Value::Null))
+                .cloned()
+        };
+        let found = lookup(key).or_else(|| (key == "id").then(|| lookup("_key")).flatten());
+        if let Some(v) = found {
+            return Some(value_to_path_segment(&v));
         }
     }
     None
@@ -357,6 +373,37 @@ mod tests {
         assert_eq!(
             build_path_for_name("post", &[Value::String("abc-123".into())]).unwrap(),
             "/posts/abc-123"
+        );
+    }
+
+    #[test]
+    fn member_path_falls_back_to_key_for_a_loaded_document() {
+        use crate::interpreter::value::{Class, Instance};
+        install(vec![("post", entry("GET", "/posts/:id"))]);
+        // What `Post.find(k)` returns from SoliDB: `_key`, no `id`.
+        let mut loaded = Instance::new(Rc::new(Class::default()));
+        loaded.set("_key", Value::String("k-1".into()));
+        loaded.set("title", Value::String("t".into()));
+        let loaded = Value::Instance(Rc::new(std::cell::RefCell::new(loaded)));
+        assert_eq!(
+            build_path_for_name("post", &[loaded]).unwrap(),
+            "/posts/k-1"
+        );
+        let doc = hash(vec![("_key", Value::String("k-2".into()))]);
+        assert_eq!(build_path_for_name("post", &[doc]).unwrap(), "/posts/k-2");
+        // A real `id` wins over `_key`; a null one does not.
+        let both = hash(vec![
+            ("id", Value::Int(7)),
+            ("_key", Value::String("k-3".into())),
+        ]);
+        assert_eq!(build_path_for_name("post", &[both]).unwrap(), "/posts/7");
+        let null_id = hash(vec![
+            ("id", Value::Null),
+            ("_key", Value::String("k-4".into())),
+        ]);
+        assert_eq!(
+            build_path_for_name("post", &[null_id]).unwrap(),
+            "/posts/k-4"
         );
     }
 

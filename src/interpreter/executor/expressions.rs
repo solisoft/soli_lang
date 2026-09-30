@@ -263,65 +263,8 @@ impl Interpreter {
                 self.check_private_access(object, &obj_val, name, target.span)?;
                 match obj_val {
                     Value::Instance(inst) => {
-                        if inst.borrow().class.const_fields.contains(name.as_str()) {
-                            return Err(RuntimeError::type_error(
-                                format!("cannot reassign const field '{}'", name),
-                                target.span,
-                            ));
-                        }
-                        if name.starts_with('_')
-                            && name != "_errors"
-                            && inst.borrow().class.is_model_subclass()
-                        {
-                            return Err(RuntimeError::type_error(
-                                format!("cannot assign to read-only field '{}'", name),
-                                target.span,
-                            ));
-                        }
-
-                        // Handle translated fields: store in _pending_translations instead of raw field
-                        let class_name = inst.borrow().class.name.clone();
-                        if is_translated_field(&class_name, name) {
-                            let mut inst_mut = inst.borrow_mut();
-
-                            // Get or create _pending_translations hash
-                            let pending_translations =
-                                if let Some(pt) = inst_mut.get("_pending_translations") {
-                                    if let Value::Hash(hash) = pt {
-                                        hash.clone()
-                                    } else {
-                                        // Create new hash if it exists but isn't a hash
-                                        let new_hash = Rc::new(RefCell::new(
-                                            crate::interpreter::value::HashPairs::default(),
-                                        ));
-                                        inst_mut.fields.insert(
-                                            "_pending_translations".into(),
-                                            Value::Hash(new_hash.clone()),
-                                        );
-                                        new_hash
-                                    }
-                                } else {
-                                    // Create new hash
-                                    let new_hash = Rc::new(RefCell::new(
-                                        crate::interpreter::value::HashPairs::default(),
-                                    ));
-                                    inst_mut.fields.insert(
-                                        "_pending_translations".into(),
-                                        Value::Hash(new_hash.clone()),
-                                    );
-                                    new_hash
-                                };
-
-                            // Store the value in _pending_translations.{field_name}
-                            pending_translations
-                                .borrow_mut()
-                                .insert(HashKey::String(name.clone().into()), new_value.clone());
-
-                            // Don't set the raw field - translations are stored separately
-                            return Ok(new_value);
-                        }
-
-                        inst.borrow_mut().set(name.clone(), new_value.clone());
+                        set_instance_field(&inst, name, new_value.clone())
+                            .map_err(|message| RuntimeError::type_error(message, target.span))?;
                         Ok(new_value)
                     }
                     Value::Hash(hash) => {
@@ -649,25 +592,8 @@ impl Interpreter {
                 let obj_val = self.evaluate(object)?;
                 self.check_private_access(object, &obj_val, name, target.span)?;
                 match obj_val {
-                    Value::Instance(inst) => {
-                        if inst.borrow().class.const_fields.contains(name.as_str()) {
-                            return Err(RuntimeError::type_error(
-                                format!("cannot reassign const field '{}'", name),
-                                target.span,
-                            ));
-                        }
-                        if name.starts_with('_')
-                            && name != "_errors"
-                            && inst.borrow().class.is_model_subclass()
-                        {
-                            return Err(RuntimeError::type_error(
-                                format!("cannot assign to read-only field '{}'", name),
-                                target.span,
-                            ));
-                        }
-                        inst.borrow_mut().set(name.clone(), value);
-                        Ok(())
-                    }
+                    Value::Instance(inst) => set_instance_field(&inst, name, value)
+                        .map_err(|message| RuntimeError::type_error(message, target.span)),
                     Value::Hash(hash) => {
                         let key = crate::interpreter::value::HashKey::String(name.clone().into());
                         hash.borrow_mut().insert(key, value);
@@ -922,6 +848,44 @@ impl Interpreter {
 }
 
 /// Check if a built-in method can be called with zero arguments.
+/// Write field `name` of an instance: what `inst.name = value` and
+/// `inst[name] = value` do, on both engines. Refuses a `const` field and, on
+/// a model, the `_`-prefixed metadata (`_key`, `_id`, …; `_errors` excepted);
+/// a translated field is staged in `_pending_translations` instead of the raw
+/// field. The caller checks private/protected access first.
+pub(crate) fn set_instance_field(
+    inst: &Rc<RefCell<crate::interpreter::value::Instance>>,
+    name: &str,
+    value: Value,
+) -> Result<(), String> {
+    if inst.borrow().class.const_fields.contains(name) {
+        return Err(format!("cannot reassign const field '{}'", name));
+    }
+    if name.starts_with('_') && name != "_errors" && inst.borrow().class.is_model_subclass() {
+        return Err(format!("cannot assign to read-only field '{}'", name));
+    }
+    let class_name = inst.borrow().class.name.clone();
+    if is_translated_field(&class_name, name) {
+        let mut inst_mut = inst.borrow_mut();
+        let pending = match inst_mut.get("_pending_translations") {
+            Some(Value::Hash(hash)) => hash,
+            _ => {
+                let hash = Rc::new(RefCell::new(crate::interpreter::value::HashPairs::default()));
+                inst_mut
+                    .fields
+                    .insert("_pending_translations".into(), Value::Hash(hash.clone()));
+                hash
+            }
+        };
+        pending
+            .borrow_mut()
+            .insert(HashKey::String(name.to_string().into()), value);
+        return Ok(());
+    }
+    inst.borrow_mut().set(name.to_string(), value);
+    Ok(())
+}
+
 fn is_zero_arg_builtin_method(method_name: &str, receiver: &Value) -> bool {
     super::calls::method_registry::is_zero_arg_method(method_name, receiver)
 }

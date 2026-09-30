@@ -36,6 +36,8 @@ pub(super) struct WatchPaths {
     pub public: PathBuf,
     pub routes_file: PathBuf,
     pub assets_css: PathBuf,
+    /// `config/locales`: translation files, reloaded without a restart.
+    pub locales: PathBuf,
     pub folder: PathBuf,
 }
 
@@ -68,6 +70,7 @@ impl WatchPaths {
             public: public.to_path_buf(),
             routes_file: routes_file.to_path_buf(),
             assets_css: folder.join("app/assets/css"),
+            locales: folder.join("config/locales"),
             folder: folder.to_path_buf(),
         }
     }
@@ -97,6 +100,7 @@ pub(super) fn spawn(
         public: watch_public_dir,
         routes_file: watch_routes_file,
         assets_css: watch_assets_css_dir,
+        locales: watch_locales_dir,
         folder: watch_folder,
     } = paths;
 
@@ -211,6 +215,14 @@ pub(super) fn spawn(
         {
             watch_count += 1;
         }
+        // Translations: adding or editing a key used to need a restart.
+        if watch_locales_dir.exists()
+            && watcher
+                .watch(&watch_locales_dir, RecursiveMode::Recursive)
+                .is_ok()
+        {
+            watch_count += 1;
+        }
         // File mode's extra `--assets` roots. The served folder is already
         // covered — in file mode it *is* the views dir — but an assets root
         // lives outside it, so a picture edited there would otherwise not
@@ -267,6 +279,19 @@ pub(super) fn spawn(
                 }
             }
 
+            // `config/locales` created after boot: `config/` is watched (for
+            // `routes.sl`), so its creation shows up here — watch it from now
+            // on, and load whatever it already holds.
+            let mut locales_dir_created = false;
+            if changed_paths.contains(&watch_locales_dir)
+                && watch_locales_dir.is_dir()
+                && watcher
+                    .watch(&watch_locales_dir, RecursiveMode::Recursive)
+                    .is_ok()
+            {
+                locales_dir_created = true;
+            }
+
             // Filter to relevant extensions only
             let changed: Vec<PathBuf> = changed_paths
                 .into_iter()
@@ -274,13 +299,15 @@ pub(super) fn spawn(
                     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                         matches!(ext, "sl" | "erb" | "slv" | "md")
                             || server_constants::is_tracked_static_extension(ext)
+                            || (matches!(ext, "yml" | "yaml")
+                                && path.starts_with(&watch_locales_dir))
                     } else {
                         false
                     }
                 })
                 .collect();
 
-            if changed.is_empty() {
+            if changed.is_empty() && !locales_dir_created {
                 continue;
             }
 
@@ -306,6 +333,7 @@ pub(super) fn spawn(
             let mut static_files_changed = false;
             let mut routes_changed = false;
             let mut asset_css_changed = false;
+            let mut locales_changed = locales_dir_created;
 
             // Track the public/css output directory to distinguish
             // Tailwind output changes from source changes
@@ -313,6 +341,11 @@ pub(super) fn spawn(
 
             for path in &changed {
                 println!("   {}", path.display());
+
+                if path.starts_with(&watch_locales_dir) {
+                    locales_changed = true;
+                    continue;
+                }
 
                 // Check if it's a source CSS file in app/assets/css/
                 if path.starts_with(&watch_assets_css_dir) {
@@ -423,6 +456,17 @@ pub(super) fn spawn(
                     .fetch_add(1, Ordering::Release);
                 println!("   ✓ Signaled routes reload to all workers");
             }
+            if locales_changed {
+                hot_reload_versions_for_watcher
+                    .locales
+                    .fetch_add(1, Ordering::Release);
+                // Rendered pages hold the old strings: the views signal is
+                // what clears the template and rendered-body caches.
+                hot_reload_versions_for_watcher
+                    .views
+                    .fetch_add(1, Ordering::Release);
+                println!("   ✓ Signaled translations reload to all workers");
+            }
 
             // Bump the generation after the per-kind counters (Release) so
             // a worker that observes it (Acquire) also observes every
@@ -438,6 +482,7 @@ pub(super) fn spawn(
                 || views_changed
                 || static_files_changed
                 || routes_changed
+                || locales_changed
             {
                 hot_reload_versions_for_watcher
                     .generation

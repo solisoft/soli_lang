@@ -115,7 +115,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             // fields are gone, so callers can't satisfy a validation
             // (or trigger one) by smuggling fields the model never
             // intended to accept.
-            let errors = run_validations(&class_name, &data, None)?;
+            let errors = run_validations(&class_name, Some(&class), &data, None)?;
             if !errors.is_empty() {
                 let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
                 instance

@@ -122,7 +122,13 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             // every `presence` rule for a field it did not touch.
             if has_validations {
                 let merged = merge_json_documents(old_doc.as_ref(), &data_value);
-                let errors = run_validations(&class_name, &json_to_value(&merged), Some(&id))?;
+                let class = super::core::get_class_rc_from_args(args).ok();
+                let errors = run_validations(
+                    &class_name,
+                    class.as_ref(),
+                    &json_to_value(&merged),
+                    Some(&id),
+                )?;
                 if !errors.is_empty() {
                     let error_values: Vec<Value> = errors.iter().map(|e| e.to_value()).collect();
                     let mut out = crate::interpreter::value::HashPairs::default();

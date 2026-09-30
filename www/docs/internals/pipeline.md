@@ -44,7 +44,7 @@ impl Scanner<'_> {
 
 `scan_tokens` loops `scan_token` until `Eof`. Keywords are matched after an identifier is scanned (so `class` is `TokenKind::Class`, not `Identifier("class")`).
 
-Interpolation (`"Hello #{name}"`), raw strings (`[[…]]`, `"""…"""`, `r"…"`), SDBQL blocks, and percent arrays (`%w[a b]`) are lexer features, not parser tricks.
+Interpolation (`"Hello #{name}"`), raw strings (`"""…"""`, `r"…"`), SDBQL blocks, and percent arrays (`%w[a b]`) are lexer features, not parser tricks.
 
 ### `Token` / `TokenKind`
 

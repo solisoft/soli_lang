@@ -12,35 +12,24 @@
 #   })
 #
 # Configuration:
-# - `# order: N` - Execution order (lower runs first)
+# - `# order: N` - Execution order (lower runs first), scoped and global
+#   middleware sorted together
 # - `# scope_only: true` - Only runs when explicitly scoped
+#
+# Return `req` to continue, or a response (`render_json(...)`,
+# `redirect(...)`, `halt(status, message)`) to stop. A `def` whose name starts
+# with `_` is a helper, not a middleware.
 #
 # ============================================================================
 
 # order: 20
 # scope_only: true
 
-def authenticate(req) -> Any
-  headers = req["headers"]
-
-  # Example: Check for API key in header
-  api_key = ""
-  if has_key(headers, "X-Api-Key")
-    api_key = headers["X-Api-Key"]
-  elsif has_key(headers, "x-api-key")
-    api_key = headers["x-api-key"]
-  end
-
+def authenticate(req)
   # TODO: Replace with your authentication logic
   # For example, verify JWT token, check session, etc.
-  if api_key.blank?
-    return {"continue": false, "response": {
-      "status": 401,
-      "headers": {"Content-Type": "application/json"},
-      "body": JSON.stringify({"error": "Unauthorized", "message": "Authentication required"})
-    }}
-  end
+  api_key = req["headers"]["x-api-key"]
+  return render_json({"error": "Unauthorized", "message": "Authentication required"}, 401) if api_key.blank?
 
-  # Authentication passed, continue to handler
-  {"continue": true, "request": req}
+  req
 end

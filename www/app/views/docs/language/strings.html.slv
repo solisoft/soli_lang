@@ -49,8 +49,15 @@ quote = "She said \"Hello\""
 backslash = "Path: C:\\Users\\name"
 
 # Unicode characters
-emoji = "Hello \u{1F44B}";  # Hello with wave emoji
-unicode = "\u{00E9}";       # e with accent</code></pre>
+emoji = "Hello \u{1F44B}"   # Hello with wave emoji (1 to 6 hex digits)
+accent = "caf\u00e9"        # exactly 4 hex digits, as in JSON
+pair = "\uD83D\uDC4B"       # a UTF-16 surrogate pair makes one character
+nbsp = "10\u{a0}km"         # an invisible character stays readable in the source
+
+# Control characters
+bold = "\e[1mbold\e[0m"     # \e is ESC, for ANSI terminal codes
+nul = "\0"</code></pre>
+                    <p class="text-gray-400 mt-3 text-sm">Escapes: <code>\n</code> <code>\t</code> <code>\r</code> <code>\\</code> <code>\"</code> <code>\'</code> <code>\0</code> <code>\e</code> <code>\u{H…}</code> <code>\uHHHH</code>. Any other backslash sequence is a syntax error. <code>soli fmt</code> keeps a literal written with <code>\u</code>, <code>\e</code> or <code>\0</code> as it is.</p>
                 </div>
             </section>
 
@@ -81,17 +88,18 @@ raw = r"C:\Users\name";       # Single backslashes work</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Use triple quotes or bracket syntax for multiline strings. Preserves newlines and indentation.</p>
+                    <p class="text-gray-400 mb-3">Use triple quotes for multiline strings. Preserves newlines and indentation, and processes no escapes. A run of three or more quotes closes the string; quotes before the last three are content.</p>
 <pre data-filename="Example"><code class="language-soli text-sm"># Triple quote syntax (recommended)
 poem = """The fog comes
 on little cat feet.
 It sits looking
 over harbor and city."""
 
-# Bracket syntax [[ ]]
-story = [[Once upon
-a time in
-the wild west.]]
+# Quotes inside, even right before the closing ones
+line = """She said "hi""""
+
+# [[ … ]] is no longer a string: [["a", 1]] is a nested array.
+# `soli fmt --migrate-raw-strings` rewrites old [[ … ]] strings.
 
 # HTML template example
 html = """<div class="container">

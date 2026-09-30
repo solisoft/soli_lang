@@ -77,8 +77,24 @@ end</code></pre>
                     <td class="py-3 px-4 text-gray-400">Number must be &lt;= n</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">inclusion: [...]</code> / <code class="text-green-300">one_of: [...]</code></td>
+                    <td class="py-3 px-4 text-gray-400">Value must be one of the listed values &mdash; <code>"is not included in the list"</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">type: "string"</code></td>
+                    <td class="py-3 px-4 text-gray-400">Value must have that type: <code>"string"</code>, <code>"int"</code>/<code>"integer"</code>, <code>"float"</code>, <code>"number"</code>, <code>"bool"</code>/<code>"boolean"</code>, <code>"array"</code>, <code>"hash"</code> &mdash; <code>"must be a &lt;type&gt;"</code></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">allow_nil: true</code> / <code class="text-green-300">allow_null: true</code></td>
+                    <td class="py-3 px-4 text-gray-400">Skip the whole rule when the value is nil or absent</td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-green-300">custom: "method"</code></td>
-                    <td class="py-3 px-4 text-gray-400">Call custom validation method</td>
+                    <td class="py-3 px-4 text-gray-400">Call an instance method of the model &mdash; see <a href="#custom-validators" class="text-amber-400 hover:underline">Custom Validators</a></td>
+                </tr>
+                <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">custom: fn(value, record) { ... }</code></td>
+                    <td class="py-3 px-4 text-gray-400">Call a closure &mdash; same return rules as the method form</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-green-300">on: "create" / "update"</code></td>
@@ -95,6 +111,75 @@ end</code></pre>
             </tbody>
         </table>
     </div>
+
+    <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-12">
+        <p class="text-amber-200/80 text-sm">
+            <strong>Options are strict.</strong> An unknown key (<code>"within": [...]</code>, a typo like <code>"presense"</code>) or a known key with a wrong-typed value (<code>"min_length": "3"</code>) raises when the class loads, with a message listing the known options. A misspelt rule used to be ignored silently &mdash; it read like protection and checked nothing.
+        </p>
+    </div>
+
+    <h2 id="inclusion-type-nil" class="text-2xl font-bold text-white mb-6">Inclusion, Type &amp; Nil</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/invoice.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Invoice &lt; Model
+  validates("status", { "presence": true, "inclusion": ["draft", "sent", "paid"] })
+  validates("priority", { "one_of": [1, 2, 3] })     # compared by type: "1" is not 1
+  validates("paid", { "type": "boolean" })
+  validates("nickname", { "allow_nil": true, "min_length": 3 })
+end
+
+invoice = Invoice.create({ "status": "pending", "priority": "1", "paid": "yes" })
+# invoice._errors:
+#   status:   is not included in the list
+#   priority: is not included in the list
+#   paid:     must be a boolean</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        <code>inclusion</code> and <code>type</code> skip a nil or absent value &mdash; pair them with <code>presence: true</code> when the field is required. <code>allow_nil: true</code> goes further and skips every check of that <code>validates</code> call (presence, length, custom&hellip;) when the value is nil or absent.
+    </p>
+
+    <h2 id="custom-validators" class="text-2xl font-bold text-white mb-6">Custom Validators</h2>
+    <p class="text-gray-400 mb-4">
+        <code>custom: "method_name"</code> calls that instance method on a record built from the data being validated, so <code>@field</code> reads work. The method can be declared anywhere in the class, including under <code>private</code>. It fails the field by:
+    </p>
+    <ul class="list-disc list-inside text-gray-400 mb-4 space-y-1">
+        <li>pushing <code>{"field": "...", "message": "..."}</code> entries onto <code>@_errors</code> (any field, any number of them);</li>
+        <li>returning <code>false</code> &mdash; reported as <code>"is invalid"</code>;</li>
+        <li>returning a String &mdash; reported as that message.</li>
+    </ul>
+    <p class="text-gray-400 mb-4">
+        Returning <code>nil</code> or <code>true</code> passes. A method that declares one parameter receives the field&rsquo;s value.
+    </p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/event.sl</label>
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-soli text-sm">class Event &lt; Model
+  validates("ends_at", { "custom": "_ends_after_start" })
+  validates("title", { "custom": "_no_shouting" })
+  validates("code", { "custom": fn(value, record) { value.nil? || value.starts_with?("EV-") ? true : "must start with EV-" } })
+
+  private
+
+  def _ends_after_start
+    return true if @ends_at.nil? || @starts_at.nil?
+
+    @_errors = @_errors ?? []
+    @_errors.push({ "field": "ends_at", "message": "must be after starts_at" }) if @ends_at &lt;= @starts_at
+  end
+
+  def _no_shouting(title)
+    return "can't be all caps" if title == title.upcase
+
+    true
+  end
+end</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The closure form, <code>custom: fn(value, record) { ... }</code>, receives the field value and the attribute hash and follows the same return rules. Before, <code>custom:</code> was accepted but never ran.
+    </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Conditional &amp; Per-Operation Rules</h2>
     <p class="text-gray-400 mb-6">
@@ -193,12 +278,17 @@ end</code></pre>
             </tbody>
         </table>
     </div>
-    <p class="text-gray-400 mb-12">
+    <p class="text-gray-400 mb-4">
         The field comes from whatever the database names &mdash; Postgres reports the column in
         <code>DETAIL</code>, SQLite names <code>table.column</code> (or the index, for an expression
         index), MySQL names the index &mdash; falling back to <code>_base</code> when there is nothing
         to go on. Anything that is <em>not</em> a constraint violation is still reported as-is, so a
         connection failure never masquerades as a validation error.
+    </p>
+    <p class="text-gray-400 mb-12">
+        A <code>uniqueness</code> rule on a SQL adapter also runs the rest of its <code>validates</code> call:
+        <code>validates("email", { "uniqueness": true, "format": "email" })</code> checks the format too
+        (the SQL path used to skip that call&rsquo;s <code>format</code>/<code>numericality</code>/<code>min</code>/<code>max</code>).
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Custom Methods on Models</h2>
@@ -359,7 +449,7 @@ end</code></pre>
   validates("name", { "presence": true, "min_length": 2, "max_length": 100 })
   validates("age", { "numericality": true, "min": 0, "max": 150 })
   validates("password", { "min_length": 8 })
-  validates("role", { "custom": "validate_role" })
+  validates("role", { "inclusion": ["admin", "user", "moderator"] })
 
   before_save("normalize_email")   # symbols also work: before_save(:normalize_email)
   after_create("send_welcome_email")
@@ -375,13 +465,6 @@ end</code></pre>
 
   def cleanup_related
     # Remove associated data before deletion
-  end
-
-  def validate_role
-    valid_roles = ["admin", "user", "moderator"]
-    if !valid_roles.includes?(this.role)
-      return "must be one of: admin, user, moderator"
-    end
   end
 
   def is_admin -> Bool

@@ -41,7 +41,8 @@ A few details worth knowing:
 | Blank lines | Multiple consecutive blank lines collapse to one |
 | Guard clauses | `if cond return … end` with no `else` gets a trailing blank line |
 | Early returns | A `return` is followed by a blank line, unless the next statement is another `return` or the block's `end` follows |
-| Raw strings | `[[ … ]]` and `r"…"` are copied from source verbatim — never re-escaped |
+| Raw strings | `""" … """` and `r"…"` are copied from source verbatim — never re-escaped |
+| Escapes | A `"…"` literal written with `\u`, `\e` or `\0` is kept as written; elsewhere, control and invisible characters (NBSP, zero-width, bidi) are written as `\e`, `\0` or `\u{…}`, never as raw bytes |
 | `begin`/`rescue` | Canonicalized to the `try`/`catch` synonym |
 
 An early return gets breathing room from the body below it, while a run of
@@ -58,20 +59,26 @@ end
 ```
 
 A raw literal keeps the form you wrote it in. Re-escaping one is
-semantics-preserving but defeats its purpose — a multi-line `[[ … ]]` SDBQL
+semantics-preserving but defeats its purpose — a multi-line `""" … """` SDBQL
 query would collapse into a single line of `\n` escapes long enough to trip
 `style/line-length`:
 
 ```soli
-db.query([[
+db.query("""
   FOR post IN posts
     FILTER post.published == true
     RETURN post
-]])
+""")
 ```
 
-The `""" … """` form is *not* preserved — it is rewritten into an escaped
-single-line string. Use `[[ … ]]` for multi-line queries.
+### Migrating `[[ … ]]` strings
+
+`[[ … ]]` was a raw string until it was removed; `[[` is a nested array now.
+`soli fmt --migrate-raw-strings [paths]` rewrites the old strings as
+`""" … """` (applying the old rule: a `[[` outside strings and comments, not
+followed by a digit, `-` or `[`), then formats. Run it **once**, on code
+written before the change — on newer code it would read `[["a", 1]]` as a
+string. A string whose content holds `"""` is reported and left for you.
 
 The formatter never changes program semantics. If you spot output that breaks
 your code, that's a bug — please report it.

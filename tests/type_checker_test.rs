@@ -855,3 +855,26 @@ fn bug_member_access_on_new_instance_is_silently_accepted() {
 // `ExprKind::Await` variant were removed. `await(...)` is now an ordinary call
 // to the `await()` builtin, so no `ExprKind::Await` / `check_await_expr` path
 // exists to become live.
+
+#[test]
+fn an_instance_is_indexed_by_field_name() {
+    // `this[name]` / `record[field] = value` read and write a field on both
+    // engines; the checker refused the program ("cannot index Box").
+    check_ok(
+        r#"
+class Box
+  label: String
+
+  def put(name, value)
+    this[name] = value
+    this[name]
+  end
+end
+
+box = new Box()
+field = "label"
+box[field] = "b"
+print(box[field])
+"#,
+    );
+}

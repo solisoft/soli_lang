@@ -753,10 +753,14 @@ describe("Response builders (offline)", fn() {
         assert_eq(r["headers"]["Location"], "https://payments.example.net/checkout");
     });
 
-    test("halt builds a status/body response hash", fn() {
-        let r = halt(404, "Not here");
-        assert_eq(r["status"], 404);
-        assert_eq(r["body"], "Not here");
+    test("halt raises instead of returning", fn() {
+        let raised = false;
+        try {
+            halt(404, "Not here");
+        } catch e {
+            raised = true;
+        }
+        assert(raised);
     });
 
     test("forbidden raises instead of returning", fn() {

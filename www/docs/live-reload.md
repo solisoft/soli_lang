@@ -52,6 +52,7 @@ The live reload system watches these directories:
 | `app/helpers/` | view helpers |
 | `app/jobs/` (`*_job.sl`) | job classes |
 | `config/routes.sl` | the route table and the `<name>_path` helpers |
+| `config/locales/` (`.yml`, `.yaml`) | the translations, and the rendered pages holding them |
 | `public/`, `app/assets/css/` | static assets; Tailwind recompiles |
 
 The four model-ish directories are **one signal**: they load in a fixed order

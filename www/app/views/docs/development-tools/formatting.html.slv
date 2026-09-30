@@ -71,7 +71,8 @@ soli fmt --stdin &lt; in.sl &gt; out.sl</code></pre>
                 <tr><td class="px-4 py-3 text-white">Blank lines</td><td class="px-4 py-3">Multiple consecutive blank lines collapse to one</td></tr>
                 <tr><td class="px-4 py-3 text-white">Guard clauses</td><td class="px-4 py-3"><code>if cond return … end</code> with no <code>else</code> gets a trailing blank line</td></tr>
                 <tr><td class="px-4 py-3 text-white">Early returns</td><td class="px-4 py-3">A <code>return</code> is followed by a blank line, unless the next statement is another <code>return</code> or the block's <code>end</code> follows</td></tr>
-                <tr><td class="px-4 py-3 text-white">Raw strings</td><td class="px-4 py-3"><code>[[ … ]]</code> and <code>r"…"</code> are copied from source verbatim — never re-escaped</td></tr>
+                <tr><td class="px-4 py-3 text-white">Raw strings</td><td class="px-4 py-3"><code>""" … """</code> and <code>r"…"</code> are copied from source verbatim — never re-escaped</td></tr>
+                <tr><td class="px-4 py-3 text-white">Escapes</td><td class="px-4 py-3">A <code>"…"</code> literal written with <code>\u</code>, <code>\e</code> or <code>\0</code> is kept as written; elsewhere, control and invisible characters (NBSP, zero-width, bidi) are written as <code>\e</code>, <code>\0</code> or <code>\u{…}</code>, never as raw bytes</td></tr>
                 <tr><td class="px-4 py-3 text-white"><code>begin</code>/<code>rescue</code></td><td class="px-4 py-3">Canonicalized to the <code>try</code>/<code>catch</code> synonym</td></tr>
             </tbody>
         </table>
@@ -92,16 +93,21 @@ end</code></pre>
     </div>
 
     <p class="text-gray-400 mb-6">
-        A raw literal keeps the form you wrote it in. Re-escaping one is semantics-preserving but defeats its purpose &mdash; a multi-line <code class="text-amber-300">[[ &hellip; ]]</code> SDBQL query would collapse into a single line of <code>\n</code> escapes long enough to trip <code class="text-amber-300">style/line-length</code>. The <code class="text-amber-300">""" &hellip; """</code> form is <em>not</em> preserved &mdash; it is rewritten into an escaped single-line string, so use brackets for multi-line queries.
+        A raw literal keeps the form you wrote it in. Re-escaping one is semantics-preserving but defeats its purpose &mdash; a multi-line <code class="text-amber-300">""" &hellip; """</code> SDBQL query would collapse into a single line of <code>\n</code> escapes long enough to trip <code class="text-amber-300">style/line-length</code>.
     </p>
 
     <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
-        <pre data-filename="db/migrations/20260101120000_publish_posts.sl"><code class="language-soli text-sm">db.query([[
+        <pre data-filename="db/migrations/20260101120000_publish_posts.sl"><code class="language-soli text-sm">db.query("""
   FOR post IN posts
     FILTER post.published == true
     RETURN post
-]])</code></pre>
+""")</code></pre>
     </div>
+
+    <h2 class="text-2xl font-bold text-white mb-6" id="migrate-raw-strings">Migrating <code>[[ … ]]</code> strings</h2>
+    <p class="text-gray-400 mb-12">
+        <code class="text-amber-300">[[ &hellip; ]]</code> was a raw string until it was removed; <code class="text-amber-300">[[</code> is a nested array now. <code class="text-amber-300">soli fmt --migrate-raw-strings [paths]</code> rewrites the old strings as <code class="text-amber-300">""" &hellip; """</code> (applying the old rule: a <code>[[</code> outside strings and comments, not followed by a digit, <code>-</code> or <code>[</code>), then formats. Run it <strong class="text-white">once</strong>, on code written before the change &mdash; on newer code it would read <code class="text-amber-300">[["a", 1]]</code> as a string. A string whose content holds <code>"""</code> is reported and left for you.
+    </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Generated code is already formatted</h2>
     <p class="text-gray-400 mb-12">

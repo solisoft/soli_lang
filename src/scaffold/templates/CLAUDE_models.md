@@ -288,18 +288,50 @@ Pass an options hash to `validates`. All keys are optional; combine freely.
 | `"format": "regex"`    | String matches the pattern.                                                 |
 | `"numericality": true` | Value is a number.                                                          |
 | `"min": N` / `"max": N`| Numeric bounds.                                                             |
-| `"custom": "method"`   | Calls `@method()` for full custom checks; method appends to `_errors`.       |
+| `"inclusion": [...]`   | Value is one of the list (alias `"one_of"`). Type-exact: `1` does not match `"1"`. Nil skipped. "is not included in the list". |
+| `"type": "int"`        | Value has that type: `"string"`, `"int"`/`"integer"`, `"float"`, `"number"`, `"bool"`/`"boolean"`, `"array"`, `"hash"`. Nil skipped. |
+| `"allow_nil": true`    | Skip the whole rule when the value is nil or absent (alias `"allow_null"`). |
+| `"on": "create"`       | Run the rule only on `"create"` or only on `"update"`.                      |
+| `"if"` / `"unless"`    | `fn(record) { ... }` — the rule runs only when it is truthy / falsy.        |
+| `"custom": "method"`   | Calls that instance method on the record — see below.                       |
+| `"custom": fn(value, record) {...}` | Same, as a closure.                                            |
+
+An unknown option key, or a value of the wrong type (`"min_length": "3"`),
+**raises when the class loads** — a misspelled rule cannot silently check
+nothing. Form values arrive as strings: `"12"` fails `numericality` and
+`"type": "int"`, so convert them in the controller first.
+
+A `custom` method runs on the record, so `@field` reads work; if it takes a
+parameter, it receives the validated field's value. It reports a failure by:
+
+- returning `false` → the field gets "is invalid";
+- returning a String → that String is the message;
+- pushing `{ "field": ..., "message": ... }` onto `@_errors` — which starts
+  as `nil` in there, so write `@_errors = @_errors ?? []` first. This is the
+  form for an error on another field, or several errors.
+
+Returning `nil` or `true` passes. A `custom` closure follows the same rules.
 
 ```soli
 class User < Model
-  validates("email", { "presence": true, "uniqueness": true, "format": "^[^@]+@[^@]+$" })
-  validates("age",   { "numericality": true, "min": 0, "max": 150 })
-  validates("name",  { "custom": "validate_name" })
+  validates("email",    { "presence": true, "uniqueness": true, "format": "^[^@]+@[^@]+$" })
+  validates("age",      { "numericality": true, "min": 0, "max": 150 })
+  validates("role",     { "inclusion": ["admin", "member"] })
+  validates("tags",     { "type": "array", "allow_nil": true })
+  validates("nickname", { "min_length": 2, "allow_nil": true })
+  validates("name",     { "custom": "validate_name" })
+  validates("slug",     { "custom": fn(value, record) { value.to_s == value.to_s.downcase } })
+  validates("plan",     { "custom": "validate_plan" })
 
   def validate_name
-    return unless @name.blank? || @name.length < 2
+    "is too short" if @name.to_s.length < 2
+  end
 
-    @_errors.push({ "field": "name", "message": "too short" })
+  def validate_plan
+    return if @plan != "pro" || @age.to_s.to_i >= 18
+
+    @_errors = @_errors ?? []
+    @_errors.push({ "field": "age", "message": "must be 18 for the pro plan" })
   end
 end
 ```

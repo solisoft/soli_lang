@@ -286,7 +286,27 @@ impl Parser {
                 Ok(Expr::new(ExprKind::Grouping(Box::new(expr)), span))
             }
 
-            TokenKind::LeftBracket => self.parse_array(start_span),
+            TokenKind::LeftBracket => {
+                // `[[` with nothing between the brackets was a raw string
+                // until the syntax was removed; when what follows is not Soli,
+                // say so rather than only naming the stray token.
+                let doubled = self.check(&TokenKind::LeftBracket)
+                    && self.current_span().start == start_span.end;
+                self.parse_array(start_span).map_err(|e| {
+                    if doubled {
+                        ParserError::General {
+                            message: format!(
+                                "{} — `[[ … ]]` is no longer a string: write a raw multi-line \
+                                 string as \"\"\"…\"\"\"",
+                                e.message_without_span()
+                            ),
+                            span: e.span(),
+                        }
+                    } else {
+                        e
+                    }
+                })
+            }
             TokenKind::LeftBrace => self.parse_hash(start_span),
 
             TokenKind::Minus => {

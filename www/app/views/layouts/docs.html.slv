@@ -623,9 +623,8 @@
         var STRING = {
             className: 'string',
             variants: [
-                { begin: 'r?"', end: '"', contains: [hljs.BACKSLASH_ESCAPE, SUBST] },
-                { begin: '"""', end: '"""' },
-                { begin: '\\[\\[', end: '\\]\\]' }
+                { begin: '"""', end: '"""+' },
+                { begin: 'r?"', end: '"', contains: [hljs.BACKSLASH_ESCAPE, SUBST] }
             ]
         };
         return {

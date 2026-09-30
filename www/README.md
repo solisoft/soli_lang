@@ -62,7 +62,7 @@ mvc_app/
 │   │   └── admin_controller.sl
 │   ├── middleware/           # Middleware functions
 │   │   ├── auth.sl         # Authentication (scope_only)
-│   │   ├── cors.sl         # CORS headers (global_only)
+│   │   ├── request_stamp.sl # request timestamp (global_only)
 │   │   └── logging.sl      # Request logging (global_only)
 │   ├── models/               # Data models
 │   └── views/                # Templates

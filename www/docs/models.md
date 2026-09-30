@@ -719,10 +719,77 @@ end
 | `numericality: true` | Value must be a number |
 | `min: n` | Number must be >= n |
 | `max: n` | Number must be <= n |
-| `custom: "method_name"` | Call custom validation method |
+| `inclusion: [...]` (or `one_of: [...]`) | Value must be one of the listed values — `"is not included in the list"` |
+| `type: "string"` | Value must have that type: `"string"`, `"int"`/`"integer"`, `"float"`, `"number"`, `"bool"`/`"boolean"`, `"array"`, `"hash"` — `"must be a <type>"` |
+| `allow_nil: true` (or `allow_null: true`) | Skip the whole rule when the value is nil or absent |
+| `custom: "method_name"` | Call an instance method of the model — see [Custom Validators](#custom-validators) |
+| `custom: fn(value, record) { ... }` | Call a closure — same return rules as the method form |
 | `on: "create"` / `on: "update"` | Only run the rule for that operation |
 | `if: fn(record) { ... }` | Only run the rule when the closure is truthy |
 | `unless: fn(record) { ... }` | Skip the rule when the closure is truthy |
+
+Options are **strict**: an unknown key (`"within": [...]`, a typo like `"presense"`) or a known key with a
+wrong-typed value (`"min_length": "3"`) raises when the class loads, with a message listing the known
+options. A misspelt rule used to be ignored silently — it read like protection and checked nothing.
+
+### Inclusion, Type and Nil
+
+```soli
+class Invoice < Model
+  validates("status", { "presence": true, "inclusion": ["draft", "sent", "paid"] })
+  validates("priority", { "one_of": [1, 2, 3] })     # compared by type: "1" is not 1
+  validates("paid", { "type": "boolean" })
+  validates("nickname", { "allow_nil": true, "min_length": 3 })
+end
+
+invoice = Invoice.create({ "status": "pending", "priority": "1", "paid": "yes" })
+# invoice._errors:
+#   status:   is not included in the list
+#   priority: is not included in the list
+#   paid:     must be a boolean
+```
+
+`inclusion` and `type` skip a nil or absent value — pair them with `presence: true` when the field is
+required. `allow_nil: true` goes further and skips every check of that `validates` call (presence, length,
+custom…) when the value is nil or absent.
+
+### Custom Validators
+
+`custom: "method_name"` calls that instance method on a record built from the data being validated, so
+`@field` reads work. The method can be declared anywhere in the class, including under `private`. It fails
+the field by:
+
+- pushing `{"field": "...", "message": "..."}` entries onto `@_errors` (any field, any number of them);
+- returning `false` — reported as `"is invalid"`;
+- returning a String — reported as that message.
+
+Returning `nil` or `true` passes. A method that declares one parameter receives the field's value.
+
+```soli
+class Event < Model
+  validates("ends_at", { "custom": "_ends_after_start" })
+  validates("title", { "custom": "_no_shouting" })
+  validates("code", { "custom": fn(value, record) { value.nil? || value.starts_with?("EV-") ? true : "must start with EV-" } })
+
+  private
+
+  def _ends_after_start
+    return true if @ends_at.nil? || @starts_at.nil?
+
+    @_errors = @_errors ?? []
+    @_errors.push({ "field": "ends_at", "message": "must be after starts_at" }) if @ends_at <= @starts_at
+  end
+
+  def _no_shouting(title)
+    return "can't be all caps" if title == title.upcase
+
+    true
+  end
+end
+```
+
+The closure form, `custom: fn(value, record) { ... }`, receives the field value and the attribute hash and
+follows the same return rules. Before, `custom:` was accepted but never ran.
 
 ### Conditional and Per-Operation Rules
 
@@ -810,6 +877,10 @@ The field comes from whatever the database names — Postgres reports the column
 MySQL names the index — and falls back to `_base` when there is nothing to go on.
 Anything that is *not* a constraint violation is still reported as-is, so a
 connection failure never masquerades as a validation error.
+
+A `uniqueness` rule on a SQL adapter also runs the rest of its `validates` call:
+`validates("email", { "uniqueness": true, "format": "email" })` checks the format
+too (the SQL path used to skip that call's `format`/`numericality`/`min`/`max`).
 
 ## Callbacks
 

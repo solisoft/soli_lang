@@ -102,6 +102,18 @@ impl ParserError {
             Self::General { span, .. } => *span,
         }
     }
+
+    /// The message, without the ` at <span>` suffix `Display` appends.
+    pub fn message_without_span(&self) -> String {
+        match self {
+            Self::UnexpectedToken {
+                expected, found, ..
+            } => format!("Unexpected token '{}', expected {}", found, expected),
+            Self::UnexpectedEof(_) => "Unexpected end of file".to_string(),
+            Self::InvalidAssignmentTarget(_) => "Invalid assignment target".to_string(),
+            Self::General { message, .. } => message.clone(),
+        }
+    }
 }
 
 impl From<LexerError> for ParserError {
@@ -395,6 +407,38 @@ impl RuntimeError {
             .map(|idx| msg[idx + Self::FORBIDDEN_MARKER.len()..].to_string())
     }
 
+    /// Sentinel embedded in the error message by `halt(status, message)`. The
+    /// request handler turns it into that response (status, `text/plain`
+    /// body), wherever it was raised — an action, a `before_action`, a
+    /// middleware, a helper several calls deep. Encoded
+    /// `<status>:<byte length>:<message>`: the length lets the message be cut
+    /// back out exactly, since raising appends the position (` at 3:17`).
+    pub const HALT_MARKER: &'static str = "__Halt__:";
+
+    /// The sentinel message `halt(status, message)` raises.
+    pub fn halt_sentinel(status: i64, message: &str) -> String {
+        format!(
+            "{}{}:{}:{}",
+            Self::HALT_MARKER,
+            status,
+            message.len(),
+            message
+        )
+    }
+
+    /// The `(status, message)` a `halt(...)` raised, if this error is one.
+    pub fn halt_parts(&self) -> Option<(u16, String)> {
+        let msg = match self {
+            Self::General { message, .. } | Self::WithEnv { message, .. } => message.as_str(),
+            _ => return None,
+        };
+        let rest = &msg[msg.find(Self::HALT_MARKER)? + Self::HALT_MARKER.len()..];
+        let (status, rest) = rest.split_once(':')?;
+        let (len, rest) = rest.split_once(':')?;
+        let message = rest.get(..len.parse::<usize>().ok()?)?;
+        Some((status.parse().ok()?, message.to_string()))
+    }
+
     pub fn new(message: impl Into<String>, span: Span) -> Self {
         Self::General {
             message: message.into(),
@@ -464,6 +508,7 @@ impl RuntimeError {
     pub fn catchable_message(&self) -> String {
         self.record_not_found_message()
             .or_else(|| self.forbidden_message())
+            .or_else(|| self.halt_parts().map(|(_, message)| message))
             .unwrap_or_else(|| self.to_string())
     }
 
@@ -867,6 +912,15 @@ mod tests {
         assert!(!missing
             .catchable_message()
             .contains(RuntimeError::RECORD_NOT_FOUND_MARKER));
+
+        // halt: the message is cut back out exactly, even with the position
+        // raising appends and a message that itself contains `:`.
+        let halted = RuntimeError::General {
+            message: format!("{} at 3:17", RuntimeError::halt_sentinel(429, "slow: down")),
+            span: span(3, 17),
+        };
+        assert_eq!(halted.halt_parts(), Some((429, "slow: down".to_string())));
+        assert_eq!(halted.catchable_message(), "slow: down");
 
         // An ordinary error is unchanged — it renders as it always did,
         // span suffix included.

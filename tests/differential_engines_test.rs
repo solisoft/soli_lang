@@ -1290,6 +1290,19 @@ const CASES: &[(&str, &str)] = &[
         "implicit_self_local_and_global_win",
         "def shared\n  \"global\"\nend\n\nclass C\n  def run\n    label = \"local\"\n    [label, shared()]\n  end\n\n  def label\n    \"method\"\n  end\n\n  def shared\n    \"method\"\n  end\nend\nprint(new C().run)",
     ),
+    (
+        // `record[field] = value` with a computed name writes the field, as
+        // `record.<field> = value` does; a model's `_` metadata stays
+        // read-only. It used to be "invalid assignment target".
+        "instance_dynamic_field_write",
+        "class Doc < Model\nend\n\nclass Box\n  label: String\nend\n\ndoc = Doc.new()\nfield = \"title\"\ndoc[field] = \"t\"\nprint(doc.title)\nprint(doc[field])\nlocked = \"ok\"\nbegin_key = \"_key\"\nlocked = (doc[begin_key] = \"x\") rescue \"refused\"\nprint(locked)\nbox = new Box()\nbox[\"label\"] = \"b\"\nprint(box.label)",
+    ),
+    (
+        // Indexing by name goes through the same private/protected check as
+        // `record.field` on both engines.
+        "instance_dynamic_field_private",
+        "class Vault\n  private\n  secret: String\n\n  public\n  def put(name, value)\n    this[name] = value\n    this[name]\n  end\nend\n\nv = new Vault()\nprint(v.put(\"secret\", \"s1\"))\nfield = \"secret\"\nprint(v[field] rescue \"read refused\")\nout = (v[field] = \"x\") rescue \"write refused\"\nprint(out)\n",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

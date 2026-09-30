@@ -102,13 +102,12 @@ and are always HTML-escaped.
 `select` accepts an array of strings or of `[label, value]` pairs:
 
 ```erb
-<% choices = [ ["On time", "up"], ["Late", "late"] ] %>
+<% choices = [["On time", "up"], ["Late", "late"]] %>
 <%- f.select("status", choices) %>
 ```
 
-Two gotchas: build the pairs in a `<% %>` code block (complex nested literals
-don't parse inside output tags), and put a space between the brackets —
-a leading `[[` lexes as a Lua-style raw string, not a nested array.
+Build the pairs in a `<% %>` code block: complex nested literals don't parse
+inside output tags.
 
 Top-level field names are flat (`name="title"` → `params["title"]`), and
 bracket names **nest**: the server parses `author[name]` into

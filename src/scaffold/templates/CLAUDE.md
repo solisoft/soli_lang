@@ -135,7 +135,7 @@ Worked tutorials live in `docs/blog/`.
 |--------------------------------------------|--------------------------------------------|------------------------------------------------------------------------------|
 | `// comment`                               | `# comment`                                | `//` was standardized away — lint flags it.                                  |
 | `${name}` / `\(name)` in a string          | `#{name}`                                  | Hash-brace is the only interpolation form; `\(` is an invalid escape.        |
-| `@"multi\nline"` raw string                | `[[multi\nline]]` or `""" ... """`         | `@"..."` doesn't exist; `@` is only for `@sdbql{...}` query blocks.          |
+| `@"multi\nline"` / `[[multi\nline]]` raw string | `""" ... """`                        | `@"..."` doesn't exist; `[[` is a nested array (the `[[ ]]` string was removed). |
 | `if (x) { … }`                             | `if x … end`                               | C-style parses, but Ruby-style is the convention here.                       |
 | `xs.forEach(…)`                            | `xs.each do \|x\| … end` or `for x in xs`  | No `forEach`.                                                                |
 | `x \|\| default`                           | `x ?? default`                             | `\|\|` returns the wrong side when `x` is `0` or `""` (those are TRUTHY).    |
@@ -162,7 +162,6 @@ the code you are writing — they are properties of the runtime.
 | Behaviour | Consequence | What to do |
 |---|---|---|
 | A `before_*` callback returning `false` **aborts persistence** | `@flag \|\|= false` as the last line silently rejects every record | End every callback with an explicit `return true` |
-| `validates(..., { "custom": "method" })` **never fires** | A business rule declared that way is dead code that reads as protection | Put the rule in a method the controller calls, and render the 422 yourself |
 | `update(attrs)` / `save(attrs)` **skip callbacks** | Normalisation is lost on every update | Assign fields explicitly, then `save()` |
 | `_errors` is `nil` after a successful `create` but `[]` after a successful `save` | `if record._errors` is true after an update (`[]` is truthy) | Test `_errors.length > 0` |
 | `Model.delete_all` **without a scope** does not empty the collection | A spec that relies on it tests the wrong state and still passes | Loop and `delete()`, or scope it: `Model.where(...).delete_all` |
@@ -179,6 +178,7 @@ the code you are writing — they are properties of the runtime.
 | `find_uploaded_file` wants `req`, not `params` | Returns nil with `params`, despite the bundled docs' example | `find_uploaded_file(req, "field")` |
 | `String.index_of` takes **no start offset** | `index_of("/", 1)` raises `Wrong number of arguments` | Slice first, then search |
 | `before_action` hooks are wired by a **startup scan** | `--dev` reloads the action but keeps the old guard — a changed auth rule silently doesn't apply | Restart the process, not just the file |
+| `halt(...)`, `forbidden()` and a `find` miss **raise** | A `rescue`/`catch` around them catches the halt (value = its message) and the request carries on | Keep halting code outside `rescue`; a bare `halt(403, "…")` needs no `return` |
 | `HTTP.*_json` **raise** on a non-2xx status | `try/catch` gets the whole error page as a string; the status branch is dead | `HTTP.request` returns the response — read `response["status"]` |
 | A `.md` view runs through the **template engine first** | Writing a template tag in prose *executes* it; `<%%` does not escape it | Name the tags instead of quoting them |
 
@@ -364,14 +364,11 @@ halve  = |x| { x / 2 }
 # String interpolation
 msg = "Hi #{name}, age #{age}"
 
-# Multiline / raw strings (NO @"..." — that form does not exist)
-lua_raw = [[
-    Raw text. No escape processing.
-    Good for queries with embedded "double quotes".
-]]
+# Multiline / raw strings (NO @"..." and NO [[ … ]] — `[[` is a nested array)
 triple = """
-    Raw, multiline. Closes on """.
-    Good for content with ] or ]] inside.
+    Raw text, multiline. No escape processing.
+    Good for queries with embedded "double quotes". Closes on the last
+    quote of a run of three or more.
 """
 single_raw = r"C:\Users\name"   # raw, single-line only
 
@@ -613,7 +610,7 @@ the newline after a tag.
 
 ## Middleware
 
-A middleware file declares one function. Per-file directive comments at the top configure how the framework wires it up:
+Every public `def` in `app/middleware/*.sl` is a middleware, named after the function (a `_name` is a helper, not registered). Directive comments right above the `def` configure how the framework wires it up:
 
 ```soli
 # app/middleware/auth.sl
@@ -622,25 +619,19 @@ A middleware file declares one function. Per-file directive comments at the top 
 # scope_only: true   — only runs when wrapped in `middleware("authenticate", -> { ... })`
 
 def authenticate(req)
-    key = req["headers"]["X-Api-Key"].to_s
-    if key.blank?
-        return {
-            "continue": false,
-            "response": { "status": 401, "body": "Unauthorized" }
-        }
-    end
+  halt(401, "Unauthorized") if req["headers"]["x-api-key"].blank?
 
-    { "continue": true, "request": req }
+  req
 end
 ```
 
 | Directive            | Meaning                                                |
 |----------------------|--------------------------------------------------------|
 | `# order: N`         | Lower runs first. Default 100.                         |
-| `# global_only: true` | Always runs; cannot be scoped.                        |
+| `# global_only: true` | Runs on every request, scoped routes included; cannot be scoped. |
 | `# scope_only: true`  | Only runs when explicitly scoped via `middleware(...)`. |
 
-Returning `{"continue": false, "response": {...}}` short-circuits with that response. Returning `{"continue": true, "request": req}` proceeds to the next middleware / handler.
+Return `req` (modified or not) to proceed to the next middleware / handler. Return `render_json(data, 401)`, `redirect("/login")` or any hash with a `status` key to answer with it, or raise: `halt(status, message)`, `forbidden()`, a `find` miss (404). The older `{"continue": true, "request": req}` / `{"continue": false, "response": {...}}` shapes still work. Scoped and global middleware run as one list sorted by `order` (scoped first on a tie). Details: `app/middleware/CLAUDE.md`.
 
 ## Testing
 

@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::{ControlFlow, Interpreter};
-use crate::interpreter::value::{Function, HashKey, HashPairs, Value};
+use crate::interpreter::value::{Class, Function, HashKey, HashPairs, Instance, Value};
 
 /// Persistence operation names used for `validates ... on:` matching.
 /// `run_validations` derives the operation from `exclude_key`: every update
@@ -72,9 +72,12 @@ pub fn copy_custom_validators(parent: &str, child: &str) {
 pub struct RuleConditions {
     pub if_fn: Option<Rc<Function>>,
     pub unless_fn: Option<Rc<Function>>,
+    /// `custom: fn(value, record) { ... }` — the closure form of `custom:`.
+    pub custom_fn: Option<Rc<Function>>,
 }
 
 impl RuleConditions {
+    /// No `if:`/`unless:` gate (the custom closure is not a condition).
     pub fn is_empty(&self) -> bool {
         self.if_fn.is_none() && self.unless_fn.is_none()
     }
@@ -122,8 +125,17 @@ pub fn copy_rule_conditions(parent: &str, child: &str, rules: &[ValidationRule])
 /// full record hash; returns true on pass, false on fail. Any error inside
 /// the closure short-circuits validation with that error message.
 fn invoke_validator(func: &Function, field_value: &Value, record: &Value) -> Result<bool, String> {
-    let call_env = Environment::with_enclosing(func.closure.clone());
-    let mut env_inner = call_env;
+    invoke_validator_value(func, field_value, record).map(|v| v.is_truthy())
+}
+
+/// Run a validator closure and return what it returned (see
+/// [`invoke_validator`] for the parameters).
+fn invoke_validator_value(
+    func: &Function,
+    field_value: &Value,
+    record: &Value,
+) -> Result<Value, String> {
+    let mut env_inner = Environment::with_enclosing(func.closure.clone());
     // Bind positional params: (value), (value, record), or fewer.
     let mut params = func.params.iter();
     if let Some(p) = params.next() {
@@ -132,8 +144,11 @@ fn invoke_validator(func: &Function, field_value: &Value, record: &Value) -> Res
     if let Some(p) = params.next() {
         env_inner.define(p.name.clone(), record.clone());
     }
-    let env_rc = Rc::new(RefCell::new(env_inner));
-    let env_clone = env_rc.borrow().clone();
+    run_validator_body(func, env_inner, "custom validator")
+}
+
+/// Execute a validator's body in `env` on a fresh interpreter.
+fn run_validator_body(func: &Function, env: Environment, what: &str) -> Result<Value, String> {
     let mut interp = Interpreter::default();
     // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
     // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
@@ -142,11 +157,106 @@ fn invoke_validator(func: &Function, field_value: &Value, record: &Value) -> Res
     if let Some(ref declaring_file) = func.source_path {
         interp.current_source_path = Some(std::path::PathBuf::from(declaring_file));
     }
-    match interp.execute_block(&func.body, env_clone) {
-        Ok(ControlFlow::Return(v)) | Ok(ControlFlow::Normal(v)) => Ok(v.is_truthy()),
-        Ok(ControlFlow::Continue) | Ok(ControlFlow::Break) => Ok(true),
-        Ok(ControlFlow::Throw(e)) => Err(format!("custom validator threw: {}", e)),
-        Err(e) => Err(format!("custom validator error: {}", e)),
+    match interp.execute_block(&func.body, env) {
+        Ok(ControlFlow::Return(v)) | Ok(ControlFlow::Normal(v)) => Ok(v),
+        Ok(ControlFlow::Continue) | Ok(ControlFlow::Break) => Ok(Value::Bool(true)),
+        Ok(ControlFlow::Throw(e)) => Err(format!("{} threw: {}", what, e)),
+        Err(e) => Err(format!("{} error: {}", what, e)),
+    }
+}
+
+/// Turn what a custom validator returned into errors: `false` is "is
+/// invalid", a String is the message, anything else passes. (`nil` passes
+/// too — a method that only pushes onto `_errors` usually ends on nothing.)
+fn push_custom_outcome(errors: &mut Vec<ValidationError>, field: &str, outcome: &Value) {
+    match outcome {
+        Value::Bool(false) => errors.push(ValidationError::new(field, "is invalid")),
+        Value::String(message) => errors.push(ValidationError::new(field, message.to_string())),
+        _ => {}
+    }
+}
+
+/// `custom: "method"`: call the model's instance method on a record built
+/// from `data`, with `this` bound — `@field` reads work, and the method can
+/// push `{"field": …, "message": …}` onto `@_errors` or return `false` / a
+/// message String. A method with a parameter receives the field's value.
+fn run_custom_method(
+    class_name: &str,
+    class: Option<&Rc<Class>>,
+    rule: &ValidationRule,
+    method: &str,
+    data: &Value,
+    errors: &mut Vec<ValidationError>,
+) -> Result<(), String> {
+    let class = class.ok_or_else(|| {
+        format!(
+            "validates(\"{}\", {{\"custom\": \"{}\"}}) needs a record of {} to call it on",
+            rule.field, method, class_name
+        )
+    })?;
+    let func = class.find_method(method).ok_or_else(|| {
+        format!(
+            "validates(\"{}\", {{\"custom\": \"{}\"}}): {} has no method `{}`",
+            rule.field, method, class_name, method
+        )
+    })?;
+    let mut record = Instance::new(class.clone());
+    if let Value::Hash(hash) = data {
+        for (key, value) in hash.borrow().iter() {
+            if let HashKey::String(name) = key {
+                record.set(name.clone(), value.clone());
+            }
+        }
+    }
+    let record = Rc::new(RefCell::new(record));
+    let mut env = Environment::with_enclosing(func.closure.clone());
+    env.define("this".to_string(), Value::Instance(record.clone()));
+    if let Some(p) = func.params.first() {
+        env.define(
+            p.name.clone(),
+            lookup_field(data, &rule.field).unwrap_or(Value::Null),
+        );
+    }
+    let outcome = run_validator_body(&func, env, "custom validation method")?;
+
+    // Whatever the method pushed onto `@_errors`.
+    let pushed = record.borrow().get("_errors");
+    if let Some(Value::Array(entries)) = pushed {
+        for entry in entries.borrow().iter() {
+            let (field, message) = match entry {
+                Value::Hash(h) => {
+                    let h = h.borrow();
+                    let text = |k: &str| match h.get(&HashKey::String(k.into())) {
+                        Some(Value::String(s)) => Some(s.to_string()),
+                        Some(Value::Null) | None => None,
+                        Some(other) => Some(other.to_string()),
+                    };
+                    (
+                        text("field").unwrap_or_else(|| rule.field.clone()),
+                        text("message").unwrap_or_else(|| "is invalid".to_string()),
+                    )
+                }
+                Value::String(message) => (rule.field.clone(), message.to_string()),
+                _ => continue,
+            };
+            errors.push(ValidationError::new(field, message));
+        }
+    }
+    push_custom_outcome(errors, &rule.field, &outcome);
+    Ok(())
+}
+
+/// Does `value` have the `type:` a rule asks for?
+fn value_has_type(value: &Value, expected: &str) -> bool {
+    match expected {
+        "string" => matches!(value, Value::String(_)),
+        "int" | "integer" => matches!(value, Value::Int(_)),
+        "float" => matches!(value, Value::Float(_)),
+        "number" => matches!(value, Value::Int(_) | Value::Float(_) | Value::Decimal(_)),
+        "bool" | "boolean" => matches!(value, Value::Bool(_)),
+        "array" => matches!(value, Value::Array(_)),
+        "hash" => matches!(value, Value::Hash(_)),
+        _ => true,
     }
 }
 
@@ -162,7 +272,20 @@ pub struct ValidationRule {
     pub numericality: bool,
     pub min: Option<f64>,
     pub max: Option<f64>,
-    pub custom: Option<String>, // method name for custom validation
+    /// `custom: "method"`: an instance method called on the record.
+    pub custom: Option<String>,
+    /// `custom: fn(value, record) { ... }` is attached (the closure lives in
+    /// the thread-local [`RULE_CONDITIONS`] registry, beside `if:`/`unless:`).
+    pub has_custom_fn: bool,
+    /// `inclusion: [...]` / `one_of: [...]`: the allowed values, compared
+    /// with `==` on their JSON form (so `1` does not match `"1"`).
+    pub inclusion: Option<Vec<serde_json::Value>>,
+    /// `allow_nil: true` / `allow_null: true`: skip the whole rule when the
+    /// value is nil or absent.
+    pub allow_nil: bool,
+    /// `type: "string" | "int" | "float" | "number" | "bool" | "array" |
+    /// "hash"`: the value must be of that type (nil/absent skipped).
+    pub value_type: Option<String>,
     /// Restrict the rule to one operation: `"create"` or `"update"`.
     /// `None` runs on both.
     pub on: Option<String>,
@@ -234,7 +357,7 @@ pub fn register_validation_with_conditions(
     rule: ValidationRule,
     conditions: RuleConditions,
 ) {
-    if rule.has_condition {
+    if rule.has_condition || rule.has_custom_fn {
         RULE_CONDITIONS.with(|c| {
             c.borrow_mut()
                 .insert(rule_condition_key(class_name, &rule), conditions);
@@ -243,12 +366,32 @@ pub fn register_validation_with_conditions(
     register_validation(class_name, rule);
 }
 
+/// Every key `validates(field, {...})` understands, for the unknown-key error.
+const VALIDATES_KEYS: &str = "presence, uniqueness, min_length, max_length, format, \
+     numericality, min, max, inclusion (or one_of), type, allow_nil (or allow_null), custom, \
+     on, if, unless";
+
+const VALUE_TYPES: &[&str] = &[
+    "string", "int", "integer", "float", "number", "bool", "boolean", "array", "hash",
+];
+
+fn wrong_type(key: &str, expected: &str, got: &Value) -> String {
+    format!(
+        "validates() `{}:` expects {}, got {}",
+        key,
+        expected,
+        got.type_name()
+    )
+}
+
 /// Parse the options hash of a `validates(field, {...})` call into a rule plus
 /// its optional condition closures. Shared by the class static method and the
-/// class-body DSL registration paths. Unknown keys are ignored (back-compat);
-/// `on:`/`if:`/`unless:` reject wrong types loudly — silently dropping a
-/// condition would make the rule run unconditionally, the opposite of what
-/// the author asked for.
+/// class-body DSL registration paths.
+///
+/// Strict: an unknown key, or a known key with a value of the wrong type,
+/// raises at class-load time. Both used to be ignored, so a rule that was
+/// never enforced read like protection — `"one_of": [...]` (before it
+/// existed) let any value through, `"min_length": "3"` checked nothing.
 pub fn parse_validates_options(
     field: &str,
     options: &HashPairs,
@@ -257,55 +400,90 @@ pub fn parse_validates_options(
     let mut conditions = RuleConditions::default();
 
     for (key, value) in options.iter() {
-        let HashKey::String(key_str) = key else {
-            continue;
+        let key_str = match key {
+            HashKey::String(s) | HashKey::Symbol(s) => s.as_ref(),
+            _ => return Err("validates() option names must be strings".to_string()),
         };
-        match key_str.as_ref() {
-            "presence" => {
-                if let Value::Bool(b) = value {
-                    rule.presence = *b;
+        match key_str {
+            "presence" | "uniqueness" | "numericality" | "allow_nil" | "allow_null" => {
+                let Value::Bool(b) = value else {
+                    return Err(wrong_type(key_str, "true or false", value));
+                };
+                match key_str {
+                    "presence" => rule.presence = *b,
+                    "uniqueness" => rule.uniqueness = *b,
+                    "numericality" => rule.numericality = *b,
+                    _ => rule.allow_nil = *b,
                 }
             }
-            "uniqueness" => {
-                if let Value::Bool(b) = value {
-                    rule.uniqueness = *b;
+            "min_length" | "max_length" => {
+                let n = match value {
+                    Value::Int(n) if *n >= 0 => *n as usize,
+                    other => return Err(wrong_type(key_str, "a non-negative Int", other)),
+                };
+                if key_str == "min_length" {
+                    rule.min_length = Some(n);
+                } else {
+                    rule.max_length = Some(n);
                 }
             }
-            "min_length" => {
-                if let Value::Int(n) = value {
-                    rule.min_length = Some(*n as usize);
-                }
-            }
-            "max_length" => {
-                if let Value::Int(n) = value {
-                    rule.max_length = Some(*n as usize);
-                }
-            }
-            "format" => {
-                if let Value::String(s) = value {
-                    rule.format = Some(s.to_string());
-                }
-            }
-            "numericality" => {
-                if let Value::Bool(b) = value {
-                    rule.numericality = *b;
-                }
-            }
-            "min" => match value {
-                Value::Int(n) => rule.min = Some(*n as f64),
-                Value::Float(n) => rule.min = Some(*n),
-                _ => {}
+            "format" => match value {
+                Value::String(s) => rule.format = Some(s.to_string()),
+                other => return Err(wrong_type(key_str, "a regex String", other)),
             },
-            "max" => match value {
-                Value::Int(n) => rule.max = Some(*n as f64),
-                Value::Float(n) => rule.max = Some(*n),
-                _ => {}
-            },
-            "custom" => {
-                if let Value::String(s) = value {
-                    rule.custom = Some(s.to_string());
+            "min" | "max" => {
+                let n = match value {
+                    Value::Int(n) => *n as f64,
+                    Value::Float(n) => *n,
+                    other => return Err(wrong_type(key_str, "a number", other)),
+                };
+                if key_str == "min" {
+                    rule.min = Some(n);
+                } else {
+                    rule.max = Some(n);
                 }
             }
+            "inclusion" | "one_of" => match value {
+                Value::Array(items) => {
+                    let allowed = items
+                        .borrow()
+                        .iter()
+                        .map(crate::interpreter::value::value_to_json)
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|e| format!("validates() `{}:` {}", key_str, e))?;
+                    rule.inclusion = Some(allowed);
+                }
+                other => return Err(wrong_type(key_str, "an Array of allowed values", other)),
+            },
+            "type" => match value {
+                Value::String(s) | Value::Symbol(s) if VALUE_TYPES.contains(&s.as_str()) => {
+                    rule.value_type = Some(s.to_string());
+                }
+                other => {
+                    return Err(format!(
+                        "validates() `type:` must be one of {}, got {}",
+                        VALUE_TYPES.join(", "),
+                        match other {
+                            Value::String(s) | Value::Symbol(s) => format!("\"{}\"", s),
+                            v => v.type_name(),
+                        }
+                    ))
+                }
+            },
+            "custom" => match value {
+                Value::String(s) | Value::Symbol(s) => rule.custom = Some(s.to_string()),
+                Value::Function(f) => {
+                    conditions.custom_fn = Some(f.clone());
+                    rule.has_custom_fn = true;
+                }
+                other => {
+                    return Err(wrong_type(
+                        key_str,
+                        "a method name or a fn(value, record) closure",
+                        other,
+                    ))
+                }
+            },
             "on" => match value {
                 Value::String(s) | Value::Symbol(s)
                     if s.as_str() == OP_CREATE || s.as_str() == OP_UPDATE =>
@@ -340,7 +518,12 @@ pub fn parse_validates_options(
                     ))
                 }
             },
-            _ => {}
+            unknown => {
+                return Err(format!(
+                    "validates(\"{}\") has an unknown option `{}` — known options: {}",
+                    field, unknown, VALIDATES_KEYS
+                ))
+            }
         }
     }
 
@@ -514,27 +697,11 @@ pub fn build_unique_violation_errors(class_name: &str, err: &str) -> Vec<Validat
 /// the closure's first parameter (if it declares one); the closure's
 /// truthiness decides.
 fn invoke_condition(func: &Function, record: &Value) -> Result<bool, String> {
-    let call_env = Environment::with_enclosing(func.closure.clone());
-    let mut env_inner = call_env;
+    let mut env = Environment::with_enclosing(func.closure.clone());
     if let Some(p) = func.params.first() {
-        env_inner.define(p.name.clone(), record.clone());
+        env.define(p.name.clone(), record.clone());
     }
-    let env_rc = Rc::new(RefCell::new(env_inner));
-    let env_clone = env_rc.borrow().clone();
-    let mut interp = Interpreter::default();
-    // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
-    // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
-    // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
-    // fichier, quel que soit le nombre d'appels.
-    if let Some(ref declaring_file) = func.source_path {
-        interp.current_source_path = Some(std::path::PathBuf::from(declaring_file));
-    }
-    match interp.execute_block(&func.body, env_clone) {
-        Ok(ControlFlow::Return(v)) | Ok(ControlFlow::Normal(v)) => Ok(v.is_truthy()),
-        Ok(ControlFlow::Continue) | Ok(ControlFlow::Break) => Ok(true),
-        Ok(ControlFlow::Throw(e)) => Err(format!("validation condition threw: {}", e)),
-        Err(e) => Err(format!("validation condition error: {}", e)),
-    }
+    run_validator_body(func, env, "validation condition").map(|v| v.is_truthy())
 }
 
 /// Decide whether a rule applies to this run: `on:` must match the operation
@@ -603,6 +770,7 @@ pub fn class_has_validations(class_name: &str) -> bool {
 
 pub fn run_validations(
     class_name: &str,
+    class: Option<&Rc<Class>>,
     data: &Value,
     exclude_key: Option<&str>,
 ) -> Result<Vec<ValidationError>, String> {
@@ -635,6 +803,10 @@ pub fn run_validations(
 
         // Find the field value
         let field_value = lookup_field(data, &rule.field);
+        let is_nil = matches!(field_value, None | Some(Value::Null));
+        if rule.allow_nil && is_nil {
+            continue;
+        }
 
         // Presence validation
         if rule.presence {
@@ -691,46 +863,40 @@ pub fn run_validations(
                     // without this, declaring `uniqueness` made every create on
                     // Postgres/MySQL/SQLite raise "Raw SDBQL queries are
                     // SoliDB-only" before any row was written.
-                    if crate::db::is_sql() {
-                        let taken = unique_taken_on_sql(
-                            &collection,
-                            &rule.field,
-                            val.as_ref(),
-                            exclude_key,
-                        )
-                        .map_err(|e| format!("Database error during uniqueness check: {e}"))?;
-                        if taken {
-                            errors
-                                .push(ValidationError::new(&rule.field, "has already been taken"));
-                        }
-                        continue;
-                    }
-                    #[allow(unused_variables)]
-                    let sdbql = if exclude_key.is_some() {
-                        format!(
-                            "FOR doc IN {} FILTER doc.{} == @val AND doc._key != @key LIMIT 1 RETURN 1",
-                            collection, rule.field
-                        )
+                    // (This used to `continue` after the SQL check, which
+                    // skipped the rule's format/numericality/min/max checks
+                    // on Postgres/MySQL/SQLite.)
+                    let taken = if crate::db::is_sql() {
+                        unique_taken_on_sql(&collection, &rule.field, val.as_ref(), exclude_key)
+                            .map_err(|e| format!("Database error during uniqueness check: {e}"))?
                     } else {
-                        format!(
-                            "FOR doc IN {} FILTER doc.{} == @val LIMIT 1 RETURN 1",
-                            collection, rule.field
-                        )
-                    };
-                    let mut bind_vars = std::collections::HashMap::new();
-                    bind_vars.insert(
-                        "val".to_string(),
-                        serde_json::Value::String(val.clone().to_string()),
-                    );
-                    if let Some(key) = exclude_key {
+                        let sdbql = if exclude_key.is_some() {
+                            format!(
+                                "FOR doc IN {} FILTER doc.{} == @val AND doc._key != @key LIMIT 1 RETURN 1",
+                                collection, rule.field
+                            )
+                        } else {
+                            format!(
+                                "FOR doc IN {} FILTER doc.{} == @val LIMIT 1 RETURN 1",
+                                collection, rule.field
+                            )
+                        };
+                        let mut bind_vars = std::collections::HashMap::new();
                         bind_vars.insert(
-                            "key".to_string(),
-                            serde_json::Value::String(key.to_string()),
+                            "val".to_string(),
+                            serde_json::Value::String(val.clone().to_string()),
                         );
-                    }
-                    let results = exec_with_auto_collection(sdbql, Some(bind_vars), &collection)
-                        .map_err(|e| format!("Database error during uniqueness check: {}", e))?;
-                    if !results.is_empty() {
+                        if let Some(key) = exclude_key {
+                            bind_vars.insert(
+                                "key".to_string(),
+                                serde_json::Value::String(key.to_string()),
+                            );
+                        }
+                        !exec_with_auto_collection(sdbql, Some(bind_vars), &collection)
+                            .map_err(|e| format!("Database error during uniqueness check: {}", e))?
+                            .is_empty()
+                    };
+                    if taken {
                         errors.push(ValidationError::new(&rule.field, "has already been taken"));
                     }
                 }
@@ -803,6 +969,53 @@ pub fn run_validations(
                 }
                 _ => {}
             }
+        }
+
+        // Type validation
+        if let (Some(expected), Some(value)) = (&rule.value_type, &field_value) {
+            if !is_nil && !value_has_type(value, expected) {
+                errors.push(ValidationError::new(
+                    &rule.field,
+                    format!(
+                        "must be {} {}",
+                        if expected.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                            "an"
+                        } else {
+                            "a"
+                        },
+                        expected
+                    ),
+                ));
+            }
+        }
+
+        // Inclusion validation (`inclusion:` / `one_of:`)
+        if let (Some(allowed), Some(value)) = (&rule.inclusion, &field_value) {
+            if !is_nil {
+                let included = crate::interpreter::value::value_to_json(value)
+                    .map(|json| allowed.contains(&json))
+                    .unwrap_or(false);
+                if !included {
+                    errors.push(ValidationError::new(
+                        &rule.field,
+                        "is not included in the list",
+                    ));
+                }
+            }
+        }
+
+        // Custom validation: `custom: fn(value, record) { ... }`
+        if rule.has_custom_fn {
+            if let Some(func) = conditions_for(class_name, rule).custom_fn {
+                let value = field_value.clone().unwrap_or(Value::Null);
+                let outcome = invoke_validator_value(&func, &value, data)?;
+                push_custom_outcome(&mut errors, &rule.field, &outcome);
+            }
+        }
+
+        // Custom validation: `custom: "method"`, called on the record
+        if let Some(method) = &rule.custom {
+            run_custom_method(class_name, class, rule, method, data, &mut errors)?;
         }
     }
 
@@ -901,11 +1114,11 @@ mod tests {
         register_validation(class, rule);
 
         // Missing field: presence fails on create...
-        let errs = run_validations(class, &empty_hash(), None).unwrap();
+        let errs = run_validations(class, None, &empty_hash(), None).unwrap();
         assert_eq!(errs.len(), 1);
         assert_eq!(errs[0].field, "email");
         // ...but the rule is skipped on update.
-        let errs = run_validations(class, &empty_hash(), Some("k1")).unwrap();
+        let errs = run_validations(class, None, &empty_hash(), Some("k1")).unwrap();
         assert!(errs.is_empty());
     }
 
@@ -917,9 +1130,9 @@ mod tests {
         rule.on = Some("update".to_string());
         register_validation(class, rule);
 
-        let errs = run_validations(class, &empty_hash(), None).unwrap();
+        let errs = run_validations(class, None, &empty_hash(), None).unwrap();
         assert!(errs.is_empty());
-        let errs = run_validations(class, &empty_hash(), Some("k1")).unwrap();
+        let errs = run_validations(class, None, &empty_hash(), Some("k1")).unwrap();
         assert_eq!(errs.len(), 1);
     }
 
@@ -944,6 +1157,64 @@ mod tests {
         );
         let err = parse_validates_options("email", &options).unwrap_err();
         assert!(err.contains("\"creates\""), "unexpected error: {}", err);
+    }
+
+    #[test]
+    fn parse_options_rejects_unknown_keys_and_wrong_types() {
+        let options = |pairs: Vec<(&str, Value)>| {
+            let mut o = HashPairs::default();
+            for (k, v) in pairs {
+                o.insert(HashKey::String(k.into()), v);
+            }
+            o
+        };
+        let err =
+            parse_validates_options("status", &options(vec![("in", Value::Null)])).unwrap_err();
+        assert!(err.contains("unknown option `in`"), "{err}");
+        let err = parse_validates_options(
+            "name",
+            &options(vec![("min_length", Value::String("3".into()))]),
+        )
+        .unwrap_err();
+        assert!(err.contains("min_length"), "{err}");
+        assert!(parse_validates_options(
+            "active",
+            &options(vec![("type", Value::String("bolean".into()))])
+        )
+        .is_err());
+        assert!(
+            parse_validates_options("status", &options(vec![("one_of", Value::Int(1))])).is_err()
+        );
+    }
+
+    #[test]
+    fn inclusion_type_and_allow_nil() {
+        let class = "TestInclusionRules__v";
+        let mut options = HashPairs::default();
+        options.insert(
+            HashKey::String("one_of".into()),
+            Value::Array(Rc::new(RefCell::new(vec![
+                Value::String("draft".into()),
+                Value::Int(1),
+            ]))),
+        );
+        options.insert(HashKey::String("allow_nil".into()), Value::Bool(true));
+        let (rule, _) = parse_validates_options("status", &options).unwrap();
+        register_validation(class, rule);
+
+        let record = |v: Value| {
+            let mut h = HashPairs::default();
+            h.insert(HashKey::String("status".into()), v);
+            Value::Hash(Rc::new(RefCell::new(h)))
+        };
+        let check = |v: Value| run_validations(class, None, &record(v), None).unwrap();
+        assert!(check(Value::String("draft".into())).is_empty());
+        assert!(check(Value::Int(1)).is_empty());
+        assert!(check(Value::Null).is_empty());
+        let errs = check(Value::String("1".into()));
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0].message, "is not included in the list");
+        assert_eq!(check(Value::String("bogus".into())).len(), 1);
     }
 
     #[test]

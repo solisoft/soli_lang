@@ -149,14 +149,14 @@ def down(db)
 end
 ```
 
-For multi-line queries, use one of Soli's raw multiline string forms so you
-don't have to escape every `"`:
+For multi-line queries, use a raw string so you don't have to escape every
+`"`:
 
-- `[[ ... ]]` — Lua-style, raw (no escape processing). Best when the query
-  contains `"` and you don't want to think about escaping.
-- `""" ... """` — triple-quoted, raw, multiline. Best when the query contains
-  `]` characters (e.g. array literals in SDBQL).
+- `""" ... """` — triple-quoted, raw (no escape processing), multiline.
 - `r"..."` — raw, single-line only.
+
+`[[ ... ]]` is **not** a string any more (it was removed; `[[` opens a nested
+array). `soli fmt --migrate-raw-strings` rewrites old `[[ … ]]` strings.
 
 > **There is no `@"..."` syntax.** Don't write `db.query(@"...")` — it's a
 > parse error. The `@` prefix is reserved for `@sdbql{...}` model-side blocks
@@ -164,11 +164,11 @@ don't have to escape every `"`:
 
 ```soli
 def up(db)
-  db.query([[
+  db.query("""
     FOR p IN posts
       FILTER p.slug == null
       UPDATE p WITH { slug: SUBSTITUTE(LOWER(p.title), ' ', '-') } IN posts
-  ]])
+  """)
 end
 ```
 
@@ -285,7 +285,7 @@ own value.
 | Use `soli db:migrate generate <name>` for naming            | Hand-pick a timestamp prefix, or invent a non-existent `generate` subcommand for migrations |
 | Write a real `down(db)` for every migration                 | Leave `# TODO` or `pass` in `down`                                  |
 | Use `db.query("...")` with a plain SDBQL string             | Use `@sdbql{...}` blocks here — that's the model-side DSL, not migrations |
-| Use `[[ ... ]]` or `""" ... """` for multi-line SDBQL       | Hand-escape `\"` across long queries — or invent `@"..."` (not a thing) |
+| Use `""" ... """` for multi-line SDBQL                     | Hand-escape `\"` across long queries — or write `@"..."` / `[[ … ]]` (not strings) |
 | Name indexes consistently (`idx_<field>`)                   | Use anonymous indexes or random names                                |
 | Split unrelated schema changes into separate migrations     | Bundle "create posts" + "seed demo data" into one file              |
 | Treat applied migrations as immutable                       | Edit a migration after it's been run anywhere                       |
@@ -300,7 +300,6 @@ soli db:migrate up && soli db:migrate down && soli db:migrate up
 ```
 
 `soli fmt` first: it fixes layout in place, so lint's remaining output is the
-part that needs a decision from you. SDBQL inside `[[ … ]]` is left
-byte-for-byte alone — write multi-line queries in brackets, not in `""" … """`,
-which the formatter rewrites into one escaped line. The up/down/up round-trip
+part that needs a decision from you. SDBQL inside `""" … """` is left
+byte-for-byte alone. The up/down/up round-trip
 is how you find out `down` actually works before someone else does.

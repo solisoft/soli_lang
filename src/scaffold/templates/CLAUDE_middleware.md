@@ -5,8 +5,11 @@ cross-cutting concerns: auth, logging, request munging, response headers,
 rate limits.
 
 Files live in `app/middleware/*.sl`. The loader scans each `.sl` file at boot,
-registers every top-level `def` / `fn` declaration as a middleware function,
-and orders them by per-function `# order:` directives.
+registers every public top-level `def` / `fn` declaration as a middleware
+function, and orders them by per-function `# order:` directives. `def
+authenticate(req)` receives the request; `def authenticate` without a
+parameter list is registered too and reads the request through the `req`
+global, as an action does.
 
 ## A minimal middleware
 
@@ -17,50 +20,50 @@ and orders them by per-function `# order:` directives.
 # scope_only: true
 
 def authenticate(req)
-  api_key = req["headers"]["x-api-key"].to_s
-  if api_key.blank?
-    return {
-      "continue": false,
-      "response": {
-        "status": 401,
-        "headers": { "Content-Type": "application/json" },
-        "body": { "error": "Unauthorized" }.to_json
-      }
-    }
-  end
+  return render_json({ "error": "Unauthorized" }, 401) if req["headers"]["x-api-key"].blank?
 
-  { "continue": true, "request": req }
+  req
 end
 ```
 
 Two things to internalize:
 
-1. The **return shape** decides whether the request proceeds or is
-   short-circuited.
+1. The **return value** (or a `halt`) decides whether the request proceeds or
+   is short-circuited.
 2. The **comment directives** above the `def` line determine the function's
    order and scoping.
 
 ## Return shape
 
-Every middleware must return a hash. Two valid shapes:
+A middleware returns a hash, or raises a response:
 
-| Shape                                                   | Effect                                          |
+| Return / raise                                          | Effect                                          |
 |---------------------------------------------------------|-------------------------------------------------|
-| `{ "continue": true,  "request": req }`                 | Proceed to the next middleware / handler.       |
-| `{ "continue": false, "response": { "status": ..., "body": ..., "headers": {...} } }` | Stop here; return that response. |
+| `req` (the request hash, modified or not)               | Proceed to the next middleware / handler.       |
+| `render_json(data, status)` / `render_text(text, status)` | Stop here; answer with that JSON / text, as an action would. |
+| a hash with a `"status"` key — `redirect("/login")`, `{ "status": 429, "body": "..." }` | Stop here; return that response. |
+| `halt(status, message)`                                 | Raises: stop here with `status` and the message as `text/plain`, even from a `_helper` it calls. |
+| `forbidden(message)` / a `Model.find` miss              | Raises: the 403 / 404 page.                     |
 
-When proceeding, you can pass back a **modified copy** of `req` — that's how
-middleware feeds data forward:
+The older protocol still works: `{ "continue": true, "request": req }`
+proceeds, `{ "continue": false, "response": { "status": ..., "body": ...,
+"headers": {...} } }` stops. A hash is read that way as soon as it has a
+`continue`, `request` or `response` key.
+
+When proceeding, return the request with new fields — that's how middleware
+feeds data forward:
 
 ```soli
 def attach_request_id(req)
-  req["request_id"] = uuid()       # new field for downstream layers
-  { "continue": true, "request": req }
+  req["request_id"] = uuid_v4()       # new field for downstream layers
+  req
 end
 ```
 
-Downstream middleware and the controller see the updated `req`. Don't mutate
-`req` in place — return the modified hash via the `"request"` key.
+Downstream middleware and the controller see the updated `req`. A returned
+hash is the response when it has a `"status"` key and is not the request
+itself (the request always has `method` and `path`), so `req["status"] = ...`
+is safe.
 
 ## File-top directives
 
@@ -70,7 +73,7 @@ Three are supported (see `docs/middleware.md` for the canonical reference):
 | Directive            | Default  | Meaning                                                            |
 |----------------------|----------|--------------------------------------------------------------------|
 | `# order: N`         | `100`    | Lower numbers run first. Use `10`-`20` for auth, `90`+ for tail.   |
-| `# global_only: true`| `false`  | Always runs on every request; cannot be excluded by a scope block. |
+| `# global_only: true`| `false`  | Runs on every request, scoped routes included; cannot itself be scoped (the router warns). |
 | `# scope_only: true` | `false`  | Only runs when explicitly wrapped in `middleware("name", -> {...})`.|
 
 Both `#` and `//` are accepted as the comment marker (the loader tries
@@ -117,7 +120,10 @@ inside the file.
 ## Execution order
 
 Middleware runs in **ascending `order` value** — `order: 10` runs before
-`order: 50` runs before `order: 100`. Default is `100`. Pick small numbers
+`order: 50` runs before `order: 100`. Default is `100`. The route's scoped
+middleware and the global ones form **one list** sorted by `order`: an
+`order: 5` CORS middleware runs before an `order: 20` scoped `authenticate`.
+At equal `order`, the scoped one runs first. Pick small numbers
 for things that should see the raw request (auth, rate-limit), large numbers
 for things that wrap the response (compression, logging).
 
@@ -153,7 +159,8 @@ middleware("authenticate", -> {
 
 A non-`scope_only` middleware (default) always runs — `middleware("name", ...)`
 blocks only opt **in** additional `scope_only` middleware; they don't opt
-**out** of global ones.
+**out** of global ones. Scoping a regular middleware onto a route changes
+nothing: it still runs once, at its `order`.
 
 Combine multiple scoped middleware by nesting:
 
@@ -175,15 +182,10 @@ middleware("authenticate", -> {
 
 def authenticate(req)
   user_id = session_get("user_id")
-  if user_id.nil?
-    return {
-      "continue": false,
-      "response": { "status": 302, "headers": { "Location": "/login" }, "body": "" }
-    }
-  end
+  return redirect("/login") if user_id.nil?
 
   req["current_user"] = User.find_by("id", user_id)
-  { "continue": true, "request": req }
+  req
 end
 ```
 
@@ -196,8 +198,8 @@ The handler reads `req["current_user"]` without needing to look it up again.
 # global_only: true
 
 def request_log(req)
-  print("#{req[\"method\"]} #{req[\"path\"]}")
-  { "continue": true, "request": req }
+  print("#{req["method"]} #{req["path"]}")
+  req
 end
 ```
 
@@ -207,15 +209,10 @@ end
 # order: 15
 
 def rate_limit(req)
-  key = req["headers"]["x-api-key"] ?? req["remote_ip"]
-  if not _allow(key)
-    return {
-      "continue": false,
-      "response": { "status": 429, "body": "Too many requests" }
-    }
-  end
+  key = req["headers"]["x-api-key"] ?? req["remote_addr"]
+  halt(429, "Too many requests") unless _allow(key)
 
-  { "continue": true, "request": req }
+  req
 end
 
 def _allow(key)    # private, not registered as middleware
@@ -251,7 +248,7 @@ designed to run in the request pipeline. Test them via E2E.
 | Do                                                          | Don't                                                            |
 |-------------------------------------------------------------|------------------------------------------------------------------|
 | Use `# order:` to make the ordering explicit                | Rely on filesystem load order                                     |
-| Return the modified `req` via `"request"`                   | Mutate `req` in place                                             |
+| Return `req` to proceed                                      | Return a bare `nil` or string (a 500)                             |
 | Use `# scope_only: true` for anything not globally desired  | Add per-request `req["path"]` checks to gate a global middleware  |
 | Use `.to_json` to serialize the response body               | Use legacy `json_stringify(...)` — convention is the method form  |
 | Use `#{...}` interpolation                                  | Use `\(...)` — the lexer rejects it                               |

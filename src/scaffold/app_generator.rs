@@ -405,8 +405,8 @@ pub fn create_application_helper(app_path: &Path) -> Result<(), String> {
 /// Create sample middleware files
 pub fn create_sample_middleware(app_path: &Path) -> Result<(), String> {
     write_file(
-        &app_path.join("app/middleware/cors.sl"),
-        app::CORS_MIDDLEWARE_TEMPLATE,
+        &app_path.join("app/middleware/request_stamp.sl"),
+        app::REQUEST_STAMP_MIDDLEWARE_TEMPLATE,
     )?;
 
     write_file(

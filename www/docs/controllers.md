@@ -158,9 +158,7 @@ class AdminController < ApplicationController
 
     this.before_action = fn(req) {
       # Parent's before_action already ran (authentication)
-      if req["current_user"]["role"] != "admin" {
-        return halt(403, "Forbidden");
-      }
+      halt(403, "Forbidden") if req["current_user"]["role"] != "admin"
       req
     }
   }
@@ -207,16 +205,18 @@ class PostsController < Controller
 end
 ```
 
-**Short-circuiting:** Return a response hash (with a `"status"` field) from a before action to skip the action:
+**Short-circuiting:** Return a response hash (with a `"status"` field) from a before action to skip the action — or raise: `halt(...)`, `forbidden()` and a `Model.find` miss stop the hook wherever they are called, no `return` needed:
 
 ```soli
 this.before_action = fn(req) {
-  if req.session["user_id"] == null {
-    redirect("/login");
-  }
+  return redirect("/login") if session_get("user_id").nil?
+
+  halt(403, "Forbidden") unless current_user().admin?   # raises: no `return` needed
   req  # Continue to action
 }
 ```
+
+A `forbidden()` or a `Model.find` miss raised inside a before_action (or a middleware) answers 403 / 404, exactly as it does inside an action.
 
 ### After Actions
 
@@ -676,14 +676,28 @@ respond_to(req, {
 
 ### Error Response
 
+`halt(status, message)` stops the request and answers `status` with `message` as a `text/plain` body. Like Sinatra's `halt`, it **raises**: a bare `halt(...)` ends the action right there — and works the same from a `before_action`, a middleware, or a helper several calls deep, without threading a return value back up.
+
 ```soli
 def show
-  return halt(400, "Missing ID") if params["id"].blank?
+  halt(400, "Missing ID") if params["id"].blank?
 
   @user = find_user(params["id"])
-  return halt(404, "User not found") if @user.nil?
+  halt(404, "User not found") if @user.nil?
+end
+
+private
+
+def _require_owner(post)
+  halt(403, "Not your post") unless post.author_id == current_user().id
 end
 ```
+
+- `status` must be an `Int` between 100 and 599; anything else raises an ordinary error (500).
+- `return halt(...)` still works — the raise happens before the `return`.
+- `try`/`catch` and postfix `rescue` catch it like any other raise (the caught value is the message), so a halt inside a `try` block does not reach the client unless you re-raise.
+
+> Before, `halt` *returned* a response hash: only `return halt(...)` stopped anything, and a bare `halt(...)` statement fell through while the action carried on.
 
 ## Controller Context
 

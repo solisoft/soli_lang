@@ -40,7 +40,7 @@ pub const CLAUDE_MD_TEMPLATE: &str = include_str!("CLAUDE.md");
 pub const APPLICATION_HELPER_TEMPLATE: &str = include_str!("application_helper.sl");
 
 /// CORS middleware template
-pub const CORS_MIDDLEWARE_TEMPLATE: &str = include_str!("cors.sl");
+pub const REQUEST_STAMP_MIDDLEWARE_TEMPLATE: &str = include_str!("request_stamp.sl");
 
 /// Auth middleware template
 pub const AUTH_MIDDLEWARE_TEMPLATE: &str = include_str!("auth.sl");
