@@ -11,7 +11,7 @@ class HomeController extends Controller
         render("home/index", {
             "title": "Welcome",
             "message": "The Modern MVC Framework for Soli"
-        })
+        }, {"layout": "layouts/landing"})
     end
 
     # GET /ai

@@ -30,11 +30,10 @@
             <div class="relative lg:col-span-3 h-64 sm:h-80 lg:h-auto overflow-hidden">
                 <% if posts[0]["image"].ends_with?(".svg") %>
                 <div class="absolute inset-0 bg-gradient-to-br <%= posts[0]["tag_gradient"] %>"></div>
-                <img src="/images/blog/<%= posts[0]["image"] %>" class="relative w-full h-full object-contain p-10 group-hover:scale-105 transition-transform duration-500 ease-out" alt="<%= posts[0]["title"] %>">
+                <img src="/images/blog/<%= posts[0]["image"] %>" style="object-position: left top;" class="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out" alt="<%= posts[0]["title"] %>">
                 <% else %>
                 <img src="/images/blog/<%= posts[0]["image"] %>" class="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500 ease-out" alt="<%= posts[0]["title"] %>">
                 <% end %>
-                <div class="absolute inset-0 bg-gradient-to-t lg:bg-gradient-to-r from-slate-950/90 via-slate-950/40 to-transparent"></div>
             </div>
             <% end %>
             <div class="relative <% if posts[0]["image"] %>lg:col-span-2<% else %>lg:col-span-5<% end %> p-8 sm:p-10 lg:p-12 flex flex-col justify-center">
@@ -80,7 +79,7 @@
             <% if posts[i]["image"] %>
                 <% if posts[i]["image"].ends_with?(".svg") %>
                 <div class="relative h-44 overflow-hidden bg-gradient-to-br <%= posts[i]["tag_gradient"] %>">
-                    <img src="/images/blog/<%= posts[i]["image"] %>" class="absolute inset-0 w-full h-full object-contain p-6 group-hover:scale-105 transition-transform duration-500 ease-out" alt="<%= posts[i]["title"] %>">
+                    <img src="/images/blog/<%= posts[i]["image"] %>" style="object-position: left top;" class="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out" alt="<%= posts[i]["title"] %>">
                     <div class="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-slate-950/90 to-transparent"></div>
                 </div>
                 <% else %>

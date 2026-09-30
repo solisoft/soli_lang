@@ -9,18 +9,20 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
 
     <!-- Fuse.js for search -->
     <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
 
+    <script src="<%= public_path("js/theme.js") %>"></script>
     <link rel="stylesheet" href="<%= public_path("css/application.css") %>">
+    <link rel="stylesheet" href="<%= public_path("css/theme.css") %>">
     <!-- The LiveView client (/live/client.js, served by the binary) is not loaded here: pages with live roots lazy-load it on demand -->
 
     <style>
         body { font-family: 'Inter', sans-serif; }
         code, pre { font-family: 'JetBrains Mono', monospace; }
-        .font-display { font-family: 'Bricolage Grotesque', 'Inter', sans-serif; }
+        .font-display { font-family: 'Fraunces', Georgia, serif; }
 
         /* Glass navigation on warm near-black */
         .glass-nav {
@@ -110,13 +112,11 @@
                     <a href="/" class="flex items-center gap-3 group">
                         <div class="relative">
                             <div class="absolute inset-0 bg-amber-500 rounded-full blur-lg opacity-40 group-hover:opacity-70 transition-opacity"></div>
-                            <div class="relative w-9 h-9 rounded-full bg-[radial-gradient(circle_at_32%_28%,#FDE68A_0%,#F59E0B_55%,#C2620C_100%)] flex items-center justify-center font-bold text-stone-950 shadow-lg">
-                                S
-                            </div>
+                            <svg class="w-7 h-7" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#E8590C" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="14" cy="14" r="5" fill="#E8590C"/><path d="M14 2v4M14 22v4M2 14h4M22 14h4M5.5 5.5l2.8 2.8M19.7 19.7l2.8 2.8M5.5 22.5l2.8-2.8M19.7 8.3l2.8-2.8"/></svg>
                         </div>
                         <span class="text-xl font-bold tracking-tight">
-                            <span class="text-white">Soli</span>
-                            <span class="text-stone-400 font-normal">MVC</span>
+                            <span class="font-display text-white">Soli</span>
+                            
                         </span>
                     </a>
                 </div>
@@ -140,6 +140,10 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                     </button>
+                    <button type="button" class="theme-toggle text-gray-400 hover:text-white" onclick="toggleTheme()" aria-label="Toggle light and dark theme">
+                        <svg class="i-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+                        <svg class="i-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+                    </button>
                     <a href="https://github.com/solisoft/soli_lang" target="_blank" class="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white rounded-lg hover:bg-white/5 transition-all flex items-center gap-2">
                         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" /></svg>
                         GitHub
@@ -155,6 +159,10 @@
 
                 <!-- Mobile menu button -->
                 <div class="lg:hidden flex items-center">
+                    <button type="button" class="theme-toggle text-gray-400 hover:text-white" onclick="toggleTheme()" aria-label="Toggle light and dark theme">
+                        <svg class="i-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+                        <svg class="i-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+                    </button>
                     <button onclick="toggleMobileNav()" class="p-2 text-gray-400 hover:text-white transition-colors">
                         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
@@ -199,8 +207,8 @@
                 <!-- Brand -->
                 <div class="md:col-span-2">
                     <div class="flex items-center gap-3 mb-4">
-                        <div class="w-8 h-8 rounded-full bg-[radial-gradient(circle_at_32%_28%,#FDE68A_0%,#F59E0B_55%,#C2620C_100%)] flex items-center justify-center font-bold text-stone-950 text-sm">S</div>
-                        <span class="font-bold text-lg text-white">Soli MVC</span>
+                        <svg class="w-7 h-7" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#E8590C" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="14" cy="14" r="5" fill="#E8590C"/><path d="M14 2v4M14 22v4M2 14h4M22 14h4M5.5 5.5l2.8 2.8M19.7 19.7l2.8 2.8M5.5 22.5l2.8-2.8M19.7 8.3l2.8-2.8"/></svg>
+                        <span class="font-display font-bold text-xl text-white">Soli</span>
                     </div>
                     <p class="text-stone-400 text-sm">
                         The whole framework in one binary &mdash; Ruby's expressiveness, Rust's speed, zero dependencies.

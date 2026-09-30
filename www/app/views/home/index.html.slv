@@ -1,661 +1,532 @@
 <style>
-    /* Request-trace signature: vertical rail, node dots, travelling pulse */
-    .trace-rail {
-        position: absolute;
-        left: 11px;
-        top: 10px;
-        bottom: 10px;
-        width: 2px;
-        background: linear-gradient(to bottom,
-            rgba(245, 158, 11, 0) 0%,
-            rgba(245, 158, 11, 0.45) 5%,
-            rgba(245, 158, 11, 0.45) 95%,
-            rgba(245, 158, 11, 0) 100%);
+    .lp-section { padding: clamp(64px, 9vw, 120px) 0; }
+    .lp-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--sun-text); }
+    .lp-h1 { margin: 0; font-family: 'Fraunces', serif; font-weight: 600; font-size: clamp(40px, min(7vw, 9.5vh), 88px); line-height: 0.98; letter-spacing: -0.035em; }
+    .lp-h2 { margin: 0; font-family: 'Fraunces', serif; font-weight: 600; font-size: clamp(34px, 4.6vw, 56px); line-height: 1.05; letter-spacing: -0.03em; }
+    .lp-h3 { margin: 0; font-family: 'Fraunces', serif; font-weight: 600; font-size: 24px; letter-spacing: -0.02em; }
+    .lp-lead { margin: 0; font-size: clamp(17px, 1.6vw, 20px); line-height: 1.6; color: var(--ink-soft); }
+    .lp-em { color: var(--sun); font-style: italic; }
+    .lp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 56px; padding: 0 28px; border-radius: 999px; border: 1.5px solid var(--ink); font-family: inherit; font-size: 17px; font-weight: 600; cursor: pointer; transition: background .2s, color .2s; }
+    .lp-btn-solid { background: var(--ink); color: var(--paper); }
+    .lp-btn-solid:hover { background: var(--ink-soft); }
+    .lp-btn-line { background: transparent; color: var(--ink); }
+    .lp-btn-line:hover { background: var(--paper-sunk); }
+    .lp-hero .lp-btn { min-height: clamp(46px, 6.5vh, 56px); }
+    .lp-chip-cmd { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 400; }
+    .lp-link { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--sun-text); }
+    .lp-link:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+    /* Sun motif */
+    .lp-hero { position: relative; overflow: hidden; display: flex; align-items: center; min-height: calc(100vh - 81px); min-height: calc(100svh - 81px); }
+    .lp-hero > .lp-wrap { width: 100%; }
+    .lp-ring { position: absolute; border-radius: 50%; pointer-events: none; }
+
+    /* Code panels */
+    .lp-code { border-radius: 18px; background: var(--night); color: #E9E2D6; overflow: hidden; box-shadow: 0 30px 60px -24px rgba(27, 23, 18, 0.45); }
+    .lp-code-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 46px; padding: 0 20px; border-bottom: 1px solid var(--night-line); font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #A69C8C; }
+    .lp-code pre { margin: 0; padding: 22px 24px; overflow-x: auto; font-size: 14.5px; line-height: 1.75; }
+    .lp-code code { font-family: 'JetBrains Mono', monospace; }
+    .lp-tag { padding: 2px 8px; border-radius: 6px; background: rgba(232, 89, 12, 0.18); color: #F2A365; white-space: nowrap; }
+    .lp-code .k { color: #F2A365; }
+    .lp-code .s { color: #A8C98A; }
+    .lp-code .c { color: #A69C8C; }
+    .lp-code .v { color: #8FB8DE; }
+    .lp-code .n { color: #E9E2D6; }
+    .lp-code .ok { color: #7EC99A; }
+
+    /* Proof strip */
+    .lp-proof { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+    .lp-proof > div { display: flex; flex-direction: column; gap: 6px; padding: 32px 0 32px 24px; border-left: 1px solid var(--line); }
+    .lp-proof > div:first-child { border-left: 0; padding-left: 0; }
+    .lp-proof strong { font-family: 'Fraunces', serif; font-weight: 600; font-size: clamp(34px, 4vw, 48px); letter-spacing: -0.02em; }
+    .lp-proof span { font-size: 16px; color: var(--ink-soft); }
+
+    /* Cards */
+    .lp-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+    .lp-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+    .lp-card { display: flex; flex-direction: column; gap: 12px; padding: 28px; border-radius: 20px; background: var(--paper-raised); border: 1px solid var(--line-soft); }
+    .lp-card p { margin: 0; font-size: 16px; line-height: 1.55; color: var(--ink-soft); }
+    .lp-card pre { margin: auto 0 0; padding: 14px 16px; border-radius: 12px; background: var(--night); color: #E9E2D6; overflow-x: auto; font-size: 13px; line-height: 1.6; }
+    .lp-card code { font-family: 'JetBrains Mono', monospace; }
+    .lp-card p code { padding: 1px 6px; border-radius: 6px; background: var(--paper-sunk); font-size: 0.9em; color: var(--ink); }
+    .lp-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .lp-chips span { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); font-size: 14px; font-weight: 500; color: var(--ink-soft); }
+    .lp-mini { padding: 14px 16px; border-radius: 14px; background: var(--paper-raised); border: 1px solid var(--line-soft); text-align: center; }
+    .lp-mini strong { display: block; font-size: 16px; }
+    .lp-mini span { font-size: 14px; color: var(--ink-faint); }
+
+    /* Dark band */
+    .lp-night { background: var(--night); color: #F6F1E7; }
+    .lp-night .lp-lead { color: #C9BFAE; }
+    .lp-night .lp-eyebrow { color: #F2A365; }
+    .lp-night .lp-link { color: #F2A365; }
+    .lp-night .lp-code { background: var(--night-deep); box-shadow: none; border: 1px solid var(--night-line); }
+    .lp-night .lp-code-bar { border-bottom-color: var(--night-line); }
+    .lp-night .lp-mini { background: #221D18; border-color: var(--night-line); }
+    .lp-night .lp-mini strong { color: #F2A365; }
+    .lp-night .lp-mini span { color: #A69C8C; }
+
+    /* Request trace */
+    .lp-trace { position: relative; padding-left: 48px; max-width: 900px; display: flex; flex-direction: column; gap: 24px; }
+    .lp-trace::before { content: ''; position: absolute; left: 11px; top: 10px; bottom: 10px; width: 2px; background: linear-gradient(to bottom, rgba(232,89,12,0) 0, rgba(232,89,12,.55) 5%, rgba(232,89,12,.55) 95%, rgba(232,89,12,0) 100%); }
+    .lp-hop { position: relative; }
+    .lp-hop::before { content: ''; position: absolute; left: -46px; top: 14px; width: 12px; height: 12px; border-radius: 50%; background: var(--paper); border: 2px solid var(--sun); box-shadow: 0 0 0 4px rgba(232, 89, 12, .12); }
+    .lp-pulse { position: absolute; left: 8px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--sun); box-shadow: 0 0 12px 4px rgba(232, 89, 12, .45); animation: lp-run 5s cubic-bezier(.4, 0, .2, 1) infinite; }
+    @keyframes lp-run { 0% { top: 0; opacity: 0; } 8% { opacity: 1; } 88% { opacity: 1; } 100% { top: 99%; opacity: 0; } }
+    .lp-query { padding: 12px 24px 16px; border-top: 1px solid var(--night-line); background: rgba(0, 0, 0, .25); font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A69C8C; }
+    .lp-query pre { padding: 6px 0 0; font-size: 12px; }
+
+    /* CTA */
+    .lp-cta { display: flex; flex-direction: column; align-items: center; gap: 28px; padding: clamp(48px, 7vw, 88px) 24px; border-radius: 28px; background: var(--sun); color: var(--ink); text-align: center; }
+    .lp-cta .lp-h2 { max-width: 820px; font-weight: 700; }
+    .lp-cta, .lp-cta .lp-h2 { color: #1B1712; }
+    .lp-cta .lp-btn-solid { background: #1B1712; color: #F6F1E7; border-color: #1B1712; }
+    .lp-cta .lp-btn-solid:hover { background: #3A322A; }
+    .lp-cta .lp-btn-line { color: #1B1712; border-color: #1B1712; }
+    .lp-cta .lp-btn-line:hover { background: rgba(27, 23, 18, .1); }
+
+    .lp-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 56px; align-items: center; }
+    .lp-hero-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 48px; align-items: center; }
+
+    @media (max-width: 900px) {
+        .lp-hero-grid, .lp-split, .lp-grid-2, .lp-grid-3 { grid-template-columns: 1fr; gap: 24px; }
+        .lp-split { gap: 40px; }
+        .lp-proof { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .lp-proof > div:nth-child(3) { border-left: 0; padding-left: 0; }
+        .lp-trace { padding-left: 36px; }
+        .lp-hop::before { left: -34px; }
+        .lp-trace::before { left: 5px; }
+        .lp-pulse { left: 2px; }
     }
-    .trace-pulse {
-        position: absolute;
-        left: -3px;
-        top: 0;
-        width: 8px;
-        height: 8px;
-        border-radius: 9999px;
-        background: #FDE68A;
-        box-shadow: 0 0 12px 4px rgba(245, 158, 11, 0.55);
-        animation: trace-pulse-run 5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-    }
-    @keyframes trace-pulse-run {
-        0%   { top: 0%;   opacity: 0; }
-        8%   { opacity: 1; }
-        88%  { opacity: 1; }
-        100% { top: 99%;  opacity: 0; }
-    }
-    .trace-node {
-        position: absolute;
-        left: -42px;
-        top: 16px;
-        width: 12px;
-        height: 12px;
-        border-radius: 9999px;
-        background: #0C0A09;
-        border: 2px solid #F59E0B;
-        box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.12);
-    }
-    @media (prefers-reduced-motion: reduce) {
-        .trace-pulse { display: none; }
-    }
+    @media (prefers-reduced-motion: reduce) { .lp-pulse { display: none; } }
 </style>
 
 <!-- Hero -->
-<section class="relative isolate overflow-hidden">
-    <div class="container mx-auto max-w-6xl px-6 py-20 sm:py-28 lg:py-32 lg:px-8">
-        <!-- Version badge -->
-        <div class="mb-8 reveal-on-scroll">
-            <div class="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm leading-6 text-stone-300 ring-1 ring-white/10 bg-white/5">
-                <span class="relative flex h-2 w-2">
-                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                    <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                </span>
-                <span id="version-badge">Loading latest version ...</span>
+<section class="lp-hero">
+    <span class="lp-ring" style="top: -360px; right: -300px; width: 900px; height: 900px; border: 1px solid var(--sun); opacity: .35;" aria-hidden="true"></span>
+    <span class="lp-ring" style="top: -220px; right: -160px; width: 620px; height: 620px; border: 1px solid var(--sun); opacity: .5;" aria-hidden="true"></span>
+    <span class="lp-ring" style="top: -100px; right: -40px; width: 380px; height: 380px; background: var(--sun); opacity: .12;" aria-hidden="true"></span>
+
+    <div class="lp-wrap" style="position: relative; padding-top: clamp(24px, 5vh, 72px); padding-bottom: clamp(24px, 6vh, 72px);">
+        <div class="lp-hero-grid">
+            <div style="display: flex; flex-direction: column; gap: clamp(16px, 3vh, 28px);">
+                <div style="display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; min-height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--ink); font-family: 'JetBrains Mono', monospace; font-size: 13px;">
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--sun);"></span>
+                    a language and a framework, written in Rust
+                </div>
+                <h1 class="lp-h1">Write it like Ruby. <span class="lp-em">Serve it like Rust.</span></h1>
+                <p class="lp-lead" style="max-width: 540px;">
+                    Soli is a programming language with a complete web framework built in. Models, auth, jobs, mail,
+                    PDF, WebSockets, live views and tests all ship in one binary, and
+                    <code style="font-size: 0.9em;">soli</code> is the only thing you install.
+                </p>
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px;">
+                    <a href="/docs/getting-started/introduction" class="lp-btn lp-btn-solid">Get started</a>
+                    <button type="button" onclick="copyNewAppCmd(this)" class="lp-btn lp-btn-line lp-chip-cmd" title="Copy to clipboard">
+                        <span style="color: var(--sun-text);" aria-hidden="true">$</span>
+                        <span>soli new blog &amp;&amp; soli serve blog</span>
+                        <span data-copy-label style="font-family: 'Instrument Sans', sans-serif; font-size: 13px; color: var(--ink-faint);">Copy</span>
+                    </button>
+                </div>
+                <a href="https://github.com/solisoft/soli_lang" target="_blank" rel="noopener" class="lp-link" style="align-self: flex-start;">View on GitHub</a>
             </div>
-        </div>
 
-        <!-- Headline -->
-        <h1 class="font-display text-5xl font-bold tracking-tight text-white sm:text-6xl lg:text-7xl max-w-4xl reveal-on-scroll" style="transition-delay: 100ms;">
-            The whole framework,
-            <span class="block mt-1"><span class="text-amber-400">one</span> binary.</span>
-        </h1>
+            <div class="lp-code">
+                <div class="lp-code-bar"><span>app/controllers/posts_controller.sl</span></div>
+<pre><code><span class="k">class</span> <span class="n">PostsController &lt; Controller</span>
+  <span class="c"># GET /posts: posts/index renders with @posts</span>
+  <span class="k">def</span> <span class="n">index(req)</span>
+    <span class="v">@posts</span> <span class="n">= Post.all</span>
+  <span class="k">end</span>
 
-        <p class="mt-8 text-lg leading-8 text-stone-300 sm:text-xl max-w-3xl reveal-on-scroll" style="transition-delay: 200ms;">
-            Soli is a programming language with a complete MVC framework built in &mdash;
-            models, validations, auth, background jobs, mailer, PDF, WebSockets, live views,
-            i18n, tests. Ruby's expressiveness, Rust's speed, and nothing to install but
-            <code class="text-amber-200 text-base">soli</code> itself.
-        </p>
+  <span class="k">def</span> <span class="n">create(req)</span>
+    <span class="n">post_params = permit(params, {</span><span class="s">"title"</span><span class="n">: true})</span>
+    <span class="v">@post</span> <span class="n">= Post.create(post_params)</span>
+    <span class="k">return</span> <span class="n">render(</span><span class="s">"posts/new"</span><span class="n">)</span> <span class="k">if</span> <span class="v">@post</span><span class="n">._errors</span>
 
-        <!-- CTAs -->
-        <div class="mt-10 flex flex-col sm:flex-row items-start sm:items-center gap-4 reveal-on-scroll" style="transition-delay: 300ms;">
-            <a href="/docs/getting-started/introduction" class="group inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-7 py-3.5 text-sm font-semibold text-stone-950 shadow-lg shadow-amber-500/20 hover:bg-amber-400 transition-all duration-300 hover:shadow-xl hover:shadow-amber-500/30">
-                <span>Get started</span>
-                <svg class="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-            </a>
-            <button onclick="copyNewAppCmd(this)" class="group inline-flex items-center gap-3 rounded-xl px-5 py-3.5 text-sm font-mono text-stone-200 ring-1 ring-white/15 hover:ring-amber-500/40 hover:bg-white/5 transition-all duration-300" title="Copy to clipboard">
-                <span class="text-[#4ADE80] select-none">$</span>
-                <span>soli new blog &amp;&amp; soli serve blog</span>
-                <svg data-copy-icon class="w-4 h-4 text-stone-500 group-hover:text-amber-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-            </button>
-            <a href="https://github.com/solisoft/soli_lang" target="_blank" class="inline-flex items-center gap-2 px-2 py-3.5 text-sm font-medium text-stone-400 hover:text-white transition-colors">
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" /></svg>
-                <span>GitHub</span>
-            </a>
-        </div>
-
-        <!-- Stats -->
-        <div class="mt-16 flex flex-wrap gap-10 sm:gap-16 reveal-on-scroll" style="transition-delay: 400ms;">
-            <div>
-                <div class="font-display text-3xl font-bold text-white">1.2M+</div>
-                <div class="text-sm text-stone-400 mt-1">Plaintext req/s</div>
-            </div>
-            <div>
-                <div class="font-display text-3xl font-bold text-white">834k+</div>
-                <div class="text-sm text-stone-400 mt-1">JSON req/s</div>
-            </div>
-            <div>
-                <div class="font-display text-3xl font-bold text-amber-400">0</div>
-                <div class="text-sm text-stone-400 mt-1">Dependencies</div>
+    <span class="n">redirect(post_path(</span><span class="v">@post</span><span class="n">))</span>
+  <span class="k">end</span>
+<span class="k">end</span></code></pre>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Request trace: the signature -->
-<section class="relative py-20 sm:py-28">
-    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
-        <div class="reveal-on-scroll">
-            <div class="inline-flex items-center gap-2 rounded-md bg-white/5 ring-1 ring-white/10 px-3 py-1.5 font-mono text-sm">
-                <span class="text-amber-400 font-semibold">GET</span>
-                <span class="text-stone-200">/posts</span>
+<!-- Proof strip -->
+<div class="lp-wrap">
+    <div class="lp-proof">
+        <div><strong>1.2M+</strong><span>plaintext requests per second</span></div>
+        <div><strong>834k+</strong><span>JSON requests per second</span></div>
+        <div><strong>0</strong><span>dependencies to install</span></div>
+        <div><strong>1</strong><span>binary: server, tests, linter</span></div>
+    </div>
+</div>
+
+<!-- Anatomy of a request -->
+<section class="lp-section">
+    <div class="lp-wrap">
+        <div style="display: flex; flex-direction: column; gap: 20px; max-width: 760px;">
+            <div style="align-self: flex-start; display: inline-flex; gap: 10px; min-height: 34px; align-items: center; padding: 0 14px; border-radius: 8px; background: var(--paper-sunk); font-family: 'JetBrains Mono', monospace; font-size: 14px;">
+                <strong style="color: var(--sun-text);">GET</strong><span>/posts</span>
             </div>
-            <h2 class="font-display mt-5 text-3xl font-bold tracking-tight text-white sm:text-5xl">Anatomy of a request</h2>
-            <p class="mt-5 text-lg leading-8 text-stone-400 max-w-3xl">
-                One route, one controller, one model, one view &mdash; and the dev bar times every hop.
-                This is the entire stack. There is nothing else to wire up.
-            </p>
+            <h2 class="lp-h2">Anatomy of a request</h2>
+            <p class="lp-lead">One route, one controller, one model, one view. The dev bar times every hop, and there is nothing else to wire up.</p>
         </div>
 
-        <div class="mt-14 relative pl-12 max-w-4xl">
-            <div class="trace-rail" aria-hidden="true"><div class="trace-pulse"></div></div>
+        <div class="lp-trace" style="margin-top: 56px;">
+            <span class="lp-pulse" aria-hidden="true"></span>
 
-            <!-- Hop 1: routes -->
-            <div class="relative mb-8 reveal-on-scroll">
-                <div class="trace-node" aria-hidden="true"></div>
-                <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden">
-                    <div class="flex items-center justify-between px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
-                        <span class="font-mono text-xs text-stone-400">config/routes.sl</span>
-                        <span class="font-mono text-xs text-amber-300 bg-amber-500/10 rounded px-2 py-0.5 whitespace-nowrap">2 &micro;s</span>
-                    </div>
-                    <div class="px-5 py-4 overflow-x-auto">
-<pre class="text-sm leading-7"><code><span class="text-stone-300">get(</span><span class="text-stone-100">"/posts"</span><span class="text-stone-300">, </span><span class="text-stone-100">"posts#index"</span><span class="text-stone-300">)</span></code></pre>
+            <div class="lp-hop">
+                <div class="lp-code">
+                    <div class="lp-code-bar"><span>config/routes.sl</span><span class="lp-tag">2 &micro;s</span></div>
+<pre><code><span class="n">get(</span><span class="s">"/posts"</span><span class="n">, </span><span class="s">"posts#index"</span><span class="n">)</span></code></pre>
+                </div>
+            </div>
+
+            <div class="lp-hop">
+                <div class="lp-code">
+                    <div class="lp-code-bar"><span>app/controllers/posts_controller.sl</span><span class="lp-tag">14 &micro;s</span></div>
+<pre><code><span class="k">class</span> <span class="n">PostsController &lt; Controller</span>
+  <span class="k">def</span> <span class="n">index</span>
+    <span class="v">@posts</span> <span class="n">= Post</span>
+      <span class="n">.where(</span><span class="s">"doc.status == @s"</span><span class="n">, { </span><span class="s">"s"</span><span class="n">: </span><span class="s">"published"</span><span class="n"> })</span>
+      <span class="n">.order(</span><span class="s">"created_at"</span><span class="n">, </span><span class="s">"desc"</span><span class="n">)</span>
+      <span class="n">.limit(10).all</span>
+  <span class="k">end</span>
+<span class="k">end</span></code></pre>
+                </div>
+            </div>
+
+            <div class="lp-hop">
+                <div class="lp-code">
+                    <div class="lp-code-bar"><span>app/models/post.sl</span><span class="lp-tag">190 &micro;s</span></div>
+<pre><code><span class="k">class</span> <span class="n">Post &lt; Model</span>
+  <span class="n">validates(</span><span class="s">"title"</span><span class="n">, { </span><span class="s">"presence"</span><span class="n">: true, </span><span class="s">"min_length"</span><span class="n">: 3 })</span>
+
+  <span class="k">def</span> <span class="n">author</span>
+    <span class="n">User.find(</span><span class="v">@author_id</span><span class="n">)</span>
+  <span class="k">end</span>
+<span class="k">end</span></code></pre>
+                    <div class="lp-query">
+                        dev_queries() &middot; 1 AQL query &middot; 0.19 ms
+                        <pre>FOR doc IN posts FILTER doc.status == @s SORT doc.created_at DESC LIMIT 10 RETURN doc</pre>
                     </div>
                 </div>
             </div>
 
-            <!-- Hop 2: controller -->
-            <div class="relative mb-8 reveal-on-scroll">
-                <div class="trace-node" aria-hidden="true"></div>
-                <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden">
-                    <div class="flex items-center justify-between px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
-                        <span class="font-mono text-xs text-stone-400">app/controllers/posts_controller.sl</span>
-                        <span class="font-mono text-xs text-amber-300 bg-amber-500/10 rounded px-2 py-0.5 whitespace-nowrap">14 &micro;s</span>
-                    </div>
-                    <div class="px-5 py-4 overflow-x-auto">
-<pre class="text-sm leading-7"><code><span class="text-orange-300">class</span> <span class="text-amber-200">PostsController</span> <span class="text-orange-300">&lt;</span> <span class="text-amber-200">Controller</span>
-  <span class="text-orange-300">def</span> <span class="text-stone-200">index</span>
-    <span class="text-orange-200">@posts</span> <span class="text-stone-300">=</span> <span class="text-amber-200">Post</span>
-      <span class="text-stone-300">.where(</span><span class="text-stone-100">"doc.status == @s"</span><span class="text-stone-300">, { </span><span class="text-stone-100">"s"</span><span class="text-stone-300">: </span><span class="text-stone-100">"published"</span><span class="text-stone-300"> })</span>
-      <span class="text-stone-300">.order(</span><span class="text-stone-100">"created_at"</span><span class="text-stone-300">, </span><span class="text-stone-100">"desc"</span><span class="text-stone-300">)</span>
-      <span class="text-stone-300">.limit(</span><span class="text-amber-300">10</span><span class="text-stone-300">).all</span>
-  <span class="text-orange-300">end</span>
-<span class="text-orange-300">end</span></code></pre>
-                    </div>
+            <div class="lp-hop">
+                <div class="lp-code">
+                    <div class="lp-code-bar"><span>app/views/posts/index.html.slv</span><span class="lp-tag">34 &micro;s</span></div>
+<pre><code><span class="k">&lt;% for post in @posts %&gt;</span>
+  <span class="c">&lt;article&gt;</span>
+    <span class="c">&lt;h2&gt;</span><span class="n">&lt;%= post["title"] %&gt;</span><span class="c">&lt;/h2&gt;</span>
+    <span class="c">&lt;p&gt;</span><span class="n">&lt;%= post["excerpt"] %&gt;</span><span class="c">&lt;/p&gt;</span>
+  <span class="c">&lt;/article&gt;</span>
+<span class="k">&lt;% end %&gt;</span></code></pre>
                 </div>
             </div>
 
-            <!-- Hop 3: model + SoliDB -->
-            <div class="relative mb-8 reveal-on-scroll">
-                <div class="trace-node" aria-hidden="true"></div>
-                <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden">
-                    <div class="flex items-center justify-between px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
-                        <span class="font-mono text-xs text-stone-400">app/models/post.sl</span>
-                        <span class="font-mono text-xs text-amber-300 bg-amber-500/10 rounded px-2 py-0.5 whitespace-nowrap">190 &micro;s</span>
-                    </div>
-                    <div class="px-5 py-4 overflow-x-auto">
-<pre class="text-sm leading-7"><code><span class="text-orange-300">class</span> <span class="text-amber-200">Post</span> <span class="text-orange-300">&lt;</span> <span class="text-amber-200">Model</span>
-  <span class="text-stone-300">validates(</span><span class="text-stone-100">"title"</span><span class="text-stone-300">, { </span><span class="text-stone-100">"presence"</span><span class="text-stone-300">: </span><span class="text-orange-300">true</span><span class="text-stone-300">, </span><span class="text-stone-100">"min_length"</span><span class="text-stone-300">: </span><span class="text-amber-300">3</span><span class="text-stone-300"> })</span>
-
-  <span class="text-orange-300">def</span> <span class="text-stone-200">author</span>
-    <span class="text-amber-200">User</span><span class="text-stone-300">.find(</span><span class="text-orange-300">this</span><span class="text-stone-300">.author_id)</span>
-  <span class="text-orange-300">end</span>
-<span class="text-orange-300">end</span></code></pre>
-                    </div>
-                    <div class="px-5 py-3 border-t border-white/[0.06] bg-black/20">
-                        <div class="font-mono text-[11px] text-stone-500 mb-1.5">dev_queries() &middot; 1 AQL query &middot; 0.19 ms</div>
-                        <pre class="font-mono text-xs text-stone-400 overflow-x-auto">FOR doc IN posts FILTER doc.status == @s SORT doc.created_at DESC LIMIT 10 RETURN doc</pre>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Hop 4: view -->
-            <div class="relative mb-8 reveal-on-scroll">
-                <div class="trace-node" aria-hidden="true"></div>
-                <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden">
-                    <div class="flex items-center justify-between px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
-                        <span class="font-mono text-xs text-stone-400">app/views/posts/index.html.slv</span>
-                        <span class="font-mono text-xs text-amber-300 bg-amber-500/10 rounded px-2 py-0.5 whitespace-nowrap">34 &micro;s</span>
-                    </div>
-                    <div class="px-5 py-4 overflow-x-auto">
-<pre class="text-sm leading-7"><code><span class="text-orange-300">&lt;% for post in @posts %&gt;</span>
-  <span class="text-stone-400">&lt;article&gt;</span>
-    <span class="text-stone-400">&lt;h2&gt;</span><span class="text-stone-100">&lt;%= h(post["title"]) %&gt;</span><span class="text-stone-400">&lt;/h2&gt;</span>
-    <span class="text-stone-400">&lt;p&gt;</span><span class="text-stone-100">&lt;%= post["excerpt"] %&gt;</span><span class="text-stone-400">&lt;/p&gt;</span>
-  <span class="text-stone-400">&lt;/article&gt;</span>
-<span class="text-orange-300">&lt;% end %&gt;</span></code></pre>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Response -->
-            <div class="relative reveal-on-scroll">
-                <div class="trace-node" aria-hidden="true"></div>
-                <div class="rounded-xl bg-[#171412] ring-1 ring-amber-500/20 overflow-hidden">
-                    <div class="px-5 py-4">
-<pre class="font-mono text-sm leading-7"><code><span class="text-[#4ADE80]">HTTP/1.1 200 OK</span>
-<span class="text-stone-400">X-Soli-Route:</span> <span class="text-stone-200">posts#index</span>
-<span class="text-stone-400">X-Soli-Render-Us:</span> <span class="text-amber-300 font-semibold">240</span></code></pre>
-                        <p class="mt-3 text-sm text-stone-500">240 &micro;s of server time &mdash; the dev bar measures every request, every query, on every page you build.</p>
-                    </div>
+            <div class="lp-hop">
+                <div class="lp-code" style="border: 1px solid var(--sun);">
+<pre><code><span class="ok">HTTP/1.1 200 OK</span>
+<span class="c">X-Soli-Route:</span> <span class="n">posts#index</span>
+<span class="c">X-Soli-Render-Us:</span> <span class="k">240</span></code></pre>
+                    <div class="lp-query" style="font-family: 'Instrument Sans', sans-serif; font-size: 14px;">240 &micro;s of server time. The dev bar measures every request, every query, on every page you build.</div>
                 </div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Batteries actually included -->
-<section class="relative py-20 sm:py-28 bg-white/[0.02] border-y border-white/[0.04]">
-    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
-        <div class="reveal-on-scroll">
-            <h2 class="text-base font-semibold leading-7 text-amber-400 tracking-wide uppercase">Soli MVC</h2>
-            <p class="font-display mt-2 text-3xl font-bold tracking-tight text-white sm:text-5xl">
-                Batteries actually included
-            </p>
-            <p class="mt-6 text-lg leading-8 text-stone-400 max-w-3xl">
-                The parts every app needs live in the binary, not in a package registry.
-                No Gemfile, no package.json, no supply chain &mdash; one real line of code each.
-            </p>
+<!-- Batteries -->
+<section class="lp-section" style="background: var(--paper-sunk);">
+    <div class="lp-wrap">
+        <div style="display: flex; flex-direction: column; gap: 20px; max-width: 760px;">
+            <div class="lp-eyebrow">Soli MVC</div>
+            <h2 class="lp-h2">Batteries actually included</h2>
+            <p class="lp-lead">What every app needs is in the binary, not in a package registry. No Gemfile, no package.json, no supply chain to audit. Each one is a single line of code.</p>
         </div>
 
-        <div class="mt-14 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <!-- Auth -->
-            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
-                <h3 class="text-base font-semibold text-white">Authentication &amp; policies</h3>
-                <p class="mt-1.5 text-sm text-stone-400"><code class="text-stone-300">soli generate auth</code> scaffolds login, sessions, and a Pundit-style policy layer.</p>
-                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code><span class="text-stone-300">authorize(post)</span>  <span class="text-stone-500"># 403 unless PostPolicy allows it</span></code></pre>
+        <div class="lp-grid-3" style="margin-top: 56px;">
+            <div class="lp-card">
+                <h3 class="lp-h3">Authentication &amp; policies</h3>
+                <p><code>soli generate auth</code> scaffolds login, sessions, and a Pundit-style policy layer.</p>
+<pre><code><span style="color:#E9E2D6">authorize(post)</span>  <span style="color:#A69C8C"># 403 unless PostPolicy allows it</span></code></pre>
             </div>
-            <!-- Validations -->
-            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
-                <h3 class="text-base font-semibold text-white">Validations &amp; callbacks</h3>
-                <p class="mt-1.5 text-sm text-stone-400">Declared on the model, enforced on every create and update.</p>
-                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code>validates(<span class="text-stone-100">"email"</span>, { <span class="text-stone-100">"presence"</span>: <span class="text-orange-300">true</span>, <span class="text-stone-100">"uniqueness"</span>: <span class="text-orange-300">true</span> })</code></pre>
+            <div class="lp-card">
+                <h3 class="lp-h3">Validations &amp; callbacks</h3>
+                <p>Declared on the model, enforced on every create and update.</p>
+<pre><code>validates(<span style="color:#A8C98A">"email"</span>, { <span style="color:#A8C98A">"presence"</span>: true, <span style="color:#A8C98A">"uniqueness"</span>: true })</code></pre>
             </div>
-            <!-- Jobs -->
-            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
-                <h3 class="text-base font-semibold text-white">Background jobs</h3>
-                <p class="mt-1.5 text-sm text-stone-400">In-process queue with scheduling, priorities, retries, and cron &mdash; on any adapter.</p>
-                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code><span class="text-amber-200">WelcomeEmailJob</span>.perform_in(<span class="text-stone-100">"5 minutes"</span>, { <span class="text-stone-100">"user_id"</span>: <span class="text-amber-300">42</span> })</code></pre>
+            <div class="lp-card">
+                <h3 class="lp-h3">Background jobs</h3>
+                <p>In-process queue with scheduling, priorities, retries, and cron, on any adapter.</p>
+<pre><code>WelcomeEmailJob.perform_in(<span style="color:#A8C98A">"5 minutes"</span>, { <span style="color:#A8C98A">"user_id"</span>: 42 })</code></pre>
             </div>
-            <!-- Mailer -->
-            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
-                <h3 class="text-base font-semibold text-white">Mailer</h3>
-                <p class="mt-1.5 text-sm text-stone-400">Rails-style mailers with templates, layouts, and attachments.</p>
-                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code><span class="text-amber-200">UserMailer</span>.welcome(user).deliver_later</code></pre>
+            <div class="lp-card">
+                <h3 class="lp-h3">Mailer</h3>
+                <p>Rails-style mailers with templates, layouts, and attachments.</p>
+<pre><code>UserMailer.welcome(user).deliver_later</code></pre>
             </div>
-            <!-- PDF -->
-            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
-                <h3 class="text-base font-semibold text-white">PDF generation</h3>
-                <p class="mt-1.5 text-sm text-stone-400">JSON templates to invoice-grade PDFs, returned straight from an action.</p>
-                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code>pdf_response(template, data, { <span class="text-stone-100">"filename"</span>: <span class="text-stone-100">"invoice.pdf"</span> })</code></pre>
+            <div class="lp-card">
+                <h3 class="lp-h3">PDF generation</h3>
+                <p>JSON templates to invoice-grade PDFs, returned straight from an action.</p>
+<pre><code>pdf_response(template, data, { <span style="color:#A8C98A">"filename"</span>: <span style="color:#A8C98A">"invoice.pdf"</span> })</code></pre>
             </div>
-            <!-- WebSockets -->
-            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
-                <h3 class="text-base font-semibold text-white">WebSockets</h3>
-                <p class="mt-1.5 text-sm text-stone-400">Channels, rooms, and broadcast &mdash; hashes serialize themselves.</p>
-                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code>ws_broadcast_room(room, { <span class="text-stone-100">"user"</span>: name, <span class="text-stone-100">"body"</span>: msg })</code></pre>
+            <div class="lp-card">
+                <h3 class="lp-h3">WebSockets</h3>
+                <p>Channels, rooms, and broadcast. Hashes serialize themselves.</p>
+<pre><code>ws_broadcast_room(room, { <span style="color:#A8C98A">"user"</span>: name, <span style="color:#A8C98A">"body"</span>: msg })</code></pre>
             </div>
-            <!-- LiveView -->
-            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
-                <h3 class="text-base font-semibold text-white">Live views</h3>
-                <p class="mt-1.5 text-sm text-stone-400">Server-rendered reactive components without writing JavaScript.</p>
-                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code><span class="text-stone-400">&lt;button</span> <span class="text-orange-300">soli-click=</span><span class="text-stone-100">"increment"</span><span class="text-stone-400">&gt;</span>+<span class="text-stone-400">&lt;/button&gt;</span></code></pre>
+            <div class="lp-card">
+                <h3 class="lp-h3">Live views</h3>
+                <p>Server-rendered reactive components without writing JavaScript.</p>
+<pre><code>&lt;button <span style="color:#F2A365">soli-click=</span><span style="color:#A8C98A">"increment"</span>&gt;+&lt;/button&gt;</code></pre>
             </div>
-            <!-- i18n -->
-            <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] p-6 reveal-on-scroll">
-                <h3 class="text-base font-semibold text-white">i18n</h3>
-                <p class="mt-1.5 text-sm text-stone-400">Translations with interpolation and pluralization built in.</p>
-                <pre class="mt-4 font-mono text-xs sm:text-[13px] text-stone-300 bg-black/25 rounded-lg px-4 py-3 overflow-x-auto"><code>t(<span class="text-stone-100">"welcome.greeting"</span>, { <span class="text-stone-100">"name"</span>: user[<span class="text-stone-100">"name"</span>] })</code></pre>
+            <div class="lp-card">
+                <h3 class="lp-h3">i18n</h3>
+                <p>Translations with interpolation and pluralization built in.</p>
+<pre><code>t(<span style="color:#A8C98A">"welcome.greeting"</span>, { <span style="color:#A8C98A">"name"</span>: user[<span style="color:#A8C98A">"name"</span>] })</code></pre>
             </div>
-        </div>
-
-        <!-- The rest, quietly -->
-        <div class="mt-10 reveal-on-scroll">
-            <div class="text-sm text-stone-500 mb-3">Also in the box:</div>
-            <div class="flex flex-wrap gap-2">
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Sessions</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Cache &amp; KV</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Rate limiting</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Uploads</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">S3</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Spreadsheets</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Migrations</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">State machines</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Feature flags</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Cron</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Testing &amp; coverage</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Linter</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Formatter</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Hot reload</span>
-                <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Dev bar</span>
+            <div class="lp-card" style="background: transparent; border-style: dashed; border-color: var(--ink-faint);">
+                <h3 class="lp-h3">And the rest, quietly</h3>
+                <div class="lp-chips" style="margin-top: 4px;">
+                    <span>Sessions</span><span>Cache &amp; KV</span><span>Rate limiting</span><span>Uploads</span><span>S3</span><span>Spreadsheets</span><span>Migrations</span><span>State machines</span><span>Feature flags</span><span>Cron</span><span>Testing &amp; coverage</span><span>Linter</span><span>Formatter</span><span>Hot reload</span><span>Dev bar</span>
+                </div>
             </div>
         </div>
     </div>
 </section>
 
 <!-- Generators -->
-<section class="relative py-20 sm:py-28">
-    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
-        <div class="mb-12 reveal-on-scroll">
-            <h2 class="font-display text-3xl font-bold tracking-tight text-white sm:text-5xl">From zero to CRUD in one command</h2>
-            <p class="mt-5 text-lg text-stone-400 max-w-3xl">
-                Scaffolds generate the model, controller, views, tests, migration, and routes.
-                The auth generator does the same for login, sessions, and policies.
-            </p>
+<section class="lp-section">
+    <div class="lp-wrap">
+        <div style="display: flex; flex-direction: column; gap: 20px; max-width: 760px; margin-bottom: 48px;">
+            <h2 class="lp-h2">A working CRUD app in one command</h2>
+            <p class="lp-lead">A scaffold writes the model, controller, views, tests, migration and routes. The auth generator does the same for login, sessions and policies.</p>
         </div>
 
-        <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden reveal-on-scroll">
-            <div class="px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
-                <span class="text-xs font-mono text-stone-400">Terminal</span>
-            </div>
-            <div class="p-6 overflow-x-auto">
-                <pre class="text-sm font-mono leading-6"><span class="text-[#4ADE80]">$</span> <span class="text-stone-100 type-animation invisible">soli generate scaffold blog_posts title:string content:text author:string published:boolean</span>
-<span class="text-[#4ADE80]">Success!</span> <span class="text-stone-300">Created scaffold for blog_posts</span>
+        <div class="lp-code">
+            <div class="lp-code-bar"><span>Terminal</span></div>
+<pre><span class="ok">$</span> <span class="n type-animation invisible">soli generate scaffold blog_posts title:string content:text author:string published:boolean</span>
+<span class="ok">Success!</span> <span class="n">Created scaffold for blog_posts</span>
 
-<span class="text-stone-500"># Generated files:</span>
-<span class="text-amber-200">app/models/blog_posts_model.sl</span>
-<span class="text-amber-200">app/controllers/blog_posts_controller.sl</span>
-<span class="text-amber-200">app/views/blog_posts/index.html.slv</span>
-<span class="text-amber-200">app/views/blog_posts/show.html.slv</span>
-<span class="text-amber-200">app/views/blog_posts/new.html.slv</span>
-<span class="text-amber-200">app/views/blog_posts/edit.html.slv</span>
-<span class="text-amber-200">app/views/blog_posts/_form.html.slv</span>
-<span class="text-amber-200">tests/models/blog_posts_test.sl</span>
-<span class="text-amber-200">tests/controllers/blog_posts_controller_test.sl</span>
-<span class="text-amber-200">db/migrations/*create_blog_posts_*.sl</span>
-<span class="text-[#4ADE80]">&#10003;</span> <span class="text-stone-300">Routes added to config/routes.sl</span>
+<span class="c"># Generated files:</span>
+<span class="k">app/models/blog_posts_model.sl</span>
+<span class="k">app/controllers/blog_posts_controller.sl</span>
+<span class="k">app/views/blog_posts/index.html.slv</span>
+<span class="k">app/views/blog_posts/show.html.slv</span>
+<span class="k">app/views/blog_posts/new.html.slv</span>
+<span class="k">app/views/blog_posts/edit.html.slv</span>
+<span class="k">app/views/blog_posts/_form.html.slv</span>
+<span class="k">tests/models/blog_posts_test.sl</span>
+<span class="k">tests/controllers/blog_posts_controller_test.sl</span>
+<span class="k">db/migrations/*create_blog_posts_*.sl</span>
+<span class="ok">&#10003;</span> <span class="n">Routes added to config/routes.sl</span>
 
-<span class="text-[#4ADE80]">$</span> <span class="text-stone-100">soli generate auth</span>
-<span class="text-[#4ADE80]">Success!</span> <span class="text-stone-300">Session authentication generated</span>
-<span class="text-amber-200">app/policies/application_policy.sl</span>
-<span class="text-amber-200">app/policies/user_policy.sl</span>
-<span class="text-amber-200">app/helpers/auth_helper.sl</span>
-<span class="text-stone-500">+ User model, login/signup/logout controllers &amp; views</span></pre>
-            </div>
+<span class="ok">$</span> <span class="n">soli generate auth</span>
+<span class="ok">Success!</span> <span class="n">Session authentication generated</span>
+<span class="k">app/policies/application_policy.sl</span>
+<span class="k">app/policies/user_policy.sl</span>
+<span class="k">app/helpers/auth_helper.sl</span>
+<span class="c">+ User model, login/signup/logout controllers &amp; views</span></pre>
         </div>
 
-        <div class="mt-8 flex flex-wrap items-center gap-6 reveal-on-scroll">
-            <a href="/docs/development-tools/scaffold" class="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
-                <span>Scaffold generator docs</span>
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-            </a>
-            <a href="/docs/security/authorization" class="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
-                <span>Auth &amp; policies docs</span>
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-            </a>
+        <div style="display: flex; flex-wrap: wrap; gap: 28px; margin-top: 32px;">
+            <a href="/docs/development-tools/scaffold" class="lp-link">Scaffold generator docs &rarr;</a>
+            <a href="/docs/security/authorization" class="lp-link">Auth &amp; policies docs &rarr;</a>
         </div>
     </div>
 </section>
 
-<!-- Performance band -->
-<section class="relative py-16 sm:py-20 bg-white/[0.02] border-y border-white/[0.04]">
-    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
-        <div class="flex flex-col lg:flex-row lg:items-center gap-10 lg:gap-16 reveal-on-scroll">
-            <div class="lg:max-w-sm">
-                <h2 class="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">Fast enough to be the whole stack</h2>
-                <p class="mt-3 text-sm text-stone-400">
-                    Measured by <a href="https://www.techempower.com/" target="_blank" class="text-amber-400 hover:text-amber-300 transition-colors">TechEmpower</a> on 21&times; AWS c7i.2xlarge instances.
-                </p>
-            </div>
-            <div class="flex flex-wrap gap-10 sm:gap-16">
-                <a href="https://www.techempower.com/benchmarks/#section=test&runid=1d5bfc8a-5c4a-4fb2-a792-ad967f1eb138&test=plaintext" target="_blank" class="group">
-                    <div class="font-display text-4xl font-bold text-white group-hover:text-amber-300 transition-colors">1,206,408</div>
-                    <div class="text-sm text-stone-400 mt-1">Plaintext req/s</div>
-                </a>
-                <a href="https://www.techempower.com/benchmarks/#section=test&runid=1d5bfc8a-5c4a-4fb2-a792-ad967f1eb138&test=json" target="_blank" class="group">
-                    <div class="font-display text-4xl font-bold text-white group-hover:text-amber-300 transition-colors">834,109</div>
-                    <div class="text-sm text-stone-400 mt-1">JSON req/s</div>
-                </a>
-            </div>
+<!-- Performance -->
+<section style="padding: clamp(48px, 7vw, 80px) 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink);">
+    <div class="lp-wrap" style="display: flex; flex-wrap: wrap; align-items: center; gap: 40px 80px;">
+        <div style="max-width: 400px;">
+            <h2 class="lp-h2" style="font-size: clamp(28px, 3.4vw, 40px);">Fast enough to be your whole stack</h2>
+            <p style="margin: 14px 0 0; font-size: 16px; line-height: 1.55; color: var(--ink-soft);">
+                Measured by <a href="https://www.techempower.com/" target="_blank" rel="noopener" class="lp-link" style="display: inline;">TechEmpower</a> on 21&times; AWS c7i.2xlarge instances.
+            </p>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 40px 80px;">
+            <a href="https://www.techempower.com/benchmarks/#section=test&runid=1d5bfc8a-5c4a-4fb2-a792-ad967f1eb138&test=plaintext" target="_blank" rel="noopener">
+                <div class="lp-serif" style="font-weight: 600; font-size: clamp(36px, 4.4vw, 56px); letter-spacing: -0.02em;">1,206,408</div>
+                <div style="margin-top: 4px; font-size: 16px; color: var(--ink-soft);">Plaintext req/s</div>
+            </a>
+            <a href="https://www.techempower.com/benchmarks/#section=test&runid=1d5bfc8a-5c4a-4fb2-a792-ad967f1eb138&test=json" target="_blank" rel="noopener">
+                <div class="lp-serif" style="font-weight: 600; font-size: clamp(36px, 4.4vw, 56px); letter-spacing: -0.02em;">834,109</div>
+                <div style="margin-top: 4px; font-size: 16px; color: var(--ink-soft);">JSON req/s</div>
+            </a>
         </div>
     </div>
 </section>
 
 <!-- SoliDB -->
-<section class="relative py-20 sm:py-28">
-    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
-        <div class="mb-12 reveal-on-scroll">
-            <h2 class="font-display text-3xl font-bold tracking-tight text-white sm:text-5xl">Powered by SoliDB &mdash; or your Postgres</h2>
-            <p class="mt-5 text-lg text-stone-400 max-w-3xl">
-                SoliDB is the flagship: a distributed, ACID-compliant multi-model database built in
-                Rust. Documents, graph, vector search, time series, full-text, and blobs &mdash; one
-                ORM speaks to all of it. The same models also run on <strong class="text-stone-200">PostgreSQL</strong>,
-                <strong class="text-stone-200">MySQL</strong>, and <strong class="text-stone-200">SQLite</strong>
-                &mdash; including straight onto the tables of a database you already have.
+<section class="lp-section">
+    <div class="lp-wrap">
+        <div style="display: flex; flex-direction: column; gap: 20px; max-width: 860px; margin-bottom: 48px;">
+            <h2 class="lp-h2">Runs on SoliDB, or on the database you already have</h2>
+            <p class="lp-lead">
+                SoliDB is our own distributed, ACID-compliant database, also written in Rust. Documents, graph, vector search,
+                time series, full-text and blobs all sit behind one ORM. The same models also run on
+                <strong>PostgreSQL</strong>, <strong>MySQL</strong>, and <strong>SQLite</strong>, including straight onto the
+                tables of a database you already have.
             </p>
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-10 reveal-on-scroll">
-            <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                <div class="text-sm font-semibold text-stone-200">Documents</div>
-                <div class="text-xs text-stone-500 mt-1">JSON store</div>
+        <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px;" class="lp-six">
+            <div class="lp-mini"><strong>Documents</strong><span>JSON store</span></div>
+            <div class="lp-mini"><strong>Graph</strong><span>Edges &amp; traversal</span></div>
+            <div class="lp-mini"><strong>Vector</strong><span>HNSW search</span></div>
+            <div class="lp-mini"><strong>Time series</strong><span>Metrics &amp; logs</span></div>
+            <div class="lp-mini"><strong>Full-text</strong><span>Search engine</span></div>
+            <div class="lp-mini"><strong>Blobs</strong><span>File storage</span></div>
+        </div>
+
+        <div class="lp-grid-3" style="margin-bottom: 32px;">
+            <div class="lp-card">
+                <h3 class="lp-h3" style="font-size: 20px;">SoliDB</h3>
+                <p>The full surface: graph, vector, columnar, time series, raw SDBQL, live queries.</p>
             </div>
-            <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                <div class="text-sm font-semibold text-stone-200">Graph</div>
-                <div class="text-xs text-stone-500 mt-1">Edges &amp; traversal</div>
+            <div class="lp-card">
+                <h3 class="lp-h3" style="font-size: 20px;">Postgres, MySQL &amp; SQLite</h3>
+                <p>Document tables with CRUD, filters, aggregates, eager loads, transactions, migrations, and background jobs. SQLite needs no server, just a file.</p>
             </div>
-            <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                <div class="text-sm font-semibold text-stone-200">Vector</div>
-                <div class="text-xs text-stone-500 mt-1">HNSW search</div>
-            </div>
-            <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                <div class="text-sm font-semibold text-stone-200">Time series</div>
-                <div class="text-xs text-stone-500 mt-1">Metrics &amp; logs</div>
-            </div>
-            <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                <div class="text-sm font-semibold text-stone-200">Full-text</div>
-                <div class="text-xs text-stone-500 mt-1">Search engine</div>
-            </div>
-            <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                <div class="text-sm font-semibold text-stone-200">Blobs</div>
-                <div class="text-xs text-stone-500 mt-1">File storage</div>
+            <div class="lp-card">
+                <h3 class="lp-h3" style="font-size: 20px;">Your existing schema</h3>
+                <p>Declare <code>table "orders"</code> and models map to real columns, introspected at boot, no DDL ever issued.</p>
             </div>
         </div>
 
-        <div class="grid sm:grid-cols-3 gap-4 mb-10 reveal-on-scroll">
-            <div class="p-4 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                <div class="text-sm font-semibold text-stone-200">SoliDB</div>
-                <p class="mt-1.5 text-sm text-stone-400">The full surface: graph, vector, columnar, time series, raw SDBQL, live queries.</p>
-            </div>
-            <div class="p-4 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                <div class="text-sm font-semibold text-stone-200">Postgres, MySQL &amp; SQLite</div>
-                <p class="mt-1.5 text-sm text-stone-400">Document tables with CRUD, filters, aggregates, eager loads, transactions, migrations, and background jobs. SQLite needs no server &mdash; just a file.</p>
-            </div>
-            <div class="p-4 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                <div class="text-sm font-semibold text-stone-200">Your existing schema</div>
-                <p class="mt-1.5 text-sm text-stone-400">Declare <code class="text-amber-300">table "orders"</code> and models map to real columns &mdash; introspected at boot, no DDL ever issued.</p>
-            </div>
+        <div class="lp-code">
+            <div class="lp-code-bar"><span>app/models/user.sl</span></div>
+<pre><code><span class="k">class</span> <span class="n">User &lt; Model</span>
+  <span class="n">validates(</span><span class="s">"email"</span><span class="n">, { </span><span class="s">"presence"</span><span class="n">: true, </span><span class="s">"uniqueness"</span><span class="n">: true })</span>
+  <span class="n">before_save(</span><span class="s">"normalize_email"</span><span class="n">)</span>
+
+  <span class="k">def</span> <span class="n">normalize_email</span>
+    <span class="v">@email</span> <span class="n">= </span><span class="v">@email</span><span class="n">.trim.downcase</span> <span class="k">unless</span> <span class="v">@email</span><span class="n">.blank?</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="c"># Chainable query builder: one query, same code on every adapter</span>
+<span class="n">admins = User</span>
+  <span class="n">.where({ </span><span class="s">"role"</span><span class="n">: </span><span class="s">"admin"</span><span class="n"> })</span>
+  <span class="n">.order(</span><span class="s">"created_at"</span><span class="n">, </span><span class="s">"desc"</span><span class="n">)</span>
+  <span class="n">.limit(20).all</span>
+
+<span class="c"># Point a model at a database you already have</span>
+<span class="k">class</span> <span class="n">Order &lt; Model</span>
+  <span class="n">connection </span><span class="s">"legacy"</span>
+  <span class="n">table </span><span class="s">"orders"</span>
+<span class="k">end</span></code></pre>
         </div>
 
-        <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden reveal-on-scroll">
-            <div class="px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
-                <span class="text-xs font-mono text-stone-400">app/models/user.sl</span>
-            </div>
-            <div class="px-5 py-4 overflow-x-auto">
-<pre class="text-sm leading-7"><code><span class="text-orange-300">class</span> <span class="text-amber-200">User</span> <span class="text-orange-300">&lt;</span> <span class="text-amber-200">Model</span>
-  <span class="text-stone-300">validates(</span><span class="text-stone-100">"email"</span><span class="text-stone-300">, { </span><span class="text-stone-100">"presence"</span><span class="text-stone-300">: </span><span class="text-orange-300">true</span><span class="text-stone-300">, </span><span class="text-stone-100">"uniqueness"</span><span class="text-stone-300">: </span><span class="text-orange-300">true</span><span class="text-stone-300"> })</span>
-  <span class="text-stone-300">before_save(</span><span class="text-stone-100">"normalize_email"</span><span class="text-stone-300">)</span>
-
-  <span class="text-orange-300">def</span> <span class="text-stone-200">normalize_email</span>
-    <span class="text-orange-300">this</span><span class="text-stone-300">.email = </span><span class="text-orange-300">this</span><span class="text-stone-300">.email.trim().downcase() </span><span class="text-orange-300">unless</span> <span class="text-orange-300">this</span><span class="text-stone-300">.email.blank?</span>
-  <span class="text-orange-300">end</span>
-<span class="text-orange-300">end</span>
-
-<span class="text-stone-500"># Chainable query builder — one query, same code on every adapter</span>
-<span class="text-stone-300">admins = </span><span class="text-amber-200">User</span>
-  <span class="text-stone-300">.where({ </span><span class="text-stone-100">"role"</span><span class="text-stone-300">: </span><span class="text-stone-100">"admin"</span><span class="text-stone-300"> })</span>
-  <span class="text-stone-300">.order(</span><span class="text-stone-100">"created_at"</span><span class="text-stone-300">, </span><span class="text-stone-100">"desc"</span><span class="text-stone-300">)</span>
-  <span class="text-stone-300">.limit(</span><span class="text-amber-300">20</span><span class="text-stone-300">).all</span>
-
-<span class="text-stone-500"># Point a model at a database you already have</span>
-<span class="text-orange-300">class</span> <span class="text-amber-200">Order</span> <span class="text-orange-300">&lt;</span> <span class="text-amber-200">Model</span>
-  <span class="text-stone-300">connection </span><span class="text-stone-100">"legacy"</span>
-  <span class="text-stone-300">table </span><span class="text-stone-100">"orders"</span>
-<span class="text-orange-300">end</span></code></pre>
-            </div>
-        </div>
-
-        <div class="mt-8 flex flex-wrap items-center gap-6 reveal-on-scroll">
-            <a href="/docs/database/models" class="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
-                <span>Soli ORM docs</span>
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-            </a>
-            <a href="/docs/database/multi-database" class="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
-                <span>Postgres, MySQL, SQLite &amp; multi-DB</span>
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-            </a>
-            <a href="https://solidb.solisoft.net/docs" target="_blank" class="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
-                <span>SoliDB documentation</span>
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-            </a>
+        <div style="display: flex; flex-wrap: wrap; gap: 28px; margin-top: 32px;">
+            <a href="/docs/database/models" class="lp-link">Soli ORM docs &rarr;</a>
+            <a href="/docs/database/multi-database" class="lp-link">Postgres, MySQL, SQLite &amp; multi-DB &rarr;</a>
+            <a href="https://solidb.solisoft.net/docs" target="_blank" rel="noopener" class="lp-link">SoliDB documentation &nearr;</a>
         </div>
     </div>
 </section>
 
-<!-- Live view demo -->
-<section id="live-view-demo" class="relative py-20 sm:py-28 bg-white/[0.02] border-y border-white/[0.04]">
-    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
-        <div class="mb-12 reveal-on-scroll">
-            <h2 class="font-display text-3xl font-bold tracking-tight text-white sm:text-5xl">This counter is live, right now</h2>
-            <p class="mt-5 text-lg text-stone-400 max-w-3xl">
-                A server-rendered reactive component over a WebSocket &mdash; no JavaScript written,
-                a ~7&nbsp;KB (gzipped) client served by the binary itself and loaded only on pages
-                that use it. Type in the field: every keystroke round-trips the server and the
-                patch lands without stealing your focus or caret.
+<!-- Live view -->
+<section id="live-view-demo" class="lp-section lp-night">
+    <div class="lp-wrap">
+        <div style="display: flex; flex-direction: column; gap: 20px; max-width: 800px; margin-bottom: 48px;">
+            <div class="lp-eyebrow">LiveView</div>
+            <h2 class="lp-h2">This counter is live, right now</h2>
+            <p class="lp-lead">
+                A reactive component rendered on the server and updated over a WebSocket. You write no JavaScript. The
+                ~7&nbsp;KB (gzipped) client is served by the binary and loads only on pages that use it. Type in the field:
+                every keystroke goes to the server, and the update lands without moving your focus or caret.
             </p>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div class="reveal-on-scroll">
-                <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden">
-                    <div class="px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
-                        <span class="text-xs font-mono text-stone-400">Live demo &middot; /live/socket/counter</span>
-                    </div>
-                    <div class="p-8" id="live-counter-container" data-live-root data-liveview-manual data-liveview-url="/live/socket/counter">
-                        <div class="text-center">
-                            <div class="text-6xl font-bold text-white mb-8">...</div>
-                            <p class="text-sm text-stone-500">Connecting...</p>
+        <div class="lp-split" style="align-items: start;">
+            <div>
+                <div class="lp-code">
+                    <div class="lp-code-bar"><span>Live demo &middot; /live/socket/counter</span></div>
+                    <div style="padding: 32px;" id="live-counter-container" data-live-root data-liveview-manual data-liveview-url="/live/socket/counter">
+                        <div style="text-align: center;">
+                            <div style="margin-bottom: 24px; font-family: 'Fraunces', serif; font-weight: 700; font-size: 64px; line-height: 1;">...</div>
+                            <p style="margin: 0; font-size: 14px; color: #A69C8C;">Connecting...</p>
                         </div>
                     </div>
                 </div>
-                <div class="mt-6 grid grid-cols-3 gap-4">
-                    <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                        <div class="text-lg font-bold text-amber-400">0 JS</div>
-                        <div class="text-xs text-stone-500">Written</div>
-                    </div>
-                    <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                        <div class="text-lg font-bold text-amber-400">Server</div>
-                        <div class="text-xs text-stone-500">State</div>
-                    </div>
-                    <div class="text-center p-3 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06]">
-                        <div class="text-lg font-bold text-amber-400">~7KB</div>
-                        <div class="text-xs text-stone-500">Client (gzipped)</div>
-                    </div>
+                <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px;">
+                    <div class="lp-mini"><strong>0 JS</strong><span>Written</span></div>
+                    <div class="lp-mini"><strong>Server</strong><span>State</span></div>
+                    <div class="lp-mini"><strong>~7KB</strong><span>Client (gzipped)</span></div>
                 </div>
             </div>
 
-            <div class="reveal-on-scroll" style="transition-delay: 100ms;">
-                <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden">
-                    <div class="px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
-                        <span class="text-xs font-mono text-stone-400">app/views/live/counter.html.slv</span>
-                    </div>
-                    <div class="px-5 py-4 overflow-x-auto">
-<pre class="text-sm leading-7"><code><span class="text-stone-500">&lt;!-- That's the whole component. --&gt;</span>
-<span class="text-stone-400">&lt;div</span> <span class="text-orange-300">class=</span><span class="text-stone-100">"counter"</span><span class="text-stone-400">&gt;</span>
-  <span class="text-stone-400">&lt;h2&gt;</span><span class="text-orange-200">&lt;%= count %&gt;</span><span class="text-stone-400">&lt;/h2&gt;</span>
-  <span class="text-stone-400">&lt;button</span> <span class="text-orange-300">soli-click=</span><span class="text-stone-100">"decrement"</span><span class="text-stone-400">&gt;</span>-<span class="text-stone-400">&lt;/button&gt;</span>
-  <span class="text-stone-400">&lt;button</span> <span class="text-orange-300">soli-click=</span><span class="text-stone-100">"increment"</span><span class="text-stone-400">&gt;</span>+<span class="text-stone-400">&lt;/button&gt;</span>
-<span class="text-stone-400">&lt;/div&gt;</span></code></pre>
-                    </div>
+            <div>
+                <div class="lp-code">
+                    <div class="lp-code-bar"><span>app/views/live/counter.html.slv</span></div>
+<pre><code><span class="c">&lt;!-- That's the whole component. --&gt;</span>
+<span class="c">&lt;div</span> <span class="k">class=</span><span class="s">"counter"</span><span class="c">&gt;</span>
+  <span class="c">&lt;h2&gt;</span><span class="v">&lt;%= count %&gt;</span><span class="c">&lt;/h2&gt;</span>
+  <span class="c">&lt;button</span> <span class="k">soli-click=</span><span class="s">"decrement"</span><span class="c">&gt;</span>-<span class="c">&lt;/button&gt;</span>
+  <span class="c">&lt;button</span> <span class="k">soli-click=</span><span class="s">"increment"</span><span class="c">&gt;</span>+<span class="c">&lt;/button&gt;</span>
+<span class="c">&lt;/div&gt;</span></code></pre>
                 </div>
-                <div class="mt-6 text-sm text-stone-500">
-                    The server holds the state; the client morphs the DOM in place, so focus and
-                    widget state inside the region survive every update.
-                    A second live demo &mdash; a server clock pushing 20 updates a second &mdash; runs in the
-                    <a href="/docs/core-concepts/liveview" class="text-amber-400 hover:text-amber-300 transition-colors">LiveView docs</a>.
-                </div>
+                <p style="margin: 24px 0 0; font-size: 15px; line-height: 1.6; color: #C9BFAE;">
+                    The server holds the state; the client morphs the DOM in place, so focus and widget state inside the region
+                    survive every update. A second live demo, a server clock pushing 20 updates a second, runs in the
+                    <a href="/docs/core-concepts/liveview" class="lp-link" style="display: inline;">LiveView docs</a>.
+                </p>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Built with Soli: Bonfire -->
-<section class="relative py-20 sm:py-28">
-    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div class="reveal-on-scroll">
-                <h2 class="text-base font-semibold leading-7 text-amber-400 tracking-wide uppercase">In production</h2>
-                <p class="font-display mt-2 text-3xl font-bold tracking-tight text-white sm:text-5xl">
-                    Built with Soli. Running for real.
+<!-- Bonfire -->
+<section class="lp-section">
+    <div class="lp-wrap">
+        <div class="lp-split">
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div class="lp-eyebrow">In production</div>
+                <h2 class="lp-h2">Built with Soli, used every day.</h2>
+                <p class="lp-lead">
+                    <a href="https://bonfire-app.pro" target="_blank" rel="noopener" class="lp-link" style="display: inline;">Bonfire</a>
+                    is a full project-management SaaS: real-time chat over WebSockets, file uploads with inline previews,
+                    browser push, iCal feeds, public share links, and an interface translated into nine languages, running on
+                    Soli and SolidB in production. It is a product with users, not a demo.
                 </p>
-                <p class="mt-6 text-lg leading-8 text-stone-400">
-                    <a href="https://bonfire-app.pro" target="_blank" rel="noopener" class="font-semibold text-amber-400 hover:text-amber-300 transition-colors">Bonfire</a>
-                    is a full project-management SaaS &mdash; real-time chat over WebSockets, file uploads
-                    with inline previews, browser push, iCal feeds, public share links, and an interface
-                    translated into nine languages &mdash; running on Soli and SolidB in production.
-                    Not a demo. Not a benchmark. A product with users.
-                </p>
-                <div class="mt-6 flex flex-wrap gap-2">
-                    <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Real-time chat</span>
-                    <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">9 languages</span>
-                    <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Push notifications</span>
-                    <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">File uploads</span>
-                    <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">iCal feeds</span>
-                    <span class="rounded-full bg-white/5 ring-1 ring-white/10 px-3 py-1 text-xs text-stone-300">Public share links</span>
+                <div class="lp-chips">
+                    <span>Real-time chat</span><span>9 languages</span><span>Push notifications</span><span>File uploads</span><span>iCal feeds</span><span>Public share links</span>
                 </div>
-                <div class="mt-10 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <a href="https://bonfire-app.pro" target="_blank" rel="noopener" class="rounded-xl bg-amber-500 px-7 py-3.5 text-sm font-bold text-stone-950 shadow-lg shadow-amber-500/20 hover:bg-amber-400 transition-all duration-300">
-                        Visit bonfire-app.pro
-                    </a>
-                    <span class="text-sm text-stone-500">Free forever for personal use.</span>
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 8px;">
+                    <a href="https://bonfire-app.pro" target="_blank" rel="noopener" class="lp-btn lp-btn-solid">Visit bonfire-app.pro</a>
+                    <span style="font-size: 15px; color: var(--ink-faint);">Free forever for personal use.</span>
                 </div>
             </div>
 
-            <div class="reveal-on-scroll" style="transition-delay: 100ms;">
-                <div class="rounded-xl bg-[#171412] ring-1 ring-white/[0.06] overflow-hidden">
-                    <div class="flex items-center gap-3 px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
-                        <div class="flex gap-1.5">
-                            <span class="w-2.5 h-2.5 rounded-full bg-white/10"></span>
-                            <span class="w-2.5 h-2.5 rounded-full bg-white/10"></span>
-                            <span class="w-2.5 h-2.5 rounded-full bg-white/10"></span>
-                        </div>
-                        <div class="flex-1 max-w-[240px] mx-auto rounded-md bg-black/25 px-3 py-1 text-xs font-mono text-stone-400 text-center">bonfire-app.pro</div>
-                        <div class="w-8"></div>
+            <div class="lp-code" aria-hidden="true">
+                <div class="lp-code-bar" style="justify-content: center;"><span>bonfire-app.pro</span></div>
+                <div style="display: flex; flex-direction: column; gap: 14px; padding: 22px;">
+                    <div style="padding: 16px; border-radius: 12px; background: rgba(0,0,0,.28); border: 1px solid var(--night-line);">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #A69C8C;"><span>Message Board</span><span style="font-weight: 400;">pinned</span></div>
+                        <div style="margin-top: 8px; font-size: 15px; font-weight: 600;">Kickoff: what we are NOT building</div>
+                        <div style="margin-top: 4px; font-size: 13px; color: #A69C8C;">Mara &middot; 12 comments</div>
                     </div>
-                    <div class="p-5 sm:p-6 space-y-4">
-                        <div class="rounded-lg bg-black/25 ring-1 ring-white/[0.06] p-4">
-                            <div class="flex items-center justify-between">
-                                <span class="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Message Board</span>
-                                <span class="text-[11px] text-stone-600">pinned</span>
-                            </div>
-                            <div class="mt-2 text-sm font-semibold text-stone-100">Kickoff: what we are NOT building</div>
-                            <div class="mt-1 text-xs text-stone-500">Mara &middot; 12 comments</div>
-                        </div>
-                        <div class="rounded-lg bg-black/25 ring-1 ring-white/[0.06] p-4">
-                            <div class="flex items-center justify-between">
-                                <span class="text-[11px] font-semibold uppercase tracking-wide text-stone-500">To-dos</span>
-                                <span class="text-[11px] text-stone-600">Launch list &middot; 4/6</span>
-                            </div>
-                            <ul class="mt-3 space-y-2 text-sm">
-                                <li class="flex items-center gap-2.5 text-stone-500">
-                                    <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-amber-500/20 text-[10px] text-amber-400">&#10003;</span>
-                                    <s>Migrate the importer</s>
-                                </li>
-                                <li class="flex items-center gap-2.5 text-stone-300">
-                                    <span class="h-4 w-4 shrink-0 rounded ring-1 ring-white/15"></span>
-                                    Copy review with Mara
-                                </li>
-                                <li class="flex items-center gap-2.5 text-stone-300">
-                                    <span class="h-4 w-4 shrink-0 rounded ring-1 ring-white/15"></span>
-                                    Ship it
-                                    <span class="ml-auto text-[11px] font-semibold text-[#E8552A]">THU</span>
-                                </li>
-                            </ul>
-                        </div>
-                        <div class="rounded-lg bg-black/25 ring-1 ring-white/[0.06] p-4">
-                            <div class="flex items-center justify-between">
-                                <span class="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Hill Chart</span>
-                                <span class="text-[11px] text-stone-600">Week 4 of 6</span>
-                            </div>
-                            <svg viewBox="0 0 280 80" class="mt-3 w-full" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <path d="M8 72 Q 140 -40 272 72" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>
-                                <line x1="140" y1="16" x2="140" y2="72" stroke="rgba(255,255,255,0.08)" stroke-dasharray="3 3"/>
-                                <circle cx="176" cy="20" r="5" fill="#E8552A"/>
-                            </svg>
-                            <div class="mt-1 flex justify-between text-[10px] text-stone-600">
-                                <span>Figuring it out</span>
-                                <span>Making it happen</span>
-                            </div>
-                        </div>
+                    <div style="padding: 16px; border-radius: 12px; background: rgba(0,0,0,.28); border: 1px solid var(--night-line);">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #A69C8C;"><span>To-dos</span><span style="font-weight: 400;">Launch list &middot; 4/6</span></div>
+                        <ul style="margin: 12px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 14px;">
+                            <li style="display: flex; align-items: center; gap: 10px; color: #A69C8C;"><span style="display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 4px; background: rgba(232,89,12,.25); color: #F2A365; font-size: 10px;">&#10003;</span><s>Migrate the importer</s></li>
+                            <li style="display: flex; align-items: center; gap: 10px;"><span style="width: 16px; height: 16px; border-radius: 4px; border: 1px solid #4A4238;"></span>Copy review with Mara</li>
+                            <li style="display: flex; align-items: center; gap: 10px;"><span style="width: 16px; height: 16px; border-radius: 4px; border: 1px solid #4A4238;"></span>Ship it<span style="margin-left: auto; font-size: 11px; font-weight: 600; color: #F2A365;">THU</span></li>
+                        </ul>
+                    </div>
+                    <div style="padding: 16px; border-radius: 12px; background: rgba(0,0,0,.28); border: 1px solid var(--night-line);">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #A69C8C;"><span>Hill Chart</span><span style="font-weight: 400;">Week 4 of 6</span></div>
+                        <svg viewBox="0 0 280 80" style="width: 100%; margin-top: 12px;" fill="none" aria-hidden="true">
+                            <path d="M8 72 Q 140 -40 272 72" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>
+                            <line x1="140" y1="16" x2="140" y2="72" stroke="rgba(255,255,255,0.1)" stroke-dasharray="3 3"/>
+                            <circle cx="176" cy="20" r="5" fill="#E8590C"/>
+                        </svg>
+                        <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: #A69C8C;"><span>Figuring it out</span><span>Making it happen</span></div>
                     </div>
                 </div>
             </div>
@@ -664,43 +535,33 @@
 </section>
 
 <!-- CTA -->
-<section class="relative py-20 sm:py-28">
-    <div class="container mx-auto max-w-6xl px-6 lg:px-8">
-        <div class="relative isolate overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500/[0.12] via-orange-500/[0.06] to-transparent px-8 py-16 sm:px-16 sm:py-20 ring-1 ring-amber-500/20">
-            <div class="reveal-on-scroll">
-                <h2 class="font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                    Build something this afternoon
-                </h2>
-                <p class="mt-4 text-lg leading-8 text-stone-300">
-                    Join the developer<span class="opacity-50">*</span> who is already shipping with Soli.
-                </p>
-                <p class="text-xs text-stone-500 mt-2">* It's just me. But I'm having a great time!</p>
-                <div class="mt-10 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <a href="/docs/getting-started/installation" class="rounded-xl bg-amber-500 px-7 py-3.5 text-sm font-bold text-stone-950 shadow-lg shadow-amber-500/20 hover:bg-amber-400 transition-all duration-300">
-                        Install Soli
-                    </a>
-                    <a href="/docs" class="rounded-xl px-7 py-3.5 text-sm font-semibold text-white ring-1 ring-white/20 hover:ring-white/40 hover:bg-white/5 transition-all duration-300">
-                        Read the docs
-                    </a>
-                </div>
+<section style="padding-bottom: clamp(64px, 9vw, 120px);">
+    <div class="lp-wrap">
+        <div class="lp-cta">
+            <h2 class="lp-h2">Build something this afternoon.</h2>
+            <p style="margin: 0; font-size: 18px;">Join the developer<span style="opacity: .6;">*</span> who is already shipping with Soli.</p>
+            <p style="margin: -14px 0 0; font-size: 13px;">* It's just me. But I'm having a great time!</p>
+            <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 14px;">
+                <a href="/docs/getting-started/installation" class="lp-btn lp-btn-solid">Install Soli</a>
+                <a href="/docs" class="lp-btn lp-btn-line">Read the docs</a>
             </div>
         </div>
     </div>
 </section>
+
+<style>
+    @media (max-width: 900px) { .lp-six { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } }
+</style>
 
 <script>
     // Copy the "soli new" command from the hero chip.
     function copyNewAppCmd(btn) {
         const cmd = 'soli new blog && soli serve blog';
         navigator.clipboard.writeText(cmd).then(() => {
-            const icon = btn.querySelector('[data-copy-icon]');
-            if (!icon) return;
-            icon.classList.add('text-amber-400');
-            btn.classList.add('ring-amber-500/40');
-            setTimeout(() => {
-                icon.classList.remove('text-amber-400');
-                btn.classList.remove('ring-amber-500/40');
-            }, 1200);
+            const label = btn.querySelector('[data-copy-label]');
+            if (!label) return;
+            label.textContent = 'Copied';
+            setTimeout(() => { label.textContent = 'Copy'; }, 1400);
         });
     }
 
@@ -727,28 +588,16 @@
                 element.classList.remove('invisible');
                 return;
             }
-            const html = element.innerHTML;
-            element.innerHTML = '';
+            const text = element.textContent;
+            element.textContent = '';
             element.classList.remove('invisible');
 
             let i = 0;
-            let tag = false;
-            let currentHtml = '';
-
             function type() {
-                if (i < html.length) {
-                    let char = html.charAt(i);
-                    if (char === '<') tag = true;
-                    else if (char === '>') tag = false;
-
-                    currentHtml += char;
-                    element.innerHTML = currentHtml;
+                if (i < text.length) {
+                    element.textContent += text.charAt(i);
                     i++;
-                    if (tag || char === ' ') {
-                        type();
-                    } else {
-                        setTimeout(type, Math.random() * 20 + 10);
-                    }
+                    setTimeout(type, Math.random() * 20 + 10);
                 }
             }
             type();
