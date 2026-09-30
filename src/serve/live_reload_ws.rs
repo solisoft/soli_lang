@@ -260,6 +260,15 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
         }, retryDelay);
     }
 
+    function pageWasError() {
+        try {
+            var nav = performance.getEntriesByType('navigation')[0];
+            return !!nav && nav.responseStatus >= 400;
+        } catch (e) {
+            return false;
+        }
+    }
+
     function asyncReload() {
         if (window.__livereload.reloading) return;
         window.__livereload.reloading = true;
@@ -269,7 +278,12 @@ pub const LIVE_RELOAD_SCRIPT: &str = r#"<script>
             cache: 'no-store'
         })
         .then(function(response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
+            // An error page and a normal page do not share a layout, head or
+            // stylesheets, so morphing across the boundary in either direction
+            // leaves broken styling: reload fully instead.
+            if (!response.ok || pageWasError()) {
+                throw new Error('error page boundary');
+            }
             return response.text();
         })
         .then(function(html) {
