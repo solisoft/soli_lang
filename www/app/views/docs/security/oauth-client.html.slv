@@ -4,7 +4,7 @@
             <span class="bg-gradient-to-r from-red-400 via-amber-400 to-orange-400 bg-clip-text text-transparent">OAuth Client</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Sign in with GitHub or Google. Scaffolded by
+            Sign in with GitHub, Google, GitLab, Discord, LinkedIn or Microsoft. Scaffolded by
             <code class="text-cyan-400">soli generate oauth</code>
             &mdash; the opposite of
             <a href="/docs/security/oidc-provider" class="text-amber-400 hover:underline">OIDC provider</a>
@@ -16,7 +16,7 @@
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-bash text-sm">soli generate auth          # User + sessions (required)
-soli generate oauth github  # and/or google
+soli generate oauth github  # and/or google, gitlab, discord, linkedin, microsoft
 soli db:migrate up</code></pre>
         </div>
     </div>
@@ -35,6 +35,7 @@ soli db:migrate up</code></pre>
                 <tr><td class="py-3 px-4"><code class="text-cyan-400">app/services/oauth_client.sl</code></td><td class="py-3 px-4">State CSRF, PKCE, find-or-create user</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-cyan-400">app/services/github_oauth.sl</code></td><td class="py-3 px-4">GitHub authorize / token / profile</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-cyan-400">app/services/google_oauth.sl</code></td><td class="py-3 px-4">Google OIDC code + PKCE</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-cyan-400">app/services/{gitlab,discord,linkedin,microsoft}_oauth.sl</code></td><td class="py-3 px-4">One per provider you generate</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-cyan-400">app/controllers/oauth_controller.sl</code></td><td class="py-3 px-4"><code>/auth/:provider</code> + callback</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-cyan-400">db/migrations/*_create_oauth_identities.sl</code></td><td class="py-3 px-4">Unique index on (provider, uid)</td></tr>
             </tbody>
@@ -59,6 +60,12 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback</code></pre>
         </div>
     </div>
 
+    <p class="text-gray-400 mb-2"><strong class="text-white">GitLab, Discord, LinkedIn, Microsoft</strong></p>
+    <p class="text-gray-400 mb-4">Each takes <code class="text-cyan-400">&lt;NAME&gt;_CLIENT_ID</code>, <code class="text-cyan-400">&lt;NAME&gt;_CLIENT_SECRET</code> and <code class="text-cyan-400">&lt;NAME&gt;_REDIRECT_URI</code> (<code class="text-cyan-400">http://localhost:3000/auth/&lt;name&gt;/callback</code>). GitLab also reads <code class="text-cyan-400">GITLAB_BASE_URL</code> for a self-hosted instance. <strong class="text-white">Microsoft requires <code class="text-cyan-400">MICROSOFT_TENANT</code></strong> (a tenant id or domain): Microsoft does not verify the <code>email</code> claim, so the service refuses <code>common</code>, <code>organizations</code> and <code>consumers</code> and limits sign-in to the tenant whose directory you control.</p>
+
+    <h2 class="text-2xl font-bold text-white mb-4">How a provider is found</h2>
+    <p class="text-gray-400 mb-12"><code class="text-cyan-400">/auth/:provider</code> looks up the <code class="text-cyan-400">&lt;Name&gt;Oauth</code> class by name after checking the segment against <code>^[a-z][a-z0-9]{1,19}$</code>, so adding a provider never means editing the controller. Each service exposes <code class="text-cyan-400">authorize_url(state, code_challenge)</code> and <code class="text-cyan-400">complete!(code)</code>, and the callback insists the provider matches the one this session started with. An app generated earlier has a controller with a fixed list; the generator says so, and deleting <code>oauth_controller.sl</code> then re-running it swaps in the new one.</p>
+
     <h2 class="text-2xl font-bold text-white mb-4">Login button</h2>
     <p class="text-gray-400 mb-4">Add a link yourself (generator does not rewrite session views):</p>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
@@ -81,14 +88,15 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback</code></pre>
             for <code>timeout</code> alone and return the body as a String, so a <code>"headers"</code> key there is silently
             dropped &mdash; which is why the generated flow used to 401. Provider responses are status-checked, so a 401
             reports as a 401 rather than a JSON parse error on the provider's error page.</li>
-        <li>Google requires a verified email</li>
+        <li>Google, GitLab and LinkedIn require <code class="text-cyan-400">email_verified</code>; Discord requires <code class="text-cyan-400">verified</code>; Microsoft is limited to your tenant</li>
+        <li>The start redirect uses <code class="text-cyan-400">redirect_external</code>: plain <code>redirect</code> only accepts local paths, and the first generated controller failed with a 500 for that reason</li>
         <li>OAuth-created accounts get a random password and confirmed email</li>
         <li>Use HTTPS redirect URIs in production</li>
     </ul>
 
     <h2 class="text-2xl font-bold text-white mb-4">Ceiling</h2>
     <p class="text-gray-400 mb-4">
-        v1 providers: <strong class="text-white">GitHub</strong> and <strong class="text-white">Google</strong> only.
+        Six providers: <strong class="text-white">GitHub, Google, GitLab, Discord, LinkedIn</strong> and <strong class="text-white">Microsoft</strong> (one tenant). No Apple sign-in (its client secret is a signed JWT), no multi-tenant Microsoft, no account-linking UI.
         Longer walkthroughs:
         <a href="/docs/blog/github-oauth" class="text-amber-400 hover:underline">GitHub</a>,
         <a href="/docs/blog/google-oauth" class="text-amber-400 hover:underline">Google</a>.

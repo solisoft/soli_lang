@@ -595,6 +595,25 @@ pub fn handle_eui_event(
     data: &LiveViewEventData,
     instance: &mut LiveViewInstance,
 ) -> Result<(), String> {
+    run_eui_event(interpreter, data, instance, true)
+}
+
+/// Render the view against state the server already changed (a `live_update`
+/// merged its assigns), then diff and send — no handler runs.
+pub fn rerender_eui(
+    interpreter: &mut Interpreter,
+    data: &LiveViewEventData,
+    instance: &mut LiveViewInstance,
+) -> Result<(), String> {
+    run_eui_event(interpreter, data, instance, false)
+}
+
+fn run_eui_event(
+    interpreter: &mut Interpreter,
+    data: &LiveViewEventData,
+    instance: &mut LiveViewInstance,
+    run_handler: bool,
+) -> Result<(), String> {
     let component = instance.component.clone();
     if trace() {
         // The state is the application's, secrets included: printed in
@@ -620,7 +639,7 @@ pub fn handle_eui_event(
     let _current = stats::Current::enter(instance.id.clone());
 
     let mut state_for_view: Option<Value> = None;
-    if data.event != RESYNC_EVENT {
+    if run_handler && data.event != RESYNC_EVENT {
         let handler_name = crate::live::socket::get_liveview_handler(&component)
             .ok_or_else(|| format!("EUI: no handler for component '{component}'"))?;
         let handler = resolve(interpreter, &handler_name)?;

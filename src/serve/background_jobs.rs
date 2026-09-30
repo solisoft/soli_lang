@@ -212,7 +212,7 @@ fn build_job_interpreter(id: usize, interpreter: &mut Interpreter, config: &Pool
     // `SOLI_JOB_VIEW_HELPERS=0` to drop the helper/locale ASTs from every job
     // interpreter. Default keeps the previous behavior for apps whose mailers
     // render helper-using templates in a job.
-    if config.helpers_dir.exists() && job_view_helpers_enabled() {
+    if template::view_helpers_present(&config.helpers_dir) && job_view_helpers_enabled() {
         if let Err(e) = template::load_view_helpers(&config.helpers_dir) {
             eprintln!(
                 "Background job worker {}: error loading view helpers: {}",

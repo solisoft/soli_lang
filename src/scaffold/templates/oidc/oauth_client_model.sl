@@ -10,7 +10,8 @@
 
 class OauthClient < Model
   # Fields: client_id, client_secret_digest, client_type, name, redirect_uris,
-  # scopes, grant_types, require_pkce, skip_consent, disabled_at.
+  # scopes, grant_types, require_pkce, skip_consent, request_object_key,
+  # disabled_at.
 
   # Create a client and return the credentials. The secret is returned in the
   # clear exactly once, because only its Argon2 digest is persisted.
@@ -36,6 +37,9 @@ class OauthClient < Model
       "grant_types": options["grant_types"] ?? ["authorization_code", "refresh_token"],
       "require_pkce": client_type == "public" ? true : (options["require_pkce"] ?? true),
       "skip_consent": options["skip_consent"] ?? false,
+      # Public PEM the client signs authorization request objects (JAR, RFC 9101)
+      # with. Empty means the client cannot use `request=`.
+      "request_object_key": options["request_object_key"] ?? "",
       "client_secret_digest": null,
       "disabled_at": null
     }

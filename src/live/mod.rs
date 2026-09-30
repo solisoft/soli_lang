@@ -2,6 +2,7 @@
 //!
 //! This module provides the foundation for LiveView functionality.
 
+pub mod bus;
 pub mod component;
 pub mod diff;
 pub mod live_query;

@@ -111,6 +111,16 @@ pub trait SessionStore: Send + Sync {
         self.get(session_id, "__soli_probe__").is_some()
     }
 
+    /// The stable id of the live session this raw cookie value names, or
+    /// `None` when it names none. Never creates a session or installs
+    /// per-request state, so it is safe outside the request pipeline (the tus
+    /// endpoint answers before routing). ID drivers answer the id itself; the
+    /// cookie driver answers the id sealed inside the payload, which — unlike
+    /// the payload — survives every session write.
+    fn existing_id(&self, raw: &str) -> Option<String> {
+        (is_valid_session_id(raw) && self.exists(raw)).then(|| raw.to_string())
+    }
+
     /// One read-only round-trip that exercises the backing store's pooled
     /// connection. Used both to anchor the connection at boot (via
     /// `spawn_session_readiness_probe`) and to keep it from idling out between
@@ -1153,6 +1163,15 @@ pub fn resolve_existing_session(cookie_session_id: Option<&str>) -> Option<Strin
     store
         .exists(cookie_session_id)
         .then(|| cookie_session_id.to_string())
+}
+
+/// The stable id of the live session a request's `Cookie` header names, or
+/// `None` — for code that answers before the request pipeline resolved a
+/// session. The value matches what [`get_current_session_id`] reports once a
+/// request is inside the pipeline, under every driver.
+pub fn existing_session_id_from_cookie(cookie_header: Option<&str>) -> Option<String> {
+    let raw = extract_session_id_from_cookie(cookie_header)?;
+    get_current_store().existing_id(&raw)
 }
 
 /// SEC-053: a session ID must be a UUID-v4 in 36-char hyphenated form

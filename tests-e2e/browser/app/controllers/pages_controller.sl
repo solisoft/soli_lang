@@ -49,6 +49,31 @@ class PagesController extends Controller
         render("pages/live", {"title": "Live"})
     end
 
+    # `render("relative")` from `pages#relative` resolves to pages/relative;
+    # `render("standalone")` has no pages/standalone, so it falls back to the top-level view.
+    def relative(req)
+        render("relative", {"title": "Relative"})
+    end
+
+    def relative_fallback(req)
+        render("standalone", {"title": "Standalone"})
+    end
+
+    # Neither pages/nowhere nor a top-level nowhere exists. The test server is not
+    # in --dev, so show the error message rather than the generic 500 page.
+    def relative_missing(req)
+        try
+            return render("nowhere", {"title": "Missing"})
+        catch error
+            return {"status": 500, "headers": {"Content-Type": "text/plain"}, "body": "#{error}"}
+        end
+    end
+
+    # A LiveView file input with pause/resume, for the upload specs.
+    def uploads(req)
+        render("pages/uploads", {"title": "Uploads"})
+    end
+
     # Two pages on a layout that opts into morphing instead of body swapping.
     def morph_a(req)
         render("pages/morph_a", {"title": "Morph A", "layout": "layouts/morph"})

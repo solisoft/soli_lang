@@ -87,6 +87,18 @@ soli db:migrate up
 ```bash
 # Rollback the last migration
 soli db:migrate down
+
+# Rollback the last 3 (or set STEP=3)
+soli db:migrate down --step 3
+
+# Rollback everything newer than a version (that version stays applied)
+soli db:migrate down --to 20240101000000
+
+# Rollback the last migration and run it again
+soli db:migrate redo
+
+# Rollback every migration, then migrate up again
+soli db:migrate reset
 ```
 
 ### Check Status

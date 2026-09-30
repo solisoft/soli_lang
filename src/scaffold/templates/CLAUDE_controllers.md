@@ -120,7 +120,7 @@ def create
   @post = Post.create(permitted)
   if @post._errors
     @title = "New post"
-    return render("posts/new", {}, { "status": 422 })  # re-render form, @fields included
+    return render("new", {}, { "status": 422 })  # re-render form, @fields included
   end
 
   redirect(post_path(@post))
@@ -227,9 +227,9 @@ exposed to the view — useful for state shared between hooks and actions that
 shouldn't leak into templates.
 
 Because of this, don't pass a data hash to `render` — set `@fields` and let
-the framework do the rest. Call `render("posts/new")` only to render a
+the framework do the rest. Call `render("new")` only to render a
 *different* view than the default, and keep the data argument `{}` when you
-need options: `render("posts/new", {}, { "status": 422 })`. The e2e
+need options: `render("new", {}, { "status": 422 })`. The e2e
 `assigns()` helper reports the `@fields` either way.
 
 ### Group the reads: one round-trip, not one per `@`-var
@@ -293,7 +293,7 @@ class PostsController < Controller
     @post = Post.create(@_permit_params(params))
     if @post._errors
       @title = "New post"
-      return render("posts/new")     # explicit: re-render the form view
+      return render("new")     # explicit: re-render the form view
     end
 
     redirect(post_path(@post))
@@ -351,7 +351,7 @@ the errors.
 
 ```soli
 @post = Post.create(permitted)
-return render("posts/new") if @post._errors    # view reads @post._errors to show messages
+return render("new") if @post._errors    # view reads @post._errors to show messages
 
 redirect(post_path(@post))
 ```

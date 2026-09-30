@@ -22,6 +22,9 @@ const OIDC_ACCESS_TOKEN_TTL = 600  # 10 minutes — see the note below
 const OIDC_ID_TOKEN_TTL = 600
 const OIDC_REFRESH_TOKEN_TTL = 2592000  # 30 days
 const OIDC_CODE_TTL = 60  # authorization codes are short-lived
+const OIDC_DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
+const OIDC_DEVICE_CODE_TTL = 600  # how long a device has to be approved (RFC 8628)
+const OIDC_DEVICE_INTERVAL = 5  # minimum seconds between a device's polls
 
 # Access tokens are signed JWTs so resource servers can verify them offline,
 # with no call back to this provider. The cost is that a token stays valid
@@ -44,6 +47,12 @@ def oidc_issuer
   return getenv("SOLI_OIDC_ISSUER").to_s if getenv("SOLI_OIDC_ISSUER").present?
 
   "http://localhost:5011"  # TODO: set your production issuer
+end
+
+# Initial access token for dynamic client registration (RFC 7591). Empty
+# disables `POST /oauth/register` entirely (it answers 404).
+def oidc_registration_token
+  getenv("SOLI_OIDC_REGISTRATION_TOKEN").to_s
 end
 
 def oidc_private_key

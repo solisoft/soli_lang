@@ -25,6 +25,9 @@ pub(super) struct WatchPaths {
     pub views: PathBuf,
     pub middleware: PathBuf,
     pub helpers: PathBuf,
+    /// `app/components`: component classes load with the view helpers, so an
+    /// edit reloads them the same way.
+    pub components: PathBuf,
     pub models: PathBuf,
     pub services: PathBuf,
     pub policies: PathBuf,
@@ -56,6 +59,7 @@ impl WatchPaths {
             views: views.to_path_buf(),
             middleware: middleware.to_path_buf(),
             helpers: helpers.to_path_buf(),
+            components: folder.join("app/components"),
             models: models.to_path_buf(),
             services: folder.join("app/services"),
             policies: folder.join("app/policies"),
@@ -84,6 +88,7 @@ pub(super) fn spawn(
         views: watch_views_dir,
         middleware: watch_middleware_dir,
         helpers: watch_helpers_dir,
+        components: watch_components_dir,
         models: watch_models_dir,
         services: watch_services_dir,
         policies: watch_policies_dir,
@@ -126,6 +131,13 @@ pub(super) fn spawn(
         if watch_helpers_dir.exists()
             && watcher
                 .watch(&watch_helpers_dir, RecursiveMode::NonRecursive)
+                .is_ok()
+        {
+            watch_count += 1;
+        }
+        if watch_components_dir.exists()
+            && watcher
+                .watch(&watch_components_dir, RecursiveMode::NonRecursive)
                 .is_ok()
         {
             watch_count += 1;
@@ -328,7 +340,10 @@ pub(super) fn spawn(
                         controllers_changed = true;
                     } else if name.ends_with(".sl") && path.starts_with(&watch_middleware_dir) {
                         middleware_changed = true;
-                    } else if name.ends_with(".sl") && path.starts_with(&watch_helpers_dir) {
+                    } else if name.ends_with(".sl")
+                        && (path.starts_with(&watch_helpers_dir)
+                            || path.starts_with(&watch_components_dir))
+                    {
                         helpers_changed = true;
                     } else if name.ends_with(".sl") && path.starts_with(&watch_models_dir) {
                         models_changed = true;

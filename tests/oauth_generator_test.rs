@@ -72,3 +72,52 @@ fn create_oauth_is_idempotent() {
     // Shared files still present, not wiped.
     assert!(dir.path().join("app/models/oauth_identity.sl").exists());
 }
+
+#[test]
+fn create_oauth_writes_every_provider_service() {
+    let dir = tempfile::tempdir().unwrap();
+    make_app_with_auth(dir.path());
+    for provider in [
+        "github",
+        "google",
+        "gitlab",
+        "discord",
+        "linkedin",
+        "microsoft",
+    ] {
+        create_oauth(dir.path().to_str().unwrap(), provider).unwrap();
+        let service = dir.path().join(format!("app/services/{provider}_oauth.sl"));
+        assert!(service.exists(), "{provider} service missing");
+    }
+    // The controller finds providers by class name instead of listing them.
+    let controller =
+        fs::read_to_string(dir.path().join("app/controllers/oauth_controller.sl")).unwrap();
+    assert!(controller.contains("oauth_service_for"), "{controller}");
+    assert!(controller.contains("redirect_external"), "{controller}");
+}
+
+#[test]
+fn create_oauth_accepts_provider_aliases() {
+    use solilang::scaffold::oauth_generator::normalize_provider;
+    assert_eq!(normalize_provider("GL").unwrap(), "gitlab");
+    assert_eq!(normalize_provider("azure").unwrap(), "microsoft");
+    assert_eq!(normalize_provider("li").unwrap(), "linkedin");
+}
+
+#[test]
+fn emitted_provider_services_parse() {
+    use solilang::lexer::Scanner;
+    use solilang::parser::Parser;
+
+    let dir = tempfile::tempdir().unwrap();
+    make_app_with_auth(dir.path());
+    for provider in ["gitlab", "discord", "linkedin", "microsoft"] {
+        create_oauth(dir.path().to_str().unwrap(), provider).unwrap();
+        let rel = format!("app/services/{provider}_oauth.sl");
+        let source = fs::read_to_string(dir.path().join(&rel)).unwrap();
+        let tokens = Scanner::new(&source).scan_tokens().unwrap();
+        Parser::new(tokens)
+            .parse()
+            .unwrap_or_else(|e| panic!("{rel} does not parse: {e:?}"));
+    }
+}

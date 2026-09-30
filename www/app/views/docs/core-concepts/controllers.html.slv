@@ -86,6 +86,20 @@ end</code></pre>
         </p>
     </div>
 
+    <h3 id="bare-view-names" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Bare view names resolve to the controller's directory</h3>
+    <p class="text-gray-400 mb-4">Inside an action, <code class="text-cyan-400">render("new")</code> means this controller's own view: from <code>PostsController</code> it renders <code>posts/new</code>, the same directory the automatic render uses (<code>posts#index</code> &rarr; <code>posts/index</code>).</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4"><div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class PostsController &lt; Controller
+  def create(req)
+    @post = Post.create(permit(params, {"title": true}))
+    return render("new", {}, {"status": 422}) if @post._errors
+
+    redirect(post_path(@post))
+  end
+end</code></pre>
+    </div></div>
+    <p class="text-gray-400 mb-12">The controller's directory wins only when that file exists, so <code>render("about")</code> still finds a top-level <code>about.html.slv</code> when <code>posts/about</code> does not. A name with a <code>/</code> is always taken as written, and so is any name outside a controller action. When neither file exists, the error names both: <code>Template 'about' not found in app/views (looked for 'posts/about' first)</code>.</p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Per-Action Layouts</h2>
     <p class="text-gray-400 mb-4">
         A single controller can serve different layouts to different actions &mdash; declared once in the

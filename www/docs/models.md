@@ -911,6 +911,54 @@ user.detach_avatar()
 # destroy / User.delete(id) purges the blobs automatically
 ```
 
+### Large files: resumable and direct uploads
+
+An ordinary attachment upload is one request buffered in memory under the body cap. Two other paths exist for big files.
+
+**Resumable (tus 1.0.0).** Turn it on in `config/routes.sl`:
+
+```soli
+resumable_uploads()                       # /tus, 1 GiB cap, needs a session
+resumable_uploads({"path": "/uploads/tus", "max_size": 5_000_000_000, "max_per_owner": 5})
+```
+
+Options: `path`, `max_size`, `max_active` (stored uploads overall, 200), `max_per_owner` (stored uploads per session, 20), `expires_in` (seconds, 86400), `dir` (`SOLI_TUS_DIR`, default `./storage/tus`), `require_session` (true). A finished upload counts toward both caps until `tus_take` + `attach_<field>` consumes it or it expires, so finishing uploads does not free room for more. "Session" means one the session store knows: a made-up `session_id` cookie is refused (401), and an upload stays its owner's across session writes, the `cookie` driver included. An upload can only be taken by its own session, complete and unexpired — `attach_<field>` checks a `tus_id` the same way even when the hash did not come from `tus_take`, and reads the size and type from the upload, not from the hash.
+
+The endpoint speaks tus creation, `HEAD` offset, `PATCH`, termination and expiration, so any tus client works — with `tus-js-client`:
+
+```js
+const upload = new tus.Upload(file, {
+  endpoint: "/tus",
+  chunkSize: 5 * 1024 * 1024,
+  metadata: { filename: file.name, filetype: file.type },
+  onSuccess: () => fetch("/videos", { method: "POST", body: JSON.stringify({ upload_id: upload.url.split("/").pop() }) })
+})
+upload.start()   // upload.abort() pauses; start() again resumes from the server's offset
+```
+
+Bytes go to disk as each chunk arrives, so memory is one chunk, not the file. An upload belongs to the session that created it; another session's is a `404`. When the last chunk lands, attach it:
+
+```soli
+file = tus_take(params["upload_id"])          # {filename, content_type, size, tus_id}; raises unless finished
+video.attach_file(file)                        # disk and s3 move/stream it: never loaded into memory
+```
+
+A disk attachment renames the file into place; an S3 attachment streams it a megabyte at a time. A SoliDB uploader, or any uploader with an image transform (`format`, `max_width`), needs the bytes, so the file is loaded (up to 64 MiB) first. The uploader's `content_types` and `max_size` are checked either way. `tus_discard(id)` drops an upload you do not want; unfinished ones expire after `expires_in`.
+
+**Direct to storage (S3).** For an S3 attachment the browser can send the file to the bucket without touching your server:
+
+```soli
+# POST /videos/presign
+info = direct_upload_start(video, "clip", params["filename"], params["content_type"], params["size"].to_i)
+return render_json(info, 422) unless info["error"].nil?     # {"error": "..."} when refused
+render_json(info)      # {"id", "url", "method": "PUT", "headers": {...}, "expires_in"}
+
+# POST /videos/attached — after the browser PUT the file to info["url"] with info["headers"]
+ok = direct_upload_finish(video, "clip", params["id"])
+```
+
+`direct_upload_start` checks the declared type and size against the uploader and returns a presigned `PUT` (default 15 minutes, at most an hour). **The URL does not pin the size or type — S3 takes what it is sent.** So `direct_upload_finish` asks the bucket what it holds under that id, re-checks the limits against *that*, deletes an object that breaks them, and only then records the blob. `direct_upload_finish` only accepts an id that `direct_upload_start` issued, in the same session, for the same field (the last ten are kept in the session), so a caller cannot claim, or get deleted, a blob that is not theirs; the browser must send the session cookie on both calls. An id that was never finished leaves an orphan object; add a bucket lifecycle rule for the `<collection>/` prefix. Set `S3_ENDPOINT` for MinIO and friends.
+
 ### The default content-type allow-list
 
 `uploader(...)` **requires** a `content_types` array. `has_one_attached` /

@@ -887,7 +887,33 @@ user.avatar_url()
 user.detach_avatar()</code></pre>
         </div>
     </div>
-    <p class="text-gray-400 mb-4">
+        <h3 id="large-uploads" class="text-xl font-bold text-white mb-3 scroll-mt-24">Large files: resumable and direct uploads</h3>
+    <p class="text-gray-400 mb-4">An ordinary attachment upload is one request buffered in memory under the body cap. Two other paths exist for big files.</p>
+    <p class="text-gray-400 mb-2"><strong class="text-white">Resumable (tus 1.0.0).</strong> Turn it on in <code>config/routes.sl</code>:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4"><div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">resumable_uploads()                       # /tus, 1 GiB cap, needs a session
+resumable_uploads({"path": "/uploads/tus", "max_size": 5_000_000_000, "max_per_owner": 5})</code></pre>
+    </div></div>
+    <p class="text-gray-400 mb-4">Options: <code>path</code>, <code>max_size</code>, <code>max_active</code> (stored uploads overall, 200), <code>max_per_owner</code> (stored uploads per session, 20), <code>expires_in</code> (seconds, 86400), <code>dir</code> (<code>SOLI_TUS_DIR</code>, default <code>./storage/tus</code>), <code>require_session</code> (true). A finished upload counts toward both caps until <code>tus_take</code> + <code>attach_&lt;field&gt;</code> consumes it or it expires. &ldquo;Session&rdquo; means one the session store knows: a made-up <code>session_id</code> cookie is refused (401), and an upload stays its owner's across session writes, the <code>cookie</code> driver included. An upload can only be taken by its own session, complete and unexpired &mdash; <code>attach_&lt;field&gt;</code> checks a <code>tus_id</code> the same way even when the hash did not come from <code>tus_take</code>, and reads the size and type from the upload, not from the hash. The endpoint speaks tus creation, <code>HEAD</code> offset, <code>PATCH</code>, termination and expiration, so any tus client works, for example <code>tus-js-client</code> with <code>endpoint: "/tus"</code>. <code>upload.abort()</code> pauses; <code>upload.start()</code> resumes from the server's offset.</p>
+    <p class="text-gray-400 mb-4">Bytes go to disk as each chunk arrives, so memory is one chunk, not the file. An upload belongs to the session that created it; another session's is a <code>404</code>. When the last chunk lands, attach it:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4"><div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">file = tus_take(params["upload_id"])          # {filename, content_type, size, tus_id}; raises unless finished
+video.attach_file(file)                        # disk and s3 move/stream it: never loaded into memory</code></pre>
+    </div></div>
+    <p class="text-gray-400 mb-6">A disk attachment renames the file into place; an S3 attachment streams it a megabyte at a time. A SoliDB uploader, or any uploader with an image transform, needs the bytes, so the file is loaded (up to 64&nbsp;MiB) first. The uploader's <code>content_types</code> and <code>max_size</code> are checked either way. <code>tus_discard(id)</code> drops an upload; unfinished ones expire after <code>expires_in</code>.</p>
+    <p class="text-gray-400 mb-2"><strong class="text-white">Direct to storage (S3).</strong> For an S3 attachment the browser can send the file to the bucket without touching your server:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4"><div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># POST /videos/presign
+info = direct_upload_start(video, "clip", params["filename"], params["content_type"], params["size"].to_i)
+return render_json(info, 422) unless info["error"].nil?     # {"error": "..."} when refused
+render_json(info)      # {"id", "url", "method": "PUT", "headers": {...}, "expires_in"}
+
+# POST /videos/attached — after the browser PUT the file to info["url"] with info["headers"]
+ok = direct_upload_finish(video, "clip", params["id"])</code></pre>
+    </div></div>
+    <p class="text-gray-400 mb-12"><code>direct_upload_start</code> checks the declared type and size against the uploader and returns a presigned <code>PUT</code> (default 15 minutes, at most an hour). <strong class="text-white">The URL does not pin the size or type &mdash; S3 takes what it is sent.</strong> So <code>direct_upload_finish</code> asks the bucket what it holds under that id, re-checks the limits against <em>that</em>, deletes an object that breaks them, and only then records the blob. <code>direct_upload_finish</code> only accepts an id that <code>direct_upload_start</code> issued, in the same session, for the same field (the last ten are kept in the session), so a caller cannot claim, or get deleted, a blob that is not theirs; the browser must send the session cookie on both calls. An id that was never finished leaves an orphan object; add a bucket lifecycle rule for the <code>&lt;collection&gt;/</code> prefix. Set <code>S3_ENDPOINT</code> for MinIO and friends.</p>
+
+<p class="text-gray-400 mb-4">
         <code>uploader(name, options)</code> is the explicit form (required <code>content_types</code> / <code>max_size</code>, SoliDB by default). Same generated methods.
     </p>
 

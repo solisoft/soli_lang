@@ -8,7 +8,7 @@ use std::env;
 use std::fs::OpenOptions;
 use std::fs::{self, File};
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process;
 
 use crate::cli::args::{
@@ -801,8 +801,8 @@ pub fn run_generate_mailer(name: &str, actions: &[String], folder: &str) {
     }
 }
 
-pub fn run_generate_component(name: &str, folder: &str) {
-    match solilang::scaffold::create_component(folder, name) {
+pub fn run_generate_component(name: &str, folder: &str, with_class: bool) {
+    match solilang::scaffold::create_component(folder, name, with_class) {
         Ok(()) => {}
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -1611,7 +1611,14 @@ pub fn run_test(
     fail_on_n1: bool,
     browser: bool,
     headed: bool,
+    filter: Option<&str>,
+    fail_fast: bool,
+    watch: bool,
 ) {
+    if watch {
+        watch_tests(paths);
+        return;
+    }
     test_runner::run_test(
         paths,
         jobs,
@@ -1622,7 +1629,73 @@ pub fn run_test(
         fail_on_n1,
         browser,
         headed,
+        filter,
+        fail_fast,
     );
+}
+
+/// Newest modification time among the `.sl` / `.slv` files under `roots`.
+fn newest_source_mtime(roots: &[PathBuf]) -> Option<std::time::SystemTime> {
+    fn walk(dir: &Path, newest: &mut Option<std::time::SystemTime>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let skip = matches!(
+                    path.file_name().and_then(|n| n.to_str()),
+                    Some("node_modules" | "target" | ".git" | "coverage")
+                );
+                if !skip {
+                    walk(&path, newest);
+                }
+            } else if matches!(
+                path.extension().and_then(|e| e.to_str()),
+                Some("sl" | "slv")
+            ) {
+                if let Some(modified) = entry.metadata().ok().and_then(|m| m.modified().ok()) {
+                    if newest.is_none_or(|current| modified > current) {
+                        *newest = Some(modified);
+                    }
+                }
+            }
+        }
+    }
+    let mut newest = None;
+    for root in roots {
+        walk(root, &mut newest);
+    }
+    newest
+}
+
+/// `soli test --watch`: run the suite in a child process (so each run starts
+/// from a clean interpreter), then poll the sources and rerun on change.
+fn watch_tests(paths: &[String]) {
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("soli"));
+    let child_args: Vec<String> = std::env::args()
+        .skip(1)
+        .filter(|arg| arg != "--watch" && arg != "-w")
+        .collect();
+    let mut roots: Vec<PathBuf> = ["app", "config", "lib", "tests", "db"]
+        .iter()
+        .map(PathBuf::from)
+        .filter(|dir| dir.exists())
+        .collect();
+    roots.extend(paths.iter().map(PathBuf::from).filter(|path| path.exists()));
+    if roots.is_empty() {
+        roots.push(PathBuf::from("."));
+    }
+
+    loop {
+        let seen = newest_source_mtime(&roots);
+        println!("\x1b[2m--- soli test --watch: running ---\x1b[0m");
+        let _ = process::Command::new(&exe).args(&child_args).status();
+        println!("\x1b[2m--- watching for changes (Ctrl-C to stop) ---\x1b[0m");
+        while newest_source_mtime(&roots) == seen {
+            std::thread::sleep(std::time::Duration::from_millis(400));
+        }
+    }
 }
 
 pub fn run_init() {
@@ -2560,14 +2633,48 @@ pub fn run_db_migrate(action: &DbMigrateAction, folder: &str, connection: Option
                     }
                 }
             }
-            DbMigrateAction::Down => {
+            DbMigrateAction::Down { step, to } => {
                 println!();
                 println!("  \x1b[1mRolling back migration...\x1b[0m");
                 println!();
 
                 let runner =
                     MigrationRunner::new(config, app_path).with_connection_filter(connection);
-                match runner.migrate_down() {
+                let outcome = match to {
+                    Some(version) => runner.migrate_down_to(version),
+                    None => runner.migrate_down_steps(Some(*step)),
+                };
+                match outcome {
+                    Ok(result) => {
+                        println!();
+                        println!("  \x1b[32m{}\x1b[0m", result.message);
+                        println!();
+                    }
+                    Err(e) => {
+                        eprintln!("  \x1b[31mError:\x1b[0m {}", e);
+                        process::exit(1);
+                    }
+                }
+            }
+            DbMigrateAction::Redo | DbMigrateAction::Reset => {
+                let all = matches!(action, DbMigrateAction::Reset);
+                println!();
+                println!(
+                    "  \x1b[1m{}\x1b[0m",
+                    if all {
+                        "Resetting database..."
+                    } else {
+                        "Redoing last migration..."
+                    }
+                );
+                println!();
+
+                let runner =
+                    MigrationRunner::new(config, app_path).with_connection_filter(connection);
+                let outcome = runner
+                    .migrate_down_steps(if all { None } else { Some(1) })
+                    .and_then(|_| runner.migrate_up());
+                match outcome {
                     Ok(result) => {
                         println!();
                         println!("  \x1b[32m{}\x1b[0m", result.message);

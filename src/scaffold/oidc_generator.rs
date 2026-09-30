@@ -39,7 +39,7 @@ pub fn create_oidc_provider(folder: &str) -> Result<(), String> {
 
     // (relative path, contents) — written only if absent, so re-running never
     // clobbers a client model or consent screen you've customized.
-    let files: [(&str, &str); 15] = [
+    let files: [(&str, &str); 19] = [
         ("app/services/oidc_config.sl", oidc::OIDC_CONFIG),
         ("app/services/oidc_helper.sl", oidc::OIDC_HELPER),
         ("app/models/oauth_client.sl", oidc::OAUTH_CLIENT_MODEL),
@@ -63,6 +63,22 @@ pub fn create_oidc_provider(folder: &str) -> Result<(), String> {
         (
             "app/controllers/oauth_authorizations_controller.sl",
             oidc::OAUTH_AUTHORIZATIONS_CONTROLLER,
+        ),
+        (
+            "app/models/oauth_device_code.sl",
+            oidc::OAUTH_DEVICE_CODE_MODEL,
+        ),
+        (
+            "app/controllers/oauth_device_controller.sl",
+            oidc::OAUTH_DEVICE_CONTROLLER,
+        ),
+        (
+            "app/views/oauth_device/new.html.slv",
+            oidc::OAUTH_DEVICE_VIEW,
+        ),
+        (
+            "app/controllers/oauth_registrations_controller.sl",
+            oidc::OAUTH_REGISTRATIONS_CONTROLLER,
         ),
         (
             "app/controllers/oauth_tokens_controller.sl",
@@ -111,6 +127,7 @@ fn ensure_directory_structure(app_path: &Path) -> Result<(), String> {
         "app/controllers",
         "app/services",
         "app/views/oauth_authorizations",
+        "app/views/oauth_device",
         // The logout confirmation page lives here: `GET /oauth/logout` renders
         // it instead of ending the session outright, so a cross-site link or
         // image cannot log a visitor out.

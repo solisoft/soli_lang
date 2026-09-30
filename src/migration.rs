@@ -1028,6 +1028,44 @@ let db = MigrationDb();
         })
     }
 
+    /// Roll back up to `steps` migrations, newest first, stopping early when
+    /// nothing is left to revert. `None` rolls back everything.
+    pub fn migrate_down_steps(&self, steps: Option<usize>) -> Result<MigrationResult, String> {
+        let mut reverted: Vec<String> = Vec::new();
+        while steps.is_none_or(|limit| reverted.len() < limit) {
+            let result = self.migrate_down()?;
+            if result.applied.is_empty() {
+                break;
+            }
+            reverted.extend(result.applied);
+        }
+        let message = if reverted.is_empty() {
+            "No migrations to rollback".to_string()
+        } else {
+            format!("Rolled back {} migration(s)", reverted.len())
+        };
+        Ok(MigrationResult {
+            message,
+            applied: reverted,
+        })
+    }
+
+    /// Roll back every applied migration newer than `version` (which stays
+    /// applied), so `--to 20240101000000` lands the schema at that version.
+    pub fn migrate_down_to(&self, version: &str) -> Result<MigrationResult, String> {
+        let known = self.get_migrations()?;
+        if !known.iter().any(|m| m.version == version) {
+            return Err(format!("Unknown migration version {version}"));
+        }
+        let newer = self
+            .status()?
+            .entries
+            .iter()
+            .filter(|entry| entry.applied && entry.version.as_str() > version)
+            .count();
+        self.migrate_down_steps(Some(newer))
+    }
+
     /// Show migration status
     pub fn status(&self) -> Result<MigrationStatus, String> {
         let migrations = self.get_migrations()?;

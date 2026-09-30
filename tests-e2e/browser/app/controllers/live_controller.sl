@@ -47,3 +47,21 @@ end
 def about(event_data)
     { "title": "about-live" }
 end
+
+# A file arrives as a hydrated hash once every chunk has landed.
+def uploads(event_data)
+    let event = event_data["event"]
+    let state = event_data["state"]
+    let params = event_data["params"]
+
+    if event == "attached"
+        let file = params["file"]
+        if file != null
+            return {"name": file["filename"], "size": file["size"], "error": ""}
+        end
+
+        return {"name": "", "size": 0, "error": params["error"] || "no file"}
+    end
+
+    {"name": state["name"] || "", "size": state["size"] || 0, "error": state["error"] || ""}
+end

@@ -117,7 +117,7 @@ class PostController < Controller
     @post = Post.create(this._permit_params(params))
     if @post._errors
       @title = "New Post"
-      return render("posts/new", {}, { "status": 422 })
+      return render("new", {}, { "status": 422 })
     end
 
     redirect("/posts")

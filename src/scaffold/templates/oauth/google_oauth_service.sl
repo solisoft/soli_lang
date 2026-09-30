@@ -5,8 +5,8 @@
 
 class GoogleOauth
   static def authorize_url(state, code_challenge) -> String {
-    let client_id = getenv("GOOGLE_CLIENT_ID")
-    let redirect = getenv("GOOGLE_REDIRECT_URI")
+    let client_id = url_encode(getenv("GOOGLE_CLIENT_ID").to_s)
+    let redirect = url_encode(getenv("GOOGLE_REDIRECT_URI").to_s)
     "https://accounts.google.com/o/oauth2/v2/auth?" +
       "client_id=" + client_id +
       "&redirect_uri=" + redirect +

@@ -1110,6 +1110,38 @@ Component files live under `app/views/components/`. They do **not** need a leadi
 </div>
 ```
 
+### Component classes
+
+A component can have a class for the logic its template should not carry. Put it in `app/components/` (a flat directory) and name it after the template: `components/stats_card.html.slv` pairs with `StatsCardComponent`.
+
+```soli
+# app/components/stats_card_component.sl
+class StatsCardComponent
+  label: String
+  value: Int
+  trend: String
+
+  def before_render
+    @trend = "+0%" if @trend.blank?
+  end
+
+  def tone
+    @value > 1000 ? "text-green-500" : "text-gray-400"
+  end
+end
+```
+
+```erb
+<!-- app/views/components/stats_card.html.slv -->
+<div class="stats-card <%= this.tone() %>"><%= label %>: <%= value %> (<%= this.trend %>)</div>
+```
+
+- The props passed to `component(...)` become the instance's **fields** (a declared field that was not passed is `nil`), and the instance is bound in the template as **`this`**. The props are still bare locals, exactly as for a class-less component.
+- `before_render`, if defined, runs first. Use it to derive fields; raising there fails the render with the class named in the message.
+- The class is found by the last segment of the template name (`cards/stat` → `StatComponent`), so class files are flat. A component with no class renders as before.
+- Class files load with the app (and on hot reload) into the same environment as view helpers, so their methods can call helpers and builtins.
+- `soli generate component stats_card --class` writes the template and a starter class.
+
 ### Subdirectories
 
 Group related components naturally:

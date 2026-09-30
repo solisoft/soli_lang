@@ -82,23 +82,33 @@ class OauthAuthorizationsController < Controller
   # should be returned as-is.
   def _validate_request
     client_id = params["client_id"].to_s
-    redirect_uri = params["redirect_uri"].to_s
-    state = params["state"].to_s
 
     client = OauthClient.find_active(client_id)
     return {"response": oidc_authorize_fatal("Unknown or disabled client application.")} if client.nil?
+
+    # A signed request object (RFC 9101) replaces the query parameters wholesale:
+    # the point is that nothing outside the signature can steer the request.
+    effective = params
+    if params["request"].to_s.present?
+      request_object = this._request_object(client)
+      return {"response": request_object["response"]} unless request_object["response"].nil?
+
+      effective = request_object["claims"]
+    end
+    redirect_uri = effective["redirect_uri"].to_s
+    state = effective["state"].to_s
 
     if !(client.redirect_uri_allowed?(redirect_uri))
       return {"response": oidc_authorize_fatal("The redirect_uri is not registered for this client application.")}
     end
 
     # Past this point the redirect_uri is trusted, so errors may go back to it.
-    invalid = this._parameter_error(client)
+    invalid = this._parameter_error(client, effective)
     if !invalid.nil?
       return {"response": oidc_authorize_error(redirect_uri, invalid["code"], invalid["description"], state)}
     end
 
-    scopes = client.allowed_scopes(oidc_scope_list(params["scope"]))
+    scopes = client.allowed_scopes(oidc_scope_list(effective["scope"]))
     if !(scopes.includes?("openid"))
       return {"response": oidc_authorize_error(redirect_uri, "invalid_scope", "The openid scope is required", state)}
     end
@@ -114,16 +124,16 @@ class OauthAuthorizationsController < Controller
         "redirect_uri": redirect_uri,
         "state": state,
         "scope": scopes.join(" "),
-        "nonce": params["nonce"].to_s,
-        "code_challenge": params["code_challenge"].to_s,
-        "code_challenge_method": params["code_challenge_method"].to_s
+        "nonce": effective["nonce"].to_s,
+        "code_challenge": effective["code_challenge"].to_s,
+        "code_challenge_method": effective["code_challenge_method"].to_s
       }
     }
   end
 
   # Returns nil when the request is well-formed, or {code, description}.
-  def _parameter_error(client)
-    if params["response_type"].to_s != "code"
+  def _parameter_error(client, effective)
+    if effective["response_type"].to_s != "code"
       return {"code": "unsupported_response_type", "description": "Only the authorization code flow is supported"}
     end
 
@@ -131,12 +141,12 @@ class OauthAuthorizationsController < Controller
       return {"code": "unauthorized_client", "description": "This client may not use the authorization code grant"}
     end
 
-    this._pkce_error(client)
+    this._pkce_error(client, effective)
   end
 
-  def _pkce_error(client)
-    challenge = params["code_challenge"].to_s
-    method = params["code_challenge_method"].to_s
+  def _pkce_error(client, effective)
+    challenge = effective["code_challenge"].to_s
+    method = effective["code_challenge_method"].to_s
 
     if challenge.blank?
       return null unless client.require_pkce == true
@@ -151,6 +161,36 @@ class OauthAuthorizationsController < Controller
     end
 
     null
+  end
+
+  # Verify `request=<jwt>` against the key registered for this client
+  # (`request_object_key`, a public PEM; RS256 only). The object must be issued
+  # by the client for this provider. `request_uri` is not supported: fetching a
+  # URL supplied by the caller is an SSRF door we would rather keep shut.
+  # Every failure is a page, not a redirect — the redirect_uri inside an
+  # unverified object is the one thing that must not be trusted.
+  def _request_object(client)
+    key = client.request_object_key.to_s
+    if key.blank?
+      return {"response": oidc_authorize_fatal("This client has no registered request-object key.")}
+    end
+
+    claims = jwt_verify(params["request"].to_s, "", {
+      "algorithm": "RS256",
+      "key": key,
+      "issuer": client.client_id,
+      "audience": oidc_issuer()
+    }) rescue nil
+    if claims.nil? || claims["error"] == true
+      return {"response": oidc_authorize_fatal("The request object is invalid or its signature does not verify.")}
+    end
+
+    # RFC 9101 §6.3: client_id inside the object must agree with the outside.
+    if claims["client_id"].to_s != client.client_id
+      return {"response": oidc_authorize_fatal("The request object was issued for a different client.")}
+    end
+
+    {"response": nil, "claims": claims}
   end
 
   def _issue_code(context, user, scopes)

@@ -161,6 +161,7 @@ const SOLI_PRELUDES: &[&str] = &[
     crate::interpreter::builtins::mailer::MAILER_PRELUDE,
     crate::interpreter::builtins::template::FORM_BUILDER_SOURCE,
     crate::interpreter::builtins::retry::RETRY_SOURCE,
+    crate::interpreter::builtins::mock::MOCK_SOURCE,
     crate::serve::uploads_prelude::UPLOADS_PRELUDE_SOURCE,
     crate::serve::uploads_prelude::UPLOADS_HELPERS_SOURCE,
 ];

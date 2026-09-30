@@ -1,0 +1,54 @@
+<div class="min-h-screen flex items-center justify-center px-4">
+  <div class="w-full max-w-md">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+      <% if step == "enter" %>
+        <h1 class="text-2xl font-bold mb-2 text-center">Connect a device</h1>
+        <p class="text-center text-sm text-slate-400 mb-6">Enter the code shown on your device.</p>
+        <% if error %>
+          <p class="mb-4 text-sm text-red-400 text-center"><%= h(error) %></p>
+        <% end %>
+        <form action="/oauth/device" method="POST" class="space-y-3">
+          <%- csrf_field() %>
+          <input type="text" name="user_code" autocomplete="off" autofocus placeholder="WDJB-MJHT"
+                 class="w-full rounded-md bg-slate-800 border border-slate-700 px-3 py-2 text-center text-xl tracking-widest uppercase">
+          <button type="submit"
+                  class="w-full rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
+            Continue
+          </button>
+        </form>
+      <% elsif step == "confirm" %>
+        <h1 class="text-2xl font-bold mb-2 text-center"><%= h(client["name"]) %></h1>
+        <p class="text-center text-sm text-slate-400 mb-6">
+          wants to connect a device to your account. Only continue if the code on the device is
+          <strong class="text-slate-200"><%= h(user_code) %></strong>.
+        </p>
+        <ul class="space-y-2 mb-6 text-sm">
+          <% for scope in scopes %>
+            <li class="flex items-start gap-2 text-slate-300">
+              <span class="text-indigo-400 mt-0.5">&check;</span>
+              <span><%= h(scope["description"]) %></span>
+            </li>
+          <% end %>
+        </ul>
+        <form action="/oauth/device" method="POST" class="space-y-3">
+          <%- csrf_field() %>
+          <input type="hidden" name="user_code" value="<%= h(user_code) %>">
+          <button type="submit" name="approve" value="1"
+                  class="w-full rounded-md bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-medium text-white transition-colors">
+            Allow
+          </button>
+          <button type="submit" name="approve" value="0"
+                  class="w-full rounded-md bg-slate-800 hover:bg-slate-700 px-4 py-2 font-medium text-slate-300 transition-colors">
+            Deny
+          </button>
+        </form>
+      <% elsif step == "approved" %>
+        <h1 class="text-2xl font-bold mb-2 text-center">Device connected</h1>
+        <p class="text-center text-sm text-slate-400">You can return to your device.</p>
+      <% else %>
+        <h1 class="text-2xl font-bold mb-2 text-center">Request denied</h1>
+        <p class="text-center text-sm text-slate-400">The device was not connected.</p>
+      <% end %>
+    </div>
+  </div>
+</div>

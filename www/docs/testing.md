@@ -240,6 +240,22 @@ soli test --jobs=4           # 4 workers
 soli test --jobs=1           # Sequential (debug)
 ```
 
+## Filtering and Fail-Fast
+
+```bash
+soli test --filter "creates a post"   # only tests whose full name contains the text
+soli test -n checkout                 # short form; matches describe names too
+soli test --fail-fast                 # stop scheduling tests after the first failure
+soli test --watch                     # rerun the suite whenever a .sl / .slv file changes
+```
+
+`--filter` matches case-insensitively against the full description: the enclosing
+`describe` names followed by the test name, space-joined (`Posts creates a post`).
+Files with no matching test still load, but run nothing. With `--fail-fast`, the
+remaining tests and files are skipped once one test fails, so the report lists the
+failure without a wall of follow-on noise. `--watch` (`-w`) runs the suite, then polls `app/`, `config/`, `lib/`, `db/`, `tests/` and any path you passed, and reruns it in a fresh process on every change; the other flags are passed through. Both compose with `--jobs`, `--coverage`
+and the rest.
+
 ## Coverage Reporting
 
 ```bash
@@ -373,6 +389,74 @@ Two things keep this from reaching anything real:
 
 Never set it on a machine that stores real passwords: a hash made under it
 carries its weakness for as long as it is stored.
+
+## Test Doubles: `Mock`
+
+`Mock` is a hand-rolled double for the collaborator your code takes as an argument.
+It is defined in the test environment only (`soli test`), so it never shadows an app
+class in production.
+
+```soli
+test("charges through the gateway") do
+  gateway = new Mock("gateway", {
+    "charge": fn(amount) { {"ok": true, "amount": amount} },
+    "currency": "EUR"
+  })
+
+  result = Checkout.new(gateway).pay(1200)
+
+  assert(result["ok"])
+  gateway.assert_received("charge", [1200])
+  gateway.assert_not_received("refund")
+end
+```
+
+- Stubs are a hash of method name to a value, or to a lambda called with the arguments (up to four).
+- `stub(name, value)` adds one later and returns the double.
+- Every call is recorded: `calls`, `calls_to(name)`, `call_count(name)`, `received?(name)`, `reset_calls`.
+- `assert_received(name)` / `assert_received(name, args)` and `assert_not_received(name)` throw a readable message on failure.
+- A message with no stub throws (`gateway received unexpected message refund`), so a typo fails loudly.
+- Call a double's methods **with parentheses** (`gateway.currency()`): a bare `gateway.currency` yields the bound method, not its result.
+
+### Stubbing a real class
+
+`Mock.stub_class` and `Mock.stub_instance` replace one method on a class other code
+already references, for the rest of the current test:
+
+```soli
+test("checkout charges through the gateway") do
+  charge = Mock.stub_class(Gateway, "charge", fn(amount) { {"ok": true} })
+
+  assert(Checkout.new.pay(1200)["ok"])       # Checkout calls Gateway.charge(...)
+  charge.assert_received("charge", [1200])
+
+  Mock.stub_instance(User, "save", true)     # every User#save answers true
+end
+```
+
+- The stub is a `Mock`, so it records calls and supports `assert_received`. The handler is a value or a lambda.
+- It is undone automatically when the test ends (`Mock.unstub_all` does it early). A stub set in `before_all` lasts the whole `describe` (nested ones included) and is undone after its `after_all`; one set in a test or `before_each` ends with that test.
+- Works on model finders (`Post.find`, `Post.all`) and instance methods, including native ones such as `save`. A stubbed `save` / `update` / `create` answers from the stub even when the model has callbacks; a spy on one still runs the callbacks. Only the stubbed method changes; the rest of the class is untouched.
+- It patches the code that runs in the test process. A request spec's app runs in the test *server*, a separate process, so stub there with a dependency you pass in.
+- Don't stub a name `Mock` itself defines (`stub`, `calls`, `received?`, ...).
+
+#### RSpec-shaped chains and spies
+
+```soli
+Mock.allow(Gateway).to_receive("charge").and_return({"ok": true})
+Mock.allow(Gateway).to_receive("charge").and_call(fn(amount) { {"ok": amount > 0} })
+spy = Mock.allow(Gateway).to_receive("charge").and_call_original
+Mock.allow_any_instance(User).to_receive("save").and_return(true)
+```
+
+`and_call_original` makes a **spy**: the call is recorded on the returned `Mock` and the
+real method still runs, so `spy.assert_received("charge", [1200])` checks what happened
+without changing it (`Mock.spy_class(Gateway, "charge")` / `Mock.spy_instance(...)` are the
+same thing spelled directly). Every chain ends by returning the `Mock`. A stub matches any
+arguments; there is no `with(...)` filter, so branch inside an `and_call` lambda when a
+method must answer differently per argument.
+
+For the database and HTTP use the sections below.
 
 ## Mock Database Queries
 

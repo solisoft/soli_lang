@@ -84,8 +84,57 @@ pub fn apply_to(
     named
 }
 
+/// `live_update(component, assigns, opts)` — push assigns to the attached
+/// instances of `component` from anywhere (a controller, a job, another
+/// process), unlike `send_update`, which only reaches the view whose handler is
+/// running. `opts`: `room`, `session`, `child` (a nested component name).
+/// Returns `{ "local": n, "published": bool }`.
+fn live_update(args: &[Value]) -> Result<Value, String> {
+    let component = match args.first() {
+        Some(Value::String(s)) if !s.is_empty() => s.to_string(),
+        _ => return Err("live_update(component, assigns, opts?) expects a component name".into()),
+    };
+    let assigns = match args.get(1) {
+        Some(v @ Value::Hash(_)) => value_to_json(v).unwrap_or(JsonValue::Null),
+        _ => return Err("live_update expects an assigns hash".to_string()),
+    };
+    let mut target = crate::live::bus::Target {
+        component,
+        ..Default::default()
+    };
+    if let Some(Value::Hash(opts)) = args.get(2) {
+        let opts = value_to_json(&Value::Hash(opts.clone())).unwrap_or(JsonValue::Null);
+        let text = |key: &str| {
+            opts.get(key)
+                .and_then(JsonValue::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        };
+        for key in opts.as_object().into_iter().flat_map(|o| o.keys()) {
+            if !["room", "session", "child"].contains(&key.as_str()) {
+                return Err(format!(
+                    "live_update: unknown option {key:?} (room, session, child)"
+                ));
+            }
+        }
+        target.room = text("room");
+        target.session = text("session");
+        target.child = text("child");
+    }
+    let delivery = crate::live::bus::broadcast(&target, &assigns)?;
+    Ok(crate::interpreter::value::hash_from_pairs([
+        ("local", Value::Int(delivery.local as i64)),
+        ("published", Value::Bool(delivery.published)),
+    ]))
+}
+
 /// `send_update(assigns)` or `send_update(component, assigns)`.
 pub fn register(env: &mut Environment) {
+    env.define(
+        "live_update".to_string(),
+        Value::NativeFunction(NativeFunction::new("live_update", None, live_update)),
+    );
+
     env.define(
         "send_update".to_string(),
         Value::NativeFunction(NativeFunction::new(

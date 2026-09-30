@@ -459,6 +459,21 @@ impl TemplateCache {
         let template_path = self.resolve_template_path(&resolved_name)?;
         let nodes = self.get_or_load_template(&template_path)?;
 
+        // A component with a class (`app/components/card_component.sl` defining
+        // `CardComponent`) renders with an instance bound as `this`.
+        let component_data;
+        let data = match is_component
+            .then(|| instantiate_component_class(&resolved_name, data))
+            .transpose()?
+            .flatten()
+        {
+            Some(with_instance) => {
+                component_data = with_instance;
+                &component_data
+            }
+            None => data,
+        };
+
         // Propagate the current controller's `@instance` variables into this
         // include's locals (Rails-style), mirroring how the main view receives
         // them via `inject_controller_instance_vars`. Explicit locals passed to
@@ -598,6 +613,11 @@ impl TemplateCache {
         }
 
         result
+    }
+
+    /// Whether `name` resolves to a template file.
+    pub fn template_exists(&self, name: &str) -> bool {
+        self.resolve_template_path(name).is_ok()
     }
 
     /// Resolve a template name to a file path (cached).
@@ -947,6 +967,77 @@ fn body_hash_64(bytes: &[u8]) -> u64 {
     hash = hash.wrapping_mul(0xc4ce_b9fe_1a85_ec53);
     hash ^= hash >> 33;
     hash
+}
+
+/// `components/stat_block` → `StatBlockComponent`: the class a component
+/// template may be paired with.
+fn component_class_name(resolved_name: &str) -> String {
+    let base = resolved_name.rsplit('/').next().unwrap_or(resolved_name);
+    let base = base.split('.').next().unwrap_or(base);
+    let mut class = String::new();
+    for word in base.split(['_', '-']).filter(|w| !w.is_empty()) {
+        let mut chars = word.chars();
+        if let Some(first) = chars.next() {
+            class.extend(first.to_uppercase());
+            class.push_str(chars.as_str());
+        }
+    }
+    class.push_str("Component");
+    class
+}
+
+/// If `app/components/` defines the class for this component, build an
+/// instance — the props become its fields — run its `before_render` hook, and
+/// return the props with the instance added as `this`. `None` means there is no
+/// class and the template renders from the props alone, as it always did.
+///
+/// The props hash is copied, not mutated: the caller may reuse it.
+fn instantiate_component_class(resolved_name: &str, data: &Value) -> Result<Option<Value>, String> {
+    use crate::interpreter::value::{HashKey, Instance};
+
+    let Some(Value::Class(class)) = crate::interpreter::builtins::template::get_view_helper(
+        &component_class_name(resolved_name),
+    ) else {
+        return Ok(None);
+    };
+    let Value::Hash(props) = data else {
+        return Ok(None);
+    };
+
+    let mut copy = props.borrow().clone();
+    let mut instance = Instance::new(class.clone());
+    // A declared field the caller did not pass reads as nil, not as an error.
+    let mut declaring = Some(class.clone());
+    while let Some(current) = declaring {
+        for field in current.fields.keys() {
+            instance.set(field.to_string(), Value::Null);
+        }
+        declaring = current.superclass.clone();
+    }
+    for (key, value) in copy.iter() {
+        if let HashKey::String(name) = key {
+            instance.set(name.to_string(), value.clone());
+        }
+    }
+    let instance = Rc::new(RefCell::new(instance));
+
+    if let Some(hook) = class.find_method("before_render") {
+        let bound = crate::interpreter::executor::access::member::bind_user_method_to_receiver(
+            Value::Instance(instance.clone()),
+            hook,
+        );
+        // The hook runs in the class's own closure environment; a bare
+        // interpreter over an empty one avoids registering every builtin again
+        // on each render of the component.
+        crate::interpreter::executor::Interpreter::with_environment(Rc::new(RefCell::new(
+            crate::interpreter::environment::Environment::new(),
+        )))
+        .call_value(bound, Vec::new(), crate::span::Span::default())
+        .map_err(|e| format!("{}#before_render: {}", class.name, e))?;
+    }
+
+    copy.insert(HashKey::String("this".into()), Value::Instance(instance));
+    Ok(Some(Value::Hash(Rc::new(RefCell::new(copy)))))
 }
 
 /// Check if a template path is a markdown file.
@@ -2090,6 +2181,36 @@ mod tests {
 
         clear_view_helpers();
         crate::template::core_eval::reset_builtins_rc();
+    }
+
+    #[test]
+    fn component_class_names_follow_the_template_name() {
+        assert_eq!(component_class_name("components/badge"), "BadgeComponent");
+        assert_eq!(
+            component_class_name("components/stat_block"),
+            "StatBlockComponent"
+        );
+        assert_eq!(
+            component_class_name("components/cards/stat"),
+            "StatComponent"
+        );
+        assert_eq!(
+            component_class_name("components/user-card"),
+            "UserCardComponent"
+        );
+        assert_eq!(component_class_name("shared/nav.html"), "NavComponent");
+    }
+
+    #[test]
+    fn a_component_without_a_class_is_left_alone() {
+        let data = Value::Hash(Rc::new(RefCell::new(
+            crate::interpreter::value::HashPairs::default(),
+        )));
+        assert!(
+            instantiate_component_class("components/no_such_thing", &data)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

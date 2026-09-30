@@ -57,6 +57,7 @@ pub mod span_log;
 mod static_files;
 pub mod template_warnings;
 pub mod tenant;
+pub mod tus;
 mod upgrade;
 pub(crate) mod uploads_prelude;
 pub mod vhost;
@@ -416,7 +417,7 @@ pub(crate) fn header_str<'a>(headers: &'a hyper::header::HeaderMap, name: &str) 
 }
 
 /// Response data from interpreter thread
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct ResponseData {
     pub(crate) status: u16,
     pub(crate) headers: Vec<(String, String)>,
@@ -830,14 +831,14 @@ pub fn serve_folder_with_options_and_hooks(
 
     // Load view helpers from app/helpers directory (only accessible in templates)
     let helpers_dir = app_dir.join("helpers");
-    if helpers_dir.exists() {
+    if crate::interpreter::builtins::template::view_helpers_present(&helpers_dir) {
         match crate::interpreter::builtins::template::load_view_helpers(&helpers_dir) {
             Ok(count) => {
                 if count > 0 {
                     println!(
-                        "Loaded {} view helper(s) from {}",
+                        "Loaded {} view helper(s) and component class(es) from {}",
                         count,
-                        helpers_dir.display()
+                        app_dir.display()
                     );
                 }
             }
@@ -845,11 +846,13 @@ pub fn serve_folder_with_options_and_hooks(
                 eprintln!("Error loading view helpers: {}", e);
             }
         }
-        // Track helper files for hot reload
-        for entry in std::fs::read_dir(&helpers_dir).unwrap().flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "sl") {
-                file_tracker.track(&path);
+        // Track helper and component files for hot reload
+        for dir in [&helpers_dir, &app_dir.join("components")] {
+            for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|ext| ext == "sl") {
+                    file_tracker.track(&path);
+                }
             }
         }
     }
@@ -1525,6 +1528,16 @@ fn run_hyper_server_worker_pool(
         }
     }
 
+    // Cross-process `live_update`: subscribe to the shared bus so an update
+    // published by a job worker or another instance reaches this process's
+    // LiveViews.
+    let declares_live_components = std::fs::read_to_string(&routes_file)
+        .map(|source| source.contains("router_live"))
+        .unwrap_or(false);
+    if declares_live_components {
+        crate::live::bus::start(&runtime_handle);
+    }
+
     // The pinned queues (see `PINNED_LV_TX`): one per realtime worker, in
     // realtime-worker order. With no split every worker is a realtime one.
     let num_pinned = if split_realtime {
@@ -1752,7 +1765,7 @@ fn worker_loop(
     }
 
     // Load view helpers in this worker (thread-local)
-    if helpers_dir.exists() {
+    if crate::interpreter::builtins::template::view_helpers_present(&helpers_dir) {
         if let Err(e) = crate::interpreter::builtins::template::load_view_helpers(&helpers_dir) {
             eprintln!("Worker {}: Error loading view helpers: {}", worker_id, e);
         }
@@ -3157,6 +3170,31 @@ fn handle_live_upload(data: &RequestData) -> ResponseData {
     }
 }
 
+/// `GET /live/upload/status?id=<upload id>` — which chunks of an in-progress
+/// upload the server already has, so a paused or interrupted upload resumes
+/// instead of starting over. Scoped to the uploading session.
+fn handle_live_upload_status(data: &RequestData) -> ResponseData {
+    let owner = crate::interpreter::builtins::session::extract_session_id_from_cookie(
+        data.headers.get("cookie").and_then(|v| v.to_str().ok()),
+    );
+    let id = data
+        .query
+        .iter()
+        .find(|(name, _)| name == "id")
+        .map(|(_, value)| value.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let status = crate::live::upload::chunk_status(owner.as_deref(), &id);
+    ResponseData {
+        status: 200,
+        headers: vec![
+            ("Content-Type".to_string(), "application/json".to_string()),
+            ("Cache-Control".to_string(), "no-store".to_string()),
+        ],
+        body: status.to_string().into(),
+    }
+}
+
 /// Report a LiveView handler failure to the client and the log.
 ///
 /// The browser gets the message only in dev; production gets a generic string so
@@ -3366,6 +3404,12 @@ fn handle_liveview_event(
         .ok_or_else(|| format!("LiveView not found: {}", data.liveview_id))?;
 
     let component = instance.component.clone();
+
+    // A `live_update` from a controller, a job or another process. Only the
+    // token makes it one: a client event of the same name goes to the handler.
+    if crate::live::bus::is_server_update(&data.event, &data.params) {
+        return apply_bus_update(interpreter, data, &mut instance);
+    }
 
     // An EUI component renders a node tree, not HTML: same handler, other
     // wire. Decided here so the worker loop stays untouched.
@@ -3954,6 +3998,72 @@ pub(crate) fn enqueue_live_query_changed(subscribers: Vec<(String, String)>) {
             response_tx,
         });
     }
+}
+
+/// Queue `assigns` as a server-originated `live_update` for each instance in
+/// `instances` (see `crate::live::bus`). Returns how many were queued; a
+/// backed-up worker queue drops one rather than blocking the caller, the same
+/// trade as `enqueue_live_query_changed`.
+pub(crate) fn enqueue_live_update(
+    instances: Vec<(String, String)>,
+    child: Option<&str>,
+    assigns: &serde_json::Value,
+) -> usize {
+    if LV_EVENT_TX.get().is_none() {
+        return 0;
+    }
+    let mut queued = 0;
+    for (liveview_id, component) in instances {
+        let Some(tx) = lv_sender_for(&liveview_id, &component) else {
+            continue;
+        };
+        let (response_tx, _response_rx) = oneshot::channel();
+        let sent = tx.try_send(LiveViewEventData {
+            liveview_id,
+            component,
+            event: crate::live::bus::UPDATE_EVENT.to_string(),
+            params: serde_json::json!({
+                "assigns": assigns,
+                "child": child,
+                "_bus_token": crate::live::bus::internal_token(),
+            }),
+            sender_session: None,
+            response_tx,
+        });
+        if sent.is_ok() {
+            queued += 1;
+        }
+    }
+    queued
+}
+
+/// Apply a `live_update` to one instance: merge the assigns (onto the instance,
+/// or onto a nested component when `child` is set), run the child's `update`
+/// handler if it has one, and push the patch — an HTML diff, or for an EUI
+/// component a node-tree render. The caller checked the token.
+fn apply_bus_update(
+    interpreter: &mut Interpreter,
+    data: &LiveViewEventData,
+    instance: &mut crate::live::view::LiveViewInstance,
+) -> Result<(), String> {
+    let assigns = data
+        .params
+        .get("assigns")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    let child = data
+        .params
+        .get("child")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    crate::live::update::queue_named(child, assigns);
+    apply_live_updates(interpreter, instance, None);
+    let component = instance.component.clone();
+    #[cfg(feature = "eui")]
+    if eui::is_eui_component(&component) {
+        return eui::rerender_eui(interpreter, data, instance);
+    }
+    render_and_send_patch(&component, instance)
 }
 
 /// Fallback handler for LiveView events (for backwards compatibility)
@@ -4793,6 +4903,9 @@ fn call_oop_controller_action(
     crate::interpreter::builtins::controller::registry::set_current_controller(
         controller_instance.clone(),
     );
+    if let Some((controller_key, _)) = handler_name.split_once('#') {
+        crate::interpreter::builtins::controller::registry::set_current_view_dir(controller_key);
+    }
     struct CurrentControllerGuard;
     impl Drop for CurrentControllerGuard {
         fn drop(&mut self) {
@@ -5663,8 +5776,14 @@ fn handle_request(
 
     // LiveView file bytes travel over HTTP (WS is capped at 1 MiB). The
     // client then sends only the returned id over the socket.
+    if let Some(response) = tus::handle(data) {
+        return response;
+    }
     if data.method == "POST" && data.path == "/live/upload" {
         return handle_live_upload(data);
+    }
+    if data.method == "GET" && data.path == "/live/upload/status" {
+        return handle_live_upload_status(data);
     }
 
     // Resolved before the route lookup because a 404 emits a session cookie

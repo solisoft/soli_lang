@@ -526,6 +526,8 @@ pub fn run_test(
     fail_on_n1: bool,
     browser: bool,
     headed: bool,
+    filter: Option<&str>,
+    fail_fast: bool,
 ) {
     let test_paths: Vec<PathBuf> = if paths.is_empty() {
         vec![std::env::current_dir()
@@ -571,6 +573,8 @@ pub fn run_test(
     if fail_on_n1 {
         solilang::interpreter::builtins::request_helpers::enable_fail_on_n1();
     }
+    solilang::interpreter::builtins::test_progress::set_name_filter(filter.map(str::to_string));
+    solilang::interpreter::builtins::test_progress::set_fail_fast(fail_fast);
 
     // `--browser`: fail now rather than at the first `visit()`. Discovering
     // there is no browser thirty seconds into a suite, from inside a worker
@@ -1152,6 +1156,9 @@ pub fn run_test(
                     solilang::interpreter::builtins::test_server::set_thread_test_server_port(port);
                 }
                 loop {
+                    if solilang::interpreter::builtins::test_progress::fail_fast_tripped() {
+                        break;
+                    }
                     let file = {
                         let mut q = queue.lock().unwrap();
                         match q.pop() {

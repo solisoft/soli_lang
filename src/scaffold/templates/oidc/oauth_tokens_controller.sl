@@ -19,6 +19,8 @@ class OauthTokensController < Controller
 
     return this._authorization_code_grant(auth["client"]) if grant_type == "authorization_code"
     return this._refresh_token_grant(auth["client"]) if grant_type == "refresh_token"
+    return this._client_credentials_grant(auth["client"]) if grant_type == "client_credentials"
+    return this._device_code_grant(auth["client"]) if grant_type == OIDC_DEVICE_GRANT
 
     oidc_token_error("unsupported_grant_type", "Unsupported grant_type: #{grant_type}", 400)
   end
@@ -37,6 +39,90 @@ class OauthTokensController < Controller
     end
 
     oidc_json({}, 200)
+  end
+
+  # POST /oauth/device_authorization (RFC 8628 §3.1)
+  #
+  # The device asks for a pair of codes. The client must have opted in with the
+  # device grant in its `grant_types`; public clients are fine, since a TV
+  # cannot keep a secret.
+  def device_authorization
+    auth = this._authenticate_client()
+    return auth["response"] unless auth["response"].nil?
+
+    client = auth["client"]
+    unless client.supports_grant?(OIDC_DEVICE_GRANT)
+      return oidc_token_error("unauthorized_client", "This client may not use the device grant", 400)
+    end
+
+    requested = oidc_scope_list(params["scope"])
+    requested = ["openid"] if requested.length() == 0
+    scopes = client.allowed_scopes(requested)
+    if scopes.length() != requested.length()
+      return oidc_token_error("invalid_scope", "Requested scope is not allowed for this client", 400)
+    end
+
+    issued = OauthDeviceCode.issue(client.client_id, scopes)
+    verification_uri = "#{oidc_issuer()}/oauth/device"
+
+    oidc_json({
+      "device_code": issued["device_code"],
+      "user_code": issued["user_code"],
+      "verification_uri": verification_uri,
+      "verification_uri_complete": "#{verification_uri}?user_code=#{issued["user_code"]}",
+      "expires_in": issued["expires_in"],
+      "interval": issued["interval"]
+    }, 200)
+  end
+
+  # POST /oauth/introspect (RFC 7662)
+  #
+  # For resource servers that cannot verify the JWT themselves (or want
+  # revocation honoured immediately). Only authenticated *confidential* clients
+  # may ask: an anonymous introspection endpoint is a token-validity oracle.
+  # Anything that is not a live token answers `{"active": false}` and nothing
+  # else, so a caller learns no more about a dead token than that it is dead.
+  def introspect
+    auth = this._authenticate_client()
+    return auth["response"] unless auth["response"].nil?
+
+    if auth["client"].public?()
+      return oidc_token_error("invalid_client", "Public clients cannot introspect tokens", 401)
+    end
+
+    token = params["token"].to_s
+    hint = params["token_type_hint"].to_s
+    claims = hint == "refresh_token" ? nil : oidc_verify_access_token(token)
+    return oidc_json(this._access_token_body(claims), 200) unless claims.nil?
+
+    refresh = OauthRefreshToken.find_by_token(token)
+    if !refresh.nil? && refresh.active?()
+      return oidc_json({
+        "active": true,
+        "scope": refresh["scope"],
+        "client_id": refresh["client_id"],
+        "sub": refresh["user_key"],
+        "token_type": "refresh_token",
+        "exp": refresh["expires_at"],
+        "iat": refresh["issued_at"]
+      }, 200)
+    end
+
+    oidc_json({"active": false}, 200)
+  end
+
+  def _access_token_body(claims)
+    {
+      "active": true,
+      "scope": claims["scope"],
+      "client_id": claims["aud"],
+      "sub": claims["sub"],
+      "token_type": "Bearer",
+      "exp": claims["exp"],
+      "iat": claims["iat"],
+      "iss": claims["iss"],
+      "jti": claims["jti"]
+    }
   end
 
   # --- grants ----------------------------------------------------------------
@@ -128,6 +214,63 @@ class OauthTokensController < Controller
     end
 
     this._issue_tokens(client, user, scopes["scopes"], token["chain_id"], null, null)
+  end
+
+  # RFC 8628 §3.4-3.5: the device polls until the person decides. Every answer
+  # but success is an error the device is expected to act on: keep waiting,
+  # back off, or give up.
+  def _device_code_grant(client)
+    unless client.supports_grant?(OIDC_DEVICE_GRANT)
+      return oidc_token_error("unauthorized_client", "This client may not use the device grant", 400)
+    end
+
+    outcome = OauthDeviceCode.poll(params["device_code"].to_s, client.client_id)
+    unless outcome["error"].nil?
+      return oidc_token_error(outcome["error"], "Device authorization: #{outcome["error"]}", 400)
+    end
+
+    row = outcome["row"]
+    user = User.find_by("_key", row["user_key"])
+    return oidc_token_error("invalid_grant", "The user no longer exists", 400) if user.nil?
+
+    this._issue_tokens(client, user, oidc_scope_list(row["scope"]), row["refresh_chain_id"], nil, row["auth_time"])
+  end
+
+  # RFC 6749 §4.4: a confidential client acting for itself. There is no user, so
+  # no id_token and no refresh token, and `openid` / `offline_access` mean
+  # nothing here. The token's `sub` is the client itself, marked `gty` so the
+  # userinfo endpoint can refuse it rather than look for a user.
+  def _client_credentials_grant(client)
+    if client.public?()
+      return oidc_token_error("unauthorized_client", "Public clients cannot use client_credentials", 400)
+    end
+    if !(client.supports_grant?("client_credentials"))
+      return oidc_token_error("unauthorized_client", "This client may not use client_credentials", 400)
+    end
+
+    requested = oidc_scope_list(params["scope"])
+    if requested.includes?("openid") || requested.includes?("offline_access")
+      return oidc_token_error("invalid_scope", "openid and offline_access need a user", 400)
+    end
+
+    requested = (client.scopes ?? []).filter(fn(scope) { scope != "openid" && scope != "offline_access" }) if requested.length() == 0
+
+    # The client's own scope list decides, not OIDC_SUPPORTED_SCOPES: API scopes
+    # like "orders:read" are the point of this grant and are not OIDC scopes.
+    granted = client.scopes ?? []
+    scopes = requested.filter(fn(scope) { granted.includes?(scope) })
+    if scopes.length() != requested.length()
+      return oidc_token_error("invalid_scope", "Requested scope is not allowed for this client", 400)
+    end
+
+    access_token = oidc_access_token(client.client_id, client.client_id, scopes, uuid_v4(), {"gty": "client-credentials"})
+
+    oidc_json({
+      "access_token": access_token,
+      "token_type": "Bearer",
+      "expires_in": OIDC_ACCESS_TOKEN_TTL,
+      "scope": scopes.join(" ")
+    }, 200)
   end
 
   # A refresh may narrow the scope but never widen it (RFC 6749 §6).

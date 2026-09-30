@@ -46,7 +46,7 @@ class OauthClient
 
   # Find-or-create a User from a verified email, then link OauthIdentity.
   # Prefers verified emails only — never invent an account from a blank email.
-  static def find_or_create_user(provider, uid, email, name = null, raw = null) -> Any {
+  static def find_or_create_user(provider, uid, email, name = nil, raw = nil) -> Any {
     if email.blank?
       throw "OAuth: provider did not return a verified email"
     end

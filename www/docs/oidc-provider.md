@@ -46,12 +46,16 @@ reach it.
 | `GET /.well-known/jwks.json` | Public signing keys |
 | `GET /oauth/authorize` | Authorization + consent screen |
 | `POST /oauth/authorize` | Consent decision |
-| `POST /oauth/token` | Code and refresh grants |
+| `POST /oauth/token` | Code, refresh and client-credentials grants |
 | `GET\|POST /oauth/userinfo` | Claims for a bearer token |
 | `POST /oauth/revoke` | RFC 7009 revocation |
+| `POST /oauth/introspect` | RFC 7662 token introspection |
+| `POST /oauth/register` | RFC 7591 dynamic client registration (off unless a token is set) |
+| `POST /oauth/device_authorization` | RFC 8628 device grant, step 1 |
+| `GET\|POST /oauth/device` | RFC 8628 device grant, the person's approval page |
 | `GET /oauth/logout` | RP-initiated logout |
 
-> The generated routes call `skip_csrf` on `/oauth/token` and `/oauth/revoke`.
+> The generated routes call `skip_csrf` on `/oauth/token`, `/oauth/revoke`, `/oauth/introspect`, `/oauth/register` and `/oauth/device_authorization`.
 > Those are server-to-server calls with no browser `Origin`, so the same-origin
 > gate would reject every legitimate exchange; the *client* is authenticated
 > instead. The consent `POST` is a real browser form and keeps CSRF protection.
@@ -101,6 +105,15 @@ print(result["client_secret"])   # shown once — only its Argon2 digest is stor
 Options: `client_type` (`"confidential"` | `"public"`), `scopes`,
 `grant_types`, `require_pkce`, `skip_consent`.
 
+**Machine-to-machine access.** Add `"client_credentials"` to a confidential client's
+`grant_types` (it is off by default) and it can `POST /oauth/token` with
+`grant_type=client_credentials` and an optional `scope`, authenticating with
+Basic or form credentials. The access token's `sub` is the client itself and it
+carries `gty: "client-credentials"`. There is no user, so no id token, no refresh
+token, and `openid` / `offline_access` are refused; a scope the client does not
+hold is `invalid_scope`, a public client is `unauthorized_client`, and the
+userinfo endpoint answers 401 for such a token.
+
 A **public** client (SPA, mobile) has no secret, so PKCE is forced on and
 cannot be switched off — it is the only thing binding the code to the
 requester.
@@ -122,6 +135,66 @@ return redirect(destination)
 Without the first, `auth_time` falls back to the authorization instant. Without
 the second, a user who signs in mid-flow lands on the home page instead of
 completing the authorization.
+
+## More grants and endpoints
+
+### Token introspection (RFC 7662)
+
+`POST /oauth/introspect` with `token=…` (and optionally `token_type_hint`) answers
+`{"active": true, "scope", "client_id", "sub", "exp", …}` for a live access or
+refresh token, and `{"active": false}` — nothing else — for anything that is not.
+The caller must be an authenticated **confidential** client (Basic or form
+credentials); an anonymous introspection endpoint is a token-validity oracle.
+Discovery advertises `introspection_endpoint`.
+
+### Dynamic client registration (RFC 7591)
+
+Off by default: `POST /oauth/register` answers 404 until you set
+`SOLI_OIDC_REGISTRATION_TOKEN`. That value is the *initial access token* — send it
+as `Authorization: Bearer …` — so only callers you gave it to can register
+clients. Body, as JSON:
+
+```json
+{"client_name": "My RP", "redirect_uris": ["https://rp.example/cb"],
+ "scope": "openid email", "token_endpoint_auth_method": "client_secret_basic"}
+```
+
+The `201` reply carries the `client_id` and, unless `token_endpoint_auth_method`
+is `none` (a public client, PKCE forced on), a `client_secret`. Whatever the
+metadata says, a registering caller cannot request `client_credentials` or the
+device grant, cannot set `skip_consent`, and cannot ask for scopes outside
+`OIDC_SUPPORTED_SCOPES`; redirect URIs must be absolute http(s) without a
+fragment. Discovery advertises `registration_endpoint` only when enabled.
+
+### Device authorization grant (RFC 8628)
+
+For a TV or a CLI. Opt a client in with
+`"grant_types": ["urn:ietf:params:oauth:grant-type:device_code", "refresh_token"]`
+(public clients are fine). The device:
+
+1. `POST /oauth/device_authorization` with `client_id` and `scope` gets
+   `device_code`, `user_code` (`WDJB-MJHT`), `verification_uri`,
+   `verification_uri_complete`, `expires_in` and `interval`.
+2. Shows the user code. The person opens `/oauth/device`, signs in, types the code,
+   and approves or denies.
+3. Meanwhile the device polls `POST /oauth/token` with
+   `grant_type=urn:ietf:params:oauth:grant-type:device_code` and its `device_code`,
+   and receives `authorization_pending`, `slow_down` (poll faster than `interval`
+   and the interval grows by 5 s), `access_denied`, `expired_token` or the tokens.
+
+The device code is stored as a digest and consumed atomically, so a code yields
+tokens exactly once. User codes use an alphabet without vowels or look-alikes;
+`OIDC_DEVICE_CODE_TTL` and `OIDC_DEVICE_INTERVAL` live in `oidc_config.sl`.
+
+### Signed request objects (JAR, RFC 9101)
+
+Register the client's public PEM as `request_object_key`
+(`OauthClient.register(name, uris, {"request_object_key": pem})`) and it can send
+`GET /oauth/authorize?client_id=…&request=<jwt>`. The JWT is RS256, `iss` the
+client id, `aud` your issuer, and its claims (`redirect_uri`, `scope`, `state`,
+PKCE…) **replace** the query parameters, so nothing outside the signature can steer
+the request. Any failure renders an error page rather than redirecting.
+`request_uri` is not supported: fetching a caller-supplied URL is an SSRF door.
 
 ## The flow
 
@@ -240,10 +313,11 @@ cannot be extended.
 - An app serving files from `public/.well-known/` (ACME HTTP-01, for example)
   can shadow the discovery document, since static files take precedence for
   `GET`.
-- Not implemented: dynamic client registration (RFC 7591), request objects
-  (JAR), implicit and hybrid flows, client-credentials and device-code grants,
-  front/back-channel logout, DPoP or mTLS sender constraining, and token
-  introspection (RFC 7662).
+- Not implemented: front/back-channel logout, DPoP or mTLS sender constraining,
+  and `request_uri`.
+- **Implicit and hybrid flows are left out on purpose.** They return tokens in the
+  redirect URL, where history, logs and referrers keep them; OAuth 2.1 removes
+  them and the authorization-code flow with PKCE covers every case they served.
 
 ## Connecting a Soli app as a client
 

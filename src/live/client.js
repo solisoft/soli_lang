@@ -919,6 +919,33 @@
                 }
             });
 
+            // Pause / resume an in-flight chunked upload. A `[soli-upload-pause]`
+            // button sits in the same label as the file input; the input also
+            // answers `soli:upload-pause` / `soli:upload-resume` events for
+            // scripted control.
+            const uploadInputFor = (node) => {
+                const wrap = node.closest('[soli-upload-wrap], .soli-upload-wrap, label') || node.parentElement;
+                return wrap && wrap.querySelector('[soli-upload], [data-soli-upload]');
+            };
+            document.addEventListener('click', (e) => {
+                const button = e.target.closest('[soli-upload-pause], .soli-upload-pause');
+                if (!button) return;
+                const input = uploadInputFor(button);
+                if (!input || !owns(input)) return;
+                e.preventDefault();
+                this.setUploadPaused(input, !input.hasAttribute('data-soli-upload-paused'));
+            });
+            document.addEventListener('soli:upload-pause', (e) => {
+                if (e.target && e.target.matches && e.target.matches('[soli-upload], [data-soli-upload]')) {
+                    this.setUploadPaused(e.target, true);
+                }
+            });
+            document.addEventListener('soli:upload-resume', (e) => {
+                if (e.target && e.target.matches && e.target.matches('[soli-upload], [data-soli-upload]')) {
+                    this.setUploadPaused(e.target, false);
+                }
+            });
+
             // Focus/blur handlers
             document.addEventListener('blur', (e) => {
                 const el = e.target.closest('[soli-blur], [data-soli-blur]');
@@ -1324,6 +1351,40 @@
             }
         }
 
+        /**
+         * Resolve once `input`'s upload is not paused. Pausing is a flag on the
+         * input (`data-soli-upload-paused`), set by a `[soli-upload-pause]`
+         * button in the same label or by `input.dispatchEvent(new Event(
+         * 'soli:upload-pause'))`; the chunk in flight finishes, the next one
+         * waits.
+         */
+        waitWhilePaused(input) {
+            return new Promise((resolve) => {
+                const check = () => {
+                    if (!input.hasAttribute('data-soli-upload-paused')) return resolve();
+                    setTimeout(check, 200);
+                };
+                check();
+            });
+        }
+
+        setUploadPaused(input, paused) {
+            const wrap = uploadWrap(input);
+            if (paused) input.setAttribute('data-soli-upload-paused', '');
+            else input.removeAttribute('data-soli-upload-paused');
+            input.classList.toggle('soli-upload-paused', paused);
+            const button = wrap && wrap.querySelector('[soli-upload-pause], .soli-upload-pause');
+            if (button) button.setAttribute('aria-pressed', paused ? 'true' : 'false');
+            if (button && button.hasAttribute('data-soli-pause-label')) {
+                if (!button.hasAttribute('data-soli-pause-original')) {
+                    button.setAttribute('data-soli-pause-original', button.textContent);
+                }
+                button.textContent = paused
+                    ? button.getAttribute('data-soli-pause-label')
+                    : button.getAttribute('data-soli-pause-original');
+            }
+        }
+
         handleUpload(input) {
             const handler = input.getAttribute('soli-upload') ||
                             input.getAttribute('data-soli-upload');
@@ -1378,24 +1439,66 @@
                     });
                 }
                 const total = Math.ceil(file.size / CHUNK);
-                const uploadId = (crypto.randomUUID && crypto.randomUUID()) ||
+                // A file that is picked again (after a refresh, or a dropped
+                // connection) is recognised by name, size and mtime, so its
+                // upload continues where the server left off instead of starting
+                // over. The id lives in localStorage until the upload completes.
+                const fingerprint = ['soli-upload', field, file.name, file.size, file.lastModified].join('|');
+                const remembered = (() => { try { return localStorage.getItem(fingerprint); } catch (_) { return null; } })();
+                const newId = () => (crypto.randomUUID && crypto.randomUUID()) ||
                     (Date.now().toString(36) + Math.random().toString(36).slice(2));
-                let chain = Promise.resolve(null);
-                for (let i = 0; i < total; i++) {
-                    chain = chain.then(() => {
-                        const start = i * CHUNK;
-                        const end = Math.min(file.size, start + CHUNK);
-                        return postPart(file.slice(start, end), file, {
-                            'X-Soli-Upload-Id': uploadId,
-                            'X-Soli-Chunk-Index': String(i),
-                            'X-Soli-Chunk-Count': String(total)
-                        }, (loaded, partTotal) => {
-                            const done = start + loaded;
-                            paintUploadProgress(input, Math.round((done / file.size) * 100), file);
-                        });
+                let uploadId = remembered || newId();
+                try { localStorage.setItem(fingerprint, uploadId); } catch (_) { /* private mode */ }
+                const forget = () => { try { localStorage.removeItem(fingerprint); } catch (_) { /* ignore */ } };
+
+                const statusOf = (id) => fetch('/live/upload/status?id=' + encodeURIComponent(id), { credentials: 'same-origin' })
+                    .then((r) => r.json())
+                    .catch(() => ({ exists: false }));
+
+                const sendChunks = (have) => {
+                    let chain = Promise.resolve(null);
+                    for (let i = 0; i < total; i++) {
+                        if (have.has(i)) continue;
+                        chain = chain.then((meta) => this.waitWhilePaused(input).then(() => {
+                            const start = i * CHUNK;
+                            const end = Math.min(file.size, start + CHUNK);
+                            return postPart(file.slice(start, end), file, {
+                                'X-Soli-Upload-Id': uploadId,
+                                'X-Soli-Chunk-Index': String(i),
+                                'X-Soli-Chunk-Count': String(total)
+                            }, (loaded) => {
+                                paintUploadProgress(input, Math.round(((start + loaded) / file.size) * 100), file);
+                            });
+                        }));
+                    }
+                    return chain;
+                };
+
+                return (remembered ? statusOf(uploadId) : Promise.resolve({ exists: false })).then((status) => {
+                    let have = new Set();
+                    if (status && status.exists && status.total === total) {
+                        have = new Set(status.received || []);
+                        paintUploadProgress(input, Math.round((have.size / total) * 100), file);
+                    } else if (remembered) {
+                        // The server no longer has it (expired, or another
+                        // session's): start clean under a new id.
+                        uploadId = newId();
+                        try { localStorage.setItem(fingerprint, uploadId); } catch (_) { /* ignore */ }
+                    }
+                    return sendChunks(have);
+                }).then((meta) => {
+                    // Every chunk was already on the server: nothing was sent, so
+                    // there is no completion reply to read. Ask for it by
+                    // re-sending the last chunk, which completes the assembly.
+                    if (meta) return meta;
+                    const start = (total - 1) * CHUNK;
+                    return postPart(file.slice(start, file.size), file, {
+                        'X-Soli-Upload-Id': uploadId,
+                        'X-Soli-Chunk-Index': String(total - 1),
+                        'X-Soli-Chunk-Count': String(total)
                     });
-                }
-                return chain.then((meta) => {
+                }).then((meta) => {
+                    forget();
                     paintUploadProgress(input, 100, file);
                     return meta;
                 });

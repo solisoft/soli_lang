@@ -17,7 +17,7 @@ fn make_app_with_auth(root: &Path) {
     create_auth(root.to_str().unwrap()).unwrap();
 }
 
-const EMITTED_FILES: [&str; 14] = [
+const EMITTED_FILES: [&str; 18] = [
     "app/services/oidc_config.sl",
     "app/services/oidc_helper.sl",
     "app/models/oauth_client.sl",
@@ -25,13 +25,17 @@ const EMITTED_FILES: [&str; 14] = [
     "app/models/oauth_refresh_token.sl",
     "app/models/oauth_consent.sl",
     "app/models/oauth_revocation.sl",
+    "app/models/oauth_device_code.sl",
     "app/controllers/oidc_discovery_controller.sl",
     "app/controllers/oauth_authorizations_controller.sl",
     "app/controllers/oauth_tokens_controller.sl",
+    "app/controllers/oauth_registrations_controller.sl",
+    "app/controllers/oauth_device_controller.sl",
     "app/controllers/oauth_userinfo_controller.sl",
     "app/controllers/oauth_sessions_controller.sl",
     "app/views/oauth_authorizations/new.html.slv",
     "app/views/oauth_authorizations/error.html.slv",
+    "app/views/oauth_device/new.html.slv",
 ];
 
 #[test]
@@ -101,6 +105,13 @@ fn create_oidc_provider_appends_routes() {
         "\"oauth_authorizations#new\"",
         "\"oauth_tokens#create\"",
         "\"oauth_userinfo#show\"",
+        "\"oauth_tokens#introspect\"",
+        "\"oauth_tokens#device_authorization\"",
+        "\"oauth_registrations#create\"",
+        "\"oauth_device#new\"",
+        "skip_csrf(\"/oauth/introspect\")",
+        "skip_csrf(\"/oauth/register\")",
+        "skip_csrf(\"/oauth/device_authorization\")",
     ] {
         assert!(routes.contains(expected), "routes missing {expected}");
     }

@@ -91,6 +91,8 @@ impl Interpreter {
         register_builtins(&mut globals.borrow_mut(), true);
         crate::interpreter::builtins::retry::register_retry_class(&globals)
             .expect("retry stdlib must evaluate");
+        crate::interpreter::builtins::mock::register_mock_class(&globals)
+            .expect("mock stdlib must evaluate");
 
         Self {
             environment: globals,
@@ -127,6 +129,8 @@ impl Interpreter {
         register_builtins(&mut globals.borrow_mut(), false);
         crate::interpreter::builtins::retry::register_retry_class(&globals)
             .expect("retry stdlib must evaluate");
+        crate::interpreter::builtins::mock::register_mock_class(&globals)
+            .expect("mock stdlib must evaluate");
 
         Self {
             environment: globals,
@@ -180,6 +184,8 @@ impl Interpreter {
         register_builtins(&mut globals.borrow_mut(), true);
         crate::interpreter::builtins::retry::register_retry_class(&globals)
             .expect("retry stdlib must evaluate");
+        crate::interpreter::builtins::mock::register_mock_class(&globals)
+            .expect("mock stdlib must evaluate");
 
         Self {
             environment: globals,

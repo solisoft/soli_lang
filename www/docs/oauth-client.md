@@ -1,4 +1,4 @@
-# OAuth Client (Sign in with GitHub / Google)
+# OAuth Client (Sign in with GitHub, Google, GitLab, Discord, LinkedIn, Microsoft)
 
 Scaffold an OAuth **client** so users can sign in with an external provider.
 This is the opposite of [`soli generate oidc_provider`](oidc-provider.md) (your
@@ -8,7 +8,7 @@ app *is* the IdP).
 
 ```bash
 soli generate auth          # User + sessions (required)
-soli generate oauth github  # and/or google
+soli generate oauth github  # and/or google, gitlab, discord, linkedin, microsoft
 soli db:migrate up
 ```
 
@@ -20,6 +20,7 @@ soli db:migrate up
 | `app/services/oauth_client.sl` | State CSRF, PKCE helpers, find-or-create user |
 | `app/services/github_oauth.sl` | GitHub authorize / token / profile |
 | `app/services/google_oauth.sl` | Google OIDC code + PKCE |
+| `app/services/{gitlab,discord,linkedin,microsoft}_oauth.sl` | One per provider you generate |
 | `app/controllers/oauth_controller.sl` | `/auth/:provider` + callback |
 | `db/migrations/*_create_oauth_identities.sl` | Unique index on `(provider, uid)` |
 | `config/routes.sl` | Routes appended (idempotent marker) |
@@ -42,6 +43,41 @@ GOOGLE_CLIENT_SECRET=…
 GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback
 ```
 
+**GitLab** (`GITLAB_BASE_URL` for a self-hosted instance, default `https://gitlab.com`)
+
+```bash
+GITLAB_CLIENT_ID=…
+GITLAB_CLIENT_SECRET=…
+GITLAB_REDIRECT_URI=http://localhost:3000/auth/gitlab/callback
+```
+
+**Discord** (`DISCORD_*`) and **LinkedIn** (`LINKEDIN_*`, "Sign In with LinkedIn using OpenID Connect") take the same three variables.
+
+**Microsoft** additionally requires your tenant:
+
+```bash
+MICROSOFT_CLIENT_ID=…
+MICROSOFT_CLIENT_SECRET=…
+MICROSOFT_REDIRECT_URI=http://localhost:3000/auth/microsoft/callback
+MICROSOFT_TENANT=<tenant id or domain>
+```
+
+Microsoft does not verify the `email` claim, and a multi-tenant app can be handed
+someone else's address by a foreign tenant. So the generated service refuses
+`common`, `organizations` and `consumers`: sign-in is limited to the tenant whose
+directory you control.
+
+## How a provider is found
+
+`/auth/:provider` looks up the `<Name>Oauth` class (`GitlabOauth`, `DiscordOauth`, …)
+by name, after checking the segment against `^[a-z][a-z0-9]{1,19}$`, so adding a
+provider never means editing the controller. Each service exposes
+`authorize_url(state, code_challenge)` and `complete!(code)`. The callback also
+insists the provider matches the one this browser session started with. An app
+generated before this shipped has a controller with a fixed provider list; the
+generator says so, and deleting `oauth_controller.sl` then re-running it swaps in
+the new one.
+
 ## Login button
 
 Do not re-run the generator to edit views — add a link yourself:
@@ -49,6 +85,7 @@ Do not re-run the generator to edit views — add a link yourself:
 ```html
 <a href="/auth/github">Sign in with GitHub</a>
 <a href="/auth/google">Sign in with Google</a>
+<a href="/auth/gitlab">Sign in with GitLab</a>
 ```
 
 ## Security notes
@@ -65,14 +102,17 @@ Do not re-run the generator to edit views — add a link yourself:
   generated flow used to 401.
 - Provider responses are status-checked, so a 401 reports as a 401 instead of a
   JSON parse error on the provider's error page.
-- Google path requires a **verified** email.
+- Google, GitLab and LinkedIn require the provider to report `email_verified`; Discord requires `verified`; Microsoft is limited to your tenant (see above).
+- The start redirect uses `redirect_external`: plain `redirect` only accepts local paths, and the first generated controller failed with a 500 for that reason.
 - Accounts created via OAuth get a random password and confirmed email.
 - Prefer HTTPS redirect URIs in production.
 
 ## Ceiling
 
-v1 providers: **GitHub** and **Google** only. Add more by copying a service
-file. Full OmniAuth-style catalogs and account-linking UIs are left to the app.
+Six providers: GitHub, Google, GitLab, Discord, LinkedIn and Microsoft (one tenant).
+Others: copy a service file, keep the two-method shape above, and the controller finds
+it. No Apple sign-in (its client secret is a signed JWT), no multi-tenant Microsoft,
+and no OmniAuth-style catalog or account-linking UI.
 
 Longer walkthroughs: [GitHub OAuth blog](/docs/blog/github-oauth),
 [Google OAuth blog](/docs/blog/google-oauth).

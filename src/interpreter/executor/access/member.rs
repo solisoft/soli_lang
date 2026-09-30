@@ -254,6 +254,28 @@ pub(crate) fn bind_native_static_to_model_class(
 /// works from both engines. The body still runs on a fresh tree-walker (it
 /// needs `&mut Interpreter`); the important part is the VM no longer demotes
 /// the whole handler just to reach this wrapper.
+/// Bind an instance `method_missing`'s parameters. The first is the method
+/// name. A last parameter named `args` (after at least the name) receives every
+/// remaining argument as an array, like the class-level form, so a catch-all can
+/// take any arity. Any other parameter the call did not supply is `nil` rather
+/// than left unbound.
+fn bind_instance_method_missing_params(
+    env: &mut Environment,
+    params: &[crate::ast::stmt::Parameter],
+    mm_args: &[Value],
+) {
+    for (i, param) in params.iter().enumerate() {
+        let value = if i > 0 && i + 1 == params.len() && param.name == "args" {
+            Value::Array(Rc::new(RefCell::new(
+                mm_args[1.min(mm_args.len())..].to_vec(),
+            )))
+        } else {
+            mm_args.get(i).cloned().unwrap_or(Value::Null)
+        };
+        env.define(param.name.clone(), value);
+    }
+}
+
 pub(crate) fn bind_class_method_missing(
     class: &Class,
     class_val: &Value,
@@ -448,6 +470,52 @@ impl Interpreter {
         name: &str,
         span: Span,
     ) -> RuntimeResult<Value> {
+        if crate::interpreter::builtins::mock::stubs_active() {
+            let stub = match &obj_val {
+                Value::Class(class) => {
+                    crate::interpreter::builtins::mock::lookup_stub(class, name, false)
+                }
+                Value::Instance(inst) => crate::interpreter::builtins::mock::lookup_stub(
+                    &inst.borrow().class,
+                    name,
+                    true,
+                ),
+                _ => None,
+            };
+            if let Some((Value::Instance(mock), spy)) = stub {
+                if !spy {
+                    return self.instance_member_access(mock, name, span);
+                }
+                // A spy: the call is recorded on the Mock, then the real method
+                // runs. The original is resolved with the hook off, and the
+                // wrapper re-enters the interpreter the way `method_missing`
+                // does.
+                let original = crate::interpreter::builtins::mock::with_stubs_bypassed(|| {
+                    self.evaluate_member_on_value(obj_val.clone(), name, span)
+                })?;
+                let mock_value = Value::Instance(mock);
+                let method_name = name.to_string();
+                return Ok(Value::NativeFunction(NativeFunction::new(
+                    format!("spy.{}", name),
+                    None,
+                    move |args: &[Value]| -> Result<Value, String> {
+                        crate::interpreter::builtins::mock::record_call(
+                            &mock_value,
+                            &method_name,
+                            args,
+                        );
+                        // The original carries its own environment: no need to
+                        // register every builtin again on each spied call.
+                        let mut interpreter = Interpreter::with_environment(Rc::new(RefCell::new(
+                            Environment::new(),
+                        )));
+                        interpreter
+                            .call_value(original.clone(), args.to_vec(), Span::new(0, 0, 1, 1))
+                            .map_err(|e| e.to_string())
+                    },
+                )));
+            }
+        }
         match obj_val {
             // Member access on a `grouped {}` deferred receiver (e.g. a chained
             // `User.find(id).posts`) forces it, then dispatches on the result.
@@ -826,11 +894,11 @@ impl Interpreter {
                             bound_env
                                 .define("this".to_string(), Value::Instance(inst_clone.clone()));
 
-                            for (i, arg) in mm_args.iter().enumerate() {
-                                if i < mm_method.params.len() {
-                                    bound_env.define(mm_method.params[i].name.clone(), arg.clone());
-                                }
-                            }
+                            bind_instance_method_missing_params(
+                                &mut bound_env,
+                                &mm_method.params,
+                                &mm_args,
+                            );
 
                             let call_env_rc = Rc::new(RefCell::new(bound_env));
                             let env_clone = call_env_rc.borrow().clone();
@@ -1647,12 +1715,11 @@ impl Interpreter {
                     let mut env_inner = call_env;
                     env_inner.define("this".to_string(), Value::Instance(inst_clone.clone()));
 
-                    // Bind method_missing parameters
-                    for (i, arg) in mm_args.iter().enumerate() {
-                        if i < mm_method.params.len() {
-                            env_inner.define(mm_method.params[i].name.clone(), arg.clone());
-                        }
-                    }
+                    bind_instance_method_missing_params(
+                        &mut env_inner,
+                        &mm_method.params,
+                        &mm_args,
+                    );
                     let call_env_rc = Rc::new(RefCell::new(env_inner));
                     let env_clone = call_env_rc.borrow().clone();
 

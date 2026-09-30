@@ -94,6 +94,23 @@ The closure returns the (possibly refined) `QueryBuilder`. Scopes compose with t
 
 Scope storage is per-thread (`Rc<Function>` is `!Send` and can't go in the process-global `MODEL_REGISTRY`); each worker registers scopes when it loads its model files.
 
+## Instance `method_missing`
+
+When an instance receives a message it has no method for, `method_missing(name, ...)` runs with the method name first. Parameters the call did not supply are `nil`. A **last parameter named `args`** receives every remaining argument as an array, so a catch-all takes any arity:
+
+```soli
+class Recorder
+  def method_missing(name, args)
+    "#{name} called with #{args.length} argument(s)"
+  end
+end
+
+recorder = new Recorder()
+recorder.anything(1, 2, 3)   # "anything called with 3 argument(s)"
+```
+
+A bare `obj.name` (no parentheses) evaluates to the bound method, not its result; call with `()`.
+
 ## Cross-references
 
 - [Models](models.md) — the full Model DSL (`validates`, `has_many`, `before_save`, etc.).

@@ -1046,12 +1046,62 @@ assert(sent.includes?("code_verifier="))</code></pre>
             <li>Test-only: none of the three exists in a served app.</li>
         </ul>
 
+        <h2 id="mock" class="text-2xl font-bold text-white mb-6">Test Doubles: <code class="text-emerald-300">Mock</code></h2>
+        <p class="text-gray-400 mb-4"><code class="text-emerald-300">Mock</code> is a hand-rolled double for the collaborator your code takes as an argument. It exists in the test environment only, so it never shadows an app class in production.</p>
+        <pre data-filename="tests/checkout_spec.sl"><code class="language-soli text-sm">test("charges through the gateway") do
+  gateway = new Mock("gateway", {
+    "charge": fn(amount) { {"ok": true, "amount": amount} },
+    "currency": "EUR"
+  })
+
+  result = Checkout.new(gateway).pay(1200)
+
+  assert(result["ok"])
+  gateway.assert_received("charge", [1200])
+  gateway.assert_not_received("refund")
+end</code></pre>
+        <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-4">
+            <li>Stubs are a hash of method name to a value, or to a lambda called with the arguments (up to four). <code class="text-emerald-300">stub(name, value)</code> adds one later.</li>
+            <li>Every call is recorded: <code class="text-emerald-300">calls</code>, <code class="text-emerald-300">calls_to(name)</code>, <code class="text-emerald-300">call_count(name)</code>, <code class="text-emerald-300">received?(name)</code>, <code class="text-emerald-300">reset_calls</code>.</li>
+            <li><code class="text-emerald-300">assert_received(name[, args])</code> and <code class="text-emerald-300">assert_not_received(name)</code> throw a readable message on failure.</li>
+            <li>A message with no stub throws, so a typo fails loudly. Call a double's methods <strong class="text-white">with parentheses</strong> (<code class="text-emerald-300">gateway.currency()</code>): a bare <code class="text-emerald-300">gateway.currency</code> yields the bound method.</li>
+        </ul>
+        <h3 class="text-xl font-bold text-white mb-3">Stubbing a real class</h3>
+        <p class="text-gray-400 mb-4"><code class="text-emerald-300">Mock.stub_class</code> and <code class="text-emerald-300">Mock.stub_instance</code> replace one method on a class other code already references, for the rest of the current test.</p>
+        <pre data-filename="tests/checkout_spec.sl"><code class="language-soli text-sm">test("checkout charges through the gateway") do
+  charge = Mock.stub_class(Gateway, "charge", fn(amount) { {"ok": true} })
+
+  assert(Checkout.new.pay(1200)["ok"])       # Checkout calls Gateway.charge(...)
+  charge.assert_received("charge", [1200])
+
+  Mock.stub_instance(User, "save", true)     # every User#save answers true
+end</code></pre>
+        <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-4">
+            <li>The stub is a <code class="text-emerald-300">Mock</code>: it records calls and supports <code class="text-emerald-300">assert_received</code>. The handler is a value or a lambda.</li>
+            <li>It is undone when the test ends (<code class="text-emerald-300">Mock.unstub_all</code> does it early). A stub set in <code class="text-emerald-300">before_all</code> lasts the whole <code class="text-emerald-300">describe</code> (nested ones included) and is undone after its <code class="text-emerald-300">after_all</code>; one set in a test or <code class="text-emerald-300">before_each</code> ends with that test.</li>
+            <li>It works on model finders and on instance methods, including native ones such as <code class="text-emerald-300">save</code>. A stubbed <code class="text-emerald-300">save</code> / <code class="text-emerald-300">update</code> / <code class="text-emerald-300">create</code> answers from the stub even when the model has callbacks; a spy on one still runs the callbacks.</li>
+            <li>It patches code running in the test process. A request spec's app runs in the test server, a separate process, so stub there with a dependency you pass in.</li>
+        </ul>
+        <p class="text-gray-400 mb-2"><strong class="text-white">RSpec-shaped chains and spies:</strong></p>
+        <pre data-filename="tests/checkout_spec.sl"><code class="language-soli text-sm">Mock.allow(Gateway).to_receive("charge").and_return({"ok": true})
+Mock.allow(Gateway).to_receive("charge").and_call(fn(amount) { {"ok": amount &gt; 0} })
+spy = Mock.allow(Gateway).to_receive("charge").and_call_original
+Mock.allow_any_instance(User).to_receive("save").and_return(true)</code></pre>
+        <p class="text-gray-400 mb-4"><code class="text-emerald-300">and_call_original</code> makes a <strong class="text-white">spy</strong>: the call is recorded on the returned <code class="text-emerald-300">Mock</code> and the real method still runs, so <code class="text-emerald-300">spy.assert_received("charge", [1200])</code> checks what happened without changing it. A stub matches any arguments; there is no <code class="text-emerald-300">with(...)</code> filter, so branch inside an <code class="text-emerald-300">and_call</code> lambda when a method must answer differently per argument.</p>
+
         <h2 class="text-2xl font-bold text-white mb-6">Parallel Execution</h2>
         <p class="text-gray-400 mb-4">Tests run in parallel by default:</p>
 
         <pre data-filename="CLI Options"><code class="language-bash text-sm">soli test                    # Parallel (default)
 soli test --jobs=4           # 4 workers
 soli test --jobs=1           # Sequential (debug)</code></pre>
+
+        <h2 id="filtering-and-fail-fast" class="text-2xl font-bold text-white mb-6">Filtering and Fail-Fast</h2>
+        <pre data-filename="CLI Options"><code class="language-bash text-sm">soli test --filter "creates a post"   # only tests whose full name contains the text
+soli test -n checkout                 # short form; matches describe names too
+soli test --fail-fast                 # stop scheduling tests after the first failure
+soli test --watch                     # rerun the suite whenever a .sl / .slv file changes</code></pre>
+        <p class="text-gray-400 mb-4"><code class="text-emerald-300">--filter</code> matches case-insensitively against the full description: the enclosing <code class="text-emerald-300">describe</code> names followed by the test name, space-joined (<code class="text-emerald-300">Posts creates a post</code>). With <code class="text-emerald-300">--fail-fast</code> the remaining tests and files are skipped once one test fails. Both compose with <code class="text-emerald-300">--jobs</code>, <code class="text-emerald-300">--coverage</code> and the rest.</p>
 
         <h2 class="text-2xl font-bold text-white mb-6">Live Progress</h2>
         <p class="text-gray-400 mb-4">While the suite runs, each worker gets a row and the aggregate bar at the bottom carries the running totals. A row names its spec by its path under the tested directory, and a narrow terminal shortens the folders before the filename:</p>

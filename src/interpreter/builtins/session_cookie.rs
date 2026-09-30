@@ -258,6 +258,13 @@ impl SessionStore for CookieSessionStore {
         id
     }
 
+    fn existing_id(&self, raw: &str) -> Option<String> {
+        if !is_plausible_sealed_value(raw) {
+            return None;
+        }
+        self.open(raw).ok().map(|state| state.id)
+    }
+
     fn create_session(&self) -> String {
         let state = fresh_state(true);
         let id = state.id.clone();

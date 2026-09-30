@@ -2,33 +2,46 @@
 #
 # GET /auth/:provider          → start
 # GET /auth/:provider/callback → callback
+#
+# A provider is the `<Name>Oauth` service class that `soli generate oauth <name>`
+# wrote (`GithubOauth`, `GoogleOauth`, `GitlabOauth`, …), found by name, so adding
+# a provider never means editing this file. Each service exposes
+# `authorize_url(state, code_challenge)` and `complete!(code)`.
+
+# The class for a provider name, or nil. The name is checked against a strict
+# pattern first: it comes straight from the URL.
+def oauth_service_for(provider)
+  return nil if provider.match("^[a-z][a-z0-9]{1,19}$").nil?
+
+  const_get("#{provider.capitalize}Oauth") rescue nil
+end
 
 def start(req)
-  let provider = (req["params"]["provider"] || "").to_s().downcase()
-  unless ["github", "google"].includes?(provider)
-    return { "status": 404, "body": "Unknown OAuth provider" }
-  end
+  provider = (req["params"]["provider"] || "").to_s().downcase()
+  service = oauth_service_for(provider)
+  return { "status": 404, "body": "Unknown OAuth provider" } if service.nil?
 
-  let state = OauthClient.begin_state(provider)
-  let url = null
+  state = OauthClient.begin_state(provider)
+  challenge = OauthClient.begin_pkce()
 
-  if provider == "github"
-    url = GithubOauth.authorize_url(state)
-  elsif provider == "google"
-    let challenge = OauthClient.begin_pkce()
-    url = GoogleOauth.authorize_url(state, challenge)
-  end
-
-  redirect(url)
+  redirect_external(service.authorize_url(state, challenge))
 end
 
 def callback(req)
-  let provider = (req["params"]["provider"] || "").to_s().downcase()
-  let params = req["query"] || req["query_params"] || {}
+  provider = (req["params"]["provider"] || "").to_s().downcase()
+  params = req["query"] || req["query_params"] || {}
 
   unless OauthClient.valid_state?(params["state"])
     OauthClient.clear_state()
     return { "status": 403, "body": "Invalid OAuth state — try signing in again" }
+  end
+
+  # The provider must be the one this browser session started with, or a
+  # callback for one provider could complete a flow begun for another.
+  service = oauth_service_for(provider)
+  if service.nil? || session_get("oauth_provider") != provider
+    OauthClient.clear_state()
+    return { "status": 404, "body": "Unknown OAuth provider" }
   end
 
   if params["error"].present?
@@ -39,20 +52,14 @@ def callback(req)
     }
   end
 
-  let code = params["code"]
+  code = params["code"]
   if code.blank?
     OauthClient.clear_state()
     return { "status": 400, "body": "Missing authorization code" }
   end
 
   try {
-    if provider == "github"
-      GithubOauth.complete!(code)
-    elsif provider == "google"
-      GoogleOauth.complete!(code)
-    else
-      return { "status": 404, "body": "Unknown OAuth provider" }
-    end
+    service.complete!(code)
   } catch error {
     OauthClient.clear_state()
     return { "status": 401, "body": "OAuth failed: " + str(error) }

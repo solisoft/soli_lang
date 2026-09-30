@@ -369,7 +369,7 @@ class PostsController < Controller
   # POST /posts
   def create(req)
     @post = Post.create(permit(params, {"title": true, "body": true}))
-    return render("posts/new", {}, {"status": 422}) if @post._errors
+    return render("new", {}, {"status": 422}) if @post._errors
 
     redirect(post_path(@post))
   end

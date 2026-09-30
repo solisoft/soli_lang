@@ -121,7 +121,7 @@ end
 
 # Mint an access token. RFC 9068 profile: `at+jwt` typed, with the scope and a
 # `jti` so it can be denylisted before it expires.
-def oidc_access_token(user_key, client_id, scopes, jti)
+def oidc_access_token(user_key, client_id, scopes, jti, extra_claims = {})
   options = {
     "algorithm": "RS256",
     "key": oidc_private_key(),
@@ -133,7 +133,10 @@ def oidc_access_token(user_key, client_id, scopes, jti)
     "expires_in": OIDC_ACCESS_TOKEN_TTL
   }
 
-  jwt_sign({"sub": user_key, "scope": scopes.join(" ")}, "", options)
+  claims = {"sub": user_key, "scope": scopes.join(" ")}
+  extra_claims.keys.each { |name| claims[name] = extra_claims[name] }
+
+  jwt_sign(claims, "", options)
 end
 
 # Verify an access token presented as a Bearer credential. Returns the claims,

@@ -14,7 +14,7 @@ class OauthIdentity < Model
   }
 
   # Attach or create identity for a user after a successful OAuth callback.
-  static def link!(user_id, provider, uid, email = null, raw = null) -> Any {
+  static def link!(user_id, provider, uid, email = nil, raw = nil) -> Any {
     let existing = OauthIdentity.find_for(provider, uid)
     if existing {
       existing.email = email if email

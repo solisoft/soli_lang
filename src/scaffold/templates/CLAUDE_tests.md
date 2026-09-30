@@ -55,7 +55,7 @@ end
 ```
 
 > `assigns()` holds the controller's `@fields` whether the view rendered by
-> convention or through `render("posts/new", {}, {"status": 422})`.
+> convention or through `render("new", {}, {"status": 422})`.
 
 Keywords:
 

@@ -379,6 +379,23 @@ def index
 end
 ```
 
+### Bare view names resolve to the controller's directory
+
+Inside an action, `render("new")` means this controller's own view: from `PostsController` it renders `posts/new`. That is the same directory the automatic render uses (`posts#index` → `posts/index`), so re-rendering a form after a failed save reads the way it does in Rails:
+
+```soli
+class PostsController < Controller
+  def create(req)
+    @post = Post.create(permit(params, {"title": true}))
+    return render("new", {}, {"status": 422}) if @post._errors
+
+    redirect(post_path(@post))
+  end
+end
+```
+
+The controller's directory wins only when that file exists, so `render("about")` still finds a top-level `about.html.slv` when `posts/about` does not exist. A name with a `/` is always taken as written (`render("users/show")`, `render("shared/form")`), and so is any name outside a controller action (a job, a mailer, a helper). When neither file exists, the error names both: `Template 'about' not found in app/views (looked for 'posts/about' first)`.
+
 ### Instance Fields Auto-Exposed to Views
 
 Any field set on the controller instance during an action — via either `this.foo = ...` or the `@foo` shorthand — is automatically available as a bare local in the view that action renders. You can drop the data hash entirely when you just want to pass data through.

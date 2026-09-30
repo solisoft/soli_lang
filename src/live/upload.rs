@@ -36,10 +36,31 @@ const MAX_PARTIAL_PER_OWNER: usize = 4;
 /// per-entry cap alone would still allow `MAX_PARTIAL` × 8 MiB = 256 MiB;
 /// this is the number that actually bounds resident memory.
 const MAX_PARTIAL_BYTES: usize = 64 * 1024 * 1024;
-/// Idle timeout for a partial upload, refreshed by every accepted chunk.
-/// A real upload sends chunks continuously and keeps renewing it; an entry
-/// parked to hold memory is swept two minutes later instead of ten.
-const PARTIAL_IDLE_TTL: Duration = Duration::from_secs(120);
+/// Default idle timeout for a partial upload, refreshed by every accepted
+/// chunk. It is also how long a *paused* or interrupted upload can be resumed:
+/// a client that comes back with the same file within this window asks
+/// `GET /live/upload/status` and sends only the chunks the server lacks. The
+/// per-session and global caps above, not this timeout, are what bound memory.
+/// Nor can parked uploads hold those caps against everyone else: once idle for
+/// [`PARKED_AFTER`], an upload gives its slot and bytes up to a new one that
+/// would otherwise be refused. Override with `SOLI_LIVE_UPLOAD_PARTIAL_TTL`
+/// (seconds).
+const DEFAULT_PARTIAL_IDLE_TTL_SECS: u64 = 600;
+
+/// Idle time after which a partial upload counts as parked (paused, or its
+/// client gone) rather than arriving. A parked upload stays resumable for the
+/// whole idle TTL while nobody needs its room, and is the first evicted when
+/// someone does.
+const PARKED_AFTER: Duration = Duration::from_secs(120);
+
+fn partial_idle_ttl() -> Duration {
+    let secs = std::env::var("SOLI_LIVE_UPLOAD_PARTIAL_TTL")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|secs| *secs > 0)
+        .unwrap_or(DEFAULT_PARTIAL_IDLE_TTL_SECS);
+    Duration::from_secs(secs)
+}
 
 struct Stored {
     /// Session that uploaded the file. `None` when the request carried no
@@ -181,6 +202,17 @@ fn with_chunks<R>(f: impl FnOnce(&mut HashMap<String, PartialUpload>) -> R) -> R
     CHUNKS.write(f)
 }
 
+/// Drop the longest-idle parked upload other than `keep`, to admit an upload
+/// that is arriving. `false` when nothing is parked, and the caller refuses.
+fn evict_parked(map: &mut HashMap<String, PartialUpload>, now: Instant, keep: &str) -> bool {
+    let victim = map
+        .iter()
+        .filter(|(id, v)| id.as_str() != keep && now.duration_since(v.touched) >= PARKED_AFTER)
+        .min_by_key(|(_, v)| v.touched)
+        .map(|(id, _)| id.clone());
+    victim.is_some_and(|id| map.remove(&id).is_some())
+}
+
 /// Accept one chunk of a resumable upload. `index` is 0-based. When every
 /// slot is filled the file is stored with [`put`] and the usual metadata
 /// (including `id`) is returned. Incomplete uploads return `{ "id", "pending": true, "received" }`.
@@ -221,7 +253,8 @@ pub fn put_chunk(
 
     let outcome = with_chunks(|map| {
         let now = Instant::now();
-        map.retain(|_, v| now.duration_since(v.touched) < PARTIAL_IDLE_TTL);
+        let ttl = partial_idle_ttl();
+        map.retain(|_, v| now.duration_since(v.touched) < ttl);
 
         let owner_key = owner.map(|s| s.to_string());
         // Admission control, before the entry exists: an unknown `upload_id` is a
@@ -232,11 +265,25 @@ pub fn put_chunk(
             if mine >= MAX_PARTIAL_PER_OWNER {
                 return Err("too many in-progress LiveView uploads for this session".to_string());
             }
-            if map.len() >= MAX_PARTIAL {
+            if map.len() >= MAX_PARTIAL && !evict_parked(map, now, upload_id) {
                 return Err("too many in-progress LiveView uploads".to_string());
             }
         }
-        let held: usize = map.values().map(|v| v.held_bytes(None)).sum();
+        // Ignore the slot being written: a client retrying chunk 3 must not be
+        // charged for both the old copy and the new one.
+        let replaced = map
+            .get(upload_id)
+            .and_then(|entry| entry.received.get(index))
+            .and_then(|chunk| chunk.as_ref())
+            .map(|chunk| chunk.len())
+            .unwrap_or(0);
+        let mut held: usize = map.values().map(|v| v.held_bytes(None)).sum();
+        while held - replaced + data.len() > MAX_PARTIAL_BYTES {
+            if !evict_parked(map, now, upload_id) {
+                return Err("LiveView upload staging is full, retry shortly".to_string());
+            }
+            held = map.values().map(|v| v.held_bytes(None)).sum();
+        }
 
         let entry = map
             .entry(upload_id.to_string())
@@ -257,18 +304,12 @@ pub fn put_chunk(
                 return Err("upload belongs to another session".to_string());
             }
         }
-        // Ignore the slot being written: a client retrying chunk 3 must not be
-        // charged for both the old copy and the new one.
-        let replaced = entry.received[index].as_ref().map(|b| b.len()).unwrap_or(0);
         let so_far = entry.held_bytes(Some(index));
         if so_far + data.len() > DEFAULT_MAX_BYTES {
             return Err(format!(
                 "file exceeds {} byte LiveView upload limit",
                 DEFAULT_MAX_BYTES
             ));
-        }
-        if held - replaced + data.len() > MAX_PARTIAL_BYTES {
-            return Err("LiveView upload staging is full, retry shortly".to_string());
         }
         entry.received[index] = Some(data);
         entry.touched = now;
@@ -309,6 +350,41 @@ pub fn put_chunk(
             bytes,
         } => put(owner, &name, &filename, &content_type, bytes),
     }
+}
+
+/// What the server already holds of a chunked upload, so a client that paused
+/// or lost its connection can send only the missing chunks.
+///
+/// `{ "exists": true, "total": N, "received": [0, 1, 3] }`, or
+/// `{ "exists": false }` for an unknown, expired, or someone else's upload —
+/// the last two are indistinguishable on purpose, so the endpoint cannot be
+/// used to probe another session's upload ids.
+pub fn chunk_status(owner: Option<&str>, upload_id: &str) -> serde_json::Value {
+    with_chunks(|map| {
+        let now = Instant::now();
+        let ttl = partial_idle_ttl();
+        map.retain(|_, v| now.duration_since(v.touched) < ttl);
+        let Some(entry) = map.get(upload_id) else {
+            return serde_json::json!({ "exists": false });
+        };
+        if let Some(entry_owner) = &entry.owner {
+            if owner != Some(entry_owner.as_str()) {
+                return serde_json::json!({ "exists": false });
+            }
+        }
+        let received: Vec<usize> = entry
+            .received
+            .iter()
+            .enumerate()
+            .filter(|(_, chunk)| chunk.is_some())
+            .map(|(index, _)| index)
+            .collect();
+        serde_json::json!({
+            "exists": true,
+            "total": entry.total,
+            "received": received,
+        })
+    })
 }
 
 /// Replace `{ "id": "…" }` file hashes in a LiveView event's params with
@@ -385,6 +461,90 @@ mod tests {
         assert_eq!(params["file"]["filename"], "note.txt");
         assert_eq!(params["file"]["content_type"], "text/plain");
         assert_eq!(params["file"]["size"], bytes.len() as i64);
+    }
+
+    #[test]
+    fn status_reports_received_chunks_to_the_owner_only() {
+        let id = format!("up-{}", uuid::Uuid::new_v4());
+        put_chunk(
+            Some("sess"),
+            &id,
+            1,
+            3,
+            "doc",
+            "n.txt",
+            "text/plain",
+            b"b".to_vec(),
+        )
+        .unwrap();
+        put_chunk(
+            Some("sess"),
+            &id,
+            0,
+            3,
+            "doc",
+            "n.txt",
+            "text/plain",
+            b"a".to_vec(),
+        )
+        .unwrap();
+
+        let mine = chunk_status(Some("sess"), &id);
+        assert_eq!(mine["exists"], true);
+        assert_eq!(mine["total"], 3);
+        assert_eq!(mine["received"], serde_json::json!([0, 1]));
+
+        assert_eq!(chunk_status(Some("other"), &id)["exists"], false);
+        assert_eq!(chunk_status(None, &id)["exists"], false);
+        assert_eq!(chunk_status(Some("sess"), "no-such-id")["exists"], false);
+
+        // Completing the file consumes the partial: nothing left to resume.
+        put_chunk(
+            Some("sess"),
+            &id,
+            2,
+            3,
+            "doc",
+            "n.txt",
+            "text/plain",
+            b"c".to_vec(),
+        )
+        .unwrap();
+        assert_eq!(chunk_status(Some("sess"), &id)["exists"], false);
+    }
+
+    #[test]
+    fn parked_uploads_give_way_but_active_ones_do_not() {
+        let parked = |touched: Instant| PartialUpload {
+            owner: Some("idle".into()),
+            name: "doc".into(),
+            filename: "n.txt".into(),
+            content_type: "text/plain".into(),
+            total: 2,
+            received: vec![Some(vec![0u8; 4]), None],
+            touched,
+        };
+        let now = Instant::now();
+        let mut map = HashMap::new();
+        map.insert("fresh".to_string(), parked(now));
+        assert!(
+            !evict_parked(&mut map, now, "new"),
+            "an arriving upload keeps its slot"
+        );
+
+        let old = now - PARKED_AFTER - Duration::from_secs(1);
+        map.insert("older".to_string(), parked(old - Duration::from_secs(5)));
+        map.insert("old".to_string(), parked(old));
+        assert!(evict_parked(&mut map, now, "new"));
+        assert!(
+            !map.contains_key("older"),
+            "the longest-idle one goes first"
+        );
+        assert!(
+            !evict_parked(&mut map, now, "old"),
+            "never the upload being admitted"
+        );
+        assert!(map.contains_key("old") && map.contains_key("fresh"));
     }
 
     #[test]

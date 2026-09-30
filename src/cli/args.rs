@@ -79,7 +79,7 @@ pub enum Command {
     GenerateOidcProvider {
         folder: String,
     },
-    /// `soli generate oauth <github|google> [folder]` — OAuth *client*
+    /// `soli generate oauth <github|google|gitlab|discord|linkedin|microsoft> [folder]` — OAuth *client*
     /// (sign in with a provider). Requires `soli generate auth` first.
     GenerateOauth {
         provider: String,
@@ -92,9 +92,11 @@ pub enum Command {
         actions: Vec<String>,
         folder: String,
     },
-    /// `soli generate component <name> [folder]` — scaffold a view component
+    /// `soli generate component <name> [--class] [folder]` — scaffold a view component
     /// (app/views/components/<name>.html.slv).
     GenerateComponent {
+        /// `--class`: also write `app/components/<name>_component.sl`.
+        with_class: bool,
         name: String,
         folder: String,
     },
@@ -156,6 +158,13 @@ pub enum Command {
         /// Show the browser window instead of running headless. Debugging aid;
         /// implies `--browser`.
         headed: bool,
+        /// `--filter <text>` / `-n <text>`: run only tests whose full
+        /// description (describe names + test name) contains the text.
+        filter: Option<String>,
+        /// `--fail-fast`: stop after the first failing test.
+        fail_fast: bool,
+        /// `--watch`: rerun the suite whenever a `.sl`/`.slv` file changes.
+        watch: bool,
     },
     DbMigrate {
         action: DbMigrateAction,
@@ -403,9 +412,20 @@ pub enum EngineAction {
 
 pub enum DbMigrateAction {
     Up,
-    Down,
+    /// Roll back `step` migrations (default 1), or every migration newer
+    /// than `to` when a version is given.
+    Down {
+        step: usize,
+        to: Option<String>,
+    },
+    /// `down` then `up` for the newest migration, to re-run it.
+    Redo,
+    /// Roll back everything, then migrate up again.
+    Reset,
     Status,
-    Generate { name: String },
+    Generate {
+        name: String,
+    },
 }
 
 /// Subcommands of `soli env`. `branch` defaults to the folder's current git
@@ -484,7 +504,9 @@ pub fn print_usage() {
     eprintln!("       soli generate scaffold <name> [fields...] [folder]");
     eprintln!("       soli generate auth [folder]");
     eprintln!("       soli generate oidc_provider [folder]");
-    eprintln!("       soli generate oauth <github|google> [folder]");
+    eprintln!(
+        "       soli generate oauth <github|google|gitlab|discord|linkedin|microsoft> [folder]"
+    );
     eprintln!("       soli generate component <name> [folder]");
     eprintln!("       soli generate devices [folder]");
     eprintln!("       soli generate client <android|ios|linux|windows> [--url URL] [--package ID] [--scheme S] [--fcm] [folder]");
@@ -498,7 +520,7 @@ pub fn print_usage() {
     eprintln!("       soli jobs retry <id> [folder]");
     eprintln!("       soli jobs cancel <id> [folder]");
     eprintln!("       soli worker [folder] [--workers N]");
-    eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--browser] [--headed]");
+    eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--filter TEXT] [--fail-fast] [--watch] [--browser] [--headed]");
     eprintln!("       soli lint [paths...]");
     eprintln!("       soli check [paths...]");
     eprintln!("       soli lsp");
@@ -510,7 +532,7 @@ pub fn print_usage() {
     eprintln!("  soli env <list|url> [branch] [--server <name>]");
     eprintln!("  soli db:schema:dump [--connection NAME] [folder]");
     eprintln!("  soli db:schema:load [--connection NAME] [folder]");
-    eprintln!("  soli db:migrate <up|down|status> [--connection NAME] [folder]");
+    eprintln!("  soli db:migrate <up|down|redo|reset|status> [--connection NAME] [folder]");
     eprintln!("  soli db:migrate generate <name> [folder]");
     eprintln!("  soli db:seed [folder] [file.sl]");
     eprintln!("  soli db:seed generate <name> [folder]");
@@ -543,7 +565,7 @@ pub fn print_usage() {
     eprintln!("                       Fields: name:string email:email text:description");
     eprintln!("  generate auth        Scaffold session auth (User + login/signup) and policies");
     eprintln!("  generate oidc_provider  Scaffold an OpenID Connect provider (code + PKCE)");
-    eprintln!("  generate oauth       OAuth client: sign in with github|google (needs auth)");
+    eprintln!("  generate oauth       OAuth client: sign in with github|google|gitlab|discord|linkedin|microsoft (needs auth)");
     eprintln!(
         "  generate component   Scaffold a view component (app/views/components/<name>.html.slv)"
     );
@@ -660,9 +682,18 @@ pub fn print_usage() {
     eprintln!("  soli test --coverage          Run tests with coverage");
     eprintln!("  soli test --jobs=4            Run tests with 4 workers");
     eprintln!("  soli test --fail-on-n1        Fail any request spec that triggers an N+1");
+    eprintln!(
+        "  soli test --filter TEXT       Run only tests whose describe/test names contain TEXT"
+    );
+    eprintln!("  soli test --fail-fast         Stop after the first failing test");
+    eprintln!("  soli test --watch             Rerun the suite whenever a .sl/.slv file changes");
     eprintln!("  soli test --browser           Also run browser specs (needs Chrome)");
     eprintln!("  soli db:migrate up            Run pending migrations");
     eprintln!("  soli db:migrate down          Rollback last migration");
+    eprintln!("  soli db:migrate down --step 3 Rollback the last 3 migrations (or STEP=3)");
+    eprintln!("  soli db:migrate down --to VERSION  Rollback everything newer than VERSION");
+    eprintln!("  soli db:migrate redo          Rollback the last migration and re-run it");
+    eprintln!("  soli db:migrate reset         Rollback everything, then migrate up");
     eprintln!("  soli db:migrate status        Show migration status");
     eprintln!("  soli db:migrate up --connection legacy  Migrate a named SQL connection");
     eprintln!("  soli db:migrate generate create_users  Generate new migration");
@@ -809,7 +840,7 @@ pub fn parse_args() -> Options {
                     "oauth" => {
                         i += 1;
                         if i >= args.len() {
-                            eprintln!("generate oauth requires a provider (github|google)");
+                            eprintln!("generate oauth requires a provider (github|google|gitlab|discord|linkedin|microsoft)");
                             print_usage();
                             process::exit(64);
                         }
@@ -862,14 +893,24 @@ pub fn parse_args() -> Options {
                         }
                         let name = args[i].clone();
                         i += 1;
-                        // Optional trailing folder (name itself may contain `/`
-                        // for a subdirectory component, so it is not the folder).
-                        let folder = if i < args.len() && !args[i].starts_with('-') {
-                            args[i].clone()
-                        } else {
-                            ".".to_string()
+                        let mut with_class = false;
+                        let mut folder = ".".to_string();
+                        // Optional `--class` and trailing folder (name itself may
+                        // contain `/` for a subdirectory component, so it is not
+                        // the folder).
+                        while i < args.len() {
+                            if args[i] == "--class" {
+                                with_class = true;
+                            } else if !args[i].starts_with('-') {
+                                folder = args[i].clone();
+                            }
+                            i += 1;
+                        }
+                        options.command = Command::GenerateComponent {
+                            name,
+                            folder,
+                            with_class,
                         };
-                        options.command = Command::GenerateComponent { name, folder };
                         return options;
                     }
                     "devices" => {
@@ -1056,14 +1097,22 @@ pub fn parse_args() -> Options {
             "db:migrate" => {
                 i += 1;
                 if i >= args.len() {
-                    eprintln!("db:migrate command requires an action (up, down, status, generate)");
+                    eprintln!("db:migrate command requires an action (up, down, redo, reset, status, generate)");
                     print_usage();
                     process::exit(64);
                 }
                 let action_str = args[i].clone();
                 let action = match action_str.as_str() {
                     "up" => DbMigrateAction::Up,
-                    "down" => DbMigrateAction::Down,
+                    "down" => DbMigrateAction::Down {
+                        step: std::env::var("STEP")
+                            .ok()
+                            .and_then(|value| value.parse().ok())
+                            .unwrap_or(1),
+                        to: None,
+                    },
+                    "redo" => DbMigrateAction::Redo,
+                    "reset" => DbMigrateAction::Reset,
                     "status" => DbMigrateAction::Status,
                     "generate" => {
                         i += 1;
@@ -1078,7 +1127,7 @@ pub fn parse_args() -> Options {
                     }
                     _ => {
                         eprintln!(
-                            "Unknown db:migrate action: {} (valid: up, down, status, generate)",
+                            "Unknown db:migrate action: {} (valid: up, down, redo, reset, status, generate)",
                             action_str
                         );
                         print_usage();
@@ -1088,8 +1137,30 @@ pub fn parse_args() -> Options {
                 i += 1;
                 let mut connection: Option<String> = None;
                 let mut folder = ".".to_string();
+                let mut action = action;
                 while i < args.len() {
                     match args[i].as_str() {
+                        "--step" | "--to" | "--version" => {
+                            let flag = args[i].clone();
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("db:migrate {flag} requires a value");
+                                process::exit(64);
+                            }
+                            let DbMigrateAction::Down { step, to } = &mut action else {
+                                eprintln!("db:migrate {flag} only applies to `down`");
+                                process::exit(64);
+                            };
+                            if flag == "--step" {
+                                *step = args[i].parse().unwrap_or_else(|_| {
+                                    eprintln!("Invalid --step number: {}", args[i]);
+                                    process::exit(64);
+                                });
+                            } else {
+                                *to = Some(args[i].clone());
+                            }
+                            i += 1;
+                        }
                         "--connection" | "-c" => {
                             i += 1;
                             if i >= args.len() {
@@ -2256,6 +2327,9 @@ pub fn parse_args() -> Options {
                 let mut fail_on_n1 = false;
                 let mut browser = false;
                 let mut headed = false;
+                let mut filter: Option<String> = None;
+                let mut fail_fast = false;
+                let mut watch = false;
                 while i < args.len() {
                     if args[i].starts_with('-') {
                         // Support `--coverage=html`, `--coverage=json,xml`,
@@ -2329,6 +2403,21 @@ pub fn parse_args() -> Options {
                             "--fail-on-n1" => {
                                 fail_on_n1 = true;
                             }
+                            "--fail-fast" => {
+                                fail_fast = true;
+                            }
+                            "--watch" | "-w" => {
+                                watch = true;
+                            }
+                            "--filter" | "-n" => {
+                                i += 1;
+                                if i >= args.len() {
+                                    eprintln!("--filter requires text to match");
+                                    print_usage();
+                                    process::exit(64);
+                                }
+                                filter = Some(args[i].clone());
+                            }
                             "--browser" => {
                                 browser = true;
                             }
@@ -2376,6 +2465,9 @@ pub fn parse_args() -> Options {
                     fail_on_n1,
                     browser,
                     headed,
+                    filter,
+                    fail_fast,
+                    watch,
                 };
                 return options;
             }

@@ -127,7 +127,19 @@ soli db:drop     # removes it (WAL sidecars too, on SQLite)</code></pre>
             </h3>
             <div class="rounded-lg bg-[#0C0A09] p-3 mt-3">
 <pre><code class="language-bash text-sm"># Rollback the last migration
-soli db:migrate down</code></pre>
+soli db:migrate down
+
+# Rollback the last 3 (or set STEP=3)
+soli db:migrate down --step 3
+
+# Rollback everything newer than a version (that version stays applied)
+soli db:migrate down --to 20240101000000
+
+# Rollback the last migration and run it again
+soli db:migrate redo
+
+# Rollback every migration, then migrate up again
+soli db:migrate reset</code></pre>
             </div>
         </div>
 

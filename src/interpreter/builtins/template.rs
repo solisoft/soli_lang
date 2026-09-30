@@ -174,6 +174,11 @@ pub fn register_view_helper(name: String, value: Value) {
     });
 }
 
+/// One registered view helper (or component class) by name.
+pub fn get_view_helper(name: &str) -> Option<Value> {
+    VIEW_HELPERS.with(|helpers| helpers.borrow().get(name).cloned())
+}
+
 /// Clear all view helpers (for hot reload).
 pub fn clear_view_helpers() {
     VIEW_HELPERS.with(|helpers| helpers.borrow_mut().clear());
@@ -196,13 +201,27 @@ pub fn inject_helpers_into_env(env: &mut Environment) {
     });
 }
 
-/// Load view helpers from a directory (app/helpers/*.sl).
-/// Parses each file and extracts function definitions without executing in interpreter.
+/// `app/components`, the sibling of `helpers_dir`.
+fn components_dir_of(helpers_dir: &Path) -> Option<std::path::PathBuf> {
+    helpers_dir.parent().map(|app| app.join("components"))
+}
+
+/// Is there anything for [`load_view_helpers`] to load: `app/helpers` or its
+/// sibling `app/components`? An app may have components and no helpers.
+pub fn view_helpers_present(helpers_dir: &Path) -> bool {
+    let exists = |dir: &Path| crate::serve::vfs_exists(&dir.to_string_lossy());
+    exists(helpers_dir) || components_dir_of(helpers_dir).is_some_and(|dir| exists(&dir))
+}
+
+/// Load view helpers from a directory (app/helpers/*.sl), and the component
+/// classes of its sibling `app/components/`.
+/// Parses each helper file and extracts function definitions without executing in interpreter.
 pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
-    let helpers_dir_str = helpers_dir.to_string_lossy().to_string();
-    if !crate::serve::vfs_exists(&helpers_dir_str) {
+    if !view_helpers_present(helpers_dir) {
         return Ok(0);
     }
+    let helpers_dir_str = helpers_dir.to_string_lossy().to_string();
+    let has_helpers = crate::serve::vfs_exists(&helpers_dir_str);
 
     let mut count = 0;
 
@@ -220,8 +239,13 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
         eprintln!("[WARN] Retry stdlib failed to load for helpers: {}", e);
     }
 
-    let entries = std::fs::read_dir(helpers_dir)
-        .map_err(|e| format!("Failed to read helpers directory: {}", e))?;
+    let entries = if has_helpers {
+        std::fs::read_dir(helpers_dir)
+            .map_err(|e| format!("Failed to read helpers directory: {}", e))?
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
         let path = entry.path();
@@ -265,6 +289,11 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
         }
     }
 
+    // Component classes: `app/components/*.sl` next to `app/helpers/`. Classes
+    // are executed (not just extracted like helper functions) so their methods
+    // close over the helper env and can call helpers and builtins.
+    count += load_component_classes(helpers_dir, &helper_env)?;
+
     // Now update the helper environment so helpers can call each other
     VIEW_HELPERS.with(|helpers| {
         let helpers_map = helpers.borrow();
@@ -279,6 +308,62 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
         *cell.borrow_mut() = Some(helper_env);
     });
 
+    Ok(count)
+}
+
+/// Load `app/components/*.sl` (a sibling of the helpers directory) and register
+/// each class under its own name, so `component("card", ...)` can find
+/// `CardComponent`. Returns how many classes were registered.
+fn load_component_classes(
+    helpers_dir: &Path,
+    helper_env: &Rc<RefCell<Environment>>,
+) -> Result<usize, String> {
+    let Some(components_dir) = components_dir_of(helpers_dir) else {
+        return Ok(0);
+    };
+    let components_dir_str = components_dir.to_string_lossy().to_string();
+    if !crate::serve::vfs_exists(&components_dir_str) {
+        return Ok(0);
+    }
+    let mut count = 0;
+    let mut interpreter = crate::interpreter::Interpreter::with_environment(helper_env.clone());
+    let entries = std::fs::read_dir(&components_dir)
+        .map_err(|e| format!("Failed to read components directory: {}", e))?;
+    for entry in entries {
+        let path = entry
+            .map_err(|e| format!("Failed to read directory entry: {}", e))?
+            .path();
+        if !path.extension().is_some_and(|ext| ext == "sl") {
+            continue;
+        }
+        let path_str = path.to_string_lossy().to_string();
+        let bytes = crate::serve::vfs_read(&path_str)
+            .map_err(|e| format!("Failed to read component file '{}': {}", path.display(), e))?;
+        let program = if crate::bundle::is_ast_blob(&bytes) {
+            crate::bundle::deserialize_program(&bytes)
+                .map_err(|e| format!("Failed to load '{}': {}", path.display(), e))?
+        } else {
+            let source = String::from_utf8(bytes)
+                .map_err(|e| format!("Component '{}' is not valid UTF-8: {}", path.display(), e))?;
+            let tokens = crate::lexer::Scanner::new(&source)
+                .scan_tokens()
+                .map_err(|e| format!("Lexer error in {}: {}", path.display(), e))?;
+            crate::parser::Parser::new(tokens)
+                .parse()
+                .map_err(|e| format!("Parser error in {}: {}", path.display(), e))?
+        };
+        for stmt in &program.statements {
+            if let StmtKind::Class(decl) = &stmt.kind {
+                interpreter
+                    .execute(stmt)
+                    .map_err(|e| format!("Error in component {}: {}", decl.name, e))?;
+                if let Some(class) = helper_env.borrow().get(&decl.name) {
+                    register_view_helper(decl.name.clone(), class);
+                    count += 1;
+                }
+            }
+        }
+    }
     Ok(count)
 }
 
@@ -2311,6 +2396,26 @@ pub fn register_template_builtins(env: &mut Environment) {
             // Get template cache and render
             let cache = get_template_cache()?;
 
+            // Inside an action, a bare name means the controller's own view:
+            // `render("new")` from `posts#create` is `posts/new`. The controller's
+            // directory wins only when that file exists, so a top-level view
+            // (`render("about")`) keeps working. When neither exists, the error
+            // names both places, not only the one looked at last.
+            let mut also_looked_for: Option<String> = None;
+            let template_name: crate::interpreter::value::SoliStr =
+                match crate::interpreter::builtins::controller::registry::get_current_view_dir() {
+                    Some(dir) if !template_name.contains('/') => {
+                        let in_controller_dir = format!("{dir}/{template_name}");
+                        if cache.template_exists(&in_controller_dir) {
+                            in_controller_dir.into()
+                        } else {
+                            also_looked_for = Some(in_controller_dir);
+                            template_name
+                        }
+                    }
+                    _ => template_name,
+                };
+
             // Inject req from current thread context into data (before helpers)
             // This allows views to access req.params, req.query, etc.
             inject_request_context(&data);
@@ -2369,7 +2474,16 @@ pub fn register_template_builtins(env: &mut Environment) {
                 Err(e) => {
                     // Keep context set for debugging
                     clear_current_request();
-                    Err(e)
+                    // Only the top-level view itself: a missing partial or
+                    // layout inside it keeps its own message.
+                    match also_looked_for {
+                        Some(tried)
+                            if e.starts_with(&format!("Template '{template_name}' not found")) =>
+                        {
+                            Err(format!("{e} (looked for '{tried}' first)"))
+                        }
+                        _ => Err(e),
+                    }
                 }
             }
         })),

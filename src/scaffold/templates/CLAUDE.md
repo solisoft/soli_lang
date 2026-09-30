@@ -292,7 +292,7 @@ Terse, idiomatic Soli. These rules hold across the app, specs included.
 - **Controllers pass view data through `@fields`**, never a hash in `render`:
   the view **and the layout** receive them under the same name. With no
   `render` call, the action renders `controller/action` implicitly; otherwise
-  `render("posts/new")`, or `render("posts/new", {}, {"status": 422})`. Avoid
+  `render("new")`, or `render("posts/new", {}, {"status": 422})`. Avoid
   `@method` / `@view` (framework-ish names).
   Specs: `assigns()` sees the `@fields` with or without an explicit `render`.
 - **Ruby-style blocks for iteration** — `xs.map { |x| x * 2 }`,
@@ -468,7 +468,7 @@ class PostsController < Controller
     # POST /posts
     def create(req)
         @post = Post.create(@_permit_params(req.params))
-        return render("posts/new", {}, { "status": 422 }) if @post._errors
+        return render("new", {}, { "status": 422 }) if @post._errors
 
         redirect(post_path(@post))
     end

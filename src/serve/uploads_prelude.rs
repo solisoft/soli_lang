@@ -65,6 +65,24 @@ def attach_upload(model: Any, field_name: String, file: Any) -> Bool
         return false
     end
 
+    # A finished resumable (tus) upload arrives as a reference, not bytes. Resolve
+    # it before any check (it must belong to this session, be complete and
+    # unexpired), so the limits below read the upload's own size and type, never
+    # the ones the caller's hash claims. Disk and S3 attachments with no transform
+    # stream it straight into storage; anything that needs the bytes (SoliDB
+    # blobs, an image transform) loads them here, up to the inline limit.
+    tus_id = file["tus_id"]
+    service = config["service"] || "solidb"
+    if !tus_id.nil?
+        streams = (service == "disk" || service == "s3") && config["format"].nil? && config["max_width"].nil? && config["max_height"].nil?
+        try
+            file = tus_take(tus_id, !streams)
+        catch error
+            model._errors = [{ "message": "The upload for #{field_name} cannot be attached: #{error}" }]
+            return false
+        end
+    end
+
     types = config["content_types"] ?? []
     if types.length() > 0 && !types.contains(file["content_type"])
         model._errors = [{ "message": "Unsupported file type for #{field_name}." }]
@@ -87,7 +105,6 @@ def attach_upload(model: Any, field_name: String, file: Any) -> Bool
     # declared, so e.g. a PNG photo can be stored as a smaller lossy WebP.
     file = apply_uploader_transform(file, config)
 
-    service = config["service"] || "solidb"
     blob_id = null
     if service == "disk" || service == "s3"
         blob_id = store_attachment(config, file)
@@ -100,7 +117,14 @@ def attach_upload(model: Any, field_name: String, file: Any) -> Bool
         model._errors = [{ "message": "Failed to store #{field_name}." }]
         return false
     end
+    tus_discard(tus_id) if !tus_id.nil?
 
+    __soli_link_blob(model, field_name, config, service, blob_id)
+end
+
+# Record `blob_id` on the model (single or multiple) and delete the blob it
+# replaces. Shared by `attach_upload` and `direct_upload_finish`.
+def __soli_link_blob(model: Any, field_name: String, config: Any, service: String, blob_id: Any) -> Bool
     if config["multiple"]
         ids = model["#{field_name}_blob_ids"] ?? []
         ids.push(blob_id)
@@ -119,6 +143,70 @@ def attach_upload(model: Any, field_name: String, file: Any) -> Bool
         end
     end
     true
+end
+
+# Step 1 of a browser-to-bucket upload (s3 attachments only): validate what the
+# browser says it will send, and return a presigned PUT for it:
+#   { "id", "url", "method": "PUT", "headers": {...}, "expires_in" }
+# The browser PUTs the file to `url` with those headers, then the app calls
+# `direct_upload_finish`. The URL does not pin the size or type — S3 takes what
+# it is sent — so the limits are enforced at finish, against what the bucket
+# holds. On a refusal this returns `{ "error": "..." }`.
+#
+# The id is recorded in the session: finish accepts only an id this session
+# started for this field, so a caller cannot claim (and, through the size check
+# or a later replace, delete) a blob that is someone else's.
+def direct_upload_start(model: Any, field_name: String, filename: String, content_type: String, size: Int, expires_in: Int = 900) -> Any
+    config = model_uploader_config(model.class, field_name)
+    return { "error": "No uploader declared for #{field_name}." } if config.nil?
+    return { "error": "Direct uploads need an s3 attachment service." } if config["service"] != "s3"
+
+    types = config["content_types"] ?? []
+    return { "error": "Unsupported file type for #{field_name}." } if types.length() > 0 && !types.contains(content_type)
+    return { "error": "#{field_name} must be under #{(config["max_size"] / 1000000).to_s} MB." } if size > config["max_size"]
+
+    upload = direct_upload(config, { "filename": filename, "content_type": content_type, "size": size }, expires_in)
+    started = session_get("__soli_direct_uploads") ?? []
+    started.push("#{field_name}:#{upload["id"]}")
+    # Bounded: the cookie session driver carries this in a ~4KB cookie.
+    started = started.slice(started.length() - 10, started.length()) if started.length() > 10
+    session_set("__soli_direct_uploads", started)
+    upload
+end
+
+# Step 2: the browser says it is done. Ask the bucket what it holds under `id`
+# (never trust the browser's word for size or type), re-check the limits against
+# that, and attach it. `false` with `model._errors` when nothing arrived.
+def direct_upload_finish(model: Any, field_name: String, blob_id: String) -> Bool
+    config = model_uploader_config(model.class, field_name)
+    if config.nil? || config["service"] != "s3"
+        model._errors = [{ "message": "Direct uploads need an s3 attachment uploader for #{field_name}." }]
+        return false
+    end
+
+    ticket = "#{field_name}:#{blob_id}"
+    started = session_get("__soli_direct_uploads") ?? []
+    if !started.contains(ticket)
+        model._errors = [{ "message": "No upload for #{field_name} was started with that id." }]
+        return false
+    end
+
+    head = direct_upload_head(config, blob_id)
+    if head.nil?
+        model._errors = [{ "message": "The upload for #{field_name} did not arrive." }]
+        return false
+    end
+    # Arrived: the id is spent, whatever the checks below decide.
+    session_set("__soli_direct_uploads", started.filter(fn(t) t != ticket))
+
+    types = config["content_types"] ?? []
+    if (types.length() > 0 && !types.contains(head["content_type"])) || head["size"] > config["max_size"]
+        delete_attachment(config, blob_id)
+        model._errors = [{ "message": "The uploaded file for #{field_name} is not allowed." }]
+        return false
+    end
+
+    __soli_link_blob(model, field_name, config, "s3", blob_id)
 end
 
 def detach_upload(model: Any, field_name: String, blob_id: Any = null) -> Bool

@@ -44,9 +44,11 @@ pub fn run() {
             actions,
             folder,
         } => commands::run_generate_mailer(name, actions, folder),
-        Command::GenerateComponent { name, folder } => {
-            commands::run_generate_component(name, folder)
-        }
+        Command::GenerateComponent {
+            name,
+            folder,
+            with_class,
+        } => commands::run_generate_component(name, folder, *with_class),
         Command::GenerateDevices { folder } => commands::run_generate_devices(folder),
         Command::GenerateClient {
             platform,
@@ -217,6 +219,9 @@ pub fn run() {
             fail_on_n1,
             browser,
             headed,
+            filter,
+            fail_fast,
+            watch,
         } => commands::run_test(
             paths,
             *jobs,
@@ -227,6 +232,9 @@ pub fn run() {
             *fail_on_n1,
             *browser,
             *headed,
+            filter.as_deref(),
+            *fail_fast,
+            *watch,
         ),
         Command::Engine { action } => commands::run_engine(action),
         Command::Lsp => commands::run_lsp(),

@@ -105,6 +105,7 @@ pub mod mailer {
 }
 pub mod markdown;
 pub mod math;
+pub mod mock;
 pub mod mock_http;
 pub mod model;
 pub mod money;
@@ -719,6 +720,7 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     // Register upload builtins
     uploads::register_upload_builtins(env);
     attachments::register_attachment_builtins(env);
+    crate::serve::tus::register(env);
     crate::live::update::register(env);
 
     // Register clock builtins (sleep, microtime)

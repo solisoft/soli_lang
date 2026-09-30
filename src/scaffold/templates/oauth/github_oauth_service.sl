@@ -4,9 +4,9 @@
 # Env: GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_REDIRECT_URI
 
 class GithubOauth
-  static def authorize_url(state) -> String {
-    let client_id = getenv("GITHUB_CLIENT_ID")
-    let redirect = getenv("GITHUB_REDIRECT_URI")
+  static def authorize_url(state, code_challenge = nil) -> String {
+    let client_id = url_encode(getenv("GITHUB_CLIENT_ID").to_s)
+    let redirect = url_encode(getenv("GITHUB_REDIRECT_URI").to_s)
     "https://github.com/login/oauth/authorize?" +
       "client_id=" + client_id +
       "&redirect_uri=" + redirect +
@@ -76,7 +76,7 @@ class GithubOauth
   }
 
   static def primary_email(emails) -> Any {
-    return null unless emails
+    return nil unless emails
     for e in emails {
       if e["primary"] && e["verified"]
         return e["email"]
@@ -85,7 +85,7 @@ class GithubOauth
     for e in emails {
       return e["email"] if e["verified"]
     }
-    null
+    nil
   }
 
   # Full callback: exchange code → profile → User → session.

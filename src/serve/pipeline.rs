@@ -215,6 +215,20 @@ pub(super) async fn intake(
                 // full copy of itself across the worker queue.
                 let (form_fields, files) = parse_multipart_body(body_bytes, ct).await;
                 (String::new(), Some(form_fields), Some(files))
+            } else if ct.split(';').next().is_some_and(|t| {
+                t.trim()
+                    .eq_ignore_ascii_case("application/offset+octet-stream")
+            }) {
+                // A tus `PATCH` chunk is raw bytes. `body` is a UTF-8 `String`
+                // and would mangle them, so the bytes ride as one file part,
+                // which is how binary bodies already travel.
+                let chunk = crate::serve::UploadedFile {
+                    name: "chunk".to_string(),
+                    filename: "chunk".to_string(),
+                    content_type: ct.to_string(),
+                    data: body_bytes,
+                };
+                (String::new(), None, Some(vec![chunk]))
             } else {
                 (body_into_string(body_bytes), None, None)
             }

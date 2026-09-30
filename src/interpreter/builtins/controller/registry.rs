@@ -30,6 +30,9 @@ pub static CONTROLLER_REGISTRY: TenantValue<ControllerRegistry> =
 // Thread-local controller instances for current request.
 thread_local! {
     static CURRENT_CONTROLLER: RefCell<Option<Value>> = const { RefCell::new(None) };
+    /// The view directory of the running action's controller (`posts` for
+    /// `posts#create`), so `render("new")` can mean `posts/new`.
+    static CURRENT_VIEW_DIR: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 // Thread-local cache for pre-compiled handler programs.
@@ -866,6 +869,17 @@ pub fn set_current_controller(controller: Value) {
     });
 }
 
+/// Record the running action's controller key as the directory a bare
+/// `render("new")` resolves under.
+pub fn set_current_view_dir(dir: &str) {
+    CURRENT_VIEW_DIR.with(|c| *c.borrow_mut() = Some(dir.to_string()));
+}
+
+/// The running action's view directory, if an action is running.
+pub fn get_current_view_dir() -> Option<String> {
+    CURRENT_VIEW_DIR.with(|c| c.borrow().clone())
+}
+
 /// Get the current controller for this thread.
 pub fn get_current_controller() -> Option<Value> {
     CURRENT_CONTROLLER.with(|c| c.borrow().clone())
@@ -873,6 +887,7 @@ pub fn get_current_controller() -> Option<Value> {
 
 /// Clear the current controller.
 pub fn clear_current_controller() {
+    CURRENT_VIEW_DIR.with(|c| *c.borrow_mut() = None);
     CURRENT_CONTROLLER.with(|c| {
         *c.borrow_mut() = None;
     });

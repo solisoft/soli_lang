@@ -528,34 +528,25 @@ impl Interpreter {
                 // Model callback interceptors (Class.create/update, instance
                 // save/update/delete chains). Cheap name filters up front;
                 // they consume the evaluated receiver, never re-evaluate it.
+                //
+                // A stubbed model method answers from its Mock, so the
+                // interceptors — which run the real persistence — must not see
+                // the call. A spy still runs them (the real method, callbacks
+                // included) and records the call on its Mock.
                 if !safe_navigation {
-                    if let Some(result) =
-                        self.try_run_model_before_save(&obj_val, name, arguments, span)?
-                    {
-                        return Ok(result);
-                    }
-                    if let Some(result) =
-                        self.try_run_model_class_delete(&obj_val, name, arguments, span)?
-                    {
-                        return Ok(result);
-                    }
-                    if let Some(result) =
-                        self.try_run_model_delete_callbacks(&obj_val, name, arguments, span)?
-                    {
-                        return Ok(result);
-                    }
-                    if let Some(result) =
-                        self.try_run_model_persist_callbacks(&obj_val, name, arguments, span)?
-                    {
-                        return Ok(result);
-                    }
-                    // State machine event call: `order.pay()`, `order.pay!()`,
-                    // `order.can_pay?()`, `order.paid?()`. Only fires for empty-arg
-                    // calls on a model instance whose class has a machine and whose
-                    // method name maps to an event/predicate (user methods win).
-                    if arguments.is_empty() {
-                        if let Value::Instance(inst) = &obj_val {
-                            if let Some(result) = self.sm_dispatch_on_instance(inst, name, span)? {
+                    match model_stub_for_call(&obj_val, name) {
+                        Some((_, false)) => {}
+                        Some((mock, true)) => {
+                            if let Some(result) =
+                                self.call_model_spy(&obj_val, &mock, name, arguments, span)?
+                            {
+                                return Ok(result);
+                            }
+                        }
+                        None => {
+                            if let Some(result) =
+                                self.run_model_interceptors(&obj_val, name, arguments, span)?
+                            {
                                 return Ok(result);
                             }
                         }
@@ -603,7 +594,16 @@ impl Interpreter {
                             }
                             return self.call_string_method(&s, name, arg_values, span);
                         }
-                        Value::Instance(inst) if !is_universal_instance_member(name) => {
+                        Value::Instance(inst)
+                            if !is_universal_instance_member(name)
+                                && !(crate::interpreter::builtins::mock::stubs_active()
+                                    && crate::interpreter::builtins::mock::lookup_stub(
+                                        &inst.borrow().class,
+                                        name,
+                                        true,
+                                    )
+                                    .is_some()) =>
+                        {
                             // Prefer native instance methods (same order as
                             // instance_member_access: fields → native → user).
                             // Natives apply to models too (`save`, `update`, …);
@@ -796,6 +796,88 @@ impl Interpreter {
     ///
     /// Returns Ok(None) if this call is not a model create/update needing
     /// callbacks — the caller falls through to the normal dispatch.
+    /// The callback interceptors and state-machine dispatch a call on a model
+    /// receiver goes through before the regular member route. `None` when none
+    /// of them claims the call.
+    fn run_model_interceptors(
+        &mut self,
+        obj_val: &Value,
+        name: &str,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        if let Some(result) = self.try_run_model_before_save(obj_val, name, arguments, span)? {
+            return Ok(Some(result));
+        }
+        if let Some(result) = self.try_run_model_class_delete(obj_val, name, arguments, span)? {
+            return Ok(Some(result));
+        }
+        if let Some(result) = self.try_run_model_delete_callbacks(obj_val, name, arguments, span)? {
+            return Ok(Some(result));
+        }
+        if let Some(result) =
+            self.try_run_model_persist_callbacks(obj_val, name, arguments, span)?
+        {
+            return Ok(Some(result));
+        }
+        // State machine event call: `order.pay()`, `order.pay!()`,
+        // `order.can_pay?()`, `order.paid?()`. Only fires for empty-arg
+        // calls on a model instance whose class has a machine and whose
+        // method name maps to an event/predicate (user methods win).
+        if arguments.is_empty() {
+            if let Value::Instance(inst) = obj_val {
+                return self.sm_dispatch_on_instance(inst, name, span);
+            }
+        }
+        Ok(None)
+    }
+
+    /// A spied model method: record the call on `mock`, then run the real one
+    /// — through the callback interceptors when they claim it, so a spy on
+    /// `save` still runs `before_save`. Each argument is evaluated once: the
+    /// interceptors read the values back through variables bound in a scope of
+    /// their own. `None` for named or block arguments, which the member route's
+    /// spy wrapper handles.
+    fn call_model_spy(
+        &mut self,
+        obj_val: &Value,
+        mock: &Value,
+        name: &str,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        let mut values = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            let Argument::Positional(expr) = argument else {
+                return Ok(None);
+            };
+            values.push(self.evaluate(expr)?);
+        }
+        crate::interpreter::builtins::mock::record_call(mock, name, &values);
+
+        let mut scope = Environment::with_enclosing(self.environment.clone());
+        let mut bound = Vec::with_capacity(values.len());
+        for (i, value) in values.iter().enumerate() {
+            let variable = format!("__soli_spy_arg_{i}");
+            scope.define(variable.clone(), value.clone());
+            bound.push(Argument::Positional(Expr::new(
+                ExprKind::Variable(variable),
+                span,
+            )));
+        }
+        let outer = std::mem::replace(&mut self.environment, Rc::new(RefCell::new(scope)));
+        let intercepted = self.run_model_interceptors(obj_val, name, &bound, span);
+        self.environment = outer;
+        if let Some(result) = intercepted? {
+            return Ok(Some(result));
+        }
+
+        let original = crate::interpreter::builtins::mock::with_stubs_bypassed(|| {
+            self.evaluate_member_on_value(obj_val.clone(), name, span)
+        })?;
+        self.call_value(original, values, span).map(Some)
+    }
+
     fn try_run_model_before_save(
         &mut self,
         obj_val: &Value,
@@ -2666,6 +2748,22 @@ impl Interpreter {
 
             _ => Err(RuntimeError::not_callable(span)),
         }
+    }
+}
+
+/// The stub standing in for `name` on a model receiver (class or instance),
+/// if a test put one there: `(mock, spy)`.
+fn model_stub_for_call(obj_val: &Value, name: &str) -> Option<(Value, bool)> {
+    use crate::interpreter::builtins::mock::{lookup_stub, stubs_active};
+    if !stubs_active() {
+        return None;
+    }
+    match obj_val {
+        Value::Class(class) if class.is_model_subclass() => lookup_stub(class, name, false),
+        Value::Instance(inst) if inst.borrow().class.is_model_subclass() => {
+            lookup_stub(&inst.borrow().class, name, true)
+        }
+        _ => None,
     }
 }
 

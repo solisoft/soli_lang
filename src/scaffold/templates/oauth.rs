@@ -4,6 +4,10 @@ pub const OAUTH_IDENTITY_MODEL: &str = include_str!("oauth/oauth_identity_model.
 pub const OAUTH_CLIENT_SERVICE: &str = include_str!("oauth/oauth_client_service.sl");
 pub const GITHUB_OAUTH_SERVICE: &str = include_str!("oauth/github_oauth_service.sl");
 pub const GOOGLE_OAUTH_SERVICE: &str = include_str!("oauth/google_oauth_service.sl");
+pub const GITLAB_OAUTH_SERVICE: &str = include_str!("oauth/gitlab_oauth_service.sl");
+pub const DISCORD_OAUTH_SERVICE: &str = include_str!("oauth/discord_oauth_service.sl");
+pub const LINKEDIN_OAUTH_SERVICE: &str = include_str!("oauth/linkedin_oauth_service.sl");
+pub const MICROSOFT_OAUTH_SERVICE: &str = include_str!("oauth/microsoft_oauth_service.sl");
 pub const OAUTH_CONTROLLER: &str = include_str!("oauth/oauth_controller.sl");
 
 pub const ROUTES_MARKER: &str = "# --- soli generate oauth ---";

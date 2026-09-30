@@ -1057,6 +1057,40 @@ SOLI_NAV=morph soli serve .</code></pre>
         </div>
     </div>
 
+    <h3 id="component-classes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Component classes</h3>
+    <p class="text-gray-400 mb-4">A component can have a class for the logic its template should not carry. Put it in <code>app/components/</code> (a flat directory) and name it after the template: <code>components/stats_card.html.slv</code> pairs with <code>StatsCardComponent</code>.</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/components/stats_card_component.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class StatsCardComponent
+  label: String
+  value: Int
+  trend: String
+
+  def before_render
+    @trend = "+0%" if @trend.blank?
+  end
+
+  def tone
+    @value &gt; 1000 ? "text-green-500" : "text-gray-400"
+  end
+end</code></pre>
+        </div>
+    </div>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/views/components/stats_card.html.slv</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;div class="stats-card &lt;%= this.tone() %&gt;"&gt;&lt;%= label %&gt;: &lt;%= value %&gt; (&lt;%= this.trend %&gt;)&lt;/div&gt;</code></pre>
+        </div>
+    </div>
+    <ul class="list-disc list-inside text-gray-400 mb-6">
+      <li>The props passed to <code>component(...)</code> become the instance's <strong class="text-white">fields</strong> (a declared field that was not passed is <code>nil</code>), and the instance is bound in the template as <strong class="text-white"><code>this</code></strong>. The props are still bare locals, as for a class-less component.</li>
+      <li><code>before_render</code>, if defined, runs first; raising there fails the render with the class named in the message.</li>
+      <li>The class is found by the last segment of the template name (<code>cards/stat</code> &rarr; <code>StatComponent</code>), so class files are flat. A component with no class renders as before.</li>
+      <li>Class files load with the app (and on hot reload) into the same environment as view helpers, so their methods can call helpers and builtins.</li>
+      <li><code>soli generate component stats_card --class</code> writes the template and a starter class.</li>
+    </ul>
+
     <h3 class="text-xl font-semibold text-white mb-4">Subdirectories</h3>
     <p class="text-gray-400 mb-4">Group related components:</p>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-4">

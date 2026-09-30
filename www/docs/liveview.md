@@ -527,6 +527,38 @@ send_update("score", { "id": "main", "score": 5 })
 
 A child without `router_live` still shares parent assigns (`soli-assign-*` / a bare `send_update({ ... })`). Independent `[data-liveview-url]` sockets remain valid when you *want* isolation.
 
+### `live_update`: from anywhere, across processes
+
+`send_update` reaches the view whose handler is running. To update views from
+somewhere else — a controller, a background job, another `soli serve`
+instance, `soli jobs` — call `live_update`:
+
+```soli
+# In a job, a controller, anywhere:
+live_update("board", { "note": "deploy finished" })                       # every attached "board"
+live_update("board", { "score": 9 }, { "room": "lobby" })                 # only that room
+live_update("board", { "score": 9 }, { "session": session_id() })         # one user's views
+live_update("board", { "id": "main", "score": 9 }, { "child": "score" })  # a nested live_component
+# => { "local": 2, "published": true }
+```
+
+The assigns merge onto each matching instance exactly as a bare `send_update`
+does (or onto the nested `child` component, whose `update` handler then runs), and
+the patch is pushed. It delivers to instances in *this* process at once, then
+publishes to a shared bus so other processes deliver to theirs; the return value
+says how many local instances were queued and whether it was published. An EUI
+component gets the same merge and re-renders its node tree. A client event that
+happens to be named `live_update` is not one of these: it reaches the component's
+handler like any other event.
+
+The bus is the `_live_bus` collection on SoliDB and its changefeed — the same
+transport the job engine uses — and every process that declares a `router_live`
+component subscribes. Without SoliDB, or when the changefeed is down, delivery is
+local only (`published` is `false`). It is **fire and forget**: SoliDB's
+changefeed can drop an event for a lagging subscriber, so send state the next
+update will restate, and keep anything that must not be missed in the database
+where the view can re-read it. Rows are pruned after two minutes.
+
 ## File uploads
 
 WebSocket frames are capped at 1 MiB, so bytes go over **HTTP** and the socket only carries an id. Put `soli-upload="handler"` on a file input (the page layout should include `csrf_meta_tag()`):
@@ -548,11 +580,27 @@ if event == "attached" {
 }
 ```
 
-`params["files"]` is the array (use `multiple` on the input). `params["file"]` is the first entry. Files larger than 256 KiB are sent as **chunks** (`X-Soli-Upload-Id` / `X-Soli-Chunk-Index` / `X-Soli-Chunk-Count`); the server assembles them and the handler still sees one hydrated file. A refresh mid-upload starts over (a partial upload is dropped after 2 minutes with no new chunk). While the POST is in flight the input gets `soli-upload-loading` and `data-soli-progress` (0–100). Put `[soli-upload-bar]` in the same `<label>` and it fills to that percent (`--soli-progress` is set on the label too). An `img[soli-upload-preview]` in that label shows a local preview for image files as soon as you pick them. A failure adds `soli-upload-error` and sends `{ "error": "…" }` instead of a file.
+`params["files"]` is the array (use `multiple` on the input). `params["file"]` is the first entry. Files larger than 256 KiB are sent as **chunks** (`X-Soli-Upload-Id` / `X-Soli-Chunk-Index` / `X-Soli-Chunk-Count`); the server assembles them and the handler still sees one hydrated file. An interrupted upload resumes (see below); a partial upload is dropped after 10 minutes with no new chunk (`SOLI_LIVE_UPLOAD_PARTIAL_TTL`, seconds). While the POST is in flight the input gets `soli-upload-loading` and `data-soli-progress` (0–100). Put `[soli-upload-bar]` in the same `<label>` and it fills to that percent (`--soli-progress` is set on the label too). An `img[soli-upload-preview]` in that label shows a local preview for image files as soon as you pick them. A failure adds `soli-upload-error` and sends `{ "error": "…" }` instead of a file.
 
 Persist the file on a model with `has_one_attached` / `attach_<field>(params["file"])` — the LiveView upload hash is the same shape as `find_uploaded_file`.
 
-The default cap is still 8 MiB (`soli-upload-max` / `DEFAULT_MAX_BYTES`). A refresh mid-upload starts over — chunks are not paused/resumed across a new page load.
+The default cap is still 8 MiB (`soli-upload-max` / `DEFAULT_MAX_BYTES`).
+
+### Pause and resume
+
+A chunked upload survives a pause, a dropped connection and a page refresh:
+
+- **Pause.** Put `soli-upload-pause` on a button in the same `<label>` as the input. It toggles `data-soli-upload-paused` on the input (and `aria-pressed` on the button; give it `data-soli-pause-label="Resume"` and its text swaps). The chunk in flight finishes, the next one waits. Scripts can dispatch a bubbling `soli:upload-pause` / `soli:upload-resume` event on the input instead.
+- **Resume.** The client remembers each chunked upload's id in `localStorage`, keyed by field, file name, size and modified time. Pick the same file again — after a refresh, or after a network error — and it asks `GET /live/upload/status?id=…`, which answers `{"exists": true, "total": N, "received": [0, 1, 3]}`, then sends only the missing chunks. An id the server has forgotten (expired, or another session's, which look identical on purpose) starts over under a fresh one.
+- **Window.** The server keeps a partial upload for **10 minutes** after its last chunk (`SOLI_LIVE_UPLOAD_PARTIAL_TTL`, seconds). The per-session (4) and global (32 uploads, 64 MiB) caps still bound memory. A parked upload cannot hold them against everyone else: once it has been idle for 2 minutes, it is evicted (longest-idle first) when a new upload would otherwise be refused for lack of room. Resuming it then starts over.
+
+```html
+<label>
+  <input type="file" name="video" soli-upload="attached">
+  <button type="button" soli-upload-pause data-soli-pause-label="Resume">Pause</button>
+  <div soli-upload-bar></div>
+</label>
+```
 
 An upload belongs to the session that posted it: the id is only redeemable by that
 session's LiveView, and each session holds at most **8** pending uploads (they also
@@ -578,13 +626,13 @@ declared 512, and park memory until the server ran out.
 Live View is young. Server-pushed re-renders and DOM-aware patching work well; some edges remain:
 
 - **The wire format is line-granular, not node-granular.** The server ships the changed lines of the render (the client's morph is what makes the update DOM-aware); Phoenix-style static/dynamic splitting, which ships only the changed *values*, is not implemented. Fine in practice — renders are compared server-side and only the delta travels.
-- **`update` is a child handler event, not a separate process.** `send_update("score", assigns)` writes `_components` and, when `router_live("score")` exists, runs that handler with `event == "update"`. The child is not its own socket or OTP process — it cannot be targeted from another OS process. A child without a handler still shares parent assigns.
+- **`update` is a child handler event, not a separate process.** `send_update("score", assigns)` writes `_components` and, when `router_live("score")` exists, runs that handler with `event == "update"`. The child is not its own socket or OTP process; `send_update` only reaches the view whose handler is running. Use `live_update` (above) to target views from another controller, a job or another OS process. A child without a handler still shares parent assigns.
 - **Independent child sockets still isolate state.** `[data-liveview-url]` mounts remain their own sockets. Shared assigns use `live_component` + `soli-assign-*` / `send_update` on the parent socket.
-- **Uploads are chunked, not resumable.** Files over 256 KiB POST to `/live/upload` in chunks and hydrate as one `params["file"]`. A refresh mid-upload starts over; there is no pause/resume and no Phoenix `allow_upload` consume pipeline. Default cap is 8 MiB.
+- **Uploads are chunked and resumable, but buffered.** Files over 256 KiB POST to `/live/upload` in chunks (pausable, and resumable within 10 minutes) and hydrate as one `params["file"]`; there is no Phoenix `allow_upload` consume pipeline and the bytes are held in memory until the handler runs. Default cap is 8 MiB.
 - **Leaving for a regular page is still a full load.** `soli-href`, handler `redirect`, and JS `navigate` drop the socket. Same-app LiveView changes use `soli-patch` (this component) or `soli-live` (another `/live/socket/<name>`).
 - **Scripts don't run on patch.** `<script>` tags inside a live region never execute when patched in; put behavior in external JS, a hook, or an Alpine island under `soli-ignore`.
 - **Reconnects restore server state, not the client shadow.** A dropped socket reconnects with backoff; the new connection reuses the previous instance state (same `session:component` id, or `room:name:component` when `data-live-room` is set) so the connect handler sees in-flight values. Every open tab of that instance is attached as another sender, so a click in one tab patches the others. The client still remounts the DOM from a fresh render. Nested child sockets reconnect independently. Once the last socket for an instance closes, its state is held for **two minutes** so a refresh or a network blip reclaims it, then reaped — a ticking view re-arms its timer on reconnect, and the instance's `live_where` subscriptions stop firing as soon as no socket is attached.
-- **Per-process.** Instances and `live_where` subscriptions live in server memory; a write in one process does not wake views in another. Multi-instance deployments need their own pub/sub layer.
+- **`live_where` is per-process.** Instances and `live_where` subscriptions live in server memory; a database write in one process does not wake views in another. `live_update` crosses processes (it rides SoliDB's changefeed), so a multi-instance deployment can publish `live_update` after a write to reach every instance's views.
 
 ## Why Live View?
 

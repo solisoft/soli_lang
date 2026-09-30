@@ -21,7 +21,11 @@ use rusoto_core::Region;
 #[cfg(feature = "cloud")]
 use rusoto_credential::StaticProvider;
 #[cfg(feature = "cloud")]
-use rusoto_s3::{DeleteObjectRequest, GetObjectRequest, PutObjectRequest, S3Client, S3};
+use rusoto_s3::util::{PreSignedRequest, PreSignedRequestOption};
+#[cfg(feature = "cloud")]
+use rusoto_s3::{
+    DeleteObjectRequest, GetObjectRequest, HeadObjectRequest, PutObjectRequest, S3Client, S3,
+};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -92,6 +96,240 @@ pub fn store_bytes(
             "unknown attachment service {other:?} (use disk, s3, or solidb)"
         )),
     }
+}
+
+/// Move a finished tus upload into the attachment store without reading it into
+/// memory. The upload is consumed on success.
+///
+/// The id is the caller's word, so it is resolved exactly as `tus_take` does:
+/// the upload must belong to the current session, be complete and unexpired.
+/// Name and type come from the upload itself, not from the hash that carried
+/// the id.
+fn store_from_tus(service: &str, collection: &str, tus_id: &str) -> Result<String, String> {
+    let owner = crate::interpreter::builtins::session::get_current_session_id();
+    let done = crate::serve::tus::finished(tus_id, owner.as_deref())?;
+    let (path, filename, content_type) = (&done.path, &done.filename, &done.content_type);
+    let id = match service {
+        "disk" => store_disk_from_path(collection, filename, content_type, path)?,
+        #[cfg(feature = "cloud")]
+        "s3" => store_s3_from_path(collection, filename, content_type, path)?,
+        #[cfg(not(feature = "cloud"))]
+        "s3" => return Err(NO_CLOUD.to_string()),
+        other => {
+            return Err(format!(
+                "a resumable upload can be attached to a disk or s3 attachment, not {other:?}"
+            ))
+        }
+    };
+    crate::serve::tus::discard(tus_id);
+    Ok(id)
+}
+
+fn store_disk_from_path(
+    collection: &str,
+    filename: &str,
+    content_type: &str,
+    source: &std::path::Path,
+) -> Result<String, String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let (data_path, meta_path) = disk_paths(collection, &id);
+    if let Some(parent) = data_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("attachment disk mkdir: {e}"))?;
+    }
+    let size = fs::metadata(source)
+        .map_err(|e| format!("attachment disk stat: {e}"))?
+        .len();
+    // A rename is free on one filesystem; across two it falls back to a copy.
+    if fs::rename(source, &data_path).is_err() {
+        fs::copy(source, &data_path).map_err(|e| format!("attachment disk copy: {e}"))?;
+        let _ = fs::remove_file(source);
+    }
+    let meta = BlobMeta {
+        filename: filename.to_string(),
+        content_type: content_type.to_string(),
+        size,
+    };
+    fs::write(
+        &meta_path,
+        serde_json::to_vec(&meta).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("attachment disk meta: {e}"))?;
+    Ok(id)
+}
+
+#[cfg(feature = "cloud")]
+fn store_s3_from_path(
+    collection: &str,
+    filename: &str,
+    content_type: &str,
+    source: &std::path::Path,
+) -> Result<String, String> {
+    let bucket = s3_bucket()?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let key = s3_key(collection, &id);
+    let client = s3_client()?;
+    let file = fs::File::open(source).map_err(|e| format!("attachment s3 open: {e}"))?;
+    let size = file
+        .metadata()
+        .map_err(|e| format!("attachment s3 stat: {e}"))?
+        .len();
+    // A megabyte at a time, so the file is never resident whole.
+    let stream = futures_util::stream::unfold(file, |mut file| async move {
+        let mut buffer = vec![0u8; 1024 * 1024];
+        match file.read(&mut buffer) {
+            Ok(0) => None,
+            Ok(read) => {
+                buffer.truncate(read);
+                Some((Ok(bytes::Bytes::from(buffer)), file))
+            }
+            Err(e) => Some((Err(e), file)),
+        }
+    });
+    let request = PutObjectRequest {
+        bucket,
+        key,
+        body: Some(rusoto_core::ByteStream::new(stream)),
+        content_length: Some(size as i64),
+        content_type: Some(content_type.to_string()),
+        metadata: Some(
+            [("original-filename".to_string(), filename.to_string())]
+                .into_iter()
+                .collect(),
+        ),
+        ..Default::default()
+    };
+    run_s3(async move {
+        client
+            .put_object(request)
+            .await
+            .map_err(|e| format!("attachment s3 put: {e}"))?;
+        Ok(id)
+    })
+}
+
+/// What a browser needs to send one file straight to the bucket.
+#[cfg(feature = "cloud")]
+struct DirectUpload {
+    id: String,
+    url: String,
+    headers: Vec<(String, String)>,
+    expires_in: u64,
+}
+
+/// Largest lifetime a presigned URL may be asked for.
+#[cfg(feature = "cloud")]
+const MAX_PRESIGN_SECS: u64 = 3600;
+
+/// A presigned `PUT` for a brand-new blob. The signature (rusoto's) covers the
+/// host and the `x-amz-meta-original-filename` header, *not* `Content-Type` or
+/// `Content-Length`: S3 will accept whatever the browser sends to this URL.
+/// The limits are therefore enforced when the upload is finished, against what
+/// the bucket reports (`direct_upload_finish`), which deletes an object that
+/// breaks them.
+#[cfg(feature = "cloud")]
+fn presign_direct_upload(
+    collection: &str,
+    filename: &str,
+    content_type: &str,
+    size: u64,
+    expires_in: u64,
+) -> Result<DirectUpload, String> {
+    let bucket = s3_bucket()?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let key = s3_key(collection, &id);
+    let (region, credentials) = s3_region_and_credentials()?;
+    let expires_in = expires_in.clamp(1, MAX_PRESIGN_SECS);
+    let request = PutObjectRequest {
+        bucket,
+        key,
+        content_type: Some(content_type.to_string()),
+        content_length: Some(size as i64),
+        metadata: Some(
+            [("original-filename".to_string(), filename.to_string())]
+                .into_iter()
+                .collect(),
+        ),
+        ..Default::default()
+    };
+    let url = request.get_presigned_url(
+        &region,
+        &credentials,
+        &PreSignedRequestOption {
+            expires_in: std::time::Duration::from_secs(expires_in),
+        },
+    );
+    Ok(DirectUpload {
+        id,
+        url,
+        headers: vec![
+            ("Content-Type".to_string(), content_type.to_string()),
+            (
+                "x-amz-meta-original-filename".to_string(),
+                filename.to_string(),
+            ),
+        ],
+        expires_in,
+    })
+}
+
+#[cfg(feature = "cloud")]
+fn s3_region_and_credentials() -> Result<(Region, rusoto_credential::AwsCredentials), String> {
+    let access_key = std::env::var("AWS_ACCESS_KEY_ID")
+        .or_else(|_| std::env::var("S3_ACCESS_KEY"))
+        .map_err(|_| "S3_ACCESS_KEY or AWS_ACCESS_KEY_ID not set".to_string())?;
+    let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY")
+        .or_else(|_| std::env::var("S3_SECRET_KEY"))
+        .map_err(|_| "S3_SECRET_KEY or AWS_SECRET_ACCESS_KEY not set".to_string())?;
+    let region_name = std::env::var("AWS_REGION")
+        .or_else(|_| std::env::var("S3_REGION"))
+        .unwrap_or_else(|_| "us-east-1".to_string());
+    let region = if let Ok(endpoint) = std::env::var("S3_ENDPOINT") {
+        Region::Custom {
+            name: region_name,
+            endpoint,
+        }
+    } else {
+        region_name.parse().unwrap_or(Region::UsEast1)
+    };
+    Ok((
+        region,
+        rusoto_credential::AwsCredentials::new(access_key, secret_key, None, None),
+    ))
+}
+
+/// What the bucket actually holds under `id`, or `None` when nothing landed.
+#[cfg(feature = "cloud")]
+fn head_s3(collection: &str, id: &str) -> Result<Option<BlobMeta>, String> {
+    let bucket = s3_bucket()?;
+    let key = s3_key(collection, id);
+    let client = s3_client()?;
+    run_s3(async move {
+        match client
+            .head_object(HeadObjectRequest {
+                bucket,
+                key,
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(head) => Ok(Some(BlobMeta {
+                filename: head
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("original-filename").cloned())
+                    .unwrap_or_else(|| "file".to_string()),
+                content_type: head
+                    .content_type
+                    .unwrap_or_else(|| "application/octet-stream".to_string()),
+                size: head.content_length.unwrap_or(0).max(0) as u64,
+            })),
+            Err(rusoto_core::RusotoError::Service(_)) => Ok(None),
+            Err(rusoto_core::RusotoError::Unknown(response)) if response.status.as_u16() == 404 => {
+                Ok(None)
+            }
+            Err(e) => Err(format!("attachment s3 head: {e}")),
+        }
+    })
 }
 
 fn store_disk(
@@ -330,9 +568,117 @@ pub fn register_attachment_builtins(env: &mut Environment) {
             let filename = hash_str(&file, "filename").unwrap_or_else(|| "file".into());
             let content_type = hash_str(&file, "content_type")
                 .unwrap_or_else(|| "application/octet-stream".into());
+            if let Some(tus_id) = hash_str(&file, "tus_id") {
+                if !file.contains_key(&HashKey::String("data".into())) {
+                    let id = store_from_tus(&service, &collection, &tus_id)?;
+                    return Ok(Value::String(id.into()));
+                }
+            }
             let data = file_bytes(&file)?;
             let id = store_bytes(&service, &collection, &filename, &content_type, data)?;
             Ok(Value::String(id.into()))
+        })),
+    );
+
+    // direct_upload(config, {filename, content_type, size}, expires_in?) — a
+    // presigned S3 PUT so the browser sends the file to the bucket, not to us.
+    env.define(
+        "direct_upload".to_string(),
+        Value::NativeFunction(NativeFunction::new("direct_upload", None, |args| {
+            let config = match args.first() {
+                Some(Value::Hash(h)) => h.borrow().clone(),
+                _ => return Err("direct_upload(config, file, expires_in?) expects a config hash".into()),
+            };
+            let file = match args.get(1) {
+                Some(Value::Hash(h)) => h.borrow().clone(),
+                _ => return Err("direct_upload(config, file, expires_in?) expects a file hash".into()),
+            };
+            let service = hash_str(&config, "service").unwrap_or_else(|| "disk".into());
+            if service != "s3" {
+                return Err(format!(
+                    "direct_upload needs an s3 attachment service, not {service:?}; use resumable_uploads() for disk"
+                ));
+            }
+            #[cfg(not(feature = "cloud"))]
+            {
+                let _ = (&file, args);
+                Err(NO_CLOUD.to_string())
+            }
+            #[cfg(feature = "cloud")]
+            {
+                let collection = hash_str(&config, "collection").unwrap_or_else(|| "blobs".into());
+                let filename = hash_str(&file, "filename").unwrap_or_else(|| "file".into());
+                let content_type = hash_str(&file, "content_type")
+                    .unwrap_or_else(|| "application/octet-stream".into());
+                let size = match file.get(&HashKey::String("size".into())) {
+                    Some(Value::Int(n)) if *n >= 0 => *n as u64,
+                    _ => return Err("direct_upload: file needs a non-negative size".into()),
+                };
+                let expires_in = match args.get(2) {
+                    Some(Value::Int(n)) if *n > 0 => *n as u64,
+                    _ => 900,
+                };
+                let direct =
+                    presign_direct_upload(&collection, &filename, &content_type, size, expires_in)?;
+                let mut headers = HashPairs::default();
+                for (name, value) in direct.headers {
+                    headers.insert(HashKey::String(name.into()), Value::String(value.into()));
+                }
+                let mut pairs = HashPairs::default();
+                pairs.insert(HashKey::String("id".into()), Value::String(direct.id.into()));
+                pairs.insert(HashKey::String("url".into()), Value::String(direct.url.into()));
+                pairs.insert(HashKey::String("method".into()), Value::String("PUT".into()));
+                pairs.insert(
+                    HashKey::String("headers".into()),
+                    Value::Hash(Rc::new(RefCell::new(headers))),
+                );
+                pairs.insert(
+                    HashKey::String("expires_in".into()),
+                    Value::Int(direct.expires_in as i64),
+                );
+                Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
+            }
+        })),
+    );
+
+    // direct_upload_head(config, id) — what the bucket holds under `id`:
+    // {filename, content_type, size}, or nil when the browser never finished.
+    env.define(
+        "direct_upload_head".to_string(),
+        Value::NativeFunction(NativeFunction::new("direct_upload_head", Some(2), |args| {
+            let config = match args.first() {
+                Some(Value::Hash(h)) => h.borrow().clone(),
+                _ => return Err("direct_upload_head(config, id) expects a config hash".into()),
+            };
+            let id = match args.get(1) {
+                Some(Value::String(s)) => s.to_string(),
+                _ => return Err("direct_upload_head(config, id) expects a string id".into()),
+            };
+            #[cfg(not(feature = "cloud"))]
+            {
+                let _ = (&config, &id);
+                Err(NO_CLOUD.to_string())
+            }
+            #[cfg(feature = "cloud")]
+            {
+                let collection = hash_str(&config, "collection").unwrap_or_else(|| "blobs".into());
+                match head_s3(&collection, &id)? {
+                    None => Ok(Value::Null),
+                    Some(meta) => {
+                        let mut pairs = HashPairs::default();
+                        pairs.insert(
+                            HashKey::String("filename".into()),
+                            Value::String(meta.filename.into()),
+                        );
+                        pairs.insert(
+                            HashKey::String("content_type".into()),
+                            Value::String(meta.content_type.into()),
+                        );
+                        pairs.insert(HashKey::String("size".into()), Value::Int(meta.size as i64));
+                        Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
+                    }
+                }
+            }
         })),
     );
 

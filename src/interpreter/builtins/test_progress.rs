@@ -15,11 +15,41 @@
 //! and a display that is a few assertions behind for a few microseconds is
 //! indistinguishable from one that is not.
 
-use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
+use std::sync::Mutex;
 
 static ASSERTIONS: AtomicI64 = AtomicI64::new(0);
 static TESTS_PASSED: AtomicUsize = AtomicUsize::new(0);
 static TESTS_FAILED: AtomicUsize = AtomicUsize::new(0);
+static FAIL_FAST: AtomicBool = AtomicBool::new(false);
+static FAIL_FAST_TRIPPED: AtomicBool = AtomicBool::new(false);
+static NAME_FILTER: Mutex<Option<String>> = Mutex::new(None);
+
+/// `soli test --filter <text>`: only tests whose full description (enclosing
+/// `describe` names then the test name, space-joined) contains `text`,
+/// case-insensitively, run.
+pub fn set_name_filter(filter: Option<String>) {
+    *NAME_FILTER.lock().unwrap() = filter.map(|f| f.to_lowercase());
+}
+
+/// True when no filter is set or `description` matches it.
+pub fn matches_name_filter(description: &str) -> bool {
+    match NAME_FILTER.lock().unwrap().as_deref() {
+        Some(filter) => description.to_lowercase().contains(filter),
+        None => true,
+    }
+}
+
+/// `soli test --fail-fast`: stop scheduling tests after the first failure.
+pub fn set_fail_fast(enabled: bool) {
+    FAIL_FAST.store(enabled, Ordering::Relaxed);
+    FAIL_FAST_TRIPPED.store(false, Ordering::Relaxed);
+}
+
+/// True once `--fail-fast` is on and a test has failed.
+pub fn fail_fast_tripped() -> bool {
+    FAIL_FAST_TRIPPED.load(Ordering::Relaxed)
+}
 
 /// What the progress bar draws, read in one go so the three numbers on screen
 /// belong to roughly the same instant.
@@ -50,6 +80,9 @@ pub fn record_test(passed: bool) {
         TESTS_PASSED.fetch_add(1, Ordering::Relaxed);
     } else {
         TESTS_FAILED.fetch_add(1, Ordering::Relaxed);
+        if FAIL_FAST.load(Ordering::Relaxed) {
+            FAIL_FAST_TRIPPED.store(true, Ordering::Relaxed);
+        }
     }
 }
 

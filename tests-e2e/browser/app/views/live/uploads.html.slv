@@ -1,0 +1,8 @@
+<div data-liveview-id="<%= id %>">
+  <label>
+    <input type="file" id="upl" name="file" soli-upload="attached">
+    <button type="button" id="pause" soli-upload-pause>Pause</button>
+  </label>
+  <span id="result">result=<%= name %>:<%= size %></span>
+  <span id="upload-error">error=<%= error %></span>
+</div>

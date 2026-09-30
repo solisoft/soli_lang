@@ -11,6 +11,8 @@ class OauthUserinfoController < Controller
     claims = oidc_verify_access_token(token)
     return this._unauthorized("The access token is invalid, expired or revoked") if claims.nil?
 
+    return this._unauthorized("A client_credentials token has no user") if claims["gty"] == "client-credentials"
+
     user = User.find_by("_key", claims["sub"].to_s)
     return this._unauthorized("The user no longer exists") if user.nil?
 

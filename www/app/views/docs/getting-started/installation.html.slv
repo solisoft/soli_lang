@@ -14,22 +14,11 @@
         Prerequisites
     </h2>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <h3 class="font-semibold text-white mb-2">Node.js</h3>
-            <p class="text-sm text-gray-400">v16 or higher (for Tailwind CSS)</p>
-            <code class="text-xs text-amber-300 mt-2 block">node --version</code>
-        </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <h3 class="font-semibold text-white mb-2">npm</h3>
-            <p class="text-sm text-gray-400">Package manager</p>
-            <code class="text-xs text-amber-300 mt-2 block">npm --version</code>
-        </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <h3 class="font-semibold text-white mb-2">OpenSSL</h3>
-            <p class="text-sm text-gray-400">Required to build from source (<code class="text-amber-300">libssl-dev</code> / <code class="text-amber-300">openssl-devel</code> / Homebrew <code class="text-amber-300">openssl</code>)</p>
-            <code class="text-xs text-amber-300 mt-2 block">openssl version</code>
-        </div>
+    <div class="p-4 rounded-xl bg-white/5 border border-white/10 mb-12">
+        <p class="text-gray-400" style="margin: 0;">
+            None. Soli is a single binary with no Node.js, npm, OpenSSL or database to install first. The quick installer below only needs
+            <code class="text-amber-300">curl</code>.
+        </p>
     </div>
 
     <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">

@@ -311,6 +311,8 @@ end
 soli test                       # everything under tests/
 soli test tests/user_test.sl    # one file
 soli test --fail-on-n1          # fail any request spec that triggers an N+1
+soli test --filter "lists posts" # only tests whose describe/test names match
+soli test --fail-fast           # stop after the first failing test
 soli test --browser             # also run browser specs
 ```
 

@@ -726,17 +726,38 @@ fn execute_test_suites(
     interpreter: &mut interpreter::Interpreter,
     suites: &[interpreter::builtins::test_dsl::TestSuite],
 ) -> Result<(i64, Vec<String>), error::RuntimeError> {
+    execute_test_suites_in(interpreter, suites, "")
+}
+
+fn execute_test_suites_in(
+    interpreter: &mut interpreter::Interpreter,
+    suites: &[interpreter::builtins::test_dsl::TestSuite],
+    prefix: &str,
+) -> Result<(i64, Vec<String>), error::RuntimeError> {
+    use crate::interpreter::builtins::test_progress;
     let mut failed_count = 0i64;
     let mut failed_tests = Vec::new();
 
     for suite in suites {
+        if test_progress::fail_fast_tripped() {
+            break;
+        }
+        let suite_path = format!("{} {}", prefix, suite.name).trim().to_string();
+        let stubs_outside_suite = crate::interpreter::builtins::mock::snapshot_stubs();
         // Run before_all if defined
         if let Some(before_all) = &suite.before_all {
             let rebound = rebind_closure(before_all, &interpreter.environment);
             let _ = interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
         }
+        // Stubs from `before_all` belong to the whole suite (nested ones included).
+        let suite_stubs = crate::interpreter::builtins::mock::snapshot_stubs();
 
         for test in &suite.tests {
+            if test_progress::fail_fast_tripped()
+                || !test_progress::matches_name_filter(&format!("{} {}", suite_path, test.name))
+            {
+                continue;
+            }
             crate::interpreter::builtins::datetime::helpers::unfreeze_datetime();
             // The browser outlives a single test on purpose — relaunching one
             // per test would dominate the runtime — so the errors it collected
@@ -770,6 +791,9 @@ fn execute_test_suites(
                 failed_tests.push(format!("{}: {}", test.name, e));
             }
 
+            // A stub set by the test or `before_each` is scoped to the test.
+            crate::interpreter::builtins::mock::restore_stubs(suite_stubs.clone());
+
             // Run after_each if defined
             if let Some(after_each) = &suite.after_each {
                 let rebound = rebind_closure(after_each, &interpreter.environment);
@@ -779,7 +803,7 @@ fn execute_test_suites(
 
         // Run nested suites
         let (nested_failed, mut nested_errors) =
-            execute_test_suites(interpreter, &suite.nested_suites)?;
+            execute_test_suites_in(interpreter, &suite.nested_suites, &suite_path)?;
         failed_count += nested_failed;
         failed_tests.append(&mut nested_errors);
 
@@ -788,6 +812,7 @@ fn execute_test_suites(
             let rebound = rebind_closure(after_all, &interpreter.environment);
             let _ = interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
         }
+        crate::interpreter::builtins::mock::restore_stubs(stubs_outside_suite);
     }
     Ok((failed_count, failed_tests))
 }
