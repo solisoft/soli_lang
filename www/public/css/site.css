@@ -81,3 +81,15 @@ html[data-theme="light"] .docs-site-links a:hover { color: #B4400B; }
 }
 .docs-crumb { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
 .lp-nav.is-docs .lp-wrap { max-width: none; padding: 0 24px; }
+
+/* ---- Changelog pager (docs) ---- */
+.cl-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0 48px; padding: 16px 0; border-top: 1px solid rgba(255, 255, 255, 0.08); border-bottom: 1px solid rgba(255, 255, 255, 0.08); font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+.cl-pages { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+.cl-page, .cl-step { display: inline-flex; align-items: center; min-height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.1); color: #C9BFAE; text-decoration: none; white-space: nowrap; }
+.cl-page:hover, .cl-step:hover { border-color: #E8590C; color: #F2A365; }
+.cl-page.is-current { background: #E8590C; border-color: #E8590C; color: #1B1712; font-weight: 600; }
+.cl-step.is-disabled { opacity: 0.4; pointer-events: none; }
+html[data-theme="light"] .cl-pager { border-color: #D8CFBE; }
+html[data-theme="light"] .cl-page, html[data-theme="light"] .cl-step { border-color: #D8CFBE; color: #4A4238; }
+html[data-theme="light"] .cl-page:hover, html[data-theme="light"] .cl-step:hover { border-color: #E8590C; color: #B4400B; }
+html[data-theme="light"] .cl-page.is-current { color: #1B1712; }

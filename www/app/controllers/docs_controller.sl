@@ -75,8 +75,19 @@ def getting_started_benchmarks
   render_docs("docs/getting-started/benchmarks", "Benchmarks", "getting_started", "benchmarks")
 end
 
+# GET /docs/getting-started/changelog — a page of releases at a time (?page=2, …)
 def getting_started_changelog
-  render_docs("docs/getting-started/changelog", "Changelog", "getting_started", "changelog")
+  # The page number goes into the render data: the response cache keys on it.
+  render("docs/getting-started/changelog_paged", {
+    "title": "Changelog",
+    "section": "getting_started",
+    "subsection": "changelog",
+    "hide_toc": false,
+    "nav_path": "/docs/getting-started/changelog",
+    "docs_og": docs_og("docs/getting-started/changelog"),
+    "changelog_page": params["page"].to_s.to_i,
+    "layout": "layouts/docs"
+  })
 end
 
 # ============================================================================

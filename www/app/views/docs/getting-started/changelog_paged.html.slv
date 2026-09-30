@@ -1,0 +1,3 @@
+<%# The changelog, a page at a time. The entries stay in changelog.html.slv —
+    one hand-authored file, newest first; app/helpers/changelog.sl cuts it. %>
+<%- changelog_page_html(component("docs/getting-started/changelog", {}), changelog_page) %>
