@@ -1041,6 +1041,8 @@ Options: `title`, `author`, `subject`, `password`, `owner_password`, `stationery
 
 The binary itself reads JSON from stdin and writes the PDF to stdout: `render_pdf --template t.json --data - -o - < data.json > out.pdf` (`-` may stand for one input only).
 
+**Image sources.** `data:` URIs always load. A local path (`file://…` or bare) is read only if it resolves, symlinks included, inside the working directory or a directory passed with `--image-dir` (repeatable); anything else is skipped with a warning, so a template carrying user data cannot embed `/etc/passwd`. An `http(s)` URL is fetched only if its host resolves to public addresses — loopback, private, link-local and similar ranges are refused, the connection is pinned to the checked address and each redirect is re-checked — and never with `--no-images`. From the gem, local images resolve against your process's working directory (the app root under Rails).
+
 ---
 
 ## Performance

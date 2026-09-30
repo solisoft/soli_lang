@@ -29,6 +29,9 @@ Options: `title`, `author`, `subject`, `password`, `owner_password`, `stationery
 `xml:` (Factur-X CII XML, with `profile:`), or `invoice:` instead of `data:` for a typed invoice.
 Failures raise `Soli::PDF::RenderError` (with `stderr`); `Soli::PDF.last_warnings` lists skipped images and missing glyphs.
 
+Images: `data:` URIs, files under the working directory, and `http(s)` URLs on public addresses
+(needs the `render_pdf` release that follows 2.9.0; 2.9.0 draws `data:` URIs only).
+
 Template reference: <https://soli-lang.org/docs/builtins/pdf>.
 
 ## The binary

@@ -92,6 +92,8 @@ cargo run --bin render_pdf -- \
   --profile  en16931 \
   --out      invoice.pdf
 # --no-images to skip remote image fetches (offline/deterministic)
+# Local images load from the working directory and any --image-dir <dir>
+# (repeatable); http(s) images from public addresses only.
 
 # Single source of truth: one invoice JSON → PDF + computed, consistent CII XML
 # (no separate --data/--xml; the XML is generated, not supplied).
