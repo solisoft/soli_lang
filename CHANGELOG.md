@@ -2,7 +2,11 @@
 
 ## [Unreleased]
 
-## [2.8.0] - 2026-09-30
+## [2.8.1] - 2026-09-30
+
+* **fix(ci):** **v2.8.0 was tagged but never published; 2.8.1 is that release.** Its CI stopped at the unwrap-count ratchet: a template test added in the cycle used `.unwrap()`, taking `src/template` to 242 calls against a baseline of 241, so the release job never ran. The test now matches on `Ok(None)`. Everything listed under 2.8.0 ships here.
+
+## [2.8.0] - 2026-09-30 [NOT PUBLISHED]
 
 ### Added
 

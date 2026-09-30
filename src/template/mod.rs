@@ -2206,11 +2206,10 @@ mod tests {
         let data = Value::Hash(Rc::new(RefCell::new(
             crate::interpreter::value::HashPairs::default(),
         )));
-        assert!(
-            instantiate_component_class("components/no_such_thing", &data)
-                .unwrap()
-                .is_none()
-        );
+        assert!(matches!(
+            instantiate_component_class("components/no_such_thing", &data),
+            Ok(None)
+        ));
     }
 
     #[test]
