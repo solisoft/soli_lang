@@ -33,6 +33,10 @@
 .lp-code .v { color: #8FB8DE; }
 .lp-code .n { color: #E9E2D6; }
 .lp-code .ok { color: #7EC99A; }
+/* Hero sample: never scrolls. The type scales with the panel so its longest
+   line (43 columns; a JetBrains Mono column is 0.6em, so 25.8em) always fits. */
+.lp-code-fit { container-type: inline-size; }
+.lp-code-fit pre { --pad: clamp(14px, 5cqi, 24px); padding: 22px var(--pad); font-size: min(14.5px, calc((100cqi - 2 * var(--pad)) / 26)); }
 
 /* Proof strip */
 .lp-proof { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }

@@ -28,18 +28,19 @@
                 <a href="https://github.com/solisoft/soli_lang" target="_blank" rel="noopener" class="lp-link" style="align-self: flex-start;">View on GitHub</a>
             </div>
 
-            <div class="lp-code">
+            <div class="lp-code lp-code-fit">
                 <div class="lp-code-bar"><span>app/controllers/posts_controller.sl</span></div>
 <pre><code><span class="k">class</span> <span class="n">PostsController &lt; Controller</span>
-  <span class="c"># GET /posts: posts/index renders with @posts</span>
+  <span class="c"># GET /posts — renders with @posts</span>
   <span class="k">def</span> <span class="n">index(req)</span>
     <span class="v">@posts</span> <span class="n">= Post.all</span>
   <span class="k">end</span>
 
+  <span class="c"># POST /posts</span>
   <span class="k">def</span> <span class="n">create(req)</span>
-    <span class="n">post_params = permit(params, {</span><span class="s">"title"</span><span class="n">: true})</span>
-    <span class="v">@post</span> <span class="n">= Post.create(post_params)</span>
-    <span class="k">return</span> <span class="n">render(</span><span class="s">"posts/new"</span><span class="n">)</span> <span class="k">if</span> <span class="v">@post</span><span class="n">._errors</span>
+    <span class="n">attrs = permit(params, {</span><span class="s">"title"</span><span class="n">: true})</span>
+    <span class="v">@post</span> <span class="n">= Post.create(attrs)</span>
+    <span class="k">return</span> <span class="n">render(</span><span class="s">"new"</span><span class="n">)</span> <span class="k">if</span> <span class="v">@post</span><span class="n">._errors</span>
 
     <span class="n">redirect(post_path(</span><span class="v">@post</span><span class="n">))</span>
   <span class="k">end</span>
