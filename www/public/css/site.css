@@ -1,0 +1,83 @@
+/* The site-wide top bar and the palette it is drawn in, shared by
+   layouts/landing and layouts/docs (markup: layouts/_site_nav). */
+:root {
+    --paper: #F6F1E7;
+    --paper-raised: #FFFDF8;
+    --paper-sunk: #EADFC9;
+    --ink: #1B1712;
+    --ink-soft: #4A4238;
+    --ink-faint: #6B6153;
+    --line: #D8CFBE;
+    --line-soft: #E3DAC8;
+    --sun: #E8590C;
+    --sun-text: #B4400B;
+    --night: #1C1814;
+    --night-deep: #14110E;
+    --night-line: #2E2822;
+    --nav-bg: rgba(246, 241, 231, 0.88);
+}
+html[data-theme="dark"] {
+    --paper: #1C1814;
+    --paper-raised: #241F1A;
+    --paper-sunk: #16130F;
+    --ink: #F6F1E7;
+    --ink-soft: #C9BFAE;
+    --ink-faint: #A69C8C;
+    --line: #3A332B;
+    --line-soft: #2E2822;
+    --sun-text: #F2A365;
+    --night: #100D0A;
+    --night-deep: #0A0806;
+    --nav-bg: rgba(28, 24, 20, 0.88);
+}
+.lp-wrap { max-width: 1280px; margin: 0 auto; padding: 0 clamp(20px, 5.5vw, 80px); }
+
+/* Navigation */
+.lp-nav {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--nav-bg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line-soft);
+}
+.lp-nav-inner { display: flex; align-items: center; gap: 40px; height: 80px; }
+.lp-logo { display: flex; align-items: center; gap: 12px; font-family: 'Fraunces', serif; font-weight: 700; font-size: 28px; letter-spacing: -0.02em; }
+.lp-links { display: flex; gap: 32px; flex-grow: 1; font-size: 16px; font-weight: 500; }
+.lp-links a:hover { color: var(--sun-text); }
+.lp-nav-tools { display: flex; align-items: center; gap: 20px; font-size: 16px; font-weight: 500; }
+.lp-icon-btn { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; color: var(--ink); cursor: pointer; }
+.lp-icon-btn:hover { background: var(--paper-sunk); }
+.lp-pill { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 20px; border-radius: 999px; background: var(--ink); color: var(--paper); font-size: 15px; font-weight: 600; transition: background .2s; }
+.lp-pill:hover { background: var(--ink-soft); }
+.lp-menu-btn { display: none; }
+.lp-mobile { display: none; padding: 8px 0 20px; border-top: 1px solid var(--line-soft); }
+.lp-mobile.open { display: block; }
+.lp-mobile a, .lp-mobile button { display: flex; align-items: center; width: 100%; min-height: 48px; padding: 0 4px; border: 0; background: transparent; font: inherit; font-size: 17px; font-weight: 500; color: var(--ink); text-align: left; cursor: pointer; }
+@media (max-width: 900px) {
+    .lp-links, .lp-nav-tools .lp-hide-sm { display: none; }
+    .lp-menu-btn { display: flex; margin-left: auto; }
+    .lp-nav-inner { gap: 16px; }
+}
+.lp-nav { font-family: 'Instrument Sans', system-ui, sans-serif; color: var(--ink); }
+.lp-nav a { color: inherit; text-decoration: none; }
+.lp-nav .lp-pill { color: var(--paper); }
+.lp-links a.is-current { color: var(--sun-text); }
+.lp-nav { font-family: 'Instrument Sans', system-ui, sans-serif; color: var(--ink); }
+.lp-nav a { color: inherit; text-decoration: none; }
+.lp-nav .lp-pill { color: var(--paper); }
+.lp-links a.is-current { color: var(--sun-text); }
+
+/* ---- Docs layout under the top bar ---- */
+.docs-mobile-sidebar { top: 81px; }
+.docs-site-links { display: flex; flex-direction: column; margin: 0 0 20px; padding-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.docs-site-links a { display: flex; align-items: center; min-height: 40px; font-size: 15px; font-weight: 500; color: #E9E2D6; }
+.docs-site-links a:hover { color: #F2A365; }
+html[data-theme="light"] .docs-site-links { border-bottom-color: #D8CFBE; }
+html[data-theme="light"] .docs-site-links a { color: #1B1712; }
+html[data-theme="light"] .docs-site-links a:hover { color: #B4400B; }
+@media (min-width: 1024px) {
+    .docs-shell { height: calc(100vh - 81px); }
+    .docs-pane { height: 100%; }
+}
+.docs-crumb { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+.lp-nav.is-docs .lp-wrap { max-width: none; padding: 0 24px; }
