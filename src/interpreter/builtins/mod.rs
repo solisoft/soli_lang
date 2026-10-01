@@ -71,6 +71,7 @@ pub mod http_class;
 pub mod http_log;
 pub mod i18n;
 pub mod image;
+#[cfg(feature = "mail")]
 pub mod imap;
 pub mod job_log;
 pub mod jobs;
@@ -102,6 +103,18 @@ pub mod mailer {
 
     /// No builtins to register.
     pub fn register_mailer_builtins(_env: &mut Environment) {}
+
+    /// The notifier's mail channel, in a build that cannot send mail: report
+    /// it rather than pretend the mail went out.
+    pub(crate) fn send_operator_mail(
+        _to: &[String],
+        _from: Option<&str>,
+        _subject: &str,
+        _text_body: &str,
+        _html_body: &str,
+    ) -> Result<(), String> {
+        Err("this soli was built without the `mail` feature".to_string())
+    }
 }
 pub mod markdown;
 pub mod math;
