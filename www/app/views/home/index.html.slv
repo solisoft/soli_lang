@@ -136,64 +136,236 @@
     </div>
 </section>
 
-<!-- Batteries -->
-<section class="lp-section" style="background: var(--paper-sunk);">
+<!-- Batteries: a Rails Gemfile, struck through by what ships in the binary -->
+<section id="batteries" class="lp-section" style="background: var(--paper-sunk);">
+    <style>
+        #batteries .bt-layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(32px, 5vw, 72px); align-items: start; margin-top: 56px; }
+        #batteries .bt-panel { position: sticky; top: 88px; display: flex; flex-direction: column; max-height: calc(100vh - 120px); }
+        #batteries .bt-scroll { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+        #batteries .bt-panel pre { font-size: 13.5px; line-height: 1.7; font-variant-ligatures: none; }
+        #batteries .ln { display: inline-block; position: relative; padding: 0 2px; border-radius: 4px; transition: opacity .25s ease, background-color .25s ease; }
+        #batteries .g::after { content: ""; position: absolute; left: -3px; right: -3px; top: calc(50% - 1px); height: 2px; border-radius: 2px; background: var(--sun); }
+        #batteries .bt-armed .g::after { transform: scaleX(0); transform-origin: left center; transition: transform .5s cubic-bezier(.2, .7, .2, 1); transition-delay: calc(var(--i) * 40ms + 200ms); }
+        #batteries .bt-armed.bt-struck .g::after { transform: scaleX(1); }
+        #batteries .bt-panel.has-active .bt-scroll pre { color: rgba(233, 226, 214, .3); }
+        #batteries .bt-panel.has-active .bt-scroll pre span { opacity: .45; }
+        #batteries .bt-panel.has-active .ln.is-on, #batteries .bt-panel.has-active .ln.is-on span { opacity: 1; }
+        #batteries .bt-panel.has-active .ln.is-on { background: rgba(232, 89, 12, .22); }
+        #batteries .bt-list { list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--line); }
+        #batteries .bt-row { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 22px 0 22px 22px; border-top: 1px solid var(--line); outline: none; cursor: default; }
+        #batteries .bt-row::before { content: ""; position: absolute; left: 0; top: 22px; bottom: 22px; width: 3px; border-radius: 3px; background: var(--sun); transform: scaleY(0); transform-origin: top; transition: transform .25s ease; }
+        #batteries .bt-row.is-active::before { transform: scaleY(1); }
+        #batteries .bt-row:focus-visible { box-shadow: 0 0 0 2px var(--sun); border-radius: 10px; }
+        #batteries .bt-title { margin: 0; font-family: 'Fraunces', serif; font-weight: 600; font-size: 22px; letter-spacing: -0.015em; color: var(--ink); }
+        #batteries .bt-row p { margin: 0; max-width: 46ch; font-size: 16px; line-height: 1.55; color: var(--ink-soft); }
+        #batteries .bt-row p code { padding: 1px 6px; border-radius: 6px; background: var(--paper-raised); font-family: 'JetBrains Mono', monospace; font-size: 0.88em; color: var(--ink); }
+        #batteries .bt-snip { align-self: flex-start; max-width: 100%; overflow-wrap: anywhere; font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: var(--sun-text); }
+        #batteries .bt-rest .lp-chips { margin-top: 6px; }
+        #batteries .bt-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+        @media (max-width: 900px) {
+            #batteries .bt-layout { grid-template-columns: minmax(0, 1fr); }
+            #batteries .bt-panel { position: relative; top: 0; max-height: 440px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #batteries .ln, #batteries .bt-row::before { transition: none; }
+        }
+    </style>
     <div class="lp-wrap">
         <div style="display: flex; flex-direction: column; gap: 20px; max-width: 760px;">
             <div class="lp-eyebrow">Soli MVC</div>
             <h2 class="lp-h2">Batteries actually included</h2>
-            <p class="lp-lead">What every app needs is in the binary, not in a package registry. No Gemfile, no package.json, no supply chain to audit. Each one is a single line of code.</p>
+            <p class="lp-lead">This is the Gemfile a production Rails app grows to do what Soli does out of the box. Point at a feature, or tap it, to see the gems it replaces.</p>
         </div>
 
-        <div class="lp-grid-3" style="margin-top: 56px;">
-            <div class="lp-card">
-                <h3 class="lp-h3">Authentication &amp; policies</h3>
-                <p><code>soli generate auth</code> scaffolds login, sessions, and a Pundit-style policy layer.</p>
-<pre><code><span style="color:#E9E2D6">authorize(post)</span>  <span style="color:#A69C8C"># 403 unless PostPolicy allows it</span></code></pre>
-            </div>
-            <div class="lp-card">
-                <h3 class="lp-h3">Validations &amp; callbacks</h3>
-                <p>Declared on the model, enforced on every create and update.</p>
-<pre><code>validates(<span style="color:#A8C98A">"email"</span>, { <span style="color:#A8C98A">"presence"</span>: true, <span style="color:#A8C98A">"uniqueness"</span>: true })</code></pre>
-            </div>
-            <div class="lp-card">
-                <h3 class="lp-h3">Background jobs</h3>
-                <p>In-process queue with scheduling, priorities, retries, and cron, on any adapter.</p>
-<pre><code>WelcomeEmailJob.perform_in(<span style="color:#A8C98A">"5 minutes"</span>, { <span style="color:#A8C98A">"user_id"</span>: 42 })</code></pre>
-            </div>
-            <div class="lp-card">
-                <h3 class="lp-h3">Mailer</h3>
-                <p>Rails-style mailers with templates, layouts, and attachments.</p>
-<pre><code>UserMailer.welcome(user).deliver_later</code></pre>
-            </div>
-            <div class="lp-card">
-                <h3 class="lp-h3">PDF generation</h3>
-                <p>JSON templates to invoice-grade PDFs, returned straight from an action.</p>
-<pre><code>pdf_response(template, data, { <span style="color:#A8C98A">"filename"</span>: <span style="color:#A8C98A">"invoice.pdf"</span> })</code></pre>
-            </div>
-            <div class="lp-card">
-                <h3 class="lp-h3">WebSockets</h3>
-                <p>Channels, rooms, and broadcast. Hashes serialize themselves.</p>
-<pre><code>ws_broadcast_room(room, { <span style="color:#A8C98A">"user"</span>: name, <span style="color:#A8C98A">"body"</span>: msg })</code></pre>
-            </div>
-            <div class="lp-card">
-                <h3 class="lp-h3">Live views</h3>
-                <p>Server-rendered reactive components without writing JavaScript.</p>
-<pre><code>&lt;button <span style="color:#F2A365">soli-click=</span><span style="color:#A8C98A">"increment"</span>&gt;+&lt;/button&gt;</code></pre>
-            </div>
-            <div class="lp-card">
-                <h3 class="lp-h3">i18n</h3>
-                <p>Translations with interpolation and pluralization built in.</p>
-<pre><code>t(<span style="color:#A8C98A">"welcome.greeting"</span>, { <span style="color:#A8C98A">"name"</span>: user[<span style="color:#A8C98A">"name"</span>] })</code></pre>
-            </div>
-            <div class="lp-card" style="background: transparent; border-style: dashed; border-color: var(--ink-faint);">
-                <h3 class="lp-h3">And the rest, quietly</h3>
-                <div class="lp-chips" style="margin-top: 4px;">
-                    <span>Sessions</span><span>Cache &amp; KV</span><span>Rate limiting</span><span>Uploads</span><span>S3</span><span>Spreadsheets</span><span>Migrations</span><span>State machines</span><span>Feature flags</span><span>Cron</span><span>Testing &amp; coverage</span><span>Linter</span><span>Formatter</span><span>Hot reload</span><span>Dev bar</span>
+        <div class="bt-layout">
+            <div class="lp-code bt-panel">
+                <div class="lp-code-bar"><span>Gemfile</span><span class="lp-tag">35 gems you won&rsquo;t add</span></div>
+                <div class="bt-scroll">
+<pre><code><span class="k">source</span> <span class="s">"https://rubygems.org"</span>
+<span class="k">gem</span> <span class="s">"rails"</span>, <span class="s">"~&gt; 8.0"</span>
+<span class="ln bt-note" data-cap="mailer"><span class="c"># Mail: Action Mailer ships with Rails</span></span>
+
+<span class="c"># Sign-in and permissions</span>
+<span class="ln g" data-cap="auth" style="--i: 0"><span class="k">gem</span> <span class="s">"devise"</span></span>
+<span class="ln g" data-cap="auth" style="--i: 1"><span class="k">gem</span> <span class="s">"pundit"</span></span>
+<span class="ln g" data-cap="oauth" style="--i: 2"><span class="k">gem</span> <span class="s">"omniauth"</span></span>
+<span class="ln g" data-cap="oauth" style="--i: 3"><span class="k">gem</span> <span class="s">"omniauth-github"</span></span>
+<span class="ln g" data-cap="oauth" style="--i: 4"><span class="k">gem</span> <span class="s">"doorkeeper"</span></span>
+
+<span class="c"># Work off the request</span>
+<span class="ln g" data-cap="jobs" style="--i: 5"><span class="k">gem</span> <span class="s">"sidekiq"</span></span>
+<span class="ln g" data-cap="jobs" style="--i: 6"><span class="k">gem</span> <span class="s">"sidekiq-cron"</span></span>
+
+<span class="c"># Documents</span>
+<span class="ln g" data-cap="pdf" style="--i: 7"><span class="k">gem</span> <span class="s">"prawn"</span></span>
+<span class="ln g" data-cap="pdf" style="--i: 8"><span class="k">gem</span> <span class="s">"prawn-table"</span></span>
+<span class="ln g" data-cap="pdf" style="--i: 9"><span class="k">gem</span> <span class="s">"hexapdf"</span></span>
+
+<span class="c"># Search</span>
+<span class="ln g" data-cap="search" style="--i: 10"><span class="k">gem</span> <span class="s">"searchkick"</span></span>
+<span class="ln g" data-cap="search" style="--i: 11"><span class="k">gem</span> <span class="s">"neighbor"</span></span>
+<span class="ln g" data-cap="search" style="--i: 12"><span class="k">gem</span> <span class="s">"geocoder"</span></span>
+
+<span class="c"># Real time</span>
+<span class="ln g" data-cap="ws" style="--i: 13"><span class="k">gem</span> <span class="s">"redis"</span></span>
+<span class="ln g" data-cap="live" style="--i: 14"><span class="k">gem</span> <span class="s">"turbo-rails"</span></span>
+<span class="ln g" data-cap="live" style="--i: 15"><span class="k">gem</span> <span class="s">"stimulus-rails"</span></span>
+<span class="ln g" data-cap="push" style="--i: 16"><span class="k">gem</span> <span class="s">"web-push"</span></span>
+
+<span class="c"># API docs</span>
+<span class="ln g" data-cap="api" style="--i: 17"><span class="k">gem</span> <span class="s">"rswag-api"</span></span>
+<span class="ln g" data-cap="api" style="--i: 18"><span class="k">gem</span> <span class="s">"rswag-ui"</span></span>
+
+<span class="c"># Production signals</span>
+<span class="ln g" data-cap="obs" style="--i: 19"><span class="k">gem</span> <span class="s">"prometheus_exporter"</span></span>
+<span class="ln g" data-cap="obs" style="--i: 20"><span class="k">gem</span> <span class="s">"lograge"</span></span>
+<span class="ln g" data-cap="obs" style="--i: 21"><span class="k">gem</span> <span class="s">"opentelemetry-sdk"</span></span>
+<span class="ln g" data-cap="obs" style="--i: 22"><span class="k">gem</span> <span class="s">"opentelemetry-instrumentation-all"</span></span>
+<span class="ln g" data-cap="obs" style="--i: 23"><span class="k">gem</span> <span class="s">"sentry-rails"</span></span>
+
+<span class="c"># Everything else</span>
+<span class="ln g" data-cap="rest" style="--i: 24"><span class="k">gem</span> <span class="s">"rack-attack"</span></span>
+<span class="ln g" data-cap="rest" style="--i: 25"><span class="k">gem</span> <span class="s">"aasm"</span></span>
+<span class="ln g" data-cap="rest" style="--i: 26"><span class="k">gem</span> <span class="s">"flipper"</span></span>
+<span class="ln g" data-cap="rest" style="--i: 27"><span class="k">gem</span> <span class="s">"aws-sdk-s3"</span></span>
+<span class="ln g" data-cap="rest" style="--i: 28"><span class="k">gem</span> <span class="s">"caxlsx"</span></span>
+<span class="ln g" data-cap="rest" style="--i: 29"><span class="k">gem</span> <span class="s">"rails-i18n"</span></span>
+
+<span class="k">group :test do</span>
+  <span class="ln g" data-cap="tests" style="--i: 30"><span class="k">gem</span> <span class="s">"rspec-rails"</span></span>
+  <span class="ln g" data-cap="api" style="--i: 31"><span class="k">gem</span> <span class="s">"rswag-specs"</span></span>
+  <span class="ln g" data-cap="tests" style="--i: 32"><span class="k">gem</span> <span class="s">"capybara"</span></span>
+  <span class="ln g" data-cap="tests" style="--i: 33"><span class="k">gem</span> <span class="s">"selenium-webdriver"</span></span>
+  <span class="ln g" data-cap="tests" style="--i: 34"><span class="k">gem</span> <span class="s">"simplecov"</span></span>
+<span class="k">end</span>
+
+<span class="c"># ...plus Redis and Elasticsearch running beside it.</span>
+<span class="c"># Rails 8 folds some of this in (Solid Queue, Solid Cable).</span></code></pre>
                 </div>
             </div>
+
+            <ul class="bt-list" role="list">
+                <li class="bt-row" data-cap="auth" tabindex="0">
+                    <h3 class="bt-title">Authentication &amp; policies</h3>
+                    <p><code>soli generate auth</code> writes sign-up, login, password reset and a policy layer.</p>
+                    <code class="bt-snip">authorize(post)</code>
+                    <span class="bt-sr">In a Rails app: devise and pundit.</span>
+                </li>
+                <li class="bt-row" data-cap="oauth" tabindex="0">
+                    <h3 class="bt-title">Sign in with GitHub, or be the provider</h3>
+                    <p>OAuth for six providers, and an OpenID Connect provider of your own.</p>
+                    <code class="bt-snip">soli generate oauth github</code>
+                    <span class="bt-sr">In a Rails app: omniauth, omniauth-github and doorkeeper.</span>
+                </li>
+                <li class="bt-row" data-cap="jobs" tabindex="0">
+                    <h3 class="bt-title">Background jobs</h3>
+                    <p>Scheduling, priorities, retries and cron, stored in your database. No Redis to run.</p>
+                    <code class="bt-snip">WelcomeEmailJob.perform_later(args)</code>
+                    <span class="bt-sr">In a Rails app: sidekiq and sidekiq-cron.</span>
+                </li>
+                <li class="bt-row" data-cap="mailer" tabindex="0">
+                    <h3 class="bt-title">Mailer</h3>
+                    <p>Templates, layouts and attachments, sent now or from the job queue. Rails ships this one too.</p>
+                    <code class="bt-snip">UserMailer.welcome(user).deliver_later</code>
+                    <span class="bt-sr">A Rails app gets this from Action Mailer.</span>
+                </li>
+                <li class="bt-row" data-cap="pdf" tabindex="0">
+                    <h3 class="bt-title">PDF &amp; e-invoices</h3>
+                    <p>Invoice-grade PDFs, Factur-X e-invoices and PAdES signatures, returned from an action.</p>
+                    <code class="bt-snip">pdf_response(template, data)</code>
+                    <span class="bt-sr">In a Rails app: prawn, prawn-table and hexapdf.</span>
+                </li>
+                <li class="bt-row" data-cap="search" tabindex="0">
+                    <h3 class="bt-title">Search</h3>
+                    <p>Vector, fulltext and geo indexes declared on the model.</p>
+                    <code class="bt-snip">Article.similar("query", "embedding", 5)</code>
+                    <span class="bt-sr">In a Rails app: searchkick, neighbor and geocoder.</span>
+                </li>
+                <li class="bt-row" data-cap="ws" tabindex="0">
+                    <h3 class="bt-title">WebSockets</h3>
+                    <p>Channels, rooms and broadcast. Hashes serialize themselves.</p>
+                    <code class="bt-snip">ws_broadcast_room(room, message)</code>
+                    <span class="bt-sr">In a Rails app: redis.</span>
+                </li>
+                <li class="bt-row" data-cap="live" tabindex="0">
+                    <h3 class="bt-title">Live views</h3>
+                    <p>Reactive, server-rendered components without writing JavaScript.</p>
+                    <code class="bt-snip">&lt;button soli-click="add"&gt;+&lt;/button&gt;</code>
+                    <span class="bt-sr">In a Rails app: turbo-rails and stimulus-rails.</span>
+                </li>
+                <li class="bt-row" data-cap="push" tabindex="0">
+                    <h3 class="bt-title">Streaming &amp; Web Push</h3>
+                    <p>Server-Sent Events, chunked exports, and Web Push with VAPID keys.</p>
+                    <code class="bt-snip">sse(req) do |out| … end</code>
+                    <span class="bt-sr">In a Rails app: web-push.</span>
+                </li>
+                <li class="bt-row" data-cap="api" tabindex="0">
+                    <h3 class="bt-title">API reference</h3>
+                    <p>An OpenAPI 3 spec built from your routes and the comments above each action.</p>
+                    <code class="bt-snip"># @response 200 {"ok": true}</code>
+                    <span class="bt-sr">In a Rails app: rswag-api, rswag-ui and rswag-specs.</span>
+                </li>
+                <li class="bt-row" data-cap="obs" tabindex="0">
+                    <h3 class="bt-title">Observability</h3>
+                    <p>Prometheus metrics, JSON logs and OpenTelemetry traces, one environment variable each, plus an error inbox.</p>
+                    <code class="bt-snip">SOLI_METRICS=1 SOLI_OTEL=1</code>
+                    <span class="bt-sr">In a Rails app: prometheus_exporter, lograge, opentelemetry-sdk, opentelemetry-instrumentation-all and sentry-rails.</span>
+                </li>
+                <li class="bt-row" data-cap="tests" tabindex="0">
+                    <h3 class="bt-title">Tests</h3>
+                    <p>Request specs, headless-browser specs and coverage, from the same binary.</p>
+                    <code class="bt-snip">soli test --coverage</code>
+                    <span class="bt-sr">In a Rails app: rspec-rails, capybara, selenium-webdriver and simplecov.</span>
+                </li>
+                <li class="bt-row bt-rest" data-cap="rest" tabindex="0">
+                    <h3 class="bt-title">And the rest, quietly</h3>
+                    <div class="lp-chips"><span>Validations</span><span>i18n</span><span>Sessions</span><span>Signed cookies</span><span>CSRF</span><span>Cache &amp; KV</span><span>Rate limiting</span><span>Uploads</span><span>S3</span><span>Spreadsheets</span><span>Migrations</span><span>State machines</span><span>Feature flags</span><span>Analytics</span><span>Linter</span><span>Formatter</span><span>Hot reload</span><span>Dev bar</span></div>
+                    <span class="bt-sr">In a Rails app: rack-attack, aasm, flipper, aws-sdk-s3, caxlsx and rails-i18n.</span>
+                </li>
+            </ul>
         </div>
     </div>
+    <script>
+        (function () {
+            var root = document.getElementById("batteries");
+            if (!root) return;
+            var panel = root.querySelector(".bt-panel");
+            var scroller = root.querySelector(".bt-scroll");
+            var list = root.querySelector(".bt-list");
+            var rows = root.querySelectorAll(".bt-row");
+            var lines = panel.querySelectorAll("[data-cap]");
+            var calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+            function show(cap) {
+                var first = null;
+                panel.classList.toggle("has-active", !!cap);
+                lines.forEach(function (line) {
+                    var on = !!cap && line.dataset.cap === cap;
+                    line.classList.toggle("is-on", on);
+                    if (on && !first) first = line;
+                });
+                rows.forEach(function (row) { row.classList.toggle("is-active", row.dataset.cap === cap); });
+                if (first) scroller.scrollTo({ top: Math.max(0, first.offsetTop - scroller.clientHeight / 3), behavior: calm ? "auto" : "smooth" });
+            }
+
+            rows.forEach(function (row) {
+                row.addEventListener("mouseenter", function () { show(row.dataset.cap); });
+                row.addEventListener("focus", function () { show(row.dataset.cap); });
+            });
+            list.addEventListener("mouseleave", function () { if (!list.contains(document.activeElement)) show(null); });
+            list.addEventListener("focusout", function (event) { if (!list.contains(event.relatedTarget)) show(null); });
+
+            // The one moment: the strikes draw down the Gemfile the first time it scrolls into view.
+            if (calm || !("IntersectionObserver" in window)) return;
+            panel.classList.add("bt-armed");
+            var seen = new IntersectionObserver(function (entries) {
+                if (!entries[0].isIntersecting) return;
+                panel.classList.add("bt-struck");
+                seen.disconnect();
+            }, { threshold: 0.35 });
+            seen.observe(panel);
+        })();
+    </script>
 </section>
 
 <!-- Generators -->
