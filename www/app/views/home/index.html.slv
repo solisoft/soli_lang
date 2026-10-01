@@ -368,43 +368,87 @@
     </script>
 </section>
 
-<!-- Generators -->
-<section class="lp-section">
+<!-- Agents: the project tells the agent when it is wrong -->
+<section id="agents" class="lp-section">
+    <style>
+        #agents .ag-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: clamp(32px, 5vw, 72px); align-items: start; margin-top: 56px; }
+        #agents .ag-src { font-variant-ligatures: none; }
+        #agents .ag-src pre { font-size: 14px; line-height: 1.75; }
+        #agents .ag-no { display: inline-block; width: 2.4em; margin-right: 1.2em; text-align: right; color: #6B6153; user-select: none; }
+        #agents .ag-sq { text-decoration: underline wavy var(--sun); text-decoration-thickness: 1.5px; text-underline-offset: 4px; text-decoration-skip-ink: none; }
+        #agents .ag-run { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 24px; border-top: 1px solid var(--night-line); border-bottom: 1px solid var(--night-line); font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: #E9E2D6; }
+        #agents .ag-run .ok { color: #7EC99A; }
+        #agents .ag-findings { list-style: none; margin: 0; padding: 18px 24px 22px; display: flex; flex-direction: column; gap: 14px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6; color: #C9BFAE; }
+        #agents .ag-at { color: #F2A365; }
+        #agents .ag-rule { color: #E9E2D6; }
+        #agents .ag-msg { display: block; color: #A69C8C; }
+        #agents .ag-total { color: #E9E2D6; }
+        #agents .ag-armed .ag-findings li { opacity: 0; transition: opacity .35s ease; transition-delay: calc(var(--i) * 160ms); }
+        #agents .ag-armed.ag-done .ag-findings li { opacity: 1; }
+        #agents .ag-armed .ag-sq { text-decoration-color: transparent; transition: text-decoration-color .35s ease .2s; }
+        #agents .ag-armed.ag-done .ag-sq { text-decoration-color: var(--sun); }
+        #agents .ag-kit { list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--line); }
+        #agents .ag-kit li { padding: 18px 0; border-top: 1px solid var(--line); font-size: 16px; line-height: 1.55; color: var(--ink-soft); }
+        #agents .ag-kit strong { display: block; margin-bottom: 4px; font-weight: 600; color: var(--ink); }
+        #agents .ag-kit code { font-family: 'JetBrains Mono', monospace; font-size: 0.9em; }
+        #agents .ag-side h3 { margin: 0 0 14px; font-family: 'Fraunces', serif; font-weight: 600; font-size: 22px; letter-spacing: -0.015em; }
+        #agents .ag-side p { margin: 20px 0 0; font-size: 15px; line-height: 1.6; color: var(--ink-faint); }
+        #agents .ag-side p code { font-family: 'JetBrains Mono', monospace; font-size: 0.9em; color: var(--ink-soft); }
+        @media (max-width: 900px) { #agents .ag-layout { grid-template-columns: minmax(0, 1fr); } }
+        @media (max-width: 560px) { #agents .ag-src .lp-code-bar { flex-wrap: wrap; row-gap: 6px; padding-top: 10px; padding-bottom: 10px; } }
+        @media (prefers-reduced-motion: reduce) { #agents .ag-findings li, #agents .ag-sq { transition: none; } }
+    </style>
     <div class="lp-wrap">
-        <div style="display: flex; flex-direction: column; gap: 20px; max-width: 760px; margin-bottom: 48px;">
-            <h2 class="lp-h2">A working CRUD app in one command</h2>
-            <p class="lp-lead">A scaffold writes the model, controller, views, tests, migration and routes. The auth generator does the same for login, sessions and policies.</p>
+        <div style="display: flex; flex-direction: column; gap: 20px; max-width: 760px;">
+            <h2 class="lp-h2">Built for the agent that writes your code</h2>
+            <p class="lp-lead">Writing the code is the cheap part now. <code style="font-size: 0.9em;">soli new</code> gives your agent the project&rsquo;s rules and a way to check its own work, so its Rails habits are caught before you read the diff.</p>
         </div>
 
-        <div class="lp-code">
-            <div class="lp-code-bar"><span>Terminal</span></div>
-<pre><span class="ok">$</span> <span class="n type-animation invisible">soli generate scaffold blog_posts title:string content:text author:string published:boolean</span>
-<span class="ok">Success!</span> <span class="n">Created scaffold for blog_posts</span>
+        <div class="ag-layout">
+            <div class="lp-code ag-src">
+                <div class="lp-code-bar"><span>app/controllers/posts_controller.sl</span><span class="lp-tag">written by an agent</span></div>
+<pre><code><span class="ag-no">1</span><span class="k">class</span> <span class="n">PostsController &lt; Controller</span>
+<span class="ag-no">2</span>  <span class="c"># POST /posts</span>
+<span class="ag-no">3</span>  <span class="k">def</span> <span class="n">create</span>
+<span class="ag-no">4</span>    <span class="v">@post</span> <span class="n">= Post.create(</span><span class="ag-sq"><span class="n">params</span></span><span class="n">)</span>
+<span class="ag-no">5</span>    <span class="n">redirect(</span><span class="s">"/posts/"</span><span class="n"> + </span><span class="v">@post</span><span class="n">._key)</span>
+<span class="ag-no">6</span>  <span class="k">end</span>
+<span class="ag-no">7</span>
+<span class="ag-no">8</span>  <span class="c"># GET /posts/:id</span>
+<span class="ag-no">9</span>  <span class="k">def</span> <span class="n">show</span>
+<span class="ag-no">10</span>    <span class="v">@post</span> <span class="n">= Post.find(params[</span><span class="s">"id"</span><span class="n">])</span>
+<span class="ag-no">11</span>    <span class="ag-sq"><span class="k">return</span> <span class="n">halt(404, </span><span class="s">"Not found"</span><span class="n">)</span></span> <span class="k">if</span> <span class="v">@post</span> <span class="ag-sq"><span class="n">== nil</span></span>
+<span class="ag-no">12</span>
+<span class="ag-no">13</span>    <span class="v">@title</span> <span class="n">=</span> <span class="ag-sq"><span class="n">titel</span></span>
+<span class="ag-no">14</span>  <span class="k">end</span>
+<span class="ag-no">15</span><span class="k">end</span></code></pre>
+                <div class="ag-run"><span class="ok">$</span><span class="type-animation invisible">soli lint app/controllers/posts_controller.sl</span></div>
+                <ol class="ag-findings">
+<li style="--i: 0"><span class="ag-at">4:25</span> <span class="ag-rule">security/unfiltered-mass-assignment</span><span class="ag-msg">`create(...)` is given the raw request params — unlisted keys persist. Whitelist with `permit(params, { "field": true })` or `this._permit_params(params)` first</span></li>
+<li style="--i: 1"><span class="ag-at">11:5</span> <span class="ag-rule">idiom/manual-find-guard</span><span class="ag-msg">`this.post` comes from `.find(...)`, which raises when the record is missing — this nil-check never runs. Drop it, or use `find_by`/`first_by` if you want a nil result</span></li>
+<li style="--i: 2"><span class="ag-at">11:38</span> <span class="ag-rule">idiom/nil-comparison</span><span class="ag-msg">prefer `x.nil?` over `== nil` — it reads better and handles the nil case directly</span></li>
+<li style="--i: 3"><span class="ag-at">13:14</span> <span class="ag-rule">smell/undefined-local</span><span class="ag-msg">variable 'titel' is read but never assigned in this scope</span></li>
+                    <li style="--i: 4"><span class="ag-total">4 issue(s) found in 1 file(s)</span></li>
+                </ol>
+            </div>
 
-<span class="c"># Generated files:</span>
-<span class="k">app/models/blog_posts_model.sl</span>
-<span class="k">app/controllers/blog_posts_controller.sl</span>
-<span class="k">app/views/blog_posts/index.html.slv</span>
-<span class="k">app/views/blog_posts/show.html.slv</span>
-<span class="k">app/views/blog_posts/new.html.slv</span>
-<span class="k">app/views/blog_posts/edit.html.slv</span>
-<span class="k">app/views/blog_posts/_form.html.slv</span>
-<span class="k">tests/models/blog_posts_test.sl</span>
-<span class="k">tests/controllers/blog_posts_controller_test.sl</span>
-<span class="k">db/migrations/*create_blog_posts_*.sl</span>
-<span class="ok">&#10003;</span> <span class="n">Routes added to config/routes.sl</span>
-
-<span class="ok">$</span> <span class="n">soli generate auth</span>
-<span class="ok">Success!</span> <span class="n">Session authentication generated</span>
-<span class="k">app/policies/application_policy.sl</span>
-<span class="k">app/policies/user_policy.sl</span>
-<span class="k">app/helpers/auth_helper.sl</span>
-<span class="c">+ User model, login/signup/logout controllers &amp; views</span></pre>
+            <div class="ag-side">
+                <h3>What the agent finds on day one</h3>
+                <ul class="ag-kit" role="list">
+                <li><strong><code>CLAUDE.md</code></strong> in the project root, and in each folder that has rules of its own: controllers, models, views, middleware, tests, migrations.</li>
+                <li><strong><code>AGENTS.md</code></strong> points every other agent at the same guide.</li>
+                <li><strong><code>/soli-verify</code></strong> runs the linter, the tests and the coverage gate. The agent runs it before it says it is done.</li>
+                <li><strong><code>/soli-test</code> and <code>/soli-resource</code></strong> run one spec, or scaffold a full RESTful resource.</li>
+                <li><strong><code>soli graph query</code></strong> answers &ldquo;where is this handled?&rdquo; from a graph of the code.</li>
+                </ul>
+                <p>The generators are still there (<code>scaffold</code>, <code>auth</code>, <code>oauth</code>, <code>oidc_provider</code>) and write code in the shape these rules expect.</p>
+            </div>
         </div>
 
-        <div style="display: flex; flex-wrap: wrap; gap: 28px; margin-top: 32px;">
-            <a href="/docs/development-tools/scaffold" class="lp-link">Scaffold generator docs &rarr;</a>
-            <a href="/docs/security/authorization" class="lp-link">Auth &amp; policies docs &rarr;</a>
+        <div style="display: flex; flex-wrap: wrap; gap: 28px; margin-top: 40px;">
+            <a href="/ai" class="lp-link">How Soli works with agents &rarr;</a>
+            <a href="/docs/development-tools/linting" class="lp-link">Every lint rule &rarr;</a>
+            <a href="/docs/development-tools/scaffold" class="lp-link">Generators &rarr;</a>
         </div>
     </div>
 </section>
@@ -631,6 +675,14 @@
         });
     }
 
+    // The agents section shows its lint findings once `soli lint` has been typed.
+    (function () {
+        const src = document.querySelector('#agents .ag-src');
+        if (!src) return;
+        src.classList.add('ag-armed');
+        src.addEventListener('typed', () => src.classList.add('ag-done'));
+    })();
+
     // Typing animation for the terminal demo.
     (function () {
         const typeElements = document.querySelectorAll('.type-animation');
@@ -649,9 +701,14 @@
 
         typeElements.forEach(el => observer.observe(el));
 
+        function typed(element) {
+            element.dispatchEvent(new CustomEvent('typed', { bubbles: true }));
+        }
+
         function typeText(element) {
             if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
                 element.classList.remove('invisible');
+                typed(element);
                 return;
             }
             const text = element.textContent;
@@ -664,6 +721,8 @@
                     element.textContent += text.charAt(i);
                     i++;
                     setTimeout(type, Math.random() * 20 + 10);
+                } else {
+                    typed(element);
                 }
             }
             type();
