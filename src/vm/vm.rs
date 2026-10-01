@@ -185,6 +185,10 @@ pub struct Vm {
     /// need to synchronously invoke a user closure (e.g. array.map); `Op::Return`
     /// treats frames shrinking back to this depth as the exit condition.
     pub return_depth: usize,
+    /// Check each function's declared return type when it returns, raising
+    /// what the tree-walker raises. On for scripts; off under `soli serve`,
+    /// where applications have always run without the check.
+    pub check_return_types: bool,
 }
 
 /// `stack[ia] = stack[ia] + stack[ib]` when both are strings.
@@ -315,6 +319,7 @@ impl Vm {
             output: Vec::new(),
             failed_handlers: ahash::AHashSet::new(),
             return_depth: 0,
+            check_return_types: false,
         }
     }
 
@@ -342,7 +347,54 @@ impl Vm {
             .get(ip)
             .copied()
             .unwrap_or(0);
-        Span::new(0, 0, line, 0)
+        let column = frame
+            .closure
+            .proto
+            .chunk
+            .columns
+            .get(ip)
+            .copied()
+            .unwrap_or(0);
+        Span::new(0, 0, line, column as usize)
+    }
+
+    /// Whether the value about to be returned (top of the stack) is one the
+    /// returning function's declared type admits — or it declares none. The
+    /// fast tier asks before returning, and leaves the raising to the general
+    /// arm.
+    #[inline]
+    fn return_value_admitted(&self) -> bool {
+        let (Some(frame), Some(value)) = (self.frames.last(), self.stack.last()) else {
+            return true;
+        };
+        match &frame.closure.proto.return_type {
+            None => true,
+            Some(expected) => value_admitted_by(value, expected),
+        }
+    }
+
+    /// Raise what the tree-walker raises when a function returns a value its
+    /// declared return type does not admit.
+    fn check_return_type(&self, result: &Value) -> Result<(), RuntimeError> {
+        let Some(frame) = self.frames.last() else {
+            return Ok(());
+        };
+        let proto = &frame.closure.proto;
+        let Some(expected) = &proto.return_type else {
+            return Ok(());
+        };
+        if value_admitted_by(result, expected) {
+            return Ok(());
+        }
+        Err(RuntimeError::General {
+            message: format!(
+                "function '{}' expected to return {}, got {}",
+                proto.name,
+                expected,
+                result.type_name()
+            ),
+            span: proto.decl_span,
+        })
     }
 
     /// `a + b` by [`Op::Add`]'s rules, for the fused add-assign ops.
@@ -738,7 +790,8 @@ impl Vm {
                     let closure = match &self.stack[self.stack.len() - 1 - argc] {
                         Value::VmClosure(closure)
                             if closure.proto.param_names.len() == argc
-                                && self.frames.len() < MAX_CALL_DEPTH =>
+                                && self.frames.len() < MAX_CALL_DEPTH
+                                && closure.proto.kernel.is_none() =>
                         {
                             closure.clone()
                         }
@@ -756,7 +809,8 @@ impl Vm {
                     let closure = match self.globals.get(name) {
                         Some(Value::VmClosure(closure))
                             if closure.proto.param_names.len() == argc
-                                && self.frames.len() < MAX_CALL_DEPTH =>
+                                && self.frames.len() < MAX_CALL_DEPTH
+                                && closure.proto.kernel.is_none() =>
                         {
                             closure.clone()
                         }
@@ -774,7 +828,10 @@ impl Vm {
                     // closing (the general arm's job); captures of an outer
                     // frame's locals — a callback inside a closure over the
                     // caller's variables — do not stop the fast return.
-                    if depth_after <= self.return_depth || self.has_open_upvalues_from(base) {
+                    if depth_after <= self.return_depth
+                        || self.has_open_upvalues_from(base)
+                        || (self.check_return_types && !self.return_value_admitted())
+                    {
                         break Some(op);
                     }
                     let (drives_loop, params, iter_base) = {
@@ -1388,7 +1445,17 @@ impl Vm {
                 Op::Negate => {
                     let val = self.pop();
                     match val {
-                        Value::Int(n) => self.stack.push(Value::Int(-n)),
+                        Value::Int(n) => {
+                            match n.checked_neg() {
+                                Some(negated) => self.stack.push(Value::Int(negated)),
+                                None => return Err(
+                                    crate::interpreter::executor::operators::int_negate_overflow(
+                                        n,
+                                        self.current_span(),
+                                    ),
+                                ),
+                            }
+                        }
                         Value::Float(n) => self.stack.push(Value::Float(-n)),
                         Value::Decimal(d) => self.stack.push(Value::Decimal(
                             crate::interpreter::value::DecimalValue(-d.0, d.1),
@@ -1562,6 +1629,9 @@ impl Vm {
                     // every compiled function call (e.g. recursion).
                     if let Value::VmClosure(closure) = &self.stack[callee_idx] {
                         let closure = closure.clone();
+                        if closure.proto.kernel.is_some() && self.try_kernel(&closure, argc) {
+                            continue;
+                        }
                         let arity = closure.proto.arity as usize;
                         let total_params = closure.proto.param_names.len();
                         if argc < arity || argc > total_params {
@@ -1576,7 +1646,7 @@ impl Vm {
                         }
                         let stack_base = self.stack.len() - total_params - 1;
                         let call_span = self.current_span();
-                        self.ensure_call_depth(call_span)?;
+                        self.ensure_call_depth(&closure.proto, call_span)?;
                         self.frames.push(CallFrame::new(
                             closure,
                             stack_base,
@@ -2604,6 +2674,9 @@ impl Vm {
                 }
                 Op::Return => {
                     let result = self.pop();
+                    if self.check_return_types {
+                        self.check_return_type(&result)?;
+                    }
                     let frame = self.frames.pop().unwrap();
 
                     // Close upvalues only if there are any open ones in this frame's range
@@ -4061,19 +4134,28 @@ impl Vm {
                 Op::NegateLocal(slot) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let val = self.stack[base + slot as usize].clone();
-                    let result = match val {
-                        Value::Int(n) => Value::Int(-n),
-                        Value::Float(n) => Value::Float(-n),
-                        Value::Decimal(d) => {
-                            Value::Decimal(crate::interpreter::value::DecimalValue(-d.0, d.1))
-                        }
-                        _ => {
-                            return Err(RuntimeError::type_error(
-                                format!("Cannot negate {}", val.type_name()),
-                                self.current_span(),
-                            ));
-                        }
-                    };
+                    let result =
+                        match val {
+                            Value::Int(n) => match n.checked_neg() {
+                                Some(negated) => Value::Int(negated),
+                                None => return Err(
+                                    crate::interpreter::executor::operators::int_negate_overflow(
+                                        n,
+                                        self.current_span(),
+                                    ),
+                                ),
+                            },
+                            Value::Float(n) => Value::Float(-n),
+                            Value::Decimal(d) => {
+                                Value::Decimal(crate::interpreter::value::DecimalValue(-d.0, d.1))
+                            }
+                            _ => {
+                                return Err(RuntimeError::type_error(
+                                    format!("Cannot negate {}", val.type_name()),
+                                    self.current_span(),
+                                ));
+                            }
+                        };
                     self.stack.push(result);
                 }
                 Op::EqualLocalLocal(slot_a, slot_b) => {
@@ -5016,6 +5098,32 @@ fn scalar_ordering(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
         (Value::Float(x), Value::Float(y)) => x.partial_cmp(y),
         _ => None,
     }
+}
+
+/// `value_matches_type`, without its allocation for the common primitive
+/// names: it lowercases the annotation on every call, and a typed function
+/// returns on every call.
+#[inline]
+fn value_admitted_by(value: &Value, expected: &crate::ast::TypeAnnotation) -> bool {
+    if let crate::ast::TypeKind::Named(name) = &expected.kind {
+        let is = |n: &str| name.eq_ignore_ascii_case(n);
+        if is("int") {
+            return matches!(value, Value::Int(_));
+        }
+        if is("float") {
+            return matches!(value, Value::Float(_));
+        }
+        if is("bool") {
+            return matches!(value, Value::Bool(_));
+        }
+        if is("string") {
+            return matches!(value, Value::String(_));
+        }
+        if is("any") {
+            return true;
+        }
+    }
+    crate::interpreter::value::value_matches_type(value, expected)
 }
 
 /// Drop a value the fast tier has finished with. `Value`'s drop glue is an

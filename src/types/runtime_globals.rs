@@ -70,9 +70,9 @@ fn collect() -> Vec<RuntimeGlobal> {
     // builder (`form_with`, `csrf_field`, `button_to`), the upload helpers.
     // Parsed rather than transcribed, for the same reason as everything else
     // here.
-    for source in SOLI_PRELUDES {
-        globals.extend(prelude_names(source).into_iter().map(|name| RuntimeGlobal {
-            name,
+    for names in PRELUDE_NAMES {
+        globals.extend(names.iter().map(|name| RuntimeGlobal {
+            name: name.to_string(),
             class_verbs: None,
         }));
     }
@@ -155,7 +155,58 @@ pub fn test_dsl_globals() -> &'static [String] {
     })
 }
 
+/// What each of [`SOLI_PRELUDES`] declares at the top level, in the same
+/// order.
+///
+/// Written out because finding them means parsing 58 KB of Soli, and that took
+/// a millisecond of every script's start — half of the type checker's first
+/// use. `prelude_names_match_the_preludes` parses them and fails when a
+/// prelude gains or loses a declaration, so the list cannot drift.
+const PRELUDE_NAMES: &[&[&str]] = &[
+    &[
+        "resources",
+        "namespace",
+        "member",
+        "collection",
+        "middleware",
+        "get",
+        "post",
+        "put",
+        "delete",
+        "patch",
+        "websocket",
+        "uploads",
+    ],
+    &["Mailer", "Message", "__MailDelivery"],
+    &[
+        "_form_safe_url",
+        "_safe_attr_name",
+        "FormBuilder",
+        "form_with",
+        "csrf_field",
+        "csrf_meta_tag",
+        "button_to",
+    ],
+    &["Retry"],
+    &["Mock", "MockAllowance", "MockReceive"],
+    &[
+        "__soli_default_solidb_client",
+        "__soli_resolve_solidb_client",
+    ],
+    &[
+        "attach_upload",
+        "__soli_link_blob",
+        "direct_upload_start",
+        "direct_upload_finish",
+        "detach_upload",
+        "read_upload",
+        "detach_all_uploads",
+        "AttachmentsController",
+    ],
+];
+
 /// Preludes the runtime evaluates as Soli source.
+#[cfg_attr(not(test), allow(dead_code))]
 const SOLI_PRELUDES: &[&str] = &[
     crate::serve::app_loader::ROUTES_DSL_SOURCE,
     crate::interpreter::builtins::mailer::MAILER_PRELUDE,
@@ -167,6 +218,7 @@ const SOLI_PRELUDES: &[&str] = &[
 ];
 
 /// The top-level functions and classes one Soli prelude declares.
+#[cfg_attr(not(test), allow(dead_code))]
 ///
 /// A prelude that stops parsing contributes nothing rather than failing the
 /// check: it is the runtime's own source, and if it were broken the server
@@ -194,6 +246,20 @@ fn prelude_names(source: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prelude_names_match_the_preludes() {
+        assert_eq!(PRELUDE_NAMES.len(), SOLI_PRELUDES.len());
+        for (source, written) in SOLI_PRELUDES.iter().zip(PRELUDE_NAMES) {
+            let parsed = prelude_names(source);
+            assert!(!parsed.is_empty(), "a prelude no longer parses");
+            assert_eq!(
+                parsed,
+                written.iter().map(|n| n.to_string()).collect::<Vec<_>>(),
+                "PRELUDE_NAMES is out of date with a prelude's declarations"
+            );
+        }
+    }
 
     fn has(name: &str) -> bool {
         runtime_globals().iter().any(|g| g.name == name)

@@ -52,6 +52,7 @@ default = [
     "mail",
     "eui",
     "solidb-driver",
+    "native",
 ]
 # Kitchen-sink alias (default set; the native SoliDB driver is now part of it).
 full = [
@@ -70,6 +71,7 @@ full = [
     "mail",
     "eui",
     "solidb-driver",
+    "native",
 ]
 embedding = []
 # LLM text completion via an OpenAI-compatible chat/completions endpoint
@@ -126,6 +128,17 @@ lsp = ["dep:tower-lsp"]
 # Without it the mailer prelude is empty and the three classes are absent.
 mail = ["dep:mail-builder", "dep:mail-parser"]
 eui = ["dep:eui-proto", "dep:blake3", "dep:ring"]
+# Native typed kernels: a top-level function typed Int/Float/Bool end to end
+# that only does arithmetic, comparisons, branches and loops is compiled to
+# machine code with Cranelift when a script loads (src/native/). Off, every
+# function runs on the interpreter or the VM as before.
+native = [
+    "dep:cranelift-codegen",
+    "dep:cranelift-frontend",
+    "dep:cranelift-module",
+    "dep:cranelift-jit",
+    "dep:cranelift-native",
+]
 # The EUI window inside the soli binary, for `soli desktop build --eui`:
 # winit, wgpu and the client crates. Servers do not need it.
 eui-desktop = ["eui", "dep:eui-client"]
@@ -279,6 +292,12 @@ notify = "8"
 walkdir = "2"
 serde_yaml = "0.9"
 rand = "0.8"
+# Pinned together: the five crates ship in lockstep and mix badly.
+cranelift-codegen = { version = "=0.136.1", optional = true }
+cranelift-frontend = { version = "=0.136.1", optional = true }
+cranelift-module = { version = "=0.136.1", optional = true }
+cranelift-jit = { version = "=0.136.1", optional = true }
+cranelift-native = { version = "=0.136.1", optional = true }
 glob = "0.3"
 urlencoding = "2"
 url = "2"

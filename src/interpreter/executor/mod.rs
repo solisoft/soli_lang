@@ -84,9 +84,17 @@ pub struct Interpreter {
     /// `call_value` dispatch a `VmClosure` back through a VM that can still see
     /// the program's globals. `None` for a standalone interpreter.
     pub(crate) vm_globals: Option<Rc<ahash::AHashMap<String, Value>>>,
+    /// Native kernels of the program being run (see `crate::native`). A
+    /// top-level `def` that has one binds a function carrying it.
+    pub(crate) kernels: Option<crate::native::KernelSet>,
 }
 
 impl Interpreter {
+    /// Install the kernels compiled for the program about to run.
+    pub fn set_kernels(&mut self, kernels: Option<crate::native::KernelSet>) {
+        self.kernels = kernels;
+    }
+
     pub fn new() -> Self {
         let globals = Rc::new(RefCell::new(Environment::with_builtins_capacity()));
         register_builtins(&mut globals.borrow_mut(), true);
@@ -98,6 +106,7 @@ impl Interpreter {
         Self {
             environment: globals,
             coverage_tracker: None,
+            kernels: None,
             current_source_path: None,
             call_stack: Vec::new(),
             assertion_count: 0,
@@ -136,6 +145,7 @@ impl Interpreter {
         Self {
             environment: globals,
             coverage_tracker: None,
+            kernels: None,
             current_source_path: None,
             call_stack: Vec::new(),
             assertion_count: 0,
@@ -173,6 +183,7 @@ impl Interpreter {
         Self {
             environment,
             coverage_tracker: None,
+            kernels: None,
             current_source_path: None,
             call_stack: Vec::new(),
             assertion_count: 0,
@@ -191,6 +202,7 @@ impl Interpreter {
         Self {
             environment: globals,
             coverage_tracker: Some(tracker),
+            kernels: None,
             current_source_path: None,
             call_stack: Vec::new(),
             assertion_count: 0,
@@ -739,6 +751,23 @@ impl Interpreter {
         this: Option<Value>,
         arguments: Vec<Value>,
     ) -> RuntimeResult<Value> {
+        // A native kernel answers first; when it declines (an overflow, an
+        // argument of another type, …) the body below runs as if it had none,
+        // and raises whatever it raises. Not under coverage: a line a kernel
+        // ran would never be counted.
+        if let (Some(kernel), None) = (&func.kernel, &this) {
+            if self.coverage_tracker.is_none() {
+                let closure = &func.closure;
+                let bound = |name: &str| match closure.borrow().get(name) {
+                    Some(Value::Function(f)) => f.kernel.as_ref().map(|k| k.id()),
+                    _ => None,
+                };
+                if let Some(value) = kernel.try_call(&arguments, self.call_stack.len(), bound) {
+                    return Ok(value);
+                }
+            }
+        }
+
         // Guard against unbounded recursion: native stack frames are consumed
         // per call, so runaway recursion would abort the process — a stack
         // overflow does not unwind and cannot be caught by `try`/`catch_unwind`.

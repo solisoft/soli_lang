@@ -17868,6 +17868,149 @@
         "doc comments",
         "docs/openapi"
       ]
+    },
+    {
+      "title": "Native Kernels",
+      "type": "page",
+      "category": "Language Reference",
+      "path": "/docs/language/native-kernels",
+      "signature": "def fib(n: Int) -> Int",
+      "description": "Top-level functions typed Int, Float or Bool end to end, doing only arithmetic, comparisons, branches, loops and calls to each other, are compiled to machine code with Cranelift when a script loads. Same results and same errors as the interpreter; everything else runs as before.",
+      "keywords": [
+        "native",
+        "jit",
+        "cranelift",
+        "machine code",
+        "performance",
+        "kernels",
+        "fast",
+        "numeric",
+        "which functions qualify",
+        "same results, same errors",
+        "declined",
+        "write the hot loop inside the function",
+        "SOLI_NATIVE",
+        "SOLI_NATIVE_LOG",
+        "--no-native"
+      ]
+    },
+    {
+      "title": "Script engine",
+      "type": "option",
+      "category": "Configuration",
+      "path": "/docs/getting-started/configuration#script-engine",
+      "signature": "soli --tree script.sl \u00b7 soli --vm script.sl \u00b7 SOLI_ENGINE=tree|vm|auto \u00b7 SOLI_ENGINE_LOG=1",
+      "description": "Scripts, soli -e and script executables run on the bytecode VM unless the script needs the tree-walking interpreter (class reflection such as send, method_missing, model callbacks, state machines, a zero-parameter function read without parentheses). --tree forces the interpreter, --vm the VM with no fallback; SOLI_ENGINE sets the default and SOLI_ENGINE_LOG=1 prints the choice and why.",
+      "keywords": [
+        "engine",
+        "vm",
+        "bytecode",
+        "tree-walker",
+        "interpreter",
+        "--tree",
+        "--vm",
+        "SOLI_ENGINE",
+        "SOLI_ENGINE_LOG",
+        "script",
+        "performance",
+        "fallback"
+      ]
+    },
+    {
+      "title": "SOLI_NATIVE",
+      "type": "option",
+      "category": "Configuration",
+      "path": "/docs/getting-started/configuration#native-kernels",
+      "signature": "SOLI_NATIVE=0 \u00b7 SOLI_NATIVE_LOG=1 \u00b7 --no-native",
+      "description": "Native kernels are on by default for scripts. SOLI_NATIVE=0 (or off/false/no) or --no-native turns them off; SOLI_NATIVE_LOG=1 prints what was compiled, refused and declined, SOLI_NATIVE_LOG=2 adds the Cranelift IR.",
+      "keywords": [
+        "native",
+        "jit",
+        "cranelift",
+        "env",
+        "environment variable",
+        "SOLI_NATIVE_LOG",
+        "--no-native"
+      ]
+    },
+    {
+      "title": "System.argv",
+      "type": "method",
+      "category": "System",
+      "path": "/docs/builtins/system#system-argv",
+      "signature": "System.argv",
+      "description": "The script's own arguments as an Array of Strings: what follows -- in soli script.sl -- a b, or every argument of an executable built with soli build script.sl. Empty when none.",
+      "keywords": [
+        "system",
+        "argv",
+        "arguments",
+        "args",
+        "command line",
+        "cli",
+        "script"
+      ]
+    },
+    {
+      "title": "Script executables",
+      "type": "guide",
+      "category": "Deploy",
+      "path": "/docs/development-tools/deploy#script-executables",
+      "signature": "soli build tool.sl [-o tool] [--target linux-arm64] [--vm | --tree]",
+      "description": "Build one executable that runs a script: imports resolved and the program type-checked at build time, the soli runtime embedded, arguments readable as System.argv. Cross-buildable like --standalone.",
+      "keywords": [
+        "script",
+        "executable",
+        "binary",
+        "cli tool",
+        "soli build",
+        "argv",
+        "cross-compile",
+        "target",
+        "standalone"
+      ]
+    },
+    {
+      "title": "Native kernels (internals)",
+      "type": "page",
+      "category": "Internals",
+      "path": "/docs/internals/native",
+      "signature": "",
+      "description": "How typed numeric top-level functions become Cranelift machine code: eligibility, typed IR, lowering, the JIT, the engine hooks, decline-and-replay, and the tests that keep kernels identical to the engines.",
+      "keywords": [
+        "src/native",
+        "eligibility",
+        "lowering",
+        "cranelift",
+        "jit",
+        "kernelref",
+        "kernelset",
+        "try_call",
+        "decline",
+        "arm check",
+        "differential fuzz",
+        "native feature"
+      ]
+    },
+    {
+      "title": "CI/CD with GitHub Actions",
+      "type": "guide",
+      "category": "Development Tools",
+      "path": "/docs/development-tools/ci-cd",
+      "signature": "soli fmt --check \u00b7 soli lint \u00b7 soli test --coverage=xml \u00b7 soli-proxy deploy",
+      "description": "Check every push (format, lint, boot and /up, specs against SoliDB on the runner), deploy main through soli-proxy once the checks pass, and publish standalone or script executables on a tag.",
+      "keywords": [
+        "ci",
+        "cd",
+        "github",
+        "github actions",
+        "workflow",
+        "continuous integration",
+        "continuous deployment",
+        "pipeline",
+        "release",
+        "coverage",
+        "deploy"
+      ]
     }
   ]
 }

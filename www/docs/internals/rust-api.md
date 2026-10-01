@@ -15,6 +15,11 @@ Signatures are simplified. See the source for lifetimes and errors.
 | `run_with_path(source, path, type_check)` | + module resolution from `path` |
 | `run_file(path, type_check)` | Read file, then `run_with_path` |
 | `run_vm` / `run_file_vm` | Same front-end, bytecode VM |
+| `Engine` | `Auto` (the VM unless the script needs the tree-walker), `Tree`, `Vm`; `Engine::from_env()` reads `SOLI_ENGINE` (`tree`, `vm` or `auto`) |
+| `run_script(source, path, type_check, engine)` / `run_script_file(path, type_check, engine)` | What `soli script.sl` and `soli -e` call: front-end, then `execute_program` |
+| `execute_program(program, engine)` | Run a parsed, resolved, checked `Program` on `engine` (script executables call it on their embedded AST) |
+| `tree_walker_reason(program) -> Option<String>` | Why `Auto` must tree-walk: a construct the VM hands back at run time (reflection, `method_missing`, batch finders, `find_by_*`, model callbacks, state machines) |
+| `bare_call_reason(program, zero_arg_builtin) -> Option<String>` | The other reason: a function with no required parameter read without `()`, which the tree-walker calls and the VM does not |
 | `type_check_source` | `soli check`; returns warnings or errors |
 
 ---

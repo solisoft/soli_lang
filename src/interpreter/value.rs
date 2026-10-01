@@ -1345,6 +1345,10 @@ pub struct Function {
     /// Cached JIT-compiled FunctionProto — compiled once on first call,
     /// reused on subsequent calls.
     pub jit_cache: RefCell<Option<std::sync::Arc<crate::vm::chunk::FunctionProto>>>,
+    /// Machine code for this function, when it is a top-level def typed
+    /// Int/Float/Bool end to end (see `crate::native`). Tried first on each
+    /// call; a declined call runs the body as usual.
+    pub kernel: Option<crate::native::KernelRef>,
 }
 
 impl Default for Function {
@@ -1361,6 +1365,7 @@ impl Default for Function {
             return_type: None,
             cached_env: RefCell::new(None),
             jit_cache: RefCell::new(None),
+            kernel: None,
         }
     }
 }
@@ -1383,6 +1388,7 @@ impl Function {
             return_type: decl.return_type.clone(),
             cached_env: RefCell::new(None),
             jit_cache: RefCell::new(None),
+            kernel: None,
         }
     }
 
@@ -1403,6 +1409,7 @@ impl Function {
             return_type: decl.return_type.clone(),
             cached_env: RefCell::new(None),
             jit_cache: RefCell::new(None),
+            kernel: None,
         }
     }
 

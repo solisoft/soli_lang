@@ -253,6 +253,10 @@ pub fn boot_if_standalone() {
         }
     };
 
+    if let Some(script) = script_descriptor(&payload) {
+        run_script_payload(&payload, &script);
+    }
+
     let args = parse_standalone_args(&payload);
 
     // `.env` lives next to the artifact — same convention as a `.soli`
@@ -284,6 +288,122 @@ pub fn boot_if_standalone() {
         process::exit(70);
     }
     process::exit(0);
+}
+
+// ---------------------------------------------------------------------------
+// Script executables (`soli build tool.sl`)
+// ---------------------------------------------------------------------------
+
+/// Bundle entry marking a script executable, and saying how to run it.
+const SCRIPT_ENTRY: &str = "__soli_script__";
+/// The script's program: resolved, checked, serialized as an `SLAST` blob.
+const SCRIPT_PROGRAM_ENTRY: &str = "main.slast";
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ScriptDescriptor {
+    /// The script's file name, for messages.
+    name: String,
+    /// `"auto"`, `"vm"` or `"tree"`.
+    engine: String,
+    soli_version: String,
+}
+
+fn script_descriptor(payload: &[u8]) -> Option<ScriptDescriptor> {
+    let reader = solilang::bundle::BundleReader::new(payload).ok()?;
+    let raw = reader.get(SCRIPT_ENTRY)?;
+    serde_json::from_slice(raw).ok()
+}
+
+/// Run the embedded script with this process's arguments, then exit with the
+/// code `soli script.sl` would have: 0, or 70 after printing the error.
+fn run_script_payload(payload: &[u8], script: &ScriptDescriptor) -> ! {
+    let program = solilang::bundle::BundleReader::new(payload)
+        .ok()
+        .and_then(|reader| reader.get(SCRIPT_PROGRAM_ENTRY))
+        .ok_or_else(|| format!("{} carries no program", script.name))
+        .and_then(solilang::bundle::deserialize_program);
+    let program = match program {
+        Ok(program) => program,
+        Err(e) => {
+            eprintln!("Error: this executable's embedded script is invalid: {}", e);
+            process::exit(70);
+        }
+    };
+    // The executable is the script: every argument is the script's own.
+    solilang::interpreter::builtins::system::set_script_args(std::env::args().skip(1).collect());
+    let engine = match script.engine.as_str() {
+        "vm" => solilang::Engine::Vm,
+        "tree" => solilang::Engine::Tree,
+        _ => solilang::Engine::Auto,
+    };
+    let result = solilang::execute_program(&program, engine);
+    if let Err(e) = result {
+        eprintln!("Error: {}", e);
+        process::exit(70);
+    }
+    process::exit(0);
+}
+
+/// Build `output`: the soli runtime for `target` with `script` embedded.
+///
+/// The script is parsed, its imports resolved and the result type-checked
+/// here, so the executable needs no source tree and fails at build time on
+/// what `soli tool.sl` would refuse. What ships is the resolved program as a
+/// serialized AST; native kernels are compiled from it when the executable
+/// starts, for the machine it starts on.
+pub fn build_script_exe(
+    script: &Path,
+    output: &Path,
+    target: Option<&str>,
+    engine: &str,
+    type_check: bool,
+) -> Result<(), String> {
+    let source = std::fs::read_to_string(script)
+        .map_err(|e| format!("failed to read '{}': {}", script.display(), e))?;
+    let mut program = solilang::parse_resolve_check(&source, Some(script), type_check)
+        .map_err(|e| e.to_string())?;
+
+    // Imported statements carry the path they came from, for error messages.
+    // Keep it relative to the script, so the build machine's directory layout
+    // does not ship inside the executable.
+    let base = script
+        .canonicalize()
+        .ok()
+        .and_then(|p| p.parent().map(Path::to_path_buf));
+    for stmt in &mut program.statements {
+        let Some(path) = &stmt.source_path else {
+            continue;
+        };
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+        let relative = match base.as_ref().and_then(|b| canonical.strip_prefix(b).ok()) {
+            Some(relative) => relative.to_path_buf(),
+            // Outside the script's directory (`import "../shared.sl"`): the
+            // file name alone still says where an error came from.
+            None => PathBuf::from(canonical.file_name().unwrap_or_default()),
+        };
+        // Every statement nested in it carries the same path.
+        *stmt = solilang::module::set_stmt_source_path(stmt, relative);
+    }
+
+    let descriptor = ScriptDescriptor {
+        name: script
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        engine: engine.to_string(),
+        soli_version: VERSION.to_string(),
+    };
+    let mut entries = std::collections::HashMap::new();
+    entries.insert(
+        SCRIPT_PROGRAM_ENTRY.to_string(),
+        solilang::bundle::serialize_program(&program)?,
+    );
+    entries.insert(
+        SCRIPT_ENTRY.to_string(),
+        serde_json::to_vec(&descriptor).map_err(|e| e.to_string())?,
+    );
+    let bundle = solilang::bundle::BundleBuilder::serialize_entries(&entries)?;
+    write_standalone_exe(&bundle, output, target)
 }
 
 /// Read the embedded auto-update descriptor from an artifact's payload.

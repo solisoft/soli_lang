@@ -121,6 +121,13 @@ pub struct Compiler {
     /// This set only ever grows from a `let`/`const` at global scope or a
     /// function declaration, so it means what it says in both modes.
     pub program_globals: Rc<RefCell<HashSet<String>>>,
+    /// Native kernels of the program (see `crate::native`). Only the
+    /// top-level compiler holds them: a top-level `def` that has one gets a
+    /// proto carrying it.
+    pub kernels: Option<crate::native::KernelSet>,
+    /// Source column of the expression or statement being compiled, recorded
+    /// with each instruction for error spans.
+    pub column: u32,
 }
 
 /// One enclosing `try`, as the compiler sees it at the current emit point.
@@ -197,6 +204,8 @@ impl Compiler {
             stack_height: 0,
             try_stack: Vec::new(),
             program_globals: Rc::new(RefCell::new(HashSet::new())),
+            kernels: None,
+            column: 0,
         };
 
         // Reserve slot 0 for `this` in methods, or an empty slot otherwise
@@ -242,7 +251,27 @@ impl Compiler {
         globals: I,
         source_path: Option<Arc<std::path::PathBuf>>,
     ) -> CompileResult<CompiledModule> {
+        Self::compile_full(program, globals, source_path, None)
+    }
+
+    /// Compile a whole script whose top-level functions may carry native
+    /// kernels, built by `crate::native::analyze_and_compile` from this same
+    /// `program` (they are matched by declaration address).
+    pub fn compile_with_kernels(
+        program: &Program,
+        kernels: Option<crate::native::KernelSet>,
+    ) -> CompileResult<CompiledModule> {
+        Self::compile_full(program, std::iter::empty(), None, kernels)
+    }
+
+    fn compile_full<I: IntoIterator<Item = String>>(
+        program: &Program,
+        globals: I,
+        source_path: Option<Arc<std::path::PathBuf>>,
+        kernels: Option<crate::native::KernelSet>,
+    ) -> CompileResult<CompiledModule> {
         let mut compiler = Compiler::new(FunctionType::Script, String::new());
+        compiler.kernels = kernels;
         compiler.known_globals.borrow_mut().extend(globals);
         compiler.proto.source_path = source_path;
         for stmt in &program.statements {
@@ -343,7 +372,7 @@ impl Compiler {
         // any drift anyway). See `stack_height` field docs.
         let effect = stack_effect(op);
         self.stack_height = (self.stack_height as i64 + effect as i64).max(0) as usize;
-        self.proto.chunk.emit(op, line)
+        self.proto.chunk.emit_at(op, line, self.column)
     }
 
     /// Resync the tracked stack height to the locals baseline. Called at points
@@ -2007,6 +2036,7 @@ fn compact_nops(chunk: &mut Chunk) {
 
     let mut code = Vec::with_capacity(next);
     let mut lines = Vec::with_capacity(next);
+    let mut columns = Vec::with_capacity(next);
     for (old, op) in chunk.code.iter().enumerate() {
         if matches!(op, Op::Nop) {
             continue;
@@ -2060,10 +2090,12 @@ fn compact_nops(chunk: &mut Chunk) {
         };
         code.push(fixed);
         lines.push(chunk.lines.get(old).copied().unwrap_or(0));
+        columns.push(chunk.columns.get(old).copied().unwrap_or(0));
     }
 
     chunk.code = code;
     chunk.lines = lines;
+    chunk.columns = columns;
 }
 
 /// Remap a forward jump offset through the old→new index table.

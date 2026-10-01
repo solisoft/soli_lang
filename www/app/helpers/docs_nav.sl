@@ -108,9 +108,10 @@ def docs_nav_sections()
         { "path": "/docs/development-tools/editor-integration", "label": "Editor Integration" },
         { "path": "/docs/development-tools/formatting", "label": "Formatting" },
         { "path": "/docs/development-tools/deploy", "label": "Deploy" },
+        { "path": "/docs/development-tools/ci-cd", "label": "CI/CD with GitHub" },
         { "path": "/docs/development-tools/desktop", "label": "Desktop Apps" },
         { "path": "/docs/development-tools/auto-update", "label": "Auto-Update (OTA)" },
-        { "path": "/docs/development-tools/native-bridge", "label": "Native Bridge" },
+        { "path": "/docs/development-tools/native-bridge", "label": "Native Bridge", "collapsible": true },
         { "path": "/docs/native/notifications", "label": "Notifications", "indent": true },
         { "path": "/docs/native/camera", "label": "Camera & Microphone", "indent": true },
         { "path": "/docs/native/scanning", "label": "Barcode & QR Scanning", "indent": true },
@@ -155,7 +156,8 @@ def docs_nav_sections()
         { "path": "/docs/language/enums", "label": "Enums" },
         { "path": "/docs/language/pipeline-operator", "label": "Pipeline Operator" },
         { "path": "/docs/language/modules", "label": "Modules" },
-        { "path": "/docs/language/metaprogramming", "label": "Metaprogramming" }
+        { "path": "/docs/language/metaprogramming", "label": "Metaprogramming" },
+        { "path": "/docs/language/native-kernels", "label": "Native Kernels" }
       ]
     },
     {
@@ -237,6 +239,7 @@ def docs_nav_sections()
         { "path": "/docs/internals/pipeline", "label": "Lexer / parser / AST" },
         { "path": "/docs/internals/interpreter", "label": "Interpreter" },
         { "path": "/docs/internals/vm", "label": "Bytecode VM" },
+        { "path": "/docs/internals/native", "label": "Native kernels" },
         { "path": "/docs/internals/serve", "label": "Serve / HTTP" },
         { "path": "/docs/internals/database", "label": "Database adapters" },
         { "path": "/docs/internals/rust-api", "label": "Types & methods" }

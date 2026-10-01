@@ -86,6 +86,7 @@ get("/docs/internals/vm", "docs#internals_vm")
 get("/docs/internals/serve", "docs#internals_serve")
 get("/docs/internals/database", "docs#internals_database")
 get("/docs/internals/rust-api", "docs#internals_rust_api")
+get("/docs/internals/native", "docs#internals_native")
 
 # Development Tools
 get("/docs/development-tools/live-reload", "docs#development_tools_live_reload")
@@ -95,6 +96,7 @@ get("/docs/development-tools/debugging", "docs#development_tools_debugging")
 get("/docs/development-tools/observability", "docs#development_tools_observability")
 get("/docs/development-tools/scaffold", "docs#development_tools_scaffold")
 get("/docs/development-tools/deploy", "docs#development_tools_deploy")
+get("/docs/development-tools/ci-cd", "docs#development_tools_ci_cd")
 get("/docs/development-tools/desktop", "docs#development_tools_desktop")
 get("/docs/development-tools/native-bridge", "docs#development_tools_native_bridge")
 get("/docs/development-tools/auto-update", "docs#development_tools_auto_update")
@@ -142,6 +144,7 @@ get("/docs/language/symbols", "docs#language_symbols")
 get("/docs/language/modules", "docs#language_modules")
 get("/docs/language/blocks", "docs#language_blocks")
 get("/docs/language/metaprogramming", "docs#language_metaprogramming")
+get("/docs/language/native-kernels", "docs#language_native_kernels")
 
 # Builtins Reference
 get("/docs/builtins", "docs#builtins_index")

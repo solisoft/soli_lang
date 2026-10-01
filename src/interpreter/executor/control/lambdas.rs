@@ -37,6 +37,7 @@ impl Interpreter {
             return_type: return_type.as_deref().cloned(),
             cached_env: std::cell::RefCell::new(None),
             jit_cache: std::cell::RefCell::new(None),
+            kernel: None,
         };
         Ok(Value::Function(Rc::new(func)))
     }

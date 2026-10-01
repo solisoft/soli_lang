@@ -70,6 +70,19 @@ pub(crate) fn int_overflow(a: i64, op: &str, b: i64, span: Span) -> RuntimeError
     }
 }
 
+/// `-i64::MIN` has no Int either. Unchecked, it came back as `i64::MIN` in a
+/// release build and aborted a debug one.
+pub(crate) fn int_negate_overflow(n: i64, span: Span) -> RuntimeError {
+    RuntimeError::General {
+        message: format!(
+            "integer overflow: -({n}) does not fit in an Int (range {}..{})",
+            i64::MIN,
+            i64::MAX
+        ),
+        span,
+    }
+}
+
 impl Interpreter {
     pub(crate) fn evaluate_binary(
         &mut self,
@@ -683,7 +696,9 @@ create the record first, or use {}.create({{...}})",
         F: Fn(f64, f64) -> bool,
     {
         match (left, right) {
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(cmp(*a as f64, *b as f64))),
+            // Exact i64 ordering, mapped to -1/0/1 so the f64 `cmp` still
+            // applies: past 2^53 two different Ints round to the same f64.
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(cmp(a.cmp(b) as i8 as f64, 0.0))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(cmp(*a, *b))),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Bool(cmp(*a as f64, *b))),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Bool(cmp(*a, *b as f64))),
@@ -767,7 +782,10 @@ create the record first, or use {}.create({{...}})",
 
         match op {
             UnaryOp::Negate => match val {
-                Value::Int(n) => Ok(Value::Int(-n)),
+                Value::Int(n) => n
+                    .checked_neg()
+                    .map(Value::Int)
+                    .ok_or_else(|| int_negate_overflow(n, span)),
                 Value::Float(n) => Ok(Value::Float(-n)),
                 Value::Decimal(n) => {
                     use crate::interpreter::value::DecimalValue;

@@ -1,0 +1,336 @@
+<div>
+    <!-- Hero Section -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/language" class="text-gray-400 hover:text-white transition-colors">Language</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Native Kernels</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">Native Kernels</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            When a script loads, Soli compiles some of its functions to machine code: top-level functions typed <code>Int</code>, <code>Float</code> or <code>Bool</code> end to end, whose bodies only do arithmetic, comparisons, branches, loops and calls to other such functions. Everything else runs exactly as before. Nothing has to be turned on, and the results are the same either way &mdash; including the errors.
+        </p>
+    </div>
+
+    <!-- Overview -->
+    <section id="section-overview" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </span>
+            How It Works
+        </h2>
+        <pre data-filename="fib.sl"><code class="language-soli text-sm">def fib(n: Int) -> Int
+  return n if n < 2
+
+  fib(n - 1) + fib(n - 2)
+end
+
+print(fib(32))   # 2178309</code></pre>
+        <p class="text-gray-400 mt-4">
+            <code class="text-amber-400">fib</code> is compiled with <a href="https://cranelift.dev" class="text-amber-400 hover:underline">Cranelift</a> before the first line runs. Compiling takes about a millisecond for a script's functions (0.4–1.2 ms measured), on both engines (<code class="text-amber-400">soli script.sl</code>, which runs on the bytecode VM unless the script needs the tree-walker, <code class="text-amber-400">soli --tree script.sl</code> and <code class="text-amber-400">soli --vm script.sl</code>).
+        </p>
+    </section>
+
+    <!-- Performance -->
+    <section id="section-performance" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">What It Changes</h2>
+        <p class="text-gray-400 mb-4">Measured on Linux x86-64, total wall time of the process (median of 5), 3&ndash;4&nbsp;ms of which is start-up. &ldquo;Before&rdquo; is Soli 2.10.0, which had no kernels:</p>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="py-2 px-4 text-gray-400 font-medium"></th>
+                        <th class="py-2 px-4 text-gray-400 font-medium text-right">tree-walker before</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium text-right"><code>--vm</code> before</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium text-right">with kernels</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium text-right">Ruby 4.0.7</th>
+                        <th class="py-2 px-4 text-gray-400 font-medium text-right">Ruby <code>--yjit</code></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr>
+                        <td class="py-2 px-4"><code class="text-amber-400">fib(32)</code></td>
+                        <td class="py-2 px-4 text-right">2259 ms</td>
+                        <td class="py-2 px-4 text-right">491 ms</td>
+                        <td class="py-2 px-4 text-right text-white font-semibold">12 ms</td>
+                        <td class="py-2 px-4 text-right">162 ms</td>
+                        <td class="py-2 px-4 text-right">53 ms</td>
+                    </tr>
+                    <tr>
+                        <td class="py-2 px-4">a 20M-iteration Float loop in a function</td>
+                        <td class="py-2 px-4 text-right">6156 ms</td>
+                        <td class="py-2 px-4 text-right">1387 ms</td>
+                        <td class="py-2 px-4 text-right text-white font-semibold">23 ms</td>
+                        <td class="py-2 px-4 text-right">601 ms</td>
+                        <td class="py-2 px-4 text-right">599 ms</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <pre data-filename="loop.sl"><code class="language-soli text-sm">def run(n: Int) -> Float
+  sum = 0.0
+  i = 0
+  while i < n
+    sum = sum + (i % 7) * 1.5
+    i = i + 1
+  end
+  sum
+end
+
+print(run(20000000))   # 89999995.5</code></pre>
+        <p class="text-gray-400 mt-4">
+            This covers numeric code only. A function that touches a string, an array, a hash, an object or a builtin is not compiled, and runs at the speed it always did.
+        </p>
+        <p class="text-gray-400 mt-4">
+            A call to a small kernel &mdash; up to about the size of a loop with a few statements; <code class="text-amber-400">fib</code> qualifies &mdash; is compiled as a copy of the callee&rsquo;s body inside the caller, one level deep. The early exit <code class="text-amber-400">return n if n &lt; 2</code> then costs a branch instead of a call: <code class="text-amber-400">fib(42)</code> went from 1453&nbsp;ms to 890&nbsp;ms with this alone. The copy checks the call depth and declines exactly as the call would have.
+        </p>
+        <p class="text-gray-400 mt-4">
+            With kernels off (<code class="text-amber-400">SOLI_NATIVE=0</code>), <code class="text-amber-400">fib(32)</code> takes about 500&nbsp;ms on today&rsquo;s VM against 486&nbsp;ms in 2.10.0: a script on the VM now checks a function&rsquo;s declared return type on every return, as the tree-walker always has, and that check costs about 3%. Without the <code class="text-amber-400">-&gt; Int</code>, the same function takes 488&nbsp;ms, as before.
+        </p>
+    </section>
+
+    <!-- Comparison -->
+    <section id="section-comparison" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Compared with Rust, C and Spinel</h2>
+        <p class="text-gray-400 mb-4"><code class="text-amber-400">fib(40)</code> with <code class="text-amber-400">n</code> read from the command line, so no compiler can work it out in advance. Best of 5, start-up included, same machine:</p>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-white/10"><th class="py-2 px-4 text-gray-400 font-medium"></th><th class="py-2 px-4 text-gray-400 font-medium text-right"><code>fib(40)</code></th><th class="py-2 px-4 text-gray-400 font-medium"></th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-2 px-4">C, <code>gcc -O2</code></td><td class="py-2 px-4 text-right">95 ms</td><td class="py-2 px-4">one of the two calls becomes a loop (see below)</td></tr>
+                    <tr><td class="py-2 px-4">Rust <code>-O3</code>, unchecked arithmetic</td><td class="py-2 px-4 text-right">181 ms</td><td class="py-2 px-4">overflow wraps around silently</td></tr>
+                    <tr><td class="py-2 px-4 text-white font-semibold">Rust <code>-O3</code>, checked arithmetic</td><td class="py-2 px-4 text-right text-white font-semibold">360 ms</td><td class="py-2 px-4"><code>checked_add</code>/<code>checked_sub</code>, as Soli checks</td></tr>
+                    <tr><td class="py-2 px-4 text-white font-semibold">Soli (a <code>soli build</code> executable)</td><td class="py-2 px-4 text-right text-white font-semibold">344 ms</td><td class="py-2 px-4"></td></tr>
+                    <tr><td class="py-2 px-4">Spinel (Ruby compiled to C)</td><td class="py-2 px-4 text-right">4 ms</td><td class="py-2 px-4">gcc changes the algorithm &mdash; see below</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">
+            <strong class="text-white">Soli is on par with Rust once both check for overflow.</strong> A kernel raises <code class="text-amber-400">integer overflow</code> where release-mode Rust silently wraps around; each check is a compare and a branch, and that, not the calls, is the gap to unchecked Rust. It is a guarantee of the language, so the kernel keeps it.
+        </p>
+        <p class="text-gray-400 mb-4">
+            <strong class="text-white">C and Spinel do less work, not the same work faster.</strong> gcc at <code class="text-amber-400">-O2</code> rewrites <code class="text-amber-400">fib</code>:
+        </p>
+        <ul class="list-disc list-inside text-gray-400 space-y-2 mb-4">
+            <li>Without an overflow check, it turns the second recursive call into a loop with an accumulator: about half the calls disappear.</li>
+            <li>With one &mdash; Spinel always emits it, because Ruby raises on overflow &mdash; that rewrite is no longer allowed, and gcc takes a stronger route instead. It proves <code class="text-amber-400">fib</code> <em>pure</em> (no side effects, the result depends only on <code class="text-amber-400">n</code>: the <code class="text-amber-400">ipa-pure-const</code> pass), inlines several levels of the recursion, and computes once the calls that now appear more than once &mdash; <code class="text-amber-400">fib(n-3)</code>, <code class="text-amber-400">fib(n-4)</code>&hellip; It is memoization over a few levels, done by the compiler. The work drops from about 1.62<sup>n</sup> calls to about 1.25<sup>n</sup>: <code class="text-amber-400">fib(54)</code> takes 31&nbsp;ms, where the recursion as written takes over a minute even in C.</li>
+        </ul>
+        <p class="text-gray-400 mb-4">The second route is easy to reproduce in plain C:</p>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-white/10"><th class="py-2 px-4 text-gray-400 font-medium"><code>fib(42)</code>, plain C, <code>gcc -O2</code></th><th class="py-2 px-4 text-gray-400 font-medium text-right"></th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-2 px-4">without an overflow check</td><td class="py-2 px-4 text-right">243 ms</td></tr>
+                    <tr><td class="py-2 px-4 text-white font-semibold"><strong>with</strong> <code>__builtin_add_overflow</code> and <code>abort</code></td><td class="py-2 px-4 text-right text-white font-semibold">2 ms</td></tr>
+                    <tr><td class="py-2 px-4">the same, <code>-fno-ipa-pure-const</code></td><td class="py-2 px-4 text-right">216 ms</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400">
+            So on <code class="text-amber-400">fib</code>, Spinel&rsquo;s number measures gcc&rsquo;s reasoning about a pure function, not the cost of a call &mdash; as Spinel&rsquo;s own README says of it. Kernels are pure by construction too, and could merge repeated calls the same way; that pays off only for recursion whose sub-calls overlap, which real code rarely has and memoizes explicitly when it does.
+        </p>
+    </section>
+
+    <!-- Eligibility -->
+    <section id="section-eligibility" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Which Functions Qualify</h2>
+        <p class="text-gray-400 mb-4">A function is compiled when all of the following hold:</p>
+        <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-6">
+            <li>It is a <strong class="text-white">top-level <code class="text-amber-400">def</code></strong> (also <code class="text-amber-400">export def</code>). Methods, nested functions and lambdas are not compiled.</li>
+            <li><strong class="text-white">Every parameter is annotated <code class="text-amber-400">Int</code>, <code class="text-amber-400">Float</code> or <code class="text-amber-400">Bool</code></strong>, with no default value and no block parameter; there is at least one and at most 16.</li>
+            <li><strong class="text-white">The return type is annotated <code class="text-amber-400">Int</code>, <code class="text-amber-400">Float</code> or <code class="text-amber-400">Bool</code>.</strong></li>
+            <li><strong class="text-white">The name is bound once</strong>: defined by one <code class="text-amber-400">def</code>, and not also assigned elsewhere at the top level (<code class="text-amber-400">fib = 3</code>, <code class="text-amber-400">catch fib</code>, <code class="text-amber-400">for fib in &hellip;</code>).</li>
+            <li>The body only uses:
+                <ul class="list-disc pl-6 mt-2 space-y-1">
+                    <li>local variables &mdash; bare <code class="text-amber-400">x = &hellip;</code> or <code class="text-amber-400">let x: Int = &hellip;</code> &mdash; and the parameters, which can be reassigned;</li>
+                    <li><code class="text-amber-400">Int</code>, <code class="text-amber-400">Float</code> and <code class="text-amber-400">Bool</code> literals;</li>
+                    <li><code class="text-amber-400">+ - * / %</code>, the comparisons <code class="text-amber-400">== != &lt; &lt;= &gt; &gt;=</code>, <code class="text-amber-400">!</code>, unary <code class="text-amber-400">-</code>, <code class="text-amber-400">&amp;&amp;</code> and <code class="text-amber-400">||</code>;</li>
+                    <li><code class="text-amber-400">if</code> / <code class="text-amber-400">elsif</code> / <code class="text-amber-400">else</code>, <code class="text-amber-400">unless</code>, their postfix forms, and the ternary <code class="text-amber-400">c ? a : b</code>;</li>
+                    <li><code class="text-amber-400">while</code> with <code class="text-amber-400">break</code>;</li>
+                    <li><code class="text-amber-400">+= -= *= /= %=</code>;</li>
+                    <li><code class="text-amber-400">return</code>, postfix <code class="text-amber-400">return &hellip; if &hellip;</code>, and the implicit return of the last expression;</li>
+                    <li>calls to other functions that qualify &mdash; recursion and mutual recursion included.</li>
+                </ul>
+            </li>
+        </ul>
+        <pre data-filename="kernels.sl"><code class="language-soli text-sm">def gcd(a: Int, b: Int) -> Int
+  while b != 0
+    let remainder: Int = a % b
+    a = b
+    b = remainder
+  end
+  a
+end
+
+def clamp(x: Float, low: Float, high: Float) -> Float
+  return low if x < low
+  return high if x > high
+
+  x
+end
+
+def is_even(n: Int) -> Bool
+  return true if n == 0
+
+  is_odd(n - 1)
+end
+
+def is_odd(n: Int) -> Bool
+  return false if n == 0
+
+  is_even(n - 1)
+end</code></pre>
+        <p class="text-gray-400 mt-4 mb-4">
+            Anything else in the body &mdash; <code class="text-amber-400">print</code>, a string, an array, a method call, a closure, a global variable, <code class="text-amber-400">try</code>, a <code class="text-amber-400">for</code> loop, a class, <code class="text-amber-400">nil</code> &mdash; and the function is not compiled. It is not an error: the function runs as it always did. Three more rules:
+        </p>
+        <ul class="list-disc pl-6 space-y-2 text-gray-400">
+            <li><strong class="text-white">A local keeps one type.</strong> <code class="text-amber-400">x = 1</code> then <code class="text-amber-400">x = 2.5</code> in the same function is refused (the type checker refuses it too).</li>
+            <li><strong class="text-white">A bare assignment to a global name is refused.</strong> If <code class="text-amber-400">total</code> is a top-level variable, a function or a builtin, then <code class="text-amber-400">total = 0</code> inside a function writes <em>that</em> global on both engines; a kernel would make it a local, so the function is left alone. Rename the local.</li>
+            <li><strong class="text-white">A variable first assigned inside an <code class="text-amber-400">if</code> or a <code class="text-amber-400">while</code> belongs to that block.</strong> Reading it after the block is refused: the tree-walker raises <em>Undefined variable</em> there while the VM reads it, and a kernel cannot agree with both. Assign it before the block (<code class="text-amber-400">result = 0</code>).</li>
+        </ul>
+    </section>
+
+    <!-- Semantics -->
+    <section id="section-semantics" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Same Results, Same Errors</h2>
+        <p class="text-gray-400 mb-4">
+            A kernel either returns the value or <strong class="text-white">declines</strong>, and when it declines the engine runs the call itself, as if there were no kernel. Kernels have no side effects, so running the call again changes nothing. Every error is therefore raised by the engine, with the message and line it always had:
+        </p>
+        <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-6">
+            <li>integer overflow (<code class="text-amber-400">*</code>, <code class="text-amber-400">+</code>, <code class="text-amber-400">-</code>, and <code class="text-amber-400">-x</code> when <code class="text-amber-400">x</code> is the smallest Int);</li>
+            <li>division by zero, and <code class="text-amber-400">-9223372036854775808 / -1</code>;</li>
+            <li>the call-depth limit (256 frames in a release build);</li>
+            <li>a path through the function that returns no value;</li>
+            <li>an argument of another type than the annotation says &mdash; the engines do not check parameter types, so <code class="text-amber-400">half(3)</code> on <code class="text-amber-400">def half(x: Float) -> Float</code> runs interpreted, as before;</li>
+            <li>a call to a function that is not defined yet, or was redefined since.</li>
+        </ul>
+        <p class="text-gray-400 mb-4">
+            A long native loop that overflows at its last iteration is replayed from the start by the engine to raise the error. That is only the slow path on the way to an error.
+        </p>
+        <div class="my-6 p-5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <h4 class="text-base font-semibold text-amber-400 mb-2">Two behaviors kernels keep</h4>
+            <p class="text-amber-200/80 text-sm">
+                <strong>Every Float is truthy</strong>, <code>0.0</code> included (<code>0</code> is falsy; the type checker refuses a Float condition anyway), and <strong><code>&amp;&amp;</code> / <code>||</code> return one of their operands</strong>, not a <code>Bool</code> (<code>3 &amp;&amp; 5</code> is <code>5</code>). Both are the language&rsquo;s rules, not the kernels&rsquo;.
+            </p>
+        </div>
+    </section>
+
+    <!-- Hot loop -->
+    <section id="section-hot-loop" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Write the Hot Loop Inside the Function</h2>
+        <p class="text-gray-400 mb-4">
+            Each call from interpreted code into a kernel crosses a boundary: the engine packs the arguments, calls the machine code and unpacks the result. Calls between kernels are direct machine calls. So the loop belongs inside the typed function:
+        </p>
+        <pre data-filename="slow.sl"><code class="language-soli text-sm"># Slow: the loop is interpreted, and each iteration crosses into a kernel.
+def step(sum: Float, i: Int) -> Float
+  sum + (i % 7) * 1.5
+end
+
+sum = 0.0
+i = 0
+while i < 2000000
+  sum = step(sum, i)
+  i += 1
+end</code></pre>
+        <p class="text-gray-400 mt-4">
+            On the machine above, those 2 million calls take 0.28&nbsp;s on the VM (0.42&nbsp;s with no kernels; 0.59&nbsp;s and 0.98&nbsp;s on the tree-walker); <code class="text-amber-400">run(20000000)</code>, with ten times the iterations inside the function, takes 23&nbsp;ms.
+        </p>
+    </section>
+
+    <!-- Log -->
+    <section id="section-log" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Seeing What Was Compiled</h2>
+        <p class="text-gray-400 mb-4">
+            <code class="text-amber-400">SOLI_NATIVE_LOG=1</code> prints to stderr which functions were compiled, which were refused and why, and the first decline of each kernel:
+        </p>
+        <pre data-filename="log_demo.sl"><code class="language-soli text-sm">total = 0
+
+def fib(n: Int) -> Int
+  return n if n < 2
+
+  fib(n - 1) + fib(n - 2)
+end
+
+def add_up(n: Int) -> Int
+  total = 0
+  i = 0
+  while i < n
+    total += i
+    i += 1
+  end
+  total
+end
+
+def shout(n: Int) -> Int
+  print("n = #{n}")
+  n
+end
+
+def grow(n: Int) -> Int
+  x = 1
+  i = 0
+  while i < n
+    x *= 3
+    i += 1
+  end
+  x
+end
+
+print(fib(20))
+print(grow(100)) rescue print("overflow")</code></pre>
+        <pre data-filename="Terminal" class="mt-4"><code class="language-bash text-sm">$ SOLI_NATIVE_LOG=1 soli log_demo.sl
+native: add_up (line 9) refused — assigns `total`, which names a global (line 10)
+native: shout (line 19) refused — calls `print` (line 20)
+native: fib(Int) -> Int compiled (line 3)
+native: grow(Int) -> Int compiled (line 24)
+native: 2 kernel(s) compiled in 0.60 ms
+6765
+native: grow declined (integer overflow) — running it interpreted (logged once)
+overflow</code></pre>
+        <p class="text-gray-400 mt-4">
+            <code class="text-amber-400">add_up</code> is refused because <code class="text-amber-400">total = 0</code> writes the top-level <code class="text-amber-400">total</code>; <code class="text-amber-400">grow(100)</code> overflows, so the kernel declines and the engine (the VM, for this script) raises the overflow, which <code class="text-amber-400">rescue</code> catches. <code class="text-amber-400">SOLI_NATIVE_LOG=2</code> also prints the Cranelift IR of each kernel.
+        </p>
+    </section>
+
+    <!-- Scope -->
+    <section id="section-scope" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Where It Applies</h2>
+        <p class="text-gray-400 mb-4">
+            Kernels are compiled for scripts, on whichever engine runs them: <code class="text-amber-400">soli script.sl</code>, <code class="text-amber-400">soli --tree script.sl</code>, <code class="text-amber-400">soli --vm script.sl</code>, <code class="text-amber-400">soli -e "&hellip;"</code>, and executables built with <code class="text-amber-400">soli build script.sl</code> (see <a href="/docs/development-tools/deploy#script-executables" class="text-amber-400 hover:underline">Deployment</a>), which compile them when they start, on the machine they run on.
+        </p>
+        <p class="text-gray-400">
+            They are not compiled, yet, under <code class="text-amber-400">soli serve</code>, <code class="text-amber-400">soli test</code>, the REPL, or a coverage run.
+        </p>
+    </section>
+
+    <!-- Turning it off -->
+    <section id="section-off" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Turning It Off</h2>
+        <pre data-filename="Terminal"><code class="language-bash text-sm">SOLI_NATIVE=0 soli script.sl     # also off, false, no
+soli --no-native script.sl</code></pre>
+        <p class="text-gray-400 mt-4">
+            If the operating system forbids executable memory (SELinux <code class="text-amber-400">deny_execmem</code>, a hardened macOS runtime), the log says so and everything runs interpreted. A <code class="text-amber-400">soli</code> built from source without the <code class="text-amber-400">native</code> Cargo feature has no kernels at all.
+        </p>
+    </section>
+
+    <!-- See Also -->
+    <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">See Also</h2>
+        <ul class="space-y-2">
+            <li><a href="/docs/language/functions" class="text-amber-400 hover:text-amber-300">Functions</a> &mdash; declarations, type annotations, return values</li>
+            <li><a href="/docs/getting-started/configuration#native-kernels" class="text-amber-400 hover:text-amber-300">Configuration</a> &mdash; <code>SOLI_NATIVE</code>, <code>SOLI_NATIVE_LOG</code></li>
+            <li><a href="/docs/internals/native" class="text-amber-400 hover:text-amber-300">Internals: native kernels</a> &mdash; how the tier is built, for contributors</li>
+        </ul>
+    </section>
+</div>

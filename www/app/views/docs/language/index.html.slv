@@ -94,6 +94,10 @@
                 <span class="w-8 h-8 rounded bg-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-mono">19</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Metaprogramming</span>
             </a>
+            <a href="/docs/language/native-kernels" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-emerald-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-sm font-mono">20</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Native Kernels</span>
+            </a>
         </div>
     </nav>
 
@@ -139,6 +143,15 @@ print("The area of a circle with radius " + str(radius) + " is " + str(area))
             <pre data-filename="Terminal"><code class="language-bash text-sm"># Run a single file
 soli hello.sl
 
+# Pass it arguments, read as System.argv
+soli hello.sl -- one two
+
+# Run it on the tree-walking interpreter instead of the VM
+soli --tree hello.sl
+
+# Build one executable that runs it
+soli build hello.sl
+
 # Run with hot reload (development)
 soli serve
 
@@ -152,6 +165,12 @@ soli lint app/main.sl  # lint a single file
 
 # Build for production
 soli build --release</code></pre>
+            <p class="text-gray-400 mt-4">
+                A script runs on the bytecode VM, the engine <code class="text-amber-400">soli serve</code> uses in production, unless it needs the tree-walking interpreter: it uses class reflection such as <code class="text-amber-400">send</code>, <code class="text-amber-400">method_missing</code>, a model callback or a state machine, or it reads a function with no required parameter without parentheses (<code class="text-amber-400">x = helper</code>), which the interpreter calls and the VM would not. That is decided before the first line runs. <code class="text-amber-400">--tree</code> forces the interpreter, <code class="text-amber-400">--vm</code> the VM, and <code class="text-amber-400">SOLI_ENGINE_LOG=1</code> prints which one runs and why (see <a href="/docs/getting-started/configuration#script-engine" class="text-amber-400 hover:underline">Configuration</a>). <code class="text-amber-400">soli test</code>, the REPL and <code class="text-amber-400">soli serve --dev</code> use the interpreter.
+            </p>
+            <p class="text-gray-400 mt-4">
+                Errors read the same on both engines, at the same <code class="text-amber-400">line:column</code>, and a function&rsquo;s declared return type is checked on both (<code class="text-amber-400">function 'f' expected to return Int, got null</code>; <code class="text-amber-400">soli serve</code> in production runs apps without that check, as it always has). One difference you may meet: on the VM, a variable first assigned inside an <code class="text-amber-400">if</code> or a <code class="text-amber-400">while</code> body can be read after it &mdash; <code class="text-amber-400">nil</code> inside a function when the branch did not run &mdash; where the interpreter raises <em>Undefined variable</em>. The type checker refuses that read either way, so it only shows under <code class="text-amber-400">--no-type-check</code>; <code class="text-amber-400">soli serve</code> has always behaved like the VM here.
+            </p>
         </section>
     </section>
 

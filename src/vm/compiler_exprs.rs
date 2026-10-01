@@ -13,7 +13,18 @@ use super::opcode::Op;
 
 impl Compiler {
     /// Compile an expression — the result is left on the stack.
+    ///
+    /// Every instruction it emits records the expression's column, so an
+    /// error raised by one of them points where the tree-walker's would. A
+    /// sub-expression sets its own and this one's comes back after it.
     pub fn compile_expr(&mut self, expr: &Expr) -> CompileResult<()> {
+        let outer = std::mem::replace(&mut self.column, expr.span.column);
+        let result = self.compile_expr_at(expr);
+        self.column = outer;
+        result
+    }
+
+    fn compile_expr_at(&mut self, expr: &Expr) -> CompileResult<()> {
         let line = expr.span.line as usize;
         self.cover_line(line);
         match &expr.kind {

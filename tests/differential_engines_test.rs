@@ -1337,6 +1337,10 @@ fn run(source: &str, idx: usize, vm: bool) -> String {
     cmd.arg(&path);
     if vm {
         cmd.arg("--vm").env("SOLI_VM_OPTIONAL_LET", "1");
+    } else {
+        // Scripts run on the VM by default now; the reference is the
+        // tree-walker, by name.
+        cmd.arg("--tree");
     }
     let output = cmd.output().expect("run soli");
     let _ = std::fs::remove_file(&path);

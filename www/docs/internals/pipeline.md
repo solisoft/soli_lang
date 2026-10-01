@@ -92,6 +92,7 @@ Junior trap: the parser is split across files as `impl Parser` blocks. `self.exp
 | `expr.rs` | `Expr`, `ExprKind`, `Argument`, `NamedArgument` |
 | `stmt.rs` | `Stmt`, `StmtKind`, `Program`, class/fn declarations |
 | `types.rs` | `TypeAnnotation` as parsed (not the checker’s interned types) |
+| `walk.rs` | `walk_program(program, on_stmt, on_expr)` — a read-only visit of every statement and expression, class and method bodies, lambdas, defaults and interpolations included. For passes that only look for a name or a construct and ignore scope, such as the script engine choice (`tree_walker_reason`) |
 
 `Expr` / `Stmt` are **boxes around an enum + a Span**:
 

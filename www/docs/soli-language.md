@@ -57,6 +57,15 @@ print("The area of a circle with radius " + str(radius) + " is " + str(area));
 # Run a single file
 soli hello.sl
 
+# Pass it arguments, read as System.argv
+soli hello.sl -- one two
+
+# Run it on the tree-walking interpreter instead of the VM
+soli --tree hello.sl
+
+# Build one executable that runs it
+soli build hello.sl
+
 # Run with hot reload (development)
 soli serve
 
@@ -68,6 +77,23 @@ soli lint              # all .sl files in current dir (recursive)
 soli lint src/         # lint a directory
 soli lint app/main.sl  # lint a single file
 ```
+
+A script runs on the bytecode VM, the engine `soli serve` uses in production, unless it needs the
+tree-walking interpreter: it uses class reflection such as `send`, `method_missing`, a model
+callback or a state machine, or it reads a function with no required parameter without
+parentheses (`x = helper`), which the interpreter calls and the VM would not. That is decided
+before the first line runs. `--tree` forces the interpreter, `--vm` the VM, and
+`SOLI_ENGINE_LOG=1` prints which one runs and why (see
+[Configuration](configuration.md#script-engine)). `soli test`, the REPL and `soli serve --dev` use
+the interpreter.
+
+Errors read the same on both engines, at the same `line:column`, and a function's declared return
+type is checked on both (`function 'f' expected to return Int, got null`; `soli serve` in
+production runs apps without that check, as it always has). One difference you may meet: on the
+VM, a variable first assigned inside an `if` or a `while` body can be read after it — `nil` inside
+a function when the branch did not run — where the interpreter raises *Undefined variable*. The
+type checker refuses that read either way, so it only shows under `--no-type-check`; `soli serve`
+has always behaved like the VM here.
 
 ---
 
@@ -1161,6 +1187,8 @@ def find_max(arr: Int[]) -> Int
   max
 end
 ```
+
+`factorial`, `fibonacci` and `is_prime` are typed `Int`/`Bool` end to end and only do arithmetic, branches and loops, so a script compiles them to machine code when it loads — see [Native Kernels](native-kernels.md).
 
 ### Early Returns
 

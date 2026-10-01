@@ -276,6 +276,7 @@ The levers, cheapest first:
 | `eui` | on | EUI components — `router_eui`, `eui_capabilities`, `eui_stats` and the `/_eui` session endpoint (`eui-proto`, `blake3`, `ring`) |
 | `sql` | off | Alias for `postgres` + `mysql` + `sqlite` |
 | `solidb-driver` | on | Native SoliDB TCP driver (MessagePack over pooled TCP). Compiled in by default; a server uses it only with `SOLI_DB_DRIVER=1` |
+| `native` | on | [Native kernels](native-kernels.md): typed numeric functions compiled to machine code (Cranelift). Off, every function runs on the interpreter or the VM |
 | `eui-desktop` | off | `soli desktop build --eui` — the native EUI window (`eui-client`, winit, wgpu) |
 | `full` | off | Alias for the default set (it used to add `solidb-driver`, which is now in it) |
 
@@ -469,6 +470,39 @@ These knobs control how the request edge handles untrusted input. See the
 | `S3_SECRET_KEY` | S3-compatible secret key fallback. | unset |
 | `S3_REGION` | S3-compatible region fallback. | `us-east-1` |
 | `S3_ENDPOINT` | Custom endpoint for MinIO or another S3-compatible service. | unset |
+
+## Script Engine
+
+`soli script.sl`, `soli -e "…"` and executables from `soli build tool.sl` run on the bytecode VM —
+the engine `soli serve` uses in production — unless the script needs the tree-walking interpreter.
+That is decided from the source before the first line runs. The interpreter takes a script that
+uses class reflection (`send`, `class_eval`, `instance_eval`, `methods`, or `respond_to?`,
+`inspect`, `to_s`, `to_string` on a class name), `method_missing`, model batch iteration
+(`find_each`, `in_batches`, `find_in_batches`), a dynamic finder (`User.find_by_email`), a model
+lifecycle callback (`before_save`, `after_create`, …) or a state machine (`state_machine`,
+`before_transition`, `after_transition`); one that reads a function with no required parameter
+without parentheses (`x = helper`, `print(helper)`: the interpreter calls it, the VM would hand
+over the function); and one the VM cannot compile. `soli test`, the REPL and `soli serve --dev`
+always use the interpreter. See [Running Soli Code](soli-language.md#running-soli-code).
+
+| Variable / flag | Purpose | Default |
+|-----------------|---------|---------|
+| `--tree` | Run the script on the tree-walking interpreter: `soli --tree script.sl`. | unset |
+| `--vm` | Run it on the VM with no fallback. A script that needs the interpreter stops with an error where the VM cannot go on (`Cannot access property 'send' on …`), and a bare function name gives the function itself, as under `soli serve`. | unset |
+| `SOLI_ENGINE` | `tree` (or `interpreter`), `vm` or `auto`: the engine `soli script.sl` and `soli -e` use when no flag is given. A flag wins; any other value means `auto`. An executable from `soli build` keeps the engine it was built with (`soli build tool.sl --tree` or `--vm`; `auto` by default) and ignores it. | `auto` |
+| `SOLI_ENGINE_LOG` | `1` prints to stderr which engine runs a script and why — `engine: vm`, `` engine: tree-walker — the script uses `send` ``, `` engine: tree-walker — the script calls `helper` without parentheses `` — when the choice is automatic (a forced engine prints nothing). Under `soli serve` it logs each handler demoted from the VM to the interpreter (see [Observability](observability.md)). | unset |
+
+## Native Kernels
+
+Scripts (`soli script.sl`, `--tree`, `--vm`, `soli -e`, executables from `soli build tool.sl`) compile
+their typed numeric top-level functions to machine code when they load. See
+[Native Kernels](native-kernels.md).
+
+| Variable / flag | Purpose | Default |
+|-----------------|---------|---------|
+| `SOLI_NATIVE` | `0`, `off`, `false` or `no` turns native kernels off: every function runs on the tree-walker or the VM. | on |
+| `--no-native` | The same, as a CLI flag: `soli --no-native script.sl`. | unset |
+| `SOLI_NATIVE_LOG` | `1` prints to stderr which functions were compiled, which were refused and why, and the first decline of each kernel. `2` also prints each kernel's Cranelift IR. | `0` |
 
 ## Deploy
 

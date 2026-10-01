@@ -384,8 +384,5 @@ next explicit deploy, so a crash loop does not take the old slot down with it.
 The simplest rollback is the one the workflow already gives you: revert the commit
 and push. The previous code goes through the same checks and the same switch.
 
-If you need to go back faster, without a build, `soli cloud deploy` keeps each
-release in its own folder on the server and rolls back by moving a symlink, with
-the same proxy and the same health gate underneath. The
-[deployment docs](/docs/development-tools/deploy) cover it, and `soli deploy`, which pulls a git
-checkout on the server instead of receiving files from CI.
+The [deployment docs](/docs/development-tools/deploy) also cover `soli deploy`,
+which pulls a git checkout on the server instead of receiving files from CI.

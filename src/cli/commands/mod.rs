@@ -96,6 +96,75 @@ pub(crate) fn emit_update_stub(
     }
 }
 
+/// `soli build tool.sl`: an executable that runs the script, with its
+/// imports resolved and type-checked now, on any machine, without soli.
+pub fn run_build_script(
+    script: &str,
+    output: Option<&str>,
+    target: Option<&str>,
+    engine: &str,
+    type_check: bool,
+) {
+    let path = Path::new(script);
+    if !path.is_file() {
+        eprintln!("Error: script '{}' does not exist", script);
+        process::exit(1);
+    }
+    if let Some(t) = target {
+        if let Err(e) = crate::cli::standalone::validate_target(t) {
+            eprintln!("Error: {}", e);
+            process::exit(64);
+        }
+    }
+    let stem = path
+        .file_stem()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "script".to_string());
+    let output_path = match output {
+        Some(out) => Path::new(out).to_path_buf(),
+        None => match target {
+            Some(t) => Path::new(&format!(
+                "{}-{}",
+                stem,
+                crate::cli::standalone::target_label(Some(t))
+            ))
+            .to_path_buf(),
+            None => Path::new(&stem).to_path_buf(),
+        },
+    };
+    let output_path = crate::cli::standalone::apply_exe_suffix(&output_path, target);
+    if output_path.is_dir() {
+        eprintln!(
+            "Error: output path '{}' is a directory — pass --output <file>",
+            output_path.display()
+        );
+        process::exit(1);
+    }
+    println!(
+        "Building {} from {}...",
+        output_path.display(),
+        path.display()
+    );
+    if let Err(e) =
+        crate::cli::standalone::build_script_exe(path, &output_path, target, engine, type_check)
+    {
+        eprintln!("Error: {}", e);
+        process::exit(1);
+    }
+    let size = fs::metadata(&output_path).map(|m| m.len()).unwrap_or(0);
+    println!(
+        "  Built {} ({:.1} MB, {}, runs on {})",
+        output_path.display(),
+        size as f64 / 1_048_576.0,
+        crate::cli::standalone::target_label(target),
+        match engine {
+            "vm" => "the VM",
+            "tree" => "the tree-walker",
+            _ => "the VM, or the tree-walker if it needs it",
+        }
+    );
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn run_build(
     folder: &str,
@@ -971,11 +1040,7 @@ pub fn run_file(path: &str, options: &Options) {
         process::exit(1);
     }
 
-    let result = if options.use_vm {
-        solilang::run_file_vm(path, !options.no_type_check)
-    } else {
-        solilang::run_file(path, !options.no_type_check)
-    };
+    let result = solilang::run_script_file(path, !options.no_type_check, options.engine);
 
     if let Err(e) = result {
         eprintln!("Error: {}", e);
@@ -984,14 +1049,9 @@ pub fn run_file(path: &str, options: &Options) {
 }
 
 pub fn run_eval(code: &str, options: &Options) {
-    // Honour `--vm`, as `run_script` does. Without this branch `soli --vm -e`
-    // silently ran the tree-walking interpreter, so the one command people
-    // reach for to check VM behaviour was the one command that could not.
-    let result = if options.use_vm {
-        solilang::run_vm(code, None, !options.no_type_check)
-    } else {
-        solilang::run_with_type_check(code, !options.no_type_check)
-    };
+    // The same engine choice as a script file, so `soli --vm -e` and
+    // `soli --tree -e` check what they say they check.
+    let result = solilang::run_script(code, None, !options.no_type_check, options.engine);
 
     if let Err(e) = result {
         eprintln!("Error: {}", e);

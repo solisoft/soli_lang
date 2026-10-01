@@ -562,7 +562,7 @@ fn rename_declaration(stmt: &Stmt, new_name: &str) -> Stmt {
 }
 
 /// Set source_path on a statement and all nested statements.
-fn set_stmt_source_path(stmt: &Stmt, source_path: PathBuf) -> Stmt {
+pub fn set_stmt_source_path(stmt: &Stmt, source_path: PathBuf) -> Stmt {
     let mut new_stmt = stmt.clone();
     new_stmt.source_path = Some(source_path.clone());
 

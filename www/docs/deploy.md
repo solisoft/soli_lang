@@ -1,16 +1,18 @@
 # Deployment
 
-Soli ships four ways to put an app on a server, in increasing order of independence from the
+Soli ships three ways to put an app on a server, in increasing order of independence from the
 machine you deploy to:
 
 | Command | What lands on the host | Rollback |
 |---------|------------------------|----------|
 | `soli deploy` | a git working tree, updated in place | redeploy the previous commit |
-| `soli cloud` | an immutable release directory, behind a symlink | move the symlink |
 | `soli build` | a single `.soli` bundle + the `soli` binary | replace the file |
 | `soli build --standalone` | one native executable, runtime included | replace the file |
 
-`soli env` is the fifth command in the family, but it deploys *branches* rather than releases —
+`soli build tool.sl` is a different use of the same command: it turns a script, not an app, into
+one executable — see [Script executables](#script-executables).
+
+`soli env` is the fourth command in the family, but it deploys *branches* rather than releases —
 see [Preview environments](#preview-environments).
 
 ## `soli deploy` — sync a working tree
@@ -82,8 +84,8 @@ Per-server keys, under `[[servers]]`:
 - The `soli` binary on the target's `PATH`.
 - soli-proxy running on each server, with matching API keys.
 
-`soli deploy` is Unix-only — it is built on ssh2. Reading `deploy.toml` is not, so `soli cloud`
-and `soli env` work everywhere.
+`soli deploy` is Unix-only — it is built on ssh2. Reading `deploy.toml` is not, so `soli env`
+works everywhere.
 
 ### Assets during a deploy
 
@@ -96,78 +98,6 @@ Other files under `public/` are read from disk on request. In production a path 
 a moment ago — every dynamic route is checked this way first — is taken on trust for one second,
 so a file written under `public/` while the server runs (an upload saved there, say) is served at
 most a second after a request for that same path found nothing.
-
-## Immutable releases — `soli cloud`
-
-`soli deploy` updates a working tree in place. `soli cloud` does the opposite: it builds an
-artifact, lands it in a directory that is never modified again, and moves a symlink. Rolling back
-is repointing that symlink — no rebuild, and the bytes it returns to are provably the bytes that
-were serving before.
-
-```bash
-soli cloud deploy --domain crm.example.com   # build, ship, health-gate, alias
-soli cloud releases                          # what is on the host; * marks live
-soli cloud rollback                          # back one release
-soli cloud rollback --to 20260801T200000Z-a3f21c9
-soli cloud deploy --dry-run                  # print the plan, change nothing
-```
-
-Servers come from the same `deploy.toml` the other commands read — a second file describing the
-same hosts is a second thing to keep in sync. The proxy admin key comes from
-`SOLI_PROXY_API_KEY`.
-
-### The layout
-
-```
-releases/<app>/20260801T200000Z-a3f21c9/   a build, never modified after it lands
-releases/<app>/20260801T211909Z-b7e0d31/
-sites/<app>  ->  releases/<app>/20260801T211909Z-b7e0d31
-```
-
-The release id is a UTC timestamp then a short commit, in that order, so lexical sort *is*
-chronological sort. That is what answers "the previous release", and it has to stay right on the
-day two deploys land in the same minute — a timestamp alone collides, a SHA alone does not sort
-and repeats when the same commit is redeployed.
-
-Releases live *beside* `sites/`, never inside it: inside, the proxy would discover every past
-release as an app and try to run all of them.
-
-### The order is the product
-
-```
-mkdir     releases/<app>/<id>
-upload    .soli -> releases/<app>/<id>        nothing points at it yet
-repoint   sites/<app> -> releases/<app>/<id>  ln -sfn, atomic
-deploy    <app> (blue/green, health-gated)
-health    https://<domain>/up within 90s      old slot still serving
-alias     <domain> -> <app>                   traffic moves here
-prune     oldest releases, never the live one
-```
-
-- **Upload before repoint** — a transfer that dies half way leaves an unused directory, not a live
-  symlink pointing at half an app.
-- **Repoint before deploy** — the proxy reads the app from `sites/<app>`. Deploying first would
-  start the release that is already live, and report success.
-- **Health before alias** — blue/green keeps the old slot serving until the new one answers.
-  Moving the alias first sends real traffic at a release that may still be starting.
-- **Prune last, never the live one** — a deploy that pruned first would have thrown away what it
-  needs to roll back to. Pruning also skips the live release explicitly, because after a few
-  rollbacks it can fall outside the newest five.
-
-### A failed deploy is not rolled back for you
-
-Up to and including the upload, a failure is invisible — retry it. From the repoint onward the
-deployment is live, and the error names the release that is currently serving plus the exact
-command to go back.
-
-It stops there on purpose. An automatic rollback in the middle of a half-applied change is a
-second uncontrolled change on top of the first, at the moment when least is known about what is
-wrong.
-
-`--dry-run` prints the plan and changes nothing — and it is the *same* plan a real deploy
-executes, not a second description of it. It still reads the host, because a plan computed from an
-invented view is a guess rather than a dry run; if it cannot reach the host it says so before
-printing.
 
 ## Preview environments
 
@@ -437,6 +367,66 @@ Operational notes:
   discards it.
 - `soli update` does not apply to standalone apps — a runtime fix means rebuilding and redeploying
   the artifact.
+
+## Script executables
+
+`soli build` given a `.sl` file, rather than an app folder, builds one executable that **runs that
+script** — a command-line tool, not a server. The target machine needs no `soli` install.
+
+```bash
+soli build tool.sl
+#   Building tool from tool.sl...
+#     Built tool (79.0 MB, linux-x86_64, runs on the VM, or the tree-walker if it needs it)
+
+./tool 32
+```
+
+```soli
+# tool.sl
+import "./lib/math.sl"   # export def fib(n: Int) -> Int …
+
+args = System.argv
+if args.length == 0
+  print("usage: tool N")
+else
+  n = args[0].to_i()
+  print("fib(#{n}) = #{fib(n)}")
+end
+```
+
+Every argument after the program name reaches the script as [`System.argv`](builtins.md#systemargv),
+an Array of Strings. Run through the CLI instead, the script gets what follows `--`:
+`soli tool.sl -- 32` (also `soli -e "…" -- a b`).
+
+| Option | Effect |
+|--------|--------|
+| `-o`, `--output FILE` | Output path. Default: the script's name without `.sl`, plus `-<target>` for a cross build and `.exe` for Windows. |
+| `--target T` | Embed another platform's runtime, as for [`--standalone`](#cross-platform-builds): `linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`, `windows-amd64`. |
+| `--vm` | Always run the script on the bytecode VM, with no fallback to the tree-walker. |
+| `--tree` | Always run the script on the tree-walking interpreter. |
+| `--no-type-check` | Skip the type check at build time. |
+
+What the executable contains, and what it does not:
+
+- **The resolved program, not the sources.** Imports are resolved and the program is type-checked
+  when you build, so an error `soli tool.sl` would report stops the build. What ships is the
+  program as a serialized AST. Paths in it are relative to the script, so the build machine's
+  directory layout is not inside the file.
+- **The whole Soli runtime**, so the file is about the size of the `soli` binary (~80 MB) however
+  small the script.
+- **Native kernels are compiled when the executable starts**, on the machine it runs on, like
+  `soli tool.sl` does (see [Native Kernels](native-kernels.md)) — load-time compilation, not an
+  ahead-of-time object file.
+- **The engine is chosen as for `soli tool.sl`**: the bytecode VM, unless the script needs the
+  tree-walker (see [Configuration → Script Engine](configuration.md#script-engine)). The choice is
+  made when the executable starts, from the program it carries; `--vm` or `--tree` at build time
+  fixes it instead, and `SOLI_ENGINE` does not change it. `SOLI_ENGINE_LOG=1` prints it.
+- **It starts as fast as `soli` does**: one that prints a line runs in about 3 ms on Linux.
+- It exits `0`, or `70` after printing `Error: …` to stderr, like `soli tool.sl`.
+
+`--encrypt`, `--protect` and `--update-url` / `--update-key` apply to app bundles and are refused
+for a script. The macOS re-signing note and the "do not post-process the artifact" rule above apply
+here too.
 
 ## See also
 

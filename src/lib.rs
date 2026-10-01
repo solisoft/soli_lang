@@ -30,6 +30,7 @@ pub mod lsp;
 pub mod metrics;
 pub mod migration;
 pub mod module;
+pub mod native;
 pub mod parser;
 pub mod platform;
 pub(crate) mod redaction;
@@ -146,15 +147,22 @@ pub fn run_with_path(
     source_path: Option<&std::path::Path>,
     type_check: bool,
 ) -> Result<(), SolilangError> {
-    // Lexing
-    let tokens = lexer::Scanner::new(source).scan_tokens()?;
+    let program = parse_resolve_check(source, source_path, type_check)?;
+    execute_program_tree(&program)
+}
 
-    // Parsing
+/// Lex, parse, resolve imports (when there is a path to resolve them from)
+/// and, if asked, type-check: everything before a program runs.
+pub fn parse_resolve_check(
+    source: &str,
+    source_path: Option<&std::path::Path>,
+    type_check: bool,
+) -> Result<ast::Program, SolilangError> {
+    let tokens = lexer::Scanner::new(source).scan_tokens()?;
     let mut program = parser::Parser::new(tokens).parse()?;
 
-    // Module resolution (if we have imports and a source path)
     if let Some(path) = source_path.filter(|_| has_imports(&program)) {
-        let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
+        let base_dir = import_base_dir(path);
         let mut resolver = module::ModuleResolver::new(base_dir);
         program = resolver
             .resolve(program, path)
@@ -164,19 +172,341 @@ pub fn run_with_path(
             })?;
     }
 
-    // Type checking (optional)
     if type_check {
         let mut checker = types::TypeChecker::new();
         if let Err(errors) = checker.check(&program) {
             return Err(errors.into_iter().next().unwrap().into());
         }
     }
+    Ok(program)
+}
 
-    // Execute with tree-walking interpreter
+/// A fresh interpreter with every builtin registered, as a script sees it.
+fn script_interpreter() -> interpreter::Interpreter {
     let mut interpreter = interpreter::Interpreter::new();
     interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
-    interpreter.interpret(&program)?;
+    interpreter
+}
 
+/// Compile the native kernels of `program` (see [`native`]), given the
+/// interpreter whose bindings say which names are builtins.
+fn script_kernels(
+    program: &ast::Program,
+    interpreter: &interpreter::Interpreter,
+) -> Option<native::KernelSet> {
+    if !native::enabled() {
+        return None;
+    }
+    let env = interpreter.environment.clone();
+    let is_builtin = |name: &str| env.borrow().get(name).is_some();
+    native::analyze_and_compile(program, &is_builtin)
+}
+
+/// Run a parsed, resolved and checked program on the tree-walking
+/// interpreter, its typed numeric functions compiled to native kernels.
+pub fn execute_program_tree(program: &ast::Program) -> Result<(), SolilangError> {
+    let mut interpreter = script_interpreter();
+    let kernels = script_kernels(program, &interpreter);
+    interpreter.set_kernels(kernels);
+    interpreter.interpret(program)?;
+    Ok(())
+}
+
+/// Which engine runs a script.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Engine {
+    /// The bytecode VM, unless the script needs the tree-walker: it uses a
+    /// construct the VM hands back at run time ([`tree_walker_reason`]), or it
+    /// does not compile to bytecode. The default for `soli script.sl`.
+    Auto,
+    /// The tree-walking interpreter (`--tree`).
+    Tree,
+    /// The VM, and an error where it cannot run the script (`--vm`).
+    Vm,
+}
+
+impl Engine {
+    /// `SOLI_ENGINE=tree|vm|auto`, when set and valid.
+    pub fn from_env() -> Option<Engine> {
+        match std::env::var("SOLI_ENGINE")
+            .ok()?
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "tree" | "interpreter" => Some(Engine::Tree),
+            "vm" => Some(Engine::Vm),
+            "auto" => Some(Engine::Auto),
+            _ => None,
+        }
+    }
+}
+
+/// Run the script at `path` on `engine`.
+pub fn run_script_file(
+    path: &std::path::Path,
+    type_check: bool,
+    engine: Engine,
+) -> Result<(), SolilangError> {
+    let source = std::fs::read_to_string(path).map_err(|e| error::RuntimeError::General {
+        message: format!("Failed to read file '{}': {}", path.display(), e),
+        span: span::Span::new(0, 0, 1, 1),
+    })?;
+    run_script(&source, Some(path), type_check, engine)
+}
+
+/// Run `source` as a script on `engine`.
+pub fn run_script(
+    source: &str,
+    source_path: Option<&std::path::Path>,
+    type_check: bool,
+    engine: Engine,
+) -> Result<(), SolilangError> {
+    let program = parse_resolve_check(source, source_path, type_check)?;
+    execute_program(&program, engine)
+}
+
+/// Run a parsed, resolved and checked program on `engine`.
+pub fn execute_program(program: &ast::Program, engine: Engine) -> Result<(), SolilangError> {
+    match engine {
+        Engine::Tree => execute_program_tree(program),
+        Engine::Vm => execute_program_vm(program),
+        Engine::Auto => {
+            if let Some(reason) = tree_walker_reason(program) {
+                log_engine(&format!("tree-walker — the script uses {reason}"));
+                return execute_program_tree(program);
+            }
+            let interpreter = script_interpreter();
+            let env = interpreter.environment.clone();
+            let zero_arg_builtin = |name: &str| match env.borrow().get(name) {
+                Some(Value::NativeFunction(native)) => {
+                    native.is_auto_invocable || native.arity == Some(0)
+                }
+                _ => false,
+            };
+            if let Some(name) = bare_call_reason(program, &zero_arg_builtin) {
+                log_engine(&format!(
+                    "tree-walker — the script calls `{name}` without parentheses"
+                ));
+                return execute_program_tree(program);
+            }
+            let kernels = script_kernels(program, &interpreter);
+            match vm::Compiler::compile_with_kernels(program, kernels) {
+                Ok(module) => {
+                    log_engine("vm");
+                    run_compiled_on_vm(&module, &interpreter)
+                }
+                // Nothing has run yet, so the tree-walker can take it whole.
+                Err(e) => {
+                    log_engine(&format!("tree-walker — the VM cannot compile it ({e})"));
+                    execute_program_tree(program)
+                }
+            }
+        }
+    }
+}
+
+/// `SOLI_ENGINE_LOG=1`: say which engine runs the script, and why.
+fn log_engine(choice: &str) {
+    if std::env::var("SOLI_ENGINE_LOG").is_ok_and(|v| !v.is_empty() && v != "0") {
+        eprintln!("engine: {choice}");
+    }
+}
+
+/// Why `program` must run on the tree-walker, if it must: it uses a construct
+/// the VM hands back to the interpreter at run time (`EngineFallback`).
+///
+/// Only `soli serve` can take a request back and replay it on the
+/// interpreter; a script that hit one halfway would stop with an error after
+/// doing half its work. So it is decided before anything runs, from the
+/// source. The list mirrors the VM's refusals: class reflection
+/// (`vm_classes::is_class_reflection_member`), batch iteration and dynamic
+/// finders on models, `method_missing`, model callbacks given as closures and
+/// state machines.
+pub fn tree_walker_reason(program: &ast::Program) -> Option<String> {
+    use ast::expr::ExprKind;
+    use ast::stmt::StmtKind;
+
+    let mut reason: Option<String> = None;
+    let mut on_stmt = |stmt: &ast::Stmt| {
+        if reason.is_some() {
+            return;
+        }
+        if let StmtKind::Class(class) = &stmt.kind {
+            if class.methods.iter().any(|m| m.name == "method_missing") {
+                reason = Some("`method_missing`".to_string());
+            }
+        }
+    };
+    let mut found: Option<String> = None;
+    let mut on_expr = |expr: &ast::Expr| {
+        if found.is_some() {
+            return;
+        }
+        let (name, receiver) = match &expr.kind {
+            ExprKind::Member { object, name } | ExprKind::SafeMember { object, name } => {
+                (name.as_str(), Some(object))
+            }
+            ExprKind::Variable(name) => (name.as_str(), None),
+            _ => return,
+        };
+        let on_a_class = receiver.is_some_and(|object| {
+            matches!(&object.kind, ExprKind::Variable(n) if n.starts_with(char::is_uppercase))
+        });
+        let hit = match name {
+            "class_eval" | "instance_eval" | "send" | "methods" | "find_each" | "in_batches"
+            | "find_in_batches" | "state_machine" | "after_transition" | "before_transition" => {
+                true
+            }
+            "respond_to?" | "inspect" | "to_s" | "to_string" => on_a_class,
+            "before_save" | "after_save" | "before_create" | "after_create" | "before_update"
+            | "after_update" | "before_delete" | "after_delete" | "before_validation"
+            | "after_validation" => true,
+            _ => name.starts_with("find_by_") && on_a_class,
+        };
+        if hit {
+            found = Some(format!("`{name}`"));
+        }
+    };
+    ast::walk::walk_program(program, &mut on_stmt, &mut on_expr);
+    reason.or(found)
+}
+
+/// A bare name the tree-walker would call and the VM would not: a function
+/// with no required parameter, read without `()` (`x = helper`,
+/// `print(session_id)`).
+///
+/// The tree-walker calls it; the VM — and so `soli serve` in production —
+/// hands over the function itself. Scripts were written against the
+/// tree-walker, so one that relies on this keeps running there. Names the
+/// script binds as a variable or a parameter are taken to be those, which
+/// misses a name used both ways; the cost of a wrong guess the other way is
+/// only speed.
+pub fn bare_call_reason(
+    program: &ast::Program,
+    zero_arg_builtin: &dyn Fn(&str) -> bool,
+) -> Option<String> {
+    use ast::expr::ExprKind;
+    use ast::stmt::StmtKind;
+    use std::collections::HashSet;
+
+    let no_required = |params: &[ast::Parameter]| params.iter().all(|p| p.default_value.is_some());
+
+    // Functions the tree-walker would call bare, and names that are plainly
+    // variables.
+    let callable: std::cell::RefCell<HashSet<String>> = Default::default();
+    let variables: std::cell::RefCell<HashSet<String>> = Default::default();
+    let mut on_stmt = |stmt: &ast::Stmt| match &stmt.kind {
+        StmtKind::Function(decl) => {
+            if no_required(&decl.params) {
+                callable.borrow_mut().insert(decl.name.clone());
+            }
+            for p in &decl.params {
+                variables.borrow_mut().insert(p.name.clone());
+            }
+        }
+        StmtKind::Let {
+            name, initializer, ..
+        } => match initializer.as_ref().map(|e| &e.kind) {
+            Some(ExprKind::Lambda { params, .. }) if no_required(params) => {
+                callable.borrow_mut().insert(name.clone());
+            }
+            _ => {
+                variables.borrow_mut().insert(name.clone());
+            }
+        },
+        StmtKind::For {
+            variable,
+            index_variable,
+            ..
+        } => {
+            variables.borrow_mut().insert(variable.clone());
+            if let Some(index) = index_variable {
+                variables.borrow_mut().insert(index.clone());
+            }
+        }
+        StmtKind::Try { catch_clauses, .. } => {
+            for clause in catch_clauses {
+                if let Some(var) = &clause.var_name {
+                    variables.borrow_mut().insert(var.clone());
+                }
+            }
+        }
+        _ => {}
+    };
+    // Where a name is the callee of a call or the target of an assignment,
+    // it is not read bare.
+    let mut not_bare: HashSet<*const ast::Expr> = HashSet::new();
+    let mut bare: Vec<(*const ast::Expr, String)> = Vec::new();
+    let mut on_expr = |expr: &ast::Expr| match &expr.kind {
+        ExprKind::Call { callee, .. } => {
+            not_bare.insert(&**callee as *const ast::Expr);
+        }
+        ExprKind::Assign { target, value } => {
+            not_bare.insert(&**target as *const ast::Expr);
+            if let ExprKind::Variable(name) = &target.kind {
+                match &value.kind {
+                    ExprKind::Lambda { params, .. } if no_required(params) => {
+                        callable.borrow_mut().insert(name.clone());
+                    }
+                    _ => {
+                        variables.borrow_mut().insert(name.clone());
+                    }
+                }
+            }
+        }
+        ExprKind::CompoundAssign { target, .. } => {
+            not_bare.insert(&**target as *const ast::Expr);
+        }
+        ExprKind::Lambda { params, .. } => {
+            for p in params {
+                variables.borrow_mut().insert(p.name.clone());
+            }
+        }
+        ExprKind::Variable(name) => bare.push((expr as *const ast::Expr, name.clone())),
+        _ => {}
+    };
+    ast::walk::walk_program(program, &mut on_stmt, &mut on_expr);
+
+    bare.into_iter()
+        .filter(|(ptr, _)| !not_bare.contains(ptr))
+        .map(|(_, name)| name)
+        .find(|name| {
+            callable.borrow().contains(name)
+                || (!variables.borrow().contains(name) && zero_arg_builtin(name))
+        })
+}
+
+/// Run a parsed, resolved and checked program on the bytecode VM, its typed
+/// numeric functions compiled to native kernels.
+pub fn execute_program_vm(program: &ast::Program) -> Result<(), SolilangError> {
+    let interpreter = script_interpreter();
+    let kernels = script_kernels(program, &interpreter);
+    let module = vm::Compiler::compile_with_kernels(program, kernels).map_err(|e| {
+        error::RuntimeError::General {
+            message: format!("Compile error: {}", e),
+            span: span::Span::new(0, 0, 1, 1),
+        }
+    })?;
+    run_compiled_on_vm(&module, &interpreter)
+}
+
+/// Seed a VM with the full builtin environment, exactly like a production
+/// serve worker: the interpreter registered every builtin function and
+/// native class (DateTime, Duration, HTTP, …), and its globals are copied
+/// across. Keeps `--vm` a faithful simulator of production-mode execution
+/// instead of a hand-rolled subset.
+fn run_compiled_on_vm(
+    module: &vm::chunk::CompiledModule,
+    interpreter: &interpreter::Interpreter,
+) -> Result<(), SolilangError> {
+    let mut vm_instance = vm::Vm::new();
+    vm_instance.check_return_types = true;
+    let all_globals = interpreter.environment.borrow().get_all_bindings();
+    for (name, value) in all_globals {
+        vm_instance.globals.insert(name, value);
+    }
+    vm_instance.execute(&module.main)?;
     Ok(())
 }
 
@@ -236,7 +566,7 @@ pub fn type_check_source_with_ambient(
         .map_err(|e| vec![e.into()])?;
 
     if let Some(path) = source_path.filter(|_| has_imports(&program)) {
-        let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
+        let base_dir = import_base_dir(path);
         let mut resolver = module::ModuleResolver::new(base_dir);
         program = resolver.resolve(program, path).map_err(|e| {
             vec![error::RuntimeError::General {
@@ -314,26 +644,14 @@ pub fn run_vm(
     source_path: Option<&std::path::Path>,
     type_check: bool,
 ) -> Result<(), SolilangError> {
-    let module = compiled_cache::get_or_compile(source, source_path, type_check)?;
-
-    let mut vm_instance = vm::Vm::new();
-
-    // Seed the VM with the full builtin environment, exactly like a
-    // production serve worker: build an interpreter (which registers every
-    // builtin function and native class — DateTime, Duration, HTTP, …) and
-    // copy its globals across. Keeps `--vm` a faithful simulator of
-    // production-mode execution instead of a hand-rolled subset.
-    let mut interpreter = interpreter::Interpreter::new();
-    interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
-    let all_globals = interpreter.environment.borrow().get_all_bindings();
-    for (name, value) in all_globals {
-        vm_instance.globals.insert(name, value);
+    // Kernels are tied to the AST they were compiled from, which the module
+    // cache does not keep; a script with kernels compiles afresh.
+    if native::enabled() {
+        let program = parse_resolve_check(source, source_path, type_check)?;
+        return execute_program_vm(&program);
     }
-
-    // Execute the compiled module
-    vm_instance.execute(&module.main)?;
-
-    Ok(())
+    let module = compiled_cache::get_or_compile(source, source_path, type_check)?;
+    run_compiled_on_vm(&module, &script_interpreter())
 }
 
 /// Run a Solilang program with optional coverage tracking.
@@ -390,7 +708,7 @@ fn run_with_path_and_coverage_inner(
 
     let has_imports = source_path.is_some() && has_imports(&program);
     if let Some(path) = source_path.filter(|_| has_imports) {
-        let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
+        let base_dir = import_base_dir(path);
         let mut resolver = module::ModuleResolver::new(base_dir);
         program = resolver
             .resolve(program, path)
@@ -838,6 +1156,7 @@ fn rebind_closure(
                 return_type: func.return_type.clone(),
                 cached_env: std::cell::RefCell::new(None),
                 jit_cache: std::cell::RefCell::new(None),
+                kernel: None,
             };
             new_func.closure = env.clone();
             Value::Function(std::rc::Rc::new(new_func))
@@ -847,6 +1166,16 @@ fn rebind_closure(
 }
 
 /// Check if a program has any import statements.
+/// The directory a script's relative imports resolve from. `Path::parent`
+/// of a bare file name is `""`, not `.`, and resolving against `""` found
+/// nothing: `soli tool.sl` failed on `import "./lib/math.sl"` that
+/// `soli ./tool.sl` loaded.
+pub(crate) fn import_base_dir(path: &std::path::Path) -> &std::path::Path {
+    path.parent()
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."))
+}
+
 pub(crate) fn has_imports(program: &ast::Program) -> bool {
     program
         .statements

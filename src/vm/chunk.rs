@@ -58,6 +58,15 @@ pub struct FunctionProto {
     /// methods compiled from the tree-walker's AST (actions, their helpers)
     /// and inherited by the closures compiled inside them.
     pub source_path: Option<std::sync::Arc<std::path::PathBuf>>,
+    /// Machine code for this function, when it is a top-level def typed
+    /// Int/Float/Bool end to end (see `crate::native`). Tried first on each
+    /// call; a declined call runs the bytecode as usual.
+    pub kernel: Option<crate::native::KernelRef>,
+    /// The declared return type, checked on return when the VM runs a script
+    /// (`Vm::check_return_types`), as the tree-walker checks it.
+    pub return_type: Option<crate::ast::TypeAnnotation>,
+    /// Where the function is declared: the span of a return-type error.
+    pub decl_span: crate::span::Span,
 }
 
 impl FunctionProto {
@@ -72,6 +81,9 @@ impl FunctionProto {
             upvalue_descriptors: Vec::new(),
             is_method: false,
             source_path: None,
+            kernel: None,
+            return_type: None,
+            decl_span: crate::span::Span::default(),
         }
     }
 }
@@ -83,6 +95,8 @@ pub struct Chunk {
     pub code: Vec<Op>,
     /// Source line numbers, parallel to `code`.
     pub lines: Vec<usize>,
+    /// Source columns, parallel to `code` (0 where unknown).
+    pub columns: Vec<u32>,
     /// Constant pool.
     pub constants: Vec<Constant>,
 }
@@ -92,15 +106,22 @@ impl Chunk {
         Self {
             code: Vec::new(),
             lines: Vec::new(),
+            columns: Vec::new(),
             constants: Vec::new(),
         }
     }
 
     /// Emit an instruction and record its source line.
     pub fn emit(&mut self, op: Op, line: usize) -> usize {
+        self.emit_at(op, line, 0)
+    }
+
+    /// Emit an instruction and record its source line and column.
+    pub fn emit_at(&mut self, op: Op, line: usize, column: u32) -> usize {
         let offset = self.code.len();
         self.code.push(op);
         self.lines.push(line);
+        self.columns.push(column);
         offset
     }
 

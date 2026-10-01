@@ -14,6 +14,17 @@ use std::thread;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
 
+/// The arguments a script was started with: what follows `--` in
+/// `soli script.sl -- a b`, or everything after the program name in an
+/// executable built with `soli build script.sl`. Set once, before the script
+/// runs; empty when nothing was passed.
+static SCRIPT_ARGS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+/// Record the script's arguments for `System.argv`. Only the first call wins.
+pub fn set_script_args(args: Vec<String>) {
+    let _ = SCRIPT_ARGS.set(args);
+}
+
 pub fn register_system_builtins(env: &mut Environment) {
     // System class
     env.define("System".to_string(), system_class());
@@ -67,6 +78,19 @@ fn system_class() -> Value {
             let (program, args_vec) = parse_shell(&args[0], "System.shell_sync")?;
             let result = execute_command(&program, &args_vec)?;
             Ok(result_to_hash(result))
+        })),
+    );
+
+    // System.argv - The script's own arguments, as an Array of Strings.
+    methods.insert(
+        "argv".to_string(),
+        Rc::new(NativeFunction::new("System.argv", Some(0), |_args| {
+            let args = SCRIPT_ARGS.get().map(Vec::as_slice).unwrap_or_default();
+            let items = args
+                .iter()
+                .map(|a| Value::String(a.as_str().into()))
+                .collect();
+            Ok(Value::Array(Rc::new(RefCell::new(items))))
         })),
     );
 

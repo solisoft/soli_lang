@@ -11,8 +11,16 @@ use super::compiler::{CompileResult, Compiler, FunctionType};
 use super::opcode::Op;
 
 impl Compiler {
-    /// Compile a statement.
+    /// Compile a statement. Its instructions record its column, as
+    /// [`Self::compile_expr`]'s record theirs.
     pub fn compile_stmt(&mut self, stmt: &Stmt) -> CompileResult<()> {
+        let outer = std::mem::replace(&mut self.column, stmt.span.column);
+        let result = self.compile_stmt_at(stmt);
+        self.column = outer;
+        result
+    }
+
+    fn compile_stmt_at(&mut self, stmt: &Stmt) -> CompileResult<()> {
         // Every statement begins at the locals baseline (the previous statement
         // left the value stack holding exactly the live locals). Resync the
         // tracked height here so the comprehension clean-position gate is
@@ -582,7 +590,12 @@ impl Compiler {
         self.compile_function_body(&decl.body)?;
         self.end_scope(line);
 
-        let proto = self.finish_function(line);
+        let mut proto = self.finish_function(line);
+        proto.return_type = decl.return_type.clone();
+        proto.decl_span = decl.span;
+        if self.scope_depth == 0 {
+            proto.kernel = self.kernels.as_ref().and_then(|k| k.for_decl(decl));
+        }
         let idx = self.add_constant(Constant::Function(Arc::new(proto)));
         self.emit(Op::Closure(idx), line);
 

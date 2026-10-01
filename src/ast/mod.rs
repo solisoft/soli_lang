@@ -3,6 +3,7 @@
 pub mod expr;
 pub mod stmt;
 pub mod types;
+pub mod walk;
 
 pub use expr::{BinaryOp, CompoundOp, Expr, ExprKind, MatchArm, MatchPattern, UnaryOp};
 pub use stmt::{

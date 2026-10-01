@@ -180,11 +180,26 @@ impl Vm {
     /// that call back into Soli recurse natively — and a stack overflow
     /// aborts without unwinding, so it must be prevented, not caught.
     #[inline]
-    pub(crate) fn ensure_call_depth(&self, span: Span) -> Result<(), RuntimeError> {
+    pub(crate) fn ensure_call_depth(
+        &self,
+        callee: &crate::vm::chunk::FunctionProto,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
         if self.frames.len() >= MAX_CALL_DEPTH {
+            // Worded and placed as the tree-walker words and places it: the
+            // function's name, at its declaration (a lambda has none, so the
+            // call site stands in).
+            let at = if callee.decl_span.line > 0 {
+                callee.decl_span
+            } else {
+                span
+            };
             return Err(RuntimeError::new(
-                format!("call stack too deep ({MAX_CALL_DEPTH} frames) — unbounded recursion?"),
-                span,
+                format!(
+                    "call stack too deep ({MAX_CALL_DEPTH} frames) in \"{}\" — unbounded recursion?",
+                    callee.name
+                ),
+                at,
             ));
         }
         Ok(())
@@ -239,6 +254,9 @@ impl Vm {
         span: Span,
         class: Option<Rc<Class>>,
     ) -> Result<(), RuntimeError> {
+        if class.is_none() && closure.proto.kernel.is_some() && self.try_kernel(&closure, argc) {
+            return Ok(());
+        }
         let arity = closure.proto.arity as usize;
         let total_params = closure.proto.param_names.len();
 
@@ -258,7 +276,7 @@ impl Vm {
 
         let stack_base = self.stack.len() - total_params - 1;
 
-        self.ensure_call_depth(span)?;
+        self.ensure_call_depth(&closure.proto, span)?;
 
         self.frames.push(CallFrame::new(
             closure,
@@ -269,6 +287,32 @@ impl Vm {
         ));
 
         Ok(())
+    }
+
+    /// Run `closure`'s native kernel on the `argc` arguments at the top of the
+    /// stack (the callee sits just beneath them). On success the callee and
+    /// its arguments are replaced by the value, as a native call leaves them,
+    /// and no frame is opened. `false` means declined: nothing was touched,
+    /// and the caller opens the frame as usual.
+    #[inline]
+    pub(crate) fn try_kernel(&mut self, closure: &VmClosure, argc: usize) -> bool {
+        let Some(kernel) = &closure.proto.kernel else {
+            return false;
+        };
+        let base = self.stack.len() - argc;
+        let globals = &self.globals;
+        let bound = |name: &str| match globals.get(name) {
+            Some(Value::VmClosure(c)) => c.proto.kernel.as_ref().map(|k| k.id()),
+            _ => None,
+        };
+        match kernel.try_call(&self.stack[base..], self.frames.len(), bound) {
+            Some(value) => {
+                self.stack.truncate(base - 1);
+                self.stack.push(value);
+                true
+            }
+            None => false,
+        }
     }
 
     /// Push `slots` (already in parameter order) and open a frame with an
@@ -291,7 +335,7 @@ impl Vm {
             self.push(value);
         }
         let stack_base = self.stack.len() - total_params - 1;
-        self.ensure_call_depth(self.current_span())?;
+        self.ensure_call_depth(&closure.proto, self.current_span())?;
         self.frames.push(CallFrame::new(
             closure,
             stack_base,
@@ -1672,7 +1716,7 @@ impl Vm {
                 self.stack.push(Value::Null);
             }
             let stack_base = self.stack.len() - total_params - 1;
-            self.ensure_call_depth(self.current_span())?;
+            self.ensure_call_depth(&closure.proto, self.current_span())?;
             self.frames.push(CallFrame::new(
                 closure,
                 stack_base,

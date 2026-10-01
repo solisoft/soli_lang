@@ -1,6 +1,6 @@
 # Bytecode VM
 
-Production `soli serve` compiles each handler to bytecode and runs it on a stack machine. `--dev` does not.
+Production `soli serve` compiles each handler to bytecode and runs it on a stack machine. `--dev` does not. Scripts (`soli script.sl`, `soli -e`, `soli build tool.sl` executables) run on it too, unless they need the tree-walker — see the engine table in [Internals](/docs/internals).
 
 ```
 src/vm/
@@ -113,6 +113,10 @@ impl Vm {
 Stack slots are `Value`. Locals are slots relative to `CallFrame.stack_base`.
 
 Closures: captured locals become `upvalue`s (`upvalue.rs`, `VmClosure`). `close_upvalues` is the Crafting Interpreters “move to heap when the stack slot dies” step.
+
+Errors carry the same `line:column` as the tree-walker's: `Chunk` keeps a `columns` vector parallel to `code` (`emit_at` records the column of the expression or statement being compiled, 0 where unknown). The call-depth error names the function and points at its declaration, worded as the tree-walker words it (`call stack too deep (256 frames) in "down" — unbounded recursion?`).
+
+`Vm::check_return_types` checks a function's or method's declared return type when it returns (`FunctionProto` keeps it), with the tree-walker's message (`function 'f' expected to return Int, got null`). `run_compiled_on_vm` in `lib.rs` turns it on, so scripts get it; `soli serve` leaves it off, as apps have always run.
 
 ## Native methods on the VM
 

@@ -6128,6 +6128,25 @@ end
 
 Backticks accept literal source-code commands only (no string interpolation). For commands that include user input, build an argv array and call `System.run` instead.
 
+### System.argv
+
+The script's own command-line arguments, as an Array of Strings (empty when there are none):
+
+- with the CLI, what follows `--`: `soli tool.sl -- 32 fast` gives `["32", "fast"]` (also `soli -e "…" -- a b`);
+- in an executable built with `soli build tool.sl`, every argument after the program name: `./tool 32 fast`.
+
+```soli
+args = System.argv
+if args.length == 0
+  print("usage: tool N")
+else
+  n = args[0].to_i()
+  print("n = #{n}")
+end
+```
+
+The values are always Strings; convert them yourself (`to_i()`, `to_f()`). Under `soli serve` and `soli test` it is `[]`. See [Script executables](deploy.md#script-executables).
+
 ---
 
 ## Image Class

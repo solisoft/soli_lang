@@ -321,6 +321,11 @@ def internals_rust_api
   render_docs("docs/internals/rust-api", "Rust API catalog", "internals", "rust_api")
 end
 
+# GET /docs/internals/native
+def internals_native
+  render_docs("docs/internals/native", "Native kernels", "internals", "native")
+end
+
 # Development Tools
 # ============================================================================
 
@@ -355,6 +360,11 @@ end
 
 def development_tools_deploy
   render_docs("docs/development-tools/deploy", "Deploy", "development_tools", "deploy")
+end
+
+# GET /docs/development-tools/ci-cd
+def development_tools_ci_cd
+  render_docs("docs/development-tools/ci-cd", "CI/CD with GitHub Actions", "development_tools", "ci_cd")
 end
 
 def development_tools_desktop
@@ -548,6 +558,11 @@ end
 
 def language_metaprogramming
   render_docs("docs/language/metaprogramming", "Metaprogramming", "language", "metaprogramming")
+end
+
+# GET /docs/language/native-kernels
+def language_native_kernels
+  render_docs("docs/language/native-kernels", "Native Kernels", "language", "native_kernels")
 end
 
 # ============================================================================

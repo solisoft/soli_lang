@@ -110,6 +110,9 @@ def is_prime(n: Int) -> Bool
 end</code></pre>
             </div>
         </div>
+        <p class="text-gray-400">
+            These three functions are typed <code class="text-amber-400">Int</code>/<code class="text-amber-400">Bool</code> end to end and only do arithmetic, branches and loops, so a script compiles them to machine code when it loads &mdash; see <a href="/docs/language/native-kernels" class="text-amber-400 hover:underline">Native Kernels</a>.
+        </p>
     </section>
 
     <!-- Higher-Order Functions -->

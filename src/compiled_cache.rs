@@ -65,7 +65,7 @@ fn compile(
     let mut program = Parser::new(tokens).parse()?;
 
     if let Some(path) = source_path.filter(|_| has_imports(&program)) {
-        let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
+        let base_dir = crate::import_base_dir(path);
         let mut resolver = ModuleResolver::new(base_dir);
         program =
             resolver

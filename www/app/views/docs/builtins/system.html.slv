@@ -5,7 +5,7 @@
             <span class="bg-gradient-to-r from-orange-400 via-red-400 to-orange-400 bg-clip-text text-transparent">System Functions</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Execute commands directly from Soli. <code>System.run</code> / <code>System.run_sync</code> exec the program directly with no shell. Use <code>System.shell</code> / <code>System.shell_sync</code> (or backticks) when you explicitly want shell features.
+            Execute commands directly from Soli. <code>System.run</code> / <code>System.run_sync</code> exec the program directly with no shell. Use <code>System.shell</code> / <code>System.shell_sync</code> (or backticks) when you explicitly want shell features. <code>System.argv</code> holds a script&rsquo;s own arguments.
         </p>
     </div>
 
@@ -142,6 +142,33 @@ end</code></pre>
                     <strong>Note:</strong> Backticks accept literal source-code commands only (no string interpolation). For commands that include user input, build an argv array and call <code>System.run</code> instead.
                 </p>
             </div>
+        </div>
+    </section>
+
+    <!-- System.argv -->
+    <section id="system-argv" class="mb-16 scroll-mt-20">
+        <h2 class="text-2xl font-bold text-white mb-6">System.argv</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-6">
+            <p class="text-gray-300 mb-4">
+                The script&rsquo;s own command-line arguments, as an Array of Strings (empty when there are none):
+            </p>
+            <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-4">
+                <li>with the CLI, what follows <code>--</code>: <code>soli tool.sl -- 32 fast</code> gives <code>["32", "fast"]</code> (also <code>soli -e "&hellip;" -- a b</code>);</li>
+                <li>in an executable built with <code>soli build tool.sl</code>, every argument after the program name: <code>./tool 32 fast</code>.</li>
+            </ul>
+
+            <h3 class="text-lg font-semibold text-white mb-3">Example</h3>
+            <pre class="bg-black/50 rounded-lg p-4 text-gray-300 overflow-x-auto"><code>args = System.argv
+if args.length == 0
+  print("usage: tool N")
+else
+  n = args[0].to_i()
+  print("n = #{n}")
+end</code></pre>
+
+            <p class="text-gray-400 mt-4">
+                The values are always Strings; convert them yourself (<code>to_i()</code>, <code>to_f()</code>). Under <code>soli serve</code> and <code>soli test</code> it is <code>[]</code>. See <a href="/docs/development-tools/deploy#script-executables" class="text-amber-400 hover:text-amber-300">Script Executables</a>.
+            </p>
         </div>
     </section>
 

@@ -239,6 +239,19 @@ pub fn run() {
         ),
         Command::Engine { action } => commands::run_engine(action),
         Command::Lsp => commands::run_lsp(),
+        Command::BuildScript {
+            script,
+            output,
+            target,
+            engine,
+            type_check,
+        } => commands::run_build_script(
+            script,
+            output.as_deref(),
+            target.as_deref(),
+            engine,
+            *type_check,
+        ),
         Command::Build {
             folder,
             output,

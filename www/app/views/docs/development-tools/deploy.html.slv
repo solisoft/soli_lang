@@ -4,7 +4,7 @@
             <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Deployment</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Deploy your Soli applications to remote servers with a single command. Blue-green deployments via soli-proxy, or bundle your app into a single binary for zero-dependency deployment.
+            Deploy your Soli applications to remote servers with a single command. Blue-green deployments via soli-proxy, or bundle your app into a single binary for zero-dependency deployment. A script builds into a single executable too &mdash; see <a href="#script-executables" class="text-amber-400 hover:underline">Script Executables</a>.
         </p>
     </div>
 
@@ -173,67 +173,6 @@ Phase 2: Triggering blue-green deploy on all servers...
 
 ✓ 2/2 servers deployed successfully</code></pre>
     </div>
-
-    <h2 id="immutable-releases" class="text-2xl font-bold text-white mb-6">Immutable Releases &mdash; <code class="text-amber-400">soli cloud</code></h2>
-    <p class="text-gray-400 mb-6">
-        <code class="text-amber-400">soli deploy</code> updates a working tree in place. <code class="text-amber-400">soli cloud</code> does the opposite: it builds an artifact, lands it in a directory that is never modified again, and moves a symlink. Rolling back is repointing that symlink &mdash; no rebuild, and the bytes it returns to are provably the bytes that were serving before.
-    </p>
-
-    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <pre data-filename="Terminal"><code class="language-bash text-sm">soli cloud deploy --domain crm.example.com     # build, ship, health-gate, alias
-soli cloud releases                            # what is on the host; * marks live
-soli cloud rollback                            # back one release
-soli cloud rollback --to 20260801T200000Z-a3f21c9
-soli cloud deploy --dry-run                    # print the plan, change nothing</code></pre>
-    </div>
-
-    <p class="text-gray-400 mb-6">
-        Servers come from the same <code>deploy.toml</code> the other commands read &mdash; a second file describing the same hosts is a second thing to keep in sync. The proxy admin key comes from <code class="text-cyan-400">SOLI_PROXY_API_KEY</code>.
-    </p>
-
-    <h3 class="text-lg font-semibold text-white mb-3">The layout</h3>
-    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <pre data-filename="On the host"><code class="language-bash text-sm">releases/&lt;app&gt;/20260801T200000Z-a3f21c9/   a build, never modified after it lands
-releases/&lt;app&gt;/20260801T211909Z-b7e0d31/
-sites/&lt;app&gt;  ->  releases/&lt;app&gt;/20260801T211909Z-b7e0d31</code></pre>
-    </div>
-    <p class="text-gray-400 mb-6">
-        The release id is a UTC timestamp then a short commit, in that order, so lexical sort <em>is</em> chronological sort. That is what answers &ldquo;the previous release&rdquo;, and it has to stay right on the day two deploys land in the same minute &mdash; a timestamp alone collides, a SHA alone does not sort and repeats when the same commit is redeployed.
-    </p>
-    <p class="text-gray-400 mb-6">
-        Releases live <em>beside</em> <code>sites/</code>, never inside it: inside, the proxy would discover every past release as an app and try to run all of them.
-    </p>
-
-    <h3 class="text-lg font-semibold text-white mb-3">The order is the product</h3>
-    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <pre data-filename="Plan"><code class="language-bash text-sm">mkdir     releases/&lt;app&gt;/&lt;id&gt;
-upload    .soli -> releases/&lt;app&gt;/&lt;id&gt;      nothing points at it yet
-repoint   sites/&lt;app&gt; -> releases/&lt;app&gt;/&lt;id&gt;   ln -sfn, atomic
-deploy    &lt;app&gt; (blue/green, health-gated)
-health    https://&lt;domain&gt;/up within 90s       old slot still serving
-alias     &lt;domain&gt; -> &lt;app&gt;                    traffic moves here
-prune     oldest releases, never the live one</code></pre>
-    </div>
-    <ul class="space-y-2 text-gray-400 mb-6 list-disc list-inside">
-        <li><strong class="text-white">Upload before repoint</strong> &mdash; a transfer that dies half way leaves an unused directory, not a live symlink pointing at half an app.</li>
-        <li><strong class="text-white">Repoint before deploy</strong> &mdash; the proxy reads the app from <code>sites/&lt;app&gt;</code>. Deploying first would start the release that is already live, and report success.</li>
-        <li><strong class="text-white">Health before alias</strong> &mdash; blue/green keeps the old slot serving until the new one answers. Moving the alias first sends real traffic at a release that may still be starting.</li>
-        <li><strong class="text-white">Prune last, never the live one</strong> &mdash; a deploy that pruned first would have thrown away what it needs to roll back to. Pruning also skips the live release explicitly, because after a few rollbacks it can fall outside the newest five.</li>
-    </ul>
-
-    <div class="rounded-xl bg-amber-500/5 ring-1 ring-amber-500/20 p-6 mb-6">
-        <h3 class="text-lg font-semibold text-amber-300 mb-2">A failed deploy is not rolled back for you</h3>
-        <p class="text-gray-400 mb-3">
-            Up to and including the upload, a failure is invisible &mdash; retry it. From the repoint onward the deployment is live, and the error names the release that is currently serving plus the exact command to go back.
-        </p>
-        <p class="text-gray-400">
-            It stops there on purpose. An automatic rollback in the middle of a half-applied change is a second uncontrolled change on top of the first, at the moment when least is known about what is wrong.
-        </p>
-    </div>
-
-    <p class="text-gray-400 mb-6">
-        <code class="text-amber-400">--dry-run</code> prints the plan and changes nothing &mdash; and it is the <em>same</em> plan a real deploy executes, not a second description of it. It still reads the host, because a plan computed from an invented view is a guess rather than a dry run; if it cannot reach the host it says so before printing.
-    </p>
 
     <h2 id="preview-environments" class="text-2xl font-bold text-white mb-6">Preview Environments</h2>
     <p class="text-gray-400 mb-6">
@@ -476,6 +415,64 @@ ssh deploy@server "/opt/my_app/my_app --port 8080 --workers 4"</code></pre>
             <li><strong>Do not post-process the artifact</strong> — <code>strip</code>, <code>objcopy</code>, <code>upx</code> or re-signing-tools that rewrite the file destroy the embedded bundle trailer.</li>
             <li><strong>macOS:</strong> building <em>on</em> a Mac ad-hoc re-signs the artifact automatically. A <code>darwin-arm64</code> artifact cross-built on Linux must be re-signed before Apple Silicon will run it: <code>codesign --force -s - my_app-darwin-arm64</code> on a Mac. Use <code>codesign</code> specifically — the payload rides inside <code>__LINKEDIT</code>, and a signer that regenerates that segment (such as <code>rcodesign</code>) discards it. No Windows target is published.</li>
             <li><code>soli update</code> does not apply to standalone apps — a runtime fix means rebuilding and redeploying the artifact.</li>
+        </ul>
+    </div>
+
+    <!-- Script executables -->
+    <h2 id="script-executables" class="text-2xl font-bold text-white mb-6">Script Executables</h2>
+    <p class="text-gray-400 mb-6">
+        <code class="text-amber-400">soli build</code> given a <code>.sl</code> file, rather than an app folder, builds one executable that <strong>runs that script</strong> &mdash; a command-line tool, not a server. The target machine needs no <code>soli</code> install.
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli build tool.sl
+#   Building tool from tool.sl...
+#     Built tool (79.0 MB, linux-x86_64, runs on the VM, or the tree-walker if it needs it)
+
+./tool 32</code></pre>
+    </div>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="tool.sl"><code class="language-soli text-sm">import "./lib/math.sl"   # export def fib(n: Int) -> Int …
+
+args = System.argv
+if args.length == 0
+  print("usage: tool N")
+else
+  n = args[0].to_i()
+  print("fib(#{n}) = #{fib(n)}")
+end</code></pre>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        Every argument after the program name reaches the script as <a href="/docs/builtins/system#system-argv" class="text-amber-400 hover:underline"><code>System.argv</code></a>, an Array of Strings. Run through the CLI instead, the script gets what follows <code>--</code>: <code class="text-amber-400">soli tool.sl -- 32</code> (also <code class="text-amber-400">soli -e "&hellip;" -- a b</code>).
+    </p>
+
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6">
+        <table class="w-full text-left text-sm">
+            <thead class="bg-white/5 text-gray-300">
+                <tr><th class="py-3 px-4">Option</th><th class="py-3 px-4">Effect</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>-o</code>, <code>--output FILE</code></td><td class="py-3 px-4">Output path. Default: the script&rsquo;s name without <code>.sl</code>, plus <code>-&lt;target&gt;</code> for a cross build and <code>.exe</code> for Windows.</td></tr>
+                <tr><td class="py-3 px-4"><code>--target T</code></td><td class="py-3 px-4">Embed another platform&rsquo;s runtime, as for <code>--standalone</code>: <code>linux-amd64</code>, <code>linux-arm64</code>, <code>darwin-amd64</code>, <code>darwin-arm64</code>, <code>windows-amd64</code>.</td></tr>
+                <tr><td class="py-3 px-4"><code>--vm</code></td><td class="py-3 px-4">Always run the script on the bytecode VM, with no fallback to the tree-walker.</td></tr>
+                <tr><td class="py-3 px-4"><code>--tree</code></td><td class="py-3 px-4">Always run the script on the tree-walking interpreter.</td></tr>
+                <tr><td class="py-3 px-4"><code>--no-type-check</code></td><td class="py-3 px-4">Skip the type check at build time.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="rounded-xl bg-white/5 border border-white/10 p-6 mb-12">
+        <h3 class="text-lg font-semibold text-white mb-2">What the executable contains</h3>
+        <ul class="list-disc list-inside text-gray-400 text-sm space-y-1">
+            <li><strong>The resolved program, not the sources.</strong> Imports are resolved and the program is type-checked when you build, so an error <code>soli tool.sl</code> would report stops the build. What ships is the program as a serialized AST; paths in it are relative to the script, so the build machine&rsquo;s directory layout is not inside the file.</li>
+            <li><strong>The whole Soli runtime</strong>, so the file is about the size of the <code>soli</code> binary (~80&nbsp;MB) however small the script.</li>
+            <li><strong>Native kernels are compiled when the executable starts</strong>, on the machine it runs on, as <code>soli tool.sl</code> does (see <a href="/docs/language/native-kernels" class="text-amber-400 hover:underline">Native Kernels</a>) &mdash; load-time compilation, not an ahead-of-time object file.</li>
+            <li><strong>The engine is chosen as for <code>soli tool.sl</code></strong>: the bytecode VM, unless the script needs the tree-walker (see <a href="/docs/getting-started/configuration#script-engine" class="text-amber-400 hover:underline">Configuration &rarr; Script Engine</a>). The choice is made when the executable starts, from the program it carries; <code>--vm</code> or <code>--tree</code> at build time fixes it instead, and <code>SOLI_ENGINE</code> does not change it. <code>SOLI_ENGINE_LOG=1</code> prints it.</li>
+            <li><strong>It starts as fast as <code>soli</code> does</strong>: one that prints a line runs in about 3&nbsp;ms on Linux.</li>
+            <li>It exits <code>0</code>, or <code>70</code> after printing <code>Error: &hellip;</code> to stderr, like <code>soli tool.sl</code>.</li>
+            <li><code>--encrypt</code>, <code>--protect</code> and <code>--update-url</code> / <code>--update-key</code> apply to app bundles and are refused for a script. The macOS re-signing note and the &ldquo;do not post-process the artifact&rdquo; rule above apply here too.</li>
         </ul>
     </div>
 

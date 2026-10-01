@@ -208,7 +208,8 @@ impl Interpreter {
                     .current_source_path
                     .as_ref()
                     .map(|p| p.to_string_lossy().to_string());
-                let func = Function::from_decl(decl, self.environment.clone(), source_path);
+                let mut func = Function::from_decl(decl, self.environment.clone(), source_path);
+                func.kernel = self.kernels.as_ref().and_then(|k| k.for_decl(decl));
                 self.environment
                     .borrow_mut()
                     .define(decl.name.clone(), Value::Function(Rc::new(func)));
@@ -698,6 +699,7 @@ impl Interpreter {
                 return_type: None,
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                kernel: None,
             })
         });
 

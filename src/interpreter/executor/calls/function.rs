@@ -1064,6 +1064,7 @@ impl Interpreter {
                                 return_type: method.return_type.clone(),
                                 cached_env: RefCell::new(None),
                                 jit_cache: RefCell::new(None),
+                                kernel: None,
                             };
                             self.call_value(
                                 Value::Function(Rc::new(bound_method)),
@@ -1096,6 +1097,7 @@ impl Interpreter {
                                     return_type: closure.return_type.clone(),
                                     cached_env: RefCell::new(None),
                                     jit_cache: RefCell::new(None),
+                                    kernel: None,
                                 };
                                 self.call_value(
                                     Value::Function(Rc::new(bound)),
@@ -1441,6 +1443,7 @@ impl Interpreter {
                 return_type: method.return_type.clone(),
                 cached_env: RefCell::new(None),
                 jit_cache: RefCell::new(None),
+                kernel: None,
             };
             let result =
                 self.call_value(Value::Function(Rc::new(bound_method)), Vec::new(), span)?;
@@ -1469,6 +1472,7 @@ impl Interpreter {
                     return_type: closure.return_type.clone(),
                     cached_env: RefCell::new(None),
                     jit_cache: RefCell::new(None),
+                    kernel: None,
                 };
                 let result = self.call_value(Value::Function(Rc::new(bound)), Vec::new(), span)?;
                 if matches!(result, Value::Bool(false)) {
@@ -1773,6 +1777,7 @@ impl Interpreter {
             return_type: closure.return_type.clone(),
             cached_env: RefCell::new(None),
             jit_cache: RefCell::new(None),
+            kernel: None,
         };
         self.call_value(Value::Function(Rc::new(bound)), Vec::new(), span)
     }

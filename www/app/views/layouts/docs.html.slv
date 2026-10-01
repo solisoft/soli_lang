@@ -1060,6 +1060,45 @@
         headings.forEach(function(h) { __tocObserver.observe(h); });
     }
 
+    // A collapsible sidebar item (see layouts/_docs_nav) hides its sub-pages
+    // until you are on one of them, or open it with its chevron. Each sidebar
+    // (desktop, mobile) has its own copy, so a toggle acts on its own list.
+    function setNavGroupOpen(toggle, open) {
+        const list = toggle.closest('ul');
+        const group = toggle.getAttribute('data-nav-group');
+        list.querySelectorAll('.nav-group-child').forEach(function (li) {
+            if (li.getAttribute('data-nav-parent') === group) li.hidden = !open;
+        });
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        const chevron = toggle.querySelector('svg');
+        if (chevron) chevron.style.transform = open ? 'rotate(90deg)' : '';
+    }
+
+    function syncNavGroups(currentPath) {
+        document.querySelectorAll('.nav-group-toggle').forEach(function (toggle) {
+            const group = toggle.getAttribute('data-nav-group');
+            let here = currentPath === group;
+            toggle.closest('ul').querySelectorAll('.nav-group-child').forEach(function (li) {
+                const link = li.querySelector('a');
+                if (li.getAttribute('data-nav-parent') === group && link
+                    && link.getAttribute('href') === currentPath) here = true;
+            });
+            setNavGroupOpen(toggle, here || toggle.dataset.userOpen === '1');
+        });
+    }
+
+    if (!window.__navGroupToggleBound) {
+        window.__navGroupToggleBound = true;
+        document.addEventListener('click', function (event) {
+            const toggle = event.target.closest('.nav-group-toggle');
+            if (!toggle) return;
+            event.preventDefault();
+            const open = toggle.getAttribute('aria-expanded') !== 'true';
+            toggle.dataset.userOpen = open ? '1' : '0';
+            setNavGroupOpen(toggle, open);
+        });
+    }
+
     function scrollToActiveMenuItem() {
         const currentPath = window.location.pathname;
 
@@ -1073,6 +1112,8 @@
                 link.classList.remove('text-gray-400');
             }
         });
+
+        syncNavGroups(currentPath);
 
         // Scroll desktop nav to active item
         const desktopNav = document.getElementById('desktopNav');

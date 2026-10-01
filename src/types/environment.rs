@@ -2596,6 +2596,17 @@ impl TypeEnvironment {
                 is_static: true,
             },
         );
+        system_class.methods.insert(
+            "argv".to_string(),
+            MethodInfo {
+                name: "argv".to_string(),
+                params: vec![],
+                return_type: Type::Array(Box::new(Type::String)),
+                is_private: false,
+                is_protected: false,
+                is_static: true,
+            },
+        );
         self.classes.insert("System".to_string(), system_class);
 
         // Markdown class

@@ -370,6 +370,16 @@ pub enum Command {
         update_key: Option<String>,
     },
     /// Package an app as a self-contained desktop application.
+    /// `soli build tool.sl`: a single executable that runs the script.
+    BuildScript {
+        script: String,
+        output: Option<String>,
+        target: Option<String>,
+        /// `auto` (the VM, or the tree-walker when the script needs it), `vm`
+        /// or `tree`.
+        engine: String,
+        type_check: bool,
+    },
     DesktopBuild {
         folder: String,
         app_id: String,
@@ -485,13 +495,15 @@ pub enum DbSeedAction {
 pub struct Options {
     pub command: Command,
     pub no_type_check: bool,
-    pub use_vm: bool,
+    /// Which engine runs a script or `-e`: `--tree`, `--vm`, or `SOLI_ENGINE`;
+    /// otherwise `Auto` (the VM, falling back to the tree-walker).
+    pub engine: solilang::Engine,
 }
 
 pub fn print_usage() {
     eprintln!("Soli {} - Solilang Interpreter", VERSION);
     eprintln!();
-    eprintln!("Usage: soli [options] [script.sl]");
+    eprintln!("Usage: soli [options] [script.sl] [-- script arguments…]");
     eprintln!("       soli new <app_name>");
     eprintln!("       soli init");
     eprintln!("       soli add <name> --git <url> [--tag TAG] [--branch BRANCH] [--rev REV]");
@@ -626,6 +638,9 @@ pub fn print_usage() {
     eprintln!();
     eprintln!("Options:");
     eprintln!("  --no-type-check Skip type checking");
+    eprintln!("  --tree          Run a script on the tree-walking interpreter instead of the VM");
+    eprintln!("  --vm            Run a script on the VM, with no fallback to the interpreter");
+    eprintln!("  --no-native     Run typed numeric functions interpreted, not as native code");
     eprintln!("  -d              Daemonize server (creates soli.pid and soli.log)");
     eprintln!("  --dev           Enable development mode (hot reload, no caching)");
     eprintln!("  --port PORT     Port for serve command (default: 5011)");
@@ -720,7 +735,7 @@ pub fn parse_args() -> Options {
     let mut options = Options {
         command: Command::Repl,
         no_type_check: false,
-        use_vm: false,
+        engine: solilang::Engine::from_env().unwrap_or(solilang::Engine::Auto),
     };
 
     let mut i = 0;
@@ -2014,7 +2029,10 @@ pub fn parse_args() -> Options {
                 return options;
             }
             "--no-type-check" => options.no_type_check = true,
-            "--vm" => options.use_vm = true,
+            "--vm" => options.engine = solilang::Engine::Vm,
+            "--tree" => options.engine = solilang::Engine::Tree,
+            // Native kernels are process-wide: no option to carry around.
+            "--no-native" => solilang::native::set_enabled(false),
             "lsp" => {
                 options.command = Command::Lsp;
                 return options;
@@ -2686,8 +2704,14 @@ pub fn parse_args() -> Options {
                 let mut target: Option<String> = None;
                 let mut update_url: Option<String> = None;
                 let mut update_key: Option<String> = None;
+                // Only for a script (`soli build tool.sl`).
+                let mut script_engine: Option<&'static str> = None;
+                let mut script_no_type_check = false;
                 while i < args.len() {
                     match args[i].as_str() {
+                        "--vm" => script_engine = Some("vm"),
+                        "--tree" => script_engine = Some("tree"),
+                        "--no-type-check" => script_no_type_check = true,
                         "--output" | "-o" => {
                             i += 1;
                             if i >= args.len() {
@@ -2758,6 +2782,35 @@ pub fn parse_args() -> Options {
                     print_usage();
                     process::exit(64);
                 });
+                // A script builds an executable that runs it, not an app bundle.
+                if folder.ends_with(".sl") {
+                    let refused = [
+                        (encrypt && !protect, "--encrypt"),
+                        (protect, "--protect"),
+                        (
+                            update_url.is_some() || update_key.is_some(),
+                            "--update-url / --update-key",
+                        ),
+                    ];
+                    if let Some((_, flag)) = refused.iter().find(|(set, _)| *set) {
+                        eprintln!("{flag} applies to app bundles, not to a script executable");
+                        process::exit(64);
+                    }
+                    options.command = Command::BuildScript {
+                        script: folder,
+                        output,
+                        target,
+                        engine: script_engine.unwrap_or("auto").to_string(),
+                        type_check: !script_no_type_check,
+                    };
+                    return options;
+                }
+                if script_engine.is_some() || script_no_type_check {
+                    eprintln!(
+                        "--vm, --tree and --no-type-check apply to a script build: soli build tool.sl"
+                    );
+                    process::exit(64);
+                }
                 if target.is_some() && !standalone {
                     eprintln!("--target only applies to --standalone builds");
                     print_usage();
@@ -2797,6 +2850,17 @@ pub fn parse_args() -> Options {
                 options.command = Command::Eval {
                     code: args[i].clone(),
                 };
+            }
+            // `soli script.sl -- a b`: everything after `--` belongs to the
+            // script, which reads it as `System.argv`.
+            "--" if matches!(options.command, Command::Run { .. } | Command::Eval { .. }) => {
+                solilang::interpreter::builtins::system::set_script_args(args[i + 1..].to_vec());
+                break;
+            }
+            "--" => {
+                eprintln!("`--` passes arguments to a script: soli script.sl -- arg1 arg2");
+                print_usage();
+                process::exit(64);
             }
             _ if arg.starts_with('-') => {
                 eprintln!("Unknown option: {}", arg);

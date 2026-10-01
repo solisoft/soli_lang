@@ -1,0 +1,314 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">CI/CD with GitHub Actions</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Check every push, deploy <code class="text-amber-400">main</code> once the checks pass, and publish executables on a tag &mdash; with pinned versions and nothing but GitHub&rsquo;s own runners.
+        </p>
+    </div>
+
+    <p class="text-gray-400 mb-6">
+        One workflow, <code class="text-amber-400">ci.yml</code>, covers a Soli app on GitHub, in two jobs:
+    </p>
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-8">
+        <ul class="list-disc list-inside text-gray-400 space-y-2">
+            <li><strong class="text-white"><code class="text-amber-400">verify</code></strong> runs on every push and pull request: formatting, lint, the app boots and answers <code class="text-amber-400">/up</code>, and the specs pass against a real SoliDB.</li>
+            <li><strong class="text-white"><code class="text-amber-400">deploy</code></strong> runs on <code class="text-amber-400">main</code> once <code class="text-amber-400">verify</code> is green: it copies the app to the server, runs the migrations and lets soli-proxy switch traffic only when the new version answers.</li>
+        </ul>
+    </div>
+    <p class="text-gray-400 mb-6">
+        A second, optional workflow, <code class="text-amber-400">release.yml</code>, publishes <strong class="text-white">executables</strong> on a tag: the app built with <code class="text-amber-400">soli build --standalone</code>, or a script built with <code class="text-amber-400">soli build tool.sl</code>, for each platform.
+    </p>
+    <p class="text-gray-400 mb-6">
+        Everything below runs on GitHub's <code class="text-amber-400">ubuntu-latest</code> runners and needs no third-party action besides <code class="text-amber-400">actions/checkout</code> and <code class="text-amber-400">actions/upload-artifact</code>.
+    </p>
+    <h2 id="pin-the-versions" class="text-2xl font-bold text-white mt-12 mb-6">Pin the versions</h2>
+    <p class="text-gray-400 mb-6">
+        <code class="text-amber-400">install.sh</code> only installs the latest release, which changes under you. Download the release you run in production instead, and check it:
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre data-filename="Workflow step"><code class="language-yaml text-sm">env:
+  SOLI_VERSION: "2.10.3"     # the soli your server runs
+  SOLIDB_VERSION: "2.1.0"    # the SoliDB your specs run against</code></pre>
+    </div>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre data-filename="Workflow step"><code class="language-yaml text-sm">- name: Install soli and SoliDB
+  run: |
+    set -euo pipefail
+    fetch() {
+      local name="$1" repo="$2" want="$3" tmp got
+      tmp="$(mktemp -d)"
+      curl -fsSL "https://github.com/$repo/releases/download/v$want/$name-linux-amd64.tar.gz" \
+        -o "$tmp/pkg.tar.gz"
+      tar -xzf "$tmp/pkg.tar.gz" -C "$tmp"
+      sudo install -m 0755 "$(find "$tmp" -type f -name "$name" -perm -u+x | head -1)" \
+        "/usr/local/bin/$name"
+      got="$("$name" --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+      [ "$got" = "$want" ] || { echo "$name: $got installed, $want expected" &gt;&amp;2; exit 1; }
+    }
+    fetch soli   solisoft/soli_lang "$SOLI_VERSION"
+    fetch solidb solisoft/solidb    "$SOLIDB_VERSION"</code></pre>
+    </div>
+    <p class="text-gray-400 mb-6">
+        Bump <code class="text-amber-400">SOLI_VERSION</code> in the same commit that upgrades the server, so CI always tests the soli that will serve the code.
+    </p>
+    <h2 id="continuous-integration" class="text-2xl font-bold text-white mt-12 mb-6">Continuous integration</h2>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre data-filename=".github/workflows/ci.yml"><code class="language-yaml text-sm"># .github/workflows/ci.yml
+name: ci
+
+on:
+  push:
+  pull_request:
+
+# A newer push to a branch makes its running check pointless, but on main the
+# run may be deploying: never cancel that halfway through an rsync.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  SOLI_VERSION: "2.10.3"
+  SOLIDB_VERSION: "2.1.0"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install soli and SoliDB
+        run: |
+          # … the `fetch` step from "Pin the versions" above …
+
+      - name: Formatting
+        run: soli fmt --check
+
+      - name: Lint
+        run: soli lint
+
+      # Booting compiles every handler and view: a syntax error, a missing view or
+      # a broken route fails here, not in production.
+      - name: The app boots and answers /up
+        run: |
+          set -euo pipefail
+          soli serve . --port 19555 --workers 1 &gt; /tmp/boot.log 2&gt;&amp;1 &amp;
+          pid=$!
+          code=000
+          for i in $(seq 1 45); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' -m 2 http://127.0.0.1:19555/up || echo 000)"
+            [ "$code" = "200" ] &amp;&amp; break
+            kill -0 $pid 2&gt;/dev/null || break
+            sleep 1
+          done
+          kill $pid 2&gt;/dev/null || true
+          if [ "$code" != "200" ]; then
+            echo "/up answered $code" &gt;&amp;2
+            tail -40 /tmp/boot.log &gt;&amp;2
+            exit 1
+          fi
+
+      # SoliDB creates its admin account on first start from
+      # SOLIDB_ADMIN_PASSWORD. Use the credentials .env.test names, or every
+      # spec fails with a 401.
+      - name: Start SoliDB
+        run: |
+          set -euo pipefail
+          val() { grep -E "^$1=" .env.test | head -1 | cut -d= -f2- | tr -d '"'; }
+          export SOLIDB_ADMIN_PASSWORD="$(val SOLIDB_PASSWORD)"
+          mkdir -p "$RUNNER_TEMP/solidb-data"
+          solidb --host 127.0.0.1 --port 6745 --data-dir "$RUNNER_TEMP/solidb-data" \
+            &gt; "$RUNNER_TEMP/solidb.log" 2&gt;&amp;1 &amp;
+          for i in $(seq 1 40); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' -m 2 http://127.0.0.1:6745/_api/databases || true)"
+            [ "${code:-000}" != "000" ] &amp;&amp; exit 0
+            sleep 0.5
+          done
+          tail -40 "$RUNNER_TEMP/solidb.log" &gt;&amp;2
+          exit 1
+
+      - name: Specs
+        run: soli test --coverage=xml --coverage-min=80
+
+      - name: Coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: ignore</code></pre>
+    </div>
+    <p class="text-gray-400 mb-6">
+        What each step relies on:
+    </p>
+    <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-8">
+        <ul class="list-disc list-inside text-gray-400 space-y-2">
+            <li><strong class="text-white"><code class="text-amber-400">soli fmt --check</code></strong> rewrites nothing; it prints <code class="text-amber-400">would reformat: &lt;path&gt;</code> for each file that would change and exits non-zero. A new app from <code class="text-amber-400">soli new</code> passes it from its first commit.</li>
+            <li><strong class="text-white"><code class="text-amber-400">soli lint</code></strong> exits non-zero on any finding. See <a href="/docs/development-tools/linting" class="text-amber-400 hover:underline">Linting</a> for the rules.</li>
+            <li><strong class="text-white"><code class="text-amber-400">/up</code> is built in.</strong> Every app answers it, with 200 once its session store is ready. It is also what soli-proxy probes before switching traffic, so this step checks the same thing the deploy will.</li>
+            <li><strong class="text-white"><code class="text-amber-400">soli test</code> reads <code class="text-amber-400">.env.test</code>.</strong> Commit it with credentials for the runner's SoliDB only. The runner creates the test database, runs <code class="text-amber-400">db/migrations</code> against it, gives each worker a copy of the schema, and drops them all at the end; nothing has to be prepared. Leave <code class="text-amber-400">SOLI_TEST_SOLIDB_HOST</code> unset in CI.</li>
+            <li><strong class="text-white"><code class="text-amber-400">--coverage=xml</code></strong> writes Cobertura to <code class="text-amber-400">coverage/cobertura.xml</code>, which most coverage services read; <code class="text-amber-400">--coverage=html</code> writes <code class="text-amber-400">coverage/index.html</code>. <code class="text-amber-400">--coverage-min=80</code> fails the job below 80%. See <a href="/docs/testing" class="text-amber-400 hover:underline">Testing</a>.</li>
+        </ul>
+    </div>
+    <p class="text-gray-400 mb-6">
+        An app whose specs need no database can drop the SoliDB lines from the install step and the *Start SoliDB* step.
+    </p>
+    <h2 id="continuous-deployment" class="text-2xl font-bold text-white mt-12 mb-6">Continuous deployment</h2>
+    <p class="text-gray-400 mb-6">
+        The deploy runs as a second job of the same workflow, so it starts only when <code class="text-amber-400">verify</code> is green, and only on <code class="text-amber-400">main</code>. Add it to <code class="text-amber-400">ci.yml</code>:
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre data-filename="Workflow step"><code class="language-yaml text-sm">  deploy:
+    needs: verify
+    if: github.ref == 'refs/heads/main' &amp;&amp; github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # Two merges close together must not interleave in the middle of an rsync, and
+    # a deploy that has started is never cancelled: that would leave half a tree.
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://${{ vars.DEPLOY_DOMAIN }}
+    env:
+      HOST: ${{ secrets.DEPLOY_HOST }}
+      DOMAIN: ${{ vars.DEPLOY_DOMAIN }}
+      SITE: /srv/sites/${{ vars.DEPLOY_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Prepare SSH
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_DEPLOY_KEY }}" &gt; ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" &gt; ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      # The server's own files stay the server's: its secrets and the proxy's files.
+      - name: Copy the code
+        run: |
+          rsync -rlz --delete-delay --delay-updates \
+            --exclude='.git/' --exclude='.github/' \
+            --exclude='.env' --exclude='.env.*' \
+            --exclude='app.infos' --exclude='restart.txt' \
+            --exclude='tmp/' --exclude='coverage/' --exclude='node_modules/' \
+            ./ "deploy@$HOST:$SITE/"
+
+      - name: Migrations
+        run: ssh "deploy@$HOST" "cd '$SITE' &amp;&amp; soli db:migrate up"
+
+      # Starts the idle slot, waits for its /up, moves traffic, stops the old slot.
+      # A slot that never answers is stopped, the old one keeps serving, and this
+      # step fails with the reason.
+      - name: Switch traffic
+        run: ssh "deploy@$HOST" "soli-proxy deploy -c /etc/soli-proxy/proxy.conf '$DOMAIN'"
+
+      # End to end: through the proxy, with the real hostname and certificate.
+      - name: The site answers
+        run: |
+          for i in $(seq 1 10); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' -m 8 "https://$DOMAIN/up")"
+            [ "$code" = "200" ] &amp;&amp; exit 0
+            sleep 3
+          done
+          exit 1</code></pre>
+    </div>
+    <p class="text-gray-400 mb-6">
+        This assumes a server already running soli-proxy, with the app's folder under <code class="text-amber-400">/srv/sites/&lt;domain&gt;</code> holding its <code class="text-amber-400">.env</code> and <code class="text-amber-400">app.infos</code>, and a <code class="text-amber-400">deploy</code> user that can run <code class="text-amber-400">soli-proxy deploy</code>. Setting that up once &mdash; the proxy, its systemd unit, the folder, the SSH key &mdash; is walked through in <a href="/docs/blog/deploy-with-soli-proxy" class="text-amber-400 hover:underline">Deploying a Soli App Behind soli-proxy with GitHub Actions</a>.
+    </p>
+    <p class="text-gray-400 mb-6">
+        <strong class="text-white">Why <code class="text-amber-400">soli-proxy deploy</code> and not <code class="text-amber-400">touch restart.txt</code>.</strong> Touching <code class="text-amber-400">restart.txt</code> also starts a blue/green switch, but nothing reports back: if the new slot cannot start, the old one keeps serving and the workflow stays green. <code class="text-amber-400">soli-proxy deploy</code> waits for the outcome and exits non-zero.
+    </p>
+    <p class="text-gray-400 mb-6">
+        <strong class="text-white">Rolling back</strong> is a revert of the commit on <code class="text-amber-400">main</code>: the previous code goes through the same checks and the same switch.
+    </p>
+    <h3 id="secrets-and-variables" class="text-lg font-semibold text-white mt-8 mb-4">Secrets and variables</h3>
+    <p class="text-gray-400 mb-6">
+        Set them under *Settings &rarr; Secrets and variables &rarr; Actions* (secrets) and the <code class="text-amber-400">production</code> environment (variables):
+    </p>
+    <div class="rounded-xl bg-white/5 border border-white/10 overflow-hidden mb-8">
+        <table class="w-full text-left text-sm">
+            <thead class="bg-white/5 text-gray-300"><tr><th class="py-3 px-4">Name</th><th class="py-3 px-4">Kind</th><th class="py-3 px-4">What it holds</th></tr></thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code class="text-amber-400">DEPLOY_HOST</code></td><td class="py-3 px-4">secret</td><td class="py-3 px-4">the server's address</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-400">SSH_DEPLOY_KEY</code></td><td class="py-3 px-4">secret</td><td class="py-3 px-4">the private key of the <code class="text-amber-400">deploy</code> user, without a passphrase</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-400">SSH_KNOWN_HOSTS</code></td><td class="py-3 px-4">secret</td><td class="py-3 px-4">the output of <code class="text-amber-400">ssh-keyscan &lt;host&gt;</code>, so the first connection is verified</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-400">DEPLOY_DOMAIN</code></td><td class="py-3 px-4">variable</td><td class="py-3 px-4">the domain the app answers on, also its folder name</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-6">
+        The app's <code class="text-amber-400">.env</code> never goes through GitHub: it lives on the server, and rsync leaves it alone.
+    </p>
+    <h3 id="with-soli-deploy-instead" class="text-lg font-semibold text-white mt-8 mb-4">With <code class="text-amber-400">soli deploy</code> instead</h3>
+    <p class="text-gray-400 mb-6">
+        If your servers pull a git checkout rather than receive files, the deploy job can run <a href="/docs/development-tools/deploy" class="text-amber-400 hover:underline"><code class="text-amber-400">soli deploy</code></a> from the runner: it reads <code class="text-amber-400">deploy.toml</code>, pulls on every server in parallel, migrates on the first, and triggers the same soli-proxy switch. It needs the SSH key loaded into an agent:
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre data-filename="Workflow step"><code class="language-yaml text-sm">      - name: Deploy
+        run: |
+          eval "$(ssh-agent -s)"
+          ssh-add - &lt;&lt;&lt; "${{ secrets.SSH_DEPLOY_KEY }}"
+          soli deploy</code></pre>
+    </div>
+    <h2 id="publishing-executables-on-a-tag" class="text-2xl font-bold text-white mt-12 mb-6">Publishing executables on a tag</h2>
+    <p class="text-gray-400 mb-6">
+        <code class="text-amber-400">soli build --standalone</code> turns the app into one executable with the runtime inside, and <code class="text-amber-400">soli build tool.sl</code> does the same for a script (see <a href="/docs/development-tools/deploy" class="text-amber-400 hover:underline">Deployment</a>). <code class="text-amber-400">--target</code> builds for another platform from the same Linux runner: it downloads the soli runtime of that platform, at the same version, from the soli release.
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-8">
+        <pre data-filename=".github/workflows/release.yml"><code class="language-yaml text-sm"># .github/workflows/release.yml
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # to create the release and upload to it
+
+env:
+  SOLI_VERSION: "2.10.3"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install soli
+        run: |
+          # … the `fetch` step from "Pin the versions" above, soli only …
+
+      - name: Build every platform
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for target in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64; do
+            soli build . --standalone --target "$target" -o "dist/myapp-$target"
+            # A script instead of an app:
+            # soli build tool.sl --target "$target" -o "dist/tool-$target"
+          done
+          ls -la dist
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes</code></pre>
+    </div>
+    <p class="text-gray-400 mb-6">
+        A Windows target gets <code class="text-amber-400">.exe</code> appended. A darwin executable is re-signed ad hoc when it is built on a Mac; built on Linux, sign it on a Mac before distributing it, or Apple Silicon refuses to start it. Each executable carries the whole runtime, so expect 40 to 80 MB per file.
+    </p>
+
+    <h2 class="text-2xl font-bold text-white mt-12 mb-6">Next Steps</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="/docs/development-tools/deploy" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Deploy &rarr;</h3>
+            <p class="text-sm text-gray-400"><code>soli deploy</code>, bundles, standalone and script executables.</p>
+        </a>
+        <a href="/docs/testing" class="group block p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-amber-500/50 transition-all">
+            <h3 class="text-lg font-semibold text-white mb-2 group-hover:text-amber-400 transition-colors">Testing &rarr;</h3>
+            <p class="text-sm text-gray-400"><code>.env.test</code>, parallel workers, coverage.</p>
+        </a>
+    </div>
+</div>

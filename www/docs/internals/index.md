@@ -40,6 +40,7 @@ Entry points on the library:
 |---|---|
 | `run` / `run_with_options` / `run_with_path` | Lex, parse, optional type-check, **tree-walk** |
 | `run_vm` / `run_file_vm` | Same front-end, then **bytecode VM** |
+| `run_script` / `run_script_file` / `execute_program` | What `soli script.sl`, `soli -e` and script executables call: the same front-end, then the `Engine` given — `Auto` (the default: the VM, unless `tree_walker_reason` / `bare_call_reason` find something only the tree-walker runs, or the program does not compile), `Tree` or `Vm` |
 | `type_check_source` | `soli check` — no execution |
 | `run_migration_source` | Interpreter with SQL DDL builtins |
 
@@ -51,6 +52,7 @@ Production `soli serve` does **not** call `run()` per request. It boots workers 
 |---|---|---|
 | `soli serve --dev`, `soli test`, REPL | Tree-walking `Interpreter` | Readable stack traces, hot reload, no compile step |
 | `soli serve` production | Bytecode `Vm` | Throughput |
+| `soli script.sl`, `soli -e`, `soli build tool.sl` executables | Bytecode `Vm`, or the `Interpreter` when the script needs it (decided before it runs); `--tree` / `--vm` force one | Throughput, without a script stopping halfway on a construct the VM hands back |
 
 **Every user-visible language feature must behave the same on both paths.** There is a differential test suite (`tests/differential_engines_test.rs`) that runs programs through both engines. If you add a String method, you typically touch:
 
@@ -89,6 +91,7 @@ Scripts have no filesystem jail. `soli serve` turns on `File` / `Image` jails un
 4. [Serve — HTTP workers, CSRF, boot](/docs/internals/serve)
 5. [Database adapters](/docs/internals/database)
 6. [Rust API catalog — types and methods](/docs/internals/rust-api)
+7. [Native kernels — typed numeric functions as Cranelift machine code](/docs/internals/native)
 
 ## How to add something (junior checklist)
 
@@ -109,6 +112,7 @@ Scripts have no filesystem jail. `soli serve` turns on `File` / `Image` jails un
 | `module` | `import`, packages, deploy tarball, preview envs |
 | `interpreter` | Tree-walk engine + all builtins |
 | `vm` | Compiler + stack VM |
+| `native` | Cranelift kernels for typed numeric top-level functions (feature `native`) |
 | `compiled_cache` | Cache compiled bytecode by source |
 | `serve` | HTTP server, MVC load, CSRF, static/file mode |
 | `template` | `.html.slv` / ERB renderer |
