@@ -143,6 +143,7 @@ impl<'a, 'b> Lowerer<'a, 'b> {
         if !self.terminated {
             self.bail(Decline::FellThrough);
         }
+        self.fill_exit_blocks();
         self.builder.seal_all_blocks();
         self.builder
     }
@@ -169,48 +170,59 @@ impl<'a, 'b> Lowerer<'a, 'b> {
         }
     }
 
+    /// The block that declines for `reason`: created on first use, filled
+    /// by [`Self::fill_exit_blocks`] once the body is done. Filling it here
+    /// would mean leaving the current block half-built, which Cranelift's
+    /// frontend refuses in a debug build ("you have to fill your block
+    /// before switching").
     fn bail_block(&mut self, reason: Decline) -> Block {
         if let Some(block) = self.bail_blocks.get(&reason) {
             return *block;
         }
         let block = self.builder.create_block();
         self.builder.set_cold_block(block);
-        let current = self.builder.current_block();
-        self.builder.switch_to_block(block);
-        let one = self.builder.ins().iconst(types::I32, 1);
-        self.builder
-            .ins()
-            .store(MemFlagsData::trusted(), one, self.ctx, CTX_STATUS);
-        let code = self.builder.ins().iconst(types::I32, reason as i64);
-        self.builder
-            .ins()
-            .store(MemFlagsData::trusted(), code, self.ctx, CTX_REASON);
-        let dummy = self.dummy(self.out_ret);
-        self.builder.ins().return_(&[dummy]);
-        if let Some(current) = current {
-            self.builder.switch_to_block(current);
-        }
         self.bail_blocks.insert(reason, block);
         block
     }
 
     /// Return early when a kernel this one called has declined: the status is
-    /// already in `ctx`, and the outermost entry reads it.
+    /// already in `ctx`, and the outermost entry reads it. Filled, like the
+    /// bail blocks, at the end.
     fn propagate_block(&mut self) -> Block {
         if let Some(block) = self.propagate {
             return block;
         }
         let block = self.builder.create_block();
         self.builder.set_cold_block(block);
-        let current = self.builder.current_block();
-        self.builder.switch_to_block(block);
-        let dummy = self.dummy(self.out_ret);
-        self.builder.ins().return_(&[dummy]);
-        if let Some(current) = current {
-            self.builder.switch_to_block(current);
-        }
         self.propagate = Some(block);
         block
+    }
+
+    /// Give each exit block its instructions, once nothing else is being
+    /// built: a bail stores the status and the reason, both return a dummy of
+    /// the machine function's type.
+    fn fill_exit_blocks(&mut self) {
+        let mut bails: Vec<(Decline, Block)> =
+            self.bail_blocks.iter().map(|(r, b)| (*r, *b)).collect();
+        bails.sort_by_key(|(reason, _)| *reason as u32);
+        for (reason, block) in bails {
+            self.builder.switch_to_block(block);
+            let one = self.builder.ins().iconst(types::I32, 1);
+            self.builder
+                .ins()
+                .store(MemFlagsData::trusted(), one, self.ctx, CTX_STATUS);
+            let code = self.builder.ins().iconst(types::I32, reason as i64);
+            self.builder
+                .ins()
+                .store(MemFlagsData::trusted(), code, self.ctx, CTX_REASON);
+            let dummy = self.dummy(self.out_ret);
+            self.builder.ins().return_(&[dummy]);
+        }
+        if let Some(block) = self.propagate {
+            self.builder.switch_to_block(block);
+            let dummy = self.dummy(self.out_ret);
+            self.builder.ins().return_(&[dummy]);
+        }
     }
 
     fn bail_if(&mut self, condition: Value, reason: Decline) {
