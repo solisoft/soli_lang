@@ -70,12 +70,14 @@
 .lp-night .lp-mini strong { color: #F2A365; }
 .lp-night .lp-mini span { color: #A69C8C; }
 
-/* Request trace */
-.lp-trace { position: relative; padding-left: 48px; max-width: 900px; display: flex; flex-direction: column; gap: 24px; }
-.lp-trace::before { content: ''; position: absolute; left: 11px; top: 10px; bottom: 10px; width: 2px; background: linear-gradient(to bottom, rgba(232,89,12,0) 0, rgba(232,89,12,.55) 5%, rgba(232,89,12,.55) 95%, rgba(232,89,12,0) 100%); }
-.lp-hop { position: relative; }
-.lp-hop::before { content: ''; position: absolute; left: -46px; top: 14px; width: 12px; height: 12px; border-radius: 50%; background: var(--paper); border: 2px solid var(--sun); box-shadow: 0 0 0 4px rgba(232, 89, 12, .12); }
-.lp-pulse { position: absolute; left: 8px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--sun); box-shadow: 0 0 12px 4px rgba(232, 89, 12, .45); animation: lp-run 5s cubic-bezier(.4, 0, .2, 1) infinite; }
+/* Request trace — the rail, the pulse and every dot centre on --rail-x */
+.lp-trace { --rail-x: 12px; --gutter: 48px; position: relative; padding-left: var(--gutter); max-width: 900px; display: flex; flex-direction: column; gap: 24px; }
+.lp-trace::before { content: ''; position: absolute; left: calc(var(--rail-x) - 1px); top: 10px; bottom: 10px; width: 2px; background: linear-gradient(to bottom, rgba(232,89,12,0) 0, rgba(232,89,12,.55) 5%, rgba(232,89,12,.55) 95%, rgba(232,89,12,0) 100%); }
+/* --dot-y: the middle of the 46px file bar; a hop without one aims at its first line (22px padding + half a 25.4px line) */
+.lp-hop { position: relative; --dot-y: 23px; }
+.lp-hop:not(:has(.lp-code-bar)) { --dot-y: 35px; }
+.lp-hop::before { content: ''; position: absolute; left: calc(var(--rail-x) - var(--gutter) - 6px); top: calc(var(--dot-y) - 6px); width: 12px; height: 12px; border-radius: 50%; background: var(--paper); border: 2px solid var(--sun); box-shadow: 0 0 0 4px rgba(232, 89, 12, .12); }
+.lp-pulse { position: absolute; left: calc(var(--rail-x) - 4px); top: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--sun); box-shadow: 0 0 12px 4px rgba(232, 89, 12, .45); animation: lp-run 5s cubic-bezier(.4, 0, .2, 1) infinite; }
 @keyframes lp-run { 0% { top: 0; opacity: 0; } 8% { opacity: 1; } 88% { opacity: 1; } 100% { top: 99%; opacity: 0; } }
 .lp-query { padding: 12px 24px 16px; border-top: 1px solid var(--night-line); background: rgba(0, 0, 0, .25); font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #A69C8C; }
 .lp-query pre { padding: 6px 0 0; font-size: 12px; }
@@ -97,10 +99,7 @@
     .lp-split { gap: 40px; }
     .lp-proof { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .lp-proof > div:nth-child(3) { border-left: 0; padding-left: 0; }
-    .lp-trace { padding-left: 36px; }
-    .lp-hop::before { left: -34px; }
-    .lp-trace::before { left: 5px; }
-    .lp-pulse { left: 2px; }
+    .lp-trace { --rail-x: 8px; --gutter: 36px; }
 }
 @media (prefers-reduced-motion: reduce) { .lp-pulse { display: none; } }
 @media (max-width: 900px) { .lp-six { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } }
