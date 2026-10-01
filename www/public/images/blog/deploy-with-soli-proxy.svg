@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" role="img" aria-label="A push to main runs two GitHub Actions jobs. The verify job installs a pinned soli 2.9.1, boots the app and asks for /up, then runs soli lint. The deploy job rsyncs the code to /srv/sites/myapp.example.com over SSH, runs soli db:migrate up and soli-proxy deploy, then checks https://myapp.example.com/up through the proxy. On the server, soli-proxy terminates HTTPS with a Let's Encrypt certificate and holds two slots for the app: the blue slot keeps serving the old version while the green slot starts the new one; once green answers /up with 200, traffic moves to green and blue is stopped. If green never answers, blue keeps serving.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <marker id="amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="grey" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b616b"/>
+    </marker>
+  </defs>
+
+  <rect width="1024" height="576" fill="url(#bg)"/>
+
+  <!-- GitHub Actions -->
+  <text x="40" y="62" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="600" fill="#8b929e">GitHub Actions, on push to main</text>
+
+  <rect x="40" y="80" width="420" height="150" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="62" y="114" font-family="ui-sans-serif, system-ui, sans-serif" font-size="19" font-weight="700" fill="#e5e7eb">verify</text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#c9cdd4">
+    <text x="62" y="148">install soli 2.9.1 (pinned)</text>
+    <text x="62" y="174">soli serve .  GET /up <tspan fill="#22c55e">200</tspan></text>
+    <text x="62" y="200">soli lint</text>
+  </g>
+
+  <line x1="250" y1="232" x2="250" y2="262" stroke="#f59e0b" stroke-width="2" marker-end="url(#amber)"/>
+
+  <rect x="40" y="268" width="420" height="208" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text x="62" y="302" font-family="ui-sans-serif, system-ui, sans-serif" font-size="19" font-weight="700" fill="#e5e7eb">deploy</text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#c9cdd4">
+    <text x="62" y="336">rsync  /srv/sites/myapp.example.com</text>
+    <text x="62" y="362">soli db:migrate up</text>
+    <text x="62" y="388" fill="#f59e0b">soli-proxy deploy myapp.example.com</text>
+    <text x="62" y="414">curl https://myapp.example.com/up</text>
+    <text x="62" y="440"><tspan fill="#22c55e">200</tspan> through the proxy</text>
+  </g>
+
+  <path d="M 462 380 L 500 380" stroke="#f59e0b" stroke-width="2" fill="none" marker-end="url(#amber)"/>
+  <text x="466" y="370" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" fill="#8b929e">ssh</text>
+
+  <!-- Server -->
+  <text x="508" y="62" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="600" fill="#8b929e">Your server</text>
+  <rect x="508" y="80" width="476" height="396" rx="18" fill="none" stroke="#2b3038" stroke-dasharray="6 6"/>
+
+  <!-- proxy bar -->
+  <rect x="530" y="102" width="432" height="74" rx="14" fill="#101319" stroke="#d97706"/>
+  <text x="552" y="134" font-family="ui-sans-serif, system-ui, sans-serif" font-size="19" font-weight="700" fill="#e5e7eb">soli-proxy</text>
+  <text x="552" y="160" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#c9cdd4">:443  Let's Encrypt cert for myapp.example.com</text>
+
+  <!-- before: dashed grey to blue; after: amber to green -->
+  <path d="M 640 178 L 640 230" stroke="#5b616b" stroke-width="2" stroke-dasharray="5 5" fill="none" marker-end="url(#grey)"/>
+  <text x="572" y="210" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#8b929e">before</text>
+  <path d="M 852 178 L 852 230" stroke="#f59e0b" stroke-width="2.5" fill="none" marker-end="url(#amber)"/>
+  <text x="866" y="210" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#f59e0b">after /up</text>
+
+  <!-- blue slot -->
+  <rect x="530" y="236" width="206" height="150" rx="14" fill="#101319" stroke="#2b3038"/>
+  <circle cx="556" cy="264" r="7" fill="#3b82f6"/>
+  <text x="572" y="270" font-family="ui-sans-serif, system-ui, sans-serif" font-size="17" font-weight="700" fill="#e5e7eb">blue slot</text>
+  <g font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="#8b929e">
+    <text x="552" y="304">old version</text>
+    <text x="552" y="330">serves until green</text>
+    <text x="552" y="350">answers, then stops</text>
+  </g>
+
+  <!-- green slot -->
+  <rect x="756" y="236" width="206" height="150" rx="14" fill="#101319" stroke="#22c55e"/>
+  <circle cx="782" cy="264" r="7" fill="#22c55e"/>
+  <text x="798" y="270" font-family="ui-sans-serif, system-ui, sans-serif" font-size="17" font-weight="700" fill="#e5e7eb">green slot</text>
+  <g font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="#8b929e">
+    <text x="778" y="304">new version</text>
+    <text x="778" y="330" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#c9cdd4">GET /up <tspan fill="#22c55e">200</tspan></text>
+    <text x="778" y="350">within 30 s</text>
+  </g>
+
+  <text x="530" y="424" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="#c9cdd4">If green never answers /up, it is stopped and</text>
+  <text x="530" y="446" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" fill="#c9cdd4">blue keeps serving. The deploy step fails.</text>
+</svg>
