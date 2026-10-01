@@ -194,6 +194,30 @@ user._key    # => "abc123" (auto-generated)
 user._errors # => nil</code></pre>
         </div>
 
+        <div id="choosing-the-key">
+            <h4 class="text-base font-semibold text-white mb-2">Choosing the key</h4>
+            <p class="text-gray-300 mb-3">
+                The attributes hash never chooses the document key: <code>create</code> drops every
+                <code>_</code>-prefixed key (<code>_key</code>, <code>_id</code>, <code>_rev</code>,
+                <code>_from</code>, <code>_to</code>) so a request body passed straight in cannot pick,
+                squat or collide with ids. When <em>your</em> code means to name the record, say so in
+                the second, options argument:
+            </p>
+            <pre><code class="language-soli text-sm">token = InboundToken.create({ "user": "joe" }, { "key": "joe_inbound_token" })
+token._key                                      # => "joe_inbound_token"
+InboundToken.find("joe_inbound_token")          # found
+InboundToken.find_by("_key", "joe_inbound_token")
+
+InboundToken.create({ "_key": "joe_inbound_token", "user": "joe" })
+# the _key attribute is dropped — the row gets a server-chosen key</code></pre>
+            <p class="text-gray-300 mt-3">
+                Validations and callbacks run as for any <code>create</code>. A key that already exists is
+                not overwritten: the insert fails and the instance comes back with <code>_errors</code>.
+                To create-or-replace by key, use <code>Model.upsert(key, data)</code>. <code>"key"</code>
+                is the only option; an unknown one, or a key that is not a non-empty string, raises.
+            </p>
+        </div>
+
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
                 <span class="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">READ</span>
@@ -477,8 +501,8 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
             </thead>
             <tbody class="divide-y divide-white/5">
                 <tr>
-                    <td class="py-3 px-4"><code class="text-amber-300">Model.create(data)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Insert a new document. Returns a class instance; on failure <code>instance._errors</code> is an array and the record is not persisted, on success <code>instance._errors</code> is <code>nil</code>.</td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.create(data, opts?)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Insert a new document. <code>{ "key": "k" }</code> in <code>opts</code> chooses its <code>_key</code> (an <code>_key</code> inside <code>data</code> is dropped — see <a href="#choosing-the-key" class="text-amber-300 hover:underline">Choosing the key</a>). Returns a class instance; on failure <code>instance._errors</code> is an array and the record is not persisted, on success <code>instance._errors</code> is <code>nil</code>.</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.create_many([data, ...])</code></td>

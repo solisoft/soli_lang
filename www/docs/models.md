@@ -146,6 +146,29 @@ result = User.create({
 # Or on validation failure: { "valid": false, "errors": [...] }
 ```
 
+#### Choosing the key
+
+The attributes hash never chooses the document key: `create` drops every
+`_`-prefixed key (`_key`, `_id`, `_rev`, `_from`, `_to`) so a request body
+passed straight in cannot pick, squat or collide with ids. When *your* code
+means to name the record, say so in the second, options argument:
+
+```soli
+token = InboundToken.create({ "user": "joe" }, { "key": "joe_inbound_token" })
+token._key                                      # "joe_inbound_token"
+InboundToken.find("joe_inbound_token")          # found
+InboundToken.find_by("_key", "joe_inbound_token")
+
+InboundToken.create({ "_key": "joe_inbound_token", "user": "joe" })
+# the `_key` attribute is dropped — the row gets a server-chosen key
+```
+
+Validations and callbacks run as for any `create`. A key that already exists
+is not overwritten: the insert fails and the instance comes back with
+`_errors`. To create-or-replace by key, use `Model.upsert(key, data)`. `"key"`
+is the only option; an unknown one, or a key that is not a non-empty string,
+raises.
+
 ### Finding Records
 
 ```soli
@@ -347,7 +370,7 @@ count = User.where("doc.role == @role", { "role": "admin" }).count;
 
 | Method | Description |
 |--------|-------------|
-| `Model.create(data)` | Insert a new document |
+| `Model.create(data, opts?)` | Insert a new document. `{ "key": "k" }` in `opts` chooses its `_key` (an `_key` inside `data` is dropped) — see [Choosing the key](#choosing-the-key) |
 | `Model.create_many([data, ...])` | Batch insert multiple documents in one round trip (one SQL statement per chunk, or one SoliDB `BulkInsert` / one `INSERT` query), returns `{ created, errors }`. An open transaction inserts one row at a time so each row joins the transaction. On SoliDB the batch succeeds or reports one error in `errors`; rows before the failing one may already be stored, so wrap it in `transaction` when you need all-or-nothing. |
 | `Model.find(id)` | Get document by ID. **Raises** `RecordNotFound` if missing (auto-mapped to a 404 HTTP response). Use `find_by` for optional lookups. A key that is empty, `.` or `..` is refused (`invalid document key`) here and in `update`/`delete` — as are such collection names in the raw SoliDB client (`invalid path segment`) — so a request-supplied id can never address a different path. |
 | `Model.find_by(field, value)` | Find first record by field value. Returns `null` when missing. |

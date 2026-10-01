@@ -34,12 +34,14 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
     // null). On validation or DB failure, the instance is NOT persisted
     // and `_errors` is populated as an Array — of {field, message} hashes
     // for validation errors, or of String messages for DB errors.
+    // `Model.create(data, {"key": "k"})` inserts under a chosen `_key`; a key
+    // already taken comes back as `_errors`, like any failed insert.
     use super::crud::{exec_insert, json_to_value};
     use super::validation::run_validations;
     use crate::interpreter::value::value_to_json;
     native_static_methods.insert(
         "create".to_string(),
-        Rc::new(NativeFunction::new("Model.create", Some(2), |args| {
+        Rc::new(NativeFunction::new("Model.create", None, |args| {
             let class = get_class_rc_from_args(args)?;
             let class_name = class.name.clone();
             let collection = class_name_to_collection(&class_name);
@@ -48,6 +50,11 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                 .get(1)
                 .cloned()
                 .ok_or_else(|| "Model.create() requires data argument".to_string())?;
+            // The attributes hash never chooses `_key` (see
+            // strip_reserved_document_keys); a caller that means to pick the
+            // key says so in this separate options hash, which request params
+            // cannot reach by accident.
+            let chosen_key = create_key_option(args.get(2))?;
 
             // Strong-params filter: when the model declared
             // `attr_accessible(...)`, drop any non-whitelisted keys
@@ -169,7 +176,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                     .set("type", Value::String(class_name.as_str().into()));
             }
 
-            match exec_insert(&collection, None, data_value) {
+            match exec_insert(&collection, chosen_key.as_deref(), data_value) {
                 Ok(id) => {
                     let mut inst_mut = instance.borrow_mut();
                     if let serde_json::Value::Object(ref id_map) = id {
@@ -753,4 +760,86 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
         })),
     );
+}
+
+/// Read `Model.create(attrs, {"key": "..."})`'s options hash. `None` when the
+/// caller passed no options; an unknown option or a key that is not a
+/// non-empty string raises rather than silently inserting under a random key.
+fn create_key_option(options: Option<&Value>) -> Result<Option<String>, String> {
+    let pairs = match options {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::Hash(pairs)) => pairs,
+        Some(other) => {
+            return Err(format!(
+                "Model.create() options must be a Hash, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let mut key = None;
+    for (k, v) in pairs.borrow().iter() {
+        match (k, v) {
+            (HashKey::String(name), Value::String(s)) if &**name == "key" && !s.is_empty() => {
+                key = Some(s.to_string());
+            }
+            (HashKey::String(name), Value::Int(n)) if &**name == "key" => {
+                key = Some(n.to_string());
+            }
+            (HashKey::String(name), other) if &**name == "key" => {
+                return Err(format!(
+                    "Model.create() option \"key\" must be a non-empty String, got {}",
+                    other.type_name()
+                ))
+            }
+            (other, _) => {
+                return Err(format!(
+                    "Model.create() got unknown option {} (expected \"key\")",
+                    other
+                ))
+            }
+        }
+    }
+    Ok(key)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::interpreter::value::HashPairs;
+
+    fn options(key: &str, value: Value) -> Value {
+        let mut pairs = HashPairs::default();
+        pairs.insert(HashKey::String(key.into()), value);
+        Value::Hash(Rc::new(RefCell::new(pairs)))
+    }
+
+    #[test]
+    fn no_options_means_a_server_chosen_key() {
+        assert_eq!(create_key_option(None), Ok(None));
+        assert_eq!(create_key_option(Some(&Value::Null)), Ok(None));
+    }
+
+    #[test]
+    fn the_key_option_is_read() {
+        let opts = options("key", Value::String("joe_inbound_token".into()));
+        assert_eq!(
+            create_key_option(Some(&opts)),
+            Ok(Some("joe_inbound_token".to_string()))
+        );
+        assert_eq!(
+            create_key_option(Some(&options("key", Value::Int(42)))),
+            Ok(Some("42".to_string()))
+        );
+    }
+
+    /// A typo must not quietly insert under a random key — that is the very
+    /// failure the option exists to prevent.
+    #[test]
+    fn unknown_options_and_bad_keys_raise() {
+        let typo = options("_key", Value::String("k".into()));
+        assert!(create_key_option(Some(&typo)).is_err());
+        let empty = options("key", Value::String("".into()));
+        assert!(create_key_option(Some(&empty)).is_err());
+        assert!(create_key_option(Some(&Value::String("k".into()))).is_err());
+    }
 }
