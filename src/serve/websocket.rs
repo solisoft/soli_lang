@@ -194,13 +194,20 @@ impl WsConnectionLimiter {
                 per_ip.remove(ip);
             }
         }
-        // `fetch_update` rather than `fetch_sub` so a bookkeeping slip can
-        // never wrap the counter to u64::MAX and lock out every new socket.
-        let _ = self
-            .total
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-                Some(n.saturating_sub(1))
-            });
+        // A saturating decrement rather than `fetch_sub`, so a bookkeeping
+        // slip can never wrap the counter to u64::MAX and lock out every new
+        // socket. Spelled as a compare-exchange loop: `fetch_update` is
+        // deprecated from Rust 1.99, and its replacement `try_update` does
+        // not exist on the toolchains before it.
+        let mut current = self.total.load(Ordering::Relaxed);
+        while let Err(actual) = self.total.compare_exchange_weak(
+            current,
+            current.saturating_sub(1),
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            current = actual;
+        }
     }
 
     /// Live connection count (test/introspection helper).

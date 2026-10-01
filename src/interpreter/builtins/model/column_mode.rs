@@ -908,17 +908,13 @@ pub fn validate_declared_models() -> Vec<String> {
         // `deleted_at` column — checked below, once the schema is known.
         // Declarations that assume Soli-managed document storage still cannot
         // work against a schema Soli does not own.
-        for (decl, present) in [(
-            "edge / timeseries / columnar",
-            model.collection_type.is_some(),
-        )] {
-            if present {
-                problems.push(format!(
-                    "{} maps to table {:?} (column mode) but also declares `{decl}`, \
-                     which needs Soli-managed document storage. Remove one of the two.",
-                    model.class_name, model.table
-                ));
-            }
+        if model.collection_type.is_some() {
+            let decl = "edge / timeseries / columnar";
+            problems.push(format!(
+                "{} maps to table {:?} (column mode) but also declares `{decl}`, \
+                 which needs Soli-managed document storage. Remove one of the two.",
+                model.class_name, model.table
+            ));
         }
 
         // Introspect now, so a missing table, a composite primary key, or a

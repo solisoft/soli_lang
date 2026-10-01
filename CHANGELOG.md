@@ -2,7 +2,11 @@
 
 ## [Unreleased]
 
-## [2.10.2] - 2026-10-01
+## [2.10.3] - 2026-10-01
+
+* **fix(ci):** **v2.10.2 was tagged but never published; 2.10.3 is that release.** Its CI runs clippy on the current stable Rust, which moved to 1.99.0 between the two releases of the day, and two lints new in 1.99 stopped it: `AtomicU64::fetch_update` is deprecated (the WebSocket connection counter now uses a compare-exchange loop, which every toolchain accepts) and a `for` loop over a single element in the column-mode model checks became an `if`. No binaries or GitHub release came out of the v2.10.2 tag. Everything listed under 2.10.2 ships here.
+
+## [2.10.2] - 2026-10-01 [NOT PUBLISHED]
 
 ### Fixed
 
