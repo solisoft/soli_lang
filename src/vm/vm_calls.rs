@@ -7,7 +7,9 @@ use std::sync::Arc;
 use crate::ast::stmt::{FunctionDecl, Program, Stmt, StmtKind};
 use crate::error::RuntimeError;
 use crate::interpreter::executor::MAX_CALL_DEPTH;
-use crate::interpreter::value::{Class, Function, HashKey, Instance, NativeFunction, Value};
+use crate::interpreter::value::{
+    Class, Function, HashKey, Instance, NativeFunction, Value, NATIVE_CONSTRUCTOR,
+};
 use crate::span::Span;
 
 use super::chunk::{Constant, FunctionProto};
@@ -1471,6 +1473,18 @@ impl Vm {
             })();
             self.return_depth = saved_depth;
             outcome?;
+            self.push(instance_val);
+            return Ok(());
+        }
+
+        // Native constructor (a Rust-defined class such as RateLimiter): it
+        // receives the instance and the arguments and fills the fields.
+        if let Some(init) = class.find_native_method(NATIVE_CONSTRUCTOR) {
+            let mut init_args = Vec::with_capacity(argc + 1);
+            init_args.push(instance_val.clone());
+            init_args.extend(self.stack[callee_idx + 1..].iter().cloned());
+            self.stack.truncate(callee_idx);
+            (init.func)(&init_args).map_err(|e| RuntimeError::new(e, span))?;
             self.push(instance_val);
             return Ok(());
         }

@@ -5331,7 +5331,9 @@ end
 
 **limiter.throttle()**
 
-Returns the number of seconds until the next request is allowed.
+Returns the number of seconds until the next request is allowed. It only reads:
+unlike `allowed()`, it does not count as a request, so it can be called to decide
+what to show without spending an attempt.
 
 **Returns:** Int - Seconds to wait (0 if allowed immediately)
 

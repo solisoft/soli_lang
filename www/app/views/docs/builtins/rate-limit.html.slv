@@ -52,7 +52,7 @@ end</code></pre>
     <!-- throttle -->
     <section class="mb-16">
         <h2 class="text-2xl font-bold text-white mb-6">limiter.throttle()</h2>
-        <p class="text-gray-400 mb-4">Returns the number of seconds until the next request is allowed.</p>
+        <p class="text-gray-400 mb-4">Returns the number of seconds until the next request is allowed. It only reads: unlike <code class="text-amber-400">allowed()</code>, it does not count as a request, so it can be called to decide what to show without spending an attempt.</p>
         <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
             <div class="flex items-center gap-3 mb-4">
                 <span class="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-bold rounded">Returns</span>

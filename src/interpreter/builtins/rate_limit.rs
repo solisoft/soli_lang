@@ -1,5 +1,7 @@
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, HashKey, HashPairs, Instance, NativeFunction, Value};
+use crate::interpreter::value::{
+    Class, HashKey, HashPairs, Instance, NativeFunction, Value, NATIVE_CONSTRUCTOR,
+};
 use crate::serve::tenant::TenantValue;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -173,6 +175,59 @@ impl RateLimitStore {
 pub fn register_rate_limit_builtins(env: &mut Environment) {
     let mut class_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
 
+    // `RateLimiter(key, limit, window_seconds)`. Without it the class had no
+    // constructor, the arguments were dropped, and every method then failed
+    // with "RateLimiter instance missing key".
+    class_methods.insert(
+        NATIVE_CONSTRUCTOR.to_string(),
+        Rc::new(NativeFunction::new("RateLimiter", None, |args| {
+            const USAGE: &str = "RateLimiter(key, limit, window_seconds)";
+            let this = match args.first() {
+                Some(Value::Instance(inst)) => inst,
+                _ => return Err(format!("{USAGE} must be called on the class")),
+            };
+            if args.len() != 4 {
+                return Err(format!(
+                    "{USAGE} expects 3 arguments, got {}",
+                    args.len() - 1
+                ));
+            }
+            let key = match &args[1] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "{USAGE}: key must be a String, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let limit = match &args[2] {
+                Value::Int(i) if *i >= 0 => *i,
+                other => {
+                    return Err(format!(
+                        "{USAGE}: limit must be an Int of 0 or more, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let window = match &args[3] {
+                Value::Int(i) if *i > 0 => *i,
+                other => {
+                    return Err(format!(
+                        "{USAGE}: window_seconds must be an Int above 0, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let mut inst = this.borrow_mut();
+            inst.set("key", Value::String(key));
+            inst.set("limit", Value::Int(limit));
+            inst.set("window", Value::Int(window));
+            inst.set("reset", Value::Int(0));
+            Ok(Value::Null)
+        })),
+    );
+
     class_methods.insert(
         "allowed".to_string(),
         Rc::new(NativeFunction::new(
@@ -240,11 +295,20 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
                     _ => return Err("RateLimiter instance missing window".to_string()),
                 };
 
-                let wait_time = RATE_LIMIT_STORE.write(|store| {
-                    let bucket = store.get_or_create(&key, limit, Duration::from_secs(window));
-                    bucket.is_allowed().2
-                });
-                Ok(Value::Int(wait_time.as_secs() as i64))
+                if limit == 0 {
+                    return Ok(Value::Int(0)); // no limit, as allowed() reads it
+                }
+
+                // A read, like status(): asking how long to wait must not use
+                // up one of the attempts it is asking about. It used to call
+                // is_allowed(), which records a request whenever one fits.
+                let (allowed, _remaining, reset) = RATE_LIMIT_STORE
+                    .read(|store| store.status(&key, limit, Duration::from_secs(window)));
+                if allowed {
+                    return Ok(Value::Int(0));
+                }
+                // Rounded up: waiting the returned number of seconds is enough.
+                Ok(Value::Int(reset.as_millis().div_ceil(1000) as i64))
             },
         )),
     );

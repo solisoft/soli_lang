@@ -1556,6 +1556,13 @@ pub enum PrimType {
 
 pub const PRIM_TYPE_COUNT: usize = 9;
 
+/// The native method a Rust-defined class runs when it is called like a
+/// function, `RateLimiter("api:42", 100, 60)`: it receives the new instance
+/// followed by the arguments, and fills the instance's fields. A native class
+/// has no Soli constructor to run, so without this hook the arguments were
+/// dropped and the instance came back empty.
+pub const NATIVE_CONSTRUCTOR: &str = "__construct__";
+
 /// A class definition.
 #[derive(Debug, Clone)]
 pub struct Class {

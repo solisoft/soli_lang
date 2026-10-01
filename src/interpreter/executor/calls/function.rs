@@ -5,7 +5,7 @@ use crate::ast::{Expr, ExprKind};
 use crate::error::RuntimeError;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
-use crate::interpreter::value::{HashKey, Instance, Value};
+use crate::interpreter::value::{HashKey, Instance, Value, NATIVE_CONSTRUCTOR};
 use crate::span::Span;
 
 use std::cell::RefCell;
@@ -2457,6 +2457,17 @@ impl Interpreter {
                     }
 
                     self.execute_constructor_body(ctor, ctor_env)?;
+                } else if let Some(init) = class.find_native_method(NATIVE_CONSTRUCTOR) {
+                    if let Some(name) = named_args.keys().next() {
+                        return Err(RuntimeError::new(
+                            format!("{}() takes no named argument '{}'", class.name, name),
+                            span,
+                        ));
+                    }
+                    let mut init_args = Vec::with_capacity(positional_args.len() + 1);
+                    init_args.push(Value::Instance(instance.clone()));
+                    init_args.extend(positional_args.iter().cloned());
+                    (init.func)(&init_args).map_err(|e| RuntimeError::new(e, span))?;
                 }
 
                 Ok(Value::Instance(instance))
@@ -2726,6 +2737,11 @@ impl Interpreter {
                     }
 
                     self.execute_constructor_body(ctor, ctor_env)?;
+                } else if let Some(init) = class.find_native_method(NATIVE_CONSTRUCTOR) {
+                    let mut init_args = Vec::with_capacity(arguments.len() + 1);
+                    init_args.push(Value::Instance(instance.clone()));
+                    init_args.extend(arguments.iter().cloned());
+                    (init.func)(&init_args).map_err(|e| RuntimeError::new(e, span))?;
                 }
 
                 Ok(Value::Instance(instance))

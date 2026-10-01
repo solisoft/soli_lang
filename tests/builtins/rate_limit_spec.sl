@@ -65,3 +65,44 @@ describe("RateLimiter", fn() {
         RateLimiter.cleanup();
     });
 });
+describe("RateLimiter(key, limit, window)") do
+  before_each() do
+    RateLimiter.reset_all()
+  end
+
+  test("the constructor keeps its arguments") do
+    limiter = RateLimiter("ctor:fields", 3, 60)
+    status = limiter.status()
+    assert_eq(status["limit"], 3)
+    assert_eq(status["window"], 60)
+    assert_eq(status["remaining"], 3)
+  end
+
+  test("allowed() counts against the limit") do
+    limiter = RateLimiter("ctor:allowed", 2, 60)
+    assert(limiter.allowed())
+    assert(limiter.allowed())
+    assert(!limiter.allowed())
+  end
+
+  test("throttle() does not use up an attempt") do
+    limiter = RateLimiter("ctor:throttle", 2, 60)
+    assert_eq(limiter.throttle(), 0)
+    assert_eq(limiter.throttle(), 0)
+    assert_eq(limiter.status()["remaining"], 2)
+    assert(limiter.allowed())
+    assert(limiter.allowed())
+    assert(limiter.throttle() > 0)
+    assert(limiter.throttle() <= 60)
+  end
+
+  test("the constructor rejects bad arguments") do
+    error = nil
+    try
+      RateLimiter("ctor:bad", "ten", 60)
+    catch e
+      error = str(e)
+    end
+    assert(error.contains("limit must be an Int"))
+  end
+end
