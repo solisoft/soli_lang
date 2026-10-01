@@ -9,7 +9,8 @@ Posts are markdown files in this directory (`www/docs/blog/<slug>.md`), served a
 Add `"publish_on": "YYYY-MM-DD"` to a manifest entry to hold it back: until that
 day the post is off the index and `/docs/blog/<slug>` answers 404, so several
 posts can ship in one deploy and go live one per day. A request on a local host
-(`localhost`, `*.localhost`, `127.0.0.1` — i.e. `soli serve www --dev`) sees
+(`localhost`, `*.localhost`, `127.0.0.1` — i.e. `soli serve www --dev` — or a `*.test`
+site of the local soli-proxy, such as `soli.solisoft.test`) sees
 scheduled posts anyway, with a "Scheduled · date" badge. Order the manifest by
 publish date, newest first.
 
