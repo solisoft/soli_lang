@@ -103,8 +103,27 @@ impl TypeChecker {
         (result, std::mem::take(&mut self.warnings))
     }
 
+    /// Declare the widget catalogue for a script that opens `eui_window`.
+    ///
+    /// The view and handler run in workers that load the catalogue (`column`,
+    /// `button`, `tw`…), so the calls are real, but the checker had never heard
+    /// of them: `b = button("x", "go")`, or a helper returning one, stopped the
+    /// script with `Undefined variable 'button'` — while the same call written
+    /// inline in a list went through. Declared like the ambient names of an
+    /// application (`Any`, a definition of the script still wins), and only
+    /// here: in any other script the catalogue does not exist.
+    #[cfg(feature = "eui")]
+    fn declare_eui_window_catalogue(&mut self, program: &Program) {
+        if crate::serve::eui::script::mentions_eui_window(program) {
+            self.declare_ambient(crate::scaffold::templates::eui::catalogue_def_names());
+        }
+    }
+
     /// Type check a complete program.
     pub fn check(&mut self, program: &Program) -> Result<(), Vec<TypeError>> {
+        #[cfg(feature = "eui")]
+        self.declare_eui_window_catalogue(program);
+
         // First pass: collect all class and interface declarations
         for stmt in &program.statements {
             if let StmtKind::Class(decl) = &stmt.kind {
@@ -194,5 +213,47 @@ impl TypeChecker {
 impl Default for TypeChecker {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(all(test, feature = "eui"))]
+mod eui_window_tests {
+    fn check(source: &str) -> Result<(), String> {
+        crate::type_check_source_with_ambient(source, None, &[])
+            .map(|_| ())
+            .map_err(|errs| {
+                errs.iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            })
+    }
+
+    #[test]
+    fn a_window_script_can_call_the_catalogue_anywhere() {
+        let source = r#"
+def make_button()
+  button("y", "go")
+end
+
+def handler(event_data)
+  {}
+end
+
+def view(state)
+  label = button("x", "go")
+  column({}, [label, make_button()])
+end
+
+eui_window("t", "handler", "view", {"title": "t"})
+"#;
+        let result = check(source);
+        assert!(result.is_ok(), "{:?}", result);
+    }
+
+    #[test]
+    fn a_script_without_a_window_does_not_get_the_catalogue() {
+        let source = "def view()\n  label = button(\"x\", \"go\")\n  label\nend\n";
+        assert!(check(source).is_err());
     }
 }

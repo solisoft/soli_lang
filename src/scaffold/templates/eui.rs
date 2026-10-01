@@ -37,6 +37,27 @@ pub const EUI_BUILDERS: [(&str, &str); 6] = [
     ("eui_builders_tw.sl", include_str!("eui/eui_builders_tw.sl")),
 ];
 
+/// The name of every top-level `def` in the catalogue, read once from the
+/// sources above. A script that opens `eui_window` runs its view in workers
+/// that load these files, so the type checker has to know the names exist.
+pub fn catalogue_def_names() -> &'static [String] {
+    static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    NAMES.get_or_init(|| {
+        EUI_BUILDERS
+            .iter()
+            .flat_map(|(_, source)| source.lines())
+            .filter_map(|line| line.strip_prefix("def "))
+            .filter_map(|rest| {
+                let name: String = rest
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || matches!(c, '_' | '?' | '!'))
+                    .collect();
+                (!name.is_empty()).then_some(name)
+            })
+            .collect()
+    })
+}
+
 /// A first component: a counter, its handler and its view.
 pub const EUI_CONTROLLER: &str = include_str!("eui/eui_controller.sl");
 

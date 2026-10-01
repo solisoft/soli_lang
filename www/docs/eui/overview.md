@@ -355,7 +355,13 @@ connect. What follows from that:
   script. Keep what a handler needs in the state, or in a `const`.
 - **The widget catalogue is there.** `column`, `button`, `tw(...)` and the
   rest of what `soli new --eui` scaffolds can be called from the view. A
-  `def` of the script with the same name as a builder wins.
+  `def` of the script with the same name as a builder wins. The type checker
+  knows the catalogue in a script that calls `eui_window`, so a builder can be
+  assigned (`action = button("Water", "water")`) or returned from a helper.
+- **A script can span several files.** `import "./beds.sl"` brings in what
+  the file exports: `export def` and `export class`. There is no
+  `export const`; share data through a function, which is a definition the
+  window's workers can see.
 - **One window per run.** The window owns the main thread while it is open.
 - **The publisher key** the window pins is kept in the user's state
   directory (`~/.local/state/soli/eui_script.pkcs8` on Linux) rather than

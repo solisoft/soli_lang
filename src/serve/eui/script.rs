@@ -57,7 +57,7 @@ pub fn remember_script(program: &Program) {
     }
 }
 
-fn mentions_eui_window(program: &Program) -> bool {
+pub(crate) fn mentions_eui_window(program: &Program) -> bool {
     let mut found = false;
     crate::ast::walk::walk_program(program, &mut |_| {}, &mut |expr| {
         if let crate::ast::ExprKind::Variable(name) = &expr.kind {
