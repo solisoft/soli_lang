@@ -205,6 +205,8 @@ fn script_kernels(
 /// Run a parsed, resolved and checked program on the tree-walking
 /// interpreter, its typed numeric functions compiled to native kernels.
 pub fn execute_program_tree(program: &ast::Program) -> Result<(), SolilangError> {
+    #[cfg(feature = "eui")]
+    serve::eui::script::remember_script(program);
     let mut interpreter = script_interpreter();
     let kernels = script_kernels(program, &interpreter);
     interpreter.set_kernels(kernels);
@@ -268,6 +270,8 @@ pub fn run_script(
 
 /// Run a parsed, resolved and checked program on `engine`.
 pub fn execute_program(program: &ast::Program, engine: Engine) -> Result<(), SolilangError> {
+    #[cfg(feature = "eui")]
+    serve::eui::script::remember_script(program);
     match engine {
         Engine::Tree => execute_program_tree(program),
         Engine::Vm => execute_program_vm(program),
@@ -480,6 +484,8 @@ pub fn bare_call_reason(
 /// Run a parsed, resolved and checked program on the bytecode VM, its typed
 /// numeric functions compiled to native kernels.
 pub fn execute_program_vm(program: &ast::Program) -> Result<(), SolilangError> {
+    #[cfg(feature = "eui")]
+    serve::eui::script::remember_script(program);
     let interpreter = script_interpreter();
     let kernels = script_kernels(program, &interpreter);
     let module = vm::Compiler::compile_with_kernels(program, kernels).map_err(|e| {

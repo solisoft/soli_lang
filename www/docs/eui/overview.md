@@ -304,6 +304,76 @@ EUI_ALLOW_INSECURE_LOOPBACK=1 eui ws://127.0.0.1:5011/_eui/session/counter
 A deployment sits behind TLS; the client refuses anything but `wss://` outside
 a debug build on loopback.
 
+## A window from a script
+
+A script can open its own EUI window, with no application around it.
+`eui_window(name, handler, view, options)` takes the component's name and
+the names of two top-level `def`s of the script, the same pair `router_eui`
+takes:
+
+```soli
+# counter.sl — `soli counter.sl` opens a window; every click is an event.
+
+def counter(event_data)
+  count = event_data["state"]["count"] ?? 0
+  match event_data["event"] {
+    "increment" => {"count": count + 1},
+    "decrement" => {"count": count - 1},
+    "reset" => {"count": 0},
+    _ => {"count": count}
+  }
+end
+
+def counter_view(state)
+  count = state["count"] ?? 0
+  column({"pad": 6, "gap": 4, "align": "start", "bg": "surface.base"}, [
+    text("Counter", {"size": 4, "weight": "semibold"}),
+    text(count.to_s, {"size": 7, "weight": "bold"}),
+    row({"gap": 2}, [button("−", "decrement"), button("+", "increment"), button("Reset", "reset")])
+  ])
+end
+
+print("opening the window…")
+eui_window("counter", "counter", "counter_view", {"title": "Counter"})
+print("window closed")
+```
+
+The handler receives the window's events as a component's handler does — a
+`"connect"` first, then every `click`, `change` or `submit` its nodes name —
+and what it returns is the state the view is drawn from. `eui_window` returns
+when the window is closed. The only option is `"title"`, which defaults to
+the name.
+
+Behind the call, the script is served the way `soli desktop build --eui`
+serves an application: on `127.0.0.1` and a port the OS picks, behind the
+same loopback gate, so only the window, which holds the session cookie, can
+connect. What follows from that:
+
+- **The handler and the view see the script's definitions, not its
+  variables.** The server's workers load the script's top-level `def`s,
+  classes, enums and constants; the rest of the script runs once, in the
+  script. Keep what a handler needs in the state, or in a `const`.
+- **The widget catalogue is there.** `column`, `button`, `tw(...)` and the
+  rest of what `soli new --eui` scaffolds can be called from the view. A
+  `def` of the script with the same name as a builder wins.
+- **One window per run.** The window owns the main thread while it is open.
+- **The publisher key** the window pins is kept in the user's state
+  directory (`~/.local/state/soli/eui_script.pkcs8` on Linux) rather than
+  next to the script; `SOLI_EUI_KEY` names another file.
+
+The window is the `eui-desktop` feature, which the published `soli` binaries
+do not include: build soli with `cargo install --path . --locked --features
+eui-desktop`, or set `SOLI_EUI_NO_WINDOW=1`, which serves the session and
+prints its URL and the cookie to send instead of opening a window — for a
+client you start yourself, or a test:
+
+```sh
+$ SOLI_EUI_NO_WINDOW=1 soli counter.sl
+opening the window…
+ws://127.0.0.1:41871/_eui/session/counter
+soli_desktop=5fc91513…
+```
+
 ## Where the rest is
 
 The protocol specification, the client crates, the widget catalogue and the

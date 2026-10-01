@@ -22,6 +22,10 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.11.1.</p>
 
+        <h3 id="unreleased-eui" class="text-xl font-semibold text-white mb-4 scroll-mt-24">EUI</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A script opens its own EUI window: <code class="text-cyan-400">eui_window(name, handler, view, options)</code>.</strong> In <code class="text-cyan-400">soli app.sl</code>, name two top-level <code class="text-cyan-400">def</code>s of the script &mdash; a handler taking <code class="text-cyan-400">{event, params, state}</code> and a view returning a node tree, the pair <code class="text-cyan-400">router_eui</code> takes &mdash; and a window opens; every click, change or submit reaches the handler, and the call returns when the window is closed. No application around it: the script&rsquo;s definitions and the widget catalogue (<code class="text-cyan-400">column</code>, <code class="text-cyan-400">button</code>, <code class="text-cyan-400">tw(...)</code>&hellip;) are served on <code class="text-cyan-400">127.0.0.1</code> behind the desktop loopback gate, as <code class="text-cyan-400">soli desktop build --eui</code> does. The handler sees the script&rsquo;s <code class="text-cyan-400">def</code>s, classes and constants, not its variables. The window needs a soli built with <code class="text-cyan-400">--features eui-desktop</code>, which the published binaries are not; elsewhere the call says so, and <code class="text-cyan-400">SOLI_EUI_NO_WINDOW=1</code> serves the session and prints its URL and cookie for a client started by hand. <a href="/docs/eui/overview#a-window-from-a-script" class="text-cyan-400 hover:underline">A window from a script</a></li>
+        </ul>
     </section>
 
     <section id="v2-11-1" class="mb-16 scroll-mt-24">

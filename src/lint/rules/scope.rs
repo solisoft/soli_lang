@@ -250,6 +250,7 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     // declarations and the session-side helpers. `eui?` answers whether the
     // caller asked for frames rather than a page.
     "router_eui",
+    "eui_window",
     "eui?",
     "eui_render",
     "eui_wake",

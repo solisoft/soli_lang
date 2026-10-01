@@ -633,6 +633,9 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register router functions
     router::register_router_builtins(env);
+    // eui_window(name, handler, view) — a script's own EUI window.
+    #[cfg(feature = "eui")]
+    crate::serve::eui::script::register_eui_window(env);
 
     // Register controller functions
     controller::register_controller_builtins(env);

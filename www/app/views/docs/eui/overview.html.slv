@@ -178,6 +178,54 @@ EUI_ALLOW_INSECURE_LOOPBACK=1 eui ws://127.0.0.1:5011/_eui/session/counter</code
     </div>
     <p class="text-gray-400 mb-12">A deployment sits behind TLS; the client refuses anything but <code class="text-cyan-400">wss://</code> outside a debug build on loopback.</p>
 
+    <h2 id="a-window-from-a-script" class="text-2xl font-bold text-white mb-6 scroll-mt-24">A window from a script</h2>
+    <p class="text-gray-400 mb-6">A script can open its own EUI window, with no application around it. <code class="text-cyan-400">eui_window(name, handler, view, options)</code> takes the component's name and the names of two top-level <code class="text-cyan-400">def</code>s of the script, the same pair <code class="text-cyan-400">router_eui</code> takes:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># counter.sl — `soli counter.sl` opens a window; every click is an event.
+
+def counter(event_data)
+  count = event_data["state"]["count"] ?? 0
+  match event_data["event"] {
+    "increment" =&gt; {"count": count + 1},
+    "decrement" =&gt; {"count": count - 1},
+    "reset" =&gt; {"count": 0},
+    _ =&gt; {"count": count}
+  }
+end
+
+def counter_view(state)
+  count = state["count"] ?? 0
+  column({"pad": 6, "gap": 4, "align": "start", "bg": "surface.base"}, [
+    text("Counter", {"size": 4, "weight": "semibold"}),
+    text(count.to_s, {"size": 7, "weight": "bold"}),
+    row({"gap": 2}, [button("−", "decrement"), button("+", "increment"), button("Reset", "reset")])
+  ])
+end
+
+print("opening the window…")
+eui_window("counter", "counter", "counter_view", {"title": "Counter"})
+print("window closed")</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-6">The handler receives the window's events as a component's handler does &mdash; a <code class="text-cyan-400">"connect"</code> first, then every <code class="text-cyan-400">click</code>, <code class="text-cyan-400">change</code> or <code class="text-cyan-400">submit</code> its nodes name &mdash; and what it returns is the state the view is drawn from. <code class="text-cyan-400">eui_window</code> returns when the window is closed. The only option is <code class="text-cyan-400">"title"</code>, which defaults to the name.</p>
+    <p class="text-gray-400 mb-4">Behind the call, the script is served the way <code class="text-cyan-400">soli desktop build --eui</code> serves an application: on <code class="text-cyan-400">127.0.0.1</code> and a port the OS picks, behind the same loopback gate, so only the window, which holds the session cookie, can connect. What follows from that:</p>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 mb-6">
+        <li><strong class="text-white">The handler and the view see the script's definitions, not its variables.</strong> The server's workers load the script's top-level <code class="text-cyan-400">def</code>s, classes, enums and constants; the rest of the script runs once, in the script. Keep what a handler needs in the state, or in a <code class="text-cyan-400">const</code>.</li>
+        <li><strong class="text-white">The widget catalogue is there.</strong> <code class="text-cyan-400">column</code>, <code class="text-cyan-400">button</code>, <code class="text-cyan-400">tw(...)</code> and the rest of what <code class="text-cyan-400">soli new --eui</code> scaffolds can be called from the view. A <code class="text-cyan-400">def</code> of the script with the same name as a builder wins.</li>
+        <li><strong class="text-white">One window per run.</strong> The window owns the main thread while it is open.</li>
+        <li><strong class="text-white">The publisher key</strong> the window pins is kept in the user's state directory (<code class="text-cyan-400">~/.local/state/soli/eui_script.pkcs8</code> on Linux) rather than next to the script; <code class="text-cyan-400">SOLI_EUI_KEY</code> names another file.</li>
+    </ul>
+    <p class="text-gray-400 mb-6">The window is the <code class="text-cyan-400">eui-desktop</code> feature, which the published <code class="text-cyan-400">soli</code> binaries do not include: build soli with <code class="text-cyan-400">cargo install --path . --locked --features eui-desktop</code>, or set <code class="text-cyan-400">SOLI_EUI_NO_WINDOW=1</code>, which serves the session and prints its URL and the cookie to send instead of opening a window &mdash; for a client you start yourself, or a test:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">$ SOLI_EUI_NO_WINDOW=1 soli counter.sl
+opening the window…
+ws://127.0.0.1:41871/_eui/session/counter
+soli_desktop=5fc91513…</code></pre>
+        </div>
+    </div>
+
     <h2 class="text-2xl font-bold text-white mb-6">The manifest</h2>
     <p class="text-gray-400 mb-12">With the feature on, every app also answers <code class="text-cyan-400">GET /.well-known/eui</code> with a signed manifest. The signing key is generated the first time it is needed, into <code class="text-cyan-400">config/eui_publisher.pkcs8</code>; a client pins the public half on its first visit and refuses a different key afterwards, so keep the file with the app's secrets and out of version control. <code class="text-cyan-400">eui_capabilities("clipboard.read")</code> in <code class="text-cyan-400">config/routes.sl</code> lists what the manifest asks the client for; nothing is granted by asking &mdash; the person allows each capability on their side (<code class="text-cyan-400">eui &lt;url&gt; --allow clipboard.read</code>).</p>
 

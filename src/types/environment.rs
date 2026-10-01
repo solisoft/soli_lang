@@ -1337,6 +1337,15 @@ impl TypeEnvironment {
                     return_type: Box::new(Type::Any),
                 },
             );
+            // `eui_window(name, handler, view, options?)` opens a script's
+            // own window on that pair of its `def`s.
+            self.functions.insert(
+                "eui_window".to_string(),
+                Type::Function {
+                    params: vec![Type::Any, Type::Any, Type::Any, Type::Any],
+                    return_type: Box::new(Type::Any),
+                },
+            );
             self.functions.insert(
                 "eui_render".to_string(),
                 Type::Function {

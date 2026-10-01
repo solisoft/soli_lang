@@ -15,6 +15,7 @@ pub mod fonts;
 pub mod local;
 pub mod manifest;
 pub mod notify;
+pub mod script;
 pub mod session;
 pub mod snapshot;
 pub mod stats;

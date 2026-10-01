@@ -563,6 +563,20 @@ use env_loader::load_env_files;
 /// accepting. See [`serve_folder_with_options_and_hooks`].
 pub type BoundPortHook = Box<dyn FnOnce(u16) + Send>;
 
+/// No start-up banner and no per-worker chatter: for a server a script starts
+/// behind its own window (`eui_window`), whose output is the script's.
+/// Errors still print.
+static QUIET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Silence the server's informational output for the rest of the process.
+pub fn set_quiet(on: bool) {
+    QUIET.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn quiet() -> bool {
+    QUIET.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Serve an MVC application from a folder with configurable options and worker count.
 pub fn serve_folder_with_options_and_workers(
     folder: &Path,
@@ -697,7 +711,9 @@ pub fn serve_folder_with_options_and_hooks(
         });
     }
 
-    println!("Starting MVC server from {}", folder.display());
+    if !quiet() {
+        println!("Starting MVC server from {}", folder.display());
+    }
 
     // Set the app root for LiveView template resolution
     crate::serve::tenant::set_app_root(folder);
@@ -1352,58 +1368,60 @@ fn run_hyper_server_worker_pool(
         hook(actual_port);
     }
 
-    println!("\nServer listening on http://{}:{}", bind_host, actual_port);
-    // The LAN URL only exists when listening on all interfaces; when
-    // SOLI_HOST pins the server to loopback (or one address), advertising a
-    // LAN address that won't answer would be misleading.
-    if bind_host.is_unspecified() {
-        if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") {
-            if socket.connect("8.8.8.8:80").is_ok() {
-                if let Ok(addr) = socket.local_addr() {
-                    println!("  Local network:    http://{}:{}", addr.ip(), actual_port);
+    if !quiet() {
+        println!("\nServer listening on http://{}:{}", bind_host, actual_port);
+        // The LAN URL only exists when listening on all interfaces; when
+        // SOLI_HOST pins the server to loopback (or one address), advertising a
+        // LAN address that won't answer would be misleading.
+        if bind_host.is_unspecified() {
+            if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") {
+                if socket.connect("8.8.8.8:80").is_ok() {
+                    if let Ok(addr) = socket.local_addr() {
+                        println!("  Local network:    http://{}:{}", addr.ip(), actual_port);
+                    }
                 }
             }
         }
-    }
-    if dev_mode {
-        println!("Development mode - hot reload enabled, no caching");
-        println!("  Edit models/controllers/middleware/views to see changes");
-        println!("  Browsers will auto-refresh on changes");
-    } else {
-        println!("Production mode - caching enabled, no hot reload");
-    }
-    if public_dir.exists() {
-        println!("Static files served from {}", public_dir.display());
-    }
-    if server_constants::using_production_worker_default(num_workers) {
-        println!(
-            "Using hyper async HTTP server with {} worker threads \
-             (production default — set SOLI_WORKERS or --workers to raise)",
-            num_workers
-        );
-    } else {
-        println!(
-            "Using hyper async HTTP server with {} worker threads",
-            num_workers
-        );
-    }
-    if otel::enabled() {
-        let cfg = otel::config();
-        match &cfg.traces_endpoint {
-            Some(ep) => println!(
-                "OpenTelemetry tracing enabled → {} (service.name={})",
-                ep, cfg.service_name
-            ),
-            None => println!(
-                "OpenTelemetry context enabled (service.name={}; no OTLP endpoint)",
-                cfg.service_name
-            ),
+        if dev_mode {
+            println!("Development mode - hot reload enabled, no caching");
+            println!("  Edit models/controllers/middleware/views to see changes");
+            println!("  Browsers will auto-refresh on changes");
+        } else {
+            println!("Production mode - caching enabled, no hot reload");
         }
+        if public_dir.exists() {
+            println!("Static files served from {}", public_dir.display());
+        }
+        if server_constants::using_production_worker_default(num_workers) {
+            println!(
+                "Using hyper async HTTP server with {} worker threads \
+                 (production default — set SOLI_WORKERS or --workers to raise)",
+                num_workers
+            );
+        } else {
+            println!(
+                "Using hyper async HTTP server with {} worker threads",
+                num_workers
+            );
+        }
+        if otel::enabled() {
+            let cfg = otel::config();
+            match &cfg.traces_endpoint {
+                Some(ep) => println!(
+                    "OpenTelemetry tracing enabled → {} (service.name={})",
+                    ep, cfg.service_name
+                ),
+                None => println!(
+                    "OpenTelemetry context enabled (service.name={}; no OTLP endpoint)",
+                    cfg.service_name
+                ),
+            }
+        }
+        if prod_log::format() == prod_log::LogFormat::Json {
+            println!("Production logs: JSON (SOLI_LOG_FORMAT=json)");
+        }
+        println!();
     }
-    if prod_log::format() == prod_log::LogFormat::Json {
-        println!("Production logs: JSON (SOLI_LOG_FORMAT=json)");
-    }
-    println!();
 
     // Workers are spawned and the listener is accepting: `/_ready` flips to 200
     // here. Deliberately after the banner, so nothing routes to a process that
@@ -1481,7 +1499,8 @@ fn run_hyper_server_worker_pool(
     let (num_http_workers, num_rt_workers) =
         server_constants::realtime_worker_split(num_workers, explicit_rt_workers);
     let split_realtime = num_rt_workers > 0;
-    if split_realtime {
+    if quiet() {
+    } else if split_realtime {
         println!(
             "Worker pool: {} HTTP + {} realtime (WS/LiveView)",
             num_http_workers, num_rt_workers
@@ -1671,7 +1690,9 @@ fn run_hyper_server_worker_pool(
             Err(e) => eprintln!("Failed to spawn worker {}: {}", i, e),
         }
     }
-    println!("Started {} worker threads", workers.len());
+    if !quiet() {
+        println!("Started {} worker threads", workers.len());
+    }
 
     // Wait for workers (they run forever until killed)
     for (i, worker) in workers.into_iter().enumerate() {
@@ -1720,10 +1741,12 @@ fn warm_vm_handlers(worker_id: usize, vm: &crate::vm::Vm) {
             }
         }
     }
-    println!(
-        "Worker {}: warmed {} handlers and {} class methods",
-        worker_id, warmed, warmed_methods
-    );
+    if !quiet() {
+        println!(
+            "Worker {}: warmed {} handlers and {} class methods",
+            worker_id, warmed, warmed_methods
+        );
+    }
 }
 
 /// Worker loop - processes requests from dedicated per-worker queue

@@ -69,6 +69,11 @@ asks for are granted: the person installed the app.
 target is fetched prebuilt without the window. `SOLI_DESKTOP_NO_WINDOW=1`
 prints the session URL and cookie and serves without opening anything.
 
+A script needs no application for a window: `eui_window(name, handler, view)`
+in `soli app.sl` serves the script's own handler and view the same way and
+opens them, on the same build (see
+[EUI — a window from a script](/docs/eui/overview#a-window-from-a-script)).
+
 ## What the artifact contains
 
 ```
