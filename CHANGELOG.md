@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-10-01
+
 ### Added
 
 * **eui:** **A script opens its own EUI window: `eui_window(name, handler, view, options)`.** `soli app.sl` names two top-level `def`s of the script — a handler taking `{event, params, state}` and a view returning a node tree, the pair `router_eui` takes — and a window opens; its events reach the handler, and the call returns when the window is closed. The script's definitions (functions, classes, enums, constants; not its top-level statements) are written as a serialized AST into a throw-away application beside the widget catalogue `soli new --eui` scaffolds, and served on a background thread on `127.0.0.1`, a port the OS picks, behind the desktop loopback gate (`desktop::token::arm_session`), with the startup banner silenced; the publisher key defaults to the user's state directory (`SOLI_EUI_KEY` overrides). Option: `"title"`. The window is the `eui-desktop` feature, absent from release binaries: there the call raises, naming the feature and `SOLI_EUI_NO_WINDOW=1`, which serves and prints the session URL and the `soli_desktop=` cookie instead. A handler or view that is not a top-level `def` of the script is refused before anything is served. The type checker declares the widget catalogue's `def`s (as `Any`, a script's own `def` still winning) for a program that calls `eui_window`, so a builder assigned to a variable or returned from a helper no longer stops the script with `Undefined variable 'button'`; a script without a window does not get them, since the catalogue only exists in the window's workers. [Docs](www/docs/eui/overview.md#a-window-from-a-script)
