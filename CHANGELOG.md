@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.10.2] - 2026-10-01
+
 ### Fixed
 
 * **rate limiting:** **`RateLimiter(key, limit, window)` keeps its arguments.** The class had no constructor, so the arguments were dropped and every method then failed with `RateLimiter instance missing key`; only `rate_limiter_from_ip` produced a usable instance. A Rust-defined class can now declare a native constructor that runs when it is called like a function, on both engines, and `RateLimiter` uses it: it validates the key (String), the limit (Int, 0 or more) and the window (Int above 0). [Docs](www/docs/builtins.md#ratelimiter-class)
