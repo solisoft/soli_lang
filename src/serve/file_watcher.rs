@@ -38,6 +38,10 @@ pub(super) struct WatchPaths {
     pub assets_css: PathBuf,
     /// `config/locales`: translation files, reloaded without a restart.
     pub locales: PathBuf,
+    /// `docs/`: Markdown read at request time — blog posts, documentation
+    /// pages, and the Markdown views symlinked into `app/views`, whose targets
+    /// inotify never sees through the link.
+    pub docs: PathBuf,
     pub folder: PathBuf,
 }
 
@@ -71,6 +75,7 @@ impl WatchPaths {
             routes_file: routes_file.to_path_buf(),
             assets_css: folder.join("app/assets/css"),
             locales: folder.join("config/locales"),
+            docs: folder.join("docs"),
             folder: folder.to_path_buf(),
         }
     }
@@ -113,6 +118,7 @@ pub(super) fn spawn(
         routes_file: watch_routes_file,
         assets_css: watch_assets_css_dir,
         locales: watch_locales_dir,
+        docs: watch_docs_dir,
         folder: watch_folder,
     } = paths;
 
@@ -235,6 +241,16 @@ pub(super) fn spawn(
         {
             watch_count += 1;
         }
+        // Markdown under docs/: editing a blog post or a docs page did not
+        // reload anything, since only app/ and public/ were watched. A `.md`
+        // change counts as a view change, which clears the rendered pages.
+        if watch_docs_dir.exists()
+            && watcher
+                .watch(&watch_docs_dir, RecursiveMode::Recursive)
+                .is_ok()
+        {
+            watch_count += 1;
+        }
         // File mode's extra `--assets` roots. The served folder is already
         // covered — in file mode it *is* the views dir — but an assets root
         // lives outside it, so a picture edited there would otherwise not
@@ -295,11 +311,25 @@ pub(super) fn spawn(
                 RecursiveMode::Recursive,
                 LateDir::Locales,
             ),
+            (&watch_docs_dir, RecursiveMode::Recursive, LateDir::Views),
         ]
         .into_iter()
         .filter(|(dir, _, _)| !dir.exists())
         .map(|(dir, mode, kind)| (dir.clone(), mode, kind))
         .collect();
+        // docs/ lives at the root, so a docs/ created later shows up as an
+        // event on the root — watched non-recursively, and only while it is
+        // missing.
+        if late_dirs
+            .iter()
+            .any(|(dir, _, _)| dir.parent() == Some(watch_folder.as_path()))
+            && watch_folder.is_dir()
+            && watcher
+                .watch(&watch_folder, RecursiveMode::NonRecursive)
+                .is_ok()
+        {
+            watch_count += 1;
+        }
         let app_dir = watch_folder.join("app");
         if late_dirs
             .iter()
@@ -320,10 +350,47 @@ pub(super) fn spawn(
         // Cooldown to prevent reload loops (e.g., when Tailwind rebuilds CSS after view changes)
         const RELOAD_COOLDOWN_MS: u64 = 2000;
         let mut last_reload_time: Option<Instant> = None;
+        // A change that lands inside the cooldown still owes the browser a
+        // reload: dropping it left a page on the error it showed before the
+        // fix — the developer saves twice in quick succession (an agent's
+        // second edit, format-on-save), the first save reloads into the
+        // error, the second is the fix, and nothing ever reloads again.
+        let mut reload_pending = false;
+        // Source edits that arrived while the previous batch was being
+        // processed (see the drain at the end of the loop).
+        let mut carried: Vec<notify::Result<notify::Event>> = Vec::new();
+        let public_css_dir = watch_public_dir.join("css");
 
-        while let Ok(first) = rx.recv() {
+        loop {
+            let first = if !carried.is_empty() {
+                None
+            } else if reload_pending {
+                let due = last_reload_time
+                    .map(|t| t + Duration::from_millis(RELOAD_COOLDOWN_MS))
+                    .unwrap_or_else(Instant::now);
+                match rx.recv_timeout(due.saturating_duration_since(Instant::now())) {
+                    Ok(event) => Some(event),
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        if let Some(ref tx) = browser_reload_tx {
+                            let _ = tx.send(());
+                        }
+                        last_reload_time = Some(Instant::now());
+                        reload_pending = false;
+                        println!("   -> Deferred browser reload sent\n");
+                        continue;
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                }
+            } else {
+                match rx.recv() {
+                    Ok(event) => Some(event),
+                    Err(_) => break,
+                }
+            };
+
             // Collect additional events that arrive within the debounce window
-            let mut raw_events = vec![first];
+            let mut raw_events = std::mem::take(&mut carried);
+            raw_events.extend(first);
             let deadline = Instant::now() + Duration::from_millis(DEBOUNCE_MS);
             loop {
                 let remaining = deadline.saturating_duration_since(Instant::now());
@@ -411,10 +478,6 @@ pub(super) fn spawn(
             let mut routes_changed = false;
             let mut asset_css_changed = false;
             let mut locales_changed = created.contains(&LateDir::Locales);
-
-            // Track the public/css output directory to distinguish
-            // Tailwind output changes from source changes
-            let public_css_dir = watch_public_dir.join("css");
 
             for path in &changed {
                 println!("   {}", path.display());
@@ -593,25 +656,110 @@ pub(super) fn spawn(
                     let _ = tx.send(());
                 }
                 last_reload_time = Some(Instant::now());
+                reload_pending = false;
                 println!(
                     "   -> Browser reload sent (cooldown: {}ms)",
                     RELOAD_COOLDOWN_MS
                 );
             } else {
                 let elapsed = Instant::now().duration_since(last_reload_time.unwrap());
+                reload_pending = true;
                 println!(
-                    "   -> Skipped reload (cooldown active: {}ms remaining)",
+                    "   -> Browser reload deferred until the cooldown ends ({}ms)",
                     RELOAD_COOLDOWN_MS.saturating_sub(elapsed.as_millis() as u64)
                 );
             }
 
             println!();
 
-            // Drain any events that arrived during processing to prevent
-            // cascading reload loops (e.g. workers reading files can generate
-            // inotify events on some Linux configurations).
+            // Drop what arrived while this batch was processed, to prevent
+            // cascading reload loops: Tailwind's own output in public/css,
+            // and the read-side noise some Linux configurations report. An
+            // edit to a source file is kept for the next batch instead —
+            // discarding it lost the save the developer had just made.
             std::thread::sleep(Duration::from_millis(DEBOUNCE_MS));
-            while rx.try_recv().is_ok() {}
+            while let Ok(event) = rx.try_recv() {
+                if is_source_edit(&event, &public_css_dir) {
+                    carried.push(event);
+                }
+            }
         }
     });
+}
+
+/// Whether an event that arrived while a batch was being processed is an edit
+/// worth a batch of its own: a content change to a file the watcher reloads,
+/// other than Tailwind's own output in `public/css`, which would only bounce
+/// the browser a second time.
+fn is_source_edit(event: &notify::Result<notify::Event>, public_css_dir: &Path) -> bool {
+    use notify::event::ModifyKind;
+    use notify::EventKind;
+
+    let Ok(event) = event else {
+        return false;
+    };
+    let content_change = matches!(
+        event.kind,
+        EventKind::Create(_)
+            | EventKind::Remove(_)
+            | EventKind::Modify(ModifyKind::Data(_))
+            | EventKind::Modify(ModifyKind::Name(_))
+    );
+    content_change
+        && event.paths.iter().any(|path| {
+            if path.starts_with(public_css_dir) {
+                return false;
+            }
+            match path.extension().and_then(|e| e.to_str()) {
+                Some(ext) => {
+                    matches!(ext, "sl" | "erb" | "slv" | "md" | "yml" | "yaml")
+                        || server_constants::is_tracked_static_extension(ext)
+                }
+                None => false,
+            }
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use notify::event::{AccessKind, CreateKind, DataChange, ModifyKind};
+    use notify::{Event, EventKind};
+
+    fn event(kind: EventKind, path: &str) -> notify::Result<Event> {
+        Ok(Event::new(kind).add_path(PathBuf::from(path)))
+    }
+
+    #[test]
+    fn a_saved_controller_is_kept_for_the_next_batch() {
+        let edit = event(
+            EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+            "/app/app/controllers/posts_controller.sl",
+        );
+        assert!(is_source_edit(&edit, Path::new("/app/public/css")));
+        let created = event(
+            EventKind::Create(CreateKind::File),
+            "/app/app/views/posts/index.html.slv",
+        );
+        assert!(is_source_edit(&created, Path::new("/app/public/css")));
+    }
+
+    #[test]
+    fn tailwind_output_and_read_noise_are_dropped() {
+        let tailwind = event(
+            EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+            "/app/public/css/application.css",
+        );
+        assert!(!is_source_edit(&tailwind, Path::new("/app/public/css")));
+        let read = event(
+            EventKind::Access(AccessKind::Read),
+            "/app/app/controllers/posts_controller.sl",
+        );
+        assert!(!is_source_edit(&read, Path::new("/app/public/css")));
+        let unrelated = event(
+            EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+            "/app/tmp/server.log",
+        );
+        assert!(!is_source_edit(&unrelated, Path::new("/app/public/css")));
+    }
 }

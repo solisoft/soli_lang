@@ -54,6 +54,7 @@ The live reload system watches these directories:
 | `config/routes.sl` | the route table and the `<name>_path` helpers |
 | `config/locales/` (`.yml`, `.yaml`) | the translations, and the rendered pages holding them |
 | `public/`, `app/assets/css/` | static assets; Tailwind recompiles |
+| `docs/` (`.md`) | the template and rendered-page caches, like a view |
 
 The four model-ish directories are **one signal**: they load in a fixed order
 into the same environment (a policy refers to a model, a mailer to both), so a
@@ -68,6 +69,20 @@ watched, so a class in a new `app/services/` stayed undefined until a restart.
 
 When any watched file changes, the workers reload what changed and a reload
 signal is sent to connected browsers.
+
+Browsers are sent at most one reload every two seconds, so that Tailwind
+rewriting the CSS after a view change does not reload the page twice. A change
+that lands inside those two seconds is not dropped: its reload is sent when they
+end. Saving twice in quick succession — an agent's second edit, a format-on-save
+— used to leave the page on whatever the first save rendered, often an error.
+
+### Error pages
+
+The error page `--dev` shows for a failing request reloads like any other page:
+fix the code and the browser loads the page again. The built-in error pages are
+documents of their own rather than pages of your layout, so instant navigation
+loads them with a full navigation instead of swapping them into the current page,
+where they would render with your app's CSS and look broken.
 
 ## Troubleshooting
 

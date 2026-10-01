@@ -105,6 +105,10 @@
                     <td class="px-4 py-3"><code class="text-amber-400">public/</code>, <code class="text-amber-400">app/assets/css/</code></td>
                     <td class="px-4 py-3">static assets; Tailwind recompiles</td>
                 </tr>
+                <tr>
+                    <td class="px-4 py-3"><code class="text-amber-400">docs/</code> (<code>.md</code>)</td>
+                    <td class="px-4 py-3">the template and rendered-page caches, like a view</td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -117,6 +121,20 @@
         The four model-ish directories are <strong class="text-white">one signal</strong>: they load in a fixed
         order into the same environment (a policy refers to a model, a mailer to both), so a change in any of
         them reloads all four. Editing a policy or a mailer on its own used not to reload anything at all.
+    </p>
+
+    <p class="text-gray-400 mb-6">
+        Browsers are sent at most one reload every two seconds, so that Tailwind rewriting the CSS after a view
+        change does not reload the page twice. A change that lands inside those two seconds is not dropped: its
+        reload is sent when they end. Saving twice in quick succession &mdash; an agent&rsquo;s second edit, a
+        format-on-save &mdash; used to leave the page on whatever the first save rendered, often an error.
+    </p>
+
+    <p class="text-gray-400 mb-12">
+        <strong class="text-white">Error pages</strong> reload too: fix the code and the browser loads the page
+        again. The built-in error pages are documents of their own rather than pages of your layout, so instant
+        navigation loads them with a full navigation instead of swapping them into the current page, where they
+        would render with your app&rsquo;s CSS and look broken.
     </p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Starting the Server</h2>

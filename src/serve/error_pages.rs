@@ -488,6 +488,7 @@ pub(super) fn render_dev_error_page(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="soli-nav" content="off">
     <title>Error - {error_type}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -1151,6 +1152,7 @@ pub(super) fn render_production_error_page(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="soli-nav" content="off">
     <title>{title}</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -1223,6 +1225,30 @@ fn get_status_text(status_code: u16) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The built-in error pages are documents of their own (own <style>, the
+    // dev page its own Tailwind), not pages of the app's layout. Swapped into
+    // a page by instant navigation they render with the app's CSS and look
+    // broken, and live reload never sees their 500 (the navigation entry is the
+    // page they were swapped into), so a fix left them on screen. The meta
+    // makes nav.js load them with a real navigation.
+    #[test]
+    fn built_in_error_pages_opt_out_of_instant_navigation() {
+        let opt_out = r#"<meta name="soli-nav" content="off">"#;
+        let production = render_production_error_page(404, "msg", "req-id");
+        assert!(production.contains(opt_out), "production error page");
+        let dev = render_dev_error_page(
+            "boom",
+            "Error",
+            "app/controllers/posts_controller.sl:3",
+            &[],
+            "{}",
+            None,
+            &HashMap::new(),
+            true,
+        );
+        assert!(dev.contains(opt_out), "dev error page");
+    }
 
     // Production error-page arms cover the statuses real Soli apps actually
     // emit: auth (401/403), missing (404/410), client bugs (400/405/409/422/429),
