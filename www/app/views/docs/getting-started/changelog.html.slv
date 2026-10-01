@@ -20,9 +20,14 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.10.0.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.10.1.</p>
 
-        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+    </section>
+
+    <section id="v2-10-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.10.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-01</span></h2>
+
+        <h3 id="v2-10-1-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">New directories are picked up without a restart.</strong> Adding <code class="text-cyan-400">app/services/</code> (or <code class="text-cyan-400">app/models/</code>, <code class="text-cyan-400">app/jobs/</code>, <code class="text-cyan-400">config/locales/</code>, &hellip;) to a running <code class="text-cyan-400">soli serve --dev</code> used to leave its classes undefined until a restart, because only directories present at boot were watched. It is now watched as soon as it appears, and loaded. <a href="/docs/development-tools/live-reload" class="text-cyan-400 hover:underline">Live reload</a></li>
             <li><strong class="text-white">A fix reloads the page even right after another save.</strong> The browser gets at most one reload every two seconds, and a change inside that window used to be dropped: a page showing an error stayed on it when the fix was the second of two quick saves, as an agent or a format-on-save makes them. That change now gets its reload when the window ends. <a href="/docs/development-tools/live-reload" class="text-cyan-400 hover:underline">Live reload</a></li>

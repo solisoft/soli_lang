@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.10.1] - 2026-10-01
+
 ### Fixed
 
 * **dev:** **A fix saved shortly after another change now reloads the browser.** The watcher sends at most one browser reload every two seconds and dropped any change inside that window, so a page that showed an error stayed on it when the fix was the second of two quick saves (an agent's follow-up edit, format-on-save). A change inside the window now gets its reload when the window ends, and an edit that lands while a batch is being processed is kept for the next batch instead of being discarded; Tailwind's own output is still ignored, so a view edit reloads once. [Docs](www/docs/live-reload.md)
