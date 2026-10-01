@@ -245,12 +245,14 @@ pub fn run() {
             target,
             engine,
             type_check,
+            thin,
         } => commands::run_build_script(
             script,
             output.as_deref(),
             target.as_deref(),
             engine,
             *type_check,
+            *thin,
         ),
         Command::Build {
             folder,

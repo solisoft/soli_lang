@@ -379,6 +379,9 @@ pub enum Command {
         /// or `tree`.
         engine: String,
         type_check: bool,
+        /// A few-KB file run by the installed soli (`#!/usr/bin/env soli`)
+        /// instead of an executable carrying the runtime.
+        thin: bool,
     },
     DesktopBuild {
         folder: String,
@@ -503,7 +506,7 @@ pub struct Options {
 pub fn print_usage() {
     eprintln!("Soli {} - Solilang Interpreter", VERSION);
     eprintln!();
-    eprintln!("Usage: soli [options] [script.sl] [-- script arguments…]");
+    eprintln!("Usage: soli [options] [script.sl] [script arguments…]");
     eprintln!("       soli new <app_name>");
     eprintln!("       soli init");
     eprintln!("       soli add <name> --git <url> [--tag TAG] [--branch BRANCH] [--rev REV]");
@@ -539,6 +542,7 @@ pub fn print_usage() {
     eprintln!("       soli check [paths...]");
     eprintln!("       soli lsp");
     eprintln!("  soli build <folder> [-o <file>] [--encrypt] [--protect] [--standalone] [--target PLATFORM]");
+    eprintln!("  soli build <script.sl> [-o <file>] [--thin] [--target PLATFORM] [--vm|--tree]");
     eprintln!("  soli deploy [--folder <path>]");
     eprintln!("  soli serve <folder> [--strict-port]   (fail instead of scanning for a free port)");
     eprintln!("  soli env up [branch] [--server <name>] [--no-seed]");
@@ -741,6 +745,20 @@ pub fn parse_args() -> Options {
     let mut i = 0;
     while i < args.len() {
         let arg = &args[i];
+        // Once the script is named, the first argument that is not one of the
+        // runner's own options starts the script's arguments, as with `python`
+        // or `ruby`: a `#!/usr/bin/env soli` script then takes `./tool a b`
+        // and `./tool --verbose`. Those options keep working after the script
+        // (`soli x.sl --vm`); a script that wants one of them uses `--`.
+        if matches!(options.command, Command::Run { .. })
+            && !matches!(
+                arg.as_str(),
+                "--" | "--vm" | "--tree" | "--no-type-check" | "--no-native"
+            )
+        {
+            solilang::interpreter::builtins::system::set_script_args(args[i..].to_vec());
+            break;
+        }
         match arg.as_str() {
             "new" => {
                 i += 1;
@@ -2707,11 +2725,13 @@ pub fn parse_args() -> Options {
                 // Only for a script (`soli build tool.sl`).
                 let mut script_engine: Option<&'static str> = None;
                 let mut script_no_type_check = false;
+                let mut script_thin = false;
                 while i < args.len() {
                     match args[i].as_str() {
                         "--vm" => script_engine = Some("vm"),
                         "--tree" => script_engine = Some("tree"),
                         "--no-type-check" => script_no_type_check = true,
+                        "--thin" => script_thin = true,
                         "--output" | "-o" => {
                             i += 1;
                             if i >= args.len() {
@@ -2796,7 +2816,14 @@ pub fn parse_args() -> Options {
                         eprintln!("{flag} applies to app bundles, not to a script executable");
                         process::exit(64);
                     }
+                    if script_thin && target.is_some() {
+                        eprintln!(
+                            "--thin embeds no runtime, so there is no platform to target: drop --target"
+                        );
+                        process::exit(64);
+                    }
                     options.command = Command::BuildScript {
+                        thin: script_thin,
                         script: folder,
                         output,
                         target,
@@ -2805,9 +2832,9 @@ pub fn parse_args() -> Options {
                     };
                     return options;
                 }
-                if script_engine.is_some() || script_no_type_check {
+                if script_engine.is_some() || script_no_type_check || script_thin {
                     eprintln!(
-                        "--vm, --tree and --no-type-check apply to a script build: soli build tool.sl"
+                        "--vm, --tree, --no-type-check and --thin apply to a script build: soli build tool.sl"
                     );
                     process::exit(64);
                 }
@@ -2867,12 +2894,9 @@ pub fn parse_args() -> Options {
                 print_usage();
                 process::exit(64);
             }
+            // A second positional never gets here: once the script is named,
+            // the loop's first check hands it to the script.
             _ => {
-                if let Command::Run { .. } = options.command {
-                    eprintln!("Only one script file can be specified");
-                    print_usage();
-                    process::exit(64);
-                }
                 options.command = Command::Run { file: arg.clone() };
             }
         }

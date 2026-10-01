@@ -421,7 +421,7 @@ ssh deploy@server "/opt/my_app/my_app --port 8080 --workers 4"</code></pre>
     <!-- Script executables -->
     <h2 id="script-executables" class="text-2xl font-bold text-white mb-6">Script Executables</h2>
     <p class="text-gray-400 mb-6">
-        <code class="text-amber-400">soli build</code> given a <code>.sl</code> file, rather than an app folder, builds one executable that <strong>runs that script</strong> &mdash; a command-line tool, not a server. The target machine needs no <code>soli</code> install.
+        <code class="text-amber-400">soli build</code> given a <code>.sl</code> file, rather than an app folder, builds one executable that <strong>runs that script</strong> &mdash; a command-line tool, not a server. The target machine needs no <code>soli</code> install (a <a href="#thin-builds" class="text-amber-400 hover:underline">thin build</a> trades that for a file of a few KB).
     </p>
 
     <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
@@ -433,7 +433,8 @@ ssh deploy@server "/opt/my_app/my_app --port 8080 --workers 4"</code></pre>
     </div>
 
     <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <pre data-filename="tool.sl"><code class="language-soli text-sm">import "./lib/math.sl"   # export def fib(n: Int) -> Int …
+        <pre data-filename="tool.sl"><code class="language-soli text-sm">#!/usr/bin/env soli
+import "./lib/math.sl"   # export def fib(n: Int) -> Int …
 
 args = System.argv
 if args.length == 0
@@ -445,8 +446,18 @@ end</code></pre>
     </div>
 
     <p class="text-gray-400 mb-6">
-        Every argument after the program name reaches the script as <a href="/docs/builtins/system#system-argv" class="text-amber-400 hover:underline"><code>System.argv</code></a>, an Array of Strings. Run through the CLI instead, the script gets what follows <code>--</code>: <code class="text-amber-400">soli tool.sl -- 32</code> (also <code class="text-amber-400">soli -e "&hellip;" -- a b</code>).
+        Every argument after the program name reaches the script as <a href="/docs/builtins/system#system-argv" class="text-amber-400 hover:underline"><code>System.argv</code></a>, an Array of Strings. Run through the CLI, the script gets the same arguments, as with <code>python</code> or <code>ruby</code>: <code class="text-amber-400">soli tool.sl 32</code>. Once the script path is given, the first argument that is not one of the runner&rsquo;s own options (<code>--vm</code>, <code>--tree</code>, <code>--no-type-check</code>, <code>--no-native</code>) starts the script&rsquo;s arguments, and everything after it goes to the script &mdash; <code class="text-amber-400">soli tool.sl --verbose x</code> gives <code>["--verbose", "x"]</code>, and <code class="text-amber-400">soli tool.sl --vm a</code> runs on the VM and gives <code>["a"]</code>. <code>--</code> hands even those options to the script: <code class="text-amber-400">soli tool.sl -- --vm</code> gives <code>["--vm"]</code>. <code class="text-amber-400">soli -e "&hellip;"</code> still needs it: <code class="text-amber-400">soli -e "&hellip;" -- a b</code>.
     </p>
+
+    <p class="text-gray-400 mb-6">
+        Since <code>#</code> starts a comment, the script itself can be the tool: with its <code>#!/usr/bin/env soli</code> first line, made executable, it runs by its path (with <code>soli</code> on the <code>PATH</code>).
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">chmod +x tool.sl
+./tool.sl 32
+# fib(32) = 2178309</code></pre>
+    </div>
 
     <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6">
         <table class="w-full text-left text-sm">
@@ -454,8 +465,9 @@ end</code></pre>
                 <tr><th class="py-3 px-4">Option</th><th class="py-3 px-4">Effect</th></tr>
             </thead>
             <tbody class="divide-y divide-white/5 text-gray-400">
-                <tr><td class="py-3 px-4"><code>-o</code>, <code>--output FILE</code></td><td class="py-3 px-4">Output path. Default: the script&rsquo;s name without <code>.sl</code>, plus <code>-&lt;target&gt;</code> for a cross build and <code>.exe</code> for Windows.</td></tr>
-                <tr><td class="py-3 px-4"><code>--target T</code></td><td class="py-3 px-4">Embed another platform&rsquo;s runtime, as for <code>--standalone</code>: <code>linux-amd64</code>, <code>linux-arm64</code>, <code>darwin-amd64</code>, <code>darwin-arm64</code>, <code>windows-amd64</code>.</td></tr>
+                <tr><td class="py-3 px-4"><code>-o</code>, <code>--output FILE</code></td><td class="py-3 px-4">Output path. Default: the script&rsquo;s name without <code>.sl</code>, plus <code>-&lt;target&gt;</code> for a cross build and <code>.exe</code> for Windows (no suffix with <code>--thin</code>).</td></tr>
+                <tr><td class="py-3 px-4"><code>--thin</code></td><td class="py-3 px-4">Write a <a href="#thin-builds" class="text-amber-400 hover:underline">thin build</a>: the program without the runtime, run by the installed <code>soli</code>.</td></tr>
+                <tr><td class="py-3 px-4"><code>--target T</code></td><td class="py-3 px-4">Embed another platform&rsquo;s runtime, as for <code>--standalone</code>: <code>linux-amd64</code>, <code>linux-arm64</code>, <code>darwin-amd64</code>, <code>darwin-arm64</code>, <code>windows-amd64</code>. Refused with <code>--thin</code> (exit 64).</td></tr>
                 <tr><td class="py-3 px-4"><code>--vm</code></td><td class="py-3 px-4">Always run the script on the bytecode VM, with no fallback to the tree-walker.</td></tr>
                 <tr><td class="py-3 px-4"><code>--tree</code></td><td class="py-3 px-4">Always run the script on the tree-walking interpreter.</td></tr>
                 <tr><td class="py-3 px-4"><code>--no-type-check</code></td><td class="py-3 px-4">Skip the type check at build time.</td></tr>
@@ -467,12 +479,46 @@ end</code></pre>
         <h3 class="text-lg font-semibold text-white mb-2">What the executable contains</h3>
         <ul class="list-disc list-inside text-gray-400 text-sm space-y-1">
             <li><strong>The resolved program, not the sources.</strong> Imports are resolved and the program is type-checked when you build, so an error <code>soli tool.sl</code> would report stops the build. What ships is the program as a serialized AST; paths in it are relative to the script, so the build machine&rsquo;s directory layout is not inside the file.</li>
-            <li><strong>The whole Soli runtime</strong>, so the file is about the size of the <code>soli</code> binary (~80&nbsp;MB) however small the script.</li>
+            <li><strong>The whole Soli runtime</strong>, so the file is about the size of the <code>soli</code> binary (~80&nbsp;MB) however small the script &mdash; unless it is a <a href="#thin-builds" class="text-amber-400 hover:underline">thin build</a>.</li>
             <li><strong>Native kernels are compiled when the executable starts</strong>, on the machine it runs on, as <code>soli tool.sl</code> does (see <a href="/docs/language/native-kernels" class="text-amber-400 hover:underline">Native Kernels</a>) &mdash; load-time compilation, not an ahead-of-time object file.</li>
             <li><strong>The engine is chosen as for <code>soli tool.sl</code></strong>: the bytecode VM, unless the script needs the tree-walker (see <a href="/docs/getting-started/configuration#script-engine" class="text-amber-400 hover:underline">Configuration &rarr; Script Engine</a>). The choice is made when the executable starts, from the program it carries; <code>--vm</code> or <code>--tree</code> at build time fixes it instead, and <code>SOLI_ENGINE</code> does not change it. <code>SOLI_ENGINE_LOG=1</code> prints it.</li>
             <li><strong>It starts as fast as <code>soli</code> does</strong>: one that prints a line runs in about 3&nbsp;ms on Linux.</li>
             <li>It exits <code>0</code>, or <code>70</code> after printing <code>Error: &hellip;</code> to stderr, like <code>soli tool.sl</code>.</li>
             <li><code>--encrypt</code>, <code>--protect</code> and <code>--update-url</code> / <code>--update-key</code> apply to app bundles and are refused for a script. The macOS re-signing note and the &ldquo;do not post-process the artifact&rdquo; rule above apply here too.</li>
+        </ul>
+    </div>
+
+    <h3 id="thin-builds" class="text-lg font-semibold text-white mb-3">Thin builds</h3>
+    <p class="text-gray-400 mb-6">
+        <code class="text-amber-400">--thin</code> writes the same resolved, type-checked program without the runtime: a <code>#!/usr/bin/env soli</code> line followed by the program, a file of a few KB. It runs with the <code>soli</code> installed on the machine.
+    </p>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli build tool.sl --thin
+#   Building tool from tool.sl...
+#     Built tool (1.3 KB, runs with the installed soli 2.11.1)
+
+./tool 32          # or: soli tool 32</code></pre>
+    </div>
+
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6">
+        <table class="w-full text-left text-sm">
+            <thead class="bg-white/5 text-gray-300">
+                <tr><th class="py-3 px-4">Build</th><th class="py-3 px-4">Size</th><th class="py-3 px-4">Needs on the target machine</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-gray-400">
+                <tr><td class="py-3 px-4"><code>soli build tool.sl</code></td><td class="py-3 px-4">~80&nbsp;MB</td><td class="py-3 px-4">nothing</td></tr>
+                <tr><td class="py-3 px-4"><code>soli build tool.sl --thin</code></td><td class="py-3 px-4">a few KB</td><td class="py-3 px-4"><code>soli</code>, the version that built it</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="rounded-xl bg-white/5 border border-white/10 p-6 mb-12">
+        <ul class="list-disc list-inside text-gray-400 text-sm space-y-1">
+            <li><strong>The same version of <code>soli</code>, exactly.</strong> The program is serialized for the runtime that built it, so another version refuses it before anything runs, exit <code>70</code>: <code>Error: ./tool was built with soli 2.10.9; this is soli 2.11.1. Rebuild it: soli build tool.sl --thin</code>. Versions before 2.11.1 do not know the format at all: they would read the file as source and fail on it.</li>
+            <li><strong>One file, no sources.</strong> Imports are resolved at build time, as for a full executable; the <code>lib/</code> folder does not ship.</li>
+            <li>The file is made executable (mode <code>755</code>) and has no <code>.exe</code> suffix. <code>--vm</code>, <code>--tree</code> and <code>--no-type-check</code> work as above; <code>--target</code> is refused (exit <code>64</code>), since no runtime is embedded.</li>
+            <li>Native kernels compile when it starts, as usual. It starts slightly faster than <code>soli tool.sl</code>, which parses and type-checks first.</li>
         </ul>
     </div>
 

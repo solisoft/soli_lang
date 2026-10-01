@@ -371,7 +371,8 @@ Operational notes:
 ## Script executables
 
 `soli build` given a `.sl` file, rather than an app folder, builds one executable that **runs that
-script** — a command-line tool, not a server. The target machine needs no `soli` install.
+script** — a command-line tool, not a server. The target machine needs no `soli` install (a
+[thin build](#thin-builds) trades that for a file of a few KB).
 
 ```bash
 soli build tool.sl
@@ -382,6 +383,7 @@ soli build tool.sl
 ```
 
 ```soli
+#!/usr/bin/env soli
 # tool.sl
 import "./lib/math.sl"   # export def fib(n: Int) -> Int …
 
@@ -395,13 +397,28 @@ end
 ```
 
 Every argument after the program name reaches the script as [`System.argv`](builtins.md#systemargv),
-an Array of Strings. Run through the CLI instead, the script gets what follows `--`:
-`soli tool.sl -- 32` (also `soli -e "…" -- a b`).
+an Array of Strings. Run through the CLI, the script gets the same arguments, as with `python` or
+`ruby`: `soli tool.sl 32`. Once the script path is given, the first argument that is not one of the
+runner's own options (`--vm`, `--tree`, `--no-type-check`, `--no-native`) starts the script's
+arguments, and everything after it goes to the script — `soli tool.sl --verbose x` gives
+`["--verbose", "x"]`, and `soli tool.sl --vm a` runs on the VM and gives `["a"]`. `--` hands even
+those options to the script: `soli tool.sl -- --vm` gives `["--vm"]`. `soli -e "…"` still needs it:
+`soli -e "…" -- a b`.
+
+Since `#` starts a comment, the script itself can be the tool: with its `#!/usr/bin/env soli`
+first line, made executable, it runs by its path (with `soli` on the `PATH`).
+
+```bash
+chmod +x tool.sl
+./tool.sl 32
+# fib(32) = 2178309
+```
 
 | Option | Effect |
 |--------|--------|
-| `-o`, `--output FILE` | Output path. Default: the script's name without `.sl`, plus `-<target>` for a cross build and `.exe` for Windows. |
-| `--target T` | Embed another platform's runtime, as for [`--standalone`](#cross-platform-builds): `linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`, `windows-amd64`. |
+| `-o`, `--output FILE` | Output path. Default: the script's name without `.sl`, plus `-<target>` for a cross build and `.exe` for Windows (no suffix with `--thin`). |
+| `--thin` | Write a [thin build](#thin-builds): the program without the runtime, run by the installed `soli`. |
+| `--target T` | Embed another platform's runtime, as for [`--standalone`](#cross-platform-builds): `linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`, `windows-amd64`. Refused with `--thin` (exit 64). |
 | `--vm` | Always run the script on the bytecode VM, with no fallback to the tree-walker. |
 | `--tree` | Always run the script on the tree-walking interpreter. |
 | `--no-type-check` | Skip the type check at build time. |
@@ -413,7 +430,7 @@ What the executable contains, and what it does not:
   program as a serialized AST. Paths in it are relative to the script, so the build machine's
   directory layout is not inside the file.
 - **The whole Soli runtime**, so the file is about the size of the `soli` binary (~80 MB) however
-  small the script.
+  small the script — unless it is a [thin build](#thin-builds).
 - **Native kernels are compiled when the executable starts**, on the machine it runs on, like
   `soli tool.sl` does (see [Native Kernels](native-kernels.md)) — load-time compilation, not an
   ahead-of-time object file.
@@ -427,6 +444,38 @@ What the executable contains, and what it does not:
 `--encrypt`, `--protect` and `--update-url` / `--update-key` apply to app bundles and are refused
 for a script. The macOS re-signing note and the "do not post-process the artifact" rule above apply
 here too.
+
+### Thin builds
+
+`--thin` writes the same resolved, type-checked program without the runtime: a
+`#!/usr/bin/env soli` line followed by the program, a file of a few KB. It runs with the `soli`
+installed on the machine.
+
+```bash
+soli build tool.sl --thin
+#   Building tool from tool.sl...
+#     Built tool (1.3 KB, runs with the installed soli 2.11.1)
+
+./tool 32          # or: soli tool 32
+```
+
+| Build | Size | Needs on the target machine |
+|-------|------|-----------------------------|
+| `soli build tool.sl` | ~80 MB | nothing |
+| `soli build tool.sl --thin` | a few KB | `soli`, the version that built it |
+
+- **The same version of `soli`, exactly.** The program is serialized for the runtime that built it,
+  so another version refuses it before anything runs, exit `70`:
+  `Error: ./tool was built with soli 2.10.9; this is soli 2.11.1. Rebuild it: soli build tool.sl --thin`.
+  Versions before 2.11.1 do not know the format at all: they would read the file as source and fail
+  on it.
+- **One file, no sources.** Imports are resolved at build time, as for a full executable; the
+  `lib/` folder does not ship.
+- The file is made executable (mode `755`) and has no `.exe` suffix. `--vm`, `--tree` and
+  `--no-type-check` work as above; `--target` is refused (exit `64`), since no runtime is
+  embedded.
+- Native kernels compile when it starts, as usual. It starts slightly faster than `soli tool.sl`,
+  which parses and type-checks first.
 
 ## See also
 

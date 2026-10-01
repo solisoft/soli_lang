@@ -17939,7 +17939,7 @@
       "category": "System",
       "path": "/docs/builtins/system#system-argv",
       "signature": "System.argv",
-      "description": "The script's own arguments as an Array of Strings: what follows -- in soli script.sl -- a b, or every argument of an executable built with soli build script.sl. Empty when none.",
+      "description": "The script's own arguments as an Array of Strings: every argument after the script in soli script.sl a b or ./script.sl a b (-- hands soli's own options to the script too), or every argument of an executable built with soli build script.sl. Empty when none.",
       "keywords": [
         "system",
         "argv",
@@ -17955,8 +17955,8 @@
       "type": "guide",
       "category": "Deploy",
       "path": "/docs/development-tools/deploy#script-executables",
-      "signature": "soli build tool.sl [-o tool] [--target linux-arm64] [--vm | --tree]",
-      "description": "Build one executable that runs a script: imports resolved and the program type-checked at build time, the soli runtime embedded, arguments readable as System.argv. Cross-buildable like --standalone.",
+      "signature": "soli build tool.sl [-o tool] [--thin] [--target linux-arm64] [--vm | --tree]",
+      "description": "Build one executable that runs a script: imports resolved and the program type-checked at build time, the soli runtime embedded, arguments readable as System.argv. Cross-buildable like --standalone. --thin writes a few-KB file instead, run by the installed soli of the same version.",
       "keywords": [
         "script",
         "executable",
@@ -17966,7 +17966,9 @@
         "argv",
         "cross-compile",
         "target",
-        "standalone"
+        "standalone",
+        "thin",
+        "shebang"
       ]
     },
     {

@@ -58,12 +58,15 @@ print("The area of a circle with radius " + str(radius) + " is " + str(area));
 soli hello.sl
 
 # Pass it arguments, read as System.argv
-soli hello.sl -- one two
+soli hello.sl one two
+
+# Or start it with #!/usr/bin/env soli, chmod +x it, and run it directly
+./hello.sl one two
 
 # Run it on the tree-walking interpreter instead of the VM
 soli --tree hello.sl
 
-# Build one executable that runs it
+# Build one executable that runs it (--thin: a few KB, runs with the installed soli)
 soli build hello.sl
 
 # Run with hot reload (development)

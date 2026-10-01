@@ -104,6 +104,7 @@ pub fn run_build_script(
     target: Option<&str>,
     engine: &str,
     type_check: bool,
+    thin: bool,
 ) {
     let path = Path::new(script);
     if !path.is_file() {
@@ -132,7 +133,12 @@ pub fn run_build_script(
             None => Path::new(&stem).to_path_buf(),
         },
     };
-    let output_path = crate::cli::standalone::apply_exe_suffix(&output_path, target);
+    // A thin script is run by soli, not by the OS loader: no `.exe`.
+    let output_path = if thin {
+        output_path
+    } else {
+        crate::cli::standalone::apply_exe_suffix(&output_path, target)
+    };
     if output_path.is_dir() {
         eprintln!(
             "Error: output path '{}' is a directory — pass --output <file>",
@@ -145,13 +151,25 @@ pub fn run_build_script(
         output_path.display(),
         path.display()
     );
-    if let Err(e) =
+    let built = if thin {
+        crate::cli::standalone::build_script_thin(path, &output_path, engine, type_check)
+    } else {
         crate::cli::standalone::build_script_exe(path, &output_path, target, engine, type_check)
-    {
+    };
+    if let Err(e) = built {
         eprintln!("Error: {}", e);
         process::exit(1);
     }
     let size = fs::metadata(&output_path).map(|m| m.len()).unwrap_or(0);
+    if thin {
+        println!(
+            "  Built {} ({:.1} KB, runs with the installed soli {})",
+            output_path.display(),
+            size as f64 / 1024.0,
+            env!("CARGO_PKG_VERSION")
+        );
+        return;
+    }
     println!(
         "  Built {} ({:.1} MB, {}, runs on {})",
         output_path.display(),
@@ -1040,6 +1058,13 @@ pub fn run_file(path: &str, options: &Options) {
         process::exit(1);
     }
 
+    // A thin script (`soli build tool.sl --thin`) carries its program, not
+    // its source.
+    if let Ok(bytes) = fs::read(path) {
+        if let Some(payload) = crate::cli::standalone::thin_script_payload(&bytes) {
+            crate::cli::standalone::run_thin_script(path, payload);
+        }
+    }
     let result = solilang::run_script_file(path, !options.no_type_check, options.engine);
 
     if let Err(e) = result {

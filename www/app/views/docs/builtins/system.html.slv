@@ -153,8 +153,8 @@ end</code></pre>
                 The script&rsquo;s own command-line arguments, as an Array of Strings (empty when there are none):
             </p>
             <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-4">
-                <li>with the CLI, what follows <code>--</code>: <code>soli tool.sl -- 32 fast</code> gives <code>["32", "fast"]</code> (also <code>soli -e "&hellip;" -- a b</code>);</li>
-                <li>in an executable built with <code>soli build tool.sl</code>, every argument after the program name: <code>./tool 32 fast</code>.</li>
+                <li>with the CLI, every argument after the script path, as with <code>python</code> or <code>ruby</code>: <code>soli tool.sl 32 fast</code> gives <code>["32", "fast"]</code>, and so does <code>./tool.sl 32 fast</code> for a script that starts with <code>#!/usr/bin/env soli</code>. The runner&rsquo;s own options (<code>--vm</code>, <code>--tree</code>, <code>--no-type-check</code>, <code>--no-native</code>) are still read up to the first argument that is not one of them &mdash; <code>soli tool.sl --tree --verbose</code> gives <code>["--verbose"]</code>; <code>--</code> hands them to the script too: <code>soli tool.sl -- --tree</code> gives <code>["--tree"]</code>. <code>soli -e "&hellip;" -- a b</code> still needs the <code>--</code>;</li>
+                <li>in an executable built with <code>soli build tool.sl</code> (full or <code>--thin</code>), every argument after the program name: <code>./tool 32 fast</code>.</li>
             </ul>
 
             <h3 class="text-lg font-semibold text-white mb-3">Example</h3>

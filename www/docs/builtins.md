@@ -6132,8 +6132,14 @@ Backticks accept literal source-code commands only (no string interpolation). Fo
 
 The script's own command-line arguments, as an Array of Strings (empty when there are none):
 
-- with the CLI, what follows `--`: `soli tool.sl -- 32 fast` gives `["32", "fast"]` (also `soli -e "…" -- a b`);
-- in an executable built with `soli build tool.sl`, every argument after the program name: `./tool 32 fast`.
+- with the CLI, every argument after the script path, as with `python` or `ruby`: `soli tool.sl 32 fast`
+  gives `["32", "fast"]`, and so does `./tool.sl 32 fast` for a script that starts with
+  `#!/usr/bin/env soli`. The runner's own options (`--vm`, `--tree`, `--no-type-check`, `--no-native`)
+  are still read up to the first argument that is not one of them — `soli tool.sl --tree --verbose`
+  gives `["--verbose"]`; `--` hands them to the script too: `soli tool.sl -- --tree` gives `["--tree"]`.
+  `soli -e "…" -- a b` still needs the `--`;
+- in an executable built with `soli build tool.sl` (full or `--thin`), every argument after the
+  program name: `./tool 32 fast`.
 
 ```soli
 args = System.argv

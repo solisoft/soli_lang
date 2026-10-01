@@ -254,7 +254,8 @@ pub fn boot_if_standalone() {
     };
 
     if let Some(script) = script_descriptor(&payload) {
-        run_script_payload(&payload, &script);
+        // The executable is the script: every argument is the script's own.
+        run_script_payload(&payload, &script, Some(std::env::args().skip(1).collect()));
     }
 
     let args = parse_standalone_args(&payload);
@@ -314,9 +315,10 @@ fn script_descriptor(payload: &[u8]) -> Option<ScriptDescriptor> {
     serde_json::from_slice(raw).ok()
 }
 
-/// Run the embedded script with this process's arguments, then exit with the
-/// code `soli script.sl` would have: 0, or 70 after printing the error.
-fn run_script_payload(payload: &[u8], script: &ScriptDescriptor) -> ! {
+/// Run the embedded script, then exit with the code `soli script.sl` would
+/// have: 0, or 70 after printing the error. `argv` is the script's arguments;
+/// `None` when the command line was already parsed and set them.
+fn run_script_payload(payload: &[u8], script: &ScriptDescriptor, argv: Option<Vec<String>>) -> ! {
     let program = solilang::bundle::BundleReader::new(payload)
         .ok()
         .and_then(|reader| reader.get(SCRIPT_PROGRAM_ENTRY))
@@ -329,8 +331,9 @@ fn run_script_payload(payload: &[u8], script: &ScriptDescriptor) -> ! {
             process::exit(70);
         }
     };
-    // The executable is the script: every argument is the script's own.
-    solilang::interpreter::builtins::system::set_script_args(std::env::args().skip(1).collect());
+    if let Some(argv) = argv {
+        solilang::interpreter::builtins::system::set_script_args(argv);
+    }
     let engine = match script.engine.as_str() {
         "vm" => solilang::Engine::Vm,
         "tree" => solilang::Engine::Tree,
@@ -358,6 +361,77 @@ pub fn build_script_exe(
     engine: &str,
     type_check: bool,
 ) -> Result<(), String> {
+    let bundle = script_bundle(script, engine, type_check)?;
+    write_standalone_exe(&bundle, output, target)
+}
+
+/// The first line of a thin script: the installed soli runs the rest.
+const THIN_SHEBANG: &[u8] = b"#!/usr/bin/env soli\n";
+
+/// Build `output` as a *thin* script: the same resolved, checked program as
+/// [`build_script_exe`] embeds, behind a `#!/usr/bin/env soli` line instead
+/// of a copy of the runtime. A few kilobytes rather than tens of megabytes,
+/// for machines that have soli installed — the same version, since the
+/// program is stored in this soli's internal form ([`run_thin_script`]
+/// refuses any other).
+pub fn build_script_thin(
+    script: &Path,
+    output: &Path,
+    engine: &str,
+    type_check: bool,
+) -> Result<(), String> {
+    let bundle = script_bundle(script, engine, type_check)?;
+    let mut out = Vec::with_capacity(THIN_SHEBANG.len() + bundle.len());
+    out.extend_from_slice(THIN_SHEBANG);
+    out.extend_from_slice(&bundle);
+    std::fs::write(output, &out)
+        .map_err(|e| format!("failed to write '{}': {}", output.display(), e))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(output, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("failed to chmod '{}': {}", output.display(), e))?;
+    }
+    Ok(())
+}
+
+/// The embedded program of a thin script (see [`build_script_thin`]): `Some`
+/// when `bytes` are a `#!` line followed by a script bundle.
+pub fn thin_script_payload(bytes: &[u8]) -> Option<&[u8]> {
+    if !bytes.starts_with(b"#!") {
+        return None;
+    }
+    let newline = bytes.iter().position(|b| *b == b'\n')?;
+    let payload = &bytes[newline + 1..];
+    let reader = solilang::bundle::BundleReader::new(payload).ok()?;
+    reader.get(SCRIPT_ENTRY)?;
+    Some(payload)
+}
+
+/// Run a thin script with the arguments the command line already gave it, and
+/// exit. Built by another soli version, it is refused before anything runs:
+/// the program is stored in one version's internal form, and a mismatch would
+/// fail later and less clearly.
+pub fn run_thin_script(path: &Path, payload: &[u8]) -> ! {
+    let Some(script) = script_descriptor(payload) else {
+        eprintln!("Error: {} is not a valid thin script", path.display());
+        process::exit(70);
+    };
+    if script.soli_version != VERSION {
+        eprintln!(
+            "Error: {} was built with soli {}; this is soli {}. Rebuild it: soli build {} --thin",
+            path.display(),
+            script.soli_version,
+            VERSION,
+            script.name
+        );
+        process::exit(70);
+    }
+    run_script_payload(payload, &script, None)
+}
+
+/// The resolved, checked program of `script` and how to run it, as a bundle.
+fn script_bundle(script: &Path, engine: &str, type_check: bool) -> Result<Vec<u8>, String> {
     let source = std::fs::read_to_string(script)
         .map_err(|e| format!("failed to read '{}': {}", script.display(), e))?;
     let mut program = solilang::parse_resolve_check(&source, Some(script), type_check)
@@ -402,8 +476,7 @@ pub fn build_script_exe(
         SCRIPT_ENTRY.to_string(),
         serde_json::to_vec(&descriptor).map_err(|e| e.to_string())?,
     );
-    let bundle = solilang::bundle::BundleBuilder::serialize_entries(&entries)?;
-    write_standalone_exe(&bundle, output, target)
+    solilang::bundle::BundleBuilder::serialize_entries(&entries)
 }
 
 /// Read the embedded auto-update descriptor from an artifact's payload.

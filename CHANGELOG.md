@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+* **cli:** **Arguments after the script reach the script.** `soli tool.sl a b` sets `System.argv` to `["a", "b"]`, as `python` and `ruby` do: once the script path is given, the first argument that is not one of the runner's own options (`--vm`, `--tree`, `--no-type-check`, `--no-native`) starts the script's arguments, and everything after it goes to the script (`soli tool.sl --verbose x` → `["--verbose", "x"]`; `soli tool.sl --vm a` runs on the VM with `["a"]`). `--` still hands even those options to the script (`soli tool.sl -- --vm` → `["--vm"]`), and `soli -e "…" -- a b` still needs it. Before, a second positional was an error (`Only one script file can be specified`) and only `--` worked. A script that starts with `#!/usr/bin/env soli` (`#` is a comment) can now be `chmod +x`'d and run as `./tool.sl a b`. [Docs](www/docs/deploy.md#script-executables)
+* **cli:** **`soli build tool.sl --thin` writes a thin script build.** A few-KB file (1.3 KB for a `fib` tool with an import): a `#!/usr/bin/env soli` line followed by the same resolved, type-checked program a full `soli build tool.sl` executable embeds, without the ~80 MB runtime; mode 755, no `.exe` suffix, run as `./tool a b` or `soli tool a b`. It needs the installed `soli` to be the version that built it: another version refuses it before anything runs, exit 70 (`Error: ./tool was built with soli 2.10.9; this is soli 2.11.1. Rebuild it: soli build tool.sl --thin`); versions before 2.11.1 cannot run one at all (they read it as source). `-o`, `--vm`/`--tree` and `--no-type-check` apply; `--target` is refused, exit 64 (no runtime is embedded). Imports are resolved at build time, native kernels compile at start, and it starts slightly faster than `soli tool.sl` (no parse or type check). Build line: `Built tool (1.3 KB, runs with the installed soli 2.11.0)`. [Docs](www/docs/deploy.md#thin-builds)
+
 ## [2.11.0] - 2026-10-01
 
 ### Added
