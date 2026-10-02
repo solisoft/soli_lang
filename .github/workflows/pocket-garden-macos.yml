@@ -86,7 +86,11 @@ jobs:
         run: |
           set -euo pipefail
           ln -s /Applications build/dmg/Applications
-          hdiutil create -volname "Pocket Garden" -srcfolder build/dmg -ov -format UDZO build/PocketGarden.dmg
+          # An explicit size: left to guess, hdiutil sometimes makes the
+          # scratch volume too small for an 80 MB executable and fails with
+          # "No space left on device". UDZO compresses the slack away.
+          size_mb=$(( $(du -sm build/dmg | cut -f1) + 40 ))
+          hdiutil create -volname "Pocket Garden" -srcfolder build/dmg -size "${size_mb}m" -ov -format UDZO build/PocketGarden.dmg
           hdiutil imageinfo build/PocketGarden.dmg | grep -E "Format:|Total Bytes" || true
           shasum -a 256 build/PocketGarden.dmg
 
