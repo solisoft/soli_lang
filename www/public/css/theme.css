@@ -14,6 +14,10 @@ html[data-theme="dark"] { color-scheme: dark; }
 /* ---- Light: chrome ---- */
 html[data-theme="light"] body.antialiased { background-color: #F6F1E7; color: #4A4238; }
 html[data-theme="light"] body.antialiased ::selection { background: rgba(232, 89, 12, 0.3); color: #1B1712; }
+/* Code surfaces stay dark in the light theme: the dark selection text above
+   would vanish on them. */
+html[data-theme="light"] body.antialiased :is(pre, .lp-code)::selection,
+html[data-theme="light"] body.antialiased :is(pre, .lp-code) ::selection { background: rgba(232, 89, 12, 0.45); color: #ffffff; }
 html[data-theme="light"] aside.lg\:flex,
 html[data-theme="light"] #mobileSidebar { background-color: #EFE7D6; border-color: #D8CFBE; }
 html[data-theme="light"] header.sticky-glass { background: rgba(246, 241, 231, 0.9); border-bottom-color: #D8CFBE; }
