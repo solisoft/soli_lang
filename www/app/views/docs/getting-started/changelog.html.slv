@@ -25,7 +25,7 @@
     </section>
 
     <section id="v2-12-0" class="mb-16 scroll-mt-24">
-        <h2 class="text-3xl font-bold text-white mb-4">v2.12.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-01</span></h2>
+        <h2 class="text-3xl font-bold text-white mb-4">v2.12.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-02</span></h2>
 
         <h3 id="v2-12-0-eui" class="text-xl font-semibold text-white mb-4 scroll-mt-24">EUI</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
