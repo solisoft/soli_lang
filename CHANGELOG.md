@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.14.1] - 2026-10-02
+
 ### Added
 
 * **spreadsheet:** **`Spreadsheet.excel_write(data, path, columns)` takes the column order.** The optional third argument lists the keys to write, in that order, as the header row (a key missing from a row gives an empty cell); without it the first row's keys are sorted, as before. Columns past `Z` are now `AA`, `AB`… (they were written over other cells). [Docs](www/app/views/docs/builtins/spreadsheet.html.slv)
