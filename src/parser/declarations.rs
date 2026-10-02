@@ -121,6 +121,8 @@ impl Parser {
     ///   export fn name() { }
     ///   export class Name { }
     ///   export let name = value;
+    ///   export const NAME = value
+    ///   export enum Name ... end
     ///   export interface Name { }
     pub(crate) fn export_declaration(&mut self) -> ParseResult<Stmt> {
         let start_span = self.current_span();
@@ -133,11 +135,15 @@ impl Parser {
             self.class_declaration()?
         } else if self.check(&TokenKind::Interface) {
             self.interface_declaration()?
+        } else if self.check(&TokenKind::Enum) {
+            self.enum_declaration()?
         } else if self.check(&TokenKind::Let) {
             self.let_declaration()?
+        } else if self.check(&TokenKind::Const) {
+            self.const_declaration()?
         } else {
             return Err(ParserError::general(
-                "Expected 'fn', 'class', 'module', 'interface', or 'let' after 'export'",
+                "Expected 'def', 'class', 'module', 'enum', 'interface', 'let' or 'const' after 'export'",
                 self.current_span(),
             ));
         };

@@ -313,6 +313,33 @@ import "./utils.sl" as utils
 formatted = utils.format_date(DateTime.utc());</code></pre>
             </div>
         </section>
+
+        <section id="kw-import-brings" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <h3 class="text-lg font-semibold text-white mb-3">What an import brings</h3>
+                <p class="text-gray-400 mb-3"><code class="text-amber-400">import</code> makes a module's exports available, and brings along what they need to run: the module's private declarations (functions, classes, enums, constants that are not exported) and everything the module imports itself. An exported function can call a helper beside it, and a <code class="text-amber-400">mod.sl</code> can import the files next to it and build on them.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm"># utils/strings.sl
+export def shout(s)
+  s.upcase
+end
+
+# utils/mod.sl
+import "./strings.sl"
+
+def punctuate(s)        # private: not exported, still reachable from greet
+  "#{s}!"
+end
+
+export def greet(name)
+  punctuate(shout("hello #{name}"))
+end
+
+# main.sl
+import "./utils/mod.sl"
+print(greet("ada"))     # HELLO ADA!</code></pre>
+                <p class="text-gray-400 mt-3">Besides <code class="text-amber-400">def</code> and <code class="text-amber-400">class</code>, <code class="text-amber-400">export</code> takes <code class="text-amber-400">enum</code>, <code class="text-amber-400">const</code>, <code class="text-amber-400">let</code> and <code class="text-amber-400">interface</code>. A module reached along two paths (two files that both import <code class="text-amber-400">shared.sl</code>) is included once. Modules share one global namespace, though: a private name is not part of the module's interface, but it is defined, and a definition of the same name in the importing file replaces it. Give helpers names that will not collide.</p>
+            </div>
+        </section>
     </section>
 
     <!-- Project Structure -->

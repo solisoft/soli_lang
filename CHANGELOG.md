@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+* **modules:** **An import brings what its exports need.** `ModuleResolver` copied only a module's `export`ed declarations into the importer, so an exported function calling a private helper of its module, or anything the module imported itself, failed with `Undefined variable` — at type check in a script, at run time with `--no-type-check` — and the guide's re-exporting `mod.sl` layout could not work. Importing a module now brings its whole definition set: the declarations its own imports brought (recursively), then its own declarations, private ones included (functions, classes, enums, interfaces, `let`/`const`; top-level statements that declare nothing still do not run), then a renamed copy of each export imported under an alias. Each declaration is tagged with its file and position, so a module reached along two paths is included once. Modules still share one global namespace: a private name is defined in the importer, and a same-named definition there replaces it. `export enum` and `export const` now parse (before, only `def`, `class`, `module`, `interface` and `let` could follow `export`, and shared data had to be a function) and import by name or alias like any other export. [Docs](www/docs/soli-language.md#what-an-import-brings)
+
 ## [2.12.0] - 2026-10-02
 
 ### Added

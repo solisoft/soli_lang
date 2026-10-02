@@ -367,9 +367,11 @@ connect. What follows from that:
   refused with the path to the field and the class; production converts it as
   before.
 - **A script can span several files.** `import "./beds.sl"` brings in what
-  the file exports: `export def` and `export class`. There is no
-  `export const`; share data through a function, which is a definition the
-  window's workers can see.
+  the file exports (`export def`, `export class`, `export enum`,
+  `export const`) and whatever those need to run: the helpers beside them and
+  the files they import. The handler and the view can live in an imported
+  file. Share data through a function or a `const`: both are definitions the
+  window's workers can see, and a top-level variable is not.
 - **One window per run.** The window owns the main thread while it is open.
 - **The publisher key** the window pins is kept in the user's state
   directory (`~/.local/state/soli/eui_script.pkcs8` on Linux) rather than

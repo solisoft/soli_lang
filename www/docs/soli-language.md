@@ -3606,6 +3606,43 @@ formatted = utils.format_date(DateTime.utc());
 cleaned = utils.sanitize_input(user_input);
 ```
 
+### What an Import Brings
+
+`import` makes a module's exports available, and brings along what they need
+to run: the module's private declarations (functions, classes, enums,
+constants that are not exported) and everything the module imports itself. So
+an exported function can call a helper beside it, and a `mod.sl` can import the
+files next to it and build on them:
+
+```soli
+# utils/strings.sl
+export def shout(s)
+  s.upcase
+end
+
+# utils/mod.sl
+import "./strings.sl"
+
+def punctuate(s)        # private: not exported, still reachable from greet
+  "#{s}!"
+end
+
+export def greet(name)
+  punctuate(shout("hello #{name}"))
+end
+
+# main.sl
+import "./utils/mod.sl"
+print(greet("ada"))     # HELLO ADA!
+```
+
+Besides `def` and `class`, `export` takes `enum`, `const`, `let` and
+`interface`. A module reached along two paths (two files that both import
+`shared.sl`) is included once. Modules share one global namespace, though: a private name is
+not part of the module's interface, but it is defined, and a definition of the
+same name in the importing file replaces it. Give helpers names that will not
+collide.
+
 ### Module Structure Example
 
 ```

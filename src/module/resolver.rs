@@ -21,7 +21,26 @@ pub struct ResolvedModule {
     pub program: Program,
     /// Names exported by this module
     pub exports: HashSet<String>,
+    /// Everything an importer receives: the declarations this module's own
+    /// imports brought in, then its own declarations, private ones included.
+    /// An exported function calls the module's private helpers and uses what
+    /// the module imported, so importing only the exports leaves them
+    /// undefined. In import order, each tagged with where it came from so a
+    /// module reached along two paths is included once.
+    pub definitions: Vec<Definition>,
 }
+
+/// One declaration an import brings in, and where it was declared.
+#[derive(Debug, Clone)]
+pub struct Definition {
+    /// The file and statement index it was declared at, plus the alias it
+    /// was imported under, if any: the identity used to include it once.
+    key: DefinitionKey,
+    /// The declaration, with its source path set to the file it came from.
+    pub stmt: Stmt,
+}
+
+type DefinitionKey = (PathBuf, usize, Option<String>);
 
 /// Errors that can occur during module resolution.
 #[derive(Debug)]
@@ -124,21 +143,13 @@ impl ModuleResolver {
         source_path: &Path,
     ) -> Result<Program, ResolveError> {
         let canonical = self.canonicalize(source_path)?;
-        let mut combined_statements = Vec::new();
 
-        // First pass: collect all imports and their resolved modules
-        for stmt in &program.statements {
-            if let StmtKind::Import(import) = &stmt.kind {
-                let module = self.resolve_import(import, &canonical)?;
-
-                // Add the imported definitions to the combined program
-                let (imported_stmts, module_path) = get_imported_statements(&module, import)?;
-                for mut imported_stmt in imported_stmts {
-                    imported_stmt = set_stmt_source_path(&imported_stmt, module_path.clone());
-                    combined_statements.push(imported_stmt);
-                }
-            }
-        }
+        // First pass: everything the imports bring in, each declaration once
+        let mut combined_statements: Vec<Stmt> = self
+            .imported_definitions(&program, &canonical)?
+            .into_iter()
+            .map(|d| d.stmt)
+            .collect();
 
         // Second pass: add non-import statements from the main program
         for stmt in program.statements {
@@ -218,10 +229,17 @@ impl ModuleResolver {
         self.resolving.push(module_path.clone());
 
         // Recursively resolve imports in the module
-        let resolved_program = self.resolve(program.clone(), &module_path)?;
+        let resolved = self
+            .resolve(program.clone(), &module_path)
+            .and_then(|resolved_program| {
+                let mut definitions = self.imported_definitions(&program, &module_path)?;
+                definitions.extend(own_definitions(&program, &module_path));
+                Ok((resolved_program, definitions))
+            });
 
         // Done resolving this module
         self.resolving.pop();
+        let (resolved_program, definitions) = resolved?;
 
         // Collect exports from the original program
         let exports = collect_exports(&program);
@@ -231,12 +249,58 @@ impl ModuleResolver {
             original_program: program,
             program: resolved_program,
             exports,
+            definitions,
         };
 
         // Cache the result
         self.cache.insert(module_path, module.clone());
 
         Ok(module)
+    }
+
+    /// The declarations `program`'s imports bring in, in import order and
+    /// each once: a module's whole definition set (see
+    /// [`ResolvedModule::definitions`]), then a renamed copy of every export
+    /// imported under an alias.
+    fn imported_definitions(
+        &mut self,
+        program: &Program,
+        from_path: &Path,
+    ) -> Result<Vec<Definition>, ResolveError> {
+        let mut seen: HashSet<DefinitionKey> = HashSet::new();
+        let mut out = Vec::new();
+        for stmt in &program.statements {
+            let StmtKind::Import(import) = &stmt.kind else {
+                continue;
+            };
+            let module = self.resolve_import(import, from_path)?;
+            // Refuses a named import of something the module does not export.
+            let (requested, module_path) = get_imported_statements(&module, import)?;
+            for definition in &module.definitions {
+                if seen.insert(definition.key.clone()) {
+                    out.push(definition.clone());
+                }
+            }
+            if let ImportSpecifier::Named(items) = &import.specifier {
+                for (item, renamed) in items.iter().zip(requested) {
+                    let Some(alias) = &item.alias else { continue };
+                    let index = module
+                        .original_program
+                        .statements
+                        .iter()
+                        .position(|s| exported_name(s) == Some(item.name.as_str()))
+                        .unwrap_or(usize::MAX);
+                    let key = (module_path.clone(), index, Some(alias.clone()));
+                    if seen.insert(key.clone()) {
+                        out.push(Definition {
+                            key,
+                            stmt: set_stmt_source_path(&renamed, module_path.clone()),
+                        });
+                    }
+                }
+            }
+        }
+        Ok(out)
     }
 
     /// Resolve an import path to an absolute file path.
@@ -461,6 +525,44 @@ fn collect_exports(program: &Program) -> HashSet<String> {
     exports
 }
 
+/// A module's own declarations, exported or not, with `export` unwrapped.
+/// Top-level code that declares nothing is not carried into the importer.
+fn own_definitions(program: &Program, module_path: &Path) -> Vec<Definition> {
+    let mut out = Vec::new();
+    for (index, stmt) in program.statements.iter().enumerate() {
+        let declaration = match &stmt.kind {
+            StmtKind::Export(inner) => (**inner).clone(),
+            StmtKind::Function(_)
+            | StmtKind::Class(_)
+            | StmtKind::Enum(_)
+            | StmtKind::Interface(_)
+            | StmtKind::Let { .. }
+            | StmtKind::Const { .. } => stmt.clone(),
+            _ => continue,
+        };
+        out.push(Definition {
+            key: (module_path.to_path_buf(), index, None),
+            stmt: set_stmt_source_path(&declaration, module_path.to_path_buf()),
+        });
+    }
+    out
+}
+
+/// The name an `export` statement declares.
+fn exported_name(stmt: &Stmt) -> Option<&str> {
+    let StmtKind::Export(inner) = &stmt.kind else {
+        return None;
+    };
+    match &inner.kind {
+        StmtKind::Function(decl) => Some(decl.name.as_str()),
+        StmtKind::Class(decl) => Some(decl.name.as_str()),
+        StmtKind::Enum(decl) => Some(decl.name.as_str()),
+        StmtKind::Interface(decl) => Some(decl.name.as_str()),
+        StmtKind::Let { name, .. } | StmtKind::Const { name, .. } => Some(name.as_str()),
+        _ => None,
+    }
+}
+
 /// Get the statements to import from a module based on the import specifier.
 fn get_imported_statements(
     module: &ResolvedModule,
@@ -532,8 +634,9 @@ fn get_declaration_name(stmt: &Stmt) -> Option<String> {
     match &stmt.kind {
         StmtKind::Function(decl) => Some(decl.name.clone()),
         StmtKind::Class(decl) => Some(decl.name.clone()),
+        StmtKind::Enum(decl) => Some(decl.name.clone()),
         StmtKind::Interface(decl) => Some(decl.name.clone()),
-        StmtKind::Let { name, .. } => Some(name.clone()),
+        StmtKind::Let { name, .. } | StmtKind::Const { name, .. } => Some(name.clone()),
         _ => None,
     }
 }
@@ -549,10 +652,13 @@ fn rename_declaration(stmt: &Stmt, new_name: &str) -> Stmt {
         StmtKind::Class(decl) => {
             decl.name = new_name.to_string();
         }
+        StmtKind::Enum(decl) => {
+            decl.name = new_name.to_string();
+        }
         StmtKind::Interface(decl) => {
             decl.name = new_name.to_string();
         }
-        StmtKind::Let { name, .. } => {
+        StmtKind::Let { name, .. } | StmtKind::Const { name, .. } => {
             *name = new_name.to_string();
         }
         _ => {}
