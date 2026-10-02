@@ -957,8 +957,23 @@ end</code></pre>
 
     <p class="text-gray-400 mb-6">
         The blob route also sends <code>X-Content-Type-Options: nosniff</code>, and
-        <code>Content-Disposition: attachment</code> for anything that is not an inline-safe image, so a stored
-        file cannot be re-typed into a script by the browser.
+        <code>Content-Disposition: attachment</code> for anything that is not an inline-safe image or audio/video, so a stored
+        file cannot be re-typed into a script by the browser. Images other than SVG, and <code>audio/*</code> /
+        <code>video/*</code>, are <code>inline</code>: a podcast or a clip plays in the page&rsquo;s
+        <code>&lt;audio&gt;</code> / <code>&lt;video&gt;</code> and in the browser&rsquo;s own player.
+    </p>
+
+    <p class="text-gray-400 mb-6">
+        <strong class="text-white">Large SoliDB attachments are streamed.</strong> For a SoliDB attachment the blob route
+        does not load the file. The server relays it from SoliDB to the client chunk by chunk, so a 150&nbsp;MB episode
+        costs one chunk of memory per download. The client&rsquo;s <code>Range</code> is forwarded, so an audio player
+        that seeks gets <code>206 Partial Content</code> with only the bytes it asked for, and <code>416</code> past the
+        end. <code>HEAD</code> returns the size without the body. The blob id is the <code>ETag</code>, so a
+        revalidation is a <code>304</code> with no SoliDB round trip. An image with a transform in the query string
+        (<code>?w=</code>, <code>?fmt=</code>&hellip;) is still loaded and transformed. Disk and S3 attachments are sent
+        whole, without <code>Range</code>. The route uses
+        <a href="/docs/builtins/upload#solidb-blob-response" class="text-amber-400 hover:underline">solidb.blob_response</a>,
+        which your own actions can call too.
     </p>
 
     <h3 class="text-lg font-semibold text-white mb-3">Options</h3>

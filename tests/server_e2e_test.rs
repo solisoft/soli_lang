@@ -1022,3 +1022,199 @@ fn a_multipart_upload_round_trips_byte_for_byte() {
          base64 response path unchanged"
     );
 }
+
+/// A stand-in for SoliDB's blob endpoint, honouring one `Range` the way
+/// `GET /_api/blob/{db}/{collection}/{key}` does: `206` + `Content-Range`,
+/// `416` when unsatisfiable, the whole blob otherwise. Records each request
+/// head so a test can see what the server forwarded.
+struct StandInSolidb {
+    port: u16,
+    heads: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+fn stand_in_solidb(data: std::sync::Arc<Vec<u8>>) -> StandInSolidb {
+    use std::io::Write;
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind stand-in");
+    let port = listener.local_addr().unwrap().port();
+    let heads = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = heads.clone();
+    thread::spawn(move || {
+        for conn in listener.incoming() {
+            let Ok(mut conn) = conn else { continue };
+            let (data, seen) = (data.clone(), seen.clone());
+            thread::spawn(move || {
+                let mut head = Vec::new();
+                let mut byte = [0u8; 1];
+                while !head.ends_with(b"\r\n\r\n") {
+                    if conn.read(&mut byte).unwrap_or(0) == 0 {
+                        return;
+                    }
+                    head.push(byte[0]);
+                }
+                let head = String::from_utf8_lossy(&head).to_string();
+                seen.lock().unwrap().push(head.clone());
+                let range = head.lines().find_map(|l| {
+                    let (name, value) = l.split_once(':')?;
+                    name.eq_ignore_ascii_case("range")
+                        .then(|| value.trim().to_string())
+                });
+                let len = data.len();
+                let parsed = range.as_deref().and_then(|r| {
+                    solilang::serve::server_constants::parse_range_header(r, len as u64)
+                });
+                let (status, extra, body): (&str, String, &[u8]) = match (parsed, &range) {
+                    (Some((a, b)), _) => (
+                        "206 Partial Content",
+                        format!("Content-Range: bytes {a}-{b}/{len}\r\n"),
+                        &data[a as usize..=b as usize],
+                    ),
+                    (None, Some(_)) => (
+                        "416 Range Not Satisfiable",
+                        format!("Content-Range: bytes */{len}\r\n"),
+                        b"",
+                    ),
+                    (None, None) => ("200 OK", String::new(), &data[..]),
+                };
+                let reply = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/octet-stream\r\n\
+                     Accept-Ranges: bytes\r\n{extra}Content-Length: {}\r\n\
+                     Connection: close\r\n\r\n",
+                    body.len()
+                );
+                if conn.write_all(reply.as_bytes()).is_err() {
+                    return;
+                }
+                for chunk in body.chunks(64 * 1024) {
+                    if conn.write_all(chunk).is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+    StandInSolidb { port, heads }
+}
+
+fn body_bytes(resp: ureq::Response) -> Vec<u8> {
+    let mut buf = Vec::new();
+    resp.into_reader().read_to_end(&mut buf).unwrap();
+    buf
+}
+
+/// `solidb_blob_response` streams a multi-megabyte blob from SoliDB to the
+/// client: whole, by `Range` (forwarded as is), headers-only for `HEAD`, and
+/// `416` / `304` where they belong — with the application's representation
+/// headers on every answer and its internal marker on none.
+#[test]
+fn a_solidb_blob_streams_whole_and_by_range() {
+    let server = shared_server();
+    let data: std::sync::Arc<Vec<u8>> = std::sync::Arc::new(
+        (0..5 * 1024 * 1024 + 321)
+            .map(|i| (i % 251) as u8)
+            .collect(),
+    );
+    let solidb = stand_in_solidb(data.clone());
+    let url = server.url(&format!(
+        "/blob_stream?upstream=127.0.0.1:{}&key=ep1",
+        solidb.port
+    ));
+    let total = data.len();
+
+    let whole = ureq::get(&url)
+        .timeout(Duration::from_secs(20))
+        .call()
+        .expect("whole blob");
+    assert_eq!(whole.status(), 200);
+    assert_eq!(
+        whole.header("Content-Length"),
+        Some(total.to_string().as_str())
+    );
+    assert_eq!(whole.header("Accept-Ranges"), Some("bytes"));
+    assert_eq!(whole.header("Content-Type"), Some("audio/mpeg"));
+    assert_eq!(whole.header("Content-Disposition"), Some("inline"));
+    assert_eq!(whole.header("X-Content-Type-Options"), Some("nosniff"));
+    assert_eq!(whole.header("ETag"), Some("\"ep1\""));
+    assert_eq!(
+        whole.header("X-Soli-Blob-Stream"),
+        None,
+        "internal marker leaked"
+    );
+    assert!(body_bytes(whole) == *data, "the whole blob, byte for byte");
+
+    let (start, end) = (1024 * 1024 + 5, 3 * 1024 * 1024);
+    let part = ureq::get(&url)
+        .set("Range", &format!("bytes={start}-{end}"))
+        .timeout(Duration::from_secs(20))
+        .call()
+        .expect("ranged blob");
+    assert_eq!(part.status(), 206);
+    assert_eq!(
+        part.header("Content-Range"),
+        Some(format!("bytes {start}-{end}/{total}").as_str())
+    );
+    assert_eq!(
+        part.header("Content-Length"),
+        Some((end - start + 1).to_string().as_str())
+    );
+    assert!(
+        body_bytes(part) == data[start..=end],
+        "exactly the requested span"
+    );
+
+    let head = ureq::head(&url)
+        .timeout(Duration::from_secs(10))
+        .call()
+        .expect("HEAD");
+    assert_eq!(head.status(), 200);
+    assert_eq!(
+        head.header("Content-Length"),
+        Some(total.to_string().as_str())
+    );
+    assert_eq!(head.header("Accept-Ranges"), Some("bytes"));
+
+    match ureq::get(&url)
+        .set("Range", &format!("bytes={}-", total + 10))
+        .timeout(Duration::from_secs(10))
+        .call()
+    {
+        Err(ureq::Error::Status(416, resp)) => {
+            assert_eq!(
+                resp.header("Content-Range"),
+                Some(format!("bytes */{total}").as_str())
+            );
+        }
+        other => panic!("expected a 416, got {other:?}"),
+    }
+
+    let cached = ureq::get(&url)
+        .set("If-None-Match", "\"ep1\"")
+        .timeout(Duration::from_secs(10))
+        .call()
+        .expect("conditional GET");
+    assert_eq!(cached.status(), 304);
+
+    // Several ranges are not SoliDB's to serve: the client gets it all.
+    let multi = ureq::get(&url)
+        .set("Range", "bytes=0-1,5-6")
+        .timeout(Duration::from_secs(20))
+        .call()
+        .expect("multi-range");
+    assert_eq!(multi.status(), 200);
+    assert_eq!(body_bytes(multi).len(), total);
+
+    // What reached SoliDB: the instance's credentials on every request, the
+    // client's Range when it was one SoliDB serves, `bytes=0-0` for the HEAD
+    // probe, and nothing for the 304, which never left the server.
+    let heads = solidb.heads.lock().unwrap().clone();
+    assert_eq!(heads.len(), 5, "{heads:#?}");
+    let basic = "Basic c3RyZWFtZXI6czNjcmV0"; // streamer:s3cret
+    for head in &heads {
+        assert!(head.contains(basic), "{head}");
+    }
+    let lower: Vec<String> = heads.iter().map(|h| h.to_ascii_lowercase()).collect();
+    assert!(!lower[0].contains("range:"));
+    assert!(lower[1].contains(&format!("range: bytes={start}-{end}")));
+    assert!(lower[2].contains("range: bytes=0-0"));
+    assert!(lower[4].contains("/_api/blob/e2e/media/ep1"));
+    assert!(!lower[4].contains("range:"));
+}

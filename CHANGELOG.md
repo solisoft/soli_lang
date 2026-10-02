@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+* **uploads:** **SoliDB attachments are streamed, with `Range`.** The blob route (`AttachmentsController#show`) loaded a SoliDB attachment whole, as base64, into the worker before decoding it: a 150 MB podcast episode cost the file several times over per download, and an audio player that seeks downloaded it again each time. The server now fetches `GET /_api/blob/{db}/{collection}/{key}` itself, on the request's async task, and relays SoliDB's body to the client one chunk at a time, polled only as the client reads — memory per download is one chunk, and the worker is free as soon as the action returns. The client's `Range` is forwarded when it is one byte range (`bytes=a-b`, `a-`, `-n`); status (`200`/`206`/`416`), `Content-Length`, `Content-Range` and `Accept-Ranges` come from SoliDB, the representation headers from the route. Several ranges or a malformed one get the whole blob. The blob key is the `ETag`: a matching `If-None-Match` is a `304` without a SoliDB round trip, and `If-Range` keeps the range only for that tag. `HEAD` asks SoliDB for `bytes=0-0` and reports the full size without a body. A missing blob is `404`; an unreachable SoliDB, or any other answer, `502` (no response headers within 30 s: `504`; a body stalled 60 s on SoliDB's side is cut). The download client has no total timeout (the shared DB client's 10 s would cut an episode off) and never follows a redirect. Images with a transform in the query string are still loaded and transformed; disk and S3 attachments are unchanged (whole, no `Range`). [Docs](www/docs/models.md#attachments)
+* **solidb:** **`db.blob_response(collection, blob_id, req, headers?)`** (also `solidb_blob_response(db, …)`) — the same streamed answer for an application's own actions: it returns a response hash describing the blob, with `headers` as the representation headers (a `Content-Length` there is ignored). The worker parks the blob request and tags the hash with an internal header that is stripped before anything is sent; the stream happens only if the response that leaves the action (after `after_action` and middleware) is still that hash. [Docs](www/docs/builtins.md#solidbblob_responsecollection-blob_id-req-headers)
+
+### Changed
+
+* **uploads:** **Audio and video attachments play inline.** The blob route sends `Content-Disposition: inline` for `audio/*` and `video/*`, as for images, so an episode plays in the page's `<audio>` and in the browser's own player instead of downloading. A browser hands those types to its media pipeline, which never runs script, and `nosniff` still stops an upload that lies about its type from being rendered as HTML. `image/svg+xml` and every other type stay `attachment`. [Docs](www/docs/models.md#attachments)
+
 ## [2.14.1] - 2026-10-02
 
 ### Added

@@ -22,6 +22,13 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.14.1.</p>
 
+        <h3 id="unreleased-web" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Web</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">SoliDB attachments are streamed, with <code class="text-cyan-400">Range</code>.</strong> The blob route used to load a SoliDB attachment whole into the worker, as base64: a 150&nbsp;MB podcast episode cost the file several times over per download, and every seek downloaded it again. The server now relays the blob from SoliDB to the client one chunk at a time, as the client reads it, so memory per download is one chunk and the worker is free at once. The client&rsquo;s <code class="text-cyan-400">Range</code> is forwarded: an audio player that seeks gets <code class="text-cyan-400">206</code> with just the bytes it asked for, <code class="text-cyan-400">416</code> past the end. <code class="text-cyan-400">HEAD</code> returns the size without the body, and the blob id is the <code class="text-cyan-400">ETag</code>, so a revalidation is a <code class="text-cyan-400">304</code> that never reaches SoliDB. Image transforms, disk and S3 attachments are unchanged. <a href="/docs/database/models#uploaders" class="text-cyan-400 hover:underline">Attachments</a></li>
+            <li><strong class="text-white">Audio and video attachments play inline.</strong> <code class="text-cyan-400">audio/*</code> and <code class="text-cyan-400">video/*</code> are sent with <code class="text-cyan-400">Content-Disposition: inline</code>, so an episode plays in the page&rsquo;s <code class="text-cyan-400">&lt;audio&gt;</code> instead of downloading. SVG and every other type still download, and <code class="text-cyan-400">nosniff</code> stays.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">db.blob_response(collection, blob_id, req, headers)</code></strong> gives your own actions the same streamed answer: return it, with the headers you want on the blob, and the server does the rest. <a href="/docs/builtins/upload#solidb-blob-response" class="text-cyan-400 hover:underline">solidb.blob_response</a></li>
+        </ul>
+
     </section>
 
     <section id="v2-14-1" class="mb-16 scroll-mt-24">

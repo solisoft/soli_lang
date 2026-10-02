@@ -406,6 +406,7 @@ Every method the client exposes, grouped. Reference: [database.md](database.md#r
 | `db.store_blob(coll, base64, filename, content_type)` | Store binary; returns the new blob id. |
 | `db.get_blob(coll, blob_id)` | Fetch the payload as base64. |
 | `db.get_blob_metadata(coll, blob_id)` | Filename, content type, size — without the body. |
+| `db.blob_response(coll, blob_id, req, headers?)` | A response that streams the blob to the client, with `Range` (`206`/`416`), `HEAD` and `304`. Nothing is buffered. |
 | `db.delete_blob(coll, blob_id)` | Remove a blob. |
 
 **Global one-shot helpers** — stateless, take the host (and database) each call.

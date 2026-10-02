@@ -609,6 +609,16 @@ pub(super) fn assemble(
                 .unwrap_or_else(|_| Response::new(full(Bytes::from("stream init error"))));
         }
         WorkerResponse::Buffered(rd) => rd,
+        // Relayed by the async caller before it gets here (it needs an
+        // `.await`); reaching this arm is a wiring bug, not a client error.
+        WorkerResponse::Blob { .. } => {
+            eprintln!("[soli] blob stream response reached assemble(); replying 500");
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header("Server", "soliMVC")
+                .body(full(Bytes::from_static(b"Internal Server Error")))
+                .unwrap_or_else(|_| Response::new(full(Bytes::new())));
+        }
     };
     // Conditional-GET short-circuit: if the controller produced an
     // ETag matching the browser's If-None-Match, return 304 with

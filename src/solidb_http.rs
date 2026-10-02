@@ -920,6 +920,44 @@ impl SoliDBClient {
         })
     }
 
+    /// Where a raw blob download goes, and the credentials it carries: the URL
+    /// of `GET /_api/blob/{db}/{collection}/{key}` (every segment encoded) and
+    /// the one auth header [`Self::apply_auth`] would send.
+    ///
+    /// For a caller that sends the request itself — the attachment route
+    /// relays the body to the client as it arrives instead of buffering it
+    /// through [`Self::get_blob`].
+    pub fn blob_download_target(
+        &self,
+        collection: &str,
+        blob_id: &str,
+    ) -> Result<(String, Option<(String, String)>), SoliDBError> {
+        let db = self.get_db()?;
+        let url = format!(
+            "{}/_api/blob/{}/{}/{}",
+            self.base_url,
+            seg(db)?,
+            seg(collection)?,
+            seg(blob_id)?
+        );
+        Ok((url, self.auth_header()))
+    }
+
+    /// The credentials as a single header, in [`Self::apply_auth`]'s order.
+    fn auth_header(&self) -> Option<(String, String)> {
+        use base64::Engine as _;
+        if let Some(jwt) = &self.jwt_token {
+            Some(("Authorization".to_string(), format!("Bearer {}", jwt)))
+        } else if let Some(api_key) = &self.api_key {
+            Some(("x-api-key".to_string(), api_key.clone()))
+        } else if let (Some(u), Some(p)) = (&self.username, &self.password) {
+            let token = base64::engine::general_purpose::STANDARD.encode(format!("{u}:{p}"));
+            Some(("Authorization".to_string(), format!("Basic {token}")))
+        } else {
+            None
+        }
+    }
+
     /// Fetch blob metadata (the document that describes a blob — name, type,
     /// size, chunks, created). Also exposes `filename` and `content_type`
     /// aliases for callers written against the previous document-backed

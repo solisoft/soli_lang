@@ -5994,6 +5994,42 @@ Gets metadata for a blob without fetching the data.
 - `size` (Int) - File size in bytes
 - `created_at` (String) - Creation timestamp
 
+### solidb.blob_response(collection, blob_id, req, headers?)
+
+Answers a request with a blob **streamed** from SoliDB, with HTTP `Range`. Return its result from the action. Also callable as `solidb_blob_response(db, collection, blob_id, req, headers)`.
+
+`get_blob` loads the whole payload, as base64, into the worker. That is fine for an avatar. For a podcast episode or a video it costs the file several times over per download, and every seek downloads the file again. `blob_response` does no I/O on the worker. The server fetches `GET /_api/blob/{db}/{collection}/{key}` itself, with the instance's credentials, and relays the body one chunk at a time as the client reads it. Memory stays at one chunk whatever the blob's size, and the worker is free as soon as the action returns.
+
+- The client's `Range` is forwarded when it asks for one byte range (`bytes=a-b`, `bytes=a-`, `bytes=-n`). SoliDB answers `206` with `Content-Range`, or `416` when the range is past the end. Several ranges, or a malformed one, get the whole blob (`200`).
+- Status, `Content-Length`, `Content-Range` and `Accept-Ranges` come from SoliDB's answer. Your `headers` set everything else (`Content-Type`, `Content-Disposition`, `Cache-Control`…). A `Content-Length` you pass is ignored.
+- `ETag` is the blob key: a blob id names one set of bytes for good. A matching `If-None-Match` is answered `304` without a SoliDB round trip. `If-Range` keeps the range only when it carries that ETag.
+- `HEAD` sends the headers alone: the server asks SoliDB for `bytes=0-0` and reports the full size.
+- A missing blob is `404`. SoliDB unreachable, or any other answer from it, is `502`.
+
+**Parameters:**
+- `collection` (String) - Collection name
+- `blob_id` (String) - Blob ID
+- `req` (Hash) - The request (`req` in the action); its method and `Range` / `If-Range` / `If-None-Match` headers are read
+- `headers` (Hash, optional) - Response headers to send with the blob
+
+**Returns:** Hash - The response to return from the action
+
+**Example:**
+```soli
+def episode(req)
+  db = Solidb("localhost:6745", "myapp")
+  blob_id = Episode.find(params.id).audio_blob_id
+  db.blob_response("episodes", blob_id, req, {
+    "Content-Type":           "audio/mpeg",
+    "Content-Disposition":    "inline",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control":          "private, max-age=300"
+  })
+end
+```
+
+Attachments declared with `uploader` / `has_*_attached` (`service: "solidb"`) are already served this way by the framework's blob route. See [Models — Attachments](models#attachments).
+
 ### solidb.delete_blob(collection, blob_id)
 
 Deletes a blob from SolidB.

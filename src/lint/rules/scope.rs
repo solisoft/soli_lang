@@ -318,6 +318,7 @@ const WELL_KNOWN_GLOBALS: &[&str] = &[
     "solidb_ping",
     "solidb_auth",
     "solidb_query",
+    "solidb_blob_response",
     // Reflection and control
     "const_get",
     "defined",

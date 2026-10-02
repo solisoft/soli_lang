@@ -262,3 +262,17 @@ fn upload_echo(req: Any) -> Any {
         "body_base64": file["data"]
     };
 }
+
+// Stream a SoliDB blob through `solidb_blob_response`, as
+// `AttachmentsController#show` does. `upstream` is a stand-in SoliDB the
+// test runs itself, so the relay is exercised end to end without a database.
+fn blob_stream(req: Any) -> Any {
+    let client = Solidb("http://" + req["query"]["upstream"], "e2e");
+    solidb_auth(client, "streamer", "s3cret");
+    return solidb_blob_response(client, "media", req["query"]["key"], req, {
+        "Content-Type":           "audio/mpeg",
+        "Content-Disposition":    "inline",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control":          "private, max-age=300"
+    });
+}

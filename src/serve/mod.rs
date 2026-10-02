@@ -9,6 +9,7 @@
 mod accept;
 mod admin_auth;
 mod asset_cache;
+pub(crate) mod blob_stream;
 mod builtin_endpoints;
 pub mod camera;
 pub mod cors;
@@ -435,6 +436,13 @@ pub(crate) enum WorkerResponse {
         status: u16,
         headers: Vec<(String, String)>,
         rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    },
+    /// `solidb_blob_response`: the application's status line and headers,
+    /// plus the SoliDB blob the async side fetches and relays as the body.
+    /// See [`blob_stream`].
+    Blob {
+        headers: Vec<(String, String)>,
+        spec: blob_stream::BlobStreamSpec,
     },
 }
 
@@ -2620,6 +2628,12 @@ async fn handle_hyper_request(
             Err(response) => return Ok(*response),
         };
 
+    // A SoliDB blob is fetched and relayed here, on the async side, so the
+    // worker is not held for the length of the download.
+    if let WorkerResponse::Blob { headers, spec } = worker_response {
+        return Ok(blob_stream::respond(headers, spec).await);
+    }
+
     Ok(pipeline::assemble(
         worker_response,
         if_none_match.as_deref(),
@@ -4473,6 +4487,7 @@ where
                 method, path
             );
             crate::interpreter::builtins::streaming::clear_pending_stream();
+            blob_stream::clear_pending();
             panic_response()
         }
     }
@@ -4493,6 +4508,7 @@ fn dispatch_http_request(
     dev_mode: bool,
 ) {
     crate::interpreter::builtins::streaming::clear_pending_stream();
+    blob_stream::clear_pending();
 
     // Bound how long this request may spend *executing*. The hyper side already
     // gives up at RESPONSE_WAIT_TIMEOUT_SECS with a 504, but the worker stayed
@@ -4503,12 +4519,24 @@ fn dispatch_http_request(
 
     let method = data.method.to_string();
     let path = data.path.clone();
-    let resp_data = run_caught(
+    let mut resp_data = run_caught(
         || handle_request(interpreter, vm, &mut data, dev_mode),
         &method,
         &path,
     );
     slow_queries::end_unit();
+
+    // `solidb_blob_response` parked a blob for the async side to relay. The
+    // marker is stripped either way; the spec is used only when the response
+    // that came out of the action is still the one it was built for.
+    if let Some(spec) = blob_stream::claim(blob_stream::take_pending(), &mut resp_data.headers) {
+        crate::interpreter::builtins::streaming::clear_pending_stream();
+        let _ = data.response_tx.send(WorkerResponse::Blob {
+            headers: resp_data.headers,
+            spec,
+        });
+        return;
+    }
 
     match crate::interpreter::builtins::streaming::take_pending_stream() {
         Some(spec) => {

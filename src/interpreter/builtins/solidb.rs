@@ -514,6 +514,7 @@ fn register_solidb_class(env: &mut Environment) {
         ("get_blob", 2),
         ("get_blob_metadata", 2),
         ("delete_blob", 2),
+        ("blob_response", 3),
     ];
 
     for (method_name, min_args) in method_definitions {
@@ -524,7 +525,7 @@ fn register_solidb_class(env: &mut Environment) {
         // register variadic and validate arg counts inside the dispatch arm.
         let variadic = matches!(
             method_name,
-            "create_collection" | "query" | "create_columnar"
+            "create_collection" | "query" | "create_columnar" | "blob_response"
         );
         let registered_arity = if variadic { None } else { Some(arity) };
         // User-facing arity (without the implicit instance arg) for the
@@ -1435,6 +1436,47 @@ fn register_solidb_class(env: &mut Environment) {
                                 .map_err(|e| format!("Get blob metadata failed: {}", e))?;
                             Ok(metadata)
                         })
+                    }
+                    "blob_response" => {
+                        // (collection, blob_id, req[, headers]) -> a response
+                        // hash whose body the server streams from SoliDB,
+                        // with the client's Range. See `serve::blob_stream`.
+                        if args.len() > 5 {
+                            return Err(format!(
+                                "blob_response() expects 3 or 4 arguments (collection, blob_id, req[, headers]), got {}",
+                                args.len() - 1
+                            ));
+                        }
+                        let collection = match &args[1] {
+                            Value::String(s) => s.to_string(),
+                            other => {
+                                return Err(format!(
+                                    "blob_response() expects string collection, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let blob_id = match &args[2] {
+                            Value::String(s) => s.to_string(),
+                            other => {
+                                return Err(format!(
+                                    "blob_response() expects string blob_id, got {}",
+                                    other.type_name()
+                                ))
+                            }
+                        };
+                        let client =
+                            connected_client(&host, &database, &auth_username, &auth_password)?;
+                        let (url, auth) = client
+                            .blob_download_target(&collection, &blob_id)
+                            .map_err(|e| format!("blob_response() failed: {}", e))?;
+                        crate::serve::blob_stream::blob_response(
+                            url,
+                            auth,
+                            &blob_id,
+                            &args[3],
+                            args.get(4),
+                        )
                     }
                     "delete_blob" => {
                         let collection = match &args[1] {

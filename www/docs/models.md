@@ -1075,7 +1075,21 @@ type".
 
 The blob route also sends `X-Content-Type-Options: nosniff`, and
 `Content-Disposition: attachment` for anything that is not an inline-safe
-image, so a stored file cannot be re-typed into a script by the browser.
+image or audio/video, so a stored file cannot be re-typed into a script by the browser.
+Images other than SVG, and `audio/*` / `video/*`, are `inline`: a podcast or a
+clip plays in the page's `<audio>` / `<video>` and in the browser's own player.
+
+**Large SoliDB attachments are streamed.** For a SoliDB attachment the blob
+route does not load the file. The server relays it from SoliDB to the client
+chunk by chunk, so a 150 MB episode costs one chunk of memory per download.
+The client's `Range` is forwarded, so an audio player that seeks gets
+`206 Partial Content` with only the bytes it asked for, and `416` past the end.
+`HEAD` returns the size without the body. The blob id is the `ETag`, so a
+revalidation is a `304` with no SoliDB round trip. An image with a transform
+in the query string (`?w=`, `?fmt=`…) is still loaded and transformed. Disk and
+S3 attachments are sent whole, without `Range`. The route uses
+[`solidb.blob_response`](builtins#solidbblob_responsecollection-blob_id-req-headers),
+which your own actions can call too.
 
 The older `uploader(name, options)` form still works and still defaults to SoliDB blobs (`service: "solidb"`). Same generated methods: `attach_<field>`, `detach_<field>`, `<field>_url` / `<field>_urls`.
 

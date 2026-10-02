@@ -194,6 +194,31 @@ let blob_id = db.store_blob("avatars", image_data_base64, "photo.jpg", "image/jp
                 <p class="text-gray-400 mb-2">Returns: Hash with <code class="text-orange-400">_key</code>, <code class="text-orange-400">filename</code>, <code class="text-orange-400">content_type</code>, <code class="text-orange-400">size</code>, <code class="text-orange-400">created_at</code></p>
             </div>
             
+            <div id="solidb-blob-response" class="bg-[#171412] rounded-xl border border-gray-700 p-6 scroll-mt-24">
+                <h3 class="text-lg font-semibold text-white mb-2">solidb.blob_response(collection, blob_id, req, headers?)</h3>
+                <p class="text-gray-400 mb-4">Answers a request with a blob <strong class="text-white">streamed</strong> from SoliDB, with HTTP <code class="text-orange-400">Range</code>. Return its result from the action. Also callable as <code class="text-orange-400">solidb_blob_response(db, collection, blob_id, req, headers)</code>.</p>
+                <p class="text-gray-400 mb-4"><code class="text-orange-400">get_blob</code> loads the whole payload, as base64, into the worker &mdash; fine for an avatar, but a podcast episode or a video costs the file several times over per download, and every seek downloads it again. <code class="text-orange-400">blob_response</code> does no I/O on the worker: the server fetches <code class="text-orange-400">GET /_api/blob/{db}/{collection}/{key}</code> itself, with the instance&rsquo;s credentials, and relays the body one chunk at a time as the client reads it. Memory stays at one chunk whatever the blob&rsquo;s size, and the worker is free as soon as the action returns.</p>
+                <ul class="text-gray-300 space-y-1 ml-4 mb-4">
+                    <li>The client&rsquo;s <code class="text-orange-400">Range</code> is forwarded when it asks for one byte range (<code class="text-orange-400">bytes=a-b</code>, <code class="text-orange-400">bytes=a-</code>, <code class="text-orange-400">bytes=-n</code>). SoliDB answers <code class="text-orange-400">206</code> with <code class="text-orange-400">Content-Range</code>, or <code class="text-orange-400">416</code> past the end. Several ranges, or a malformed one, get the whole blob (<code class="text-orange-400">200</code>).</li>
+                    <li>Status, <code class="text-orange-400">Content-Length</code>, <code class="text-orange-400">Content-Range</code> and <code class="text-orange-400">Accept-Ranges</code> come from SoliDB&rsquo;s answer. Your <code class="text-orange-400">headers</code> set everything else (<code class="text-orange-400">Content-Type</code>, <code class="text-orange-400">Content-Disposition</code>, <code class="text-orange-400">Cache-Control</code>&hellip;). A <code class="text-orange-400">Content-Length</code> you pass is ignored.</li>
+                    <li><code class="text-orange-400">ETag</code> is the blob key: a blob id names one set of bytes for good. A matching <code class="text-orange-400">If-None-Match</code> is a <code class="text-orange-400">304</code> without a SoliDB round trip; <code class="text-orange-400">If-Range</code> keeps the range only when it carries that ETag.</li>
+                    <li><code class="text-orange-400">HEAD</code> sends the headers alone: the server asks SoliDB for <code class="text-orange-400">bytes=0-0</code> and reports the full size.</li>
+                    <li>A missing blob is <code class="text-orange-400">404</code>; SoliDB unreachable, or any other answer from it, is <code class="text-orange-400">502</code>.</li>
+                </ul>
+                <p class="text-gray-400 mb-2">Returns: Hash - the response to return from the action</p>
+                <pre class="text-sm text-gray-300 overflow-x-auto"><code>def episode(req)
+  db = Solidb("localhost:6745", "myapp")
+  blob_id = Episode.find(params.id).audio_blob_id
+  db.blob_response("episodes", blob_id, req, {
+    "Content-Type":           "audio/mpeg",
+    "Content-Disposition":    "inline",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control":          "private, max-age=300"
+  })
+end</code></pre>
+                <p class="text-gray-400 mt-4">Attachments declared with <code class="text-orange-400">uploader</code> / <code class="text-orange-400">has_*_attached</code> (<code class="text-orange-400">service: "solidb"</code>) are already served this way by the framework&rsquo;s blob route. See <a href="/docs/database/models#uploaders" class="text-amber-400 hover:underline">Models &mdash; Uploaders</a>.</p>
+            </div>
+
             <div class="bg-[#171412] rounded-xl border border-gray-700 p-6">
                 <h3 class="text-lg font-semibold text-white mb-2">solidb.delete_blob(collection, blob_id)</h3>
                 <p class="text-gray-400 mb-4">Deletes a blob from SolidB.</p>

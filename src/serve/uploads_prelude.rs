@@ -302,6 +302,7 @@ class AttachmentsController < Controller
         return halt(404, "Not found") if blob_id.nil?
 
         service = config["service"] || "solidb"
+        query   = req["query"] ?? {}
         meta = null
         b64 = null
         if service == "disk" || service == "s3"
@@ -312,7 +313,22 @@ class AttachmentsController < Controller
         else
             client = __soli_resolve_solidb_client()
             meta   = solidb_get_blob_metadata(client, config["collection"], blob_id)
-            b64    = solidb_get_blob(client, config["collection"], blob_id)
+            ct     = meta["content_type"] ?? "application/octet-stream"
+
+            # Unless an image transform needs the decoded pixels, the blob is
+            # streamed from SoliDB to the client by the server, chunk by chunk,
+            # with the client's `Range` forwarded — an audio player seeking in a
+            # 150 MB episode gets the bytes it asked for, and no worker holds
+            # the file. HEAD gets the headers alone.
+            unless ct.starts_with("image/") && this._has_image_transforms(query)
+                return solidb_blob_response(client, config["collection"], blob_id, req, {
+                    "Content-Type":           ct,
+                    "Content-Disposition":    this._disposition(ct),
+                    "X-Content-Type-Options": "nosniff",
+                    "Cache-Control":          "private, max-age=300"
+                })
+            end
+            b64 = solidb_get_blob(client, config["collection"], blob_id)
         end
 
         # Apply image transforms if any are present in the query string. The
@@ -320,27 +336,18 @@ class AttachmentsController < Controller
         # requests with the same params hit the browser cache and don't pay
         # for re-transformation. Disabled if the stored content-type isn't
         # an image — we just stream the raw bytes back.
-        query    = req["query"] ?? {}
         ct       = meta["content_type"] ?? "application/octet-stream"
         wants_xf = ct.starts_with("image/") && this._has_image_transforms(query)
         if wants_xf
             return this._render_transformed(b64, ct, query)
         end
 
-        # This route serves attacker-supplied bytes from the application's own
-        # origin, so two headers are not optional. `nosniff` stops a browser
-        # re-typing a blob into something executable, and anything that isn't
-        # an image the page means to render inline is forced to download.
-        # `image/svg+xml` counts as executable, not as an image.
-        let disposition = "attachment"
-        disposition = "inline" if ct.starts_with("image/") && ct != "image/svg+xml"
-
         {
             "status":  200,
             "headers": {
                 "Content-Type":           ct,
                 "Content-Length":         str(meta["size"]),
-                "Content-Disposition":    disposition,
+                "Content-Disposition":    this._disposition(ct),
                 "X-Content-Type-Options": "nosniff",
                 "Cache-Control":          "private, max-age=300"
             },
@@ -350,6 +357,24 @@ class AttachmentsController < Controller
             # attachment, transient, per concurrent download.
             "body_base64": b64
         }
+    end
+
+    # This route serves attacker-supplied bytes from the application's own
+    # origin, so two headers are not optional. `nosniff` (set next to this
+    # wherever it is used) stops a browser re-typing a blob into something
+    # executable, and anything the page does not mean to render inline is
+    # forced to download.
+    #
+    # Inline: images, except `image/svg+xml`, which counts as executable — it
+    # can carry script — not as an image. And audio/video, so a podcast plays
+    # in the page's `<audio>` and in the browser's own player: a browser hands
+    # those to its media pipeline, which decodes and never runs script, and
+    # with `nosniff` an upload that lies about being `audio/mpeg` is refused
+    # as media rather than rendered as HTML.
+    def _disposition(ct)
+        return "inline" if ct.starts_with("image/") && ct != "image/svg+xml"
+        return "inline" if ct.starts_with("audio/") || ct.starts_with("video/")
+        "attachment"
     end
 
     def create(req)
@@ -732,5 +757,29 @@ mod tests {
                 .parse()
                 .unwrap_or_else(|e| panic!("{label} failed to parse: {e}"));
         }
+    }
+
+    /// What `show` sends as `Content-Disposition`: media plays in place,
+    /// images render, and everything else — SVG included — downloads.
+    #[test]
+    fn audio_and_video_are_inline_and_svg_still_downloads() {
+        let mut interpreter = Interpreter::new();
+        define_uploads_prelude(&mut interpreter).expect("prelude loads");
+        interpret_source(
+            &mut interpreter,
+            r#"
+__c = AttachmentsController.new()
+__dispositions = [
+    "audio/mpeg", "audio/mp4", "video/mp4", "image/png",
+    "image/svg+xml", "text/html", "application/pdf"
+].map(fn(ct) __c._disposition(ct)).join(",")
+"#,
+        )
+        .expect("snippet runs");
+        let got = interpreter.global_env().borrow().get("__dispositions");
+        assert_eq!(
+            got.map(|v| v.to_string()).as_deref(),
+            Some("inline,inline,inline,inline,attachment,attachment,attachment")
+        );
     }
 }

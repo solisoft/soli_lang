@@ -559,6 +559,15 @@ async fn handle_replay(id: &str, request_tx: &WorkerSender) -> Response<Response
     // small) and tag it so the dev bar can show a replay badge.
     let (status, headers, body) = match worker_response {
         WorkerResponse::Buffered(rd) => (rd.status, rd.headers, rd.body),
+        // A blob is relayed as it would be live; only the replay badge is added.
+        WorkerResponse::Blob { headers, spec } => {
+            let mut response = super::blob_stream::respond(headers, spec).await;
+            response.headers_mut().insert(
+                "X-Soli-Replay",
+                hyper::header::HeaderValue::from_static("1"),
+            );
+            return response;
+        }
         WorkerResponse::Stream {
             status,
             headers,

@@ -31,3 +31,4 @@ get("/scopes", "scopes#index");
 get("/locale/set", "api#locale_set");
 get("/locale/read", "api#locale_read");
 post("/upload_echo", "api#upload_echo");
+get("/blob_stream", "api#blob_stream");

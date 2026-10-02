@@ -17,7 +17,7 @@ For request-edge knobs (`SOLI_TRUST_PROXY`, body size, CSRF tokens) see [Server 
 | `/_metrics` behind a proxy | Without `SOLI_METRICS_TOKEN`, refused (404) when the request carries `X-Forwarded-For` / `X-Real-IP` / `Forwarded` or `trust_proxy` is on |
 | Request body budget | Bodies are charged against `SOLI_MAX_INFLIGHT_BODY_BYTES` as they arrive, and one client may hold at most `SOLI_BODY_BUDGET_PER_IP_BYTES` of it (a quarter by default — behind a proxy, turn trust proxy on or every client shares the proxy's quarter); a body stalled `SOLI_BODY_IDLE_TIMEOUT_SECS` (10 s) between frames is a 408 |
 | Request body cap | 8 MiB (`SOLI_MAX_BODY_SIZE`); 413 when exceeded |
-| Attachment types | Default allowlist excludes `text/html`, SVG, XML; blob route sends `nosniff` + `Content-Disposition: attachment` for non-images |
+| Attachment types | Default allowlist excludes `text/html`, SVG, XML; blob route sends `nosniff` + `Content-Disposition: attachment` for anything but images (not SVG) and audio/video |
 | SQL TLS | Postgres/MySQL `sslmode` / `ssl-mode` via rustls; default `prefer`. Outside `--dev`, a one-time warning is logged when a connection to a non-local host uses `disable`, `prefer` or `require` |
 | Panic containment | A panicking handler is a 500; the worker stays up (`catch_unwind`) |
 | Log redaction | Credential-looking params, binds, locals (and the data passed to a failing `render()`), and HTTP URLs are `[REDACTED]`; `api_key`, `api-key` and `apiKey` are one name |
