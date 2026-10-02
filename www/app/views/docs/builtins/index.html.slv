@@ -102,6 +102,10 @@
                 <span class="w-8 h-8 rounded bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-xs font-bold">KV</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">KV Store</span>
             </a>
+            <a href="/docs/builtins/es" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-teal-500/20 flex items-center justify-center text-teal-400 text-xs font-bold">ES</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">ES (event streaming)</span>
+            </a>
             <a href="/docs/builtins/rate-limit" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-rose-500/20 flex items-center justify-center text-rose-400 text-xs font-bold">RL</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Rate Limit</span>
@@ -279,6 +283,12 @@ and backtick syntax. Returns async results with stdout, stderr, and exit_code.</
                     <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">KV Store</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Full-featured key-value store with strings, counters, lists, sets, and hashes via SoliKV.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="/docs/builtins/es" class="group">
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">ES (event streaming)</h3>
+                </a>
+                <p class="text-gray-400 mt-2">Produce and consume on es, the Kafka-shaped event log, over its binary protocol; topics and consumer groups over HTTP.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/rate-limit" class="group">

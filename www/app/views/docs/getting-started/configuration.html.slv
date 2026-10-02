@@ -451,6 +451,26 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 OTEL_SERVICE_NAME=myapp s
     </section>
 
     <section class="mb-12">
+        <h2 class="text-2xl font-bold text-white mb-6">Event Streaming (ES)</h2>
+        <p class="text-gray-400 mb-4">Read by the <a href="/docs/builtins/es" class="text-amber-400 hover:underline"><code>ES</code> class</a>, per application; <code>ES.configure</code> overrides them at run time.</p>
+        <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-gray-300">
+                    <tr><th class="py-3 px-4">Variable</th><th class="py-3 px-4">Purpose</th><th class="py-3 px-4">Default</th></tr>
+                </thead>
+                <tbody class="divide-y divide-white/5 text-gray-400">
+                    <tr><td class="py-3 px-4"><code>ES_BROKER</code></td><td class="py-3 px-4">HTTP address of the es broker used by <code>ES</code>.</td><td class="py-3 px-4"><code>http://127.0.0.1:9000</code></td></tr>
+                    <tr><td class="py-3 px-4"><code>ES_BINARY</code></td><td class="py-3 px-4"><code>host:port</code> of the broker's binary listener; set, <code>ES</code> produces and consumes over the binary protocol.</td><td class="py-3 px-4">unset (HTTP only)</td></tr>
+                    <tr><td class="py-3 px-4"><code>ES_AUTH</code></td><td class="py-3 px-4">Bearer token for a broker running with <code>--auth required</code>.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>ES_GZIP</code></td><td class="py-3 px-4"><code>1</code> to ask for gzip frames on the binary protocol.</td><td class="py-3 px-4">off</td></tr>
+                    <tr><td class="py-3 px-4"><code>ES_CA_FILE</code></td><td class="py-3 px-4">PEM file of the CA that signed the broker's certificate.</td><td class="py-3 px-4">public roots</td></tr>
+                    <tr><td class="py-3 px-4"><code>ES_TIMEOUT</code></td><td class="py-3 px-4">Seconds before an <code>ES</code> request gives up.</td><td class="py-3 px-4"><code>30</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="mb-12">
         <h2 class="text-2xl font-bold text-white mb-6">S3</h2>
         <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5">
             <table class="w-full text-left text-sm">

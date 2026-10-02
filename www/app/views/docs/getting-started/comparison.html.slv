@@ -70,7 +70,7 @@
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Jobs &amp; mail</td>
-                        <td class="py-3 px-4 text-gray-400"><code>Job.perform_later/perform_in/perform_at/perform_now</code>, cron DSL, webhook jobs with HMAC signing &mdash; in-process engine with atomic claiming, retries with backoff, and lease-based crash recovery on any adapter (SolidB, Postgres, MySQL, SQLite); standalone <code>soli jobs</code> worker + <code>/__soli/jobs</code> dashboard; ActionMailer-style mailer with SMTP/STARTTLS, multipart, attachments, test mode</td>
+                        <td class="py-3 px-4 text-gray-400"><code>Job.perform_later/perform_in/perform_at/perform_now</code>, cron DSL, webhook jobs with HMAC signing &mdash; in-process engine with atomic claiming, retries with backoff, and lease-based crash recovery on any adapter (SolidB, Postgres, MySQL, SQLite); standalone <code>soli jobs</code> worker + <code>/__soli/jobs</code> dashboard; ActionMailer-style mailer with SMTP/STARTTLS, multipart, attachments, test mode; an event-log driver (<code>ES</code>) for <a href="/docs/builtins/es" class="text-amber-400 hover:underline">es</a> &mdash; Kafka-shaped topics, consumer groups and idempotent producers, produce/consume over its binary protocol</td>
                     </tr>
                     <tr>
                         <td class="py-3 px-4 text-white font-medium">Documents</td>

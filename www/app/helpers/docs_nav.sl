@@ -195,6 +195,7 @@ def docs_nav_sections()
         { "path": "/docs/builtins/i18n", "label": "I18n" },
         { "path": "/docs/builtins/cache", "label": "Cache" },
         { "path": "/docs/builtins/kv", "label": "KV Store" },
+        { "path": "/docs/builtins/es", "label": "ES (event streaming)" },
         { "path": "/docs/builtins/solidb", "label": "SolidB" },
         { "path": "/docs/builtins/rate-limit", "label": "Rate Limit" },
         { "path": "/docs/builtins/url", "label": "Url" },

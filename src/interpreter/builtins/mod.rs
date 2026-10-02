@@ -59,6 +59,8 @@ pub mod deflate;
 pub mod dotenv;
 pub mod encoding;
 pub mod env;
+#[cfg(feature = "es")]
+pub mod es;
 pub mod expectations;
 pub mod factories;
 pub mod fcm;
@@ -705,6 +707,8 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
 
     // Register KV builtins
     kv::register_kv_builtins(env);
+    #[cfg(feature = "es")]
+    es::register_es_builtins(env);
     native::register_native_builtins(env);
     app_links::register_app_links_builtins(env);
     apns::register_apns_builtins(env);

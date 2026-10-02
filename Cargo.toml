@@ -53,6 +53,7 @@ default = [
     "eui",
     "solidb-driver",
     "native",
+    "es",
 ]
 # Kitchen-sink alias (default set; the native SoliDB driver is now part of it).
 full = [
@@ -72,6 +73,7 @@ full = [
     "eui",
     "solidb-driver",
     "native",
+    "es",
 ]
 embedding = []
 # LLM text completion via an OpenAI-compatible chat/completions endpoint
@@ -139,6 +141,9 @@ native = [
     "dep:cranelift-jit",
     "dep:cranelift-native",
 ]
+# `ES`, the driver for es (github.com/solisoft/event_stream): produce and
+# consume over its binary protocol, topics and consumer groups over HTTP.
+es = ["dep:es-client"]
 # The EUI window inside the soli binary, for `soli desktop build --eui`:
 # winit, wgpu and the client crates. Servers do not need it.
 eui-desktop = ["eui", "dep:eui-client"]
@@ -396,6 +401,11 @@ soli-codegraph = { path = "codegraph", optional = true }
 #   eui-client = { path = "../eui/crates/eui-client" }
 eui-proto = { git = "https://github.com/solisoft/eui", rev = "5bf0354", optional = true }
 eui-client = { git = "https://github.com/solisoft/eui", rev = "5bf0354", optional = true }
+# The blocking binary-protocol client of es, pinned like eui. To work on it
+# locally, patch it in the untracked .cargo/config.toml rather than here:
+#   [patch."https://github.com/solisoft/event_stream"]
+#   es-client = { path = "../es/crates/es-client" }
+es-client = { git = "https://github.com/solisoft/event_stream", rev = "5e2a6ea", optional = true }
 ring = { version = "0.17", optional = true }
 blake3 = { version = "1", optional = true }
 # `.soligraph.toml` config for `soli graph build` on non-Soli repos.

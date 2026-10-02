@@ -108,7 +108,7 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 <a href="/docs/blog/event-streaming-with-es"><img src="/images/blog/event-streaming-es.jpg" style="width:100%;border-radius:8px;border:1px solid #30363d;" alt="Event Streaming with es"></a>
 <br>
 <strong><a href="/docs/blog/event-streaming-with-es">Event Streaming from Soli with `es`</a></strong><br>
-<small>Wire a lightweight Kafka-shaped broker to Soli using simple HTTP and background jobs.</small>
+<small>Wire a lightweight Kafka-shaped broker to Soli with the built-in ES driver, over HTTP or its binary protocol.</small>
 </div>
 
 <div>
@@ -175,7 +175,7 @@ Welcome to the SoliLang blog. Here you'll find tutorials, guides, and updates ab
 - [Real Domain Modeling with Soli](/docs/blog/advanced-modeling) - Named scopes, soft deletes, and transactions — the model layer tools that keep growing systems maintainable.
 - [Soli Projects Are Designed for AI Coding Agents](/docs/blog/ai-coding-agents) - How `soli new` produces projects that Claude Code, Cursor, Aider and other agents can work in safely and effectively from the first commit.
 - [Background Jobs & Cron in Soli](/docs/blog/background-jobs-and-cron) - SolidB-backed queues, signed webhook callbacks, `perform_later` / `perform_in`, declarative cron on the class, idempotency patterns, hot reload in dev, and zero extra daemons.
-- [Event Streaming from Soli with `es`](/docs/blog/event-streaming-with-es) - Wire es — a single-binary, HTTP+JSON, Kafka-shaped broker — to a Soli app end-to-end: produce events from a controller, drain them with a consumer-group-backed background job, and resume cleanly after a restart
+- [Event Streaming from Soli with `es`](/docs/blog/event-streaming-with-es) - Wire es — a single-binary, Kafka-shaped broker — to a Soli app with the built-in ES driver: produce events from a controller, make retries idempotent, drain them with a consumer group, and resume cleanly after a restart
 - [Building a CRUD Datatable with HTMx, Alpine, and Soli](/docs/blog/htmx-datatable) - Search, sort, pagination, inline edit, role select, status toggle, modal add, and toast on save — one model, one controller, two partials, zero hand-written JavaScript
 - [Semantic Search with `.similar()` in Soli](/docs/blog/similar-search) - Add AI-native vector similarity search to any query chain with `.similar()`, ranking results by semantic relevance with cosine similarity
 - [No Build, No Dependency: Why It Matters for Security and Simplicity](/docs/blog/no-build-no-dependency) - Why Soli ships as a single binary with no package manager, no bundler, and no build step — and what that means for supply-chain security and operational simplicity

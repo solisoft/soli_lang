@@ -5292,6 +5292,94 @@ A blocked call returns an error rather than running the command. To enable raw a
 
 ---
 
+## ES Class
+
+The driver for [es](https://es.solisoft.net), a Kafka-shaped event log in one binary: topics with partitions, consumer groups, idempotent producers. Produce, consume and ping go over es's **binary protocol** when `ES_BINARY` names its listener — one long-lived connection per worker, raw bytes, no JSON — and over its HTTP API otherwise. Topics and consumer groups exist only on the HTTP API, and go there.
+
+**Configuration** (per application, like `KV`):
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `ES_BROKER` | The broker's HTTP address | `http://127.0.0.1:9000` |
+| `ES_BINARY` | `host:port` of its binary listener (`es-broker --bind-binary`); unset, everything goes over HTTP | unset |
+| `ES_AUTH` | Bearer token, when the broker runs with `--auth required` | unset |
+| `ES_GZIP` | `1` to ask for gzip frames on the binary protocol | off |
+| `ES_CA_FILE` | PEM file of the CA that signed the broker's certificate, for a private CA | public roots |
+| `ES_TIMEOUT` | Seconds before a request gives up | `30` |
+
+`ES_BROKER` and `ES_AUTH` are the names the `es` CLI reads. With an `https://` broker, the binary protocol uses TLS too, as the broker does. `ES.configure({"url": …, "binary": …, "token": …, "gzip": …, "ca_file": …, "timeout": …})` changes them at run time and drops the open connections; `ES.config()` returns them, with `"token_set"` in place of the token and `"transport"` (`"binary"` or `"http"`).
+
+### Producing
+
+- **ES.emit(topic, key, value, options?)** — Append one record. `value` is sent as it is when it is a String and as JSON otherwise; `key` may be `nil`. Options: `"partition"`, `"producer_id"`, `"sequence"`. Returns `{"partition", "offset", "duplicate"}`.
+- **ES.produce(topic, records, options?)** — Append several records in one request. A record is a String, or a Hash with `"value"` and optionally `"key"`, `"partition"`, `"sequence"` — so a Hash payload is wrapped: `[{"value": {"n": 1}}]`, as a bare `{"n": 1}` is read as a record and refused. Option: `"producer_id"`. Returns one result per record, in order.
+
+Records with the same key land in the same partition, which is how per-key ordering is kept. With a `producer_id`, every record needs a `sequence`, strictly increasing per producer and partition; a retry of an acknowledged record returns its original offset with `"duplicate": true` instead of appending it twice.
+
+```soli
+# POST /orders
+def create(req)
+  @order = Order.create(permit(params, {"total": true}))
+  ES.emit("orders", @order.user_id.to_s, {"event": "order.created", "order_id": @order.id})
+  redirect(order_path(@order))
+end
+```
+
+### Consuming
+
+- **ES.consume(topic, partition, offset, options?)** — Read from an offset. Options: `"max_records"` (100), `"max_bytes"` (1 MiB), `"encoding"`. Returns `{"records", "next_offset", "high_watermark"}`; each record is `{"partition", "offset", "timestamp_ms", "key", "value"}`, `key` `nil` when the record has none.
+- **ES.group_consume(group, topic, partition, options?)** — Read from the group's committed offset. Same options and result.
+- **ES.commit(group, topic, partition, offset)** — Record the group's position. Returns `true`.
+- **ES.offsets(group)** — The group's committed offsets: `{"orders": {0: 12, 1: 40}}`.
+
+Values are UTF-8 text, as Soli strings are. A record that is not — written by another client over the binary protocol — comes back with its invalid bytes replaced, unless you ask for `{"encoding": "base64"}`, which returns keys and values base64-encoded.
+
+A drain that resumes where it stopped, committing after the records are handled (at-least-once):
+
+```soli
+def drain(group, topic, partition)
+  while true
+    page = ES.group_consume(group, topic, partition, {"max_records": 500})
+    break if page["records"].length == 0
+
+    page["records"].each { |record| handle(JSON.parse(record["value"])) }
+    ES.commit(group, topic, partition, page["next_offset"])
+  end
+end
+```
+
+### Consumer groups
+
+- **ES.join(group, topics, member_id?)** — Join, and get partitions to read: `{"member_id", "generation", "assignment": [{"topic", "partition"}]}`. Pass the `member_id` back when re-joining.
+- **ES.heartbeat(group, member_id, generation)** — `{"status": "ok"}`, or `"rebalance_required"` / `"unknown_member"`: stop, and join again.
+- **ES.assignment(group, member_id)** — The current assignment.
+- **ES.leave(group, member_id)** — Leave, so the broker rebalances at once instead of waiting for the heartbeat to time out. Returns `true`.
+
+### Topics
+
+- **ES.topics** — Topic names.
+- **ES.create_topic(name, options?)** — Options: `"partitions"` (1), `"retention_ms"`, `"retention_bytes"`, `"cleanup_policy"` (`"delete"`, `"compact"`, `"compact,delete"`), `"segment_bytes"`, `"tombstone_retention_ms"`. Returns `{"name", "partitions"}`.
+- **ES.topic(name)** — Partitions (start and end offsets, sizes) and configuration.
+- **ES.topic_config(name)**, **ES.update_topic_config(name, patch)** — Read and change the configuration (same keys as `create_topic`, without `"partitions"`).
+- **ES.delete_topic(name)** — Needs an admin key.
+- **ES.ping** — `true`, or raises if the broker does not answer.
+
+### Errors
+
+Every failure raises, naming the call: `ES.consume: topic 'orders' not found (404)`, `ES.emit: cannot connect to the es binary listener at 127.0.0.1:9001: Connection refused`, `ES.produce: the token was refused — check ES_AUTH`. An unknown option key raises too. A produce whose connection breaks is not retried, since the broker may have appended before the break; use a `producer_id` to make retries safe.
+
+### Performance
+
+Measured on a Ryzen 9 9950X with the broker and a single-threaded Soli script pinned to separate cores, broker fsyncing every 1 000 records; median of 3 runs:
+
+| | binary | HTTP |
+|---|---:|---:|
+| `ES.emit`, one record per call | 51 200 /s (19.5 µs) | 37 700 /s (26.5 µs) |
+| `ES.produce`, 100 records per call | 774 000 records/s | 521 000 records/s |
+| `ES.consume`, 1 000 records per page | 1.40 M records/s | 1.15 M records/s |
+
+The binary protocol is 1.2–1.5× faster from Soli, and the rest is the broker: with its default fsync after every record, `ES.emit` falls to 18 600/s (binary) and 16 200/s (HTTP). Batch with `ES.produce` when you can.
+
 ## RateLimiter Class
 
 Sliding window rate limiter for API protection and abuse prevention.

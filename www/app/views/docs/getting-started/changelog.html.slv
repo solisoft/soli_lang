@@ -22,6 +22,10 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.12.1.</p>
 
+        <h3 id="unreleased-realtime" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Real-time</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">ES</code>, a driver for es, the Kafka-shaped event log.</strong> <code class="text-cyan-400">ES.emit</code> and <code class="text-cyan-400">ES.produce</code> append records (a Hash value is sent as JSON; a <code class="text-cyan-400">producer_id</code> and <code class="text-cyan-400">sequence</code> make retries idempotent), <code class="text-cyan-400">ES.consume</code> reads a page from an offset, and <code class="text-cyan-400">ES.group_consume</code> / <code class="text-cyan-400">ES.commit</code> / <code class="text-cyan-400">ES.offsets</code> and <code class="text-cyan-400">ES.join</code> / <code class="text-cyan-400">heartbeat</code> / <code class="text-cyan-400">leave</code> drive consumer groups; topics are created, described, reconfigured and deleted from Soli too. With <code class="text-cyan-400">ES_BINARY</code> naming the broker&rsquo;s binary listener, produce and consume use es&rsquo;s binary protocol over pooled connections &mdash; from a single-threaded script, 51&nbsp;200 single-record emits a second against 37&nbsp;700 over HTTP, and 774k against 521k records a second in batches of 100. Without it everything goes over HTTP. Configured by <code class="text-cyan-400">ES_BROKER</code> and <code class="text-cyan-400">ES_AUTH</code>, the names the <code class="text-cyan-400">es</code> CLI reads; every error names the call. <a href="/docs/builtins/es" class="text-cyan-400 hover:underline">ES</a></li>
+        </ul>
     </section>
 
     <section id="v2-12-1" class="mb-16 scroll-mt-24">

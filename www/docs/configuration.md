@@ -459,6 +459,19 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLIKV_TOKEN` | SoliKV auth token. | unset |
 | `SOLI_KV_ALLOW_ADMIN` | Set to `1`/`true`/`yes` to lift the denylist on destructive/admin RESP commands (`FLUSHALL`, `FLUSHDB`, `KEYS`, `SCAN`, `CONFIG`, `DEBUG`, `SHUTDOWN`, `MONITOR`, `CLIENT`, `EVAL`, `SCRIPT`, etc.) reachable from `KV.cmd`, `KV.flushdb`, and `KV.keys`. Only set this on a trusted, non-user-facing process. | unset |
 
+## Event Streaming (ES)
+
+Read by the [`ES` class](builtins.md#es-class), per application; `ES.configure` overrides them at run time.
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `ES_BROKER` | HTTP address of the es broker used by `ES`. | `http://127.0.0.1:9000` |
+| `ES_BINARY` | `host:port` of the broker's binary listener; set, `ES` produces and consumes over the binary protocol. | unset (HTTP only) |
+| `ES_AUTH` | Bearer token for a broker running with `--auth required`. | unset |
+| `ES_GZIP` | `1` to ask for gzip frames on the binary protocol. | off |
+| `ES_CA_FILE` | PEM file of the CA that signed the broker's certificate. | public roots |
+| `ES_TIMEOUT` | Seconds before an `ES` request gives up. | `30` |
+
 ## S3
 
 | Variable | Purpose | Default |

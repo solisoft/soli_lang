@@ -661,6 +661,11 @@ def builtins_kv
   render_docs("docs/builtins/kv", "KV Store", "builtins", "kv")
 end
 
+# GET /docs/builtins/es — the es event-log driver
+def builtins_es
+  render_docs("docs/builtins/es", "ES — event streaming", "builtins", "es")
+end
+
 def builtins_solidb
   render_docs("docs/builtins/solidb", "Solidb", "builtins", "solidb")
 end

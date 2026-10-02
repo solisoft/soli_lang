@@ -1,0 +1,366 @@
+<div>
+    <!-- Hero -->
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-in Functions</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">ES</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">ES</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            The driver for <a href="https://es.solisoft.net" class="text-emerald-400 hover:underline">es</a>, a Kafka-shaped event log in one binary: topics with partitions, consumer groups, idempotent producers. Produce, consume and ping go over es's <strong class="text-white">binary protocol</strong> when <code class="text-emerald-400">ES_BINARY</code> names its listener &mdash; one long-lived connection per worker, raw bytes, no JSON &mdash; and over its HTTP API otherwise. Topics and consumer groups exist only on the HTTP API, and go there.
+        </p>
+    </div>
+
+    <section id="section-configuration" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Configuration</h2>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <p class="text-gray-400 mb-4">Per application, like <a href="/docs/builtins/kv" class="text-emerald-400 hover:underline">KV</a>. <code class="text-orange-400">ES_BROKER</code> and <code class="text-orange-400">ES_AUTH</code> are the names the <code class="text-orange-400">es</code> CLI reads. With an <code class="text-orange-400">https://</code> broker the binary protocol uses TLS too, as the broker does.</p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-400 border-b border-white/10">
+                            <th class="pb-3 pr-4">Variable</th>
+                            <th class="pb-3 pr-4">Description</th>
+                            <th class="pb-3">Default</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-300">
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-emerald-400">ES_BROKER</code></td>
+                            <td class="py-3 pr-4">The broker's HTTP address</td>
+                            <td class="py-3"><code class="text-orange-400">http://127.0.0.1:9000</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-emerald-400">ES_BINARY</code></td>
+                            <td class="py-3 pr-4"><code class="text-orange-400">host:port</code> of its binary listener (<code class="text-orange-400">es-broker --bind-binary</code>); unset, everything goes over HTTP</td>
+                            <td class="py-3"><span class="text-gray-500">—</span></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-emerald-400">ES_AUTH</code></td>
+                            <td class="py-3 pr-4">Bearer token, when the broker runs with <code class="text-orange-400">--auth required</code></td>
+                            <td class="py-3"><span class="text-gray-500">—</span></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-emerald-400">ES_GZIP</code></td>
+                            <td class="py-3 pr-4"><code class="text-orange-400">1</code> to ask for gzip frames on the binary protocol</td>
+                            <td class="py-3"><code class="text-orange-400">off</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-emerald-400">ES_CA_FILE</code></td>
+                            <td class="py-3 pr-4">PEM file of the CA that signed the broker's certificate, for a private CA</td>
+                            <td class="py-3"><code class="text-orange-400">public roots</code></td>
+                        </tr>
+                        <tr class="border-b border-white/5">
+                            <td class="py-3 pr-4"><code class="text-emerald-400">ES_TIMEOUT</code></td>
+                            <td class="py-3 pr-4">Seconds before a request gives up</td>
+                            <td class="py-3"><code class="text-orange-400">30</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <pre data-filename=".env" class="mt-4"><code class="language-bash text-sm">ES_BROKER=https://es.internal:9000
+ES_BINARY=es.internal:9001
+ES_AUTH=esk_mR3jH8cN...</code></pre>
+            <p class="text-gray-400 mt-4"><code class="text-orange-400">ES.configure(options)</code> changes them at run time &mdash; keys <code class="text-orange-400">"url"</code>, <code class="text-orange-400">"binary"</code>, <code class="text-orange-400">"token"</code>, <code class="text-orange-400">"gzip"</code>, <code class="text-orange-400">"ca_file"</code>, <code class="text-orange-400">"timeout"</code> &mdash; and drops the open connections. <code class="text-orange-400">ES.config()</code> returns them, with <code class="text-orange-400">"token_set"</code> in place of the token and <code class="text-orange-400">"transport"</code> (<code class="text-orange-400">"binary"</code> or <code class="text-orange-400">"http"</code>).</p>
+            <pre data-filename="Programmatic" class="mt-3"><code class="language-soli text-sm">ES.configure({"url": "http://127.0.0.1:9000", "binary": "127.0.0.1:9001"})
+print(ES.config()["transport"])   # binary</code></pre>
+        </div>
+    </section>
+
+    <section id="section-producing" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+            </span>
+            Producing
+        </h2>
+
+        <section id="def-emit" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-emit" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.emit(topic, key, value, options?)</code>
+                </a>
+                <p class="text-gray-400">Append one record. <code class="text-orange-400">value</code> is sent as it is when it is a String, and as JSON otherwise; <code class="text-orange-400">key</code> may be <code class="text-orange-400">nil</code>. Options: <code class="text-orange-400">&quot;partition&quot;</code>, <code class="text-orange-400">&quot;producer_id&quot;</code>, <code class="text-orange-400">&quot;sequence&quot;</code>. Returns <code class="text-orange-400">{partition, offset, duplicate}</code>.</p>
+                <pre data-filename="Example" class="mt-3"><code class="language-soli text-sm"># POST /orders
+def create(req)
+  @order = Order.create(permit(params, {&quot;total&quot;: true}))
+  ES.emit(&quot;orders&quot;, @order.user_id.to_s, {&quot;event&quot;: &quot;order.created&quot;, &quot;order_id&quot;: @order.id})
+  redirect(order_path(@order))
+end</code></pre>
+            </div>
+        </section>
+
+        <section id="def-produce" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-produce" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.produce(topic, records, options?)</code>
+                </a>
+                <p class="text-gray-400">Append several records in one request. A record is a String, or a Hash with <code class="text-orange-400">&quot;value&quot;</code> and optionally <code class="text-orange-400">&quot;key&quot;</code>, <code class="text-orange-400">&quot;partition&quot;</code>, <code class="text-orange-400">&quot;sequence&quot;</code> &mdash; so a Hash payload is wrapped, as a bare <code class="text-orange-400">{&quot;n&quot;: 1}</code> is read as a record and refused. Option: <code class="text-orange-400">&quot;producer_id&quot;</code>. Returns one result per record, in order.</p>
+                <pre data-filename="Example" class="mt-3"><code class="language-soli text-sm">ES.produce(&quot;orders&quot;, [
+  &quot;plain text&quot;,
+  {&quot;key&quot;: &quot;user-7&quot;, &quot;value&quot;: {&quot;event&quot;: &quot;order.paid&quot;, &quot;order_id&quot;: 12}}
+])</code></pre>
+            </div>
+        </section>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-2">Ordering and safe retries</h3>
+            <p class="text-gray-400">Records with the same key land in the same partition, which is how per-key ordering is kept. With a <code class="text-orange-400">producer_id</code>, every record needs a <code class="text-orange-400">sequence</code>, strictly increasing per producer and partition; a retry of an acknowledged record returns its original offset with <code class="text-orange-400">"duplicate": true</code> instead of appending it twice.</p>
+            <pre data-filename="Idempotent" class="mt-3"><code class="language-soli text-sm">ES.emit("orders", nil, payload, {"producer_id": "web-1", "sequence": order.id, "partition": 0})</code></pre>
+        </div>
+    </section>
+
+    <section id="section-consuming" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" />
+                </svg>
+            </span>
+            Consuming
+        </h2>
+
+        <section id="def-consume" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-consume" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.consume(topic, partition, offset, options?)</code>
+                </a>
+                <p class="text-gray-400">Read from an offset. Options: <code class="text-orange-400">&quot;max_records&quot;</code> (100), <code class="text-orange-400">&quot;max_bytes&quot;</code> (1 MiB), <code class="text-orange-400">&quot;encoding&quot;</code>. Returns <code class="text-orange-400">{records, next_offset, high_watermark}</code>; each record is <code class="text-orange-400">{partition, offset, timestamp_ms, key, value}</code>, <code class="text-orange-400">key</code> <code class="text-orange-400">nil</code> when the record has none.</p>
+                <pre data-filename="Example" class="mt-3"><code class="language-soli text-sm">page = ES.consume(&quot;orders&quot;, 0, 0, {&quot;max_records&quot;: 500})
+page[&quot;records&quot;].each { |record| print(record[&quot;value&quot;]) }</code></pre>
+            </div>
+        </section>
+
+        <section id="def-group_consume" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-group_consume" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.group_consume(group, topic, partition, options?)</code>
+                </a>
+                <p class="text-gray-400">Read from the group's committed offset. Same options and result as <code class="text-orange-400">ES.consume</code>.</p>
+            </div>
+        </section>
+
+        <section id="def-commit" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-commit" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.commit(group, topic, partition, offset)</code>
+                </a>
+                <p class="text-gray-400">Record the group's position. Returns <code class="text-orange-400">true</code>.</p>
+            </div>
+        </section>
+
+        <section id="def-offsets" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-offsets" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.offsets(group)</code>
+                </a>
+                <p class="text-gray-400">The group's committed offsets, partitions as Int keys.</p>
+                <pre data-filename="Example" class="mt-3"><code class="language-soli text-sm">ES.offsets(&quot;billing&quot;)   # =&gt; {&quot;orders&quot; =&gt; {0 =&gt; 12, 1 =&gt; 40}}</code></pre>
+            </div>
+        </section>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-2">A drain that resumes where it stopped</h3>
+            <p class="text-gray-400">Commit after the records are handled: a crash replays from the last commit (at-least-once).</p>
+            <pre data-filename="app/jobs/billing_drain_job.sl" class="mt-3"><code class="language-soli text-sm">def drain(group, topic, partition)
+  while true
+    page = ES.group_consume(group, topic, partition, {"max_records": 500})
+    break if page["records"].length == 0
+
+    page["records"].each { |record| handle(JSON.parse(record["value"])) }
+    ES.commit(group, topic, partition, page["next_offset"])
+  end
+end</code></pre>
+            <p class="text-gray-400 mt-3">Values are UTF-8 text, as Soli strings are. A record that is not &mdash; written by another client over the binary protocol &mdash; comes back with its invalid bytes replaced, unless you ask for <code class="text-orange-400">{"encoding": "base64"}</code>, which returns keys and values base64-encoded.</p>
+        </div>
+    </section>
+
+    <section id="section-groups" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M9 20H4v-2a3 3 0 015.356-1.857M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </span>
+            Consumer groups
+        </h2>
+        <p class="text-gray-400 mb-6">Let the broker share a topic's partitions among workers, and rebalance when one dies.</p>
+
+        <section id="def-join" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-join" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.join(group, topics, member_id?)</code>
+                </a>
+                <p class="text-gray-400">Join, and get partitions to read: <code class="text-orange-400">{member_id, generation, assignment}</code>, the assignment a list of <code class="text-orange-400">{topic, partition}</code>. Pass the <code class="text-orange-400">member_id</code> back when re-joining.</p>
+                <pre data-filename="Example" class="mt-3"><code class="language-soli text-sm">member = ES.join(&quot;billing&quot;, [&quot;orders&quot;])
+member[&quot;assignment&quot;].each { |tp| drain(&quot;billing&quot;, tp[&quot;topic&quot;], tp[&quot;partition&quot;]) }</code></pre>
+            </div>
+        </section>
+
+        <section id="def-heartbeat" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-heartbeat" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.heartbeat(group, member_id, generation)</code>
+                </a>
+                <p class="text-gray-400"><code class="text-orange-400">&quot;status&quot;</code> is <code class="text-orange-400">&quot;ok&quot;</code>, or <code class="text-orange-400">&quot;rebalance_required&quot;</code> / <code class="text-orange-400">&quot;unknown_member&quot;</code>: stop, and join again.</p>
+            </div>
+        </section>
+
+        <section id="def-assignment" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-assignment" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.assignment(group, member_id)</code>
+                </a>
+                <p class="text-gray-400">The current assignment.</p>
+            </div>
+        </section>
+
+        <section id="def-leave" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-leave" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.leave(group, member_id)</code>
+                </a>
+                <p class="text-gray-400">Leave, so the broker rebalances at once instead of waiting for the heartbeat to time out. Returns <code class="text-orange-400">true</code>.</p>
+            </div>
+        </section>
+    </section>
+
+    <section id="section-topics" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+            </span>
+            Topics
+        </h2>
+
+        <section id="def-topics" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-topics" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.topics</code>
+                </a>
+                <p class="text-gray-400">Topic names.</p>
+            </div>
+        </section>
+
+        <section id="def-create_topic" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-create_topic" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.create_topic(name, options?)</code>
+                </a>
+                <p class="text-gray-400">Options: <code class="text-orange-400">&quot;partitions&quot;</code> (1), <code class="text-orange-400">&quot;retention_ms&quot;</code>, <code class="text-orange-400">&quot;retention_bytes&quot;</code>, <code class="text-orange-400">&quot;cleanup_policy&quot;</code> (<code class="text-orange-400">&quot;delete&quot;</code>, <code class="text-orange-400">&quot;compact&quot;</code>, <code class="text-orange-400">&quot;compact,delete&quot;</code>), <code class="text-orange-400">&quot;segment_bytes&quot;</code>, <code class="text-orange-400">&quot;tombstone_retention_ms&quot;</code>. Returns <code class="text-orange-400">{name, partitions}</code>.</p>
+                <pre data-filename="Example" class="mt-3"><code class="language-soli text-sm">ES.create_topic(&quot;orders&quot;, {&quot;partitions&quot;: 3, &quot;retention_ms&quot;: 604800000})</code></pre>
+            </div>
+        </section>
+
+        <section id="def-topic" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-topic" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.topic(name)</code>
+                </a>
+                <p class="text-gray-400">Partitions (start and end offsets, sizes) and configuration.</p>
+            </div>
+        </section>
+
+        <section id="def-topic_config" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-topic_config" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.topic_config(name) / ES.update_topic_config(name, patch)</code>
+                </a>
+                <p class="text-gray-400">Read and change the configuration &mdash; the keys of <code class="text-orange-400">create_topic</code>, without <code class="text-orange-400">&quot;partitions&quot;</code>.</p>
+            </div>
+        </section>
+
+        <section id="def-delete_topic" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-delete_topic" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.delete_topic(name)</code>
+                </a>
+                <p class="text-gray-400">Delete a topic. Needs an admin key.</p>
+            </div>
+        </section>
+
+        <section id="def-ping" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-ping" class="flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">ES.ping</code>
+                </a>
+                <p class="text-gray-400"><code class="text-orange-400">true</code>, or raises if the broker does not answer.</p>
+            </div>
+        </section>
+    </section>
+
+    <section id="section-errors" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+                </svg>
+            </span>
+            Errors
+        </h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <p class="text-gray-400">Every failure raises, naming the call:</p>
+            <pre class="mt-3"><code class="text-sm">ES.consume: topic 'orders' not found (404)
+ES.emit: cannot connect to the es binary listener at 127.0.0.1:9001: Connection refused
+ES.produce: the token was refused — check ES_AUTH</code></pre>
+            <p class="text-gray-400 mt-3">An unknown option key raises too. A produce whose connection breaks is not retried, since the broker may have appended before the break; use a <code class="text-orange-400">producer_id</code> to make retries safe. A consume or ping that finds a pooled connection closed is tried once more on a fresh one.</p>
+        </div>
+    </section>
+
+    <section id="section-performance" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </span>
+            Performance
+        </h2>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <p class="text-gray-400 mb-4">A Ryzen 9 9950X, the broker and a single-threaded Soli script pinned to separate cores, the broker fsyncing every 1&nbsp;000 records; median of 3 runs:</p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-400 border-b border-white/10">
+                            <th class="pb-3 pr-4"></th>
+                            <th class="pb-3 pr-4 text-right">binary</th>
+                            <th class="pb-3 text-right">HTTP</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-gray-300">
+                        <tr class="border-b border-white/5"><td class="py-3 pr-4"><code class="text-emerald-400">ES.emit</code>, one record per call</td><td class="py-3 pr-4 text-right">51&nbsp;200/s (19.5&nbsp;µs)</td><td class="py-3 text-right">37&nbsp;700/s (26.5&nbsp;µs)</td></tr>
+                        <tr class="border-b border-white/5"><td class="py-3 pr-4"><code class="text-emerald-400">ES.produce</code>, 100 records per call</td><td class="py-3 pr-4 text-right">774&nbsp;000 records/s</td><td class="py-3 text-right">521&nbsp;000 records/s</td></tr>
+                        <tr><td class="py-3 pr-4"><code class="text-emerald-400">ES.consume</code>, 1&nbsp;000 records per page</td><td class="py-3 pr-4 text-right">1.40&nbsp;M records/s</td><td class="py-3 text-right">1.15&nbsp;M records/s</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-gray-400 mt-4">The binary protocol is 1.2&ndash;1.5&times; faster from Soli; the rest is the broker. With its default fsync after every record, <code class="text-orange-400">ES.emit</code> falls to 18&nbsp;600/s (binary) and 16&nbsp;200/s (HTTP). Batch with <code class="text-orange-400">ES.produce</code> when you can.</p>
+        </div>
+    </section>
+
+    <!-- See also -->
+    <section id="section-see-also" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">See also</h2>
+        <div class="grid sm:grid-cols-2 gap-4">
+            <a href="/docs/builtins/jobs" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:bg-white/10 transition-colors">
+                <div class="text-white font-semibold mb-1">Jobs</div>
+                <p class="text-gray-400 text-sm">Background jobs and cron &mdash; where a drain loop usually runs.</p>
+            </a>
+            <a href="/docs/blog/event-streaming-with-es" class="block rounded-xl bg-white/5 border border-white/10 p-5 hover:bg-white/10 transition-colors">
+                <div class="text-white font-semibold mb-1">Event streaming with es</div>
+                <p class="text-gray-400 text-sm">Running the broker, authentication and TLS, and an end-to-end order pipeline.</p>
+            </a>
+        </div>
+    </section>
+</div>

@@ -2787,6 +2787,27 @@ impl TypeEnvironment {
         }
         self.classes.insert("KV".to_string(), kv_class);
 
+        // ES — the es driver. Static methods only, arguments checked at run
+        // time (options hashes and either-typed records).
+        #[cfg(feature = "es")]
+        {
+            let mut es_class = ClassType::new("ES".to_string());
+            for name in crate::interpreter::builtins::es::ES_METHODS {
+                es_class.methods.insert(
+                    name.to_string(),
+                    MethodInfo {
+                        name: name.to_string(),
+                        params: vec![("args".to_string(), Type::Any)],
+                        return_type: Type::Any,
+                        is_private: false,
+                        is_protected: false,
+                        is_static: true,
+                    },
+                );
+            }
+            self.classes.insert("ES".to_string(), es_class);
+        }
+
         // Native class — Native.notify(channel, payload) -> Int (clients
         // reached), Native.subscribers(channel) -> Int,
         // Native.channel_token(channel) -> String.
