@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+* **crypto:** **`Crypto.hmac(message, key, algorithm)` takes `"sha512"` or `"sha1"`, and a binary key.** The third argument picks the digest (`"sha256"` by default, as before); `message` and `key` may be byte Arrays as well as Strings, so a key handed over as hex is passed as `Hex.decode(key)` — a String key is still its UTF-8 bytes. Payment gateways need both: Paybox signs its payment form with HMAC-SHA512 under the hex-decoded key. The standalone `hmac(message, key)` is unchanged (SHA-256, Strings). [Docs](www/docs/builtins.md#cryptohmacmessage-key-algorithm--hmacmessage-key)
+* **crypto:** **`Crypto.sha1(data)`**, hex, for protocols that still mandate SHA-1; String or byte Array. [Docs](www/docs/builtins.md#cryptosha1data)
+* **crypto:** **`RsaKey.verify(public_pem, message, signature, algorithm)`** checks an RSASSA-PKCS1-v1_5 signature (`openssl dgst -sign`, JWT RS256/RS512, Paybox's RSA-SHA1 server notification) with an SPKI or PKCS#1 public key: digest `"sha256"` (default), `"sha512"` or `"sha1"`; signature as base64 (standard or URL-safe) or bytes. A signature that does not verify returns `false`, whatever its shape; only an unreadable key or an unknown digest raises. The encoded message is rebuilt and compared in constant time rather than parsed. `RsaKey.public_from_pem` and `verify` are now declared to the type checker, so scripts using them type-check. [Docs](www/docs/builtins.md#rsakeyverifypublic_pem-message-signature-algorithm)
+
 ### Fixed
 
 * **eui:** **`eui_window` without a display says so.** On Linux and the BSDs, with neither `WAYLAND_DISPLAY`, `WAYLAND_SOCKET` nor `DISPLAY` set (an SSH login, a container, a CI runner), a soli with the window stopped inside winit with `os error at …/winit-0.30.13/src/platform_impl/linux/mod.rs:765: neither WAYLAND_DISPLAY nor WAYLAND_SOCKET nor DISPLAY is set`, a path from the machine that built it. The call now refuses before serving anything, with `there is no display to open the window on`, and says to run the script from the desktop session or set `SOLI_EUI_NO_WINDOW=1`. [Docs](www/docs/eui/overview.md#a-window-from-a-script)

@@ -1380,18 +1380,37 @@
       ]
     },
     {
+      "title": "Crypto.sha1",
+      "type": "method",
+      "category": "Crypto",
+      "path": "/docs/builtins/crypto#def-sha1",
+      "signature": "Crypto.sha1(data)",
+      "description": "Compute SHA-1 hash (only where a protocol requires it)",
+      "keywords": [
+        "crypto",
+        "hash",
+        "sha1",
+        "digest",
+        "legacy"
+      ]
+    },
+    {
       "title": "Crypto.hmac",
       "type": "method",
       "category": "Crypto",
       "path": "/docs/builtins/crypto#def-hmac",
-      "signature": "Crypto.hmac(message, key)",
-      "description": "Compute HMAC-SHA256 message authentication code",
+      "signature": "Crypto.hmac(message, key, algorithm?)",
+      "description": "Compute an HMAC (SHA-256 by default, or SHA-512 / SHA-1); the key may be bytes from Hex.decode",
       "keywords": [
         "crypto",
         "hmac",
         "mac",
         "authentication",
-        "signature"
+        "signature",
+        "sha512",
+        "sha1",
+        "binary key",
+        "paybox"
       ]
     },
     {
@@ -15842,6 +15861,24 @@
         "jwk",
         "oidc",
         "parse"
+      ]
+    },
+    {
+      "title": "RsaKey.verify",
+      "type": "method",
+      "category": "RsaKey",
+      "path": "/docs/builtins/crypto#def-rsakey-verify",
+      "signature": "RsaKey.verify(public_pem, message, signature, algorithm?)",
+      "description": "Verify an RSA PKCS#1 v1.5 signature (SHA-256, SHA-512 or SHA-1) with a public key PEM",
+      "keywords": [
+        "rsa",
+        "verify",
+        "signature",
+        "pkcs1",
+        "rs256",
+        "sha1",
+        "paybox",
+        "webhook"
       ]
     },
     {

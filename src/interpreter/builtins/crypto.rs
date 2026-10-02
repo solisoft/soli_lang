@@ -224,6 +224,65 @@ pub(crate) fn merkle_root_hex(leaves: &[String]) -> String {
     level.into_iter().next().unwrap()
 }
 
+/// Bytes of a `Crypto.hmac` / `Crypto.sha1` argument: a String is its UTF-8
+/// bytes, an Array is raw bytes (what `Hex.decode` and `Base64.decode` return),
+/// so a binary key such as Paybox's hex-encoded HMAC key can be passed as is.
+fn value_to_raw_bytes(value: &Value, what: &str) -> Result<Vec<u8>, String> {
+    match value {
+        Value::String(s) => Ok(s.as_bytes().to_vec()),
+        Value::Array(arr) => arr
+            .borrow()
+            .iter()
+            .map(|v| match v {
+                Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
+                Value::Int(n) => Err(format!("{}: byte value {} out of range 0-255", what, n)),
+                other => Err(format!(
+                    "{}: expected byte (Int 0-255), got {}",
+                    what,
+                    other.type_name()
+                )),
+            })
+            .collect(),
+        other => Err(format!(
+            "{}: expected string or byte array, got {}",
+            what,
+            other.type_name()
+        )),
+    }
+}
+
+/// HMAC of `message` under `key` with `algorithm` (`sha1`, `sha256`,
+/// `sha512`), as lowercase hex.
+pub(crate) fn do_hmac(algorithm: &str, message: &[u8], key: &[u8]) -> Result<String, String> {
+    let bytes = match algorithm {
+        "sha256" => {
+            let mut mac =
+                Hmac::<Sha256>::new_from_slice(key).map_err(|e| format!("HMAC error: {}", e))?;
+            mac.update(message);
+            mac.finalize().into_bytes().to_vec()
+        }
+        "sha512" => {
+            let mut mac =
+                Hmac::<Sha512>::new_from_slice(key).map_err(|e| format!("HMAC error: {}", e))?;
+            mac.update(message);
+            mac.finalize().into_bytes().to_vec()
+        }
+        "sha1" => {
+            let mut mac =
+                Hmac::<Sha1>::new_from_slice(key).map_err(|e| format!("HMAC error: {}", e))?;
+            mac.update(message);
+            mac.finalize().into_bytes().to_vec()
+        }
+        other => {
+            return Err(format!(
+                "unsupported HMAC algorithm '{}' (expected sha1, sha256 or sha512)",
+                other
+            ))
+        }
+    };
+    Ok(bytes_to_hex(&bytes))
+}
+
 fn do_hmac_sha256(message: &str, key: &str) -> Result<String, String> {
     type HmacSha256 = Hmac<Sha256>;
     let mut mac =
@@ -933,30 +992,45 @@ pub fn register_crypto_builtins(env: &mut Environment) {
         })),
     );
 
-    // Crypto.hmac(message, key) -> String (uses SHA256)
+    // Crypto.hmac(message, key, algorithm?) -> String (hex). `key` and
+    // `message` are strings or byte arrays; `algorithm` is "sha256" (default),
+    // "sha512" or "sha1".
     crypto_static_methods.insert(
         "hmac".to_string(),
-        Rc::new(NativeFunction::new("Crypto.hmac", Some(2), |args| {
-            let message = match &args[0] {
-                Value::String(s) => s.clone(),
-                other => {
+        Rc::new(NativeFunction::new("Crypto.hmac", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "Crypto.hmac() expects 2-3 arguments (message, key, algorithm?), got {}",
+                    args.len()
+                ));
+            }
+            let message = value_to_raw_bytes(&args[0], "Crypto.hmac() message")?;
+            let key = value_to_raw_bytes(&args[1], "Crypto.hmac() key")?;
+            let algorithm = match args.get(2) {
+                None | Some(Value::Null) => "sha256".to_string(),
+                Some(Value::String(s)) => s.to_lowercase().to_string(),
+                Some(other) => {
                     return Err(format!(
-                        "Crypto.hmac() expects string message, got {}",
+                        "Crypto.hmac() expects string algorithm, got {}",
                         other.type_name()
                     ))
                 }
             };
-            let key = match &args[1] {
-                Value::String(s) => s.clone(),
-                other => {
-                    return Err(format!(
-                        "Crypto.hmac() expects string key, got {}",
-                        other.type_name()
-                    ))
-                }
-            };
-            let result = do_hmac_sha256(&message, &key)?;
+            let result =
+                do_hmac(&algorithm, &message, &key).map_err(|e| format!("Crypto.hmac(): {}", e))?;
             Ok(Value::String(result.into()))
+        })),
+    );
+
+    // Crypto.sha1(data) -> String (hex). For protocols that still mandate it
+    // (RSA-SHA1 signatures from payment gateways); prefer sha256 otherwise.
+    crypto_static_methods.insert(
+        "sha1".to_string(),
+        Rc::new(NativeFunction::new("Crypto.sha1", Some(1), |args| {
+            let data = value_to_raw_bytes(&args[0], "Crypto.sha1() data")?;
+            let mut hasher = Sha1::new();
+            hasher.update(&data);
+            Ok(Value::String(bytes_to_hex(&hasher.finalize()).into()))
         })),
     );
 
@@ -2306,6 +2380,42 @@ mod tests {
         // 0x00 01 FF 00 <data...> — only 1 padding octet, below the 8 minimum.
         let em = [0x00, 0x01, 0xFF, 0x00, 0xAA, 0xBB];
         assert!(do_pkcs1_unpad(&em).is_err());
+    }
+
+    #[test]
+    fn hmac_sha512_matches_rfc4231_case_1() {
+        let key = vec![0x0bu8; 20];
+        assert_eq!(
+            do_hmac("sha512", b"Hi There", &key).unwrap(),
+            "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854"
+        );
+        assert_eq!(
+            do_hmac("sha256", b"Hi There", &key).unwrap(),
+            "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
+        );
+        assert!(do_hmac("md5", b"x", &key).is_err());
+    }
+
+    #[test]
+    fn hmac_key_bytes_from_array_differ_from_hex_string() {
+        // Paybox signs with the hex-decoded key, not the hex text.
+        let as_array = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(0xab),
+            Value::Int(0xcd),
+        ])));
+        assert_eq!(
+            value_to_raw_bytes(&as_array, "k").unwrap(),
+            vec![0xab, 0xcd]
+        );
+        assert_eq!(
+            value_to_raw_bytes(&Value::String("abcd".into()), "k").unwrap(),
+            b"abcd".to_vec()
+        );
+        assert!(value_to_raw_bytes(
+            &Value::Array(Rc::new(RefCell::new(vec![Value::Int(300)]))),
+            "k"
+        )
+        .is_err());
     }
 
     #[test]

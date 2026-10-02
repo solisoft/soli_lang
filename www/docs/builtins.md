@@ -1813,20 +1813,41 @@ hash = Crypto.md5("hello")
 # "5d41402abc4b2a76b9719d911017c592"
 ```
 
-#### Crypto.hmac(message, key) / hmac(message, key)
+#### Crypto.sha1(data)
 
-Computes HMAC-SHA256 message authentication code.
+Computes the SHA-1 hash of a String or byte Array. **Broken for collisions**: use it only where a protocol requires it (verifying an RSA-SHA1 signature from a payment gateway, legacy checksums), never for new signatures or passwords.
 
 **Parameters:**
-- `message` (String) - The message to authenticate
-- `key` (String) - The secret key
+- `data` (String or byte Array) - The data to hash
 
-**Returns:** String - 64-character hex string (32 bytes)
+**Returns:** String - 40-character hex string (20 bytes)
+
+**Example:**
+```soli
+Crypto.sha1("abc")
+# "a9993e364706816aba3e25717850c26c9cd0d89d"
+```
+
+#### Crypto.hmac(message, key, algorithm?) / hmac(message, key)
+
+Computes an HMAC message authentication code, as lowercase hex.
+
+**Parameters:**
+- `message` (String or byte Array) - The message to authenticate
+- `key` (String or byte Array) - The secret key. A String is used as its UTF-8 bytes; pass a byte Array (from `Hex.decode` or `Base64.decode`) when the key is binary, as with a payment gateway that hands you a hex-encoded key
+- `algorithm` (String, optional) - `"sha256"` (default), `"sha512"` or `"sha1"`
+
+**Returns:** String - hex: 64 characters for sha256, 128 for sha512, 40 for sha1
+
+The standalone `hmac(message, key)` is HMAC-SHA256 with String arguments only.
 
 **Example:**
 ```soli
 mac = Crypto.hmac("message", "secret_key")
 # Use for API signature verification, webhook validation, etc.
+
+# Paybox: HMAC-SHA512 with the hex key decoded to bytes, in uppercase
+signature = Crypto.hmac(fields, Hex.decode(hmac_key_hex), "sha512").upcase
 ```
 
 #### secure_compare(a, b) / Crypto.secure_compare(a, b)
@@ -2404,6 +2425,29 @@ jwk = {
   "n": Base64.urlsafe_encode(Hex.decode(key["n"])),
   "e": Base64.urlsafe_encode(Hex.decode(key["e"]))
 }
+```
+
+#### RsaKey.verify(public_pem, message, signature, algorithm?)
+
+Verifies an RSASSA-PKCS1-v1_5 signature (RFC 8017) with an RSA public key —
+the scheme of `openssl dgst -sign`, of JWT `RS256`/`RS512`, and of the
+callbacks some payment gateways sign (Paybox signs its server-to-server
+notification with RSA-SHA1).
+
+**Parameters:**
+- `public_pem` (String) - SPKI (`-----BEGIN PUBLIC KEY-----`) or PKCS#1 (`-----BEGIN RSA PUBLIC KEY-----`) PEM
+- `message` (String or byte Array) - The signed data, exactly as signed
+- `signature` (String or byte Array) - base64 (standard or URL-safe alphabet) or raw bytes
+- `algorithm` (String, optional) - digest: `"sha256"` (default), `"sha512"` or `"sha1"`
+
+**Returns:** Bool — `false` for any signature that does not verify, including a malformed or wrong-length one. Only an unreadable key or an unknown algorithm raises. The comparison runs in constant time.
+
+```soli
+# Paybox IPN: the signed string is the returned variables before `sign`
+message = "amount=#{q["amount"]}&reference=#{q["reference"]}&autorization=#{q["autorization"]}&error=#{q["error"]}"
+if RsaKey.verify(paybox_public_pem, message, q["sign"], "sha1")
+  # the notification comes from Paybox
+end
 ```
 
 #### Hex.encode(data) / Hex.decode(hex)

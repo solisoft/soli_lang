@@ -2211,6 +2211,7 @@ impl TypeEnvironment {
         let crypto_string_methods = [
             "sha256",
             "sha512",
+            "sha1",
             "md5",
             "hmac",
             "canonical_json",
@@ -2381,6 +2382,30 @@ impl TypeEnvironment {
                 name: "private_from_pem".to_string(),
                 params: vec![("pem".to_string(), Type::String)],
                 return_type: Type::Any,
+                is_private: false,
+                is_protected: false,
+                is_static: true,
+            },
+        );
+        rsa_key_class.methods.insert(
+            "public_from_pem".to_string(),
+            MethodInfo {
+                name: "public_from_pem".to_string(),
+                params: vec![("pem".to_string(), Type::String)],
+                return_type: Type::Any,
+                is_private: false,
+                is_protected: false,
+                is_static: true,
+            },
+        );
+        // verify(public_pem, message, signature, algorithm?) — one `Any`
+        // param, like Crypto's, for the optional algorithm.
+        rsa_key_class.methods.insert(
+            "verify".to_string(),
+            MethodInfo {
+                name: "verify".to_string(),
+                params: vec![("args".to_string(), Type::Any)],
+                return_type: Type::Bool,
                 is_private: false,
                 is_protected: false,
                 is_static: true,

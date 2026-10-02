@@ -103,6 +103,30 @@ describe("Crypto Class Static Methods", fn() {
         assert_eq(len(mac), 64);  // HMAC-SHA256 produces 32 bytes = 64 hex chars
     });
 
+    test("Crypto.hmac() takes an algorithm and a binary key", fn() {
+        // RFC 4231, test case 1
+        let key = Hex.decode("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
+        assert_eq(Crypto.hmac("Hi There", key, "sha512"), "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854");
+        assert_eq(Crypto.hmac("Hi There", key, "sha256"), "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7");
+        assert_eq(len(Crypto.hmac("m", "k", "sha1")), 40);
+        // A String key is its UTF-8 bytes, as before
+        assert_eq(Crypto.hmac("message", "secret"), Crypto.hmac("message", "secret", "sha256"));
+    });
+
+    test("Crypto.sha1() generates hash", fn() {
+        assert_eq(Crypto.sha1("abc"), "a9993e364706816aba3e25717850c26c9cd0d89d");
+    });
+
+    test("RsaKey.verify() checks a PKCS#1 v1.5 signature", fn() {
+        // `openssl dgst -sha1 -sign` of the message with the matching private key
+        let pem = "-----BEGIN PUBLIC KEY-----\nMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCVNJCMOElvuFlwioV+yJrePWcB\nf297VcdPey6eTprEaqwVln0QnSix6+8SZ+Lmhp/reqSQbbSU7CFjq2hE4ihycI9K\nL4owJCcZguPsS8BfQ5N+oebbEECMJFy8gPSh5gNjeZBuv06XCGRttcKrdRnJ1Suu\nRhwGmTE/QZENd9lsuQIDAQAB\n-----END PUBLIC KEY-----";
+        let sig = "DoxNElGwl2BVmyEqHYRymZzP/bgBE+fhzBOll7/uJxpM3RWdVFsc8FXC+fpnU9fu3/7ven5SXRGD1E9aquLFky9Dh7YYq3nKtFwajkafDBb3JbtBBlG8p8U4bRTdNaGtk+2aAjqCwj1f+ZDnRmQ5U/WbapkqHbLWXr3jNvO8jZk=";
+        assert(RsaKey.verify(pem, "amount=2500&reference=abc", sig, "sha1"));
+        assert_not(RsaKey.verify(pem, "amount=2600&reference=abc", sig, "sha1"));
+        assert_not(RsaKey.verify(pem, "amount=2500&reference=abc", sig, "sha256"));
+        assert_not(RsaKey.verify(pem, "amount=2500&reference=abc", "not base64 !", "sha1"));
+    });
+
     test("Crypto.secure_compare() matches and rejects", fn() {
         assert(Crypto.secure_compare("foo", "foo"));
         assert_not(Crypto.secure_compare("foo", "bar"));

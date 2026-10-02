@@ -22,6 +22,13 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.13.0.</p>
 
+        <h3 id="unreleased-crypto" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Crypto</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">Crypto.hmac</code> takes <code class="text-cyan-400">"sha512"</code> or <code class="text-cyan-400">"sha1"</code>, and a binary key.</strong> A third argument picks the digest (SHA-256 by default, as before), and the key and message may be byte arrays: a key handed over as hex is passed as <code class="text-cyan-400">Hex.decode(key)</code>. That is what a payment gateway such as Paybox needs to sign its payment form. <a href="/docs/builtins/crypto#def-hmac" class="text-cyan-400 hover:underline">Crypto.hmac</a></li>
+            <li><strong class="text-white"><code class="text-cyan-400">Crypto.sha1</code></strong>, for the protocols that still require SHA-1. <a href="/docs/builtins/crypto#def-sha1" class="text-cyan-400 hover:underline">Crypto.sha1</a></li>
+            <li><strong class="text-white"><code class="text-cyan-400">RsaKey.verify</code> checks an RSA signature.</strong> PKCS#1 v1.5 with SHA-256, SHA-512 or SHA-1, from a public key in PEM &mdash; <code class="text-cyan-400">openssl dgst -sign</code> output, JWT RS256, or Paybox&rsquo;s signed payment notification. A signature that does not verify returns <code class="text-cyan-400">false</code>, whatever its shape. Scripts using <code class="text-cyan-400">RsaKey.public_from_pem</code> and <code class="text-cyan-400">verify</code> now pass the type checker. <a href="/docs/builtins/crypto#def-rsakey-verify" class="text-cyan-400 hover:underline">RsaKey.verify</a></li>
+        </ul>
+
         <h3 id="unreleased-eui" class="text-xl font-semibold text-white mb-4 scroll-mt-24">EUI</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">eui_window</code> without a display says so.</strong> From an SSH login, a container or a CI runner on Linux, the window failed deep inside winit with a message naming its source file. It now stops before serving, with <code class="text-cyan-400">there is no display to open the window on</code>, and points to the desktop session or <code class="text-cyan-400">SOLI_EUI_NO_WINDOW=1</code>. <a href="/docs/eui/overview#a-window-from-a-script" class="text-cyan-400 hover:underline">A window from a script</a></li>
