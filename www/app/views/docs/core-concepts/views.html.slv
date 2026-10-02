@@ -658,6 +658,13 @@ SOLI_NAV=off soli serve .</code></pre>
         </div>
     </div>
 
+    <p class="text-gray-400 mb-3">Two rules make that hook safe:</p>
+    <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-4">
+        <li><strong class="text-white">Make <code>init</code> idempotent.</strong> Mark what you set up (<code>el.dataset.ready = ""</code>) and skip marked elements, so a second call never doubles a copy button or a listener.</li>
+        <li><strong class="text-white">Stop what the previous page started.</strong> A swap removes the old body, but not the <code>requestAnimationFrame</code> loops, <code>setInterval</code>s, <code>IntersectionObserver</code>s or <code>document</code>/<code>window</code> listeners your script created for it: they keep running on detached nodes and pile up with every visit. Keep a <code>stop()</code> for each long-lived piece, call it at the start of the next <code>init</code>, and have animation loops bail out when <code>!element.isConnected</code>.</li>
+    </ul>
+    <p class="text-gray-400 mb-4">Test this by <strong class="text-white">clicking a link</strong> to the page, not by reloading it: a reload always runs every script, so it can never show the bug. Open a page without the widget, click through to one with it, navigate away and come back, and try the back button. A new app carries the full pattern in <code>public/js/CLAUDE.md</code>.</p>
+
     <p class="text-gray-400 mb-4">
         <strong class="text-white">Script semantics after a swap:</strong> inline <code>&lt;script&gt;</code> tags in the new body re-execute on every visit (that's what page-specific init wants). External <code>&lt;script src&gt;</code> tags execute <strong class="text-white">once per URL</strong> for the lifetime of the browser tab &mdash; so <code>alpine.min.js</code> and <code>htmx.min.js</code> in your layout never double-evaluate. Scripts run <strong class="text-white">sequentially in document order</strong>, each external awaited before the next script executes &mdash; the same guarantee the parser gives on a full load, so an inline <code>tailwind.config = {...}</code> right after the Tailwind CDN script still finds <code>tailwind</code> defined. Only after the whole chain settles does the framework call <code>Alpine.initTree(document.body)</code> and <code>htmx.process(document.body)</code> &mdash; so Alpine components whose <code>x-data</code> scope is registered by a page-specific bundle initialize correctly, and <code>hx-*</code> attributes in the new body just work.
     </p>

@@ -5,7 +5,7 @@ Soli is a dynamically-typed, high-performance web framework written in Rust. Thi
 ## For AI agents — read this first
 
 You are working in a Soli MVC app. Soli looks like Ruby/JS but has its own quirks; skim the **Footgun cheatsheet** below before generating code. Per-directory `CLAUDE.md` files in `app/controllers/`, `app/models/`,
-`app/models/concerns/`, `app/views/`, `app/middleware/`, `tests/`, and
+`app/models/concerns/`, `app/views/`, `app/middleware/`, `public/js/`, `tests/`, and
 `db/migrations/` give you the local rules — Claude Code loads them
 automatically when you work in those directories. Shared model mixins
 (`module` / `include`) live in `app/models/concerns/`.
@@ -173,6 +173,7 @@ the code you are writing — they are properties of the runtime.
 | `.pluck(field)` returns a QueryBuilder, not an array | It lands in a bind variable and the query fails | `.all.map { \|row\| row.field }` |
 | An invalid SDBQL query **returns an error string instead of raising** | A typo silently yields garbage | Prefer proven forms: `CONTAINS(LOWER(doc.x), @needle)` |
 | No scoped uniqueness | `"uniqueness": true` is global and best-effort | Composite unique index in the migration + a lookup for a readable message |
+| **Instant navigation** (on by default) swaps `<body>` on link clicks; an external `<script src>` runs **once per tab** | A widget, animation or copy button set up in `public/js/` works on the page you landed on and is dead after any link click; loops and listeners from the previous page keep running | Put setup in `init()`, call it on load **and** on `document.addEventListener("soli:load", init)`, make it idempotent, and stop the previous page's loops. Pattern in `public/js/CLAUDE.md`; test by clicking a link, never by reloading |
 | `permit` drops containers declared with `true` | Nested hashes and arrays vanish from the body | Describe the shape fully: `{"days": [{"hour": true}]}` |
 | Multiple checkboxes need `name="field[]"` | Without brackets only **one** value arrives — a multi-select never persists | Always bracket a repeated field name |
 | `<%= attr(url) %>` **escapes twice** — `<%=` already applies `h()` | `&` becomes `&amp;amp;` and the URL breaks | `<%= url %>` for framework-built URLs; keep `attr()` for `<%- %>` |

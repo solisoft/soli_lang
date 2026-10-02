@@ -294,6 +294,7 @@ fn agent_markdown_templates() -> Vec<(&'static str, &'static str)> {
             "app/middleware/CLAUDE.md",
             agents::CLAUDE_MIDDLEWARE_TEMPLATE,
         ),
+        ("public/js/CLAUDE.md", agents::CLAUDE_PUBLIC_JS_TEMPLATE),
         ("tests/CLAUDE.md", agents::CLAUDE_TESTS_TEMPLATE),
         (
             "db/migrations/CLAUDE.md",
@@ -457,6 +458,7 @@ fn create_new_app_markdown_tree_end_to_end() {
         "app/models/concerns/CLAUDE.md",
         "app/views/CLAUDE.md",
         "app/middleware/CLAUDE.md",
+        "public/js/CLAUDE.md",
         "tests/CLAUDE.md",
         "db/migrations/CLAUDE.md",
         ".claude/settings.json",

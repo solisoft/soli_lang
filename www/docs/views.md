@@ -369,6 +369,13 @@ SOLI_NAV=off soli serve .
 </script>
 ```
 
+Two rules make that hook safe:
+
+- **Make `init` idempotent.** Mark what you set up (`el.dataset.ready = ""`) and skip marked elements, so a second call never doubles a copy button or a listener.
+- **Stop what the previous page started.** A swap removes the old body, but not the `requestAnimationFrame` loops, `setInterval`s, `IntersectionObserver`s or `document`/`window` listeners your script created for it: they keep running on detached nodes and pile up with every visit. Keep a `stop()` for each long-lived piece, call it at the start of the next `init`, and have animation loops bail out when `!element.isConnected`.
+
+Test this by **clicking a link** to the page, not by reloading it: a reload always runs every script, so it can never show the bug. Open a page without the widget, click through to one with it, navigate away and come back, and try the back button.
+
 **Script semantics after a swap:** inline `<script>` tags in the new body re-execute on every visit (that's what page-specific init wants). External `<script src>` tags execute **once per URL** for the lifetime of the browser tab — so `alpine.min.js` and `htmx.min.js` in your layout never double-evaluate. Scripts run **sequentially in document order**, each external awaited before the next script executes — the same guarantee the parser gives on a full load, so an inline `tailwind.config = {...}` right after the Tailwind CDN script still finds `tailwind` defined. Only after the whole chain settles does the framework call `Alpine.initTree(document.body)` and `htmx.process(document.body)` — so Alpine components whose `x-data` scope is registered by a page-specific bundle initialize correctly, and `hx-*` attributes in the new body just work.
 
 **Persistent elements (`data-soli-permanent`):** the body swap tears down the old DOM and builds the new page fresh — fine for server-rendered content, but it destroys live client-side widgets that aren't reflected in the server HTML (a map with its rendered tiles, a playing `<video>`, a rich-text editor with unsaved state). Tag such an element with `data-soli-permanent` and an `id`, and the framework lifts the **live** element out of the old body and grafts it over the matching placeholder in the new one — untouched, never reparsed — so the widget keeps running across the navigation with no teardown, no re-initialization, no flicker:

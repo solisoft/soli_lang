@@ -250,6 +250,7 @@ pub fn create_nested_claude_mds(app_path: &Path) -> Result<(), String> {
             "app/middleware/CLAUDE.md",
             agents::CLAUDE_MIDDLEWARE_TEMPLATE,
         ),
+        ("public/js/CLAUDE.md", agents::CLAUDE_PUBLIC_JS_TEMPLATE),
         ("tests/CLAUDE.md", agents::CLAUDE_TESTS_TEMPLATE),
         (
             "db/migrations/CLAUDE.md",
@@ -328,6 +329,7 @@ pub const PROJECT_DOC_AGENT_PATHS: &[&str] = &[
     "app/models/concerns/CLAUDE.md",
     "app/views/CLAUDE.md",
     "app/middleware/CLAUDE.md",
+    "public/js/CLAUDE.md",
     "tests/CLAUDE.md",
     "db/migrations/CLAUDE.md",
     ".claude/settings.json",
@@ -373,6 +375,7 @@ pub fn update_project_docs(app_path: &Path) -> Result<Vec<String>, String> {
         "app/models/concerns",
         "app/views",
         "app/middleware",
+        "public/js",
         "tests",
         "db/migrations",
         ".claude/commands",

@@ -9,6 +9,7 @@ pub const CLAUDE_MODELS_TEMPLATE: &str = include_str!("CLAUDE_models.md");
 pub const CLAUDE_CONCERNS_TEMPLATE: &str = include_str!("CLAUDE_concerns.md");
 pub const CLAUDE_VIEWS_TEMPLATE: &str = include_str!("CLAUDE_views.md");
 pub const CLAUDE_MIDDLEWARE_TEMPLATE: &str = include_str!("CLAUDE_middleware.md");
+pub const CLAUDE_PUBLIC_JS_TEMPLATE: &str = include_str!("CLAUDE_public_js.md");
 pub const CLAUDE_TESTS_TEMPLATE: &str = include_str!("CLAUDE_tests.md");
 pub const CLAUDE_MIGRATIONS_TEMPLATE: &str = include_str!("CLAUDE_migrations.md");
 

@@ -370,6 +370,13 @@ a full page load (Turbo-Drive style). Write views knowing that:
   per tab.** Code in an external file that sets up widgets must re-run on
   `document.addEventListener("soli:load", init)`. `DOMContentLoaded`
   listeners registered by inline scripts are replayed, so they keep working.
+- **`init()` must be idempotent and must stop what the previous page
+  started.** `requestAnimationFrame` loops, intervals, observers and
+  `document` listeners survive the swap. The full pattern is in
+  `public/js/CLAUDE.md`.
+- **Test with a link click.** A reload always runs your scripts, so it hides
+  the bug: open a page without the widget, click through to one with it,
+  leave and come back.
 - **Opt out** per link or container with `data-no-nav`, per page with
   `<meta name="soli-nav" content="off">`.
 - **Keep a live widget** (map, video, editor) across pages with an `id` and
