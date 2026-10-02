@@ -320,7 +320,9 @@ export def bed_card(state, n)
   card({"grow": 1, "basis": 0, "gap": 3, "align": "center"}, [
     picture,
     text(info["name"], {"size": 2, "weight": "semibold"}),
-    progress(frac),
+    # The catalogue's bar grows to fill its parent, and a card is a column:
+    # alone in it, it would grow downwards. A row of its own makes it grow across.
+    row({"width": 160}, [progress(frac)]),
     water_note,
     with_props(action, {"bed": n})
   ])
@@ -768,7 +770,9 @@ export def bed_card(state, n)
   card({"grow": 1, "basis": 0, "gap": 3, "align": "center"}, [
     picture,
     text(info["name"], {"size": 2, "weight": "semibold"}),
-    progress(frac),
+    # The catalogue's bar grows to fill its parent, and a card is a column:
+    # alone in it, it would grow downwards. A row of its own makes it grow across.
+    row({"width": 160}, [progress(frac)]),
     water_note,
     with_props(action, {"bed": n})
   ])
