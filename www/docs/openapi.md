@@ -9,6 +9,7 @@ described — parameters, request body, responses.
 |-----|----------------|
 | `GET /openapi.json` | The OpenAPI 3.0.3 document, generated from the route table |
 | `GET /openapi` | A [Scalar](https://scalar.com) API reference over that document |
+| `GET /openapi/<name>.json`, `GET /openapi/<name>` | One [document](#several-documents) the routes declare, and its reference |
 
 ## Quick start
 
@@ -32,6 +33,68 @@ panel links the reference ("api").
 `SOLI_OPENAPI` wins when it is set: `1` or `true` turns the endpoints on,
 anything else turns them off. Without it, `--dev` decides. `SOLI_OPENAPI_TITLE`
 sets the document title (default `Soli API`).
+
+A [document](#several-documents) declared with `"public": true` is the
+exception: it is served everywhere, including production without
+`SOLI_OPENAPI`.
+
+## Several documents
+
+One spec for the whole route table mixes things that have different readers: the
+public API, the back-office API, the HTML pages, the health check. Declare a
+document per API in `config/routes.sl` instead. `openapi(name, options, -> { … })`
+puts every route declared inside the block in that document:
+
+```soli
+# config/routes.sl
+openapi("v1", {"title": "API v1", "version": "1.0", "public": true}, -> {
+  namespace("api/v1", -> {
+    get("/posts", "api/v1/posts#index")
+    get("/posts/:id", "api/v1/posts#show")
+    post("/posts", "api/v1/posts#create")
+  })
+})
+
+openapi("admin", {"title": "Admin API"}, -> {
+  namespace("admin", -> {
+    get("/merchants", "admin/merchants#index")
+  })
+})
+
+get("/", "home#index")      # in no document
+get("/about", "home#about")
+```
+
+| URL | What it serves |
+|-----|----------------|
+| `/openapi/v1.json`, `/openapi/admin.json` | each document: its routes only, its title, version and description |
+| `/openapi/v1`, `/openapi/admin` | a reference over one document |
+| `/openapi` | one reference over every document that may be served, with a selector to switch between them |
+| `/openapi.json` | every document's routes together |
+
+Once an app declares a document, **routes outside every document are left out** of
+all of them, `/openapi.json` included: `/` and `/about` above appear nowhere. An app
+that declares none keeps the single spec of every route.
+
+| Option | Default | |
+|--------|---------|---|
+| `"title"` | the name | `info.title` |
+| `"version"` | `"1.0.0"` | `info.version` |
+| `"description"` | none | `info.description`, shown at the top of the reference |
+| `"public"` | `false` | served in production without `SOLI_OPENAPI` |
+
+`openapi("v1", -> { … })` takes no options. The block holds anything a routes file
+does (`namespace`, `resources`, `middleware`, plain `get`/`post`), and
+`@hidden` still drops one action. The name is a URL segment: letters, digits, `-`
+and `_`. An unknown option, or an `openapi` block inside another, stops the routes
+file with an error naming it.
+
+**What `public` serves.** In production, with `SOLI_OPENAPI` unset, `/openapi/v1.json`
+and `/openapi/v1` answer for the public `v1`, `/openapi` offers `v1` alone, and the
+admin document and `/openapi.json` are `404`. Under `--dev`, or with
+`SOLI_OPENAPI=1`, everything is served. The endpoints are answered before your
+middleware (see [In production](#in-production)), so a public document is readable
+by anyone who can reach the server: make public what you would publish.
 
 ## What the spec contains
 
@@ -226,7 +289,9 @@ authentication middleware does **not** protect them. Anyone who can reach the
 server can read the full route table.
 
 Keep them off in production (the default), or put them behind your reverse
-proxy's access rules if you need the reference there.
+proxy's access rules if you need the reference there. To publish one API's
+reference and keep the rest private, declare it as a `"public": true`
+[document](#several-documents) instead of turning everything on.
 
 ## Limits
 
@@ -236,8 +301,9 @@ proxy's access rules if you need the reference there.
 - Schemas are inferred from examples and whitelists, so they give types, not
   constraints — no `required` fields inside a body, formats, enums or lengths.
 - Path parameters without a `@param` line are `string`s.
-- HTML routes (`/posts/new`, `/posts/{id}/edit`) are listed alongside JSON ones —
-  hide them with `@hidden` if the reference is for API clients only.
+- Without documents, HTML routes (`/posts/new`, `/posts/{id}/edit`) are listed
+  alongside JSON ones — declare your APIs as [documents](#several-documents), or
+  hide single actions with `@hidden`.
 
 ## See also
 

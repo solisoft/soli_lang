@@ -24,6 +24,21 @@ fn ws_message_to_string(value: &Value, fn_name: &str) -> Result<String, String> 
 use ahash::RandomState as AHasher;
 use bytes::Bytes;
 
+/// An OpenAPI document declared in `config/routes.sl` with
+/// `openapi(name, options, block)`. Every route registered inside the block
+/// carries it, which is how it reaches the workers with the route table and
+/// how the generator knows which routes a document holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenApiDoc {
+    /// The URL segment: `/openapi/<name>.json`, `/openapi/<name>`.
+    pub name: String,
+    pub title: String,
+    pub version: String,
+    pub description: Option<String>,
+    /// Served in production without `SOLI_OPENAPI` (`{"public": true}`).
+    pub public: bool,
+}
+
 /// A registered route with its handler.
 /// For worker threads, we use a separate struct without middleware Values.
 #[derive(Clone)]
@@ -36,6 +51,8 @@ pub struct Route {
     pub name: Option<String>,
     pub middleware: Vec<Value>,
     pub middleware_names: Vec<String>,
+    /// The `openapi(...)` document the route was declared in, if any.
+    pub openapi: Option<std::sync::Arc<OpenApiDoc>>,
 }
 
 /// A worker-safe route struct without middleware Values.
@@ -47,6 +64,7 @@ pub struct WorkerRoute {
     pub handler_name: String,
     pub name: Option<String>,
     pub middleware_names: Vec<String>,
+    pub openapi: Option<std::sync::Arc<OpenApiDoc>>,
 }
 
 // Route registry stored in thread-local storage.
@@ -436,6 +454,7 @@ pub fn routes_to_worker_routes(routes: &[Route]) -> Vec<WorkerRoute> {
             handler_name: r.handler_name.clone(),
             name: r.name.clone(),
             middleware_names: r.middleware_names.clone(),
+            openapi: r.openapi.clone(),
         })
         .collect()
 }
@@ -460,6 +479,7 @@ pub fn set_worker_routes(routes: Vec<WorkerRoute>) {
             name: r.name,
             middleware: Vec::new(),
             middleware_names: r.middleware_names,
+            openapi: r.openapi,
         })
         .collect();
     ROUTES.with(|r| *r.borrow_mut() = routes);
@@ -483,6 +503,7 @@ fn register_route(
             name,
             middleware,
             middleware_names,
+            openapi: crate::interpreter::builtins::router::current_openapi_doc(),
         });
     });
 }

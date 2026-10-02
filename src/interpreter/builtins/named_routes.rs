@@ -522,6 +522,7 @@ mod tests {
                 name: Some("about".to_string()),
                 middleware: vec![],
                 middleware_names: vec![],
+                openapi: None,
             },
             Route {
                 method: "GET".to_string(),
@@ -530,6 +531,7 @@ mod tests {
                 name: Some("about".to_string()),
                 middleware: vec![],
                 middleware_names: vec![],
+                openapi: None,
             },
         ];
         rebuild_named_routes(&routes);
@@ -548,6 +550,7 @@ mod tests {
             name: Some("old".to_string()),
             middleware: vec![],
             middleware_names: vec![],
+            openapi: None,
         }];
         rebuild_named_routes(&routes);
         assert_eq!(build_path_for_name("old", &[]).unwrap(), "/old");

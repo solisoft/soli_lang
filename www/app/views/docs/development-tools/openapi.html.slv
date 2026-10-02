@@ -29,6 +29,7 @@
             <tbody class="text-gray-300">
                 <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>GET /openapi.json</code></td><td class="py-2">The OpenAPI 3.0.3 document, generated from the route table</td></tr>
                 <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>GET /openapi</code></td><td class="py-2">A <a href="https://scalar.com" class="text-amber-400 hover:text-amber-300">Scalar</a> API reference over that document</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>GET /openapi/&lt;name&gt;.json</code>, <code>GET /openapi/&lt;name&gt;</code></td><td class="py-2">One <a href="#section-documents" class="text-amber-400 hover:text-amber-300">document</a> the routes declare, and its reference</td></tr>
             </tbody>
         </table>
     </div>
@@ -63,6 +64,67 @@
             </table>
         </div>
         <p class="text-gray-400"><code>SOLI_OPENAPI</code> wins when it is set: <code>1</code> or <code>true</code> turns the endpoints on, anything else turns them off. Without it, <code>--dev</code> decides. <code>SOLI_OPENAPI_TITLE</code> sets the document title (default <code>Soli API</code>).</p>
+        <p class="text-gray-400 mt-3">A <a href="#section-documents" class="text-amber-400 hover:text-amber-300">document</a> declared with <code>"public": true</code> is the exception: it is served everywhere, including production without <code>SOLI_OPENAPI</code>.</p>
+    </section>
+
+    <!-- Documents -->
+    <section id="section-documents" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Several documents</h2>
+        <p class="text-gray-400 mb-4">One spec for the whole route table mixes things that have different readers: the public API, the back-office API, the HTML pages, the health check. Declare a document per API in <code>config/routes.sl</code> instead. <code>openapi(name, options, -&gt; { … })</code> puts every route declared inside the block in that document:</p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
+            <pre data-filename="config/routes.sl"><code class="language-soli text-sm">openapi("v1", {"title": "API v1", "version": "1.0", "public": true}, -&gt; {
+  namespace("api/v1", -&gt; {
+    get("/posts", "api/v1/posts#index")
+    get("/posts/:id", "api/v1/posts#show")
+    post("/posts", "api/v1/posts#create")
+  })
+})
+
+openapi("admin", {"title": "Admin API"}, -&gt; {
+  namespace("admin", -&gt; {
+    get("/merchants", "admin/merchants#index")
+  })
+})
+
+get("/", "home#index")      # in no document
+get("/about", "home#about")</code></pre>
+        </div>
+        <div class="overflow-x-auto mb-4">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-2 pr-4 text-gray-400 font-medium">URL</th>
+                        <th class="text-left py-2 text-gray-400 font-medium">What it serves</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-300">
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>/openapi/v1.json</code>, <code>/openapi/admin.json</code></td><td class="py-2">each document: its routes only, its title, version and description</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>/openapi/v1</code>, <code>/openapi/admin</code></td><td class="py-2">a reference over one document</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>/openapi</code></td><td class="py-2">one reference over every document that may be served, with a selector to switch between them</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>/openapi.json</code></td><td class="py-2">every document&rsquo;s routes together</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4">Once an app declares a document, <strong class="text-white">routes outside every document are left out</strong> of all of them, <code>/openapi.json</code> included: <code>/</code> and <code>/about</code> above appear nowhere. An app that declares none keeps the single spec of every route.</p>
+        <div class="overflow-x-auto mb-4">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-white/10">
+                        <th class="text-left py-2 pr-4 text-gray-400 font-medium">Option</th>
+                        <th class="text-left py-2 pr-4 text-gray-400 font-medium">Default</th>
+                        <th class="text-left py-2 text-gray-400 font-medium"></th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-300">
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>"title"</code></td><td class="py-2 pr-4">the name</td><td class="py-2"><code>info.title</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>"version"</code></td><td class="py-2 pr-4"><code>"1.0.0"</code></td><td class="py-2"><code>info.version</code></td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>"description"</code></td><td class="py-2 pr-4">none</td><td class="py-2"><code>info.description</code>, shown at the top of the reference</td></tr>
+                    <tr class="border-b border-white/5"><td class="py-2 pr-4"><code>"public"</code></td><td class="py-2 pr-4"><code>false</code></td><td class="py-2">served in production without <code>SOLI_OPENAPI</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-400 mb-4"><code>openapi("v1", -&gt; { … })</code> takes no options. The block holds anything a routes file does (<code>namespace</code>, <code>resources</code>, <code>middleware</code>, plain <code>get</code>/<code>post</code>), and <code>@hidden</code> still drops one action. The name is a URL segment: letters, digits, <code>-</code> and <code>_</code>. An unknown option, or an <code>openapi</code> block inside another, stops the routes file with an error naming it.</p>
+        <p class="text-gray-400"><strong class="text-white">What <code>public</code> serves.</strong> In production, with <code>SOLI_OPENAPI</code> unset, <code>/openapi/v1.json</code> and <code>/openapi/v1</code> answer for the public <code>v1</code>, <code>/openapi</code> offers <code>v1</code> alone, and the admin document and <code>/openapi.json</code> are <code>404</code>. Under <code>--dev</code>, or with <code>SOLI_OPENAPI=1</code>, everything is served. The endpoints are answered before your middleware (see <a href="#section-production" class="text-amber-400 hover:text-amber-300">In production</a>), so a public document is readable by anyone who can reach the server: make public what you would publish.</p>
     </section>
 
     <!-- Contents -->
@@ -237,7 +299,7 @@ git diff --exit-code openapi.json</code></pre>
         <h2 class="text-2xl font-bold text-white mb-4">In production</h2>
         <div class="rounded-xl bg-amber-500/10 border border-amber-500/30 p-5">
             <p class="text-gray-300 mb-3">Once <code>SOLI_OPENAPI=1</code> is set, the endpoints answer in every environment, like <code>/_metrics</code>. They are answered <strong class="text-white">before the application runs</strong> &mdash; before middleware, sessions and controllers &mdash; so a <code>before_action</code> or an authentication middleware does <strong class="text-white">not</strong> protect them. Anyone who can reach the server can read the full route table.</p>
-            <p class="text-gray-300">Keep them off in production (the default), or put them behind your reverse proxy&rsquo;s access rules if you need the reference there.</p>
+            <p class="text-gray-300">Keep them off in production (the default), or put them behind your reverse proxy&rsquo;s access rules if you need the reference there. To publish one API&rsquo;s reference and keep the rest private, declare it as a <code>"public": true</code> <a href="#section-documents" class="text-amber-400 hover:text-amber-300">document</a> instead of turning everything on.</p>
         </div>
     </section>
 
@@ -248,7 +310,7 @@ git diff --exit-code openapi.json</code></pre>
             <li>The spec knows what the doc comments and <code>permit()</code> say, nothing more: an undocumented action has path parameters, a <code>controller#action</code> summary and a generic <code>200</code>.</li>
             <li>Schemas are inferred from examples and whitelists, so they give types, not constraints &mdash; no <code>required</code> fields inside a body, formats, enums or lengths.</li>
             <li>Path parameters without a <code>@param</code> line are <code>string</code>s.</li>
-            <li>HTML routes (<code>/posts/new</code>, <code>/posts/{id}/edit</code>) are listed alongside JSON ones &mdash; hide them with <code>@hidden</code> if the reference is for API clients only.</li>
+            <li>Without documents, HTML routes (<code>/posts/new</code>, <code>/posts/{id}/edit</code>) are listed alongside JSON ones &mdash; declare your APIs as <a href="#section-documents" class="text-amber-400 hover:text-amber-300">documents</a>, or hide single actions with <code>@hidden</code>.</li>
         </ul>
     </section>
 

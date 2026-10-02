@@ -13,13 +13,20 @@
 //! `controller::api_docs`) add a summary, description, typed path/query/header
 //! parameters, a request body, responses, a tag, `deprecated` or `hidden`; a
 //! `permit(params, {…})` whitelist describes the body when no `@body` does.
+//!
+//! Documents: `openapi("v1", {"title": …}, -> …)` in `config/routes.sl`
+//! declares one, holding the routes registered inside the block, served at
+//! `/openapi/v1.json` and `/openapi/v1`. Once an app declares any, routes
+//! outside every document are left out, `/openapi.json` merges the
+//! documents, and `/openapi` offers them in one reference. A document with
+//! `"public": true` is served even where the endpoints are off.
 
 use std::sync::OnceLock;
 
 use crate::interpreter::builtins::controller::api_docs::{
     openapi_type, schema_from_example, ActionDoc, DocParam, DocPayload,
 };
-use crate::interpreter::builtins::server::get_routes;
+use crate::interpreter::builtins::server::{get_routes, OpenApiDoc, Route};
 
 /// Whether the OpenAPI endpoints are enabled: `SOLI_OPENAPI` when it is set
 /// (`1`/`true` on, anything else off), otherwise whether the server runs with
@@ -83,16 +90,72 @@ fn operation_id(method: &str, handler: &str) -> String {
     format!("{}_{}", method.to_lowercase(), sanitized)
 }
 
-/// Build the OpenAPI 3 document from the registered app routes. Internal
-/// (`/_*`, `/__*`) paths and non-HTTP verbs (WebSocket) are skipped; routes
-/// sharing a path collapse into one path item with multiple methods.
+/// The documents `config/routes.sl` declares with `openapi(...)`, in the
+/// order their first route was registered.
+pub fn documents() -> Vec<std::sync::Arc<OpenApiDoc>> {
+    documents_of(&get_routes())
+}
+
+fn documents_of(routes: &[Route]) -> Vec<std::sync::Arc<OpenApiDoc>> {
+    let mut docs: Vec<std::sync::Arc<OpenApiDoc>> = Vec::new();
+    for doc in routes.iter().filter_map(|r| r.openapi.as_ref()) {
+        if !docs.iter().any(|d| d.name == doc.name) {
+            docs.push(doc.clone());
+        }
+    }
+    docs
+}
+
+/// Whether `doc` may be served: everything is where the endpoints are on
+/// (`--dev`, `SOLI_OPENAPI=1`); elsewhere only a `"public": true` document.
+pub fn document_visible(doc: &OpenApiDoc) -> bool {
+    doc.public || openapi_enabled()
+}
+
+/// Build the OpenAPI 3 document from the registered app routes: every route
+/// when the app declares no `openapi(...)` document, otherwise the routes of
+/// every document together. Internal (`/_*`, `/__*`) paths and non-HTTP
+/// verbs (WebSocket) are skipped; routes sharing a path collapse into one
+/// path item with multiple methods.
 pub fn generate_spec() -> serde_json::Value {
+    let routes = get_routes();
+    let documented = routes.iter().any(|r| r.openapi.is_some());
+    let selected: Vec<&Route> = routes
+        .iter()
+        .filter(|r| !documented || r.openapi.is_some())
+        .collect();
+    build_spec(&selected, &spec_title(), "1.0.0", None)
+}
+
+/// The OpenAPI document named `name` (`openapi("v1", …)` in the routes), or
+/// `None` when the app declares no such document.
+pub fn generate_document(name: &str) -> Option<serde_json::Value> {
+    let routes = get_routes();
+    let doc = documents_of(&routes).into_iter().find(|d| d.name == name)?;
+    let selected: Vec<&Route> = routes
+        .iter()
+        .filter(|r| r.openapi.as_ref().is_some_and(|d| d.name == name))
+        .collect();
+    Some(build_spec(
+        &selected,
+        &doc.title,
+        &doc.version,
+        doc.description.as_deref(),
+    ))
+}
+
+fn build_spec(
+    routes: &[&Route],
+    title: &str,
+    version: &str,
+    description: Option<&str>,
+) -> serde_json::Value {
     use serde_json::{json, Map, Value};
 
     const HTTP_METHODS: [&str; 7] = ["get", "post", "put", "patch", "delete", "head", "options"];
 
     let mut paths: Map<String, Value> = Map::new();
-    for route in get_routes() {
+    for route in routes {
         if route.path_pattern.starts_with("/_") {
             continue; // framework/internal (also covers /__*)
         }
@@ -113,9 +176,13 @@ pub fn generate_spec() -> serde_json::Value {
         }
     }
 
+    let mut info = json!({ "title": title, "version": version });
+    if let Some(description) = description {
+        info["description"] = json!(description);
+    }
     json!({
         "openapi": "3.0.3",
-        "info": { "title": spec_title(), "version": "1.0.0" },
+        "info": info,
         "paths": Value::Object(paths),
     })
 }
@@ -263,13 +330,55 @@ pub fn generate_spec_json() -> String {
 /// A self-hosting Scalar API-reference page pointed at `/openapi.json`. Scalar
 /// loads from a CDN, so this needs network access in the browser (documented).
 pub fn ui_page() -> String {
-    "<!doctype html><html><head><meta charset=\"utf-8\">\
+    ui_page_for("/openapi.json", "API Reference")
+}
+
+/// A Scalar page over one spec URL.
+pub fn ui_page_for(spec_url: &str, title: &str) -> String {
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\">\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
-<title>API Reference</title></head><body>\
-<script id=\"api-reference\" data-url=\"/openapi.json\"></script>\
+<title>{}</title></head><body>\
+<script id=\"api-reference\" data-url=\"{}\"></script>\
 <script src=\"https://cdn.jsdelivr.net/npm/@scalar/api-reference\"></script>\
-</body></html>"
+</body></html>",
+        html_escape(title),
+        html_escape(spec_url)
+    )
+}
+
+/// A Scalar page offering several documents, with Scalar's document
+/// selector: one source per document, its title and its spec URL.
+pub fn ui_page_for_documents(docs: &[std::sync::Arc<OpenApiDoc>]) -> String {
+    let sources: Vec<serde_json::Value> = docs
+        .iter()
+        .map(|d| {
+            serde_json::json!({
+                "title": d.title,
+                "slug": d.name,
+                "url": format!("/openapi/{}.json", d.name),
+            })
+        })
+        .collect();
+    // Inside <script>: no `</` may survive, or a title could close the tag.
+    let config = serde_json::json!({ "sources": sources })
         .to_string()
+        .replace("</", "<\\/");
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\">\
+<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+<title>API Reference</title></head><body><div id=\"app\"></div>\
+<script src=\"https://cdn.jsdelivr.net/npm/@scalar/api-reference\"></script>\
+<script>Scalar.createApiReference('#app', {config})</script>\
+</body></html>"
+    )
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 #[cfg(test)]

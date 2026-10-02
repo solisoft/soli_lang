@@ -554,6 +554,7 @@ mod tests {
             name: Some("admin".to_string()),
             middleware: vec![],
             middleware_names: vec![],
+            openapi: None,
         }];
         rebuild_named_routes(&routes);
         restore_routes(routes);

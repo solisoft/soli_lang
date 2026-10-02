@@ -170,11 +170,15 @@ See [Named Routes](#named-routes) for the auto-generated `*_path` / `*_url` help
 Group routes under a common prefix, like `/admin`:
 
 ```soli
-namespace("admin", ->
+namespace("admin", -> {
   get("/dashboard", "admin#dashboard")
   get("/users", "admin#users")
-  post("/users", "admin#create_user"))
+  post("/users", "admin#create_user")
+})
 ```
+
+A block is a lambda in braces, `-> { … }`. Without the braces the routes file does
+not parse, and a trailing `do … end` block is not passed to `namespace`.
 
 ## Scoped Middleware
 
@@ -182,12 +186,14 @@ Apply middleware only to the routes of a block (a name, or an array of names):
 
 ```soli
 # Only these routes require authentication
-middleware("authenticate", ->
+middleware("authenticate", -> {
   get("/admin", "admin#index")
-  get("/admin/users", "admin#users"))
+  get("/admin/users", "admin#users")
+})
 
-middleware(["authenticate", "audit"], ->
-  post("/admin/users", "admin#create_user"))
+middleware(["authenticate", "audit"], -> {
+  post("/admin/users", "admin#create_user")
+})
 
 # Public routes - no auth needed
 get("/", "home#index")
@@ -326,6 +332,21 @@ def show
 ```
 
 See [OpenAPI & API Reference → Documenting an action](openapi.md#documenting-an-action).
+
+To publish one spec per API (a public `v1`, a private `admin`) and keep the other
+routes out, wrap each API's routes in an `openapi` block:
+
+```soli
+openapi("v1", {"title": "API v1", "public": true}, -> {
+  namespace("api/v1", -> {
+    get("/posts", "api/v1/posts#index")
+  })
+})
+#   GET /openapi/v1.json, GET /openapi/v1; /openapi offers every document
+```
+
+Once an app declares one, routes outside every document are left out. See
+[OpenAPI & API Reference → Several documents](openapi.md#several-documents).
 
 Outside `--dev` the endpoints are **opt-in** (404 unless `SOLI_OPENAPI` is set) and, once enabled, are served in every environment — production included, like `/_metrics`. The `/openapi` UI loads Scalar from a CDN, so that page needs network access in the browser (the raw `/openapi.json` does not). The full guide — what each field means, generating TypeScript types, a CI route-change check, and why the endpoints bypass middleware — is [OpenAPI & API Reference](openapi.md).
 

@@ -16,11 +16,13 @@
 
 use super::{error_response, openapi as openapi_spec, ResponseData};
 
-/// `/up`, `/openapi.json` and `/openapi`, or `None` for anything else.
+/// `/up`, `/openapi.json`, `/openapi` and a declared document's
+/// `/openapi/<name>.json` and `/openapi/<name>`, or `None` for anything else.
 pub(super) fn handle(method: &str, path: &str) -> Option<ResponseData> {
     match path {
         "/up" => Some(up()),
         "/openapi.json" | "/openapi" if method == "GET" => Some(openapi(path)),
+        _ if method == "GET" => path.strip_prefix("/openapi/").and_then(openapi_document),
         _ => None,
     }
 }
@@ -48,20 +50,67 @@ fn up() -> ResponseData {
 /// thread-local, hence answered here on the worker rather than the async
 /// layer). Once enabled it is served in every environment, production
 /// included. 404 when disabled so it's invisible by default in production.
+///
+/// Once `config/routes.sl` declares `openapi(...)` documents, `/openapi`
+/// offers the ones that may be served (all of them where the endpoints are
+/// on, otherwise the `"public"` ones) and `/openapi.json` merges them.
 fn openapi(path: &str) -> ResponseData {
+    let docs = openapi_spec::documents();
+    if path == "/openapi" && !docs.is_empty() {
+        let visible: Vec<_> = docs
+            .into_iter()
+            .filter(|d| openapi_spec::document_visible(d))
+            .collect();
+        if visible.is_empty() {
+            return error_response::text(404, "Not Found");
+        }
+        return error_response::html(200, openapi_spec::ui_page_for_documents(&visible));
+    }
     if !openapi_spec::openapi_enabled() {
         return error_response::text(404, "Not Found");
     }
     if path == "/openapi.json" {
-        ResponseData {
-            status: 200,
-            headers: vec![(
-                "Content-Type".to_string(),
-                "application/json; charset=utf-8".to_string(),
-            )],
-            body: openapi_spec::generate_spec_json().into(),
-        }
+        json(openapi_spec::generate_spec_json())
     } else {
         error_response::html(200, openapi_spec::ui_page())
+    }
+}
+
+/// `/openapi/<name>.json` and `/openapi/<name>` for a document the routes
+/// declare. `None` for a name no `openapi(...)` declares, so an application
+/// route under `/openapi/` is not shadowed; 404 for one that may not be
+/// served here.
+fn openapi_document(rest: &str) -> Option<ResponseData> {
+    let (name, is_json) = match rest.strip_suffix(".json") {
+        Some(name) => (name, true),
+        None => (rest, false),
+    };
+    let doc = openapi_spec::documents()
+        .into_iter()
+        .find(|d| d.name == name)?;
+    if !openapi_spec::document_visible(&doc) {
+        return Some(error_response::text(404, "Not Found"));
+    }
+    if is_json {
+        let spec = openapi_spec::generate_document(name)?;
+        Some(json(
+            serde_json::to_string_pretty(&spec).unwrap_or_else(|_| "{}".to_string()),
+        ))
+    } else {
+        Some(error_response::html(
+            200,
+            openapi_spec::ui_page_for(&format!("/openapi/{name}.json"), &doc.title),
+        ))
+    }
+}
+
+fn json(body: String) -> ResponseData {
+    ResponseData {
+        status: 200,
+        headers: vec![(
+            "Content-Type".to_string(),
+            "application/json; charset=utf-8".to_string(),
+        )],
+        body: body.into(),
     }
 }

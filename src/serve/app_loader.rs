@@ -833,6 +833,18 @@ pub(crate) const ROUTES_DSL_SOURCE: &str = r#"
             router_middleware_scope_exit();
         }
 
+        // openapi(name, -> { … }) or openapi(name, {options}, -> { … }).
+        // routes.sl runs on the tree-walker, where reading a zero-argument
+        // lambda by name calls it (`namespace` above relies on the same): so
+        // the document is opened first and each argument is read exactly
+        // once, the options before the routes.
+        fn openapi(name: Any, options: Any, block: Any = null) {
+            router_openapi_enter(name);
+            router_openapi_options(options);
+            if (block != null) { block(); }
+            router_openapi_exit();
+        }
+
         fn get(path: Any, action: Any, name: Any = null) { router_match("GET", path, action, name); }
         fn post(path: Any, action: Any, name: Any = null) { router_match("POST", path, action, name); }
         fn put(path: Any, action: Any, name: Any = null) { router_match("PUT", path, action, name); }

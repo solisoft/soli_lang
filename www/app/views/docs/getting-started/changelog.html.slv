@@ -22,6 +22,11 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.13.0.</p>
 
+        <h3 id="unreleased-api" class="text-xl font-semibold text-white mb-4 scroll-mt-24">API</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">One OpenAPI document per API.</strong> Wrap an API&rsquo;s routes in <code class="text-cyan-400">openapi("v1", {"title": "API v1", "public": true}, -&gt; { … })</code> in <code class="text-cyan-400">config/routes.sl</code> and it gets its own spec at <code class="text-cyan-400">/openapi/v1.json</code> and reference at <code class="text-cyan-400">/openapi/v1</code>; <code class="text-cyan-400">/openapi</code> switches between documents. Routes outside every document (HTML pages, health checks, webhooks) are left out. A <code class="text-cyan-400">"public": true</code> document is served in production without <code class="text-cyan-400">SOLI_OPENAPI</code>, the others stay private. <a href="/docs/development-tools/openapi#section-documents" class="text-cyan-400 hover:underline">Several documents</a></li>
+        </ul>
+
         <h3 id="unreleased-crypto" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Crypto</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">Crypto.hmac</code> takes <code class="text-cyan-400">"sha512"</code> or <code class="text-cyan-400">"sha1"</code>, and a binary key.</strong> A third argument picks the digest (SHA-256 by default, as before), and the key and message may be byte arrays: a key handed over as hex is passed as <code class="text-cyan-400">Hex.decode(key)</code>. That is what a payment gateway such as Paybox needs to sign its payment form. <a href="/docs/builtins/crypto#def-hmac" class="text-cyan-400 hover:underline">Crypto.hmac</a></li>

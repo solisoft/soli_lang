@@ -378,6 +378,7 @@ middleware("auth", fn() {
                     name: Some("root".to_string()),
                     middleware: vec![],
                     middleware_names: vec![],
+                    openapi: None,
                 },
                 Route {
                     method: "POST".to_string(),
@@ -386,6 +387,7 @@ middleware("auth", fn() {
                     name: None,
                     middleware: vec![],
                     middleware_names: vec!["auth".to_string()],
+                    openapi: None,
                 },
             ],
             websockets: vec![WebSocketRoute {

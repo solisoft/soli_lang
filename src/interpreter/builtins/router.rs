@@ -149,6 +149,93 @@ thread_local! {
     // Routing context stack
     #[allow(clippy::missing_const_for_thread_local)]
     static ROUTER_CONTEXT: RefCell<Vec<RouterScope>> = RefCell::new(vec![RouterScope::default()]);
+
+    // The `openapi(name, options, block)` document the routes being declared
+    // belong to. Kept beside the scope stack rather than in it: documents do
+    // not nest, and every other scope (namespace, member, middleware) is
+    // simply inside or outside one.
+    static OPENAPI_SCOPE: RefCell<Option<std::sync::Arc<crate::interpreter::builtins::server::OpenApiDoc>>> =
+        const { RefCell::new(None) };
+}
+
+/// The `openapi(...)` document a route registered now belongs to, if any.
+pub fn current_openapi_doc(
+) -> Option<std::sync::Arc<crate::interpreter::builtins::server::OpenApiDoc>> {
+    OPENAPI_SCOPE.with(|scope| scope.borrow().clone())
+}
+
+/// `openapi(name, …)`: a new document with default settings. The name
+/// becomes a URL segment, so it is kept to letters, digits, `-` and `_`.
+fn new_openapi_doc(
+    name: &Value,
+) -> Result<crate::interpreter::builtins::server::OpenApiDoc, String> {
+    let Value::String(name) = name else {
+        return Err(format!(
+            "openapi: the document name must be a string, got {}",
+            name.type_name()
+        ));
+    };
+    let name = name.to_string();
+    let valid = !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if !valid {
+        return Err(format!(
+            "openapi: \"{name}\" is not a document name: use letters, digits, `-` and `_` \
+             (it is served at /openapi/<name>.json)"
+        ));
+    }
+    Ok(crate::interpreter::builtins::server::OpenApiDoc {
+        title: name.clone(),
+        name,
+        version: "1.0.0".to_string(),
+        description: None,
+        public: false,
+    })
+}
+
+/// Apply `{"title": …, "version": …, "description": …, "public": …}`.
+fn apply_openapi_options(
+    doc: &mut crate::interpreter::builtins::server::OpenApiDoc,
+    options: &Value,
+) -> Result<(), String> {
+    let Value::Hash(options) = options else {
+        return Err(format!(
+            "openapi: options must be a hash, got {}",
+            options.type_name()
+        ));
+    };
+    for (key, value) in options.borrow().iter() {
+        let key = match key {
+            crate::interpreter::value::HashKey::String(s) => s.to_string(),
+            other => format!("{other:?}"),
+        };
+        match (key.as_str(), value) {
+            ("title", Value::String(s)) => doc.title = s.to_string(),
+            ("version", Value::String(s)) => doc.version = s.to_string(),
+            ("description", Value::String(s)) => doc.description = Some(s.to_string()),
+            ("public", Value::Bool(b)) => doc.public = *b,
+            ("title" | "version" | "description", other) => {
+                return Err(format!(
+                    "openapi: \"{key}\" must be a string, got {}",
+                    other.type_name()
+                ))
+            }
+            ("public", other) => {
+                return Err(format!(
+                    "openapi: \"public\" must be true or false, got {}",
+                    other.type_name()
+                ))
+            }
+            (other, _) => {
+                return Err(format!(
+                "openapi: unknown option \"{other}\" (known: title, version, description, public)"
+            ))
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Reset router context for hot reload.
@@ -159,6 +246,7 @@ pub fn reset_router_context() {
         stack.clear();
         stack.push(RouterScope::default());
     });
+    OPENAPI_SCOPE.with(|scope| *scope.borrow_mut() = None);
 }
 
 #[derive(Clone)]
@@ -652,6 +740,66 @@ pub fn register_router_builtins(env: &mut Environment) {
                 Ok(Value::Null)
             },
         )),
+    );
+
+    // router_openapi_enter(name): the routes declared until
+    // router_openapi_exit() belong to that OpenAPI document.
+    env.define(
+        "router_openapi_enter".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "router_openapi_enter",
+            Some(1),
+            |args| {
+                let doc = new_openapi_doc(&args[0])?;
+                OPENAPI_SCOPE.with(|scope| {
+                    let mut scope = scope.borrow_mut();
+                    if let Some(outer) = scope.as_ref() {
+                        return Err(format!(
+                            "openapi(\"{}\") inside openapi(\"{}\"): documents do not nest",
+                            doc.name, outer.name
+                        ));
+                    }
+                    *scope = Some(std::sync::Arc::new(doc));
+                    Ok(Value::Null)
+                })
+            },
+        )),
+    );
+
+    // router_openapi_options(options): the open document's settings. `nil`
+    // leaves them alone: in `openapi(name, -> { … })` the second argument is
+    // the routes, which reading it has already run (see `openapi` in the
+    // routes DSL prelude).
+    env.define(
+        "router_openapi_options".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "router_openapi_options",
+            Some(1),
+            |args| {
+                if matches!(args[0], Value::Null) {
+                    return Ok(Value::Null);
+                }
+                OPENAPI_SCOPE.with(|scope| {
+                    let mut scope = scope.borrow_mut();
+                    let Some(current) = scope.as_ref() else {
+                        return Err("openapi: options outside an openapi(...) block".to_string());
+                    };
+                    let mut doc = (**current).clone();
+                    apply_openapi_options(&mut doc, &args[0])?;
+                    *scope = Some(std::sync::Arc::new(doc));
+                    Ok(Value::Null)
+                })
+            },
+        )),
+    );
+
+    // router_openapi_exit()
+    env.define(
+        "router_openapi_exit".to_string(),
+        Value::NativeFunction(NativeFunction::new("router_openapi_exit", Some(0), |_| {
+            OPENAPI_SCOPE.with(|scope| *scope.borrow_mut() = None);
+            Ok(Value::Null)
+        })),
     );
 
     // router_middleware_scope_exit()

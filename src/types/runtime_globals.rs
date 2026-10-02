@@ -169,6 +169,7 @@ const PRELUDE_NAMES: &[&[&str]] = &[
         "member",
         "collection",
         "middleware",
+        "openapi",
         "get",
         "post",
         "put",
