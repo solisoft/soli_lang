@@ -358,6 +358,14 @@ connect. What follows from that:
   `def` of the script with the same name as a builder wins. The type checker
   knows the catalogue in a script that calls `eui_window`, so a builder can be
   assigned (`action = button("Water", "water")`) or returned from a helper.
+- **The state is plain data.** It is kept as JSON between events, so a class
+  instance put in it comes back on the next event as a plain hash of its fields,
+  without its class or methods, and an enum value comes back as its variant's
+  name. Keep hashes, arrays, strings and numbers in the state and use classes
+  around it, as Pocket Garden's `Garden` does with static methods. Under `--dev`
+  and in an `eui_window` script, a handler that puts an instance in the state is
+  refused with the path to the field and the class; production converts it as
+  before.
 - **A script can span several files.** `import "./beds.sl"` brings in what
   the file exports: `export def` and `export class`. There is no
   `export const`; share data through a function, which is a definition the

@@ -588,6 +588,67 @@ fn resolve(interpreter: &Interpreter, action: &str) -> Result<Value, String> {
         .ok_or_else(|| format!("EUI: action '{action}' is not defined"))
 }
 
+/// Whether a handler's state is checked for class instances: under `--dev`
+/// and in an `eui_window` script. Production keeps converting them silently,
+/// because an application may rely on a stored record reading back as a hash.
+fn strict_state() -> bool {
+    crate::interpreter::builtins::template::is_dev_mode() || script::serving_script()
+}
+
+/// Where a handler result keeps a class instance, described for the person
+/// who wrote it, or `None` when it is plain data.
+///
+/// The state is kept as JSON between events. An instance goes in as a hash of
+/// its fields and comes back as that hash, without its class: its methods are
+/// gone, and a call to one reads a missing key and gives `nil` instead of
+/// failing. An enum value comes back as its variant's name, a string. Either
+/// way the next click quietly does the wrong thing, so it is refused here,
+/// on the event that stores it, with the path to the field.
+fn instance_in_state(value: &Value) -> Option<String> {
+    fn walk(value: &Value, path: &str, depth: usize) -> Option<String> {
+        if depth > 64 {
+            return None;
+        }
+        match value {
+            Value::Instance(inst) => {
+                let inst = inst.borrow();
+                let at = if path.is_empty() { "the state" } else { path };
+                let problem = match crate::interpreter::value::enum_variant_tag(&inst) {
+                    Some(tag) => format!(
+                        "put the enum value {}.{tag} in the state at `{at}`. The state is kept as JSON \
+                         between events, so on the next one it would come back as the string \"{tag}\". \
+                         Store the string, and compare with it.",
+                        inst.class.name
+                    ),
+                    None => format!(
+                        "put a {} instance in the state at `{at}`. The state is kept as JSON between \
+                         events, so on the next one it would come back as a plain hash of its fields, \
+                         without its class or methods. Store its fields (a hash) and rebuild the object \
+                         where you use it.",
+                        inst.class.name
+                    ),
+                };
+                Some(problem)
+            }
+            Value::Hash(hash) => hash.borrow().iter().find_map(|(key, item)| {
+                let at = if path.is_empty() {
+                    key.to_string()
+                } else {
+                    format!("{path}.{key}")
+                };
+                walk(item, &at, depth + 1)
+            }),
+            Value::Array(items) => items
+                .borrow()
+                .iter()
+                .enumerate()
+                .find_map(|(i, item)| walk(item, &format!("{path}[{i}]"), depth + 1)),
+            _ => None,
+        }
+    }
+    walk(value, "", 0)
+}
+
 /// The worker-side entry: run the handler (unless resyncing), then the view,
 /// then diff and send. Called from `handle_liveview_event` with the frame
 /// lock already held.
@@ -655,6 +716,11 @@ fn run_eui_event(
         match interpreter.call_value(handler, vec![event_value], Span::default()) {
             Ok(Value::Null) => {}
             Ok(result @ Value::Hash(_)) => {
+                if strict_state() {
+                    if let Some(problem) = instance_in_state(&result) {
+                        return Err(format!("EUI: handler '{handler_name}' {problem}"));
+                    }
+                }
                 let json = value_to_json(&result);
                 let bare = json.as_object().is_some_and(handler_return_is_bare);
                 let unwrapped = unwrap_handler_return(json);
@@ -965,5 +1031,55 @@ mod resume_tests {
         let (_, owed) = take_resumable(h, "sess-a", "counter", 4).expect("still here");
         assert!(owed.is_empty(), "{owed:?}");
         close_resumable("view-5");
+    }
+}
+
+#[cfg(test)]
+mod instance_in_state_tests {
+    use super::instance_in_state;
+    use crate::interpreter::value::{Class, HashKey, HashPairs, Instance, Value};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    fn hash(pairs: Vec<(&str, Value)>) -> Value {
+        let mut map = HashPairs::default();
+        for (key, value) in pairs {
+            map.insert(HashKey::String(key.into()), value);
+        }
+        Value::Hash(Rc::new(RefCell::new(map)))
+    }
+
+    fn plant() -> Value {
+        let class = Rc::new(Class {
+            name: "Plant".to_string(),
+            ..Default::default()
+        });
+        Value::Instance(Rc::new(RefCell::new(Instance::new(class))))
+    }
+
+    #[test]
+    fn plain_data_passes() {
+        let state = hash(vec![
+            ("coins", Value::Int(6)),
+            (
+                "beds",
+                Value::Array(Rc::new(RefCell::new(vec![hash(vec![(
+                    "age",
+                    Value::Int(2),
+                )])]))),
+            ),
+        ]);
+        assert_eq!(instance_in_state(&state), None);
+    }
+
+    #[test]
+    fn an_instance_is_named_with_its_path_and_class() {
+        let beds = Value::Array(Rc::new(RefCell::new(vec![
+            hash(vec![("age", Value::Int(1))]),
+            hash(vec![("plant", plant())]),
+        ])));
+        let problem = instance_in_state(&hash(vec![("beds", beds)])).unwrap_or_default();
+        assert!(problem.contains("a Plant instance"), "{problem}");
+        assert!(problem.contains("`beds[1].plant`"), "{problem}");
     }
 }

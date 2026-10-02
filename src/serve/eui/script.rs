@@ -35,6 +35,16 @@ use crate::interpreter::value::{HashKey, NativeFunction, Value};
 /// The definitions of the script being run, kept when it calls `eui_window`.
 static DEFINITIONS: Mutex<Option<Program>> = Mutex::new(None);
 
+/// Set once this process serves an `eui_window` script. The server runs in
+/// the same process, so its workers can ask: a script is development, and
+/// gets the same strict checks as `--dev`.
+static SERVING_SCRIPT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether this process serves an `eui_window` script.
+pub(crate) fn serving_script() -> bool {
+    SERVING_SCRIPT.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Environment variable: serve and print the session instead of opening a
 /// window.
 pub const NO_WINDOW_ENV: &str = "SOLI_EUI_NO_WINDOW";
@@ -262,6 +272,7 @@ fn serve(app: &std::path::Path) -> Result<(u16, String), String> {
         }
     }
     crate::serve::set_quiet(true);
+    SERVING_SCRIPT.store(true, std::sync::atomic::Ordering::Relaxed);
 
     let (tx, rx) = std::sync::mpsc::channel::<(u16, String)>();
     let folder = app.to_path_buf();
