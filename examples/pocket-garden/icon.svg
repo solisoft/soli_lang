@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bfe3ff"/>
+      <stop offset="1" stop-color="#eaf6ff"/>
+    </linearGradient>
+    <clipPath id="tile"><rect x="64" y="64" width="896" height="896" rx="200"/></clipPath>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#sky)"/>
+  <rect x="64" y="700" width="896" height="260" fill="#e9c896" clip-path="url(#tile)"/>
+  <line x1="512" y1="720" x2="512" y2="390" stroke="#16a34a" stroke-width="34" stroke-linecap="round"/>
+  <circle cx="420" cy="600" r="64" fill="#16a34a"/>
+  <circle cx="604" cy="520" r="64" fill="#16a34a"/>
+  <circle cx="613" cy="390" r="70" fill="#f59e0b"/>
+<circle cx="584" cy="462" r="70" fill="#f59e0b"/>
+<circle cx="512" cy="491" r="70" fill="#f59e0b"/>
+<circle cx="440" cy="462" r="70" fill="#f59e0b"/>
+<circle cx="411" cy="390" r="70" fill="#f59e0b"/>
+<circle cx="440" cy="318" r="70" fill="#f59e0b"/>
+<circle cx="512" cy="289" r="70" fill="#f59e0b"/>
+<circle cx="584" cy="318" r="70" fill="#f59e0b"/>
+  <circle cx="512" cy="390" r="82" fill="#3f2a14"/>
+</svg>
