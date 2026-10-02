@@ -234,6 +234,9 @@ router_middleware_scope
 router_middleware_scope_exit
 router_namespace_enter
 router_namespace_exit
+router_openapi_enter
+router_openapi_exit
+router_openapi_options
 router_resource_enter
 router_resource_exit
 router_websocket
