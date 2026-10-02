@@ -143,6 +143,12 @@ jobs:
       DOMAIN: ${{ vars.DEPLOY_DOMAIN || 'soli.solisoft.net' }}
       SITE_DIR: ${{ vars.DEPLOY_SITE_DIR || vars.DEPLOY_DOMAIN || 'soli.solisoft.net' }}
       APP: ${{ vars.DEPLOY_APP || 'soli.solisoft.net' }}
+      # The routing file the running proxy was started with (`--conf`).
+      # soli-proxy reads config.toml from the same directory, so `-c` names
+      # proxy.conf, never config.toml: since soli-proxy 1.0, handing it
+      # config.toml parses that TOML as routing rules and the switch fails
+      # (`cannot parse "[server]"`).
+      PROXY_CONF: ${{ vars.DEPLOY_PROXY_CONF || '/home/rocky/proxy.conf' }}
       # The pids of the processes serving THIS site. The server hosts a dozen,
       # so the filter is an `if` and not a `[ ... ] && echo`: a false `&&` at the
       # end of the loop makes the `for` exit 1, and under `set -e` that kills the
@@ -333,10 +339,10 @@ jobs:
           before="$(ssh "$USER@$HOST" "$PIDS")"
           echo "processes before: ${before:-none}"
           echo "$before" > /tmp/pids-before
-          if ! ssh "$USER@$HOST" "soli-proxy deploy -c '$SITES_DIR/config.toml' '$APP' 2>&1"; then
+          if ! ssh "$USER@$HOST" "soli-proxy deploy -c '$PROXY_CONF' '$APP' 2>&1"; then
             echo "" >&2
             echo "The switch failed. Common cause: an orphaned slot still holds its port." >&2
-            echo "  ssh $USER@$HOST 'soli-proxy logs -c $SITES_DIR/config.toml $APP'" >&2
+            echo "  ssh $USER@$HOST 'soli-proxy logs -c $PROXY_CONF $APP'" >&2
             exit 1
           fi
 
@@ -361,7 +367,7 @@ jobs:
           done
           echo "" >&2
           echo "No fresh slot answered 200 on /up within 90s." >&2
-          echo "  ssh $USER@$HOST 'soli-proxy logs -c $SITES_DIR/config.toml $APP'" >&2
+          echo "  ssh $USER@$HOST 'soli-proxy logs -c $PROXY_CONF $APP'" >&2
           exit 1
 
       # After a switch the proxy still spreads traffic over BOTH slot ports while
@@ -369,7 +375,7 @@ jobs:
       # 421. `restart` brings both slots up on the current code.
       - name: Bring both slots up
         if: steps.cfg.outputs.configured == 'true'
-        run: ssh "$USER@$HOST" "soli-proxy restart -c '$SITES_DIR/config.toml' '$APP'"
+        run: ssh "$USER@$HOST" "soli-proxy restart -c '$PROXY_CONF' '$APP'"
 
       # End to end, through the proxy, with the real hostname — where the 421
       # shows. The /up probe on the app's own port bypasses exactly the part
