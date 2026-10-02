@@ -6,8 +6,8 @@
 # Apple Silicon runner, because `--target` fetches a prebuilt runtime that has
 # no window either.
 #
-# The artifact is ad-hoc signed, not notarized: on first launch macOS asks to
-# confirm (Control-click → Open). See examples/pocket-garden/README.md.
+# The artifact is ad-hoc signed, not notarized: macOS refuses the first launch
+# of a downloaded copy until it is allowed (see examples/pocket-garden/README.md).
 name: pocket garden (macOS dmg)
 
 on:

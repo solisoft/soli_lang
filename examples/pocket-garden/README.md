@@ -37,6 +37,7 @@ prebuilt runtime without the window.
 
 For macOS, `.github/workflows/pocket-garden-macos.yml` does the whole thing on
 an Apple Silicon runner and uploads `PocketGarden.dmg`: the executable in
-`Pocket Garden.app`, with this icon, ad-hoc signed. It is not notarized, so the
-first launch asks for confirmation: Control-click the app, choose **Open**, then
-**Open** again.
+`Pocket Garden.app`, with this icon, ad-hoc signed. It is not notarized, so macOS
+refuses the first launch of a downloaded copy. On macOS 15 and later, try to open
+it once, then go to **System Settings → Privacy & Security** and click **Open
+Anyway**. On macOS 14 and earlier, Control-click the app and choose **Open**.

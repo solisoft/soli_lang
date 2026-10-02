@@ -147,6 +147,14 @@ drinks one; a bed at zero water stops, and the drawing turns grey. Rain is not
 random: every third day, so the game behaves the same way every time you play it,
 which is also what made these screenshots repeatable.
 
+Why static methods over hashes, and not a `Bed` object with a `water` method?
+Because the state is kept as JSON between events. An object put in it comes back
+on the next event as a plain hash of its fields, without its class or methods: a
+method call on it reads a missing key and gives `nil`, so the first click works
+and the second quietly does not. So the state stays plain data, and the class
+works *on* it. Under `--dev` and in an `eui_window` script, Soli refuses a handler
+that puts an instance in the state, and names the field and the class.
+
 ## Step 3: splitting the code into files
 
 `import "./beds.sl"` brings in what the file exports. Two things to know:
@@ -383,9 +391,65 @@ cookie. The screenshots in this post were taken that way, by EUI's `snapshot`
 tool, which plays a scripted session (click *Plant Radish*, wait three seconds,
 click *Water*…) and draws the result with the real renderer.
 
-## Three things that tripped us up
+## Ship it
+
+A game nobody can install is a game for one. `soli build`, given a script
+instead of an application folder, writes one executable: the program, its
+imports already resolved and type-checked, and the Soli runtime that built it.
+
+```bash
+$ soli build garden.sl -o pocket-garden
+Building pocket-garden from garden.sl...
+  Built pocket-garden (80.2 MB, linux-x86_64, runs on the VM, or the tree-walker if it needs it)
+```
+
+Copy that one file to an empty folder on another machine and it runs: no `soli`,
+no `.sl` files, no catalogue to install. The widget catalogue is part of the
+runtime, and the five files are part of the program.
+
+Two rules decide whether it opens a window:
+
+- **Build with an `eui-desktop` soli.** The executable embeds the soli that built
+  it. Built with a published binary, it serves the session and opens nothing.
+- **Build on the platform you ship to.** `--target` cross-builds by fetching a
+  prebuilt runtime for the other platform, and that runtime has no window either.
+  A macOS build is made on a Mac.
+
+### A disk image for macOS
+
+A Mac user expects an app in a `.dmg`, not a bare executable. The repository has
+the game in
+[`examples/pocket-garden`](https://github.com/solisoft/soli_lang/tree/main/examples/pocket-garden),
+and a GitHub Actions workflow,
+[`pocket-garden-macos.yml`](https://github.com/solisoft/soli_lang/blob/main/.github/workflows/pocket-garden-macos.yml),
+that does the whole thing on an Apple Silicon runner:
+
+1. `cargo build --release --features eui-desktop`, for a soli with the window.
+2. `soli build examples/pocket-garden/garden.sl -o build/PocketGarden`.
+3. `Pocket Garden.app`: the executable in `Contents/MacOS`, an `Info.plist` naming
+   it, and an icon turned into `PocketGarden.icns` by `sips` and `iconutil`.
+4. `codesign --force -s -` on the app: an ad-hoc signature, which Apple Silicon
+   requires before it runs anything. Use `codesign` itself, not a tool that
+   rewrites the binary: the program `soli build` appended rides inside the
+   executable's `__LINKEDIT` segment, and a rewrite drops it.
+5. `hdiutil create … -format UDZO` over a folder holding the app and a link to
+   `/Applications`, so the disk image opens on the familiar drag-to-install
+   window.
+
+The workflow also starts the packaged executable with `SOLI_EUI_NO_WINDOW=1` and
+checks it serves its session, so a broken bundle fails the build, not a player.
+
+The app is signed but not notarized. Notarization needs a paid Apple developer
+account; without it, macOS refuses the first launch of a downloaded copy. On
+macOS 15 and later, try to open it once, then go to **System Settings → Privacy &
+Security** and click **Open Anyway**. On macOS 14 and earlier, Control-click the
+app and choose **Open**. After that it opens like any other.
+
+## Four things that tripped us up
 
 - **`export const` does not exist.** Expose data with a function (Step 3).
+- **An object in the state comes back as a hash.** Keep the state plain data and
+  put the behaviour in a class around it (Step 2).
 - **A text colour is `"fg"`, not `"color"`.** An unknown style key ends the session
   with `unknown style key 'color' (error 400)`. EUI refuses typos loudly, on
   purpose.
