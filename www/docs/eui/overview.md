@@ -390,6 +390,11 @@ ws://127.0.0.1:41871/_eui/session/counter
 soli_desktop=5fc91513…
 ```
 
+A window also needs a display. On Linux, from an SSH login, a container or a
+CI runner (no `WAYLAND_DISPLAY` or `DISPLAY`), the call stops before serving
+anything with `there is no display to open the window on`: run the script from
+a terminal of the desktop session, or use `SOLI_EUI_NO_WINDOW=1`.
+
 ## Where the rest is
 
 The protocol specification, the client crates, the widget catalogue and the

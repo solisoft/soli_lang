@@ -22,6 +22,10 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.13.0.</p>
 
+        <h3 id="unreleased-eui" class="text-xl font-semibold text-white mb-4 scroll-mt-24">EUI</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">eui_window</code> without a display says so.</strong> From an SSH login, a container or a CI runner on Linux, the window failed deep inside winit with a message naming its source file. It now stops before serving, with <code class="text-cyan-400">there is no display to open the window on</code>, and points to the desktop session or <code class="text-cyan-400">SOLI_EUI_NO_WINDOW=1</code>. <a href="/docs/eui/overview#a-window-from-a-script" class="text-cyan-400 hover:underline">A window from a script</a></li>
+        </ul>
     </section>
 
     <section id="v2-13-0" class="mb-16 scroll-mt-24">

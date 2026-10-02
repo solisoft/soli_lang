@@ -227,6 +227,7 @@ ws://127.0.0.1:41871/_eui/session/counter
 soli_desktop=5fc91513…</code></pre>
         </div>
     </div>
+    <p class="text-gray-400 mb-12">A window also needs a display. On Linux, from an SSH login, a container or a CI runner (no <code class="text-cyan-400">WAYLAND_DISPLAY</code> or <code class="text-cyan-400">DISPLAY</code>), the call stops before serving anything with <code class="text-cyan-400">there is no display to open the window on</code>: run the script from a terminal of the desktop session, or use <code class="text-cyan-400">SOLI_EUI_NO_WINDOW=1</code>.</p>
 
     <h2 class="text-2xl font-bold text-white mb-6">The manifest</h2>
     <p class="text-gray-400 mb-12">With the feature on, every app also answers <code class="text-cyan-400">GET /.well-known/eui</code> with a signed manifest. The signing key is generated the first time it is needed, into <code class="text-cyan-400">config/eui_publisher.pkcs8</code>; a client pins the public half on its first visit and refuses a different key afterwards, so keep the file with the app's secrets and out of version control. <code class="text-cyan-400">eui_capabilities("clipboard.read")</code> in <code class="text-cyan-400">config/routes.sl</code> lists what the manifest asks the client for; nothing is granted by asking &mdash; the person allows each capability on their side (<code class="text-cyan-400">eui &lt;url&gt; --allow clipboard.read</code>).</p>

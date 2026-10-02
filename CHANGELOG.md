@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+* **eui:** **`eui_window` without a display says so.** On Linux and the BSDs, with neither `WAYLAND_DISPLAY`, `WAYLAND_SOCKET` nor `DISPLAY` set (an SSH login, a container, a CI runner), a soli with the window stopped inside winit with `os error at …/winit-0.30.13/src/platform_impl/linux/mod.rs:765: neither WAYLAND_DISPLAY nor WAYLAND_SOCKET nor DISPLAY is set`, a path from the machine that built it. The call now refuses before serving anything, with `there is no display to open the window on`, and says to run the script from the desktop session or set `SOLI_EUI_NO_WINDOW=1`. [Docs](www/docs/eui/overview.md#a-window-from-a-script)
+
 ## [2.13.0] - 2026-10-02
 
 ### Added

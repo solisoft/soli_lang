@@ -137,3 +137,31 @@ fn without_the_window_the_error_says_how_to_get_one() {
     );
     assert!(err.contains("SOLI_EUI_NO_WINDOW=1"), "{err}");
 }
+
+/// With the window built in but no display (an SSH login, a container), the
+/// script stops before serving, saying so, instead of failing inside winit
+/// with a message that names winit's source file.
+#[test]
+#[cfg(target_os = "linux")]
+#[cfg_attr(not(feature = "eui-desktop"), ignore = "this build has no window")]
+fn without_a_display_the_error_says_so() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(dir.path().join("app.sl"), COUNTER).expect("write");
+    let out = Command::new(env!("CARGO_BIN_EXE_soli"))
+        .current_dir(dir.path())
+        .arg("app.sl")
+        .env_remove("SOLI_EUI_NO_WINDOW")
+        .env_remove("WAYLAND_DISPLAY")
+        .env_remove("WAYLAND_SOCKET")
+        .env_remove("DISPLAY")
+        .output()
+        .expect("run");
+    assert_eq!(out.status.code(), Some(70));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("there is no display to open the window on"),
+        "{err}"
+    );
+    assert!(err.contains("SOLI_EUI_NO_WINDOW=1"), "{err}");
+    assert!(!err.contains("winit"), "{err}");
+}

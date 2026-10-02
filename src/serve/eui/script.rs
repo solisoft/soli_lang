@@ -195,6 +195,17 @@ fn open(name: &str, handler: &str, view: &str, title: &str) -> Result<(), String
              {NO_WINDOW_ENV}=1 to serve the session and open it with an EUI client."
         ));
     }
+    // Before anything is served: without a display the window system fails
+    // deep inside winit, with a message naming its own source file.
+    if !headless && !has_display() {
+        return Err(format!(
+            "eui_window: there is no display to open the window on: neither \
+             WAYLAND_DISPLAY nor DISPLAY is set (an SSH login, a container or a CI \
+             runner has none). Run the script from a terminal of the desktop \
+             session, or set {NO_WINDOW_ENV}=1 to serve the session and open it with \
+             an EUI client."
+        ));
+    }
 
     let app = write_app(&definitions, name, handler, view)?;
     let (port, session) = serve(&app.path().join(name))?;
@@ -292,6 +303,25 @@ fn serve(app: &std::path::Path) -> Result<(u16, String), String> {
         .map_err(|e| format!("eui_window: cannot start the server: {e}"))?;
     rx.recv()
         .map_err(|_| "eui_window: the server stopped before it was listening".to_string())
+}
+
+/// Whether a window can be opened at all. On Linux and the BSDs that is a
+/// Wayland or X11 server named in the environment, which is what winit reads;
+/// macOS and Windows always have their window system.
+fn has_display() -> bool {
+    if cfg!(any(
+        target_os = "linux",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "dragonfly"
+    )) {
+        ["WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY"]
+            .iter()
+            .any(|var| std::env::var_os(var).is_some_and(|v| !v.is_empty()))
+    } else {
+        true
+    }
 }
 
 #[cfg(feature = "eui-desktop")]
