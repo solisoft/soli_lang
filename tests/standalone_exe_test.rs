@@ -161,6 +161,26 @@ fn fixtures() -> &'static Fixtures {
     })
 }
 
+/// Run `exec` — a spawn of an executable this process just wrote — retrying
+/// while Linux answers ETXTBSY. Tests run on parallel threads: another one
+/// can fork while our write descriptor is open, and its child holds that
+/// descriptor until it execs, so for a moment the file is "busy" (CI saw
+/// `tampered_payload_refuses_cleanly` fail this way). It clears on its own.
+fn retry_busy<T>(mut exec: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match exec() {
+            Err(e)
+                if e.kind() == std::io::ErrorKind::ExecutableFileBusy
+                    && Instant::now() < deadline =>
+            {
+                thread::sleep(Duration::from_millis(20))
+            }
+            other => return other,
+        }
+    }
+}
+
 /// Hard-link `src` into `dst` (same tmpfs), falling back to a full copy.
 fn link_or_copy(src: &Path, dst: &Path) {
     if std::fs::hard_link(src, dst).is_err() {
@@ -190,7 +210,8 @@ impl StandaloneServer {
         for (k, v) in envs {
             cmd.env(k, v);
         }
-        let child = cmd.spawn().expect("spawn standalone exe");
+        // `link_or_copy` may have copied, i.e. written, the executable.
+        let child = retry_busy(|| cmd.spawn()).expect("spawn standalone exe");
         let server = StandaloneServer { child, port };
         server.wait_ready();
         server
@@ -373,10 +394,8 @@ fn tampered_payload_refuses_cleanly() {
         std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
-    let out = Command::new(&exe)
-        .arg("--port")
-        .arg(pick_port().to_string())
-        .output()
+    let port = pick_port().to_string();
+    let out = retry_busy(|| Command::new(&exe).arg("--port").arg(&port).output())
         .expect("run tampered exe");
     assert!(!out.status.success(), "tampered artifact must not boot");
     let stderr = String::from_utf8_lossy(&out.stderr);
