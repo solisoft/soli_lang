@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.12.1] - 2026-10-02
+
 ### Fixed
 
 * **serve:** **`.wasm` files are served as `application/wasm`.** They were `application/octet-stream`, which `WebAssembly.instantiateStreaming` refuses: a page loading a module (the EUI browser client, for one) fell back to downloading the whole file before compiling any of it, with a console warning. `wasm` is also a static and a bundle extension now.
