@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.15.0] - 2026-10-03
+
 ### Added
 
 * **uploads:** **SoliDB attachments are streamed, with `Range`.** The blob route (`AttachmentsController#show`) loaded a SoliDB attachment whole, as base64, into the worker before decoding it: a 150 MB podcast episode cost the file several times over per download, and an audio player that seeks downloaded it again each time. The server now fetches `GET /_api/blob/{db}/{collection}/{key}` itself, on the request's async task, and relays SoliDB's body to the client one chunk at a time, polled only as the client reads — memory per download is one chunk, and the worker is free as soon as the action returns. The client's `Range` is forwarded when it is one byte range (`bytes=a-b`, `a-`, `-n`); status (`200`/`206`/`416`), `Content-Length`, `Content-Range` and `Accept-Ranges` come from SoliDB, the representation headers from the route. Several ranges or a malformed one get the whole blob. The blob key is the `ETag`: a matching `If-None-Match` is a `304` without a SoliDB round trip, and `If-Range` keeps the range only for that tag. `HEAD` asks SoliDB for `bytes=0-0` and reports the full size without a body. A missing blob is `404`; an unreachable SoliDB, or any other answer, `502` (no response headers within 30 s: `504`; a body stalled 60 s on SoliDB's side is cut). The download client has no total timeout (the shared DB client's 10 s would cut an episode off) and never follows a redirect. Images with a transform in the query string are still loaded and transformed; disk and S3 attachments are unchanged (whole, no `Range`). [Docs](www/docs/models.md#attachments)
