@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-10-02
+
 ### Added
 
 * **crypto:** **`Crypto.hmac(message, key, algorithm)` takes `"sha512"` or `"sha1"`, and a binary key.** The third argument picks the digest (`"sha256"` by default, as before); `message` and `key` may be byte Arrays as well as Strings, so a key handed over as hex is passed as `Hex.decode(key)` — a String key is still its UTF-8 bytes. Payment gateways need both: Paybox signs its payment form with HMAC-SHA512 under the hex-decoded key. The standalone `hmac(message, key)` is unchanged (SHA-256, Strings). [Docs](www/docs/builtins.md#cryptohmacmessage-key-algorithm--hmacmessage-key)
