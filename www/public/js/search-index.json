@@ -9669,12 +9669,30 @@
       "type": "method",
       "category": "Spreadsheet",
       "path": "/docs/builtins/spreadsheet",
-      "signature": "Spreadsheet.excel(data)",
-      "description": "Create Excel XML spreadsheet from data",
+      "signature": "Spreadsheet.excel(path)",
+      "description": "Read an Excel (.xlsx) file into an array of hashes (first row = headers)",
       "keywords": [
         "spreadsheet",
         "excel",
-        "export"
+        "xlsx",
+        "import",
+        "read"
+      ]
+    },
+    {
+      "title": "Spreadsheet.excel_write",
+      "type": "method",
+      "category": "Spreadsheet",
+      "path": "/docs/builtins/spreadsheet#fn-spreadsheet-excel-write",
+      "signature": "Spreadsheet.excel_write(data, path, columns?)",
+      "description": "Write an array of hashes to an Excel (.xlsx) file, columns in the given order, numbers as numbers",
+      "keywords": [
+        "spreadsheet",
+        "excel",
+        "xlsx",
+        "export",
+        "write",
+        "columns"
       ]
     },
     {

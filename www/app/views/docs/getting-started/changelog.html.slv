@@ -22,6 +22,12 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.14.0.</p>
 
+        <h3 id="unreleased-spreadsheet" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Spreadsheet</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">Spreadsheet.excel_write</code> takes the column order.</strong> A third argument lists the columns to write, in that order, as the header row &mdash; before, the columns came out sorted alphabetically. Sheets wider than 26 columns now go on to <code class="text-cyan-400">AA</code>, <code class="text-cyan-400">AB</code>&hellip; <a href="/docs/builtins/spreadsheet#fn-spreadsheet-excel-write" class="text-cyan-400 hover:underline">Spreadsheet.excel_write</a></li>
+            <li><strong class="text-white">Numbers stay numbers, text stays text.</strong> <code class="text-cyan-400">Int</code> and <code class="text-cyan-400">Float</code> values become numeric cells Excel can sum; Strings are always text, so a postcode or an order number keeps its leading zeros. Before, a String that looked like a number was turned into one.</li>
+        </ul>
+
     </section>
 
     <section id="v2-14-0" class="mb-16 scroll-mt-24">

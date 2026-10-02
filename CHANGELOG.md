@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+* **spreadsheet:** **`Spreadsheet.excel_write(data, path, columns)` takes the column order.** The optional third argument lists the keys to write, in that order, as the header row (a key missing from a row gives an empty cell); without it the first row's keys are sorted, as before. Columns past `Z` are now `AA`, `AB`… (they were written over other cells). [Docs](www/app/views/docs/builtins/spreadsheet.html.slv)
+
+### Changed
+
+* **spreadsheet:** **`excel_write` types cells from the Soli value.** `Int` and `Float` become numeric cells, which Excel can sum; every other value, Strings included, is written as text. Before, every value went through a String and umya guessed: a numeric-looking String (`"00042"`, a postcode) became a number and lost its leading zeros, while numbers sent as Int were the same guess. Pass a number to get a number.
+
 ## [2.14.0] - 2026-10-02
 
 ### Added

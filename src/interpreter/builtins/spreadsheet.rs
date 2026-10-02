@@ -190,15 +190,26 @@ fn value_to_string(value: &Value) -> String {
 fn extract_headers_and_rows(
     data: &Rc<RefCell<Vec<Value>>>,
 ) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
+    extract_rows_for(data, None)
+}
+
+/// Headers and cell texts. With `columns`, those keys in that order (a key
+/// missing from a row gives an empty cell); without, the first row's keys,
+/// sorted.
+fn extract_rows_for(
+    data: &Rc<RefCell<Vec<Value>>>,
+    columns: Option<Vec<String>>,
+) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
     let data_ref = data.borrow();
     if data_ref.is_empty() {
-        return Ok((Vec::new(), Vec::new()));
+        return Ok((columns.unwrap_or_default(), Vec::new()));
     }
 
     let first_row = data_ref.first().ok_or("Data array is empty")?;
 
-    let headers = match first_row {
-        Value::Hash(hash) => {
+    let headers = match (first_row, columns) {
+        (_, Some(columns)) => columns,
+        (Value::Hash(hash), None) => {
             let mut keys: Vec<String> = hash.borrow().keys().map(|k| k.to_string()).collect();
             keys.sort();
             keys
@@ -262,8 +273,24 @@ fn write_csv_file(data: &Rc<RefCell<Vec<Value>>>, path: &str) -> Result<Value, S
     Ok(Value::Null)
 }
 
-fn write_excel_file(data: &Rc<RefCell<Vec<Value>>>, path: &str) -> Result<Value, String> {
-    let (headers, rows) = extract_headers_and_rows(data)?;
+/// Spreadsheet column name for a 0-based index: 0 -> A, 25 -> Z, 26 -> AA.
+fn column_letters(index: usize) -> String {
+    let mut n = index + 1;
+    let mut out = Vec::new();
+    while n > 0 {
+        let rem = (n - 1) % 26;
+        out.push((b'A' + rem as u8) as char);
+        n = (n - 1) / 26;
+    }
+    out.iter().rev().collect()
+}
+
+fn write_excel_file(
+    data: &Rc<RefCell<Vec<Value>>>,
+    path: &str,
+    columns: Option<Vec<String>>,
+) -> Result<Value, String> {
+    let (headers, rows) = extract_rows_for(data, columns)?;
 
     let mut spreadsheet = new_file();
     // umya 3.x takes the index by value and answers a `Result`; `new_file()`
@@ -275,19 +302,41 @@ fn write_excel_file(data: &Rc<RefCell<Vec<Value>>>, path: &str) -> Result<Value,
         .map_err(|e| format!("Spreadsheet.excel_write() cannot open the sheet: {e}"))?;
 
     for (col_idx, header) in headers.iter().enumerate() {
-        let col_letter = (b'A' + col_idx as u8) as char;
+        let col_letter = column_letters(col_idx);
         worksheet
             .cell_mut(format!("{col_letter}1"))
             .set_value(header.clone());
     }
 
+    // Int and Float values are written as numbers (Excel can sum them);
+    // everything else as text, Strings included even when they look numeric
+    // (a postcode or an order number keeps its leading zeros).
+    let data_ref = data.borrow();
     for (row_idx, row) in rows.iter().enumerate() {
         let row_number = row_idx + 2;
+        let source = match data_ref.get(row_idx) {
+            Some(Value::Hash(hash)) => Some(hash.clone()),
+            _ => None,
+        };
         for (col_idx, value) in row.iter().enumerate() {
-            let col_letter = (b'A' + col_idx as u8) as char;
-            worksheet
-                .cell_mut(format!("{col_letter}{row_number}"))
-                .set_value(value.clone());
+            let col_letter = column_letters(col_idx);
+            let cell = worksheet.cell_mut(format!("{col_letter}{row_number}"));
+            let original = source.as_ref().and_then(|hash| {
+                let key =
+                    crate::interpreter::value::HashKey::String(headers[col_idx].clone().into());
+                hash.borrow().get(&key).cloned()
+            });
+            match original {
+                Some(Value::Int(n)) => {
+                    cell.set_value_number(n as f64);
+                }
+                Some(Value::Float(f)) => {
+                    cell.set_value_number(f);
+                }
+                _ => {
+                    cell.set_value_string(value.clone());
+                }
+            }
         }
     }
 
@@ -409,8 +458,14 @@ fn build_spreadsheet_class() -> Rc<Class> {
         "excel_write".to_string(),
         Rc::new(NativeFunction::new(
             "Spreadsheet.excel_write",
-            Some(2),
+            None,
             |args| {
+                if args.len() < 2 || args.len() > 3 {
+                    return Err(format!(
+                        "Spreadsheet.excel_write() expects 2-3 arguments (data, path, columns?), got {}",
+                        args.len()
+                    ));
+                }
                 let data = match &args[0] {
                     Value::Array(arr) => arr.clone(),
                     _ => {
@@ -429,7 +484,29 @@ fn build_spreadsheet_class() -> Rc<Class> {
                     ))
                     }
                 };
-                write_excel_file(&data, &path)
+                // Optional column list: order and selection of the keys.
+                let columns = match args.get(2) {
+                    None | Some(Value::Null) => None,
+                    Some(Value::Array(cols)) => Some(
+                        cols.borrow()
+                            .iter()
+                            .map(|c| match c {
+                                Value::String(s) => Ok(s.to_string()),
+                                other => Err(format!(
+                                    "Spreadsheet.excel_write() columns must be strings, got {}",
+                                    other.type_name()
+                                )),
+                            })
+                            .collect::<Result<Vec<String>, String>>()?,
+                    ),
+                    Some(other) => {
+                        return Err(format!(
+                            "Spreadsheet.excel_write() expects an array of column names as third argument, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                write_excel_file(&data, &path, columns)
             },
         )),
     );
@@ -458,4 +535,69 @@ pub fn register_spreadsheet_class(env: &mut Environment) {
 
 pub fn register_spreadsheet_builtins(env: &mut Environment) {
     register_spreadsheet_class(env);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::interpreter::value::hash_from_pairs;
+    use calamine::{Data, Reader};
+
+    fn row(pairs: &[(&str, Value)]) -> Value {
+        hash_from_pairs(pairs.iter().map(|(k, v)| (k.to_string(), v.clone())))
+    }
+
+    #[test]
+    fn column_letters_go_past_z() {
+        assert_eq!(column_letters(0), "A");
+        assert_eq!(column_letters(25), "Z");
+        assert_eq!(column_letters(26), "AA");
+        assert_eq!(column_letters(27), "AB");
+        assert_eq!(column_letters(701), "ZZ");
+        assert_eq!(column_letters(702), "AAA");
+    }
+
+    #[test]
+    fn excel_write_keeps_the_given_column_order_and_number_types() {
+        let data = Rc::new(RefCell::new(vec![
+            row(&[
+                ("Montant", Value::Float(25.5)),
+                ("N°", Value::String("00042".into())),
+                ("Places", Value::Int(2)),
+            ]),
+            row(&[
+                ("Montant", Value::Float(10.0)),
+                ("N°", Value::String("43".into())),
+            ]),
+        ]));
+        let dir = std::env::temp_dir().join(format!("soli_xlsx_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("order.xlsx");
+        let columns = vec![
+            "N°".to_string(),
+            "Places".to_string(),
+            "Montant".to_string(),
+        ];
+        write_excel_file(&data, path.to_str().unwrap(), Some(columns)).unwrap();
+
+        let mut book: calamine::Xlsx<_> = calamine::open_workbook(&path).unwrap();
+        let name = book.sheet_names().first().cloned().unwrap();
+        let range = book.worksheet_range(&name).unwrap();
+        let header: Vec<String> = range
+            .rows()
+            .next()
+            .unwrap()
+            .iter()
+            .map(|c| c.to_string())
+            .collect();
+        assert_eq!(header, vec!["N°", "Places", "Montant"]);
+        let first: Vec<&Data> = range.rows().nth(1).unwrap().iter().collect();
+        assert_eq!(first[0], &Data::String("00042".into()));
+        assert!(matches!(first[1], Data::Float(f) if *f == 2.0));
+        assert!(matches!(first[2], Data::Float(f) if *f == 25.5));
+        // A key missing from a row leaves its cell empty.
+        let second: Vec<&Data> = range.rows().nth(2).unwrap().iter().collect();
+        assert!(matches!(second[1], Data::Empty) || second[1] == &Data::String(String::new()));
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

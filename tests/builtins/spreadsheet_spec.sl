@@ -134,6 +134,19 @@ describe("Export", fn() {
         assert(result[1].has_key("id"));
     });
 
+    test("excel_write takes the column order and keeps numbers numeric", fn() {
+        let data = [
+            {"Montant": 25.5, "N°": "00042", "Places": 2},
+            {"Montant": 10, "N°": "43"}
+        ];
+        Spreadsheet.excel_write(data, "/tmp/test_columns.xlsx", ["N°", "Places", "Montant"]);
+        let result = Spreadsheet.excel("/tmp/test_columns.xlsx");
+        assert_eq(len(result), 2);
+        assert_eq(result[0].keys, ["N°", "Places", "Montant"]);
+        assert_eq(result[0]["N°"], "00042");
+        assert_eq(result[0]["Montant"], 25.5);
+    });
+
     test("excel_write creates correct row count", fn() {
         let data = [
             {"a": "1"},

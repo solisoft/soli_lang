@@ -113,14 +113,19 @@ Spreadsheet.csv_write(data, "output.csv")</code></pre>
             <section id="fn-spreadsheet-excel-write" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-spreadsheet-excel-write" class="group flex items-center gap-2 mb-2">
-                        <code class="text-lg font-mono text-amber-400">Spreadsheet.excel_write(data, path)</code>
+                        <code class="text-lg font-mono text-amber-400">Spreadsheet.excel_write(data, path, columns?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Writes an array of hashes to an Excel (.xlsx) file.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">data = [{"name": "Alice", "score": "95"}, {"name": "Bob", "score": "87"}]
-Spreadsheet.excel_write(data, "output.xlsx")</code></pre>
+                    <p class="text-gray-400 mb-3">Writes an array of hashes to an Excel (.xlsx) file. Without <code class="text-amber-400">columns</code>, the columns are the first row&rsquo;s keys in alphabetical order; with it, exactly those keys, in that order, as the header row (a key missing from a row leaves its cell empty). <code class="text-amber-400">Int</code> and <code class="text-amber-400">Float</code> values are written as numbers, so Excel can sum them; everything else is text, Strings included &mdash; a postcode or an order number keeps its leading zeros.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">data = [{"name": "Alice", "score": 95}, {"name": "Bob", "score": 87}]
+Spreadsheet.excel_write(data, "output.xlsx")
+
+# Column order and headers of your choice
+rows = orders.map { |o| {"Date": o.date, "N°": o.number, "Montant (€)": o.cents / 100.0} }
+Spreadsheet.excel_write(rows, "tmp/orders.xlsx", ["Date", "N°", "Montant (€)"])</code></pre>
+                    <p class="text-gray-400 mt-3 text-sm">To send it as a download, read it back as base64 &mdash; <code class="text-amber-400">uploaded_file_at(path)["data"]</code> &mdash; and return <code class="text-amber-400">{"status": 200, "headers": {"Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": "attachment; filename=\"orders.xlsx\""}, "body_base64": data}</code>.</p>
                 </div>
             </section>
         </div>
