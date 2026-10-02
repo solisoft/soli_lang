@@ -37,7 +37,7 @@ end
 # Simple list - ordered manually (newest first)
 def blog_manifest()
     [
-        {"slug": "pocket-garden-eui", "file": "docs/blog/pocket-garden-eui.md", "desc": "Build a little gardening game in a native window, from one script: plant, water, harvest and press your crops into a herbarium. Five files joined with import and export, the rules in a class, plants drawn with canvas paths in theme colours, a wake clock that ticks once a second only while something grows, and three screens in one window.", "tag": "Tutorial", "image": "pocket-garden.svg", "publish_on": "2026-10-01"},
+        {"slug": "pocket-garden-eui", "file": "docs/blog/pocket-garden-eui.md", "desc": "Build a little gardening game in a native window, from one script: plant, water, harvest and press your crops into a herbarium. Six files joined with import and export, the rules in a class, plants drawn with canvas paths in theme colours, a wake clock that ticks once a second only while something grows, three screens in one window, and a copy you can play in the page.", "tag": "Tutorial", "image": "pocket-garden.svg", "publish_on": "2026-10-01"},
         {"slug": "deploy-with-soli-proxy", "file": "docs/blog/deploy-with-soli-proxy.md", "desc": "From a bare Linux server to push-to-deploy: soli-proxy under systemd with Let's Encrypt certificates it requests by itself, an app folder named after its domain, and a GitHub Actions workflow that boots the app, rsyncs it, runs migrations and calls soli-proxy deploy, which moves traffic only once the new slot answers /up. The settings that are required, and what to check when a step fails.", "tag": "Guide", "image": "deploy-with-soli-proxy.svg", "publish_on": "2026-10-06"},
         {"slug": "testing-gaps", "file": "docs/blog/testing-gaps.md", "desc": "The comparison page listed what Soli lacked, so we checked each entry against the code and closed the real ones: test filter, fail-fast, watch and Mock stubs and spies; migration rollbacks by step or version; resumable (tus), direct-to-S3 and pausable uploads; live_update across processes; OIDC introspection, registration, device grant and request objects; four more OAuth providers; component classes. What each cost, and the bugs the end-to-end runs caught.", "tag": "Feature", "publish_on": "2026-09-30"},
         {"slug": "why-actions-skipped-the-vm", "file": "docs/blog/why-actions-skipped-the-vm.md", "desc": "The VM got 2.6's speedups but req/s barely moved: a bare `name = value` compiled to an undefined-global write, so nearly every action fell back to the interpreter, and one that had already written answered 500. Fixing it meant closing every gap a write exposed: model members, query builders, a trailing if. Every action now runs on the VM: 40.7k to 106.3k req/s.", "tag": "Deep Dive", "image": "why-actions-skipped-the-vm.svg", "publish_on": "2026-10-05"},
@@ -201,8 +201,22 @@ def show
         "og_image_size": blog_og_image_size(slug),
         "published_on": manifest_entry.nil? ? null : manifest_entry["publish_on"],
         "scheduled_on": manifest_entry.nil? ? null : manifest_entry["scheduled_on"],
-        "og_description": blog_og_description(slug)
+        "og_description": blog_og_description(slug),
+        "eui_build": slug == "pocket-garden-eui" ? blog_eui_build() : "none"
     })
+end
+
+# Which build of the EUI browser client is in public/eui, for the playable
+# Pocket Garden: the version `xtask-web` stamps into the manifest beside the
+# module, put on the script URL because the module is served `immutable` for
+# a year. "none" when no client is built (a checkout that never ran the
+# deploy's build step); the page still shows its poster.
+def blog_eui_build
+    raw = slurp("public/eui/manifest.json") rescue nil
+    return "none" if raw.nil?
+
+    parsed = JSON.parse(raw) rescue nil
+    parsed.nil? ? "none" : (parsed["version"] ?? "none")
 end
 
 # Open Graph helpers: reuse a post's card image + description for link previews

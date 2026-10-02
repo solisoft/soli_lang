@@ -7,20 +7,37 @@ and it goes grey and stops. Every eighth second is a new day, and every third da
 it rains on everything at once. Ripe plants sell for coins, coins buy better
 seeds, and every harvest is pressed into the herbarium as a bar on a chart.
 
-It is 363 lines of Soli in five files, and it runs from a plain script:
+It is 399 lines of Soli in six files, and it runs from a plain script:
 `soli garden.sl`, no `soli new`, no server to start. Every screenshot below is
 that script, drawn by the real EUI client, and every line of code here is the
 code that drew it.
 
 <figure style="margin:1.5rem auto;max-width:1024px;">
   <img src="/images/blog/pocket-garden.svg" width="1024" height="576" alt="A native window titled Pocket Garden with four garden beds: a ripe radish with a red root, a sunflower with yellow petals, a strawberry bush with red berries and three lavender spikes. Beside it, a script file named garden.sl importing four other files, and a clock that ticks once a second while something grows." style="display:block;width:100%;height:auto;border-radius:12px;border:1px solid #30363d;background:#0b0d0f;">
-  <figcaption style="text-align:center;color:#8b949e;font-size:0.875rem;margin-top:0.5rem;">Five files, one window, a clock that only ticks while something grows.</figcaption>
+  <figcaption style="text-align:center;color:#8b949e;font-size:0.875rem;margin-top:0.5rem;">Six files, one window, a clock that only ticks while something grows.</figcaption>
 </figure>
 
 On the way it covers what a bigger EUI app needs and the
 [notes tutorial](/docs/blog/eui-notes-app) left out: splitting the code across
 files, keeping the rules in a class, drawing with `canvas`, a clock with `wake`,
 and several screens in one window.
+
+## Play it here
+
+The garden below is the game itself: the same `game.sl`, served by this site, and
+drawn by the EUI client compiled to WebAssembly on a `<canvas>`. Nothing is
+downloaded until you press the button. Your garden lasts as long as the page is
+open; plant a radish, keep it watered, and it is ripe in six seconds.
+
+<figure class="not-prose pg-play" data-eui data-component="pocket-garden" data-allow="">
+  <div class="demo__stage">
+    <img class="demo__poster" src="/images/blog/pocket-garden-play-dark.png" data-light="/images/blog/pocket-garden-play-light.png" data-dark="/images/blog/pocket-garden-play-dark.png" width="1520" height="1520" alt="Pocket Garden in the page: a radish and a sunflower growing in two of four beds, each watered four times out of five, under the seed chips and the Garden, Shop and Herbarium tabs." loading="lazy" decoding="async">
+    <canvas class="demo__canvas" id="eui-pocket-garden" tabindex="0" aria-label="Pocket Garden, running: a live EUI session" hidden></canvas>
+    <button class="demo__run" type="button">Play <small>8 MB download</small></button>
+    <p class="demo__note" role="status" hidden></p>
+  </div>
+  <figcaption>The picture is a real render of this session. Press Play and it becomes the game: one socket to this site, and the GPU draws every frame.</figcaption>
+</figure>
 
 ## What you need
 
@@ -32,33 +49,43 @@ and several screens in one window.
 ## The shape
 
 ```
-garden.sl      # eui_window, the handler, the header and the tabs
+garden.sl      # the script you run: opens the window
+game.sl        # the handler, the header, the tabs and the view
 species.sl     # the four plants: price, growing time, selling price
 beds.sl        # the rules (a Garden class), the plant drawings, the garden screen
 shop.sl        # the seed shop
 herbarium.sl   # the harvest chart
 ```
 
-`garden.sl` is the script you run. It imports the other four:
+`garden.sl` is the script you run, and it is three lines: it imports `game.sl`
+and opens the window on the two functions `game.sl` exports.
 
 ```soli
 # Pocket Garden: `soli garden.sl` opens the window.
-import "./species.sl"
-import "./beds.sl"
-import "./shop.sl"
-import "./herbarium.sl"
+import "./game.sl"
+
+eui_window("pocket-garden", "pocket_garden", "pocket_garden_view", {"title": "Pocket Garden"})
 ```
+
+`game.sl` imports the other four. Keeping the handler and the view out of the
+file that opens the window means another program can import them too: the
+playable copy on this page is the same `game.sl`, served by the docs site.
 
 ## Step 1: a window from a script
 
 `eui_window(name, handler, view, options)` takes the names of two `def`s of the
-script. The handler turns an event into the next state; the view turns state into
-a tree of nodes. Here is the handler, in full:
+script, its own or imported. The handler turns an event into the next state; the
+view turns state into a tree of nodes. Here is the handler, from `game.sl`, in
+full:
 
 ```soli
-def pocket_garden(event_data)
+export def pocket_garden(event_data)
   state = event_data["state"] || Garden.fresh
-  props = (event_data["params"] ?? {})["props"] ?? {}
+  params = event_data["params"] ?? {}
+  props = params["props"] ?? {}
+  # `connect` and every resize carry the window's size: the screens lay
+  # their cards out by its width.
+  state = state.merge({"width": params["viewport"]["width"]}) if params["viewport"]
   match event_data["event"] {
     "tick" => Garden.tick(state),
     "tab" => state.merge({"tab": props["tab"]}),
@@ -73,7 +100,7 @@ def pocket_garden(event_data)
 end
 ```
 
-Three details carry most of the weight.
+Four details carry most of the weight.
 
 **`event_data["state"] || Garden.fresh`** starts a new game. The first event is
 `connect`, and it arrives with an empty state. In Soli an empty hash is falsy, so
@@ -87,10 +114,17 @@ one place you read to know what the game can do.
 events you never asked for, such as `connect` and `viewport` when the window is
 resized. Falling through to `nil` would throw the garden away on the first resize.
 
+**The window's width rides in the state.** `connect` and every `viewport` event
+carry the window's size in `params`, and the handler keeps the width before it
+matches. The screens read it: `four_across` in `beds.sl` puts the four beds in a
+row, two by two below 1000 pixels, one per row on a phone, and the herbarium's
+chart narrows with the window. That is how one game fits a desktop window and the
+copy at the top of this page.
+
 The view and the handler do not run where the script does. They run in the
 window's server workers, which load the script's *definitions* (`def`, classes,
 enums, constants) and nothing else. A top-level variable is invisible to them, so
-everything the game knows is in the state or behind a function.
+everything the game knows is in the state, behind a function or in a `const`.
 
 ## Step 2: the rules, as a class
 
@@ -157,18 +191,21 @@ that puts an instance in the state, and names the field and the class.
 
 ## Step 3: splitting the code into files
 
-`import "./beds.sl"` brings in what the file exports. Two things to know:
+`import "./beds.sl"` brings in what the file exports, and whatever those exports
+need to run: the helpers beside them and the files they import. Two things to
+know:
 
 - **Export what the other files call.** A function another file uses is written
-  `export def`, and the class is `export class Garden`. Without `export`, the
-  script refuses to start: `Undefined variable 'garden_screen'`.
-- **There is no `export const`.** Shared data is a function instead, and that is
-  no workaround: a function is a definition, so the window's workers can see it.
+  `export def`, and the class is `export class Garden`; `export const` and
+  `export enum` exist too. A plain `def` comes along with its file, so the
+  exports that call it work, but it is that file's own business.
+- **Shared data is a function or a constant.** Both are definitions, so the
+  window's workers can see them. A top-level variable is not.
 
 ```soli
-# Everything the game knows about a plant. `export const` does not exist, so
-# shared data is a function: the window's workers load definitions, not
-# variables, and a function is a definition.
+# Everything the game knows about a plant. The window's workers load
+# definitions, not variables: a function is one (so is a `const`), a
+# top-level variable is not.
 export def species
   {
     "radish":     {"name": "Radish",     "price": 2,  "grows": 6,  "sells": 5},
@@ -252,17 +289,19 @@ Plants have to grow while you watch. An EUI node asks for time with a `wake` pro
 a period in milliseconds, plus a `wake` handler naming the event to send:
 
 ```soli
-def pocket_garden_view(state)
+export def pocket_garden_view(state)
   state = Garden.fresh unless state["beds"]
   screen = match state["tab"] {
     "Shop" => shop_screen(state),
     "Herbarium" => herbarium_screen(state),
     _ => garden_screen(state)
   }
+  # The screen scrolls under the header and the tabs: a short window, or the
+  # copy in the blog post, still reaches the bottom row.
   root = column({"pad": 7, "gap": 5, "bg": "surface.base", "height": "100%"}, [
     header(state),
     tabs(["Garden", "Shop", "Herbarium"], state["tab"], "tab"),
-    screen
+    scroll({"grow": 1, "basis": 0}, [screen])
   ])
   # The clock: one `tick` a second, only while something is growing. An
   # empty or fully ripe garden asks for no wakeups at all.
@@ -274,7 +313,8 @@ def pocket_garden_view(state)
 end
 ```
 
-The last four lines are the clock. While something grows, the root node asks for a
+The screen sits in a `scroll` under the header and the tabs, so a short window
+still reaches the bottom row. The last four lines are the clock. While something grows, the root node asks for a
 `tick` every second, and the handler passes it to `Garden.tick`. When nothing
 grows, because the beds are empty or every plant is ripe, the view drops the prop,
 and the window stops waking up entirely. An idle Pocket Garden costs nothing.
@@ -348,16 +388,24 @@ Each harvest adds one to a count per species, and the herbarium draws the counts
 as bars, to scale, the tallest bar being the most harvested species:
 
 ```soli
+# The chart's width: the window's, less its padding and the card's, up to 880.
+export def chart_width(state)
+  width = (state["width"] ?? 1100) - 88
+  width > 880 ? 880 : width
+end
+
 # One bar per species, in four equal slots, to scale: the tallest bar is the
 # most harvested species. The legend under it uses the same four slots.
-export def harvest_chart(harvest)
+export def harvest_chart(harvest, width)
   counts = species_order().map { |kind| harvest[kind] }
   top = counts.reduce(fn(best, c) c > best ? c : best, 1)
+  slot = width / 4
+  bar = slot * 5 / 11
   bars = range(0, 4).map { |i|
     height = 120 * counts[i] / top
-    [1, species_colour(species_order()[i]), i * 220 + 60, 136 - height, 100, height, 6]
+    [1, species_colour(species_order()[i]), i * slot + (slot - bar) / 2, 136 - height, bar, height, 6]
   }
-  canvas(880, 140, [[0, "border.subtle", 1, 0, 136, 880, 136]] + bars)
+  canvas(width, 140, [[0, "border.subtle", 1, 0, 136, width, 136]] + bars)
 end
 ```
 
@@ -407,7 +455,7 @@ Building pocket-garden from garden.sl...
 
 Copy that one file to an empty folder on another machine and it runs: no `soli`,
 no `.sl` files, no catalogue to install. The widget catalogue is part of the
-runtime, and the five files are part of the program.
+runtime, and the six files are part of the program.
 
 Two rules decide whether it opens a window:
 
@@ -449,7 +497,9 @@ app and choose **Open**. After that it opens like any other.
 
 ## Four things that tripped us up
 
-- **`export const` does not exist.** Expose data with a function (Step 3).
+- **A top-level variable never reaches the window.** The handler and the view
+  run in the window's workers, which load definitions only: data goes in a
+  function or a `const` (Step 1).
 - **An object in the state comes back as a hash.** Keep the state plain data and
   put the behaviour in a class around it (Step 2).
 - **A text colour is `"fg"`, not `"color"`.** An unknown style key ends the session
@@ -478,14 +528,29 @@ Every file, exactly as it ran for the screenshots above.
 
 ```soli
 # Pocket Garden: `soli garden.sl` opens the window.
+import "./game.sl"
+
+eui_window("pocket-garden", "pocket_garden", "pocket_garden_view", {"title": "Pocket Garden"})
+```
+
+### game.sl
+
+```soli
+# Pocket Garden's handler and view: what the window shows and how it answers.
+# `garden.sl` opens the window on them; the docs site serves the same pair
+# to the copy that plays inside the blog post.
 import "./species.sl"
 import "./beds.sl"
 import "./shop.sl"
 import "./herbarium.sl"
 
-def pocket_garden(event_data)
+export def pocket_garden(event_data)
   state = event_data["state"] || Garden.fresh
-  props = (event_data["params"] ?? {})["props"] ?? {}
+  params = event_data["params"] ?? {}
+  props = params["props"] ?? {}
+  # `connect` and every resize carry the window's size: the screens lay
+  # their cards out by its width.
+  state = state.merge({"width": params["viewport"]["width"]}) if params["viewport"]
   match event_data["event"] {
     "tick" => Garden.tick(state),
     "tab" => state.merge({"tab": props["tab"]}),
@@ -499,7 +564,7 @@ def pocket_garden(event_data)
   }
 end
 
-def header(state)
+export def header(state)
   row({"gap": 4, "align": "center"}, [
     column({"gap": 1, "grow": 1}, [h1("Pocket Garden"), muted(state["news"])]),
     badge("Day #{state["day"]}", "info"),
@@ -507,17 +572,19 @@ def header(state)
   ])
 end
 
-def pocket_garden_view(state)
+export def pocket_garden_view(state)
   state = Garden.fresh unless state["beds"]
   screen = match state["tab"] {
     "Shop" => shop_screen(state),
     "Herbarium" => herbarium_screen(state),
     _ => garden_screen(state)
   }
+  # The screen scrolls under the header and the tabs: a short window, or the
+  # copy in the blog post, still reaches the bottom row.
   root = column({"pad": 7, "gap": 5, "bg": "surface.base", "height": "100%"}, [
     header(state),
     tabs(["Garden", "Shop", "Herbarium"], state["tab"], "tab"),
-    screen
+    scroll({"grow": 1, "basis": 0}, [screen])
   ])
   # The clock: one `tick` a second, only while something is growing. An
   # empty or fully ripe garden asks for no wakeups at all.
@@ -527,16 +594,14 @@ def pocket_garden_view(state)
   root["on"] = (root["on"] ?? {}).merge({"wake": "tick"})
   root
 end
-
-eui_window("pocket-garden", "pocket_garden", "pocket_garden_view", {"title": "Pocket Garden"})
 ```
 
 ### species.sl
 
 ```soli
-# Everything the game knows about a plant. `export const` does not exist, so
-# shared data is a function: the window's workers load definitions, not
-# variables, and a function is a definition.
+# Everything the game knows about a plant. The window's workers load
+# definitions, not variables: a function is one (so is a `const`), a
+# top-level variable is not.
 export def species
   {
     "radish":     {"name": "Radish",     "price": 2,  "grows": 6,  "sells": 5},
@@ -778,11 +843,26 @@ export def bed_card(state, n)
   ])
 end
 
+# Four cards side by side, two rows of two in a window narrower than four
+# 180-pixel pictures and their margins need, one per row on a phone. Each row
+# is a `row`: a card's `grow` shares out width there, where in a column it
+# would ask for a share of an unknown height.
+export def four_across(state, cards)
+  width = state["width"] ?? 1100
+  return row({"gap": 4}, cards) if width >= 1000
+  return column({"gap": 4}, cards.map { |card| row({}, [card]) }) if width < 600
+
+  column({"gap": 4}, [
+    row({"gap": 4}, [cards[0], cards[1]]),
+    row({"gap": 4}, [cards[2], cards[3]])
+  ])
+end
+
 export def garden_screen(state)
   chips = species_order().map { |kind| seed_chip(state, kind) }
   column({"gap": 5}, [
-    row({"gap": 2, "align": "center"}, [text("Seeds", {"size": 1, "weight": "semibold"})] + chips),
-    row({"gap": 4}, range(0, 4).map { |n| bed_card(state, n) })
+    row({"gap": 2, "align": "center", "wrap": "wrap"}, [text("Seeds", {"size": 1, "weight": "semibold"})] + chips),
+    four_across(state, range(0, 4).map { |n| bed_card(state, n) })
   ])
 end
 ```
@@ -808,7 +888,7 @@ export def shop_card(state, kind)
 end
 
 export def shop_screen(state)
-  row({"gap": 4}, species_order().map { |kind| shop_card(state, kind) })
+  four_across(state, species_order().map { |kind| shop_card(state, kind) })
 end
 ```
 
@@ -826,16 +906,24 @@ export def species_colour(kind)
   }
 end
 
+# The chart's width: the window's, less its padding and the card's, up to 880.
+export def chart_width(state)
+  width = (state["width"] ?? 1100) - 88
+  width > 880 ? 880 : width
+end
+
 # One bar per species, in four equal slots, to scale: the tallest bar is the
 # most harvested species. The legend under it uses the same four slots.
-export def harvest_chart(harvest)
+export def harvest_chart(harvest, width)
   counts = species_order().map { |kind| harvest[kind] }
   top = counts.reduce(fn(best, c) c > best ? c : best, 1)
+  slot = width / 4
+  bar = slot * 5 / 11
   bars = range(0, 4).map { |i|
     height = 120 * counts[i] / top
-    [1, species_colour(species_order()[i]), i * 220 + 60, 136 - height, 100, height, 6]
+    [1, species_colour(species_order()[i]), i * slot + (slot - bar) / 2, 136 - height, bar, height, 6]
   }
-  canvas(880, 140, [[0, "border.subtle", 1, 0, 136, 880, 136]] + bars)
+  canvas(width, 140, [[0, "border.subtle", 1, 0, 136, width, 136]] + bars)
 end
 
 export def legend_cell(state, kind)
@@ -856,10 +944,11 @@ export def herbarium_screen(state)
     )
   end
 
+  width = chart_width(state)
   card({"gap": 4}, [
     text("#{total} plants pressed so far", {"size": 3, "weight": "semibold"}),
-    harvest_chart(state["harvest"]),
-    row({"width": 880}, species_order().map { |kind| legend_cell(state, kind) })
+    harvest_chart(state["harvest"], width),
+    row({"width": width}, species_order().map { |kind| legend_cell(state, kind) })
   ])
 end
 ```

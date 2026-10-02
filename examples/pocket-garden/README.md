@@ -7,7 +7,8 @@ herbarium. The tutorial that builds it step by step is on the blog:
 
 | File | What it holds |
 |---|---|
-| `garden.sl` | `eui_window`, the handler, the header and the tabs — the script you run |
+| `garden.sl` | the script you run: imports `game.sl` and opens the window |
+| `game.sl` | the handler, the header, the tabs and the view |
 | `species.sl` | the four plants |
 | `beds.sl` | the rules (`Garden`), the canvas drawings, the garden screen |
 | `shop.sl` | the seed shop |

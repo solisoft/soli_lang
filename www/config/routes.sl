@@ -286,6 +286,14 @@ router_live("desk", "live#desk")
 router_live("desk_pulse", "live#desk_pulse")
 
 # ============================================================================
+# EUI Routes
+# ============================================================================
+
+# Pocket Garden, playable inside its blog post (docs/blog/pocket-garden-eui.md):
+# the browser client opens /_eui/session/pocket-garden on this host.
+router_eui("pocket-garden", "pocket_garden#pocket_garden", "pocket_garden#pocket_garden_view")
+
+# ============================================================================
 # Wildcard Route Examples
 # ============================================================================
 # These demonstrate the dynamic action resolution feature:

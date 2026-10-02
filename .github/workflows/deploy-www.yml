@@ -35,7 +35,7 @@ env:
   # The version the server runs, verified below rather than hoped for. A CI that
   # checks the site against a different interpreter than production has not
   # checked production.
-  SOLI_VERSION: "2.0.6"
+  SOLI_VERSION: "2.12.1"
 
 jobs:
   verify:
@@ -62,6 +62,14 @@ jobs:
           got="$(soli --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
           [ "$got" = "$SOLI_VERSION" ] || { echo "soli $got installed, $SOLI_VERSION expected" >&2; exit 1; }
           echo "soli $got"
+
+      # The blog's playable Pocket Garden runs on copies of the game and of the
+      # widget catalogue (an import may not leave the project). A copy that
+      # drifted from examples/pocket-garden or the scaffold's catalogue would
+      # put a game on the page that the post's listings do not describe.
+      - name: The site's Pocket Garden matches its sources
+        working-directory: .
+        run: scripts/sync-pocket-garden.sh --check
 
       # Tailwind is compiled by `soli serve --dev` on a developer machine and the
       # result is committed; production serves public/ as-is. An empty file here
@@ -215,6 +223,67 @@ jobs:
       # --delete would remove them on the first deployment; they are excluded
       # rather than deleted, because an automated deploy is the wrong place to
       # be reaping root-owned files.
+      # The EUI browser client the blog's playable Pocket Garden loads, into
+      # www/public/eui. Not committed (several megabytes, rebuilt on every client
+      # change), so it is built here, from the eui revision Cargo.lock pins: the
+      # same protocol the soli serving the session speaks. Without it the post
+      # shows its poster and no Play button script.
+      - name: Which EUI client
+        id: eui
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          # The full commit after `#` in the source line: checkout wants a SHA.
+          rev="$(grep -A2 '^name = "eui-proto"$' Cargo.lock | grep -oE '#[0-9a-f]{40}' | head -1 | tr -d '#')"
+          [ -n "$rev" ] || { echo "no eui-proto revision in Cargo.lock" >&2; exit 1; }
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+          echo "eui at $rev"
+
+      - name: Check out the EUI client
+        if: steps.cfg.outputs.configured == 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: solisoft/eui
+          ref: ${{ steps.eui.outputs.rev }}
+          path: eui
+
+      - name: Install Rust for the browser client
+        if: steps.cfg.outputs.configured == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - if: steps.cfg.outputs.configured == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: eui
+
+      # wasm-bindgen's CLI must be the version of the crate the module links,
+      # read from the eui checkout's own lockfile.
+      - name: Install wasm-bindgen and binaryen
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends binaryen
+          version="$(grep -A1 '^name = "wasm-bindgen"$' eui/Cargo.lock | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          cargo install wasm-bindgen-cli --version "$version" --locked
+
+      - name: Build the browser client
+        if: steps.cfg.outputs.configured == 'true'
+        working-directory: eui
+        run: cargo run -p xtask-web
+
+      - name: The site has a client to load
+        if: steps.cfg.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p www/public/eui
+          for f in eui_web.js eui_web_bg.wasm eui-embed.js manifest.json; do
+            [ -s "eui/www/public/eui/$f" ] || { echo "xtask-web did not write $f" >&2; exit 1; }
+            cp "eui/www/public/eui/$f" www/public/eui/
+          done
+          ls -l www/public/eui/
+
       - name: Sync the files
         if: steps.cfg.outputs.configured == 'true'
         run: |

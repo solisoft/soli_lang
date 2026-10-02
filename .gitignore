@@ -53,3 +53,8 @@ __pycache__/
 # an untracked private key that one `git add -A` would have published.
 # Whoever holds it can publish as that application.
 **/config/eui_publisher.pkcs8
+
+# The EUI browser client the blog's playable Pocket Garden loads. Built by the
+# deploy-www workflow from the eui revision Cargo.lock pins (xtask-web), not
+# committed: several megabytes, rebuilt on every client change.
+www/public/eui/

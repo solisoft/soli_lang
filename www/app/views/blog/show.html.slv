@@ -25,6 +25,26 @@
   <% if slug == "liveview-desk" %>
   <%- csrf_meta_tag() %>
   <% end %>
+  <% if slug == "pocket-garden-eui" %>
+  <style>
+    /* The playable Pocket Garden (eui-embed.js drives the classes). Square,
+       like the 760 x 760 render the poster is, and never taller than the
+       window: the game scrolls its own beds. */
+    .pg-play { margin: 2rem 0 2.5rem; }
+    .pg-play .demo__stage { position: relative; width: 100%; aspect-ratio: 1 / 1; max-height: 85vh; overflow: hidden; border: 1px solid #30363d; border-radius: 12px; background: #0b0d0f; }
+    .pg-play .demo__poster, .pg-play .demo__canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .pg-play .demo__poster { object-fit: contain; }
+    /* The client writes its own px size inline, a fraction off the box. */
+    .pg-play .demo__canvas { width: 100% !important; height: 100% !important; transition: opacity 0.18s ease; outline: none; }
+    .pg-play .demo__run { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: inline-flex; align-items: baseline; gap: 0.6rem; padding: 0.8rem 1.4rem; border-radius: 999px; border: 0; background: #6366f1; color: #fff; font-weight: 600; font-size: 1.05rem; cursor: pointer; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
+    .pg-play .demo__run:hover { background: #4f46e5; }
+    .pg-play .demo__run:focus-visible { outline: 2px solid #fbbf24; outline-offset: 3px; }
+    .pg-play .demo__run:disabled { opacity: 0.7; cursor: progress; }
+    .pg-play .demo__run small { font-weight: 400; font-size: 0.8rem; opacity: 0.85; }
+    .pg-play .demo__note { position: absolute; left: 1rem; right: 1rem; bottom: 1rem; margin: 0; padding: 0.6rem 0.9rem; border-radius: 8px; background: rgba(11, 13, 15, 0.88); color: #d1d5db; font-size: 0.875rem; text-align: center; }
+    .pg-play figcaption { text-align: center; color: #8b949e; font-size: 0.875rem; margin-top: 0.6rem; }
+  </style>
+  <% end %>
 <% end %>
 
 <div>
@@ -44,6 +64,13 @@
         <%- content %>
     </div>
 </div>
+
+<% if slug == "pocket-garden-eui" and eui_build != "none" %>
+<%# The EUI browser client's bootstrap: five kilobytes that fetch nothing until
+    Play is pressed. The version is the manifest's, so a new client is never
+    hidden behind the module's year-long cache. %>
+<script type="module" src="<%= "/eui/eui-embed.js?v=" + eui_build %>"></script>
+<% end %>
 
 <% if slug == "liveview-desk" %>
 <script>
