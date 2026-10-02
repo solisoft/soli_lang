@@ -26,6 +26,11 @@
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">An import brings what its exports need.</strong> Only a module&rsquo;s <code class="text-cyan-400">export</code>ed declarations used to cross an <code class="text-cyan-400">import</code>, so an exported function that called a private helper beside it, or used something its own file imported, stopped with <code class="text-cyan-400">Undefined variable</code>; a <code class="text-cyan-400">mod.sl</code> importing the files next to it could not work. An import now also brings the module&rsquo;s private declarations and everything it imports, each module once however many paths reach it. Modules still share one namespace, so a private name can collide with one in the importing file. <code class="text-cyan-400">export enum</code> and <code class="text-cyan-400">export const</code> now parse, so shared data no longer has to be a function. <a href="/docs/language/modules#kw-import-brings" class="text-cyan-400 hover:underline">What an import brings</a></li>
         </ul>
+
+        <h3 id="unreleased-web" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Web</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">.wasm</code> files are served as <code class="text-cyan-400">application/wasm</code>.</strong> As <code class="text-cyan-400">application/octet-stream</code>, a WebAssembly module could not be compiled while it downloaded: the browser fell back to fetching the whole file first, and said so on the console.</li>
+        </ul>
     </section>
 
     <section id="v2-12-0" class="mb-16 scroll-mt-24">

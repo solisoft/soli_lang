@@ -392,6 +392,10 @@ pub const MIME_TYPES: &[(&str, &str)] = &[
     ("yaml", "text/yaml; charset=utf-8"),
     ("yml", "text/yaml; charset=utf-8"),
     ("toml", "text/plain; charset=utf-8"),
+    // `WebAssembly.instantiateStreaming` refuses any other type, and the
+    // fallback it leaves a page with downloads the whole module before
+    // compiling a byte of it (and says so on the console).
+    ("wasm", "application/wasm"),
 ];
 
 /// Extensions that are considered static files for hot reload
@@ -434,6 +438,7 @@ pub const VALID_STATIC_EXTENSIONS: &[&str] = &[
     "m4a",
     "oga",
     "vtt",
+    "wasm",
 ];
 
 /// HTTP success status code range start (inclusive)
@@ -876,6 +881,7 @@ mod tests {
             ("site.webmanifest", "application/manifest+json"),
             ("hero.webp", "image/webp"),
             ("robots.txt", "text/plain; charset=utf-8"),
+            ("eui_web_bg.wasm", "application/wasm"),
         ];
         for (path, expected) in cases {
             assert_eq!(get_mime_type(&PathBuf::from(path)), expected, "for {path}");

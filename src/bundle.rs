@@ -147,6 +147,8 @@ const BUNDLE_EXTENSIONS: &[&str] = &[
     "mp4",
     "webm",
     "vtt",
+    // WebAssembly
+    "wasm",
 ];
 
 const BUNDLE_SPECIAL_FILES: &[&str] = &["soli.toml", ".solivrc"];
