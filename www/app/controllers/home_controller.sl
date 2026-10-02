@@ -77,11 +77,12 @@ class HomeController extends Controller
         })
     end
 
-    # GET /*catchall - Catch-all route demo
+    # GET /*catchall — any path no other route claims: a 404 page, not JSON
     def catchall_demo
-        render_json({
-            "route": "catchall_demo",
-            "params": req["params"]
-        })
+        render("home/not_found", {
+            "title": "Page not found",
+            "layout": "layouts/docs",
+            "requested_path": req["path"] || ""
+        }, {"status": 404})
     end
 end

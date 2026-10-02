@@ -1,0 +1,36 @@
+<% content_for "head" do %>
+  <meta name="robots" content="noindex">
+<% end %>
+
+<div class="not-prose">
+    <div class="relative py-10 sm:py-16">
+        <div aria-hidden="true" class="absolute -top-24 -left-24 w-[26rem] h-[26rem] bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div aria-hidden="true" class="absolute -top-16 right-0 w-72 h-72 bg-orange-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="relative">
+            <span class="inline-flex items-center text-[11px] uppercase tracking-[0.18em] text-amber-200/80 mb-5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20">
+                404 &middot; not found
+            </span>
+            <h1 class="text-4xl sm:text-5xl font-bold tracking-tight text-white mb-5">
+                <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">This page isn't here</span>
+            </h1>
+            <p class="text-lg text-gray-400 max-w-2xl leading-relaxed mb-8">
+                The link may be mistyped, or the page has moved. Start again from the documentation.
+            </p>
+            <div class="flex flex-wrap gap-3">
+                <a href="/docs" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amber-500 !text-black font-semibold hover:bg-amber-400 !border-b-0 transition-colors">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Documentation
+                </a>
+                <a href="/docs/getting-started/introduction" class="inline-flex items-center px-5 py-2.5 rounded-lg border border-white/10 !text-gray-200 hover:!border-amber-400/40 hover:!text-white transition-colors">
+                    Getting started
+                </a>
+            </div>
+            <% if requested_path.length > 0 %>
+            <p class="mt-8 text-sm text-gray-500">Requested: <code class="px-2 py-1 rounded bg-white/5 text-gray-300"><%= requested_path %></code></p>
+            <% end %>
+        </div>
+    </div>
+</div>
+
