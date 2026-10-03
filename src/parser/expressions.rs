@@ -48,8 +48,16 @@ impl Parser {
             // Without this, `for n in [1, 2]` followed by a body line beginning
             // `[10, 20].each(...)` parses as `[1, 2][10, 20]`. (Ruby's rule.)
             // Multi-line `.method` chains are unaffected — they lead with `.`.
-            if self.peek().kind == TokenKind::LeftBracket
-                && self.peek().span.line != self.previous().span.line
+            //
+            // The same goes for `(`: a line opening with `(` starts a grouped
+            // expression, never a call on the line above. `total = a + b`
+            // followed by `(a + b) * 2` used to read as `b((a + b)) * 2`, and
+            // `soli fmt` then printed that call on one line, so the formatter
+            // seemed to glue the two lines and change the program.
+            if matches!(
+                self.peek().kind,
+                TokenKind::LeftBracket | TokenKind::LeftParen
+            ) && self.peek().span.line != self.previous().span.line
             {
                 break;
             }

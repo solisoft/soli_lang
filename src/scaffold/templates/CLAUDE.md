@@ -315,9 +315,8 @@ Terse, idiomatic Soli. These rules hold across the app, specs included.
 - **No `return` on a method's last line** — the last expression is the value,
   a final `if`/`else` included (`redirect("/")`, `{"continue": true}`). Keep it
   for a guard clause, and before an expression that would start the line with
-  `(` or `fn(` (read as a call on the previous line / a named function
-  declaration — the server then refuses to start). A `{…}` hash on the last
-  line is fine.
+  `fn(` (read as a named function declaration — the server then refuses to
+  start). A `{…}` hash or a `(…)` expression on the last line is fine.
 - **No `()` on a zero-argument method call** — `Post.all`, `@post.save`,
   `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`. Keep
   them on a **bare function** (`current_user()`, `session_destroy()`): without

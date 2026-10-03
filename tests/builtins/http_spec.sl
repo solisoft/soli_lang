@@ -53,4 +53,23 @@ describe("HTTP", fn() {
         let responses = HTTP.get_all_json([]);
         assert_eq(responses.len(), 0);
     });
+
+    test("a rescue on the call catches a failed request", fn() {
+        # Nothing listens on port 1. The failure must surface at the call,
+        # where the rescue is, not at the first read of the response.
+        assert_eq(HTTP.request("GET", "http://127.0.0.1:1/") rescue "rescued", "rescued")
+        assert_eq(HTTP.get("http://127.0.0.1:1/") rescue "rescued", "rescued")
+    });
+
+    test("try/catch around the call catches a failed request", fn() {
+        outcome = "none"
+        try
+            response = HTTP.request("GET", "http://127.0.0.1:1/")
+            outcome = "no error"
+        catch error
+            outcome = "caught"
+        end
+        assert_eq(outcome, "caught")
+    });
 });
+

@@ -20,8 +20,34 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.15.0.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.15.1.</p>
 
+    </section>
+
+    <section id="v2-15-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.15.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-03</span></h2>
+
+        <h3 id="v2-15-1-orm" class="text-xl font-semibold text-white mb-4 scroll-mt-24">ORM</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">after_create</code>, <code class="text-cyan-400">after_update</code> and <code class="text-cyan-400">after_save</code> run for <code class="text-cyan-400">Model.create</code> and <code class="text-cyan-400">Model.update</code>.</strong> Both engines waited for a result shape these methods stopped returning long ago, so the callbacks never ran &mdash; with no error. They now fire after every successful write; in <code class="text-cyan-400">create</code>&rsquo;s, <code class="text-cyan-400">this</code> is the record it returns. <code class="text-cyan-400">instance.save</code> and <code class="text-cyan-400">instance.update</code> were not affected. <a href="/docs/database/validations" class="text-cyan-400 hover:underline">Callbacks</a></li>
+        </ul>
+
+        <h3 id="v2-15-1-language" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Classes compare with <code class="text-cyan-400">==</code>.</strong> <code class="text-cyan-400">Account == Account</code> was false: class values had no equality at all. They now compare by name, and <code class="text-cyan-400">record.class</code> (the class name) equals the class too, so <code class="text-cyan-400">record.class == Account</code> and <code class="text-cyan-400">record.class == "Account"</code> both hold. <a href="/docs/language/classes-oop#section-comparing-classes" class="text-cyan-400 hover:underline">Comparing classes</a></li>
+            <li><strong class="text-white">A line opening with <code class="text-cyan-400">(</code> is its own statement.</strong> <code class="text-cyan-400">total = a + b</code> then <code class="text-cyan-400">(a + b) * 2</code> on the next line read as a call on <code class="text-cyan-400">b</code>. No more <code class="text-cyan-400">return</code> needed before such a last line, and no more <code class="text-cyan-400">;</code> from <code class="text-cyan-400">soli fmt</code> to keep them apart.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">xs.each_with_index.map { |x, i| &hellip; }</code> works.</strong> Without a block, <code class="text-cyan-400">each_with_index</code> returns the <code class="text-cyan-400">[item, index]</code> pairs, and a block with two or more parameters destructures an array element, as in Ruby: <code class="text-cyan-400">pairs.map { |name, n| &hellip; }</code>. <a href="/docs/language/arrays#method-each-with-index" class="text-cyan-400 hover:underline">each_with_index</a></li>
+            <li><strong class="text-white">A <code class="text-cyan-400">rescue</code> on an <code class="text-cyan-400">HTTP.*</code> call catches its failure.</strong> Where the request ran asynchronously, a refused connection only raised at the first read of the response, past the <code class="text-cyan-400">rescue</code>. <a href="/docs/builtins/http" class="text-cyan-400 hover:underline">HTTP</a></li>
+        </ul>
+
+        <h3 id="v2-15-1-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Specs load the app whatever their file name.</strong> A file whose name contained &ldquo;integration&rdquo; skipped the models, services and jobs, so <code class="text-cyan-400">integrations_spec.sl</code> failed on <code class="text-cyan-400">Undefined variable 'User'</code>.</li>
+            <li><strong class="text-white">Jobs have <code class="text-cyan-400">perform_later</code> &amp; co. in specs</strong> (and in seeds and data migrations), as in the server.</li>
+            <li><strong class="text-white">A failed <code class="text-cyan-400">expect</code> on a model instance prints it</strong> instead of overflowing the stack and killing <code class="text-cyan-400">soli test</code>.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">HTTP.*</code> blocks in every spec</strong>, so <code class="text-cyan-400">try</code>/<code class="text-cyan-400">catch</code> around a failed request catches it with <code class="text-cyan-400">--jobs 1</code> as it already did with several workers.</li>
+            <li><strong class="text-white"><code class="text-cyan-400">soli fmt</code> keeps a long line&rsquo;s postfix <code class="text-cyan-400">rescue</code> on that line.</strong> Moved to the next line inside a <code class="text-cyan-400">try</code> body, it became the block&rsquo;s catch clause and stopped applying.</li>
+        </ul>
     </section>
 
     <section id="v2-15-0" class="mb-16 scroll-mt-24">

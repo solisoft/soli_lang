@@ -1118,7 +1118,8 @@ pub const ARRAY_METHODS: &[MethodDef] = &[
     },
     MethodDef {
         name: "each_with_index",
-        zero_arg: false,
+        // Bare, it answers the `[item, index]` pairs: `xs.each_with_index.map`.
+        zero_arg: true,
         ret: "array",
     },
     MethodDef {

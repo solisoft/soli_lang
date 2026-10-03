@@ -57,6 +57,36 @@ impl ArrayView for Rc<RefCell<Vec<Value>>> {
     }
 }
 
+/// `[item, index]` — one element of a block-less `each_with_index`.
+fn with_index_pair(item: Value, index: usize) -> Value {
+    Value::Array(Rc::new(RefCell::new(vec![item, Value::Int(index as i64)])))
+}
+
+/// Bind one array element to an iteration block's parameters. A block that
+/// declares two or more parameters and receives an array element destructures
+/// it, as a Ruby block does: `pairs.map { |x, i| … }` binds `x` and `i` from
+/// each `[x, i]` (missing positions read as nil). Any other block binds the
+/// element whole to its first parameter.
+fn bind_block_item(
+    env: &Rc<RefCell<Environment>>,
+    params: &[crate::ast::stmt::Parameter],
+    first: &str,
+    item: Value,
+) {
+    if params.len() >= 2 {
+        if let Value::Array(parts) = &item {
+            let parts = parts.borrow();
+            let mut env = env.borrow_mut();
+            for (index, param) in params.iter().enumerate() {
+                let part = parts.get(index).cloned().unwrap_or(Value::Null);
+                env.define_or_update(&param.name, part);
+            }
+            return;
+        }
+    }
+    env.borrow_mut().define_or_update(first, item);
+}
+
 impl Interpreter {
     pub(crate) fn call_hash_method_on_rc(
         &mut self,
@@ -811,7 +841,7 @@ impl Interpreter {
         let mut result = Vec::with_capacity(n);
         for i in 0..n {
             let Some(item) = items.get(i) else { break };
-            call_env_rc.borrow_mut().define_or_update(&param_name, item);
+            bind_block_item(&call_env_rc, &func.params, &param_name, item);
 
             match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => result.push(v),
@@ -865,9 +895,7 @@ impl Interpreter {
         let mut result = Vec::with_capacity(n);
         for i in 0..n {
             let Some(item) = items.get(i) else { break };
-            call_env_rc
-                .borrow_mut()
-                .define_or_update(&param_name, item.clone());
+            bind_block_item(&call_env_rc, &func.params, &param_name, item.clone());
 
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
@@ -923,7 +951,7 @@ impl Interpreter {
         let n = items.len();
         for i in 0..n {
             let Some(item) = items.get(i) else { break };
-            call_env_rc.borrow_mut().define_or_update(&param_name, item);
+            bind_block_item(&call_env_rc, &func.params, &param_name, item);
 
             match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(_)
@@ -948,6 +976,14 @@ impl Interpreter {
         arguments: Vec<Value>,
         span: Span,
     ) -> RuntimeResult<Value> {
+        // Without a block: the `[item, index]` pairs, so a chain reads as in
+        // Ruby — `xs.each_with_index.map { |x, i| … }` (see `bind_block_item`).
+        if arguments.is_empty() {
+            let pairs: Vec<Value> = (0..items.len())
+                .filter_map(|i| items.get(i).map(|item| with_index_pair(item, i)))
+                .collect();
+            return Ok(Value::Array(Rc::new(RefCell::new(pairs))));
+        }
         if arguments.len() != 1 {
             return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
         }
@@ -1114,9 +1150,7 @@ impl Interpreter {
         let n = items.len();
         for i in 0..n {
             let Some(item) = items.get(i) else { break };
-            call_env_rc
-                .borrow_mut()
-                .define_or_update(&param_name, item.clone());
+            bind_block_item(&call_env_rc, &func.params, &param_name, item.clone());
 
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
@@ -1172,7 +1206,7 @@ impl Interpreter {
         let n = items.len();
         for i in 0..n {
             let Some(item) = items.get(i) else { break };
-            call_env_rc.borrow_mut().define_or_update(&param_name, item);
+            bind_block_item(&call_env_rc, &func.params, &param_name, item);
 
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
@@ -1228,7 +1262,7 @@ impl Interpreter {
         let n = items.len();
         for i in 0..n {
             let Some(item) = items.get(i) else { break };
-            call_env_rc.borrow_mut().define_or_update(&param_name, item);
+            bind_block_item(&call_env_rc, &func.params, &param_name, item);
 
             let result_value = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) => v,
@@ -1365,9 +1399,7 @@ impl Interpreter {
                 let mut keyed: Vec<(Value, Value)> = Vec::with_capacity(n);
                 for i in 0..n {
                     let Some(item) = items.get(i) else { break };
-                    call_env_rc
-                        .borrow_mut()
-                        .define_or_update(&param_name, item.clone());
+                    bind_block_item(&call_env_rc, &func.params, &param_name, item.clone());
 
                     // Propagate with `?`, exactly as `reject`/`none?`/`one?`/
                     // `count` already do. Matching on the whole `Result` instead
@@ -2237,9 +2269,7 @@ impl Interpreter {
             .define(param_name.clone(), Value::Null);
         let mut result = Vec::new();
         for item in items {
-            call_env_rc
-                .borrow_mut()
-                .define_or_update(&param_name, item.clone());
+            bind_block_item(&call_env_rc, &func.params, &param_name, item.clone());
             let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
                 _ => Value::Null,
@@ -2280,9 +2310,7 @@ impl Interpreter {
             .borrow_mut()
             .define(param_name.clone(), Value::Null);
         for item in items {
-            call_env_rc
-                .borrow_mut()
-                .define_or_update(&param_name, item.clone());
+            bind_block_item(&call_env_rc, &func.params, &param_name, item.clone());
             let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
                 _ => Value::Null,
@@ -2324,9 +2352,7 @@ impl Interpreter {
             .define(param_name.clone(), Value::Null);
         let mut found = false;
         for item in items {
-            call_env_rc
-                .borrow_mut()
-                .define_or_update(&param_name, item.clone());
+            bind_block_item(&call_env_rc, &func.params, &param_name, item.clone());
             let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
                 _ => Value::Null,
@@ -2410,9 +2436,7 @@ impl Interpreter {
                     .define(param_name.clone(), Value::Null);
                 let mut count = 0i64;
                 for item in items {
-                    call_env_rc
-                        .borrow_mut()
-                        .define_or_update(&param_name, item.clone());
+                    bind_block_item(&call_env_rc, &func.params, &param_name, item.clone());
                     let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                         ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
                         _ => Value::Null,

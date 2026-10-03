@@ -22,31 +22,7 @@ fn get_actual(args: &[Value]) -> Result<Value, String> {
     Err("expect() must be called first".to_string())
 }
 
-// Compact, single-line representation of a Value for assertion error messages.
-// Long strings are truncated so a 5KB HTML body doesn't fill the test output.
-fn fmt_value(v: &Value) -> String {
-    const MAX_STR: usize = 80;
-    const MAX_OTHER: usize = 200;
-    match v {
-        Value::String(s) => {
-            if s.chars().count() <= MAX_STR {
-                format!("{:?}", s)
-            } else {
-                let prefix: String = s.chars().take(MAX_STR).collect();
-                format!("{:?}… ({} chars)", prefix, s.len())
-            }
-        }
-        _ => {
-            let dbg = format!("{:?}", v);
-            if dbg.chars().count() <= MAX_OTHER {
-                dbg
-            } else {
-                let prefix: String = dbg.chars().take(MAX_OTHER).collect();
-                format!("{}…", prefix)
-            }
-        }
-    }
-}
+use crate::interpreter::builtins::test_dsl::fmt_value;
 
 pub fn register_expectation_class(env: &mut Environment) {
     let mut expectation_native_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();

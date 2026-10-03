@@ -868,6 +868,13 @@ followed by what actually went wrong (`dns error: …`, `connection closed befor
 message completed`, `invalid peer certificate`). Worth surfacing when you handle
 the `{"error": ...}` shape the parallel helpers return.
 
+**A failed request raises at the call.** In a controller, a job or a spec the
+request blocks, so `rescue` and `try`/`catch` around it catch the failure. A
+plain script runs requests asynchronously (the result is a Future, settled on
+first use); a postfix `rescue` on the call settles it on the spot, so
+`HTTP.request("GET", url) rescue nil` catches the failure everywhere. In a
+script, a `try` block does not — read the response inside it, or use `rescue`.
+
 ### HTTP.get(url, options?)
 
 Performs an HTTP GET request.

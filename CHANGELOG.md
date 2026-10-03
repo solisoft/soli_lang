@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## [2.15.1] - 2026-10-03
+
+### Added
+
+* **language:** **`each_with_index` without a block, and blocks that destructure.** Bare, `xs.each_with_index` returns the `[item, index]` pairs, so `xs.each_with_index.map { |x, i| … }` works as in Ruby (it was *Cannot access property 'map' on Method*). A block declaring two or more parameters now destructures an array element in every array iteration method, on both engines: `pairs.map { |name, n| … }` binds `name` and `n` from each `[name, n]` (missing positions are nil). The VM raised a wrong-arity error there and the tree-walker bound only the first parameter. A one-parameter block still receives the element whole. [Docs](www/docs/soli-language.md#array-methods)
+
+### Changed
+
+* **language:** **A line opening with `(` is its own statement.** `total = a + b` followed by `(a + b) * 2` parsed as the call `b((a + b)) * 2` — the same rule already kept a line opening with `[` from indexing the line above. The trap the docs warned about (`return` needed before a last line starting with `(`) is gone, and `soli fmt` no longer adds a disambiguating `;` before such a line. It also fixes code like `out = set_key(…)` followed by `(state["x"] ?? "") == id ? … : out`, which called `set_key`'s result. A `def name` without parentheses whose body starts with `(` still reads that line as the parameter list.
+* **http:** **A `rescue` on an `HTTP.*` call catches its failure.** Where a request runs asynchronously (a plain script, a single-worker `soli test`) the call returns a Future and a connection error only surfaced at the first read of the response, past the `rescue` on the call. The postfix `rescue` now settles a Future while it is still in effect, on both engines (new `ForceFuture` VM instruction). [Docs](www/docs/builtins.md#http-functions)
+* **testing:** **`soli test` workers always share a tokio runtime**, a single worker included, so `HTTP.*` blocks in a spec as it does in a request and `try`/`catch` around a call catches its failure. With `--jobs 1` the same spec used to miss the error that `--jobs 2` caught.
+
+### Fixed
+
+* **models:** **`after_create`, `after_update` and `after_save` run for `Model.create` and `Model.update`.** Both engines waited for a `{"valid": true, "record": …}` hash neither method has returned for a long time, so these callbacks never ran — silently. They now fire after a successful write: for `create` with `this` bound to the returned record, for `update(id, attrs)` to the attributes passed plus the id and the database's metadata. `instance.save`/`update` were not affected. [Docs](www/docs/models.md#firing-order-per-persistence-method)
+* **language:** **Classes compare with `==`.** There was no equality arm for class values, so `Account == Account` and `klass == Account` were false. Two classes are now equal by name, and since `record.class` is the class name (a String), `record.class == Account` holds as well as `record.class == "Account"`. [Docs](www/docs/soli-language.md#comparing-classes)
+* **fmt:** **`soli fmt` keeps a postfix `rescue` on its expression's line.** On a line past 120 columns it moved `rescue fallback` to the next line, where inside a `try`/`begin` body it is the block's catch clause: the modifier stopped applying, silently.
+* **testing:** **A spec file whose name contains "integration" loads the app's models.** A leftover rule skipped the models/services/helpers/jobs preamble for any such file, so `integrations_spec.sl` failed on *Undefined variable 'User'*.
+* **testing:** **Job classes have `perform_later` & co. in specs.** The preamble loaded `app/jobs` but never injected the facade the server adds (`perform_later`, `perform_in`, `perform_at`, `perform_now`, `schedule_cron`); it now does, for `db:seed` and data migrations too. [Docs](www/docs/testing.md#test-structure)
+* **testing:** **A failed `expect` on a model instance no longer crashes the runner.** Failure messages formatted the value with Rust's derived `Debug`, which walks an instance's class, its methods and their closure environments back to the class — a stack overflow that aborted `soli test`. They now use the depth-guarded display form.
+
 ## [2.15.0] - 2026-10-03
 
 ### Added

@@ -157,14 +157,15 @@ describe("create/save lifecycle hooks", fn() {
     # The ordering invariant holds either way: the pre-write hooks run
     # first, in declaration order. This is what the test is actually for.
     assert(result.chain.starts_with("before_save;before_create;"))
-    if !result._errors.nil?
+    if result._errors.nil?
+      # A write that landed fires after_create then after_save on the
+      # record, like `new(...).save()` below. These waited for a
+      # `{valid, record}` hash `create()` no longer returns, so they never ran.
+      assert_eq(result.chain, "before_save;before_create;after_create;after_save;")
+    else
       # Persistence failed, so the afters must stay suppressed.
       assert_eq(result.chain, "before_save;before_create;")
     end
-    # NOTE: when persistence *succeeds*, `create()` still does not fire
-    # after_create/after_save, while `new(...).save()` below does. That
-    # asymmetry looks like a bug in `create()` rather than a rule worth
-    # pinning, so it is deliberately not asserted either way here.
   })
 
   test("a new-record save() runs the create chain", fn() {

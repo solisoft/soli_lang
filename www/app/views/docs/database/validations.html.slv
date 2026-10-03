@@ -420,6 +420,10 @@ end</code></pre>
         </table>
     </div>
 
+    <p class="text-gray-400 mb-6">
+        After-callbacks only fire when the write succeeds. In those of <code>Model.create(attrs)</code>, <code>this</code> is the record <code>create</code> returns, so a field a callback sets is visible on it. For <code>Model.update(id, attrs)</code>, <code>this</code> holds the attributes passed (after the before-callbacks), plus <code>_key</code>/<code>id</code> and the metadata the database returned &mdash; not the whole stored row; load it with <code>find</code> when a callback needs the rest.
+    </p>
+
     <h3 class="text-lg font-semibold text-white mb-4">Vetoing persistence from a <code>before_*</code> callback</h3>
     <p class="text-gray-400 mb-4">
         Returning <code>false</code> from any <code>before_*</code> callback aborts the operation. The native DB write is skipped, after-callbacks don't run, and the instance picks up an <code>_errors</code> entry of the form <code>[{ "message": "before_&lt;event&gt; callback returned false; persistence aborted" }]</code>. Callers receive <code>false</code> (or, for <code>Model.create</code>&nbsp;/&nbsp;<code>Model.update</code>, the instance with <code>_errors</code> populated) so they can branch on the result identically to a validation failure.

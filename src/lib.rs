@@ -105,8 +105,41 @@ fn run_preamble_files(
 
         interpreter.set_source_path(preamble_path.clone());
         interpreter.interpret(&program)?;
+        inject_job_facade(interpreter, preamble_path);
     }
     Ok(())
+}
+
+/// Give an `app/jobs/*_job.sl` class the facade the server injects when it
+/// loads the app (`perform_later`, `perform_in`, `perform_at`, `perform_now`,
+/// `schedule_cron`). Without it a spec — or a model callback or service a spec
+/// drives — failed on `perform_later` while the same call worked in the app.
+fn inject_job_facade(interpreter: &mut interpreter::Interpreter, path: &std::path::Path) {
+    let in_jobs_dir = path
+        .parent()
+        .and_then(|dir| dir.file_name())
+        .is_some_and(|dir| dir == "jobs");
+    let is_job_file = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with("_job.sl"));
+    if !in_jobs_dir || !is_job_file {
+        return;
+    }
+    let class_name = serve::app_loader::job_class_name_from_path(path);
+    let Some(interpreter::value::Value::Class(class)) =
+        interpreter.environment.borrow().get(&class_name)
+    else {
+        return;
+    };
+    let class_value = interpreter::value::Value::Class(std::rc::Rc::new(
+        interpreter::builtins::jobs::inject_facade_methods(&class),
+    ));
+    interpreter
+        .environment
+        .borrow_mut()
+        .define(class_name.clone(), class_value.clone());
+    interpreter::builtins::jobs::register_job_class_in_registry(&class_name, class_value);
 }
 
 /// Run a migration file. Same pipeline as [`run_with_options`], but the

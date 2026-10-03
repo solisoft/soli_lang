@@ -179,6 +179,22 @@ impl Vm {
                 Ok(Value::Array(arr.clone()))
             }
             "each_with_index" => {
+                // Without a block: the `[item, index]` pairs, so
+                // `xs.each_with_index.map { |x, i| … }` reads as in Ruby.
+                if args.is_empty() {
+                    let pairs: Vec<Value> = arr
+                        .borrow()
+                        .iter()
+                        .enumerate()
+                        .map(|(i, item)| {
+                            Value::Array(Rc::new(RefCell::new(vec![
+                                item.clone(),
+                                Value::Int(i as i64),
+                            ])))
+                        })
+                        .collect();
+                    return Ok(Value::Array(Rc::new(RefCell::new(pairs))));
+                }
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }

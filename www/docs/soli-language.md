@@ -1598,6 +1598,15 @@ print(evens);  # [2, 4, 6, 8, 10]
 # each - iterate with side effects
 numbers.each(fn(x) print(x));  # Prints each number
 
+# each_with_index - with a block, (value, index); bare, the [value, index] pairs
+["a", "b"].each_with_index do |letter, i|
+  print("#{i}: #{letter}")
+end
+labels = ["a", "b"].each_with_index.map { |letter, i| "#{i}:#{letter}" }  # ["0:a", "1:b"]
+
+# A block with two or more parameters destructures an array element, as in Ruby
+[["Ann", 31], ["Bob", 42]].map { |name, age| "#{name} (#{age})" }  # ["Ann (31)", "Bob (42)"]
+
 # reduce - accumulate to single value
 sum = numbers.reduce(fn(acc, x) acc + x, 0);  # 55
 product = numbers.reduce(fn(acc, x) acc * x, 1);  # 3628800
@@ -2827,6 +2836,22 @@ if laptop != null
 end
 
 inventory.list_all();
+```
+
+### Comparing Classes
+
+Two class values compare with `==` by name. `record.class` answers the class
+*name* (a String), which compares equal to the class itself as well as to the
+string.
+
+```soli
+klass = Account
+klass == Account           # true
+klass == Contact           # false
+
+account = Account.find(id)
+account.class == Account   # true
+account.class == "Account" # true
 ```
 
 ### Nested Classes
@@ -4482,8 +4507,8 @@ Soli is written Ruby-style — in apps, specs, docs and `soli new` scaffolds ali
   braces: `double = fn(x) { x * 2 }`), for `reduce(fn(acc, x) acc + x, 0)`,
   `grouped(fn() { … })`, pipelines, and function values in a hash.
 - **Implicit returns** — the last expression is the value; `return` is for early
-  exits, and before a last line that would start with `(` or `fn(` (read as a
-  call on the line above / a named function declaration).
+  exits, and before a last line that would start with `fn(` (read as a named
+  function declaration). A line opening with `(` is its own statement.
 - **No `()` on a zero-argument method call** — `Post.all`, `@post.save`,
   `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`. Keep
   them on a **bare function** (`current_user()`, `session_destroy()`): without

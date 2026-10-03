@@ -1104,13 +1104,12 @@ fn postfix_guard_expanded_to_a_block_takes_no_semicolon_before_a_bracket_line() 
 }
 
 #[test]
-fn postfix_guard_that_stays_postfix_keeps_its_semicolon_before_a_bracket_line() {
-    // Kept on one line, the guard ends in an expression, so the `;` still
-    // stops the next line's `[` from being read as an index into it.
-    assert_fmt(
-        "def h(w)\n  return [1, 2] if w == \"a\"\n\n  [3]\nend\n",
-        "def h(w)\n  return [1, 2] if w == \"a\";\n\n  [3]\nend\n",
-    );
+fn postfix_guard_before_a_bracket_line_needs_no_semicolon() {
+    // A line opening with `[` (or `(`) starts a new statement, so the guard
+    // kept on one line needs no `;` to stop it being read as an index.
+    let src = "def h(w)\n  return [1, 2] if w == \"a\"\n\n  [3]\nend\n";
+    assert_fmt(src, src);
+    assert_idempotent(src);
 }
 
 #[test]
@@ -1142,4 +1141,34 @@ fn unicode_and_control_escapes_survive_formatting() {
         "d = \"#{x}\\e[0m\\u00e9\\u200b\"\n",
         "d = \"#{x}\\e[0mé\\u{200b}\"\n",
     );
+}
+
+#[test]
+fn long_rescue_modifier_stays_on_its_line() {
+    // Breaking before `rescue` put it at the start of a line, where — inside a
+    // `try`/`begin` body — it reads as the block's catch clause, so the
+    // modifier no longer applied to its expression.
+    let src = "try\n  data = fetch_the_remote_document(\"https://example.com/a/very/long/path\", timeout: 30, retries: 5) rescue nil\n  print(data)\ncatch error\n  print(error)\nend\n";
+    let out = format_source(src).expect("format failed");
+    assert!(
+        out.contains(") rescue nil\n"),
+        "the rescue modifier left its expression's line:\n{}",
+        out
+    );
+    assert!(
+        !out.lines().any(|l| l.trim_start().starts_with("rescue")),
+        "a line opens with `rescue`:\n{}",
+        out
+    );
+    assert_round_trip(src);
+    assert_idempotent(src);
+}
+
+#[test]
+fn line_opening_with_paren_is_not_glued_to_the_line_above() {
+    // `b` then `(a + b) * 2` on the next line used to parse as the call
+    // `b((a + b)) * 2`, which the formatter then printed on one line.
+    let src = "def compute(a, b)\n  total = a + b\n  (a + b) * 2\nend\n";
+    assert_fmt(src, src);
+    assert_idempotent(src);
 }

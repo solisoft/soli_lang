@@ -181,9 +181,10 @@ Ruby-style, terse Soli — in code, specs, docs and scaffolds alike.
   `reduce(fn(acc, x) acc + x, 0)` (`reduce(0) { |acc, x| … }` is not supported),
   `grouped(fn() { … })`, pipelines, and function values in a hash.
 - **Implicit returns** — the last expression of a method is its value; `return`
-  is for early exits. Keep it before a last line that would start with `(` or
-  `fn(`: `(a + b) * 2` on its own line is read as a call on the line above, and
-  `fn(x) { … }` as a named function declaration.
+  is for early exits. Keep it before a last line that would start with `fn(`:
+  `fn(x) { … }` there is read as a named function declaration. A line opening
+  with `(` is its own statement — `(a + b) * 2` is no longer a call on the line
+  above.
 - **No `()` on a zero-argument method call** — `Post.all`, `@post.save`,
   `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`. Keep
   them on a **bare function** (`current_user()`, `session_destroy()`): without

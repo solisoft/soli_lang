@@ -1627,6 +1627,27 @@ mod parser_tests {
         }
     }
 
+    #[test]
+    fn test_line_leading_paren_starts_a_statement_not_a_call() {
+        // A `(` opening a new line is a grouped expression, never a call on
+        // the line before: `b` then `(a + b) * 2` used to read as
+        // `b((a + b)) * 2`, and `soli fmt` printed that call on one line.
+        let seq = parse_stmts("total = a + b\n(a + b) * 2\n");
+        assert_eq!(seq.len(), 2, "the `(` line must be its own statement");
+        match &seq[1] {
+            StmtKind::Expression(expr) => assert!(
+                matches!(expr.kind, ExprKind::Binary { .. }),
+                "expected `(a + b) * 2`, got {:?}",
+                expr.kind
+            ),
+            other => panic!("expected expression statement, got {:?}", other),
+        }
+
+        // A call whose arguments open on the SAME line still spans lines.
+        let call = parse_stmts("total = add(\n  1,\n  2\n)\n");
+        assert_eq!(call.len(), 1);
+    }
+
     /// Class-body DSL calls are recognized by name. `connection` and `table`
     /// were both missing from that list, so `connection "legacy"` — the
     /// documented multi-database binding — failed to parse as "expected ':'

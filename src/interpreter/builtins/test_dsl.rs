@@ -38,7 +38,13 @@ thread_local! {
 
 // Compact, single-line representation of a Value for assertion error messages.
 // Long strings are truncated so a 5KB HTML body doesn't fill the test output.
-fn fmt_value(v: &Value) -> String {
+//
+// Everything but a string goes through `Display`, never the derived `Debug`:
+// `{:?}` on an instance walks its class, the class's methods and their
+// closure environments, which point back at the class — a failed `expect` on
+// a model instance overflowed the stack and took the whole test runner down.
+// `Display` prints only the instance's fields and is depth-guarded.
+pub(crate) fn fmt_value(v: &Value) -> String {
     const MAX_STR: usize = 80;
     const MAX_OTHER: usize = 200;
     match v {
@@ -51,11 +57,11 @@ fn fmt_value(v: &Value) -> String {
             }
         }
         _ => {
-            let dbg = format!("{:?}", v);
-            if dbg.chars().count() <= MAX_OTHER {
-                dbg
+            let shown = v.to_string().replace(",\n ", ", ");
+            if shown.chars().count() <= MAX_OTHER {
+                shown
             } else {
-                let prefix: String = dbg.chars().take(MAX_OTHER).collect();
+                let prefix: String = shown.chars().take(MAX_OTHER).collect();
                 format!("{}…", prefix)
             }
         }

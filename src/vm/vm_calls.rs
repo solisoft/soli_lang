@@ -1021,7 +1021,8 @@ impl Vm {
         span: Span,
     ) -> Result<bool, RuntimeError> {
         use crate::interpreter::executor::calls::function::{
-            callback_names_for, has_closure_callbacks, set_callback_aborted_error,
+            callback_names_for, has_closure_callbacks, persisted_record_for_after_callbacks,
+            set_callback_aborted_error,
         };
 
         let data_index = if name == "create" { 0 } else { 1 };
@@ -1103,26 +1104,11 @@ impl Vm {
         let result = (native.func)(&native_args).map_err(|e| RuntimeError::new(e, span))?;
 
         if !after_names.is_empty() || has_closure_callbacks(&class.name, after_events) {
-            if let Value::Hash(result_hash) = &result {
-                let valid = result_hash
-                    .borrow()
-                    .get(&HashKey::String("valid".into()))
-                    .cloned();
-                let record = result_hash
-                    .borrow()
-                    .get(&HashKey::String("record".into()))
-                    .cloned();
-                if matches!(valid, Some(Value::Bool(true))) {
-                    if let Some(Value::Instance(inst)) = record {
-                        self.run_model_callbacks_vm(
-                            &class,
-                            &inst,
-                            &after_names,
-                            after_events,
-                            span,
-                        )?;
-                    }
-                }
+            let updated_id = (name == "update").then(|| native_args[1].clone());
+            if let Some(record) =
+                persisted_record_for_after_callbacks(&result, &inst_rc, updated_id.as_ref())
+            {
+                self.run_model_callbacks_vm(&class, &record, &after_names, after_events, span)?;
             }
         }
 
@@ -2127,6 +2113,25 @@ impl Vm {
         arg: Value,
         span: Span,
     ) -> Result<Value, RuntimeError> {
+        // A block declaring two or more parameters destructures an array
+        // element, as a Ruby block does: `pairs.map { |x, i| … }`. Every
+        // array iteration method reaches its block through here.
+        if let (Value::VmClosure(closure), Value::Array(parts)) = (callee, &arg) {
+            let arity = closure.proto.arity as usize;
+            if arity >= 2 {
+                // Missing required positions read as nil; a defaulted one
+                // left unfilled keeps its default.
+                let required = arity - closure.proto.defaults as usize;
+                let parts: Vec<Value> = {
+                    let parts = parts.borrow();
+                    let count = parts.len().min(arity).max(required);
+                    (0..count)
+                        .map(|index| parts.get(index).cloned().unwrap_or(Value::Null))
+                        .collect()
+                };
+                return self.invoke_in_batch(batch, callee, &parts, span);
+            }
+        }
         self.push(callee.clone());
         self.push(arg);
         self.call_value(1, span)?;

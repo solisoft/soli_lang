@@ -79,6 +79,53 @@ pub(crate) fn persist_events_for(
     }
 }
 
+/// The record the after-callbacks of a `Model.create(data)` /
+/// `Model.update(id, data)` run against, or `None` when the write did not
+/// land (no after-callback fires then).
+///
+/// `Model.create` answers with an instance whose `_errors` stays unset on
+/// success. `Model.update` answers with the stored document's metadata (a
+/// hash) on success, a `{"_errors": [...]}` hash when validation refused it,
+/// and an `"Error: ..."` string when the write failed; its record is the
+/// staged instance the before-callbacks already saw, stamped with the id and
+/// the metadata the database returned. These callbacks used to wait for a
+/// `{"valid": true, "record": ...}` hash neither method returns any more, so
+/// they never ran.
+pub(crate) fn persisted_record_for_after_callbacks(
+    result: &Value,
+    staged: &Rc<RefCell<Instance>>,
+    updated_id: Option<&Value>,
+) -> Option<Rc<RefCell<Instance>>> {
+    match result {
+        Value::Instance(record) => {
+            let failed = record
+                .borrow()
+                .get("_errors")
+                .is_some_and(|errors| !matches!(errors, Value::Null));
+            (!failed).then(|| record.clone())
+        }
+        Value::Hash(stored) => {
+            let stored = stored.borrow();
+            if stored.contains_key(&HashKey::String("_errors".into())) {
+                return None;
+            }
+            let mut record = staged.borrow_mut();
+            if let Some(id) = updated_id {
+                record.set("_key", id.clone());
+                record.set("id", id.clone());
+            }
+            for (key, value) in stored.iter() {
+                if let HashKey::String(name) = key {
+                    record.set(name.clone(), value.clone());
+                }
+            }
+            drop(record);
+            Some(staged.clone())
+        }
+        _ => None,
+    }
+}
+
 /// Method-name callbacks registered for `events` on `class_name`.
 pub(crate) fn callback_names_for(class_name: &str, events: &[&str]) -> Vec<String> {
     use crate::interpreter::builtins::model::get_or_create_metadata;
@@ -1007,107 +1054,22 @@ impl Interpreter {
         // normal path — without re-evaluating the receiver expression.
         let callee_val =
             self.evaluate_member_on_value(Value::Class(class.clone()), method_name, span)?;
+        let updated_id = (method_name == "update").then(|| arg_values[0].clone());
         let result = self.call_value(callee_val, arg_values, span)?;
 
-        // Run after_save / after_create / after_update with `this` bound to
-        // the persisted record — convention: Model.create returns
-        // `{ "valid": true, "record": <Instance> }` on success.
-        let after_names: Vec<String> = if method_name == "create" {
-            metadata
-                .callbacks
-                .after_create
-                .iter()
-                .chain(metadata.callbacks.after_save.iter())
-                .cloned()
-                .collect()
-        } else {
-            metadata
-                .callbacks
-                .after_update
-                .iter()
-                .chain(metadata.callbacks.after_save.iter())
-                .cloned()
-                .collect()
-        };
+        // Run after_create / after_update, then after_save, with `this` bound
+        // to the persisted record. Only a write that landed fires them.
         let after_events: &[&str] = if method_name == "create" {
             &["after_create", "after_save"]
         } else {
             &["after_update", "after_save"]
         };
+        let after_names = callback_names_for(&class.name, after_events);
         if !after_names.is_empty() || has_closure_callbacks(&class.name, after_events) {
-            if let Value::Hash(result_hash) = &result {
-                let valid = result_hash
-                    .borrow()
-                    .get(&HashKey::String("valid".into()))
-                    .cloned();
-                let record = result_hash
-                    .borrow()
-                    .get(&HashKey::String("record".into()))
-                    .cloned();
-                if matches!(valid, Some(Value::Bool(true))) {
-                    if let Some(Value::Instance(inst)) = record {
-                        for cb_name in &after_names {
-                            let Some(method) = class.find_method(cb_name) else {
-                                continue;
-                            };
-                            let mut bound_env = Environment::with_enclosing(method.closure.clone());
-                            bound_env.define("this".to_string(), Value::Instance(inst.clone()));
-                            let bound_method = crate::interpreter::value::Function {
-                                name: method.name.clone(),
-                                params: method.params.clone(),
-                                body: method.body.clone(),
-                                closure: Rc::new(RefCell::new(bound_env)),
-                                is_method: true,
-                                span: method.span,
-                                source_path: method.source_path.clone(),
-                                defining_superclass: None,
-                                return_type: method.return_type.clone(),
-                                cached_env: RefCell::new(None),
-                                jit_cache: RefCell::new(None),
-                                kernel: None,
-                            };
-                            self.call_value(
-                                Value::Function(Rc::new(bound_method)),
-                                Vec::new(),
-                                span,
-                            )?;
-                        }
-                        // Closure-based after callbacks.
-                        for ev in after_events {
-                            for closure in crate::interpreter::builtins::model::callbacks::closure_callbacks_for(&class.name, ev) {
-                                let mut bound_env =
-                                    Environment::with_enclosing(closure.closure.clone());
-                                bound_env.define(
-                                    "this".to_string(),
-                                    Value::Instance(inst.clone()),
-                                );
-                                bound_env.define(
-                                    "self".to_string(),
-                                    Value::Instance(inst.clone()),
-                                );
-                                let bound = crate::interpreter::value::Function {
-                                    name: closure.name.clone(),
-                                    params: closure.params.clone(),
-                                    body: closure.body.clone(),
-                                    closure: Rc::new(RefCell::new(bound_env)),
-                                    is_method: true,
-                                    span: closure.span,
-                                    source_path: closure.source_path.clone(),
-                                    defining_superclass: None,
-                                    return_type: closure.return_type.clone(),
-                                    cached_env: RefCell::new(None),
-                                    jit_cache: RefCell::new(None),
-                                    kernel: None,
-                                };
-                                self.call_value(
-                                    Value::Function(Rc::new(bound)),
-                                    Vec::new(),
-                                    span,
-                                )?;
-                            }
-                        }
-                    }
-                }
+            if let Some(record) =
+                persisted_record_for_after_callbacks(&result, &inst_rc, updated_id.as_ref())
+            {
+                self.run_model_callbacks(&class, &record, &after_names, after_events, span)?;
             }
         }
 

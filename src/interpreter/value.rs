@@ -1050,6 +1050,17 @@ impl Value {
             (Value::Method(a), Value::Method(b)) => {
                 *a.receiver == *b.receiver && a.method_name == b.method_name
             }
+            // A class is its name: a reopened class, a model rebound per worker
+            // or a job given its facade is a fresh `Rc` that still answers to
+            // the same constant. With no arm here, `Account == Account` was
+            // false.
+            (Value::Class(a), Value::Class(b)) => Rc::ptr_eq(a, b) || a.name == b.name,
+            // `record.class` answers the class *name*, a String, so
+            // `record.class == Account` compared a string with a class and
+            // was always false. Both spellings hold: `== Account` and
+            // `== "Account"`.
+            (Value::Class(class), Value::String(name))
+            | (Value::String(name), Value::Class(class)) => class.name == name.as_str(),
             _ => false,
         }
     }

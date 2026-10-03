@@ -37,7 +37,7 @@ pub struct Printer<'a> {
     /// `if cond ... end` collapsed to postfix `expr if cond`. The AST is
     /// still block-form so `ends_in_expression` returns false, but the
     /// printed line ends with the condition expression and needs `;`
-    /// disambiguation against a `(`/`[`/`.`-led next statement.
+    /// disambiguation against a `.`-led next statement.
     pub(super) last_stmt_rewrote_to_postfix: bool,
     /// Mirrors the parser's own `no_trailing_do`. Set while printing anything
     /// whose grammar would swallow a trailing `do` — an `if`/`while` condition,
@@ -494,11 +494,11 @@ pub(super) fn source_end_line(source: &str, span: crate::span::Span) -> usize {
     span.line_usize() + source[start..end].matches('\n').count()
 }
 
-/// Soli's parser is greedy across newlines for `[`, `(`, `.` — a line that
-/// begins with one of those continues the previous expression. After an
-/// expression-ending statement we must emit a `;` if the next source line
-/// starts that way; otherwise `let x = 0\n[1, 2, 3]` reparses as
-/// `let x = 0[1, 2, 3]`.
+/// A line that begins with `.` continues the previous expression (a
+/// multi-line method chain). After an expression-ending statement we must
+/// emit a `;` if the next source line starts that way. A line opening with
+/// `[` or `(` no longer needs one: the parser starts a new statement there
+/// (see `parse_precedence`), so `let x = 0\n[1, 2, 3]` is two statements.
 pub(super) fn needs_disambiguating_semicolon(source: &str, current: &Stmt, next: &Stmt) -> bool {
     if !ends_in_expression(current) {
         return false;
@@ -548,5 +548,5 @@ pub(super) fn starts_with_continuation_char(source: &str, start: usize) -> bool 
     while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
         i += 1;
     }
-    matches!(bytes.get(i), Some(b'[') | Some(b'(') | Some(b'.'))
+    bytes.get(i) == Some(&b'.')
 }

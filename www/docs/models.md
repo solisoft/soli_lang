@@ -958,6 +958,8 @@ Both class-level methods (`Model.create`, `Model.update`) and instance-level mut
 
 After-callbacks only fire when the persist call succeeds. If the native method returns `false` (validation or DB error) the after-callbacks are skipped and the instance carries `_errors`.
 
+In the after-callbacks of `Model.create(attrs)`, `this` is the record `create` returns, so a field a callback sets is visible on it. For `Model.update(id, attrs)`, `this` holds the attributes passed (after the before-callbacks), plus `_key`/`id` and the metadata the database returned — not the whole stored row; load it with `find` when a callback needs the rest.
+
 Every callback in the table fires on both engines. A callback declared as a
 *method name* runs on the bytecode VM in production; a **closure-form**
 callback (`before_save do … end`) runs on the tree-walking interpreter, because

@@ -164,6 +164,19 @@ describe("Array Methods", fn() {
         assert_eq(returned[0], 10);
     });
 
+    test("each_with_index without a block answers the [item, index] pairs", fn() {
+        assert_eq(["a", "b"].each_with_index, [["a", 0], ["b", 1]])
+        assert_eq(["a", "b"].each_with_index.map { |x, i| "#{i}#{x}" }, ["0a", "1b"])
+    });
+
+    test("a block with two parameters destructures an array element", fn() {
+        assert_eq([["a", 1], ["b", 2]].map { |name, n| "#{name}#{n}" }, ["a1", "b2"])
+        assert_eq([[1, 2], [3, 4]].filter { |a, b| a + b > 4 }, [[3, 4]])
+        assert_eq([["a"]].map { |name, n| n.nil? }, [true])
+        # A one-parameter block still gets the element whole.
+        assert_eq([[1, 2]].map { |pair| pair.length }, [2])
+    });
+
     test("index_of finds first matching element", fn() {
         let arr = ["a", "b", "c", "b"];
         assert_eq(arr.index_of("b"), 1);

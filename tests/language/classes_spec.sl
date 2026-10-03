@@ -942,4 +942,20 @@ describe("Method named match", fn() {
         }
         assert_eq(result, "forty-two");
     });
+
+    test("classes compare with ==", fn() {
+        class EqAccount
+        end
+        class EqOther
+        end
+        klass = EqAccount
+        assert(klass == EqAccount)
+        assert(EqAccount == EqAccount)
+        assert(klass != EqOther)
+        # `.class` answers the class name; it compares equal to the class too.
+        record = new EqAccount()
+        assert(record.class == EqAccount)
+        assert(record.class == "EqAccount")
+        assert(record.class != EqOther)
+    });
 });

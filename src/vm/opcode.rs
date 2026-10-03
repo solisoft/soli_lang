@@ -176,6 +176,10 @@ pub enum Op {
     TryBegin(u16, u16),
     /// End a try block (pop exception handler).
     TryEnd,
+    /// Resolve a `Future` on top of the stack in place, raising its error
+    /// here. Emitted inside a postfix `rescue`, so a failed `HTTP.request`
+    /// is caught by the `rescue` on its call rather than at the first read.
+    ForceFuture,
     /// Throw the top of stack as an exception.
     Throw,
     /// Check if exception (top of stack) matches a class name. If no match, jump forward.

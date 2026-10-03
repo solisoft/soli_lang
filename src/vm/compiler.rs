@@ -987,7 +987,7 @@ fn stack_effect(op: Op) -> i32 {
         | ConstField(_) | StaticConstField(_) => -1,
         New(argc) => -(argc as i32),
         // Exceptions.
-        TryBegin(_, _) | TryEnd | CatchMatch(_, _) | PopHandler | RescueJump(_) => 0,
+        TryBegin(_, _) | TryEnd | ForceFuture | CatchMatch(_, _) | PopHandler | RescueJump(_) => 0,
         Throw | Rethrow => -1,
         // Iterators (GetIter/GetIterRange consume from the value stack; ForIter
         // pushes the element on the continue path — loops resync regardless).

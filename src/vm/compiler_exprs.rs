@@ -269,6 +269,10 @@ impl Compiler {
             ExprKind::Rescue { expr, fallback } => {
                 let try_begin = self.emit(Op::TryBegin(0, 0), line);
                 self.compile_expr(expr)?;
+                // An async builtin (`HTTP.request`, `HTTP.get`…) hands back a
+                // Future whose failure would only surface at the first read,
+                // past this rescue. Settle it while the handler is active.
+                self.emit(Op::ForceFuture, line);
                 self.emit(Op::TryEnd, line);
                 let rescue_jump = self.emit(Op::Jump(0), line);
                 // Catch target: the Pop that discards the pushed exception

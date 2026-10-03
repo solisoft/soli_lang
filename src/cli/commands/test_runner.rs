@@ -1107,17 +1107,19 @@ pub fn run_test(
     // runtime, the I/O driver isn't running and the future deadlocks.
     // Same root cause as the test-server subprocess workaround above; that
     // workaround alone doesn't help the runner's *own* parallel workers.
-    let shared_rt = if num_workers > 1 {
-        Some(
-            tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(num_workers)
-                .enable_all()
-                .build()
-                .expect("Failed to build shared tokio runtime for test workers"),
-        )
-    } else {
-        None
-    };
+    //
+    // A single worker gets the runtime too. Without a handle, `HTTP.request`
+    // and friends answer with a Future whose failure only surfaced at the
+    // first read of the response — past the `try`/`rescue` around the call —
+    // so the same spec caught the error under `--jobs 2` and missed it under
+    // `--jobs 1`, and never matched the server, where the call blocks.
+    let shared_rt = Some(
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(num_workers.max(1))
+            .enable_all()
+            .build()
+            .expect("Failed to build shared tokio runtime for test workers"),
+    );
     let shared_rt_handle = shared_rt.as_ref().map(|rt| rt.handle().clone());
 
     // Shared work queue, ordered largest-first (LPT scheduling). Workers pop
@@ -1179,12 +1181,13 @@ pub fn run_test(
 
                     let (passed, error, assertions) = match result {
                         Ok(source) => {
-                            let is_integration = file
-                                .file_name()
-                                .map(|n| n.to_string_lossy().contains("integration"))
-                                .unwrap_or(false);
-                            let preamble_slice: &[(PathBuf, String)] =
-                                if is_integration { &[] } else { &preamble_files };
+                            // Every spec gets the app's models, services and
+                            // helpers. A file whose name merely contained
+                            // "integration" used to be skipped — a leftover from
+                            // when that name decided whether the test server
+                            // ran — so `integrations_spec.sl` failed on
+                            // "Undefined variable 'User'".
+                            let preamble_slice: &[(PathBuf, String)] = &preamble_files;
                             if let Some(ref tracker) = tracker_clone {
                                 let tracker_guard = tracker.lock().unwrap();
                                 tracker_guard.start_test(file.to_string_lossy().as_ref());

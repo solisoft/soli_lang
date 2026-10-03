@@ -862,26 +862,14 @@ impl Printer<'_> {
                 self.print_expr(inner);
             }
             ExprKind::Rescue { expr, fallback } => {
-                // Estimate full inline width and break before `rescue` when
-                // it would push the line past MAX_LINE_LENGTH. Use
-                // `span_inline_width` so the same expression yields the same
-                // width whether the source currently has it on one line or
-                // wrapped across several — required for fmt idempotency.
-                let expr_w = span_inline_width(self.source, expr.span);
-                let fb_w = span_inline_width(self.source, fallback.span);
-                let total = self.current_column() + expr_w + 8 /* " rescue " */ + fb_w;
-                if total >= MAX_LINE_LENGTH {
-                    self.print_expr(expr);
-                    self.newline();
-                    self.with_indent(|p| {
-                        p.write("rescue ");
-                        p.print_expr(fallback);
-                    });
-                } else {
-                    self.print_expr(expr);
-                    self.write(" rescue ");
-                    self.print_expr(fallback);
-                }
+                // Never break before `rescue`, however long the line: inside a
+                // `try`/`begin` body a `rescue` that opens a line is the
+                // block's catch clause, so the modifier silently stopped
+                // applying to its expression. The expression can still wrap
+                // its own arguments.
+                self.print_expr(expr);
+                self.write(" rescue ");
+                self.print_expr(fallback);
             }
         }
     }

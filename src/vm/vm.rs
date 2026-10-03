@@ -3193,6 +3193,16 @@ impl Vm {
                 Op::TryEnd => {
                     self.exception_handlers.pop();
                 }
+                Op::ForceFuture => {
+                    if let Some(top) = self.stack.last_mut().filter(|top| top.is_future()) {
+                        let future = std::mem::replace(top, Value::Null);
+                        let span = self.current_span();
+                        let value = future.resolve().map_err(|e| RuntimeError::new(e, span))?;
+                        if let Some(top) = self.stack.last_mut() {
+                            *top = value;
+                        }
+                    }
+                }
                 Op::Throw => {
                     let value = self.stack.pop().unwrap();
                     let span = self.current_span();

@@ -238,9 +238,18 @@ impl Interpreter {
                 })
             }
 
-            // Postfix rescue
+            // Postfix rescue. An async builtin (`HTTP.request`, `HTTP.get`…)
+            // answers with a Future whose failure would only surface at the
+            // first read, past this rescue — settle it here so the rescue on
+            // the call is the one that catches it.
             ExprKind::Rescue { expr, fallback } => {
-                let expr_result = self.evaluate(expr);
+                let expr_result = self.evaluate(expr).and_then(|value| {
+                    if value.is_future() {
+                        value.resolve().map_err(|e| RuntimeError::new(e, expr.span))
+                    } else {
+                        Ok(value)
+                    }
+                });
                 match expr_result {
                     Ok(value) => Ok(value),
                     Err(_) => self.evaluate(fallback),

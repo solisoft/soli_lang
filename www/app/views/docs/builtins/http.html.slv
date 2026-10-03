@@ -57,6 +57,9 @@ response = HTTP.request("DELETE", "https://api.example.com/users/1")</code></pre
         <p class="text-gray-400">
             A transport failure reports its <strong class="text-white">whole cause chain</strong>, not just the top line: <code class="text-amber-400">Request failed: error sending request for url (…)</code> is followed by what actually went wrong (<code class="text-amber-400">dns error: …</code>, <code class="text-amber-400">connection closed before message completed</code>, <code class="text-amber-400">invalid peer certificate</code>). Worth surfacing wherever you handle the <code class="text-amber-400">{"error": ...}</code> hashes the parallel helpers return.
         </p>
+        <p class="text-gray-400 mt-3">
+            <strong class="text-white">A failed request raises at the call.</strong> In a controller, a job or a spec the request blocks, so <code class="text-amber-400">rescue</code> and <code class="text-amber-400">try</code>/<code class="text-amber-400">catch</code> around it catch the failure. A plain script runs requests asynchronously (the result is a Future, settled on first use); a postfix <code class="text-amber-400">rescue</code> on the call settles it on the spot, so <code class="text-amber-400">HTTP.request("GET", url) rescue nil</code> catches the failure everywhere. In a script, a <code class="text-amber-400">try</code> block does not &mdash; read the response inside it, or use <code class="text-amber-400">rescue</code>.
+        </p>
     </section>
 
     <!-- Basic HTTP Requests -->

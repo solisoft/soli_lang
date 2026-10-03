@@ -188,6 +188,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             out.push_str(&format!("TRY_BEGIN    c:{} f:{}", catch, finally));
         }
         Op::TryEnd => out.push_str("TRY_END"),
+        Op::ForceFuture => out.push_str("FORCE_FUTURE"),
         Op::Throw => out.push_str("THROW"),
         Op::CatchMatch(idx, offset) => {
             let name = constant_string(chunk, *idx);
