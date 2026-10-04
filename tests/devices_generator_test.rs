@@ -85,6 +85,11 @@ fn create_client_android_writes_manifest() {
     )
     .unwrap();
     assert!(java.contains("https://app.example.com/"));
+    // getUserMedia's resources are mapped to Android permissions: handing
+    // them to requestPermissions as-is showed no prompt and always denied.
+    assert!(!java.contains("requestPermissions(request.getResources()"));
+    assert!(java
+        .contains("RESOURCE_VIDEO_CAPTURE.equals(resource)) return \"android.permission.CAMERA\""));
 }
 
 #[test]

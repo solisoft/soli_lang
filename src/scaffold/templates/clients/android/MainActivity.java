@@ -121,9 +121,13 @@ public class MainActivity extends Activity {
             }
 
             @Override
-            public void onPermissionRequest(PermissionRequest request) {
-                pendingMedia = request;
-                requestPermissions(request.getResources(), 3);
+            public void onPermissionRequest(final PermissionRequest request) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        askForMedia(request);
+                    }
+                });
             }
 
             @Override
@@ -209,12 +213,49 @@ public class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
     }
 
+    // getUserMedia reaches the WebView as resources (RESOURCE_VIDEO_CAPTURE,
+    // RESOURCE_AUDIO_CAPTURE), not as Android permissions: each one is mapped
+    // to the runtime permission that guards it, and only what that permission
+    // allows is granted. Passing the resources to requestPermissions shows no
+    // prompt and always comes back denied.
+    private static String permissionFor(String resource) {
+        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) return "android.permission.CAMERA";
+        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) return "android.permission.RECORD_AUDIO";
+        return null;
+    }
+
+    private void askForMedia(PermissionRequest request) {
+        java.util.List<String> missing = new java.util.ArrayList<>();
+        for (String resource : request.getResources()) {
+            String permission = permissionFor(resource);
+            if (permission != null && checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                missing.add(permission);
+            }
+        }
+        if (missing.isEmpty()) {
+            answerMedia(request);
+            return;
+        }
+        pendingMedia = request;
+        requestPermissions(missing.toArray(new String[0]), 3);
+    }
+
+    private void answerMedia(PermissionRequest request) {
+        java.util.List<String> allowed = new java.util.ArrayList<>();
+        for (String resource : request.getResources()) {
+            String permission = permissionFor(resource);
+            if (permission != null && checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                allowed.add(resource);
+            }
+        }
+        if (allowed.isEmpty()) request.deny();
+        else request.grant(allowed.toArray(new String[0]));
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         if (requestCode == 3 && pendingMedia != null) {
-            boolean ok = grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            if (ok) pendingMedia.grant(pendingMedia.getResources());
-            else pendingMedia.deny();
+            answerMedia(pendingMedia);
             pendingMedia = null;
         }
         if (requestCode == 4 && pendingLocationCallback != null) {
