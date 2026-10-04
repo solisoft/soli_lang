@@ -20,8 +20,17 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.15.2.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.15.3.</p>
 
+    </section>
+
+    <section id="v2-15-3" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.15.3 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-04</span></h2>
+
+        <h3 id="v2-15-3-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A build&rsquo;s install page puts the LAN address in its QR code.</strong> Under <code class="text-cyan-400">--dev</code>, <code class="text-cyan-400">/__soli/mobile</code> already gave a phone this machine&rsquo;s LAN address, but the page of one build (<code class="text-cyan-400">/__soli/mobile/i/&lt;token&gt;</code>), opened from the history on the same machine, built its QR code and download button on <code class="text-cyan-400">localhost</code> &mdash; and the phone that scanned it tried to reach itself. Both pages now use the same phone-reachable address. <a href="/docs/native/clients" class="text-cyan-400 hover:underline">Native clients</a></li>
+        </ul>
     </section>
 
     <section id="v2-15-2" class="mb-16 scroll-mt-24">

@@ -1008,7 +1008,11 @@ mod tests {
     fn history_links_are_absolute_on_the_install_base() {
         let root = tempfile::tempdir().unwrap();
         let build = store(root.path(), "android", "2026-01-01T00:00:00.000Z");
-        let table = history_table(&[build.clone()], "http://192.168.1.20:5011", true);
+        let table = history_table(
+            std::slice::from_ref(&build),
+            "http://192.168.1.20:5011",
+            true,
+        );
         assert!(table.contains(&format!(
             "href=\"http://192.168.1.20:5011/__soli/mobile/i/{}\"",
             build.token
