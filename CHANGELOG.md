@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+* **mobile:** **A build's install page carries the LAN address in its QR code.** Under `--dev`, `/__soli/mobile` swaps a loopback host for this machine's LAN address so a phone can open its links, but the page of one build (`/__soli/mobile/i/<token>`) built its link, QR code and download button on the request's own host. Reached from the index's history on this machine, that host was `localhost`, and the phone that scanned the code tried to reach itself. Both pages now share the same phone-reachable base, and the history's install links are absolute on it. [Docs](www/docs/native/clients.md#distribute-__solimobile)
+
 ## [2.15.2] - 2026-10-04
 
 ### Added

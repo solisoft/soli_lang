@@ -218,7 +218,7 @@ pub(super) async fn dispatch(
         if !matches!(method, "GET" | "HEAD") || !install_links_on(dev_mode) {
             return Ok(admin_auth::hidden_not_found());
         }
-        return Ok(handle_install(&root, rest, req.headers()));
+        return Ok(handle_install(&root, rest, req.headers(), dev_mode));
     }
 
     let decision = admin_auth::authorize(req.headers(), dev_mode, peer_addr.ip(), "MOBILE");
@@ -315,13 +315,22 @@ fn base_url(headers: &HeaderMap) -> String {
 /// binds every interface, and install links skip the gate, so a loopback host
 /// is swapped for this machine's LAN address, port kept.
 fn install_base(headers: &HeaderMap, dev_mode: bool) -> String {
-    let base = base_url(headers);
+    install_base_for(&base_url(headers), dev_mode, lan_ip)
+}
+
+/// `install_base` without the I/O: `base` as the request saw it, and the LAN
+/// address looked up only when a dev-mode loopback host needs swapping.
+fn install_base_for(
+    base: &str,
+    dev_mode: bool,
+    lan: impl FnOnce() -> Option<std::net::IpAddr>,
+) -> String {
     if !dev_mode {
-        return base;
+        return base.to_string();
     }
-    match lan_ip() {
-        Some(ip) => with_lan_host(&base, ip),
-        None => base,
+    match lan() {
+        Some(ip) => with_lan_host(base, ip),
+        None => base.to_string(),
     }
 }
 
@@ -645,7 +654,7 @@ app's folder with the commands below.</span></div>",
             }
         }
         body.push_str("</div>");
-        body.push_str(&history_table(&builds, links_on));
+        body.push_str(&history_table(&builds, &base, links_on));
     }
 
     body.push_str(&format!(
@@ -692,13 +701,15 @@ fn latest_card(build: &Build, base: &str, links_on: bool) -> String {
     )
 }
 
-fn history_table(builds: &[Build], links_on: bool) -> String {
+fn history_table(builds: &[Build], base: &str, links_on: bool) -> String {
     let mut rows = String::new();
     for build in builds {
+        // Absolute, on the same base as the QR codes: a relative link opened
+        // here would land on the install page as `localhost`.
         let install = if links_on {
             format!(
-                "<a href=\"{BASE}/i/{token}\">install</a>",
-                token = esc(&build.token)
+                "<a href=\"{href}\">install</a>",
+                href = esc(&format!("{base}{BASE}/i/{}", build.token))
             )
         } else {
             String::new()
@@ -726,12 +737,21 @@ onsubmit=\"return confirm('Delete this build? Its install link stops working.')\
 }
 
 /// `/__soli/mobile/i/<token>[/download|/manifest.plist]`.
-fn handle_install(root: &Path, rest: &str, headers: &HeaderMap) -> Response<ResponseBody> {
+///
+/// The page's own link, its QR code and its download button are built on
+/// `install_base`, like the index's: opened on this machine as `localhost`
+/// under `--dev`, the QR code must still carry an address the phone reaches.
+fn handle_install(
+    root: &Path,
+    rest: &str,
+    headers: &HeaderMap,
+    dev_mode: bool,
+) -> Response<ResponseBody> {
     let (token, tail) = rest.split_once('/').unwrap_or((rest, ""));
     let Some(build) = find_by_token(root, token) else {
         return admin_auth::hidden_not_found();
     };
-    let base = base_url(headers);
+    let base = install_base(headers, dev_mode);
     let install = format!("{base}{BASE}/i/{}", build.token);
     match tail {
         "" => noindex(html_ok(install_page(&build, &install))),
@@ -944,6 +964,57 @@ mod tests {
             "https://staging.example.com",
             "a real host is kept"
         );
+    }
+
+    #[test]
+    fn the_install_base_swaps_loopback_for_the_lan_only_under_dev() {
+        let lan = || Some("192.168.1.20".parse().unwrap());
+        assert_eq!(
+            install_base_for("http://localhost:5011", true, lan),
+            "http://192.168.1.20:5011"
+        );
+        assert_eq!(
+            install_base_for("http://localhost:5011", false, lan),
+            "http://localhost:5011",
+            "outside --dev the request's own host is kept"
+        );
+        assert_eq!(
+            install_base_for("http://localhost:5011", true, || None),
+            "http://localhost:5011",
+            "no LAN address: nothing better to offer"
+        );
+        assert_eq!(
+            install_base_for("http://phone.example.com", true, lan),
+            "http://phone.example.com"
+        );
+    }
+
+    #[test]
+    fn the_install_page_of_one_build_carries_the_lan_address_under_dev() {
+        // The bug: opened from the index's history as `localhost`, a build's
+        // own page built its QR code on `localhost`, which the phone cannot
+        // reach. Its link must use the same base as the index.
+        let root = tempfile::tempdir().unwrap();
+        let build = store(root.path(), "android", "2026-01-01T00:00:00.000Z");
+        let base = install_base_for("http://localhost:5011", true, || {
+            Some("192.168.1.20".parse().unwrap())
+        });
+        let page = install_page(&build, &format!("{base}{BASE}/i/{}", build.token));
+        assert!(page.contains("http://192.168.1.20:5011/__soli/mobile/i/"));
+        assert!(!page.contains("localhost"), "{page}");
+    }
+
+    #[test]
+    fn history_links_are_absolute_on_the_install_base() {
+        let root = tempfile::tempdir().unwrap();
+        let build = store(root.path(), "android", "2026-01-01T00:00:00.000Z");
+        let table = history_table(&[build.clone()], "http://192.168.1.20:5011", true);
+        assert!(table.contains(&format!(
+            "href=\"http://192.168.1.20:5011/__soli/mobile/i/{}\"",
+            build.token
+        )));
+        let table = history_table(&[build], "http://192.168.1.20:5011", false);
+        assert!(!table.contains("install</a>"));
     }
 
     #[test]
