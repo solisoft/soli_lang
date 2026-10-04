@@ -20,6 +20,7 @@ mod dev_catalog;
 mod dev_errors;
 mod dev_inbox;
 mod dev_jobs;
+mod dev_mobile;
 mod dev_query_stats;
 mod dev_routes;
 mod dev_slow_queries;
@@ -2522,6 +2523,14 @@ async fn handle_hyper_request(
     ) {
         return Ok(resp);
     }
+
+    // Native builds: the operator page, the streamed upload, and the
+    // public-by-secret install links. It owns `req` so an upload is streamed
+    // to disk here and never reaches a worker. See `dev_mobile`.
+    req = match dev_mobile::dispatch(req, &method, &path, peer_addr, dev_mode).await {
+        Ok(response) => return Ok(response),
+        Err(req) => req,
+    };
 
     // The `--dev` diagnostics bank — REPL, source reader, request inspector,
     // replay, the component and mailer catalogues and the sent-mail inbox —

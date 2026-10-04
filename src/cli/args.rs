@@ -107,12 +107,8 @@ pub enum Command {
     /// `soli generate client <platform> [options] [folder]` — native shell project.
     GenerateClient {
         platform: String,
-        url: String,
-        package_id: String,
-        scheme: String,
-        app_name: String,
-        team_id: String,
-        fcm: bool,
+        /// Flags given; the rest come from `config/mobile.toml`, then defaults.
+        flags: solilang::scaffold::ClientFlags,
         folder: String,
     },
     /// `soli generate app_links [options] [folder]` — well-known deep-link proof files.
@@ -408,6 +404,31 @@ pub enum Command {
         scheme: String,
         app_name: String,
     },
+    /// `soli mobile build android|ios [folder]` — an installable, versioned
+    /// APK or IPA from `clients/<platform>/`.
+    MobileBuild {
+        platform: String,
+        folder: String,
+        fcm: Option<bool>,
+        build_number: Option<String>,
+        out: Option<String>,
+        keystore: Option<String>,
+        export: String,
+        team_id: Option<String>,
+        /// `--publish`: upload it right after.
+        publish: bool,
+        notes: Option<String>,
+        url: Option<String>,
+    },
+    /// `soli mobile publish <file> | --latest android|ios` — upload to an
+    /// app's `/__soli/mobile`.
+    MobilePublish {
+        file: Option<String>,
+        latest: Option<String>,
+        folder: String,
+        notes: Option<String>,
+        url: Option<String>,
+    },
     /// `soli eui <wss://host/_eui/session/app> [--allow cap,cap]` — open an
     /// EUI application in a native window (needs the `eui-desktop` feature).
     EuiOpen {
@@ -592,6 +613,12 @@ pub fn print_usage() {
         "  generate client      Native shell (android|ios|linux|windows); --fcm for Android FCM"
     );
     eprintln!("  generate app_links   Well-known assetlinks + apple-app-site-association routes");
+    eprintln!("  mobile build <android|ios> [folder]  Installable APK/IPA in dist/mobile");
+    eprintln!("                       --build-number N, --out DIR, --fcm, --keystore PATH,");
+    eprintln!("                       --export ad-hoc|enterprise, --team-id ID, --publish");
+    eprintln!("  mobile publish <file>  Upload a build to the app's /__soli/mobile page");
+    eprintln!("                       --latest android|ios, --notes TEXT, --url URL");
+    eprintln!("                       (token from SOLI_MOBILE_TOKEN; URL from config/mobile.toml)");
     eprintln!("  generate offline     Outbox sync endpoints + public/js/soli_outbox.js helper");
     eprintln!("  build <folder>       Bundle app into a single .soli file");
     eprintln!("                       --output, -o <file>  Custom output path");
@@ -972,48 +999,22 @@ pub fn parse_args() -> Options {
                         }
                         let platform = args[i].clone();
                         i += 1;
-                        let mut url = "https://example.com/".to_string();
-                        let mut package_id = String::new();
-                        let mut scheme = String::new();
-                        let mut app_name = String::new();
-                        let mut team_id = "TEAMID".to_string();
-                        let mut fcm = false;
+                        let mut flags = solilang::scaffold::ClientFlags::default();
                         let mut folder = ".".to_string();
                         while i < args.len() {
+                            let value = |i: &mut usize| -> Option<String> {
+                                *i += 1;
+                                args.get(*i).cloned()
+                            };
                             match args[i].as_str() {
-                                "--url" => {
-                                    i += 1;
-                                    if i < args.len() {
-                                        url = args[i].clone();
-                                    }
-                                }
+                                "--url" => flags.url = value(&mut i),
                                 "--package" | "--package-id" | "--bundle-id" => {
-                                    i += 1;
-                                    if i < args.len() {
-                                        package_id = args[i].clone();
-                                    }
+                                    flags.package_id = value(&mut i)
                                 }
-                                "--scheme" => {
-                                    i += 1;
-                                    if i < args.len() {
-                                        scheme = args[i].clone();
-                                    }
-                                }
-                                "--name" | "--app-name" => {
-                                    i += 1;
-                                    if i < args.len() {
-                                        app_name = args[i].clone();
-                                    }
-                                }
-                                "--team-id" => {
-                                    i += 1;
-                                    if i < args.len() {
-                                        team_id = args[i].clone();
-                                    }
-                                }
-                                "--fcm" => {
-                                    fcm = true;
-                                }
+                                "--scheme" => flags.scheme = value(&mut i),
+                                "--name" | "--app-name" => flags.app_name = value(&mut i),
+                                "--team-id" => flags.team_id = value(&mut i),
+                                "--fcm" => flags.fcm = Some(true),
                                 flag if flag.starts_with('-') => {
                                     eprintln!("Unknown flag for generate client: {}", flag);
                                     process::exit(64);
@@ -1025,32 +1026,9 @@ pub fn parse_args() -> Options {
                             }
                             i += 1;
                         }
-                        let (default_name, default_package) =
-                            solilang::scaffold::client_generator::defaults_from_folder(&folder);
-                        if app_name.is_empty() {
-                            app_name = default_name;
-                        }
-                        if package_id.is_empty() {
-                            package_id = default_package;
-                        }
-                        if scheme.is_empty() {
-                            scheme = app_name
-                                .chars()
-                                .filter(|c| c.is_ascii_alphanumeric())
-                                .collect::<String>()
-                                .to_lowercase();
-                            if scheme.is_empty() {
-                                scheme = "myapp".to_string();
-                            }
-                        }
                         options.command = Command::GenerateClient {
                             platform,
-                            url,
-                            package_id,
-                            scheme,
-                            app_name,
-                            team_id,
-                            fcm,
+                            flags,
                             folder,
                         };
                         return options;
@@ -2553,6 +2531,126 @@ pub fn parse_args() -> Options {
                     process::exit(64);
                 };
                 options.command = Command::EuiOpen { url, allow };
+                return options;
+            }
+            "mobile" => {
+                i += 1;
+                let usage = "Usage: soli mobile build <android|ios> [folder] [options]\n       \
+                             soli mobile publish <file.apk|file.ipa> | --latest <android|ios> [options]";
+                let sub = args.get(i).cloned().unwrap_or_default();
+                i += 1;
+                let take_value = |i: &mut usize, flag: &str| -> String {
+                    *i += 1;
+                    args.get(*i).cloned().unwrap_or_else(|| {
+                        eprintln!("{} requires a value", flag);
+                        process::exit(64);
+                    })
+                };
+                match sub.as_str() {
+                    "build" => {
+                        let Some(platform) = args.get(i).cloned().filter(|p| !p.starts_with('-'))
+                        else {
+                            eprintln!("{usage}");
+                            process::exit(64);
+                        };
+                        i += 1;
+                        let mut folder: Option<String> = None;
+                        let mut fcm = None;
+                        let mut build_number = None;
+                        let mut out = None;
+                        let mut keystore = None;
+                        let mut export = "ad-hoc".to_string();
+                        let mut team_id = None;
+                        let mut publish = false;
+                        let mut notes = None;
+                        let mut url = None;
+                        while i < args.len() {
+                            match args[i].as_str() {
+                                "--fcm" => fcm = Some(true),
+                                "--build-number" => {
+                                    build_number = Some(take_value(&mut i, "--build-number"))
+                                }
+                                "--out" | "-o" => out = Some(take_value(&mut i, "--out")),
+                                "--keystore" => keystore = Some(take_value(&mut i, "--keystore")),
+                                "--export" => export = take_value(&mut i, "--export"),
+                                "--team-id" => team_id = Some(take_value(&mut i, "--team-id")),
+                                "--publish" => publish = true,
+                                "--notes" => notes = Some(take_value(&mut i, "--notes")),
+                                "--url" => url = Some(take_value(&mut i, "--url")),
+                                other if other.starts_with('-') => {
+                                    eprintln!("Unknown option '{}' for mobile build", other);
+                                    process::exit(64);
+                                }
+                                other if folder.is_none() => folder = Some(other.to_string()),
+                                other => {
+                                    eprintln!("Unexpected argument '{}'", other);
+                                    process::exit(64);
+                                }
+                            }
+                            i += 1;
+                        }
+                        options.command = Command::MobileBuild {
+                            platform,
+                            folder: folder.unwrap_or_else(|| ".".to_string()),
+                            fcm,
+                            build_number,
+                            out,
+                            keystore,
+                            export,
+                            team_id,
+                            publish,
+                            notes,
+                            url,
+                        };
+                    }
+                    "publish" => {
+                        let mut file = None;
+                        let mut latest = None;
+                        let mut folder = ".".to_string();
+                        let mut notes = None;
+                        let mut url = None;
+                        while i < args.len() {
+                            match args[i].as_str() {
+                                "--latest" => latest = Some(take_value(&mut i, "--latest")),
+                                "--folder" | "--app" => folder = take_value(&mut i, "--folder"),
+                                "--notes" => notes = Some(take_value(&mut i, "--notes")),
+                                "--url" => url = Some(take_value(&mut i, "--url")),
+                                "--token" => {
+                                    eprintln!(
+                                        "--token is not accepted (it would show in `ps` and CI \
+                                         logs): set SOLI_MOBILE_TOKEN instead"
+                                    );
+                                    process::exit(64);
+                                }
+                                other if other.starts_with('-') => {
+                                    eprintln!("Unknown option '{}' for mobile publish", other);
+                                    process::exit(64);
+                                }
+                                other if file.is_none() => file = Some(other.to_string()),
+                                other => {
+                                    eprintln!("Unexpected argument '{}'", other);
+                                    process::exit(64);
+                                }
+                            }
+                            i += 1;
+                        }
+                        if file.is_none() == latest.is_none() {
+                            eprintln!("{usage}");
+                            process::exit(64);
+                        }
+                        options.command = Command::MobilePublish {
+                            file,
+                            latest,
+                            folder,
+                            notes,
+                            url,
+                        };
+                    }
+                    _ => {
+                        eprintln!("{usage}");
+                        process::exit(64);
+                    }
+                }
                 return options;
             }
             "desktop" => {

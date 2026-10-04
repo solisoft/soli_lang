@@ -1,6 +1,6 @@
 # Mobile Preview Design
 
-**Status:** Proposal — not implemented. Nothing below exists yet unless marked *existing*.
+**Status:** Phases 1–3 implemented (`src/mobile/`, `src/cli/commands/mobile.rs`, `src/serve/dev_mobile.rs`). The Soli Go launcher is future work only.
 **Related:** `soli generate client` (`src/scaffold/client_generator.rs`), operator pages (`src/serve/admin_auth.rs`, `src/serve/operator_shell.rs`), attachments (`src/interpreter/builtins/attachments.rs`), auto-update (`src/update.rs`).
 
 ## Problem
@@ -120,8 +120,11 @@ soli mobile build android --build-number 42 --out dist/mobile
 Steps:
 
 1. **Source.** Use `clients/<platform>/` when present (the developer may have
-   customised it). Otherwise run the existing generator into a temp dir from
-   `config/mobile.toml`.
+   customised it). Otherwise run the existing generator into `clients/` from
+   `config/mobile.toml`, exactly as `soli generate client` would. Generating
+   into a temp dir instead would lose the plain shell's `debug.keystore` after
+   every build, and an APK signed with a new key each time cannot be installed
+   as an update over the previous one.
    - Android has two shells. `generate client android --fcm` writes a Gradle
      project to `clients/android-fcm/` instead of the `build.sh` tree in
      `clients/android/`. `mobile build android` takes `--fcm`, or
@@ -135,33 +138,47 @@ Steps:
    app's `Info.plist`; the template hard-codes `1.0` / `1`, so passing
    `MARKETING_VERSION` to `xcodebuild` alone would not reach it). The build number comes
    from `--build-number`, otherwise `GITHUB_RUN_NUMBER` / `CI_PIPELINE_IID`,
-   otherwise a timestamp. The developer's tree is never modified.
+   otherwise minutes since the Unix epoch, and must fit Android's
+   `versionCode` ceiling (2,100,000,000). The build itself never modifies the
+   developer's tree. Two writes into `clients/` are deliberate: a missing shell
+   is generated there (step 1), and the plain shell's `debug.keystore` is copied
+   back after the first build, the same file `build.sh` creates when run by
+   hand.
 3. **Compile.**
    - Android runs the generated `build.sh`, which needs `ANDROID_HOME`. The
      command checks build-tools 35 and platform 34 up front and names what is
      missing, instead of letting `aapt2` fail mid-way. A release keystore can be
-     given with `--keystore` / `SOLI_ANDROID_KEYSTORE`; the default stays the
-     generated debug keystore, which is enough for test installs.
+     given with `--keystore` / `SOLI_ANDROID_KEYSTORE`: the aligned APK is
+     re-signed with `apksigner`, whose passwords are passed as `env:` references
+     (`SOLI_ANDROID_KEYSTORE_PASSWORD`, `SOLI_ANDROID_KEY_PASSWORD`,
+     `SOLI_ANDROID_KEY_ALIAS`). The default stays the generated debug keystore,
+     which is enough for test installs.
    - The FCM shell runs Gradle (`./gradlew` when the developer has added a
      wrapper, `gradle` otherwise; the template ships none). Its
      `app/build.gradle` has no `signingConfig`, so `assembleRelease` would
      produce an unsigned APK that Android refuses to install. The default is
      therefore `assembleDebug`, which is signed with Gradle's debug key and
      matches the plain shell's test-install story. With `--keystore`, the
-     command passes the keystore through `-Pandroid.injected.signing.*`
-     properties and runs `assembleRelease`, so the developer's
+     command passes the keystore through `android.injected.signing.*`
+     properties, set as `ORG_GRADLE_PROJECT_*` environment variables rather
+     than `-P` flags so no password shows in `ps`, and runs `assembleRelease`,
+     so the developer's
      `build.gradle` stays untouched. It is refused up front, with the
      README's instructions, when `app/google-services.json` is missing,
      since only the `.example` file is generated.
    - iOS runs `xcodegen generate`, `xcodebuild archive`, and
      `xcodebuild -exportArchive` with an `ExportOptions.plist`. It uses Xcode's
-     `release-testing` method (ad hoc) by default and `enterprise` on request,
+     `release-testing` method (ad hoc; `ad-hoc` on Xcode before 15.3, read
+     from `xcodebuild -version`) by default and `enterprise` on request,
      with automatic signing and `-allowProvisioningUpdates`. It is refused with a
      clear message off macOS, and when `xcodegen` or the team id is missing.
 4. **Output.** `dist/mobile/<name>-<version>-<build>.{apk,ipa}`, plus a
-   `.mobile.json` stub with `platform, version, build_number, sha256, size`. It
-   reuses `desktop::container::sha256_hex` and the `emit_update_stub` pattern
-   from `src/cli/commands/mod.rs`.
+   `<file>.mobile.json` stub with `platform, name, bundle_id, version,
+   build_number, sha256, size`, named like `emit_update_stub`'s
+   `.update.json`. The digest is computed by streaming the file rather than
+   with `desktop::container::sha256_hex`, which takes the whole artifact in
+   memory. `publish` reads the stub, so the server learns the version and,
+   for iOS, the bundle id that the install manifest must name.
 
 ## 3. `soli mobile publish`
 
@@ -174,8 +191,11 @@ soli mobile build android --publish              # build, then publish
 It does a multipart `POST <publish.url>/__soli/mobile/builds` with
 `Authorization: Bearer $SOLI_MOBILE_TOKEN` and the fields of the upload
 contract below, using the blocking `reqwest` client already used by
-`src/module/registry.rs`. It prints the install URL and exits non-zero on any
-status other than 201, so CI fails visibly.
+`src/module/registry.rs`, with no overall timeout (an IPA on a slow uplink
+takes as long as it takes). The URL is `--url`, else `[mobile.publish] url`,
+else `[mobile] url`. `--token` is refused outright. It prints the install URL
+and exits non-zero on any status other than 201, so CI fails visibly; a 401 or
+404 is explained (missing token, page not enabled on the server).
 
 ### Upload contract
 
@@ -191,17 +211,22 @@ platform      android | ios   (optional — inferred from the extension)
 version       string          (optional — default "0.0.0")
 build_number  string          (optional)
 notes         string          (optional, ≤ 10 kB)
+name          string          (optional — display name, default "App")
+bundle_id     string          (required for ios — the manifest names it)
 
 201 {"id", "platform", "version", "build_number", "size", "sha256",
-     "install_url", "download_url"}
-401 missing / wrong token        413 over SOLI_MOBILE_MAX_SIZE
-422 {"error": "..."} wrong extension for the platform, empty file
+     "install_url", "download_url", "pruned"}
+401 missing / wrong token, or Basic credentials (uploads are Bearer-only)
+404 the page is not enabled          413 over SOLI_MOBILE_MAX_SIZE
+422 {"error": "..."} wrong extension for the platform, empty file, unsafe
+    version, non-digit build number, iOS without bundle_id
 ```
 
 ## 4. The in-app page: `/__soli/mobile`
 
 An operator page alongside `/__soli/errors`, `/__soli/jobs`, and
-`/__soli/slow_queries`, built the same way.
+`/__soli/slow_queries`, built the same way. Its dispatch stage sits after
+those three and before `dev_routes`.
 
 **Gate.** `admin_auth::authorize(headers, dev_mode, peer_ip, "MOBILE")`.
 
@@ -226,11 +251,22 @@ caps requests at 8 MiB. The size cap is enforced while streaming.
 
 **Storage.**
 
-- Metadata lives in a framework-owned `_soli_mobile_builds` collection, through
-  `internal_store`, so SoliDB and the SQL adapters both work. This is how
-  `_soli_errors` is stored.
-- Files live under `SOLI_MOBILE_PATH/<id>/`. The temp file is moved into place
-  with `store_disk_from_path` in `attachments.rs`.
+- Each build is a directory `SOLI_MOBILE_PATH/<id>/` holding the binary and
+  a `build.json` with its metadata (platform, name, bundle id, version, build
+  number, notes, size, sha256, install token, upload time). Metadata stays on
+  the same disk as the file it describes. A row in a framework collection
+  (the `_soli_errors` way) was the first idea, but it would point at a file
+  only one host has, and it would make the page depend on a database for
+  something that is files anyway. The listing reads the directory; with
+  `SOLI_MOBILE_KEEP` builds per platform that is a few dozen small files.
+- The id is a v4 UUID in 32 lowercase hex characters and the file name is
+  built from the slugged name, version and build number, so no client-chosen
+  string ever reaches a path. Every route checks the id's shape before
+  touching the disk.
+- The upload is written to a temporary file in `SOLI_MOBILE_PATH/.tmp/`, on
+  the same filesystem, and renamed into place. The attachment store's
+  `store_disk_from_path` is not reused: it is rooted at
+  `SOLI_ATTACHMENTS_PATH` and writes its own `meta.json` layout.
 - Retention (`SOLI_MOBILE_KEEP`) prunes after each upload.
 
 **Pages** (rendered with `operator_shell::page`, new `Section::Mobile`):
@@ -238,66 +274,88 @@ caps requests at 8 MiB. The size cap is enforced while streaming.
 | Route | What |
 |---|---|
 | `GET /__soli/mobile` | Latest build per platform with its QR code, the build history, and a copy-paste CI snippet. |
-| `POST /__soli/mobile/builds` | The upload contract. Bearer only, never a cookie. |
-| `POST /__soli/mobile/builds/:id/delete` | Delete a build. It must be added to `csrf::is_operator_dashboard_path` so it keeps the Origin check. |
+| `POST /__soli/mobile/builds` | The upload contract. Bearer only: a request carrying Basic credentials is refused with 401. Under `--dev`, a local request needs no token. |
+| `POST /__soli/mobile/builds/:id/delete` | Delete a build, then 303 back to the page. |
+
+The whole `/__soli/mobile` prefix is added to
+`csrf::is_operator_dashboard_path`, so the reserved-namespace CSRF exemption
+does not apply to it and every POST keeps the Origin/Referer check. The CLI
+upload still passes, because it sends no cookie and no `Origin`, and the gate
+lets cookie-less requests through. A cross-site form post from a browser is
+refused, even against a `--dev` server on the developer's own machine.
 
 **Install links (public by secret).**
 
 - Routes:
   - `GET /__soli/mobile/i/:token`: a mobile-friendly install page.
   - `GET /__soli/mobile/i/:token/download`: the binary, streamed with Range
-    support. `static_files::stream_file` is exposed for this rather than going
-    through `read_attachment`, which base64-encodes the whole file in memory.
+    support through a new `static_files::serve_disk_file`, which reuses the
+    `public/` responder (Range, streaming above the threshold) without an
+    ETag. `read_attachment` would base64-encode the whole file in memory.
   - `GET /__soli/mobile/i/:token/manifest.plist`: the iOS `itms-services`
     manifest.
 - These cannot sit behind the operator gate. iOS fetches the manifest and the
   IPA itself, outside Safari's cookie jar, and a QR code is scanned on a device
   that never signed in.
-- So each build gets its own random token: 24 bytes, unguessable, unique, and
-  revoked by deleting the build. `SOLI_MOBILE_PUBLIC_INSTALL=0` turns the links
-  off entirely.
+- So each build gets its own random token: 24 bytes from the OS RNG,
+  base64url-encoded, compared in constant time, and revoked by deleting the
+  build. `SOLI_MOBILE_PUBLIC_INSTALL=0` turns the links off entirely.
+- The links answer only where the page itself could: under `--dev`, or with
+  a credential configured. A build left on disk after the credentials are
+  removed is not served.
+- The install page is a standalone document, not the operator shell, so it
+  does not link to the other operator pages.
+- Under `--dev` the page is only open on `localhost`, a name a phone cannot
+  use. Since `--dev` binds every interface, a loopback host in install links
+  and QR codes is replaced by this machine's LAN address (found by connecting
+  a UDP socket, which sends nothing), port kept.
 
 **Response headers.**
 
 - Downloads are sent with `Content-Disposition: attachment; filename="…"`,
   `X-Content-Type-Options: nosniff`, and the right type
   (`application/vnd.android.package-archive`, `application/octet-stream`).
-- Install pages carry `noindex`.
+- Every install response carries `X-Robots-Tag: noindex`, and the page also
+  carries the `noindex` meta tag.
 
-**Visibility changes.** Four private helpers become `pub(crate)`. None
-changes behaviour:
+**Visibility changes.** None of the attachment helpers is needed (see
+*Storage*). The server side adds three small entry points:
 
-| Helper | Today | Why the page needs it |
+| Addition | Where | Why |
 |---|---|---|
-| `store_disk_from_path` (`src/interpreter/builtins/attachments.rs`) | private | Moves the streamed temp file into `SOLI_MOBILE_PATH`. |
-| `sanitize_part` (`src/interpreter/builtins/attachments.rs`) | private | The `..`-blocking path sanitizer, applied to every path segment built from an upload. |
-| `stream_file` (`src/serve/static_files.rs`) | private | Range downloads without loading the binary into memory. |
-| `is_operator_dashboard_path` (`src/serve/csrf.rs`) | private | Not called from `dev_mobile`; it gains the `/__soli/mobile` prefix in place. Listed so the CSRF change is not missed. |
+| `serve_disk_file` (`pub(super)`) | `src/serve/static_files.rs` | Wraps the private `respond` / `stream_file` for a file outside `public/`. |
+| `is_configured` (`pub(super)`) | `src/serve/admin_auth.rs` | Lets the install links follow the page's on/off state. |
+| `/__soli/mobile` in `is_operator_dashboard_path` | `src/serve/csrf.rs` | Keeps the Origin check on every POST under the prefix. |
 
 `admin_auth::authorize` is `pub(super)`, which is already enough for a
-module in `src/serve/`. `desktop::container::sha256_hex` and
-`emit_update_stub` (`pub(crate)`) are already reachable from
-`src/cli/commands/`.
+module in `src/serve/`. What both the CLI and the server use (config,
+stamping, staging, the iOS manifest, QR rendering, the publish client) lives
+in a new library module, `src/mobile/`, so the integration tests reach it.
 
 **QR codes** are rendered as SVG on the server, with no JavaScript, through a
-direct `qrcode` dependency. That crate is already in the tree, but only behind
-the `pdf` feature (`pdf/src/qr.rs`). A `qr_svg(text)` builtin could fall out of
-this for free; the docs currently say "No QR builtin".
+direct `qrcode` dependency (`default-features = false`; the SVG is drawn from
+`QrCode::to_colors`). That crate was already in the tree, but only behind the
+`pdf` feature (`pdf/src/qr.rs`). A `qr_svg(text)` builtin could fall out of
+this for free; the docs still say "No QR builtin", which is open question 2.
 
 ## Security summary
 
 - The operator page and the upload endpoint are **off unless a credential is
   configured**. They reuse the existing gate, with no new auth code.
 - Uploads are Bearer-only, so they carry no cookie and pass the Origin gate
-  without opening a CSRF hole. Only HTML actions (delete) are added to the
-  operator CSRF list.
-- The body is streamed with a hard cap. Extensions are checked against the
-  platform, file names are generated rather than taken from the client, and
-  the `..`-blocking path sanitizer from `attachments.rs` is reused.
+  without opening a CSRF hole. The whole prefix is on the operator CSRF list,
+  so a browser's cross-site POST (delete, or an upload against a `--dev`
+  server) is refused.
+- The body is streamed with a hard cap, checked against `Content-Length` up
+  front and against the bytes received while streaming. Extensions are checked
+  against the platform. Ids and file names are generated rather than taken
+  from the client, and ids are shape-checked before any disk access, so no
+  request value becomes a path.
 - Install tokens are per build, random, and revocable. They grant read access
   to one binary and its notes, nothing else.
-- The CLI reads the token from the environment and never accepts it on argv by
-  default, so it does not show up in `ps` output or CI logs.
+- The CLI reads the token from the environment and refuses `--token`, so it
+  does not show up in `ps` output or CI logs. Keystore passwords follow the
+  same rule.
 - iOS over-the-air installs require HTTPS. The page warns when the request
   scheme is `http` and hides the iOS button.
 
@@ -313,9 +371,9 @@ Each phase ships with tests and every documentation surface listed in
 
 | Phase | Content | Tests |
 |---|---|---|
-| **1 — build** | `config/mobile.toml` and its parser; `soli mobile build android` for both the `build.sh` and the FCM Gradle shell; version stamping from `[package].version`; `.mobile.json` stub; `generate client` reads `config/mobile.toml`. | `args.rs` parse tests; parser tests for `config/mobile.toml` (missing file, unknown keys warn, flags override); a `tests/mobile_build_test.rs` that stamps both generated Android trees (manifest and `app/build.gradle`) and checks the shell choice when one, the other, or both directories exist (the compile step is skipped without `ANDROID_HOME`, and required under a CI flag). |
-| **2 — distribute** | `/__soli/mobile` (gate, streamed upload, `_soli_mobile_builds`, retention, install pages, Range download, QR); `soli mobile publish`. | Unit tests for the gate decisions, as in `admin_auth.rs`. An e2e test starts `soli serve`, uploads with and without the token, checks the 404 when unconfigured, the 413 over the cap, a download that matches byte for byte, and a Range request. Plus a publish → install round trip. |
-| **3 — iOS** | `soli mobile build ios` (archive and export); `manifest.plist`. | Manifest rendering unit tests; the build is macOS-gated in CI. |
+| **1 — build** | `config/mobile.toml` and its parser; `soli mobile build android` for both the `build.sh` and the FCM Gradle shell; version stamping from `[package].version`; `.mobile.json` stub; `generate client` reads `config/mobile.toml`. | Unit tests in `src/mobile/` for the config parser (every key, unknown keys warn, wrong types fail, missing file), the stamping (manifest, Gradle with and without `=`, plist, missing field, unsafe version), the build number order, the SDK pre-flight messages and `copy_shell`. `tests/mobile_build_test.rs` stamps both generated Android trees and the iOS plist, checks the shell choice when one, the other, or both directories exist, and checks that staging leaves `clients/` untouched. Its compile test runs only with `ANDROID_HOME`, and `SOLI_REQUIRE_ANDROID=1` makes a missing SDK a failure. The CLI parser reads `env::args()` and has no unit tests, as for the other commands. |
+| **2 — distribute** | `/__soli/mobile` (gate, streamed upload, `build.json` storage, retention, install pages, Range download, QR); `soli mobile publish`. | Unit tests in `dev_mobile.rs` (token and id shapes, lookup by token, pruning per platform, delete refusing a non-id path, forwarded headers ignored without trust, install page per platform). `tests/mobile_e2e_test.rs` starts `soli serve` and checks the 404 when unconfigured, 401 with no token or a wrong one, 413 over the cap, 422 for an empty file, a byte-for-byte download, a `Range` request, the public install page and the gated listing, a 404 for a guessed token, and delete revoking the link. A publish → install round trip uses the CLI's client. |
+| **3 — iOS** | `soli mobile build ios` (archive and export); `manifest.plist`. | Manifest rendering and `itms-services` link unit tests, the export-method choice per Xcode version, and an e2e upload that refuses an IPA without `bundle_id`, serves the manifest, and offers no install button over `http`. The real archive and export need Xcode, `xcodegen` and a signing team, so they are not exercised in CI. |
 
 Phases 1 and 2 deliver most of the value: together they already replace
 "e-mail me the APK". Phase 3 adds iOS on the same server side.

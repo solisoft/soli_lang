@@ -223,6 +223,17 @@ fn stream_file(path: &Path, start: u64, length: u64) -> std::io::Result<Response
     ))
 }
 
+/// A file outside `public/` (a stored mobile build), with `Range` support and
+/// streaming above the threshold, but no ETag: it is never cached.
+pub(super) fn serve_disk_file(
+    path: &Path,
+    size: u64,
+    content_type: &str,
+    headers: &HeaderMap,
+) -> Response<ResponseBody> {
+    respond(Source::Disk { path, size }, content_type, None, headers)
+}
+
 /// Conditional GET, `Range`, or the whole thing.
 ///
 /// `etag` is `Some` exactly when the bytes are versioned — the cache computes

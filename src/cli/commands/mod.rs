@@ -1,5 +1,6 @@
 pub mod desktop;
 pub mod eui;
+pub mod mobile;
 mod progress;
 mod test_runner;
 
@@ -908,9 +909,17 @@ pub fn run_generate_devices(folder: &str) {
     }
 }
 
-pub fn run_generate_client(opts: &solilang::scaffold::ClientOptions) {
-    match solilang::scaffold::create_client(opts) {
-        Ok(()) => solilang::scaffold::print_client_success_message(opts),
+pub fn run_generate_client(platform: &str, flags: &solilang::scaffold::ClientFlags, folder: &str) {
+    let config = match solilang::mobile::config::load_or_default(std::path::Path::new(folder)) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    };
+    let opts = solilang::scaffold::ClientOptions::resolve(platform, folder, flags, &config);
+    match solilang::scaffold::create_client(&opts) {
+        Ok(()) => solilang::scaffold::print_client_success_message(&opts),
         Err(e) => {
             eprintln!("Error: {}", e);
             process::exit(1);
