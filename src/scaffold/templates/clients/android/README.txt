@@ -1,13 +1,16 @@
 # {{APP_NAME}} — Android shell
 
-Thin WebView onto `{{START_URL}}`. Build without Gradle:
+Thin WebView onto `{{START_URL}}`. Build without Gradle, from the app's folder:
 
 ```bash
 export ANDROID_HOME=…
-./build.sh
+soli mobile build android      # versioned APK in dist/mobile/
+soli mobile publish --latest android   # upload it to /__soli/mobile
 ```
 
-Requires build-tools 35.0.0 and platform android-34.
+or by hand here with `./build.sh` (writes `app.apk`, unversioned).
+Requires build-tools 35.0.0 and platform android-34. Keep `debug.keystore`
+once it exists: an APK signed with another key will not install as an update.
 
 Closed-app push needs Firebase — regenerate with:
 

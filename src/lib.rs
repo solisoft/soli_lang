@@ -29,6 +29,7 @@ pub mod live;
 pub mod lsp;
 pub mod metrics;
 pub mod migration;
+pub mod mobile;
 pub mod module;
 pub mod native;
 pub mod parser;

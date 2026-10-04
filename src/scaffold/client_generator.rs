@@ -23,6 +23,57 @@ impl ClientOptions {
     pub fn host(&self) -> String {
         url_host(&self.url).unwrap_or_else(|| "localhost".to_string())
     }
+
+    /// The options for `platform` in `folder`: each flag given, else the value
+    /// in `config/mobile.toml`, else the default derived from the folder name.
+    pub fn resolve(
+        platform: &str,
+        folder: &str,
+        flags: &ClientFlags,
+        config: &crate::mobile::config::MobileConfig,
+    ) -> ClientOptions {
+        let pick = |flag: &Option<String>, configured: &Option<String>| {
+            flag.clone()
+                .or_else(|| configured.clone())
+                .filter(|v| !v.is_empty())
+        };
+        let (default_name, default_package) = defaults_from_folder(folder);
+        let app_name = pick(&flags.app_name, &config.name).unwrap_or(default_name);
+        let scheme = pick(&flags.scheme, &config.scheme).unwrap_or_else(|| {
+            let scheme: String = app_name
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric())
+                .collect::<String>()
+                .to_lowercase();
+            if scheme.is_empty() {
+                "myapp".to_string()
+            } else {
+                scheme
+            }
+        });
+        ClientOptions {
+            platform: platform.to_string(),
+            url: pick(&flags.url, &config.url).unwrap_or_else(|| "https://example.com/".into()),
+            package_id: pick(&flags.package_id, &config.package).unwrap_or(default_package),
+            scheme,
+            app_name,
+            team_id: pick(&flags.team_id, &config.team_id).unwrap_or_else(|| "TEAMID".into()),
+            fcm: flags.fcm.or(config.fcm).unwrap_or(false),
+            folder: folder.to_string(),
+        }
+    }
+}
+
+/// What was given on the command line; `None` falls back to
+/// `config/mobile.toml`, then to a default.
+#[derive(Debug, Clone, Default)]
+pub struct ClientFlags {
+    pub url: Option<String>,
+    pub package_id: Option<String>,
+    pub scheme: Option<String>,
+    pub app_name: Option<String>,
+    pub team_id: Option<String>,
+    pub fcm: Option<bool>,
 }
 
 fn url_host(url: &str) -> Option<String> {

@@ -116,7 +116,7 @@ pub(crate) fn is_reserved_framework_path(path: &str) -> bool {
         || path.starts_with("/__livereload/")
 }
 
-/// The built-in operator pages (jobs, errors, slow queries), which the Origin/Referer gate
+/// The built-in operator pages (jobs, errors, slow queries, mobile), which the Origin/Referer gate
 /// covers (see [`is_framework_path`]) but the per-form token layer cannot.
 ///
 /// Their action forms are rendered by the framework itself, behind Basic
@@ -125,9 +125,14 @@ pub(crate) fn is_reserved_framework_path(path: &str) -> bool {
 /// framework's own buttons. Same-origin enforcement stays; only the mandatory
 /// *token* is lifted.
 fn is_operator_dashboard_path(path: &str) -> bool {
-    ["/__soli/jobs", "/__soli/errors", "/__soli/slow_queries"]
-        .iter()
-        .any(|base| path == *base || path.strip_prefix(base).is_some_and(|r| r.starts_with('/')))
+    [
+        "/__soli/jobs",
+        "/__soli/errors",
+        "/__soli/slow_queries",
+        "/__soli/mobile",
+    ]
+    .iter()
+    .any(|base| path == *base || path.strip_prefix(base).is_some_and(|r| r.starts_with('/')))
 }
 
 /// Public hostnames this app is served under, from `SOLI_APP_HOSTS`.

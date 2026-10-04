@@ -1,5 +1,5 @@
-//! The gate in front of the built-in operator pages: `/__soli/jobs` and
-//! `/__soli/errors`.
+//! The gate in front of the built-in operator pages: `/__soli/jobs`,
+//! `/__soli/errors`, `/__soli/slow_queries` and `/__soli/mobile`.
 //!
 //! Open in `--dev` to a loopback peer on a local host name. Everyone else —
 //! a LAN peer in `--dev`, and every request in production — needs credentials:
@@ -65,6 +65,12 @@ fn parse_basic(headers: &HeaderMap) -> Option<(String, String)> {
 fn parse_bearer(headers: &HeaderMap) -> Option<String> {
     let raw = headers.get(hyper::header::AUTHORIZATION)?.to_str().ok()?;
     raw.strip_prefix("Bearer ").map(|s| s.trim().to_string())
+}
+
+/// Is any credential set for the page (its own or the shared `SOLI_ADMIN_*`)?
+pub(super) fn is_configured(prefix: &str) -> bool {
+    let creds = configured(prefix);
+    !creds.basic.is_empty() || !creds.tokens.is_empty()
 }
 
 /// Decide a request to the page whose variables are `SOLI_<prefix>_*`.

@@ -16,7 +16,7 @@
             </thead>
             <tbody class="divide-y divide-white/5">
                 <tr><td class="py-2 pr-4"><code class="text-cyan-400">soli generate devices</code></td><td class="py-2"><a href="/docs/native/devices" class="text-amber-400 hover:text-amber-300">Device registration</a></td></tr>
-                <tr><td class="py-2 pr-4"><code class="text-cyan-400">soli generate client …</code></td><td class="py-2"><a href="/docs/native/clients" class="text-amber-400 hover:text-amber-300">Native shells</a></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">soli generate client …</code></td><td class="py-2"><a href="/docs/native/clients" class="text-amber-400 hover:text-amber-300">Native shells</a>; build and distribute with <code class="text-cyan-400">soli mobile build</code> / <code class="text-cyan-400">publish</code></td></tr>
                 <tr><td class="py-2 pr-4"><code class="text-cyan-400">soli generate app_links</code></td><td class="py-2"><a href="/docs/native/deep-links" class="text-amber-400 hover:text-amber-300">Deep-link proofs</a></td></tr>
                 <tr><td class="py-2 pr-4"><code class="text-cyan-400">soli generate offline</code></td><td class="py-2"><a href="/docs/native/offline" class="text-amber-400 hover:text-amber-300">Outbox sync</a></td></tr>
             </tbody>

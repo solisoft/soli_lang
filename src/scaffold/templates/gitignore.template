@@ -29,6 +29,10 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Native builds (`soli mobile build`) and the builds /__soli/mobile stores
+/dist/mobile/
+/storage/mobile/
+
 # Coverage
 coverage/
 .coverage

@@ -262,6 +262,8 @@ iana-time-zone = "0.1"
 
 # Request body parsing
 multer = "3"
+# QR codes on `/__soli/mobile` (also used by the `pdf` crate).
+qrcode = { version = "0.14", default-features = false }
 
 # JWT support
 jsonwebtoken = "9"
