@@ -111,7 +111,7 @@ may still exist under another name — try a synonym before writing it by hand.
 | SPA-like page navigation, state kept across pages | on by default (`/__soli/nav.js`); `<meta name="soli-nav" content="morph">`, `data-soli-permanent` | `docs/views.md` → Instant Navigation |
 | Custom error pages | `app/views/errors/404.html.slv` etc. | `docs/error-pages.md` |
 | Mountable sub-apps | engines | `docs/engines.md` |
-| Native mobile / desktop shells | `soli generate client`, `soli desktop build` | `docs/native/*.md`, `docs/native-bridge.md`, `docs/desktop.md`, `docs/auto-update.md` |
+| Native mobile / desktop shells | `soli generate client`, `soli mobile build` / `publish`, `soli desktop build` | `docs/native/*.md`, `docs/native-bridge.md`, `docs/desktop.md`, `docs/auto-update.md` |
 | Native UI without HTML | EUI | `docs/eui/*.md` |
 | Deploy | `soli build`, `soli deploy` | `docs/deploy.md` |
 | CI/CD on GitHub: checks, deploy, release executables | `.github/workflows/*.yml` | `docs/ci-cd.md` |

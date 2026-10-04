@@ -33,7 +33,7 @@ soli generate client ios --url https://app.example.com \
 
     <h2 id="generate" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Generate</h2>
     <pre class="mb-6"><code class="language-bash text-sm">soli generate client &lt;platform&gt; [options] [folder]</code></pre>
-    <div class="overflow-x-auto mb-12">
+    <div class="overflow-x-auto mb-6">
         <table class="w-full text-sm text-left text-gray-400">
             <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
                 <tr><th class="py-2 pr-4">Flag</th><th class="py-2">Meaning</th></tr>
@@ -47,6 +47,69 @@ soli generate client ios --url https://app.example.com \
             </tbody>
         </table>
     </div>
+    <p class="text-gray-400 mb-12">Each flag falls back to <code class="text-cyan-400">config/mobile.toml</code>, then to a default derived from the project folder.</p>
+
+    <h2 id="config" class="text-3xl font-bold text-white mb-4 scroll-mt-24"><code>config/mobile.toml</code></h2>
+    <p class="text-gray-400 mb-6"><code class="text-cyan-400">soli generate client</code>, <code class="text-cyan-400">soli mobile build</code> and <code class="text-cyan-400">soli mobile publish</code> read their shared settings from one optional file. Flags always win over it.</p>
+    <pre class="mb-6"><code class="language-toml text-sm"># config/mobile.toml
+[mobile]
+url = "https://staging.shop.example.com"   # what the WebView loads
+package = "com.example.shop"               # Android package and iOS bundle id
+scheme = "shop"
+name = "Shop"
+team_id = "ABCDE12345"                     # iOS only
+fcm = false                                # Android: build clients/android-fcm instead
+
+[mobile.publish]
+url = "https://staging.shop.example.com"   # where `soli mobile publish` uploads</code></pre>
+    <p class="text-gray-400 mb-12">The shell's version is not repeated here: it is <code class="text-cyan-400">[package].version</code> in <code class="text-cyan-400">soli.toml</code>. An unknown key is a warning, not an error. The file lives apart from <code class="text-cyan-400">soli.toml</code> because that manifest refuses unknown sections, so a <code class="text-cyan-400">[mobile]</code> there would break every older soli on the project.</p>
+
+    <h2 id="build" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Build: <code>soli mobile build</code></h2>
+    <pre class="mb-6"><code class="language-bash text-sm">soli mobile build android                  # dist/mobile/shop-1.4.0-&lt;build&gt;.apk
+soli mobile build android --build-number 42 --out dist/mobile
+soli mobile build android --fcm            # the Gradle + Firebase shell
+soli mobile build ios --team-id ABCDE12345 # macOS only: an ad hoc IPA
+soli mobile build ios --export enterprise
+soli mobile build android --publish --notes "Fixes the cart"</code></pre>
+    <p class="text-gray-400 mb-6">The shell in <code class="text-cyan-400">clients/&lt;platform&gt;/</code> is copied to a temporary directory and stamped there, so your tree is never edited by a build. A missing shell is generated first from <code class="text-cyan-400">config/mobile.toml</code>.</p>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm text-left text-gray-400">
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4">Version</td><td class="py-2"><code class="text-cyan-400">[package].version</code> in <code class="text-cyan-400">soli.toml</code> (<code class="text-cyan-400">0.0.0</code> without one) → <code class="text-cyan-400">versionName</code> / <code class="text-cyan-400">CFBundleShortVersionString</code></td></tr>
+                <tr><td class="py-2 pr-4">Build number</td><td class="py-2"><code class="text-cyan-400">--build-number</code>, else <code class="text-cyan-400">GITHUB_RUN_NUMBER</code> / <code class="text-cyan-400">CI_PIPELINE_IID</code>, else minutes since the Unix epoch → <code class="text-cyan-400">versionCode</code> / <code class="text-cyan-400">CFBundleVersion</code></td></tr>
+                <tr><td class="py-2 pr-4">Output</td><td class="py-2"><code class="text-cyan-400">dist/mobile/&lt;name&gt;-&lt;version&gt;-&lt;build&gt;.{apk,ipa}</code>, plus a <code class="text-cyan-400">.mobile.json</code> stub (platform, version, build number, bundle id, sha256, size) that <code class="text-cyan-400">publish</code> reads</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-4"><strong class="text-white">Android, plain shell.</strong> Runs the generated <code class="text-cyan-400">build.sh</code>. The SDK pieces it needs (<code class="text-cyan-400">ANDROID_HOME</code>, build-tools 35, platform 34, a JDK, <code class="text-cyan-400">zip</code>) are checked first and named when missing. The APK is signed with <code class="text-cyan-400">clients/android/debug.keystore</code>, created on the first build and kept there: a new key per build would make Android refuse an update over the installed copy. With <code class="text-cyan-400">--keystore PATH</code> (or <code class="text-cyan-400">SOLI_ANDROID_KEYSTORE</code>) it is signed again with that key; passwords come from <code class="text-cyan-400">SOLI_ANDROID_KEYSTORE_PASSWORD</code>, <code class="text-cyan-400">SOLI_ANDROID_KEY_PASSWORD</code> and <code class="text-cyan-400">SOLI_ANDROID_KEY_ALIAS</code>, never from the command line.</p>
+    <p class="text-gray-400 mb-4"><strong class="text-white">Android, FCM shell.</strong> Picked with <code class="text-cyan-400">--fcm</code> or <code class="text-cyan-400">fcm = true</code>; without either, whichever of <code class="text-cyan-400">clients/android</code> and <code class="text-cyan-400">clients/android-fcm</code> exists is built, and having both is refused until you choose. Runs <code class="text-cyan-400">./gradlew</code> when you have added a wrapper, <code class="text-cyan-400">gradle</code> otherwise, and needs <code class="text-cyan-400">app/google-services.json</code>. Without a keystore it builds <code class="text-cyan-400">assembleDebug</code> (an unsigned release APK does not install); with <code class="text-cyan-400">--keystore</code> it builds <code class="text-cyan-400">assembleRelease</code>, passing the key through <code class="text-cyan-400">ORG_GRADLE_PROJECT_*</code> variables so your <code class="text-cyan-400">build.gradle</code> is untouched.</p>
+    <p class="text-gray-400 mb-12"><strong class="text-white">iOS.</strong> macOS only, with <code class="text-cyan-400">xcodegen</code> and Xcode: <code class="text-cyan-400">xcodegen generate</code>, <code class="text-cyan-400">xcodebuild archive</code> and <code class="text-cyan-400">-exportArchive</code> with automatic signing. <code class="text-cyan-400">--export ad-hoc</code> (default) or <code class="text-cyan-400">enterprise</code>. Needs your team id: <code class="text-cyan-400">--team-id</code> or <code class="text-cyan-400">team_id</code>.</p>
+
+    <h2 id="distribute" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Distribute: <code>/__soli/mobile</code></h2>
+    <p class="text-gray-400 mb-6">Every app can host its own builds. <code class="text-cyan-400">/__soli/mobile</code> is an operator page beside <code class="text-cyan-400">/__soli/errors</code> and <code class="text-cyan-400">/__soli/jobs</code>: it lists the builds, shows a QR code for the latest one per platform, and gives each build an install page. It is <strong class="text-white">off unless configured</strong>, behind the same gate as the other operator pages, and answers 404 when no credential is set. Under <code class="text-cyan-400">--dev</code> it is open to a request from the machine itself, and its install links and QR codes use this machine's LAN address instead of <code class="text-cyan-400">localhost</code>, so a phone on the same network can open them.</p>
+    <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm text-left text-gray-400">
+            <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+                <tr><th class="py-2 pr-4">Variable</th><th class="py-2">Meaning</th></tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">SOLI_MOBILE_TOKEN</code></td><td class="py-2">Bearer token for uploads and the page. Set it on the server and in CI.</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">SOLI_MOBILE_USER</code> / <code class="text-cyan-400">SOLI_MOBILE_PASSWORD</code></td><td class="py-2">Basic auth for the page in a browser</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">SOLI_ADMIN_*</code></td><td class="py-2">The shared operator credentials also open it</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">SOLI_MOBILE_PATH</code></td><td class="py-2">Where builds are stored. Default <code class="text-cyan-400">./storage/mobile</code></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">SOLI_MOBILE_MAX_SIZE</code></td><td class="py-2">Upload cap in bytes. Default 512 MiB, independent of <code class="text-cyan-400">SOLI_MAX_BODY_SIZE</code></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">SOLI_MOBILE_KEEP</code></td><td class="py-2">Builds kept per platform; older ones are deleted with their files. Default 20</td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">SOLI_MOBILE_PUBLIC_INSTALL</code></td><td class="py-2"><code class="text-cyan-400">0</code> turns the install links off</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <pre class="mb-6"><code class="language-bash text-sm">export SOLI_MOBILE_TOKEN=…                      # the server's value
+soli mobile publish dist/mobile/shop-1.4.0-42.apk --notes "Fixes the cart"
+soli mobile publish --latest android            # the newest .apk in dist/mobile</code></pre>
+    <p class="text-gray-400 mb-6">The URL comes from <code class="text-cyan-400">--url</code>, else <code class="text-cyan-400">[mobile.publish] url</code>, else <code class="text-cyan-400">[mobile] url</code>. The token is read only from the environment (<code class="text-cyan-400">--token</code> is refused), so it never shows in <code class="text-cyan-400">ps</code> or a CI log. The command prints the install URL and exits non-zero on any refusal.</p>
+    <p class="text-gray-400 mb-6">The upload is a multipart <code class="text-cyan-400">POST /__soli/mobile/builds</code> with <code class="text-cyan-400">Authorization: Bearer</code>, streamed to disk with a hard cap; it never reaches a worker. Fields: <code class="text-cyan-400">file</code> (required), <code class="text-cyan-400">platform</code>, <code class="text-cyan-400">version</code>, <code class="text-cyan-400">build_number</code>, <code class="text-cyan-400">notes</code> (≤ 10 kB), <code class="text-cyan-400">name</code>, and <code class="text-cyan-400">bundle_id</code> (required for iOS). It answers <code class="text-cyan-400">201</code> with <code class="text-cyan-400">install_url</code> and <code class="text-cyan-400">download_url</code>, <code class="text-cyan-400">401</code>, <code class="text-cyan-400">413</code> over the cap, or <code class="text-cyan-400">422</code>.</p>
+    <p class="text-gray-400 mb-6"><strong class="text-white">Install links.</strong> Each build gets a random, unguessable token: <code class="text-cyan-400">/__soli/mobile/i/&lt;token&gt;</code> is a phone-friendly page with the download (Android) or install (iOS) button, and the QR code points at it. These links skip the gate on purpose: iOS fetches the manifest and the IPA outside Safari's cookies, and a phone scanning a QR code never signed in. Deleting the build revokes its link. Downloads support <code class="text-cyan-400">Range</code>, are sent as attachments with <code class="text-cyan-400">nosniff</code>, and every install response carries <code class="text-cyan-400">noindex</code>.</p>
+    <p class="text-gray-400 mb-12">iOS installs only over HTTPS. Behind a TLS-terminating proxy, set <code class="text-cyan-400">SOLI_TRUST_PROXY=1</code> so the page builds <code class="text-cyan-400">https://</code> links; reached over plain <code class="text-cyan-400">http</code>, it says so and shows no iOS button.</p>
 
     <h2 id="platforms" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Platforms</h2>
     <div class="overflow-x-auto mb-12">
@@ -55,7 +118,7 @@ soli generate client ios --url https://app.example.com \
                 <tr><th class="py-2 pr-4">Platform</th><th class="py-2 pr-4">Output</th><th class="py-2">Build</th></tr>
             </thead>
             <tbody class="divide-y divide-white/5">
-                <tr><td class="py-2 pr-4"><code class="text-cyan-400">android</code></td><td class="py-2 pr-4">No-Gradle WebView</td><td class="py-2"><code class="text-cyan-400">./build.sh</code></td></tr>
+                <tr><td class="py-2 pr-4"><code class="text-cyan-400">android</code></td><td class="py-2 pr-4">No-Gradle WebView</td><td class="py-2"><code class="text-cyan-400">soli mobile build android</code> (or <code class="text-cyan-400">./build.sh</code>)</td></tr>
                 <tr><td class="py-2 pr-4"><code class="text-cyan-400">android --fcm</code></td><td class="py-2 pr-4">Gradle + Firebase</td><td class="py-2">closed-app FCM tokens → <code class="text-cyan-400">/devices</code></td></tr>
                 <tr><td class="py-2 pr-4"><code class="text-cyan-400">ios</code></td><td class="py-2 pr-4">XcodeGen + UIKit</td><td class="py-2">APNs token POST to <code class="text-cyan-400">/devices</code></td></tr>
                 <tr><td class="py-2 pr-4"><code class="text-cyan-400">linux</code></td><td class="py-2 pr-4">GTK + WebKitGTK</td><td class="py-2"><code class="text-cyan-400">cargo build --release</code></td></tr>

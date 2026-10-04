@@ -7,7 +7,7 @@ SoliLang includes a scaffold generator that quickly creates a complete MVC resou
 | Command | Creates |
 |---------|---------|
 | `soli generate devices` | Device model, `POST /devices`, prune helpers — [docs](/docs/native/devices) |
-| `soli generate client <platform>` | WebView shells (android, ios, linux, windows; `--fcm` for Android) — [docs](/docs/native/clients) |
+| `soli generate client <platform>` | WebView shells (android, ios, linux, windows; `--fcm` for Android); build and distribute them with `soli mobile build` / `publish` — [docs](/docs/native/clients) |
 | `soli generate app_links` | Well-known deep-link proof routes — [docs](/docs/native/deep-links) |
 | `soli generate offline` | Outbox sync push/pull + `soli_outbox.js` — [docs](/docs/native/offline) |
 

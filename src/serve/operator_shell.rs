@@ -1,4 +1,4 @@
-//! The one look every built-in `/__soli/*` page shares: errors, slow queries, jobs, the mail
+//! The one look every built-in `/__soli/*` page shares: errors, slow queries, jobs, mobile, the mail
 //! inbox, and the mailer and component catalogs.
 //!
 //! Each page used to carry its own copy of a dark stylesheet, and the copies
@@ -19,6 +19,7 @@ pub(crate) enum Section {
     Errors,
     SlowQueries,
     Jobs,
+    Mobile,
     Inbox,
     Mailers,
     Components,
@@ -30,6 +31,7 @@ impl Section {
             Section::Errors => "/__soli/errors",
             Section::SlowQueries => "/__soli/slow_queries",
             Section::Jobs => "/__soli/jobs",
+            Section::Mobile => "/__soli/mobile",
             Section::Inbox => "/__soli/inbox",
             Section::Mailers => "/__soli/mailers",
             Section::Components => "/__soli/components",
@@ -41,6 +43,7 @@ impl Section {
             Section::Errors => "Errors",
             Section::SlowQueries => "Queries",
             Section::Jobs => "Jobs",
+            Section::Mobile => "Mobile",
             Section::Inbox => "Inbox",
             Section::Mailers => "Mailers",
             Section::Components => "Components",
@@ -55,10 +58,11 @@ impl Section {
     }
 }
 
-const SECTIONS: [Section; 6] = [
+const SECTIONS: [Section; 7] = [
     Section::Errors,
     Section::SlowQueries,
     Section::Jobs,
+    Section::Mobile,
     Section::Inbox,
     Section::Mailers,
     Section::Components,
@@ -229,6 +233,9 @@ dd{margin:0;word-break:break-word}
 .card-head a{color:var(--text);font:500 13px var(--mono)}
 .card-head .muted{font-size:11px}
 .card iframe{display:block;width:100%;border:0;background:#fff}
+.qr-card{margin:0}
+.qr-card svg{display:block;margin:14px auto 0;border-radius:6px}
+.qr-card figcaption{padding:10px 14px 14px;text-align:center;font-size:13px}
 iframe.mail{width:100%;height:60vh;border:1px solid var(--line);border-radius:10px;background:#fff}
 
 .pager{display:flex;gap:12px;align-items:center;color:var(--muted);font-size:12px;margin-top:14px}
