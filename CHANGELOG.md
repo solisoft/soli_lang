@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.15.2] - 2026-10-04
+
 ### Added
 
 * **mobile:** **`soli mobile build android|ios`.** Turns `clients/<platform>/` into an installable, versioned artifact in `dist/mobile/<name>-<version>-<build>.{apk,ipa}`, with a `.mobile.json` stub (platform, version, build number, bundle id, sha256, size). The shell is copied to a temporary directory and stamped there (`versionName`/`versionCode` in the manifest or `app/build.gradle`, `CFBundleShortVersionString`/`CFBundleVersion` in `Info.plist`) from `[package].version` and a build number (`--build-number`, else `GITHUB_RUN_NUMBER`/`CI_PIPELINE_IID`, else minutes since the epoch). Android runs the generated `build.sh` after naming any missing SDK piece; the FCM shell (`--fcm`, or whichever shell exists) runs Gradle, `assembleDebug` by default and `assembleRelease` with `--keystore`, whose passwords are read from `SOLI_ANDROID_KEYSTORE_PASSWORD` / `SOLI_ANDROID_KEY_PASSWORD` / `SOLI_ANDROID_KEY_ALIAS` only. iOS (macOS) runs `xcodegen`, `xcodebuild archive` and `-exportArchive` (`--export ad-hoc|enterprise`, `--team-id`). A missing shell is generated into `clients/` first, and the plain shell's `debug.keystore` is kept so later builds install as updates. [Docs](www/docs/native/clients.md#build-soli-mobile-build)
