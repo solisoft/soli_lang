@@ -92,6 +92,36 @@ impl ServerProcess {
         server
     }
 
+    /// A server the way `soli test` starts one: production mode, marked as a
+    /// test-runner child, and here with the database on a closed port.
+    fn start_as_test_runner_child() -> Self {
+        let binary = PathBuf::from(env!("CARGO_BIN_EXE_soli"));
+        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/_e2e_app");
+        let port = pick_port();
+        let child = Command::new(&binary)
+            .arg("serve")
+            .arg(&fixture)
+            .arg("--port")
+            .arg(port.to_string())
+            .arg("--workers")
+            .arg("1")
+            .env("SOLI_SESSION_SECRET", "e2e-test-secret-0123456789abcdef")
+            .env("SOLI_FAIL_ON_VM_DEMOTION", "1")
+            // Only a UUID v4 marks a test-runner child (SEC-084).
+            .env(
+                "SOLI_INTERNAL_TEST_RUNNER",
+                "3f2b8c1e-7d4a-4b6e-9c2d-1a5e8f0b7c3d",
+            )
+            .env("SOLIDB_HOST", "http://127.0.0.1:1")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn soli serve");
+        let server = ServerProcess { child, port };
+        server.wait_ready();
+        server
+    }
+
     fn start() -> Self {
         // CARGO_BIN_EXE_<name> is set by cargo at compile time for integration
         // tests, so use env! (compile-time) — std::env::var (runtime) returns
@@ -248,6 +278,39 @@ fn render_json_evaluates_its_argument_once() {
 /// the VM could not look a model scope up; the server re-ran the action on the
 /// interpreter, so this answered 200 anyway — the strict flag set on every
 /// fixture server makes that re-run a hard failure.
+/// A `soli test` server reports the queries each request made. Test servers
+/// run in production mode (so suites cover the VM), and the query log was
+/// only kept under `--dev`: every response said `query_count: 0`, so
+/// `assert_no_n_plus_one` and `--fail-on-n1` could never fail. The count is
+/// also per request — a second request does not add the first one's.
+#[test]
+fn a_test_runner_server_counts_each_requests_queries() {
+    let server = ServerProcess::start_as_test_runner_child();
+    let count = |path: &str| {
+        let resp = ureq::get(&server.url(path))
+            .timeout(Duration::from_secs(10))
+            .call()
+            .expect("request to the test-runner server");
+        resp.header("x-soli-test-query-count")
+            .map(str::to_string)
+            .expect("a test-runner server tags every response with its query count")
+    };
+    assert_eq!(count("/queries"), "2");
+    assert_eq!(count("/queries"), "2", "the log is emptied per request");
+    assert_eq!(count("/ping"), "0");
+
+    // The log is on for the runner, but `dev_queries()` keeps its contract —
+    // `[]` outside `--dev` — or an app that reads it as "am I under --dev?"
+    // turns its dev-only pages on in every spec.
+    let body = ureq::get(&server.url("/queries"))
+        .timeout(Duration::from_secs(10))
+        .call()
+        .expect("request to the test-runner server")
+        .into_string()
+        .expect("body");
+    assert_eq!(body, "dev_queries=0");
+}
+
 #[test]
 fn model_scopes_resolve_in_a_vm_action() {
     let server = shared_server();

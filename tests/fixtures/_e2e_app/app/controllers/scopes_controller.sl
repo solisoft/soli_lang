@@ -12,4 +12,14 @@ class ScopesController < Controller
     args = Gadget.of_kind("lamp").to_query
     render_text([Gadget.label(), bare, parens, args].join("\n"))
   end
+
+  # GET /queries — two reads, for the query count a `soli test` server
+  # reports. The e2e test points the database at a closed port, so each
+  # read fails; it is still a query the request made. The body is what
+  # `dev_queries()` sees: nothing, outside `--dev`, even with the log on.
+  def queries
+    Gadget.all rescue nil
+    Gadget.where({"kind": "lamp"}).first rescue nil
+    render_text("dev_queries=#{dev_queries().length}")
+  end
 end

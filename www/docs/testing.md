@@ -57,7 +57,7 @@ end)
 | `after_each(fn)` | Teardown after each test |
 | `before_all(fn)` | Setup before all tests |
 | `after_all(fn)` | Teardown after all tests |
-| `pending()` | Skip a test |
+| `pending(reason?)` / `skip(reason?)` | Stop a test and count it as pending — not a failure |
 
 ### Expectations
 

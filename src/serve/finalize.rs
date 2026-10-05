@@ -172,8 +172,9 @@ fn test_runner_headers(resp: &mut ResponseData) {
     // them across the process boundary. The query log is a thread-local on
     // this worker; snapshot it here (before we cross back to hyper) and
     // reuse the dev bar's own detector so a spec sees exactly what the
-    // dev-bar badge would flag. The runner always runs the server with
-    // `--dev`, so the log is populated.
+    // dev-bar badge would flag. The test server runs in production mode,
+    // and `serve` turns the query log on for a test-runner process in any
+    // mode, so the log is populated either way.
     let queries = crate::interpreter::builtins::model::query_log::snapshot();
     resp.headers.push((
         "x-soli-test-query-count".to_string(),

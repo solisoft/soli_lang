@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [2.16.1] - 2026-10-05
+
+### Fixed
+
+* **testing:** **N+1 detection sees the queries again.** `response["query_count"]`, `assert_query_count`, `assert_no_n_plus_one` and `soli test --fail-on-n1` read the query log the test server ships back with each response, and that log was only kept under `--dev`. Test servers have run in production mode since 2.2.0, so suites cover the VM: every count was 0, and an N+1 could never fail a spec. A `soli test` server now keeps the log in any mode, emptied per request. A read on a collection that does not exist yet counts two queries — the failed read and its retry. `dev_queries()` still answers `[]` outside `--dev`, as documented — now also when `SOLI_LOG` collects queries in production — since apps read a non-empty result as "running under `--dev`". [Docs](www/docs/testing-assertions.md#query-assertions)
+* **testing:** **`pending()` and `skip()` mark a test pending instead of failing it.** They raised an error nothing recognised, so the test counted as a failure and the run failed. They now stop the test, the file passes, and the summary counts them apart (`12 tests, 2 pending`). Both take an optional reason: `pending("waiting on the API")`. [Docs](www/docs/builtins.md#pendingreason)
+
 ## [2.16.0] - 2026-10-05
 
 ### Added

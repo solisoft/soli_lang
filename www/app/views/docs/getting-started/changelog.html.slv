@@ -20,7 +20,18 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.16.0.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.16.1.</p>
+
+    </section>
+
+    <section id="v2-16-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.16.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-05</span></h2>
+
+        <h3 id="v2-16-1-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">N+1 detection in specs sees the queries again.</strong> <code class="text-cyan-400">assert_no_n_plus_one</code>, <code class="text-cyan-400">assert_query_count</code>, <code class="text-cyan-400">response["query_count"]</code> and <code class="text-cyan-400">soli test --fail-on-n1</code> read the query log the test server sends back with each response. That log was only kept under <code class="text-cyan-400">--dev</code>, and test servers have run in production mode since 2.2.0 so suites cover the VM: every count was 0 and no N+1 could fail a spec. The test server now keeps it in any mode, emptied per request; <code class="text-cyan-400">dev_queries()</code> still answers <code class="text-cyan-400">[]</code> outside <code class="text-cyan-400">--dev</code>. <a href="/docs/builtins/testing" class="text-cyan-400 hover:underline">Testing</a></li>
+            <li><strong class="text-white"><code class="text-cyan-400">pending()</code> and <code class="text-cyan-400">skip()</code> mark a test pending instead of failing it.</strong> The test stops, its file passes, and the summary counts it apart (<code class="text-cyan-400">12 tests, 2 pending</code>). Both take an optional reason: <code class="text-cyan-400">pending("waiting on the API")</code>. <a href="/docs/builtins/testing#def-pending" class="text-cyan-400 hover:underline">pending</a></li>
+        </ul>
 
     </section>
 

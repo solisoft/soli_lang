@@ -21,6 +21,7 @@ use std::sync::Mutex;
 static ASSERTIONS: AtomicI64 = AtomicI64::new(0);
 static TESTS_PASSED: AtomicUsize = AtomicUsize::new(0);
 static TESTS_FAILED: AtomicUsize = AtomicUsize::new(0);
+static TESTS_PENDING: AtomicUsize = AtomicUsize::new(0);
 static FAIL_FAST: AtomicBool = AtomicBool::new(false);
 static FAIL_FAST_TRIPPED: AtomicBool = AtomicBool::new(false);
 static NAME_FILTER: Mutex<Option<String>> = Mutex::new(None);
@@ -58,6 +59,8 @@ pub struct LiveCounts {
     pub assertions: i64,
     pub tests_passed: usize,
     pub tests_failed: usize,
+    /// Tests that called `pending()` or `skip()`: neither passed nor failed.
+    pub tests_pending: usize,
 }
 
 impl LiveCounts {
@@ -86,11 +89,17 @@ pub fn record_test(passed: bool) {
     }
 }
 
+/// Count one test that `pending()` or `skip()` stopped.
+pub fn record_not_run() {
+    TESTS_PENDING.fetch_add(1, Ordering::Relaxed);
+}
+
 pub fn snapshot() -> LiveCounts {
     LiveCounts {
         assertions: ASSERTIONS.load(Ordering::Relaxed),
         tests_passed: TESTS_PASSED.load(Ordering::Relaxed),
         tests_failed: TESTS_FAILED.load(Ordering::Relaxed),
+        tests_pending: TESTS_PENDING.load(Ordering::Relaxed),
     }
 }
 
@@ -100,6 +109,7 @@ pub fn reset() {
     ASSERTIONS.store(0, Ordering::Relaxed);
     TESTS_PASSED.store(0, Ordering::Relaxed);
     TESTS_FAILED.store(0, Ordering::Relaxed);
+    TESTS_PENDING.store(0, Ordering::Relaxed);
 }
 
 #[cfg(test)]

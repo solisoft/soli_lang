@@ -671,8 +671,8 @@ to set up and clean up test state. Always reset authentication state between tes
                 <p class="text-sm text-gray-400 mt-1">Teardown after each test</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <code class="text-emerald-300 font-bold">pending()</code>
-                <p class="text-sm text-gray-400 mt-1">Skip a test</p>
+                <code class="text-emerald-300 font-bold">pending(reason?)</code> / <code class="text-emerald-300 font-bold">skip(reason?)</code>
+                <p class="text-sm text-gray-400 mt-1">Stop a test and count it as pending &mdash; not a failure</p>
             </div>
         </div>
 

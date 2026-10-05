@@ -1445,15 +1445,26 @@ pub fn run_test(
         passed + failed
     );
     let tests_run = live.tests_run();
+    let pending = if live.tests_pending > 0 {
+        format!(", {} pending", live.tests_pending)
+    } else {
+        String::new()
+    };
     if live.tests_failed > 0 {
         println!(
-            "  {} {}, {} failed",
+            "  {} {}, {} failed{}",
             tests_run,
             plural(tests_run, "test", "tests"),
-            live.tests_failed
+            live.tests_failed,
+            pending
         );
     } else {
-        println!("  {} {}", tests_run, plural(tests_run, "test", "tests"));
+        println!(
+            "  {} {}{}",
+            tests_run,
+            plural(tests_run, "test", "tests"),
+            pending
+        );
     }
     println!("  {} assertions", total_assertions_val);
     println!("  Time: {}", format_duration(suite_duration));

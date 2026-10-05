@@ -1818,6 +1818,13 @@ pub fn register_model_builtins(env: &mut Environment) {
         "dev_queries".to_string(),
         Value::NativeFunction(NativeFunction::new("dev_queries", Some(0), |_| {
             use crate::interpreter::value::{HashKey, HashPairs};
+            // `[]` outside `--dev`, as documented, whether or not the log is
+            // on: a `soli test` server keeps it in production mode for
+            // `query_count`, and `SOLI_LOG` can turn it on in production.
+            // Apps test `dev_queries().length > 0` to mean "under --dev".
+            if !crate::interpreter::builtins::template::is_dev_mode() {
+                return Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))));
+            }
             let entries = super::query_log::snapshot();
             let mut arr: Vec<Value> = Vec::with_capacity(entries.len());
             for entry in entries {

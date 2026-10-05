@@ -1136,17 +1136,24 @@ fn execute_test_suites_in(
             let test_body = rebind_closure(&test.body, &interpreter.environment);
 
             // Execute the test body and track failures
+            crate::interpreter::builtins::test_dsl::clear_not_run();
             let result = interpreter.call_value(test_body, Vec::new(), span::Span::new(0, 0, 1, 1));
 
-            // The only place individual `test(...)` blocks are counted. The
-            // runner's own tally is per file, so without this the suite could
-            // report how many files ran and how many assertions fired, but
-            // never how many tests.
-            crate::interpreter::builtins::test_progress::record_test(result.is_ok());
+            // `pending()` / `skip()` unwind the body with an error, but the
+            // test is not a failure: it is counted apart and the file passes.
+            if crate::interpreter::builtins::test_dsl::take_not_run().is_some() {
+                test_progress::record_not_run();
+            } else {
+                // The only place individual `test(...)` blocks are counted.
+                // The runner's own tally is per file, so without this the
+                // suite could report how many files ran and how many
+                // assertions fired, but never how many tests.
+                test_progress::record_test(result.is_ok());
 
-            if let Err(e) = result {
-                failed_count += 1;
-                failed_tests.push(format!("{}: {}", test.name, e));
+                if let Err(e) = result {
+                    failed_count += 1;
+                    failed_tests.push(format!("{}: {}", test.name, e));
+                }
             }
 
             // A stub set by the test or `before_each` is scoped to the test.

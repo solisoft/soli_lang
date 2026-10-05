@@ -1810,9 +1810,18 @@ fn worker_loop(
     // Capture every AQL query the request makes so the dev tool can show them.
     // Off in production unless an operator opts a channel in via SOLI_LOG;
     // otherwise the gate is a single relaxed atomic load.
+    //
+    // A `soli test` server records them too, whatever its mode: the
+    // runner reads the log back as `query_count` / `n_plus_one` (see
+    // `finalize::test_runner_headers`). Test servers run in production
+    // mode so suites cover the VM, and gating on `dev_mode` alone left
+    // every count at 0 — `assert_no_n_plus_one` and `--fail-on-n1` could
+    // not fail.
     let log_channels = prod_log::channels();
     crate::interpreter::builtins::model::query_log::set_enabled(
-        dev_mode || log_channels.collect_query(),
+        dev_mode
+            || log_channels.collect_query()
+            || crate::interpreter::builtins::test_server::is_test_runner_process(),
     );
 
     // Same for outgoing HTTP.* calls — feeds the dev bar's "http" panel.

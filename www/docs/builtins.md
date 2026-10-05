@@ -4587,13 +4587,15 @@ Runs once before all tests in the current describe block.
 
 Runs once after all tests in the current describe block.
 
-#### pending()
+#### pending(reason?)
 
-Marks a test as pending (not yet implemented).
+Marks a test as pending (not yet implemented) and stops its body. A pending test
+is not a failure: the file still passes, and the summary counts it apart
+(`12 tests, 2 pending`). The optional reason is a string.
 
-#### skip()
+#### skip(reason?)
 
-Skips the current test.
+Stops the current test and counts it as pending, like `pending()`.
 
 ### Assertion Functions
 

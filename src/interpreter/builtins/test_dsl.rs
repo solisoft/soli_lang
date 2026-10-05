@@ -36,6 +36,32 @@ thread_local! {
     static EXPECTATION_CLASS: Rc<RefCell<Option<Rc<Class>>>> = Rc::new(RefCell::new(None));
 }
 
+thread_local! {
+    /// Set by `pending()` / `skip()` while a test body runs: how the test was
+    /// left, and why (`"pending"` or `"skipped"`, then the optional reason).
+    static NOT_RUN: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+fn mark_not_run(kind: &str, args: &[Value]) -> Result<Value, String> {
+    let note = match args.first() {
+        Some(Value::String(reason)) if !reason.is_empty() => format!("{kind}: {reason}"),
+        Some(Value::Null) | None => kind.to_string(),
+        Some(other) => format!("{kind}: {other}"),
+    };
+    NOT_RUN.with(|n| *n.borrow_mut() = Some(note.clone()));
+    Err(note)
+}
+
+/// Forget a mark left by a previous test. The runner calls it before each.
+pub fn clear_not_run() {
+    NOT_RUN.with(|n| *n.borrow_mut() = None);
+}
+
+/// The mark `pending()` / `skip()` left on the test that just ran, if any.
+pub fn take_not_run() -> Option<String> {
+    NOT_RUN.with(|n| n.borrow_mut().take())
+}
+
 // Compact, single-line representation of a Value for assertion error messages.
 // Long strings are truncated so a 5KB HTML body doesn't fill the test output.
 //
@@ -619,17 +645,21 @@ pub fn register_test_builtins(env: &mut Environment) {
         })),
     );
 
+    // `pending(reason?)` / `skip(reason?)` stop the test body and mark the
+    // test as not run. They raise to unwind the body, but the mark is what the
+    // runner reads: before it existed the raise was the whole implementation,
+    // so a pending test counted as a failure and failed the run.
     env.define(
         "pending".to_string(),
-        Value::NativeFunction(NativeFunction::new("pending", Some(0), |_args| {
-            Err("PENDING".to_string())
+        Value::NativeFunction(NativeFunction::new("pending", None, |args| {
+            mark_not_run("pending", args)
         })),
     );
 
     env.define(
         "skip".to_string(),
-        Value::NativeFunction(NativeFunction::new("skip", Some(0), |_args| {
-            Err("SKIPPED".to_string())
+        Value::NativeFunction(NativeFunction::new("skip", None, |args| {
+            mark_not_run("skipped", args)
         })),
     );
 

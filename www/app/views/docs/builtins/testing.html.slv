@@ -139,16 +139,16 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <section id="def-pending" class="scroll-mt-20">
                     <a href="#def-pending" class="group flex items-center gap-2">
-                        <code class="font-mono text-amber-400">pending()</code>
+                        <code class="font-mono text-amber-400">pending(reason?)</code>
                     </a>
-                    <p class="text-gray-400 text-sm mt-1">Mark test as pending (not yet implemented)</p>
+                    <p class="text-gray-400 text-sm mt-1">Mark test as pending (not yet implemented) and stop its body. Not a failure: the file passes and the summary counts it apart (<code>12 tests, 2 pending</code>).</p>
                 </section>
 
                 <section id="def-skip" class="scroll-mt-20">
                     <a href="#def-skip" class="group flex items-center gap-2">
-                        <code class="font-mono text-amber-400">skip()</code>
+                        <code class="font-mono text-amber-400">skip(reason?)</code>
                     </a>
-                    <p class="text-gray-400 text-sm mt-1">Skip the current test</p>
+                    <p class="text-gray-400 text-sm mt-1">Stop the current test and count it as pending, like <code>pending()</code></p>
                 </section>
             </div>
         </div>

@@ -78,7 +78,14 @@ pub(super) fn reset_worker_thread_locals(dev_mode: bool) {
 /// vector. Cleared for production detail logging and OpenTelemetry too,
 /// which reuse the same buffers.
 pub(super) fn forget_request_logs(dev_mode: bool) {
-    if dev_mode || prod_log::channels().has_detail() || otel::enabled() {
+    // A `soli test` server keeps a query log in any mode (see `serve`), so
+    // it is emptied per request too, or each count would include the
+    // requests before it.
+    if dev_mode
+        || prod_log::channels().has_detail()
+        || otel::enabled()
+        || crate::interpreter::builtins::test_server::is_test_runner_process()
+    {
         crate::interpreter::builtins::model::query_log::clear();
         crate::interpreter::builtins::http_log::clear();
         crate::interpreter::builtins::kv_log::clear();

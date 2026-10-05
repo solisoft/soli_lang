@@ -28,6 +28,7 @@ get("/jar/read", "api#jar_read");
 router_websocket("/ws/echo", "ws#handle");
 get("/render_json_arg_evals", "evals#render_json_arg_evals");
 get("/scopes", "scopes#index");
+get("/queries", "scopes#queries");
 get("/locale/set", "api#locale_set");
 get("/locale/read", "api#locale_read");
 post("/upload_echo", "api#upload_echo");
