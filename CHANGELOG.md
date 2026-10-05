@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.15.4] - 2026-10-05
+
 ### Fixed
 
 * **mobile:** **The generated Android shell lets a page open the camera.** `onPermissionRequest` passed the WebView's resource names (`android.webkit.resource.VIDEO_CAPTURE`) to `requestPermissions` as if they were Android permissions: no prompt appeared and every `getUserMedia` call, `camera_preview` included, was denied. Each resource is now mapped to the permission that guards it (`CAMERA`, `RECORD_AUDIO`), only the missing ones are asked for, and only what was allowed is granted. Shells generated before this release need the same change in `MainActivity.java`. [Docs](www/docs/native/clients.md)
