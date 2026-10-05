@@ -67,6 +67,18 @@ impl Build {
     fn platform(&self) -> Platform {
         Platform::parse(&self.platform).unwrap_or(Platform::Android)
     }
+
+    /// Which app this is a build of: its bundle id on its platform, or its
+    /// name when it has no bundle id. One project can ship several apps on
+    /// the same platform (a customer app and a merchant app).
+    fn app(&self) -> (&str, &str) {
+        let id = if self.bundle_id.is_empty() {
+            &self.name
+        } else {
+            &self.bundle_id
+        };
+        (&self.platform, id)
+    }
 }
 
 fn env_nonempty(name: &str) -> Option<String> {
@@ -180,11 +192,13 @@ fn delete_build(root: &Path, id: &str) -> bool {
     valid_id(id) && std::fs::remove_dir_all(root.join(id)).is_ok()
 }
 
-/// Keep the newest `keep` builds of `platform`; delete the rest with their files.
-fn prune(root: &Path, platform: Platform, keep: usize) -> usize {
+/// Keep the newest `keep` builds of `of`'s app; delete the rest with their
+/// files. Per app, not per platform: publishing one app many times must not
+/// delete every build of another app on the same platform.
+fn prune(root: &Path, of: &Build, keep: usize) -> usize {
     list_builds(root)
         .into_iter()
-        .filter(|b| b.platform() == platform)
+        .filter(|b| b.app() == of.app())
         .skip(keep)
         .filter(|b| delete_build(root, &b.id))
         .count()
@@ -403,7 +417,7 @@ async fn handle_upload(
     let base = install_base(req.headers(), dev_mode);
     match receive(root, req).await {
         Ok(build) => {
-            let pruned = prune(root, build.platform(), keep());
+            let pruned = prune(root, &build, keep());
             let install = format!("{base}{BASE}/i/{}", build.token);
             json_response(
                 StatusCode::CREATED,
@@ -648,10 +662,8 @@ app's folder with the commands below.</span></div>",
         );
     } else {
         body.push_str("<div class=\"gallery\">");
-        for platform in [Platform::Android, Platform::Ios] {
-            if let Some(latest) = builds.iter().find(|b| b.platform() == platform) {
-                body.push_str(&latest_card(latest, &base, links_on));
-            }
+        for latest in latest_per_app(&builds) {
+            body.push_str(&latest_card(latest, &base, links_on));
         }
         body.push_str("</div>");
         body.push_str(&history_table(&builds, &base, links_on));
@@ -668,6 +680,18 @@ SOLI_MOBILE_TOKEN=\"$TOKEN\" soli mobile publish --latest android --url {}</code
         INTRO,
         &body,
     ))
+}
+
+/// The newest build of each app, one QR code apiece. An app is a bundle id on a
+/// platform (the name when a build has no bundle id): a project that ships
+/// a customer app and a merchant app, both Android, gets both codes instead
+/// of only the one published last. `builds` comes newest first.
+fn latest_per_app(builds: &[Build]) -> Vec<&Build> {
+    let mut seen = std::collections::HashSet::new();
+    builds
+        .iter()
+        .filter(|build| seen.insert(build.app()))
+        .collect()
 }
 
 fn latest_card(build: &Build, base: &str, links_on: bool) -> String {
@@ -715,11 +739,12 @@ fn history_table(builds: &[Build], base: &str, links_on: bool) -> String {
             String::new()
         };
         rows.push_str(&format!(
-            "<tr><td>{platform}</td><td>{version}</td><td>{number}</td><td>{notes}</td>\
+            "<tr><td>{name}</td><td>{platform}</td><td>{version}</td><td>{number}</td><td>{notes}</td>\
 <td>{size}</td><td>{when}</td><td>{install}</td><td>\
 <form method=\"post\" action=\"{BASE}/builds/{id}/delete\" \
 onsubmit=\"return confirm('Delete this build? Its install link stops working.')\">\
 <button type=\"submit\">Delete</button></form></td></tr>",
+            name = esc(&build.name),
             platform = build.platform,
             version = esc(&build.version),
             number = esc(&build.build_number),
@@ -730,7 +755,7 @@ onsubmit=\"return confirm('Delete this build? Its install link stops working.')\
         ));
     }
     format!(
-        "<h2>History</h2><div class=\"table-wrap\"><table><thead><tr><th>Platform</th>\
+        "<h2>History</h2><div class=\"table-wrap\"><table><thead><tr><th>App</th><th>Platform</th>\
 <th>Version</th><th>Build</th><th>Notes</th><th>Size</th><th>Uploaded</th><th></th><th></th>\
 </tr></thead><tbody>{rows}</tbody></table></div>"
     )
@@ -910,15 +935,27 @@ mod tests {
     }
 
     #[test]
-    fn prune_keeps_the_newest_per_platform() {
+    fn prune_keeps_the_newest_per_app() {
         let root = tempfile::tempdir().unwrap();
         let old = store(root.path(), "android", "2026-01-01T00:00:00.000Z");
         let new = store(root.path(), "android", "2026-01-03T00:00:00.000Z");
         let ios = store(root.path(), "ios", "2026-01-02T00:00:00.000Z");
-        assert_eq!(prune(root.path(), Platform::Android, 1), 1);
+        assert_eq!(prune(root.path(), &new, 1), 1);
         let left: Vec<String> = list_builds(root.path()).into_iter().map(|b| b.id).collect();
-        assert_eq!(left, vec![new.id, ios.id]);
+        assert_eq!(left, vec![new.id.clone(), ios.id.clone()]);
         assert!(!root.path().join(&old.id).exists());
+
+        // Another Android app keeps its builds when this one is pruned.
+        let mut till = store(root.path(), "android", "2026-01-04T00:00:00.000Z");
+        till.bundle_id = "com.example.till".into();
+        std::fs::write(
+            root.path().join(&till.id).join("build.json"),
+            serde_json::to_vec(&till).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(prune(root.path(), &till, 1), 0);
+        assert_eq!(prune(root.path(), &new, 1), 0);
+        assert_eq!(list_builds(root.path()).len(), 3);
     }
 
     #[test]
@@ -1019,6 +1056,43 @@ mod tests {
         )));
         let table = history_table(&[build], "http://192.168.1.20:5011", false);
         assert!(!table.contains("install</a>"));
+    }
+
+    #[test]
+    fn the_gallery_shows_the_newest_build_of_each_app() {
+        let root = tempfile::tempdir().unwrap();
+        let shop_old = store(root.path(), "android", "2026-01-01T00:00:00.000Z");
+        let shop_new = store(root.path(), "android", "2026-01-03T00:00:00.000Z");
+        let mut till = store(root.path(), "android", "2026-01-02T00:00:00.000Z");
+        till.name = "Till".into();
+        till.bundle_id = "com.example.till".into();
+        let ios = store(root.path(), "ios", "2026-01-01T00:00:00.000Z");
+        let builds = vec![shop_new.clone(), till.clone(), shop_old, ios.clone()];
+        let ids: Vec<&str> = latest_per_app(&builds)
+            .iter()
+            .map(|build| build.id.as_str())
+            .collect();
+        assert_eq!(
+            ids,
+            vec![shop_new.id.as_str(), till.id.as_str(), ios.id.as_str()]
+        );
+
+        // Without a bundle id, the name tells two apps apart.
+        let mut first = shop_new.clone();
+        first.bundle_id = String::new();
+        let mut second = till.clone();
+        second.bundle_id = String::new();
+        assert_eq!(latest_per_app(&[first, second]).len(), 2);
+    }
+
+    #[test]
+    fn history_names_the_app_of_each_build() {
+        let root = tempfile::tempdir().unwrap();
+        let mut build = store(root.path(), "android", "2026-01-01T00:00:00.000Z");
+        build.name = "Shop <Merchant>".into();
+        let table = history_table(&[build], "https://a.test", true);
+        assert!(table.contains("<th>App</th><th>Platform</th>"));
+        assert!(table.contains("<tr><td>Shop &lt;Merchant&gt;</td><td>android</td>"));
     }
 
     #[test]

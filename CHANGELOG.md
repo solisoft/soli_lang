@@ -5,6 +5,7 @@
 ### Fixed
 
 * **uploads:** **Attachments of a model with a compound class name are served.** `upload_url` and the `<field>_url` methods built the URL's first segment from the lowercased class name plus "s" (`GiftCardTemplate` → `/giftcardtemplates/…`), while `AttachmentsController` finds the model by collection name (`gift_card_templates`). The two only agree for one-word classes, so every attachment of a `GiftCardTemplate`, `BlogPost` or `UserAvatar` answered 404 — the file was stored and looked unsaved. URLs now use the collection name, the one the controller and `uploads("gift_card_templates", "logo")` expect; one-word classes keep their URLs. [Docs](www/docs/models.md#attachments)
+* **mobile:** **`/__soli/mobile` shows a QR code per app, not per platform.** A project that publishes two Android apps (a customer app and a merchant app) got a single QR code, for whichever was uploaded last; the other app could only be reached from the history, whose rows did not say which app they were. The gallery now shows the newest build of each app — one per bundle id and platform, or name when there is no bundle id — captioned "name · platform", and the history gains an App column. `SOLI_MOBILE_KEEP` now counts per app as well: publishing one app twenty times no longer deletes every build of the other. [Docs](www/docs/native/clients.md#distribute-__solimobile)
 
 ## [2.17.0] - 2026-10-05
 

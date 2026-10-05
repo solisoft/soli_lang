@@ -487,7 +487,7 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLI_MOBILE_USER` / `SOLI_MOBILE_PASSWORD` / `SOLI_MOBILE_TOKEN` | Credentials for [`/__soli/mobile`](native/clients.md#distribute-__solimobile), where `soli mobile publish` uploads native builds. The token is also what the CLI sends (`SOLI_MOBILE_TOKEN` in its environment). With none and no `SOLI_ADMIN_*`, the page and its install links 404 outside `--dev`. | unset |
 | `SOLI_MOBILE_PATH` | Where `/__soli/mobile` stores builds. | `./storage/mobile` |
 | `SOLI_MOBILE_MAX_SIZE` | Upload cap for one build, in bytes; independent of `SOLI_MAX_BODY_SIZE`. | 536870912 (512 MiB) |
-| `SOLI_MOBILE_KEEP` | Builds kept per platform; older ones are deleted with their files. | 20 |
+| `SOLI_MOBILE_KEEP` | Builds kept per app (bundle id and platform); older ones are deleted with their files. | 20 |
 | `SOLI_MOBILE_PUBLIC_INSTALL` | `0` turns off the public install links (`/__soli/mobile/i/<token>`). | on |
 | `SOLI_ANDROID_KEYSTORE` | Release keystore for `soli mobile build android` (same as `--keystore`); its passwords come from `SOLI_ANDROID_KEYSTORE_PASSWORD`, `SOLI_ANDROID_KEY_PASSWORD` and `SOLI_ANDROID_KEY_ALIAS`. | unset (debug key) |
 | `SOLI_ADMIN_USER` / `SOLI_ADMIN_PASSWORD` / `SOLI_ADMIN_TOKEN` | One set of credentials accepted by every built-in operator page (`/__soli/jobs`, `/__soli/errors`, `/__soli/slow_queries`, `/__soli/mobile`), in addition to each page's own. | unset |

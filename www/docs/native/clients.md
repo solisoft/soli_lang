@@ -162,7 +162,9 @@ on your profile) or `enterprise`. It needs your team id: `--team-id`, or
 
 Every app can host its own builds. `/__soli/mobile` is an operator page beside
 `/__soli/errors` and `/__soli/jobs`: it lists the builds, shows a QR code for the
-latest one per platform, and gives each build an install page.
+latest build of each app (one per bundle id and platform, captioned with the app's
+name, so a customer app and a merchant app each get theirs), and gives each build an
+install page.
 
 It is **off unless configured**, behind the same gate as the other operator
 pages:
@@ -174,7 +176,7 @@ pages:
 | `SOLI_ADMIN_*` | The shared operator credentials also open it |
 | `SOLI_MOBILE_PATH` | Where builds are stored. Default `./storage/mobile` |
 | `SOLI_MOBILE_MAX_SIZE` | Upload cap in bytes. Default 512 MiB, independent of `SOLI_MAX_BODY_SIZE` |
-| `SOLI_MOBILE_KEEP` | Builds kept per platform; older ones are deleted with their files. Default 20 |
+| `SOLI_MOBILE_KEEP` | Builds kept per app (bundle id and platform); older ones are deleted with their files. Default 20 |
 | `SOLI_MOBILE_PUBLIC_INSTALL` | `0` turns the install links off |
 
 With none of the credentials set, the page answers 404, so production does not
