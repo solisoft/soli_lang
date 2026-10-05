@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+* **uploads:** **Attachments of a model with a compound class name are served.** `upload_url` and the `<field>_url` methods built the URL's first segment from the lowercased class name plus "s" (`GiftCardTemplate` → `/giftcardtemplates/…`), while `AttachmentsController` finds the model by collection name (`gift_card_templates`). The two only agree for one-word classes, so every attachment of a `GiftCardTemplate`, `BlogPost` or `UserAvatar` answered 404 — the file was stored and looked unsaved. URLs now use the collection name, the one the controller and `uploads("gift_card_templates", "logo")` expect; one-word classes keep their URLs. [Docs](www/docs/models.md#attachments)
+
 ## [2.17.0] - 2026-10-05
 
 ### Added

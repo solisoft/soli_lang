@@ -510,6 +510,16 @@ const TRANSFORM_QUERY_ORDER: &[&str] = &[
     "contrast", "hue", "gray", "invert", "fmt", "q",
 ];
 
+/// The first path segment of an upload URL: the model's collection, the name
+/// `AttachmentsController` resolves the model from and `uploads(...)` routes
+/// on. It used to be the lowercased class name plus "s", which only matches
+/// the collection for one-word classes: `GiftCardTemplate` became
+/// `giftcardtemplates`, the controller looked for that collection, found no
+/// model, and every image of the class answered 404.
+fn upload_resource(class_name: &str) -> String {
+    super::model::class_name_to_collection(class_name)
+}
+
 /// Parse the polymorphic 3rd arg of `upload_url(model, field, opts)` into
 /// `(blob_id, transforms)`. The third arg may be:
 ///   - `String` → `blob_id` (multiple-mode shorthand)
@@ -850,7 +860,7 @@ fn register_uploader_helpers(env: &mut Environment) {
                 return Ok(Value::Null);
             };
 
-            let resource = format!("{}s", class_name.to_lowercase());
+            let resource = upload_resource(&class_name);
             let base = format!("/{}/{}/{}", resource, key, field);
 
             if config.multiple {
@@ -942,6 +952,20 @@ fn register_uploader_helpers(env: &mut Environment) {
 mod tests {
     use super::*;
     use crate::interpreter::value::HashPairs;
+
+    #[test]
+    fn upload_urls_use_the_collection_the_controller_looks_up() {
+        // One-word classes keep their URL.
+        assert_eq!(upload_resource("Contact"), "contacts");
+        // A compound class name used to give `giftcardtemplates`, a collection
+        // AttachmentsController could not find: every image answered 404.
+        assert_eq!(upload_resource("GiftCardTemplate"), "gift_card_templates");
+        // The controller resolves the model with the very same function.
+        assert_eq!(
+            upload_resource("GiftCardTemplate"),
+            super::super::model::class_name_to_collection("GiftCardTemplate")
+        );
+    }
 
     fn hash(pairs: &[(&str, Value)]) -> Value {
         let mut map = HashPairs::default();
