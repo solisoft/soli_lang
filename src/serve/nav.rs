@@ -390,6 +390,22 @@ mod tests {
     }
 
     #[test]
+    fn script_runs_a_framework_feature_script_first_seen_after_a_swap() {
+        // camera.js (and sensors.js, native.js) is injected only into pages
+        // that use the feature. Reached by a link from a page without it, the
+        // swap used to skip every /__soli/ script as "already running", so
+        // window.soli.camera stayed undefined and the camera never started.
+        assert!(
+            !NAV_SCRIPT.contains("if (new URL(abs).pathname.indexOf(\"/__soli/\") === 0) return;"),
+            "a blanket skip of /__soli/ scripts drops feature scripts the tab never loaded"
+        );
+        // Framework scripts still run once per path, whatever their ?v= stamp:
+        // nav.js and prefetch.js must never start twice.
+        assert!(NAV_SCRIPT.contains("executedSoliPaths.has(path)"));
+        assert!(NAV_SCRIPT.contains("executedSoliPaths.add(path)"));
+    }
+
+    #[test]
     fn script_replays_domcontentloaded_after_swap() {
         // Inline scripts re-executed after a swap routinely register
         // DOMContentLoaded/load listeners — events that never fire again on
