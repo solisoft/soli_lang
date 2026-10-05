@@ -538,6 +538,10 @@ uploads("contacts", "photo")        # for the photo field
 uploads("contacts", "attachments")  # for the multi-file field
 ```
 
+The first argument is the model's **collection** name — the segment the
+`<field>_url` methods build: `Contact` → `contacts`, `GiftCardTemplate` →
+`gift_card_templates` (so `uploads("gift_card_templates", "logo")`).
+
 | Route                                                | Purpose                          |
 |------------------------------------------------------|----------------------------------|
 | `GET    /contacts/:id/photo`                          | Stream the blob (with transforms).|

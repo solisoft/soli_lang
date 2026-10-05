@@ -1196,7 +1196,7 @@ stored unchanged so an upload is never blocked by a transform failure.
 > pipeline (`photo_url(...)` with `?fmt=webp&w=...`), so you can also keep a
 > larger original and convert per-request instead.
 
-For drag-and-drop / AJAX flows that prefer JSON 204/422 over redirects, use `uploads("contacts", "document")` in `config/routes.sl` instead — that auto-mounts a generic `AttachmentsController` for upload, download, and per-blob delete.
+For drag-and-drop / AJAX flows that prefer JSON 204/422 over redirects, use `uploads("contacts", "document")` in `config/routes.sl` instead — that auto-mounts a generic `AttachmentsController` for upload, download, and per-blob delete. The first argument is the model's collection name, the segment `<field>_url` builds: `GiftCardTemplate` → `uploads("gift_card_templates", "logo")`.
 
 **Cleanup on destroy** — `record.delete()` and `Model.delete(id)` purge every attachment (disk, S3, and SoliDB) before the row is removed. `detach_all_uploads(record)` remains if you need to clear files without deleting the record.
 
