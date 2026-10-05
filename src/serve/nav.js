@@ -153,11 +153,26 @@
     // double-starts every component. Externals run once per src; inline
     // scripts re-run on every swap (that's what page-specific init wants).
     var executedSrcs = new Set();
+    // Framework scripts under /__soli/ count once per path, whatever their
+    // ?v= stamp: nav.js and prefetch.js are already running. The per-feature
+    // ones (camera.js, sensors.js, native.js…) are injected only into pages
+    // that use the feature, so a page reached by navigation may bring one the
+    // landing page did not have — that one has never run and must load now.
+    var executedSoliPaths = new Set();
     function absUrl(src) {
         try { return new URL(src, location.href).href; } catch (e) { return src; }
     }
+    function soliPath(abs) {
+        try {
+            var path = new URL(abs).pathname;
+            return path.indexOf("/__soli/") === 0 ? path : null;
+        } catch (e) { return null; }
+    }
     document.querySelectorAll("script[src]").forEach(function (s) {
-        executedSrcs.add(absUrl(s.getAttribute("src")));
+        var abs = absUrl(s.getAttribute("src"));
+        executedSrcs.add(abs);
+        var path = soliPath(abs);
+        if (path) executedSoliPaths.add(path);
     });
 
     // ---------------------------------------------------------------- fetch
@@ -731,12 +746,21 @@
             var src = old.getAttribute("src");
             if (src) {
                 var abs = absUrl(src);
-                // Ourselves / prefetch.js: already running in this document.
-                if (new URL(abs).pathname.indexOf("/__soli/") === 0) return;
-                // Libraries already evaluated (alpine, htmx, …) must not
-                // double-start. New srcs run and join the set.
-                if (executedSrcs.has(abs)) return;
-                executedSrcs.add(abs);
+                var path = soliPath(abs);
+                if (path) {
+                    // Ourselves, prefetch.js, or a feature script this tab
+                    // already loaded: never twice. A feature script first seen
+                    // on this page (camera.js reached by a link) runs now —
+                    // skipping it left window.soli.camera undefined.
+                    if (executedSoliPaths.has(path)) return;
+                    executedSoliPaths.add(path);
+                    executedSrcs.add(abs);
+                } else {
+                    // Libraries already evaluated (alpine, htmx, …) must not
+                    // double-start. New srcs run and join the set.
+                    if (executedSrcs.has(abs)) return;
+                    executedSrcs.add(abs);
+                }
             } else if (old.textContent.includes("__livereload")) {
                 // The dev live-reload IIFE survives the swap (its WS lives in
                 // a closure); its window guard would no-op a re-run anyway.
