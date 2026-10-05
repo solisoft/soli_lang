@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [2.17.0] - 2026-10-05
+
+### Added
+
+* **observability:** **Web Push from `/__soli/errors` and `/__soli/slow_queries`.** Each page has a **Notify this device** button: the browser subscribes (permission prompt, service worker at `/__soli/push/sw.js` scoped to `/__soli/`) and then gets a notification for every `error.new` / `error.regressed` / `error.spike` (errors page) or `slow_query.new` (slow-queries page), page closed or not; clicking it opens the error or the query. A destination of the existing notifier: same events, `SOLI_NOTIFY_EVENTS` and throttle, sent from the same thread. Nothing to configure — the VAPID pair is the app's `VAPID_*` when set, else generated once and stored (`_soli_push_keys`); subscriptions live in `_soli_push_subscriptions` with their topics, and one the push service answers 404/410 for is deleted. **Send a test** checks it end to end and says when the push service has dropped the browser. The `POST /__soli/push/*` endpoints sit behind the topic's page gate and the same-origin check. Both pages' notification line now counts subscribed browsers. [Docs](www/docs/observability.md#notifications)
+
+### Fixed
+
+* **db:** **An index that already exists is no longer an error on SoliDB.** Current SoliDB answers a duplicate index with a 400 that says "already exists" rather than a 409, so every boot logged `[jobs] could not index …`, `[errors]` / `[slow-queries]` / `[query-stats] could not prepare …` for each internal collection, and a caller that stopped on the error failed.
+
 ## [2.16.1] - 2026-10-05
 
 ### Fixed

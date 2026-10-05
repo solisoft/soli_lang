@@ -72,8 +72,8 @@
                 </tr>
                 <tr>
                     <td class="py-3 px-4 text-white font-medium">Notifications</td>
-                    <td class="py-3 px-4"><code>SOLI_NOTIFY_WEBHOOKS</code> / <code>SOLI_NOTIFY_EMAILS</code> / a <code>SoliNotificationJob</code></td>
-                    <td class="py-3 px-4">Slack, Teams, Discord, Google Chat, any URL, email, your job</td>
+                    <td class="py-3 px-4"><code>SOLI_NOTIFY_WEBHOOKS</code> / <code>SOLI_NOTIFY_EMAILS</code> / a <code>SoliNotificationJob</code> / &ldquo;Notify this device&rdquo;</td>
+                    <td class="py-3 px-4">Slack, Teams, Discord, Google Chat, any URL, email, your job, Web Push</td>
                 </tr>
             </tbody>
         </table>
@@ -390,6 +390,15 @@ SOLI_NOTIFY_URL=https://shop.example.com</code></pre>
     <p class="text-gray-400 mb-4">
         with an <code>X-Soli-Event</code> header, and &mdash; when <code>SOLI_NOTIFY_SECRET</code> is set &mdash; <code>X-Soli-Signature</code>, the hex HMAC-SHA256 of the body under that secret. Webhook URLs go through the same SSRF guard as <code>Webhook.enqueue</code>; a receiver on a private address has to be allowed with <code>SOLI_HTTP_ALLOW_HOSTS</code>. In <code>--dev</code> without an SMTP host, emails land in the dev inbox at <code>/__soli/inbox</code>.
     </p>
+    <p id="push-notifications" class="text-gray-400 mb-4 scroll-mt-20">
+        <strong class="text-white">Push on your own devices.</strong> The errors page and the slow-queries page each have a <strong class="text-white">Notify this device</strong> button. Press it in a browser (it asks for permission) and that device gets a Web Push notification for each event of the page&rsquo;s topic &mdash; <code>error.new</code> / <code>error.regressed</code> / <code>error.spike</code> from <code>/__soli/errors</code>, <code>slow_query.new</code> from <code>/__soli/slow_queries</code> &mdash; even with the page closed. Clicking the notification opens the error or the query. <strong class="text-white">Send a test</strong> checks it end to end; <strong class="text-white">Stop notifying this device</strong> unsubscribes. Nothing to configure:
+    </p>
+    <ul class="text-gray-400 mb-4 list-disc pl-6 space-y-1">
+        <li>the VAPID key pair is the app&rsquo;s own <code>VAPID_PUBLIC_KEY</code> / <code>VAPID_PRIVATE_KEY</code> / <code>VAPID_SUBJECT</code> when set (the ones <code>WebPush</code> reads), otherwise a pair generated once and stored in the app&rsquo;s database (<code>_soli_push_keys</code>) &mdash; replacing it makes every browser subscribe again;</li>
+        <li>subscriptions are stored in <code>_soli_push_subscriptions</code>, one per browser, with the topics it chose; a push service answering 404/410 (the browser dropped it) deletes it;</li>
+        <li>the subscription endpoints (<code>POST /__soli/push/subscribe</code>, <code>unsubscribe</code>, <code>status</code>, <code>test</code>) sit behind the gate of the topic&rsquo;s page (<code>SOLI_ERRORS_*</code>, <code>SOLI_SLOW_QUERIES_*</code> or <code>SOLI_ADMIN_*</code>) and the same-origin check; the service worker, <code>/__soli/push/sw.js</code>, is public and controls <code>/__soli/</code> only;</li>
+        <li>Web Push needs HTTPS (or <code>localhost</code>); the same events, throttle and <code>SOLI_NOTIFY_EVENTS</code> apply as for the other destinations.</li>
+    </ul>
     <p class="text-gray-400 mb-4">
         <strong class="text-white">Anything else, in Soli.</strong> If the app has <code>app/jobs/soli_notification_job.sl</code>, every event is also enqueued to it with the same hash as the JSON above &mdash; for PagerDuty, an SMS, a ticket, or a filter of your own:
     </p>

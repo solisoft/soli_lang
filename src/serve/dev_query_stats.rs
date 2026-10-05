@@ -122,6 +122,12 @@ pub(super) fn handle_index() -> Response<ResponseBody> {
         );
     }
     body.push_str(&recording_notices(&query_stats::stats()));
+    // The landing view of `/__soli/slow_queries`: where an operator turns on
+    // push for new slow queries, as on the slow view.
+    body.push_str(&super::notify::status_html());
+    body.push_str(&super::operator_push::page_block(
+        super::operator_push::Topic::SlowQueries,
+    ));
 
     let rows = match query_stats::list_all() {
         Ok(rows) => rows,

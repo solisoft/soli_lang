@@ -130,6 +130,7 @@ fn is_operator_dashboard_path(path: &str) -> bool {
         "/__soli/errors",
         "/__soli/slow_queries",
         "/__soli/mobile",
+        "/__soli/push",
     ]
     .iter()
     .any(|base| path == *base || path.strip_prefix(base).is_some_and(|r| r.starts_with('/')))

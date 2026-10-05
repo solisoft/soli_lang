@@ -11,7 +11,7 @@ Soli ships three production signals out of the box: **metrics**, **structured lo
 | Errors | on (`SOLI_ERRORS=off` to stop) | `_soli_errors` table, shown at `/__soli/errors` |
 | Query time | on (`SOLI_QUERY_STATS=off` to stop) | `_soli_query_stats` table, shown at `/__soli/slow_queries` |
 | Slow queries | on at 200 ms (`SOLI_SLOW_QUERY_MS`, `SOLI_SLOW_QUERIES=off`) | `_soli_slow_queries` table, shown at `/__soli/slow_queries` |
-| Notifications | `SOLI_NOTIFY_WEBHOOKS` / `SOLI_NOTIFY_EMAILS` / a `SoliNotificationJob` | Slack, Teams, Discord, Google Chat, any URL, email, your job |
+| Notifications | `SOLI_NOTIFY_WEBHOOKS` / `SOLI_NOTIFY_EMAILS` / a `SoliNotificationJob` / "Notify this device" | Slack, Teams, Discord, Google Chat, any URL, email, your job, Web Push |
 
 For the full env-var table see [Configuration](configuration.md). This page is the operator guide: what each signal means, how to turn it on, and how the pieces correlate.
 
@@ -322,6 +322,13 @@ Webhooks are recognised by host and sent the message each product expects: Slack
 ```
 
 with an `X-Soli-Event` header, and — when `SOLI_NOTIFY_SECRET` is set — `X-Soli-Signature`, the hex HMAC-SHA256 of the body under that secret. Webhook URLs go through the same SSRF guard as `Webhook.enqueue`; a receiver on a private address has to be allowed with `SOLI_HTTP_ALLOW_HOSTS`. In `--dev` without an SMTP host, emails land in the dev inbox at `/__soli/inbox`.
+
+**Push on your own devices.** The errors page and the slow-queries page each have a **Notify this device** button. Press it in a browser (it asks for permission) and that device gets a Web Push notification for each event of the page's topic — `error.new` / `error.regressed` / `error.spike` from `/__soli/errors`, `slow_query.new` from `/__soli/slow_queries` — even with the page closed. Clicking the notification opens the error or the query. **Send a test** checks it end to end; **Stop notifying this device** unsubscribes. Nothing to configure:
+
+- the VAPID key pair is the app's own `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` when set (the ones `WebPush` reads), otherwise a pair generated once and stored in the app's database (`_soli_push_keys`) — replacing it makes every browser subscribe again;
+- subscriptions are stored in `_soli_push_subscriptions`, one per browser, with the topics it chose; a push service answering 404/410 (the browser dropped it) deletes it;
+- the subscription endpoints (`POST /__soli/push/subscribe`, `unsubscribe`, `status`, `test`) sit behind the gate of the topic's page (`SOLI_ERRORS_*`, `SOLI_SLOW_QUERIES_*` or `SOLI_ADMIN_*`) and the same-origin check; the service worker, `/__soli/push/sw.js`, is public and controls `/__soli/` only;
+- Web Push needs HTTPS (or `localhost`); the same events, throttle and `SOLI_NOTIFY_EVENTS` apply as for the other destinations.
 
 **Anything else, in Soli.** If the app has `app/jobs/soli_notification_job.sl`, every event is also enqueued to it with the same hash as the JSON above — for PagerDuty, an SMS, a ticket, or a filter of your own:
 

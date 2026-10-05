@@ -20,7 +20,18 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.16.1.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.17.0.</p>
+
+    </section>
+
+    <section id="v2-17-0" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.17.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-05</span></h2>
+
+        <h3 id="v2-17-0-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Push notifications for new errors and slow queries.</strong> <code class="text-cyan-400">/__soli/errors</code> and <code class="text-cyan-400">/__soli/slow_queries</code> each have a <strong class="text-white">Notify this device</strong> button: that browser then gets a notification for every new error, regression or spike &mdash; or every new slow query &mdash; even with the page closed, and clicking it opens the error or the query. It rides the existing notifier (same events, same throttle), needs no configuration (a VAPID pair is generated and stored when the app sets none), cleans up browsers the push service has dropped, and <strong class="text-white">Send a test</strong> checks it end to end. <a href="/docs/development-tools/observability#push-notifications" class="text-cyan-400 hover:underline">Notifications</a></li>
+            <li><strong class="text-white">No more &ldquo;could not index &hellip; already exists&rdquo; at boot.</strong> SoliDB answers an existing index with a 400, which was taken for a failure: every start logged a line per internal collection.</li>
+        </ul>
 
     </section>
 

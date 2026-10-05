@@ -20,6 +20,9 @@
 //!   shape each expects; any other URL gets the event as JSON, signed with
 //!   `X-Soli-Signature` (HMAC-SHA256 of the body) when `SOLI_NOTIFY_SECRET` is
 //!   set. URLs go through the same SSRF guard as `Webhook.enqueue`.
+//! - Web Push — every browser an operator subscribed from `/__soli/errors` or
+//!   `/__soli/slow_queries` ("Notify this device"), page closed or not. See
+//!   [`super::operator_push`].
 //! - `app/jobs/soli_notification_job.sl` — when the app has this job, every
 //!   event is also enqueued to `SoliNotificationJob.perform(event)`, for any
 //!   destination the first two do not cover (PagerDuty, SMS, a ticket).
@@ -187,7 +190,7 @@ pub(crate) fn stats() -> StatsSnapshot {
 /// nothing is configured to receive it.
 pub(crate) fn emit(event: Event) {
     let config = Config::from_env();
-    if !config.wants(event.kind) || !config.has_destination() {
+    if !config.wants(event.kind) || !config.has_destination_for(event.kind) {
         return;
     }
     WRITERS.deliver(super::tenant::current_id(), event, &spawn_notifier);
@@ -301,6 +304,14 @@ impl Config {
     fn has_destination(&self) -> bool {
         !self.emails.is_empty() || !self.webhooks.is_empty() || self.job
     }
+
+    /// Whether `kind` has anywhere to go: a configured destination, or a
+    /// browser subscribed to its topic (read from the database, so only asked
+    /// when the configured ones are empty).
+    fn has_destination_for(&self, kind: Kind) -> bool {
+        self.has_destination()
+            || super::operator_push::subscriber_count(super::operator_push::Topic::of(kind)) > 0
+    }
 }
 
 /// Where events go, one short name per destination — never a URL, which
@@ -328,14 +339,29 @@ fn destinations(config: &Config) -> Vec<String> {
     out
 }
 
+/// The browsers subscribed to each topic, as a destination name.
+fn push_destinations() -> Vec<String> {
+    use super::operator_push::{subscriber_count, Topic};
+    [Topic::Errors, Topic::SlowQueries]
+        .iter()
+        .filter_map(|topic| match subscriber_count(*topic) {
+            0 => None,
+            1 => Some(format!("1 browser ({})", topic.name())),
+            n => Some(format!("{n} browsers ({})", topic.name())),
+        })
+        .collect()
+}
+
 /// One line for the operator pages: where notifications go, or how to turn
 /// them on, and whether sending has been failing.
 pub(crate) fn status_html() -> String {
     let config = Config::from_env();
-    let destinations = destinations(&config);
+    let mut destinations = destinations(&config);
+    destinations.extend(push_destinations());
     let mut out = if destinations.is_empty() {
         "<p class=\"summary\">Notifications are off \u{2014} set <code>SOLI_NOTIFY_WEBHOOKS</code> \
-(Slack, Teams, Discord, Google Chat or any URL) or <code>SOLI_NOTIFY_EMAILS</code>.</p>"
+(Slack, Teams, Discord, Google Chat or any URL) or <code>SOLI_NOTIFY_EMAILS</code>, or turn on \
+push notifications on this device below.</p>"
             .to_string()
     } else {
         format!(
@@ -454,6 +480,14 @@ fn send(event: &Event, config: &Config) -> Vec<String> {
             ));
         }
     }
+    let title = event.title(&config.app);
+    let lines = text_lines(event);
+    let body = if lines.len() > 1 {
+        lines[1..].join(" \u{b7} ")
+    } else {
+        event.summary.clone()
+    };
+    failures.extend(super::operator_push::send(event, &title, &body));
     if config.job {
         let doc = crate::jobs::JobDoc::new(
             JOB_CLASS,

@@ -187,11 +187,19 @@ pub fn send_to_subscription(
 
 // ---------- core crypto ---------------------------------------------------
 
-fn generate_keys() -> Value {
+/// A fresh P-256 VAPID key pair, `(public, private)`, both base64url without
+/// padding — the shapes `vapid_generate_keys()` returns.
+pub fn generate_key_pair() -> (String, String) {
     let secret = SecretKey::random(&mut OsRng);
     let public = secret.public_key();
-    let public_b64 = URL_SAFE_NO_PAD.encode(public.to_sec1_bytes());
-    let private_b64 = URL_SAFE_NO_PAD.encode(secret.to_bytes());
+    (
+        URL_SAFE_NO_PAD.encode(public.to_sec1_bytes()),
+        URL_SAFE_NO_PAD.encode(secret.to_bytes()),
+    )
+}
+
+fn generate_keys() -> Value {
+    let (public_b64, private_b64) = generate_key_pair();
 
     let mut pairs: HashPairs = HashPairs::default();
     pairs.insert(

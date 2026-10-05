@@ -1213,6 +1213,11 @@ fn create_collection_sync(name: &str) -> Result<(), String> {
 }
 
 /// Best-effort hash-index creation used by the edge auto-create path.
+/// A create-index refusal that only says the index is already there.
+fn index_already_exists(status: u16, body: &str) -> bool {
+    status == 409 || (status == 400 && body.to_ascii_lowercase().contains("already exists"))
+}
+
 fn create_index_sync(collection: &str, field: &str) -> Result<(), String> {
     let (scheme, host) = solidb_scheme_host();
     let database = get_database_name();
@@ -1247,6 +1252,14 @@ fn create_index_sync(collection: &str, field: &str) -> Result<(), String> {
             let body = crate::interpreter::builtins::http_class::read_capped_text_async(resp)
                 .await
                 .unwrap_or_default();
+            // Current SoliDB answers an existing index with a 400 that says
+            // so, not a 409. Treated as a failure, every boot of every app
+            // logged "could not index / could not prepare … already exists"
+            // for each internal collection, and a caller that stops on the
+            // error (a push subscription) failed outright.
+            if index_already_exists(status.as_u16(), &body) {
+                return Ok(());
+            }
             return Err(format!("Create index failed: {} - {}", status, body));
         }
         Ok(())
@@ -2255,6 +2268,15 @@ pub fn exec_delete_tx(collection: &str, key: &str) -> Result<serde_json::Value, 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_existing_index_is_not_a_failure() {
+        let body = r#"{"code":400,"error":"Index 'idx__jobs_state' already exists","type":"InvalidDocument"}"#;
+        assert!(index_already_exists(400, body));
+        assert!(index_already_exists(409, ""));
+        assert!(!index_already_exists(400, r#"{"error":"bad field"}"#));
+        assert!(!index_already_exists(500, "already exists"));
+    }
+
     use super::*;
 
     #[test]

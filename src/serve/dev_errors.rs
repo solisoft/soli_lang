@@ -194,6 +194,9 @@ fn handle_index(query: Option<&str>) -> Response<ResponseBody> {
     }
     body.push_str(&recording_notices(&error_tracker::stats()));
     body.push_str(&super::notify::status_html());
+    body.push_str(&super::operator_push::page_block(
+        super::operator_push::Topic::Errors,
+    ));
     if let Ok(Some(overflow)) = error_tracker::get(error_tracker::OVERFLOW_FINGERPRINT) {
         let count = overflow.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
         body.push_str(&format!(

@@ -81,6 +81,7 @@ pub(crate) mod internal_store;
 pub mod job_worker;
 mod json;
 mod notify;
+mod operator_push;
 pub(crate) mod query_stats;
 mod repl_session;
 pub(crate) mod slow_queries;
@@ -2533,6 +2534,14 @@ async fn handle_hyper_request(
     ) {
         return Ok(resp);
     }
+
+    // Web Push for the errors and slow-query pages: the service worker, and
+    // the subscription endpoints behind those pages' gate. See
+    // `operator_push`.
+    req = match operator_push::dispatch(req, &method, &path, peer_addr, dev_mode).await {
+        Ok(response) => return Ok(response),
+        Err(req) => req,
+    };
 
     // Native builds: the operator page, the streamed upload, and the
     // public-by-secret install links. It owns `req` so an upload is streamed

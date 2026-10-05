@@ -168,6 +168,7 @@ p{margin:0 0 12px}
 button,.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:6px;border:1px solid transparent;
   background:var(--primary-2);color:#fff;font:500 13px/1 var(--sans);cursor:pointer;white-space:nowrap}
 button:hover,.btn:hover{background:var(--primary);text-decoration:none}
+[hidden]{display:none!important}
 button.ghost,.btn.ghost{background:transparent;color:var(--text-2);border-color:var(--line-2)}
 button.ghost:hover,.btn.ghost:hover{background:var(--panel-2);color:var(--text)}
 button.danger{background:transparent;color:var(--red);border-color:#5a2a2a}

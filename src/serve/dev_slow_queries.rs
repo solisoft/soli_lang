@@ -174,6 +174,9 @@ fn handle_index(query: Option<&str>) -> Response<ResponseBody> {
     }
     body.push_str(&recording_notices(&slow_queries::stats()));
     body.push_str(&super::notify::status_html());
+    body.push_str(&super::operator_push::page_block(
+        super::operator_push::Topic::SlowQueries,
+    ));
 
     let rows = match slow_queries::list(order, LIST_LIMIT) {
         Ok(rows) => rows,
