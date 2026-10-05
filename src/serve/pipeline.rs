@@ -7,9 +7,9 @@
 //!
 //! Four stages, and the seam between each pair is a value rather than a set
 //! of live locals — which is what kept them in one function: [`intake`]
-//! produces nine of them, and two of those ([`Intake::if_none_match`],
-//! [`Intake::is_prefetch`]) exist only because the headers they come from are
-//! moved to the worker before the reply is built.
+//! produces ten of them, and three of those ([`Intake::if_none_match`],
+//! [`Intake::is_prefetch`], [`Intake::accepts_gzip`]) exist only because the
+//! headers they come from are moved to the worker before the reply is built.
 
 use std::borrow::Cow;
 use std::time::{Duration, Instant};
@@ -21,6 +21,7 @@ use hyper::body::Incoming;
 use hyper::{Request, Response, StatusCode};
 use tokio::sync::oneshot;
 
+use super::compression;
 use super::file_upload::parse_multipart_body;
 use super::{
     add_header_checked, apply_form_method_override, finish_response, full, header_str, live_reload,
@@ -60,6 +61,9 @@ pub(super) struct Intake {
     pub if_none_match: Option<String>,
     /// Likewise: whether this was a browser speculative prefetch.
     pub is_prefetch: bool,
+    /// Likewise: whether the reply may be gzipped (`SOLI_COMPRESS` is on and
+    /// the client's `Accept-Encoding` takes gzip). Never for a `HEAD`.
+    pub accepts_gzip: bool,
 }
 
 /// Read the request into the shape a worker takes, or the response to send
@@ -96,6 +100,11 @@ pub(super) async fn intake(
     // `prefetch::prefetch_cache_control`. Read here for the same reason.
     let is_prefetch =
         crate::serve::prefetch::is_prefetch_request(|name| header_str(&headers, name));
+
+    // Whether `assemble` may gzip the reply. See `compression`.
+    let accepts_gzip = method != "HEAD"
+        && super::compression::settings().is_some()
+        && header_str(&headers, "accept-encoding").is_some_and(super::compression::accepts_gzip);
 
     // Content headers used by the body-reading block below.
     let declared_content_length =
@@ -260,6 +269,7 @@ pub(super) async fn intake(
         multipart_files,
         if_none_match,
         is_prefetch,
+        accepts_gzip,
     })
 }
 
@@ -576,16 +586,19 @@ pub(super) async fn await_worker(
 
 /// Turn the worker's reply into the HTTP response.
 ///
-/// `if_none_match` and `is_prefetch` come from [`Intake`]: the request headers
-/// they were read from are the worker's by now. `live_reload` is whether the
-/// server has a reload channel at all — the dev-only script injection below
-/// is gated on it.
+/// `if_none_match`, `is_prefetch` and `accepts_gzip` come from [`Intake`]: the
+/// request headers they were read from are the worker's by now. `live_reload`
+/// is whether the server has a reload channel at all — the dev-only script
+/// injection below is gated on it. With `SOLI_COMPRESS` on, a compressible
+/// reply is gzipped when `accepts_gzip`, and carries `Vary: Accept-Encoding`
+/// either way (see [`super::compression`]).
 pub(super) fn assemble(
     worker_response: WorkerResponse,
     if_none_match: Option<&str>,
     is_prefetch: bool,
     dev_mode: bool,
     live_reload: bool,
+    accepts_gzip: bool,
 ) -> Response<ResponseBody> {
     // Streaming responses (SSE / chunked) bypass the buffered path
     // entirely: build a chunked body fed by the worker's channel.
@@ -658,6 +671,21 @@ pub(super) fn assemble(
                             b304 = add_header_checked(b304, key.as_str(), value.as_str());
                         }
                     }
+                    // The `Vary` the 200 would have carried (see below).
+                    let compressible = compression::settings().is_some_and(|s| {
+                        compression::compressible(
+                            resp_data.status,
+                            &resp_data.headers,
+                            resp_data.body.len(),
+                            s,
+                        )
+                    });
+                    let varies = resp_data.headers.iter().any(|(k, v)| {
+                        k.eq_ignore_ascii_case("vary") && compression::varies_on_encoding(v)
+                    });
+                    if compressible && !varies {
+                        b304 = b304.header("Vary", "Accept-Encoding");
+                    }
                     return finish_response(b304, Bytes::new());
                 }
             }
@@ -689,18 +717,6 @@ pub(super) fn assemble(
         .headers
         .iter()
         .any(|(k, _)| k.eq_ignore_ascii_case(NO_INJECT_HEADER));
-    for (key, value) in &resp_data.headers {
-        if key.eq_ignore_ascii_case(NO_INJECT_HEADER) {
-            continue;
-        }
-        if let Some(ref cache_control) = prefetch_cache_control {
-            if key.eq_ignore_ascii_case("cache-control") {
-                builder = add_header_checked(builder, key.as_str(), cache_control.as_str());
-                continue;
-            }
-        }
-        builder = add_header_checked(builder, key.as_str(), value.as_str());
-    }
 
     // Inject live reload script for HTML responses (only in dev mode).
     // HTML is UTF-8, so we can safely view the body as &str for injection.
@@ -721,6 +737,61 @@ pub(super) fn assemble(
     } else {
         resp_data.body
     };
+
+    // Compression, last: it encodes the body the client will get. A failure
+    // to compress sends the body as it is.
+    let compression = compression::settings()
+        .filter(|s| compression::compressible(resp_data.status, &resp_data.headers, body.len(), s));
+    let (body, gzipped) = match compression {
+        Some(settings) if accepts_gzip => match compression::gzip(&body, settings) {
+            Ok(gz) => (gz, true),
+            Err(e) => {
+                eprintln!("[soli] gzip failed, sending the body uncompressed: {e}");
+                (body, false)
+            }
+        },
+        _ => (body, false),
+    };
+
+    let mut varies = compression.is_none();
+    for (key, value) in &resp_data.headers {
+        if key.eq_ignore_ascii_case(NO_INJECT_HEADER) {
+            continue;
+        }
+        if let Some(ref cache_control) = prefetch_cache_control {
+            if key.eq_ignore_ascii_case("cache-control") {
+                builder = add_header_checked(builder, key.as_str(), cache_control.as_str());
+                continue;
+            }
+        }
+        if compression.is_some() && !varies && key.eq_ignore_ascii_case("vary") {
+            varies = true;
+            if !compression::varies_on_encoding(value) {
+                let merged = format!("{value}, Accept-Encoding");
+                builder = add_header_checked(builder, key.as_str(), merged.as_str());
+                continue;
+            }
+        }
+        if gzipped {
+            // The length is the compressed body's, which hyper sets.
+            if key.eq_ignore_ascii_case("content-length") {
+                continue;
+            }
+            // Another representation: a strong validator becomes weak.
+            if key.eq_ignore_ascii_case("etag") && !value.starts_with("W/") {
+                let weak = format!("W/{value}");
+                builder = add_header_checked(builder, key.as_str(), weak.as_str());
+                continue;
+            }
+        }
+        builder = add_header_checked(builder, key.as_str(), value.as_str());
+    }
+    if !varies {
+        builder = builder.header("Vary", "Accept-Encoding");
+    }
+    if gzipped {
+        builder = builder.header("Content-Encoding", "gzip");
+    }
 
     finish_response(builder, body)
 }
@@ -952,6 +1023,167 @@ mod tests {
             .map(|v| v.to_str().unwrap().to_string())
     }
 
+    fn compression_on() {
+        compression::set_for_test(Some(compression::Settings {
+            level: 6,
+            min_bytes: 64,
+            cache_bytes: 1 << 20,
+        }));
+    }
+
+    async fn gunzipped(response: Response<ResponseBody>) -> String {
+        use std::io::Read;
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let mut out = String::new();
+        flate2::read::GzDecoder::new(&bytes[..])
+            .read_to_string(&mut out)
+            .unwrap();
+        out
+    }
+
+    /// `SOLI_COMPRESS=gzip`: a page is gzipped for a client that takes it, its
+    /// strong ETag turns weak, and its own Content-Length gives way.
+    #[tokio::test]
+    async fn a_compressible_reply_is_gzipped_when_the_client_accepts_it() {
+        compression_on();
+        let page = "<p>campfire</p>".repeat(40);
+        let response = assemble(
+            buffered(
+                200,
+                &[
+                    ("Content-Type", "text/html; charset=utf-8"),
+                    ("ETag", "\"p1\""),
+                    ("Content-Length", "600"),
+                ],
+                &page,
+            ),
+            None,
+            false,
+            false,
+            false,
+            true,
+        );
+        assert_eq!(
+            header_of(&response, "content-encoding").as_deref(),
+            Some("gzip")
+        );
+        assert_eq!(
+            header_of(&response, "vary").as_deref(),
+            Some("Accept-Encoding")
+        );
+        assert_eq!(header_of(&response, "etag").as_deref(), Some("W/\"p1\""));
+        assert_ne!(
+            header_of(&response, "content-length").as_deref(),
+            Some("600")
+        );
+        assert_eq!(gunzipped(response).await, page);
+    }
+
+    /// A client that does not take gzip gets the body as it is, still marked
+    /// as varying on Accept-Encoding, with an existing Vary extended.
+    #[tokio::test]
+    async fn an_identity_reply_still_varies_on_accept_encoding() {
+        compression_on();
+        let page = "<p>campfire</p>".repeat(40);
+        let response = assemble(
+            buffered(
+                200,
+                &[
+                    ("Content-Type", "text/html"),
+                    ("Vary", "Origin"),
+                    ("ETag", "\"p1\""),
+                ],
+                &page,
+            ),
+            None,
+            false,
+            false,
+            false,
+            false,
+        );
+        assert_eq!(header_of(&response, "content-encoding"), None);
+        assert_eq!(
+            header_of(&response, "vary").as_deref(),
+            Some("Origin, Accept-Encoding")
+        );
+        assert_eq!(header_of(&response, "etag").as_deref(), Some("\"p1\""));
+        assert_eq!(body_of(response).await, page);
+    }
+
+    /// Small bodies, binary types and already-encoded bodies are left alone.
+    #[tokio::test]
+    async fn small_binary_or_encoded_replies_are_not_compressed() {
+        compression_on();
+        let big = "x".repeat(500);
+        for (headers, body) in [
+            (vec![("Content-Type", "text/html")], "tiny"),
+            (vec![("Content-Type", "image/png")], big.as_str()),
+            (
+                vec![("Content-Type", "text/html"), ("Content-Encoding", "br")],
+                big.as_str(),
+            ),
+        ] {
+            let response = assemble(
+                buffered(200, &headers, body),
+                None,
+                false,
+                false,
+                false,
+                true,
+            );
+            assert_eq!(
+                header_of(&response, "content-encoding").as_deref(),
+                headers
+                    .iter()
+                    .find(|(k, _)| *k == "Content-Encoding")
+                    .map(|(_, v)| *v)
+            );
+            assert_eq!(header_of(&response, "vary"), None);
+        }
+    }
+
+    /// The 304 for a compressible page carries the Vary its 200 would have.
+    #[tokio::test]
+    async fn a_304_keeps_the_vary_of_a_compressible_page() {
+        compression_on();
+        let page = "<p>campfire</p>".repeat(40);
+        let response = assemble(
+            buffered(
+                200,
+                &[("Content-Type", "text/html"), ("ETag", "\"p1\"")],
+                &page,
+            ),
+            Some("W/\"p1\""),
+            false,
+            false,
+            false,
+            true,
+        );
+        assert_eq!(response.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(
+            header_of(&response, "vary").as_deref(),
+            Some("Accept-Encoding")
+        );
+    }
+
+    /// Off (the default), nothing changes.
+    #[tokio::test]
+    async fn without_soli_compress_nothing_is_encoded() {
+        compression::set_for_test(None);
+        let page = "<p>campfire</p>".repeat(40);
+        let response = assemble(
+            buffered(200, &[("Content-Type", "text/html")], &page),
+            None,
+            false,
+            false,
+            false,
+            true,
+        );
+        assert_eq!(header_of(&response, "content-encoding"), None);
+        assert_eq!(header_of(&response, "vary"), None);
+        assert_eq!(body_of(response).await, page);
+    }
+
     async fn body_of(response: Response<ResponseBody>) -> String {
         String::from_utf8(
             response
@@ -974,6 +1206,7 @@ mod tests {
                 "made",
             ),
             None,
+            false,
             false,
             false,
             false,
@@ -1000,6 +1233,7 @@ mod tests {
                 "<html><body>big</body></html>",
             ),
             Some("\"v1\""),
+            false,
             false,
             false,
             false,
@@ -1033,6 +1267,7 @@ mod tests {
                 false,
                 false,
                 false,
+                false,
             );
             assert_eq!(
                 response.status(),
@@ -1043,6 +1278,7 @@ mod tests {
         let response = assemble(
             buffered(200, &[("ETag", "\"v2\"")], "body"),
             Some("\"v1\""),
+            false,
             false,
             false,
             false,
@@ -1060,6 +1296,7 @@ mod tests {
             Some("\"v1\""),
             false,
             true,
+            false,
             false,
         );
         assert_eq!(response.status(), StatusCode::OK);
@@ -1081,6 +1318,7 @@ mod tests {
             ),
             None,
             true,
+            false,
             false,
             false,
         );
@@ -1109,6 +1347,7 @@ mod tests {
             true,
             false,
             false,
+            false,
         );
         assert_eq!(
             header_of(&response, "cache-control").as_deref(),
@@ -1130,6 +1369,7 @@ mod tests {
             false,
             true,
             true,
+            false,
         );
         assert!(header_of(&response, NO_INJECT_HEADER).is_none());
         assert_eq!(
@@ -1150,6 +1390,7 @@ mod tests {
             false,
             true,
             true,
+            false,
         );
         let spliced = body_of(html).await;
         assert!(spliced.starts_with("<html><body>x"), "{spliced}");
@@ -1162,6 +1403,7 @@ mod tests {
             false,
             true,
             true,
+            false,
         );
         assert_eq!(body_of(json).await, "{\"a\":1}");
 
@@ -1174,6 +1416,7 @@ mod tests {
             None,
             false,
             true,
+            false,
             false,
         );
         assert_eq!(body_of(off).await, "<html><body>x</body></html>");

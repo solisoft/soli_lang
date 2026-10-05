@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [2.16.0] - 2026-10-05
+
+### Added
+
+* **serve:** **Response compression: `SOLI_COMPRESS=gzip`.** `soli serve` gzips what the application answers when the client's `Accept-Encoding` takes gzip (q-values honoured, `*` included), the way `Rack::Deflater` does in a Rails app's `config.ru`, and keeps what it compressed: a page served again is not deflated again. Off by default. Compressed: a body of at least `SOLI_COMPRESS_MIN_BYTES` (1024) whose type is text-like (`text/*` except `text/event-stream`, JSON, JavaScript, XML, `*+json`, `*+xml`, SVG, wasm, icons, TrueType/OpenType), with no `Content-Encoding` yet and no `Cache-Control: no-transform`; never a `HEAD`, 1xx, 204, 206 or 304, streamed responses or SoliDB blobs. A compressed reply gets `Content-Encoding: gzip` and the compressed length, and a strong `ETag` becomes weak (the 304 check compares either form); every compressible reply carries `Vary: Accept-Encoding`, merged into the app's own `Vary`, identity replies and 304s included. `SOLI_COMPRESS_LEVEL` sets the level (1–9, default 6, zlib's), `SOLI_COMPRESS_CACHE_MB` the cache (default 64, `0` compresses every time). The cache is shared by the workers and bounded in bytes (originals kept alive included), least recently used out; a body over a quarter of it is compressed and not kept. A body is found first by its buffer — a page a worker keeps returns the same string each time, and the cache's reference to that buffer keeps it from being freed or changed — otherwise by a hash of its bytes, and a hash hit is compared byte for byte before it is used, so a collision costs a compression, never another response's body. A compression error sends the body uncompressed. Compression happens on the async side, after the conditional-GET check, so workers are not held. Measured on the Campfire port (rbuild2, 4 cores, 8 workers, gzip-accepting load generator): the 420 KB room page 23,771 → 37,937 req/s (CPU per request 136 → 95 µs: the kernel no longer moves 420 KB, and a cached page costs a lookup), the 390 KB messages page 24,038 → 31,906, a 151 KB search page found by hash 29,762 → 30,751; a reply that never repeats (posting a message) is compressed each time, 6,460 → 5,853. Behind Soli Proxy with its own compression on, the proxy passes an already-encoded response through. New module `src/serve/compression.rs`. [Docs](www/docs/configuration.md#response-compression)
+
 ## [2.15.4] - 2026-10-05
 
 ### Fixed

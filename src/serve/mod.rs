@@ -12,6 +12,7 @@ mod asset_cache;
 pub(crate) mod blob_stream;
 mod builtin_endpoints;
 pub mod camera;
+mod compression;
 pub mod cors;
 mod coverage;
 mod csrf;
@@ -2597,6 +2598,7 @@ async fn handle_hyper_request(
         multipart_files,
         if_none_match,
         is_prefetch,
+        accepts_gzip,
     } = match pipeline::intake(req, method, raw_query.as_deref(), peer_addr.ip()).await {
         Ok(intake) => intake,
         Err(response) => return Ok(*response),
@@ -2649,6 +2651,7 @@ async fn handle_hyper_request(
         is_prefetch,
         dev_mode,
         reload_tx.is_some(),
+        accepts_gzip,
     ))
 }
 

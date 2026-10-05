@@ -20,7 +20,17 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.15.4.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.16.0.</p>
+
+    </section>
+
+    <section id="v2-16-0" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.16.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-05</span></h2>
+
+        <h3 id="v2-16-0-web" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Web</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">SOLI_COMPRESS=gzip</code> compresses responses, and remembers what it compressed.</strong> Like <code class="text-cyan-400">Rack::Deflater</code> in a Rails app, <code class="text-cyan-400">soli serve</code> gzips text responses (HTML, JSON, JavaScript, XML, SVG&hellip;) of 1&nbsp;KB or more for clients that accept gzip, adds <code class="text-cyan-400">Vary: Accept-Encoding</code>, and weakens a strong <code class="text-cyan-400">ETag</code>. Unlike it, a page served again is not compressed again: the compressed bodies are kept in a cache shared by the workers (64&nbsp;MB by default), found by the page&rsquo;s own buffer when a worker returns a page it keeps, otherwise by a hash checked byte for byte. On a 420&nbsp;KB page, compression made the server faster rather than slower &mdash; 23,771 &rarr; 37,937 requests per second on four cores &mdash; since the kernel no longer moves 420&nbsp;KB per request. Off by default; <code class="text-cyan-400">SOLI_COMPRESS_LEVEL</code> (1&ndash;9, default 6), <code class="text-cyan-400">SOLI_COMPRESS_MIN_BYTES</code> and <code class="text-cyan-400">SOLI_COMPRESS_CACHE_MB</code> tune it. Responses that already carry a <code class="text-cyan-400">Content-Encoding</code>, say <code class="text-cyan-400">no-transform</code>, stream, or come from SoliDB blobs are left alone. <a href="/docs/getting-started/configuration" class="text-cyan-400 hover:underline">Response compression</a></li>
+        </ul>
 
     </section>
 

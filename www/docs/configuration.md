@@ -339,6 +339,51 @@ The boot process also builds one extra interpreter to register the shared
 route/model/controller/template registries before workers start; it is now
 reclaimed immediately after boot rather than parked for the process lifetime.
 
+## Response compression
+
+`soli serve` can gzip what the application answers, the way `Rack::Deflater`
+does in a Rails app — and it remembers what it compressed, so a page served
+again is not deflated again. **Off by default.**
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `SOLI_COMPRESS` | `gzip` (or `1`/`true`/`on`/`yes`) turns compression on. | off |
+| `SOLI_COMPRESS_LEVEL` | zlib level, `1`–`9` (out-of-range values are clamped). | `6` |
+| `SOLI_COMPRESS_MIN_BYTES` | Bodies smaller than this are sent as they are. | `1024` |
+| `SOLI_COMPRESS_CACHE_MB` | Size of the cache of compressed bodies, shared by the workers (originals kept alive included), least recently used out. `0` compresses every time. A body over a quarter of it is compressed but not kept. | `64` |
+
+What is compressed: a reply to a client whose `Accept-Encoding` takes gzip
+(q-values honoured, `*` included), with a body of at least
+`SOLI_COMPRESS_MIN_BYTES`, a text-like type (`text/*` except
+`text/event-stream`, JSON, JavaScript, XML, `*+json`, `*+xml`, SVG, wasm, icons,
+TrueType/OpenType), no `Content-Encoding` yet and no `Cache-Control:
+no-transform`. Never a `HEAD`, a 1xx, 204, 206 or 304, a streamed response or a
+SoliDB blob.
+
+A compressed reply carries `Content-Encoding: gzip` and the compressed length,
+and a strong `ETag` becomes weak (`W/"…"`; `If-None-Match` matches either form).
+Every compressible reply — gzipped or not, 304s included — carries `Vary:
+Accept-Encoding`, merged into a `Vary` the app already sets, so a shared cache
+keeps the two representations apart. Compression runs on the async side after
+the conditional-GET check, so it never holds a worker, and a compression error
+sends the body uncompressed.
+
+**When to turn it on.** When nothing in front of the app compresses, or when the
+app's pages repeat: a page a worker keeps is the same buffer from one request to
+the next, and the cache serves it without compressing again — something a front
+server, which sees each response for the first time, cannot do. On a 420 KB page
+this took a Campfire port from about 23,800 to 37,900 req/s; a reply that never
+repeats is compressed each time and costs a little throughput. Behind Soli Proxy
+with its own compression on, the proxy passes an already-encoded response
+through.
+
+**BREACH.** Compressing a page that reflects request input next to a secret
+(a CSRF token, say) lets an attacker who can make the victim send many requests
+guess the secret from the compressed sizes. That is why it is off by default.
+Soli's CSRF token is per session and embedded as is (not masked per request),
+so a page with a form that also echoes request input — a search box showing the
+query — is exposed. Check your pages before enabling it.
+
 ## Hardening
 
 These knobs control how the request edge handles untrusted input. See the
