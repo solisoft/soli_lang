@@ -22,6 +22,16 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.17.0.</p>
 
+        <h3 id="unreleased-database" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Database</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Attachments of a model with a compound class name are served.</strong> <code class="text-cyan-400">upload_url</code> and the <code class="text-cyan-400">&lt;field&gt;_url</code> methods built the URL from the lowercased class name plus &ldquo;s&rdquo; (<code class="text-cyan-400">GiftCardTemplate</code> &rarr; <code class="text-cyan-400">/giftcardtemplates/&hellip;</code>), while <code class="text-cyan-400">AttachmentsController</code> finds the model by collection name (<code class="text-cyan-400">gift_card_templates</code>): every image of such a model answered 404 and looked unsaved. URLs now use the collection name, the one <code class="text-cyan-400">uploads("gift_card_templates", "logo")</code> expects; one-word classes keep their URLs. <a href="/docs/database/models#uploaders" class="text-cyan-400 hover:underline">Uploaders</a></li>
+        </ul>
+
+        <h3 id="unreleased-native" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Native</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">/__soli/mobile</code> shows a QR code per app, not per platform.</strong> A project publishing a customer app and a merchant app, both Android, got one code, for whichever came last, and history rows that did not name their app. Each app (bundle id and platform) now gets its own code, captioned &ldquo;name &middot; platform&rdquo;, the history has an App column, and <code class="text-cyan-400">SOLI_MOBILE_KEEP</code> counts per app, so publishing one app no longer prunes the other. <a href="/docs/native/clients#distribute" class="text-cyan-400 hover:underline">Distribute</a></li>
+        </ul>
+
         <h3 id="unreleased-web" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Web</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">A camera page reached by a link gets its camera.</strong> <code class="text-cyan-400">camera.js</code> (like <code class="text-cyan-400">sensors.js</code> and <code class="text-cyan-400">native.js</code>) is injected only into pages that use the feature, and instant navigation skipped every <code class="text-cyan-400">/__soli/</code> script of the page it swapped in. Reached by a link from a page without a camera, a <code class="text-cyan-400">camera_preview</code> stayed black: no permission prompt, no <code class="text-cyan-400">soli:camera-error</code>, until a reload. Framework scripts now run once per path, so <code class="text-cyan-400">nav.js</code> never starts twice while a feature script new to the tab runs. <a href="/docs/core-concepts/views#instant-navigation" class="text-cyan-400 hover:underline">Instant navigation</a></li>
