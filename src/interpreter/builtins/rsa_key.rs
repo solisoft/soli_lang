@@ -29,9 +29,7 @@ use pkcs8::PrivateKeyInfo;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{hash_from_pairs, Class, NativeFunction, Value};
 
-fn bytes_to_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{:02x}", b)).collect()
-}
+use super::hex::encode as bytes_to_hex;
 
 /// Decode a PEM document into its label and DER bytes.
 fn pem_to_der(pem: &str) -> Result<(String, Vec<u8>), String> {

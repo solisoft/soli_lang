@@ -18,8 +18,45 @@ use std::rc::Rc;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
 
-fn bytes_to_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+/// Lowercase hex of `bytes`. Every hex encoder in the crate goes through here.
+pub(crate) fn encode(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(DIGITS[(b >> 4) as usize] as char);
+        out.push(DIGITS[(b & 0x0f) as usize] as char);
+    }
+    out
+}
+
+/// Why a string is not hex. Callers word the message themselves.
+#[derive(Debug, PartialEq)]
+pub(crate) enum HexError {
+    OddLength,
+    /// The offending pair, lossily decoded.
+    InvalidPair(String),
+}
+
+/// The bytes a hex string spells, either case. It reads the string as bytes,
+/// so a multi-byte character is an invalid pair rather than a slice through
+/// it (which panics), and `+` is not a digit (`u8::from_str_radix` takes it
+/// as a sign, so `"+f+f"` used to decode).
+pub(crate) fn decode(hex: &str) -> Result<Vec<u8>, HexError> {
+    let raw = hex.as_bytes();
+    if !raw.len().is_multiple_of(2) {
+        return Err(HexError::OddLength);
+    }
+    let nibble = |b: u8| (b as char).to_digit(16).map(|d| d as u8);
+    let (pairs, _) = raw.as_chunks::<2>();
+    pairs
+        .iter()
+        .map(|&[a, b]| match (nibble(a), nibble(b)) {
+            (Some(hi), Some(lo)) => Ok(hi << 4 | lo),
+            _ => Err(HexError::InvalidPair(
+                String::from_utf8_lossy(&[a, b]).into_owned(),
+            )),
+        })
+        .collect()
 }
 
 pub fn register_hex_class(env: &mut Environment) {
@@ -52,7 +89,7 @@ pub fn register_hex_class(env: &mut Environment) {
                     ))
                 }
             };
-            Ok(Value::String(bytes_to_hex(&bytes).into()))
+            Ok(Value::String(encode(&bytes).into()))
         })),
     );
 
@@ -73,15 +110,12 @@ pub fn register_hex_class(env: &mut Environment) {
                 .strip_prefix("0x")
                 .or_else(|| s.strip_prefix("0X"))
                 .unwrap_or(&s);
-            if !hex.len().is_multiple_of(2) {
-                return Err("Hex.decode(): odd-length hex string".to_string());
-            }
-            let mut bytes = Vec::with_capacity(hex.len() / 2);
-            for i in (0..hex.len()).step_by(2) {
-                let byte = u8::from_str_radix(&hex[i..i + 2], 16)
-                    .map_err(|_| format!("Hex.decode(): invalid hex byte '{}'", &hex[i..i + 2]))?;
-                bytes.push(byte);
-            }
+            let bytes = decode(hex).map_err(|e| match e {
+                HexError::OddLength => "Hex.decode(): odd-length hex string".to_string(),
+                HexError::InvalidPair(pair) => {
+                    format!("Hex.decode(): invalid hex byte '{}'", pair)
+                }
+            })?;
             let values: Vec<Value> = bytes.into_iter().map(|b| Value::Int(b as i64)).collect();
             Ok(Value::Array(Rc::new(RefCell::new(values))))
         })),
@@ -141,6 +175,26 @@ mod tests {
             }
             _ => panic!("expected array"),
         }
+    }
+
+    #[test]
+    fn decode_rejects_a_multibyte_character_instead_of_panicking() {
+        let mut env = Environment::new();
+        register_hex_class(&mut env);
+        // Four bytes, so the length check passes; `é` straddles the first pair.
+        assert!(call(&env, "decode", Value::String("aé1".into())).is_err());
+    }
+
+    #[test]
+    fn decode_rejects_a_sign() {
+        assert!(matches!(decode("+f+f"), Err(HexError::InvalidPair(_))));
+        assert!(matches!(decode("0A"), Ok(ref b) if b == &[10]));
+    }
+
+    #[test]
+    fn encode_is_lowercase_and_zero_padded() {
+        assert_eq!(encode(&[0x00, 0x0f, 0xab]), "000fab");
+        assert_eq!(encode(&[]), "");
     }
 
     #[test]

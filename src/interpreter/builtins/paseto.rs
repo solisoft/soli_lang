@@ -103,13 +103,10 @@ fn to_paserk<K: FormatAsPaserk>(key: &K) -> Result<String, String> {
 
 /// Decode a hex string into bytes, or `None` when it isn't clean hex.
 fn hex_to_bytes(hex: &str) -> Option<Vec<u8>> {
-    if hex.is_empty() || !hex.len().is_multiple_of(2) {
+    if hex.is_empty() {
         return None;
     }
-    (0..hex.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
-        .collect()
+    super::hex::decode(hex).ok()
 }
 
 /// Read the key argument as a string.

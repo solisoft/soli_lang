@@ -22,6 +22,8 @@ use sha2::{Digest, Sha256, Sha512};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{hash_from_pairs, Class, HashKey, NativeFunction, Value};
 
+use super::hex::{encode as bytes_to_hex, HexError};
+
 const X25519_PRIVATE_KEY_LENGTH: usize = 32;
 const X25519_PUBLIC_KEY_LENGTH: usize = 32;
 
@@ -30,24 +32,12 @@ const X25519_BASEPOINT_BYTES: [u8; 32] = [
     9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
-/// Helper to convert bytes to hex string
-fn bytes_to_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{:02x}", b)).collect()
-}
-
 /// Helper to convert hex string to bytes
 fn hex_to_bytes(hex: &str) -> Result<Vec<u8>, String> {
-    if !hex.len().is_multiple_of(2) {
-        return Err("Invalid hex string: odd length".to_string());
-    }
-    let mut bytes = Vec::with_capacity(hex.len() / 2);
-    for i in (0..hex.len()).step_by(2) {
-        let chunk = &hex[i..i + 2];
-        let byte =
-            u8::from_str_radix(chunk, 16).map_err(|_| format!("Invalid hex byte: {}", chunk))?;
-        bytes.push(byte);
-    }
-    Ok(bytes)
+    super::hex::decode(hex).map_err(|e| match e {
+        HexError::OddLength => "Invalid hex string: odd length".to_string(),
+        HexError::InvalidPair(pair) => format!("Invalid hex byte: {}", pair),
+    })
 }
 
 /// Helper to convert Value to bytes

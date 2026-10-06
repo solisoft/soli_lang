@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use super::{store, JobDoc, WebhookSpec, WEBHOOK_HANDLER};
+use crate::interpreter::builtins::hex::encode as hex_encode;
 
 /// Jobs currently executing on this process, by id. The poller renews their
 /// leases each tick so a long job is not reclaimed mid-flight.
@@ -523,15 +524,6 @@ where
     F: std::future::Future + 'static,
 {
     crate::interpreter::builtins::http_class::block_on_db(future)
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    use std::fmt::Write;
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        let _ = write!(out, "{b:02x}");
-    }
-    out
 }
 
 /// Build the `__WebhookDelivery` job for `Webhook.enqueue*`.

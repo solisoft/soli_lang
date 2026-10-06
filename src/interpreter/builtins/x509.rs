@@ -48,20 +48,13 @@ use rustls::{ClientConfig, ClientConnection, DigitallySignedStruct, SignatureSch
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{hash_from_pairs, Class, NativeFunction, Value};
 
-fn bytes_to_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{:02x}", b)).collect()
-}
+use super::hex::{encode as bytes_to_hex, HexError};
 
 fn hex_to_bytes(hex: &str) -> Result<Vec<u8>, String> {
-    if !hex.len().is_multiple_of(2) {
-        return Err("invalid hex: odd length".to_string());
-    }
-    (0..hex.len())
-        .step_by(2)
-        .map(|i| {
-            u8::from_str_radix(&hex[i..i + 2], 16).map_err(|_| "invalid hex digit".to_string())
-        })
-        .collect()
+    super::hex::decode(hex).map_err(|e| match e {
+        HexError::OddLength => "invalid hex: odd length".to_string(),
+        HexError::InvalidPair(_) => "invalid hex digit".to_string(),
+    })
 }
 
 /// Decode a certificate argument to raw DER bytes. Handles PEM, bare base64
