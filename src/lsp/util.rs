@@ -3,57 +3,105 @@
 use crate::span::Span;
 use tower_lsp::lsp_types::{Position, Range};
 
+/// The identifier around byte `offset` — the unit of `Span::start` and of
+/// `position_to_offset`. It used to index a `Vec<char>` with that byte offset,
+/// which picked the wrong word after any non-ASCII text.
 pub(super) fn extract_word_at_offset(source: &str, offset: usize) -> Option<String> {
-    let mut start = offset;
-    let mut end = offset;
-
-    let chars: Vec<char> = source.chars().collect();
-    if start >= chars.len() {
+    if offset >= source.len() || !source.is_char_boundary(offset) {
         return None;
     }
-
-    while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
-        start -= 1;
-    }
-
-    while end < chars.len() && (chars[end].is_alphanumeric() || chars[end] == '_') {
-        end += 1;
-    }
-
-    if start == end {
-        return None;
-    }
-
-    Some(chars[start..end].iter().collect())
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    let start = source[..offset]
+        .char_indices()
+        .rev()
+        .take_while(|&(_, c)| is_word(c))
+        .last()
+        .map_or(offset, |(i, _)| i);
+    let end = source[offset..]
+        .char_indices()
+        .find(|&(_, c)| !is_word(c))
+        .map_or(source.len(), |(i, _)| offset + i);
+    (start < end).then(|| source[start..end].to_string())
 }
 
+/// The byte offset of an LSP position. `character` counts UTF-16 code units,
+/// as LSP does by default, and a position past the end of its line clamps to
+/// the end of the line, before any `\r\n` (which used to cost one byte per
+/// line: `lines()` drops the `\r` and the offset added back only the `\n`).
 pub(super) fn position_to_offset(source: &str, position: Position) -> Option<usize> {
-    let mut offset = 0;
-
-    for (line, line_str) in source.lines().enumerate() {
+    let mut line_start = 0;
+    for (line, text) in source.split_inclusive('\n').enumerate() {
         if line as u32 == position.line {
-            let col = position.character as usize;
-            for (char_offset, (i, _)) in line_str.char_indices().enumerate() {
-                if char_offset >= col {
-                    return Some(offset + i);
+            let content = text.trim_end_matches('\n').trim_end_matches('\r');
+            let mut units = 0;
+            for (i, c) in content.char_indices() {
+                if units >= position.character as usize {
+                    return Some(line_start + i);
                 }
+                units += c.len_utf16();
             }
-            return Some(offset + line_str.len().min(col));
+            return Some(line_start + content.len());
         }
-        offset += line_str.len() + 1;
+        line_start += text.len();
     }
     None
 }
 
+/// A span as an LSP range on its first line. The end is the start plus the
+/// span's length (it was one past it); both are exact for an ASCII
+/// identifier, since the span's column counts chars and its length bytes.
 pub(super) fn lsp_range_from_span(span: Span) -> Range {
+    let line = span.line.saturating_sub(1);
+    let character = span.column.saturating_sub(1);
     Range {
-        start: Position {
-            line: span.line.saturating_sub(1),
-            character: span.column.saturating_sub(1),
-        },
+        start: Position { line, character },
         end: Position {
-            line: span.line.saturating_sub(1),
-            character: span.column + (span.end - span.start),
+            line,
+            character: character + (span.end - span.start),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(line: u32, character: u32) -> Position {
+        Position { line, character }
+    }
+
+    #[test]
+    fn a_word_after_non_ascii_text_is_found_by_its_byte_offset() {
+        // `x` is byte 7 but char 4: indexing chars by the byte offset landed
+        // on the space after `=` and found no word.
+        let source = "ééé x = yy";
+        assert_eq!(extract_word_at_offset(source, 7).as_deref(), Some("x"));
+        assert_eq!(extract_word_at_offset(source, 12).as_deref(), Some("yy"));
+        assert_eq!(extract_word_at_offset(source, 9), None);
+    }
+
+    #[test]
+    fn character_counts_utf16_units() {
+        // 😀 is 4 bytes, 2 UTF-16 units, 1 char.
+        assert_eq!(position_to_offset("😀x", at(0, 2)), Some(4));
+        assert_eq!(position_to_offset("éx", at(0, 1)), Some(2));
+    }
+
+    #[test]
+    fn crlf_line_starts_do_not_drift() {
+        let source = "a\r\nbb\r\ncc";
+        assert_eq!(position_to_offset(source, at(1, 0)), Some(3));
+        assert_eq!(position_to_offset(source, at(2, 1)), Some(8));
+        // Past the end of a line clamps before its `\r\n`.
+        assert_eq!(position_to_offset(source, at(1, 9)), Some(5));
+        assert_eq!(position_to_offset(source, at(3, 0)), None);
+    }
+
+    #[test]
+    fn a_range_ends_at_the_identifier_not_one_past_it() {
+        // `foo` at column 5 (1-based), bytes 4..7.
+        let range = lsp_range_from_span(Span::new(4, 7, 2, 5));
+        assert_eq!(range.start, at(1, 4));
+        assert_eq!(range.end, at(1, 7));
     }
 }
