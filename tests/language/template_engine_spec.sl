@@ -1,68 +1,53 @@
-# ============================================================================
-# Template Engine Test Suite
-# ============================================================================
-# Note: Template rendering requires the template system to be initialized.
-# These tests verify template-related functionality.
+# Template entry points (render / render_partial / partial) as a spec sees
+# them. A spec runs without a views directory — only `soli serve` and
+# `soli jobs` call init_templates — so no builtin can render an ERB template
+# here: the engine itself (<%= %> escaping, <%- %>, loops, content_for,
+# comments) is covered by the Rust unit tests in src/template/ and by the
+# server end-to-end tests. What a spec can pin is how the entry points
+# validate their arguments and fail without a template system.
 
-describe("Template System", fn() {
-  test("templates can be parsed", fn() {
-    # Template files are loaded by the framework
-    assert(true)
-  })
+describe("render() argument validation") do
+  test("requires a template name") do
+    assert_raises("render() requires at least 1 argument (template name)") do
+      render()
+    end
+  end
 
-  test("template with for loop syntax is valid", fn() {
-    # The for loop syntax <% for item in items %> is tested in control_flow
-    assert(true)
-  })
-})
+  test("refuses a template name that is not a string") do
+    assert_raises("render() template name must be a string, got int") do
+      render(1)
+    end
+  end
 
-describe("Content For / Named Yield", fn() {
-  test("content_for captures a named block for the layout", fn() {
-    # <% content_for "head" do %> ... <% end %> renders its body into the
-    # per-render content store instead of the page output; the layout
-    # reads it back with <%= yield "head" %> (or content_for("head")).
-    # Verified via Rust unit tests in src/template/{parser,renderer,layout,mod}.rs
-    assert(true)
-  })
+  test("refuses data that is not a hash") do
+    assert_raises("render() data must be a hash, got int") do
+      render("posts/index", 5)
+    end
+  end
 
-  test("repeated captures for one name append in document order", fn() {
-    # Two content_for "head" blocks concatenate — Rails semantics
-    assert(true)
-  })
+  test("refuses options that are not a hash") do
+    assert_raises("render() options must be a hash, got int") do
+      render("posts/index", {}, 5)
+    end
+  end
+end
 
-  test("a name nothing captured renders as empty, not an error", fn() {
-    # <%= yield "missing" %> in the layout emits nothing
-    assert(true)
-  })
+describe("rendering without a template system") do
+  test("render raises a clear error instead of returning empty output") do
+    assert_raises("Template system not initialized") do
+      render("hello", {"name": "World"})
+    end
+  end
 
-  test("content_for? predicate gates conditional layout sections", fn() {
-    # <% if content_for?("head") %> ... <% end %> — true only when a
-    # non-empty capture exists for that name
-    assert(true)
-  })
+  test("render_partial raises the same error") do
+    assert_raises("Template system not initialized") do
+      render_partial("hello", {"name": "World"})
+    end
+  end
 
-  test("captures inside partials reach the layout too", fn() {
-    # A partial rendered by the view joins the same content store
-    assert(true)
-  })
-})
-
-describe("Template Comment Syntax", fn() {
-  test("<%# single-line comment %> renders as empty string", fn() {
-    # Verified via Rust unit tests in src/template/parser.rs
-    # <%# comment %> is dropped at tokenize time; no node is emitted
-    assert(true)
-  })
-
-  test("multi-line <%# ... %> renders as empty string", fn() {
-    # <%# do
-    #     nothing
-    #     here %> must also produce no output
-    assert(true)
-  })
-
-  test("comment content is never executed as Soli code", fn() {
-    # <%# raise("boom") %> must not raise — content is discarded before parsing
-    assert(true)
-  })
-})
+  test("partial raises the same error") do
+    assert_raises("Template system not initialized") do
+      partial("hello", {"name": "World"})
+    end
+  end
+end

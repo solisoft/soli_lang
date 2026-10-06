@@ -1,128 +1,135 @@
-# ============================================================================
-# Method-call receiver is evaluated exactly once
+# Method-call receiver is evaluated exactly once.
 #
 # Regression for the old fast-path design where the hash/string/model call
 # interceptors each evaluated the receiver expression and returned "not
 # mine" on a type mismatch — so a side-effectful receiver like
 # `make().map(f)` ran `make()` twice. The unified dispatcher evaluates the
 # receiver once and dispatches on the value.
-# ============================================================================
 
-let eval_count = 0
+eval_count = 0
 
 def make_array
   eval_count = eval_count + 1
-  return [1, 2, 3]
+  [1, 2, 3]
 end
 
 def make_hash
   eval_count = eval_count + 1
-  return {"a": 1, "b": 2}
+  {"a": 1, "b": 2}
 end
 
 def make_string
   eval_count = eval_count + 1
-  return "hello"
+  "hello"
 end
 
 class Greeter
   def greet(name)
-    return "hi " + name
+    "hi " + name
   end
 end
 
 def make_instance
   eval_count = eval_count + 1
-  return new Greeter()
+  new Greeter()
 end
 
-describe("Method receiver single evaluation", fn() {
-  before_each(fn() { eval_count = 0 })
+# A plain class whose method is named like a model persist interceptor.
+class Doc
+  new()
+    @saved = false
+  end
 
-  test("array closure method evaluates receiver once", fn() {
-    let r = make_array().map(fn(x) { x * 2 })
+  def save
+    @saved = true
+    "saved"
+  end
+end
+
+def make_doc
+  eval_count = eval_count + 1
+  new Doc()
+end
+
+describe("Method receiver single evaluation") do
+  before_each() do
+    eval_count = 0
+  end
+
+  context("arrays") do
+    test("a block method evaluates the receiver once") do
+      doubled = make_array().map { |x| x * 2 }
+      assert_eq(doubled, [2, 4, 6])
+      assert_eq(eval_count, 1)
+    end
+
+    test("a pure method evaluates the receiver once") do
+      assert_eq(make_array().sum, 6)
+      assert_eq(eval_count, 1)
+    end
+
+    test("a mutating method evaluates the receiver once") do
+      assert_eq(make_array().push(4), [1, 2, 3, 4])
+      assert_eq(eval_count, 1)
+    end
+  end
+
+  context("hashes") do
+    test("a method evaluates the receiver once") do
+      assert_eq(make_hash().keys, ["a", "b"])
+      assert_eq(eval_count, 1)
+    end
+
+    test("get with a literal key evaluates the receiver once") do
+      assert_eq(make_hash().get("a"), 1)
+      assert_eq(eval_count, 1)
+    end
+
+    test("delete evaluates the receiver once") do
+      # "delete" is also a model-interceptor name; the interceptor must
+      # not re-evaluate non-model receivers.
+      assert_eq(make_hash().delete("a"), 1)
+      assert_eq(eval_count, 1)
+    end
+  end
+
+  test("a string method evaluates the receiver once") do
+    assert_eq(make_string().upcase, "HELLO")
     assert_eq(eval_count, 1)
-    assert_eq(r, [2, 4, 6])
-  })
+  end
 
-  test("array pure method evaluates receiver once", fn() {
-    let r = make_array().sum()
-    assert_eq(eval_count, 1)
-    assert_eq(r, 6)
-  })
+  context("instances") do
+    test("a method evaluates the receiver once") do
+      assert_eq(make_instance().greet("bob"), "hi bob")
+      assert_eq(eval_count, 1)
+    end
 
-  test("array mutating method evaluates receiver once", fn() {
-    make_array().push(4)
-    assert_eq(eval_count, 1)
-  })
+    test("a save-named method evaluates the receiver once") do
+      # "save" is a model persist-interceptor name; a plain class with a
+      # user-defined save must not be evaluated twice (or intercepted).
+      assert_eq(make_doc().save, "saved")
+      assert_eq(eval_count, 1)
+    end
+  end
 
-  test("hash method evaluates receiver once", fn() {
-    let keys = make_hash().keys()
-    assert_eq(eval_count, 1)
-    assert_eq(len(keys), 2)
-  })
+  test("each test starts from a reset counter") do
+    assert_eq(eval_count, 0)
+  end
+end
 
-  test("hash get with literal key evaluates receiver once", fn() {
-    let v = make_hash().get("a")
-    assert_eq(eval_count, 1)
-    assert_eq(v, 1)
-  })
-
-  test("hash delete evaluates receiver once", fn() {
-    # "delete" is also a model-interceptor name; the interceptor must
-    # not re-evaluate non-model receivers.
-    make_hash().delete("a")
-    assert_eq(eval_count, 1)
-  })
-
-  test("string method evaluates receiver once", fn() {
-    let r = make_string().upcase()
-    assert_eq(eval_count, 1)
-    assert_eq(r, "HELLO")
-  })
-
-  test("instance method evaluates receiver once", fn() {
-    let r = make_instance().greet("bob")
-    assert_eq(eval_count, 1)
-    assert_eq(r, "hi bob")
-  })
-
-  test("sort comparator may mutate the receiver without panicking", fn() {
+describe("Comparator side effects") do
+  test("a sort comparator may mutate the receiver without panicking") do
     # `sort` runs a user comparator, so it must iterate over a snapshot:
     # a comparator that mutates the receiver used to panic with a
     # RefCell double-borrow because `sort` was missing from the
     # closure-takes-user-code list and ran on a live borrow.
-    let a = [3, 1, 2]
-    let sorted = a.sort(fn(x, y) {
-      a.push(99)
-      return x - y
-    })
-    assert_eq(sorted, [
-      1,
-      2,
-      3
-    ])
-  })
-
-  test("instance save-named method evaluates receiver once", fn() {
-    # "save" is a model persist-interceptor name; a plain class with a
-    # user-defined save must not be evaluated twice (or intercepted).
-    class Doc
-      new()
-        this.saved = false
-      end
-
-      def save
-        this.saved = true
-        return "saved"
-      end
-    end
-    def make_doc
-      eval_count = eval_count + 1
-      return new Doc()
-    end
-    let r = make_doc().save()
-    assert_eq(eval_count, 1)
-    assert_eq(r, "saved")
-  })
-})
+    numbers = [3, 1, 2]
+    sorted = numbers.sort { |x, y|
+      numbers.push(99)
+      x - y
+    }
+    assert_eq(sorted, [1, 2, 3])
+    assert_eq(numbers.take(3), [3, 1, 2])
+    assert_gt(numbers.length, 3)
+  end
+end

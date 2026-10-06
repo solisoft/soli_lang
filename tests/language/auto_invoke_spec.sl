@@ -1,340 +1,269 @@
-# ============================================================================
-# Auto-Invoke (Ruby-style no-parentheses method calls) Test Suite
-# ============================================================================
+# Auto-invoke: a zero-argument method is called by naming it, Ruby-style —
+# `arr.length`, `str.upcase`, `dog.bark` — while fields and lambda-valued
+# fields are read, not called. The parenthesized form keeps working.
 
-describe("Auto-invoke built-in Array methods", fn() {
-  test("arr.length auto-invokes", fn() {
-    let arr = [1, 2, 3]
-    assert_eq(arr.length, 3)
-  })
+class AutoDog
+  name: String
 
-  test("arr.length() still works", fn() {
-    let arr = [1, 2, 3]
-    assert_eq(arr.length(), 3)
-  })
+  new(name: String)
+    @name = name
+  end
 
-  test("arr.first auto-invokes", fn() {
-    let arr = [10, 20, 30]
-    assert_eq(arr.first, 10)
-  })
+  def bark
+    "Woof!"
+  end
 
-  test("arr.last auto-invokes", fn() {
-    let arr = [10, 20, 30]
-    assert_eq(arr.last, 30)
-  })
+  def greet(person)
+    "Hello #{person}, I'm #{@name}"
+  end
+end
 
-  test("arr.empty? auto-invokes", fn() {
+class AutoBox
+  value: Int
+
+  new(value: Int)
+    @value = value
+  end
+end
+
+class ActionBox
+  action: Function
+
+  new(action: Function)
+    @action = action
+  end
+end
+
+class AutoGreeter
+  def hello(name = "World")
+    "Hello #{name}!"
+  end
+end
+
+describe("Auto-invoke on Array methods") do
+  test("length, with or without parentheses") do
+    numbers = [1, 2, 3]
+    assert_eq(numbers.length, 3)
+    assert_eq(numbers.length(), 3)
+  end
+
+  test("first and last") do
+    numbers = [10, 20, 30]
+    assert_eq(numbers.first, 10)
+    assert_eq(numbers.last, 30)
+  end
+
+  test("first and last of an empty array are nil") do
+    assert_null([].first)
+    assert_null([].last)
+  end
+
+  test("empty?") do
     assert_eq([].empty?, true)
     assert_eq([1].empty?, false)
-  })
+  end
 
-  test("arr.reverse auto-invokes", fn() { assert_eq([
-    1,
-    2,
-    3
-  ].reverse, [3, 2, 1]) })
+  test("reverse, sort and uniq") do
+    assert_eq([1, 2, 3].reverse, [3, 2, 1])
+    assert_eq([3, 1, 2].sort, [1, 2, 3])
+    assert_eq([1, 2, 2, 3, 3].uniq, [1, 2, 3])
+  end
 
-  test("arr.sort auto-invokes", fn() { assert_eq([
-    3,
-    1,
-    2
-  ].sort, [1, 2, 3]) })
+  test("compact drops nils") do
+    assert_eq([1, nil, 2, nil, 3].compact, [1, 2, 3])
+  end
 
-  test("arr.uniq auto-invokes", fn() { assert_eq([
-    1,
-    2,
-    2,
-    3,
-    3
-  ].uniq, [1, 2, 3]) })
+  test("flatten flattens every level") do
+    assert_eq([[1, 2], [3, 4]].flatten, [1, 2, 3, 4])
+    assert_eq([1, [2, [3]]].flatten, [1, 2, 3])
+  end
 
-  test("arr.compact auto-invokes", fn() { assert_eq([
-    1,
-    null,
-    2,
-    null,
-    3
-  ].compact, [1, 2, 3]) })
+  test("sum, min and max") do
+    assert_eq([1, 2, 3, 4].sum, 10)
+    assert_eq([3, 1, 2].min, 1)
+    assert_eq([3, 1, 2].max, 3)
+  end
 
-  test("arr.flatten auto-invokes", fn() { assert_eq([[1, 2], [3, 4]].flatten, [
-    1,
-    2,
-    3,
-    4
-  ]) })
+  test("to_string") do
+    assert_eq([1, 2, 3].to_string, "[1, 2, 3]")
+  end
 
-  test("arr.sum auto-invokes", fn() { assert_eq([
-    1,
-    2,
-    3,
-    4
-  ].sum, 10) })
+  test("join with its separator omitted") do
+    pending("bug: arr.join without parens returns a bound Method instead of calling join()")
+    assert_eq(["a", "b"].join, "ab")
+  end
 
-  test("arr.min auto-invokes", fn() { assert_eq([
-    3,
-    1,
-    2
-  ].min, 1) })
+  test("a method with arguments takes them in parentheses") do
+    numbers = [1, 2, 3]
+    assert_eq(numbers.map { |x| x * 2 }, [2, 4, 6])
+    assert_eq(numbers.includes?(2), true)
+    assert_eq(numbers.includes?(4), false)
+  end
+end
 
-  test("arr.max auto-invokes", fn() { assert_eq([
-    3,
-    1,
-    2
-  ].max, 3) })
+describe("Auto-invoke on String methods") do
+  test("length") do
+    assert_eq("hello".length, 5)
+    assert_eq("".length, 0)
+  end
 
-  test("arr.to_string auto-invokes", fn() { assert_eq([
-    1,
-    2,
-    3
-  ].to_string, "[1, 2, 3]") })
+  test("upcase, downcase and capitalize") do
+    assert_eq("hello".upcase, "HELLO")
+    assert_eq("hello".upcase(), "HELLO")
+    assert_eq("HELLO".downcase, "hello")
+    assert_eq("hello".capitalize, "Hello")
+  end
 
-  test("methods with args still need parens", fn() {
-    let arr = [1, 2, 3]
-    let doubled = arr.map(fn(x) { x * 2 })
-    assert_eq(doubled, [
-      2,
-      4,
-      6
-    ])
-  })
+  test("trim and reverse") do
+    assert_eq("  hello  ".trim, "hello")
+    assert_eq("hello".reverse, "olleh")
+  end
 
-  test("includes? with args still works", fn() {
-    let arr = [1, 2, 3]
-    assert_eq(arr.includes?(2), true)
-    assert_eq(arr.includes?(4), false)
-  })
-})
-
-describe("Auto-invoke built-in String methods", fn() {
-  test("str.length auto-invokes", fn() { assert_eq("hello".length, 5) })
-
-  test("str.upcase auto-invokes", fn() { assert_eq("hello".upcase, "HELLO") })
-
-  test("str.downcase auto-invokes", fn() { assert_eq("HELLO".downcase, "hello") })
-
-  test("str.trim auto-invokes", fn() { assert_eq("  hello  ".trim, "hello") })
-
-  test("str.reverse auto-invokes", fn() { assert_eq("hello".reverse, "olleh") })
-
-  test("str.capitalize auto-invokes", fn() { assert_eq("hello".capitalize, "Hello") })
-
-  test("str.empty? auto-invokes", fn() {
+  test("empty?") do
     assert_eq("".empty?, true)
     assert_eq("hello".empty?, false)
-  })
+  end
 
-  test("str.chars auto-invokes", fn() { assert_eq("abc".chars, [
-    "a",
-    "b",
-    "c"
-  ]) })
+  test("chars and bytes") do
+    assert_eq("abc".chars, ["a", "b", "c"])
+    assert_eq("abc".bytes, [97, 98, 99])
+  end
 
-  test("str.bytes auto-invokes", fn() { assert_eq("abc".bytes, [
-    97,
-    98,
-    99
-  ]) })
+  test("split with its separator omitted splits on whitespace") do
+    assert_eq("hello world".split, ["hello", "world"])
+  end
 
-  test("str.upcase() with parens still works", fn() { assert_eq("hello".upcase(), "HELLO") })
+  test("a method with arguments takes them in parentheses") do
+    assert_eq("hello world".split(" "), ["hello", "world"])
+  end
+end
 
-  test("methods with args still need parens", fn() { assert_eq("hello world".split(" "), ["hello", "world"]) })
-})
+describe("Auto-invoke on number methods") do
+  test("round with its precision omitted") do
+    assert_eq(3.7.round, 4)
+    assert_eq(3.14159.round(2), 3.14)
+  end
 
-describe("Auto-invoke built-in Hash methods", fn() {
-  test("hash.length auto-invokes", fn() { assert_eq({
-    "a": 1,
-    "b": 2,
-    "c": 3
-  }.length, 3) })
+  test("to_s") do
+    assert_eq(5.to_s, "5")
+    assert_eq(1.5.to_s, "1.5")
+  end
+end
 
-  test("hash.keys auto-invokes", fn() { assert_eq({
-    "a": 1,
-    "b": 2
-  }.keys, ["a", "b"]) })
+describe("Auto-invoke on Hash methods") do
+  test("length") do
+    assert_eq({"a": 1, "b": 2, "c": 3}.length, 3)
+  end
 
-  test("hash.values auto-invokes", fn() { assert_eq({
-    "a": 1,
-    "b": 2
-  }.values, [1, 2]) })
+  test("keys and values") do
+    assert_eq({"a": 1, "b": 2}.keys, ["a", "b"])
+    assert_eq({"a": 1, "b": 2}.values, [1, 2])
+  end
 
-  test("hash.empty? auto-invokes", fn() {
+  test("empty?") do
     assert_eq({}.empty?, true)
     assert_eq({"a": 1}.empty?, false)
-  })
+  end
 
-  test("hash.to_string auto-invokes", fn() {
-    let h = {"a": 1}
-    let s = h.to_string
-    assert_eq(type(s), "string")
-  })
+  test("to_string") do
+    assert_eq({"a": 1}.to_string, "{a => 1}")
+  end
 
-  test("hash.compact auto-invokes", fn() {
-    let h = {
-      "a": 1,
-      "b": null,
-      "c": 3
-    }
-    assert_eq(
-      h.compact,
-      {"a": 1, "c": 3}
-    )
-  })
+  test("compact drops nil values") do
+    assert_eq({"a": 1, "b": nil, "c": 3}.compact, {"a": 1, "c": 3})
+  end
 
-  test("hash field access still works", fn() {
-    let h = {"name": "Soli", "version": 1}
-    assert_eq(h.name, "Soli")
-    assert_eq(h.version, 1)
-  })
-})
+  test("a dot name that is a key reads the key") do
+    config = {"name": "Soli", "version": 1}
+    assert_eq(config.name, "Soli")
+    assert_eq(config.version, 1)
+  end
+end
 
-describe("Auto-invoke user-defined methods", fn() {
-  test("zero-arg instance method auto-invokes", fn() {
-    class Dog
-      name: String
+describe("Auto-invoke on user-defined methods") do
+  test("a zero-argument method is called by naming it") do
+    dog = new AutoDog("Rex")
+    assert_eq(dog.bark, "Woof!")
+  end
 
-      new(name: String)
-        this.name = name
-      end
+  test("a zero-argument method still accepts parentheses") do
+    dog = new AutoDog("Rex")
+    assert_eq(dog.bark(), "Woof!")
+  end
 
-      def bark
-        "Woof!"
-      end
-    end
-    let d = new Dog("Rex")
-    assert_eq(d.bark, "Woof!")
-  })
+  test("a method whose parameters all have defaults is called by naming it") do
+    greeter = new AutoGreeter()
+    assert_eq(greeter.hello, "Hello World!")
+    assert_eq(greeter.hello("Ann"), "Hello Ann!")
+  end
 
-  test("zero-arg method with parens still works", fn() {
-    class Dog
-      name: String
+  test("a method with required arguments takes them in parentheses") do
+    dog = new AutoDog("Rex")
+    assert_eq(dog.greet("Alice"), "Hello Alice, I'm Rex")
+  end
 
-      new(name: String)
-        this.name = name
-      end
+  test("a field is read, not invoked") do
+    box = new AutoBox(42)
+    assert_eq(box.value, 42)
+  end
 
-      def bark
-        "Woof!"
-      end
-    end
-    let d = new Dog("Rex")
-    assert_eq(d.bark(), "Woof!")
-  })
+  test("a lambda-valued field with parameters is read, not invoked") do
+    box = new ActionBox(fn(x) { x * 2 })
+    action = box.action
+    assert_eq(type(action), "Function")
+    assert_eq(action(4), 8)
+  end
 
-  test("field access is NOT auto-invoked", fn() {
-    class Box
-      value: Int
+  test("a zero-parameter lambda field is read, not invoked") do
+    pending("bug: `action = box.action` calls a zero-parameter lambda field; only type(box.action) sees the Function")
+    box = new ActionBox(fn() { "called" })
+    assert_eq(type(box.action), "Function")
+    action = box.action
+    assert_eq(type(action), "Function")
+  end
+end
 
-      new(v: Int)
-        this.value = v
-      end
-    end
-    let b = new Box(42)
-    assert_eq(b.value, 42)
-  })
+describe("Method chaining with auto-invoke") do
+  test("on arrays") do
+    assert_eq([3, 1, 2].sort.first, 1)
+    assert_eq([3, 1, 2].sort.last, 3)
+    assert_eq([3, 1, 2].sort.reverse, [3, 2, 1])
+    assert_eq([1, 2, 3].reverse.first, 3)
+  end
 
-  test("lambda field is NOT auto-invoked", fn() {
-    class Box
-      action: Function
+  test("on strings") do
+    assert_eq("hello".upcase.reverse, "OLLEH")
+    assert_eq("  hello  ".trim.upcase, "HELLO")
+  end
 
-      new()
-        this.action = fn() { "called" }
-      end
-    end
-    let b = new Box()
-    assert_eq(type(b.action), "Function")
-  })
+  test("on hashes") do
+    assert_eq({"a": 1, "b": 2, "c": 3}.keys.length, 3)
+    assert_eq({"a": 3, "b": 1, "c": 2}.values.sort, [1, 2, 3])
+  end
 
-  test("methods with args still need parens", fn() {
-    class Dog
-      name: String
+  test("an auto-invoked call followed by a call with a block") do
+    assert_eq([3, 1, 2].sort.map { |x| x * 10 }, [10, 20, 30])
+  end
+end
 
-      new(name: String)
-        this.name = name
-      end
+describe("Safe navigation with auto-invoke") do
+  test("nil&.method returns nil") do
+    missing = nil
+    assert_null(missing&.length)
+  end
 
-      def greet(person)
-        "Hello #{person}, I'm #{this.name}"
-      end
-    end
-    let d = new Dog("Rex")
-    assert_eq(d.greet("Alice"), "Hello Alice, I'm Rex")
-  })
+  test("a nil in the middle of a chain short-circuits the rest") do
+    missing = nil
+    assert_null(missing&.upcase&.length)
+  end
 
-  test("method with default params auto-invokes when all params have defaults", fn() {
-    class Greeter
-      def hello(name = "World")
-        "Hello #{name}!"
-      end
-    end
-    let g = new Greeter()
-    assert_eq(g.hello, "Hello World!")
-  })
-})
+  test("a non-nil receiver auto-invokes") do
+    numbers = [1, 2, 3]
+    assert_eq(numbers&.length, 3)
+  end
 
-describe("Method chaining with auto-invoke", fn() {
-  test("arr.sort.first chains correctly", fn() { assert_eq([
-    3,
-    1,
-    2
-  ].sort.first, 1) })
-
-  test("arr.sort.last chains correctly", fn() { assert_eq([
-    3,
-    1,
-    2
-  ].sort.last, 3) })
-
-  test("arr.sort.reverse chains correctly", fn() { assert_eq([
-    3,
-    1,
-    2
-  ].sort.reverse, [3, 2, 1]) })
-
-  test("arr.reverse.first chains correctly", fn() { assert_eq([
-    1,
-    2,
-    3
-  ].reverse.first, 3) })
-
-  test("str.upcase.reverse chains correctly", fn() { assert_eq("hello".upcase.reverse, "OLLEH") })
-
-  test("str.trim.upcase chains correctly", fn() { assert_eq("  hello  ".trim.upcase, "HELLO") })
-
-  test("hash.keys.length chains correctly", fn() { assert_eq({
-    "a": 1,
-    "b": 2,
-    "c": 3
-  }.keys.length, 3) })
-
-  test("hash.values.sort chains correctly", fn() { assert_eq({
-    "a": 3,
-    "b": 1,
-    "c": 2
-  }.values.sort, [1, 2, 3]) })
-
-  test("chain auto-invoke with explicit call", fn() {
-    let result = [3, 1, 2].sort.map(fn(x) { x * 10 })
-    assert_eq(result, [
-      10,
-      20,
-      30
-    ])
-  })
-})
-
-describe("Safe navigation with auto-invoke", fn() {
-  test("null&.method returns null", fn() {
-    let x = null
-    assert_null(x&.length)
-  })
-
-  test("non-null&.method auto-invokes", fn() {
-    let arr = [1, 2, 3]
-    assert_eq(arr&.length, 3)
-  })
-
-  test("safe nav with chaining", fn() {
-    let arr = [3, 1, 2]
-    assert_eq(arr&.sort&.first, 1)
-  })
-})
+  test("a chain of safe calls") do
+    numbers = [3, 1, 2]
+    assert_eq(numbers&.sort&.first, 1)
+  end
+end

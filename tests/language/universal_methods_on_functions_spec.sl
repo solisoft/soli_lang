@@ -5,27 +5,59 @@
 # a name accidentally resolves to a function.
 #
 # Note: functions with zero parameters auto-invoke on bare access, so these
-# tests use multi-arg functions where the function value survives to member
-# access without being called.
+# tests use functions with parameters, whose value survives to member access.
 
-describe("universal methods on functions", fn() {
-  test("user function responds to .nil? (false)", fn() {
-    let f = fn(x) { x + 1 }
-    assert_eq(f.nil?, false)
-  })
+def sum_of(a, b)
+  a + b
+end
 
-  test("user function responds to .blank? (false)", fn() {
-    let f = fn(x) { x }
-    assert_eq(f.blank?, false)
-  })
+describe("universal methods on functions") do
+  context("a lambda") do
+    test("responds to .nil? with false") do
+      increment = fn(x) { x + 1 }
+      assert_eq(increment.nil?, false)
+    end
 
-  test("user function responds to .present? (true)", fn() {
-    let f = fn(x) { x }
-    assert_eq(f.present?, true)
-  })
+    test("responds to .blank? with false and .present? with true") do
+      identity = fn(x) { x }
+      assert_eq(identity.blank?, false)
+      assert_eq(identity.present?, true)
+    end
 
-  test("user function responds to .class (returns \"Function\")", fn() {
-    let f = fn(x) { x }
-    assert_eq(f.class, "Function")
-  })
-})
+    test("responds to .class with \"Function\"") do
+      identity = fn(x) { x }
+      assert_eq(identity.class, "Function")
+    end
+
+    test("responds to .inspect with \"<function>\"") do
+      identity = |x| { x }
+      assert_eq(identity.inspect, "<function>")
+    end
+
+    test("is still callable after the universal methods ran") do
+      increment = fn(x) { x + 1 }
+      assert_eq(increment.nil?, false)
+      assert_eq(increment(2), 3)
+    end
+  end
+
+  context("a named function") do
+    test("answers the same universal methods") do
+      named = sum_of
+      assert_eq(named.nil?, false)
+      assert_eq(named.blank?, false)
+      assert_eq(named.present?, true)
+      assert_eq(named.class, "Function")
+      assert_eq(named.inspect, "<function>")
+    end
+  end
+
+  context("a builtin function") do
+    test("answers the same universal methods") do
+      builtin = len
+      assert_eq(builtin.nil?, false)
+      assert_eq(builtin.class, "Function")
+      assert_eq(builtin.inspect, "<function>")
+    end
+  end
+end

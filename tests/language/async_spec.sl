@@ -1,41 +1,67 @@
-# ============================================================================
-# Async/Await Test Suite
-# ============================================================================
+# Futures and await: System.run / System.shell return a Future that await()
+# resolves to {stdout, stderr, exit_code}; property access auto-resolves it.
 
-describe("Async/Await", fn() {
-  test("await function resolves future", fn() {
-    let future = System.run("echo hello")
-    let result = await(future)
-    assert(!result.nil?)
-    assert_eq(result["exit_code"], 0)
-  })
+describe("System.run futures") do
+  test("System.run returns a Future") do
+    assert_eq(type(System.run("echo test")), "Future")
+  end
 
-  test("await resolves multiple futures sequentially", fn() {
-    let f1 = System.run("echo first")
-    let f2 = System.run("echo second")
-    let r1 = await(f1)
-    let r2 = await(f2)
-    assert(r1["exit_code"] == 0)
-    assert(r2["exit_code"] == 0)
-  })
+  test("await resolves the future to the command's result hash") do
+    result = await(System.run("echo hello"))
+    assert_eq(type(result), "hash")
+    assert_eq(result, {"stdout": "hello\n", "stderr": "", "exit_code": 0})
+  end
 
-  test("System.run returns a future", fn() {
-    let future = System.run("echo test")
-    assert(!future.nil?)
-  })
+  test("property access auto-resolves a future without await") do
+    future = System.run("echo hello")
+    assert_eq(future.stdout, "hello\n")
+    assert_eq(future.exit_code, 0)
+  end
 
-  test("await with pipe syntax", fn() {
-    let result = await(System.run("echo pipe_test"))
-    assert(!result.nil?)
-  })
-})
+  test("futures resolve independently, in any await order") do
+    first = System.run("echo first")
+    second = System.run("echo second")
+    assert_eq(await(second).stdout, "second\n")
+    assert_eq(await(first).stdout, "first\n")
+  end
 
-describe("Await Expression", fn() {
-  test("await expression syntax", fn() {
-    # await is parsed as a variable by the current implementation
-    # The await() function is the primary way to await
-    let future = System.run("echo test")
-    let result = await(future)
-    assert(!result.nil?)
-  })
-})
+  test("a failing command resolves with its stderr and exit code") do
+    result = await(System.run(["sh", "-c", "echo err >&2; exit 3"]))
+    assert_eq(result, {"stdout": "", "stderr": "err\n", "exit_code": 3})
+  end
+
+  test("the argv form passes an argument with spaces verbatim") do
+    assert_eq(await(System.run(["echo", "x y"])).stdout, "x y\n")
+  end
+
+  test("a string command with shell metacharacters is refused") do
+    assert_raises("refuses to auto-shell") do
+      System.run("echo a | wc")
+    end
+  end
+
+  test("awaiting a missing program raises") do
+    future = System.run(["nonexistent_command_sweep3"])
+    assert_raises("Failed to execute") do
+      await(future)
+    end
+  end
+end
+
+describe("System.shell futures") do
+  test("await resolves a shell pipeline") do
+    assert_eq(await(System.shell("echo a && echo b")).stdout, "a\nb\n")
+  end
+end
+
+describe("await on non-futures") do
+  test("returns a plain value unchanged") do
+    assert_eq(await(42), 42)
+    assert_null(await(nil))
+  end
+
+  test("returns an already-resolved hash unchanged") do
+    resolved = await(System.run("echo x"))
+    assert_eq(await(resolved), resolved)
+  end
+end

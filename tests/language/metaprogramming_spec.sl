@@ -1,257 +1,295 @@
-# ============================================================================
-# Metaprogramming Features Test Suite
-# ============================================================================
+# Metaprogramming: respond_to?, send, method_missing, instance variable
+# introspection, instance_eval / class_eval, define_method, alias_method and
+# the inherited hook.
 
-class Foo
+class MetaFoo
   def greet(name)
-    return "Hello, " + name + "!"
+    "Hello, " + name + "!"
   end
 
   def method_missing(name)
-    return "Method '" + name + "' was called"
+    "Method '" + name + "' was called"
   end
 end
 
-describe("respond_to?", fn() {
-  test("responds to defined method", fn() {
-    let foo = Foo.new()
-    assert(foo.respond_to?("greet"))
-  })
+class MetaRecorder
+  def method_missing(name, args)
+    "#{name} called with #{args.length} argument(s)"
+  end
+end
 
-  test("does not respond to undefined method", fn() {
-    let foo = Foo.new()
-    assert_not(foo.respond_to?("nonexistent"))
-  })
+class MetaNamed
+  name: String
+  value: Int = 10
+end
 
-  test("responds to built-in methods", fn() {
-    let foo = Foo.new()
-    assert(foo.respond_to?("inspect"))
-    assert(foo.respond_to?("class"))
-  })
-})
+class MetaCounter
+  count: Int = 0
 
-describe("send", fn() {
-  test("calls method by name", fn() {
-    let foo = Foo.new()
-    let result = foo.send("greet", "World")
-    assert_eq(result, "Hello, World!")
-  })
+  def total
+    1
+  end
+end
 
-  test("calls method_missing via send", fn() {
-    let foo = Foo.new()
-    let result = foo.send("foobar")
-    assert_eq(result, "Method 'foobar' was called")
-  })
-})
+class MetaStatic
+  static label: String = "FooClass"
+  static value: Int = 42
+end
 
-describe("instance_variables", fn() {
-  test("lists instance variables", fn() {
-    let foo = Foo.new()
+class MetaCalculator
+end
+
+class MetaBar
+end
+
+class MetaGreeter
+  def say
+    "hello"
+  end
+end
+
+class MetaAliasFresh
+  def say
+    "hello"
+  end
+end
+
+class MetaAliasDefined
+end
+
+class MetaAliasAfterUse
+  def say
+    "hello"
+  end
+end
+
+inherited_log = []
+
+class MetaParent
+  static def inherited(child)
+    inherited_log.push(child)
+  end
+end
+
+class MetaChild < MetaParent
+end
+
+describe("respond_to?") do
+  test("is true for a defined method") do
+    assert_eq(MetaFoo.new().respond_to?("greet"), true)
+  end
+
+  test("is false for an undefined method, even with method_missing") do
+    assert_eq(MetaFoo.new().respond_to?("nonexistent"), false)
+  end
+
+  test("is true for built-in methods") do
+    foo = MetaFoo.new()
+    assert_eq(foo.respond_to?("inspect"), true)
+    assert_eq(foo.respond_to?("class"), true)
+  end
+end
+
+describe("send") do
+  test("calls a method by name with arguments") do
+    assert_eq(MetaFoo.new().send("greet", "World"), "Hello, World!")
+  end
+
+  test("falls back to method_missing") do
+    assert_eq(MetaFoo.new().send("foobar"), "Method 'foobar' was called")
+  end
+end
+
+describe("method_missing") do
+  test("is called for an undefined method") do
+    assert_eq(MetaFoo.new().undefined_method(), "Method 'undefined_method' was called")
+  end
+
+  test("a last parameter named args collects every argument") do
+    recorder = new MetaRecorder()
+    assert_eq(recorder.anything(1, 2, 3), "anything called with 3 argument(s)")
+    assert_eq(recorder.anything(), "anything called with 0 argument(s)")
+  end
+end
+
+describe("instance_variables") do
+  test("is empty for a fresh instance") do
+    assert_eq(MetaFoo.new().instance_variables, [])
+  end
+
+  test("lists the variables set on the instance, with @") do
+    foo = MetaFoo.new()
     foo._name = "test"
     foo._count = 42
-    let vars = foo.instance_variables
-    assert(vars.includes?("@_name"))
-    assert(vars.includes?("@_count"))
-  })
+    assert_eq(foo.instance_variables.sort(), ["@_count", "@_name"])
+  end
+end
 
-  test("returns empty array when no instance variables", fn() {
-    let foo = Foo.new()
-    let vars = foo.instance_variables
-    assert_eq(vars.length, 0)
-  })
-})
-
-describe("instance_variable_get", fn() {
-  test("gets existing instance variable", fn() {
-    let foo = Foo.new()
+describe("instance_variable_get") do
+  test("reads an existing variable") do
+    foo = MetaFoo.new()
     foo._name = "test_value"
-    let value = foo.instance_variable_get("@_name")
-    assert_eq(value, "test_value")
-  })
+    assert_eq(foo.instance_variable_get("@_name"), "test_value")
+  end
 
-  test("returns null for nonexistent variable", fn() {
-    let foo = Foo.new()
-    let value = foo.instance_variable_get("@_nonexistent")
-    assert_eq(value, null)
-  })
+  test("returns nil for a missing variable") do
+    assert_null(MetaFoo.new().instance_variable_get("@_nonexistent"))
+  end
 
-  test("works without @ prefix", fn() {
-    let foo = Foo.new()
+  test("accepts a name without @") do
+    foo = MetaFoo.new()
     foo._name = "test_value"
-    let value = foo.instance_variable_get("_name")
-    assert_eq(value, "test_value")
-  })
-})
+    assert_eq(foo.instance_variable_get("_name"), "test_value")
+  end
+end
 
-describe("instance_variable_set", fn() {
-  test("sets instance variable", fn() {
-    let foo = Foo.new()
-    let value = foo.instance_variable_set("@_name", "set_value")
-    assert_eq(value, "set_value")
+describe("instance_variable_set") do
+  test("sets a variable and returns the value") do
+    foo = MetaFoo.new()
+    assert_eq(foo.instance_variable_set("@_name", "set_value"), "set_value")
     assert_eq(foo.instance_variable_get("@_name"), "set_value")
-  })
+    assert_eq(foo._name, "set_value")
+  end
 
-  test("works without @ prefix", fn() {
-    let foo = Foo.new()
+  test("accepts a name without @") do
+    foo = MetaFoo.new()
     foo.instance_variable_set("_count", 42)
     assert_eq(foo.instance_variable_get("@_count"), 42)
-  })
-})
+  end
+end
 
-describe("methods", fn() {
-  test("lists method names", fn() {
-    let foo = Foo.new()
-    let methods = foo.methods
-    assert(methods.includes?("greet"))
-    assert(methods.includes?("respond_to?"))
-    assert(methods.includes?("send"))
-    assert(methods.includes?("inspect"))
-  })
-})
+describe("methods") do
+  test("lists user methods first, then the built-in ones") do
+    methods = MetaFoo.new().methods
+    assert_eq(methods.take(2).sort(), ["greet", "method_missing"])
+    assert_contains(methods, "respond_to?")
+    assert_contains(methods, "send")
+    assert_contains(methods, "inspect")
+  end
+end
 
-describe("method_missing", fn() {
-  test("is called for undefined methods", fn() {
-    let foo = Foo.new()
-    let result = foo.undefined_method()
-    assert_eq(result, "Method 'undefined_method' was called")
-  })
-})
+describe("instance_eval") do
+  test("binds this, self and @ to the instance") do
+    named = new MetaNamed()
+    named.name = "Test"
+    assert_eq(named.instance_eval { this.name }, "Test")
+    assert_eq(named.instance_eval { self.name }, "Test")
+    assert_eq(named.instance_eval { @name }, "Test")
+  end
 
-describe("instance_eval", fn() {
-  test("executes block with this bound to instance", fn() {
-    class Foo
-      name: String
+  test("reads a field default") do
+    assert_eq(new MetaNamed().instance_eval { self.value }, 10)
+  end
+
+  test("can modify instance state") do
+    counter = new MetaCounter()
+    counter.instance_eval do
+      @count = 42
     end
-    let foo = new Foo()
-    foo.name = "Test"
-    let result = foo.instance_eval(&{
-      this.name
-    })
-    assert_eq(result, "Test")
-  })
+    assert_eq(counter.count, 42)
+  end
+end
 
-  test("can modify instance state", fn() {
-    class Counter
-      count: Int = 0
-    end
-    let c = new Counter()
-    c.instance_eval(&{
-      this.count = 42
-    })
-    assert_eq(c.count, 42)
-  })
+describe("class_eval") do
+  test("binds self to the class") do
+    assert_eq(MetaStatic.class_eval { self.label }, "FooClass")
+  end
 
-  test("self is same as this", fn() {
-    class Foo
-      value: Int = 10
-    end
-    let foo = new Foo()
-    let result = foo.instance_eval(&{
-      this.value
-    })
-    assert_eq(result, 10)
-  })
-})
+  test("binds this to the class") do
+    assert_eq(MetaStatic.class_eval { this.value }, 42)
+  end
+end
 
-describe("class_eval", fn() {
-  test("executes block with self bound to class", fn() {
-    class Foo
-      static name: String = "FooClass"
-    end
-    let result = Foo.class_eval(&{
-      this.name
-    })
-    assert_eq(result, "FooClass")
-  })
-
-  test("can access static methods via self", fn() {
-    class Foo
-      static value: Int = 42
-    end
-    let result = Foo.class_eval(&{
-      this.value
-    })
-    assert_eq(result, 42)
-  })
-})
-
-describe("define_method", fn() {
-  test("defines a method on instance's class", fn() {
-    let foo = Foo.new()
+describe("define_method") do
+  test("defines a method on the instance's class") do
+    foo = MetaFoo.new()
     foo.define_method("greet2", fn() { "Hello!" })
-    assert(foo.respond_to?("greet2"))
+    assert_eq(foo.respond_to?("greet2"), true)
     assert_eq(foo.greet2(), "Hello!")
-  })
+  end
 
-  test("defined method can take arguments", fn() {
-    class Calculator
-    end
-    let calc = Calculator.new()
-    calc.define_method("add", fn(a, b) { a + b })
-    assert_eq(calc.add(1, 2), 3)
-  })
+  test("the defined method takes arguments") do
+    calculator = MetaCalculator.new()
+    calculator.define_method("add", fn(a, b) { a + b })
+    assert_eq(calculator.add(1, 2), 3)
+  end
 
-  test("method is available on all instances of class", fn() {
-    class Bar
-    end
-    let bar1 = Bar.new()
-    let bar2 = Bar.new()
-    bar1.define_method("hello", fn() { "Hi!" })
-    assert_eq(bar2.hello(), "Hi!")
-  })
-})
+  test("the method reaches every instance of the class") do
+    first = MetaBar.new()
+    second = MetaBar.new()
+    first.define_method("hello", fn() { "Hi!" })
+    assert_eq(second.hello(), "Hi!")
+  end
 
-describe("alias_method", fn() {
-  test("creates alias for existing method", fn() {
-    let foo = Foo.new()
+  test("on a class, a zero-argument method auto-invokes") do
+    MetaGreeter.define_method("shout", fn() { "HELLO!" })
+    greeter = MetaGreeter.new()
+    assert_eq(greeter.shout, "HELLO!")
+    assert_eq(greeter.say, "hello")
+  end
+
+  test("on a primitive type, this is the receiver") do
+    Int.define_method("meta_spec_doubled", fn() { this * 2 })
+    assert_eq(3.meta_spec_doubled, 6)
+  end
+end
+
+describe("alias_method") do
+  test("creates an alias for an existing method") do
+    foo = MetaFoo.new()
     foo.alias_method("say_hello", "greet")
-    assert(foo.respond_to?("say_hello"))
+    assert_eq(foo.respond_to?("say_hello"), true)
     assert_eq(foo.say_hello("World"), "Hello, World!")
-  })
+  end
 
-  test("alias works independently of original", fn() {
-    class Counter
-      def count
-        1
-      end
-    end
-    let c = Counter.new()
-    c.alias_method("counter", "count")
-    assert_eq(c.counter(), 1)
-    assert_eq(c.count(), 1)
-  })
+  test("the original keeps working beside the alias") do
+    counter = MetaCounter.new()
+    counter.alias_method("counter", "total")
+    assert_eq(counter.counter(), 1)
+    assert_eq(counter.total, 1)
+  end
 
-  test("error when aliasing nonexistent method", fn() {
-    let foo = Foo.new()
-    let result = foo.alias_method("fake", "nonexistent")
-    assert(!result.nil?)
-    assert(result.contains("alias_method"))
-    assert(result.contains("nonexistent"))
-  })
-})
+  test("on a class, the alias reaches its instances") do
+    assert_null(MetaAliasFresh.alias_method("greeting", "say"))
+    assert_eq(MetaAliasFresh.new().greeting, "hello")
+  end
 
-describe("inherited", fn() {
-  test("is called when class inherits from another", fn() {
-    let called = false
-    class Parent
-      static def inherited(child)
-        called = true
-      end
-    end
-    class Child < Parent
-    end
-    assert(called)
-  })
+  test("on a class, a method added by define_method can be aliased") do
+    pending("bug: Class.alias_method of a define_method'd method returns nil, but instances cannot call it")
+    MetaAliasDefined.define_method("shout", fn() { "HELLO!" })
+    MetaAliasDefined.alias_method("yell", "shout")
+    assert_eq(MetaAliasDefined.new().yell, "HELLO!")
+  end
 
-  test("receives the child class as argument", fn() {
-    let received_class = null
-    class Base
-      static def inherited(c)
-        received_class = c
-      end
-    end
-    class Derived < Base
-    end
-    assert(!received_class.nil?)
-  })
-})
+  test("on a class, an alias added after its methods ran reaches new instances") do
+    pending("bug: once an instance method ran, Class.alias_method no longer reaches new instances")
+    assert_eq(MetaAliasAfterUse.new().say, "hello")
+    MetaAliasAfterUse.alias_method("greeting", "say")
+    assert_eq(MetaAliasAfterUse.new().greeting, "hello")
+  end
+
+  test("aliasing a missing method returns an error message and defines nothing") do
+    foo = MetaFoo.new()
+    assert_eq(foo.alias_method("fake", "nonexistent"), "alias_method: method 'nonexistent' not found")
+    assert_eq(foo.respond_to?("fake"), false)
+  end
+end
+
+describe("inherited") do
+  test("runs once when a class inherits, receiving the child class") do
+    assert_eq(inherited_log.length, 1)
+    assert_eq(inherited_log[0], MetaChild)
+  end
+end
+
+describe("Class.new") do
+  test("with parentheses builds an instance") do
+    assert_eq(MetaGreeter.new().say, "hello")
+  end
+
+  test("without parentheses builds an instance") do
+    pending("bug: `MetaGreeter.new` without parens returns the constructor Function (and is a type error in a script)")
+    greeter = MetaGreeter.new
+    assert_eq(greeter.say, "hello")
+  end
+end

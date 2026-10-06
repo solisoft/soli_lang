@@ -1,63 +1,65 @@
-# ============================================================================
-# Multiline Strings Test Suite
-# `"""…"""` is the raw multi-line string. `[[ … ]]` was one too, and is a
+# Triple-quoted strings: `"""…"""` is the raw multi-line string — no escape
+# processing, no interpolation, no dedent. `[[ … ]]` was one too, and is a
 # pair of brackets now.
-# ============================================================================
 
-describe("Multiline Strings", fn() {
-  test("basic multiline string", fn() {
+describe("Multiline strings") do
+  test("spans lines, keeping each newline") do
     text = """hello
 world"""
-    assert_contains(text, "hello")
-    assert_contains(text, "world")
-  })
+    assert_eq(text, "hello\nworld")
+    assert_eq(text.split("\n"), ["hello", "world"])
+  end
 
-  test("multiline string preserves newlines", fn() {
-    text = """line1
-line2"""
-    assert_contains(text, "\n")
-  })
+  test("keeps the newline after the opening quotes and the indentation") do
+    text = """
+  indented
+"""
+    assert_eq(text, "\n  indented\n")
+  end
 
-  test("multiline string is raw (no escape processing)", fn() {
-    text = """hello\nworld"""
-    assert_contains(text, "\\n")
-  })
+  test("is raw: escapes stay as backslash sequences") do
+    text = """hello\nworld\t\\"""
+    assert_eq(text, "hello\\nworld\\t\\\\")
+    assert_eq(text.length, 16)
+  end
 
-  test("multiline string closes mid-expression", fn() {
+  test("is raw: an interpolation stays literal text") do
+    name = "n"
+    assert_eq("""#{name}""", "#" + "{name}")
+  end
+
+  test("closes mid-expression") do
     # It used to close only at the end of the file, so a call argument
     # swallowed everything after it.
     query = ["""
 FOR p IN posts
   RETURN p
 """, "second"]
-    assert_eq(query.length, 2)
-    assert_contains(query[0], "FOR p IN posts")
-    assert_eq(query[1], "second")
-  })
+    assert_eq(query, ["\nFOR p IN posts\n  RETURN p\n", "second"])
+  end
 
-  test("quotes inside, and quotes before the closing ones", fn() {
+  test("allows quotes inside, and quotes before the closing ones") do
     text = """say "hi" and ""twice"""""
     assert_eq(text, "say \"hi\" and \"\"twice\"\"")
-  })
+  end
 
-  test("empty multiline string", fn() {
-    text = """"""
-    assert_eq(text, "")
-  })
+  test("can be empty") do
+    assert_eq("""""", "")
+  end
 
-  test("multiline string in hash value", fn() {
-    h = {"description": """This is a
+  test("works as a hash value") do
+    record = {"description": """This is a
 multiline description."""}
-    assert_contains(h["description"], "This is a")
-    assert_contains(h["description"], "multiline description")
-  })
+    assert_eq(record["description"], "This is a\nmultiline description.")
+  end
 
-  test("double brackets are a nested array", fn() {
+  test("double brackets are a nested array") do
     pairs = [["a", 1], ["b", 2]]
     assert_eq(pairs.length, 2)
     assert_eq(pairs[0][0], "a")
     names = [[x for x in ["p", "q"]]]
-    assert_eq(names[0], ["p", "q"])
+    assert_eq(names, [["p", "q"]])
+    assert_eq([[]], [[]])
     assert_eq([[]].length, 1)
-  })
-})
+  end
+end

@@ -1,350 +1,332 @@
-# ============================================================================
-# Functions Test Suite
-# ============================================================================
+# Functions declared with `def`: parameters (typed, default, named), return
+# values (explicit and implicit), recursion, first-class use, closures, and
+# `#` comments around them.
 
-describe("Functions", fn() {
-  test("function declaration and call", fn() {
-    def add(a, b)
-      return a + b
-    end
+def add(a, b)
+  return a + b
+end
+
+def greet
+  return "hello"
+end
+
+def greet_with_parens()
+  "hello"
+end
+
+def five
+  5
+end
+
+def multiply(a: Int, b: Int)
+  a * b
+end
+
+def square(x: Int) -> Int
+  x * x
+end
+
+def greet_name(name: String = "World")
+  "Hello " + name
+end
+
+def configure(host: String = "localhost", port: Int = 8080, debug: Bool = false)
+  host + ":" + str(port) + " (debug: " + str(debug) + ")"
+end
+
+def sum_with_defaults(a: Int, b: Int = 10, c: Int = 20)
+  a + b + c
+end
+
+def ends_in_let
+  let unused = 1
+end
+
+def ends_in_if_without_else(x)
+  if x > 0
+    "positive"
+  end
+end
+
+def sign_of(x)
+  return "negative" if x < 0
+
+  return "non-negative"
+end
+
+def factorial(n)
+  return 1 if n <= 1
+
+  n * factorial(n - 1)
+end
+
+def fib(n)
+  return n if n <= 1
+
+  fib(n - 1) + fib(n - 2)
+end
+
+def double(x)
+  x * 2
+end
+
+def triple(x)
+  x * 3
+end
+
+def call_double(x)
+  double(x)
+end
+
+def apply(callback, x)
+  callback(x)
+end
+
+def absolute(x)
+  if x < 0
+    -x
+  else
+    x
+  end
+end
+
+def with_local_helper
+  def local_helper(x)
+    x * 2
+  end
+
+  local_helper(4)
+end
+
+def reassign_param(list)
+  list.push(9)
+  list = [0]
+  list
+end
+
+def make_adder(n)
+  return fn(x) { x + n }
+end
+
+def make_counter
+  count = 0
+  return fn() {
+    count = count + 1
+    count
+  }
+end
+
+class Calculator
+  def add(a, b)
+    return a + b
+  end
+
+  def multiply(a, b)
+    a * b
+  end
+
+  def hello
+    "hi"
+  end
+end
+
+describe("Function declarations") do
+  test("with parameters, called with arguments") do
     assert_eq(add(2, 3), 5)
-  })
+  end
 
-  test("function with no parameters", fn() {
-    def greet
-      return "hello"
-    end
+  test("without parentheses when there are no parameters") do
     assert_eq(greet(), "hello")
-  })
+    assert_eq(five(), 5)
+  end
 
-  test("function with typed parameters", fn() {
-    def multiply(a: Int, b: Int)
-      return a * b
-    end
+  test("with empty parentheses") do
+    assert_eq(greet_with_parens(), "hello")
+  end
+
+  test("with typed parameters") do
     assert_eq(multiply(3, 4), 12)
-  })
+  end
 
-  test("function with return type", fn() {
-    def square(x: Int) -> Int
-      return x * x
-    end
+  test("with a return type") do
     assert_eq(square(5), 25)
-  })
+    assert_eq(square(-7), 49)
+  end
 
-  test("function with default parameter", fn() {
-    def greet(name: String = "World")
-      return "Hello " + name
+  test("a def inside a function body is local to it") do
+    assert_eq(with_local_helper(), 8)
+    assert_raises("local_helper") do
+      local_helper(1)
     end
-    assert_eq(greet(), "Hello World")
-    assert_eq(greet("Alice"), "Hello Alice")
-  })
+  end
+end
 
-  test("function with named parameters", fn() {
-    def configure(host: String = "localhost", port: Int = 8080, debug: Bool = false)
-      return host + ":" + str(port) + " (debug: " + str(debug) + ")"
-    end
+describe("Arguments") do
+  test("a default parameter fills a missing argument") do
+    assert_eq(greet_name(), "Hello World")
+    assert_eq(greet_name("Alice"), "Hello Alice")
+  end
+
+  test("named arguments pick which defaults to override, in any order") do
     assert_eq(configure(), "localhost:8080 (debug: false)")
     assert_eq(configure(port: 3000), "localhost:3000 (debug: false)")
     assert_eq(configure(host: "example.com", port: 443), "example.com:443 (debug: false)")
     assert_eq(configure(port: 9000, debug: true, host: "api.example.com"), "api.example.com:9000 (debug: true)")
-  })
+  end
 
-  test("function with mixed positional and named parameters", fn() {
-    def sum(a: Int, b: Int = 10, c: Int = 20)
-      return a + b + c
-    end
-    assert_eq(sum(1), 31)
-    assert_eq(sum(1, 2), 23)
-    assert_eq(sum(1, c: 5), 16)
-  })
+  test("positional and named arguments mix") do
+    assert_eq(sum_with_defaults(1), 31)
+    assert_eq(sum_with_defaults(1, 2), 23)
+    assert_eq(sum_with_defaults(1, c: 5), 16)
+  end
 
-  test("function returning null implicitly", fn() {
-    def nothing
-      let x = 1
+  test("too few arguments raise") do
+    assert_raises("Wrong number of arguments: expected 2, got 1") do
+      add(1)
     end
-    assert_null(nothing())
-  })
+  end
 
-  test("early return", fn() {
-    def check(x)
-      return "negative" if (x < 0)
-      return "non-negative"
+  test("too many arguments raise") do
+    assert_raises("Wrong number of arguments: expected 2, got 3") do
+      add(1, 2, 3)
     end
-    assert_eq(check(-5), "negative")
-    assert_eq(check(5), "non-negative")
-  })
+  end
 
-  test("recursive function", fn() {
-    def factorial(n)
-      return 1 if (n <= 1)
-      return n * factorial(n - 1)
-    end
-    assert_eq(factorial(5), 120)
-  })
+  test("a mutated argument is shared, a reassigned parameter is not") do
+    original = [1]
+    assert_eq(reassign_param(original), [0])
+    assert_eq(original, [1, 9])
+  end
+end
 
-  test("function as first-class value", fn() {
-    def double(x)
-      return x * 2
-    end
-    let f = double
-    assert_eq(f(5), 10)
-  })
+describe("Return values") do
+  test("return with a postfix condition exits early") do
+    assert_eq(sign_of(-5), "negative")
+    assert_eq(sign_of(5), "non-negative")
+  end
 
-  test("higher-order function", fn() {
-    def apply(f, x)
-      return f(x)
-    end
-    def triple(x)
-      return x * 3
-    end
-    assert_eq(apply(triple, 4), 12)
-  })
-})
-
-describe("Implicit Returns", fn() {
-  test("implicit return from expression", fn() {
-    def add(a, b)
-      a + b
-    end
-    assert_eq(add(2, 3), 5)
-  })
-
-  test("implicit return from function call", fn() {
-    def double(x)
-      x * 2
-    end
-    def call_double(x)
-      double(x)
-    end
-    assert_eq(call_double(5), 10)
-  })
-
-  test("implicit return from if/else", fn() {
-    def abs(x)
-      if (x < 0)
-        -x
-      else
-        x
-      end
-    end
-    assert_eq(abs(-5), 5)
-    assert_eq(abs(5), 5)
-  })
-
-  test("implicit return from block lambda", fn() {
-    let items = [1, 2, 3]
-    let doubled = items.map(fn(x) { x * 2 })
-    assert_eq(doubled, [
-      2,
-      4,
-      6
-    ])
-  })
-
-  test("let as last statement returns null", fn() {
-    def nothing
-      let x = 1
-    end
-    assert_null(nothing())
-  })
-
-  test("explicit return still works", fn() {
-    def early(x)
-      return "negative" if (x < 0)
-
-      "non-negative"
-    end
-    assert_eq(early(-1), "negative")
-    assert_eq(early(1), "non-negative")
-  })
-})
-
-describe("Optional Parentheses", fn() {
-  test("fn without parens", fn() {
-    def greet
-      return "hello"
-    end
-    assert_eq(greet(), "hello")
-  })
-
-  test("fn without parens with implicit return", fn() {
-    def five
-      5
-    end
+  test("the last expression is returned implicitly") do
     assert_eq(five(), 5)
-  })
+    assert_eq(call_double(5), 10)
+  end
 
-  test("fn with empty parens still works", fn() {
-    def greet
-      return "hello"
-    end
-    assert_eq(greet(), "hello")
-  })
+  test("an if/else as the last expression returns its taken branch") do
+    assert_eq(absolute(-5), 5)
+    assert_eq(absolute(5), 5)
+  end
 
-  test("fn with params still requires parens", fn() {
-    def add(a, b)
-      return a + b
-    end
-    assert_eq(add(2, 3), 5)
-  })
+  test("an if without else returns nil when not taken") do
+    assert_eq(ends_in_if_without_else(1), "positive")
+    assert_null(ends_in_if_without_else(-1))
+  end
 
-  test("class method without parens", fn() {
-    class Greeter
-      def hello
-        return "hi"
-      end
-    end
-    let g = new Greeter()
-    assert_eq(g.hello(), "hi")
-  })
-})
+  test("a let as the last statement returns nil") do
+    assert_null(ends_in_let())
+  end
 
-describe("Closures", fn() {
-  test("closure captures outer variable", fn() {
-    let multiplier = 3
-    let multiply = fn(x) { x * multiplier }
-    assert_eq(multiply(5), 15)
-  })
+  test("a block's last expression is its value") do
+    assert_eq([1, 2, 3].map { |x| x * 2 }, [2, 4, 6])
+  end
+end
 
-  test("closure captures multiple variables", fn() {
-    let a = 10
-    let b = 20
-    let sum = fn() { a + b }
-    assert_eq(sum(), 30)
-  })
+describe("Recursion") do
+  test("factorial") do
+    assert_eq(factorial(5), 120)
+    assert_eq(factorial(1), 1)
+    assert_eq(factorial(0), 1)
+  end
 
-  test("closure factory", fn() {
-    def makeAdder(n)
-      return fn(x) { x + n }
-    end
-    let add5 = makeAdder(5)
-    let add10 = makeAdder(10)
+  test("fibonacci with two recursive calls") do
+    assert_eq(fib(10), 55)
+    assert_eq(fib(0), 0)
+  end
+end
+
+describe("Functions as values") do
+  test("a function can be assigned to a variable and called") do
+    doubler = double
+    assert_eq(doubler(5), 10)
+  end
+
+  test("a function can be passed to another function") do
+    assert_eq(apply(triple, 4), 12)
+    assert_eq(apply(double, 4), 8)
+  end
+end
+
+describe("Methods") do
+  test("explicit and implicit returns") do
+    calc = new Calculator()
+    assert_eq(calc.add(2, 3), 5)
+    assert_eq(calc.multiply(4, 5), 20)
+  end
+
+  test("a parameterless method is called with or without parentheses") do
+    calc = new Calculator()
+    assert_eq(calc.hello, "hi")
+    assert_eq(calc.hello(), "hi")
+  end
+end
+
+describe("Closures") do
+  test("capture an outer variable") do
+    multiplier = 3
+    multiply_by = fn(x) { x * multiplier }
+    assert_eq(multiply_by(5), 15)
+  end
+
+  test("capture several variables") do
+    first = 10
+    second = 20
+    total = fn() { first + second }
+    assert_eq(total(), 30)
+  end
+
+  test("a factory keeps each call's argument") do
+    add5 = make_adder(5)
+    add10 = make_adder(10)
     assert_eq(add5(3), 8)
     assert_eq(add10(3), 13)
-  })
+  end
 
-  test("closure maintains separate state", fn() {
-    def makeCounter
-      let count = 0
-      return fn() {
-        count = count + 1
-        return count
-      }
-    end
-    let counter1 = makeCounter()
-    let counter2 = makeCounter()
+  test("each closure from a factory keeps separate state") do
+    counter1 = make_counter()
+    counter2 = make_counter()
     assert_eq(counter1(), 1)
     assert_eq(counter1(), 2)
     assert_eq(counter2(), 1)
-  })
-})
+  end
+end
 
-describe("def keyword (fn alias)", fn() {
-  test("def declares a function", fn() {
-    def add(a, b)
-      return a + b
-    end
-    assert_eq(add(2, 3), 5)
-  })
-
-  test("def with brace syntax", fn() {
-    def greet(name)
-      "Hello, " + name + "!"
-    end
-    assert_eq(greet("World"), "Hello, World!")
-  })
-
-  test("def with typed parameters and return type", fn() {
-    def square(x: Int) -> Int
-      x * x
-    end
-    assert_eq(square(7), 49)
-  })
-
-  test("def with default parameters", fn() {
-    def greet(name: String = "World")
-      "Hi " + name
-    end
-    assert_eq(greet(), "Hi World")
-    assert_eq(greet("Alice"), "Hi Alice")
-  })
-
-  test("def recursive function", fn() {
-    def fib(n)
-      return n if (n <= 1)
-
-      fib(n - 1) + fib(n - 2)
-    end
-    assert_eq(fib(10), 55)
-  })
-
-  test("def as closure", fn() {
-    def make_adder(n)
-      return fn(x) { x + n }
-    end
-    let add5 = make_adder(5)
-    assert_eq(add5(3), 8)
-  })
-
-  test("def in class", fn() {
-    class Calculator
-      def add(a, b)
-        return a + b
-      end
-
-      def multiply(a, b)
-        a * b
-      end
-    end
-    let calc = new Calculator()
-    assert_eq(calc.add(2, 3), 5)
-    assert_eq(calc.multiply(4, 5), 20)
-  })
-
-  test("def and fn are interchangeable", fn() {
-    def with_fn(x)
-      x + 1
-    end
-    def with_def(x)
-      x + 1
-    end
-    assert_eq(with_fn(10), with_def(10))
-  })
-})
-
-describe("Hash comments (#)", fn() {
-  test("hash comment on its own line", fn() {
+describe("Hash comments (#)") do
+  test("a comment on its own line") do
     # This is a comment
-    let x = 42
-    assert_eq(x, 42)
-  })
+    answer = 42
+    assert_eq(answer, 42)
+  end
 
-  test("hash comment at end of line", fn() {
-    let x = 10  # inline comment
-    assert_eq(x, 10)
-  })
+  test("a comment at the end of a line does not affect the next") do
+    first = 1  # comment
+    second = 2
+    assert_eq(first + second, 3)
+  end
 
-  test("hash comment does not affect next line", fn() {
-    let a = 1  # comment
-    let b = 2
-    assert_eq(a + b, 3)
-  })
+  test("a comment after an interpolated string") do
+    name = "Soli"
+    message = "Hello #{name}!"  # interpolation inside string
+    assert_eq(message, "Hello Soli!")
+  end
 
-  test("hash comment with string interpolation still works", fn() {
-    let name = "Soli"
-    let msg = "Hello #{name}!"  # interpolation inside string
-    assert_eq(msg, "Hello Soli!")
-  })
+  test("a # inside a string is not a comment") do
+    text = "use # for comments"
+    assert_eq(text, "use # for comments")
+    assert_eq(text.length, 18)
+  end
 
-  test("hash inside string is not a comment", fn() {
-    let s = "use # for comments"
-    assert_eq(s, "use # for comments")
-  })
-
-  test("mixed // and # comments", fn() {
-    # double-slash comment
-    # hash comment
-    let x = 99
-    assert_eq(x, 99)
-  })
-})
+  test("consecutive comment lines") do
+    # first comment
+    # second comment
+    answer = 99
+    assert_eq(answer, 99)
+  end
+end

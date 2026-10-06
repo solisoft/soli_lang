@@ -1,318 +1,209 @@
-# ============================================================================
-# Percent Literal Arrays Test Suite
-# ============================================================================
+# Percent literal arrays: %w[] strings, %i[] symbols, %n[] numbers.
+# Elements are split on any whitespace; nothing inside is escaped or
+# interpolated. The literal syntax is the subject here — keep it written
+# as %w[…], not as the equivalent plain array.
 
-describe("%w[] String Array Literals", fn() {
-  test("basic string array", fn() {
-    let arr = ["demo", "test"]
-    assert_eq(len(arr), 2)
-    assert_eq(arr[0], "demo")
-    assert_eq(arr[1], "test")
-  })
+def get_tags
+  %w[ruby javascript python]
+end
 
-  test("three elements", fn() {
-    let arr = ["foo", "bar", "baz"]
-    assert_eq(arr, ["foo", "bar", "baz"])
-  })
+const ENVIRONMENTS = %w[development staging production]
 
-  test("empty array", fn() {
-    let arr = []
-    assert_eq(len(arr), 0)
-    assert_eq(arr, [])
-  })
+describe("%w[] string arrays") do
+  test("splits words into strings") do
+    words = %w[demo test]
+    assert_eq(words, ["demo", "test"])
+    assert_eq(%w[foo bar baz], ["foo", "bar", "baz"])
+  end
 
-  test("single element", fn() {
-    let arr = ["hello"]
-    assert_eq(len(arr), 1)
-    assert_eq(arr[0], "hello")
-  })
+  test("an empty literal is an empty array") do
+    assert_eq(%w[], [])
+  end
 
-  test("equivalent to regular array", fn() { assert_eq([
-    "a",
-    "b",
-    "c"
-  ], ["a", "b", "c"]) })
+  test("a single word") do
+    assert_eq(%w[hello], ["hello"])
+  end
 
-  test("elements separated by multiple spaces", fn() {
-    let arr = ["one", "two", "three"]
-    assert_eq(len(arr), 3)
-    assert_eq(arr[0], "one")
-    assert_eq(arr[1], "two")
-    assert_eq(arr[2], "three")
-  })
+  test("runs of spaces separate like one") do
+    assert_eq(%w[one  two   three], ["one", "two", "three"])
+  end
 
-  test("multiline array", fn() {
-    let arr = ["one", "two", "three"]
-    assert_eq(len(arr), 3)
-    assert_eq(arr[0], "one")
-    assert_eq(arr[1], "two")
-    assert_eq(arr[2], "three")
-  })
-  test("works with array methods", fn() {
-    let arr = ["hello", "world"]
-    let upper = arr.map(fn(s) { s.upcase() })
-    assert_eq(upper, ["HELLO", "WORLD"])
-  })
+  test("tabs separate words") do
+    assert_eq(%w[one	two	three], ["one", "two", "three"])
+  end
 
-  test("works with spread operator", fn() {
-    let arr = ["one", "two"]
-    let combined = [...arr, "three"]
-    assert_eq(combined, [
-      "one",
-      "two",
-      "three"
-    ])
-  })
-
-  test("in assignment", fn() {
-    let words = ["apple", "banana", "cherry"]
-    assert_eq(words[1], "banana")
-  })
-})
-describe("%i[] Symbol Array Literals", fn() {
-  test("basic symbol array", fn() {
-    let arr = [:demo, :test]
-    assert_eq(len(arr), 2)
-    assert_eq(arr[0], :demo)
-    assert_eq(arr[1], :test)
-  })
-
-  test("three elements", fn() {
-    let arr = [:get, :post, :put, :delete]
-    assert_eq(len(arr), 4)
-    assert_eq(arr[0], :get)
-    assert_eq(arr[1], :post)
-    assert_eq(arr[2], :put)
-    assert_eq(arr[3], :delete)
-  })
-
-  test("empty array", fn() {
-    let arr = []
-    assert_eq(len(arr), 0)
-    assert_eq(arr, [])
-  })
-
-  test("single element", fn() {
-    let arr = [:hello]
-    assert_eq(len(arr), 1)
-    assert_eq(arr[0], :hello)
-  })
-
-  test("equivalent to regular symbol array", fn() { assert_eq([
-    :a,
-    :b,
-    :c
-  ], [:a, :b, :c]) })
-
-  test("multiline array", fn() {
-    let arr = [:read, :write, :execute]
-    assert_eq(len(arr), 3)
-    assert_eq(arr[0], :read)
-    assert_eq(arr[1], :write)
-    assert_eq(arr[2], :execute)
-  })
-  test("elements are symbols not strings", fn() {
-    let arr = [:foo, :bar]
-    assert_eq(arr[0].class, "symbol")
-    assert_eq(arr[1].class, "symbol")
-  })
-
-  test("symbols work with methods", fn() {
-    let arr = [:read, :write, :execute]
-    assert(arr[0] == :read)
-    assert(arr[1] == :write)
-    assert(arr[2] == :execute)
-  })
-})
-describe("%n[] Number Array Literals", fn() {
-  test("basic number array", fn() {
-    let arr = [1, 2, 3]
-    assert_eq(len(arr), 3)
-    assert_eq(arr[0], 1)
-    assert_eq(arr[1], 2)
-    assert_eq(arr[2], 3)
-  })
-
-  test("with floats", fn() {
-    let arr = [1.5, 2.5, 3.5]
-    assert_eq(len(arr), 3)
-    assert_eq(arr[0], 1.5)
-    assert_eq(arr[1], 2.5)
-    assert_eq(arr[2], 3.5)
-  })
-
-  test("mixed integers and floats", fn() {
-    let arr = [1, 2.5, 3]
-    assert_eq(len(arr), 3)
-    assert_eq(arr[0], 1)
-    assert_eq(arr[1], 2.5)
-    assert_eq(arr[2], 3)
-  })
-
-  test("empty array", fn() {
-    let arr = []
-    assert_eq(len(arr), 0)
-    assert_eq(arr, [])
-  })
-
-  test("single element", fn() {
-    let arr = [42]
-    assert_eq(len(arr), 1)
-    assert_eq(arr[0], 42)
-  })
-
-  test("equivalent to regular number array", fn() { assert_eq([
-    1,
-    2,
-    3
-  ], [1, 2, 3]) })
-
-  test("multiline array", fn() {
-    let arr = [10, 20, 30]
-    assert_eq(len(arr), 3)
-    assert_eq(arr[0], 10)
-    assert_eq(arr[1], 20)
-    assert_eq(arr[2], 30)
-  })
-  test("elements are numbers", fn() {
-    let arr = [1, 2, 3]
-    assert_eq(arr[0].class, "int")
-    assert_eq(arr[1].class, "int")
-  })
-
-  test("with array methods", fn() {
-    let arr = [1, 2, 3, 4, 5]
-    let sum = arr.reduce(fn(acc, x) { acc + x }, 0)
-    assert_eq(sum, 15)
-  })
-
-  test("in arithmetic operations", fn() {
-    let arr = [10, 20, 30]
-    assert_eq(arr[0] + arr[1], 30)
-    assert_eq(arr[2] - arr[0], 20)
-  })
-
-  test("negative numbers", fn() {
-    let arr = [-5, 0, 5]
-    assert_eq(len(arr), 3)
-    assert_eq(arr[0], -5)
-    assert_eq(arr[1], 0)
-    assert_eq(arr[2], 5)
-  })
-
-  test("integers vs floats have correct classes", fn() {
-    let ints = [1, 2, 3]
-    assert_eq(ints[0].class, "int")
-    assert_eq(ints[1].class, "int")
-    assert_eq(ints[2].class, "int")
-
-    let floats = [1.5, 2.5, 3.5]
-    assert_eq(floats[0].class, "float")
-    assert_eq(floats[1].class, "float")
-    assert_eq(floats[2].class, "float")
-
-    let mixed = [1, 2.5, 3]
-    assert_eq(mixed[0].class, "int")
-    assert_eq(mixed[1].class, "float")
-    assert_eq(mixed[2].class, "int")
-  })
-
-  test("decimals with D suffix", fn() {
-    let arr = [1.5D, 2.5D, 3.00D]
-    assert_eq(len(arr), 3)
-    assert_eq(arr[0].class, "decimal")
-    assert_eq(arr[1].class, "decimal")
-    assert_eq(arr[2].class, "decimal")
-  })
-
-  test("mixed int float decimal", fn() {
-    let arr = [1, 2.5, 3.5D]
-    assert_eq(arr[0].class, "int")
-    assert_eq(arr[1].class, "float")
-    assert_eq(arr[2].class, "decimal")
-  })
-
-  test("decimals in arithmetic", fn() {
-    let arr = [1.5D, 2.5D]
-    assert_eq(arr[0].class, "decimal")
-    assert_eq(arr[1].class, "decimal")
-  })
-})
-describe("Percent Literals with Symbols", fn() {
-  test("symbols used as hash keys", fn() {
-    let keys = [:name, :email, :phone]
-    let h = {}
-    keys.each(fn(k) { h[k] = "value" })
-    assert_eq(h[:name], "value")
-    assert_eq(h[:email], "value")
-    assert_eq(h[:phone], "value")
-  })
-
-  test("symbols as method names", fn() {
-    let actions = [:before_save, :after_create]
-    assert_eq(actions[0], :before_save)
-    assert_eq(actions[1], :after_create)
-  })
-})
-
-describe("Percent Literals Edge Cases", fn() {
-  test("with underscores in words", fn() {
-    let arr = ["hello_world", "foo_bar"]
-    assert_eq(arr[0], "hello_world")
-    assert_eq(arr[1], "foo_bar")
-  })
-
-  test("with numbers in words", fn() {
-    let arr = ["test1", "test2", "test3"]
-    assert_eq(arr, ["test1", "test2", "test3"])
-  })
-
-  test("tabs as separators", fn() {
-    let arr = ["one", "two", "three"]
-    assert_eq(len(arr), 3)
-  })
-
-  test("mixed newlines and spaces", fn() {
-    let arr = ["first", "second", "third"]
-    assert_eq(len(arr), 3)
-  })
-})
-describe("Percent Literals in Context", fn() {
-  test("in function return", fn() {
-    def get_tags
-      return ["ruby", "javascript", "python"]
-    end
-    let tags = get_tags()
-    assert_eq(len(tags), 3)
-    assert_eq(tags[0], "ruby")
-  })
-
-  test("in conditional expression", fn() {
-    let env = "staging"
-    let allowed = ["dev", "staging", "prod"]
-    let is_allowed = allowed.includes?(env) ? "yes" : "no"
-    assert_eq(is_allowed, "yes")
-  })
-
-  test("chained with array methods", fn() {
-    let words = ["hello", "world", "foo", "bar"]
-    let result = words.filter(fn(w) { w.length > 3 }).map(fn(w) { w.upcase() })
-    assert_eq(result, ["HELLO", "WORLD"])
-  })
-
-  test("as constant", fn() {
-    const ENVIRONMENTS = [
-      "development",
-      "staging",
-      "production"
+  test("spans several lines") do
+    words = %w[
+      one
+      two
+      three
     ]
-    assert_eq(len(ENVIRONMENTS), 3)
-    assert_eq(ENVIRONMENTS[0], "development")
-  })
+    assert_eq(words, ["one", "two", "three"])
+  end
 
-  test("nested percent literals", fn() {
-    let arr = [["a", "b"], ["c", "d"]]
-    assert_eq(arr[0], ["a", "b"])
-    assert_eq(arr[1], ["c", "d"])
-  })
-})
+  test("keeps underscores, digits, quotes and commas inside a word") do
+    assert_eq(%w[hello_world foo_bar], ["hello_world", "foo_bar"])
+    assert_eq(%w[test1 test2 test3], ["test1", "test2", "test3"])
+    assert_eq(%w[a,b c], ["a,b", "c"])
+    assert_eq(%w[it's "q"], ["it's", "\"q\""])
+  end
+
+  test("does not interpolate") do
+    assert_eq(%w[#{x} y], ["#" + "{x}", "y"])
+  end
+
+  test("keeps non-ASCII words whole") do
+    assert_eq(%w[é ü], ["é", "ü"])
+  end
+
+  test("works with array methods") do
+    assert_eq(%w[hello world].map { |word| word.upcase }, ["HELLO", "WORLD"])
+    assert_eq(%w[hello world foo bar].filter { |word| word.length > 3 }, ["hello", "world"])
+  end
+
+  test("spreads into another array") do
+    assert_eq([...%w[one two], "three"], ["one", "two", "three"])
+  end
+end
+
+describe("%i[] symbol arrays") do
+  test("splits words into symbols") do
+    assert_eq(%i[demo test], [:demo, :test])
+    assert_eq(%i[get post put delete], [:get, :post, :put, :delete])
+  end
+
+  test("an empty literal is an empty array") do
+    assert_eq(%i[], [])
+  end
+
+  test("a single word") do
+    assert_eq(%i[hello], [:hello])
+  end
+
+  test("spans several lines") do
+    permissions = %i[
+      read
+      write
+      execute
+    ]
+    assert_eq(permissions, [:read, :write, :execute])
+  end
+
+  test("elements are symbols, not strings") do
+    names = %i[foo bar]
+    assert_eq(names.map { |name| name.class }, ["symbol", "symbol"])
+    assert_ne(names[0], "foo")
+  end
+
+  test("symbols work as hash keys") do
+    fields = {}
+    %i[name email phone].each do |key|
+      fields[key] = "value"
+    end
+    assert_eq(fields[:name], "value")
+    assert_eq(fields[:email], "value")
+    assert_eq(fields[:phone], "value")
+    assert_eq(fields.length, 3)
+  end
+end
+
+describe("%n[] number arrays") do
+  test("integers") do
+    assert_eq(%n[1 2 3], [1, 2, 3])
+    assert_eq(%n[1 2 3].map { |n| n.class }, ["int", "int", "int"])
+  end
+
+  test("floats") do
+    assert_eq(%n[1.5 2.5 3.5], [1.5, 2.5, 3.5])
+    assert_eq(%n[1.5 2.5].map { |n| n.class }, ["float", "float"])
+  end
+
+  test("integers and floats mixed keep their own types") do
+    mixed = %n[1 2.5 3]
+    assert_eq(mixed, [1, 2.5, 3])
+    assert_eq(mixed.map { |n| n.class }, ["int", "float", "int"])
+  end
+
+  test("exponent notation is a float") do
+    assert_eq(%n[1e3], [1000.0])
+    assert_eq(%n[1e3][0].class, "float")
+  end
+
+  test("negative numbers and zero") do
+    assert_eq(%n[-5 0 5], [-5, 0, 5])
+  end
+
+  test("an empty literal is an empty array") do
+    assert_eq(%n[], [])
+  end
+
+  test("a single number") do
+    assert_eq(%n[42], [42])
+  end
+
+  test("spans several lines") do
+    numbers = %n[
+      10
+      20
+      30
+    ]
+    assert_eq(numbers, [10, 20, 30])
+  end
+
+  test("a D suffix makes a decimal, normalized like a decimal literal") do
+    decimals = %n[1.5D 2.5D 3D]
+    assert_eq(decimals.map { |d| d.class }, ["decimal", "decimal", "decimal"])
+    assert_eq(decimals.map { |d| str(d) }, ["1.5", "2.5", "3.00"])
+  end
+
+  test("ints, floats and decimals in one literal") do
+    mixed = %n[1 2.5 3.5D]
+    assert_eq(mixed.map { |n| n.class }, ["int", "float", "decimal"])
+    assert_eq(str(mixed[2]), "3.5")
+  end
+
+  test("decimals from the literal do exact arithmetic") do
+    decimals = %n[0.1D 0.2D]
+    assert_eq(str(decimals[0] + decimals[1]), "0.3")
+  end
+
+  test("underscores separate digits as in a number literal") do
+    pending("bug: %n[1_000 2] gives [0, 2] — an element that does not parse silently becomes 0")
+    assert_eq(%n[1_000 2], [1000, 2])
+  end
+
+  test("works with array methods and arithmetic") do
+    assert_eq(%n[1 2 3 4 5].reduce(fn(acc, x) acc + x, 0), 15)
+    tens = %n[10 20 30]
+    assert_eq(tens[0] + tens[1], 30)
+    assert_eq(tens[2] - tens[0], 20)
+  end
+
+  test("% followed by a space is still the modulo operator") do
+    assert_eq(10 % 3, 1)
+    remainder = 10
+    remainder %= 4
+    assert_eq(remainder, 2)
+  end
+end
+
+describe("Percent literals in context") do
+  test("as a function's return value") do
+    assert_eq(get_tags(), ["ruby", "javascript", "python"])
+  end
+
+  test("in a conditional expression") do
+    environment = "staging"
+    allowed = %w[dev staging prod]
+    assert_eq(allowed.includes?(environment) ? "yes" : "no", "yes")
+    assert_eq(allowed.includes?("qa") ? "yes" : "no", "no")
+  end
+
+  test("as a constant") do
+    assert_eq(ENVIRONMENTS, ["development", "staging", "production"])
+  end
+
+  test("nested inside a regular array") do
+    assert_eq([%w[a b], %w[c d]], [["a", "b"], ["c", "d"]])
+  end
+end

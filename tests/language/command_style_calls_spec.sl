@@ -1,247 +1,219 @@
-# ============================================================================
-# Command-Style Calls Test Suite
-# ============================================================================
-# Tests for calling functions without parentheses: `print x` instead of `print(x)`
+# Command-style calls: calling a function without parentheses, `echo x`
+# instead of `echo(x)`. The syntax under test is the paren-less call, so do
+# not run `soli fmt` on this file — it adds the parentheses back.
 
-describe("Command-style calls with literals", fn() {
-  test("string literal", fn() {
-    def echo(x)
-      return x
-    end
-    let result = echo("hello")
+def echo(x)
+  x
+end
+
+def double(x)
+  x * 2
+end
+
+def negate(x)
+  !x
+end
+
+def first_of(list)
+  list[0]
+end
+
+def get_name(person)
+  person["name"]
+end
+
+def concat(a, b)
+  a + " " + b
+end
+
+def add(a, b)
+  a + b
+end
+
+def sum3(a, b, c)
+  a + b + c
+end
+
+def record_twice(log, x)
+  log.push(x)
+  log.push(x * 2)
+  log
+end
+
+describe("Command-style calls with literals") do
+  test("a string") do
+    result = echo "hello"
     assert_eq(result, "hello")
-  })
+  end
 
-  test("integer literal", fn() {
-    def echo(x)
-      return x
-    end
-    let result = echo(42)
+  test("an integer") do
+    result = echo 42
     assert_eq(result, 42)
-  })
+  end
 
-  test("float literal", fn() {
-    def echo(x)
-      return x
-    end
-    let result = echo(3.14)
+  test("a float") do
+    result = echo 3.14
     assert_eq(result, 3.14)
-  })
+  end
 
-  test("boolean literal", fn() {
-    def echo(x)
-      return x
-    end
-    let t = echo(true)
-    let f = echo(false)
-    assert_eq(t, true)
-    assert_eq(f, false)
-  })
+  test("booleans") do
+    yes = echo true
+    no = echo false
+    assert_eq(yes, true)
+    assert_eq(no, false)
+  end
 
-  test("null literal", fn() {
-    def echo(x)
-      return x
-    end
-    let result = echo(null)
+  test("nil") do
+    result = echo nil
     assert_null(result)
-  })
+  end
 
-  test("interpolated string", fn() {
-    def echo(x)
-      return x
-    end
-    let name = "world"
-    let result = echo("hello #{name}")
+  test("an interpolated string") do
+    name = "world"
+    result = echo "hello #{name}"
     assert_eq(result, "hello world")
-  })
-})
+  end
 
-describe("Command-style calls with variables", fn() {
-  test("simple variable", fn() {
-    def echo(x)
-      return x
-    end
-    let msg = "hello"
-    let result = echo(msg)
+  test("a symbol") do
+    result = echo :sym
+    assert_eq(result, :sym)
+  end
+end
+
+describe("Command-style calls with variables") do
+  test("a string variable") do
+    message = "hello"
+    result = echo message
     assert_eq(result, "hello")
-  })
+  end
 
-  test("variable holding number", fn() {
-    def double(x)
-      return x * 2
-    end
-    let n = 21
-    let result = double(n)
+  test("a number variable") do
+    n = 21
+    result = double n
     assert_eq(result, 42)
-  })
+  end
 
-  test("variable holding boolean", fn() {
-    def negate(x)
-      return !x
-    end
-    let flag = true
-    let result = negate(flag)
+  test("a boolean variable") do
+    flag = true
+    result = negate flag
     assert_eq(result, false)
-  })
+  end
 
-  test("variable holding array", fn() {
-    def first(arr)
-      return arr[0]
-    end
-    let items = [10, 20, 30]
-    let result = first(items)
+  test("an array variable") do
+    items = [10, 20, 30]
+    result = first_of items
     assert_eq(result, 10)
-  })
+  end
 
-  test("variable holding hash", fn() {
-    def get_name(h)
-      return h["name"]
-    end
-    let person = {"name": "Alice"}
-    let result = get_name(person)
+  test("a hash variable") do
+    person = {"name": "Alice"}
+    result = get_name person
     assert_eq(result, "Alice")
-  })
-})
+  end
+end
 
-describe("Command-style calls with multiple arguments", fn() {
-  test("two string arguments", fn() {
-    def concat(a, b)
-      return a + " " + b
-    end
-    let result = concat("hello", "world")
+describe("Command-style calls with several arguments") do
+  test("two string literals") do
+    result = concat "hello", "world"
     assert_eq(result, "hello world")
-  })
+  end
 
-  test("two variable arguments", fn() {
-    def add(a, b)
-      return a + b
-    end
-    let x = 10
-    let y = 20
-    let result = add(x, y)
+  test("two variables") do
+    x = 10
+    y = 20
+    result = add x, y
     assert_eq(result, 30)
-  })
+  end
 
-  test("mixed literal and variable", fn() {
-    def add(a, b)
-      return a + b
-    end
-    let x = 10
-    let result = add(x, 5)
+  test("a variable and a literal") do
+    x = 10
+    result = add x, 5
     assert_eq(result, 15)
-  })
+  end
 
-  test("three arguments", fn() {
-    def sum3(a, b, c)
-      return a + b + c
-    end
-    let a = 1
-    let b = 2
-    let c = 3
-    let result = sum3(a, b, c)
+  test("three arguments") do
+    result = sum3 1, 2, 3
     assert_eq(result, 6)
-  })
-})
+  end
+end
 
-describe("Command-style calls in different contexts", fn() {
-  test("inside if body", fn() {
-    def echo(x)
-      return x
-    end
-    let result = null
-    let x = "yes"
-    result = echo(x) if (true)
+describe("Command-style calls in expressions") do
+  test("as the body of a postfix if") do
+    result = nil
+    result = echo "yes" if true
     assert_eq(result, "yes")
-  })
+  end
 
-  test("inside function body with end syntax", fn() {
-    def echo(x)
-      return x
-    end
+  test("not run when the postfix if is false") do
+    result = "unchanged"
+    result = echo "yes" if false
+    assert_eq(result, "unchanged")
+  end
 
-    let msg = "hello"
-    let result = echo(msg)
-    assert_eq(result, "hello")
-  })
-
-  test("result used in expression", fn() {
-    def double(x)
-      return x * 2
-    end
-    let n = 5
-    let result = (double(n)) + 1
+  test("wrapped in parentheses inside a larger expression") do
+    n = 5
+    result = (double n) + 1
     assert_eq(result, 11)
-  })
+  end
 
-  test("chained with parentheses call", fn() {
-    def add(a, b)
-      return a + b
-    end
-    def double(x)
-      return x * 2
-    end
-    let x = 3
-    let result = double(add(x, 2))
+  test("as the argument of a parenthesized call") do
+    x = 3
+    result = double(add x, 2)
     assert_eq(result, 10)
-  })
-})
+  end
 
-describe("Command-style calls do not break multi-line code", fn() {
-  test("function body with separate statements", fn() {
-    let log = []
-    def process(x)
-      log.push(x)
-      log.push(x * 2)
-      return log
-    end
-    let result = process(5)
-    assert_eq(result, [5, 10])
-  })
+  test("the whole operator expression after the name is the argument") do
+    x = 10
+    result = double x + 1
+    assert_eq(result, 22)
+  end
 
-  test("variables on consecutive lines stay independent", fn() {
-    let a = 1
-    let b = 2
-    let c = a
-    let d = b
-    assert_eq(c, 1)
-    assert_eq(d, 2)
-  })
+  test("nested command-style calls apply right to left") do
+    result = echo double 4
+    assert_eq(result, 8)
+  end
+end
 
-  test("command call followed by another statement", fn() {
-    def echo(x)
-      return x
-    end
-    let msg = "hi"
-    let result = echo(msg)
-    let other = 42
+describe("Command-style calls do not swallow the next line") do
+  test("a call followed by another statement") do
+    message = "hi"
+    result = echo message
+    other = 42
     assert_eq(result, "hi")
     assert_eq(other, 42)
-  })
-})
+  end
 
-describe("Parentheses call still works", fn() {
-  test("standard parenthesized call", fn() {
-    def add(a, b)
-      return a + b
-    end
-    assert_eq(add(2, 3), 5)
-  })
+  test("variables on consecutive lines stay independent") do
+    first = 1
+    second = 2
+    copy_of_first = first
+    copy_of_second = second
+    assert_eq(copy_of_first, 1)
+    assert_eq(copy_of_second, 2)
+  end
 
-  test("parenthesized call with variable", fn() {
-    def double(x)
-      return x * 2
-    end
-    let n = 7
-    assert_eq(double(n), 14)
-  })
+  test("a function whose body has several statements") do
+    log = []
+    result = record_twice log, 5
+    assert_eq(result, [5, 10])
+  end
+end
 
-  test("both styles produce same result", fn() {
-    def echo(x)
-      return x
-    end
-    let val = "test"
-    let a = echo(val)
-    let b = echo(val)
-    assert_eq(a, b)
-  })
-})
+describe("Command-style and parenthesized calls") do
+  test("give the same result") do
+    value = "test"
+    bare = echo value
+    assert_eq(bare, echo(value))
+    total = add 2, 3
+    assert_eq(total, add(2, 3))
+  end
+end
+
+describe("Command-style method calls with positional arguments") do
+  test("a method with one positional argument") do
+    pending("bug: `log.push 5` parses as `log.push` then a separate `5`, silently pushing nothing")
+    log = []
+    log.push 5
+    assert_eq(log, [5])
+  end
+end

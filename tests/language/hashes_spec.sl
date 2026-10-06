@@ -1,370 +1,308 @@
-# ============================================================================
-# Hashes Test Suite
-# ============================================================================
+# Hashes as a language feature: literals and key types, bracket and dot
+# access, safe navigation, and the built-in Hash methods.
 
-describe("Hash Operations", fn() {
-  test("hash key access", fn() {
-    let h = {"name": "Alice", "age": 30}
-    assert_eq(h["name"], "Alice")
-    assert_eq(h["age"], 30)
-  })
+def make_response
+  {"status": 200, "body": "ok"}
+end
 
-  test("hash key assignment", fn() {
-    let h = hash()
-    h["key"] = "value"
-    assert_eq(h["key"], "value")
-  })
+def empty_hash
+  {}
+end
 
-  test("hash with integer keys", fn() {
-    let h = {1: "one", 2: "two"}
-    assert_eq(h[1], "one")
-    assert_eq(h[2], "two")
-  })
+describe("Hash literals and keys") do
+  test("string keys read with brackets") do
+    person = {"name": "Alice", "age": 30}
+    assert_eq(person["name"], "Alice")
+    assert_eq(person["age"], 30)
+  end
 
-  test("hash dot notation for string keys", fn() {
-    let h = {"name": "Bob"}
-    assert_eq(h["name"], "Bob")
-  })
+  test("bracket assignment adds a key to hash()") do
+    record = hash()
+    assert_eq(record, {})
+    record["key"] = "value"
+    assert_eq(record, {"key": "value"})
+  end
 
-  test("nested hash access", fn() {
-    let h = {"person": {"name": "Alice", "address": {"city": "NYC"}}}
-    assert_eq(h["person"]["name"], "Alice")
-    assert_eq(h["person"]["address"]["city"], "NYC")
-  })
+  test("integer keys") do
+    numbers = {1: "one", 2: "two"}
+    assert_eq(numbers[1], "one")
+    assert_eq(numbers[2], "two")
+  end
 
-  test("controller nested params access", fn() {
-    let req = {
+  test("an integer key and its string form are different keys") do
+    mixed = {1: "int", "1": "string"}
+    assert_eq(mixed.length, 2)
+    assert_eq(mixed[1], "int")
+    assert_eq(mixed["1"], "string")
+  end
+
+  test("boolean keys") do
+    answers = {true: "yes", false: "no"}
+    assert_eq(answers[true], "yes")
+    assert_eq(answers[false], "no")
+  end
+
+  test("keys with spaces") do
+    names = {"first name": "John", "last name": "Doe"}
+    assert_eq(names["first name"], "John")
+    assert_eq(names["last name"], "Doe")
+  end
+
+  test("keys keep insertion order") do
+    assert_eq({"b": 1, "a": 2}.keys, ["b", "a"])
+  end
+
+  test("a missing key reads as nil") do
+    assert_null({"a": 1}["zz"])
+  end
+
+  test("a key set to nil is kept") do
+    record = {"a": 1}
+    record["a"] = nil
+    assert_eq(record, {"a": nil})
+    assert(record.has_key("a"))
+  end
+
+  test("equality ignores insertion order") do
+    assert_eq({"a": 1, "b": 2}, {"b": 2, "a": 1})
+    assert_ne({"a": 1}, {"a": 2})
+  end
+
+  test("a hash literal as the last expression is the return value") do
+    assert_eq(make_response(), {"status": 200, "body": "ok"})
+    assert_eq(empty_hash(), {})
+  end
+end
+
+describe("Nested hashes") do
+  test("chained bracket access") do
+    data = {"person": {"name": "Alice", "address": {"city": "NYC"}}}
+    assert_eq(data["person"]["name"], "Alice")
+    assert_eq(data["person"]["address"]["city"], "NYC")
+  end
+
+  test("controller-style nested params") do
+    request = {
       "params": {"id": "42", "slug": "hello"},
       "query": {},
       "json": {"email": "a@b.c"}
     }
-    assert_eq(req["params"]["id"], "42")
-    assert_eq(req["params"]["slug"], "hello")
-    assert_eq(req["json"]["email"], "a@b.c")
-    assert_null(req["query"]["q"])
-    assert_null(req["params"]["missing"])
-  })
+    assert_eq(request["params"]["id"], "42")
+    assert_eq(request["params"]["slug"], "hello")
+    assert_eq(request["json"]["email"], "a@b.c")
+    assert_null(request["query"]["q"])
+    assert_null(request["params"]["missing"])
+  end
+end
 
-  test("hash key with spaces", fn() {
-    let h = {"first name": "John", "last name": "Doe"}
-    assert_eq(h["first name"], "John")
-    assert_eq(h["last name"], "Doe")
-  })
-
-  test("hash with boolean keys", fn() {
-    let h = {true: "yes", false: "no"}
-    assert_eq(h[true], "yes")
-    assert_eq(h[false], "no")
-  })
-
-  test("hash literal as last expression (implicit return)", fn() {
-    def make_response
-      {"status": 200, "body": "ok"}
-    end
-    let r = make_response()
-    assert_eq(r["status"], 200)
-    assert_eq(r["body"], "ok")
-  })
-
-  test("empty hash as last expression", fn() {
-    def empty
-      {}
-    end
-    assert_eq(empty(), {})
-  })
-
-  # Dot notation tests
-  test("dot notation access", fn() {
-    let person = {"name": "Alice", "age": 30}
+describe("Dot notation") do
+  test("reads a string key") do
+    person = {"name": "Alice", "age": 30}
     assert_eq(person.name, "Alice")
     assert_eq(person.age, 30)
-  })
+  end
 
-  test("dot notation nested access", fn() {
-    let user = {"profile": {"email": "alice@example.com"}}
+  test("reads nested keys") do
+    user = {"profile": {"email": "alice@example.com"}}
     assert_eq(user.profile.email, "alice@example.com")
-  })
+  end
 
-  test("dot notation assignment", fn() {
-    let person = {"name": "Alice"}
+  test("a missing key reads as nil") do
+    assert_null({"name": "x"}.missing)
+  end
+
+  test("assigns an existing key") do
+    person = {"name": "Alice"}
     person.name = "Bob"
-    assert_eq(person.name, "Bob")
-  })
+    assert_eq(person, {"name": "Bob"})
+  end
 
-  test("dot notation add new key", fn() {
-    let person = {"name": "Alice"}
+  test("adds a new key") do
+    person = {"name": "Alice"}
     person.age = 30
-    assert_eq(person.name, "Alice")
-    assert_eq(person.age, 30)
-  })
+    assert_eq(person, {"name": "Alice", "age": 30})
+  end
 
-  test("dot notation with method chaining", fn() {
-    let data = {"items": [
-      1,
-      2,
-      3
-    ]}
+  test("chains into a method on the value") do
+    data = {"items": [1, 2, 3]}
     assert_eq(data.items.length, 3)
-  })
+  end
+end
 
-  # Safe navigation tests
-  test("safe navigation with &.", fn() {
-    let user = {"profile": null}
-    assert_eq(user&.profile&.email, null)
-  })
+describe("Safe navigation") do
+  test("stops at a nil value") do
+    user = {"profile": nil}
+    assert_null(user&.profile&.email)
+  end
 
-  test("safe navigation returns null on missing key", fn() {
-    let user = {"name": "Alice"}
-    assert_eq(user&.email, null)
-  })
+  test("returns nil for a missing key") do
+    user = {"name": "Alice"}
+    assert_null(user&.email)
+  end
+end
 
-  # Hash methods tests
-  test("hash length method", fn() {
-    let h = {"a": 1, "b": 2}
-    assert_eq(h.length, 2)
-  })
+describe("Hash methods") do
+  context("size and membership") do
+    test("length and len()") do
+      assert_eq({"a": 1, "b": 2}.length, 2)
+      assert_eq({"a": 1, "b": 2, "c": 3}.len(), 3)
+      assert_eq({}.length, 0)
+    end
 
-  test("hash len method", fn() {
-    let h = {
-      "a": 1,
-      "b": 2,
-      "c": 3
-    }
-    assert_eq(h.len(), 3)
-  })
+    test("keys and values") do
+      assert_eq({"a": 1, "b": 2}.keys, ["a", "b"])
+      assert_eq({"a": 1, "b": 2}.values, [1, 2])
+    end
 
-  test("hash keys method", fn() {
-    let h = {"a": 1, "b": 2}
-    let k = h.keys
-    assert_eq(k.contains("a"), true)
-    assert_eq(k.contains("b"), true)
-  })
+    test("has_key") do
+      letters = {"a": 1, "b": 2}
+      assert_eq(letters.has_key("a"), true)
+      assert_eq(letters.has_key("c"), false)
+    end
 
-  test("hash values method", fn() {
-    let h = {"a": 1, "b": 2}
-    let v = h.values
-    assert_eq(v.contains(1), true)
-    assert_eq(v.contains(2), true)
-  })
+    test("has_value? and its value? alias") do
+      letters = {"a": 1, "b": 2}
+      assert_eq(letters.has_value?(2), true)
+      assert_eq(letters.has_value?(99), false)
+      assert_eq(letters.value?(1), true)
+      assert_eq(letters.value?(99), false)
+    end
+  end
 
-  test("hash has_key method", fn() {
-    let h = {"a": 1, "b": 2}
-    assert(h.has_key("a"))
-    assert(!h.has_key("c"))
-  })
+  context("lookups") do
+    test("key finds the first key holding a value") do
+      assert_eq({"a": 1, "b": 2, "c": 3}.key(2), "b")
+      assert_eq({"a": 1, "b": 1}.key(1), "a")
+      assert_null({"a": 1}.key(99))
+    end
 
-  test("hash delete method", fn() {
-    let h = {"a": 1, "b": 2}
-    h.delete("a")
-    assert_eq(h.length, 1)
-    assert_eq(h["a"], null)
-  })
+    test("values_at returns nil for a missing key") do
+      assert_eq({"a": 1, "b": 2, "c": 3}.values_at("a", "c"), [1, 3])
+      assert_eq({"a": 1}.values_at("a", "missing"), [1, nil])
+    end
 
-  test("hash merge method", fn() {
-    let h1 = {"a": 1, "b": 2}
-    let h2 = {"b": 3, "c": 4}
-    let merged = h1.merge(h2)
-    assert_eq(merged["a"], 1)
-    assert_eq(merged["b"], 3)
-    assert_eq(merged["c"], 4)
-  })
+    test("fetch_values returns the values in order") do
+      assert_eq({"a": 1, "b": 2}.fetch_values("b", "a"), [2, 1])
+    end
 
-  test("hash clear method", fn() {
-    let h = {"a": 1, "b": 2}
-    h.clear
-    assert_eq(h.length, 0)
-  })
+    test("fetch_values raises on a missing key") do
+      assert_raises("key not found") do
+        {"a": 1}.fetch_values("a", "zz")
+      end
+    end
 
-  test("hash shift returns first pair", fn() {
-    let h = {"a": 1, "b": 2}
-    let pair = h.shift()
-    assert_eq(pair[0], "a")
-    assert_eq(pair[1], 1)
-  })
+    test("fetch returns the value, the default, or raises") do
+      assert_eq({"a": 1}.fetch("a"), 1)
+      assert_eq({"a": 1}.fetch("zz", 0), 0)
+      assert_raises("key not found: zz") do
+        {"a": 1}.fetch("zz")
+      end
+    end
 
-  test("hash shift removes first pair", fn() {
-    let h = {"a": 1, "b": 2}
-    h.shift()
-    assert_eq(h.len(), 1)
-  })
+    test("assoc finds a pair by key") do
+      assert_eq({"a": 1, "b": 2}.assoc("b"), ["b", 2])
+      assert_null({"a": 1}.assoc("missing"))
+    end
 
-  test("hash shift on empty hash", fn() {
-    let h = {}
-    assert_eq(h.shift(), null)
-  })
+    test("rassoc finds a pair by value") do
+      assert_eq({"a": 1, "b": 2}.rassoc(2), ["b", 2])
+      assert_null({"a": 1}.rassoc(99))
+    end
+  end
 
-  test("hash flatten", fn() {
-    let h = {"a": 1, "b": 2}
-    let flat = h.flatten()
-    assert_eq(flat.len(), 2)
-    assert_eq(flat[0][0], "a")
-    assert_eq(flat[0][1], 1)
-    assert_eq(flat[1][0], "b")
-    assert_eq(flat[1][1], 2)
-  })
+  context("mutation") do
+    test("delete removes a key and returns its value") do
+      letters = {"a": 1, "b": 2}
+      assert_eq(letters.delete("a"), 1)
+      assert_eq(letters, {"b": 2})
+    end
 
-  test("hash values_at", fn() {
-    let h = {
-      "a": 1,
-      "b": 2,
-      "c": 3
-    }
-    let vals = h.values_at("a", "c")
-    assert_eq(vals[0], 1)
-    assert_eq(vals[1], 3)
-  })
+    test("delete of a missing key returns nil and changes nothing") do
+      letters = {"a": 1}
+      assert_null(letters.delete("zz"))
+      assert_eq(letters, {"a": 1})
+    end
 
-  test("hash values_at with missing key returns null", fn() {
-    let h = {"a": 1}
-    let vals = h.values_at("a", "missing")
-    assert_eq(vals[0], 1)
-    assert_eq(vals[1], null)
-  })
+    test("clear empties the hash") do
+      letters = {"a": 1, "b": 2}
+      letters.clear
+      assert_eq(letters, {})
+    end
 
-  test("hash key inverse lookup", fn() {
-    let h = {
-      "a": 1,
-      "b": 2,
-      "c": 3
-    }
-    assert_eq(h.key(2), "b")
-  })
+    test("shift removes and returns the first pair") do
+      letters = {"a": 1, "b": 2}
+      assert_eq(letters.shift, ["a", 1])
+      assert_eq(letters, {"b": 2})
+    end
 
-  test("hash key returns null if value not found", fn() {
-    let h = {"a": 1}
-    assert_eq(h.key(99), null)
-  })
+    test("shift on an empty hash returns nil") do
+      assert_null({}.shift)
+    end
+  end
 
-  test("hash has_value? returns true", fn() {
-    let h = {"a": 1, "b": 2}
-    assert(h.has_value?(2))
-  })
+  context("non-mutating transforms") do
+    test("merge lets the right side win and leaves the receiver alone") do
+      left = {"a": 1, "b": 2}
+      merged = left.merge({"b": 3, "c": 4})
+      assert_eq(merged, {"a": 1, "b": 3, "c": 4})
+      assert_eq(left, {"a": 1, "b": 2})
+    end
 
-  test("hash has_value? returns false", fn() {
-    let h = {"a": 1}
-    assert(!h.has_value?(99))
-  })
+    test("update is an alias for merge, also non-mutating") do
+      original = {"a": 1}
+      updated = original.update({"b": 2})
+      assert_eq(updated, {"a": 1, "b": 2})
+      assert_eq(original, {"a": 1})
+    end
 
-  test("hash value? alias", fn() {
-    let h = {"a": 1}
-    assert(h.value?(1))
-    assert(!h.value?(99))
-  })
+    test("to_h returns an equal hash") do
+      original = {"a": 1, "b": 2}
+      assert_eq(original.to_h, {"a": 1, "b": 2})
+    end
 
-  test("hash to_h returns self", fn() {
-    let h = {"a": 1, "b": 2}
-    let h2 = h.to_h()
-    assert_eq(h2["a"], 1)
-    assert_eq(h2["b"], 2)
-  })
+    test("flatten returns the [key, value] pairs") do
+      assert_eq({"a": 1, "b": 2}.flatten, [["a", 1], ["b", 2]])
+    end
 
-  test("hash each_key iterates keys", fn() {
-    let h = {
-      "a": 1,
-      "b": 2,
-      "c": 3
-    }
-    let keys = []
-    h.each_key(fn(k) { keys.push(k) })
-    assert_eq(keys.len(), 3)
-    assert(keys.contains("a"))
-    assert(keys.contains("b"))
-    assert(keys.contains("c"))
-  })
+    test("keep_if returns the matching entries") do
+      numbers = {"a": 1, "b": 2, "c": 3}
+      assert_eq(numbers.keep_if { |key, value| value >= 2 }, {"b": 2, "c": 3})
+      assert_eq(numbers, {"a": 1, "b": 2, "c": 3})
+    end
 
-  test("hash each_value iterates values", fn() {
-    let h = {
-      "a": 1,
-      "b": 2,
-      "c": 3
-    }
-    let vals = []
-    h.each_value(fn(v) { vals.push(v) })
-    assert_eq(vals.len(), 3)
-    assert(vals.contains(1))
-    assert(vals.contains(2))
-    assert(vals.contains(3))
-  })
+    test("delete_if returns the entries that do not match") do
+      numbers = {"a": 1, "b": 2, "c": 3}
+      assert_eq(numbers.delete_if { |key, value| value >= 2 }, {"a": 1})
+      assert_eq(numbers, {"a": 1, "b": 2, "c": 3})
+    end
+  end
 
-  test("hash keep_if keeps matching entries", fn() {
-    let h = {
-      "a": 1,
-      "b": 2,
-      "c": 3
-    }
-    let kept = h.keep_if(fn(k, v) { v >= 2 })
-    assert(kept.has_key("b"))
-    assert(kept.has_key("c"))
-    assert(!kept.has_key("a"))
-  })
+  context("iteration and predicates") do
+    test("each_key visits the keys in order") do
+      keys = []
+      {"a": 1, "b": 2, "c": 3}.each_key { |key| keys.push(key) }
+      assert_eq(keys, ["a", "b", "c"])
+    end
 
-  test("hash delete_if removes matching entries", fn() {
-    let h = {
-      "a": 1,
-      "b": 2,
-      "c": 3
-    }
-    let kept = h.delete_if(fn(k, v) { v >= 2 })
-    assert(kept.has_key("a"))
-    assert(!kept.has_key("b"))
-    assert(!kept.has_key("c"))
-  })
+    test("each_value visits the values in order") do
+      values = []
+      {"a": 1, "b": 2, "c": 3}.each_value { |value| values.push(value) }
+      assert_eq(values, [1, 2, 3])
+    end
 
-  test("hash update alias for merge", fn() {
-    let h = {"a": 1}
-    let updated = h.update({"b": 2})
-    assert_eq(updated["a"], 1)
-    assert_eq(updated["b"], 2)
-  })
+    test("all? is true only when every entry matches") do
+      assert_eq({"a": 2, "b": 4}.all? { |key, value| value % 2 == 0 }, true)
+      assert_eq({"a": 2, "b": 3}.all? { |key, value| value % 2 == 0 }, false)
+    end
 
-  test("hash all? returns true when all match", fn() {
-    let h = {"a": 2, "b": 4}
-    assert(h.all?(fn(k, v) { v % 2 == 0 }))
-  })
+    test("any? is true when one entry matches") do
+      assert_eq({"a": 1, "b": 2}.any? { |key, value| value == 2 }, true)
+      assert_eq({"a": 1, "b": 3}.any? { |key, value| value == 2 }, false)
+    end
 
-  test("hash all? returns false when any fails", fn() {
-    let h = {"a": 2, "b": 3}
-    assert(!h.all?(fn(k, v) { v % 2 == 0 }))
-  })
-
-  test("hash any? returns true when any matches", fn() {
-    let h = {"a": 1, "b": 2}
-    assert(h.any?(fn(k, v) { v == 2 }))
-  })
-
-  test("hash any? returns false when none match", fn() {
-    let h = {"a": 1, "b": 3}
-    assert(!h.any?(fn(k, v) { v == 2 }))
-  })
-
-  test("hash assoc returns pair", fn() {
-    let h = {"a": 1, "b": 2}
-    let pair = h.assoc("b")
-    assert_eq(pair[0], "b")
-    assert_eq(pair[1], 2)
-  })
-
-  test("hash assoc returns null for missing key", fn() {
-    let h = {"a": 1}
-    assert_eq(h.assoc("missing"), null)
-  })
-
-  test("hash rassoc returns pair by value", fn() {
-    let h = {"a": 1, "b": 2}
-    let pair = h.rassoc(2)
-    assert_eq(pair[0], "b")
-    assert_eq(pair[1], 2)
-  })
-
-  test("hash rassoc returns null for missing value", fn() {
-    let h = {"a": 1}
-    assert_eq(h.rassoc(99), null)
-  })
-
-  test("hash fetch_values returns values", fn() {
-    let h = {"a": 1, "b": 2}
-    let vals = h.fetch_values("a", "b")
-    assert_eq(vals[0], 1)
-    assert_eq(vals[1], 2)
-  })
-})
+    test("all? on an empty hash is true, any? is false") do
+      assert_eq({}.all? { |key, value| false }, true)
+      assert_eq({}.any? { |key, value| true }, false)
+    end
+  end
+end
