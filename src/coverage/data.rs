@@ -38,6 +38,19 @@ pub struct FileCoverage {
 }
 
 impl FileCoverage {
+    /// A file with nothing recorded yet.
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            lines: HashMap::new(),
+            branches: HashMap::new(),
+            total_lines: 0,
+            covered_lines: 0,
+            total_branches: 0,
+            covered_branches: 0,
+        }
+    }
+
     pub fn line_coverage_percent(&self) -> f64 {
         if self.total_lines == 0 {
             return 100.0;

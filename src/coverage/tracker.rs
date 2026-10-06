@@ -78,15 +78,7 @@ impl CoverageTracker {
                     let aggregated_file = aggregated
                         .file_coverages
                         .entry(path.clone())
-                        .or_insert_with(|| FileCoverage {
-                            path: path.clone(),
-                            lines: HashMap::new(),
-                            branches: HashMap::new(),
-                            total_lines: 0,
-                            covered_lines: 0,
-                            total_branches: 0,
-                            covered_branches: 0,
-                        });
+                        .or_insert_with(|| FileCoverage::new(path.clone()));
 
                     let executable = match self.executable_lines.get(path) {
                         Some(e) => e,
@@ -166,15 +158,7 @@ impl CoverageTracker {
                     let aggregated_file = aggregated
                         .file_coverages
                         .entry(path.clone())
-                        .or_insert_with(|| FileCoverage {
-                            path: path.clone(),
-                            lines: HashMap::new(),
-                            branches: HashMap::new(),
-                            total_lines: 0,
-                            covered_lines: 0,
-                            total_branches: 0,
-                            covered_branches: 0,
-                        });
+                        .or_insert_with(|| FileCoverage::new(path.clone()));
 
                     if aggregated_file.total_lines == 0 {
                         aggregated_file.total_lines = executable.len() as u32;
@@ -194,15 +178,7 @@ impl CoverageTracker {
                 let file_cov = test_cov
                     .file_coverages
                     .entry(path.clone())
-                    .or_insert_with(|| FileCoverage {
-                        path: path.clone(),
-                        lines: HashMap::new(),
-                        branches: HashMap::new(),
-                        total_lines: 0,
-                        covered_lines: 0,
-                        total_branches: 0,
-                        covered_branches: 0,
-                    });
+                    .or_insert_with(|| FileCoverage::new(path.clone()));
 
                 let line_cov = file_cov.lines.entry(line).or_insert_with(|| {
                     let source = self
@@ -240,15 +216,7 @@ impl CoverageTracker {
         let file_cov = global
             .file_coverages
             .entry(path.clone())
-            .or_insert_with(|| FileCoverage {
-                path: path.clone(),
-                lines: HashMap::new(),
-                branches: HashMap::new(),
-                total_lines: 0,
-                covered_lines: 0,
-                total_branches: 0,
-                covered_branches: 0,
-            });
+            .or_insert_with(|| FileCoverage::new(path.clone()));
         let is_executable = self
             .executable_lines
             .get(path)
@@ -280,53 +248,7 @@ impl CoverageTracker {
     }
 
     pub fn record_line_hit_to_global(&mut self, path: &PathBuf, line: usize) {
-        let mut global = self.global_coverage.lock().unwrap();
-
-        let file_cov = global
-            .file_coverages
-            .entry(path.clone())
-            .or_insert_with(|| FileCoverage {
-                path: path.clone(),
-                lines: HashMap::new(),
-                branches: HashMap::new(),
-                total_lines: 0,
-                covered_lines: 0,
-                total_branches: 0,
-                covered_branches: 0,
-            });
-
-        let is_executable = self
-            .executable_lines
-            .get(path)
-            .and_then(|lines| lines.get(&line))
-            .is_some();
-
-        let line_cov = file_cov.lines.entry(line).or_insert_with(|| LineCoverage {
-            line_number: line,
-            hits: 0,
-            source_code: self
-                .executable_lines
-                .get(path)
-                .and_then(|lines| lines.get(&line))
-                .cloned()
-                .unwrap_or_default(),
-            is_executable,
-        });
-
-        let was_covered = line_cov.hits > 0;
-        line_cov.hits += 1;
-
-        if !was_covered && is_executable {
-            file_cov.covered_lines += 1;
-        }
-
-        if file_cov.total_lines == 0 && is_executable {
-            file_cov.total_lines = self
-                .executable_lines
-                .get(path)
-                .map(|m| m.len())
-                .unwrap_or(0) as u32;
-        }
+        self.update_global_coverage(path, line);
     }
 
     pub fn get_aggregated_coverage(&self) -> AggregatedCoverage {
@@ -342,15 +264,7 @@ impl CoverageTracker {
             let file_cov = aggregated
                 .file_coverages
                 .entry(path.clone())
-                .or_insert_with(|| FileCoverage {
-                    path: path.clone(),
-                    lines: HashMap::new(),
-                    branches: HashMap::new(),
-                    total_lines: 0,
-                    covered_lines: 0,
-                    total_branches: 0,
-                    covered_branches: 0,
-                });
+                .or_insert_with(|| FileCoverage::new(path.clone()));
             if file_cov.total_lines == 0 {
                 file_cov.total_lines = executable.len() as u32;
             }
