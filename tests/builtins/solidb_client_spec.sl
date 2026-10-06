@@ -1,494 +1,472 @@
-# ============================================================================
-# SolidB Client Test Suite
-# ============================================================================
-# Tests for the solidb_* client builtins (src/interpreter/builtins/solidb.rs)
-# plus the offline-testable DB config builtins (set_solidb_address,
-# db_cursor_url, db_name, db_query_raw, db_query_hardcoded, connection).
-#
-# Requires a running SolidB instance (default http://localhost:6745) for the
-# server-backed tests; those skip gracefully when no server answers.
-#
-# NOTE on signatures (verified against src/interpreter/builtins/solidb.rs):
-# The class-method loop re-registers `solidb_ping`, `solidb_auth`, and
-# `solidb_query` as standalone globals whose FIRST argument is a Solidb
-# instance — these shadow the address-first global forms registered earlier.
-# The only true address-first globals are `solidb_connect(addr)` (1 arg),
-# `solidb_auth(addr, database, username, password)` (4 args), and
-# `solidb_query(host, database, sdbql[, bind_vars])` (3-4 args). Everything
-# else goes through an instance from `Solidb(host, database)`.
-# ============================================================================
+# The raw SoliDB client: `Solidb(host, database)` instances and the
+# db_* configuration builtins. Server-backed tests authenticate with the same
+# credentials the models use and drop every collection they create.
 
 class AuditSpecConnProbe < Model
 end
 
-let __solidb_host = "http://localhost:6745"
-let __spec_db = db_name()
+created_collections = []
 
-# The constructor never touches the network, so this is safe offline.
-def spec_db
-  return Solidb(__solidb_host, __spec_db)
+def solidb_host
+  getenv("SOLIDB_HOST") || "http://localhost:6745"
 end
 
-# Probe server availability once
-let __solidb_available = false
-try
-  let __probe = Solidb(__solidb_host, __spec_db)
-  __probe.ping()
-  __solidb_available = true
-catch e
+def spec_username
+  getenv("SOLIDB_USERNAME") || "spec_user"
 end
 
-# ============================================================================
-# Offline tests — run (and genuinely assert) with no server present
-# ============================================================================
+def spec_password
+  getenv("SOLIDB_PASSWORD") || "spec_pass"
+end
 
-describe("SolidB offline configuration builtins", fn() {
-  test("set_solidb_address() stores the address for blob URL building", fn() {
+# A client that has not called auth — the constructor never touches the network.
+def bare_db
+  Solidb(solidb_host(), db_name())
+end
+
+# A raw client on the ORM's database, with the credentials the models use.
+def raw_db
+  db = bare_db()
+  username = getenv("SOLIDB_USERNAME")
+  db.auth(username, getenv("SOLIDB_PASSWORD")) if username.present?
+  db
+end
+
+def collection(name, collection_type = nil)
+  raw_db().create_collection(name, collection_type)
+  created_collections.push(name)
+  name
+end
+
+describe("SoliDB configuration builtins") do
+  after_each() do
+    set_solidb_address(solidb_host())
+  end
+
+  test("set_solidb_address sets the host blob URLs are built on") do
     set_solidb_address("http://solidb-spec-host.invalid:6745")
-    # get_blob_url() falls back to the configured address when no
-    # explicit base_url is passed — this is how the setting is observable.
-    let url = get_blob_url("audit_spec_blobs", "specblob123")
-    assert(url.contains("http://solidb-spec-host.invalid:6745"))
-    assert(url.contains("/_api/database/"))
-    set_solidb_address("http://localhost:6745")
-  })
+    blob_url = get_blob_url("audit_spec_blobs", "specblob123")
+    assert(blob_url.starts_with?("http://solidb-spec-host.invalid:6745/_api/database/"), blob_url)
+    assert(blob_url.ends_with?("/document/audit_spec_blobs/specblob123"), blob_url)
+  end
 
-  test("db_cursor_url() returns the cursor endpoint URL", fn() {
-    let url = db_cursor_url()
-    assert(url.contains("_api/database/"))
-    assert(url.contains("/cursor"))
-  })
+  test("db_cursor_url is the cursor endpoint of the test database") do
+    assert_match(db_cursor_url(), "/_api/database/#{db_name()}/cursor$")
+  end
 
-  test("db_name() returns a non-empty database name", fn() {
-    let name = db_name()
-    assert(name.length() > 0)
-  })
+  test("db_name is a plain database name") do
+    assert_match(db_name(), "^[A-Za-z0-9_-]+$")
+  end
 
-  test("db_query_raw() returns a raw response string", fn() {
-    # Never raises: errors come back as "Error: ..." strings when the
-    # server is unreachable, JSON text when it answers. Either way the
-    # result must be a non-empty string.
-    let result = db_query_raw("FOR d IN audit_spec_raw RETURN d")
-    assert(result.length() > 0)
-  })
+  test("db_query_raw and db_query_hardcoded refuse a query that is not a string") do
+    assert_raises("db_query_raw requires a query string") do
+      db_query_raw(42)
+    end
+    assert_raises("db_query_hardcoded requires a query string") do
+      db_query_hardcoded(nil)
+    end
+  end
 
-  test("db_query_hardcoded() returns a raw response string", fn() {
-    let result = db_query_hardcoded("FOR d IN audit_spec_hardcoded RETURN d")
-    assert(result.length() > 0)
-  })
+  test("db_query_hardcoded answers the server's JSON or a legible error, never nothing") do
+    assert_match(db_query_hardcoded("RETURN 1"), "^(\\{|Error: )")
+  end
 
-  test("connection() rejects a non-class first argument", fn() {
-    let raised = false
-    try
+  test("connection refuses a first argument that is not a class") do
+    assert_raises("Expected class as first argument, got string") do
       connection("not-a-class", "primary")
-    catch e
-      raised = str(e).contains("Expected class")
     end
-    assert(raised)
-  })
+  end
 
-  test("connection() fails fast on an unknown connection name", fn() {
-    let raised = false
-    try
+  test("connection fails fast on an unknown connection name") do
+    assert_raises("Unknown database connection") do
       connection(AuditSpecConnProbe, "audit_spec_missing_conn_xyz")
-    catch e
-      raised = str(e).contains("Unknown database connection")
     end
-    assert(raised)
-  })
+  end
+end
 
-  test("connected() is false on a fresh unauthenticated instance", fn() {
-    let client = spec_db()
-    assert_not(client.connected())
-  })
+describe("Solidb client without a server") do
+  test("a fresh instance is not connected") do
+    assert_eq(bare_db().connected(), false)
+  end
 
-  test("close() removes the instance state", fn() {
-    let client = Solidb(__solidb_host, __spec_db)
-    assert(client.close())
-    # After close() the state map no longer holds the instance, so any
-    # subsequent call raises instead of silently reconnecting.
-    let raised = false
-    try
+  test("close drops the instance, so later calls raise") do
+    client = bare_db()
+    assert_eq(client.close(), true)
+    assert_raises("Solidb instance not found") do
       client.connected()
-    catch e
-      raised = true
     end
-    assert(raised)
-  })
+  end
 
-  test("timeout() returns the client so it chains into query()", fn() {
-    let client = spec_db()
-    let chained = client.timeout(60)
-    assert_eq(chained, client)
-  })
+  test("timeout returns the client so it chains") do
+    client = bare_db()
+    assert_eq(client.timeout(60), client)
+    assert_eq(client.timeout(1.5), client)
+  end
 
-  test("timeout() rejects zero, negative, and non-numeric values", fn() {
-    let client = spec_db()
-    for bad in [0, -1, "60", null]
-      let raised = false
-      try
-        client.timeout(bad)
-      catch e
-        raised = str(e).contains("timeout")
+  test("timeout refuses zero, negative and non-numeric values") do
+    client = bare_db()
+    assert_raises("timeout() expects a positive number of seconds, got 0") do
+      client.timeout(0)
+    end
+    assert_raises("timeout() expects a positive number of seconds, got -1") do
+      client.timeout(-1)
+    end
+    assert_raises("timeout() expects a number of seconds, got string") do
+      client.timeout("60")
+    end
+    assert_raises("timeout() expects a number of seconds, got null") do
+      client.timeout(nil)
+    end
+  end
+
+  test("query refuses a third argument that is not an options hash") do
+    assert_raises("query() expects an options hash as the third argument, got int") do
+      bare_db().query("RETURN 1", {}, 60)
+    end
+  end
+
+  test("query refuses an unknown option") do
+    assert_raises("query() unknown option 'typo'; expected timeout") do
+      bare_db().query("RETURN 1", {}, {"typo": 1})
+    end
+  end
+
+  test("query refuses a non-positive timeout option") do
+    assert_raises("query() timeout expects a positive number of seconds, got 0") do
+      bare_db().query("RETURN 1", {}, {"timeout": 0})
+    end
+  end
+end
+
+describe("Solidb client against a server") do
+  before_each() do
+    created_collections = []
+    requires_solidb()
+  end
+
+  after_each() do
+    created_collections.each do |name|
+      raw_db().drop_collection(name) rescue nil
+    end
+  end
+
+  describe("connecting") do
+    test("db_query_raw returns the server's JSON") do
+      assert_eq(HTTP.json_parse(db_query_raw("RETURN 1"))["result"], [1])
+    end
+
+    test("ping answers true, also through the instance-first global") do
+      client = raw_db()
+      assert_eq(client.ping(), true)
+      assert_eq(solidb_ping(client), true)
+    end
+
+    test("auth attaches credentials and marks the instance connected") do
+      client = bare_db()
+      assert_eq(client.connected(), false)
+      assert_eq(client.auth(spec_username(), spec_password()), "Authenticated")
+      assert_eq(client.connected(), true)
+    end
+
+    test("auth only stores the credentials: a wrong password fails on the next call") do
+      skip("SoliDB accepts anonymous requests here") if getenv("SOLIDB_USERNAME").blank?
+
+      client = bare_db()
+      assert_eq(client.auth(getenv("SOLIDB_USERNAME"), "wrong-password"), "Authenticated")
+      assert_raises("401 Unauthorized") do
+        client.query("RETURN 1")
       end
-      assert(raised)
     end
-  })
 
-  test("query() rejects a third argument that is not an options hash", fn() {
-    let client = spec_db()
-    let raised = false
-    try
-      client.query("RETURN 1", {}, 60)
-    catch e
-      raised = str(e).contains("options hash")
+    test("solidb_auth and solidb_query take the instance first") do
+      client = bare_db()
+      assert_eq(solidb_auth(client, spec_username(), spec_password()), "Authenticated")
+      assert_eq(solidb_query(client, "RETURN 2"), [2])
     end
-    assert(raised)
-  })
 
-  test("query() rejects an unknown options key", fn() {
-    let client = spec_db()
-    let raised = false
-    try
-      client.query("RETURN 1", {}, {"typo": 1})
-    catch e
-      raised = str(e).contains("unknown option")
+    test("the address-first one-shot globals work as documented") do
+      pending("bug: the instance-first solidb_auth/solidb_query/solidb_ping globals shadow the address-first forms")
+      assert_eq(solidb_auth(solidb_host(), db_name(), spec_username(), spec_password()), "Authenticated")
+      assert_eq(solidb_query(solidb_host(), db_name(), "RETURN @n", {"n": 3}), [3])
     end
-    assert(raised)
-  })
 
-  test("query() rejects a non-positive timeout option", fn() {
-    let client = spec_db()
-    let raised = false
-    try
-      client.query("RETURN 1", {}, {"timeout": 0})
-    catch e
-      raised = str(e).contains("timeout")
+    test("solidb_connect pings the server") do
+      skip("solidb_connect sends no credentials and this SoliDB requires them") if getenv("SOLIDB_USERNAME").present?
+
+      assert_match(solidb_connect(solidb_host()), "^Connected")
     end
-    assert(raised)
-  })
-})
+  end
 
-# ============================================================================
-# Server-gated tests — each early-returns when SolidB is unreachable
-# ============================================================================
-
-describe("Solidb connection builtins", fn() {
-  test("solidb_connect() connects to the server", fn() {
-    return null if !__solidb_available
-
-    let result = solidb_connect(__solidb_host)
-    assert(result.contains("Connected"))
-  })
-
-  test("ping() returns a server timestamp", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    let stamp = client.ping()
-    assert(stamp.present?)
-    # Also reachable through the legacy standalone form (instance first)
-    assert(solidb_ping(client).present?)
-  })
-
-  test("auth() marks the instance connected", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    assert_not(client.connected())
-    assert_eq(client.auth("spec_user", "spec_pass"), "Authenticated")
-    assert(client.connected())
-  })
-
-  test("solidb_auth() authenticates with address-first arguments", fn() {
-    return null if !__solidb_available
-
-    let result = solidb_auth(__solidb_host, __spec_db, "spec_user", "spec_pass")
-    assert_eq(result, "Authenticated")
-  })
-
-  test("solidb_query() runs SDBQL with bind variables", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_globalq")
-    client.insert("audit_spec_globalq", "g1", {"name": "alice"})
-    let results = solidb_query(
-      __solidb_host,
-      __spec_db,
-      "FOR d IN audit_spec_globalq FILTER d.name == @name RETURN d",
-      {"name": "alice"}
-    )
-    assert(len(results) == 1)
-    assert_eq(results[0]["name"], "alice")
-    client.drop_collection("audit_spec_globalq")
-  })
-
-  test("query() without bind variables returns all docs", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    let results = client.query("FOR d IN audit_spec_globalq RETURN d")
-    assert(len(results) >= 0)
-  })
-})
-
-describe("Solidb collection management", fn() {
-  test("create_collection() and drop_collection() round trip", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    assert_eq(client.create_collection("audit_spec_roundtrip"), "Created collection: audit_spec_roundtrip")
-    assert_eq(client.drop_collection("audit_spec_roundtrip"), "Dropped collection: audit_spec_roundtrip")
-  })
-
-  test("list_collections() includes a newly created collection", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_listed")
-    let names = client.list_collections()
-    assert(len(names) >= 1)
-    let found = false
-    for name in names
-      found = true if str(name) == "audit_spec_listed"
+  describe("queries") do
+    test("query binds variables") do
+      name = collection("client_spec_query")
+      client = raw_db()
+      client.insert(name, "red", {"color": "red"})
+      client.insert(name, "blue", {"color": "blue"})
+      keys = client.query("FOR d IN client_spec_query FILTER d.color == @color RETURN d._key", {"color": "red"})
+      assert_eq(keys, ["red"])
     end
-    assert(found)
-    client.drop_collection("audit_spec_listed")
-  })
 
-  test("collection_stats() returns stats for a collection", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_stats")
-    let stats = client.collection_stats("audit_spec_stats")
-    assert(stats.present?)
-    client.drop_collection("audit_spec_stats")
-  })
-
-  test("prune_collection() returns the deleted document count", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_prune")
-    client.insert("audit_spec_prune", "old1", {"value": 1})
-    let deleted = client.prune_collection("audit_spec_prune", "1970-01-01T00:00:00Z")
-    assert(deleted >= 0)
-    client.drop_collection("audit_spec_prune")
-  })
-})
-
-describe("Solidb document CRUD", fn() {
-  test("insert() and get() round trip a document", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_docs")
-    client.insert("audit_spec_docs", "doc1", {
-      "value": 42,
-      "label": "spec"
-    })
-    let doc = client.get("audit_spec_docs", "doc1")
-    assert(doc.present?)
-    assert_eq(doc["value"], 42)
-    assert_eq(doc["label"], "spec")
-  })
-
-  test("update() replaces a document", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_update")
-    client.insert("audit_spec_update", "u1", {"value": 1})
-    client.update("audit_spec_update", "u1", {"value": 2})
-    let doc = client.get("audit_spec_update", "u1")
-    assert(doc.present?)
-    assert_eq(doc["value"], 2)
-  })
-
-  test("upsert() merges into an existing document", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_upsert")
-    client.insert("audit_spec_upsert", "up1", {
-      "a": 1,
-      "b": 2
-    })
-    client.upsert("audit_spec_upsert", "up1", {"b": 3})
-    let doc = client.get("audit_spec_upsert", "up1")
-    assert(doc.present?)
-    assert_eq(doc["a"], 1)
-    assert_eq(doc["b"], 3)
-  })
-
-  test("delete() removes a document", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_delete")
-    client.insert("audit_spec_delete", "d1", {"value": 7})
-    assert_eq(client.delete("audit_spec_delete", "d1"), "OK")
-    # A read of the deleted key must not return the old document
-    let still_there = true
-    try
-      let doc = client.get("audit_spec_delete", "d1")
-      still_there = doc.present?
-    catch e
-      still_there = false
+    test("query without bind variables returns every row") do
+      name = collection("client_spec_all")
+      client = raw_db()
+      client.insert(name, "a", {"n": 1})
+      client.insert(name, "b", {"n": 2})
+      assert_eq(client.query("FOR d IN client_spec_all SORT d.n RETURN d.n"), [1, 2])
     end
-    assert_not(still_there)
-  })
 
-  test("list() returns the documents of a collection", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_list")
-    client.insert("audit_spec_list", "l1", {"n": 1})
-    client.insert("audit_spec_list", "l2", {"n": 2})
-    let docs = client.list("audit_spec_list")
-    assert(len(docs) >= 2)
-  })
-
-  test("query() filters with bound variables", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_qbind")
-    client.insert("audit_spec_qbind", "q1", {"color": "red"})
-    client.insert("audit_spec_qbind", "q2", {"color": "blue"})
-    let results = client.query("FOR d IN audit_spec_qbind FILTER d.color == @color RETURN d", {"color": "red"})
-    assert(len(results) == 1)
-    assert_eq(results[0]["color"], "red")
-  })
-
-  test("explain() returns a query plan", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_explain")
-    let plan = client.explain("FOR d IN audit_spec_explain RETURN d")
-    assert(plan.present?)
-  })
-})
-
-describe("Solidb indexes", fn() {
-  test("create_index(), list_indexes(), and drop_index()", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_idx")
-    assert_eq(
-      client.create_index("audit_spec_idx", "by_value", ["value"]),
-      "Created index: by_value on audit_spec_idx"
-    )
-    let indexes = client.list_indexes("audit_spec_idx")
-    assert(len(indexes) >= 1)
-    let found = false
-    for index in indexes
-      found = true if str(index["name"]) == "by_value"
+    test("timeout chains into query and query takes a timeout option") do
+      client = raw_db()
+      assert_eq(client.timeout(30).query("RETURN 1"), [1])
+      assert_eq(client.query("RETURN 2", {}, {"timeout": 30}), [2])
     end
-    assert(found)
-    assert_eq(client.drop_index("audit_spec_idx", "by_value"), "Dropped index: by_value from audit_spec_idx")
-  })
 
-  test("create_vector_index() and drop_vector_index()", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_vecidx")
-    assert_eq(
-      client.create_vector_index("audit_spec_vecidx", "by_embedding", "embedding", 3),
-      "Created vector index: by_embedding on audit_spec_vecidx"
-    )
-    assert_eq(
-      client.drop_vector_index("audit_spec_vecidx", "by_embedding"),
-      "Dropped vector index: by_embedding from audit_spec_vecidx"
-    )
-  })
-})
-
-describe("Solidb columnar stores", fn() {
-  test("create_columnar(), list_columnar(), and drop_columnar()", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_columnar("audit_spec_col", [
-      {"name": "id", "type": "Int"},
-      {
-        "name": "label",
-        "type": "String",
-        "nullable": true
-      }
-    ])
-    let stores = client.list_columnar()
-    assert(len(stores) >= 1)
-    assert_eq(client.drop_columnar("audit_spec_col"), "Dropped columnar store: audit_spec_col")
-  })
-})
-
-describe("Solidb blobs", fn() {
-  test("store_blob() and get_blob() round trip binary data", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    client.create_collection("audit_spec_blobs")
-    let encoded = Base64.encode("hello solidb blob")
-    let blob_id = client.store_blob("audit_spec_blobs", encoded, "spec.txt", "text/plain")
-    assert(blob_id.present?)
-    assert(str(blob_id).length() > 0)
-    let round_tripped = client.get_blob("audit_spec_blobs", str(blob_id))
-    assert_eq(round_tripped, encoded)
-    client.delete_blob("audit_spec_blobs", str(blob_id))
-  })
-
-  test("get_blob_metadata() describes a stored blob", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    let encoded = Base64.encode("metadata probe")
-    let blob_id = str(client.store_blob("audit_spec_blobs", encoded, "meta.bin", "application/octet-stream"))
-    let metadata = client.get_blob_metadata("audit_spec_blobs", blob_id)
-    assert(metadata.present?)
-    client.delete_blob("audit_spec_blobs", blob_id)
-  })
-
-  test("delete_blob() removes a stored blob", fn() {
-    return null if !__solidb_available
-
-    let client = spec_db()
-    let encoded = Base64.encode("to be deleted")
-    let blob_id = str(client.store_blob("audit_spec_blobs", encoded, "gone.bin", "application/octet-stream"))
-    assert_eq(client.delete_blob("audit_spec_blobs", blob_id), "OK")
-    let raised = false
-    try
-      client.get_blob("audit_spec_blobs", blob_id)
-    catch e
-      raised = true
+    test("explain returns the plan without running the query") do
+      name = collection("client_spec_explain")
+      plan = raw_db().explain("FOR d IN client_spec_explain RETURN d")
+      assert_eq(plan["collections"][0]["name"], name)
+      assert_eq(plan["collections"][0]["access_type"], "full_scan")
     end
-    assert(raised)
-  })
-})
+  end
 
-# Best-effort cleanup of anything left behind by interrupted runs
-try
-  let cleanup_db = spec_db()
-  cleanup_db.drop_collection("audit_spec_roundtrip")
-  cleanup_db.drop_collection("audit_spec_listed")
-  cleanup_db.drop_collection("audit_spec_stats")
-  cleanup_db.drop_collection("audit_spec_prune")
-  cleanup_db.drop_collection("audit_spec_docs")
-  cleanup_db.drop_collection("audit_spec_update")
-  cleanup_db.drop_collection("audit_spec_upsert")
-  cleanup_db.drop_collection("audit_spec_delete")
-  cleanup_db.drop_collection("audit_spec_list")
-  cleanup_db.drop_collection("audit_spec_qbind")
-  cleanup_db.drop_collection("audit_spec_explain")
-  cleanup_db.drop_collection("audit_spec_idx")
-  cleanup_db.drop_collection("audit_spec_vecidx")
-  cleanup_db.drop_collection("audit_spec_blobs")
-  cleanup_db.drop_collection("audit_spec_globalq")
-catch e
+  describe("collections") do
+    test("create_collection and drop_collection report what they did") do
+      client = raw_db()
+      assert_eq(client.create_collection("client_spec_roundtrip"), "Created collection: client_spec_roundtrip")
+      assert_eq(client.drop_collection("client_spec_roundtrip"), "Dropped collection: client_spec_roundtrip")
+    end
+
+    test("create_collection refuses an existing name") do
+      name = collection("client_spec_twice")
+      assert_raises("CollectionAlreadyExists") do
+        raw_db().create_collection(name)
+      end
+    end
+
+    test("drop_collection raises for a missing collection") do
+      assert_raises("CollectionNotFound") do
+        raw_db().drop_collection("client_spec_never_created")
+      end
+    end
+
+    test("list_collections names each collection with its type") do
+      collection("client_spec_listed")
+      collection("client_spec_edges", "edge")
+      types = {}
+      raw_db().list_collections.each do |info|
+        types[info["name"]] = info["type"]
+      end
+      assert_eq(types["client_spec_listed"], "document")
+      assert_eq(types["client_spec_edges"], "edge")
+    end
+
+    test("collection_stats counts the documents") do
+      name = collection("client_spec_stats")
+      raw_db().insert(name, "one", {"n": 1})
+      stats = raw_db().collection_stats(name)
+      assert_eq(stats["collection"], name)
+      assert_eq(stats["type"], "document")
+      assert_eq(stats["document_count"], 1)
+    end
+
+    test("prune_collection returns how many rows it deleted") do
+      name = collection("client_spec_prune", "timeseries")
+      assert_eq(raw_db().prune_collection(name, "1970-01-01T00:00:00Z"), 0)
+    end
+
+    test("create_collection refuses the columnar type") do
+      pending("bug: create_collection(name, \"columnar\") creates a collection instead of raising")
+      assert_raises("create_columnar") do
+        raw_db().create_collection("client_spec_columnar_type", "columnar")
+      end
+    end
+  end
+
+  describe("documents") do
+    test("insert returns the stored document and get reads it back") do
+      name = collection("client_spec_docs")
+      client = raw_db()
+      inserted = client.insert(name, "doc1", {"value": 42, "label": "spec"})
+      assert_eq(inserted["_key"], "doc1")
+      document = client.get(name, "doc1")
+      assert_eq(document["value"], 42)
+      assert_eq(document["label"], "spec")
+    end
+
+    test("insert with a nil key generates one") do
+      name = collection("client_spec_autokey")
+      client = raw_db()
+      key = client.insert(name, nil, {"auto": true})["_key"]
+      assert_match(key, "^[0-9a-f-]{36}$")
+      assert_eq(client.get(name, key)["auto"], true)
+    end
+
+    test("get returns nil for a missing key") do
+      pending("bug: Solidb#get raises DocumentNotFound instead of returning nil")
+      name = collection("client_spec_get_missing")
+      assert_null(raw_db().get(name, "nope"))
+    end
+
+    test("update patches the given fields of an existing document") do
+      name = collection("client_spec_update")
+      client = raw_db()
+      client.insert(name, "u1", {"value": 1, "label": "kept"})
+      client.update(name, "u1", {"value": 2})
+      document = client.get(name, "u1")
+      assert_eq(document["value"], 2)
+      assert_eq(document["label"], "kept")
+    end
+
+    test("update raises for a missing document") do
+      name = collection("client_spec_update_missing")
+      assert_raises("Update failed: HTTP 404") do
+        raw_db().update(name, "ghost", {"value": 1})
+      end
+    end
+
+    test("upsert merges into an existing document") do
+      name = collection("client_spec_upsert")
+      client = raw_db()
+      client.insert(name, "up1", {"a": 1, "b": 2})
+      client.upsert(name, "up1", {"b": 3})
+      document = client.get(name, "up1")
+      assert_eq(document["a"], 1)
+      assert_eq(document["b"], 3)
+    end
+
+    test("upsert inserts a missing document") do
+      pending("bug: Solidb#upsert raises 'Update failed: HTTP 404' instead of inserting")
+      name = collection("client_spec_upsert_new")
+      client = raw_db()
+      client.upsert(name, "fresh", {"n": 1})
+      assert_eq(client.get(name, "fresh")["n"], 1)
+    end
+
+    test("delete removes a document") do
+      name = collection("client_spec_delete")
+      client = raw_db()
+      client.insert(name, "d1", {"value": 7})
+      assert_eq(client.delete(name, "d1"), "OK")
+      assert_eq(client.query("FOR d IN client_spec_delete RETURN d"), [])
+    end
+
+    test("delete raises for a missing document") do
+      name = collection("client_spec_delete_missing")
+      assert_raises("Delete failed: HTTP 404") do
+        raw_db().delete(name, "ghost")
+      end
+    end
+
+    test("list returns the documents of a collection") do
+      pending("bug: Solidb#list requests /collection/<name>/documents, which SoliDB answers 404")
+      name = collection("client_spec_list")
+      client = raw_db()
+      client.insert(name, "l1", {"n": 1})
+      client.insert(name, "l2", {"n": 2})
+      assert_eq(client.list(name).map { |document| document["_key"] }.sort, ["l1", "l2"])
+    end
+  end
+
+  describe("indexes") do
+    test("create_index, list_indexes and drop_index") do
+      name = collection("client_spec_idx")
+      client = raw_db()
+      assert_eq(client.create_index(name, "by_value", ["value"], {}), "Created index: by_value on client_spec_idx")
+      index = client.list_indexes(name).find { |candidate| candidate["name"] == "by_value" }
+      assert_eq(index["fields"], ["value"])
+      assert_eq(index["unique"], false)
+      assert_eq(client.drop_index(name, "by_value"), "Dropped index: by_value from client_spec_idx")
+      assert_eq(client.list_indexes(name), [])
+    end
+
+    test("a unique index refuses a duplicate value") do
+      name = collection("client_spec_unique")
+      client = raw_db()
+      client.create_index(name, "by_email", ["email"], {"unique": true})
+      client.insert(name, "first", {"email": "a@example.com"})
+      assert_raises("Unique constraint violated") do
+        client.insert(name, "second", {"email": "a@example.com"})
+      end
+    end
+
+    test("create_vector_index and drop_vector_index") do
+      name = collection("client_spec_vecidx")
+      client = raw_db()
+      assert_eq(
+        client.create_vector_index(name, "by_embedding", "embedding", 3, "cosine"),
+        "Created vector index: by_embedding on client_spec_vecidx"
+      )
+      assert_eq(
+        client.drop_vector_index(name, "by_embedding"),
+        "Dropped vector index: by_embedding from client_spec_vecidx"
+      )
+    end
+
+    test("index options are optional, as documented") do
+      pending("bug: create_index needs 4 arguments and create_vector_index 5 — the options hash is not optional")
+      name = collection("client_spec_idx_noopts")
+      client = raw_db()
+      assert_eq(client.create_index(name, "by_value", ["value"]), "Created index: by_value on client_spec_idx_noopts")
+      assert_eq(
+        client.create_vector_index(name, "by_embedding", "embedding", 3),
+        "Created vector index: by_embedding on client_spec_idx_noopts"
+      )
+    end
+  end
+
+  describe("columnar stores") do
+    after_each() do
+      raw_db().drop_columnar("client_spec_col") rescue nil
+    end
+
+    test("create_columnar, list_columnar and drop_columnar") do
+      client = raw_db()
+      created = client.create_columnar("client_spec_col", [
+        {"name": "id", "type": "Int"},
+        {"name": "label", "type": "String", "nullable": true}
+      ])
+      assert_eq(created, {"columns": 2, "name": "client_spec_col", "status": "created"})
+      store = client.list_columnar.find { |candidate| candidate["name"] == "client_spec_col" }
+      assert_eq(store["columns"].map { |column| column["name"] }, ["id", "label"])
+      assert_eq(client.drop_columnar("client_spec_col"), "Dropped columnar store: client_spec_col")
+    end
+  end
+
+  describe("blobs") do
+    test("store_blob and get_blob round-trip base64 data") do
+      name = collection("client_spec_blobs", "blob")
+      client = raw_db()
+      encoded = Base64.encode("hello solidb blob")
+      blob_id = client.store_blob(name, encoded, "spec.txt", "text/plain")
+      assert_match(blob_id, "^[0-9a-f-]{36}$")
+      assert_eq(client.get_blob(name, blob_id), encoded)
+    end
+
+    test("get_blob_metadata describes the blob without its body") do
+      name = collection("client_spec_blob_meta", "blob")
+      client = raw_db()
+      blob_id = client.store_blob(name, Base64.encode("hello solidb blob"), "spec.txt", "text/plain")
+      metadata = client.get_blob_metadata(name, blob_id)
+      assert_eq(metadata["filename"], "spec.txt")
+      assert_eq(metadata["content_type"], "text/plain")
+      assert_eq(metadata["size"], 17)
+    end
+
+    test("delete_blob removes the blob") do
+      name = collection("client_spec_blob_delete", "blob")
+      client = raw_db()
+      blob_id = client.store_blob(name, Base64.encode("to be deleted"), "gone.bin", "application/octet-stream")
+      assert_eq(client.delete_blob(name, blob_id), "OK")
+      assert_raises("Blob not found") do
+        client.get_blob(name, blob_id)
+      end
+    end
+
+    test("store_blob refuses a collection that is not a blob collection") do
+      name = collection("client_spec_not_blobs")
+      assert_raises("is not a blob collection") do
+        raw_db().store_blob(name, Base64.encode("x"), "x.txt", "text/plain")
+      end
+    end
+  end
 end
