@@ -1,3 +1,80 @@
+# Test doubles: `new Mock(...)` for a collaborator passed in, Mock.stub_* and
+# Mock.allow chains for a real class, and the mock HTTP server for a service
+# called over the network. A double's methods are called with parentheses:
+# a bare `repo.count` yields the bound method, not its result.
+
+port = mock_http_server_start()
+base = "http://127.0.0.1:#{port}"
+
+describe("Mock doubles") do
+  test("answer stubbed values and lambdas, and record every call") do
+    repo = new Mock(
+      "repo",
+      {"count": 3, "find": fn(id) { {"id": id} }}
+    )
+    assert_eq(repo.count(), 3)
+    assert_eq(repo.find(7), {"id": 7})
+    repo.assert_received("find", [7])
+    repo.assert_not_received("delete")
+    assert_eq(repo.call_count("count"), 1)
+    called = repo.calls().map do |call|
+      call["name"]
+    end
+    assert_eq(called, ["count", "find"])
+    find_args = repo.calls_to("find").map do |call|
+      call["args"]
+    end
+    assert_eq(find_args, [[7]])
+    assert(repo.received?("find"))
+    assert_not(repo.received?("delete"))
+  end
+
+  test("stub adds a method later and returns the double") do
+    repo = new Mock("repo")
+    assert_eq(repo.stub("sum", fn(a, b) { a + b }), repo)
+    assert_eq(repo.sum(2, 3), 5)
+  end
+
+  test("reset_calls forgets what was recorded") do
+    repo = new Mock("repo", {"count": 3})
+    repo.count()
+    repo.reset_calls()
+    assert_eq(repo.calls(), [])
+    assert_eq(repo.call_count("count"), 0)
+  end
+
+  test("an unexpected message throws, naming the double") do
+    repo = new Mock("repo")
+    assert_raises("repo received unexpected message nope") do
+      repo.nope()
+    end
+  end
+
+  test("assert_received fails when the method was never called") do
+    repo = new Mock("repo", {"count": 1})
+    message = assert_raises("Expected repo to receive count, but it never did") do
+      repo.assert_received("count")
+    end
+    assert_eq(message, "Expected repo to receive count, but it never did")
+  end
+
+  test("assert_received fails on other arguments, listing the calls made") do
+    repo = new Mock("repo", {"find": fn(id) { id }})
+    repo.find(7)
+    assert_raises("Expected repo to receive find with [8], got [[7]]") do
+      repo.assert_received("find", [8])
+    end
+  end
+
+  test("assert_not_received fails once the method was called") do
+    repo = new Mock("repo", {"find": fn(id) { id }})
+    repo.find(7)
+    assert_raises("Expected repo not to receive find, but it did 1 time(s)") do
+      repo.assert_not_received("find")
+    end
+  end
+end
+
 class Gateway
   static def charge(amount)
     "real #{amount}"
@@ -155,5 +232,75 @@ describe("stubbing a model method that has callbacks") do
     assert_eq(invoice.save(), false)
     spy.assert_received("save", [])
     assert_eq(spy.call_count("save"), 1)
+  end
+end
+
+class CatchAll
+  def method_missing(name, args)
+    "#{name}:#{args.length}"
+  end
+end
+
+describe("instance method_missing arity") do
+  test("a trailing args parameter receives every argument") do
+    catcher = new CatchAll()
+    assert_eq(catcher.a(), "a:0")
+    assert_eq(catcher.b(1, 2, 3), "b:3")
+  end
+end
+
+describe("Mock.unstub_all") do
+  test("undoes the stubs before the test ends") do
+    Mock.stub_class(Gateway, "charge", "fake")
+    assert_eq(Gateway.charge(1), "fake")
+    Mock.unstub_all()
+    assert_eq(Gateway.charge(1), "real 1")
+  end
+end
+
+describe("mock HTTP services") do
+  test("mock_http_server_start answers the same port when called again") do
+    assert_eq(mock_http_server_start(), port)
+  end
+
+  test("a scripted route answers its status and body") do
+    mock_http_route("/scripted/item", 201, "{\"id\":1}")
+    response = HTTP.request("GET", "#{base}/scripted/item", {})
+    assert_eq(response["status"], 201)
+    assert_eq(response["body"], "{\"id\":1}")
+  end
+
+  test("the query string is ignored when matching a route") do
+    mock_http_route("/query/item", 200, "same")
+    assert_eq(HTTP.get("#{base}/query/item?page=2"), "same")
+  end
+
+  test("scripting a path again replaces its answer") do
+    mock_http_route("/rescripted", 200, "first")
+    mock_http_route("/rescripted", 404, "gone")
+    assert_raises("HTTP 404 error: gone") do
+      HTTP.get("#{base}/rescripted")
+    end
+  end
+
+  test("a path never scripted answers 200 with {\"ok\":true}") do
+    assert_eq(HTTP.get("#{base}/never/scripted"), "{\"ok\":true}")
+  end
+
+  test("mock_http_last_body returns what was sent") do
+    HTTP.post("#{base}/sent/json", {"key": "value"})
+    HTTP.post("#{base}/sent/text", "raw text")
+    assert_eq(mock_http_last_body("/sent/json"), "{\"key\":\"value\"}")
+    assert_eq(mock_http_last_body("/sent/text"), "raw text")
+  end
+
+  test("mock_http_last_body is nil when nothing arrived") do
+    assert_null(mock_http_last_body("/sent/nothing"))
+  end
+
+  test("mock_http_route refuses a status that is not a number") do
+    assert_raises("mock_http_route: status must be an HTTP status code, got 200") do
+      mock_http_route("/bad", "200", "body")
+    end
   end
 end

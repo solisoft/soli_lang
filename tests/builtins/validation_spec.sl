@@ -1,428 +1,326 @@
-# ============================================================================
-# Validation Functions Test Suite
-# ============================================================================
+# validate(data, schema) with the V validator builders: types and coercion,
+# rules, optional/nullable/default, confirmation, nested schemas, and the
+# password-rules string.
+#
+# Builder methods keep their `()` (`V.string().required()`), as in the docs:
+# a validator is a hash of functions, so `.required` without parens reads the
+# function instead of calling it (see the pending test at the end).
 
-describe("Validation Functions", fn() {
-  test("V.string() validates strings", fn() {
-    let schema = hash()
-    schema["name"] = V.string().required()
+PASSWORD_PAIR = {
+  "password": V.string().required(),
+  "confirm_password": V.string().required().confirmation("password")
+}
 
-    let valid_data = hash()
-    valid_data["name"] = "John"
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
-  })
+def valid?(data, schema)
+  validate(data, schema)["valid"]
+end
 
-  test("V.int() validates integers", fn() {
-    let schema = hash()
-    schema["age"] = V.int().required().min(0)
+def errors_of(data, schema)
+  validate(data, schema)["errors"]
+end
 
-    let valid_data = hash()
-    valid_data["age"] = 25
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
-  })
+def error_of(data, schema)
+  errors_of(data, schema)[0]
+end
 
-  test("V.string().email() validates email format", fn() {
-    let schema = hash()
-    schema["email"] = V.string().email()
+describe("validate") do
+  describe("result shape") do
+    test("valid data gives valid, the data, and no errors") do
+      result = validate({"name": "John"}, {"name": V.string().required()})
+      assert_eq(result, {"valid": true, "data": {"name": "John"}, "errors": []})
+    end
 
-    let valid_data = hash()
-    valid_data["email"] = "test@example.com"
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
-  })
+    test("invalid data gives the errors and no data") do
+      result = validate({}, {"name": V.string().required()})
+      assert_eq(result["valid"], false)
+      assert_eq(result["data"], {})
+      assert_eq(result["errors"], [{"field": "name", "message": "is required", "code": "required"}])
+    end
 
-  test("V.string().min_length() validates minimum length", fn() {
-    let schema = hash()
-    schema["password"] = V.string().min_length(8)
+    test("keys missing from the schema are dropped from the data") do
+      result = validate({"a": 1, "extra": 2}, {"a": V.int()})
+      assert_eq(result["data"], {"a": 1})
+    end
 
-    let valid_data = hash()
-    valid_data["password"] = "longpassword"
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
+    test("every failing field reports its own error") do
+      schema = {"email": V.string().required().email(), "age": V.int().required().min(0)}
+      errors = errors_of({"email": "bad", "age": -1}, schema)
+      assert_eq(errors.length, 2)
+      assert_contains(errors.map { |error| error["code"] }, "invalid_email")
+      assert_contains(errors.map { |error| error["code"] }, "min")
+    end
 
-    let invalid_data = hash()
-    invalid_data["password"] = "short"
-    let result2 = validate(invalid_data, schema)
-    assert_not(result2["valid"])
-  })
+    test("chained validators all pass on good data") do
+      schema = {"email": V.string().required().email(), "age": V.int().required().min(0).max(150)}
+      assert(valid?({"email": "test@example.com", "age": 30}, schema))
+    end
+  end
 
-  test("V.string().max_length() validates maximum length", fn() {
-    let schema = hash()
-    schema["username"] = V.string().max_length(20)
+  describe("types and coercion") do
+    test("V.string accepts a string") do
+      assert(valid?({"name": "John"}, {"name": V.string().required()}))
+    end
 
-    let valid_data = hash()
-    valid_data["username"] = "validuser"
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
+    test("V.string coerces a number to a string") do
+      data = validate({"name": 42}, {"name": V.string()})["data"]
+      assert_eq(data["name"], "42")
+    end
 
-    let invalid_data = hash()
-    invalid_data["username"] = "averylongusernamethatexceedsthema"
-    let result2 = validate(invalid_data, schema)
-    assert_not(result2["valid"])
-  })
+    test("V.int accepts an integer and coerces a numeric string") do
+      assert_eq(validate({"age": 25}, {"age": V.int().required()})["data"]["age"], 25)
+      assert_eq(validate({"age": "25"}, {"age": V.int()})["data"]["age"], 25)
+    end
 
-  test("V.int().max() validates maximum value", fn() {
-    let schema = hash()
-    schema["quantity"] = V.int().max(100)
+    test("V.int rejects a non-numeric string") do
+      error = error_of({"age": "x"}, {"age": V.int().required()})
+      assert_eq(error["code"], "type_error")
+      assert_eq(error["message"], "cannot convert 'x' to int")
+    end
 
-    let valid_data = hash()
-    valid_data["quantity"] = 50
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
+    test("V.float accepts a float and coerces an int or a numeric string") do
+      assert_eq(validate({"price": 9.99}, {"price": V.float().required()})["data"]["price"], 9.99)
+      assert_eq(type(validate({"price": 9}, {"price": V.float()})["data"]["price"]), "float")
+      assert_eq(validate({"price": "9.5"}, {"price": V.float()})["data"]["price"], 9.5)
+    end
 
-    let invalid_data = hash()
-    invalid_data["quantity"] = 101
-    let result2 = validate(invalid_data, schema)
-    assert_not(result2["valid"])
-  })
+    test("V.bool accepts booleans and coerces true/false strings") do
+      assert_eq(validate({"active": true}, {"active": V.bool().required()})["data"]["active"], true)
+      assert_eq(validate({"active": "false"}, {"active": V.bool()})["data"]["active"], false)
+    end
 
-  test("V.int().min() validates minimum value", fn() {
-    let schema = hash()
-    schema["age"] = V.int().min(18)
+    test("V.bool rejects any other string") do
+      assert_eq(error_of({"active": "x"}, {"active": V.bool()})["message"], "cannot convert 'x' to bool")
+    end
 
-    let valid_data = hash()
-    valid_data["age"] = 25
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
+    test("V.array accepts an array and rejects a string") do
+      assert_eq(validate({"tags": ["a", "b", "c"]}, {"tags": V.array().required()})["data"]["tags"], ["a", "b", "c"])
+      assert_eq(error_of({"tags": "x"}, {"tags": V.array()})["message"], "cannot convert string to array")
+    end
 
-    let invalid_data = hash()
-    invalid_data["age"] = 16
-    let result2 = validate(invalid_data, schema)
-    assert_not(result2["valid"])
-  })
+    test("V.hash accepts a hash and rejects a string") do
+      assert_eq(validate({"meta": {"key": "value"}}, {"meta": V.hash().required()})["data"]["meta"], {"key": "value"})
+      assert_eq(error_of({"meta": "x"}, {"meta": V.hash()})["message"], "cannot convert string to hash")
+    end
+  end
 
-  test("V.string().pattern() validates regex pattern", fn() {
-    let schema = hash()
-    schema["zip"] = V.string().pattern("^\\d{5}$")
+  describe("presence") do
+    test("a required field must be present") do
+      assert_eq(error_of({}, {"name": V.string().required()})["code"], "required")
+    end
 
-    let valid_data = hash()
-    valid_data["zip"] = "12345"
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
+    test("a required field may not be nil") do
+      assert_eq(error_of({"name": nil}, {"name": V.string().required()})["code"], "required")
+    end
 
-    let invalid_data = hash()
-    invalid_data["zip"] = "abc"
-    let result2 = validate(invalid_data, schema)
-    assert_not(result2["valid"])
-  })
+    test("an empty string satisfies required") do
+      assert(valid?({"name": ""}, {"name": V.string().required()}))
+    end
 
-  test("V.string().url() validates URL format", fn() {
-    let schema = hash()
-    schema["website"] = V.string().url()
+    test("an optional field may be present or missing") do
+      schema = {"nickname": V.string().optional()}
+      assert(valid?({"nickname": "nick"}, schema))
+      assert(valid?({}, schema))
+    end
 
-    let valid_data = hash()
-    valid_data["website"] = "https://example.com"
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
+    test("a field is optional by default") do
+      assert(valid?({}, {"nickname": V.string()}))
+    end
 
-    let invalid_data = hash()
-    invalid_data["website"] = "not a url"
-    let result2 = validate(invalid_data, schema)
-    assert_not(result2["valid"])
-  })
+    test("a nullable field accepts nil and a value") do
+      schema = {"middle_name": V.string().nullable()}
+      assert(valid?({"middle_name": nil}, schema))
+      assert(valid?({"middle_name": "Marie"}, schema))
+    end
 
-  test("V.string().one_of() validates against allowed values", fn() {
-    let schema = hash()
-    schema["status"] = V.string().one_of([
-      "active",
-      "inactive",
-      "pending"
-    ])
+    test("a default fills a missing field and leaves a present one") do
+      schema = {"country": V.string().default("US")}
+      assert_eq(validate({"country": "FR"}, schema)["data"]["country"], "FR")
+      assert_eq(validate({}, schema)["data"]["country"], "US")
+    end
 
-    let valid_data = hash()
-    valid_data["status"] = "active"
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
+    test("a default replaces nil") do
+      assert_eq(validate({"country": nil}, {"country": V.string().default("US")})["data"]["country"], "US")
+    end
 
-    let invalid_data = hash()
-    invalid_data["status"] = "deleted"
-    let result2 = validate(invalid_data, schema)
-    assert_not(result2["valid"])
-  })
-
-  test("V.int().one_of() validates numeric values", fn() {
-    let schema = hash()
-    schema["priority"] = V.int().one_of([
-      1,
-      2,
-      3
-    ])
-
-    let valid_data = hash()
-    valid_data["priority"] = 2
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
-
-    let invalid_data = hash()
-    invalid_data["priority"] = 5
-    let result2 = validate(invalid_data, schema)
-    assert_not(result2["valid"])
-  })
-
-  test("field is optional when .optional() is used", fn() {
-    let schema = hash()
-    schema["nickname"] = V.string().optional()
-
-    let valid_data = hash()
-    valid_data["nickname"] = "nick"
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
-
-    let missing_data = hash()
-    let result2 = validate(missing_data, schema)
-    assert(result2["valid"])
-  })
-
-  test("field can be null when .nullable() is used", fn() {
-    let schema = hash()
-    schema["middle_name"] = V.string().nullable()
-
-    let valid_data = hash()
-    valid_data["middle_name"] = null
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
-
-    let present_data = hash()
-    present_data["middle_name"] = "Marie"
-    let result2 = validate(present_data, schema)
-    assert(result2["valid"])
-  })
-
-  test("field has default value when .default() is used", fn() {
-    let schema = hash()
-    schema["country"] = V.string().default("US")
-
-    let data_with_value = hash()
-    data_with_value["country"] = "FR"
-    let result = validate(data_with_value, schema)
-    assert(result["valid"])
-    assert_eq(result["data"]["country"], "FR")
-
-    let data_without_value = hash()
-    let result2 = validate(data_without_value, schema)
-    assert(result2["valid"])
-    assert_eq(result2["data"]["country"], "US")
-  })
-
-  test("V.int().default() applies default to missing field", fn() {
-    let schema = hash()
-    schema["attempts"] = V.int().default(0)
-
-    let data_without_value = hash()
-    let result = validate(data_without_value, schema)
-    assert(result["valid"])
-    assert_eq(result["data"]["attempts"], 0)
-  })
-
-  test("validation returns errors for invalid data", fn() {
-    let schema = hash()
-    schema["name"] = V.string().required()
-
-    let invalid_data = hash()
-    let result = validate(invalid_data, schema)
-    assert_not(result["valid"])
-    assert(len(result["errors"]) > 0)
-  })
-
-  test("chained validators work together", fn() {
-    let schema = hash()
-    schema["email"] = V.string().required().email()
-    schema["age"] = V.int().required().min(0).max(150)
-
-    let valid_data = hash()
-    valid_data["email"] = "test@example.com"
-    valid_data["age"] = 30
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
-  })
-
-  test("V.float() validates floats", fn() {
-    let schema = hash()
-    schema["price"] = V.float().required()
-
-    let valid_data = hash()
-    valid_data["price"] = 9.99
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
-  })
-
-  test("V.bool() validates booleans", fn() {
-    let schema = hash()
-    schema["active"] = V.bool().required()
-
-    let valid_data = hash()
-    valid_data["active"] = true
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
-  })
-
-  test("V.array() validates arrays", fn() {
-    let schema = hash()
-    schema["tags"] = V.array().required()
-
-    let valid_data = hash()
-    valid_data["tags"] = [
-      "a",
-      "b",
-      "c"
-    ]
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
-  })
-
-  test("V.hash() validates hashes", fn() {
-    let schema = hash()
-    schema["meta"] = V.hash().required()
-
-    let valid_data = hash()
-    valid_data["meta"] = {"key": "value"}
-    let result = validate(valid_data, schema)
-    assert(result["valid"])
-  })
-
-  describe("confirmation", fn() {
-    test("confirmation passes when values match", fn() {
-      let schema = hash()
-      schema["password"] = V.string().required()
-      schema["confirm_password"] = V.string().required().confirmation("password")
-      let valid_data = hash()
-      valid_data["password"] = "Secret123!"
-      valid_data["confirm_password"] = "Secret123!"
-      let result = validate(valid_data, schema)
+    test("an int default applies to a missing field") do
+      result = validate({}, {"attempts": V.int().default(0)})
       assert(result["valid"])
-    })
+      assert_eq(result["data"]["attempts"], 0)
+    end
 
-    test("confirmation fails when values do not match", fn() {
-      let schema = hash()
-      schema["password"] = V.string().required()
-      schema["confirm_password"] = V.string().required().confirmation("password")
-      let invalid_data = hash()
-      invalid_data["password"] = "Secret123!"
-      invalid_data["confirm_password"] = "Different!"
-      let result = validate(invalid_data, schema)
-      assert_not(result["valid"])
-      assert_contains(result["errors"][0]["message"], "not match")
-    })
+    test("a default satisfies required") do
+      assert_eq(validate({}, {"attempts": V.int().required().default(3)})["data"]["attempts"], 3)
+    end
+  end
 
-    test("confirmation fails when confirmed field is missing", fn() {
-      let schema = hash()
-      schema["password"] = V.string().required()
-      schema["confirm_password"] = V.string().required().confirmation("password")
-      let invalid_data = hash()
-      invalid_data["confirm_password"] = "Secret123!"
-      let result = validate(invalid_data, schema)
-      assert_not(result["valid"])
-    })
+  describe("rules") do
+    test("min_length counts characters, bounds included") do
+      schema = {"password": V.string().min_length(8)}
+      assert(valid?({"password": "longpassword"}, schema))
+      assert(valid?({"password": "exactly8"}, schema))
+      assert_eq(error_of({"password": "short"}, schema), {
+        "field": "password",
+        "message": "must be at least 8 characters",
+        "code": "min_length"
+      })
+    end
 
-    test("confirmation works with non-string types", fn() {
-      let schema = hash()
-      schema["email"] = V.string().required().email()
-      schema["email_confirm"] = V.string().required().confirmation("email")
-      let valid_data = hash()
-      valid_data["email"] = "user@example.com"
-      valid_data["email_confirm"] = "user@example.com"
-      let result = validate(valid_data, schema)
-      assert(result["valid"])
-    })
-  })
+    test("max_length counts characters, bounds included") do
+      schema = {"username": V.string().max_length(10)}
+      assert(valid?({"username": "validuser"}, schema))
+      assert(valid?({"username": "tencharsxx"}, schema))
+      assert_eq(error_of({"username": "averylongusername"}, schema)["message"], "must be at most 10 characters")
+    end
 
-  describe("to_password_rules_string", fn() {
-    test("outputs all password rules in correct order", fn() {
-      let rules = V.string().min_length(12).max_length(64).mixed_case().numbers().symbols().to_password_rules_string()
-      assert_eq(
-        rules,
-        "minlength: 12; maxlength: 64; required: lower; required: upper; required: digit; required: special;"
-      )
-    })
+    test("min is inclusive") do
+      schema = {"age": V.int().min(18)}
+      assert(valid?({"age": 18}, schema))
+      assert_eq(error_of({"age": 16}, schema), {"field": "age", "message": "must be at least 18", "code": "min"})
+    end
 
-    test("returns empty string when no password-relevant rules set", fn() {
-      let rules = V.string().email().to_password_rules_string()
-      assert_eq(rules, "")
-    })
+    test("max is inclusive") do
+      schema = {"quantity": V.int().max(100)}
+      assert(valid?({"quantity": 100}, schema))
+      expected = {"field": "quantity", "message": "must be at most 100", "code": "max"}
+      assert_eq(error_of({"quantity": 101}, schema), expected)
+    end
 
-    test("handles letters rule in password rules string", fn() {
-      let rules = V.string().letters().to_password_rules_string()
-      # letters and mixed_case both map to required: lower; required: upper;
-      assert_eq(rules, "required: lower; required: upper;")
-    })
+    test("pattern matches a regex") do
+      schema = {"zip": V.string().pattern("^\\d{5}$")}
+      assert(valid?({"zip": "12345"}, schema))
+      assert_eq(error_of({"zip": "abc"}, schema)["code"], "pattern")
+    end
 
-    test("validates letters rule rejects value without letters", fn() {
-      let schema = hash()
-      schema["password"] = V.string().letters()
-      let invalid_data = hash()
-      invalid_data["password"] = "12345"
-      let result = validate(invalid_data, schema)
-      assert_not(result["valid"])
-    })
+    test("email checks the format") do
+      schema = {"email": V.string().email()}
+      assert(valid?({"email": "test@example.com"}, schema))
+      assert_eq(error_of({"email": "nope"}, schema)["message"], "must be a valid email")
+    end
 
-    test("validates letters rule accepts value with letters", fn() {
-      let schema = hash()
-      schema["password"] = V.string().letters()
-      let valid_data = hash()
-      valid_data["password"] = "abc123"
-      let result = validate(valid_data, schema)
-      assert(result["valid"])
-    })
+    test("url checks the format") do
+      schema = {"website": V.string().url()}
+      assert(valid?({"website": "https://example.com"}, schema))
+      assert_eq(error_of({"website": "not a url"}, schema)["code"], "invalid_url")
+    end
 
-    test("validates mixed_case rule rejects value without mixed case", fn() {
-      let schema = hash()
-      schema["password"] = V.string().mixed_case()
-      let invalid_data = hash()
-      invalid_data["password"] = "alllowercase"
-      let result = validate(invalid_data, schema)
-      assert_not(result["valid"])
-    })
+    test("one_of restricts a string to the listed values") do
+      schema = {"status": V.string().one_of(["active", "inactive", "pending"])}
+      assert(valid?({"status": "active"}, schema))
+      assert_eq(error_of({"status": "deleted"}, schema)["message"], "must be one of: active, inactive, pending")
+    end
 
-    test("validates mixed_case rule accepts value with mixed case", fn() {
-      let schema = hash()
-      schema["password"] = V.string().mixed_case()
-      let valid_data = hash()
-      valid_data["password"] = "MixedCase1"
-      let result = validate(valid_data, schema)
-      assert(result["valid"])
-    })
+    test("one_of restricts an int to the listed values") do
+      schema = {"priority": V.int().one_of([1, 2, 3])}
+      assert(valid?({"priority": 2}, schema))
+      assert_eq(error_of({"priority": 5}, schema)["code"], "one_of")
+    end
+  end
 
-    test("validates numbers rule rejects value without digits", fn() {
-      let schema = hash()
-      schema["password"] = V.string().numbers()
-      let invalid_data = hash()
-      invalid_data["password"] = "abcdef"
-      let result = validate(invalid_data, schema)
-      assert_not(result["valid"])
-    })
+  describe("confirmation") do
+    test("passes when the values match") do
+      assert(valid?({"password": "Secret123!", "confirm_password": "Secret123!"}, PASSWORD_PAIR))
+    end
 
-    test("validates numbers rule accepts value with digits", fn() {
-      let schema = hash()
-      schema["password"] = V.string().numbers()
-      let valid_data = hash()
-      valid_data["password"] = "abc123"
-      let result = validate(valid_data, schema)
-      assert(result["valid"])
-    })
+    test("fails when the values differ") do
+      error = error_of({"password": "Secret123!", "confirm_password": "Different!"}, PASSWORD_PAIR)
+      assert_eq(error, {"field": "confirm_password", "message": "does not match", "code": "confirmation"})
+    end
 
-    test("validates symbols rule rejects value without symbols", fn() {
-      let schema = hash()
-      schema["password"] = V.string().symbols()
-      let invalid_data = hash()
-      invalid_data["password"] = "abc123"
-      let result = validate(invalid_data, schema)
-      assert_not(result["valid"])
-    })
+    test("fails when the confirmed field is missing") do
+      errors = errors_of({"confirm_password": "Secret123!"}, PASSWORD_PAIR)
+      assert_eq(errors.map { |error| error["code"] }, ["required", "confirmation"])
+    end
 
-    test("validates symbols rule accepts value with symbols", fn() {
-      let schema = hash()
-      schema["password"] = V.string().symbols()
-      let valid_data = hash()
-      valid_data["password"] = "abc123!"
-      let result = validate(valid_data, schema)
-      assert(result["valid"])
-    })
+    test("works on an email field") do
+      schema = {"email": V.string().required().email(), "email_confirm": V.string().required().confirmation("email")}
+      assert(valid?({"email": "user@example.com", "email_confirm": "user@example.com"}, schema))
+    end
 
-    test("to_password_rules_string is available on non-string validators", fn() {
-      let rules = V.int().min(1).to_password_rules_string()
-      assert_eq(rules, "")
-    })
-  })
-})
+    test("works on an int field") do
+      schema = {"user_id": V.int(), "confirm_id": V.int().confirmation("user_id")}
+      assert(valid?({"user_id": 7, "confirm_id": 7}, schema))
+      assert_not(valid?({"user_id": 7, "confirm_id": 8}, schema))
+    end
+  end
+
+  describe("nested schemas") do
+    test("V.hash(schema) validates the inner fields and reports a dotted path") do
+      schema = {"address": V.hash({"city": V.string().required(), "street": V.string().required()}).required()}
+      assert_eq(validate({"address": {"city": "Paris", "street": "Rue X"}}, schema)["data"]["address"]["city"], "Paris")
+      assert_eq(error_of({"address": {"city": "Paris"}}, schema)["field"], "address.street")
+    end
+
+    test("V.array(validator) validates and coerces each element") do
+      schema = {"items": V.array(V.hash({"id": V.int().required(), "name": V.string().required()})).required()}
+      data = validate({"items": [{"id": "2", "name": "x"}]}, schema)["data"]
+      assert_eq(data["items"], [{"id": 2, "name": "x"}])
+      assert_eq(error_of({"items": [{"id": 1}]}, schema)["code"], "required")
+    end
+
+    test("an element error names the array field") do
+      pending("bug: an array element error's field is \"[0].name\", without the array's name \"items\"")
+      schema = {"items": V.array(V.hash({"id": V.int().required(), "name": V.string().required()})).required()}
+      assert_eq(error_of({"items": [{"id": 1}]}, schema)["field"], "items[0].name")
+    end
+
+    test("a type error names its field") do
+      pending("bug: a type_error carries field \"\" instead of the field name")
+      assert_eq(error_of({"age": "x"}, {"age": V.int()})["field"], "age")
+    end
+  end
+
+  describe("password rules") do
+    test("letters rejects a value without letters") do
+      error = error_of({"password": "12345"}, {"password": V.string().letters()})
+      assert_eq(error["message"], "must contain at least one letter")
+      assert(valid?({"password": "abc123"}, {"password": V.string().letters()}))
+    end
+
+    test("mixed_case needs both upper and lower case") do
+      assert_eq(error_of({"password": "alllowercase"}, {"password": V.string().mixed_case()})["code"], "mixed_case")
+      assert(valid?({"password": "MixedCase1"}, {"password": V.string().mixed_case()}))
+    end
+
+    test("numbers needs a digit") do
+      assert_eq(error_of({"password": "abcdef"}, {"password": V.string().numbers()})["code"], "numbers")
+      assert(valid?({"password": "abc123"}, {"password": V.string().numbers()}))
+    end
+
+    test("symbols needs a symbol") do
+      assert_eq(error_of({"password": "abc123"}, {"password": V.string().symbols()})["code"], "symbols")
+      assert(valid?({"password": "abc123!"}, {"password": V.string().symbols()}))
+    end
+
+    test("all the rules together pass on a strong password") do
+      schema = {"password": V.string().letters().mixed_case().numbers().symbols()}
+      assert(valid?({"password": "Aa1!"}, schema))
+    end
+  end
+
+  describe("to_password_rules_string") do
+    test("lists every password rule in order") do
+      rules = V.string().min_length(12).max_length(64).mixed_case().numbers().symbols().to_password_rules_string()
+      expected = "minlength: 12; maxlength: 64; required: lower; required: upper; required: digit; required: special;"
+      assert_eq(rules, expected)
+    end
+
+    test("is empty when no password rule is set") do
+      assert_eq(V.string().email().to_password_rules_string(), "")
+    end
+
+    test("maps letters to required lower and upper") do
+      assert_eq(V.string().letters().to_password_rules_string(), "required: lower; required: upper;")
+    end
+
+    test("is available, and empty, on a non-string validator") do
+      assert_eq(V.int().min(1).to_password_rules_string(), "")
+    end
+  end
+
+  describe("builder syntax") do
+    test("a zero-argument builder method works without parentheses") do
+      pending("bug: V.string().required (no parens) yields the function, so validate reports invalid_schema")
+      assert(valid?({"name": "John"}, {"name": V.string.required}))
+    end
+  end
+end

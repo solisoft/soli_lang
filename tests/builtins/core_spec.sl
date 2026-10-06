@@ -1,51 +1,61 @@
-# ============================================================================
-# Core Global Functions Test Suite
-# ============================================================================
+# Core global functions: clock, debug, len, print/println.
 
-describe("Global Functions", fn() {
-  test("clock returns positive number", fn() {
-    let t = clock()
-    assert(t > 0)
-  })
+describe("clock") do
+  test("returns a Float") do
+    assert_eq(type(clock()), "float")
+  end
 
-  test("clock returns unix timestamp", fn() {
-    let t = clock()
-    assert(t > 1700000000)
-  })
+  test("returns a Unix timestamp in seconds") do
+    # Later than 2023-11-14 and earlier than 2100-01-01.
+    now = clock()
+    assert_gt(now, 1700000000)
+    assert_lt(now, 4102444800)
+  end
 
-  test("clock is monotonically increasing", fn() {
-    let t1 = clock()
-    let t2 = clock()
-    assert(t2 >= t1)
-  })
+  test("never goes backwards between two calls") do
+    first = clock()
+    second = clock()
+    assert(second >= first)
+  end
+end
 
-  test("debug returns breakpoint value", fn() {
-    let result = debug()
-    assert_not_null(result)
-  })
+describe("debug") do
+  test("returns a Breakpoint value") do
+    # Used as a value (not a statement), debug() hands back the breakpoint
+    # marker instead of pausing.
+    assert_eq(type(debug()), "Breakpoint")
+  end
+end
 
-  test("len works with strings", fn() { assert_eq(len("hello"), 5) })
+describe("len") do
+  test("counts the characters of a string") do
+    assert_eq(len("hello"), 5)
+    assert_eq(len(""), 0)
+  end
 
-  test("len works with arrays", fn() { assert_eq(len([
-    1,
-    2,
-    3
-  ]), 3) })
+  test("counts the elements of an array") do
+    assert_eq(len([1, 2, 3]), 3)
+    assert_eq(len([]), 0)
+  end
 
-  test("len works with hashes", fn() { assert_eq(len({
-    "a": 1,
-    "b": 2
-  }), 2) })
-})
+  test("counts the keys of a hash") do
+    assert_eq(len({"a": 1, "b": 2}), 2)
+    assert_eq(len({}), 0)
+  end
 
-describe("Print Functions", fn() {
-  test("print function exists", fn() {
-    print("test")
-    print("hello", "world")
-  })
+  test("rejects a value that has no length") do
+    assert_raises("len() expects array, string, or hash, got int") do
+      len(42)
+    end
+  end
+end
 
-  test("println function exists", fn() {
-    println("test")
-    println("hello", "world")
-  })
-})
+describe("print and println") do
+  test("print takes several arguments and returns nil") do
+    assert_null(print("hello", "world"))
+  end
+
+  test("println takes several arguments and returns nil") do
+    assert_null(println("hello", "world"))
+  end
+end

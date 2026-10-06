@@ -1,19 +1,27 @@
-# ============================================================================
 # PDF builtins — pdf_render / pdf_response / pdf_facturx_from_invoice, the
-# `pdfa` option and its incompatibilities. Fixtures live at module level: the
-# test runner executes each test closure outside the describe body's scope.
-# ============================================================================
+# `pdfa` option and its incompatibilities, and the PNG/WebP page previews.
+# Templates name the "titillium" font, found relative to the repo root: run
+# this spec from there.
 
-let pdf_template = """{
+PDF_TEMPLATE = """{
   "fonts": ["titillium"],
   "content": [
     { "type": "paragraph", "value": "Invoice ${invoice.number}" }
   ]
 }"""
 
-let pdf_data = """{ "data": { "invoice": { "number": "F-42" } } }"""
+TWO_PAGE_TEMPLATE = """{
+  "fonts": ["titillium"],
+  "content": [
+    { "type": "paragraph", "value": "Page one" },
+    { "type": "page_break" },
+    { "type": "paragraph", "value": "Page two" }
+  ]
+}"""
 
-let pdf_invoice = """{
+PDF_DATA = """{ "data": { "invoice": { "number": "F-42" } } }"""
+
+PDF_INVOICE = """{
   "number": "F-42",
   "issue_date": "2026-07-01",
   "due_date": "2026-08-01",
@@ -28,258 +36,268 @@ let pdf_invoice = """{
   "payment_terms": "30 days net"
 }"""
 
-describe("PDF builtins", fn() {
-  test("pdf_render returns base64 PDF bytes", fn() {
-    let pdf = pdf_render(pdf_template, pdf_data)
-    assert(pdf.length() > 1000)
-    # "JVBERi" is the base64 encoding of "%PDF-".
-    assert(pdf.starts_with("JVBERi"))
-  })
+# "JVBERi" is the base64 encoding of "%PDF-"; "iVBORw0KGgo" that of the PNG
+# magic bytes.
+PDF_MAGIC = "JVBERi"
+PNG_MAGIC = "iVBORw0KGgo"
 
-  test("pdf_render accepts the pdfa option", fn() {
-    let pdf = pdf_render(pdf_template, pdf_data, {"pdfa": true})
-    assert(pdf.starts_with("JVBERi"))
-  })
+PREVIEW_DIR = "/tmp/soli-pdf-builtins-spec-previews"
 
-  test("pdfa is incompatible with password protection", fn() {
-    let result = pdf_render(pdf_template, pdf_data, {
-      "pdfa": true,
-      "password": "x"
-    }) rescue "REJECTED"
-    assert_eq(result, "REJECTED")
-  })
+describe("PDF builtins") do
+  describe("pdf_render") do
+    test("returns base64 PDF bytes") do
+      pdf = pdf_render(PDF_TEMPLATE, PDF_DATA)
+      assert_gt(pdf.length, 1000)
+      assert(pdf.starts_with(PDF_MAGIC))
+    end
 
-  test("pdf_response wraps the PDF as a ready response", fn() {
-    let response = pdf_response(pdf_template, pdf_data, {"filename": "test.pdf"})
-    assert_eq(response["status"], 200)
-    assert_eq(response["headers"]["Content-Type"], "application/pdf")
-    assert(response["headers"]["Content-Disposition"].contains("test.pdf"))
-    assert(response["body_base64"].starts_with("JVBERi"))
-  })
+    test("accepts the pdfa option") do
+      assert(pdf_render(PDF_TEMPLATE, PDF_DATA, {"pdfa": true}).starts_with(PDF_MAGIC))
+    end
 
-  test("pdf_facturx_from_invoice renders an enriched invoice", fn() {
-    let pdf = pdf_facturx_from_invoice(pdf_template, pdf_invoice)
-    assert(pdf.starts_with("JVBERi"))
-  })
+    test("pdfa is incompatible with password protection") do
+      assert_raises("`pdfa` is incompatible with password protection") do
+        pdf_render(PDF_TEMPLATE, PDF_DATA, {"pdfa": true, "password": "x"})
+      end
+    end
+  end
 
-  test("pdf_facturx_from_invoice rejects the pdfa option", fn() {
-    let result = pdf_facturx_from_invoice(pdf_template, pdf_invoice, {"pdfa": true}) rescue "REJECTED"
-    assert_eq(result, "REJECTED")
-  })
+  describe("pdf_response") do
+    test("wraps the PDF as a ready attachment response") do
+      response = pdf_response(PDF_TEMPLATE, PDF_DATA, {"filename": "test.pdf"})
+      assert_eq(response.keys, ["status", "headers", "body_base64"])
+      assert_eq(response["status"], 200)
+      assert_eq(response["headers"], {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": "attachment; filename=\"test.pdf\""
+      })
+      assert(response["body_base64"].starts_with(PDF_MAGIC))
+    end
+  end
 
-  test("an invalid invoice is rejected", fn() {
-    let bad = """{
-          "number": "F-1", "issue_date": "2026-07-01", "currency": "EUR",
-          "seller": { "name": "A", "country": "FR" },
-          "buyer": { "name": "B", "country": "FR" },
-          "lines": [ { "name": "W", "unit_price": 100 } ],
-          "allowances": [ { "reason": "broken" } ]
-        }"""
-    let result = pdf_facturx_from_invoice(pdf_template, bad) rescue "REJECTED"
-    assert_eq(result, "REJECTED")
-  })
-})
+  describe("pdf_facturx_from_invoice") do
+    test("renders an enriched invoice") do
+      assert(pdf_facturx_from_invoice(PDF_TEMPLATE, PDF_INVOICE).starts_with(PDF_MAGIC))
+    end
 
-# ============================================================================
-# PNG page previews. `iVBORw0KGgo` is the base64 encoding of the PNG magic
-# bytes, the way "JVBERi" stands in for "%PDF-" above.
-# ============================================================================
+    test("rejects the pdfa option, which Factur-X already implies") do
+      assert_raises("PDF/A is implied by Factur-X; drop the `pdfa` option") do
+        pdf_facturx_from_invoice(PDF_TEMPLATE, PDF_INVOICE, {"pdfa": true})
+      end
+    end
 
-let pdf_template_2p = """{
-  "fonts": ["titillium"],
-  "content": [
-    { "type": "paragraph", "value": "Page one" },
-    { "type": "page_break" },
-    { "type": "paragraph", "value": "Page two" }
-  ]
-}"""
+    test("an allowance with neither amount nor percent is an invalid invoice") do
+      bad_invoice = """{
+        "number": "F-1", "issue_date": "2026-07-01", "currency": "EUR",
+        "seller": { "name": "A", "country": "FR" },
+        "buyer": { "name": "B", "country": "FR" },
+        "lines": [ { "name": "W", "unit_price": 100 } ],
+        "allowances": [ { "reason": "broken" } ]
+      }"""
+      assert_raises("allowances entry \"broken\" must set exactly one of \"amount\" or \"percent\"") do
+        pdf_facturx_from_invoice(PDF_TEMPLATE, bad_invoice)
+      end
+    end
+  end
+end
 
-describe("PDF page previews", fn() {
-  test("pdf_preview returns one base64 PNG per page", fn() {
-    let pages = pdf_preview(pdf_template, pdf_data)
-    assert_eq(pages.length(), 1)
-    assert(pages[0].starts_with("iVBORw0KGgo"))
-  })
+describe("PDF page previews") do
+  after_each() do
+    System.run_sync(["rm", "-rf", PREVIEW_DIR])
+  end
 
-  test("every page of a multi-page document comes back", fn() {
-    let pages = pdf_preview(pdf_template_2p, pdf_data)
-    assert_eq(pages.length(), 2)
-    assert(pages[1].starts_with("iVBORw0KGgo"))
-  })
+  describe("pdf_preview") do
+    test("returns one base64 PNG per page") do
+      pages = pdf_preview(PDF_TEMPLATE, PDF_DATA)
+      assert_eq(pages.length, 1)
+      assert(pages[0].starts_with(PNG_MAGIC))
+    end
 
-  test("pages selects a subset, as a list or a range string", fn() {
-    assert_eq(pdf_preview(pdf_template_2p, pdf_data, {"pages": [2]}).length(), 1)
-    assert_eq(pdf_preview(pdf_template_2p, pdf_data, {"pages": "1-2"}).length(), 2)
-  })
+    test("every page of a multi-page document comes back") do
+      pages = pdf_preview(TWO_PAGE_TEMPLATE, PDF_DATA)
+      assert_eq(pages.length, 2)
+      assert(pages[1].starts_with(PNG_MAGIC))
+      assert_ne(pages[0], pages[1])
+    end
 
-  test("the default dpi is 96, so A4 is about 794px wide", fn() {
-    let page = pdf_preview(pdf_template, pdf_data)[0]
-    let width = Image.from_buffer(page).width
-    assert(width > 780 && width < 810)
-  })
+    test("pages selects a subset, as a list or a range string") do
+      assert_eq(pdf_preview(TWO_PAGE_TEMPLATE, PDF_DATA, {"pages": [2]}).length, 1)
+      assert_eq(pdf_preview(TWO_PAGE_TEMPLATE, PDF_DATA, {"pages": "1-2"}).length, 2)
+    end
 
-  test("dpi scales the output", fn() {
-    let small = Image.from_buffer(pdf_preview(pdf_template, pdf_data, {"dpi": 96})[0]).width
-    let big = Image.from_buffer(pdf_preview(pdf_template, pdf_data, {"dpi": 192})[0]).width
-    assert(big > small * 19 / 10)
-  })
+    test("PDF-only options are ignored, not fatal — one hash drives both") do
+      options = {"pdfa": true, "password": "x", "stationery": "does-not-exist.pdf"}
+      pages = pdf_preview(PDF_TEMPLATE, PDF_DATA, options)
+      assert(pages[0].starts_with(PNG_MAGIC))
+    end
 
-  test("width wins over dpi", fn() {
-    let page = pdf_preview(pdf_template, pdf_data, {
-      "dpi": 600,
-      "width": 400
-    })[0]
-    assert_eq(Image.from_buffer(page).width, 400)
-  })
+    test("markdown previews too") do
+      pages = pdf_preview_from_markdown("# Title\n\nSome body text.")
+      assert_eq(pages.length, 1)
+      assert(pages[0].starts_with(PNG_MAGIC))
+    end
+  end
 
-  test("height alone drives the scale", fn() {
-    let page = pdf_preview(pdf_template, pdf_data, {"height": 500})[0]
-    assert_eq(Image.from_buffer(page).height, 500)
-  })
+  describe("size") do
+    test("the default dpi is 96, so an A4 page is 794x1123") do
+      image = Image.from_buffer(pdf_preview(PDF_TEMPLATE, PDF_DATA)[0])
+      assert_eq(image.width, 794)
+      assert_eq(image.height, 1123)
+    end
 
-  test("markdown previews too", fn() {
-    let pages = pdf_preview_from_markdown("# Title\n\nSome body text.")
-    assert(pages.length() >= 1)
-    assert(pages[0].starts_with("iVBORw0KGgo"))
-  })
+    test("dpi scales the output") do
+      big = Image.from_buffer(pdf_preview(PDF_TEMPLATE, PDF_DATA, {"dpi": 192})[0])
+      assert_eq(big.width, 1587)
+    end
 
-  test("pdf_preview_response is a ready image/png response", fn() {
-    let res = pdf_preview_response(pdf_template, pdf_data, {"width": 320})
-    assert_eq(res["status"], 200)
-    assert_eq(res["headers"]["Content-Type"], "image/png")
-    assert(res["body_base64"].starts_with("iVBORw0KGgo"))
-  })
+    test("width wins over dpi") do
+      page = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"dpi": 600, "width": 400})[0]
+      assert_eq(Image.from_buffer(page).width, 400)
+    end
 
-  test("pdf_preview_response picks the page asked for", fn() {
-    let one = pdf_preview_response(pdf_template_2p, pdf_data, {"page": 1})["body_base64"]
-    let two = pdf_preview_response(pdf_template_2p, pdf_data, {"page": 2})["body_base64"]
-    assert(one != two)
-  })
+    test("height alone drives the scale and keeps the aspect ratio") do
+      image = Image.from_buffer(pdf_preview(PDF_TEMPLATE, PDF_DATA, {"height": 500})[0])
+      assert_eq(image.height, 500)
+      assert_eq(image.width, 354)
+    end
+  end
 
-  test("pdf_preview_response refuses options that cannot mean anything", fn() {
-    let a = pdf_preview_response(pdf_template, pdf_data, {"pages": [1]}) rescue "REJECTED"
-    assert_eq(a, "REJECTED")
-    let b = pdf_preview_response(pdf_template, pdf_data, {"out_dir": "tmp"}) rescue "REJECTED"
-    assert_eq(b, "REJECTED")
-    let c = pdf_preview_response(pdf_template_2p, pdf_data, {"page": 9}) rescue "REJECTED"
-    assert_eq(c, "REJECTED")
-  })
+  describe("caps and refusals") do
+    test("a dpi over the cap is refused rather than allocated") do
+      assert_raises("`dpi` of 100000 exceeds the 600 cap") do
+        pdf_preview(PDF_TEMPLATE, PDF_DATA, {"dpi": 100000})
+      end
+    end
 
-  test("out_dir writes files and returns their paths", fn() {
-    let paths = pdf_preview(pdf_template_2p, pdf_data, {
-      "width": 200,
-      "out_dir": "tmp/preview-spec",
-      "prefix": "doc"
-    })
-    assert_eq(paths.length(), 2)
-    assert(paths[0].ends_with("doc-1.png"))
-    assert(File.exists("tmp/preview-spec/doc-1.png"))
-    assert_eq(Image.new(paths[0]).width, 200)
-  })
+    test("a width over the cap is refused") do
+      assert_raises("`width` of 999999px exceeds the 8192px cap") do
+        pdf_preview(PDF_TEMPLATE, PDF_DATA, {"width": 999999})
+      end
+    end
 
-  test("a single page keeps the bare prefix as its name", fn() {
-    let paths = pdf_preview(pdf_template, pdf_data, {
-      "width": 120,
-      "out_dir": "tmp/preview-spec",
-      "prefix": "solo"
-    })
-    assert_eq(paths.length(), 1)
-    assert(paths[0].ends_with("solo.png"))
-  })
+    test("a page range over the cap is refused") do
+      assert_raises("`pages` selects 100000 pages, over the 64 cap") do
+        pdf_preview(PDF_TEMPLATE, PDF_DATA, {"pages": "1-100000"})
+      end
+    end
 
-  test("a prefix cannot smuggle a path out of the directory", fn() {
-    let result = pdf_preview(pdf_template, pdf_data, {
-      "out_dir": "tmp/preview-spec",
-      "prefix": "../escape"
-    }) rescue "REJECTED"
-    assert_eq(result, "REJECTED")
-  })
+    test("the page cap counts pages painted, not the document's length") do
+      # A long document must still be previewable one page at a time — a
+      # thumbnail of page 1 of a long report is the whole point.
+      three_pages = """{
+        "fonts": ["titillium"],
+        "content": [
+          { "type": "paragraph", "value": "a" }, { "type": "page_break" },
+          { "type": "paragraph", "value": "b" }, { "type": "page_break" },
+          { "type": "paragraph", "value": "c" }
+        ]
+      }"""
+      assert_eq(pdf_preview(three_pages, PDF_DATA, {"width": 120, "pages": [1]}).length, 1)
+    end
 
-  test("the size knobs are capped rather than allocated", fn() {
-    assert_eq(pdf_preview(pdf_template, pdf_data, {"dpi": 100000}) rescue "REJECTED", "REJECTED")
-    assert_eq(pdf_preview(pdf_template, pdf_data, {"width": 999999}) rescue "REJECTED", "REJECTED")
-    assert_eq(pdf_preview(pdf_template, pdf_data, {"pages": "1-100000"}) rescue "REJECTED", "REJECTED")
-  })
+    test("asking for a page past the end is an error") do
+      assert_raises("page 9 was requested, but the document has 1 page(s)") do
+        pdf_preview(PDF_TEMPLATE, PDF_DATA, {"pages": [9]})
+      end
+    end
 
-  test("the page cap counts pages painted, not the document's length", fn() {
-    # A long document must still be previewable one page at a time —
-    # a thumbnail of page 1 of a long report is the whole point.
-    let many = """{
-          "fonts": ["titillium"],
-          "content": [
-            { "type": "paragraph", "value": "a" }, { "type": "page_break" },
-            { "type": "paragraph", "value": "b" }, { "type": "page_break" },
-            { "type": "paragraph", "value": "c" }
-          ]
-        }"""
-    let one = pdf_preview(many, pdf_data, {
-      "width": 120,
-      "pages": [1]
-    })
-    assert_eq(one.length(), 1)
-  })
+    test("an unknown format is refused") do
+      assert_raises("unknown `format` \"gif\"") do
+        pdf_preview(PDF_TEMPLATE, PDF_DATA, {"format": "gif"})
+      end
+    end
 
-  test("asking for a page past the end is an error", fn() {
-    let result = pdf_preview(pdf_template, pdf_data, {"pages": [9]}) rescue "REJECTED"
-    assert_eq(result, "REJECTED")
-  })
+    test("a quality outside 1-100 is refused") do
+      assert_raises("`quality` must be 1-100, got 0") do
+        pdf_preview(PDF_TEMPLATE, PDF_DATA, {"quality": 0})
+      end
+    end
+  end
 
-  test("format webp is much smaller than png, and both decode", fn() {
-    let png = pdf_preview(pdf_template, pdf_data, {"width": 600})[0]
-    let webp = pdf_preview(pdf_template, pdf_data, {
-      "width": 600,
-      "format": "webp"
-    })[0]
-    assert(webp.length() < png.length())
-    # Both must be real images of the size asked for.
-    assert_eq(Image.from_buffer(png).width, 600)
-    assert_eq(Image.from_buffer(webp).width, 600)
-  })
+  describe("formats") do
+    test("webp is smaller than png, and both decode at the size asked for") do
+      png = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"width": 600})[0]
+      webp = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"width": 600, "format": "webp"})[0]
+      assert_lt(webp.length, png.length)
+      assert_eq(Image.from_buffer(png).width, 600)
+      assert_eq(Image.from_buffer(webp).width, 600)
+    end
 
-  test("quality trades size for fidelity", fn() {
-    let high = pdf_preview(pdf_template, pdf_data, {
-      "width": 600,
-      "format": "webp",
-      "quality": 95
-    })[0]
-    let low = pdf_preview(pdf_template, pdf_data, {
-      "width": 600,
-      "format": "webp",
-      "quality": 40
-    })[0]
-    assert(low.length() < high.length())
-  })
+    test("jpeg decodes at the size asked for") do
+      jpeg = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"width": 300, "format": "jpeg"})[0]
+      assert_eq(Image.from_buffer(jpeg).width, 300)
+    end
 
-  test("an unknown format is refused, and so is a silly quality", fn() {
-    assert_eq(pdf_preview(pdf_template, pdf_data, {"format": "gif"}) rescue "REJECTED", "REJECTED")
-    assert_eq(pdf_preview(pdf_template, pdf_data, {"quality": 0}) rescue "REJECTED", "REJECTED")
-  })
+    test("quality trades size for fidelity") do
+      high = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"width": 600, "format": "webp", "quality": 95})[0]
+      low = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"width": 600, "format": "webp", "quality": 40})[0]
+      assert_lt(low.length, high.length)
+    end
+  end
 
-  test("the written file takes the format's extension", fn() {
-    let paths = pdf_preview(pdf_template, pdf_data, {
-      "width": 200,
-      "format": "webp",
-      "out_dir": "tmp/preview-spec",
-      "prefix": "shot"
-    })
-    assert(paths[0].ends_with("shot.webp"))
-    assert(file_exists("tmp/preview-spec/shot.webp"))
-  })
+  describe("out_dir") do
+    test("writes one file per page and returns their paths") do
+      paths = pdf_preview(TWO_PAGE_TEMPLATE, PDF_DATA, {"width": 200, "out_dir": PREVIEW_DIR, "prefix": "doc"})
+      assert_eq(paths, ["#{PREVIEW_DIR}/doc-1.png", "#{PREVIEW_DIR}/doc-2.png"])
+      assert(File.exists("#{PREVIEW_DIR}/doc-2.png"))
+      assert_eq(Image.new(paths[0]).width, 200)
+    end
 
-  test("pdf_preview_response carries the matching content type", fn() {
-    let res = pdf_preview_response(pdf_template, pdf_data, {
-      "format": "webp",
-      "width": 320
-    })
-    assert_eq(res["headers"]["Content-Type"], "image/webp")
-  })
+    test("a single page keeps the bare prefix as its name") do
+      paths = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"width": 120, "out_dir": PREVIEW_DIR, "prefix": "solo"})
+      assert_eq(paths, ["#{PREVIEW_DIR}/solo.png"])
+    end
 
-  test("PDF-only options are ignored, not fatal — one hash drives both", fn() {
-    let pages = pdf_preview(pdf_template, pdf_data, {
-      "pdfa": true,
-      "password": "x",
-      "stationery": "does-not-exist.pdf"
-    })
-    assert(pages[0].starts_with("iVBORw0KGgo"))
-  })
-})
+    test("the written file takes the format's extension") do
+      options = {"width": 200, "format": "webp", "out_dir": PREVIEW_DIR, "prefix": "shot"}
+      paths = pdf_preview(PDF_TEMPLATE, PDF_DATA, options)
+      assert_eq(paths, ["#{PREVIEW_DIR}/shot.webp"])
+      assert(file_exists("#{PREVIEW_DIR}/shot.webp"))
+    end
+
+    test("a prefix cannot smuggle a path out of the directory") do
+      assert_raises("`prefix` must be a plain file name without path separators, got \"../escape\"") do
+        pdf_preview(PDF_TEMPLATE, PDF_DATA, {"out_dir": PREVIEW_DIR, "prefix": "../escape"})
+      end
+    end
+  end
+
+  describe("pdf_preview_response") do
+    test("is a ready image/png response") do
+      response = pdf_preview_response(PDF_TEMPLATE, PDF_DATA, {"width": 320})
+      assert_eq(response["status"], 200)
+      assert_eq(response["headers"]["Content-Type"], "image/png")
+      assert(response["body_base64"].starts_with(PNG_MAGIC))
+    end
+
+    test("picks the page asked for") do
+      first = pdf_preview_response(TWO_PAGE_TEMPLATE, PDF_DATA, {"page": 1})["body_base64"]
+      second = pdf_preview_response(TWO_PAGE_TEMPLATE, PDF_DATA, {"page": 2})["body_base64"]
+      assert_ne(first, second)
+      assert_eq(second, pdf_preview(TWO_PAGE_TEMPLATE, PDF_DATA, {"pages": [2]})[0])
+    end
+
+    test("carries the content type of the format") do
+      response = pdf_preview_response(PDF_TEMPLATE, PDF_DATA, {"format": "webp", "width": 320})
+      assert_eq(response["headers"]["Content-Type"], "image/webp")
+    end
+
+    test("refuses `pages`: the response carries one image") do
+      assert_raises("use `page` (a single page) rather than `pages`") do
+        pdf_preview_response(PDF_TEMPLATE, PDF_DATA, {"pages": [1]})
+      end
+    end
+
+    test("refuses `out_dir`: the response carries the image") do
+      assert_raises("`out_dir` is meaningless here") do
+        pdf_preview_response(PDF_TEMPLATE, PDF_DATA, {"out_dir": "tmp"})
+      end
+    end
+
+    test("refuses a page past the end") do
+      assert_raises("page 9 is past the end of the document (2 page(s))") do
+        pdf_preview_response(TWO_PAGE_TEMPLATE, PDF_DATA, {"page": 9})
+      end
+    end
+  end
+end
