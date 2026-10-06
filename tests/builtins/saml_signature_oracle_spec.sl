@@ -18,27 +18,30 @@ const SIGNEDINFO_C14N_SHA256 = "149503556fd0c012dbf309abe409fd9b4069361e4a4ae449
 const SHA256_DIGESTINFO = "3031300d060960864801650304020105000420"
 
 describe("SAML signature verification (signxml oracle)", fn() {
-    test("X509.public_key extracts the IdP modulus and exponent", fn() {
-        let key = X509.public_key(CERT);
-        assert_eq(key["algorithm"], "RSA");
-        assert_eq(key["n"], N);
-        assert_eq(key["e"], E);
-    });
+  test("X509.public_key extracts the IdP modulus and exponent", fn() {
+    let key = X509.public_key(CERT)
+    assert_eq(key["algorithm"], "RSA")
+    assert_eq(key["n"], N)
+    assert_eq(key["e"], E)
+  })
 
-    test("Reference digest: enveloped + by-id exc-c14n matches signxml DigestValue", fn() {
-        let canon = Xml.c14n_exclusive(SIGNED_XML, {"id": "_obj1", "enveloped_signature": true});
-        assert_eq(Crypto.sha256(canon), DIGEST_HEX);
-    });
+  test("Reference digest: enveloped + by-id exc-c14n matches signxml DigestValue", fn() {
+    let canon = Xml.c14n_exclusive(
+      SIGNED_XML,
+      {"id": "_obj1", "enveloped_signature": true}
+    )
+    assert_eq(Crypto.sha256(canon), DIGEST_HEX)
+  })
 
-    test("SignedInfo extraction + exc-c14n hash matches signxml", fn() {
-        let signed_info = Xml.get_elements_by_tag(SIGNED_XML, "SignedInfo")[0];
-        let canon = Xml.c14n_exclusive(signed_info);
-        assert_eq(Crypto.sha256(canon), SIGNEDINFO_C14N_SHA256);
-    });
+  test("SignedInfo extraction + exc-c14n hash matches signxml", fn() {
+    let signed_info = Xml.get_elements_by_tag(SIGNED_XML, "SignedInfo")[0]
+    let canon = Xml.c14n_exclusive(signed_info)
+    assert_eq(Crypto.sha256(canon), SIGNEDINFO_C14N_SHA256)
+  })
 
-    test("RSA: recovering the signature yields the SignedInfo DigestInfo (full chain)", fn() {
-        let key = X509.public_key(CERT);
-        let recovered = Crypto.pkcs1_unpad(Crypto.modexp(SIG_HEX, key["e"], key["n"]));
-        assert_eq(recovered, SHA256_DIGESTINFO + SIGNEDINFO_C14N_SHA256);
-    });
-});
+  test("RSA: recovering the signature yields the SignedInfo DigestInfo (full chain)", fn() {
+    let key = X509.public_key(CERT)
+    let recovered = Crypto.pkcs1_unpad(Crypto.modexp(SIG_HEX, key["e"], key["n"]))
+    assert_eq(recovered, SHA256_DIGESTINFO + SIGNEDINFO_C14N_SHA256)
+  })
+})

@@ -19,59 +19,64 @@ class HookDoc < Model
   after_create("stamp_after_create")
   after_save("stamp_after_save")
 
-  def stamp_before_save() {
+  def stamp_before_save
     this.chain = (this.chain || "") + "before_save;"
-  }
-  def stamp_before_create() {
+  end
+
+  def stamp_before_create
     this.chain = (this.chain || "") + "before_create;"
-  }
-  def stamp_after_create() {
+  end
+
+  def stamp_after_create
     this.chain = (this.chain || "") + "after_create;"
-  }
-  def stamp_after_save() {
+  end
+
+  def stamp_after_save
     this.chain = (this.chain || "") + "after_save;"
-  }
+  end
 end
 
 class VetoCreateDoc < Model
   before_create("refuse")
 
-  def refuse() {
+  def refuse
     this.veto_ran = true
     return false
-  }
+  end
 end
 
 class DeleteHookDoc < Model
   before_delete("log_before_delete")
   after_delete("log_after_delete")
 
-  def log_before_delete() {
+  def log_before_delete
     this.delete_chain = (this.delete_chain || "") + "before_delete;"
-  }
-  def log_after_delete() {
+  end
+
+  def log_after_delete
     this.delete_chain = (this.delete_chain || "") + "after_delete;"
-  }
+  end
 end
 
 class VetoDeleteDoc < Model
   before_delete("refuse_delete")
 
-  def refuse_delete() {
+  def refuse_delete
     return false
-  }
+  end
 end
 
 class UpdateHookDoc < Model
   before_update("stamp_before_update")
   after_update("stamp_after_update")
 
-  def stamp_before_update() {
+  def stamp_before_update
     this.update_chain = (this.update_chain || "") + "before_update;"
-  }
-  def stamp_after_update() {
+  end
+
+  def stamp_after_update
     this.update_chain = (this.update_chain || "") + "after_update;"
-  }
+  end
 end
 
 # --- Mock-backed reads ------------------------------------------------------
@@ -86,7 +91,14 @@ end
 class UploadDoc < Model
   has_one_attached("avatar")
   has_many_attached("gallery", {"service": "s3"})
-  uploader("raw_dump", {"service": "disk", "max_size": 1234, "content_types": ["application/pdf"]})
+  uploader(
+    "raw_dump",
+    {
+      "service": "disk",
+      "max_size": 1234,
+      "content_types": ["application/pdf"]
+    }
+  )
 end
 
 class AttrWhitelistDoc < Model
@@ -100,21 +112,21 @@ class SoftDoc < Model
 end
 
 class TimeseriesReading < Model
-  timeseries retention: "30d", timestamp: "recorded_at"
+  timeseries(retention: "30d", timestamp: "recorded_at")
 end
 
 class ColumnarEvent < Model
-  columnar compression: "lz4"
-  column "url", "string"
-  column "views", "int", nullable: true, indexed: true
+  columnar(compression: "lz4")
+  column("url", "string")
+  column("views", "int", nullable: true, indexed: true)
 end
 
 class FulltextDoc < Model
-  fulltext_index "title", "body"
+  fulltext_index("title", "body")
 end
 
 class TableBoundDoc < Model
-  table "legacy_widgets"
+  table("legacy_widgets")
 end
 
 enum TrafficLight
@@ -123,23 +135,22 @@ enum TrafficLight
 end
 
 class Lamp < Model
-  enum_field :state, TrafficLight
+  enum_field(:state, TrafficLight)
+  state_machine(:state) do
+    initial(TrafficLight.Off)
 
-  state_machine :state do
-    initial TrafficLight.Off
-
-    event :switch_on do
-      transition from: TrafficLight.Off, to: TrafficLight.On
+    event(:switch_on) do
+      transition(from: TrafficLight.Off, to: TrafficLight.On)
     end
 
-    event :switch_off do
-      transition from: TrafficLight.On, to: TrafficLight.Off
+    event(:switch_off) do
+      transition(from: TrafficLight.On, to: TrafficLight.Off)
     end
 
-    before_transition to: TrafficLight.On do
+    before_transition(to: TrafficLight.On) do
       this.flip_log = (this.flip_log || "") + "before_on;"
     end
-    after_transition to: TrafficLight.On do
+    after_transition(to: TrafficLight.On) do
       this.flip_log = (this.flip_log || "") + "after_on;"
     end
   end
@@ -180,10 +191,10 @@ describe("create/save lifecycle hooks", fn() {
 
   test("a persisted record's save() runs the update chain", fn() {
     # `_key` is read-only on instances, so hydrate a keyed record from a mock.
-    HookDoc.mock_query_result(
-      "FOR doc IN hook_docs RETURN doc",
-      [{"_key": "hk1", "title": "persisted"}]
-    )
+    HookDoc.mock_query_result("FOR doc IN hook_docs RETURN doc", [{
+      "_key": "hk1",
+      "title": "persisted"
+    }])
     let rec = HookDoc.all()[0]
     assert_eq(rec._key, "hk1")
     assert(rec.save() == false)
@@ -191,10 +202,10 @@ describe("create/save lifecycle hooks", fn() {
   })
 
   test("update() fires before_update but suppresses after_update on failure", fn() {
-    UpdateHookDoc.mock_query_result(
-      "FOR doc IN update_hook_docs RETURN doc",
-      [{"_key": "uh1", "title": "x"}]
-    )
+    UpdateHookDoc.mock_query_result("FOR doc IN update_hook_docs RETURN doc", [{
+      "_key": "uh1",
+      "title": "x"
+    }])
     let rec = UpdateHookDoc.all()[0]
     assert_eq(rec._key, "uh1")
     assert(rec.update({"title": "y"}) == false)
@@ -238,13 +249,10 @@ describe("delete lifecycle hooks", fn() {
 # ============================================================================
 describe("mock_query_result serves reads without a database", fn() {
   test("Model.all hydrates mocked rows into instances", fn() {
-    MockWidget.mock_query_result(
-      "FOR doc IN mock_widgets RETURN doc",
-      [
-        {"_key": "w1", "name": "Alpha"},
-        {"_key": "w2", "name": "Beta"}
-      ]
-    )
+    MockWidget.mock_query_result("FOR doc IN mock_widgets RETURN doc", [
+      {"_key": "w1", "name": "Alpha"},
+      {"_key": "w2", "name": "Beta"}
+    ])
     let widgets = MockWidget.all()
     assert(widgets.is_a?("array"))
     assert_eq(len(widgets), 2)
@@ -253,20 +261,20 @@ describe("mock_query_result serves reads without a database", fn() {
   })
 
   test("mocks are keyed by exact query string", fn() {
-    MockWidget.mock_query_result(
-      "FOR doc IN mock_widgets RETURN doc",
-      [{"_key": "w1", "name": "Alpha"}]
-    )
+    MockWidget.mock_query_result("FOR doc IN mock_widgets RETURN doc", [{
+      "_key": "w1",
+      "name": "Alpha"
+    }])
     # A different query has no mock → falls through to the (absent) DB.
     let miss = MockWidget.where({"name": "Alpha"}).all
     assert(miss.is_a?("array") && len(miss) == 0 || miss.is_a?("string"))
   })
 
   test("clear_mocks drops every registered response", fn() {
-    MockWidget.mock_query_result(
-      "FOR doc IN mock_widgets RETURN doc",
-      [{"_key": "w1", "name": "Alpha"}]
-    )
+    MockWidget.mock_query_result("FOR doc IN mock_widgets RETURN doc", [{
+      "_key": "w1",
+      "name": "Alpha"
+    }])
     assert_eq(len(MockWidget.all()), 1)
     MockWidget.clear_mocks()
     # Without the mock the read hits the wire: a connection error string when
@@ -276,22 +284,20 @@ describe("mock_query_result serves reads without a database", fn() {
     let after = MockWidget.all()
     assert(after.is_a?("string") || (after.is_a?("array") && len(after) == 0))
     # Re-register so later suites still have their fixtures.
-    MockWidget.mock_query_result(
-      "FOR doc IN mock_widgets RETURN doc",
-      [
-        {"_key": "w1", "name": "Alpha"},
-        {"_key": "w2", "name": "Beta"}
-      ]
-    )
+    MockWidget.mock_query_result("FOR doc IN mock_widgets RETURN doc", [
+      {"_key": "w1", "name": "Alpha"},
+      {"_key": "w2", "name": "Beta"}
+    ])
   })
 })
 
 describe("live_where", fn() {
   test("runs like where() against a mock and returns instances", fn() {
-    MockWidget.mock_query_result(
-      "FOR doc IN mock_widgets FILTER doc.status == @status__eq_1 RETURN doc",
-      [{"_key": "w9", "status": "paid", "name": "Paid Widget"}]
-    )
+    MockWidget.mock_query_result("FOR doc IN mock_widgets FILTER doc.status == @status__eq_1 RETURN doc", [{
+      "_key": "w9",
+      "status": "paid",
+      "name": "Paid Widget"
+    }])
     let rows = MockWidget.live_where({"status": "paid"})
     assert(rows.is_a?("array"))
     assert_eq(len(rows), 1)
@@ -341,7 +347,10 @@ describe("variance aggregation", fn() {
 
 describe("broadcast", fn() {
   test("returns the subscriber count as an Int (0 with no subscribers)", fn() {
-    let delivered = MockWidget.broadcast({"kind": "changed", "id": "w1"})
+    let delivered = MockWidget.broadcast({
+      "kind": "changed",
+      "id": "w1"
+    })
     assert(delivered.is_a?("int"))
     assert(delivered >= 0)
   })
@@ -416,7 +425,11 @@ describe("attachment DSL + uploader helpers", fn() {
   })
 
   test("apply_uploader_transform with an empty config is a no-op", fn() {
-    let file = {"filename": "pic.png", "content_type": "image/png", "data": "AAAA"}
+    let file = {
+      "filename": "pic.png",
+      "content_type": "image/png",
+      "data": "AAAA"
+    }
     let out = apply_uploader_transform(file, {})
     assert_eq(out["filename"], "pic.png")
     assert_eq(out["data"], "AAAA")
@@ -435,7 +448,10 @@ describe("attachment DSL + uploader helpers", fn() {
 
 describe("attr_accessible strong params", fn() {
   test("non-whitelisted keys are dropped before instance population", fn() {
-    let doc = AttrWhitelistDoc.create({"title": "kept", "is_admin": true})
+    let doc = AttrWhitelistDoc.create({
+      "title": "kept",
+      "is_admin": true
+    })
     assert_eq(doc.title, "kept")
     assert(doc["is_admin"].nil?)
   })
@@ -459,7 +475,7 @@ describe("schema DSL: timeseries", fn() {
     let raised = false
     try
       class BadTimeseries < Model
-        timeseries frobnicate: "10d"
+        timeseries(frobnicate: "10d")
       end
     catch e
       raised = true
@@ -479,7 +495,7 @@ describe("schema DSL: columnar + column", fn() {
     try
       class BadColumnar < Model
         columnar
-        column "url", "kryotype"
+        column("url", "kryotype")
       end
     catch e
       raised = true
@@ -517,7 +533,7 @@ describe("schema DSL: table", fn() {
     let raised = false
     try
       class BadTableDoc < Model
-        table "not; a table"
+        table("not; a table")
       end
     catch e
       raised = true
@@ -559,7 +575,7 @@ describe("schema DSL: enum_field + state_machine", fn() {
     let raised = false
     try
       class BadEnumDoc < Model
-        enum_field :mood, "NotAClass"
+        enum_field(:mood, "NotAClass")
       end
     catch e
       raised = true

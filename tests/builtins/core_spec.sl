@@ -1,50 +1,51 @@
-// ============================================================================
-// Core Global Functions Test Suite
-// ============================================================================
+# ============================================================================
+# Core Global Functions Test Suite
+# ============================================================================
 
 describe("Global Functions", fn() {
-    test("clock returns positive number", fn() {
-        let t = clock();
-        assert(t > 0);
-    });
+  test("clock returns positive number", fn() {
+    let t = clock()
+    assert(t > 0)
+  })
 
-    test("clock returns unix timestamp", fn() {
-        let t = clock();
-        assert(t > 1700000000);
-    });
+  test("clock returns unix timestamp", fn() {
+    let t = clock()
+    assert(t > 1700000000)
+  })
 
-    test("clock is monotonically increasing", fn() {
-        let t1 = clock();
-        let t2 = clock();
-        assert(t2 >= t1);
-    });
+  test("clock is monotonically increasing", fn() {
+    let t1 = clock()
+    let t2 = clock()
+    assert(t2 >= t1)
+  })
 
-    test("debug returns breakpoint value", fn() {
-        let result = debug();
-        assert(result != null);
-    });
+  test("debug returns breakpoint value", fn() {
+    let result = debug()
+    assert_not_null(result)
+  })
 
-    test("len works with strings", fn() {
-        assert_eq(len("hello"), 5);
-    });
+  test("len works with strings", fn() { assert_eq(len("hello"), 5) })
 
-    test("len works with arrays", fn() {
-        assert_eq(len([1, 2, 3]), 3);
-    });
+  test("len works with arrays", fn() { assert_eq(len([
+    1,
+    2,
+    3
+  ]), 3) })
 
-    test("len works with hashes", fn() {
-        assert_eq(len({"a": 1, "b": 2}), 2);
-    });
-});
+  test("len works with hashes", fn() { assert_eq(len({
+    "a": 1,
+    "b": 2
+  }), 2) })
+})
 
 describe("Print Functions", fn() {
-    test("print function exists", fn() {
-        print("test");
-        print("hello", "world");
-    });
+  test("print function exists", fn() {
+    print("test")
+    print("hello", "world")
+  })
 
-    test("println function exists", fn() {
-        println("test");
-        println("hello", "world");
-    });
-});
+  test("println function exists", fn() {
+    println("test")
+    println("hello", "world")
+  })
+})

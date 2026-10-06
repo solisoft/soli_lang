@@ -1,6 +1,9 @@
 describe("Mock") do
   test("stubs values and lambdas, records calls") do
-    repo = new Mock("repo", {"count": 3, "find": fn(id) { {"id": id} }})
+    repo = new Mock(
+      "repo",
+      {"count": 3, "find": fn(id) { {"id": id} }}
+    )
     assert_eq(repo.count(), 3)
     assert_eq(repo.find(7)["id"], 7)
     repo.assert_received("find", [7])

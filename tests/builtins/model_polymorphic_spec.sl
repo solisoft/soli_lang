@@ -9,11 +9,17 @@
 # is gated behind the DB availability probe.
 # ============================================================================
 class PolyComment < Model
-  belongs_to("poly_commentable", {"polymorphic": true, "counter_cache": true})
+  belongs_to(
+    "poly_commentable",
+    {"polymorphic": true, "counter_cache": true}
+  )
 end
 
 class PolyPost < Model
-  has_many("poly_comments", {"as": "poly_commentable", "dependent": "delete_all"})
+  has_many(
+    "poly_comments",
+    {"as": "poly_commentable", "dependent": "delete_all"}
+  )
 end
 
 class PolyPhoto < Model
@@ -25,15 +31,18 @@ class PolyProduct < Model
 end
 
 class PolyImage < Model
-  belongs_to "poly_imageable", polymorphic: true
+  belongs_to("poly_imageable", polymorphic: true)
 end
 
 class PolyNullifyOwner < Model
-  has_many("poly_tags", {"as": "poly_taggable", "dependent": "nullify"})
+  has_many(
+    "poly_tags",
+    {"as": "poly_taggable", "dependent": "nullify"}
+  )
 end
 
 class PolyTag < Model
-  belongs_to "poly_taggable", polymorphic: true
+  belongs_to("poly_taggable", polymorphic: true)
 end
 
 class PolyDslProbe < Model
@@ -77,7 +86,10 @@ describe("polymorphic DSL validation", fn() {
   test("polymorphic: true with class_name raises", fn() {
     let raised = false
     try
-      PolyDslProbe.belongs_to("poly_ref", {"polymorphic": true, "class_name": "PolyPost"})
+      PolyDslProbe.belongs_to(
+        "poly_ref",
+        {"polymorphic": true, "class_name": "PolyPost"}
+      )
     catch e
       raised = true
       assert(str(e).includes?("class_name"))
@@ -156,8 +168,10 @@ describe("polymorphic runtime behavior", fn() {
       assert_eq(on_post.poly_commentable.title, "a post")
       assert_eq(on_photo.poly_commentable.caption, "a photo")
 
-      on_post.delete(); on_photo.delete()
-      post.delete(); photo.delete()
+      on_post.delete()
+      on_photo.delete()
+      post.delete()
+      photo.delete()
     end
   })
 
@@ -193,14 +207,23 @@ describe("polymorphic runtime behavior", fn() {
       let post = PolyPost.create({"title": "p"})
       let photo = PolyPhoto.create({"caption": "ph"})
       # Same parent key shape on purpose: only the type guard separates them.
-      PolyComment.create({"body": "c1", "poly_commentable_id": post._key, "poly_commentable_type": "PolyPost"})
-      PolyComment.create({"body": "c2", "poly_commentable_id": photo._key, "poly_commentable_type": "PolyPhoto"})
+      PolyComment.create({
+        "body": "c1",
+        "poly_commentable_id": post._key,
+        "poly_commentable_type": "PolyPost"
+      })
+      PolyComment.create({
+        "body": "c2",
+        "poly_commentable_id": photo._key,
+        "poly_commentable_type": "PolyPhoto"
+      })
 
       assert_eq(post.poly_comments.count(), 1)
       assert_eq(photo.poly_comments.count(), 1)
 
       PolyComment.where("poly_commentable_type != @x", {"x": ""}).delete_all()
-      post.delete(); photo.delete()
+      post.delete()
+      photo.delete()
     end
   })
 
@@ -222,9 +245,21 @@ describe("polymorphic runtime behavior", fn() {
     if __db_available
       let post = PolyPost.create({"title": "counted post"})
       let photo = PolyPhoto.create({"caption": "counted photo"})
-      let c1 = PolyComment.create({"body": "1", "poly_commentable_id": post._key, "poly_commentable_type": "PolyPost"})
-      let c2 = PolyComment.create({"body": "2", "poly_commentable_id": post._key, "poly_commentable_type": "PolyPost"})
-      let c3 = PolyComment.create({"body": "3", "poly_commentable_id": photo._key, "poly_commentable_type": "PolyPhoto"})
+      let c1 = PolyComment.create({
+        "body": "1",
+        "poly_commentable_id": post._key,
+        "poly_commentable_type": "PolyPost"
+      })
+      let c2 = PolyComment.create({
+        "body": "2",
+        "poly_commentable_id": post._key,
+        "poly_commentable_type": "PolyPost"
+      })
+      let c3 = PolyComment.create({
+        "body": "3",
+        "poly_commentable_id": photo._key,
+        "poly_commentable_type": "PolyPhoto"
+      })
 
       assert_eq(PolyPost.find(post._key).poly_comments_count, 2)
       assert_eq(PolyPhoto.find(photo._key).poly_comments_count, 1)
@@ -243,8 +278,10 @@ describe("polymorphic runtime behavior", fn() {
       PolyPost.update(post._key, {"poly_comments_count": 42})
       assert_eq(PolyPost.reset_counters(post._key, "poly_comments"), 1)
 
-      c1.delete(); c2.delete()
-      post.delete(); photo.delete()
+      c1.delete()
+      c2.delete()
+      post.delete()
+      photo.delete()
     end
   })
 
@@ -252,8 +289,16 @@ describe("polymorphic runtime behavior", fn() {
     if __db_available
       let post = PolyPost.create({"title": "cascading"})
       let photo = PolyPhoto.create({"caption": "surviving"})
-      PolyComment.create({"body": "goes", "poly_commentable_id": post._key, "poly_commentable_type": "PolyPost"})
-      let survivor = PolyComment.create({"body": "stays", "poly_commentable_id": photo._key, "poly_commentable_type": "PolyPhoto"})
+      PolyComment.create({
+        "body": "goes",
+        "poly_commentable_id": post._key,
+        "poly_commentable_type": "PolyPost"
+      })
+      let survivor = PolyComment.create({
+        "body": "stays",
+        "poly_commentable_id": photo._key,
+        "poly_commentable_type": "PolyPhoto"
+      })
 
       post.delete()
 

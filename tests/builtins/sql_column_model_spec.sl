@@ -10,11 +10,11 @@
 # probe, and each test returns without asserting — the suite stays green.
 
 class SqlInvoice < Model
-  table "sql_invoices"
+  table("sql_invoices")
 end
 
 class SqlPerson < Model
-  table "sql_people"
+  table("sql_people")
   encrypts(:ssn)
 end
 
@@ -44,14 +44,14 @@ describe("column-aware SqlInvoice on SQL", fn() {
     assert_eq(created.code, "INV-1")
     assert_eq(created.qty, 2)
     assert_eq(created.paid, true)
-    assert(created.id != null)
-    assert(created.created_at != null)
+    assert(!created.id.nil?)
+    assert(!created.created_at.nil?)
 
     let fetched = SqlInvoice.find(created.id)
     assert_eq(fetched.code, "INV-1")
     assert_eq(fetched.qty, 2)
 
-    let matches = SqlInvoice.where({ "code": "INV-1" }).all()
+    let matches = SqlInvoice.where({"code": "INV-1"}).all()
     assert_eq(matches.length(), 1)
     assert_eq(matches[0].id, created.id)
 
@@ -65,11 +65,11 @@ describe("column-aware SqlInvoice on SQL", fn() {
     assert_eq(again.qty, 5)
     assert_eq(again.paid, false)
 
-    assert_eq(SqlInvoice.where({ "paid": false }).count(), 1)
-    assert_eq(SqlInvoice.where({ "qty": { "gte": 5 } }).count(), 1)
-    assert_eq(SqlInvoice.where({ "code": { "like": "INV%" } }).count(), 1)
-    assert_eq(SqlInvoice.where({ "qty": [5, 99] }).count(), 1)
-    assert_eq(SqlInvoice.where({ "or": [{ "qty": 5 }, { "qty": 0 }] }).count(), 1)
+    assert_eq(SqlInvoice.where({"paid": false}).count(), 1)
+    assert_eq(SqlInvoice.where({"qty": {"gte": 5}}).count(), 1)
+    assert_eq(SqlInvoice.where({"code": {"like": "INV%"}}).count(), 1)
+    assert_eq(SqlInvoice.where({"qty": [5, 99]}).count(), 1)
+    assert_eq(SqlInvoice.where({"or": [{"qty": 5}, {"qty": 0}]}).count(), 1)
 
     again.delete()
     assert_null(SqlInvoice.find_by("code", "INV-1"))
@@ -79,7 +79,10 @@ describe("column-aware SqlInvoice on SQL", fn() {
   test("encrypts round-trips on a real column", fn() {
     return unless __sql_ready
 
-    let created = SqlPerson.create({ "name": "Ada", "ssn": "123-45-6789" })
+    let created = SqlPerson.create({
+      "name": "Ada",
+      "ssn": "123-45-6789"
+    })
     assert(created._errors.nil?)
     assert_eq(created.ssn, "123-45-6789")
 
@@ -96,21 +99,21 @@ describe("column-aware SqlInvoice on SQL", fn() {
   test("encrypts stores ciphertext and cannot be filtered by plaintext", fn() {
     return unless __sql_ready
 
-    let created = SqlPerson.create({ "name": "Cipher", "ssn": "111-22-3333" })
+    let created = SqlPerson.create({
+      "name": "Cipher",
+      "ssn": "111-22-3333"
+    })
     assert(created._errors.nil?)
     assert_eq(created.ssn, "111-22-3333")
 
     # A projection aliased away from the field name is not decrypted.
-    let rows = SqlPerson.find_by_sql(
-      "SELECT ssn AS cipher FROM sql_people WHERE name = ?",
-      ["Cipher"]
-    )
+    let rows = SqlPerson.find_by_sql("SELECT ssn AS cipher FROM sql_people WHERE name = ?", ["Cipher"])
     assert_eq(rows.length(), 1)
     assert(rows[0].cipher != "111-22-3333")
     assert(rows[0].cipher.length() > 20)
 
     # AES-GCM is non-deterministic; equality on the plaintext never matches.
-    assert_eq(SqlPerson.where({ "ssn": "111-22-3333" }).count(), 0)
+    assert_eq(SqlPerson.where({"ssn": "111-22-3333"}).count(), 0)
 
     created.delete()
   })
@@ -118,9 +121,15 @@ describe("column-aware SqlInvoice on SQL", fn() {
   test("STI subclasses share the table and scope by type", fn() {
     return unless __sql_ready
 
-    let person = SqlPerson.create({ "name": "Base" })
-    let admin = SqlAdmin.create({ "name": "Root", "ssn": "000-00-0001" })
-    let super_admin = SqlSuperAdmin.create({ "name": "Super", "ssn": "000-00-0002" })
+    let person = SqlPerson.create({"name": "Base"})
+    let admin = SqlAdmin.create({
+      "name": "Root",
+      "ssn": "000-00-0001"
+    })
+    let super_admin = SqlSuperAdmin.create({
+      "name": "Super",
+      "ssn": "000-00-0002"
+    })
     assert(person._errors.nil?)
     assert(admin._errors.nil?)
     assert(super_admin._errors.nil?)
@@ -130,11 +139,11 @@ describe("column-aware SqlInvoice on SQL", fn() {
     assert_eq(SqlAdmin.find(admin.id).ssn, "000-00-0001")
     assert_eq(SqlAdmin.find(super_admin.id).type, "SqlSuperAdmin")
 
-    assert_eq(SqlPerson.where({ "name": "Root" }).count(), 1)
-    assert_eq(SqlAdmin.where({ "name": "Root" }).count(), 1)
-    assert_eq(SqlAdmin.where({ "name": "Base" }).count(), 0)
-    assert_eq(SqlAdmin.where({ "name": "Super" }).count(), 1)
-    assert_eq(SqlSuperAdmin.where({ "name": "Root" }).count(), 0)
+    assert_eq(SqlPerson.where({"name": "Root"}).count(), 1)
+    assert_eq(SqlAdmin.where({"name": "Root"}).count(), 1)
+    assert_eq(SqlAdmin.where({"name": "Base"}).count(), 0)
+    assert_eq(SqlAdmin.where({"name": "Super"}).count(), 1)
+    assert_eq(SqlSuperAdmin.where({"name": "Root"}).count(), 0)
     assert_eq(SqlAdmin.find_by("name", "Root").id, admin.id)
     assert_null(SqlAdmin.find_by("name", "Base"))
     assert_eq(SqlAdmin.first_by("name", "Super").id, super_admin.id)
@@ -163,15 +172,13 @@ describe("column-aware SqlInvoice on SQL", fn() {
   test("STI subclass delete_all only removes its hierarchy", fn() {
     return unless __sql_ready
 
-    let person = SqlPerson.create({ "name": "Keep" })
-    let admin = SqlAdmin.create({ "name": "Drop" })
+    let person = SqlPerson.create({"name": "Keep"})
+    let admin = SqlAdmin.create({"name": "Drop"})
     SqlAdmin.delete_all()
     assert_not_null(SqlPerson.find_by("name", "Keep"))
     assert_null(SqlPerson.find_by("name", "Drop"))
     person.delete()
   })
-
-
 
   test("find raises RecordNotFound on a missing integer key", fn() {
     return unless __sql_ready

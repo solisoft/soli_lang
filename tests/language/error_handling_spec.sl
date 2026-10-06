@@ -1,749 +1,797 @@
-// ============================================================================
-// Error Handling (Try/Catch/Finally) Test Suite
-// ============================================================================
+# ============================================================================
+# Error Handling (Try/Catch/Finally) Test Suite
+# ============================================================================
 
 describe("Try/Catch/Finally", fn() {
-    test("try without error executes normally", fn() {
-        let result = 0;
-        try {
-            result = 42;
-        } catch (e) {
-            result = -1;
-        }
-        assert_eq(result, 42);
-    });
+  test("try without error executes normally", fn() {
+    let result = 0
+    try
+      result = 42
+    catch e
+      result = -1
+    end
+    assert_eq(result, 42)
+  })
 
-    test("catch handles thrown error", fn() {
-        let result = "";
-        try {
-            throw "error message";
-            result = "not reached";
-        } catch (e) {
-            result = "caught";
-        }
-        assert_eq(result, "caught");
-    });
+  test("catch handles thrown error", fn() {
+    let result = ""
+    try
+      throw "error message"
+      result = "not reached"
+    catch e
+      result = "caught"
+    end
+    assert_eq(result, "caught")
+  })
 
-    test("finally always executes after try", fn() {
-        let finally_ran = false;
-        try {
-            let x = 1;
-        } catch (e) {
-            let x = 2;
-        } finally {
-            finally_ran = true;
-        }
-        assert(finally_ran);
-    });
+  test("finally always executes after try", fn() {
+    let finally_ran = false
+    try
+      let x = 1
+    catch e
+      let x = 2
+    finally
+      finally_ran = true
+    end
+    assert(finally_ran)
+  })
 
-    test("finally runs after catch", fn() {
-        let sequence = [];
-        try {
-            throw "error";
-        } catch (e) {
-            sequence.push("catch");
-        } finally {
-            sequence.push("finally");
-        }
-        assert_eq(len(sequence), 2);
-        assert_eq(sequence[0], "catch");
-        assert_eq(sequence[1], "finally");
-    });
+  test("finally runs after catch", fn() {
+    let sequence = []
+    try
+      throw "error"
+    catch e
+      sequence.push("catch")
+    finally
+      sequence.push("finally")
+    end
+    assert_eq(len(sequence), 2)
+    assert_eq(sequence[0], "catch")
+    assert_eq(sequence[1], "finally")
+  })
 
-    test("nested try/catch", fn() {
-        let result = "";
-        try {
-            try {
-                throw "inner";
-            } catch (e) {
-                result = "inner caught";
-                throw "outer";
-            }
-        } catch (e) {
-            result = result + " outer caught";
-        }
-        assert_eq(result, "inner caught outer caught");
-    });
+  test("nested try/catch", fn() {
+    let result = ""
+    try
+      try
+        throw "inner"
+      catch e
+        result = "inner caught"
+        throw "outer"
+      end
+    catch e
+      result = result + " outer caught"
+    end
+    assert_eq(result, "inner caught outer caught")
+  })
 
-    test("try with return in try block", fn() {
-        let finally_ran = false;
-        fn test_fn() {
-            try {
-                return 42;
-            } finally {
-                finally_ran = true;
-            }
-        }
-        let result = test_fn();
-        assert_eq(result, 42);
-        assert(finally_ran);
-    });
+  test("try with return in try block", fn() {
+    let finally_ran = false
+    def test_fn
+      try
+        return 42
+      finally
+        finally_ran = true
+      end
+    end
+    let result = test_fn()
+    assert_eq(result, 42)
+    assert(finally_ran)
+  })
 
-    test("try with return in catch block", fn() {
-        let finally_ran = false;
-        fn test_fn() {
-            try {
-                throw "error";
-            } catch (e) {
-                return 100;
-            } finally {
-                finally_ran = true;
-            }
-        }
-        let result = test_fn();
-        assert_eq(result, 100);
-        assert(finally_ran);
-    });
+  test("try with return in catch block", fn() {
+    let finally_ran = false
+    def test_fn
+      try
+        throw "error"
+      catch e
+        return 100
+      finally
+        finally_ran = true
+      end
+    end
+    let result = test_fn()
+    assert_eq(result, 100)
+    assert(finally_ran)
+  })
 
-    test("catch with different error types", fn() {
-        let caught_type = "";
-        try {
-            throw 42;
-        } catch (e) {
-            caught_type = type(e);
-        }
-        assert_eq(caught_type, "int");
+  test("catch with different error types", fn() {
+    let caught_type = ""
+    try
+      throw 42
+    catch e
+      caught_type = type(e)
+    end
+    assert_eq(caught_type, "int")
 
-        let caught_string = "";
-        try {
-            throw "error";
-        } catch (e) {
-            caught_string = e;
-        }
-        assert_eq(caught_string, "error");
-    });
+    let caught_string = ""
+    try
+      throw "error"
+    catch e
+      caught_string = e
+    end
+    assert_eq(caught_string, "error")
+  })
 
-    test("empty try block", fn() {
-        let ran = false;
-        try {
-        } finally {
-            ran = true;
-        }
-        assert(ran);
-    });
+  test("empty try block", fn() {
+    let ran = false
+    try
+    finally
+      ran = true
+    end
+    assert(ran)
+  })
 
-    // ---- end syntax ----
+  # ---- end syntax ----
 
-    test("try/catch with end syntax", fn() {
-        let result = ""
-        try
-            throw "boom"
-        catch e
-            result = "caught: " + e
-        end
-        assert_eq(result, "caught: boom")
-    });
+  test("try/catch with end syntax", fn() {
+    let result = ""
+    try
+      throw "boom"
+    catch e
+      result = "caught: " + e
+    end
+    assert_eq(result, "caught: boom")
+  })
 
-    test("try/catch/finally with end syntax", fn() {
-        let order = []
-        try
-            throw "error"
-        catch e
-            order.push("catch")
-        finally
-            order.push("finally")
-        end
-        assert_eq(len(order), 2)
-        assert_eq(order[0], "catch")
-        assert_eq(order[1], "finally")
-    });
+  test("try/catch/finally with end syntax", fn() {
+    let order = []
+    try
+      throw "error"
+    catch e
+      order.push("catch")
+    finally
+      order.push("finally")
+    end
+    assert_eq(len(order), 2)
+    assert_eq(order[0], "catch")
+    assert_eq(order[1], "finally")
+  })
 
-    test("try/finally without catch using end syntax", fn() {
-        let ran = false
-        try
-            let x = 1
-        finally
-            ran = true
-        end
-        assert(ran)
-    });
+  test("try/finally without catch using end syntax", fn() {
+    let ran = false
+    try
+      let x = 1
+    finally
+      ran = true
+    end
+    assert(ran)
+  })
 
-    test("try without error using end syntax", fn() {
-        let result = 0
-        try
-            result = 42
-        catch e
-            result = -1
-        end
-        assert_eq(result, 42)
-    });
+  test("try without error using end syntax", fn() {
+    let result = 0
+    try
+      result = 42
+    catch e
+      result = -1
+    end
+    assert_eq(result, 42)
+  })
 
-    test("nested try/catch with end syntax", fn() {
-        let result = ""
-        try
-            try
-                throw "inner"
-            catch e
-                result = "inner caught"
-                throw "outer"
-            end
-        catch e
-            result = result + " outer caught"
-        end
-        assert_eq(result, "inner caught outer caught")
-    });
+  test("nested try/catch with end syntax", fn() {
+    let result = ""
+    try
+      try
+        throw "inner"
+      catch e
+        result = "inner caught"
+        throw "outer"
+      end
+    catch e
+      result = result + " outer caught"
+    end
+    assert_eq(result, "inner caught outer caught")
+  })
 
-    // ---- typed catch ----
+  # ---- typed catch ----
 
-    test("typed catch matches specific class", fn() {
-        class MyError {
-            message: String;
-            new(msg: String) {
-                this.message = msg;
-            }
-        }
+  test("typed catch matches specific class", fn() {
+    class MyError
+      message: String
 
-        let result = "";
-        try {
-            throw new MyError("oops");
-        } catch (MyError e) {
-            result = "caught: " + e.message;
-        } catch (e) {
-            result = "generic";
-        }
-        assert_eq(result, "caught: oops");
-    });
+      new(msg: String)
+        this.message = msg
+      end
+    end
 
-    test("typed catch skips non-matching types", fn() {
-        class ErrorA {
-            message: String;
-            new(msg: String) {
-                this.message = msg;
-            }
-        }
-        class ErrorB {
-            message: String;
-            new(msg: String) {
-                this.message = msg;
-            }
-        }
+    let result = ""
+    try
+      throw new MyError("oops")
+    catch MyError e
+      result = "caught: " + e.message
+    catch e
+      result = "generic"
+    end
+    assert_eq(result, "caught: oops")
+  })
 
-        let result = "";
-        try {
-            throw new ErrorB("b");
-        } catch (ErrorA e) {
-            result = "A";
-        } catch (ErrorB e) {
-            result = "B: " + e.message;
-        }
-        assert_eq(result, "B: b");
-    });
+  test("typed catch skips non-matching types", fn() {
+    class ErrorA
+      message: String
 
-    test("typed catch matches subclass via inheritance", fn() {
-        class BaseError {
-            message: String;
-            new(msg: String) {
-                this.message = msg;
-            }
-        }
-        class ChildError extends BaseError {
-            new(msg: String) {
-                super(msg);
-            }
-        }
+      new(msg: String)
+        this.message = msg
+      end
+    end
+    class ErrorB
+      message: String
 
-        let result = "";
-        try {
-            throw new ChildError("child");
-        } catch (BaseError e) {
-            result = "base caught: " + e.message;
-        }
-        assert_eq(result, "base caught: child");
-    });
+      new(msg: String)
+        this.message = msg
+      end
+    end
 
-    test("bare catch catches non-instance values", fn() {
-        let result = "";
-        try {
-            throw "a string";
-        } catch (e) {
-            result = "bare: " + e;
-        }
-        assert_eq(result, "bare: a string");
-    });
+    let result = ""
+    try
+      throw new ErrorB("b")
+    catch ErrorA e
+      result = "A"
+    catch ErrorB e
+      result = "B: " + e.message
+    end
+    assert_eq(result, "B: b")
+  })
 
-    test("typed catch does not match string throw", fn() {
-        class MyError2 {}
+  test("typed catch matches subclass via inheritance", fn() {
+    class BaseError
+      message: String
 
-        let result = "";
-        try {
-            throw "a string";
-        } catch (MyError2 e) {
-            result = "typed";
-        } catch (e) {
-            result = "bare: " + e;
-        }
-        assert_eq(result, "bare: a string");
-    });
+      new(msg: String)
+        this.message = msg
+      end
+    end
+    class ChildError < BaseError
+      new(msg: String)
+        super(msg)
+      end
+    end
 
-    test("no matching typed catch re-throws to outer", fn() {
-        class ErrorC {}
-        class ErrorD {}
+    let result = ""
+    try
+      throw new ChildError("child")
+    catch BaseError e
+      result = "base caught: " + e.message
+    end
+    assert_eq(result, "base caught: child")
+  })
 
-        let result = "";
-        try {
-            try {
-                throw new ErrorD();
-            } catch (ErrorC e) {
-                result = "C";
-            }
-        } catch (e) {
-            result = "outer";
-        }
-        assert_eq(result, "outer");
-    });
+  test("bare catch catches non-instance values", fn() {
+    let result = ""
+    try
+      throw "a string"
+    catch e
+      result = "bare: " + e
+    end
+    assert_eq(result, "bare: a string")
+  })
 
-    test("typed catch with end syntax", fn() {
-        class AppError
-            message: String
-            new(msg: String)
-                this.message = msg
-            end
-        end
+  test("typed catch does not match string throw", fn() {
+    class MyError2
+    end
 
-        let result = ""
-        try
-            throw new AppError("fail")
-        catch AppError e
-            result = "caught: " + e.message
-        catch e
-            result = "generic"
-        end
-        assert_eq(result, "caught: fail")
-    });
+    let result = ""
+    try
+      throw "a string"
+    catch MyError2 e
+      result = "typed"
+    catch e
+      result = "bare: " + e
+    end
+    assert_eq(result, "bare: a string")
+  })
 
-    test("multiple typed catches with end syntax", fn() {
-        class NotFound
-            message: String
-            new(msg: String)
-                this.message = msg
-            end
-        end
-        class Forbidden
-            message: String
-            new(msg: String)
-                this.message = msg
-            end
-        end
+  test("no matching typed catch re-throws to outer", fn() {
+    class ErrorC
+    end
+    class ErrorD
+    end
 
-        let result = ""
-        try
-            throw new Forbidden("no access")
-        catch NotFound e
-            result = "404"
-        catch Forbidden e
-            result = "403: " + e.message
-        catch e
-            result = "other"
-        end
-        assert_eq(result, "403: no access")
-    });
+    let result = ""
+    try
+      try
+        throw new ErrorD()
+      catch ErrorC e
+        result = "C"
+      end
+    catch e
+      result = "outer"
+    end
+    assert_eq(result, "outer")
+  })
 
-    test("typed catch with finally", fn() {
-        class CustomError {
-            message: String;
-            new(msg: String) {
-                this.message = msg;
-            }
-        }
+  test("typed catch with end syntax", fn() {
+    class AppError
+      message: String
 
-        let result = "";
-        let finally_ran = false;
-        try {
-            throw new CustomError("test");
-        } catch (CustomError e) {
-            result = e.message;
-        } finally {
-            finally_ran = true;
-        }
-        assert_eq(result, "test");
-        assert(finally_ran);
-    });
+      new(msg: String)
+        this.message = msg
+      end
+    end
 
-    test("finally with nested try", fn() {
-        let order = [];
-        try {
-            try {
-                throw "inner";
-            } finally {
-                order.push("inner finally");
-            }
-        } catch (e) {
-            order.push("outer catch");
-        } finally {
-            order.push("outer finally");
-        }
-        assert_eq(len(order), 3);
-        assert_eq(order[0], "inner finally");
-        assert_eq(order[1], "outer catch");
-        assert_eq(order[2], "outer finally");
-    });
-});
+    let result = ""
+    try
+      throw new AppError("fail")
+    catch AppError e
+      result = "caught: " + e.message
+    catch e
+      result = "generic"
+    end
+    assert_eq(result, "caught: fail")
+  })
 
-// ============================================================================
-// Postfix Rescue Tests
-// ============================================================================
+  test("multiple typed catches with end syntax", fn() {
+    class NotFound
+      message: String
+
+      new(msg: String)
+        this.message = msg
+      end
+    end
+    class Forbidden
+      message: String
+
+      new(msg: String)
+        this.message = msg
+      end
+    end
+
+    let result = ""
+    try
+      throw new Forbidden("no access")
+    catch NotFound e
+      result = "404"
+    catch Forbidden e
+      result = "403: " + e.message
+    catch e
+      result = "other"
+    end
+    assert_eq(result, "403: no access")
+  })
+
+  test("typed catch with finally", fn() {
+    class CustomError
+      message: String
+
+      new(msg: String)
+        this.message = msg
+      end
+    end
+
+    let result = ""
+    let finally_ran = false
+    try
+      throw new CustomError("test")
+    catch CustomError e
+      result = e.message
+    finally
+      finally_ran = true
+    end
+    assert_eq(result, "test")
+    assert(finally_ran)
+  })
+
+  test("finally with nested try", fn() {
+    let order = []
+    try
+      try
+        throw "inner"
+      finally
+        order.push("inner finally")
+      end
+    catch e
+      order.push("outer catch")
+    finally
+      order.push("outer finally")
+    end
+    assert_eq(len(order), 3)
+    assert_eq(order[0], "inner finally")
+    assert_eq(order[1], "outer catch")
+    assert_eq(order[2], "outer finally")
+  })
+})
+
+# ============================================================================
+# Postfix Rescue Tests
+# ============================================================================
 describe("Postfix Rescue", fn() {
-    test("rescue returns fallback on exception", fn() {
-        fn throws() { throw "oops" }
-        let result = throws() rescue "fallback";
-        assert_eq(result, "fallback");
-    });
+  test("rescue returns fallback on exception", fn() {
+    def throws
+      throw "oops"
+    end
+    let result = throws() rescue "fallback"
+    assert_eq(result, "fallback")
+  })
 
-    test("rescue returns expr value on success", fn() {
-        let result = 42 rescue "fallback";
-        assert_eq(result, 42);
-    });
+  test("rescue returns expr value on success", fn() {
+    let result = 42 rescue "fallback"
+    assert_eq(result, 42)
+  })
 
-    test("rescue with method call", fn() {
-        let fn_that_throws = fn() { throw "error" };
-        let result = fn_that_throws() rescue "recovered";
-        assert_eq(result, "recovered");
-    });
+  test("rescue with method call", fn() {
+    let fn_that_throws = fn() {
+      throw "error"
+    }
+    let result = fn_that_throws() rescue "recovered"
+    assert_eq(result, "recovered")
+  })
 
-    test("rescue in assignment", fn() {
-        fn fail() { throw "fail" }
-        let x = fail() rescue "default";
-        assert_eq(x, "default");
-    });
+  test("rescue in assignment", fn() {
+    def fail
+      throw "fail"
+    end
+    let x = fail() rescue "default"
+    assert_eq(x, "default")
+  })
 
-    test("rescue with function result", fn() {
-        fn might_fail(flag: Bool) {
-            if flag { throw "failed" }
-            return "success"
-        }
-        assert_eq(might_fail(true) rescue "oops", "oops");
-        assert_eq(might_fail(false) rescue "oops", "success");
-    });
+  test("rescue with function result", fn() {
+    def might_fail(flag: Bool)
+      throw "failed" if flag
+      return "success"
+    end
+    assert_eq(might_fail(true) rescue "oops", "oops")
+    assert_eq(might_fail(false) rescue "oops", "success")
+  })
 
-    test("nested rescue", fn() {
-        fn inner() { throw "a" }
-        fn outer() { throw "b" }
-        let result = (inner() rescue "b") rescue "c";
-        assert_eq(result, "b");
-    });
+  test("nested rescue", fn() {
+    def inner
+      throw "a"
+    end
+    def outer
+      throw "b"
+    end
+    let result = (inner() rescue "b") rescue "c"
+    assert_eq(result, "b")
+  })
 
-    test("rescue with complex fallback", fn() {
-        fn err() { throw "error" }
-        let result = err() rescue 1 + 2 * 3;
-        assert_eq(result, 7);
-    });
+  test("rescue with complex fallback", fn() {
+    def err
+      throw "error"
+    end
+    let result = err() rescue 1 + 2 * 3
+    assert_eq(result, 7)
+  })
 
-    test("rescue chained with or", fn() {
-        fn err() { throw "error" }
-        let result = err() rescue "a" or "b";
-        assert_eq(result, "a");
-    });
+  test("rescue chained with or", fn() {
+    def err
+      throw "error"
+    end
+    let result = err() rescue "a" || "b"
+    assert_eq(result, "a")
+  })
 
-    test("rescue with pipeline", fn() {
-        let result = 5 |> fn(x) { throw "fail" } rescue 100;
-        assert_eq(result, 100);
-    });
+  test("rescue with pipeline", fn() {
+    let result = 5 |> fn(x) {
+      throw "fail"
+    } rescue 100
+    assert_eq(result, 100)
+  })
 
-    test("rescue after member access", fn() {
-        let obj = {"get": fn() { throw "err" }};
-        let result = obj.get() rescue "fallback";
-        assert_eq(result, "fallback");
-    });
+  test("rescue after member access", fn() {
+    let obj = {"get": fn() {
+      throw "err"
+    }}
+    let result = obj.get() rescue "fallback"
+    assert_eq(result, "fallback")
+  })
 
-    test("rescue with nullish coalescing", fn() {
-        fn err() { throw "err" }
-        let result = err() rescue null ?? "default";
-        assert_eq(result, "default");
-    });
-});
+  test("rescue with nullish coalescing", fn() {
+    def err
+      throw "err"
+    end
+    let result = err() rescue null ?? "default"
+    assert_eq(result, "default")
+  })
+})
 
-// ============================================================================
-// Ruby-style aliases: `begin` -> try, `rescue` (block form) -> catch,
-// `ensure` -> finally. The postfix `rescue` modifier still works inline.
-// ============================================================================
+# ============================================================================
+# Ruby-style aliases: `begin` -> try, `rescue` (block form) -> catch,
+# `ensure` -> finally. The postfix `rescue` modifier still works inline.
+# ============================================================================
 
 describe("Ruby-style begin/rescue/ensure", fn() {
-    test("begin/rescue/ensure runs catch then ensure", fn() {
-        let order = []
-        begin
-            throw "boom"
-        rescue e
-            order.push("rescue: " + e)
-        ensure
-            order.push("ensure")
-        end
-        assert_eq(len(order), 2)
-        assert_eq(order[0], "rescue: boom")
-        assert_eq(order[1], "ensure")
-    });
+  test("begin/rescue/ensure runs catch then ensure", fn() {
+    let order = []
+    try
+      throw "boom"
+    catch e
+      order.push("rescue: " + e)
+    finally
+      order.push("ensure")
+    end
+    assert_eq(len(order), 2)
+    assert_eq(order[0], "rescue: boom")
+    assert_eq(order[1], "ensure")
+  })
 
-    test("begin/rescue without ensure binds the error", fn() {
-        let caught = ""
-        begin
-            throw "kaboom"
-        rescue err
-            caught = err
-        end
-        assert_eq(caught, "kaboom")
-    });
+  test("begin/rescue without ensure binds the error", fn() {
+    let caught = ""
+    try
+      throw "kaboom"
+    catch err
+      caught = err
+    end
+    assert_eq(caught, "kaboom")
+  })
 
-    test("begin/rescue with no binding", fn() {
-        let ran = false
-        begin
-            throw "anon"
-        rescue
-            ran = true
-        end
-        assert(ran)
-    });
+  test("begin/rescue with no binding", fn() {
+    let ran = false
+    try
+      throw "anon"
+    catch
+      ran = true
+    end
+    assert(ran)
+  })
 
-    test("begin/ensure without rescue still runs ensure", fn() {
-        let ran = false
-        begin
-            let x = 1
-        ensure
-            ran = true
-        end
-        assert(ran)
-    });
+  test("begin/ensure without rescue still runs ensure", fn() {
+    let ran = false
+    try
+      let x = 1
+    finally
+      ran = true
+    end
+    assert(ran)
+  })
 
-    test("postfix rescue still works inside a begin body", fn() {
-        let value = 0
-        begin
-            value = (10 / 0) rescue 99
-        rescue e
-            value = -1
-        end
-        assert_eq(value, 99)
-    });
+  test("postfix rescue still works inside a begin body", fn() {
+    let value = 0
+    try
+      value = (10 / 0) rescue 99
+    catch e
+      value = -1
+    end
+    assert_eq(value, 99)
+  })
 
-    test("begin with no error skips rescue", fn() {
-        let result = 0
-        begin
-            result = 42
-        rescue e
-            result = -1
-        end
-        assert_eq(result, 42)
-    });
-});
+  test("begin with no error skips rescue", fn() {
+    let result = 0
+    try
+      result = 42
+    catch e
+      result = -1
+    end
+    assert_eq(result, 42)
+  })
+})
 
-// ============================================================================
-// `finally` runs on EVERY exit path, and can take over
-//
-// These pin behaviour that used to differ between the two engines: the VM
-// compiled `finally` as straight-line code after the catch clauses, so it ran
-// only when control fell off the end of the try. A `return` skipped it (the
-// cleanup was dropped exactly when an early exit made it necessary) and a
-// throw with no catch clause was discarded outright.
-// ============================================================================
+# ============================================================================
+# `finally` runs on EVERY exit path, and can take over
+#
+# These pin behaviour that used to differ between the two engines: the VM
+# compiled `finally` as straight-line code after the catch clauses, so it ran
+# only when control fell off the end of the try. A `return` skipped it (the
+# cleanup was dropped exactly when an early exit made it necessary) and a
+# throw with no catch clause was discarded outright.
+# ============================================================================
 
-// Module-scope helpers: `def` inside a test closure is not in scope for it.
+# Module-scope helpers: `def` inside a test closure is not in scope for it.
 let _handles = []
 
-def _acquire_then_return() -> String
-    _handles.push("h")
-    try
-        return "early"
-    finally
-        _handles.pop()
-    end
+def _acquire_then_return -> String
+  _handles.push("h")
+  try
+    return "early"
+  finally
+    _handles.pop()
+  end
 end
 
-def _acquire_then_throw() -> String
-    _handles.push("h")
-    try
-        throw "failed"
-    finally
-        _handles.pop()
-    end
-    return "unreachable"
+def _acquire_then_throw -> String
+  _handles.push("h")
+  try
+    throw "failed"
+  finally
+    _handles.pop()
+  end
+  return "unreachable"
 end
 
-def _throws_through_finally() -> String
-    try
-        throw "BOOM"
-    finally
-        _handles.push("cleaned")
-    end
-    return "SWALLOWED"
+def _throws_through_finally -> String
+  try
+    throw "BOOM"
+  finally
+    _handles.push("cleaned")
+  end
+  return "SWALLOWED"
 end
 
-def _return_from_finally() -> String
-    try
-        throw "T"
-    finally
-        return "from-finally"
-    end
+def _return_from_finally -> String
+  try
+    throw "T"
+  finally
+    return "from-finally"
+  end
 end
 
-def _throw_from_finally() -> String
-    try
-        throw "T"
-    finally
-        throw "TF"
-    end
+def _throw_from_finally -> String
+  try
+    throw "T"
+  finally
+    throw "TF"
+  end
 end
 
-def _return_from_catch() -> String
-    try
-        throw "x"
-    catch e
-        return "from-catch"
-    finally
-        _handles.push("cleaned")
-    end
+def _return_from_catch -> String
+  try
+    throw "x"
+  catch e
+    return "from-catch"
+  finally
+    _handles.push("cleaned")
+  end
 end
 
 describe("finally on every exit path", fn() {
-    test("runs when the try block returns, and the return value stands", fn() {
-        _handles = []
-        assert_eq(_acquire_then_return(), "early")
-        assert_eq(_handles.length, 0)   // cleanup ran — no leak
-    });
+  test("runs when the try block returns, and the return value stands", fn() {
+    _handles = []
+    assert_eq(_acquire_then_return(), "early")
+    assert_eq(_handles.length, 0)  // cleanup ran — no leak
+  })
 
-    test("runs when the try block throws", fn() {
-        _handles = []
-        let caught = false
-        try
-            _acquire_then_throw()
-        catch e
-            caught = true
-        end
-        assert(caught)
-        assert_eq(_handles.length, 0)
-    });
+  test("runs when the try block throws", fn() {
+    _handles = []
+    let caught = false
+    try
+      _acquire_then_throw()
+    catch e
+      caught = true
+    end
+    assert(caught)
+    assert_eq(_handles.length, 0)
+  })
 
-    test("does not swallow an exception when there is no catch clause", fn() {
-        _handles = []
-        let outcome = "never-set"
-        try
-            outcome = _throws_through_finally()
-        catch e
-            outcome = "propagated"
-        end
-        assert_eq(outcome, "propagated")     // not "SWALLOWED"
-        assert_eq(_handles.length, 1)        // and finally still ran
-    });
+  test("does not swallow an exception when there is no catch clause", fn() {
+    _handles = []
+    let outcome = "never-set"
+    try
+      outcome = _throws_through_finally()
+    catch e
+      outcome = "propagated"
+    end
+    assert_eq(outcome, "propagated")  // not "SWALLOWED"
+    assert_eq(_handles.length, 1)  // and finally still ran
+  })
 
-    test("runs when a catch clause returns", fn() {
-        _handles = []
-        assert_eq(_return_from_catch(), "from-catch")
-        assert_eq(_handles.length, 1)
-    });
+  test("runs when a catch clause returns", fn() {
+    _handles = []
+    assert_eq(_return_from_catch(), "from-catch")
+    assert_eq(_handles.length, 1)
+  })
 
-    test("a return inside finally replaces a pending exception", fn() {
-        assert_eq(_return_from_finally(), "from-finally")
-    });
+  test("a return inside finally replaces a pending exception", fn() {
+    assert_eq(_return_from_finally(), "from-finally")
+  })
 
-    test("a throw inside finally replaces a pending exception", fn() {
-        let seen = "none"
-        try
-            _throw_from_finally()
-        catch e
-            seen = str(e)
-        end
-        assert_eq(seen, "TF")
-    });
-});
+  test("a throw inside finally replaces a pending exception", fn() {
+    let seen = "none"
+    try
+      _throw_from_finally()
+    catch e
+      seen = str(e)
+    end
+    assert_eq(seen, "TF")
+  })
+})
 
-// ============================================================================
-// A throw inside a native callback keeps its value
-//
-// map/filter/each/reduce/sort_by and friends drive the callback from Rust, so
-// a `throw` has to cross that boundary to reach the caller's `catch`. Both
-// engines used to destroy it there — the interpreter replaced it with a
-// generic "Exception in array method", the VM with the rendering of the value
-// — and `sort_by` swallowed it outright and returned the list unsorted.
-//
-// These assert the VALUE, not just that something was raised, because both
-// engines failed identically and an engine-parity check cannot see that.
-// ============================================================================
+# ============================================================================
+# A throw inside a native callback keeps its value
+#
+# map/filter/each/reduce/sort_by and friends drive the callback from Rust, so
+# a `throw` has to cross that boundary to reach the caller's `catch`. Both
+# engines used to destroy it there — the interpreter replaced it with a
+# generic "Exception in array method", the VM with the rendering of the value
+# — and `sort_by` swallowed it outright and returned the list unsorted.
+#
+# These assert the VALUE, not just that something was raised, because both
+# engines failed identically and an engine-parity check cannot see that.
+# ============================================================================
 
 class CallbackErr
-    message: String
-    new(m: String)
-        this.message = m
-    end
+  message: String
+
+  new(m: String)
+    this.message = m
+  end
 end
 
 describe("throw inside a native callback", fn() {
-    test("map keeps the thrown hash a hash", fn() {
-        let code = 0
-        try
-            [1, 2, 3].map(fn(x) { throw {"code": 404} })
-        catch e
-            code = e["code"]
-        end
-        assert_eq(code, 404)
-    });
+  test("map keeps the thrown hash a hash", fn() {
+    let code = 0
+    try
+      [1, 2, 3].map(fn(x) {
+        throw {"code": 404}
+      })
+    catch e
+      code = e["code"]
+    end
+    assert_eq(code, 404)
+  })
 
-    test("filter keeps the thrown value", fn() {
-        let code = 0
-        try
-            [1, 2, 3].filter(fn(x) { throw {"code": 422} })
-        catch e
-            code = e["code"]
-        end
-        assert_eq(code, 422)
-    });
+  test("filter keeps the thrown value", fn() {
+    let code = 0
+    try
+      [1, 2, 3].filter(fn(x) {
+        throw {"code": 422}
+      })
+    catch e
+      code = e["code"]
+    end
+    assert_eq(code, 422)
+  })
 
-    test("reduce keeps the thrown value", fn() {
-        let code = 0
-        try
-            [1, 2, 3].reduce(fn(acc, x) { throw {"code": 500} }, 0)
-        catch e
-            code = e["code"]
-        end
-        assert_eq(code, 500)
-    });
+  test("reduce keeps the thrown value", fn() {
+    let code = 0
+    try
+      [1, 2, 3].reduce(fn(acc, x) {
+        throw {"code": 500}
+      }, 0)
+    catch e
+      code = e["code"]
+    end
+    assert_eq(code, 500)
+  })
 
-    test("each keeps the thrown value", fn() {
-        let code = 0
-        try
-            [1, 2, 3].each(fn(x) { throw {"code": 418} })
-        catch e
-            code = e["code"]
-        end
-        assert_eq(code, 418)
-    });
+  test("each keeps the thrown value", fn() {
+    let code = 0
+    try
+      [1, 2, 3].each(fn(x) {
+        throw {"code": 418}
+      })
+    catch e
+      code = e["code"]
+    end
+    assert_eq(code, 418)
+  })
 
-    test("sort_by does not swallow the throw", fn() {
-        let reached = false
-        let code = 0
-        try
-            [3, 1, 2].sort_by(fn(x) { throw {"code": 409} })
-            reached = true
-        catch e
-            code = e["code"]
-        end
-        assert(!reached)      // used to complete and return the list unsorted
-        assert_eq(code, 409)
-    });
+  test("sort_by does not swallow the throw", fn() {
+    let reached = false
+    let code = 0
+    try
+      [3, 1, 2].sort_by(fn(x) {
+        throw {"code": 409}
+      })
+      reached = true
+    catch e
+      code = e["code"]
+    end
+    assert(!reached)  // used to complete and return the list unsorted
+    assert_eq(code, 409)
+  })
 
-    test("hash each keeps the thrown value", fn() {
-        let code = 0
-        let pairs = {"a": 1, "b": 2}
-        try
-            pairs.each(fn(k, v) { throw {"code": 404} })
-        catch e
-            code = e["code"]
-        end
-        assert_eq(code, 404)
-    });
+  test("hash each keeps the thrown value", fn() {
+    let code = 0
+    let pairs = {"a": 1, "b": 2}
+    try
+      pairs.each(fn(k, v) {
+        throw {"code": 404}
+      })
+    catch e
+      code = e["code"]
+    end
+    assert_eq(code, 404)
+  })
 
-    test("int times keeps the thrown value", fn() {
-        let code = 0
-        try
-            3.times(fn(i) { throw {"code": 404} })
-        catch e
-            code = e["code"]
-        end
-        assert_eq(code, 404)
-    });
+  test("int times keeps the thrown value", fn() {
+    let code = 0
+    try
+      3.times(fn(i) {
+        throw {"code": 404}
+      })
+    catch e
+      code = e["code"]
+    end
+    assert_eq(code, 404)
+  })
 
-    test("a thrown class instance is still an instance", fn() {
-        let msg = ""
-        try
-            [1].map(fn(x) { throw CallbackErr("in-map") })
-        catch e
-            msg = e.message
-        end
-        assert_eq(msg, "in-map")
-    });
-});
+  test("a thrown class instance is still an instance", fn() {
+    let msg = ""
+    try
+      [1].map(fn(x) {
+        throw CallbackErr("in-map")
+      })
+    catch e
+      msg = e.message
+    end
+    assert_eq(msg, "in-map")
+  })
+})

@@ -4,51 +4,65 @@ const DOC = "<Document ID=\"_obj1\"><Data>Hello SAML</Data></Document>"
 const DS = "http://www.w3.org/2000/09/xmldsig#"
 const SHA256_DIGESTINFO = "3031300d060960864801650304020105000420"
 
-fn sign_doc() {
-    let key = RsaKey.private_from_pem(KEY_PEM)
-    let k_octets = key["bits"] / 8
-    let ref_canon = Xml.c14n_exclusive(DOC, {"id": "_obj1", "enveloped_signature": true})
-    let digest_b64 = Base64.encode(Hex.decode(Crypto.sha256(ref_canon)))
-    let si_inner = "<ds:SignedInfo>" +
-      "<ds:CanonicalizationMethod Algorithm=\"http://www.w3.org/2001/10/xml-exc-c14n#\"></ds:CanonicalizationMethod>" +
-      "<ds:SignatureMethod Algorithm=\"http://www.w3.org/2001/04/xmldsig-more#rsa-sha256\"></ds:SignatureMethod>" +
-      "<ds:Reference URI=\"#_obj1\"><ds:Transforms>" +
-      "<ds:Transform Algorithm=\"http://www.w3.org/2000/09/xmldsig#enveloped-signature\"></ds:Transform>" +
-      "<ds:Transform Algorithm=\"http://www.w3.org/2001/10/xml-exc-c14n#\"></ds:Transform>" +
-      "</ds:Transforms>" +
-      "<ds:DigestMethod Algorithm=\"http://www.w3.org/2001/04/xmlenc#sha256\"></ds:DigestMethod>" +
-      "<ds:DigestValue>" + digest_b64 + "</ds:DigestValue></ds:Reference></ds:SignedInfo>"
-    let si_standalone = "<ds:SignedInfo xmlns:ds=\"" + DS + "\">" + si_inner.substring(15, len(si_inner))
-    let si_canon = Xml.c14n_exclusive(si_standalone)
-    let si_hash = Crypto.sha256(si_canon)
-    let em = Crypto.pkcs1_pad(SHA256_DIGESTINFO + si_hash, k_octets)
-    let sig_hex = Crypto.modexp(em, key["d"], key["n"])
-    let sig_b64 = Base64.encode(Hex.decode(sig_hex))
-    let signature = "<ds:Signature xmlns:ds=\"" + DS + "\">" + si_inner +
-      "<ds:SignatureValue>" + sig_b64 + "</ds:SignatureValue>" +
-      "<ds:KeyInfo><ds:X509Data><ds:X509Certificate>" + CERT_B64 +
-      "</ds:X509Certificate></ds:X509Data></ds:KeyInfo></ds:Signature>"
-    let signed = DOC.replace("</Document>", signature + "</Document>")
-    return {"signed": signed, "sig_hex": sig_hex, "si_hash": si_hash, "digest_b64": digest_b64}
-}
+def sign_doc
+  let key = RsaKey.private_from_pem(KEY_PEM)
+  let k_octets = key["bits"] / 8
+  let ref_canon = Xml.c14n_exclusive(
+    DOC,
+    {"id": "_obj1", "enveloped_signature": true}
+  )
+  let digest_b64 = Base64.encode(Hex.decode(Crypto.sha256(ref_canon)))
+  let si_inner = "<ds:SignedInfo>"
+  + "<ds:CanonicalizationMethod Algorithm=\"http://www.w3.org/2001/10/xml-exc-c14n#\"></ds:CanonicalizationMethod>"
+  + "<ds:SignatureMethod Algorithm=\"http://www.w3.org/2001/04/xmldsig-more#rsa-sha256\"></ds:SignatureMethod>"
+  + "<ds:Reference URI=\"#_obj1\"><ds:Transforms>"
+  + "<ds:Transform Algorithm=\"http://www.w3.org/2000/09/xmldsig#enveloped-signature\"></ds:Transform>"
+  + "<ds:Transform Algorithm=\"http://www.w3.org/2001/10/xml-exc-c14n#\"></ds:Transform>"
+  + "</ds:Transforms>"
+  + "<ds:DigestMethod Algorithm=\"http://www.w3.org/2001/04/xmlenc#sha256\"></ds:DigestMethod>"
+  + "<ds:DigestValue>"
+  + digest_b64
+  + "</ds:DigestValue></ds:Reference></ds:SignedInfo>"
+  let si_standalone = "<ds:SignedInfo xmlns:ds=\"" + DS + "\">" + si_inner.substring(15, len(si_inner))
+  let si_canon = Xml.c14n_exclusive(si_standalone)
+  let si_hash = Crypto.sha256(si_canon)
+  let em = Crypto.pkcs1_pad(SHA256_DIGESTINFO + si_hash, k_octets)
+  let sig_hex = Crypto.modexp(em, key["d"], key["n"])
+  let sig_b64 = Base64.encode(Hex.decode(sig_hex))
+  let signature = "<ds:Signature xmlns:ds=\"" + DS + "\">" + si_inner + "<ds:SignatureValue>" + sig_b64
+  + "</ds:SignatureValue>"
+  + "<ds:KeyInfo><ds:X509Data><ds:X509Certificate>"
+  + CERT_B64
+  + "</ds:X509Certificate></ds:X509Data></ds:KeyInfo></ds:Signature>"
+  let signed = DOC.replace("</Document>", signature + "</Document>")
+  return {
+    "signed": signed,
+    "sig_hex": sig_hex,
+    "si_hash": si_hash,
+    "digest_b64": digest_b64
+  }
+end
 
 describe("XML-DSig enveloped signing (Soli SP side)", fn() {
-    test("the produced signature RSA-verifies against the public key", fn() {
-        let r = sign_doc()
-        let kp = X509.public_key(CERT_B64)
-        let recovered = Crypto.pkcs1_unpad(Crypto.modexp(r["sig_hex"], kp["e"], kp["n"]))
-        assert_eq(recovered, SHA256_DIGESTINFO + r["si_hash"]);
-    });
+  test("the produced signature RSA-verifies against the public key", fn() {
+    let r = sign_doc()
+    let kp = X509.public_key(CERT_B64)
+    let recovered = Crypto.pkcs1_unpad(Crypto.modexp(r["sig_hex"], kp["e"], kp["n"]))
+    assert_eq(recovered, SHA256_DIGESTINFO + r["si_hash"])
+  })
 
-    test("the signed document's Reference digest is correct (enveloped)", fn() {
-        let r = sign_doc()
-        let canon = Xml.c14n_exclusive(r["signed"], {"id": "_obj1", "enveloped_signature": true})
-        assert_eq(Base64.encode(Hex.decode(Crypto.sha256(canon))), r["digest_b64"]);
-    });
+  test("the signed document's Reference digest is correct (enveloped)", fn() {
+    let r = sign_doc()
+    let canon = Xml.c14n_exclusive(
+      r["signed"],
+      {"id": "_obj1", "enveloped_signature": true}
+    )
+    assert_eq(Base64.encode(Hex.decode(Crypto.sha256(canon))), r["digest_b64"])
+  })
 
-    test("SignedInfo re-extracted from the doc canonicalizes to what we signed", fn() {
-        let r = sign_doc()
-        let si = Xml.get_elements_by_tag(r["signed"], "SignedInfo")[0]
-        assert_eq(Crypto.sha256(Xml.c14n_exclusive(si)), r["si_hash"]);
-    });
-});
+  test("SignedInfo re-extracted from the doc canonicalizes to what we signed", fn() {
+    let r = sign_doc()
+    let si = Xml.get_elements_by_tag(r["signed"], "SignedInfo")[0]
+    assert_eq(Crypto.sha256(Xml.c14n_exclusive(si)), r["si_hash"])
+  })
+})

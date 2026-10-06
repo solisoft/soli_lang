@@ -7,19 +7,19 @@
 # behavior is gated behind the DB availability probe.
 # ============================================================================
 class AwAuthor < Model
-  has_many "aw_books"
+  has_many("aw_books")
 end
 
 class AwBook < Model
-  belongs_to "aw_author"
+  belongs_to("aw_author")
 end
 
 class AwStrictShelf < Model
-  has_many "aw_strict_books"
+  has_many("aw_strict_books")
 end
 
 class AwStrictBook < Model
-  belongs_to "aw_strict_shelf"
+  belongs_to("aw_strict_shelf")
   validates("title", {"presence": true})
 end
 
@@ -33,7 +33,10 @@ class AwSupplier < Model
 end
 
 class AwNote < Model
-  belongs_to("aw_notable", {"polymorphic": true, "counter_cache": true})
+  belongs_to(
+    "aw_notable",
+    {"polymorphic": true, "counter_cache": true}
+  )
 end
 
 # Detect DB availability
@@ -59,7 +62,8 @@ describe("has_many shovel writes", fn() {
       assert_eq(author.aw_books.count(), 1)
       assert_eq(AwBook.find(book._key).aw_author_id, author._key)
 
-      book.delete(); author.delete()
+      book.delete()
+      author.delete()
     end
   })
 
@@ -73,7 +77,8 @@ describe("has_many shovel writes", fn() {
       assert_not_null(draft._key)
       assert_eq(author.aw_books.count(), 1)
 
-      draft.delete(); author.delete()
+      draft.delete()
+      author.delete()
     end
   })
 
@@ -87,7 +92,9 @@ describe("has_many shovel writes", fn() {
 
       assert_eq(author.aw_books.count(), 2)
 
-      b1.delete(); b2.delete(); author.delete()
+      b1.delete()
+      b2.delete()
+      author.delete()
     end
   })
 
@@ -105,7 +112,8 @@ describe("has_many shovel writes", fn() {
       # Counter cache bumped through the FK-change path.
       assert_eq(AwCustomer.find(customer._key).aw_notes_count, 1)
 
-      note.delete(); customer.delete()
+      note.delete()
+      customer.delete()
     end
   })
 
@@ -164,7 +172,8 @@ describe("has_many relation create", fn() {
       assert_eq(book.title, "seeded")
       assert_eq(author.aw_books.count(), 1)
 
-      book.delete(); author.delete()
+      book.delete()
+      author.delete()
     end
   })
 
@@ -190,8 +199,10 @@ describe("has_many relation create", fn() {
       assert_eq(hijack.aw_notable_id, customer._key)
       assert_eq(hijack.aw_notable_type, "AwCustomer")
 
-      note.delete(); hijack.delete()
-      customer.delete(); supplier.delete()
+      note.delete()
+      hijack.delete()
+      customer.delete()
+      supplier.delete()
     end
   })
 

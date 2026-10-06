@@ -6,16 +6,16 @@
 # without a database; behavior assertions are gated behind the DB probe.
 # ============================================================================
 class CcPost < Model
-  has_many "cc_comments"
+  has_many("cc_comments")
 end
 
 class CcComment < Model
-  belongs_to "cc_post", counter_cache: true
+  belongs_to("cc_post", counter_cache: true)
 end
 
 # Custom column name.
 class CcArticle < Model
-  has_many "cc_reviews"
+  has_many("cc_reviews")
 end
 
 class CcReview < Model
@@ -24,12 +24,12 @@ end
 
 # Soft-deleting child: counters track default-scope-visible children.
 class CcNotebook < Model
-  has_many "cc_notes"
+  has_many("cc_notes")
 end
 
 class CcNote < Model
   soft_delete
-  belongs_to "cc_notebook", counter_cache: true
+  belongs_to("cc_notebook", counter_cache: true)
 end
 
 class CcDslProbe < Model
@@ -82,8 +82,14 @@ describe("counter cache maintenance", fn() {
   test("create and delete keep the parent count current", fn() {
     if __db_available
       let post = CcPost.create({"title": "p"})
-      let c1 = CcComment.create({"cc_post_id": post._key, "body": "one"})
-      let c2 = CcComment.create({"cc_post_id": post._key, "body": "two"})
+      let c1 = CcComment.create({
+        "cc_post_id": post._key,
+        "body": "one"
+      })
+      let c2 = CcComment.create({
+        "cc_post_id": post._key,
+        "body": "two"
+      })
       assert_eq(CcPost.find(post._key).cc_comments_count, 2)
 
       c1.delete()
@@ -98,7 +104,10 @@ describe("counter cache maintenance", fn() {
   test("save on a new instance increments too", fn() {
     if __db_available
       let post = CcPost.create({"title": "p"})
-      let comment = CcComment.new({"cc_post_id": post._key, "body": "via save"})
+      let comment = CcComment.new({
+        "cc_post_id": post._key,
+        "body": "via save"
+      })
       comment.save()
       assert_eq(CcPost.find(post._key).cc_comments_count, 1)
       comment.delete()
@@ -110,7 +119,10 @@ describe("counter cache maintenance", fn() {
     if __db_available
       let post_a = CcPost.create({"title": "a"})
       let post_b = CcPost.create({"title": "b"})
-      let comment = CcComment.create({"cc_post_id": post_a._key, "body": "mover"})
+      let comment = CcComment.create({
+        "cc_post_id": post_a._key,
+        "body": "mover"
+      })
       assert_eq(CcPost.find(post_a._key).cc_comments_count, 1)
 
       comment.cc_post_id = post_b._key
@@ -119,14 +131,18 @@ describe("counter cache maintenance", fn() {
       assert_eq(CcPost.find(post_b._key).cc_comments_count, 1)
 
       comment.delete()
-      post_a.delete(); post_b.delete()
+      post_a.delete()
+      post_b.delete()
     end
   })
 
   test("setting the FK to null only decrements", fn() {
     if __db_available
       let post = CcPost.create({"title": "p"})
-      let comment = CcComment.create({"cc_post_id": post._key, "body": "detach"})
+      let comment = CcComment.create({
+        "cc_post_id": post._key,
+        "body": "detach"
+      })
       comment.cc_post_id = null
       comment.update()
       assert_eq(CcPost.find(post._key).cc_comments_count, 0)
@@ -139,22 +155,32 @@ describe("counter cache maintenance", fn() {
     if __db_available
       let post_a = CcPost.create({"title": "a"})
       let post_b = CcPost.create({"title": "b"})
-      let comment = CcComment.create({"cc_post_id": post_a._key, "body": "cf"})
+      let comment = CcComment.create({
+        "cc_post_id": post_a._key,
+        "body": "cf"
+      })
 
-      CcComment.update(comment._key, {"cc_post_id": post_b._key, "body": "cf"})
+      CcComment.update(
+        comment._key,
+        {"cc_post_id": post_b._key, "body": "cf"}
+      )
       assert_eq(CcPost.find(post_a._key).cc_comments_count, 0)
       assert_eq(CcPost.find(post_b._key).cc_comments_count, 1)
 
       CcComment.delete(comment._key)
       assert_eq(CcPost.find(post_b._key).cc_comments_count, 0)
-      post_a.delete(); post_b.delete()
+      post_a.delete()
+      post_b.delete()
     end
   })
 
   test("a custom column name is honored", fn() {
     if __db_available
       let article = CcArticle.create({"title": "art"})
-      let review = CcReview.create({"cc_article_id": article._key, "stars": 5})
+      let review = CcReview.create({
+        "cc_article_id": article._key,
+        "stars": 5
+      })
       assert_eq(CcArticle.find(article._key).review_tally, 1)
       review.delete()
       article.delete()
@@ -164,7 +190,10 @@ describe("counter cache maintenance", fn() {
   test("soft delete decrements and restore re-increments", fn() {
     if __db_available
       let notebook = CcNotebook.create({"name": "nb"})
-      let note = CcNote.create({"cc_notebook_id": notebook._key, "body": "n"})
+      let note = CcNote.create({
+        "cc_notebook_id": notebook._key,
+        "body": "n"
+      })
       assert_eq(CcNotebook.find(notebook._key).cc_notes_count, 1)
 
       note.delete()  # soft

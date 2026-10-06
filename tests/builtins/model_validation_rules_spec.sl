@@ -6,13 +6,19 @@
 class TicketRule < Model
   validates("title", {"presence": true})
   validates("status", {"one_of": ["open", "closed"]})
-  validates("priority", {"inclusion": [1, 2, 3], "allow_nil": true})
+  validates(
+    "priority",
+    {"inclusion": [1, 2, 3], "allow_nil": true}
+  )
 end
 
 class TypedRule < Model
   validates("title", {"presence": true})
   validates("active", {"type": "boolean"})
-  validates("tags", {"type": "array", "allow_null": true})
+  validates(
+    "tags",
+    {"type": "array", "allow_null": true}
+  )
 end
 
 class CustomRule < Model
@@ -40,12 +46,16 @@ end
 
 def error_fields(record)
   errors = record._errors ?? []
-  errors.map { |e| e["field"] }
+  errors.map do |e|
+    e["field"]
+  end
 end
 
 def error_for(record, field)
   errors = record._errors ?? []
-  found = errors.filter { |e| e["field"] == field }
+  found = errors.filter do |e|
+    e["field"] == field
+  end
   return nil if found.length == 0
 
   found[0]["message"]
@@ -63,14 +73,23 @@ describe("validates one_of / inclusion", fn() {
   })
 
   test("values compare by type: 1 is not \"1\"", fn() {
-    record = TicketRule.create({"status": "open", "priority": "1"})
+    record = TicketRule.create({
+      "status": "open",
+      "priority": "1"
+    })
     assert_eq(error_for(record, "priority"), "is not included in the list")
-    record = TicketRule.create({"status": "open", "priority": 2})
+    record = TicketRule.create({
+      "status": "open",
+      "priority": 2
+    })
     assert_eq(error_fields(record), ["title"])
   })
 
   test("allow_nil skips a nil value", fn() {
-    record = TicketRule.create({"status": "open", "priority": nil})
+    record = TicketRule.create({
+      "status": "open",
+      "priority": nil
+    })
     assert_eq(error_fields(record), ["title"])
   })
 })
@@ -96,17 +115,26 @@ describe("validates type", fn() {
 
 describe("validates custom", fn() {
   test("a method pushing onto @_errors reports its error", fn() {
-    record = CustomRule.create({"name": "bad", "code": "ok"})
+    record = CustomRule.create({
+      "name": "bad",
+      "code": "ok"
+    })
     assert_eq(error_for(record, "name"), "is reserved")
   })
 
   test("a method that pushes nothing passes", fn() {
-    record = CustomRule.create({"name": "fine", "code": "ok"})
+    record = CustomRule.create({
+      "name": "fine",
+      "code": "ok"
+    })
     assert_eq(error_fields(record), ["title"])
   })
 
   test("a closure returning a String reports it as the message", fn() {
-    record = CustomRule.create({"name": "fine", "code": "nope"})
+    record = CustomRule.create({
+      "name": "fine",
+      "code": "nope"
+    })
     assert_eq(error_for(record, "code"), "must be ok")
   })
 

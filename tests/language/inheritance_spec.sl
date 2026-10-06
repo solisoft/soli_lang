@@ -1,647 +1,665 @@
-// ============================================================================
-// Class Inheritance Test Suite
-// ============================================================================
+# ============================================================================
+# Class Inheritance Test Suite
+# ============================================================================
 
 describe("Class Inheritance Basics", fn() {
-    test("subclass inherits from superclass", fn() {
-        class Animal {
-            name: String;
+  test("subclass inherits from superclass", fn() {
+    class Animal
+      name: String
 
-            new(name: String) {
-                this.name = name;
-            }
+      new(name: String)
+        this.name = name
+      end
 
-            fn speak() -> String {
-                return "...";
-            }
-        }
+      def speak -> String
+        return "..."
+      end
+    end
 
-        class Dog extends Animal {
-            fn speak() -> String {
-                return "Woof!";
-            }
-        }
+    class Dog < Animal
+      def speak -> String
+        return "Woof!"
+      end
+    end
 
-        let dog = new Dog("Buddy");
-        assert_eq(dog.name, "Buddy");
-        assert_eq(dog.speak(), "Woof!");
-    });
+    let dog = new Dog("Buddy")
+    assert_eq(dog.name, "Buddy")
+    assert_eq(dog.speak(), "Woof!")
+  })
 
-    test("subclass can extend inherited behavior", fn() {
-        class Shape {
-            fn description() -> String {
-                return "A shape";
-            }
-        }
+  test("subclass can extend inherited behavior", fn() {
+    class Shape
+      def description -> String
+        return "A shape"
+      end
+    end
 
-        class Circle extends Shape {
-            radius: Float;
+    class Circle < Shape
+      radius: Float
 
-            new(radius: Float) {
-                this.radius = radius;
-            }
+      new(radius: Float)
+        this.radius = radius
+      end
 
-            fn area() -> Float {
-                return 3.14159 * this.radius * this.radius;
-            }
-        }
+      def area -> Float
+        return 3.14159 * this.radius * this.radius
+      end
+    end
 
-        let c = new Circle(5.0);
-        assert_eq(c.description(), "A shape");
-        assert_eq(c.area(), 78.53975);
-    });
+    let c = new Circle(5.0)
+    assert_eq(c.description(), "A shape")
+    assert_eq(c.area(), 78.53975)
+  })
 
-    test("deep inheritance chain", fn() {
-        class A {
-            fn method_a() -> String {
-                return "A";
-            }
-        }
+  test("deep inheritance chain", fn() {
+    class A
+      def method_a -> String
+        return "A"
+      end
+    end
 
-        class B extends A {
-            fn method_b() -> String {
-                return "B";
-            }
-        }
+    class B < A
+      def method_b -> String
+        return "B"
+      end
+    end
 
-        class C extends B {
-            fn method_c() -> String {
-                return "C";
-            }
-        }
+    class C < B
+      def method_c -> String
+        return "C"
+      end
+    end
 
-        let c = new C();
-        assert_eq(c.method_a(), "A");
-        assert_eq(c.method_b(), "B");
-        assert_eq(c.method_c(), "C");
-    });
+    let c = new C()
+    assert_eq(c.method_a(), "A")
+    assert_eq(c.method_b(), "B")
+    assert_eq(c.method_c(), "C")
+  })
 
-    test("< as alias for extends", fn() {
-        class Awesome
-            fn greet() -> String
-                return "awesome"
-            end
-        end
+  test("< as alias for extends", fn() {
+    class Awesome
+      def greet -> String
+        return "awesome"
+      end
+    end
 
-        class Demo < Awesome
-        end
+    class Demo < Awesome
+    end
 
-        let d = new Demo();
-        assert_eq(d.greet(), "awesome");
-        assert_eq(type(d), "Demo");
-    });
+    let d = new Demo()
+    assert_eq(d.greet(), "awesome")
+    assert_eq(type(d), "Demo")
+  })
 
-    test("instance type shows most derived class", fn() {
-        class Base {
-        }
+  test("instance type shows most derived class", fn() {
+    class Base
+    end
 
-        class Derived extends Base {
-        }
+    class Derived < Base
+    end
 
-        let d = new Derived();
-        assert_eq(type(d), "Derived");
-    });
-});
+    let d = new Derived()
+    assert_eq(type(d), "Derived")
+  })
+})
 
 describe("super Keyword", fn() {
-    test("super.method() in instance methods", fn() {
-        class Base {
-            fn greet() -> String {
-                return "Hello";
-            }
-        }
+  test("super.method() in instance methods", fn() {
+    class Base
+      def greet -> String
+        return "Hello"
+      end
+    end
 
-        class Derived extends Base {
-            fn greet() -> String {
-                return super.greet() + " World";
-            }
-        }
+    class Derived < Base
+      def greet -> String
+        return super.greet() + " World"
+      end
+    end
 
-        assert_eq(new Derived().greet(), "Hello World");
-    });
+    assert_eq(new Derived().greet(), "Hello World")
+  })
 
-    test("super with field access", fn() {
-        class Base {
-            value: Int = 10;
-        }
+  test("super with field access", fn() {
+    class Base
+      value: Int = 10
+    end
 
-        class Derived extends Base {
-            fn get_value() -> Int {
-                return this.value;
-            }
-        }
+    class Derived < Base
+      def get_value -> Int
+        return this.value
+      end
+    end
 
-        assert_eq(new Derived().get_value(), 10);
-    });
+    assert_eq(new Derived().get_value(), 10)
+  })
 
-    test("super in constructor", fn() {
-        class Person {
-            name: String;
+  test("super in constructor", fn() {
+    class Person
+      name: String
 
-            new(name: String) {
-                this.name = name;
-            }
-        }
+      new(name: String)
+        this.name = name
+      end
+    end
 
-        class Employee extends Person {
-            employee_id: Int;
+    class Employee < Person
+      employee_id: Int
 
-            new(name: String, id: Int) {
-                super(name);
-                this.employee_id = id;
-            }
-        }
+      new(name: String, id: Int)
+        super(name)
+        this.employee_id = id
+      end
+    end
 
-        let e = new Employee("Alice", 123);
-        assert_eq(e.name, "Alice");
-        assert_eq(e.employee_id, 123);
-    });
+    let e = new Employee("Alice", 123)
+    assert_eq(e.name, "Alice")
+    assert_eq(e.employee_id, 123)
+  })
 
-    test("super chaining in deep hierarchy", fn() {
-        class GrandParent {
-            fn identify() -> String {
-                return "GrandParent";
-            }
-        }
+  test("super chaining in deep hierarchy", fn() {
+    class GrandParent
+      def identify -> String
+        return "GrandParent"
+      end
+    end
 
-        class Parent extends GrandParent {
-            fn identify() -> String {
-                return super.identify() + " -> Parent";
-            }
-        }
+    class Parent < GrandParent
+      def identify -> String
+        return super.identify() + " -> Parent"
+      end
+    end
 
-        class Child extends Parent {
-            fn identify() -> String {
-                return super.identify() + " -> Child";
-            }
-        }
+    class Child < Parent
+      def identify -> String
+        return super.identify() + " -> Child"
+      end
+    end
 
-        assert_eq(new Child().identify(), "GrandParent -> Parent -> Child");
-    });
+    assert_eq(new Child().identify(), "GrandParent -> Parent -> Child")
+  })
 
-    test("calling parent static method explicitly", fn() {
-        // Note: super.method() in static methods is not supported
-        // Use explicit class name instead
-        class Base {
-            static fn get_class_name() -> String {
-                return "Base";
-            }
-        }
+  test("calling parent static method explicitly", fn() {
+    # Note: super.method() in static methods is not supported
+    # Use explicit class name instead
+    class Base
+      static def get_class_name -> String
+        return "Base"
+      end
+    end
 
-        class Derived extends Base {
-            static fn get_class_name() -> String {
-                return Base.get_class_name() + "_Derived";
-            }
-        }
+    class Derived < Base
+      static def get_class_name -> String
+        return Base.get_class_name() + "_Derived"
+      end
+    end
 
-        assert_eq(Derived.get_class_name(), "Base_Derived");
-    });
+    assert_eq(Derived.get_class_name(), "Base_Derived")
+  })
 
-    test("super with static method inheritance", fn() {
-        class Logger {
-            static fn level() -> String {
-                return "INFO";
-            }
-        }
+  test("super with static method inheritance", fn() {
+    class Logger
+      static def level -> String
+        return "INFO"
+      end
+    end
 
-        class DebugLogger extends Logger {
-        }
+    class DebugLogger < Logger
+    end
 
-        assert_eq(DebugLogger.level(), "INFO");
-    });
+    assert_eq(DebugLogger.level(), "INFO")
+  })
 
-    test("super in multiple inheritance levels", fn() {
-        class Level1 {
-            fn level() -> Int {
-                return 1;
-            }
-        }
+  test("super in multiple inheritance levels", fn() {
+    class Level1
+      def level -> Int
+        return 1
+      end
+    end
 
-        class Level2 extends Level1 {
-            fn level() -> Int {
-                return super.level() + 10;
-            }
-        }
+    class Level2 < Level1
+      def level -> Int
+        return super.level() + 10
+      end
+    end
 
-        class Level3 extends Level2 {
-            fn level() -> Int {
-                return super.level() + 100;
-            }
-        }
+    class Level3 < Level2
+      def level -> Int
+        return super.level() + 100
+      end
+    end
 
-        assert_eq(new Level3().level(), 111);
-    });
-});
+    assert_eq(new Level3().level(), 111)
+  })
+})
 
 describe("this Keyword", fn() {
-    test("this.field access in methods", fn() {
-        class Point {
-            x: Int;
-            y: Int;
+  test("this.field access in methods", fn() {
+    class Point
+      x: Int
+      y: Int
 
-            new(x: Int, y: Int) {
-                this.x = x;
-                this.y = y;
-            }
+      new(x: Int, y: Int)
+        this.x = x
+        this.y = y
+      end
 
-            fn get_x() -> Int {
-                return this.x;
-            }
+      def get_x -> Int
+        return this.x
+      end
 
-            fn get_y() -> Int {
-                return this.y;
-            }
-        }
+      def get_y -> Int
+        return this.y
+      end
+    end
 
-        let p = new Point(5, 10);
-        assert_eq(p.get_x(), 5);
-        assert_eq(p.get_y(), 10);
-    });
+    let p = new Point(5, 10)
+    assert_eq(p.get_x(), 5)
+    assert_eq(p.get_y(), 10)
+  })
 
-    test("this.method() calls", fn() {
-        class Chainer {
-            value: Int = 0;
+  test("this.method() calls", fn() {
+    class Chainer
+      value: Int = 0
 
-            fn add(n: Int) {
-                this.value = this.value + n;
-                return this;
-            }
+      def add(n: Int)
+        this.value = this.value + n
+        return this
+      end
 
-            fn multiply(n: Int) {
-                this.value = this.value * n;
-                return this;
-            }
+      def multiply(n: Int)
+        this.value = this.value * n
+        return this
+      end
 
-            fn reset() {
-                this.value = 0;
-                return this;
-            }
-        }
+      def reset
+        this.value = 0
+        return this
+      end
+    end
 
-        let c = new Chainer();
-        assert_eq(c.add(5).multiply(2).value, 10);
-        assert_eq(c.reset().add(3).value, 3);
-    });
+    let c = new Chainer()
+    assert_eq(c.add(5).multiply(2).value, 10)
+    assert_eq(c.reset().add(3).value, 3)
+  })
 
-    test("this in constructor", fn() {
-        class Box {
-            width: Int;
-            height: Int;
-            depth: Int;
+  test("this in constructor", fn() {
+    class Box
+      width: Int
+      height: Int
+      depth: Int
 
-            new(w: Int, h: Int, d: Int) {
-                this.width = w;
-                this.height = h;
-                this.depth = d;
-            }
+      new(w: Int, h: Int, d: Int)
+        this.width = w
+        this.height = h
+        this.depth = d
+      end
 
-            fn volume() -> Int {
-                return this.width * this.height * this.depth;
-            }
-        }
+      def volume -> Int
+        return this.width * this.height * this.depth
+      end
+    end
 
-        let box = new Box(2, 3, 4);
-        assert_eq(box.volume(), 24);
-    });
+    let box = new Box(2, 3, 4)
+    assert_eq(box.volume(), 24)
+  })
 
-    test("this in nested method calls", fn() {
-        class Outer {
-            value: Int = 100;
-        }
+  test("this in nested method calls", fn() {
+    class Outer
+      value: Int = 100
+    end
 
-        let o = new Outer();
-        assert_eq(o.value, 100);
-    });
+    let o = new Outer()
+    assert_eq(o.value, 100)
+  })
 
-    test("this in static context throws error", fn() {
-        let threw = false;
-        try {
-            class Test {
-                static fn bad() {
-                    return this;
-                }
-            }
-            Test.bad();
-        } catch (e) {
-            threw = true;
-        }
-        assert(threw);
-    });
-});
+  test("this in static context throws error", fn() {
+    let threw = false
+    try
+      class Test
+        static def bad
+          return this
+        end
+      end
+      Test.bad()
+    catch e
+      threw = true
+    end
+    assert(threw)
+  })
+})
 
 describe("Method Overriding", fn() {
-    test("method override completely replaces super", fn() {
-        class Base {
-            fn get_value() -> Int {
-                return 1;
-            }
-        }
+  test("method override completely replaces super", fn() {
+    class Base
+      def get_value -> Int
+        return 1
+      end
+    end
 
-        class Derived extends Base {
-            fn get_value() -> Int {
-                return 2;
-            }
-        }
+    class Derived < Base
+      def get_value -> Int
+        return 2
+      end
+    end
 
-        assert_eq(new Base().get_value(), 1);
-        assert_eq(new Derived().get_value(), 2);
-    });
+    assert_eq(new Base().get_value(), 1)
+    assert_eq(new Derived().get_value(), 2)
+  })
 
-    test("override with super call", fn() {
-        class Base {
-            fn compute(x: Int) -> Int {
-                return x * 2;
-            }
-        }
+  test("override with super call", fn() {
+    class Base
+      def compute(x: Int) -> Int
+        return x * 2
+      end
+    end
 
-        class Derived extends Base {
-            fn compute(x: Int) -> Int {
-                let result = super.compute(x);
-                return result + 1;
-            }
-        }
+    class Derived < Base
+      def compute(x: Int) -> Int
+        let result = super.compute(x)
+        return result + 1
+      end
+    end
 
-        assert_eq(new Derived().compute(5), 11);
-    });
+    assert_eq(new Derived().compute(5), 11)
+  })
 
-    test("override with different signature", fn() {
-        class Base {
-            fn process(data: String) -> String {
-                return "processed: " + data;
-            }
-        }
+  test("override with different signature", fn() {
+    class Base
+      def process(data: String) -> String
+        return "processed: " + data
+      end
+    end
 
-        class Derived extends Base {
-            fn process(data: String, prefix: String) -> String {
-                return prefix + ": " + data;
-            }
-        }
+    class Derived < Base
+      def process(data: String, prefix: String) -> String
+        return prefix + ": " + data
+      end
+    end
 
-        assert_eq(new Base().process("test"), "processed: test");
-    });
+    assert_eq(new Base().process("test"), "processed: test")
+  })
 
-    test("override adds new methods", fn() {
-        class Base {
-            fn existing() -> String {
-                return "exists";
-            }
-        }
+  test("override adds new methods", fn() {
+    class Base
+      def existing -> String
+        return "exists"
+      end
+    end
 
-        class Derived extends Base {
-            fn new_method() -> String {
-                return "new";
-            }
-        }
+    class Derived < Base
+      def new_method -> String
+        return "new"
+      end
+    end
 
-        let d = new Derived();
-        assert_eq(d.existing(), "exists");
-        assert_eq(d.new_method(), "new");
-    });
-});
+    let d = new Derived()
+    assert_eq(d.existing(), "exists")
+    assert_eq(d.new_method(), "new")
+  })
+})
 
 describe("Constructor Behavior", fn() {
-    test("default constructor when no new defined", fn() {
-        class Simple {
-            value: Int = 42;
-        }
+  test("default constructor when no new defined", fn() {
+    class Simple
+      value: Int = 42
+    end
 
-        let s = new Simple();
-        assert_eq(s.value, 42);
-    });
+    let s = new Simple()
+    assert_eq(s.value, 42)
+  })
 
-    test("custom constructor", fn() {
-        class Rectangle {
-            width: Int;
-            height: Int;
+  test("custom constructor", fn() {
+    class Rectangle
+      width: Int
+      height: Int
 
-            new(w: Int, h: Int) {
-                this.width = w;
-                this.height = h;
-            }
+      new(w: Int, h: Int)
+        this.width = w
+        this.height = h
+      end
 
-            fn area() -> Int {
-                return this.width * this.height;
-            }
-        }
+      def area -> Int
+        return this.width * this.height
+      end
+    end
 
-        let r = new Rectangle(5, 3);
-        assert_eq(r.area(), 15);
-    });
+    let r = new Rectangle(5, 3)
+    assert_eq(r.area(), 15)
+  })
 
-    test("constructor with default parameters", fn() {
-        class Box {
-            width: Int;
-            height: Int;
-            depth: Int;
+  test("constructor with default parameters", fn() {
+    class Box
+      width: Int
+      height: Int
+      depth: Int
 
-            new(w: Int, h: Int = 1, d: Int = 1) {
-                this.width = w;
-                this.height = h;
-                this.depth = d;
-            }
+      new(w: Int, h: Int = 1, d: Int = 1)
+        this.width = w
+        this.height = h
+        this.depth = d
+      end
 
-            fn volume() -> Int {
-                return this.width * this.height * this.depth;
-            }
-        }
+      def volume -> Int
+        return this.width * this.height * this.depth
+      end
+    end
 
-        assert_eq(new Box(2).volume(), 2);
-        assert_eq(new Box(2, 3).volume(), 6);
-        assert_eq(new Box(2, 3, 4).volume(), 24);
-    });
-});
+    assert_eq(new Box(2).volume(), 2)
+    assert_eq(new Box(2, 3).volume(), 6)
+    assert_eq(new Box(2, 3, 4).volume(), 24)
+  })
+})
 
 describe("Multi-level Inheritance", fn() {
-    test("3-level inheritance chain with method override", fn() {
-        class Controller {
-            fn action() -> String {
-                return "Controller";
-            }
-        }
+  test("3-level inheritance chain with method override", fn() {
+    class Controller
+      def action -> String
+        return "Controller"
+      end
+    end
 
-        class BaseController extends Controller {
-            fn before() -> String {
-                return "authenticated";
-            }
-        }
+    class BaseController < Controller
+      def before -> String
+        return "authenticated"
+      end
+    end
 
-        class HomeController extends BaseController {
-            fn action() -> String {
-                return "home";
-            }
-        }
+    class HomeController < BaseController
+      def action -> String
+        return "home"
+      end
+    end
 
-        let c = new HomeController();
-        assert_eq(c.action(), "home");
-        assert_eq(c.before(), "authenticated");
-    });
+    let c = new HomeController()
+    assert_eq(c.action(), "home")
+    assert_eq(c.before(), "authenticated")
+  })
 
-    test("3-level inheritance with super chaining", fn() {
-        class Controller {
-            fn action() -> String {
-                return "base";
-            }
-        }
+  test("3-level inheritance with super chaining", fn() {
+    class Controller
+      def action -> String
+        return "base"
+      end
+    end
 
-        class BaseController extends Controller {
-            fn action() -> String {
-                return super.action() + " -> base_ctrl";
-            }
-        }
+    class BaseController < Controller
+      def action -> String
+        return super.action() + " -> base_ctrl"
+      end
+    end
 
-        class HomeController extends BaseController {
-            fn action() -> String {
-                return super.action() + " -> home";
-            }
-        }
+    class HomeController < BaseController
+      def action -> String
+        return super.action() + " -> home"
+      end
+    end
 
-        assert_eq(new HomeController().action(), "base -> base_ctrl -> home");
-    });
+    assert_eq(new HomeController().action(), "base -> base_ctrl -> home")
+  })
 
-    test("inheriting fields through 3 levels", fn() {
-        class A {
-            x: Int = 1;
-        }
+  test("inheriting fields through 3 levels", fn() {
+    class A
+      x: Int = 1
+    end
 
-        class B extends A {
-            y: Int = 2;
-        }
+    class B < A
+      y: Int = 2
+    end
 
-        class C extends B {
-            z: Int = 3;
-        }
+    class C < B
+      z: Int = 3
+    end
 
-        let c = new C();
-        assert_eq(c.x, 1);
-        assert_eq(c.y, 2);
-        assert_eq(c.z, 3);
-    });
+    let c = new C()
+    assert_eq(c.x, 1)
+    assert_eq(c.y, 2)
+    assert_eq(c.z, 3)
+  })
 
-    test("constructor inheritance through 3 levels", fn() {
-        class Base {
-            name: String;
+  test("constructor inheritance through 3 levels", fn() {
+    class Base
+      name: String
 
-            new(name: String) {
-                this.name = name;
-            }
-        }
+      new(name: String)
+        this.name = name
+      end
+    end
 
-        class Middle extends Base {
-        }
+    class Middle < Base
+    end
 
-        class Leaf extends Middle {
-        }
+    class Leaf < Middle
+    end
 
-        let leaf = new Leaf("hello");
-        assert_eq(leaf.name, "hello");
-    });
+    let leaf = new Leaf("hello")
+    assert_eq(leaf.name, "hello")
+  })
 
-    test("4-level inheritance chain", fn() {
-        class L1 {
-            fn id() -> String { return "L1"; }
-        }
+  test("4-level inheritance chain", fn() {
+    class L1
+      def id -> String
+        return "L1"
+      end
+    end
 
-        class L2 extends L1 {
-            fn id() -> String { return super.id() + ".L2"; }
-        }
+    class L2 < L1
+      def id -> String
+        return super.id() + ".L2"
+      end
+    end
 
-        class L3 extends L2 {
-            fn id() -> String { return super.id() + ".L3"; }
-        }
+    class L3 < L2
+      def id -> String
+        return super.id() + ".L3"
+      end
+    end
 
-        class L4 extends L3 {
-            fn id() -> String { return super.id() + ".L4"; }
-        }
+    class L4 < L3
+      def id -> String
+        return super.id() + ".L4"
+      end
+    end
 
-        assert_eq(new L4().id(), "L1.L2.L3.L4");
-    });
+    assert_eq(new L4().id(), "L1.L2.L3.L4")
+  })
 
-    test("middle class adds methods accessible by leaf", fn() {
-        class Controller {
-        }
+  test("middle class adds methods accessible by leaf", fn() {
+    class Controller
+    end
 
-        class BaseController extends Controller {
-            fn layout() -> String {
-                return "application";
-            }
+    class BaseController < Controller
+      def layout -> String
+        return "application"
+      end
 
-            fn current_user() -> String {
-                return "admin";
-            }
-        }
+      def current_user -> String
+        return "admin"
+      end
+    end
 
-        class PostsController extends BaseController {
-            fn index() -> String {
-                return this.current_user() + " - " + this.layout();
-            }
-        }
+    class PostsController < BaseController
+      def index -> String
+        return this.current_user() + " - " + this.layout()
+      end
+    end
 
-        let pc = new PostsController();
-        assert_eq(pc.index(), "admin - application");
-    });
+    let pc = new PostsController()
+    assert_eq(pc.index(), "admin - application")
+  })
 
-    test("override in middle class, inherit in leaf", fn() {
-        class A {
-            fn greet() -> String { return "A"; }
-            fn farewell() -> String { return "bye from A"; }
-        }
+  test("override in middle class, inherit in leaf", fn() {
+    class A
+      def greet -> String
+        return "A"
+      end
 
-        class B extends A {
-            fn greet() -> String { return "B"; }
-        }
+      def farewell -> String
+        return "bye from A"
+      end
+    end
 
-        class C extends B {
-        }
+    class B < A
+      def greet -> String
+        return "B"
+      end
+    end
 
-        let c = new C();
-        assert_eq(c.greet(), "B");
-        assert_eq(c.farewell(), "bye from A");
-    });
+    class C < B
+    end
 
-    test("this refers to actual instance in inherited method", fn() {
-        class Base {
-            name: String = "default";
+    let c = new C()
+    assert_eq(c.greet(), "B")
+    assert_eq(c.farewell(), "bye from A")
+  })
 
-            fn get_name() -> String {
-                return this.name;
-            }
-        }
+  test("this refers to actual instance in inherited method", fn() {
+    class Base
+      name: String = "default"
 
-        class Middle extends Base {
-        }
+      def get_name -> String
+        return this.name
+      end
+    end
 
-        class Leaf extends Middle {
-            new() {
-                this.name = "leaf";
-            }
-        }
+    class Middle < Base
+    end
 
-        assert_eq(new Leaf().get_name(), "leaf");
-    });
+    class Leaf < Middle
+      new()
+        this.name = "leaf"
+      end
+    end
 
-    test("static method inheritance through 3 levels", fn() {
-        class A {
-            static fn class_type() -> String {
-                return "A";
-            }
-        }
+    assert_eq(new Leaf().get_name(), "leaf")
+  })
 
-        class B extends A {
-        }
+  test("static method inheritance through 3 levels", fn() {
+    class A
+      static def class_type -> String
+        return "A"
+      end
+    end
 
-        class C extends B {
-        }
+    class B < A
+    end
 
-        assert_eq(C.class_type(), "A");
-    });
+    class C < B
+    end
 
-    test("type reflects most derived class", fn() {
-        class A { }
-        class B extends A { }
-        class C extends B { }
+    assert_eq(C.class_type(), "A")
+  })
 
-        assert_eq(type(new C()), "C");
-        assert_eq(type(new B()), "B");
-        assert_eq(type(new A()), "A");
-    });
-});
+  test("type reflects most derived class", fn() {
+    class A
+    end
+    class B < A
+    end
+    class C < B
+    end
+
+    assert_eq(type(new C()), "C")
+    assert_eq(type(new B()), "B")
+    assert_eq(type(new A()), "A")
+  })
+})

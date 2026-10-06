@@ -22,7 +22,9 @@ class Ledger
   end
 
   def via_block
-    [1, 2].map { |n| _scale(n) }
+    [1, 2].map do |n|
+      _scale(n)
+    end
   end
 
   def peek(other)
@@ -36,7 +38,7 @@ class Ledger
   end
 
   def _describe
-    "ledger #{@total}"
+    "ledger #{this.total}"
   end
 end
 

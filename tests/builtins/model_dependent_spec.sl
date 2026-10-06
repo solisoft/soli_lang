@@ -7,36 +7,36 @@
 # gated behind the DB availability probe, matching model_instances_spec.sl.
 # ============================================================================
 class CascAuthor < Model
-  has_many "casc_posts", dependent: "delete"
+  has_many("casc_posts", dependent: "delete")
 end
 
 class CascPost < Model
-  belongs_to "casc_author"
-  has_many "casc_comments", dependent: "delete"
+  belongs_to("casc_author")
+  has_many("casc_comments", dependent: "delete")
 end
 
 class CascComment < Model
-  belongs_to "casc_post"
+  belongs_to("casc_post")
 end
 
 class CascProfileOwner < Model
-  has_one "casc_profile", dependent: "delete"
+  has_one("casc_profile", dependent: "delete")
 end
 
 class CascProfile < Model
-  belongs_to "casc_profile_owner"
+  belongs_to("casc_profile_owner")
 end
 
 class CascBulkOwner < Model
-  has_many "casc_bulk_items", dependent: "delete_all"
+  has_many("casc_bulk_items", dependent: "delete_all")
 end
 
 class CascBulkItem < Model
-  belongs_to "casc_bulk_owner"
-
+  belongs_to("casc_bulk_owner")
   before_delete("veto")
 
   def veto
+
     # delete_all must bypass callbacks entirely — if this veto ever ran,
     # per-row deletion would fail and the rows would survive.
     false
@@ -44,29 +44,28 @@ class CascBulkItem < Model
 end
 
 class CascNullifyOwner < Model
-  has_many "casc_nullify_items", dependent: "nullify"
+  has_many("casc_nullify_items", dependent: "nullify")
 end
 
 class CascNullifyItem < Model
-  belongs_to "casc_nullify_owner"
+  belongs_to("casc_nullify_owner")
 end
 
 class CascSoftOwner < Model
   soft_delete
-  has_many "casc_soft_children", dependent: "delete"
+  has_many("casc_soft_children", dependent: "delete")
 end
 
 class CascSoftChild < Model
-  belongs_to "casc_soft_owner"
+  belongs_to("casc_soft_owner")
 end
 
 class CascVetoParent < Model
-  has_many "casc_veto_children", dependent: "delete"
+  has_many("casc_veto_children", dependent: "delete")
 end
 
 class CascVetoChild < Model
-  belongs_to "casc_veto_parent"
-
+  belongs_to("casc_veto_parent")
   before_delete("refuse")
 
   def refuse
@@ -76,12 +75,15 @@ end
 
 # Self-referential cycle: two nodes that are each other's parent.
 class CascNode < Model
-  has_many("casc_nodes", {"dependent": "delete", "foreign_key": "parent_id"})
+  has_many(
+    "casc_nodes",
+    {"dependent": "delete", "foreign_key": "parent_id"}
+  )
 end
 
 # Named-arg symbol value parses (class loading is the assertion).
 class CascNamedArgOwner < Model
-  has_many "casc_named_items", dependent: :delete_all
+  has_many("casc_named_items", dependent: :delete_all)
 end
 
 # Throwaway class for post-hoc DSL error assertions.
@@ -134,7 +136,10 @@ describe("dependent: option validation", fn() {
   test("dependent: combined with through: raises", fn() {
     let raised = false
     try
-      CascDslProbe.has_many("casc_probe_combo", {"dependent": "delete", "through": "casc_probe_a"})
+      CascDslProbe.has_many(
+        "casc_probe_combo",
+        {"dependent": "delete", "through": "casc_probe_a"}
+      )
     catch e
       raised = true
       assert(str(e).includes?("through"))
@@ -147,8 +152,14 @@ describe("dependent: \"delete\"", fn() {
   test("removes children and grandchildren through their callbacks", fn() {
     if __db_available
       let author = CascAuthor.create({"name": "a"})
-      let post_one = CascPost.create({"casc_author_id": author._key, "title": "p1"})
-      let post_two = CascPost.create({"casc_author_id": author._key, "title": "p2"})
+      let post_one = CascPost.create({
+        "casc_author_id": author._key,
+        "title": "p1"
+      })
+      let post_two = CascPost.create({
+        "casc_author_id": author._key,
+        "title": "p2"
+      })
       CascComment.create({"casc_post_id": post_one._key, "body": "c1"})
       CascComment.create({"casc_post_id": post_two._key, "body": "c2"})
 
@@ -196,7 +207,10 @@ describe("dependent: \"delete\"", fn() {
   test("a two-node parent cycle terminates", fn() {
     if __db_available
       let node_one = CascNode.create({"label": "n1"})
-      let node_two = CascNode.create({"label": "n2", "parent_id": node_one._key})
+      let node_two = CascNode.create({
+        "label": "n2",
+        "parent_id": node_one._key
+      })
       node_one.parent_id = node_two._key
       node_one.update()
 
@@ -226,7 +240,10 @@ describe("dependent: \"delete_all\" and \"nullify\"", fn() {
   test("nullify clears the foreign key and keeps the rows", fn() {
     if __db_available
       let owner = CascNullifyOwner.create({"name": "n"})
-      let item = CascNullifyItem.create({"casc_nullify_owner_id": owner._key, "tag": "casc-nullify"})
+      let item = CascNullifyItem.create({
+        "casc_nullify_owner_id": owner._key,
+        "tag": "casc-nullify"
+      })
 
       owner.delete()
 
@@ -253,7 +270,10 @@ describe("cascade boundaries", fn() {
   test("the class form Model.delete(id) cascades", fn() {
     if __db_available
       let author = CascAuthor.create({"name": "cf"})
-      let post = CascPost.create({"casc_author_id": author._key, "title": "cf-post"})
+      let post = CascPost.create({
+        "casc_author_id": author._key,
+        "title": "cf-post"
+      })
 
       CascAuthor.delete(author._key)
 
@@ -265,7 +285,10 @@ describe("cascade boundaries", fn() {
   test("QueryBuilder delete_all never cascades", fn() {
     if __db_available
       let author = CascAuthor.create({"name": "qb"})
-      let post = CascPost.create({"casc_author_id": author._key, "title": "orphan"})
+      let post = CascPost.create({
+        "casc_author_id": author._key,
+        "title": "orphan"
+      })
 
       CascAuthor.where("_key == @k", {"k": author._key}).delete_all()
 

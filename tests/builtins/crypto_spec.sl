@@ -1,277 +1,283 @@
-// ============================================================================
-// Cryptography Functions Test Suite
-// ============================================================================
+# ============================================================================
+# Cryptography Functions Test Suite
+# ============================================================================
 
 describe("Cryptography Standalone Functions", fn() {
-    test("argon2_hash() and argon2_verify() work", fn() {
-        let password = "secret123";
-        let hashed = argon2_hash(password);
-        assert_not_null(hashed);
-        assert(argon2_verify(password, hashed));
-        assert_not(argon2_verify("wrong", hashed));
-    });
+  test("argon2_hash() and argon2_verify() work", fn() {
+    let password = "secret123"
+    let hashed = argon2_hash(password)
+    assert_not_null(hashed)
+    assert(argon2_verify(password, hashed))
+    assert_not(argon2_verify("wrong", hashed))
+  })
 
-    test("password_hash() and password_verify() aliases work", fn() {
-        let password = "mysecret";
-        let hashed = password_hash(password);
-        assert(password_verify(password, hashed));
-    });
+  test("password_hash() and password_verify() aliases work", fn() {
+    let password = "mysecret"
+    let hashed = password_hash(password)
+    assert(password_verify(password, hashed))
+  })
 
-    test("x25519_keypair() generates key pair", fn() {
-        let keypair = x25519_keypair();
-        assert_hash_has_key(keypair, "public");
-        assert_hash_has_key(keypair, "private");
-        assert(len(keypair["public"]) > 0);
-        assert(len(keypair["private"]) > 0);
-    });
+  test("x25519_keypair() generates key pair", fn() {
+    let keypair = x25519_keypair()
+    assert_hash_has_key(keypair, "public")
+    assert_hash_has_key(keypair, "private")
+    assert(len(keypair["public"]) > 0)
+    assert(len(keypair["private"]) > 0)
+  })
 
-    test("ed25519_keypair() generates signing key pair", fn() {
-        let keypair = ed25519_keypair();
-        assert_hash_has_key(keypair, "public");
-        assert_hash_has_key(keypair, "private");
-    });
+  test("ed25519_keypair() generates signing key pair", fn() {
+    let keypair = ed25519_keypair()
+    assert_hash_has_key(keypair, "public")
+    assert_hash_has_key(keypair, "private")
+  })
 
-    test("sha256() generates hash", fn() {
-        let hash = sha256("hello");
-        assert_not_null(hash);
-        assert(len(hash) > 0);
-    });
+  test("sha256() generates hash", fn() {
+    let hash = sha256("hello")
+    assert_not_null(hash)
+    assert(len(hash) > 0)
+  })
 
-    test("sha512() generates hash", fn() {
-        let hash = sha512("hello");
-        assert_not_null(hash);
-        assert(len(hash) > 0);
-    });
+  test("sha512() generates hash", fn() {
+    let hash = sha512("hello")
+    assert_not_null(hash)
+    assert(len(hash) > 0)
+  })
 
-    test("md5() generates hash", fn() {
-        let hash = md5("hello");
-        assert_not_null(hash);
-        assert_eq(len(hash), 32);
-    });
+  test("md5() generates hash", fn() {
+    let hash = md5("hello")
+    assert_not_null(hash)
+    assert_eq(len(hash), 32)
+  })
 
-    test("hmac() generates MAC", fn() {
-        let mac = hmac("message", "secret");
-        assert_not_null(mac);
-        assert(len(mac) > 0);
-    });
+  test("hmac() generates MAC", fn() {
+    let mac = hmac("message", "secret")
+    assert_not_null(mac)
+    assert(len(mac) > 0)
+  })
 
-    test("secure_compare() matches identical strings", fn() {
-        assert(secure_compare("abc", "abc"));
-        assert(secure_compare("", ""));
-        let mac = hmac("payload", "key");
-        assert(secure_compare(mac, mac));
-    });
+  test("secure_compare() matches identical strings", fn() {
+    assert(secure_compare("abc", "abc"))
+    assert(secure_compare("", ""))
+    let mac = hmac("payload", "key")
+    assert(secure_compare(mac, mac))
+  })
 
-    test("secure_compare() rejects mismatches and length differences", fn() {
-        assert_not(secure_compare("abc", "abd"));
-        assert_not(secure_compare("abc", "ABC"));
-        assert_not(secure_compare("abc", "abcd"));
-        assert_not(secure_compare("abcd", "abc"));
-    });
+  test("secure_compare() rejects mismatches and length differences", fn() {
+    assert_not(secure_compare("abc", "abd"))
+    assert_not(secure_compare("abc", "ABC"))
+    assert_not(secure_compare("abc", "abcd"))
+    assert_not(secure_compare("abcd", "abc"))
+  })
 
-    test("Base64.encode() and Base64.decode() work", fn() {
-        let original = "hello world";
-        let encoded = Base64.encode(original);
-        assert_not_null(encoded);
-        let decoded = Base64.decode(encoded);
-        assert_eq(decoded, original);
-    });
-});
+  test("Base64.encode() and Base64.decode() work", fn() {
+    let original = "hello world"
+    let encoded = Base64.encode(original)
+    assert_not_null(encoded)
+    let decoded = Base64.decode(encoded)
+    assert_eq(decoded, original)
+  })
+})
 
 describe("Crypto Class Static Methods", fn() {
-    test("Crypto.sha256() generates hash", fn() {
-        let hash = Crypto.sha256("hello");
-        assert_not_null(hash);
-        assert_eq(len(hash), 64);  // SHA256 produces 32 bytes = 64 hex chars
-    });
+  test("Crypto.sha256() generates hash", fn() {
+    let hash = Crypto.sha256("hello")
+    assert_not_null(hash)
+    assert_eq(len(hash), 64)  // SHA256 produces 32 bytes = 64 hex chars
+  })
 
-    test("Crypto.sha512() generates hash", fn() {
-        let hash = Crypto.sha512("hello");
-        assert_not_null(hash);
-        assert_eq(len(hash), 128);  // SHA512 produces 64 bytes = 128 hex chars
-    });
+  test("Crypto.sha512() generates hash", fn() {
+    let hash = Crypto.sha512("hello")
+    assert_not_null(hash)
+    assert_eq(len(hash), 128)  // SHA512 produces 64 bytes = 128 hex chars
+  })
 
-    test("Crypto.md5() generates hash", fn() {
-        let hash = Crypto.md5("hello");
-        assert_not_null(hash);
-        assert_eq(len(hash), 32);  // MD5 produces 16 bytes = 32 hex chars
-    });
+  test("Crypto.md5() generates hash", fn() {
+    let hash = Crypto.md5("hello")
+    assert_not_null(hash)
+    assert_eq(len(hash), 32)  // MD5 produces 16 bytes = 32 hex chars
+  })
 
-    test("Crypto.hmac() generates MAC", fn() {
-        let mac = Crypto.hmac("message", "secret");
-        assert_not_null(mac);
-        assert_eq(len(mac), 64);  // HMAC-SHA256 produces 32 bytes = 64 hex chars
-    });
+  test("Crypto.hmac() generates MAC", fn() {
+    let mac = Crypto.hmac("message", "secret")
+    assert_not_null(mac)
+    assert_eq(len(mac), 64)  // HMAC-SHA256 produces 32 bytes = 64 hex chars
+  })
 
-    test("Crypto.hmac() takes an algorithm and a binary key", fn() {
-        // RFC 4231, test case 1
-        let key = Hex.decode("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
-        assert_eq(Crypto.hmac("Hi There", key, "sha512"), "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854");
-        assert_eq(Crypto.hmac("Hi There", key, "sha256"), "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7");
-        assert_eq(len(Crypto.hmac("m", "k", "sha1")), 40);
-        // A String key is its UTF-8 bytes, as before
-        assert_eq(Crypto.hmac("message", "secret"), Crypto.hmac("message", "secret", "sha256"));
-    });
+  test("Crypto.hmac() takes an algorithm and a binary key", fn() {
+    # RFC 4231, test case 1
+    let key = Hex.decode("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b")
+    assert_eq(
+      Crypto.hmac("Hi There", key, "sha512"),
+      "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854"
+    )
+    assert_eq(
+      Crypto.hmac("Hi There", key, "sha256"),
+      "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
+    )
+    assert_eq(len(Crypto.hmac("m", "k", "sha1")), 40)
+    # A String key is its UTF-8 bytes, as before
+    assert_eq(Crypto.hmac("message", "secret"), Crypto.hmac("message", "secret", "sha256"))
+  })
 
-    test("Crypto.sha1() generates hash", fn() {
-        assert_eq(Crypto.sha1("abc"), "a9993e364706816aba3e25717850c26c9cd0d89d");
-    });
+  test("Crypto.sha1() generates hash", fn() {
+    assert_eq(Crypto.sha1("abc"), "a9993e364706816aba3e25717850c26c9cd0d89d")
+  })
 
-    test("RsaKey.verify() checks a PKCS#1 v1.5 signature", fn() {
-        // `openssl dgst -sha1 -sign` of the message with the matching private key
-        let pem = "-----BEGIN PUBLIC KEY-----\nMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCVNJCMOElvuFlwioV+yJrePWcB\nf297VcdPey6eTprEaqwVln0QnSix6+8SZ+Lmhp/reqSQbbSU7CFjq2hE4ihycI9K\nL4owJCcZguPsS8BfQ5N+oebbEECMJFy8gPSh5gNjeZBuv06XCGRttcKrdRnJ1Suu\nRhwGmTE/QZENd9lsuQIDAQAB\n-----END PUBLIC KEY-----";
-        let sig = "DoxNElGwl2BVmyEqHYRymZzP/bgBE+fhzBOll7/uJxpM3RWdVFsc8FXC+fpnU9fu3/7ven5SXRGD1E9aquLFky9Dh7YYq3nKtFwajkafDBb3JbtBBlG8p8U4bRTdNaGtk+2aAjqCwj1f+ZDnRmQ5U/WbapkqHbLWXr3jNvO8jZk=";
-        assert(RsaKey.verify(pem, "amount=2500&reference=abc", sig, "sha1"));
-        assert_not(RsaKey.verify(pem, "amount=2600&reference=abc", sig, "sha1"));
-        assert_not(RsaKey.verify(pem, "amount=2500&reference=abc", sig, "sha256"));
-        assert_not(RsaKey.verify(pem, "amount=2500&reference=abc", "not base64 !", "sha1"));
-    });
+  test("RsaKey.verify() checks a PKCS#1 v1.5 signature", fn() {
+    # `openssl dgst -sha1 -sign` of the message with the matching private key
+    let pem = "-----BEGIN PUBLIC KEY-----\nMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCVNJCMOElvuFlwioV+yJrePWcB\nf297VcdPey6eTprEaqwVln0QnSix6+8SZ+Lmhp/reqSQbbSU7CFjq2hE4ihycI9K\nL4owJCcZguPsS8BfQ5N+oebbEECMJFy8gPSh5gNjeZBuv06XCGRttcKrdRnJ1Suu\nRhwGmTE/QZENd9lsuQIDAQAB\n-----END PUBLIC KEY-----"
+    let sig = "DoxNElGwl2BVmyEqHYRymZzP/bgBE+fhzBOll7/uJxpM3RWdVFsc8FXC+fpnU9fu3/7ven5SXRGD1E9aquLFky9Dh7YYq3nKtFwajkafDBb3JbtBBlG8p8U4bRTdNaGtk+2aAjqCwj1f+ZDnRmQ5U/WbapkqHbLWXr3jNvO8jZk="
+    assert(RsaKey.verify(pem, "amount=2500&reference=abc", sig, "sha1"))
+    assert_not(RsaKey.verify(pem, "amount=2600&reference=abc", sig, "sha1"))
+    assert_not(RsaKey.verify(pem, "amount=2500&reference=abc", sig, "sha256"))
+    assert_not(RsaKey.verify(pem, "amount=2500&reference=abc", "not base64 !", "sha1"))
+  })
 
-    test("Crypto.secure_compare() matches and rejects", fn() {
-        assert(Crypto.secure_compare("foo", "foo"));
-        assert_not(Crypto.secure_compare("foo", "bar"));
-        assert_not(Crypto.secure_compare("foo", "fooo"));
-    });
+  test("Crypto.secure_compare() matches and rejects", fn() {
+    assert(Crypto.secure_compare("foo", "foo"))
+    assert_not(Crypto.secure_compare("foo", "bar"))
+    assert_not(Crypto.secure_compare("foo", "fooo"))
+  })
 
-    test("Crypto.argon2_hash() and Crypto.argon2_verify() work", fn() {
-        let password = "test_password";
-        let hashed = Crypto.argon2_hash(password);
-        assert_not_null(hashed);
-        assert(Crypto.argon2_verify(password, hashed));
-        assert_not(Crypto.argon2_verify("wrong_password", hashed));
-    });
+  test("Crypto.argon2_hash() and Crypto.argon2_verify() work", fn() {
+    let password = "test_password"
+    let hashed = Crypto.argon2_hash(password)
+    assert_not_null(hashed)
+    assert(Crypto.argon2_verify(password, hashed))
+    assert_not(Crypto.argon2_verify("wrong_password", hashed))
+  })
 
-    test("Crypto.password_hash() and Crypto.password_verify() work", fn() {
-        let password = "another_secret";
-        let hashed = Crypto.password_hash(password);
-        assert(Crypto.password_verify(password, hashed));
-    });
+  test("Crypto.password_hash() and Crypto.password_verify() work", fn() {
+    let password = "another_secret"
+    let hashed = Crypto.password_hash(password)
+    assert(Crypto.password_verify(password, hashed))
+  })
 
-    test("Crypto.x25519_keypair() generates key pair", fn() {
-        let keypair = Crypto.x25519_keypair();
-        assert_hash_has_key(keypair, "public");
-        assert_hash_has_key(keypair, "private");
-        assert_eq(len(keypair["public"]), 64);   // 32 bytes = 64 hex chars
-        assert_eq(len(keypair["private"]), 64);
-    });
+  test("Crypto.x25519_keypair() generates key pair", fn() {
+    let keypair = Crypto.x25519_keypair()
+    assert_hash_has_key(keypair, "public")
+    assert_hash_has_key(keypair, "private")
+    assert_eq(len(keypair["public"]), 64)  // 32 bytes = 64 hex chars
+    assert_eq(len(keypair["private"]), 64)
+  })
 
-    test("Crypto.ed25519_keypair() generates signing key pair", fn() {
-        let keypair = Crypto.ed25519_keypair();
-        assert_hash_has_key(keypair, "public");
-        assert_hash_has_key(keypair, "private");
-        assert_eq(len(keypair["public"]), 64);
-        assert_eq(len(keypair["private"]), 64);
-    });
+  test("Crypto.ed25519_keypair() generates signing key pair", fn() {
+    let keypair = Crypto.ed25519_keypair()
+    assert_hash_has_key(keypair, "public")
+    assert_hash_has_key(keypair, "private")
+    assert_eq(len(keypair["public"]), 64)
+    assert_eq(len(keypair["private"]), 64)
+  })
 
-    test("Base64 class encodes and decodes correctly", fn() {
-        let original = "Test data for base64";
-        let encoded = Base64.encode(original);
-        assert_not_null(encoded);
-        let decoded = Base64.decode(encoded);
-        assert_eq(decoded, original);
-    });
+  test("Base64 class encodes and decodes correctly", fn() {
+    let original = "Test data for base64"
+    let encoded = Base64.encode(original)
+    assert_not_null(encoded)
+    let decoded = Base64.decode(encoded)
+    assert_eq(decoded, original)
+  })
 
-    test("Crypto.x25519_shared_secret() computes shared secret", fn() {
-        let alice = Crypto.x25519_keypair();
-        let bob = Crypto.x25519_keypair();
+  test("Crypto.x25519_shared_secret() computes shared secret", fn() {
+    let alice = Crypto.x25519_keypair()
+    let bob = Crypto.x25519_keypair()
 
-        let alice_secret = Crypto.x25519_shared_secret(alice["private"], bob["public"]);
-        let bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"]);
+    let alice_secret = Crypto.x25519_shared_secret(alice["private"], bob["public"])
+    let bob_secret = Crypto.x25519_shared_secret(bob["private"], alice["public"])
 
-        assert_eq(alice_secret, bob_secret);
-    });
+    assert_eq(alice_secret, bob_secret)
+  })
 
-    test("Crypto.x25519_public_key() derives public key", fn() {
-        let keypair = Crypto.x25519_keypair();
-        let derived_public = Crypto.x25519_public_key(keypair["private"]);
-        assert_eq(derived_public, keypair["public"]);
-    });
+  test("Crypto.x25519_public_key() derives public key", fn() {
+    let keypair = Crypto.x25519_keypair()
+    let derived_public = Crypto.x25519_public_key(keypair["private"])
+    assert_eq(derived_public, keypair["public"])
+  })
 
-    test("Crypto.totp_generate() generates 6-digit code", fn() {
-        // RFC 6238 test vector: secret "12345678901234567890" in base32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
-        // Time = 59s, period = 30s -> counter = 1
-        // Expected: "287082"
-        let code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59, 30);
-        assert_eq(code, "287082");
-    });
+  test("Crypto.totp_generate() generates 6-digit code", fn() {
+    # RFC 6238 test vector: secret "12345678901234567890" in base32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+    # Time = 59s, period = 30s -> counter = 1
+    # Expected: "287082"
+    let code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59, 30)
+    assert_eq(code, "287082")
+  })
 
-    test("Crypto.totp_verify() verifies valid code", fn() {
-        // Using the same test vector
-        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
-        let valid = Crypto.totp_verify(secret, "287082", 59, 30);
-        assert(valid);
-    });
+  test("Crypto.totp_verify() verifies valid code", fn() {
+    # Using the same test vector
+    let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+    let valid = Crypto.totp_verify(secret, "287082", 59, 30)
+    assert(valid)
+  })
 
-    test("Crypto.totp_verify() rejects invalid code", fn() {
-        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
-        let valid = Crypto.totp_verify(secret, "000000", 59, 30);
-        assert_not(valid);
-    });
+  test("Crypto.totp_verify() rejects invalid code", fn() {
+    let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+    let valid = Crypto.totp_verify(secret, "000000", 59, 30)
+    assert_not(valid)
+  })
 
-    test("Crypto.totp_verify() accepts previous window code", fn() {
-        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
-        let prev_code = Crypto.totp_generate(secret, 29, 30);
-        let valid = Crypto.totp_verify(secret, prev_code, 59, 30);
-        assert(valid);
-    });
+  test("Crypto.totp_verify() accepts previous window code", fn() {
+    let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+    let prev_code = Crypto.totp_generate(secret, 29, 30)
+    let valid = Crypto.totp_verify(secret, prev_code, 59, 30)
+    assert(valid)
+  })
 
-    test("Crypto.totp_verify() accepts next window code", fn() {
-        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
-        let next_code = Crypto.totp_generate(secret, 89, 30);
-        let valid = Crypto.totp_verify(secret, next_code, 59, 30);
-        assert(valid);
-    });
+  test("Crypto.totp_verify() accepts next window code", fn() {
+    let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+    let next_code = Crypto.totp_generate(secret, 89, 30)
+    let valid = Crypto.totp_verify(secret, next_code, 59, 30)
+    assert(valid)
+  })
 
-    test("Crypto.totp_generate() with current time", fn() {
-        // Should not panic - just verify it returns 6 digits
-        let code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");
-        assert_eq(len(code), 6);
-    });
+  test("Crypto.totp_generate() with current time", fn() {
+    # Should not panic - just verify it returns 6 digits
+    let code = Crypto.totp_generate("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")
+    assert_eq(len(code), 6)
+  })
 
-    test("Crypto.totp_verify() validates code format", fn() {
-        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
-        // Invalid: not 6 digits
-        try {
-            Crypto.totp_verify(secret, "123", 59, 30);
-            assert(false);  // Should have thrown
-        } catch (e) {
-            assert(true);  // Expected
-        }
-    });
+  test("Crypto.totp_verify() validates code format", fn() {
+    let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+    # Invalid: not 6 digits
+    try
+      Crypto.totp_verify(secret, "123", 59, 30)
+      assert(false)  // Should have thrown
+    catch e
+      assert(true)  // Expected
+    end
+  })
 
-    test("Crypto.totp_uri() generates otpauth URI", fn() {
-        let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
-        let uri = Crypto.totp_uri(secret, "user@example.com", "MyApp", 30);
-        assert(uri.starts_with("otpauth://totp/"));
-        assert(uri.contains("secret="));
-        assert(uri.contains("algorithm=SHA1"));
-        assert(uri.contains("digits=6"));
-        assert(uri.contains("period=30"));
-    });
-});
+  test("Crypto.totp_uri() generates otpauth URI", fn() {
+    let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+    let uri = Crypto.totp_uri(secret, "user@example.com", "MyApp", 30)
+    assert(uri.starts_with("otpauth://totp/"))
+    assert(uri.contains("secret="))
+    assert(uri.contains("algorithm=SHA1"))
+    assert(uri.contains("digits=6"))
+    assert(uri.contains("period=30"))
+  })
+})
 
 describe("Hash Function Consistency", fn() {
-    test("sha256 produces consistent results", fn() {
-        let hash1 = sha256("test");
-        let hash2 = sha256("test");
-        assert_eq(hash1, hash2);
-    });
+  test("sha256 produces consistent results", fn() {
+    let hash1 = sha256("test")
+    let hash2 = sha256("test")
+    assert_eq(hash1, hash2)
+  })
 
-    test("sha256 produces different results for different inputs", fn() {
-        let hash1 = sha256("hello");
-        let hash2 = sha256("world");
-        assert_not(hash1 == hash2);
-    });
+  test("sha256 produces different results for different inputs", fn() {
+    let hash1 = sha256("hello")
+    let hash2 = sha256("world")
+    assert_not(hash1 == hash2)
+  })
 
-    test("hmac produces consistent results", fn() {
-        let mac1 = hmac("message", "key");
-        let mac2 = hmac("message", "key");
-        assert_eq(mac1, mac2);
-    });
+  test("hmac produces consistent results", fn() {
+    let mac1 = hmac("message", "key")
+    let mac2 = hmac("message", "key")
+    assert_eq(mac1, mac2)
+  })
 
-    test("hmac produces different results for different keys", fn() {
-        let mac1 = hmac("message", "key1");
-        let mac2 = hmac("message", "key2");
-        assert_not(mac1 == mac2);
-    });
-});
+  test("hmac produces different results for different keys", fn() {
+    let mac1 = hmac("message", "key1")
+    let mac2 = hmac("message", "key2")
+    assert_not(mac1 == mac2)
+  })
+})

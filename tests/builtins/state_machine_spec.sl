@@ -16,51 +16,54 @@ enum OrderState
 end
 
 class SmOrder < Model
-  enum_field :status, OrderState
+  enum_field(:status, OrderState)
+  state_machine(:status) do
+    initial(OrderState.Pending)
 
-  state_machine :status do
-    initial OrderState.Pending
-
-    event :pay do
-      transition from: OrderState.Pending, to: OrderState.Paid
-      guard fn() { this.total > 0 }
+    event(:pay) do
+      transition(from: OrderState.Pending, to: OrderState.Paid)
+      guard(fn() { this.total > 0 })
     end
 
-    event :ship do
-      transition from: OrderState.Paid, to: OrderState.Shipped
+    event(:ship) do
+      transition(from: OrderState.Paid, to: OrderState.Shipped)
     end
 
-    event :deliver do
-      transition from: OrderState.Shipped, to: OrderState.Delivered
+    event(:deliver) do
+      transition(from: OrderState.Shipped, to: OrderState.Delivered)
     end
 
-    event :cancel do
-      transition from: [OrderState.Pending, OrderState.Paid], to: OrderState.Cancelled
+    event(:cancel) do
+      transition(from: [OrderState.Pending, OrderState.Paid], to: OrderState.Cancelled)
     end
 
     # A `false` return from a before hook vetoes the transition.
-    before_transition to: OrderState.Shipped do !this.block_ship end
-    after_transition  to: OrderState.Paid do this.receipt_sent = true end
+    before_transition(to: OrderState.Shipped) do
+      !this.block_ship
+    end
+    after_transition(to: OrderState.Paid) do
+      this.receipt_sent = true
+    end
   end
 end
 
 # Local helper — there is no global assert_throws builtin.
-fn assert_throws(body) {
+def assert_throws(body)
   let threw = false
-  try {
+  try
     body()
-  } catch e {
+  catch e
     threw = true
-  }
+  end
   assert(threw)
-}
+end
 
-fn new_order(state, total) {
+def new_order(state, total)
   let order = SmOrder.new()
   order.status = state
   order.total = total
   return order
-}
+end
 
 describe("state machine — predicates", fn() {
   test("initial-state predicate is true, others false", fn() {
@@ -162,8 +165,11 @@ describe("state machine — reflection", fn() {
 # --- Persistence path (requires a DB) -------------------------------------
 let __db_available = false
 try
-  let __probe = SmOrder.create({ "status": OrderState.Pending, "total": 1 })
-  if !__probe.nil? and !__probe._errors
+  let __probe = SmOrder.create({
+    "status": OrderState.Pending,
+    "total": 1
+  })
+  if !__probe.nil? && !__probe._errors
     __db_available = true
     __probe.delete()
   end
@@ -171,10 +177,13 @@ catch e
 end
 
 describe("state machine — persistence", fn() {
-    before_each(fn() { requires_solidb() })
+  before_each(fn() { requires_solidb() })
 
   test("pay! persists the new state to the database", fn() {
-    let order = SmOrder.create({ "status": OrderState.Pending, "total": 5 })
+    let order = SmOrder.create({
+      "status": OrderState.Pending,
+      "total": 5
+    })
     order.pay!
     let reloaded = SmOrder.find(order._key)
     assert_eq(reloaded.paid?, true)

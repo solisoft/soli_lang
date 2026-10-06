@@ -1,237 +1,257 @@
-// ============================================================================
-// Metaprogramming Features Test Suite
-// ============================================================================
+# ============================================================================
+# Metaprogramming Features Test Suite
+# ============================================================================
 
-class Foo {
-    fn greet(name) {
-        return "Hello, " + name + "!";
-    }
+class Foo
+  def greet(name)
+    return "Hello, " + name + "!"
+  end
 
-    fn method_missing(name) {
-        return "Method '" + name + "' was called";
-    }
-}
+  def method_missing(name)
+    return "Method '" + name + "' was called"
+  end
+end
 
 describe("respond_to?", fn() {
-    test("responds to defined method", fn() {
-        let foo = Foo.new();
-        assert(foo.respond_to?("greet"));
-    });
+  test("responds to defined method", fn() {
+    let foo = Foo.new()
+    assert(foo.respond_to?("greet"))
+  })
 
-    test("does not respond to undefined method", fn() {
-        let foo = Foo.new();
-        assert_not(foo.respond_to?("nonexistent"));
-    });
+  test("does not respond to undefined method", fn() {
+    let foo = Foo.new()
+    assert_not(foo.respond_to?("nonexistent"))
+  })
 
-    test("responds to built-in methods", fn() {
-        let foo = Foo.new();
-        assert(foo.respond_to?("inspect"));
-        assert(foo.respond_to?("class"));
-    });
-});
+  test("responds to built-in methods", fn() {
+    let foo = Foo.new()
+    assert(foo.respond_to?("inspect"))
+    assert(foo.respond_to?("class"))
+  })
+})
 
 describe("send", fn() {
-    test("calls method by name", fn() {
-        let foo = Foo.new();
-        let result = foo.send("greet", "World");
-        assert_eq(result, "Hello, World!");
-    });
+  test("calls method by name", fn() {
+    let foo = Foo.new()
+    let result = foo.send("greet", "World")
+    assert_eq(result, "Hello, World!")
+  })
 
-    test("calls method_missing via send", fn() {
-        let foo = Foo.new();
-        let result = foo.send("foobar");
-        assert_eq(result, "Method 'foobar' was called");
-    });
-});
+  test("calls method_missing via send", fn() {
+    let foo = Foo.new()
+    let result = foo.send("foobar")
+    assert_eq(result, "Method 'foobar' was called")
+  })
+})
 
 describe("instance_variables", fn() {
-    test("lists instance variables", fn() {
-        let foo = Foo.new();
-        foo._name = "test";
-        foo._count = 42;
-        let vars = foo.instance_variables;
-        assert(vars.includes?("@_name"));
-        assert(vars.includes?("@_count"));
-    });
+  test("lists instance variables", fn() {
+    let foo = Foo.new()
+    foo._name = "test"
+    foo._count = 42
+    let vars = foo.instance_variables
+    assert(vars.includes?("@_name"))
+    assert(vars.includes?("@_count"))
+  })
 
-    test("returns empty array when no instance variables", fn() {
-        let foo = Foo.new();
-        let vars = foo.instance_variables;
-        assert_eq(vars.length, 0);
-    });
-});
+  test("returns empty array when no instance variables", fn() {
+    let foo = Foo.new()
+    let vars = foo.instance_variables
+    assert_eq(vars.length, 0)
+  })
+})
 
 describe("instance_variable_get", fn() {
-    test("gets existing instance variable", fn() {
-        let foo = Foo.new();
-        foo._name = "test_value";
-        let value = foo.instance_variable_get("@_name");
-        assert_eq(value, "test_value");
-    });
+  test("gets existing instance variable", fn() {
+    let foo = Foo.new()
+    foo._name = "test_value"
+    let value = foo.instance_variable_get("@_name")
+    assert_eq(value, "test_value")
+  })
 
-    test("returns null for nonexistent variable", fn() {
-        let foo = Foo.new();
-        let value = foo.instance_variable_get("@_nonexistent");
-        assert_eq(value, null);
-    });
+  test("returns null for nonexistent variable", fn() {
+    let foo = Foo.new()
+    let value = foo.instance_variable_get("@_nonexistent")
+    assert_eq(value, null)
+  })
 
-    test("works without @ prefix", fn() {
-        let foo = Foo.new();
-        foo._name = "test_value";
-        let value = foo.instance_variable_get("_name");
-        assert_eq(value, "test_value");
-    });
-});
+  test("works without @ prefix", fn() {
+    let foo = Foo.new()
+    foo._name = "test_value"
+    let value = foo.instance_variable_get("_name")
+    assert_eq(value, "test_value")
+  })
+})
 
 describe("instance_variable_set", fn() {
-    test("sets instance variable", fn() {
-        let foo = Foo.new();
-        let value = foo.instance_variable_set("@_name", "set_value");
-        assert_eq(value, "set_value");
-        assert_eq(foo.instance_variable_get("@_name"), "set_value");
-    });
+  test("sets instance variable", fn() {
+    let foo = Foo.new()
+    let value = foo.instance_variable_set("@_name", "set_value")
+    assert_eq(value, "set_value")
+    assert_eq(foo.instance_variable_get("@_name"), "set_value")
+  })
 
-    test("works without @ prefix", fn() {
-        let foo = Foo.new();
-        foo.instance_variable_set("_count", 42);
-        assert_eq(foo.instance_variable_get("@_count"), 42);
-    });
-});
+  test("works without @ prefix", fn() {
+    let foo = Foo.new()
+    foo.instance_variable_set("_count", 42)
+    assert_eq(foo.instance_variable_get("@_count"), 42)
+  })
+})
 
 describe("methods", fn() {
-    test("lists method names", fn() {
-        let foo = Foo.new();
-        let methods = foo.methods;
-        assert(methods.includes?("greet"));
-        assert(methods.includes?("respond_to?"));
-        assert(methods.includes?("send"));
-        assert(methods.includes?("inspect"));
-    });
-});
+  test("lists method names", fn() {
+    let foo = Foo.new()
+    let methods = foo.methods
+    assert(methods.includes?("greet"))
+    assert(methods.includes?("respond_to?"))
+    assert(methods.includes?("send"))
+    assert(methods.includes?("inspect"))
+  })
+})
 
 describe("method_missing", fn() {
-    test("is called for undefined methods", fn() {
-        let foo = Foo.new();
-        let result = foo.undefined_method();
-        assert_eq(result, "Method 'undefined_method' was called");
-    });
-});
+  test("is called for undefined methods", fn() {
+    let foo = Foo.new()
+    let result = foo.undefined_method()
+    assert_eq(result, "Method 'undefined_method' was called")
+  })
+})
 
 describe("instance_eval", fn() {
-    test("executes block with this bound to instance", fn() {
-        class Foo { name: String }
-        let foo = new Foo()
-        foo.name = "Test"
-        let result = foo.instance_eval { this.name }
-        assert_eq(result, "Test")
-    });
+  test("executes block with this bound to instance", fn() {
+    class Foo
+      name: String
+    end
+    let foo = new Foo()
+    foo.name = "Test"
+    let result = foo.instance_eval(&{
+      this.name
+    })
+    assert_eq(result, "Test")
+  })
 
-    test("can modify instance state", fn() {
-        class Counter { count: Int = 0 }
-        let c = new Counter()
-        c.instance_eval {
-            this.count = 42
-        }
-        assert_eq(c.count, 42)
-    });
+  test("can modify instance state", fn() {
+    class Counter
+      count: Int = 0
+    end
+    let c = new Counter()
+    c.instance_eval(&{
+      this.count = 42
+    })
+    assert_eq(c.count, 42)
+  })
 
-    test("self is same as this", fn() {
-        class Foo { value: Int = 10 }
-        let foo = new Foo()
-        let result = foo.instance_eval { self.value }
-        assert_eq(result, 10)
-    });
-});
+  test("self is same as this", fn() {
+    class Foo
+      value: Int = 10
+    end
+    let foo = new Foo()
+    let result = foo.instance_eval(&{
+      this.value
+    })
+    assert_eq(result, 10)
+  })
+})
 
 describe("class_eval", fn() {
-    test("executes block with self bound to class", fn() {
-        class Foo {
-            static name: String = "FooClass"
-        }
-        let result = Foo.class_eval { self.name }
-        assert_eq(result, "FooClass")
-    });
+  test("executes block with self bound to class", fn() {
+    class Foo
+      static name: String = "FooClass"
+    end
+    let result = Foo.class_eval(&{
+      this.name
+    })
+    assert_eq(result, "FooClass")
+  })
 
-    test("can access static methods via self", fn() {
-        class Foo {
-            static value: Int = 42
-        }
-        let result = Foo.class_eval { self.value }
-        assert_eq(result, 42)
-    });
-});
+  test("can access static methods via self", fn() {
+    class Foo
+      static value: Int = 42
+    end
+    let result = Foo.class_eval(&{
+      this.value
+    })
+    assert_eq(result, 42)
+  })
+})
 
 describe("define_method", fn() {
-    test("defines a method on instance's class", fn() {
-        let foo = Foo.new();
-        foo.define_method("greet2", || { "Hello!" });
-        assert(foo.respond_to?("greet2"));
-        assert_eq(foo.greet2(), "Hello!");
-    });
+  test("defines a method on instance's class", fn() {
+    let foo = Foo.new()
+    foo.define_method("greet2", fn() { "Hello!" })
+    assert(foo.respond_to?("greet2"))
+    assert_eq(foo.greet2(), "Hello!")
+  })
 
-    test("defined method can take arguments", fn() {
-        class Calculator { }
-        let calc = Calculator.new();
-        calc.define_method("add", |a, b| { a + b });
-        assert_eq(calc.add(1, 2), 3);
-    });
+  test("defined method can take arguments", fn() {
+    class Calculator
+    end
+    let calc = Calculator.new()
+    calc.define_method("add", fn(a, b) { a + b })
+    assert_eq(calc.add(1, 2), 3)
+  })
 
-    test("method is available on all instances of class", fn() {
-        class Bar { }
-        let bar1 = Bar.new();
-        let bar2 = Bar.new();
-        bar1.define_method("hello", || { "Hi!" });
-        assert_eq(bar2.hello(), "Hi!");
-    });
-});
+  test("method is available on all instances of class", fn() {
+    class Bar
+    end
+    let bar1 = Bar.new()
+    let bar2 = Bar.new()
+    bar1.define_method("hello", fn() { "Hi!" })
+    assert_eq(bar2.hello(), "Hi!")
+  })
+})
 
 describe("alias_method", fn() {
-    test("creates alias for existing method", fn() {
-        let foo = Foo.new();
-        foo.alias_method("say_hello", "greet");
-        assert(foo.respond_to?("say_hello"));
-        assert_eq(foo.say_hello("World"), "Hello, World!");
-    });
+  test("creates alias for existing method", fn() {
+    let foo = Foo.new()
+    foo.alias_method("say_hello", "greet")
+    assert(foo.respond_to?("say_hello"))
+    assert_eq(foo.say_hello("World"), "Hello, World!")
+  })
 
-    test("alias works independently of original", fn() {
-        class Counter {
-            fn count() { 1 }
-        }
-        let c = Counter.new();
-        c.alias_method("counter", "count");
-        assert_eq(c.counter(), 1);
-        assert_eq(c.count(), 1);
-    });
+  test("alias works independently of original", fn() {
+    class Counter
+      def count
+        1
+      end
+    end
+    let c = Counter.new()
+    c.alias_method("counter", "count")
+    assert_eq(c.counter(), 1)
+    assert_eq(c.count(), 1)
+  })
 
-    test("error when aliasing nonexistent method", fn() {
-        let foo = Foo.new();
-        let result = foo.alias_method("fake", "nonexistent");
-        assert(result != null);
-        assert(result.contains("alias_method"));
-        assert(result.contains("nonexistent"));
-    });
-});
+  test("error when aliasing nonexistent method", fn() {
+    let foo = Foo.new()
+    let result = foo.alias_method("fake", "nonexistent")
+    assert(!result.nil?)
+    assert(result.contains("alias_method"))
+    assert(result.contains("nonexistent"))
+  })
+})
 
 describe("inherited", fn() {
-    test("is called when class inherits from another", fn() {
-        let called = false;
-        class Parent {
-            static fn inherited(child) {
-                called = true;
-            }
-        }
-        class Child < Parent { }
-        assert(called);
-    });
+  test("is called when class inherits from another", fn() {
+    let called = false
+    class Parent
+      static def inherited(child)
+        called = true
+      end
+    end
+    class Child < Parent
+    end
+    assert(called)
+  })
 
-    test("receives the child class as argument", fn() {
-        let received_class = null;
-        class Base {
-            static fn inherited(c) {
-                received_class = c;
-            }
-        }
-        class Derived < Base { }
-        assert(received_class != null);
-    });
-});
+  test("receives the child class as argument", fn() {
+    let received_class = null
+    class Base
+      static def inherited(c)
+        received_class = c
+      end
+    end
+    class Derived < Base
+    end
+    assert(!received_class.nil?)
+  })
+})

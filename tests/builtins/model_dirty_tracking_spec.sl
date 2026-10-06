@@ -78,7 +78,10 @@ describe("dirty tracking on new records", fn() {
 describe("dirty tracking across persistence", fn() {
   test("create leaves the record clean and fills previous_changes", fn() {
     if __db_available
-      let doc = DirtyDoc.create({"title": "fresh", "views": 0})
+      let doc = DirtyDoc.create({
+        "title": "fresh",
+        "views": 0
+      })
       assert_eq(doc.changed?, false)
       assert_eq(doc.changed, [])
       let prev = doc.previous_changes
@@ -90,7 +93,10 @@ describe("dirty tracking across persistence", fn() {
 
   test("update records exactly the delta in previous_changes", fn() {
     if __db_available
-      let doc = DirtyDoc.create({"title": "before", "views": 1})
+      let doc = DirtyDoc.create({
+        "title": "before",
+        "views": 1
+      })
       doc.title = "after"
       assert(doc.changed?)
       assert_eq(doc.changed, ["title"])
@@ -164,7 +170,10 @@ describe("dirty tracking across persistence", fn() {
 
   test("increment does not leave the field dirty", fn() {
     if __db_available
-      let doc = DirtyDoc.create({"title": "counted", "views": 1})
+      let doc = DirtyDoc.create({
+        "title": "counted",
+        "views": 1
+      })
       doc.increment("views")
       assert_eq(doc.views, 2)
       assert_eq(doc.changed?, false)

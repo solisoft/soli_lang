@@ -10,10 +10,9 @@
 # behavior is gated behind the DB availability probe.
 # ============================================================================
 class StiUser < Model
-  has_many "sti_posts"
+  has_many("sti_posts")
   validates("email", {"presence": true})
   scope("by_key_desc", fn() { this.order("_key", "desc") })
-
   before_save("normalize_email")
 
   def normalize_email
@@ -35,7 +34,7 @@ class StiSuperAdmin < StiAdmin
 end
 
 class StiPost < Model
-  belongs_to "sti_user"
+  belongs_to("sti_user")
 end
 
 # Detect DB availability
@@ -99,14 +98,16 @@ describe("STI persistence and hydration", fn() {
       let super_admin = StiSuperAdmin.create({"email": "s@x.co"})
 
       assert_eq(StiUser.count(), 3)
-      assert_eq(StiAdmin.count(), 2)       # includes descendants
+      assert_eq(StiAdmin.count(), 2)  # includes descendants
       assert_eq(StiSuperAdmin.count(), 1)
 
-      let badges = StiAdmin.all().map(fn(a) a.badge())
+      let badges = StiAdmin.all().map(fn(a) { a.badge() })
       assert(badges.includes?("admin"))
       assert(badges.includes?("super"))
 
-      user.delete(); admin.delete(); super_admin.delete()
+      user.delete()
+      admin.delete()
+      super_admin.delete()
     end
   })
 

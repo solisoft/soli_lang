@@ -2,25 +2,25 @@
 # Enum Test Suite
 # ============================================================================
 
-enum Status {
+enum Status
   Active,
   Archived,
   Pending(reason: String)
 
-  fn label() -> String {
-    return match self {
+  def label -> String
+    return match this {
       Status.Active => "Live",
       Status.Pending(r) => "Waiting: " + r,
       _ => "Archived",
     }
-  }
-}
+  end
+end
 
-enum Shape {
+enum Shape
   Circle(radius: Float),
   Rect(w: Float, h: Float),
   Point
-}
+end
 
 describe("Enum construction", fn() {
   test("unit variant is a value", fn() {
@@ -90,13 +90,9 @@ describe("Enum methods", fn() {
 })
 
 describe("Enum equality", fn() {
-  test("unit variants are equal to themselves", fn() {
-    assert(Status.Active == Status.Active)
-  })
+  test("unit variants are equal to themselves", fn() { assert(Status.Active == Status.Active) })
 
-  test("different unit variants are not equal", fn() {
-    assert(Status.Active != Status.Archived)
-  })
+  test("different unit variants are not equal", fn() { assert(Status.Active != Status.Archived) })
 
   test("payload variants compare structurally", fn() {
     assert(Status.Pending(reason: "x") == Status.Pending(reason: "x"))

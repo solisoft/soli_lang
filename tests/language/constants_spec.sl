@@ -1,151 +1,154 @@
-// ============================================================================
-// Constants Test Suite
-// ============================================================================
+# ============================================================================
+# Constants Test Suite
+# ============================================================================
 
 describe("Constants", fn() {
-    test("basic const declaration", fn() {
-        const PI = 3.14159;
-        assert_eq(PI, 3.14159);
-    });
+  test("basic const declaration", fn() {
+    const PI = 3.14159
+    assert_eq(PI, 3.14159)
+  })
 
-    test("const with integer value", fn() {
-        const MAX_SIZE = 1000;
-        assert_eq(MAX_SIZE, 1000);
-    });
+  test("const with integer value", fn() {
+    const MAX_SIZE = 1000
+    assert_eq(MAX_SIZE, 1000)
+  })
 
-    test("const with string value", fn() {
-        const GREETING = "Hello, World!";
-        assert_eq(GREETING, "Hello, World!");
-    });
+  test("const with string value", fn() {
+    const GREETING = "Hello, World!"
+    assert_eq(GREETING, "Hello, World!")
+  })
 
-    test("const with boolean value", fn() {
-        const ENABLED = true;
-        assert_eq(ENABLED, true);
-        const DISABLED = false;
-        assert_eq(DISABLED, false);
-    });
+  test("const with boolean value", fn() {
+    const ENABLED = true
+    assert_eq(ENABLED, true)
+    const DISABLED = false
+    assert_eq(DISABLED, false)
+  })
 
-    test("const with array value", fn() {
-        const COLORS = ["red", "green", "blue"];
-        assert_eq(COLORS[0], "red");
-        assert_eq(COLORS[1], "green");
-        assert_eq(COLORS[2], "blue");
-    });
+  test("const with array value", fn() {
+    const COLORS = ["red", "green", "blue"]
+    assert_eq(COLORS[0], "red")
+    assert_eq(COLORS[1], "green")
+    assert_eq(COLORS[2], "blue")
+  })
 
-    test("const with hash value", fn() {
-        const CONFIG = {"host": "localhost", "port": 3000};
-        assert_eq(CONFIG["host"], "localhost");
-        assert_eq(CONFIG["port"], 3000);
-    });
+  test("const with hash value", fn() {
+    const CONFIG = {"host": "localhost", "port": 3000}
+    assert_eq(CONFIG["host"], "localhost")
+    assert_eq(CONFIG["port"], 3000)
+  })
 
-    test("const with type annotation", fn() {
-        const PI: Float = 3.14159;
-        assert_eq(PI, 3.14159);
-    });
+  test("const with type annotation", fn() {
+    const PI: Float = 3.14159
+    assert_eq(PI, 3.14159)
+  })
 
-    test("multiple consts in same scope", fn() {
-        const A = 1;
-        const B = 2;
-        const C = 3;
-        assert_eq(A, 1);
-        assert_eq(B, 2);
-        assert_eq(C, 3);
-    });
+  test("multiple consts in same scope", fn() {
+    const A = 1
+    const B = 2
+    const C = 3
+    assert_eq(A, 1)
+    assert_eq(B, 2)
+    assert_eq(C, 3)
+  })
 
-    test("const expression", fn() {
-        const SUM = 10 + 20;
-        assert_eq(SUM, 30);
-    });
+  test("const expression", fn() {
+    const SUM = 10 + 20
+    assert_eq(SUM, 30)
+  })
 
-    test("const can be used in expressions", fn() {
-        const VALUE = 100;
-        const DOUBLED = VALUE * 2;
-        assert_eq(DOUBLED, 200);
-    });
+  test("const can be used in expressions", fn() {
+    const VALUE = 100
+    const DOUBLED = VALUE * 2
+    assert_eq(DOUBLED, 200)
+  })
 
-    test("const in function", fn() {
-        fn get_radius() {
-            const PI = 3.14159;
-            return PI * 10;
-        }
-        assert_eq(get_radius(), 31.4159);
-    });
+  test("const in function", fn() {
+    def get_radius
+      const PI = 3.14159
+      return PI * 10
+    end
+    assert_eq(get_radius(), 31.4159)
+  })
 
-    test("const shadows let variable", fn() {
-        let x = 10;
-        const x = 20;
-        assert_eq(x, 20);
-    });
-});
+  test("const shadows let variable", fn() {
+    let x = 10
+    const x = 20
+    assert_eq(x, 20)
+  })
+})
 
 describe("Const Reassignment Error", fn() {
-    test("reassigning const throws error", fn() {
-        const VALUE = 42;
-        assert_eq(VALUE, 42);
+  test("reassigning const throws error", fn() {
+    const VALUE = 42
+    assert_eq(VALUE, 42)
 
-        let error_caught = false;
-        try {
-            VALUE = 100;
-        } catch (e) {
-            error_caught = true;
-        }
-        assert(error_caught);
-    });
+    let error_caught = false
+    try
+      VALUE = 100
+    catch e
+      error_caught = true
+    end
+    assert(error_caught)
+  })
 
-    test("const array elements are still mutable", fn() {
-        // const protects the binding, not the contents (like JavaScript)
-        const ARR = [1, 2, 3];
-        ARR[0] = 100;
-        assert_eq(ARR[0], 100);
-    });
+  test("const array elements are still mutable", fn() {
+    # const protects the binding, not the contents (like JavaScript)
+    const ARR = [1, 2, 3]
+    ARR[0] = 100
+    assert_eq(ARR[0], 100)
+  })
 
-    test("const hash values are still mutable", fn() {
-        // const protects the binding, not the contents (like JavaScript)
-        const H = {"key": "value"};
-        H["key"] = "new";
-        assert_eq(H["key"], "new");
-    });
-});
+  test("const hash values are still mutable", fn() {
+    # const protects the binding, not the contents (like JavaScript)
+    const H = {"key": "value"}
+    H["key"] = "new"
+    assert_eq(H["key"], "new")
+  })
+})
 
 describe("const_get", fn() {
-    test("resolves a const by name", fn() {
-        const MY_VALUE = 42;
-        let result = const_get("MY_VALUE");
-        assert_eq(result, 42);
-    });
+  test("resolves a const by name", fn() {
+    const MY_VALUE = 42
+    let result = const_get("MY_VALUE")
+    assert_eq(result, 42)
+  })
 
-    test("resolves a class by name and instantiates it", fn() {
-        class User {}
-        let cls = const_get("User");
-        assert_eq(type(cls), "Class");
-        let instance = cls.new();
-        assert_eq(type(instance), "User");
-    });
+  test("resolves a class by name and instantiates it", fn() {
+    class User
+    end
+    let cls = const_get("User")
+    assert_eq(type(cls), "Class")
+    let instance = cls.new()
+    assert_eq(type(instance), "User")
+  })
 
-    test("resolves a function by name and calls it", fn() {
-        fn greet(name) { "hello " + name }
-        let result = const_get("greet");
-        assert_eq(result("world"), "hello world");
-    });
+  test("resolves a function by name and calls it", fn() {
+    def greet(name)
+      "hello " + name
+    end
+    let result = const_get("greet")
+    assert_eq(result("world"), "hello world")
+  })
 
-    test("resolves a let variable by name", fn() {
-        let value = 99;
-        let result = const_get("value");
-        assert_eq(result, 99);
-    });
+  test("resolves a let variable by name", fn() {
+    let value = 99
+    let result = const_get("value")
+    assert_eq(result, 99)
+  })
 
-    test("returns null for undefined name", fn() {
-        let result = const_get("DefinitelyNotDefined");
-        assert_null(result);
-    });
+  test("returns null for undefined name", fn() {
+    let result = const_get("DefinitelyNotDefined")
+    assert_null(result)
+  })
 
-    test("throws error when passed a non-string argument", fn() {
-        let threw = false;
-        try {
-            const_get(123);
-        } catch (e) {
-            threw = true;
-        }
-        assert(threw);
-    });
-});
+  test("throws error when passed a non-string argument", fn() {
+    let threw = false
+    try
+      const_get(123)
+    catch e
+      threw = true
+    end
+    assert(threw)
+  })
+})

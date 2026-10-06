@@ -8,26 +8,28 @@
 # interpreter behavior that fallback relies on: the observable result must be
 # correct regardless of engine.
 
-def add(a, b) { return a + b }
-def greet(name = "World", punct = "!") { return "Hi " + name + punct }
+def add(a, b)
+  return a + b
+end
+def greet(name = "World", punct = "!")
+  return "Hi " + name + punct
+end
 
 describe("Named arguments (paren form)", fn() {
-    test("named args can be given in any order", fn() {
-        assert_eq(add(b: 2, a: 1), 3)
-        assert_eq(add(a: 10, b: 20), 30)
-    })
+  test("named args can be given in any order", fn() {
+    assert_eq(add(b: 2, a: 1), 3)
+    assert_eq(add(a: 10, b: 20), 30)
+  })
 
-    test("named args mix with leading positional args", fn() {
-        assert_eq(greet("Bob", punct: "?"), "Hi Bob?")
-    })
+  test("named args mix with leading positional args", fn() { assert_eq(greet("Bob", punct: "?"), "Hi Bob?") })
 
-    test("named args select which default to override", fn() {
-        assert_eq(greet(punct: "?"), "Hi World?")
-        assert_eq(greet(name: "Ann"), "Hi Ann!")
-    })
+  test("named args select which default to override", fn() {
+    assert_eq(greet(punct: "?"), "Hi World?")
+    assert_eq(greet(name: "Ann"), "Hi Ann!")
+  })
 
-    test("all-positional calls still work", fn() {
-        assert_eq(add(4, 5), 9)
-        assert_eq(greet("X", "!"), "Hi X!")
-    })
+  test("all-positional calls still work", fn() {
+    assert_eq(add(4, 5), 9)
+    assert_eq(greet("X", "!"), "Hi X!")
+  })
 })

@@ -1,337 +1,350 @@
-// ============================================================================
-// Functions Test Suite
-// ============================================================================
+# ============================================================================
+# Functions Test Suite
+# ============================================================================
 
 describe("Functions", fn() {
-    test("function declaration and call", fn() {
-        fn add(a, b) {
-            return a + b;
-        }
-        assert_eq(add(2, 3), 5);
-    });
+  test("function declaration and call", fn() {
+    def add(a, b)
+      return a + b
+    end
+    assert_eq(add(2, 3), 5)
+  })
 
-    test("function with no parameters", fn() {
-        fn greet() {
-            return "hello";
-        }
-        assert_eq(greet(), "hello");
-    });
+  test("function with no parameters", fn() {
+    def greet
+      return "hello"
+    end
+    assert_eq(greet(), "hello")
+  })
 
-    test("function with typed parameters", fn() {
-        fn multiply(a: Int, b: Int) {
-            return a * b;
-        }
-        assert_eq(multiply(3, 4), 12);
-    });
+  test("function with typed parameters", fn() {
+    def multiply(a: Int, b: Int)
+      return a * b
+    end
+    assert_eq(multiply(3, 4), 12)
+  })
 
-    test("function with return type", fn() {
-        fn square(x: Int) -> Int {
-            return x * x;
-        }
-        assert_eq(square(5), 25);
-    });
+  test("function with return type", fn() {
+    def square(x: Int) -> Int
+      return x * x
+    end
+    assert_eq(square(5), 25)
+  })
 
-    test("function with default parameter", fn() {
-        fn greet(name: String = "World") {
-            return "Hello " + name;
-        }
-        assert_eq(greet(), "Hello World");
-        assert_eq(greet("Alice"), "Hello Alice");
-    });
+  test("function with default parameter", fn() {
+    def greet(name: String = "World")
+      return "Hello " + name
+    end
+    assert_eq(greet(), "Hello World")
+    assert_eq(greet("Alice"), "Hello Alice")
+  })
 
-    test("function with named parameters", fn() {
-        fn configure(host: String = "localhost", port: Int = 8080, debug: Bool = false) {
-            return host + ":" + str(port) + " (debug: " + str(debug) + ")";
-        }
-        assert_eq(configure(), "localhost:8080 (debug: false)");
-        assert_eq(configure(port: 3000), "localhost:3000 (debug: false)");
-        assert_eq(configure(host: "example.com", port: 443), "example.com:443 (debug: false)");
-        assert_eq(configure(port: 9000, debug: true, host: "api.example.com"), "api.example.com:9000 (debug: true)");
-    });
+  test("function with named parameters", fn() {
+    def configure(host: String = "localhost", port: Int = 8080, debug: Bool = false)
+      return host + ":" + str(port) + " (debug: " + str(debug) + ")"
+    end
+    assert_eq(configure(), "localhost:8080 (debug: false)")
+    assert_eq(configure(port: 3000), "localhost:3000 (debug: false)")
+    assert_eq(configure(host: "example.com", port: 443), "example.com:443 (debug: false)")
+    assert_eq(configure(port: 9000, debug: true, host: "api.example.com"), "api.example.com:9000 (debug: true)")
+  })
 
-    test("function with mixed positional and named parameters", fn() {
-        fn sum(a: Int, b: Int = 10, c: Int = 20) {
-            return a + b + c;
-        }
-        assert_eq(sum(1), 31);
-        assert_eq(sum(1, 2), 23);
-        assert_eq(sum(1, c: 5), 16);
-    });
+  test("function with mixed positional and named parameters", fn() {
+    def sum(a: Int, b: Int = 10, c: Int = 20)
+      return a + b + c
+    end
+    assert_eq(sum(1), 31)
+    assert_eq(sum(1, 2), 23)
+    assert_eq(sum(1, c: 5), 16)
+  })
 
-    test("function returning null implicitly", fn() {
-        fn nothing() {
-            let x = 1;
-        }
-        assert_null(nothing());
-    });
+  test("function returning null implicitly", fn() {
+    def nothing
+      let x = 1
+    end
+    assert_null(nothing())
+  })
 
-    test("early return", fn() {
-        fn check(x) {
-            if (x < 0) {
-                return "negative";
-            }
-            return "non-negative";
-        }
-        assert_eq(check(-5), "negative");
-        assert_eq(check(5), "non-negative");
-    });
+  test("early return", fn() {
+    def check(x)
+      return "negative" if (x < 0)
+      return "non-negative"
+    end
+    assert_eq(check(-5), "negative")
+    assert_eq(check(5), "non-negative")
+  })
 
-    test("recursive function", fn() {
-        fn factorial(n) {
-            if (n <= 1) {
-                return 1;
-            }
-            return n * factorial(n - 1);
-        }
-        assert_eq(factorial(5), 120);
-    });
+  test("recursive function", fn() {
+    def factorial(n)
+      return 1 if (n <= 1)
+      return n * factorial(n - 1)
+    end
+    assert_eq(factorial(5), 120)
+  })
 
-    test("function as first-class value", fn() {
-        fn double(x) {
-            return x * 2;
-        }
-        let f = double;
-        assert_eq(f(5), 10);
-    });
+  test("function as first-class value", fn() {
+    def double(x)
+      return x * 2
+    end
+    let f = double
+    assert_eq(f(5), 10)
+  })
 
-    test("higher-order function", fn() {
-        fn apply(f, x) {
-            return f(x);
-        }
-        fn triple(x) {
-            return x * 3;
-        }
-        assert_eq(apply(triple, 4), 12);
-    });
-});
+  test("higher-order function", fn() {
+    def apply(f, x)
+      return f(x)
+    end
+    def triple(x)
+      return x * 3
+    end
+    assert_eq(apply(triple, 4), 12)
+  })
+})
 
 describe("Implicit Returns", fn() {
-    test("implicit return from expression", fn() {
-        fn add(a, b) {
-            a + b
-        }
-        assert_eq(add(2, 3), 5);
-    });
+  test("implicit return from expression", fn() {
+    def add(a, b)
+      a + b
+    end
+    assert_eq(add(2, 3), 5)
+  })
 
-    test("implicit return from function call", fn() {
-        fn double(x) { x * 2 }
-        fn call_double(x) {
-            double(x)
-        }
-        assert_eq(call_double(5), 10);
-    });
+  test("implicit return from function call", fn() {
+    def double(x)
+      x * 2
+    end
+    def call_double(x)
+      double(x)
+    end
+    assert_eq(call_double(5), 10)
+  })
 
-    test("implicit return from if/else", fn() {
-        fn abs(x) {
-            if (x < 0) { -x } else { x }
-        }
-        assert_eq(abs(-5), 5);
-        assert_eq(abs(5), 5);
-    });
+  test("implicit return from if/else", fn() {
+    def abs(x)
+      if (x < 0)
+        -x
+      else
+        x
+      end
+    end
+    assert_eq(abs(-5), 5)
+    assert_eq(abs(5), 5)
+  })
 
-    test("implicit return from block lambda", fn() {
-        let items = [1, 2, 3];
-        let doubled = items.map(fn(x) { x * 2 });
-        assert_eq(doubled, [2, 4, 6]);
-    });
+  test("implicit return from block lambda", fn() {
+    let items = [1, 2, 3]
+    let doubled = items.map(fn(x) { x * 2 })
+    assert_eq(doubled, [
+      2,
+      4,
+      6
+    ])
+  })
 
-    test("let as last statement returns null", fn() {
-        fn nothing() {
-            let x = 1;
-        }
-        assert_null(nothing());
-    });
+  test("let as last statement returns null", fn() {
+    def nothing
+      let x = 1
+    end
+    assert_null(nothing())
+  })
 
-    test("explicit return still works", fn() {
-        fn early(x) {
-            if (x < 0) { return "negative"; }
-            "non-negative"
-        }
-        assert_eq(early(-1), "negative");
-        assert_eq(early(1), "non-negative");
-    });
-});
+  test("explicit return still works", fn() {
+    def early(x)
+      return "negative" if (x < 0)
+
+      "non-negative"
+    end
+    assert_eq(early(-1), "negative")
+    assert_eq(early(1), "non-negative")
+  })
+})
 
 describe("Optional Parentheses", fn() {
-    test("fn without parens", fn() {
-        fn greet {
-            return "hello";
-        }
-        assert_eq(greet(), "hello");
-    });
+  test("fn without parens", fn() {
+    def greet
+      return "hello"
+    end
+    assert_eq(greet(), "hello")
+  })
 
-    test("fn without parens with implicit return", fn() {
-        fn five { 5 }
-        assert_eq(five(), 5);
-    });
+  test("fn without parens with implicit return", fn() {
+    def five
+      5
+    end
+    assert_eq(five(), 5)
+  })
 
-    test("fn with empty parens still works", fn() {
-        fn greet() {
-            return "hello";
-        }
-        assert_eq(greet(), "hello");
-    });
+  test("fn with empty parens still works", fn() {
+    def greet
+      return "hello"
+    end
+    assert_eq(greet(), "hello")
+  })
 
-    test("fn with params still requires parens", fn() {
-        fn add(a, b) {
-            return a + b;
-        }
-        assert_eq(add(2, 3), 5);
-    });
+  test("fn with params still requires parens", fn() {
+    def add(a, b)
+      return a + b
+    end
+    assert_eq(add(2, 3), 5)
+  })
 
-    test("class method without parens", fn() {
-        class Greeter {
-            fn hello {
-                return "hi";
-            }
-        }
-        let g = new Greeter();
-        assert_eq(g.hello(), "hi");
-    });
-});
+  test("class method without parens", fn() {
+    class Greeter
+      def hello
+        return "hi"
+      end
+    end
+    let g = new Greeter()
+    assert_eq(g.hello(), "hi")
+  })
+})
 
 describe("Closures", fn() {
-    test("closure captures outer variable", fn() {
-        let multiplier = 3;
-        let multiply = fn(x) { return x * multiplier; };
-        assert_eq(multiply(5), 15);
-    });
+  test("closure captures outer variable", fn() {
+    let multiplier = 3
+    let multiply = fn(x) { x * multiplier }
+    assert_eq(multiply(5), 15)
+  })
 
-    test("closure captures multiple variables", fn() {
-        let a = 10;
-        let b = 20;
-        let sum = fn() { return a + b; };
-        assert_eq(sum(), 30);
-    });
+  test("closure captures multiple variables", fn() {
+    let a = 10
+    let b = 20
+    let sum = fn() { a + b }
+    assert_eq(sum(), 30)
+  })
 
-    test("closure factory", fn() {
-        fn makeAdder(n) {
-            return fn(x) { return x + n; };
-        }
-        let add5 = makeAdder(5);
-        let add10 = makeAdder(10);
-        assert_eq(add5(3), 8);
-        assert_eq(add10(3), 13);
-    });
+  test("closure factory", fn() {
+    def makeAdder(n)
+      return fn(x) { x + n }
+    end
+    let add5 = makeAdder(5)
+    let add10 = makeAdder(10)
+    assert_eq(add5(3), 8)
+    assert_eq(add10(3), 13)
+  })
 
-    test("closure maintains separate state", fn() {
-        fn makeCounter() {
-            let count = 0;
-            return fn() {
-                count = count + 1;
-                return count;
-            };
-        }
-        let counter1 = makeCounter();
-        let counter2 = makeCounter();
-        assert_eq(counter1(), 1);
-        assert_eq(counter1(), 2);
-        assert_eq(counter2(), 1);
-    });
-});
+  test("closure maintains separate state", fn() {
+    def makeCounter
+      let count = 0
+      return fn() {
+        count = count + 1
+        return count
+      }
+    end
+    let counter1 = makeCounter()
+    let counter2 = makeCounter()
+    assert_eq(counter1(), 1)
+    assert_eq(counter1(), 2)
+    assert_eq(counter2(), 1)
+  })
+})
 
 describe("def keyword (fn alias)", fn() {
-    test("def declares a function", fn() {
-        def add(a, b) {
-            return a + b;
-        }
-        assert_eq(add(2, 3), 5);
-    });
+  test("def declares a function", fn() {
+    def add(a, b)
+      return a + b
+    end
+    assert_eq(add(2, 3), 5)
+  })
 
-    test("def with brace syntax", fn() {
-        def greet(name) {
-            "Hello, " + name + "!"
-        }
-        assert_eq(greet("World"), "Hello, World!");
-    });
+  test("def with brace syntax", fn() {
+    def greet(name)
+      "Hello, " + name + "!"
+    end
+    assert_eq(greet("World"), "Hello, World!")
+  })
 
-    test("def with typed parameters and return type", fn() {
-        def square(x: Int) -> Int {
-            x * x
-        }
-        assert_eq(square(7), 49);
-    });
+  test("def with typed parameters and return type", fn() {
+    def square(x: Int) -> Int
+      x * x
+    end
+    assert_eq(square(7), 49)
+  })
 
-    test("def with default parameters", fn() {
-        def greet(name: String = "World") {
-            "Hi " + name
-        }
-        assert_eq(greet(), "Hi World");
-        assert_eq(greet("Alice"), "Hi Alice");
-    });
+  test("def with default parameters", fn() {
+    def greet(name: String = "World")
+      "Hi " + name
+    end
+    assert_eq(greet(), "Hi World")
+    assert_eq(greet("Alice"), "Hi Alice")
+  })
 
-    test("def recursive function", fn() {
-        def fib(n) {
-            if (n <= 1) {
-                return n;
-            }
-            fib(n - 1) + fib(n - 2)
-        }
-        assert_eq(fib(10), 55);
-    });
+  test("def recursive function", fn() {
+    def fib(n)
+      return n if (n <= 1)
 
-    test("def as closure", fn() {
-        def make_adder(n) {
-            return |x| x + n;
-        }
-        let add5 = make_adder(5);
-        assert_eq(add5(3), 8);
-    });
+      fib(n - 1) + fib(n - 2)
+    end
+    assert_eq(fib(10), 55)
+  })
 
-    test("def in class", fn() {
-        class Calculator {
-            def add(a, b) {
-                return a + b;
-            }
-            def multiply(a, b) {
-                a * b
-            }
-        }
-        let calc = new Calculator();
-        assert_eq(calc.add(2, 3), 5);
-        assert_eq(calc.multiply(4, 5), 20);
-    });
+  test("def as closure", fn() {
+    def make_adder(n)
+      return fn(x) { x + n }
+    end
+    let add5 = make_adder(5)
+    assert_eq(add5(3), 8)
+  })
 
-    test("def and fn are interchangeable", fn() {
-        fn with_fn(x) { x + 1 }
-        def with_def(x) { x + 1 }
-        assert_eq(with_fn(10), with_def(10));
-    });
-});
+  test("def in class", fn() {
+    class Calculator
+      def add(a, b)
+        return a + b
+      end
+
+      def multiply(a, b)
+        a * b
+      end
+    end
+    let calc = new Calculator()
+    assert_eq(calc.add(2, 3), 5)
+    assert_eq(calc.multiply(4, 5), 20)
+  })
+
+  test("def and fn are interchangeable", fn() {
+    def with_fn(x)
+      x + 1
+    end
+    def with_def(x)
+      x + 1
+    end
+    assert_eq(with_fn(10), with_def(10))
+  })
+})
 
 describe("Hash comments (#)", fn() {
-    test("hash comment on its own line", fn() {
-        # This is a comment
-        let x = 42;
-        assert_eq(x, 42);
-    });
+  test("hash comment on its own line", fn() {
+    # This is a comment
+    let x = 42
+    assert_eq(x, 42)
+  })
 
-    test("hash comment at end of line", fn() {
-        let x = 10; # inline comment
-        assert_eq(x, 10);
-    });
+  test("hash comment at end of line", fn() {
+    let x = 10  # inline comment
+    assert_eq(x, 10)
+  })
 
-    test("hash comment does not affect next line", fn() {
-        let a = 1; # comment
-        let b = 2;
-        assert_eq(a + b, 3);
-    });
+  test("hash comment does not affect next line", fn() {
+    let a = 1  # comment
+    let b = 2
+    assert_eq(a + b, 3)
+  })
 
-    test("hash comment with string interpolation still works", fn() {
-        let name = "Soli";
-        let msg = "Hello #{name}!"; # interpolation inside string
-        assert_eq(msg, "Hello Soli!");
-    });
+  test("hash comment with string interpolation still works", fn() {
+    let name = "Soli"
+    let msg = "Hello #{name}!"  # interpolation inside string
+    assert_eq(msg, "Hello Soli!")
+  })
 
-    test("hash inside string is not a comment", fn() {
-        let s = "use # for comments";
-        assert_eq(s, "use # for comments");
-    });
+  test("hash inside string is not a comment", fn() {
+    let s = "use # for comments"
+    assert_eq(s, "use # for comments")
+  })
 
-    test("mixed // and # comments", fn() {
-        // double-slash comment
-        # hash comment
-        let x = 99;
-        assert_eq(x, 99);
-    });
-});
+  test("mixed // and # comments", fn() {
+    # double-slash comment
+    # hash comment
+    let x = 99
+    assert_eq(x, 99)
+  })
+})

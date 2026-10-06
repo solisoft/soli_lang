@@ -1,451 +1,455 @@
-// ============================================================================
-// DateTime Test Suite
-// ============================================================================
+# ============================================================================
+# DateTime Test Suite
+# ============================================================================
 
 describe("DateTime Functions", fn() {
-    test("DateTime.now() returns current time", fn() {
-        let now = DateTime.now();
-        assert_not_null(now);
-        assert(now.year() >= 2024);
-    });
+  test("DateTime.now() returns current time", fn() {
+    let now = DateTime.now()
+    assert_not_null(now)
+    assert(now.year() >= 2024)
+  })
 
-    test("DateTime.from_unix() creates from timestamp", fn() {
-        let dt = DateTime.from_unix(0);
-        assert_eq(dt.year(), 1970);
-        assert_eq(dt.month(), 1);
-        assert_eq(dt.day(), 1);
-    });
+  test("DateTime.from_unix() creates from timestamp", fn() {
+    let dt = DateTime.from_unix(0)
+    assert_eq(dt.year(), 1970)
+    assert_eq(dt.month(), 1)
+    assert_eq(dt.day(), 1)
+  })
 
-    test("datetime instance accessor methods work", fn() {
-        let dt = DateTime.from_unix(1704067200);
-        assert(dt.year() >= 2024);
-        assert(dt.month() >= 1);
-        assert(dt.month() <= 12);
-        assert(dt.day() >= 1);
-        assert(dt.day() <= 31);
-        assert(dt.hour() >= 0);
-        assert(dt.hour() <= 23);
-        assert(dt.minute() >= 0);
-        assert(dt.minute() <= 59);
-        assert(dt.second() >= 0);
-        assert(dt.second() <= 59);
-    });
+  test("datetime instance accessor methods work", fn() {
+    let dt = DateTime.from_unix(1704067200)
+    assert(dt.year() >= 2024)
+    assert(dt.month() >= 1)
+    assert(dt.month() <= 12)
+    assert(dt.day() >= 1)
+    assert(dt.day() <= 31)
+    assert(dt.hour() >= 0)
+    assert(dt.hour() <= 23)
+    assert(dt.minute() >= 0)
+    assert(dt.minute() <= 59)
+    assert(dt.second() >= 0)
+    assert(dt.second() <= 59)
+  })
 
-    test("datetime arithmetic works", fn() {
-        let dt = DateTime.from_unix(1704067200);
-        let later = dt.add_days(1);
-        assert(later.to_unix() > dt.to_unix());
+  test("datetime arithmetic works", fn() {
+    let dt = DateTime.from_unix(1704067200)
+    let later = dt.add_days(1)
+    assert(later.to_unix() > dt.to_unix())
 
-        let earlier = dt.subtract_days(1);
-        assert(earlier.to_unix() < dt.to_unix());
-    });
+    let earlier = dt.subtract_days(1)
+    assert(earlier.to_unix() < dt.to_unix())
+  })
 
-    test("dt.to_unix() converts to timestamp", fn() {
-        let dt = DateTime.from_unix(1704067200);
-        let ts = dt.to_unix();
-        assert_eq(ts, 1704067200);
-    });
+  test("dt.to_unix() converts to timestamp", fn() {
+    let dt = DateTime.from_unix(1704067200)
+    let ts = dt.to_unix()
+    assert_eq(ts, 1704067200)
+  })
 
-    test("datetime to_iso() formatting", fn() {
-        let dt = DateTime.from_unix(0);
-        let iso = dt.to_iso();
-        assert_contains(iso, "1970");
-    });
-});
+  test("datetime to_iso() formatting", fn() {
+    let dt = DateTime.from_unix(0)
+    let iso = dt.to_iso()
+    assert_contains(iso, "1970")
+  })
+})
 
 describe("DateTime Static Methods", fn() {
-    test("DateTime.now() returns current datetime", fn() {
-        let now = DateTime.now();
-        assert_not_null(now);
-        assert_eq(type(now), "DateTime");
-    });
+  test("DateTime.now() returns current datetime", fn() {
+    let now = DateTime.now()
+    assert_not_null(now)
+    assert_eq(type(now), "DateTime")
+  })
 
-    test("DateTime.parse() parses ISO string", fn() {
-        let dt = DateTime.parse("2024-01-15T10:30:00Z");
-        assert_not_null(dt);
-        assert_eq(type(dt), "DateTime");
-    });
+  test("DateTime.parse() parses ISO string", fn() {
+    let dt = DateTime.parse("2024-01-15T10:30:00Z")
+    assert_not_null(dt)
+    assert_eq(type(dt), "DateTime")
+  })
 
-    test("DateTime.epoch() returns epoch datetime", fn() {
-        let epoch = DateTime.epoch();
-        assert_not_null(epoch);
-        assert_eq(epoch.year(), 1970);
-    });
+  test("DateTime.epoch() returns epoch datetime", fn() {
+    let epoch = DateTime.epoch()
+    assert_not_null(epoch)
+    assert_eq(epoch.year(), 1970)
+  })
 
-    test("DateTime.from_unix() creates DateTime from timestamp", fn() {
-        let dt = DateTime.from_unix(1704067200);
-        assert_not_null(dt);
-        assert_eq(dt.year(), 2024);
-    });
-});
+  test("DateTime.from_unix() creates DateTime from timestamp", fn() {
+    let dt = DateTime.from_unix(1704067200)
+    assert_not_null(dt)
+    assert_eq(dt.year(), 2024)
+  })
+})
 
 describe("DateTime Instance Methods", fn() {
-    test("add_days() adds days", fn() {
-        let dt = DateTime.parse("2024-01-15T00:00:00Z");
-        let later = dt.add_days(10);
-        assert_eq(later.day(), 25);
-    });
+  test("add_days() adds days", fn() {
+    let dt = DateTime.parse("2024-01-15T00:00:00Z")
+    let later = dt.add_days(10)
+    assert_eq(later.day(), 25)
+  })
 
-    test("add_hours() adds hours", fn() {
-        let dt = DateTime.parse("2024-01-15T10:00:00Z");
-        let later = dt.add_hours(5);
-        # Absolute hour of a Z timestamp: pin to UTC view (local hour shifts with TZ).
-        assert_eq(later.utc().hour(), 15);
-    });
+  test("add_hours() adds hours", fn() {
+    let dt = DateTime.parse("2024-01-15T10:00:00Z")
+    let later = dt.add_hours(5)
+    # Absolute hour of a Z timestamp: pin to UTC view (local hour shifts with TZ).
+    assert_eq(later.utc().hour(), 15)
+  })
 
-    test("add_minutes() adds minutes", fn() {
-        let dt = DateTime.parse("2024-01-15T10:30:00Z");
-        let later = dt.add_minutes(30);
-        assert_eq(later.utc().minute(), 0);
-        assert_eq(later.utc().hour(), 11);
-    });
+  test("add_minutes() adds minutes", fn() {
+    let dt = DateTime.parse("2024-01-15T10:30:00Z")
+    let later = dt.add_minutes(30)
+    assert_eq(later.utc().minute(), 0)
+    assert_eq(later.utc().hour(), 11)
+  })
 
-    test("subtract_days() subtracts days", fn() {
-        let dt = DateTime.parse("2024-01-15T00:00:00Z");
-        let earlier = dt.subtract_days(5);
-        assert_eq(earlier.day(), 10);
-    });
+  test("subtract_days() subtracts days", fn() {
+    let dt = DateTime.parse("2024-01-15T00:00:00Z")
+    let earlier = dt.subtract_days(5)
+    assert_eq(earlier.day(), 10)
+  })
 
-    test("to_unix() returns timestamp", fn() {
-        let dt = DateTime.from_unix(1704067200);
-        assert_eq(dt.to_unix(), 1704067200);
-    });
+  test("to_unix() returns timestamp", fn() {
+    let dt = DateTime.from_unix(1704067200)
+    assert_eq(dt.to_unix(), 1704067200)
+  })
 
-    test("format() formats date", fn() {
-        let dt = DateTime.from_unix(1704067200);
-        let formatted = dt.format("%Y-%m-%d");
-        assert_contains(formatted, "2024");
-    });
+  test("format() formats date", fn() {
+    let dt = DateTime.from_unix(1704067200)
+    let formatted = dt.format("%Y-%m-%d")
+    assert_contains(formatted, "2024")
+  })
 
-    test("DateTime.utc() returns current UTC time", fn() {
-        let utc = DateTime.utc();
-        assert_not_null(utc);
-        assert(utc.year() >= 2024);
-    });
+  test("DateTime.utc() returns current UTC time", fn() {
+    let utc = DateTime.utc()
+    assert_not_null(utc)
+    assert(utc.year() >= 2024)
+  })
 
-    test("format() with locale parameter", fn() {
-        let dt = DateTime.from_unix(1704067200);
-        let en = dt.format("%B", "en");
-        let fr = dt.format("%B", "fr");
-        assert_eq(en, "January");
-        assert_eq(fr, "janvier");
-    });
-});
+  test("format() with locale parameter", fn() {
+    let dt = DateTime.from_unix(1704067200)
+    let en = dt.format("%B", "en")
+    let fr = dt.format("%B", "fr")
+    assert_eq(en, "January")
+    assert_eq(fr, "janvier")
+  })
+})
 
 describe("DateTime Boundary Methods", fn() {
-    test("beginning_of_minute truncates seconds and subseconds", fn() {
-        let dt = DateTime.parse("2024-06-15T10:30:45Z");
-        let bm = dt.beginning_of_minute();
-        let em = dt.end_of_minute();
-        assert(bm <= dt);
-        assert(dt <= em);
-        assert_eq(bm.second(), 0);
-        assert_eq(em.second(), 59);
-    });
+  test("beginning_of_minute truncates seconds and subseconds", fn() {
+    let dt = DateTime.parse("2024-06-15T10:30:45Z")
+    let bm = dt.beginning_of_minute()
+    let em = dt.end_of_minute()
+    assert(bm <= dt)
+    assert(dt <= em)
+    assert_eq(bm.second(), 0)
+    assert_eq(em.second(), 59)
+  })
 
-    test("beginning_of_hour zeroes minutes and below", fn() {
-        let dt = DateTime.parse("2024-06-15T10:30:45Z");
-        let bh = dt.beginning_of_hour();
-        let eh = dt.end_of_hour();
-        assert(bh <= dt);
-        assert(dt <= eh);
-        assert_eq(bh.second(), 0);
-        assert_eq(eh.second(), 59);
-    });
+  test("beginning_of_hour zeroes minutes and below", fn() {
+    let dt = DateTime.parse("2024-06-15T10:30:45Z")
+    let bh = dt.beginning_of_hour()
+    let eh = dt.end_of_hour()
+    assert(bh <= dt)
+    assert(dt <= eh)
+    assert_eq(bh.second(), 0)
+    assert_eq(eh.second(), 59)
+  })
 
-    test("beginning_of_day zeroes time", fn() {
-        let dt = DateTime.parse("2024-06-15T10:30:45Z");
-        let bd = dt.beginning_of_day();
-        let ed = dt.end_of_day();
-        assert(bd <= dt);
-        assert(dt <= ed);
-        assert_eq(bd.second(), 0);
-        assert_eq(ed.second(), 59);
-        assert_eq(bd.day(), dt.day());
-        assert_eq(ed.day(), dt.day());
-    });
+  test("beginning_of_day zeroes time", fn() {
+    let dt = DateTime.parse("2024-06-15T10:30:45Z")
+    let bd = dt.beginning_of_day()
+    let ed = dt.end_of_day()
+    assert(bd <= dt)
+    assert(dt <= ed)
+    assert_eq(bd.second(), 0)
+    assert_eq(ed.second(), 59)
+    assert_eq(bd.day(), dt.day())
+    assert_eq(ed.day(), dt.day())
+  })
 
-    test("beginning_of_month returns day 1 with zero time within same month", fn() {
-        let dt = DateTime.parse("2024-06-15T10:30:45Z");
-        let bm = dt.beginning_of_month();
-        let em = dt.end_of_month();
-        assert(bm <= dt);
-        assert(dt <= em);
-        assert_eq(bm.month(), dt.month());
-        assert_eq(bm.day(), 1);
-        assert_eq(bm.second(), 0);
-        assert_eq(em.month(), dt.month());
-        assert(em.day() >= 28);
-        assert_eq(em.second(), 59);
-    });
+  test("beginning_of_month returns day 1 with zero time within same month", fn() {
+    let dt = DateTime.parse("2024-06-15T10:30:45Z")
+    let bm = dt.beginning_of_month()
+    let em = dt.end_of_month()
+    assert(bm <= dt)
+    assert(dt <= em)
+    assert_eq(bm.month(), dt.month())
+    assert_eq(bm.day(), 1)
+    assert_eq(bm.second(), 0)
+    assert_eq(em.month(), dt.month())
+    assert(em.day() >= 28)
+    assert_eq(em.second(), 59)
+  })
 
-    test("beginning_of_year returns Jan 1 with zero time", fn() {
-        let dt = DateTime.parse("2024-06-15T10:30:45Z");
-        let by = dt.beginning_of_year();
-        let ey = dt.end_of_year();
-        assert(by <= dt);
-        assert(dt <= ey);
-        assert_eq(by.year(), dt.year());
-        assert_eq(by.month(), 1);
-        assert_eq(by.day(), 1);
-        assert_eq(by.second(), 0);
-        assert_eq(ey.year(), dt.year());
-        assert_eq(ey.month(), 12);
-        assert_eq(ey.day(), 31);
-        assert_eq(ey.second(), 59);
-    });
+  test("beginning_of_year returns Jan 1 with zero time", fn() {
+    let dt = DateTime.parse("2024-06-15T10:30:45Z")
+    let by = dt.beginning_of_year()
+    let ey = dt.end_of_year()
+    assert(by <= dt)
+    assert(dt <= ey)
+    assert_eq(by.year(), dt.year())
+    assert_eq(by.month(), 1)
+    assert_eq(by.day(), 1)
+    assert_eq(by.second(), 0)
+    assert_eq(ey.year(), dt.year())
+    assert_eq(ey.month(), 12)
+    assert_eq(ey.day(), 31)
+    assert_eq(ey.second(), 59)
+  })
 
-    test("boundary methods do not mutate original", fn() {
-        let dt = DateTime.parse("2024-06-15T10:30:45Z");
-        let original_unix = dt.to_unix();
-        let _boundary = dt.beginning_of_day();
-        assert_eq(dt.to_unix(), original_unix);
-        let _boundary2 = dt.beginning_of_month();
-        assert_eq(dt.to_unix(), original_unix);
-    });
+  test("boundary methods do not mutate original", fn() {
+    let dt = DateTime.parse("2024-06-15T10:30:45Z")
+    let original_unix = dt.to_unix()
+    let _boundary = dt.beginning_of_day()
+    assert_eq(dt.to_unix(), original_unix)
+    let _boundary2 = dt.beginning_of_month()
+    assert_eq(dt.to_unix(), original_unix)
+  })
 
-    test("end_of_month handles December", fn() {
-        let dt = DateTime.parse("2024-12-15T10:30:45Z");
-        let boundary = dt.end_of_month();
-        assert_eq(boundary.month(), 12);
-        assert_eq(boundary.day(), 31);
-    });
+  test("end_of_month handles December", fn() {
+    let dt = DateTime.parse("2024-12-15T10:30:45Z")
+    let boundary = dt.end_of_month()
+    assert_eq(boundary.month(), 12)
+    assert_eq(boundary.day(), 31)
+  })
 
-    test("end_of_month handles February in leap year", fn() {
-        let dt = DateTime.parse("2024-02-15T10:30:45Z");
-        let boundary = dt.end_of_month();
-        assert_eq(boundary.month(), 2);
-        assert_eq(boundary.day(), 29);
-    });
+  test("end_of_month handles February in leap year", fn() {
+    let dt = DateTime.parse("2024-02-15T10:30:45Z")
+    let boundary = dt.end_of_month()
+    assert_eq(boundary.month(), 2)
+    assert_eq(boundary.day(), 29)
+  })
 
-    test("end_of_month handles February in non-leap year", fn() {
-        let dt = DateTime.parse("2023-02-15T10:30:45Z");
-        let boundary = dt.end_of_month();
-        assert_eq(boundary.month(), 2);
-        assert_eq(boundary.day(), 28);
-    });
-});
+  test("end_of_month handles February in non-leap year", fn() {
+    let dt = DateTime.parse("2023-02-15T10:30:45Z")
+    let boundary = dt.end_of_month()
+    assert_eq(boundary.month(), 2)
+    assert_eq(boundary.day(), 28)
+  })
+})
 
 describe("DateTime Individual Accessors", fn() {
-    test("year() returns correct year", fn() {
-        let dt = DateTime.parse("2024-06-15T10:30:00Z");
-        assert_eq(dt.year(), 2024);
-    });
+  test("year() returns correct year", fn() {
+    let dt = DateTime.parse("2024-06-15T10:30:00Z")
+    assert_eq(dt.year(), 2024)
+  })
 
-    test("month() returns correct month", fn() {
-        let dt = DateTime.parse("2024-06-15T10:30:00Z");
-        assert_eq(dt.month(), 6);
-    });
+  test("month() returns correct month", fn() {
+    let dt = DateTime.parse("2024-06-15T10:30:00Z")
+    assert_eq(dt.month(), 6)
+  })
 
-    test("day() returns correct day", fn() {
-        let dt = DateTime.parse("2024-06-15T10:30:00Z");
-        assert_eq(dt.day(), 15);
-    });
+  test("day() returns correct day", fn() {
+    let dt = DateTime.parse("2024-06-15T10:30:00Z")
+    assert_eq(dt.day(), 15)
+  })
 
-    test("hour() returns correct hour", fn() {
-        let dt = DateTime.parse("2024-06-15T14:30:00Z");
-        assert_eq(dt.utc().hour(), 14);
-    });
+  test("hour() returns correct hour", fn() {
+    let dt = DateTime.parse("2024-06-15T14:30:00Z")
+    assert_eq(dt.utc().hour(), 14)
+  })
 
-    test("minute() returns correct minute", fn() {
-        let dt = DateTime.parse("2024-06-15T10:45:00Z");
-        assert_eq(dt.utc().minute(), 45);
-    });
+  test("minute() returns correct minute", fn() {
+    let dt = DateTime.parse("2024-06-15T10:45:00Z")
+    assert_eq(dt.utc().minute(), 45)
+  })
 
-    test("second() returns correct second", fn() {
-        let dt = DateTime.parse("2024-06-15T10:30:25Z");
-        assert_eq(dt.utc().second(), 25);
-    });
+  test("second() returns correct second", fn() {
+    let dt = DateTime.parse("2024-06-15T10:30:25Z")
+    assert_eq(dt.utc().second(), 25)
+  })
 
-    test("component accessors agree with format() (local view consistency)", fn() {
-        # Every component of one instant must describe the same wall-clock moment
-        # as format() — the bug this guards was hour/minute in UTC while day was local.
-        let t = DateTime.parse("2026-01-01T23:30:00Z");
-        let pad2 = fn(n) {
-            if n < 10 { "0" + str(n) } else { str(n) }
-        };
-        assert_eq(t.format("%Y"), str(t.year()));
-        assert_eq(t.format("%m"), pad2(t.month()));
-        assert_eq(t.format("%d"), pad2(t.day()));
-        assert_eq(t.format("%H"), pad2(t.hour()));
-        assert_eq(t.format("%M"), pad2(t.minute()));
-        assert_eq(t.format("%S"), pad2(t.second()));
-    });
+  test("component accessors agree with format() (local view consistency)", fn() {
+    # Every component of one instant must describe the same wall-clock moment
+    # as format() — the bug this guards was hour/minute in UTC while day was local.
+    let t = DateTime.parse("2026-01-01T23:30:00Z")
+    let pad2 = fn(n) {
+      if n < 10
+        "0" + str(n)
+      else
+        str(n)
+      end
+    }
+    assert_eq(t.format("%Y"), str(t.year()))
+    assert_eq(t.format("%m"), pad2(t.month()))
+    assert_eq(t.format("%d"), pad2(t.day()))
+    assert_eq(t.format("%H"), pad2(t.hour()))
+    assert_eq(t.format("%M"), pad2(t.minute()))
+    assert_eq(t.format("%S"), pad2(t.second()))
+  })
 
-    test("utc() view returns UTC components; local view may differ", fn() {
-        let t = DateTime.parse("2026-01-01T23:30:00Z");
-        assert_eq(t.utc().hour(), 23);
-        assert_eq(t.utc().minute(), 30);
-        assert_eq(t.utc().day(), 1);
-        # Same instant: equality ignores the view flag.
-        assert(t == t.utc());
-        assert(t.utc().local() == t);
-    });
+  test("utc() view returns UTC components; local view may differ", fn() {
+    let t = DateTime.parse("2026-01-01T23:30:00Z")
+    assert_eq(t.utc().hour(), 23)
+    assert_eq(t.utc().minute(), 30)
+    assert_eq(t.utc().day(), 1)
+    # Same instant: equality ignores the view flag.
+    assert(t == t.utc())
+    assert(t.utc().local() == t)
+  })
 
-    test("year() for epoch is 1970", fn() {
-        let dt = DateTime.epoch();
-        assert_eq(dt.year(), 1970);
-    });
+  test("year() for epoch is 1970", fn() {
+    let dt = DateTime.epoch()
+    assert_eq(dt.year(), 1970)
+  })
 
-    test("month() for January is 1", fn() {
-        let dt = DateTime.parse("2024-01-15T10:30:00Z");
-        assert_eq(dt.month(), 1);
-    });
+  test("month() for January is 1", fn() {
+    let dt = DateTime.parse("2024-01-15T10:30:00Z")
+    assert_eq(dt.month(), 1)
+  })
 
-    test("month names via format()", fn() {
-        let dt = DateTime.parse("2024-02-15T10:30:00Z");
-        let formatted = dt.format("%B");
-        assert_eq(formatted, "February");
-    });
-});
+  test("month names via format()", fn() {
+    let dt = DateTime.parse("2024-02-15T10:30:00Z")
+    let formatted = dt.format("%B")
+    assert_eq(formatted, "February")
+  })
+})
 
 describe("DateTime Edge Cases", fn() {
-    test("datetime from very old timestamp", fn() {
-        let dt = DateTime.from_unix(-86400);
-        assert_eq(dt.year(), 1969);
-    });
+  test("datetime from very old timestamp", fn() {
+    let dt = DateTime.from_unix(-86400)
+    assert_eq(dt.year(), 1969)
+  })
 
-    test("datetime from far future timestamp", fn() {
-        let dt = DateTime.from_unix(4102444800);
-        assert_eq(dt.year(), 2100);
-    });
+  test("datetime from far future timestamp", fn() {
+    let dt = DateTime.from_unix(4102444800)
+    assert_eq(dt.year(), 2100)
+  })
 
-    test("add_hours() crosses midnight", fn() {
-        let dt = DateTime.parse("2024-01-15T20:00:00Z");
-        let later = dt.add_hours(8);
-        assert_eq(later.utc().hour(), 4);
-        assert_eq(later.utc().day(), 16);
-    });
+  test("add_hours() crosses midnight", fn() {
+    let dt = DateTime.parse("2024-01-15T20:00:00Z")
+    let later = dt.add_hours(8)
+    assert_eq(later.utc().hour(), 4)
+    assert_eq(later.utc().day(), 16)
+  })
 
-    test("subtract_days() goes to previous month", fn() {
-        let dt = DateTime.parse("2024-03-01T00:00:00Z");
-        let earlier = dt.subtract_days(1);
-        assert_eq(earlier.month(), 2);
-        assert_eq(earlier.day(), 29);
-    });
+  test("subtract_days() goes to previous month", fn() {
+    let dt = DateTime.parse("2024-03-01T00:00:00Z")
+    let earlier = dt.subtract_days(1)
+    assert_eq(earlier.month(), 2)
+    assert_eq(earlier.day(), 29)
+  })
 
-    test("to_iso() contains expected format", fn() {
-        let dt = DateTime.parse("2024-06-15T10:30:00Z");
-        let iso = dt.to_iso();
-        assert_contains(iso, "2024-06-15");
-        assert_contains(iso, "10:30:00");
-    });
+  test("to_iso() contains expected format", fn() {
+    let dt = DateTime.parse("2024-06-15T10:30:00Z")
+    let iso = dt.to_iso()
+    assert_contains(iso, "2024-06-15")
+    assert_contains(iso, "10:30:00")
+  })
 
-    test("format() with time components", fn() {
-        let dt = DateTime.utc();
-        let formatted = dt.format("%H:%M:%S");
-        assert(len(formatted) > 0);
-    });
+  test("format() with time components", fn() {
+    let dt = DateTime.utc()
+    let formatted = dt.format("%H:%M:%S")
+    assert(len(formatted) > 0)
+  })
 
-    test("format() with full date", fn() {
-        let dt = DateTime.utc();
-        let formatted = dt.format("%Y-%m-%d");
-        assert(len(formatted) >= 10);
-    });
-});
+  test("format() with full date", fn() {
+    let dt = DateTime.utc()
+    let formatted = dt.format("%Y-%m-%d")
+    assert(len(formatted) >= 10)
+  })
+})
 
 describe("DateTime Error Handling", fn() {
-    test("add_hours() with negative value subtracts", fn() {
-        let dt = DateTime.parse("2024-01-15T10:00:00Z");
-        let earlier = dt.add_hours(-5);
-        assert_eq(earlier.utc().hour(), 5);
-    });
+  test("add_hours() with negative value subtracts", fn() {
+    let dt = DateTime.parse("2024-01-15T10:00:00Z")
+    let earlier = dt.add_hours(-5)
+    assert_eq(earlier.utc().hour(), 5)
+  })
 
-    test("add_minutes() with negative value subtracts", fn() {
-        let dt = DateTime.parse("2024-01-15T10:30:00Z");
-        let earlier = dt.add_minutes(-30);
-        assert_eq(earlier.utc().minute(), 0);
-        assert_eq(earlier.utc().hour(), 10);
-    });
-});
+  test("add_minutes() with negative value subtracts", fn() {
+    let dt = DateTime.parse("2024-01-15T10:30:00Z")
+    let earlier = dt.add_minutes(-30)
+    assert_eq(earlier.utc().minute(), 0)
+    assert_eq(earlier.utc().hour(), 10)
+  })
+})
 
 describe("DateTime Comparison", fn() {
-    test("ordering operators compare by instant", fn() {
-        let earlier = DateTime.from_unix(1000);
-        let later = DateTime.from_unix(2000);
-        assert(earlier < later);
-        assert(later > earlier);
-        assert(earlier <= later);
-        assert(later >= earlier);
-    });
+  test("ordering operators compare by instant", fn() {
+    let earlier = DateTime.from_unix(1000)
+    let later = DateTime.from_unix(2000)
+    assert(earlier < later)
+    assert(later > earlier)
+    assert(earlier <= later)
+    assert(later >= earlier)
+  })
 
-    test("equality compares by instant, not identity", fn() {
-        let a = DateTime.from_unix(1700000000);
-        let b = DateTime.from_unix(1700000000);
-        assert(a == b);
-        assert(!(a != b));
-    });
+  test("equality compares by instant, not identity", fn() {
+    let a = DateTime.from_unix(1700000000)
+    let b = DateTime.from_unix(1700000000)
+    assert(a == b)
+    assert(!(a != b))
+  })
 
-    test("inequality across different instants", fn() {
-        let a = DateTime.from_unix(1700000000);
-        let b = DateTime.from_unix(1700000001);
-        assert(a != b);
-        assert(!(a == b));
-        assert(a < b);
-        assert(a <= b);
-    });
+  test("inequality across different instants", fn() {
+    let a = DateTime.from_unix(1700000000)
+    let b = DateTime.from_unix(1700000001)
+    assert(a != b)
+    assert(!(a == b))
+    assert(a < b)
+    assert(a <= b)
+  })
 
-    test("self-comparison reflexive", fn() {
-        let dt = DateTime.from_unix(1234567890);
-        assert(dt == dt);
-        assert(dt <= dt);
-        assert(dt >= dt);
-        assert(!(dt < dt));
-        assert(!(dt > dt));
-    });
-});
+  test("self-comparison reflexive", fn() {
+    let dt = DateTime.from_unix(1234567890)
+    assert(dt == dt)
+    assert(dt <= dt)
+    assert(dt >= dt)
+    assert(!(dt < dt))
+    assert(!(dt > dt))
+  })
+})
 
 describe("DateTime before 1970", fn() {
-    # Splitting the epoch nanoseconds by hand — `t / 1e9` and `(t % 1e9) as u32`
-    # — wrapped for negative instants: the remainder is negative before 1970, and
-    # casting it to an unsigned 32-bit value produced ~4.29e9 nanoseconds, which
-    # is not a valid sub-second offset. Every accessor then raised
-    # "Invalid timestamp". It only showed up with sub-second precision, because
-    # a whole-second instant has a zero remainder and slipped through.
-    # Mid-July and mid-year dates are used throughout so the assertions hold in
-    # every timezone.
+  # Splitting the epoch nanoseconds by hand — `t / 1e9` and `(t % 1e9) as u32`
+  # — wrapped for negative instants: the remainder is negative before 1970, and
+  # casting it to an unsigned 32-bit value produced ~4.29e9 nanoseconds, which
+  # is not a valid sub-second offset. Every accessor then raised
+  # "Invalid timestamp". It only showed up with sub-second precision, because
+  # a whole-second instant has a zero remainder and slipped through.
+  # Mid-July and mid-year dates are used throughout so the assertions hold in
+  # every timezone.
 
-    test("accessors work on a pre-1970 instant carrying milliseconds", fn() {
-        let dt = DateTime.parse("1969-07-20T20:17:00.500Z");
-        assert_eq(dt.year(), 1969);
-        assert_eq(dt.month(), 7);
-    });
+  test("accessors work on a pre-1970 instant carrying milliseconds", fn() {
+    let dt = DateTime.parse("1969-07-20T20:17:00.500Z")
+    assert_eq(dt.year(), 1969)
+    assert_eq(dt.month(), 7)
+  })
 
-    test("whole-second pre-1970 instants still work", fn() {
-        let dt = DateTime.parse("1969-07-20T20:17:00Z");
-        assert_eq(dt.year(), 1969);
-    });
+  test("whole-second pre-1970 instants still work", fn() {
+    let dt = DateTime.parse("1969-07-20T20:17:00Z")
+    assert_eq(dt.year(), 1969)
+  })
 
-    test("a long-past instant with milliseconds is readable", fn() {
-        let dt = DateTime.parse("1900-06-15T12:30:45.123Z");
-        assert_eq(dt.year(), 1900);
-        assert_eq(dt.month(), 6);
-    });
+  test("a long-past instant with milliseconds is readable", fn() {
+    let dt = DateTime.parse("1900-06-15T12:30:45.123Z")
+    assert_eq(dt.year(), 1900)
+    assert_eq(dt.month(), 6)
+  })
 
-    test("negative unix timestamps round-trip", fn() {
-        let dt = DateTime.from_unix(-100000000);
-        assert_eq(dt.to_unix(), -100000000);
-        assert_eq(dt.year(), 1966);
-    });
+  test("negative unix timestamps round-trip", fn() {
+    let dt = DateTime.from_unix(-100000000)
+    assert_eq(dt.to_unix(), -100000000)
+    assert_eq(dt.year(), 1966)
+  })
 
-    test("formatting a pre-1970 instant does not raise", fn() {
-        let dt = DateTime.parse("1969-07-20T20:17:00.500Z");
-        assert(dt.format("%Y").len() == 4);
-    });
+  test("formatting a pre-1970 instant does not raise", fn() {
+    let dt = DateTime.parse("1969-07-20T20:17:00.500Z")
+    assert(dt.format("%Y").len() == 4)
+  })
 
-    # `now()` used to be `timestamp() * 1_000_000_000`: every instant it
-    # made carried a zero subsecond, so `millisecond()` answered 0 for all
-    # of them and a duration measured between two of them could only come
-    # out as a whole number of seconds. Anything timing itself in Soli was
-    # therefore timing nothing.
-    test("now() carries the subsecond that millisecond() reads", fn() {
-        let seen = [];
-        let i = 0;
-        while (i < 2000) {
-            seen.push(DateTime.now().millisecond());
-            i = i + 1;
-        }
-        let moved = seen.filter(fn(ms) { return ms != seen[0]; });
-        assert(moved.length() > 0);
-    });
-});
+  # `now()` used to be `timestamp() * 1_000_000_000`: every instant it
+  # made carried a zero subsecond, so `millisecond()` answered 0 for all
+  # of them and a duration measured between two of them could only come
+  # out as a whole number of seconds. Anything timing itself in Soli was
+  # therefore timing nothing.
+  test("now() carries the subsecond that millisecond() reads", fn() {
+    let seen = []
+    let i = 0
+    while (i < 2000)
+      seen.push(DateTime.now().millisecond())
+      i = i + 1
+    end
+    let moved = seen.filter(fn(ms) { ms != seen[0] })
+    assert(moved.length() > 0)
+  })
+})

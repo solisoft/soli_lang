@@ -40,7 +40,10 @@ end
 
 describe("stubbing model classes") do
   test("static model finders and instance save") do
-    Mock.stub_class(StubbedPost, "find", fn(id) { {"id": id, "title": "fake"} })
+    Mock.stub_class(StubbedPost, "find", fn(id) { {
+      "id": id,
+      "title": "fake"
+    } })
     Mock.stub_class(StubbedPost, "all", [1, 2])
     assert_eq(StubbedPost.find(9)["title"], "fake")
     assert_eq(StubbedPost.all().length, 2)

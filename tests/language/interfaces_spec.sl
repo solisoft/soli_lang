@@ -1,310 +1,330 @@
-// ============================================================================
-// Interfaces Test Suite
-// ============================================================================
+# ============================================================================
+# Interfaces Test Suite
+# ============================================================================
 
 describe("Interface Declaration", fn() {
-    test("interface with method signature", fn() {
-        interface Greetable {
-            fn greet();
-        }
+  test("interface with method signature", fn() {
+    interface Greetable {
+      fn greet()
+    }
 
-        class Person implements Greetable {
-            fn greet() {
-                return "Hello";
-            }
-        }
+    class Person implements Greetable
+      def greet
+        return "Hello"
+      end
+    end
 
-        let p = new Person();
-        assert_eq(p.greet(), "Hello");
-    });
+    let p = new Person()
+    assert_eq(p.greet(), "Hello")
+  })
 
-    test("interface with multiple methods", fn() {
-        interface CRUD {
-            fn create();
-            fn read();
-            fn update(data);
-            fn delete();
-        }
+  test("interface with multiple methods", fn() {
+    interface CRUD {
+      fn create()
+      fn read()
+      fn update(data)
+      fn delete()
+    }
 
-        class SimpleStore implements CRUD {
-            data: String = "";
+    class SimpleStore implements CRUD
+      data: String = ""
 
-            fn create() {
-                this.data = "created";
-            }
+      def create
+        this.data = "created"
+      end
 
-            fn read() {
-                return this.data;
-            }
+      def read
+        return this.data
+      end
 
-            fn update(data) {
-                this.data = data;
-            }
+      def update(data)
+        this.data = data
+      end
 
-            fn delete() {
-                this.data = "";
-            }
-        }
+      def delete
+        this.data = ""
+      end
+    end
 
-        let store = new SimpleStore();
-        store.create();
-        assert_eq(store.read(), "created");
-        store.update("updated");
-        assert_eq(store.read(), "updated");
-        store.delete();
-        assert_eq(store.read(), "");
-    });
+    let store = new SimpleStore()
+    store.create()
+    assert_eq(store.read(), "created")
+    store.update("updated")
+    assert_eq(store.read(), "updated")
+    store.delete()
+    assert_eq(store.read(), "")
+  })
 
-    test("interface with typed parameters", fn() {
-        interface Calculator {
-            fn add(a, b);
-            fn multiply(a, b);
-        }
+  test("interface with typed parameters", fn() {
+    interface Calculator {
+      fn add(a, b)
+      fn multiply(a, b)
+    }
 
-        class SimpleCalc implements Calculator {
-            fn add(a, b) {
-                return a + b;
-            }
+    class SimpleCalc implements Calculator
+      def add(a, b)
+        return a + b
+      end
 
-            fn multiply(a, b) {
-                return a * b;
-            }
-        }
+      def multiply(a, b)
+        return a * b
+      end
+    end
 
-        let calc = new SimpleCalc();
-        assert_eq(calc.add(3, 4), 7);
-        assert_eq(calc.multiply(2, 5), 10);
-    });
+    let calc = new SimpleCalc()
+    assert_eq(calc.add(3, 4), 7)
+    assert_eq(calc.multiply(2, 5), 10)
+  })
 
-    test("empty interface", fn() {
-        interface Empty {
-        }
+  test("empty interface", fn() {
+    interface Empty {
+    }
 
-        class EmptyImpl implements Empty {
-        }
+    class EmptyImpl implements Empty
+    end
 
-        let e = new EmptyImpl();
-        assert_not_null(e);
-    });
-});
+    let e = new EmptyImpl()
+    assert_not_null(e)
+  })
+})
 
 describe("Interface Implementation", fn() {
-    test("class implements single interface", fn() {
-        interface Printable {
-            fn print();
-        }
+  test("class implements single interface", fn() {
+    interface Printable {
+      fn print()
+    }
 
-        class Document implements Printable {
-            content: String;
+    class Document implements Printable
+      content: String
 
-            new(content: String) {
-                this.content = content;
-            }
+      new(content: String)
+        this.content = content
+      end
 
-            fn print() {
-                return this.content;
-            }
-        }
+      def print
+        return this.content
+      end
+    end
 
-        let doc = new Document("Hello World");
-        assert_eq(doc.print(), "Hello World");
-    });
+    let doc = new Document("Hello World")
+    assert_eq(doc.print(), "Hello World")
+  })
 
-    test("class implements multiple interfaces", fn() {
-        interface Loggable {
-            fn log();
-        }
+  test("class implements multiple interfaces", fn() {
+    interface Loggable {
+      fn log()
+    }
 
-        interface Serializable {
-            fn serialize();
-        }
+    interface Serializable {
+      fn serialize()
+    }
 
-        class Data implements Loggable, Serializable {
-            value: Int;
+    class Data implements Loggable, Serializable
+      value: Int
 
-            new(value: Int) {
-                this.value = value;
-            }
+      new(value: Int)
+        this.value = value
+      end
 
-            fn log() {
-                return "Data: " + str(this.value);
-            }
+      def log
+        return "Data: " + str(this.value)
+      end
 
-            fn serialize() {
-                return "{\"value\":" + str(this.value) + "}";
-            }
-        }
+      def serialize
+        return "{\"value\":" + str(this.value) + "}"
+      end
+    end
 
-        let d = new Data(42);
-        assert_eq(d.log(), "Data: 42");
-        assert_eq(d.serialize(), "{\"value\":42}");
-    });
+    let d = new Data(42)
+    assert_eq(d.log(), "Data: 42")
+    assert_eq(d.serialize(), "{\"value\":42}")
+  })
 
-    test("class with interface and inheritance", fn() {
-        class Base {
-            base_value: Int = 10;
-        }
+  test("class with interface and inheritance", fn() {
+    class Base
+      base_value: Int = 10
+    end
 
-        interface Incrementable {
-            fn increment();
-        }
+    interface Incrementable {
+      fn increment()
+    }
 
-        class Derived extends Base implements Incrementable {
-            fn increment() {
-                this.base_value = this.base_value + 1;
-                return this.base_value;
-            }
-        }
+    class Derived < Base implements Incrementable
+      def increment
+        this.base_value = this.base_value + 1
+        return this.base_value
+      end
+    end
 
-        let d = new Derived();
-        assert_eq(d.base_value, 10);
-        assert_eq(d.increment(), 11);
-        assert_eq(d.increment(), 12);
-    });
+    let d = new Derived()
+    assert_eq(d.base_value, 10)
+    assert_eq(d.increment(), 11)
+    assert_eq(d.increment(), 12)
+  })
 
-    test("implementation order does not matter", fn() {
-        interface A {
-            fn method_a();
-        }
+  test("implementation order does not matter", fn() {
+    interface A {
+      fn method_a()
+    }
 
-        interface B {
-            fn method_b();
-        }
+    interface B {
+      fn method_b()
+    }
 
-        class AB implements A, B {
-            fn method_a() { return "A"; }
-            fn method_b() { return "B"; }
-        }
+    class AB implements A, B
+      def method_a
+        return "A"
+      end
 
-        let ab = new AB();
-        assert_eq(ab.method_a(), "A");
-        assert_eq(ab.method_b(), "B");
-    });
+      def method_b
+        return "B"
+      end
+    end
 
-    test("interface with return type", fn() {
-        interface Summable {
-            fn sum(a: Int, b: Int) -> Int;
-        }
+    let ab = new AB()
+    assert_eq(ab.method_a(), "A")
+    assert_eq(ab.method_b(), "B")
+  })
 
-        class Adder implements Summable {
-            fn sum(a: Int, b: Int) -> Int {
-                return a + b;
-            }
-        }
+  test("interface with return type", fn() {
+    interface Summable {
+      fn sum(a: Int, b: Int) -> Int
+    }
 
-        let adder = new Adder();
-        assert_eq(adder.sum(3, 4), 7);
-        assert_eq(adder.sum(10, 20), 30);
-    });
+    class Adder implements Summable
+      def sum(a: Int, b: Int) -> Int
+        return a + b
+      end
+    end
 
-    test("interface with typed parameters and return type", fn() {
-        interface Formatter {
-            fn format(name: String, age: Int) -> String;
-        }
+    let adder = new Adder()
+    assert_eq(adder.sum(3, 4), 7)
+    assert_eq(adder.sum(10, 20), 30)
+  })
 
-        class PersonFormatter implements Formatter {
-            fn format(name: String, age: Int) -> String {
-                return name + " is " + str(age) + " years old";
-            }
-        }
+  test("interface with typed parameters and return type", fn() {
+    interface Formatter {
+      fn format(name: String, age: Int) -> String
+    }
 
-        let pf = new PersonFormatter();
-        assert_eq(pf.format("Alice", 30), "Alice is 30 years old");
-        assert_eq(pf.format("Bob", 25), "Bob is 25 years old");
-    });
+    class PersonFormatter implements Formatter
+      def format(name: String, age: Int) -> String
+        return name + " is " + str(age) + " years old"
+      end
+    end
 
-    test("interface in array type annotation", fn() {
-        interface Drawable {
-            fn draw() -> String;
-        }
+    let pf = new PersonFormatter()
+    assert_eq(pf.format("Alice", 30), "Alice is 30 years old")
+    assert_eq(pf.format("Bob", 25), "Bob is 25 years old")
+  })
 
-        class Circle implements Drawable {
-            fn draw() -> String { return "Circle"; }
-        }
+  test("interface in array type annotation", fn() {
+    interface Drawable {
+      fn draw() -> String
+    }
 
-        class Square implements Drawable {
-            fn draw() -> String { return "Square"; }
-        }
+    class Circle implements Drawable
+      def draw -> String
+        return "Circle"
+      end
+    end
 
-        let shapes = [new Circle(), new Square()];
-        assert_eq(len(shapes), 2);
-        assert_eq(shapes[0].draw(), "Circle");
-        assert_eq(shapes[1].draw(), "Square");
-    });
-});
+    class Square implements Drawable
+      def draw -> String
+        return "Square"
+      end
+    end
+
+    let shapes = [new Circle(), new Square()]
+    assert_eq(len(shapes), 2)
+    assert_eq(shapes[0].draw(), "Circle")
+    assert_eq(shapes[1].draw(), "Square")
+  })
+})
 
 describe("Interface `~` Shorthand", fn() {
-    test("~ replaces `implements` for a single interface", fn() {
-        interface Greetable {
-            fn greet();
-        }
+  test("~ replaces `implements` for a single interface", fn() {
+    interface Greetable {
+      fn greet()
+    }
 
-        class Person ~ Greetable {
-            fn greet() {
-                return "Hello";
-            }
-        }
+    class Person implements Greetable
+      def greet
+        return "Hello"
+      end
+    end
 
-        let p = new Person();
-        assert_eq(p.greet(), "Hello");
-    });
+    let p = new Person()
+    assert_eq(p.greet(), "Hello")
+  })
 
-    test("~ accepts a comma-separated list", fn() {
-        interface Drawable {
-            fn draw() -> String;
-        }
-        interface Resizable {
-            fn resize(factor: Float) -> Float;
-        }
+  test("~ accepts a comma-separated list", fn() {
+    interface Drawable {
+      fn draw() -> String
+    }
+    interface Resizable {
+      fn resize(factor: Float) -> Float
+    }
 
-        class Box ~ Drawable, Resizable {
-            size: Float = 1.0;
+    class Box implements Drawable, Resizable
+      size: Float = 1.0
 
-            fn draw() -> String { return "Box"; }
-            fn resize(factor: Float) -> Float {
-                this.size = this.size * factor;
-                return this.size;
-            }
-        }
+      def draw -> String
+        return "Box"
+      end
 
-        let b = new Box();
-        assert_eq(b.draw(), "Box");
-        assert_eq(b.resize(3.0), 3.0);
-    });
+      def resize(factor: Float) -> Float
+        this.size = this.size * factor
+        return this.size
+      end
+    end
 
-    test("extends combined with ~", fn() {
-        interface Greetable {
-            fn greet();
-        }
+    let b = new Box()
+    assert_eq(b.draw(), "Box")
+    assert_eq(b.resize(3.0), 3.0)
+  })
 
-        class Animal {
-            fn breathe() -> String { return "breathing"; }
-        }
+  test("extends combined with ~", fn() {
+    interface Greetable {
+      fn greet()
+    }
 
-        class Dog extends Animal ~ Greetable {
-            fn greet() { return "woof"; }
-        }
+    class Animal
+      def breathe -> String
+        return "breathing"
+      end
+    end
 
-        let d = new Dog();
-        assert_eq(d.breathe(), "breathing");
-        assert_eq(d.greet(), "woof");
-    });
+    class Dog < Animal implements Greetable
+      def greet
+        return "woof"
+      end
+    end
 
-    test("< combined with ~", fn() {
-        interface Greetable {
-            fn greet();
-        }
+    let d = new Dog()
+    assert_eq(d.breathe(), "breathing")
+    assert_eq(d.greet(), "woof")
+  })
 
-        class Animal {
-            fn breathe() -> String { return "breathing"; }
-        }
+  test("< combined with ~", fn() {
+    interface Greetable {
+      fn greet()
+    }
 
-        class Cat < Animal ~ Greetable {
-            fn greet() { return "meow"; }
-        }
+    class Animal
+      def breathe -> String
+        return "breathing"
+      end
+    end
 
-        let c = new Cat();
-        assert_eq(c.breathe(), "breathing");
-        assert_eq(c.greet(), "meow");
-    });
-});
+    class Cat < Animal implements Greetable
+      def greet
+        return "meow"
+      end
+    end
+
+    let c = new Cat()
+    assert_eq(c.breathe(), "breathing")
+    assert_eq(c.greet(), "meow")
+  })
+})
