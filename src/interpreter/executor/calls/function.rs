@@ -1532,7 +1532,7 @@ impl Interpreter {
                 }
                 // <state>? predicate
                 if let Some(tag) = machine.states.iter().find(|t| sm::snake_case(t) == stem) {
-                    let current = self.sm_current_tag(inst, machine);
+                    let current = machine.current_tag(inst);
                     return Ok(Some(Value::Bool(current.as_deref() == Some(tag.as_str()))));
                 }
             }
@@ -1549,25 +1549,6 @@ impl Interpreter {
         Ok(None)
     }
 
-    /// Current state tag of `inst` for `machine`: the `__variant` of the enum
-    /// stored in the field, the bare stored tag string, or the machine's
-    /// `initial` when the field is unset.
-    fn sm_current_tag(
-        &self,
-        inst: &Rc<RefCell<Instance>>,
-        machine: &crate::interpreter::builtins::model::state_machine::StateMachineDef,
-    ) -> Option<String> {
-        let b = inst.borrow();
-        match b.fields.get(machine.field.as_str()) {
-            Some(Value::Instance(e)) => e.borrow().fields.get("__variant").and_then(|v| match v {
-                Value::String(s) => Some(s.to_string()),
-                _ => None,
-            }),
-            Some(Value::String(s)) => Some(s.to_string()),
-            _ => machine.initial.clone(),
-        }
-    }
-
     /// `can_<event>?` — legal from the current state and the guard (if any) passes.
     fn sm_can(
         &mut self,
@@ -1577,7 +1558,7 @@ impl Interpreter {
         span: Span,
     ) -> RuntimeResult<bool> {
         use crate::interpreter::builtins::model::state_machine as sm;
-        let Some(current) = self.sm_current_tag(inst, machine) else {
+        let Some(current) = machine.current_tag(inst) else {
             return Ok(false);
         };
         if machine.target_for(event, &current).is_none() {
@@ -1605,8 +1586,8 @@ impl Interpreter {
         use crate::interpreter::builtins::model::state_machine as sm;
 
         let class_name = inst.borrow().class.name.clone();
-        let current = self
-            .sm_current_tag(inst, machine)
+        let current = machine
+            .current_tag(inst)
             .ok_or_else(|| RuntimeError::General {
                 message: format!(
                     "{}: state field '{}' is unset and the machine has no initial state",

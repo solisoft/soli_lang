@@ -1149,21 +1149,6 @@ impl Vm {
         Ok(true)
     }
 
-    fn sm_current_tag(
-        inst: &Rc<RefCell<Instance>>,
-        machine: &crate::interpreter::builtins::model::state_machine::StateMachineDef,
-    ) -> Option<String> {
-        let b = inst.borrow();
-        match b.fields.get(machine.field.as_str()) {
-            Some(Value::Instance(e)) => e.borrow().fields.get("__variant").and_then(|v| match v {
-                Value::String(s) => Some(s.to_string()),
-                _ => None,
-            }),
-            Some(Value::String(s)) => Some(s.to_string()),
-            _ => machine.initial.clone(),
-        }
-    }
-
     /// State-machine guards and transition hooks are closures declared in the
     /// model body, so they carry a captured environment the bytecode path cannot
     /// reconstruct. Refuse so the tree-walker runs them, which is what happened
@@ -1215,7 +1200,7 @@ impl Vm {
                     }
                 }
                 if let Some(tag) = machine.states.iter().find(|t| sm::snake_case(t) == stem) {
-                    let current = Self::sm_current_tag(inst, machine);
+                    let current = machine.current_tag(inst);
                     return Ok(Some(Value::Bool(current.as_deref() == Some(tag.as_str()))));
                 }
             }
@@ -1239,7 +1224,7 @@ impl Vm {
         span: Span,
     ) -> Result<bool, RuntimeError> {
         use crate::interpreter::builtins::model::state_machine as sm;
-        let Some(current) = Self::sm_current_tag(inst, machine) else {
+        let Some(current) = machine.current_tag(inst) else {
             return Ok(false);
         };
         if machine.target_for(event, &current).is_none() {
@@ -1264,13 +1249,15 @@ impl Vm {
         use crate::interpreter::builtins::model::state_machine as sm;
 
         let class_name = inst.borrow().class.name.clone();
-        let current = Self::sm_current_tag(inst, machine).ok_or_else(|| RuntimeError::General {
-            message: format!(
-                "{}: state field '{}' is unset and the machine has no initial state",
-                class_name, machine.field
-            ),
-            span,
-        })?;
+        let current = machine
+            .current_tag(inst)
+            .ok_or_else(|| RuntimeError::General {
+                message: format!(
+                    "{}: state field '{}' is unset and the machine has no initial state",
+                    class_name, machine.field
+                ),
+                span,
+            })?;
         let to_tag = match machine.target_for(event, &current) {
             Some(t) => t.to_string(),
             None => {

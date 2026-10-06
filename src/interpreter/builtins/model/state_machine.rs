@@ -36,7 +36,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::interpreter::value::{Class, Function, HashKey, NativeFunction, Value};
+use crate::interpreter::value::{Class, Function, HashKey, Instance, NativeFunction, Value};
 
 use super::registry::{get_enum_fields, get_state_machines};
 
@@ -73,6 +73,20 @@ pub struct TransitionDef {
 }
 
 impl StateMachineDef {
+    /// The state `inst` is in: its enum field's variant (or a plain string),
+    /// or the machine's initial state while the field is unset.
+    pub fn current_tag(&self, inst: &Rc<RefCell<Instance>>) -> Option<String> {
+        let b = inst.borrow();
+        match b.fields.get(self.field.as_str()) {
+            Some(Value::Instance(e)) => e.borrow().fields.get("__variant").and_then(|v| match v {
+                Value::String(s) => Some(s.to_string()),
+                _ => None,
+            }),
+            Some(Value::String(s)) => Some(s.to_string()),
+            _ => self.initial.clone(),
+        }
+    }
+
     pub fn event(&self, name: &str) -> Option<&EventDef> {
         self.events.iter().find(|e| e.name == name)
     }
