@@ -75,13 +75,22 @@ pub fn register_html_builtins(env: &mut Environment) {
     );
 }
 
-/// Escape HTML special characters.
+/// Escape HTML special characters (`'` as `&#39;`): Soli's `html_escape()`,
+/// and the server's own HTML pages (error pages, dev bar, coverage report).
+/// Templates use `template::renderer::html_escape`, which writes `&#x27;`.
 pub fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 /// Encode every non-ASCII char as an HTML numeric entity ("é" -> "&#233;").

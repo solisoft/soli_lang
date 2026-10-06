@@ -1,4 +1,5 @@
 use crate::coverage::data::*;
+use crate::interpreter::builtins::html::html_escape as escape_html;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -702,21 +703,6 @@ fn wrap_inter_token(s: &str) -> String {
     } else {
         escape_html(s)
     }
-}
-
-fn escape_html(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }
 
 fn token_class(kind: &crate::lexer::token::TokenKind) -> &'static str {

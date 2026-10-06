@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::interpreter::builtins::html::html_escape as escape_html;
 use crate::interpreter::Interpreter;
 
 use super::RequestData;
@@ -857,14 +858,6 @@ fn extract_controller_name(path: &str) -> String {
         .and_then(|s| s.to_str())
         .unwrap_or("unknown")
         .to_string()
-}
-
-fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
 }
 
 fn escape_for_script_tag(s: &str) -> String {

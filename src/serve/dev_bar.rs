@@ -9,6 +9,7 @@
 //! The rendered HTML is fully self-contained — no external CSS/JS — so it
 //! works on every Soli project without any template change.
 
+pub(crate) use crate::interpreter::builtins::html::html_escape;
 use crate::interpreter::builtins::http_log::LoggedHttpRequest;
 use crate::interpreter::builtins::kv_log::LoggedKvCall;
 use crate::interpreter::builtins::model::query_log::LoggedQuery;
@@ -1515,21 +1516,6 @@ fn embed_binds(
         result = result.replace(&format!("@{}", k), &repl);
     }
     result
-}
-
-pub(crate) fn html_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }
 
 #[cfg(test)]
