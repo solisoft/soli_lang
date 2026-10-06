@@ -128,7 +128,7 @@ pub(crate) fn render_walker(
                         .map_err(|e| format!("Evaluation error: {}", e))?;
                     // Auto-call methods so `<% if items.empty? %>` works without parens
                     let cond_value = auto_call_if_callable(interpreter, cond_value)?;
-                    if is_truthy(&cond_value) {
+                    if cond_value.is_truthy() {
                         render_walker(
                             interpreter,
                             body,
@@ -633,20 +633,6 @@ fn auto_call_if_callable(interpreter: &mut Interpreter, value: Value) -> Result<
     Ok(value)
 }
 
-/// Check if a value is truthy
-#[inline]
-fn is_truthy(value: &Value) -> bool {
-    match value {
-        Value::Bool(b) => *b,
-        Value::Null => false,
-        Value::Int(0) => false,
-        Value::String(s) if s.is_empty() => false,
-        Value::Array(arr) if arr.borrow().is_empty() => false,
-        Value::Hash(hash) if hash.borrow().is_empty() => false,
-        _ => true,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -716,6 +702,19 @@ mod tests {
         let nodes = parse_template("<% for post in posts %><%= post %><% end %>").unwrap();
         let data = make_hash(vec![("posts", deferred)]);
         assert_eq!(render_nodes(&nodes, &data, None).unwrap(), "ab");
+    }
+
+    #[test]
+    fn if_tests_a_grouped_deferred_by_its_rows() {
+        // `<% if %>` uses `Value::is_truthy`, which resolves a Deferred: an
+        // empty `grouped` result is falsy, as it is in Soli code.
+        let Ok(nodes) = parse_template("<% if posts %>some<% else %>none<% end %>") else {
+            panic!("template should parse");
+        };
+        let empty = make_hash(vec![("posts", resolved_deferred(vec![]))]);
+        assert_eq!(render_nodes(&nodes, &empty, None), Ok("none".to_string()));
+        let full = make_hash(vec![("posts", resolved_deferred(vec![Value::Int(1)]))]);
+        assert_eq!(render_nodes(&nodes, &full, None), Ok("some".to_string()));
     }
 
     #[test]
