@@ -1,184 +1,226 @@
-# ============================================================================
-# AQL injection guard on field-name arguments
-#
-# Every Model.* method that `format!`-interpolates a field name into an
-# AQL template now validates the name against
-# [A-Za-z_][A-Za-z0-9_]*. Anything else raises before the query is built,
-# so a controller passing `req["params"]["field"]` straight through can't
-# inject AQL syntax (semicolons, dots, parens, RETURN/REMOVE clauses…).
-# ============================================================================
+# AQL injection guard on field-name arguments. Every Model method that
+# interpolates a field name into a query validates it against
+# [A-Za-z_][A-Za-z0-9_]* and raises before the query is built, so a
+# controller passing request params straight through cannot inject SDBQL.
 
 class FieldGuardItem < Model
 end
 
-def assert_throws(label, body)
-  let threw = false
-  try
-    body()
-  catch e
-    threw = true
+const WORD_CHARS_ONLY = "field name may only contain letters, digits, and underscores"
+const ASC_OR_DESC = "direction must be one of asc/desc/ascending/descending"
+
+describe("Field-name validator — find_by / first_by / find_or_create_by") do
+  test("rejects a name with a space") do
+    assert_raises("find_by() #{WORD_CHARS_ONLY} — got \"name ; REMOVE\"") do
+      FieldGuardItem.find_by("name ; REMOVE", "x")
+    end
   end
-  assert(threw)
+
+  test("rejects a name with a quote") do
+    assert_raises("first_by() #{WORD_CHARS_ONLY}") do
+      FieldGuardItem.first_by("name'", "x")
+    end
+  end
+
+  test("rejects a name with a dot (defense-in-depth)") do
+    assert_raises("find_or_create_by() #{WORD_CHARS_ONLY}") do
+      FieldGuardItem.find_or_create_by("user.email", "x", {})
+    end
+  end
+
+  test("rejects an empty name") do
+    assert_raises("find_by() field name must start with a letter or underscore — got \"\"") do
+      FieldGuardItem.find_by("", "x")
+    end
+  end
+
+  test("rejects a name that starts with a digit") do
+    assert_raises("find_by() field name must start with a letter or underscore — got \"1col\"") do
+      FieldGuardItem.find_by("1col", "x")
+    end
+  end
 end
 
-describe("Field-name validator — find_by / first_by / find_or_create_by", fn() {
-  test("rejects a name with a space", fn() {
-    assert_throws("find_by space", fn() { FieldGuardItem.find_by("name ; REMOVE", "x") })
-  })
+describe("Field-name validator — order / select / pluck / aggregations / group_by") do
+  test("order rejects parens") do
+    assert_raises("order() #{WORD_CHARS_ONLY}") do
+      FieldGuardItem.order("name); REMOVE doc")
+    end
+  end
 
-  test("rejects a name with a quote", fn() {
-    assert_throws("first_by quote", fn() { FieldGuardItem.first_by("name'", "x") })
-  })
+  test("select rejects spaces") do
+    assert_raises("select() #{WORD_CHARS_ONLY}") do
+      FieldGuardItem.select("a b")
+    end
+  end
 
-  test("rejects a name with a dot (defense-in-depth)", fn() {
-    assert_throws("find_or_create_by dot", fn() { FieldGuardItem.find_or_create_by("user.email", "x", {}) })
-  })
+  test("pluck rejects semicolons") do
+    assert_raises("pluck() #{WORD_CHARS_ONLY}") do
+      FieldGuardItem.pluck("a;b")
+    end
+  end
 
-  test("rejects an empty name", fn() { assert_throws("find_by empty", fn() { FieldGuardItem.find_by("", "x") }) })
+  test("sum rejects dashes") do
+    assert_raises("sum() #{WORD_CHARS_ONLY}") do
+      FieldGuardItem.sum("a-b")
+    end
+  end
 
-  test("rejects a name that starts with a digit", fn() {
-    assert_throws("find_by digit-first", fn() { FieldGuardItem.find_by("1col", "x") })
-  })
-})
+  test("group_by rejects an injected agg field") do
+    assert_raises("group_by() #{WORD_CHARS_ONLY} — got \"amount; REMOVE doc\"") do
+      FieldGuardItem.group_by("status", "sum", "amount; REMOVE doc")
+    end
+  end
 
-describe("Field-name validator — order / select / pluck / aggregations / group_by", fn() {
-  test("order rejects parens", fn() {
-    assert_throws("order parens", fn() { FieldGuardItem.order("name); REMOVE doc") })
-  })
+  test("group_by rejects an injected group field") do
+    assert_raises("group_by() #{WORD_CHARS_ONLY} — got \"status; REMOVE doc\"") do
+      FieldGuardItem.group_by("status; REMOVE doc", "sum", "amount")
+    end
+  end
+end
 
-  test("select rejects spaces", fn() { assert_throws("select space", fn() { FieldGuardItem.select("a b") }) })
+describe("Field-name validator — well-formed names still work") do
+  test("snake_case and underscore-led names pass") do
+    assert_eq(
+      FieldGuardItem.select("user_id", "_internal", "x9").to_query,
+      "FOR doc IN field_guard_items RETURN {user_id: doc.user_id, _internal: doc._internal, x9: doc.x9, _key: doc._key}"
+    )
+  end
 
-  test("pluck rejects semicolons", fn() { assert_throws("pluck semi", fn() { FieldGuardItem.pluck("a;b") }) })
+  test("PascalCase passes") do
+    assert_eq(FieldGuardItem.pluck("UserId").to_query, "FOR doc IN field_guard_items RETURN doc.UserId")
+  end
+end
 
-  test("sum rejects dashes", fn() { assert_throws("sum dash", fn() { FieldGuardItem.sum("a-b") }) })
+# SEC-004a: the order direction is restricted to asc/desc/ascending/descending,
+# case-insensitively — on the static entry and on the chain form.
+describe("Order direction validator — Model.order entry") do
+  test("rejects an injected direction") do
+    assert_raises("order() #{ASC_OR_DESC} — got \"ASC; REMOVE doc IN x\"") do
+      FieldGuardItem.order("name", "ASC; REMOVE doc IN x")
+    end
+  end
 
-  test("group_by rejects an injected agg field", fn() {
-    assert_throws("group_by agg", fn() { FieldGuardItem.group_by("status", "sum", "amount; REMOVE doc") })
-  })
+  test("rejects an arbitrary unknown direction") do
+    assert_raises("order() #{ASC_OR_DESC} — got \"sideways\"") do
+      FieldGuardItem.order("name", "sideways")
+    end
+  end
 
-  test("group_by rejects an injected group field", fn() {
-    assert_throws("group_by group", fn() { FieldGuardItem.group_by("status; REMOVE doc", "sum", "amount") })
-  })
-})
+  test("accepts asc/desc in any case and the long forms") do
+    assert_eq(FieldGuardItem.order("name", "asc").to_query, "FOR doc IN field_guard_items SORT doc.name ASC RETURN doc")
+    assert_eq(
+      FieldGuardItem.order("name", "DESC").to_query,
+      "FOR doc IN field_guard_items SORT doc.name DESC RETURN doc"
+    )
+    assert_eq(
+      FieldGuardItem.order("name", "Ascending").to_query,
+      "FOR doc IN field_guard_items SORT doc.name ASC RETURN doc"
+    )
+    assert_eq(
+      FieldGuardItem.order("name", "descending").to_query,
+      "FOR doc IN field_guard_items SORT doc.name DESC RETURN doc"
+    )
+  end
 
-describe("Field-name validator — well-formed names still work", fn() {
-  test("snake_case names pass", fn() {
-    # These build a QueryBuilder; we don't run the query (no DB), but the
-    # validator must not raise. Using `select` because it returns
-    # synchronously without executing.
-    let qb = FieldGuardItem.select("user_id", "_internal", "x9")
-    assert(!qb.nil?)
-  })
+  test("defaults to ascending") do
+    assert_eq(FieldGuardItem.order("name").to_query, "FOR doc IN field_guard_items SORT doc.name ASC RETURN doc")
+  end
+end
 
-  test("PascalCase passes", fn() {
-    let qb = FieldGuardItem.pluck("UserId")
-    assert(!qb.nil?)
-  })
-})
+describe("Order direction validator — QueryBuilder.order chain") do
+  test("rejects an injected direction in the chain form") do
+    assert_raises("order() #{ASC_OR_DESC} — got \"; REMOVE doc\"") do
+      FieldGuardItem.order("name").order("name", "; REMOVE doc")
+    end
+  end
+end
 
-# ============================================================================
-# SEC-004a: Model.order direction argument is also restricted to
-# asc/desc/ascending/descending. Same guard applies to the chain form
-# `Model.where(...).order(field, dir)`.
-# ============================================================================
-
-describe("Order direction validator — Model.order entry", fn() {
-  test("rejects an injected direction", fn() {
-    assert_throws("order injected dir", fn() { FieldGuardItem.order("name", "ASC; REMOVE doc IN x") })
-  })
-
-  test("rejects an arbitrary unknown direction", fn() {
-    assert_throws("order weird dir", fn() { FieldGuardItem.order("name", "sideways") })
-  })
-
-  test("accepts asc/desc/ASC/DESC and the long forms", fn() {
-    assert(!FieldGuardItem.order("name", "asc").nil?)
-    assert(!FieldGuardItem.order("name", "DESC").nil?)
-    assert(!FieldGuardItem.order("name", "Ascending").nil?)
-    assert(!FieldGuardItem.order("name", "descending").nil?)
-  })
-})
-
-describe("Order direction validator — QueryBuilder.order chain", fn() {
-  test("rejects an injected direction in the chain form", fn() {
-    assert_throws("qb.order injected dir", fn() { FieldGuardItem.order("name").order("name", "; REMOVE doc") })
-  })
-})
-
-# ============================================================================
-# SEC-004b: the chain form `Model.where(...).order(field, dir)` shares the
-# SORT-clause sink with the static `Model.order` entry, so the field-name
-# validator from SEC-004 must apply on the chain side too.
-# ============================================================================
-
-describe("Field-name validator — QueryBuilder.order chain (SEC-004b)", fn() {
-  test("rejects an injected field name in the chain form", fn() {
-    assert_throws("qb.order injected field", fn() {
+# SEC-004b: the chain form `Model.where(...).order(field, dir)` shares the SORT
+# sink with the static `Model.order`, so the field-name check applies there too.
+describe("Field-name validator — QueryBuilder.order chain (SEC-004b)") do
+  test("rejects an injected field name in the chain form") do
+    assert_raises("order() #{WORD_CHARS_ONLY}") do
       FieldGuardItem.order("name").order("name; REMOVE doc IN x", "asc")
-    })
-  })
+    end
+  end
 
-  test("rejects a dotted field name in the chain form", fn() {
-    assert_throws("qb.order dotted field", fn() { FieldGuardItem.order("name").order("user.email", "asc") })
-  })
+  test("rejects a dotted field name in the chain form") do
+    assert_raises("order() #{WORD_CHARS_ONLY} — got \"user.email\"") do
+      FieldGuardItem.order("name").order("user.email", "asc")
+    end
+  end
 
-  test("accepts a well-formed field name in the chain form", fn() {
-    let qb = FieldGuardItem.order("name").order("created_at", "desc")
-    assert(!qb.nil?)
-  })
-})
+  test("accepts a well-formed field name in the chain form") do
+    assert_eq(
+      FieldGuardItem.order("name").order("created_at", "desc").to_query,
+      "FOR doc IN field_guard_items SORT doc.created_at DESC RETURN doc"
+    )
+  end
+end
 
-# ============================================================================
-# SEC-004c: the remaining QueryBuilder chain methods that take field names
-# (select/pluck/aggregate/group_by) share AQL sinks with the static
-# counterparts, so the same validator must apply on the chain side too.
-# ============================================================================
+# SEC-004c: the other chain methods that take field names
+# (select/pluck/aggregate/group_by) share sinks with their static
+# counterparts, so the same validator applies on the chain side.
+describe("Field-name validator — QueryBuilder.select chain (SEC-004c)") do
+  test("rejects an injected field name in the chain form") do
+    assert_raises("select() #{WORD_CHARS_ONLY}") do
+      FieldGuardItem.order("name").select("name; REMOVE doc")
+    end
+  end
 
-describe("Field-name validator — QueryBuilder.select chain (SEC-004c)", fn() {
-  test("rejects an injected field name in the chain form", fn() {
-    assert_throws("qb.select injected", fn() { FieldGuardItem.order("name").select("name; REMOVE doc") })
-  })
+  test("accepts a well-formed name in the chain form") do
+    assert_eq(
+      FieldGuardItem.order("name").select("user_id", "email").to_query,
+      "FOR doc IN field_guard_items SORT doc.name ASC RETURN {user_id: doc.user_id, email: doc.email, _key: doc._key}"
+    )
+  end
+end
 
-  test("accepts a well-formed name in the chain form", fn() {
-    let qb = FieldGuardItem.order("name").select("user_id", "email")
-    assert(!qb.nil?)
-  })
-})
+describe("Field-name validator — QueryBuilder.pluck chain (SEC-004c)") do
+  test("rejects an injected field name in the chain form") do
+    assert_raises("pluck() #{WORD_CHARS_ONLY}") do
+      FieldGuardItem.order("name").pluck("a; REMOVE doc IN x")
+    end
+  end
+end
 
-describe("Field-name validator — QueryBuilder.pluck chain (SEC-004c)", fn() {
-  test("rejects an injected field name in the chain form", fn() {
-    assert_throws("qb.pluck injected", fn() { FieldGuardItem.order("name").pluck("a; REMOVE doc IN x") })
-  })
-})
+describe("Field-name validator — QueryBuilder.{sum,avg,min,max} chain (SEC-004c)") do
+  test("sum rejects an injected field") do
+    assert_raises("aggregate() #{WORD_CHARS_ONLY}") do
+      FieldGuardItem.order("name").sum("amount; REMOVE doc")
+    end
+  end
 
-describe("Field-name validator — QueryBuilder.{sum,avg,min,max} chain (SEC-004c)", fn() {
-  test("sum rejects an injected field", fn() {
-    assert_throws("qb.sum injected", fn() { FieldGuardItem.order("name").sum("amount; REMOVE doc") })
-  })
+  test("avg rejects an injected field") do
+    assert_raises("aggregate() #{WORD_CHARS_ONLY} — got \"a-b\"") do
+      FieldGuardItem.order("name").avg("a-b")
+    end
+  end
 
-  test("avg rejects an injected field", fn() {
-    assert_throws("qb.avg injected", fn() { FieldGuardItem.order("name").avg("a-b") })
-  })
+  test("min rejects an injected field") do
+    assert_raises("aggregate() #{WORD_CHARS_ONLY} — got \"a b\"") do
+      FieldGuardItem.order("name").min("a b")
+    end
+  end
 
-  test("min rejects an injected field", fn() {
-    assert_throws("qb.min injected", fn() { FieldGuardItem.order("name").min("a b") })
-  })
+  test("max rejects an injected field") do
+    assert_raises("aggregate() #{WORD_CHARS_ONLY} — got \"a)\"") do
+      FieldGuardItem.order("name").max("a)")
+    end
+  end
+end
 
-  test("max rejects an injected field", fn() {
-    assert_throws("qb.max injected", fn() { FieldGuardItem.order("name").max("a)") })
-  })
-})
-
-describe("Field-name validator — QueryBuilder.group_by chain (SEC-004c)", fn() {
-  test("rejects an injected group field in the chain form", fn() {
-    assert_throws("qb.group_by group injected", fn() {
+describe("Field-name validator — QueryBuilder.group_by chain (SEC-004c)") do
+  test("rejects an injected group field in the chain form") do
+    assert_raises("group_by() #{WORD_CHARS_ONLY} — got \"status; REMOVE doc\"") do
       FieldGuardItem.order("name").group_by("status; REMOVE doc", "sum", "amount")
-    })
-  })
+    end
+  end
 
-  test("rejects an injected agg field in the chain form", fn() {
-    assert_throws("qb.group_by agg injected", fn() {
+  test("rejects an injected agg field in the chain form") do
+    assert_raises("group_by() #{WORD_CHARS_ONLY} — got \"amount; REMOVE doc\"") do
       FieldGuardItem.order("name").group_by("status", "sum", "amount; REMOVE doc")
-    })
-  })
-})
+    end
+  end
+end

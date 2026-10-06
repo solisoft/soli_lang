@@ -1,10 +1,6 @@
-# ============================================================================
-# has_many chainable / Enumerable behavior
-# ----------------------------------------------------------------------------
-# Verifies that `instance.<has_many_relation>` returns a QueryBuilder rather
-# than a plain Array, so callers can chain Rails-style terminal operations
-# (delete_all, count, where, ...) and still iterate / index it like an array.
-# ============================================================================
+# has_many returns a chainable QueryBuilder, not a plain Array: callers chain
+# Rails-style terminals (delete_all, count, where, update_all, ...) and can
+# still iterate and index it like an array.
 
 class HmAuthor < Model
   has_many("hm_books")
@@ -14,199 +10,158 @@ class HmBook < Model
   belongs_to("hm_author")
 end
 
-# ----- DB availability probe (mirrors model_instances_spec.sl) ---------------
-let __db_available = false
-try
-  let __probe = HmAuthor.create({"name": "__probe__"})
-  if !__probe.nil? && !__probe._errors
-    __db_available = true
-    __probe.delete()
+def add_books(author, titles)
+  titles.each do |title|
+    HmBook.create({"title": title, "hm_author_id": author._key})
   end
-catch e
 end
 
-# ----------------------------------------------------------------------------
-# No-DB tests: just verify the relation accessor returns a QueryBuilder with
-# the right pre-applied FK filter — no rows are fetched.
-# ----------------------------------------------------------------------------
+# No rows are fetched: an unsaved owner's relation is a QueryBuilder whose
+# seed filter can never match.
+describe("has_many returns a chainable QueryBuilder (no DB)") do
+  test("class is query_builder, not array") do
+    assert_eq(HmAuthor.new().hm_books.class, "query_builder")
+  end
 
-describe("has_many returns chainable QueryBuilder (no DB)", fn() {
-  test("class is query_builder, not array", fn() {
-    let unsaved = HmAuthor.new()
-    # Unsaved owners still produce a QueryBuilder (one that yields no
-    # rows, so iteration / count / delete_all are all safe no-ops).
-    assert_eq(unsaved.hm_books.class, "query_builder")
-  })
+  test("an unsaved owner yields an always-empty filter") do
+    assert_eq(HmAuthor.new().hm_books.to_query, "FOR doc IN hm_books FILTER 1 == 0 RETURN doc")
+  end
 
-  test("unsaved owner yields an always-empty filter", fn() {
-    let unsaved = HmAuthor.new()
-    let q = unsaved.hm_books.to_query
-    # Sentinel filter: never matches a real document.
-    assert(q.contains("FILTER 1 == 0"))
-  })
+  test("where chaining ANDs onto the seed filter") do
+    query = HmAuthor.new().hm_books.where("title = @t", {"t": "x"}).to_query
 
-  test("where chaining ANDs onto the FK filter", fn() {
-    let unsaved = HmAuthor.new()
-    let q = unsaved.hm_books.where("title = @t", {"t": "x"}).to_query
-    # The seed filter and user filter are both present.
-    assert(q.contains("1 == 0"))
-    assert(q.contains("doc.title == @t"))
-  })
+    assert_contains(query, "FILTER (1 == 0) AND (doc.title == @t) RETURN doc")
+  end
 
-  test("update_all on an unsaved owner is a safe no-op", fn() {
-    let unsaved = HmAuthor.new()
-    # Always-empty filter → matches nothing → no rows touched, no throw.
-    assert_null(unsaved.hm_books.update_all({"title": "x"}))
-  })
-})
+  test("update_all on an unsaved owner is a safe no-op") do
+    assert_null(HmAuthor.new().hm_books.update_all({"title": "x"}))
+  end
+end
 
-# ----------------------------------------------------------------------------
-# DB-backed tests: cover iteration, indexing, count, delete_all, and chained
-# where(...).delete_all on a real has_many association.
-# ----------------------------------------------------------------------------
+describe("has_many chainable (DB)") do
+  before_each() do
+    requires_solidb()
+  end
 
-describe("has_many chainable (DB)", fn() {
-  before_each(fn() { requires_solidb() })
+  after_each() do
+    HmBook.delete_all()
+    HmAuthor.delete_all()
+  end
 
-  test("count reflects child rows", fn() {
-    let author = HmAuthor.create({"name": "Octavia"})
-    HmBook.create({"title": "B1", "hm_author_id": author._key})
-    HmBook.create({"title": "B2", "hm_author_id": author._key})
-    HmBook.create({"title": "B3", "hm_author_id": author._key})
+  test("a saved owner filters on its foreign key") do
+    author = HmAuthor.create({"name": "Octavia"})
+
+    assert_contains(author.hm_books.to_query, "FILTER doc.hm_author_id == @__rel_fk RETURN doc")
+  end
+
+  test("count reflects child rows") do
+    author = HmAuthor.create({"name": "Octavia"})
+    add_books(author, ["B1", "B2", "B3"])
 
     assert_eq(author.hm_books.count, 3)
+  end
 
-    author.hm_books.delete_all
-    author.delete()
-  })
+  test("count is 0 for an owner without children") do
+    author = HmAuthor.create({"name": "Childless"})
 
-  test("len() works on the relation accessor", fn() {
-    let author = HmAuthor.create({"name": "Ursula"})
-    HmBook.create({"title": "L1", "hm_author_id": author._key})
-    HmBook.create({"title": "L2", "hm_author_id": author._key})
+    assert_eq(author.hm_books.count, 0)
+    assert_eq(len(author.hm_books), 0)
+  end
+
+  test("len() works on the relation accessor") do
+    author = HmAuthor.create({"name": "Ursula"})
+    add_books(author, ["L1", "L2"])
 
     assert_eq(len(author.hm_books), 2)
+  end
 
-    author.hm_books.delete_all
-    author.delete()
-  })
+  test("for-loop iterates the relation") do
+    author = HmAuthor.create({"name": "Iain"})
+    add_books(author, ["Loop1", "Loop2"])
 
-  test("for-loop iterates the relation", fn() {
-    let author = HmAuthor.create({"name": "Iain"})
-    HmBook.create({"title": "Loop1", "hm_author_id": author._key})
-    HmBook.create({"title": "Loop2", "hm_author_id": author._key})
-
-    let count = 0
+    titles = []
     for book in author.hm_books
       assert(book.is_a?("HmBook"))
-      count = count + 1
+      titles.push(book.title)
     end
-    assert_eq(count, 2)
 
-    author.hm_books.delete_all
-    author.delete()
-  })
+    assert_eq(titles.sort(), ["Loop1", "Loop2"])
+  end
 
-  test("indexing with [n] materializes and returns an instance", fn() {
-    let author = HmAuthor.create({"name": "Indexable"})
-    HmBook.create({"title": "Idx0", "hm_author_id": author._key})
+  test("indexing with [n] materializes and returns an instance") do
+    author = HmAuthor.create({"name": "Indexable"})
+    add_books(author, ["Idx0"])
 
-    let first = author.hm_books[0]
-    assert_not_null(first)
+    first = author.hm_books[0]
+
     assert(first.is_a?("HmBook"))
+    assert_eq(first.title, "Idx0")
+  end
 
-    author.hm_books.delete_all
-    author.delete()
-  })
-
-  test("delete_all removes only this owner's children", fn() {
-    let kept = HmAuthor.create({"name": "Kept"})
-    let dropped = HmAuthor.create({"name": "Dropped"})
-    HmBook.create({"title": "Keep", "hm_author_id": kept._key})
-    HmBook.create({"title": "Gone1", "hm_author_id": dropped._key})
-    HmBook.create({"title": "Gone2", "hm_author_id": dropped._key})
+  test("delete_all removes only this owner's children") do
+    kept = HmAuthor.create({"name": "Kept"})
+    dropped = HmAuthor.create({"name": "Dropped"})
+    add_books(kept, ["Keep"])
+    add_books(dropped, ["Gone1", "Gone2"])
 
     dropped.hm_books.delete_all
 
     assert_eq(kept.hm_books.count, 1)
     assert_eq(dropped.hm_books.count, 0)
+  end
 
-    kept.hm_books.delete_all
-    kept.delete()
-    dropped.delete()
-  })
-
-  test("where(...).delete_all only deletes matching children", fn() {
-    let author = HmAuthor.create({"name": "Selective"})
-    HmBook.create({"title": "alpha", "hm_author_id": author._key})
-    HmBook.create({"title": "beta", "hm_author_id": author._key})
-    HmBook.create({"title": "alpha", "hm_author_id": author._key})
+  test("where(...).delete_all only deletes matching children") do
+    author = HmAuthor.create({"name": "Selective"})
+    add_books(author, ["alpha", "beta", "alpha"])
 
     author.hm_books.where("title = @t", {"t": "alpha"}).delete_all
 
     assert_eq(author.hm_books.count, 1)
-    let remaining = author.hm_books[0]
-    assert_eq(remaining.title, "beta")
+    assert_eq(author.hm_books[0].title, "beta")
+  end
 
-    author.hm_books.delete_all
-    author.delete()
-  })
-
-  test("where(...).update_all patches only matching children", fn() {
-    let author = HmAuthor.create({"name": "Patcher"})
-    HmBook.create({"title": "draft", "hm_author_id": author._key})
-    HmBook.create({"title": "draft", "hm_author_id": author._key})
-    HmBook.create({"title": "published", "hm_author_id": author._key})
+  test("where(...).update_all patches only matching children") do
+    author = HmAuthor.create({"name": "Patcher"})
+    add_books(author, ["draft", "draft", "published"])
 
     author.hm_books.where("title = @t", {"t": "draft"}).update_all({"title": "archived"})
 
     assert_eq(author.hm_books.where("title = @t", {"t": "archived"}).count, 2)
     assert_eq(author.hm_books.where("title = @t", {"t": "published"}).count, 1)
     assert_eq(author.hm_books.where("title = @t", {"t": "draft"}).count, 0)
+  end
 
-    author.hm_books.delete_all
-    author.delete()
-  })
-
-  test("update_all scopes to this owner's children only", fn() {
-    let kept = HmAuthor.create({"name": "KeptOwner"})
-    let touched = HmAuthor.create({"name": "TouchedOwner"})
-    HmBook.create({"title": "orig", "hm_author_id": kept._key})
-    HmBook.create({"title": "orig", "hm_author_id": touched._key})
+  test("update_all scopes to this owner's children only") do
+    kept = HmAuthor.create({"name": "KeptOwner"})
+    touched = HmAuthor.create({"name": "TouchedOwner"})
+    add_books(kept, ["orig"])
+    add_books(touched, ["orig"])
 
     touched.hm_books.update_all({"title": "renamed"})
 
     assert_eq(kept.hm_books.where("title = @t", {"t": "orig"}).count, 1)
     assert_eq(touched.hm_books.where("title = @t", {"t": "renamed"}).count, 1)
+  end
 
-    kept.hm_books.delete_all
-    touched.hm_books.delete_all
-    kept.delete()
-    touched.delete()
-  })
+  test("each iterates with a block") do
+    author = HmAuthor.create({"name": "Each"})
+    add_books(author, ["E1", "E2"])
 
-  test("each iterates with a block", fn() {
-    let author = HmAuthor.create({"name": "Each"})
-    HmBook.create({"title": "E1", "hm_author_id": author._key})
-    HmBook.create({"title": "E2", "hm_author_id": author._key})
+    titles = []
+    author.hm_books.each do |book|
+      titles.push(book.title)
+    end
 
-    let titles = []
-    author.hm_books.each(fn(b) { titles.push(b.title) })
-    assert_eq(len(titles), 2)
+    assert_eq(titles.sort(), ["E1", "E2"])
+  end
 
-    author.hm_books.delete_all
-    author.delete()
-  })
+  test("map returns an array") do
+    author = HmAuthor.create({"name": "Map"})
+    add_books(author, ["M1", "M2"])
 
-  test("map returns an array", fn() {
-    let author = HmAuthor.create({"name": "Map"})
-    HmBook.create({"title": "M1", "hm_author_id": author._key})
-    HmBook.create({"title": "M2", "hm_author_id": author._key})
+    titles = author.hm_books.map { |book| book.title }
 
-    let titles = author.hm_books.map(fn(b) { b.title })
-    assert_eq(len(titles), 2)
-
-    author.hm_books.delete_all
-    author.delete()
-  })
-})
+    assert_eq(type(titles), "array")
+    assert_eq(titles.sort(), ["M1", "M2"])
+  end
+end

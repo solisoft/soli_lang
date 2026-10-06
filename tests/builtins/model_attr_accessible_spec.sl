@@ -1,11 +1,7 @@
-# ============================================================================
-# attr_accessible / mass-assignment protection
-#
-# Verifies that `attr_accessible(...)` filters hash arguments to the
-# declared whitelist *before* they reach the in-memory instance (and
-# before the DB write). The filter is checked through the in-memory side
-# effects so the tests do not need a live DB.
-# ============================================================================
+# attr_accessible — mass-assignment protection. A declared whitelist filters
+# the hash given to every mass-assign path (create, save(hash), update(hash),
+# Model.update, upsert, create_many, find_or_create_by) before validation and
+# before the write; direct field assignment stays unfiltered.
 
 class WhitelistedPost < Model
   attr_accessible("title", "body")
@@ -22,114 +18,132 @@ end
 class LegacyPost < Model
 end
 
-describe("attr_accessible — variadic form", fn() {
-  test("drops non-whitelisted keys before assignment", fn() {
-    let post = WhitelistedPost.new()
-    post.save({
-      "title": "Hi",
-      "body": "Body",
-      "role": "admin"
-    }) rescue null
-    assert_eq(post.title, "Hi")
-    assert_eq(post.body, "Body")
-    assert_null(post.role)
-  })
+describe("attr_accessible") do
+  before_each() do
+    requires_solidb()
+  end
 
-  test("keeps every whitelisted key when present", fn() {
-    let post = WhitelistedPost.new()
-    post.save({"title": "Hi", "body": "B"}) rescue null
-    assert_eq(post.title, "Hi")
-    assert_eq(post.body, "B")
-  })
-})
+  after_each() do
+    WhitelistedPost.delete_all()
+    WhitelistedPostArray.delete_all()
+    LockedPost.delete_all()
+    LegacyPost.delete_all()
+  end
 
-describe("attr_accessible — array form", fn() {
-  test("array argument is equivalent to variadic", fn() {
-    let post = WhitelistedPostArray.new()
-    post.save({
-      "title": "Hi",
-      "body": "B",
-      "role": "admin"
-    }) rescue null
-    assert_eq(post.title, "Hi")
-    assert_eq(post.body, "B")
-    assert_null(post.role)
-  })
-})
+  describe("on Model.create") do
+    test("the variadic form drops non-whitelisted keys") do
+      post = WhitelistedPost.create({"title": "Hi", "body": "Body", "role": "admin"})
+      stored = WhitelistedPost.find(post._key)
 
-describe("attr_accessible — empty list (lock-down)", fn() {
-  test("empty whitelist drops every key", fn() {
-    let post = LockedPost.new()
-    post.save({"title": "x", "role": "admin"}) rescue null
-    assert_null(post.title)
-    assert_null(post.role)
-  })
-})
+      assert_eq(post.title, "Hi")
+      assert_null(post.role)
+      assert_eq(stored.title, "Hi")
+      assert_eq(stored.body, "Body")
+      assert_null(stored.role)
+    end
 
-describe("attr_accessible — undeclared (back-compat)", fn() {
-  test("model without attr_accessible accepts every key", fn() {
-    let post = LegacyPost.new()
-    post.save({"title": "x", "anything": "y"}) rescue null
-    assert_eq(post.title, "x")
-    assert_eq(post.anything, "y")
-  })
-})
+    test("the array form is equivalent to the variadic one") do
+      post = WhitelistedPostArray.create({"title": "Hi", "body": "B", "role": "admin"})
+      stored = WhitelistedPostArray.find(post._key)
 
-describe("attr_accessible — instance.update(hash)", fn() {
-  test("filters update arguments too", fn() {
-    let post = WhitelistedPost.new()
-    post.title = "original"
-    # update will fail (no _key) but the hash filter runs first.
-    post.update({"body": "new", "role": "admin"}) rescue null
-    assert_eq(post.body, "new")
-    assert_null(post.role)
-  })
-})
+      assert_eq(stored.title, "Hi")
+      assert_eq(stored.body, "B")
+      assert_null(stored.role)
+    end
 
-# ============================================================================
-# The vulnerability covered every public mass-assign API. These specs guard
-# the alternate write paths (upsert, create_many, find_or_create_by) so
-# regressions there fail loudly. They run with-or-without a DB: they only
-# inspect the response shape / returned class, not persistence.
-# ============================================================================
+    test("an empty whitelist drops every key") do
+      post = LockedPost.create({"title": "x", "role": "admin"})
+      stored = LockedPost.find(post._key)
 
-describe("attr_accessible — Model.upsert", fn() {
-  test("filters non-whitelisted keys from upsert payload", fn() {
-    # upsert returns a class instance (or errors); the filter has
-    # already been applied on the way in, so even on success the
-    # unlisted fields cannot have made it to the document.
-    let result = WhitelistedPost.upsert(
-      "any-key",
-      {
-        "title": "Hi",
-        "body": "B",
-        "role": "admin"
-      }
-    ) rescue null
-    # Best-effort assertion: when the operation reaches the DB and
-    # returns an instance, role should be absent.
-    assert_null(result.role) if !result.nil? && result.is_a?("WhitelistedPost")
-  })
-})
+      assert_null(stored.title)
+      assert_null(stored.role)
+    end
 
-describe("attr_accessible — Model.create_many", fn() {
-  test("filters each item independently", fn() {
-    let result = WhitelistedPost.create_many([{
-      "title": "A",
-      "role": "admin"
-    }, {"title": "B", "is_admin": true}]) rescue null
-    # The call returns a {created: N} hash; correctness is asserted
-    # through behaviour at the rust unit level. Smoke-test only.
-    assert(!result.nil?)
-  })
-})
+    test("a model without attr_accessible accepts every key") do
+      post = LegacyPost.create({"title": "x", "anything": "y"})
+      stored = LegacyPost.find(post._key)
 
-describe("attr_accessible — Model.find_or_create_by", fn() {
-  test("filters defaults hash on the create branch", fn() {
-    let result = WhitelistedPost.find_or_create_by("title", "unique-attr-accessible-spec-key", {
-      "body": "ok",
-      "role": "admin"
-    }) rescue null
-    assert_null(result.role) if !result.nil? && result.is_a?("WhitelistedPost")
-  })
-})
+      assert_eq(stored.title, "x")
+      assert_eq(stored.anything, "y")
+    end
+  end
+
+  describe("on instance writes") do
+    test("save(hash) drops non-whitelisted keys") do
+      post = WhitelistedPost.new()
+
+      assert(post.save({"title": "Hi", "body": "B", "role": "admin"}))
+      assert_eq(post.title, "Hi")
+      assert_null(post.role)
+      assert_null(WhitelistedPost.find(post._key).role)
+    end
+
+    test("update(hash) drops non-whitelisted keys") do
+      post = WhitelistedPost.create({"title": "original"})
+
+      post.update({"body": "new", "role": "admin"})
+      stored = WhitelistedPost.find(post._key)
+
+      assert_eq(post.body, "new")
+      assert_null(post.role)
+      assert_eq(stored.body, "new")
+      assert_null(stored.role)
+    end
+
+    test("direct field assignment is not filtered") do
+      post = WhitelistedPost.new()
+      post.title = "t"
+      post.role = "set by trusted code"
+
+      post.save
+
+      assert_eq(WhitelistedPost.find(post._key).role, "set by trusted code")
+    end
+
+    test("Model.new(hash) filters too") do
+      pending("bug: WhitelistedPost.new({\"role\": \"admin\"}).save persists role — new(hash) skips the whitelist")
+      post = WhitelistedPost.new({"title": "Hi", "role": "admin"})
+
+      assert_null(post.role)
+    end
+  end
+
+  describe("on class-level write paths") do
+    test("Model.update(id, hash) drops non-whitelisted keys") do
+      post = WhitelistedPost.create({"title": "a"})
+
+      WhitelistedPost.update(post._key, {"title": "b", "role": "admin"})
+      stored = WhitelistedPost.find(post._key)
+
+      assert_eq(stored.title, "b")
+      assert_null(stored.role)
+    end
+
+    test("upsert drops non-whitelisted keys from the payload") do
+      result = WhitelistedPost.upsert("any-key", {"title": "Hi", "body": "B", "role": "admin"})
+      stored = WhitelistedPost.find("any-key")
+
+      assert(result.is_a?("WhitelistedPost"))
+      assert_null(result.role)
+      assert_eq(stored.title, "Hi")
+      assert_null(stored.role)
+    end
+
+    test("create_many filters each item independently") do
+      result = WhitelistedPost.create_many([{"title": "A", "role": "admin"}, {"title": "B", "is_admin": true}])
+
+      assert_eq(result, {"created": 2})
+      assert_null(WhitelistedPost.find_by("title", "A").role)
+      assert_null(WhitelistedPost.find_by("title", "B").is_admin)
+    end
+
+    test("find_or_create_by filters the defaults hash on the create branch") do
+      result = WhitelistedPost.find_or_create_by("title", "unique-title", {"body": "ok", "role": "admin"})
+      stored = WhitelistedPost.find(result._key)
+
+      assert_eq(stored.title, "unique-title")
+      assert_eq(stored.body, "ok")
+      assert_null(stored.role)
+    end
+  end
+end
