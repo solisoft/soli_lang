@@ -765,7 +765,11 @@ fn run_with_path_and_coverage_inner(
         }
     }
 
-    let test_suites = extract_test_definitions(&program);
+    let test_suites =
+        extract_test_definitions(&program).map_err(|problems| error::RuntimeError::General {
+            message: describe_declaration_problems(&problems),
+            span: span::Span::new(0, 0, 1, 1),
+        })?;
 
     if let Some(path) = source_file_path {
         interpreter.set_source_path(path.to_path_buf());
@@ -793,27 +797,141 @@ fn run_with_path_and_coverage_inner(
     Ok(())
 }
 
-fn extract_test_definitions(
-    program: &ast::Program,
-) -> Vec<interpreter::builtins::test_dsl::TestSuite> {
-    let mut suites = Vec::new();
-    for stmt in &program.statements {
-        if let ast::StmtKind::Expression(expr) = &stmt.kind {
-            if let ast::ExprKind::Call { callee, arguments } = &expr.kind {
-                // Check if this is a describe call
-                if let ast::ExprKind::Variable(name) = &callee.kind {
-                    if name == "describe" || name == "context" {
-                        if let Some(mut suite) = extract_suite_from_call(name, arguments, stmt.span)
-                        {
-                            push_viewport_down(&mut suite);
-                            suites.push(suite);
-                        }
-                    }
-                }
+/// The calls the runner reads straight out of a `describe` body. The body is
+/// walked, never executed, so anything else written there never runs.
+const SUITE_BODY_CALLS: &[&str] = &[
+    "test",
+    "it",
+    "specify",
+    "describe",
+    "context",
+    "before_each",
+    "after_each",
+    "before_all",
+    "after_all",
+    "viewport",
+];
+
+/// The name of the plain function a statement calls, as in `test(...)` or
+/// `describe "x" do ... end`, if it is one.
+fn dsl_call_name(stmt: &ast::Stmt) -> Option<(&str, &[Argument])> {
+    let ast::StmtKind::Expression(expr) = &stmt.kind else {
+        return None;
+    };
+    let ast::ExprKind::Call { callee, arguments } = &expr.kind else {
+        return None;
+    };
+    let ast::ExprKind::Variable(name) = &callee.kind else {
+        return None;
+    };
+    Some((name.as_str(), arguments.as_slice()))
+}
+
+/// Report every `describe`/`context`/`test` call buried in a top-level
+/// statement — under an `if`, a loop, a `try`. The runner registers only the
+/// ones it can see without running the file, so these were silently dropped:
+/// a spec guarded by `if __db_available ... end` never ran, with or without a
+/// database, and nothing said so.
+fn report_buried_suites(stmt: &ast::Stmt, problems: &mut Vec<String>) {
+    let mut nested: Vec<&ast::Stmt> = Vec::new();
+    match &stmt.kind {
+        ast::StmtKind::Block(stmts) => nested.extend(stmts),
+        ast::StmtKind::If {
+            then_branch,
+            else_branch,
+            ..
+        }
+        | ast::StmtKind::Unless {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            nested.push(then_branch);
+            nested.extend(else_branch.as_deref());
+        }
+        ast::StmtKind::While { body, .. } | ast::StmtKind::For { body, .. } => nested.push(body),
+        ast::StmtKind::Try {
+            try_block,
+            catch_clauses,
+            finally_block,
+        } => {
+            nested.push(try_block);
+            nested.extend(catch_clauses.iter().map(|clause| clause.body.as_ref()));
+            nested.extend(finally_block.as_deref());
+        }
+        _ => {}
+    }
+    for inner in nested {
+        match dsl_call_name(inner) {
+            Some((name, _))
+                if matches!(name, "describe" | "context" | "test" | "it" | "specify") =>
+            {
+                problems.push(format!(
+                    "line {}: `{}` inside an `if`, loop or `try` is never registered",
+                    inner.span.line, name
+                ));
             }
+            _ => report_buried_suites(inner, problems),
         }
     }
-    suites
+}
+
+/// The message a spec file with declaration problems fails with: each
+/// problem on its own line, then once each the fix for the kinds that occur.
+fn describe_declaration_problems(problems: &[String]) -> String {
+    let mut message = format!(
+        "{} spec declaration problem(s):\n  - {}",
+        problems.len(),
+        problems.join("\n  - ")
+    );
+    if problems.iter().any(|p| p.contains("inside an `if`")) {
+        message.push_str(
+            "\nThe runner reads `describe`/`test` calls only at the top level of the file and \
+directly in a `describe` body. Move the suite to the top level; to skip it when a service is \
+missing, call `requires_solidb()` / `requires_solikv()` (or `skip(\"why\")`) in a `before_each`.",
+        );
+    }
+    if problems
+        .iter()
+        .any(|p| p.contains("body is never executed"))
+    {
+        message.push_str(
+            "\nA `describe` body only declares tests, nested suites and hooks. Move setup into a \
+`before_each` (or to the top level of the file) and helper functions to the top level.",
+        );
+    }
+    message
+}
+
+/// Read the suites of a spec file out of its AST, or explain why some of them
+/// would never run.
+fn extract_test_definitions(
+    program: &ast::Program,
+) -> Result<Vec<interpreter::builtins::test_dsl::TestSuite>, Vec<String>> {
+    let mut suites = Vec::new();
+    let mut problems = Vec::new();
+    for stmt in &program.statements {
+        match dsl_call_name(stmt) {
+            Some((name @ ("describe" | "context"), arguments)) => {
+                if let Some(mut suite) =
+                    extract_suite_from_call(name, arguments, stmt.span, &mut problems)
+                {
+                    push_viewport_down(&mut suite);
+                    suites.push(suite);
+                }
+            }
+            Some((name @ ("test" | "it" | "specify"), _)) => problems.push(format!(
+                "line {}: `{}` outside a `describe` is never run — wrap it in `describe(\"...\") do ... end`.",
+                stmt.span.line, name
+            )),
+            _ => report_buried_suites(stmt, &mut problems),
+        }
+    }
+    if problems.is_empty() {
+        Ok(suites)
+    } else {
+        Err(problems)
+    }
 }
 
 /// Hand each nested suite the viewport it did not declare for itself.
@@ -878,36 +996,23 @@ fn extract_viewport(arguments: &[Argument]) -> Option<interpreter::builtins::bro
 }
 
 fn extract_suite_from_call(
-    _name: &str,
+    name: &str,
     arguments: &[Argument],
-    _span: span::Span,
+    span: span::Span,
+    problems: &mut Vec<String>,
 ) -> Option<interpreter::builtins::test_dsl::TestSuite> {
-    if arguments.len() < 2 {
-        return None;
-    }
-
-    // First argument should be the suite name
-    let first_arg = match &arguments[0] {
-        Argument::Positional(expr) => expr,
-        Argument::Named(_) => return None,
-        Argument::Block(_) => return None,
+    let (suite_name, suite_body) = match dsl_name_and_body(arguments) {
+        Ok(parts) => parts,
+        Err(why) => {
+            problems.push(format!("line {}: `{}` {}", span.line, name, why));
+            return None;
+        }
     };
-    let suite_name = match &first_arg.kind {
-        ast::ExprKind::StringLiteral(s) => s.clone(),
-        _ => return None,
-    };
-
-    // Second argument should be a lambda (the suite body) — accept either a
-    // positional lambda (`describe("X", fn() { ... })`) or a trailing block
-    // (`describe("X") do ... end`).
-    let second_arg = match &arguments[1] {
-        Argument::Positional(expr) => expr,
-        Argument::Block(expr) => expr,
-        Argument::Named(_) => return None,
-    };
-    let suite_body = match &second_arg.kind {
-        ast::ExprKind::Lambda { body, .. } => body.clone(),
-        _ => return None,
+    let ast::ExprKind::Lambda {
+        body: suite_body, ..
+    } = &suite_body.kind
+    else {
+        unreachable!("dsl_name_and_body only returns lambdas");
     };
 
     let mut suite = interpreter::builtins::test_dsl::TestSuite {
@@ -921,10 +1026,41 @@ fn extract_suite_from_call(
         viewport: None,
     };
 
-    // Extract tests and nested suites from the lambda body
-    extract_tests_from_block(&suite_body, &mut suite);
+    extract_tests_from_block(suite_body, &mut suite, problems);
 
     Some(suite)
+}
+
+/// The literal name and the body block of a `describe`/`test` call: either
+/// `describe("X", fn() { ... })` or `describe("X") do ... end`.
+///
+/// The name has to be a literal because the suite tree is read from the AST
+/// before the file runs, so there is nothing to evaluate an expression with.
+fn dsl_name_and_body(arguments: &[Argument]) -> Result<(String, &ast::Expr), &'static str> {
+    let name = match arguments.first() {
+        Some(Argument::Positional(expr)) => match &expr.kind {
+            ast::ExprKind::StringLiteral(name) => name.clone(),
+            _ => return Err(
+                "needs a string literal name: the spec tree is read before the file runs, so an \
+interpolated or computed name is never registered",
+            ),
+        },
+        _ => return Err("needs a name and a block: `(\"name\") do ... end`"),
+    };
+    let body = match arguments.get(1) {
+        Some(Argument::Positional(expr)) | Some(Argument::Block(expr))
+            if matches!(expr.kind, ast::ExprKind::Lambda { .. }) =>
+        {
+            expr
+        }
+        _ => {
+            return Err("needs a block body: `(\"name\") do ... end` or `(\"name\", fn() { ... })`")
+        }
+    };
+    if arguments.len() > 2 {
+        return Err("takes a name and a block, nothing else");
+    }
+    Ok((name, body))
 }
 
 /// Pull the first argument out of a `before_each`/`after_each`/`before_all`/
@@ -941,102 +1077,86 @@ fn first_callback_expr(arguments: &[Argument]) -> Option<&ast::Expr> {
 fn extract_tests_from_block(
     statements: &[ast::Stmt],
     suite: &mut interpreter::builtins::test_dsl::TestSuite,
+    problems: &mut Vec<String>,
 ) {
     for stmt in statements {
-        if let ast::StmtKind::Expression(expr) = &stmt.kind {
-            if let ast::ExprKind::Call { callee, arguments } = &expr.kind {
-                if let ast::ExprKind::Variable(name) = &callee.kind {
-                    if name == "test" || name == "it" || name == "specify" {
-                        if let Some(test) = extract_test_from_call(arguments, stmt.span) {
-                            suite.tests.push(test);
-                        }
-                    } else if name == "describe" || name == "context" {
-                        if let Some(nested) = extract_suite_from_call(name, arguments, stmt.span) {
-                            suite.nested_suites.push(nested);
-                        }
-                    } else if name == "before_each" {
-                        if let Some(callback) = first_callback_expr(arguments) {
-                            suite.before_each = Some(ast_expr_to_value(callback));
-                        }
-                    } else if name == "after_each" {
-                        if let Some(callback) = first_callback_expr(arguments) {
-                            suite.after_each = Some(ast_expr_to_value(callback));
-                        }
-                    } else if name == "before_all" {
-                        if let Some(callback) = first_callback_expr(arguments) {
-                            suite.before_all = Some(ast_expr_to_value(callback));
-                        }
-                    } else if name == "after_all" {
-                        if let Some(callback) = first_callback_expr(arguments) {
-                            suite.after_all = Some(ast_expr_to_value(callback));
-                        }
-                    } else if name == "viewport" {
-                        if let Some(viewport) = extract_viewport(arguments) {
-                            suite.viewport = Some(viewport);
-                        }
-                    }
+        let Some((name, arguments)) =
+            dsl_call_name(stmt).filter(|(name, _)| SUITE_BODY_CALLS.contains(name))
+        else {
+            problems.push(format!(
+                "line {}: a `describe` body is never executed, so this statement never runs",
+                stmt.span.line
+            ));
+            continue;
+        };
+        let line = stmt.span.line;
+        match name {
+            "test" | "it" | "specify" => match dsl_name_and_body(arguments) {
+                Ok((test_name, body)) => {
+                    let ast::ExprKind::Lambda {
+                        params,
+                        return_type,
+                        body,
+                    } = &body.kind
+                    else {
+                        unreachable!("dsl_name_and_body only returns lambdas");
+                    };
+                    suite
+                        .tests
+                        .push(interpreter::builtins::test_dsl::TestDefinition {
+                            name: test_name,
+                            body: create_function_value(
+                                params.clone(),
+                                return_type.as_deref().cloned(),
+                                body.clone(),
+                                stmt.span,
+                            ),
+                        });
+                }
+                Err(why) => problems.push(format!("line {line}: `{name}` {why}")),
+            },
+            "describe" | "context" => {
+                if let Some(nested) = extract_suite_from_call(name, arguments, stmt.span, problems)
+                {
+                    suite.nested_suites.push(nested);
                 }
             }
+            "before_each" => set_hook(name, arguments, line, &mut suite.before_each, problems),
+            "after_each" => set_hook(name, arguments, line, &mut suite.after_each, problems),
+            "before_all" => set_hook(name, arguments, line, &mut suite.before_all, problems),
+            "after_all" => set_hook(name, arguments, line, &mut suite.after_all, problems),
+            "viewport" => {
+                if let Some(viewport) = extract_viewport(arguments) {
+                    suite.viewport = Some(viewport);
+                }
+            }
+            _ => unreachable!("filtered by SUITE_BODY_CALLS"),
         }
     }
 }
 
-fn extract_test_from_call(
+/// Store a hook's block in its slot, or say why it cannot be.
+fn set_hook(
+    name: &str,
     arguments: &[Argument],
-    span: span::Span,
-) -> Option<interpreter::builtins::test_dsl::TestDefinition> {
-    if arguments.len() < 2 {
-        return None;
-    }
-
-    let first_arg = match &arguments[0] {
-        Argument::Positional(expr) => expr,
-        Argument::Named(_) => return None,
-        Argument::Block(_) => return None,
-    };
-    let test_name = match &first_arg.kind {
-        ast::ExprKind::StringLiteral(s) => s.clone(),
-        _ => return None,
-    };
-
-    // Try to get second argument as either Positional(lambda) or Block
-    let test_body = match &arguments[1] {
-        Argument::Positional(expr) => match &expr.kind {
-            ast::ExprKind::Lambda {
-                params,
-                return_type,
-                body,
-            } => create_function_value(
-                params.clone(),
-                return_type.as_deref().cloned(),
-                body.clone(),
-                span,
-            ),
-            _ => return None,
-        },
-        Argument::Block(block_expr) => {
-            // Convert block expression to lambda function
-            match &block_expr.kind {
-                ast::ExprKind::Lambda {
-                    params,
-                    return_type,
-                    body,
-                } => create_function_value(
-                    params.clone(),
-                    return_type.as_deref().cloned(),
-                    body.clone(),
-                    span,
-                ),
-                _ => return None,
+    line: u32,
+    slot: &mut Option<Value>,
+    problems: &mut Vec<String>,
+) {
+    match first_callback_expr(arguments) {
+        Some(callback) if matches!(callback.kind, ast::ExprKind::Lambda { .. }) => {
+            if slot.is_some() {
+                problems.push(format!(
+                    "line {line}: a second `{name}` in the same `describe` would replace the \
+first — merge them into one."
+                ));
             }
+            *slot = Some(ast_expr_to_value(callback));
         }
-        Argument::Named(_) => return None,
-    };
-
-    Some(interpreter::builtins::test_dsl::TestDefinition {
-        name: test_name,
-        body: test_body,
-    })
+        _ => problems.push(format!(
+            "line {line}: `{name}` needs a block: `{name}() do ... end`"
+        )),
+    }
 }
 
 fn create_function_value(
@@ -1084,15 +1204,50 @@ fn execute_test_suites(
     interpreter: &mut interpreter::Interpreter,
     suites: &[interpreter::builtins::test_dsl::TestSuite],
 ) -> Result<(i64, Vec<String>), error::RuntimeError> {
-    execute_test_suites_in(interpreter, suites, "")
+    execute_test_suites_in(interpreter, suites, "", &[], &[])
 }
 
+/// Call a hook or a test body with the file's top-level environment in reach.
+fn call_spec_block(
+    interpreter: &mut interpreter::Interpreter,
+    block: &Value,
+) -> Result<Value, error::RuntimeError> {
+    let rebound = rebind_closure(block, &interpreter.environment);
+    interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1))
+}
+
+/// How many tests a suite holds, nested suites included, among those the
+/// `--filter` lets through.
+fn count_selected_tests(suite: &interpreter::builtins::test_dsl::TestSuite, prefix: &str) -> usize {
+    use crate::interpreter::builtins::test_progress;
+    let suite_path = format!("{} {}", prefix, suite.name).trim().to_string();
+    let own = suite
+        .tests
+        .iter()
+        .filter(|test| test_progress::matches_name_filter(&format!("{} {}", suite_path, test.name)))
+        .count();
+    own + suite
+        .nested_suites
+        .iter()
+        .map(|nested| count_selected_tests(nested, &suite_path))
+        .sum::<usize>()
+}
+
+/// Run suites, each test wrapped in the `before_each` hooks of every enclosing
+/// suite (outermost first) and the `after_each` hooks (innermost first).
+///
+/// A hook that raises fails the test it wraps — before this, every hook error
+/// was discarded, so a broken `before_each` left tests running against no
+/// setup and passing anyway. `skip()`/`pending()` in a `before_each` marks the
+/// test not run, which is how a suite skips itself when a service is missing.
 fn execute_test_suites_in(
     interpreter: &mut interpreter::Interpreter,
     suites: &[interpreter::builtins::test_dsl::TestSuite],
     prefix: &str,
+    outer_before_each: &[Value],
+    outer_after_each: &[Value],
 ) -> Result<(i64, Vec<String>), error::RuntimeError> {
-    use crate::interpreter::builtins::test_progress;
+    use crate::interpreter::builtins::{assertions, test_dsl, test_progress};
     let mut failed_count = 0i64;
     let mut failed_tests = Vec::new();
 
@@ -1101,14 +1256,36 @@ fn execute_test_suites_in(
             break;
         }
         let suite_path = format!("{} {}", prefix, suite.name).trim().to_string();
+        if count_selected_tests(suite, prefix) == 0 {
+            continue;
+        }
         let stubs_outside_suite = crate::interpreter::builtins::mock::snapshot_stubs();
-        // Run before_all if defined
+
         if let Some(before_all) = &suite.before_all {
-            let rebound = rebind_closure(before_all, &interpreter.environment);
-            let _ = interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
+            test_dsl::clear_not_run();
+            if let Err(error) = call_spec_block(interpreter, before_all) {
+                let skipped = count_selected_tests(suite, prefix);
+                if test_dsl::take_not_run().is_some() {
+                    (0..skipped).for_each(|_| test_progress::record_not_run());
+                } else {
+                    test_progress::record_test(false);
+                    failed_count += 1;
+                    failed_tests.push(format!(
+                        "{} (before_all, {} test(s) not run): {}",
+                        suite_path, skipped, error
+                    ));
+                }
+                crate::interpreter::builtins::mock::restore_stubs(stubs_outside_suite);
+                continue;
+            }
         }
         // Stubs from `before_all` belong to the whole suite (nested ones included).
         let suite_stubs = crate::interpreter::builtins::mock::snapshot_stubs();
+
+        let mut before_each: Vec<Value> = outer_before_each.to_vec();
+        before_each.extend(suite.before_each.iter().cloned());
+        let mut after_each: Vec<Value> = suite.after_each.iter().cloned().collect();
+        after_each.extend(outer_after_each.iter().cloned());
 
         for test in &suite.tests {
             if test_progress::fail_fast_tripped()
@@ -1125,57 +1302,93 @@ fn execute_test_suites_in(
             crate::interpreter::builtins::browser::set_active_viewport(suite.viewport);
             crate::interpreter::builtins::browser::reset_browser_state();
 
-            // Run before_each if defined
-            if let Some(before_each) = &suite.before_each {
-                let rebound = rebind_closure(before_each, &interpreter.environment);
-                let _ = interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
+            let assertions_before = assertions::assertion_count();
+            let mut failure: Option<String> = None;
+            let mut not_run = false;
+
+            test_dsl::clear_not_run();
+            for hook in &before_each {
+                if let Err(error) = call_spec_block(interpreter, hook) {
+                    if test_dsl::take_not_run().is_some() {
+                        not_run = true;
+                    } else {
+                        failure = Some(format!("before_each: {}", error));
+                    }
+                    break;
+                }
             }
 
-            // Rebind test body closure to interpreter's environment so
-            // top-level `def` functions (e.g. register_test_user) are accessible.
-            let test_body = rebind_closure(&test.body, &interpreter.environment);
-
-            // Execute the test body and track failures
-            crate::interpreter::builtins::test_dsl::clear_not_run();
-            let result = interpreter.call_value(test_body, Vec::new(), span::Span::new(0, 0, 1, 1));
-
-            // `pending()` / `skip()` unwind the body with an error, but the
-            // test is not a failure: it is counted apart and the file passes.
-            if crate::interpreter::builtins::test_dsl::take_not_run().is_some() {
-                test_progress::record_not_run();
-            } else {
-                // The only place individual `test(...)` blocks are counted.
-                // The runner's own tally is per file, so without this the
-                // suite could report how many files ran and how many
-                // assertions fired, but never how many tests.
-                test_progress::record_test(result.is_ok());
-
-                if let Err(e) = result {
-                    failed_count += 1;
-                    failed_tests.push(format!("{}: {}", test.name, e));
+            if failure.is_none() && !not_run {
+                // Rebound to the interpreter's environment so top-level `def`
+                // functions (e.g. register_test_user) are reachable.
+                test_dsl::clear_not_run();
+                let result = call_spec_block(interpreter, &test.body);
+                // `pending()` / `skip()` unwind the body with an error, but the
+                // test is not a failure: it is counted apart and the file passes.
+                if test_dsl::take_not_run().is_some() {
+                    not_run = true;
+                } else if let Err(error) = result {
+                    failure = Some(error.to_string());
                 }
             }
 
             // A stub set by the test or `before_each` is scoped to the test.
             crate::interpreter::builtins::mock::restore_stubs(suite_stubs.clone());
 
-            // Run after_each if defined
-            if let Some(after_each) = &suite.after_each {
-                let rebound = rebind_closure(after_each, &interpreter.environment);
-                let _ = interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
+            // Teardown runs whatever happened above: it is what cleans up.
+            for hook in after_each.iter() {
+                if let Err(error) = call_spec_block(interpreter, hook) {
+                    let hook_skipped = test_dsl::take_not_run().is_some();
+                    if failure.is_none() && !not_run && !hook_skipped {
+                        failure = Some(format!("after_each: {}", error));
+                    }
+                }
+            }
+
+            if not_run {
+                test_progress::record_not_run();
+                continue;
+            }
+            if failure.is_none() && assertions::assertion_count() == assertions_before {
+                test_progress::record_empty_test();
+                if test_progress::require_assertions() {
+                    failure = Some(
+                        "made no assertions (--require-assertions): assert something, or call \
+skip(\"why\") / pending(\"why\")"
+                            .to_string(),
+                    );
+                }
+            }
+            // The only place individual `test(...)` blocks are counted. The
+            // runner's own tally is per file, so without this the suite could
+            // report how many files ran and how many assertions fired, but
+            // never how many tests.
+            test_progress::record_test(failure.is_none());
+            if let Some(failure) = failure {
+                failed_count += 1;
+                failed_tests.push(format!("{}: {}", test.name, failure));
             }
         }
 
-        // Run nested suites
-        let (nested_failed, mut nested_errors) =
-            execute_test_suites_in(interpreter, &suite.nested_suites, &suite_path)?;
+        let (nested_failed, mut nested_errors) = execute_test_suites_in(
+            interpreter,
+            &suite.nested_suites,
+            &suite_path,
+            &before_each,
+            &after_each,
+        )?;
         failed_count += nested_failed;
         failed_tests.append(&mut nested_errors);
 
-        // Run after_all if defined
         if let Some(after_all) = &suite.after_all {
-            let rebound = rebind_closure(after_all, &interpreter.environment);
-            let _ = interpreter.call_value(rebound, Vec::new(), span::Span::new(0, 0, 1, 1));
+            test_dsl::clear_not_run();
+            if let Err(error) = call_spec_block(interpreter, after_all) {
+                if test_dsl::take_not_run().is_none() {
+                    test_progress::record_test(false);
+                    failed_count += 1;
+                    failed_tests.push(format!("{} (after_all): {}", suite_path, error));
+                }
+            }
         }
         crate::interpreter::builtins::mock::restore_stubs(stubs_outside_suite);
     }
@@ -1324,7 +1537,78 @@ mod suite_extraction_tests {
         let program = parser::Parser::new(tokens)
             .parse()
             .expect("the spec must parse");
-        extract_test_definitions(&program)
+        extract_test_definitions(&program).expect("the spec must declare cleanly")
+    }
+
+    /// The declaration problems a spec file is refused with.
+    fn problems(source: &str) -> Vec<String> {
+        let tokens = lexer::Scanner::new(source)
+            .scan_tokens()
+            .expect("the spec must tokenize");
+        let program = parser::Parser::new(tokens)
+            .parse()
+            .expect("the spec must parse");
+        match extract_test_definitions(&program) {
+            Ok(_) => Vec::new(),
+            Err(problems) => problems,
+        }
+    }
+
+    #[test]
+    fn a_describe_under_an_if_is_refused_not_dropped() {
+        let found = problems(
+            "available = false\nif available\n  describe(\"needs a db\") do\n    test(\"x\") do\n      assert(true)\n    end\n  end\nend\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].starts_with("line 3: `describe` inside an `if`"),
+            "{found:?}"
+        );
+        assert!(
+            describe_declaration_problems(&found).contains("requires_solidb()"),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_test_outside_any_describe_is_refused() {
+        let found = problems("test(\"loose\") do\n  assert(true)\nend\n");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("outside a `describe`"), "{found:?}");
+    }
+
+    #[test]
+    fn a_statement_in_a_describe_body_is_refused() {
+        // `url` would never be assigned: the body is walked, not run.
+        let found = problems(
+            "describe(\"api\") do\n  url = \"http://localhost\"\n  test(\"x\") do\n    assert(true)\n  end\nend\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].starts_with("line 2: a `describe` body"),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_computed_test_name_is_refused() {
+        let found = problems(
+            "describe(\"names\") do\n  test(\"case #{1}\") do\n    assert(true)\n  end\nend\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("string literal name"), "{found:?}");
+    }
+
+    #[test]
+    fn a_second_before_each_in_one_suite_is_refused() {
+        let found = problems(
+            "describe(\"hooks\") do\n  before_each() do\n    x = 1\n  end\n  before_each() do\n    x = 2\n  end\nend\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].starts_with("line 5: a second `before_each`"),
+            "{found:?}"
+        );
     }
 
     #[test]

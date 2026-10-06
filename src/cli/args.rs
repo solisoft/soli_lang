@@ -159,6 +159,8 @@ pub enum Command {
         filter: Option<String>,
         /// `--fail-fast`: stop after the first failing test.
         fail_fast: bool,
+        /// `--require-assertions`: a test that asserts nothing fails.
+        require_assertions: bool,
         /// `--watch`: rerun the suite whenever a `.sl`/`.slv` file changes.
         watch: bool,
     },
@@ -558,7 +560,7 @@ pub fn print_usage() {
     eprintln!("       soli jobs retry <id> [folder]");
     eprintln!("       soli jobs cancel <id> [folder]");
     eprintln!("       soli worker [folder] [--workers N]");
-    eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--filter TEXT] [--fail-fast] [--watch] [--browser] [--headed]");
+    eprintln!("       soli test [paths...] [--jobs N] [--coverage] [--coverage=FORMAT] [--coverage-min N] [--show-uncovered] [--no-coverage] [--fail-on-n1] [--filter TEXT] [--fail-fast] [--require-assertions] [--watch] [--browser] [--headed]");
     eprintln!("       soli lint [paths...]");
     eprintln!("       soli check [paths...]");
     eprintln!("       soli lsp");
@@ -737,6 +739,7 @@ pub fn print_usage() {
         "  soli test --filter TEXT       Run only tests whose describe/test names contain TEXT"
     );
     eprintln!("  soli test --fail-fast         Stop after the first failing test");
+    eprintln!("  soli test --require-assertions  Fail any test that makes no assertion");
     eprintln!("  soli test --watch             Rerun the suite whenever a .sl/.slv file changes");
     eprintln!("  soli test --browser           Also run browser specs (needs Chrome)");
     eprintln!("  soli db:migrate up            Run pending migrations");
@@ -2351,6 +2354,7 @@ pub fn parse_args() -> Options {
                 let mut headed = false;
                 let mut filter: Option<String> = None;
                 let mut fail_fast = false;
+                let mut require_assertions = false;
                 let mut watch = false;
                 while i < args.len() {
                     if args[i].starts_with('-') {
@@ -2428,6 +2432,9 @@ pub fn parse_args() -> Options {
                             "--fail-fast" => {
                                 fail_fast = true;
                             }
+                            "--require-assertions" => {
+                                require_assertions = true;
+                            }
                             "--watch" | "-w" => {
                                 watch = true;
                             }
@@ -2489,6 +2496,7 @@ pub fn parse_args() -> Options {
                     headed,
                     filter,
                     fail_fast,
+                    require_assertions,
                     watch,
                 };
                 return options;

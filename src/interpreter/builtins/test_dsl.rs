@@ -3,6 +3,7 @@
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, NativeFunction, Value};
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -52,9 +53,19 @@ fn mark_not_run(kind: &str, args: &[Value]) -> Result<Value, String> {
     Err(note)
 }
 
+/// `skip(reason)` from Rust: stop the running test and count it as skipped.
+pub fn skip_test(reason: &str) -> Result<Value, String> {
+    mark_not_run("skipped", &[Value::String(reason.into())])
+}
+
 /// Forget a mark left by a previous test. The runner calls it before each.
 pub fn clear_not_run() {
     NOT_RUN.with(|n| *n.borrow_mut() = None);
+}
+
+/// Whether `pending()` / `skip()` marked the running test, without clearing it.
+pub fn not_run_marked() -> bool {
+    NOT_RUN.with(|n| n.borrow().is_some())
 }
 
 /// The mark `pending()` / `skip()` left on the test that just ran, if any.
@@ -94,6 +105,11 @@ pub(crate) fn fmt_value(v: &Value) -> String {
     }
 }
 
+/// Mark an expectation failure for `assert_raises`, like the `assert_*` family.
+fn failure(message: String) -> String {
+    crate::interpreter::builtins::assertions::assertion_failure(message)
+}
+
 fn get_actual(args: &[Value]) -> Result<Value, String> {
     if args.is_empty() {
         return Err("Missing self argument".to_string());
@@ -128,11 +144,11 @@ pub fn register_expectation_class(env: &mut Environment) {
                 crate::interpreter::builtins::assertions::increment_assertion_count();
                 Ok(Value::Bool(true))
             } else {
-                Err(format!(
+                Err(failure(format!(
                     "Expected {} to be {}",
                     fmt_value(&actual),
                     fmt_value(expected)
-                ))
+                )))
             }
         })),
     );
@@ -149,11 +165,11 @@ pub fn register_expectation_class(env: &mut Environment) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
                 } else {
-                    Err(format!(
+                    Err(failure(format!(
                         "Expected {} to equal {}",
                         fmt_value(&actual),
                         fmt_value(expected)
-                    ))
+                    )))
                 }
             },
         )),
@@ -171,11 +187,11 @@ pub fn register_expectation_class(env: &mut Environment) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
                 } else {
-                    Err(format!(
+                    Err(failure(format!(
                         "Expected {} to not be {}",
                         fmt_value(&actual),
                         fmt_value(expected)
-                    ))
+                    )))
                 }
             },
         )),
@@ -193,11 +209,11 @@ pub fn register_expectation_class(env: &mut Environment) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
                 } else {
-                    Err(format!(
+                    Err(failure(format!(
                         "Expected {} to not equal {}",
                         fmt_value(&actual),
                         fmt_value(expected)
-                    ))
+                    )))
                 }
             },
         )),
@@ -214,7 +230,10 @@ pub fn register_expectation_class(env: &mut Environment) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
                 } else {
-                    Err(format!("Expected {} to be null", fmt_value(&actual)))
+                    Err(failure(format!(
+                        "Expected {} to be null",
+                        fmt_value(&actual)
+                    )))
                 }
             },
         )),
@@ -231,147 +250,80 @@ pub fn register_expectation_class(env: &mut Environment) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
                 } else {
-                    Err("Expected value to not be null".to_string())
+                    Err(failure("Expected value to not be null".to_string()))
                 }
             },
         )),
     );
 
-    expectation_native_methods.insert(
-        "to_be_greater_than".to_string(),
-        Rc::new(NativeFunction::new(
-            "Expectation.to_be_greater_than",
-            Some(1),
-            |args| {
-                let actual = get_actual(args)?;
-                let expected = &args[1];
-                match (&actual, expected) {
-                    (Value::Int(a), Value::Int(b)) => {
-                        if a > b {
-                            crate::interpreter::builtins::assertions::increment_assertion_count();
-                            Ok(Value::Bool(true))
-                        } else {
-                            Err(format!("Expected {:?} to be greater than {:?}", a, b))
-                        }
+    for (matcher, relation, accepts) in [
+        (
+            "to_be_greater_than",
+            "to be greater than",
+            (|o| o == Ordering::Greater) as fn(Ordering) -> bool,
+        ),
+        ("to_be_less_than", "to be less than", |o| {
+            o == Ordering::Less
+        }),
+        ("to_be_greater_than_or_equal", "to be >=", |o| {
+            o != Ordering::Less
+        }),
+        ("to_be_less_than_or_equal", "to be <=", |o| {
+            o != Ordering::Greater
+        }),
+    ] {
+        expectation_native_methods.insert(
+            matcher.to_string(),
+            Rc::new(NativeFunction::new(
+                format!("Expectation.{matcher}"),
+                Some(1),
+                move |args| {
+                    let actual = get_actual(args)?;
+                    let expected = &args[1];
+                    let ordering = crate::interpreter::builtins::assertions::compare_numbers(
+                        matcher, &actual, expected,
+                    )?;
+                    if accepts(ordering) {
+                        crate::interpreter::builtins::assertions::increment_assertion_count();
+                        Ok(Value::Bool(true))
+                    } else {
+                        Err(failure(format!(
+                            "Expected {} {} {}",
+                            fmt_value(&actual),
+                            relation,
+                            fmt_value(expected)
+                        )))
                     }
-                    (Value::Float(a), Value::Float(b)) => {
-                        if a > b {
-                            crate::interpreter::builtins::assertions::increment_assertion_count();
-                            Ok(Value::Bool(true))
-                        } else {
-                            Err(format!("Expected {:?} to be greater than {:?}", a, b))
-                        }
-                    }
-                    (Value::Int(a), Value::Float(b)) => {
-                        if (*a as f64) > *b {
-                            crate::interpreter::builtins::assertions::increment_assertion_count();
-                            Ok(Value::Bool(true))
-                        } else {
-                            Err(format!("Expected {:?} to be greater than {:?}", a, b))
-                        }
-                    }
-                    (Value::Float(a), Value::Int(b)) => {
-                        if *a > (*b as f64) {
-                            crate::interpreter::builtins::assertions::increment_assertion_count();
-                            Ok(Value::Bool(true))
-                        } else {
-                            Err(format!("Expected {:?} to be greater than {:?}", a, b))
-                        }
-                    }
-                    _ => Err("to_be_greater_than expects numbers".to_string()),
-                }
-            },
-        )),
-    );
+                },
+            )),
+        );
+    }
 
     expectation_native_methods.insert(
-        "to_be_less_than".to_string(),
+        "to_have_key".to_string(),
         Rc::new(NativeFunction::new(
-            "Expectation.to_be_less_than",
+            "Expectation.to_have_key",
             Some(1),
             |args| {
                 let actual = get_actual(args)?;
-                let expected = &args[1];
-                match (&actual, expected) {
-                    (Value::Int(a), Value::Int(b)) => {
-                        if a < b {
-                            crate::interpreter::builtins::assertions::increment_assertion_count();
-                            Ok(Value::Bool(true))
-                        } else {
-                            Err(format!("Expected {:?} to be less than {:?}", a, b))
-                        }
-                    }
-                    (Value::Float(a), Value::Float(b)) => {
-                        if a < b {
-                            crate::interpreter::builtins::assertions::increment_assertion_count();
-                            Ok(Value::Bool(true))
-                        } else {
-                            Err(format!("Expected {:?} to be less than {:?}", a, b))
-                        }
-                    }
-                    _ => Err("to_be_less_than expects numbers".to_string()),
-                }
-            },
-        )),
-    );
-
-    expectation_native_methods.insert(
-        "to_be_greater_than_or_equal".to_string(),
-        Rc::new(NativeFunction::new(
-            "Expectation.to_be_greater_than_or_equal",
-            Some(1),
-            |args| {
-                let actual = get_actual(args)?;
-                let expected = &args[1];
-                match (&actual, expected) {
-                    (Value::Int(a), Value::Int(b)) => {
-                        if a >= b {
-                            crate::interpreter::builtins::assertions::increment_assertion_count();
-                            Ok(Value::Bool(true))
-                        } else {
-                            Err(format!("Expected {:?} to be >= {:?}", a, b))
-                        }
-                    }
-                    (Value::Float(a), Value::Float(b)) => {
-                        if a >= b {
-                            crate::interpreter::builtins::assertions::increment_assertion_count();
-                            Ok(Value::Bool(true))
-                        } else {
-                            Err(format!("Expected {:?} to be >= {:?}", a, b))
-                        }
-                    }
-                    _ => Err("to_be_greater_than_or_equal expects numbers".to_string()),
-                }
-            },
-        )),
-    );
-
-    expectation_native_methods.insert(
-        "to_be_less_than_or_equal".to_string(),
-        Rc::new(NativeFunction::new(
-            "Expectation.to_be_less_than_or_equal",
-            Some(1),
-            |args| {
-                let actual = get_actual(args)?;
-                let expected = &args[1];
-                match (&actual, expected) {
-                    (Value::Int(a), Value::Int(b)) => {
-                        if a <= b {
-                            crate::interpreter::builtins::assertions::increment_assertion_count();
-                            Ok(Value::Bool(true))
-                        } else {
-                            Err(format!("Expected {:?} to be <= {:?}", a, b))
-                        }
-                    }
-                    (Value::Float(a), Value::Float(b)) => {
-                        if a <= b {
-                            crate::interpreter::builtins::assertions::increment_assertion_count();
-                            Ok(Value::Bool(true))
-                        } else {
-                            Err(format!("Expected {:?} to be <= {:?}", a, b))
-                        }
-                    }
-                    _ => Err("to_be_less_than_or_equal expects numbers".to_string()),
+                let key = &args[1];
+                let Value::Hash(hash) = &actual else {
+                    return Err(format!(
+                        "to_have_key expects a Hash, got {}",
+                        actual.type_name()
+                    ));
+                };
+                let found =
+                    HashKey::from_value(key).is_some_and(|key| hash.borrow().contains_key(&key));
+                if found {
+                    crate::interpreter::builtins::assertions::increment_assertion_count();
+                    Ok(Value::Bool(true))
+                } else {
+                    Err(failure(format!(
+                        "Expected {} to have key {}",
+                        fmt_value(&actual),
+                        fmt_value(key)
+                    )))
                 }
             },
         )),
@@ -401,11 +353,11 @@ pub fn register_expectation_class(env: &mut Environment) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
                 } else {
-                    Err(format!(
+                    Err(failure(format!(
                         "Expected {} to contain {}",
                         fmt_value(&actual),
                         fmt_value(expected)
-                    ))
+                    )))
                 }
             },
         )),
@@ -429,11 +381,11 @@ pub fn register_expectation_class(env: &mut Environment) {
                     crate::interpreter::builtins::assertions::increment_assertion_count();
                     Ok(Value::Bool(true))
                 } else {
-                    Err(format!(
+                    Err(failure(format!(
                         "Expected {} to match {}",
                         fmt_value(&actual),
                         fmt_value(expected)
-                    ))
+                    )))
                 }
             },
         )),
@@ -451,7 +403,7 @@ pub fn register_expectation_class(env: &mut Environment) {
                         crate::interpreter::builtins::assertions::increment_assertion_count();
                         Ok(Value::Bool(true))
                     } else {
-                        Err(format!("Expected valid JSON, got: {}", s))
+                        Err(failure(format!("Expected valid JSON, got: {}", s)))
                     }
                 } else {
                     Err("to_be_valid_json expects string".to_string())

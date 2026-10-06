@@ -242,7 +242,7 @@ impl CompileError {
 /// the only part anyone wants to read. The VM did this extraction inline
 /// before thrown values were preserved end-to-end; it lives here now so both
 /// engines get it from the one place that formats a `Thrown`.
-fn render_thrown(value: &crate::interpreter::value::Value) -> String {
+pub(crate) fn render_thrown(value: &crate::interpreter::value::Value) -> String {
     use crate::interpreter::value::Value;
     match value {
         Value::String(s) => s.to_string(),

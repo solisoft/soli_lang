@@ -59,6 +59,68 @@ end)
 | `after_all(fn)` | Teardown after all tests |
 | `pending(reason?)` / `skip(reason?)` | Stop a test and count it as pending — not a failure |
 
+Write hooks and `assert_raises` with parentheses before `do`: `before_each() do … end`.
+A bare `before_each do` does not parse.
+
+### Hooks
+
+- **Nested suites inherit hooks.** Every enclosing `before_each` runs, outermost
+  first; `after_each` hooks run innermost first. One hook of each kind per `describe`.
+- **A raising hook fails the test, it is never swallowed.** A `before_each` that raises
+  fails the test with `before_each: <error>` and the body does not run. A raising
+  `after_each` fails the test (`after_each: …`). Teardown hooks always run.
+- A raising `before_all` fails the suite — `<suite> (before_all, N test(s) not run)` —
+  without running its tests; a raising `after_all` is reported as a failure.
+- `skip("why")` or `pending("why")` in a `before_each` marks each test pending: this is
+  how a suite skips itself (see [Specs that need a service](#specs-that-need-a-service)).
+
+```soli
+cart = []                      # shared state lives at the top level
+
+describe("Cart") do
+  before_each() do
+    cart = ["book"]
+  end
+
+  describe("with a gift") do
+    before_each() do           # runs after the outer one
+      cart.push("wrapping")
+    end
+
+    test("holds both items") do
+      assert_eq(cart, ["book", "wrapping"])
+    end
+  end
+
+  test("starts with the book only") do
+    assert_eq(cart, ["book"])
+  end
+end
+```
+
+### How the runner reads a spec
+
+The runner reads the spec tree from the file **without running the `describe`
+bodies**. So a variable assigned in a `describe` body never reaches its tests — only
+top-level assignments and `def`s do; put shared state at the top level and (re)assign
+it in a `before_each`. Whatever the runner cannot register fails the file, one line
+per problem, rather than being silently dropped:
+
+```
+posts_spec.sl                                  0 ✗
+┌─ 2 spec declaration problem(s):
+- line 5: `describe` inside an `if`, loop or `try` is never registered
+- line 17: a `describe` body is never executed, so this statement never runs
+```
+
+- a `describe`/`context`/`test`/`it`/`specify` inside a top-level `if`, `unless`, loop
+  or `try` — the old `if db_available … describe(…) … end` guard ran nothing;
+- a `test` outside any `describe`;
+- any statement in a `describe` body other than `test`/`it`/`specify`,
+  `describe`/`context`, the four hooks and `viewport` (`url = "/posts"` there never ran);
+- a suite or test name that is not a string literal (interpolated or computed);
+- a second `before_each` (or other hook) in the same `describe`.
+
 ### Expectations
 
 ```soli
@@ -67,12 +129,31 @@ expect(value).to_be(expected);
 expect(value).to_not_equal(other);
 expect(value).to_be_null();
 expect(value).to_not_be_null();
-expect(value).to_be_greater_than(10);
+expect(value).to_be_greater_than(10);     # an Int and a Float compare mixed
 expect(value).to_be_less_than(100);
 expect(value).to_contain("substring");
-expect(value).to_match(regex);
+expect(value).to_match("Saved");          # substring check, NOT a regex
 expect(hash).to_have_key("name");
 expect(json_string).to_be_valid_json();
+```
+
+For a regex use `assert_match(string, pattern)`.
+
+### Assertions
+
+`assert_eq`, `assert_null`, `assert_match` and the rest are builtins — see
+[Testing Assertions](testing-assertions.md). A failure shows the values
+(`expected 3, got 2`), and every `assert_*` takes an optional trailing message
+prefixed to it: `assert_eq(count, 3, "the cart size")` fails with
+`the cart size: expected 3, got 2`.
+
+`assert_raises` checks that a block raises, and returns the error message:
+
+```soli
+message = assert_raises("out of stock") do
+  cart.add(sold_out_item)
+end
+assert_contains(message, sold_out_item.sku)
 ```
 
 ## HTTP Integration Testing
@@ -201,6 +282,35 @@ describe("User model", fn() {
 
 Unlike `Model.transaction { }`, which commits on success, `with_transaction` is test-only and never commits.
 
+### Specs that need a service
+
+Call `requires_solidb()` or `requires_solikv()` from a `before_each`. When the service
+does not answer, each test is skipped (`needs SoliDB: …`) and counted as pending, rather
+than failing on a connection error:
+
+```soli
+describe("PriceCache") do
+  before_each() do
+    requires_solikv()
+  end
+
+  test("keeps a price") do
+    PriceCache.store("SKU-1", 1200)
+    assert_eq(PriceCache.fetch("SKU-1"), 1200)
+  end
+end
+```
+
+- SoliDB is probed with a health check of the models' `SOLIDB_HOST`; SoliKV with a
+  `PING` to `SOLIKV_RESP_HOST` / `SOLIKV_RESP_PORT`.
+- `solidb_available?()` / `solikv_available?()` return the same answer as a Bool.
+- Under `SOLI_REQUIRE_DB=1` — what CI should set — the skip becomes a failure
+  (`SOLI_REQUIRE_DB=1 but this test needs SoliKV: …`), so a misconfigured CI cannot
+  pass by skipping.
+
+This replaces probing with `Model.create` in a top-level `try` and `return`-ing early
+from each test, which made tests pass while testing nothing.
+
 ### Time Travel
 
 Pin `datetime_now()` for cron, TTL, and expiration specs:
@@ -214,16 +324,20 @@ unfreeze_time()                     # also cleared automatically before each tes
 
 ### Factory Pattern
 
+`#{n}` in a template string becomes a per-factory counter on each create — inside a
+**raw string** only (`r"…"`). In a normal string Soli interpolates `#{n}` itself first
+and fails with `Undefined variable 'n'`.
+
 ```soli
 # Static template
 Factory.define("user", {
-  "email": "user#{n}@example.com",
+  "email": r"user#{n}@example.com",
   "name": "Test User"
 })
 
 # Callable template (fresh data every create)
 Factory.define("post", fn() {
-  return {"title": "Post #{Factory.sequence("post")}"}
+  {"title": "Post #{Factory.sequence("post")}"}
 })
 
 # Build hashes (no DB)
@@ -238,10 +352,12 @@ persisted = Factory.insert("user")
 
 ## Parallel Execution
 
-Tests run in parallel by default:
+The default is **3 workers** when the app has `app/controllers` (request specs spend
+their time waiting on test servers) and **1** otherwise, capped at the number of spec
+files. `--jobs N` overrides it:
 
 ```bash
-soli test                    # Parallel (default)
+soli test                    # 3 workers with app/controllers, else 1
 soli test --jobs=4           # 4 workers
 soli test --jobs=1           # Sequential (debug)
 ```
@@ -252,6 +368,7 @@ soli test --jobs=1           # Sequential (debug)
 soli test --filter "creates a post"   # only tests whose full name contains the text
 soli test -n checkout                 # short form; matches describe names too
 soli test --fail-fast                 # stop scheduling tests after the first failure
+soli test --require-assertions        # fail any test that makes no assertion
 soli test --watch                     # rerun the suite whenever a .sl / .slv file changes
 ```
 
@@ -259,12 +376,20 @@ soli test --watch                     # rerun the suite whenever a .sl / .slv fi
 `describe` names followed by the test name, space-joined (`Posts creates a post`).
 Files with no matching test still load, but run nothing. With `--fail-fast`, the
 remaining tests and files are skipped once one test fails, so the report lists the
-failure without a wall of follow-on noise. `--watch` (`-w`) runs the suite, then polls `app/`, `config/`, `lib/`, `db/`, `tests/` and any path you passed, and reruns it in a fresh process on every change; the other flags are passed through. Both compose with `--jobs`, `--coverage`
+failure without a wall of follow-on noise. `--require-assertions` fails a test that
+passes without asserting anything (`made no assertions`); without it the summary only
+counts them (`3 tests made no assertions (--require-assertions fails them)`). A mock's
+`assert_received` / `assert_not_received` count as assertions; a test with nothing to
+check should call `skip("why")`. `--watch` (`-w`) runs the suite, then polls `app/`, `config/`, `lib/`, `db/`, `tests/` and any path you passed, and reruns it in a fresh process on every change; the other flags are passed through. Both compose with `--jobs`, `--coverage`
 and the rest.
 
 ## Coverage Reporting
 
+Coverage is **on by default** — every `soli test` prints the console report.
+`--no-coverage` turns it off for a faster loop.
+
 ```bash
+soli test --no-coverage              # Skip coverage
 soli test --coverage                 # Generate coverage
 soli test --coverage=html            # HTML report
 soli test --coverage=json            # JSON for CI

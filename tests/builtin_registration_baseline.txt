@@ -27,11 +27,28 @@
 # the ratchet is doing the job it was written for.
 
 [type-checker]
+# `current_user`, `render`, `redirect` and `request` only mean anything inside a
+# `render_and_redirect_stay_unknown_to_the_checker` in tests/type_check_test.rs.
+# `runtime_globals::request_scope_globals`. Pinned by
+# application (`app/`, `config/`, `stdlib/`) or to a spec — see
+# cannot run it. A decision, not a backlog item: they stay out of the general
+# make `soli check` accept a controller-shaped call in a standalone script that
+# namespace, and `soli check` seeds them for a file that belongs to an
+# request, and `serve` does not type-check. Teaching them to every file would
+Factory.bind
+Factory.clear
+Factory.create
+Factory.create_list
+Factory.create_with
+Factory.define
+Factory.insert
+Factory.sequence
 after_all
 after_each
 as_admin
 as_guest
 as_role
+as_user
 assert
 assert_contains
 assert_eq
@@ -43,29 +60,22 @@ assert_match
 assert_max_queries
 assert_ne
 assert_no_n_plus_one
+assert_no_ungrouped_reads
 assert_not
 assert_not_null
-assert_no_ungrouped_reads
 assert_null
 assert_query_count
+assert_raises
 assign
 assigns
-as_user
 before_all
 before_each
 context
 create_session
+current_user
 describe
 destroy_session
 expect
-Factory.bind
-Factory.clear
-Factory.create
-Factory.create_list
-Factory.create_with
-Factory.define
-Factory.insert
-Factory.sequence
 it
 login
 logout
@@ -73,26 +83,21 @@ mock_http_last_body
 mock_http_route
 mock_http_server_start
 pending
-# `current_user`, `render`, `redirect` and `request` only mean anything inside a
-# request, and `serve` does not type-check. Teaching them to every file would
-# make `soli check` accept a controller-shaped call in a standalone script that
-# cannot run it. A decision, not a backlog item: they stay out of the general
-# namespace, and `soli check` seeds them for a file that belongs to an
-# application (`app/`, `config/`, `stdlib/`) or to a spec — see
-# `runtime_globals::request_scope_globals`. Pinned by
-# `render_and_redirect_stay_unknown_to_the_checker` in tests/type_check_test.rs.
-current_user
 redirect
 render
 render_template
 render_template?
 request
+requires_solidb
+requires_solikv
+sign_in
 signed_in
 signed_in?
 signed_out
 signed_out?
-sign_in
 skip
+solidb_available?
+solikv_available?
 specify
 test
 test_server_running

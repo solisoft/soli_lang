@@ -89,9 +89,10 @@ describe("includes_count - query structure", fn() {
 // DB-backed cache assertions
 // ============================================================================
 
-if __db_available
 
 describe("includes() caches relation on instance (DB)", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("has_many: accessor reads cached preload after rows are deleted", fn() {
         let author = IncRtAuthor.create({ "name": "Cache HM" });
         IncRtBook.create({ "title": "B1", "inc_rt_author_id": author._key });
@@ -137,7 +138,7 @@ describe("includes() caches relation on instance (DB)", fn() {
         // Re-access on the SAME `loaded` instance — must hit cache.
         assert_eq(loaded.inc_rt_tags.length, 2);
         // Each element is a Tag instance, not a raw hash.
-        assert_eq(loaded.inc_rt_tags[0].class, "inc_rt_tag");
+        assert_eq(loaded.inc_rt_tags[0].class, "IncRtTag");
 
         // Cleanup
         author.delete();
@@ -165,8 +166,8 @@ describe("includes() caches relation on instance (DB)", fn() {
         // Both reads should be Instance arrays (idempotent conversion).
         assert_eq(first_read.length, 1);
         assert_eq(second_read.length, 1);
-        assert_eq(first_read[0].class, "inc_rt_tag");
-        assert_eq(second_read[0].class, "inc_rt_tag");
+        assert_eq(first_read[0].class, "IncRtTag");
+        assert_eq(second_read[0].class, "IncRtTag");
 
         author.delete();
         t1.delete();
@@ -174,6 +175,8 @@ describe("includes() caches relation on instance (DB)", fn() {
 });
 
 describe("includes_count() exposes <rel>_count field (DB)", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("has_many count matches related row count", fn() {
         let author = IncRtAuthor.create({ "name": "Counter HM" });
         IncRtBook.create({ "title": "C1", "inc_rt_author_id": author._key });
@@ -210,4 +213,3 @@ describe("includes_count() exposes <rel>_count field (DB)", fn() {
     });
 });
 
-end

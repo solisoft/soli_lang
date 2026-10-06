@@ -4571,21 +4571,34 @@ Alias for `test()`.
 
 Alias for `test()`.
 
+The runner reads `describe`/`test` declarations from the file without running the
+`describe` bodies. A declaration it cannot register fails the file
+(`N spec declaration problem(s)`): a `describe`/`test` inside a top-level `if`, loop or
+`try`; a `test` outside any `describe`; any statement in a `describe` body other than
+tests, nested suites, hooks and `viewport`; a name that is not a string literal; a
+second hook of the same kind in one `describe`.
+
 #### before_each(callback)
 
-Runs before each test in the current describe block.
+Runs before each test in the current describe block and in every nested one: enclosing
+`before_each` hooks run outermost first. A raising `before_each` fails the test
+(`before_each: <error>`) without running its body; `skip("why")` there marks the test
+pending. Write it `before_each() do … end` — the parentheses are required.
 
 #### after_each(callback)
 
-Runs after each test in the current describe block.
+Runs after each test in the current describe block and in every nested one, innermost
+first. Always runs; a raising `after_each` fails the test (`after_each: …`).
 
 #### before_all(callback)
 
-Runs once before all tests in the current describe block.
+Runs once before all tests in the current describe block. If it raises, the suite fails
+(`<suite> (before_all, N test(s) not run)`) and its tests do not run.
 
 #### after_all(callback)
 
-Runs once after all tests in the current describe block.
+Runs once after all tests in the current describe block. If it raises, it is reported as
+a failure.
 
 #### pending(reason?)
 
@@ -4597,16 +4610,40 @@ is not a failure: the file still passes, and the summary counts it apart
 
 Stops the current test and counts it as pending, like `pending()`.
 
+#### requires_solidb() / requires_solikv()
+
+Call from a `before_each`: skips the test (`needs SoliDB: …`) when the service does not
+answer — SoliDB by a health check of the models' `SOLIDB_HOST`, SoliKV by a `PING` to
+`SOLIKV_RESP_HOST`/`SOLIKV_RESP_PORT`. Under `SOLI_REQUIRE_DB=1` the skip becomes a
+failure. Test-only.
+
+```soli
+describe("Sessions in SoliKV") do
+  before_each() do
+    requires_solikv()
+  end
+end
+```
+
+#### solidb_available?() / solikv_available?()
+
+The same probes, returning a Bool.
+
 ### Assertion Functions
+
+Every `assert_*` raises on failure with a message that shows the values, and takes an
+optional trailing message string prefixed to it:
+`assert_eq(count, 3, "the cart size")` → `the cart size: expected 3, got 2`.
 
 #### assert(condition)
 
-Asserts that a condition is true.
+Asserts that a condition is `true`. The condition must be a Bool; anything else fails
+and names its type.
 
 **Example:**
 ```soli
 assert(1 < 2)
-assert(user != null)
+assert(user.admin?)
 ```
 
 #### assert_not(condition)
@@ -4615,7 +4652,7 @@ Asserts that a condition is false.
 
 #### assert_eq(actual, expected)
 
-Asserts that two values are equal.
+Asserts that two values are equal. Fails with `expected <expected>, got <actual>`.
 
 **Example:**
 ```soli
@@ -4637,7 +4674,7 @@ Asserts that a value is not null.
 
 #### assert_gt(a, b)
 
-Asserts that a > b.
+Asserts that a > b. An Int and a Float compare mixed.
 
 #### assert_lt(a, b)
 
@@ -4669,6 +4706,24 @@ Asserts that a hash contains a specific key.
 #### assert_json(string)
 
 Asserts that a string is valid JSON.
+
+#### assert_raises(fragment?, block)
+
+Asserts that the block raises — with a fragment, an error whose message contains it —
+and returns the error message. Fails when the block raises nothing or a different
+error; a failed assertion or a `skip`/`pending` inside the block propagates.
+
+```soli
+message = assert_raises("out of stock") do
+  cart.add(sold_out_item)
+end
+assert_contains(message, sold_out_item.sku)
+
+assert_raises(fn() { divide(1, 0) })
+```
+
+Write `assert_raises() do … end` with the parentheses; a bare `assert_raises do` does
+not parse.
 
 ---
 
@@ -4709,16 +4764,16 @@ Defines a factory template as a static hash or a callable block.
 **Example:**
 ```soli
 Factory.define("user", {
-  "email": "user#{n}@test.com",
+  "email": r"user#{n}@test.com",
   "name": "Test User"
 })
 
 Factory.define("post", fn() {
-  return {"title": "Post #{Factory.sequence("post")}"}
+  {"title": "Post #{Factory.sequence("post")}"}
 })
 ```
 
-String values may include `#{n}` — replaced with a per-factory auto-incrementing counter on each `create`.
+String values may include `#{n}` — replaced with a per-factory auto-incrementing counter on each `create`. Write it in a raw string (`r"…"`): in a normal string Soli interpolates `#{n}` first and fails with `Undefined variable 'n'`.
 
 ### Factory.create(name)
 

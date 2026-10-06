@@ -65,9 +65,10 @@ describe("has_many returns chainable QueryBuilder (no DB)", fn() {
 // where(...).delete_all on a real has_many association.
 // ----------------------------------------------------------------------------
 
-if __db_available
 
 describe("has_many chainable (DB)", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("count reflects child rows", fn() {
         let author = HmAuthor.create({ "name": "Octavia" });
         HmBook.create({ "title": "B1", "hm_author_id": author._key });
@@ -98,7 +99,7 @@ describe("has_many chainable (DB)", fn() {
 
         let count = 0;
         for book in author.hm_books
-            assert(book.is_a?(HmBook));
+            assert(book.is_a?("HmBook"));
             count = count + 1;
         end
         assert_eq(count, 2);
@@ -113,7 +114,7 @@ describe("has_many chainable (DB)", fn() {
 
         let first = author.hm_books[0];
         assert_not_null(first);
-        assert(first.is_a?(HmBook));
+        assert(first.is_a?("HmBook"));
 
         author.hm_books.delete_all;
         author.delete();
@@ -213,4 +214,3 @@ describe("has_many chainable (DB)", fn() {
     });
 });
 
-end

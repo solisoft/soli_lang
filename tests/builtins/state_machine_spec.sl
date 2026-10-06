@@ -170,8 +170,9 @@ try
 catch e
 end
 
-if __db_available
 describe("state machine — persistence", fn() {
+    before_each(fn() { requires_solidb() })
+
   test("pay! persists the new state to the database", fn() {
     let order = SmOrder.create({ "status": OrderState.Pending, "total": 5 })
     order.pay!
@@ -180,4 +181,3 @@ describe("state machine — persistence", fn() {
     order.delete()
   })
 })
-end

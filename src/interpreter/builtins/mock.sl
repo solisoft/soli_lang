@@ -108,19 +108,24 @@ class Mock
   def assert_received(name, expected_args = nil)
     matching = @calls_to(name)
     throw "Expected " + @label + " to receive " + name + ", but it never did" if matching.length == 0
-    return true if expected_args.nil?
-
-    found = matching.any? { |call| call["args"] == expected_args }
-    unless found
-      received_args = matching.map { |call| call["args"] }
-      throw "Expected " + @label + " to receive " + name + " with " + str(expected_args) + ", got " + str(received_args)
+    unless expected_args.nil?
+      found = matching.any? { |call| call["args"] == expected_args }
+      unless found
+        received_args = matching.map { |call| call["args"] }
+        throw "Expected " + @label + " to receive " + name + " with " + str(expected_args) + ", got " + str(received_args)
+      end
     end
+    # Counted like any other assertion, so a test that only checks a mock is
+    # not reported as asserting nothing.
+    __mock_count_assertion()
     true
   end
 
   def assert_not_received(name)
     count = @call_count(name)
     throw "Expected " + @label + " not to receive " + name + ", but it did " + str(count) + " time(s)" if count > 0
+
+    __mock_count_assertion()
     true
   end
 

@@ -1,7 +1,10 @@
 //! Test assertions for the Soli test DSL.
 
+use crate::error::RuntimeError;
+use crate::interpreter::builtins::test_dsl::fmt_value;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, NativeFunction, Value};
+use crate::span::Span;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -9,209 +12,351 @@ thread_local! {
     static ASSERTION_COUNT: Rc<RefCell<i64>> = Rc::new(RefCell::new(0));
 }
 
+thread_local! {
+    /// Set when an assertion fails, so `assert_raises` can tell a failed
+    /// assertion inside its block — which must fail the test — from the error
+    /// the block was expected to raise.
+    static ASSERTION_FAILED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Build the error an assertion fails with, and mark the failure.
+pub(crate) fn assertion_failure(message: impl Into<String>) -> String {
+    ASSERTION_FAILED.with(|failed| failed.set(true));
+    message.into()
+}
+
+/// Forget an earlier failure mark; `assert_raises` calls it before its block.
+pub(crate) fn clear_assertion_failed() {
+    ASSERTION_FAILED.with(|failed| failed.set(false));
+}
+
+/// Whether an assertion failed since the last [`clear_assertion_failed`].
+pub(crate) fn assertion_failed() -> bool {
+    ASSERTION_FAILED.with(|failed| failed.get())
+}
+
+/// Count the assertion and return what every assertion returns on success.
+fn pass() -> Result<Value, String> {
+    increment_assertion_count();
+    Ok(Value::Int(1))
+}
+
+/// Check the argument count of an assertion that takes an optional trailing
+/// message, and return that message.
+fn split_message<'a>(
+    name: &str,
+    args: &'a [Value],
+    required: usize,
+) -> Result<Option<&'a str>, String> {
+    if args.len() < required || args.len() > required + 1 {
+        return Err(format!(
+            "{name} expects {required} argument{} and an optional message, got {}",
+            if required == 1 { "" } else { "s" },
+            args.len()
+        ));
+    }
+    match args.get(required) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(message)) => Ok(Some(message.as_ref())),
+        Some(other) => Err(format!(
+            "{name}: the message must be a String, got {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// Prefix a failure with the caller's message, when one was given.
+fn with_message(message: Option<&str>, failure: String) -> String {
+    match message {
+        Some(message) if !message.is_empty() => assertion_failure(format!("{message}: {failure}")),
+        _ => assertion_failure(failure),
+    }
+}
+
+/// Compare two numbers, Int and Float mixed freely.
+pub(crate) fn compare_numbers(
+    name: &str,
+    left: &Value,
+    right: &Value,
+) -> Result<std::cmp::Ordering, String> {
+    let as_f64 = |value: &Value| match value {
+        Value::Int(n) => Some(*n as f64),
+        Value::Float(f) => Some(*f),
+        _ => None,
+    };
+    if let (Value::Int(a), Value::Int(b)) = (left, right) {
+        return Ok(a.cmp(b));
+    }
+    match (as_f64(left), as_f64(right)) {
+        (Some(a), Some(b)) => a.partial_cmp(&b).ok_or_else(|| {
+            format!(
+                "{name}: cannot order {} and {}",
+                fmt_value(left),
+                fmt_value(right)
+            )
+        }),
+        _ => Err(format!(
+            "{name} expects two numbers, got {} and {}",
+            left.type_name(),
+            right.type_name()
+        )),
+    }
+}
+
 pub fn register_assertions(env: &mut Environment) {
     env.define(
         "assert".to_string(),
-        Value::NativeFunction(NativeFunction::new("assert", Some(1), |args| {
+        Value::NativeFunction(NativeFunction::new("assert", None, |args| {
+            let message = split_message("assert", args, 1)?;
             match &args[0] {
-                Value::Bool(true) => {
-                    increment_assertion_count();
-                    Ok(Value::Int(1))
-                }
-                Value::Bool(false) => Err("assertion failed".to_string()),
-                _ => Err("assert expects boolean".to_string()),
+                Value::Bool(true) => pass(),
+                Value::Bool(false) => Err(with_message(message, "assertion failed".to_string())),
+                other => Err(format!(
+                    "assert expects a Bool, got {} ({})",
+                    other.type_name(),
+                    fmt_value(other)
+                )),
             }
         })),
     );
 
     env.define(
         "assert_not".to_string(),
-        Value::NativeFunction(NativeFunction::new(
-            "assert_not",
-            Some(1),
-            |args| match &args[0] {
-                Value::Bool(false) => {
-                    increment_assertion_count();
-                    Ok(Value::Int(1))
-                }
-                Value::Bool(true) => Err("assertion failed".to_string()),
-                _ => Err("assert_not expects boolean".to_string()),
-            },
-        )),
+        Value::NativeFunction(NativeFunction::new("assert_not", None, |args| {
+            let message = split_message("assert_not", args, 1)?;
+            match &args[0] {
+                Value::Bool(false) => pass(),
+                Value::Bool(true) => Err(with_message(
+                    message,
+                    "expected false, got true".to_string(),
+                )),
+                other => Err(format!(
+                    "assert_not expects a Bool, got {} ({})",
+                    other.type_name(),
+                    fmt_value(other)
+                )),
+            }
+        })),
     );
 
+    // assert_eq(actual, expected[, message])
     env.define(
         "assert_eq".to_string(),
-        Value::NativeFunction(NativeFunction::new("assert_eq", Some(2), |args| {
+        Value::NativeFunction(NativeFunction::new("assert_eq", None, |args| {
+            let message = split_message("assert_eq", args, 2)?;
             if args[0] == args[1] {
-                increment_assertion_count();
-                Ok(Value::Int(1))
+                pass()
             } else {
-                Err("values not equal".to_string())
+                Err(with_message(
+                    message,
+                    format!(
+                        "expected {}, got {}",
+                        fmt_value(&args[1]),
+                        fmt_value(&args[0])
+                    ),
+                ))
             }
         })),
     );
 
     env.define(
         "assert_ne".to_string(),
-        Value::NativeFunction(NativeFunction::new("assert_ne", Some(2), |args| {
+        Value::NativeFunction(NativeFunction::new("assert_ne", None, |args| {
+            let message = split_message("assert_ne", args, 2)?;
             if args[0] != args[1] {
-                increment_assertion_count();
-                Ok(Value::Int(1))
+                pass()
             } else {
-                Err("values should not be equal".to_string())
+                Err(with_message(
+                    message,
+                    format!("expected a value other than {}", fmt_value(&args[1])),
+                ))
             }
         })),
     );
 
     env.define(
         "assert_null".to_string(),
-        Value::NativeFunction(NativeFunction::new(
-            "assert_null",
-            Some(1),
-            |args| match &args[0] {
-                Value::Null => {
-                    increment_assertion_count();
-                    Ok(Value::Int(1))
-                }
-                _ => Err("expected null".to_string()),
-            },
-        )),
+        Value::NativeFunction(NativeFunction::new("assert_null", None, |args| {
+            let message = split_message("assert_null", args, 1)?;
+            match &args[0] {
+                Value::Null => pass(),
+                other => Err(with_message(
+                    message,
+                    format!("expected nil, got {}", fmt_value(other)),
+                )),
+            }
+        })),
     );
 
     env.define(
         "assert_not_null".to_string(),
-        Value::NativeFunction(NativeFunction::new(
-            "assert_not_null",
-            Some(1),
-            |args| match &args[0] {
-                Value::Null => Err("expected non-null".to_string()),
-                _ => {
-                    increment_assertion_count();
-                    Ok(Value::Int(1))
-                }
-            },
-        )),
+        Value::NativeFunction(NativeFunction::new("assert_not_null", None, |args| {
+            let message = split_message("assert_not_null", args, 1)?;
+            match &args[0] {
+                Value::Null => Err(with_message(
+                    message,
+                    "expected a value, got nil".to_string(),
+                )),
+                _ => pass(),
+            }
+        })),
     );
 
     env.define(
         "assert_gt".to_string(),
-        Value::NativeFunction(NativeFunction::new("assert_gt", Some(2), |args| {
-            match (&args[0], &args[1]) {
-                (Value::Int(a), Value::Int(b)) if a > b => {
-                    increment_assertion_count();
-                    Ok(Value::Int(1))
-                }
-                (Value::Float(a), Value::Float(b)) if a > b => {
-                    increment_assertion_count();
-                    Ok(Value::Int(1))
-                }
-                _ => Err("assert_gt failed".to_string()),
+        Value::NativeFunction(NativeFunction::new("assert_gt", None, |args| {
+            let message = split_message("assert_gt", args, 2)?;
+            if compare_numbers("assert_gt", &args[0], &args[1])? == std::cmp::Ordering::Greater {
+                pass()
+            } else {
+                Err(with_message(
+                    message,
+                    format!(
+                        "expected {} to be greater than {}",
+                        fmt_value(&args[0]),
+                        fmt_value(&args[1])
+                    ),
+                ))
             }
         })),
     );
 
     env.define(
         "assert_lt".to_string(),
-        Value::NativeFunction(NativeFunction::new("assert_lt", Some(2), |args| {
-            match (&args[0], &args[1]) {
-                (Value::Int(a), Value::Int(b)) if a < b => {
-                    increment_assertion_count();
-                    Ok(Value::Int(1))
-                }
-                (Value::Float(a), Value::Float(b)) if a < b => {
-                    increment_assertion_count();
-                    Ok(Value::Int(1))
-                }
-                _ => Err("assert_lt failed".to_string()),
+        Value::NativeFunction(NativeFunction::new("assert_lt", None, |args| {
+            let message = split_message("assert_lt", args, 2)?;
+            if compare_numbers("assert_lt", &args[0], &args[1])? == std::cmp::Ordering::Less {
+                pass()
+            } else {
+                Err(with_message(
+                    message,
+                    format!(
+                        "expected {} to be less than {}",
+                        fmt_value(&args[0]),
+                        fmt_value(&args[1])
+                    ),
+                ))
             }
         })),
     );
 
     env.define(
         "assert_match".to_string(),
-        Value::NativeFunction(NativeFunction::new("assert_match", Some(2), |args| {
-            if let (Value::String(s), Value::String(pattern)) = (&args[0], &args[1]) {
-                match crate::regex_cache::get_regex(pattern) {
-                    Ok(re) if re.is_match(s) => {
-                        increment_assertion_count();
-                        Ok(Value::Int(1))
-                    }
-                    _ => Err("assert_match failed".to_string()),
-                }
+        Value::NativeFunction(NativeFunction::new("assert_match", None, |args| {
+            let message = split_message("assert_match", args, 2)?;
+            let (Value::String(text), Value::String(pattern)) = (&args[0], &args[1]) else {
+                return Err(format!(
+                    "assert_match expects a String and a pattern String, got {} and {}",
+                    args[0].type_name(),
+                    args[1].type_name()
+                ));
+            };
+            let regex = crate::regex_cache::get_regex(pattern)
+                .map_err(|e| format!("assert_match: invalid pattern /{pattern}/: {e}"))?;
+            if regex.is_match(text) {
+                pass()
             } else {
-                Err("assert_match expects strings".to_string())
+                Err(with_message(
+                    message,
+                    format!("expected {} to match /{}/", fmt_value(&args[0]), pattern),
+                ))
             }
         })),
     );
 
     env.define(
         "assert_contains".to_string(),
-        Value::NativeFunction(NativeFunction::new(
-            "assert_contains",
-            Some(2),
-            |args| match &args[0] {
-                Value::Array(arr) if arr.borrow().contains(&args[1]) => {
-                    increment_assertion_count();
-                    Ok(Value::Int(1))
+        Value::NativeFunction(NativeFunction::new("assert_contains", None, |args| {
+            let message = split_message("assert_contains", args, 2)?;
+            let contains = match (&args[0], &args[1]) {
+                (Value::Array(items), needle) => items.borrow().contains(needle),
+                (Value::String(text), Value::String(needle)) => text.contains(needle.as_ref()),
+                (Value::String(_), other) => {
+                    return Err(format!(
+                        "assert_contains on a String expects a String to look for, got {}",
+                        other.type_name()
+                    ))
                 }
-                Value::String(s) => {
-                    if let Value::String(sub) = &args[1] {
-                        if s.contains(&**(sub)) {
-                            increment_assertion_count();
-                            Ok(Value::Int(1))
-                        } else {
-                            Err("assert_contains failed".to_string())
-                        }
-                    } else {
-                        Err("assert_contains expects string as second argument".to_string())
-                    }
+                (other, _) => {
+                    return Err(format!(
+                        "assert_contains expects an Array or a String, got {}",
+                        other.type_name()
+                    ))
                 }
-                _ => Err("assert_contains failed".to_string()),
-            },
-        )),
+            };
+            if contains {
+                pass()
+            } else {
+                Err(with_message(
+                    message,
+                    format!(
+                        "expected {} to contain {}",
+                        fmt_value(&args[0]),
+                        fmt_value(&args[1])
+                    ),
+                ))
+            }
+        })),
     );
 
     env.define(
         "assert_hash_has_key".to_string(),
-        Value::NativeFunction(NativeFunction::new(
-            "assert_hash_has_key",
-            Some(2),
-            |args| {
-                if let Value::Hash(h) = &args[0] {
-                    let key = &args[1];
-                    let found = if let Some(hash_key) = HashKey::from_value(key) {
-                        h.borrow().contains_key(&hash_key)
-                    } else {
-                        false
-                    };
-                    if found {
-                        increment_assertion_count();
-                        Ok(Value::Int(1))
-                    } else {
-                        Err("hash does not contain key".to_string())
-                    }
-                } else {
-                    Err("assert_hash_has_key expects hash".to_string())
-                }
-            },
-        )),
+        Value::NativeFunction(NativeFunction::new("assert_hash_has_key", None, |args| {
+            let message = split_message("assert_hash_has_key", args, 2)?;
+            let Value::Hash(hash) = &args[0] else {
+                return Err(format!(
+                    "assert_hash_has_key expects a Hash, got {}",
+                    args[0].type_name()
+                ));
+            };
+            let found =
+                HashKey::from_value(&args[1]).is_some_and(|key| hash.borrow().contains_key(&key));
+            if found {
+                pass()
+            } else {
+                Err(with_message(
+                    message,
+                    format!(
+                        "expected {} to have key {}",
+                        fmt_value(&args[0]),
+                        fmt_value(&args[1])
+                    ),
+                ))
+            }
+        })),
     );
 
     env.define(
         "assert_json".to_string(),
-        Value::NativeFunction(NativeFunction::new("assert_json", Some(1), |args| {
-            if let Value::String(s) = &args[0] {
-                match serde_json::from_str::<serde_json::Value>(s) {
-                    Ok(_) => {
-                        increment_assertion_count();
-                        Ok(Value::Int(1))
-                    }
-                    Err(_) => Err("invalid JSON".to_string()),
-                }
-            } else {
-                Err("assert_json expects string".to_string())
+        Value::NativeFunction(NativeFunction::new("assert_json", None, |args| {
+            let message = split_message("assert_json", args, 1)?;
+            let Value::String(text) = &args[0] else {
+                return Err(format!(
+                    "assert_json expects a String, got {}",
+                    args[0].type_name()
+                ));
+            };
+            match serde_json::from_str::<serde_json::Value>(text) {
+                Ok(_) => pass(),
+                Err(e) => Err(with_message(
+                    message,
+                    format!("expected valid JSON, got {} ({e})", fmt_value(&args[0])),
+                )),
             }
+        })),
+    );
+
+    // `assert_raises(fn() { ... })` / `assert_raises("part of the message") do ... end`.
+    // The block has to run with `&mut Interpreter` (or the VM), so the real
+    // work is in the call interceptors; this placeholder only explains misuse.
+    env.define(
+        "assert_raises".to_string(),
+        Value::NativeFunction(NativeFunction::new("assert_raises", None, |_args| {
+            Err(
+                "assert_raises expects a block: assert_raises() do ... end, \
+assert_raises(\"part of the message\") do ... end, or assert_raises(fn() { ... })"
+                    .to_string(),
+            )
         })),
     );
 
@@ -301,6 +446,81 @@ pub fn register_assertions(env: &mut Environment) {
             }
         })),
     );
+}
+
+/// Split the evaluated arguments of `assert_raises` into the expected message
+/// fragment and the block. `None` when the call is not one of the two shapes,
+/// so the caller falls through to the placeholder and its usage error.
+pub(crate) fn assert_raises_args(mut args: Vec<Value>) -> Option<(Option<String>, Value)> {
+    let callable = |value: &Value| {
+        matches!(
+            value,
+            Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_)
+        )
+    };
+    match args.len() {
+        1 if callable(&args[0]) => args.pop().map(|block| (None, block)),
+        2 if callable(&args[1]) => {
+            let block = args.pop()?;
+            match args.pop()? {
+                Value::String(fragment) => Some((Some(fragment.to_string()), block)),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Judge what an `assert_raises` block did.
+///
+/// The error it was expected to raise passes (and is returned as its message,
+/// so a spec can assert more about it); a block that returns normally fails.
+/// A failed assertion, a `skip`/`pending`, or an error the runtime must route
+/// rather than catch (breakpoint, engine fallback) is not "the error the block
+/// raised": it propagates untouched, or `assert_raises` would turn a failing
+/// spec inside the block into a passing one.
+pub(crate) fn judge_raised(
+    outcome: Result<Value, RuntimeError>,
+    fragment: Option<&str>,
+    span: Span,
+) -> Result<Value, RuntimeError> {
+    let failure = |message: String| RuntimeError::General {
+        message: assertion_failure(message),
+        span,
+    };
+    let error = match outcome {
+        Ok(_) => {
+            return Err(failure(match fragment {
+                Some(fragment) => format!(
+                    "expected the block to raise an error containing {:?}, but it raised nothing",
+                    fragment
+                ),
+                None => "expected the block to raise, but it raised nothing".to_string(),
+            }))
+        }
+        Err(error) => error,
+    };
+    if assertion_failed()
+        || crate::interpreter::builtins::test_dsl::not_run_marked()
+        || error.is_breakpoint()
+        || error.is_engine_fallback()
+    {
+        return Err(error);
+    }
+    let message = match &error {
+        RuntimeError::Thrown { value, .. } => crate::error::render_thrown(value),
+        other => other.catchable_message(),
+    };
+    if let Some(fragment) = fragment {
+        if !message.contains(fragment) {
+            return Err(failure(format!(
+                "expected an error containing {:?}, got {:?}",
+                fragment, message
+            )));
+        }
+    }
+    increment_assertion_count();
+    Ok(Value::String(message.into()))
 }
 
 /// Read the AQL query count off a response hash (the `query_count` key set by
@@ -421,6 +641,12 @@ request:\n{}",
 const NO_INSTRUMENTATION: &str =
     "response has no query instrumentation — run request specs via `soli test` \
 (the test server runs in --dev, which records the AQL query log)";
+
+/// The assertions counted so far in the running file, without resetting them —
+/// the runner reads it around each test to find tests that asserted nothing.
+pub fn assertion_count() -> i64 {
+    ASSERTION_COUNT.with(|count| *count.borrow())
+}
 
 pub fn get_and_reset_assertion_count() -> i64 {
     ASSERTION_COUNT.with(|count| {

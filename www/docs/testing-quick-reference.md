@@ -75,27 +75,39 @@ Quick lookup for E2E controller testing helpers.
 | `render_template()` | Did the response render a template? | `true/false` |
 | `render_template?()` | Alias of `render_template()` | `true/false` |
 
+## Spec Helpers
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `assert_raises(fragment?) do … end` | Block must raise (message containing the fragment); returns the message | `assert_raises("not allowed") do … end` |
+| `requires_solidb()` | In a `before_each`: skip the test when SoliDB does not answer; fail instead under `SOLI_REQUIRE_DB=1` | `before_each() do requires_solidb() end` |
+| `requires_solikv()` | Same for SoliKV | `before_each() do requires_solikv() end` |
+| `solidb_available?()` / `solikv_available?()` | The same probe, as a Bool | `solidb_available?()` |
+| `skip(reason)` / `pending(reason)` | Stop the test, count it as pending (in a `before_each`: the whole suite) | `skip("needs a printer")` |
+
+Every `assert_*` takes an optional trailing message: `assert_eq(res_status(response), 201, "create")`.
+
 ## Complete Example
 
 ```soli
-describe("PostsController", fn()
-  before_each(fn()
+describe("PostsController") do
+  before_each() do
     as_guest()
-  end)
-  
-  test("creates post", fn()
+  end
+
+  test("creates post") do
     login("user@example.com", "password")
-    
+
     response = post("/posts", {
       "title": "New Post",
       "body": "Content"
     })
-    
+
     assert_eq(res_status(response), 201)
     data = res_json(response)
     assert_eq(data["title"], "New Post")
-  end)
-end)
+  end
+end
 ```
 
 ## Running Tests
@@ -107,6 +119,9 @@ soli test tests/builtins/controller_integration_spec.sl
 # Run all builtins tests
 soli test tests/builtins
 
-# Run with coverage
-soli test tests/builtins --coverage
+# Coverage is on by default; skip it for a fast loop
+soli test tests/builtins --no-coverage
+
+# Fail any test that makes no assertion
+soli test --require-assertions
 ```

@@ -528,6 +528,7 @@ pub fn run_test(
     headed: bool,
     filter: Option<&str>,
     fail_fast: bool,
+    require_assertions: bool,
 ) {
     let test_paths: Vec<PathBuf> = if paths.is_empty() {
         vec![std::env::current_dir()
@@ -575,6 +576,7 @@ pub fn run_test(
     }
     solilang::interpreter::builtins::test_progress::set_name_filter(filter.map(str::to_string));
     solilang::interpreter::builtins::test_progress::set_fail_fast(fail_fast);
+    solilang::interpreter::builtins::test_progress::set_require_assertions(require_assertions);
 
     // `--browser`: fail now rather than at the first `visit()`. Discovering
     // there is no browser thirty seconds into a suite, from inside a worker
@@ -1467,6 +1469,14 @@ pub fn run_test(
         );
     }
     println!("  {} assertions", total_assertions_val);
+    let empty_tests = solilang::interpreter::builtins::test_progress::empty_tests();
+    if empty_tests > 0 {
+        println!(
+            "  {} {} made no assertions (--require-assertions fails them)",
+            empty_tests,
+            plural(empty_tests, "test", "tests")
+        );
+    }
     println!("  Time: {}", format_duration(suite_duration));
 
     if enable_coverage {

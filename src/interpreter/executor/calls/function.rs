@@ -415,6 +415,13 @@ impl Interpreter {
                     return Ok(result);
                 }
             }
+            // `assert_raises(...)` runs its block and judges the error, so it
+            // needs `&mut Interpreter` like `with_transaction`.
+            if name == "assert_raises" {
+                if let Some(result) = self.try_evaluate_assert_raises(arguments, span)? {
+                    return Ok(result);
+                }
+            }
             // `event :name do … end` inside a `state_machine` block. Scoped to an
             // active builder so a stray `event(...)` elsewhere falls through to
             // the native placeholder (which raises a clear error). The block must
@@ -1928,6 +1935,34 @@ impl Interpreter {
                 Err(err)
             }
         }
+    }
+
+    /// `assert_raises(fn() { ... })` / `assert_raises("fragment") do ... end`.
+    ///
+    /// Returns `Ok(None)` when the arguments are not one of those shapes, so the
+    /// call falls through to the native placeholder and its usage error.
+    fn try_evaluate_assert_raises(
+        &mut self,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        use crate::interpreter::builtins::assertions;
+
+        let mut values = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            match argument {
+                Argument::Positional(expr) | Argument::Block(expr) => {
+                    values.push(self.evaluate(expr)?)
+                }
+                Argument::Named(_) => return Ok(None),
+            }
+        }
+        let Some((fragment, block)) = assertions::assert_raises_args(values) else {
+            return Ok(None);
+        };
+        assertions::clear_assertion_failed();
+        let outcome = self.call_value(block, Vec::new(), span);
+        assertions::judge_raised(outcome, fragment.as_deref(), span).map(Some)
     }
 
     fn try_evaluate_factory_call(

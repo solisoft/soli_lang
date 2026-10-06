@@ -160,7 +160,7 @@ pub fn restore_stubs(snapshot: StubSnapshot) {
     }
 }
 
-/// The two natives `mock.sl` needs; defined in the class's home environment
+/// The natives `mock.sl` needs; defined in the class's home environment
 /// only, so they are not part of the language's global surface.
 fn define_stub_natives(home: &Rc<RefCell<Environment>>) {
     let register = NativeFunction::new("__mock_register_stub", Some(5), |args| {
@@ -190,7 +190,16 @@ fn define_stub_natives(home: &Rc<RefCell<Environment>>) {
         Value::Class(target) => Ok(Value::String(target.name.clone().into())),
         _ => Err("Mock.stub_*: the target must be a class".to_string()),
     });
+    // `assert_received` / `assert_not_received` count as assertions.
+    let count_assertion = NativeFunction::new("__mock_count_assertion", Some(0), |_args| {
+        crate::interpreter::builtins::assertions::increment_assertion_count();
+        Ok(Value::Null)
+    });
     let mut env = home.borrow_mut();
+    env.define(
+        "__mock_count_assertion".to_string(),
+        Value::NativeFunction(count_assertion),
+    );
     env.define(
         "__mock_class_name".to_string(),
         Value::NativeFunction(class_name),

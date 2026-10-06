@@ -328,23 +328,65 @@
         </table>
     </div>
 
+    <h2 class="text-2xl font-bold text-white mb-6">Spec Helpers</h2>
+
+    <div class="overflow-x-auto mb-4">
+        <table class="w-full text-left">
+            <thead>
+                <tr class="border-b border-white/10">
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Function</th>
+                    <th class="py-3 px-4 text-sm font-semibold text-gray-300">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">assert_raises(fragment?) do &hellip; end</code></td>
+                    <td class="py-3 px-4 text-gray-400">Block must raise (a message containing the fragment); returns the message</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">requires_solidb()</code></td>
+                    <td class="py-3 px-4 text-gray-400">In a <code>before_each</code>: skip the test when SoliDB does not answer; fail instead under <code>SOLI_REQUIRE_DB=1</code></td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">requires_solikv()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Same for SoliKV</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">solidb_available?()</code> / <code class="text-emerald-300">solikv_available?()</code></td>
+                    <td class="py-3 px-4 text-gray-400">The same probe, as a Bool</td>
+                </tr>
+                <tr class="hover:bg-white/5">
+                    <td class="py-3 px-4"><code class="text-emerald-300">skip(reason)</code> / <code class="text-emerald-300">pending(reason)</code></td>
+                    <td class="py-3 px-4 text-gray-400">Stop the test, count it as pending (in a <code>before_each</code>: the whole suite)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">Every <code class="text-emerald-300">assert_*</code> takes an optional trailing message: <code class="text-emerald-300">assert_eq(res_status(response), 201, "create")</code>.</p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Complete Example</h2>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">tests/posts_controller_spec.sl</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">describe("PostsController", def() {
-  before_each(def() {
-    as_guest()    })    
-  test("creates post", def() {
-    login("user@example.com", "password")        
+<pre><code class="language-soli text-sm">describe("PostsController") do
+  before_each() do
+    as_guest()
+  end
+
+  test("creates post") do
+    login("user@example.com", "password")
+
     response = post("/posts", {
       "title": "New Post",
       "body": "Content"
-    })        
+    })
+
     assert_eq(res_status(response), 201)
-data = res_json(response)
-assert_eq(data["title"], "New Post")    })});</code></pre>
+    data = res_json(response)
+    assert_eq(data["title"], "New Post")
+  end
+end</code></pre>
         </div>
     </div>
 
@@ -359,8 +401,11 @@ soli test tests/builtins/controller_integration_spec.sl
 # Run all builtins tests
 soli test tests/builtins
 
-# Run with coverage
-soli test tests/builtins --coverage</code></pre>
+# Coverage is on by default; skip it for a fast loop
+soli test tests/builtins --no-coverage
+
+# Fail any test that makes no assertion
+soli test --require-assertions</code></pre>
         </div>
     </div>
 

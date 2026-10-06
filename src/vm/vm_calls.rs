@@ -488,6 +488,21 @@ impl Vm {
         if native.name == "with_transaction" {
             return self.call_with_transaction_block(args, span);
         }
+        if native.name == "assert_raises" {
+            if let Some((fragment, block)) =
+                crate::interpreter::builtins::assertions::assert_raises_args(args.clone())
+            {
+                crate::interpreter::builtins::assertions::clear_assertion_failed();
+                let outcome = self.invoke_callable(block, &[], span);
+                let value = crate::interpreter::builtins::assertions::judge_raised(
+                    outcome,
+                    fragment.as_deref(),
+                    span,
+                )?;
+                self.push(value);
+                return Ok(());
+            }
+        }
         // `defined` and `const_get` read the tree-walker's `CURRENT_ENV`,
         // which the VM never sets: on the VM, `defined("ShopChannel")` was
         // false for a class the app had loaded, and an action took the branch

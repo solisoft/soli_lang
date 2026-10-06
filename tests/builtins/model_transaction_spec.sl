@@ -29,9 +29,10 @@ try
 catch e
 end
 
-if __db_available
 
 describe("Model.transaction block form", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("commits writes when the block completes normally", fn() {
         TxAccount.transaction(fn() {
             TxAccount.create({ "name": "tx_commit", "balance": 100 });
@@ -94,4 +95,3 @@ describe("Model.transaction block form", fn() {
     });
 });
 
-end // if __db_available

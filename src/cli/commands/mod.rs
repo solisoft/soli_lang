@@ -1741,6 +1741,7 @@ pub fn run_test(
     headed: bool,
     filter: Option<&str>,
     fail_fast: bool,
+    require_assertions: bool,
     watch: bool,
 ) {
     if watch {
@@ -1759,6 +1760,7 @@ pub fn run_test(
         headed,
         filter,
         fail_fast,
+        require_assertions,
     );
 }
 

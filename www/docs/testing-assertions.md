@@ -9,10 +9,12 @@ available inside any `test(...)` body run by `soli test`. Nothing to import, and
 `tests/helpers/assertions.sl` to write.
 
 Every assertion **raises** on failure — the runner catches it, marks the test failed,
-and prints the message with the file and line. There is no result hash to inspect and
-no `message` parameter to pass: the failure already points at the line. On success an
+and prints a message that shows the values, with the file and line. On success an
 assertion returns `1` and bumps the run's assertion counter (the count printed after
-each file).
+each file). There is no result hash to inspect.
+
+Every `assert_*` below takes an **optional trailing message**, prefixed to the failure —
+useful when the same check runs in a loop or the values alone do not say what broke.
 
 ```soli
 describe("User", fn() {
@@ -28,22 +30,23 @@ describe("User", fn() {
 
 | Assertion | Passes when |
 |---|---|
-| `assert(value)` | `value` is the boolean `true` (a non-boolean is an error, not a failure) |
+| `assert(value)` | `value` is the boolean `true` (anything else fails, naming its type) |
 | `assert_not(value)` | `value` is the boolean `false` |
 | `assert_eq(a, b)` | `a` and `b` are equal |
 | `assert_ne(a, b)` | `a` and `b` differ |
 | `assert_null(value)` | `value` is `null` |
 | `assert_not_null(value)` | `value` is anything but `null` |
-| `assert_gt(a, b)` | `a > b` |
+| `assert_gt(a, b)` | `a > b` (an Int and a Float compare mixed) |
 | `assert_lt(a, b)` | `a < b` |
 | `assert_match(string, pattern)` | the regex `pattern` matches `string` |
 | `assert_contains(collection, item)` | an array contains `item`, or a string contains the substring |
 | `assert_hash_has_key(hash, key)` | `hash` has that key |
 | `assert_json(string)` | `string` parses as JSON |
+| `assert_raises(fragment?) do … end` | the block raises (with the fragment in its message); returns the message |
 
-`assert` and `assert_not` are strict about the boolean: `assert(user)` on a hash is an
-error rather than a pass, so a typo cannot quietly succeed. Compare explicitly
-(`assert_not_null(user)`) instead.
+`assert` and `assert_not` are strict about the boolean: `assert(user)` on a hash fails
+(`assert expects a Bool, got hash (…)`) rather than passing, so a typo cannot quietly
+succeed. Compare explicitly (`assert_not_null(user)`) instead.
 
 ```soli
 assert(order["paid"])                          # a real boolean field
@@ -55,6 +58,63 @@ assert_contains(["draft", "open"], order["state"])
 assert_contains(response["body"], "Saved")     # substring on a string
 assert_hash_has_key(payload, "token")
 assert_json(response["body"])
+```
+
+### Failure messages
+
+| Assertion | Fails with |
+|---|---|
+| `assert_eq(actual, expected)` | `expected <expected>, got <actual>` |
+| `assert_ne(a, b)` | `expected a value other than <b>` |
+| `assert_null(value)` | `expected nil, got <value>` |
+| `assert_not_null(value)` | `expected a value, got nil` |
+| `assert_not(value)` | `expected false, got <value>` |
+| `assert_gt(a, b)` / `assert_lt(a, b)` | `expected <a> to be greater than <b>` / `… less than …` |
+| `assert_match(string, pattern)` | `expected "<string>" to match /<pattern>/` |
+| `assert_contains(collection, item)` | `expected <collection> to contain <item>` |
+| `assert_hash_has_key(hash, key)` | `expected <hash> to have key "<key>"` |
+| `assert_json(string)` | `expected valid JSON, got "<string>" (<parse error>)` |
+
+With a message, it comes first:
+
+```soli
+assert_eq(cart.length, 3, "the cart size")   # the cart size: expected 3, got 2
+assert(order["paid"], "order paid")          # order paid: assertion failed
+```
+
+### assert_raises
+
+```soli
+message = assert_raises("out of stock") do
+    cart.add(sold_out_item)
+end
+assert_contains(message, sold_out_item.sku)
+
+assert_raises() do
+    divide(1, 0)
+end
+
+assert_raises("division by zero", fn() { divide(1, 0) })
+```
+
+Passes when the block raises — and, given a fragment, when the error message contains
+it — and **returns the error message** so you can assert more on it. Fails when the block
+raises nothing (`expected the block to raise, but it raised nothing`) or a different
+error (`expected an error containing "timeout", got "boom"`). A failed assertion or a
+`skip` / `pending` inside the block is not taken for the expected error: it propagates.
+
+Keep the parentheses: a bare `assert_raises do … end` does not parse. It replaces the
+hand-rolled pattern:
+
+```soli
+# Before
+raised = false
+try
+    divide(1, 0)
+catch error
+    raised = true
+end
+assert(raised)
 ```
 
 ## Query Assertions
@@ -205,7 +265,8 @@ expect(response.body).to_not_be_null();
 
 ### to_be_greater_than(expected)
 
-Asserts that the actual number is greater than expected:
+Asserts that the actual number is greater than expected. This and the three other
+comparisons accept an Int and a Float mixed (`expect(3).to_be_greater_than(2.5)`):
 
 ```soli
 expect(10).to_be_greater_than(5);
@@ -259,6 +320,14 @@ expect(response["body"]).to_match("Saved");
 expect(slug).to_match("-");
 ```
 
+### to_have_key(key)
+
+Asserts that the actual hash has the key:
+
+```soli
+expect(payload).to_have_key("token");
+```
+
 ### to_be_valid_json()
 
 Asserts that the actual string is valid JSON:
@@ -298,9 +367,9 @@ end
 1. **One concern per assertion** — a failure should name the thing that broke.
 2. **Prefer the specific assertion** — `assert_null(x)` beats `assert_eq(x, null)`; it
    says what it means and fails with a clearer message.
-3. **Don't pass a message** — assertions take values only; the file and line already
-   identify the check. If a check needs prose, raise it yourself (see Custom
-   Assertions).
+3. **Pass a message only when the values are not enough** — the failure already shows
+   them with the file and line. A message earns its place in a loop
+   (`assert_eq(row["total"], 0, "row #{i}")`) or when two checks compare the same values.
 4. **Keep `assert` for real booleans** — for presence, use `assert_not_null`.
 5. **Budget your queries** — an endpoint spec that asserts `assert_max_queries` or
    `assert_no_n_plus_one` catches a regression that a value assertion never will.
@@ -313,6 +382,7 @@ soli test tests/user_test.sl    # one file
 soli test --fail-on-n1          # fail any request spec that triggers an N+1
 soli test --filter "lists posts" # only tests whose describe/test names match
 soli test --fail-fast           # stop after the first failing test
+soli test --require-assertions  # fail a test that makes no assertion
 soli test --browser             # also run browser specs
 ```
 

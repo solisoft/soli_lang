@@ -80,10 +80,23 @@
     })
 
     it("handles division by zero", fn() {
-      # Test error handling
+      assert_raises("division by zero", fn() { divide(1, 0) })
     })
   })
 })</code></pre>
+        </div>
+
+        <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Declarations are read, not run</h3>
+            <p class="text-gray-400 mb-3">The runner reads the spec tree from the file without running the <code class="text-amber-400">describe</code> bodies. Anything it cannot register fails the file with <code>N spec declaration problem(s)</code>, one line each &mdash; instead of being silently dropped:</p>
+            <ul class="list-disc list-inside text-gray-400 text-sm space-y-1">
+                <li>a <code>describe</code>/<code>context</code>/<code>test</code>/<code>it</code>/<code>specify</code> inside a top-level <code>if</code>, <code>unless</code>, loop or <code>try</code>;</li>
+                <li>a <code>test</code> outside any <code>describe</code>;</li>
+                <li>any other statement in a <code>describe</code> body (<code>url = "/posts"</code>, a <code>def</code>&hellip;) &mdash; only tests, nested suites, hooks and <code>viewport</code> belong there;</li>
+                <li>a suite or test name that is not a string literal (interpolated or computed);</li>
+                <li>a second <code>before_each</code> (or any other hook) in the same <code>describe</code>.</li>
+            </ul>
+            <p class="text-gray-400 text-sm mt-3">Shared variables and helper functions go at the top level of the file; reassign them in a <code>before_each</code>. To skip a suite when a service is missing, call <a href="#def-requires-solidb" class="text-amber-400 hover:underline"><code>requires_solidb()</code></a> or <code>skip("why")</code> in its <code>before_each</code>.</p>
         </div>
     </section>
 
@@ -148,9 +161,40 @@
                     <a href="#def-skip" class="group flex items-center gap-2">
                         <code class="font-mono text-amber-400">skip(reason?)</code>
                     </a>
-                    <p class="text-gray-400 text-sm mt-1">Stop the current test and count it as pending, like <code>pending()</code></p>
+                    <p class="text-gray-400 text-sm mt-1">Stop the current test and count it as pending, like <code>pending()</code>. Called in a <code>before_each</code>, it skips every test of the suite.</p>
                 </section>
             </div>
+        </div>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Nesting and failures</h3>
+            <ul class="list-disc list-inside text-gray-400 text-sm space-y-1 mb-4">
+                <li>Nested suites inherit hooks: every enclosing <code>before_each</code> runs, outermost first; <code>after_each</code> hooks run innermost first.</li>
+                <li>A raising <code>before_each</code> fails the test with <code>before_each: &lt;error&gt;</code> and its body does not run. A raising <code>after_each</code> fails the test (<code>after_each: &hellip;</code>). Teardown hooks always run.</li>
+                <li>A raising <code>before_all</code> fails the suite &mdash; <code>&lt;suite&gt; (before_all, N test(s) not run)</code> &mdash; without running its tests; a raising <code>after_all</code> is reported as a failure.</li>
+                <li>One hook of each kind per <code>describe</code>. Write the block with parentheses: <code>before_each() do &hellip; end</code> &mdash; a bare <code>before_each do</code> does not parse.</li>
+            </ul>
+            <pre data-filename="cart_spec.sl"><code class="language-soli text-sm">cart = []                      # shared state lives at the top level
+
+describe("Cart") do
+  before_each() do
+    cart = ["book"]
+  end
+
+  describe("with a gift") do
+    before_each() do           # runs after the outer one
+      cart.push("wrapping")
+    end
+
+    test("holds both items") do
+      assert_eq(cart, ["book", "wrapping"])
+    end
+  end
+
+  test("starts with the book only") do
+    assert_eq(cart, ["book"])
+  end
+end</code></pre>
         </div>
     </section>
 
@@ -159,18 +203,33 @@
         <h2 class="text-2xl font-bold text-white mb-4">Assertions</h2>
 
         <p class="text-gray-400 mb-6">
-            Assertions are builtins of the test runner &mdash; available inside any <code class="text-cyan-400">test(...)</code> body, with nothing to import. Each <strong class="text-white">raises</strong> on failure (the runner prints the file and line) and returns <code>1</code> on success, bumping the run's assertion counter. They take <strong class="text-white">values only</strong>: there is no message parameter. <code class="text-cyan-400">assert</code> and <code class="text-cyan-400">assert_not</code> require a real boolean &mdash; use <code class="text-cyan-400">assert_not_null</code> for presence. Full reference: <a href="/docs/testing#def-assert" class="text-amber-400 hover:underline">Testing &rarr; Assertions</a>.
+            Assertions are builtins of the test runner &mdash; available inside any <code class="text-cyan-400">test(...)</code> body, with nothing to import. Each <strong class="text-white">raises</strong> on failure (the runner prints the values, the file and the line) and returns <code>1</code> on success, bumping the run's assertion counter. Every <code class="text-cyan-400">assert_*</code> takes an <strong class="text-white">optional trailing message</strong>, prefixed to the failure. <code class="text-cyan-400">assert</code> and <code class="text-cyan-400">assert_not</code> require a real boolean &mdash; use <code class="text-cyan-400">assert_not_null</code> for presence. Full reference: <a href="/docs/testing#def-assert" class="text-amber-400 hover:underline">Testing &rarr; Assertions</a>.
         </p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
             <h3 class="text-lg font-semibold text-white mb-3">On failure</h3>
-            <p class="text-gray-400 mb-3">An assertion raises; the runner catches it, marks the test failed, and prints the message with the file and line. There is no result hash to inspect &mdash; a custom check is just a function that <code class="text-cyan-400">throw</code>s.</p>
+            <p class="text-gray-400 mb-3">An assertion raises; the runner catches it, marks the test failed, and prints a message that shows the values, with the file and line. A custom check is just a function that <code class="text-cyan-400">throw</code>s.</p>
+            <pre data-filename="Failure messages"><code class="language-soli text-sm">assert_eq(cart.length, 3)                  # expected 3, got 2
+assert_eq(cart.length, 3, "the cart size") # the cart size: expected 3, got 2
+assert_null(post.deleted_at)               # expected nil, got "2026-01-01"
+assert_gt(total, 0)                        # expected -5 to be greater than 0
+assert_match(slug, "^[a-z-]+$")            # expected "Hello" to match /^[a-z-]+$/
+assert("yes")                              # assert expects a Bool, got string ("yes")</code></pre>
             <pre data-filename="Custom assertion"><code class="language-soli text-sm">def assert_length(collection, expected)
-    actual = collection.length()
-    throw "expected #{expected} items, got #{actual}" unless actual == expected
+  actual = collection.length
+  throw "expected #{expected} items, got #{actual}" unless actual == expected
 end</code></pre>
         </div>
-    </section>
+
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
+            <h3 class="text-lg font-semibold text-white mb-3">Basic Assertions</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section id="def-assert" class="scroll-mt-20">
+                    <a href="#def-assert" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">assert(condition)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Assert condition is <code>true</code> (a Bool; anything else fails and names its type)</p>
+                </section>
 
                 <section id="def-assert-not" class="scroll-mt-20">
                     <a href="#def-assert-not" class="group flex items-center gap-2">
@@ -260,6 +319,23 @@ end</code></pre>
                 </section>
             </div>
         </div>
+
+        <section id="def-assert-raises" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-assert-raises" class="group flex items-center gap-2 mb-3">
+                    <code class="text-lg font-mono text-amber-400">assert_raises(fragment?) do ... end</code>
+                </a>
+                <p class="text-gray-400 mb-3">Passes when the block raises &mdash; and, given a fragment, when the error message contains it &mdash; and <strong class="text-white">returns the error message</strong> so you can assert more on it. Fails when the block raises nothing or a different error. A failed assertion or a <code>skip</code>/<code>pending</code> inside the block is not taken for the expected error: it propagates. Also takes a lambda: <code>assert_raises(fn() { ... })</code>. Keep the parentheses &mdash; <code>assert_raises do</code> does not parse.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">message = assert_raises("out of stock") do
+  cart.add(sold_out_item)
+end
+assert_contains(message, sold_out_item.sku)
+
+assert_raises() do
+  Invoice.new({}).finalize!
+end</code></pre>
+            </div>
+        </section>
     </section>
 
     <!-- Expect API -->
@@ -368,6 +444,7 @@ expect(user).to_not_be_null();</code></pre>
                     <p class="text-gray-400 text-sm mt-1">Asserts value <= n</p>
                 </section>
             </div>
+            <p class="text-gray-400 text-sm mt-3">The comparisons (and <code>assert_gt</code>/<code>assert_lt</code>) accept an Int and a Float mixed: <code>expect(3).to_be_greater_than(2.5)</code>.</p>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
@@ -378,6 +455,20 @@ expect(user).to_not_be_null();</code></pre>
                         <code class="font-mono text-amber-400">expect(value).to_contain(item)</code>
                     </a>
                     <p class="text-gray-400 text-sm mt-1">Asserts array or string contains item</p>
+                </section>
+
+                <section id="def-expect-to-match" class="scroll-mt-20">
+                    <a href="#def-expect-to-match" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">expect(string).to_match(text)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts string <strong class="text-white">contains</strong> <code>text</code> &mdash; a substring check, not a regex (use <code>assert_match</code> for a pattern)</p>
+                </section>
+
+                <section id="def-expect-to-have-key" class="scroll-mt-20">
+                    <a href="#def-expect-to-have-key" class="group flex items-center gap-2">
+                        <code class="font-mono text-amber-400">expect(hash).to_have_key(key)</code>
+                    </a>
+                    <p class="text-gray-400 text-sm mt-1">Asserts hash has the key</p>
                 </section>
 
                 <section id="def-expect-to-be-valid-json" class="scroll-mt-20">
@@ -410,6 +501,22 @@ expect(user).to_not_be_null();</code></pre>
                 <code class="font-mono text-amber-400">unfreeze_time()</code>
                 <p class="text-gray-400 text-sm mt-1">Restore wall-clock time</p>
             </section>
+            <section id="def-requires-solidb" class="scroll-mt-20">
+                <code class="font-mono text-amber-400">requires_solidb()</code>
+                <p class="text-gray-400 text-sm mt-1">Call in a <code>before_each</code>: skips the test (<code>needs SoliDB: &hellip;</code>) when the models' <code>SOLIDB_HOST</code> fails its health check. Under <code>SOLI_REQUIRE_DB=1</code> the skip becomes a failure</p>
+            </section>
+            <section id="def-requires-solikv" class="scroll-mt-20">
+                <code class="font-mono text-amber-400">requires_solikv()</code>
+                <p class="text-gray-400 text-sm mt-1">Same for SoliKV: a <code>PING</code> to <code>SOLIKV_RESP_HOST</code>/<code>SOLIKV_RESP_PORT</code></p>
+            </section>
+            <section id="def-solidb-available" class="scroll-mt-20">
+                <code class="font-mono text-amber-400">solidb_available?()</code>
+                <p class="text-gray-400 text-sm mt-1">The same probe, as a Bool</p>
+            </section>
+            <section id="def-solikv-available" class="scroll-mt-20">
+                <code class="font-mono text-amber-400">solikv_available?()</code>
+                <p class="text-gray-400 text-sm mt-1">The same probe for SoliKV, as a Bool</p>
+            </section>
         </div>
     </section>
 
@@ -425,15 +532,15 @@ expect(user).to_not_be_null();</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Define a factory with a static hash or callable block. Use <code>#{n}</code> in strings for auto-incrementing values.</p>
+                <p class="text-gray-400 mb-3">Define a factory with a static hash or callable block. <code>#{n}</code> in a string becomes a per-factory counter on each <code>create</code> &mdash; write it in a <strong class="text-white">raw string</strong> (<code>r"user#{n}@test.com"</code>): in a normal string Soli interpolates <code>#{n}</code> first and fails with <code>Undefined variable 'n'</code>.</p>
                 <div class="mt-4">
                     <pre data-filename="Example"><code class="language-soli text-sm">Factory.define("user", {
   "name": "Test User",
-  "email": "user#{n}@test.com"
+  "email": r"user#{n}@test.com"
 })
 
 Factory.define("post", fn() {
-  return {"title": "Post #{Factory.sequence("post")}"}
+  {"title": "Post #{Factory.sequence("post")}"}
 })</code></pre>
                 </div>
             </div>

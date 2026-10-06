@@ -728,17 +728,23 @@ end)
 Use `before_each()` and `after_each()` to set up and clean up test state. Always reset authentication state between tests to prevent leakage:
 
 ```soli
-describe("UsersController", fn()
-  before_each(fn()
+describe("UsersController") do
+  before_each() do
     as_guest()
     clear_cookies()
-  end)
-  
-  after_each(fn()
-    # Cleanup after each test if needed
-  end)
-end)
+  end
+
+  after_each() do
+    clear_headers()
+  end
+end
 ```
+
+A nested `describe` inherits its parents' hooks: every enclosing `before_each` runs,
+outermost first, and `after_each` hooks run innermost first. A hook that raises fails
+the test (`before_each: <error>`) instead of being ignored, and a `describe` takes one
+hook of each kind — merge two `before_each` blocks into one. Keep the parentheses:
+`before_each do` without them does not parse.
 
 ### Test Isolation
 
@@ -762,13 +768,18 @@ end)
 Use specific assertions that clearly communicate what you're testing. Avoid generic assertions when specific ones provide better error messages:
 
 ```soli
-# Good
-assert_eq(res_status(response), 201);
-assert_not_null(assign("post"));
+# Good — fails with "expected 201, got 422"
+assert_eq(res_status(response), 201)
+assert_not_null(assign("post"))
 
-# Avoid
-assert(response != null);
+# Avoid — fails with only "assertion failed"
+assert(res_status(response) == 201)
 ```
+
+Every `assert_*` takes an optional trailing message, prefixed to the failure:
+`assert_eq(res_status(response), 201, "create post")` fails with
+`create post: expected 201, got 422`. Check that an action raises with
+`assert_raises("fragment") do … end`, which returns the error message.
 
 ### Response Validation
 
@@ -831,8 +842,10 @@ end
 
 The test framework outputs results in a format compatible with most CI systems. Failed tests cause the test runner to exit with a non-zero status code, which CI systems interpret as a build failure.
 
-For CI environments, run tests with coverage tracking:
+For CI environments, run tests with a coverage gate, fail tests that assert nothing,
+and set `SOLI_REQUIRE_DB=1` so a spec guarded by `requires_solidb()` /
+`requires_solikv()` fails instead of skipping when the service is missing:
 
 ```bash
-soli test tests/builtins --coverage --coverage-min 80.0
+SOLI_REQUIRE_DB=1 soli test --coverage-min 80.0 --require-assertions
 ```

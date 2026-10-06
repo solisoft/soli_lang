@@ -22,6 +22,8 @@ static ASSERTIONS: AtomicI64 = AtomicI64::new(0);
 static TESTS_PASSED: AtomicUsize = AtomicUsize::new(0);
 static TESTS_FAILED: AtomicUsize = AtomicUsize::new(0);
 static TESTS_PENDING: AtomicUsize = AtomicUsize::new(0);
+static TESTS_EMPTY: AtomicUsize = AtomicUsize::new(0);
+static REQUIRE_ASSERTIONS: AtomicBool = AtomicBool::new(false);
 static FAIL_FAST: AtomicBool = AtomicBool::new(false);
 static FAIL_FAST_TRIPPED: AtomicBool = AtomicBool::new(false);
 static NAME_FILTER: Mutex<Option<String>> = Mutex::new(None);
@@ -50,6 +52,27 @@ pub fn set_fail_fast(enabled: bool) {
 /// True once `--fail-fast` is on and a test has failed.
 pub fn fail_fast_tripped() -> bool {
     FAIL_FAST_TRIPPED.load(Ordering::Relaxed)
+}
+
+/// `soli test --require-assertions`: a test that passes without making a
+/// single assertion fails instead.
+pub fn set_require_assertions(enabled: bool) {
+    REQUIRE_ASSERTIONS.store(enabled, Ordering::Relaxed);
+}
+
+pub fn require_assertions() -> bool {
+    REQUIRE_ASSERTIONS.load(Ordering::Relaxed)
+}
+
+/// Count one test that finished without a failure and without asserting
+/// anything. Such a test proves only that its body did not raise.
+pub fn record_empty_test() {
+    TESTS_EMPTY.fetch_add(1, Ordering::Relaxed);
+}
+
+/// Tests counted by [`record_empty_test`] so far.
+pub fn empty_tests() -> usize {
+    TESTS_EMPTY.load(Ordering::Relaxed)
 }
 
 /// What the progress bar draws, read in one go so the three numbers on screen
@@ -110,6 +133,7 @@ pub fn reset() {
     TESTS_PASSED.store(0, Ordering::Relaxed);
     TESTS_FAILED.store(0, Ordering::Relaxed);
     TESTS_PENDING.store(0, Ordering::Relaxed);
+    TESTS_EMPTY.store(0, Ordering::Relaxed);
 }
 
 #[cfg(test)]

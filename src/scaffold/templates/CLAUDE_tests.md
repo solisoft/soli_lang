@@ -66,22 +66,84 @@ Keywords:
 | `test(name) do ... end`         | A single case.                                            |
 | `it(name) do ... end`           | Alias for `test`.                                         |
 | `specify(name) do ... end`      | Also an alias for `test`.                                 |
-| `before_each() do ... end`      | Runs before every `test` inside the current suite.        |
-| `after_each() do ... end`       | Runs after every `test`.                                  |
+| `before_each() do ... end`      | Runs before every `test` in the suite and nested suites.  |
+| `after_each() do ... end`       | Runs after every `test`, even a failed one.               |
 | `before_all() do ... end`       | Runs once before any tests in the suite.                  |
 | `after_all() do ... end`        | Runs once after all tests in the suite.                   |
-| `pending()`                     | Marks the current test as pending (not run, not failing). |
-| `skip()`                        | Marks the current test as skipped.                        |
+| `pending("why")` / `skip("why")` | Stops the test and counts it as pending (not failing).   |
+
+Hooks need the parentheses: `before_each do` (no `()`) does not parse.
+
+- **Nested suites inherit hooks** — every enclosing `before_each` runs, outermost
+  first; `after_each` hooks run innermost first. One hook of each kind per `describe`.
+- **A hook that raises fails the test** (`before_each: <error>`; the body does not
+  run). A raising `before_all` fails the whole suite without running its tests.
+- `skip("why")` inside a `before_each` skips every test of the suite.
+
+### How the runner reads a spec
+
+The runner reads `describe`/`test` declarations **without running the `describe`
+bodies**. So:
+
+- A variable assigned in a `describe` body never reaches its tests. Put shared
+  state and helper `def`s at the top level of the file, and (re)assign the
+  variable in a `before_each`.
+- These fail the file with `N spec declaration problem(s)` — fix them rather than
+  work around them:
+  - a `describe`/`test` inside a top-level `if`, `unless`, loop or `try`;
+  - a `test` outside any `describe`;
+  - any statement in a `describe` body other than tests, nested suites and hooks;
+  - a test or suite name that is not a string literal (`"#{x}"`, a variable);
+  - two `before_each` (or two of any hook) in the same `describe`.
+
+```soli
+post = nil
+
+describe("Post") do
+  before_each() do
+    post = Post.create({ "title": "Hi", "body": "..." })
+  end
+
+  test("is persisted") do
+    assert_not_null(post._key)
+  end
+end
+```
+
+### Specs that need a service
+
+When a suite needs SoliDB or SoliKV, guard it in a `before_each` — never with a
+top-level `if` or a `try` probe that `return`s early from each test (that makes
+tests pass while testing nothing):
+
+```soli
+describe("RateLimiter") do
+  before_each() do
+    requires_solikv()      # or requires_solidb()
+  end
+
+  test("blocks the 6th call") do
+    5.times { RateLimiter.hit("ip") }
+    assert_not(RateLimiter.allowed?("ip"))
+  end
+end
+```
+
+Each test is skipped (counted as pending) when the service does not answer.
+Under `SOLI_REQUIRE_DB=1` — set it in CI — the skip becomes a failure.
+`solidb_available?()` / `solikv_available?()` return the answer as a Bool.
 
 ## Assertions
 
 Pick the assertion that gives the **best failure message**.
-`assert_eq(status, 200)` reads better than `assert(status == 200)` and the
-runner shows the actual + expected on failure.
+`assert_eq(status, 200)` fails with `expected 200, got 404`; `assert(status == 200)`
+only says `assertion failed`. Every `assert_*` takes an optional trailing message
+that is prefixed to the failure: `assert_eq(count, 3, "the cart size")` →
+`the cart size: expected 3, got 2`.
 
 ```soli
-assert(cond)                       # truthy
-assert_not(cond)                   # falsy
+assert(cond)                       # cond must be the Bool true
+assert_not(cond)                   # cond must be the Bool false
 assert_eq(actual, expected)        # value equality
 assert_ne(actual, expected)        # inequality
 assert_null(v)                     # v is nil
@@ -92,12 +154,29 @@ assert_match(string, regex)        # regex match
 assert_contains(arr_or_str, item)  # array/string containment
 assert_hash_has_key(hash, key)
 assert_json(string)                # parses as valid JSON
+assert_raises("fragment") do ... end  # the block must raise; returns the message
 
 # Request specs — assert on the queries the endpoint ran (see below)
 assert_no_n_plus_one(response)     # fails if an AQL template fired in a loop
 assert_query_count(response, n)    # exactly n queries
 assert_max_queries(response, n)    # at most n queries
 ```
+
+### Testing that something raises
+
+```soli
+test("refuses a negative amount") do
+  message = assert_raises("must be positive") do
+    Invoice.new({ "amount": -5 }).finalize
+  end
+  assert_contains(message, "-5")
+end
+```
+
+`assert_raises() do ... end` without a fragment accepts any error. It fails when
+the block raises nothing or a different error, and a failed assertion inside the
+block is not mistaken for the expected error. Don't hand-roll
+`raised = false; try ... catch ... end; assert(raised)`.
 
 ### Guarding against N+1 in request specs
 
@@ -144,14 +223,16 @@ expect(user.posts).to_contain(post)
 expect(user.errors).to_be_null()
 expect(post.views).to_be_greater_than(0)
 expect(response_body).to_be_valid_json()
-expect(html).to_match("welcome")
+expect(html).to_match("welcome")      # substring check, NOT a regex
+expect(payload).to_have_key("token")
 ```
 
 Available matchers: `to_be`, `to_equal`, `to_not_be`, `to_not_equal`,
 `to_be_null`, `to_not_be_null`, `to_be_greater_than`, `to_be_less_than`,
 `to_be_greater_than_or_equal`, `to_be_less_than_or_equal`, `to_contain`,
-`to_match`, `to_be_valid_json`. Either style is fine — pick one per file and
-stick with it.
+`to_match`, `to_have_key`, `to_be_valid_json`. `to_match` tests a substring —
+use `assert_match(string, regex)` for a pattern. Either style is fine — pick
+one per file and stick with it.
 
 ## E2E controller helpers
 
@@ -290,7 +371,7 @@ describe("Post") do
   test("rejects empty title") do
     post = Post.new({ "title": "", "body": "..." })
     post.save
-    assert(post._errors)
+    assert(post._errors.length > 0)
     assert_eq(post._errors[0].field, "title")
   end
 
@@ -314,15 +395,15 @@ point of the model layer is the round-trip with the DB.
 ## Coverage
 
 ```bash
-soli test --coverage                      # generate a console report
-soli test --coverage --coverage-min 90.0  # fail if total line coverage is < 90%
+soli test                                 # coverage is on by default (console report)
+soli test --no-coverage                   # turn it off for a fast loop
+soli test --coverage-min 90.0             # fail if total line coverage is < 90%
 soli test --coverage=html                 # also write an HTML report
 soli test --coverage=json,xml             # multiple report formats
 ```
 
-- Without `--coverage`, no coverage is collected at all.
-- With `--coverage` but no explicit `--coverage-min`, the default threshold
-  is `80.0`.
+- Coverage is collected on every run unless you pass `--no-coverage`.
+- Without an explicit `--coverage-min`, the threshold shown is `80.0`.
 - The **project policy** is 90% (see top-level scaffold `CLAUDE.md`).
 - Don't lower `--coverage-min` to ship — write the missing test.
 - `soli test --coverage --show-uncovered` lists the exact lines. Read it before
@@ -355,11 +436,18 @@ soli test                                 # all specs in tests/
 soli test tests/posts_controller_spec.sl  # one file
 soli test tests/controllers/              # one directory
 soli test --jobs 4                        # parallelism (see below)
+soli test --filter "creates a post"       # -n: tests whose describe + test name contain the text
+soli test --fail-fast                     # stop after the first failing test
+soli test --require-assertions            # fail any test that asserts nothing
 ```
 
-There's no `--only` / `--focus` / `--grep` filter today — narrow by path.
-Inside a file, use `pending()` / `skip()` to disable a single test, or
-comment out a whole `describe` block.
+`--filter` matches case-insensitively against the enclosing `describe` names
+plus the test name. Inside a file, use `pending("why")` / `skip("why")` to
+disable a single test (or a whole suite, from its `before_each`).
+
+A test that passes without asserting anything proves nothing: the summary
+counts them (`N tests made no assertions`), and `--require-assertions` fails
+them. A mock's `assert_received` counts as an assertion.
 
 ## Parallelism
 
@@ -392,7 +480,7 @@ Before reporting a feature done:
 soli fmt <files-you-changed>              # 1. canonical layout — specs included
 soli lint <files-you-changed>             # 2. style/smell rules
 soli test tests/<relevant_spec>.sl        # 3. narrow, fast feedback
-soli test --coverage --coverage-min 90.0  # 4. full sweep + gate
+soli test --coverage-min 90.0 --require-assertions  # 4. full sweep + gates
 ```
 
 Specs are `.sl` files, so `soli fmt` formats them like any other code — run it
@@ -411,5 +499,8 @@ If a UI changed, also start the app and exercise the page in a browser.
 | Inspect `assigns()` to verify controller behavior             | Grep the rendered HTML for `<h1>` text                              |
 | Use `as_user(id)` to set up an authenticated session           | Reimplement login by setting cookies by hand                        |
 | Use `#{expr}` for string interpolation                        | Use `\(expr)` — the lexer rejects it                                |
-| Use `pending()` for a known-flaky test you're investigating   | Leave a `#` skipped block with no tracking                          |
+| Use `pending("why")` for a known-flaky test you're investigating | Leave a `#` skipped block with no tracking                        |
+| Use `assert_raises("fragment") do ... end` for expected errors | Hand-roll `raised = false` + `try`/`catch` + `assert(raised)`       |
+| Guard a service-dependent suite with `requires_solidb()` in `before_each` | Wrap `describe` in `if db_up` or `return` early from tests |
+| Put shared variables at the top level, set them in `before_each` | Assign variables in a `describe` body — tests never see them      |
 | Pick one of `test` / `it` / `specify` per file and stick to it | Mix all three in one file — readers shouldn't have to think         |

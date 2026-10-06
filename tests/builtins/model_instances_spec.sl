@@ -316,9 +316,10 @@ describe("Instance validation with bare-hash syntax (no DB)", fn() {
 // Tests that REQUIRE a DB connection
 // ============================================================================
 
-if __db_available
 
 describe("Model.create return shape on success (DB)", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("_errors is nil on successful create", fn() {
         let product = Product.create({ "name": "ShapeOk", "price": 1.00 });
         assert_null(product._errors);
@@ -334,6 +335,8 @@ describe("Model.create return shape on success (DB)", fn() {
 });
 
 describe("Model _id key normalization", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("Model.find uses normalized key from _id", fn() {
         let result = Product.create({ "name": "Widget", "price": 9.99 });
         assert_null(result._errors);
@@ -382,12 +385,14 @@ describe("Model _id key normalization", fn() {
 });
 
 describe("Model.create returns instance", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("record is a class instance", fn() {
         let result = Product.create({ "name": "Test Item", "price": 5.00 });
         assert_null(result._errors);
 
         let record = result;
-        assert(record.is_a?(Product));
+        assert(record.is_a?("Product"));
         assert_eq(record.name, "Test Item");
         assert_not_null(record._key);
 
@@ -396,12 +401,14 @@ describe("Model.create returns instance", fn() {
 });
 
 describe("Model.find returns instance", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("returns a class instance", fn() {
         let result = Product.create({ "name": "Findable", "price": 7.00 });
         let key = result._key;
 
         let found = Product.find(key);
-        assert(found.is_a?(Product));
+        assert(found.is_a?("Product"));
         assert_eq(found.name, "Findable");
         assert_eq(found._key, key);
 
@@ -424,6 +431,8 @@ describe("Model.find returns instance", fn() {
 });
 
 describe("Model.all returns instances", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("returns array of class instances", fn() {
         let r1 = Product.create({ "name": "AllTest1", "price": 1.00 });
         let r2 = Product.create({ "name": "AllTest2", "price": 2.00 });
@@ -432,7 +441,7 @@ describe("Model.all returns instances", fn() {
         assert(len(all) >= 2);
 
         let first = all[0];
-        assert(first.is_a?(Product));
+        assert(first.is_a?("Product"));
         assert_not_null(first._key);
         assert_not_null(first.name);
 
@@ -460,24 +469,30 @@ describe("Model.all returns instances", fn() {
 });
 
 describe("Model.count auto-invoke", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("Model.count auto-invokes without parentheses", fn() {
         let with_parens = Product.count();
         let without_parens = Product.count;
         assert_eq(with_parens, without_parens);
-        assert(type(without_parens), "int");
+        assert_eq(type(without_parens), "int");
     });
 });
 
 describe("Model.all_json auto-invoke", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("Model.all_json auto-invokes without parentheses", fn() {
         let with_parens = Product.all_json();
         let without_parens = Product.all_json;
         assert_eq(with_parens, without_parens);
-        assert(type(without_parens), "string");
+        assert_eq(type(without_parens), "string");
     });
 });
 
 describe("Instance .update()", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("persists changed fields to DB", fn() {
         let result = Product.create({ "name": "Original", "price": 10.00 });
         let product = result;
@@ -494,6 +509,8 @@ describe("Instance .update()", fn() {
 });
 
 describe("Instance .delete()", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("removes document from DB", fn() {
         let result = Product.create({ "name": "Deletable", "price": 3.00 });
         let product = result;
@@ -512,6 +529,8 @@ describe("Instance .delete()", fn() {
 });
 
 describe("Model.update with instance data", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("accepts instance as data argument", fn() {
         let result = Product.create({ "name": "StaticUpdate", "price": 15.00 });
         let product = result;
@@ -527,12 +546,14 @@ describe("Model.update with instance data", fn() {
 });
 
 describe("QueryBuilder returns instances", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("where().first returns an instance", fn() {
         let result = Product.create({ "name": "QBFirst", "price": 42.00 });
 
         let found = Product.where("name = @n", { "n": "QBFirst" }).first;
         assert_not_null(found);
-        assert(found.is_a?(Product));
+        assert(found.is_a?("Product"));
         assert_eq(found.name, "QBFirst");
 
         found.delete();
@@ -544,7 +565,7 @@ describe("QueryBuilder returns instances", fn() {
 
         let results = Product.where("name = @n", { "n": "QBAll" }).all;
         assert(len(results) >= 2);
-        assert(results[0].is_a?(Product));
+        assert(results[0].is_a?("Product"));
 
         r1.delete();
         r2.delete();
@@ -556,7 +577,7 @@ describe("QueryBuilder returns instances", fn() {
 
         let first = Product.order("name", "asc").first;
         assert_not_null(first);
-        assert(first.is_a?(Product));
+        assert(first.is_a?("Product"));
 
         r1.delete();
         r2.delete();
@@ -568,7 +589,7 @@ describe("QueryBuilder returns instances", fn() {
 
         let results = Product.limit(1).all;
         assert_eq(len(results), 1);
-        assert(results[0].is_a?(Product));
+        assert(results[0].is_a?("Product"));
 
         r1.delete();
         r2.delete();
@@ -576,6 +597,8 @@ describe("QueryBuilder returns instances", fn() {
 });
 
 describe("Instance field access", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("can read all fields from instance", fn() {
         let result = Product.create({ "name": "FieldAccess", "price": 25.00 });
         let product = result;
@@ -599,6 +622,8 @@ describe("Instance field access", fn() {
 });
 
 describe("Instance .save()", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("inserts new record when no _key, returns true", fn() {
         let product = Product.new();
         product.name = "SaveNew";
@@ -654,6 +679,8 @@ describe("Instance .save()", fn() {
 });
 
 describe("Instance .save(hash)", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("applies hash attributes then inserts", fn() {
         let p = Product.new();
         let ok = p.save({ "name": "BulkSave", "price": 12.50 });
@@ -722,6 +749,8 @@ describe("Instance .save(hash)", fn() {
 });
 
 describe("Instance .update(hash)", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("applies hash then updates existing record", fn() {
         let result = Product.create({ "name": "UpdHashSeed", "price": 1.00 });
         let p = result;
@@ -778,6 +807,8 @@ describe("Instance .update(hash)", fn() {
 });
 
 describe("Instance .update() returns boolean", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("returns true on success", fn() {
         let result = Product.create({ "name": "UpdateBool", "price": 10.00 });
         let product = result;
@@ -805,6 +836,8 @@ describe("Instance .update() returns boolean", fn() {
 });
 
 describe("Instance .save() with validation errors (DB)", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("returns false when validation fails on update", fn() {
         let result = ValidatedItem.create({ "title": "Valid Title" });
         assert_null(result._errors);
@@ -837,6 +870,8 @@ describe("Instance .save() with validation errors (DB)", fn() {
 });
 
 describe("Instance .errors (DB)", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("returns empty array after successful operations", fn() {
         let result = Product.create({ "name": "ErrTest", "price": 5.00 });
         let product = result;
@@ -850,6 +885,8 @@ describe("Instance .errors (DB)", fn() {
 });
 
 describe("Instance .reload()", fn() {
+    before_each(fn() { requires_solidb() })
+
     test("refreshes fields from DB", fn() {
         let result = Product.create({ "name": "ReloadMe", "price": 10.00 });
         let product = result;
@@ -882,11 +919,10 @@ describe("Instance .reload()", fn() {
         let product = result;
 
         let reloaded = product.reload();
-        assert(reloaded.is_a?(Product));
+        assert(reloaded.is_a?("Product"));
         assert_eq(reloaded._key, product._key);
 
         product.delete();
     });
 });
 
-end // if __db_available

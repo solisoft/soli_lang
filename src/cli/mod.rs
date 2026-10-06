@@ -208,6 +208,7 @@ pub fn run() {
             headed,
             filter,
             fail_fast,
+            require_assertions,
             watch,
         } => commands::run_test(
             paths,
@@ -221,6 +222,7 @@ pub fn run() {
             *headed,
             filter.as_deref(),
             *fail_fast,
+            *require_assertions,
             *watch,
         ),
         Command::Engine { action } => commands::run_engine(action),

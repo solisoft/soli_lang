@@ -51,10 +51,18 @@ describe("grouped block control flow", fn() {
 // Tests that REQUIRE a DB connection
 // ============================================================================
 
-if __db_available
+
+# A raw client on the ORM's database, with the credentials the models use.
+def raw_db
+  db = Solidb(getenv("SOLIDB_HOST") || "http://localhost:6745", db_name())
+  username = getenv("SOLIDB_USERNAME")
+  db.auth(username, getenv("SOLIDB_PASSWORD")) if username.present?
+  db
+end
 
 describe("grouped coalesces reads", fn() {
     before_each(fn() {
+        requires_solidb()
         for it in GroupItem.all()
             it.delete();
         end
@@ -102,7 +110,7 @@ describe("grouped coalesces reads", fn() {
         # A raw read against the ORM database joins the coalesced batch, so
         # Model.timeout on a sibling covers it and it is not a second 10s
         # round-trip. Writes still run immediately (not asserted here).
-        let db = Solidb(env("SOLIDB_HOST") || "http://localhost:6745", db_name());
+        let db = raw_db();
         let baseline = GroupItem.all();
         let result = grouped(fn() {
             let items = GroupItem.timeout(30).all();
@@ -114,7 +122,7 @@ describe("grouped coalesces reads", fn() {
     });
 
     test("db.timeout().query and query(..., {timeout}) accept the timeout forms", fn() {
-        let db = Solidb(env("SOLIDB_HOST") || "http://localhost:6745", db_name());
+        let db = raw_db();
         let via_chain = db.timeout(30).query("FOR d IN group_items RETURN d");
         let via_opts = db.query("FOR d IN group_items RETURN d", {}, {"timeout": 30});
         assert_eq(via_chain.length, via_opts.length);
@@ -152,4 +160,3 @@ describe("grouped coalesces reads", fn() {
     });
 });
 
-end

@@ -637,12 +637,50 @@ assert_eq(res_status(response), 200)</code></pre>
 blocks. Group tests by controller, then by action, then by concern.</p>
 
         <h3 class="text-xl font-semibold text-white mb-4">Before and After Hooks</h3>
-        <p class="text-gray-400 mb-4">Use before_each()
-and after_each()
-to set up and clean up test state. Always reset authentication state between tests.</p>
+        <p class="text-gray-400 mb-4">Use <code class="text-emerald-300">before_each() do &hellip; end</code> and <code class="text-emerald-300">after_each() do &hellip; end</code> to set up and clean up test state &mdash; the parentheses are required (a bare <code>before_each do</code> does not parse). Always reset authentication state between tests.</p>
+        <ul class="list-disc list-inside text-gray-400 mb-4 space-y-1">
+            <li><strong class="text-white">Nested suites inherit hooks.</strong> Every enclosing <code>before_each</code> runs, outermost first; <code>after_each</code> hooks run innermost first. One hook of each kind per <code>describe</code>.</li>
+            <li><strong class="text-white">A raising hook fails, never hides.</strong> A <code>before_each</code> that raises fails the test with <code>before_each: &lt;error&gt;</code> and the body does not run; a raising <code>after_each</code> fails the test (<code>after_each: &hellip;</code>); teardown hooks always run. A raising <code>before_all</code> fails the suite &mdash; <code>&lt;suite&gt; (before_all, N test(s) not run)</code> &mdash; without running its tests; a raising <code>after_all</code> is reported as a failure.</li>
+            <li><strong class="text-white">Skipping a suite.</strong> <code>skip("why")</code> or <code>pending("why")</code> in a <code>before_each</code> marks each test pending. For a service, call <code class="text-emerald-300">requires_solidb()</code> / <code class="text-emerald-300">requires_solikv()</code> there (see <a href="#section-service-helpers" class="text-amber-400 hover:underline">Specs that need a service</a>).</li>
+        </ul>
+        <pre data-filename="tests/cart_spec.sl"><code class="language-soli text-sm">cart = []                      # shared state lives at the top level
+
+describe("Cart") do
+  before_each() do
+    cart = ["book"]
+  end
+
+  describe("with a gift") do
+    before_each() do           # runs after the outer one
+      cart.push("wrapping")
+    end
+
+    test("holds both items") do
+      assert_eq(cart, ["book", "wrapping"])
+    end
+  end
+
+  test("starts with the book only") do
+    assert_eq(cart, ["book"])
+  end
+end</code></pre>
 
         <h3 class="text-xl font-semibold text-white mb-4">Test Isolation</h3>
         <p class="text-gray-400 mb-4">Each test should be independent and not rely on the state created by other tests.</p>
+
+        <h3 class="text-xl font-semibold text-white mb-4" id="section-spec-declarations">How the Runner Reads a Spec</h3>
+        <p class="text-gray-400 mb-4">The runner reads the spec tree from the file without running the <code>describe</code> bodies, so a variable assigned in a <code>describe</code> body never reaches its tests &mdash; only top-level assignments and <code>def</code>s do. Put shared state at the top level and (re)assign it in a <code>before_each</code>. Whatever the runner cannot register fails the file, one line per problem, instead of being silently dropped:</p>
+        <pre data-filename="Output"><code class="language-bash text-sm">posts_spec.sl                                  0 ✗
+┌─ 2 spec declaration problem(s):
+- line 5: `describe` inside an `if`, loop or `try` is never registered
+- line 17: a `describe` body is never executed, so this statement never runs</code></pre>
+        <ul class="list-disc list-inside text-gray-400 mb-4 space-y-1">
+            <li>a <code>describe</code>/<code>context</code>/<code>test</code>/<code>it</code>/<code>specify</code> inside a top-level <code>if</code>, <code>unless</code>, loop or <code>try</code> &mdash; the old <code>if db_available &hellip; describe(&hellip;)</code> guard never ran anything;</li>
+            <li>a <code>test</code> outside any <code>describe</code>;</li>
+            <li>any statement in a <code>describe</code> body other than <code>test</code>/<code>it</code>/<code>specify</code>, <code>describe</code>/<code>context</code>, the four hooks and <code>viewport</code>;</li>
+            <li>a suite or test name that is not a string literal (interpolated or computed);</li>
+            <li>a second <code>before_each</code> (or other hook) in the same <code>describe</code>.</li>
+        </ul>
 
         <h2 class="text-2xl font-bold text-white mb-6" id="section-test-dsl">Test DSL</h2>
         <p class="text-gray-400 mb-4">Soli's testing framework provides a BDD-style DSL for organizing and writing tests:</p>
@@ -671,22 +709,31 @@ to set up and clean up test state. Always reset authentication state between tes
                 <p class="text-sm text-gray-400 mt-1">Teardown after each test</p>
             </div>
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+                <code class="text-emerald-300 font-bold">before_all(def)</code> / <code class="text-emerald-300 font-bold">after_all(def)</code>
+                <p class="text-sm text-gray-400 mt-1">Once around the suite's tests</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white/5 border border-white/10">
                 <code class="text-emerald-300 font-bold">pending(reason?)</code> / <code class="text-emerald-300 font-bold">skip(reason?)</code>
-                <p class="text-sm text-gray-400 mt-1">Stop a test and count it as pending &mdash; not a failure</p>
+                <p class="text-sm text-gray-400 mt-1">Stop a test and count it as pending &mdash; not a failure. In a <code>before_each</code>, skips the suite</p>
             </div>
         </div>
 
         <h3 class="text-xl font-semibold text-white mb-4">Assertions</h3>
         <p class="text-gray-400 mb-4">
-            Assertions are <strong class="text-white">builtins</strong> of the test runner &mdash; available inside any <code class="text-cyan-400">test(...)</code> body, with nothing to import. Each one <strong class="text-white">raises</strong> on failure (the runner marks the test failed and prints the file and line) and returns <code>1</code> on success, bumping the run's assertion counter. They take <strong class="text-white">values only</strong>: there is no message parameter, because the failure already points at the line. When a check needs prose, <code class="text-cyan-400">throw</code> it yourself.
+            Assertions are <strong class="text-white">builtins</strong> of the test runner &mdash; available inside any <code class="text-cyan-400">test(...)</code> body, with nothing to import. Each one <strong class="text-white">raises</strong> on failure (the runner marks the test failed and prints a message showing the values, with the file and line) and returns <code>1</code> on success, bumping the run's assertion counter. Every <code class="text-cyan-400">assert_*</code> takes an <strong class="text-white">optional trailing message</strong>, prefixed to the failure:
         </p>
+        <pre data-filename="Failure messages"><code class="language-soli text-sm">assert_eq(count, 3)                   # expected 3, got 2
+assert_eq(count, 3, "the cart size")  # the cart size: expected 3, got 2
+assert_ne(status, 500)                # expected a value other than 500
+assert_null(order.cancelled_at)       # expected nil, got "2026-01-01"
+assert_lt(elapsed_ms, 500)            # expected 812 to be less than 500</code></pre>
 
         <section id="def-assert" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-assert" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-amber-400">assert(value)</code>
                 </a>
-                <p class="text-gray-400 mb-2">Passes when <code>value</code> is the boolean <code>true</code>. A non-boolean is an <em>error</em>, not a failure, so a typo cannot quietly pass &mdash; use <code class="text-cyan-400">assert_not_null</code> for presence.</p>
+                <p class="text-gray-400 mb-2">Passes when <code>value</code> is the boolean <code>true</code>. A non-boolean fails and names its type (<code>assert expects a Bool, got string ("x")</code>), so a typo cannot quietly pass &mdash; use <code class="text-cyan-400">assert_not_null</code> for presence.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">assert(order["paid"])</code></pre>
             </div>
         </section>
@@ -728,7 +775,7 @@ assert_not_null(user["_key"])</code></pre>
                 <a href="#def-assert-gt" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-amber-400">assert_gt(a, b) / assert_lt(a, b)</code>
                 </a>
-                <p class="text-gray-400 mb-2">Ordering comparisons: <code>a &gt; b</code> and <code>a &lt; b</code>.</p>
+                <p class="text-gray-400 mb-2">Ordering comparisons: <code>a &gt; b</code> and <code>a &lt; b</code>. An Int and a Float compare mixed (<code>assert_gt(2.5, 1)</code>).</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">assert_gt(total, 0)
 assert_lt(elapsed_ms, 500)</code></pre>
             </div>
@@ -775,6 +822,19 @@ assert_contains(response["body"], "Saved")</code></pre>
             </div>
         </section>
 
+        <section id="def-assert-raises" class="scroll-mt-20 mb-6">
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="#def-assert-raises" class="group flex items-center gap-2 mb-3">
+                    <code class="font-mono text-amber-400">assert_raises(fragment?) do ... end</code>
+                </a>
+                <p class="text-gray-400 mb-2">Passes when the block raises &mdash; and, with a fragment, when the error message contains it &mdash; and <strong class="text-white">returns the error message</strong>. Fails when the block raises nothing (<code>expected the block to raise, but it raised nothing</code>) or a different error. A failed assertion or a <code>skip</code>/<code>pending</code> inside the block is not taken for the expected error: it propagates. A lambda works too: <code>assert_raises(fn() { &hellip; })</code>. Keep the parentheses &mdash; <code>assert_raises do</code> does not parse. It replaces the hand-rolled <code>raised = false; try &hellip; catch &hellip; end; assert(raised)</code>.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">message = assert_raises("out of stock") do
+  cart.add(sold_out_item)
+end
+assert_contains(message, sold_out_item.sku)</code></pre>
+            </div>
+        </section>
+
         <section id="def-assert-no-n-plus-one" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-assert-no-n-plus-one" class="group flex items-center gap-2 mb-3">
@@ -800,14 +860,8 @@ assert_max_queries(response, 5)   # at most five</code></pre>
         </section>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-8">
-            <h4 class="text-lg font-semibold text-white mb-3">Assertion Result</h4>
-            <p class="text-gray-400 mb-2">All assertion functions return a result hash:</p>
-            <pre data-filename="Result"><code class="language-soli text-sm">{
-  "passed": true,
-  "message": "test description",
-  "expected": value_that_was_expected,
-  "actual": value_that_was_actual
-}</code></pre>
+            <h4 class="text-lg font-semibold text-white mb-3">Counting assertions: <code class="text-amber-400">--require-assertions</code></h4>
+            <p class="text-gray-400 mb-2">A test that passes without asserting anything proves nothing. The summary counts them &mdash; <code>3 tests made no assertions (--require-assertions fails them)</code> &mdash; and <code class="text-emerald-300">soli test --require-assertions</code> fails each one (<code>made no assertions</code>). A mock's <code>assert_received</code> / <code>assert_not_received</code> count as assertions; a test that has nothing to check should call <code>skip("why")</code>.</p>
         </div>
 
         <h3 class="text-xl font-semibold text-white mb-4">Expect Syntax (Alternative)</h3>
@@ -816,7 +870,10 @@ expect(value).to_be(expected)
 expect(value).to_not_equal(other)
 expect(value).to_be_null()
 expect(value).to_not_be_null()
-expect(value).to_contain("substring")</code></pre>
+expect(value).to_be_greater_than(2.5)    # Int and Float mix
+expect(value).to_contain("substring")
+expect(value).to_match("Saved")          # substring, NOT a regex &mdash; use assert_match for a pattern
+expect(hash).to_have_key("name")</code></pre>
 
         <h2 class="text-2xl font-bold text-white mb-6" id="section-factories">Factory Functions</h2>
 
@@ -890,6 +947,20 @@ expect(value).to_contain("substring")</code></pre>
   })
 })</code></pre>
 
+        <h3 class="text-xl font-semibold text-white mb-4" id="section-service-helpers">Specs that need a service</h3>
+        <p class="text-gray-400 mb-4">Call <code class="text-emerald-300">requires_solidb()</code> or <code class="text-emerald-300">requires_solikv()</code> from a <code>before_each</code>. When the service does not answer, each test is skipped (<code>needs SoliDB: &hellip;</code>) and counted as pending instead of failing on a connection error. SoliDB is probed with a health check of the models' <code>SOLIDB_HOST</code>, SoliKV with a <code>PING</code> to <code>SOLIKV_RESP_HOST</code>/<code>SOLIKV_RESP_PORT</code>. <code class="text-emerald-300">solidb_available?()</code> / <code class="text-emerald-300">solikv_available?()</code> return the answer as a Bool.</p>
+        <pre data-filename="tests/cache_spec.sl"><code class="language-soli text-sm">describe("PriceCache") do
+  before_each() do
+    requires_solikv()
+  end
+
+  test("keeps a price for an hour") do
+    PriceCache.store("SKU-1", 1200)
+    assert_eq(PriceCache.fetch("SKU-1"), 1200)
+  end
+end</code></pre>
+        <p class="text-gray-400 mb-4">With <code class="text-amber-400">SOLI_REQUIRE_DB=1</code> &mdash; what CI should set &mdash; the skip becomes a failure (<code>SOLI_REQUIRE_DB=1 but this test needs SoliKV: &hellip;</code>), so a misconfigured CI cannot pass by skipping. This replaces probing with <code>Model.create</code> in a top-level <code>try</code> and <code>return</code>-ing early from each test, which made tests pass while testing nothing.</p>
+
         <h3 class="text-xl font-semibold text-white mb-4">Time Travel</h3>
         <p class="text-gray-400 mb-4">Pin <code>datetime_now()</code> for cron, TTL, and expiration specs. Cleared automatically before each test.</p>
         <pre data-filename="tests/time_spec.sl"><code class="language-soli text-sm">freeze_time(1_700_000_000)
@@ -898,12 +969,13 @@ unfreeze_time()</code></pre>
 
         <h3 class="text-xl font-semibold text-white mb-4">Factory Pattern</h3>
 
+        <p class="text-gray-400 mb-4"><code>#{n}</code> in a factory string becomes a per-factory counter &mdash; inside a <strong class="text-white">raw string</strong> only. In a normal string Soli interpolates <code>#{n}</code> first and fails with <code>Undefined variable 'n'</code>.</p>
         <pre data-filename="Using Factories"><code class="language-soli text-sm">Factory.define("user", {
-  "email": "user#{n}@example.com",
+  "email": r"user#{n}@example.com",
   "name": "Test User"
 })
 Factory.define("post", fn() {
-  return {"title": "Post #{Factory.sequence("post")}"}
+  {"title": "Post #{Factory.sequence("post")}"}
 })
 
 user = Factory.create("user")
@@ -1091,9 +1163,9 @@ Mock.allow_any_instance(User).to_receive("save").and_return(true)</code></pre>
         <p class="text-gray-400 mb-4"><code class="text-emerald-300">and_call_original</code> makes a <strong class="text-white">spy</strong>: the call is recorded on the returned <code class="text-emerald-300">Mock</code> and the real method still runs, so <code class="text-emerald-300">spy.assert_received("charge", [1200])</code> checks what happened without changing it. A stub matches any arguments; there is no <code class="text-emerald-300">with(...)</code> filter, so branch inside an <code class="text-emerald-300">and_call</code> lambda when a method must answer differently per argument.</p>
 
         <h2 class="text-2xl font-bold text-white mb-6">Parallel Execution</h2>
-        <p class="text-gray-400 mb-4">Tests run in parallel by default:</p>
+        <p class="text-gray-400 mb-4">The default is <strong class="text-white">3 workers</strong> when the app has <code>app/controllers</code> (request specs spend their time waiting on test servers) and <strong class="text-white">1</strong> otherwise, capped at the number of spec files. <code class="text-emerald-300">--jobs N</code> overrides it:</p>
 
-        <pre data-filename="CLI Options"><code class="language-bash text-sm">soli test                    # Parallel (default)
+        <pre data-filename="CLI Options"><code class="language-bash text-sm">soli test                    # 3 workers with app/controllers, else 1
 soli test --jobs=4           # 4 workers
 soli test --jobs=1           # Sequential (debug)</code></pre>
 
@@ -1101,8 +1173,9 @@ soli test --jobs=1           # Sequential (debug)</code></pre>
         <pre data-filename="CLI Options"><code class="language-bash text-sm">soli test --filter "creates a post"   # only tests whose full name contains the text
 soli test -n checkout                 # short form; matches describe names too
 soli test --fail-fast                 # stop scheduling tests after the first failure
+soli test --require-assertions        # fail any test that makes no assertion
 soli test --watch                     # rerun the suite whenever a .sl / .slv file changes</code></pre>
-        <p class="text-gray-400 mb-4"><code class="text-emerald-300">--filter</code> matches case-insensitively against the full description: the enclosing <code class="text-emerald-300">describe</code> names followed by the test name, space-joined (<code class="text-emerald-300">Posts creates a post</code>). With <code class="text-emerald-300">--fail-fast</code> the remaining tests and files are skipped once one test fails. Both compose with <code class="text-emerald-300">--jobs</code>, <code class="text-emerald-300">--coverage</code> and the rest.</p>
+        <p class="text-gray-400 mb-4"><code class="text-emerald-300">--filter</code> matches case-insensitively against the full description: the enclosing <code class="text-emerald-300">describe</code> names followed by the test name, space-joined (<code class="text-emerald-300">Posts creates a post</code>). With <code class="text-emerald-300">--fail-fast</code> the remaining tests and files are skipped once one test fails. <code class="text-emerald-300">--require-assertions</code> fails a test that passes without asserting anything. All of them compose with <code class="text-emerald-300">--jobs</code>, <code class="text-emerald-300">--coverage</code> and the rest.</p>
 
         <h2 class="text-2xl font-bold text-white mb-6">Live Progress</h2>
         <p class="text-gray-400 mb-4">While the suite runs, each worker gets a row and the aggregate bar at the bottom carries the running totals. A row names its spec by its path under the tested directory, and a narrow terminal shortens the folders before the filename:</p>
@@ -1129,7 +1202,7 @@ soli test --watch                     # rerun the suite whenever a .sl / .slv fi
         </div>
 
         <h2 class="text-2xl font-bold text-white mb-6" id="section-coverage">Coverage Reporting</h2>
-        <p class="text-gray-400 mb-4">Generate coverage reports for your tests:</p>
+        <p class="text-gray-400 mb-4">Coverage is <strong class="text-white">on by default</strong>: every <code>soli test</code> prints the console report. <code class="text-emerald-300">--no-coverage</code> turns it off for a faster loop; the flags below pick report formats and the gate.</p>
 
         <pre data-filename="Coverage Output"><code class="language-text text-sm">Coverage: 87.5% (1250/1428 lines) ✓
 

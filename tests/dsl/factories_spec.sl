@@ -35,8 +35,8 @@ describe("Factory", fn() {
         assert_eq(second["n"], 2)
     })
 
-    test("interpolates #{n} in string attributes", fn() {
-        Factory.define("user", {"email": "user#{n}@test.com"})
+    test("interpolates the sequence number into string attributes", fn() {
+        Factory.define("user", {"email": r"user#{n}@test.com"})
         first = Factory.create("user")
         second = Factory.create("user")
         assert_eq(first["email"], "user0@test.com")
