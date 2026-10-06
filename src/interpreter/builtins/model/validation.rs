@@ -18,56 +18,10 @@ const OP_UPDATE: &str = "update";
 use super::core::{class_name_to_collection, MODEL_REGISTRY};
 use super::crud::exec_with_auto_collection;
 
-/// A closure-based custom validator. Keyed `(class_name, field_name)`. Stored
-/// thread-local because `Rc<Function>` is `!Send` and the global
-/// `MODEL_REGISTRY` (a process-wide `RwLock`) requires `Send + Sync` contents.
-/// Each worker thread populates this registry independently when it loads the
-/// model files; the same closures are functionally equivalent across threads.
-#[derive(Clone)]
-pub struct CustomValidator {
-    pub field: String,
-    pub func: Rc<Function>,
-    /// Human-readable error message used when the closure returns false.
-    pub message: String,
-}
-
-thread_local! {
-    static CUSTOM_VALIDATORS: RefCell<HashMap<String, Vec<CustomValidator>>> =
-        RefCell::new(HashMap::new());
-}
-
-pub fn register_custom_validator(class_name: &str, validator: CustomValidator) {
-    CUSTOM_VALIDATORS.with(|c| {
-        c.borrow_mut()
-            .entry(class_name.to_string())
-            .or_default()
-            .push(validator);
-    });
-}
-
-fn custom_validators_for(class_name: &str) -> Vec<CustomValidator> {
-    CUSTOM_VALIDATORS.with(|c| c.borrow().get(class_name).cloned().unwrap_or_default())
-}
-
-/// STI copy-down: seed the child's closure validators with the parent's
-/// (replacing any previous copy, so hot reloads don't stack). The child's
-/// own `validate(fn...)` calls register afterward and append.
-pub fn copy_custom_validators(parent: &str, child: &str) {
-    CUSTOM_VALIDATORS.with(|c| {
-        let mut map = c.borrow_mut();
-        let inherited = map.get(parent).cloned().unwrap_or_default();
-        if inherited.is_empty() {
-            map.remove(child);
-        } else {
-            map.insert(child.to_string(), inherited);
-        }
-    });
-}
-
 /// `if:` / `unless:` condition closures attached to one `validates(...)` call.
-/// Stored thread-local for the same reason as [`CustomValidator`]: closures
-/// are `Rc<Function>` (`!Send`) and each worker registers its own copies when
-/// it loads the model files.
+/// Stored thread-local: closures are `Rc<Function>` (`!Send`), which the
+/// process-wide `MODEL_REGISTRY` cannot hold, and each worker registers its
+/// own copies when it loads the model files.
 #[derive(Clone, Default, Debug)]
 pub struct RuleConditions {
     pub if_fn: Option<Rc<Function>>,
@@ -121,15 +75,9 @@ pub fn copy_rule_conditions(parent: &str, child: &str, rules: &[ValidationRule])
     });
 }
 
-/// Invoke a user closure as a validator. Receives the field value and the
-/// full record hash; returns true on pass, false on fail. Any error inside
-/// the closure short-circuits validation with that error message.
-fn invoke_validator(func: &Function, field_value: &Value, record: &Value) -> Result<bool, String> {
-    invoke_validator_value(func, field_value, record).map(|v| v.is_truthy())
-}
-
-/// Run a validator closure and return what it returned (see
-/// [`invoke_validator`] for the parameters).
+/// Run a validator closure — it receives the field value and the full record
+/// hash — and return what it returned. An error inside the closure
+/// short-circuits validation with that error message.
 fn invoke_validator_value(
     func: &Function,
     field_value: &Value,
@@ -764,7 +712,6 @@ pub fn class_has_validations(class_name: &str) -> bool {
             .get(class_name)
             .map(|m| !m.validations.is_empty())
             .unwrap_or(false)
-            || !custom_validators_for(class_name).is_empty()
     })
 }
 
@@ -1016,17 +963,6 @@ pub fn run_validations(
         // Custom validation: `custom: "method"`, called on the record
         if let Some(method) = &rule.custom {
             run_custom_method(class_name, class, rule, method, data, &mut errors)?;
-        }
-    }
-
-    // Closure-based custom validators registered via `register_custom_validator`.
-    let custom = custom_validators_for(class_name);
-    for v in &custom {
-        let field_value = lookup_field(data, &v.field).unwrap_or(Value::Null);
-        match invoke_validator(&v.func, &field_value, data) {
-            Ok(true) => {}
-            Ok(false) => errors.push(ValidationError::new(&v.field, v.message.clone())),
-            Err(e) => return Err(e),
         }
     }
 

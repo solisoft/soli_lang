@@ -673,31 +673,20 @@ impl Vm {
     }
 
     /// Refuse the whole operation *before* it touches the row when any callback
-    /// for these events cannot run correctly on the VM.
-    ///
-    /// Two cases refuse: a closure-form callback (`before_save do … end`) needs
-    /// the environment it captured, which the bytecode path cannot reconstruct;
-    /// and a method whose body the compiler rejects. Both must be detected here
-    /// rather than at invocation time, because an `after_*` callback runs when
-    /// the native write has already happened — demoting then re-runs the whole
-    /// handler on the tree-walker and writes the row a second time. Refusing up
-    /// front is side-effect-free, and the tree-walker runs these correctly.
+    /// for these events cannot run correctly on the VM: a method whose body the
+    /// compiler rejects. It must be detected here rather than at invocation
+    /// time, because an `after_*` callback runs when the native write has
+    /// already happened — demoting then re-runs the whole handler on the
+    /// tree-walker and writes the row a second time. Refusing up front is
+    /// side-effect-free, and the tree-walker runs these correctly.
     fn ensure_callbacks_vm_ready(
         &self,
         class: &Rc<Class>,
         event_sets: &[&[&str]],
         span: Span,
     ) -> Result<(), RuntimeError> {
-        use crate::interpreter::executor::calls::function::{
-            callback_names_for, has_closure_callbacks,
-        };
+        use crate::interpreter::executor::calls::function::callback_names_for;
         for events in event_sets {
-            if has_closure_callbacks(&class.name, events) {
-                return Err(RuntimeError::EngineFallback(
-                    format!("closure-form model callback on '{}'", class.name),
-                    span,
-                ));
-            }
             for cb_name in callback_names_for(&class.name, events) {
                 if class.find_vm_method_with_class(&cb_name).is_some() {
                     continue;
@@ -731,14 +720,13 @@ impl Vm {
         result
     }
 
-    /// Run method-name and closure model callbacks with `this` bound to
+    /// Run model callbacks, by method name, with `this` bound to
     /// `instance`. `Ok(false)` is a `before_*` veto (first `false` wins).
     fn run_model_callbacks_vm(
         &mut self,
         class: &Rc<Class>,
         instance: &Rc<RefCell<Instance>>,
         callback_names: &[String],
-        events: &[&str],
         span: Span,
     ) -> Result<bool, RuntimeError> {
         for cb_name in callback_names {
@@ -762,34 +750,13 @@ impl Vm {
                 }
             }
         }
-        // Closure-form callbacks need the environment they captured, which the
-        // bytecode path cannot reconstruct. `ensure_callbacks_vm_ready` refuses
-        // before any write happens, so reaching this is a bug — refuse rather
-        // than run the body against the wrong scope.
-        for ev in events {
-            if !crate::interpreter::builtins::model::callbacks::closure_callbacks_for(
-                &class.name,
-                ev,
-            )
-            .is_empty()
-            {
-                return Err(RuntimeError::EngineFallback(
-                    format!("closure-form model callback on '{}'", class.name),
-                    span,
-                ));
-            }
-        }
         Ok(true)
     }
 
     fn persist_wrap_needed(class_name: &str, before: &[&str], after: &[&str]) -> bool {
-        use crate::interpreter::executor::calls::function::{
-            callback_names_for, has_closure_callbacks,
-        };
+        use crate::interpreter::executor::calls::function::callback_names_for;
         !callback_names_for(class_name, before).is_empty()
             || !callback_names_for(class_name, after).is_empty()
-            || has_closure_callbacks(class_name, before)
-            || has_closure_callbacks(class_name, after)
     }
 
     /// Call a Model instance native, firing lifecycle callbacks when any are
@@ -823,13 +790,7 @@ impl Vm {
                 // after_* refusal would arrive with the row already written.
                 self.ensure_callbacks_vm_ready(&class, &[before_events, after_events], span)?;
                 let before_names = callback_names_for(&class.name, before_events);
-                if !self.run_model_callbacks_vm(
-                    &class,
-                    &inst,
-                    &before_names,
-                    before_events,
-                    span,
-                )? {
+                if !self.run_model_callbacks_vm(&class, &inst, &before_names, span)? {
                     let kind = if before_events.contains(&"before_create") {
                         "before_create / before_save"
                     } else {
@@ -848,7 +809,7 @@ impl Vm {
                 let failed = matches!(&result, Value::Bool(false));
                 if !failed {
                     let after_names = callback_names_for(&class.name, after_events);
-                    self.run_model_callbacks_vm(&class, &inst, &after_names, after_events, span)?;
+                    self.run_model_callbacks_vm(&class, &inst, &after_names, span)?;
                 }
                 self.stack.truncate(receiver_idx);
                 self.stack.push(result);
@@ -885,7 +846,7 @@ impl Vm {
     ) -> Result<bool, RuntimeError> {
         use crate::interpreter::executor::calls::cascade;
         use crate::interpreter::executor::calls::function::{
-            callback_names_for, has_closure_callbacks, set_callback_aborted_error,
+            callback_names_for, set_callback_aborted_error,
         };
 
         let before_events: &[&str] = &["before_delete"];
@@ -894,8 +855,6 @@ impl Vm {
         let has_attachments =
             !crate::interpreter::builtins::model::get_uploaders(&class.name).is_empty();
         if !Self::persist_wrap_needed(&class.name, before_events, after_events)
-            && !has_closure_callbacks(&class.name, before_events)
-            && !has_closure_callbacks(&class.name, after_events)
             && !has_dependents
             && !has_attachments
         {
@@ -931,7 +890,7 @@ impl Vm {
         // row (and its cascades) are gone, so it is too late to demote there.
         self.ensure_callbacks_vm_ready(class, &[before_events, after_events], span)?;
         let before_names = callback_names_for(&class.name, before_events);
-        if !self.run_model_callbacks_vm(class, inst, &before_names, before_events, span)? {
+        if !self.run_model_callbacks_vm(class, inst, &before_names, span)? {
             set_callback_aborted_error(inst, "before_delete");
             self.stack.truncate(receiver_idx);
             self.stack.push(Value::Bool(false));
@@ -960,7 +919,7 @@ impl Vm {
             || matches!(&result, Value::Bool(false));
         if !failed {
             let after_names = callback_names_for(&class.name, after_events);
-            self.run_model_callbacks_vm(class, inst, &after_names, after_events, span)?;
+            self.run_model_callbacks_vm(class, inst, &after_names, span)?;
         }
         self.stack.truncate(receiver_idx);
         self.stack.push(result);
@@ -1036,8 +995,7 @@ impl Vm {
         span: Span,
     ) -> Result<bool, RuntimeError> {
         use crate::interpreter::executor::calls::function::{
-            callback_names_for, has_closure_callbacks, persisted_record_for_after_callbacks,
-            set_callback_aborted_error,
+            callback_names_for, persisted_record_for_after_callbacks, set_callback_aborted_error,
         };
 
         let data_index = if name == "create" { 0 } else { 1 };
@@ -1060,11 +1018,7 @@ impl Vm {
         };
         let before_names = callback_names_for(&class.name, before_events);
         let after_names = callback_names_for(&class.name, after_events);
-        if before_names.is_empty()
-            && after_names.is_empty()
-            && !has_closure_callbacks(&class.name, before_events)
-            && !has_closure_callbacks(&class.name, after_events)
-        {
+        if before_names.is_empty() && after_names.is_empty() {
             return Ok(false);
         }
 
@@ -1093,7 +1047,7 @@ impl Vm {
         }
         let inst_rc = Rc::new(RefCell::new(instance));
 
-        if !self.run_model_callbacks_vm(&class, &inst_rc, &before_names, before_events, span)? {
+        if !self.run_model_callbacks_vm(&class, &inst_rc, &before_names, span)? {
             let kind = if name == "create" {
                 "before_create / before_save"
             } else {
@@ -1118,12 +1072,12 @@ impl Vm {
         native_args.extend(user_args);
         let result = (native.func)(&native_args).map_err(|e| RuntimeError::new(e, span))?;
 
-        if !after_names.is_empty() || has_closure_callbacks(&class.name, after_events) {
+        if !after_names.is_empty() {
             let updated_id = (name == "update").then(|| native_args[1].clone());
             if let Some(record) =
                 persisted_record_for_after_callbacks(&result, &inst_rc, updated_id.as_ref())
             {
-                self.run_model_callbacks_vm(&class, &record, &after_names, after_events, span)?;
+                self.run_model_callbacks_vm(&class, &record, &after_names, span)?;
             }
         }
 
@@ -1212,9 +1166,8 @@ impl Vm {
 
     /// State-machine guards and transition hooks are closures declared in the
     /// model body, so they carry a captured environment the bytecode path cannot
-    /// reconstruct — the same reason `ensure_callbacks_vm_ready` refuses
-    /// closure-form model callbacks. Refuse so the tree-walker runs them, which
-    /// is what happened before instance methods ran on the VM at all.
+    /// reconstruct. Refuse so the tree-walker runs them, which is what happened
+    /// before instance methods ran on the VM at all.
     ///
     /// Guards and `before_transition` hooks run before the state is written, so
     /// refusing here costs nothing. `after_transition` runs after the write, so

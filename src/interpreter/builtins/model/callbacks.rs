@@ -1,57 +1,6 @@
 //! Lifecycle callbacks for models.
 
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
-
-use crate::interpreter::value::Function;
-
 use super::core::MODEL_REGISTRY;
-
-// Closure-based callbacks. Stored thread-local because Rc<Function> is !Send
-// and the global MODEL_REGISTRY (a RwLock) requires Send+Sync contents. Each
-// worker populates this independently. Keyed by (class_name, event_name).
-type ClosureCallbackMap = HashMap<(String, String), Vec<Rc<Function>>>;
-thread_local! {
-    static CALLBACK_CLOSURES: RefCell<ClosureCallbackMap> = RefCell::new(HashMap::new());
-}
-
-pub fn register_callback_fn(class_name: &str, event: &str, func: Rc<Function>) {
-    CALLBACK_CLOSURES.with(|c| {
-        c.borrow_mut()
-            .entry((class_name.to_string(), event.to_string()))
-            .or_default()
-            .push(func);
-    });
-}
-
-/// Get all closure-based callbacks for a (class, event) pair. Empty if none.
-pub fn closure_callbacks_for(class_name: &str, event: &str) -> Vec<Rc<Function>> {
-    CALLBACK_CLOSURES.with(|c| {
-        c.borrow()
-            .get(&(class_name.to_string(), event.to_string()))
-            .cloned()
-            .unwrap_or_default()
-    })
-}
-
-/// STI copy-down: seed the child's closure callbacks with the parent's
-/// (replacing any previous copy, so hot reloads don't stack). The child's
-/// own closure callbacks register afterward and append.
-pub fn copy_closure_callbacks(parent: &str, child: &str) {
-    CALLBACK_CLOSURES.with(|c| {
-        let mut map = c.borrow_mut();
-        let inherited: Vec<(String, Vec<Rc<Function>>)> = map
-            .iter()
-            .filter(|((class, _), _)| class == parent)
-            .map(|((_, event), funcs)| (event.clone(), funcs.clone()))
-            .collect();
-        map.retain(|(class, _), _| class != child);
-        for (event, funcs) in inherited {
-            map.insert((child.to_string(), event), funcs);
-        }
-    });
-}
 
 /// Lifecycle callbacks for a model.
 #[derive(Debug, Clone, Default)]

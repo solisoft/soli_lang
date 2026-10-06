@@ -700,8 +700,6 @@ pub fn register_model_class(class_name: &str, class: Rc<Class>) {
             MODEL_REGISTRY.write(|registry| registry.remove(class_name));
         }
         super::scopes::copy_scopes(&parent.name, class_name);
-        super::callbacks::copy_closure_callbacks(&parent.name, class_name);
-        super::validation::copy_custom_validators(&parent.name, class_name);
         super::state_machine::copy_closures(&parent.name, class_name);
     }
 

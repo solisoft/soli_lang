@@ -12,16 +12,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-/// Check whether any closure-based callbacks are registered for any of `events`
-/// on `class_name`. Used to decide whether to enter the after-callback block
-/// even when no method-name callbacks exist.
-pub(crate) fn has_closure_callbacks(class_name: &str, events: &[&str]) -> bool {
-    events.iter().any(|ev| {
-        !crate::interpreter::builtins::model::callbacks::closure_callbacks_for(class_name, ev)
-            .is_empty()
-    })
-}
-
 /// SEC-086a: stamp `_errors = [{"message": "...callback aborted persistence"}]`
 /// onto an instance when a `before_*` callback returns `false`. Mirrors the
 /// validation-failure / DB-failure shape (`Array<Hash>`) that
@@ -987,11 +977,6 @@ impl Interpreter {
                 .cloned()
                 .collect()
         };
-        let before_events: &[&str] = if method_name == "create" {
-            &["before_save", "before_create"]
-        } else {
-            &["before_save", "before_update"]
-        };
         // Intercept when EITHER the before or the after set is non-empty.
         //
         // Gating on before-callbacks alone silently skipped an `after_create`-
@@ -1006,8 +991,6 @@ impl Interpreter {
         };
         if callback_names.is_empty()
             && callback_names_for(&class.name, after_events_gate).is_empty()
-            && !has_closure_callbacks(&class.name, before_events)
-            && !has_closure_callbacks(&class.name, after_events_gate)
         {
             return Ok(None);
         }
@@ -1045,7 +1028,7 @@ impl Interpreter {
         // dispatched, and we hand back a Model.create-shaped instance with
         // `_errors` populated so callers see a uniform "persistence
         // failed" contract (same shape as a validation failure).
-        if !self.run_model_callbacks(&class, &inst_rc, &callback_names, before_events, span)? {
+        if !self.run_model_callbacks(&class, &inst_rc, &callback_names, span)? {
             let kind = if method_name == "create" {
                 "before_create / before_save"
             } else {
@@ -1082,11 +1065,11 @@ impl Interpreter {
             &["after_update", "after_save"]
         };
         let after_names = callback_names_for(&class.name, after_events);
-        if !after_names.is_empty() || has_closure_callbacks(&class.name, after_events) {
+        if !after_names.is_empty() {
             if let Some(record) =
                 persisted_record_for_after_callbacks(&result, &inst_rc, updated_id.as_ref())
             {
-                self.run_model_callbacks(&class, &record, &after_names, after_events, span)?;
+                self.run_model_callbacks(&class, &record, &after_names, span)?;
             }
         }
 
@@ -1121,19 +1104,12 @@ impl Interpreter {
         let metadata = get_or_create_metadata(&class.name);
         let before_names = metadata.callbacks.before_delete.clone();
         let after_names = metadata.callbacks.after_delete.clone();
-        let before_events: &[&str] = &["before_delete"];
-        let after_events: &[&str] = &["after_delete"];
 
         let has_dependents = super::cascade::class_declares_dependents(&class.name);
         let has_attachments =
             !crate::interpreter::builtins::model::get_uploaders(&class.name).is_empty();
 
-        if before_names.is_empty()
-            && after_names.is_empty()
-            && !has_closure_callbacks(&class.name, before_events)
-            && !has_closure_callbacks(&class.name, after_events)
-            && !has_dependents
-            && !has_attachments
+        if before_names.is_empty() && after_names.is_empty() && !has_dependents && !has_attachments
         {
             return Ok(None);
         }
@@ -1165,7 +1141,7 @@ impl Interpreter {
         // the deletion. Skip the native call, the cascades, and the
         // after-callbacks; the instance keeps its DB-side state. Surface
         // `_errors` and return `Bool(false)` so callers can branch.
-        if !self.run_model_callbacks(&class, &instance, &before_names, before_events, span)? {
+        if !self.run_model_callbacks(&class, &instance, &before_names, span)? {
             set_callback_aborted_error(&instance, "before_delete");
             return Ok(Some(Value::Bool(false)));
         }
@@ -1191,7 +1167,7 @@ impl Interpreter {
         let failed = matches!(&result, Value::String(s) if s.starts_with("Error:"))
             || matches!(&result, Value::Bool(false));
         if !failed {
-            self.run_model_callbacks(&class, &instance, &after_names, after_events, span)?;
+            self.run_model_callbacks(&class, &instance, &after_names, span)?;
         }
 
         Ok(Some(result))
@@ -1341,11 +1317,7 @@ impl Interpreter {
 
         // No callbacks registered for any matched event → fall through so
         // the native method runs at the usual cost.
-        if before_names.is_empty()
-            && after_names.is_empty()
-            && !has_closure_callbacks(&class.name, before_events)
-            && !has_closure_callbacks(&class.name, after_events)
-        {
+        if before_names.is_empty() && after_names.is_empty() {
             return Ok(None);
         }
 
@@ -1355,7 +1327,7 @@ impl Interpreter {
         // state, picks up `_errors`, and we surface `Bool(false)` —
         // matching the existing failure signal used by
         // `instance.save` / `update` / `restore`.
-        if !self.run_model_callbacks(&class, &instance, &before_names, before_events, span)? {
+        if !self.run_model_callbacks(&class, &instance, &before_names, span)? {
             let kind = if before_events.contains(&"before_create") {
                 "before_create / before_save"
             } else {
@@ -1383,13 +1355,13 @@ impl Interpreter {
         // After-callbacks run only on success — Bool(false) suppresses them.
         let failed = matches!(&result, Value::Bool(false));
         if !failed {
-            self.run_model_callbacks(&class, &instance, &after_names, after_events, span)?;
+            self.run_model_callbacks(&class, &instance, &after_names, span)?;
         }
 
         Ok(Some(result))
     }
 
-    /// Run a list of model callbacks (method-name + closure form) with
+    /// Run a list of model callbacks, by method name, with
     /// `this` bound to `instance`. SEC-086a: returns `Ok(false)` as soon
     /// as any callback returns `Value::Bool(false)`, signalling an abort.
     /// Subsequent callbacks in the chain are NOT run on abort — the first
@@ -1401,7 +1373,6 @@ impl Interpreter {
         class: &Rc<crate::interpreter::value::Class>,
         instance: &Rc<RefCell<Instance>>,
         callback_names: &[String],
-        events: &[&str],
         span: Span,
     ) -> RuntimeResult<bool> {
         for cb_name in callback_names {
@@ -1428,35 +1399,6 @@ impl Interpreter {
                 self.call_value(Value::Function(Rc::new(bound_method)), Vec::new(), span)?;
             if matches!(result, Value::Bool(false)) {
                 return Ok(false);
-            }
-        }
-
-        for ev in events {
-            for closure in crate::interpreter::builtins::model::callbacks::closure_callbacks_for(
-                &class.name,
-                ev,
-            ) {
-                let mut bound_env = Environment::with_enclosing(closure.closure.clone());
-                bound_env.define("this".to_string(), Value::Instance(instance.clone()));
-                bound_env.define("self".to_string(), Value::Instance(instance.clone()));
-                let bound = crate::interpreter::value::Function {
-                    name: closure.name.clone(),
-                    params: closure.params.clone(),
-                    body: closure.body.clone(),
-                    closure: Rc::new(RefCell::new(bound_env)),
-                    is_method: true,
-                    span: closure.span,
-                    source_path: closure.source_path.clone(),
-                    defining_superclass: None,
-                    return_type: closure.return_type.clone(),
-                    cached_env: RefCell::new(None),
-                    jit_cache: RefCell::new(None),
-                    kernel: None,
-                };
-                let result = self.call_value(Value::Function(Rc::new(bound)), Vec::new(), span)?;
-                if matches!(result, Value::Bool(false)) {
-                    return Ok(false);
-                }
             }
         }
 

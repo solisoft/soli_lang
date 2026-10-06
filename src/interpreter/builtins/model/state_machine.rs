@@ -24,7 +24,7 @@
 //! The plain transition table lives in the global `MODEL_REGISTRY`
 //! (`ModelMetadata.state_machines`). Guard / before / after closures hold
 //! `Rc<Function>` (which is `!Send`) so they live in the per-worker thread-locals
-//! below — same split as `scopes::SCOPES` and `callbacks::CALLBACK_CLOSURES`.
+//! below — same split as `scopes::SCOPES`.
 //!
 //! The DSL block invocation (`state_machine … do … end`, `event … do … end`)
 //! and the runtime event dispatch both need `&mut Interpreter`, so they live in
