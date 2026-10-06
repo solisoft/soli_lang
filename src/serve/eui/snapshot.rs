@@ -341,27 +341,10 @@ pub fn render_once(
     Ok(hashed(out))
 }
 
-/// Standard base64, no padding omitted — what `extract_response` decodes.
+/// Standard base64, padded — what `extract_response` decodes.
 fn b64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let b = [
-            chunk.first().copied().unwrap_or(0),
-            chunk.get(1).copied().unwrap_or(0),
-            chunk.get(2).copied().unwrap_or(0),
-        ];
-        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
-        let idx = [(n >> 18) & 63, (n >> 12) & 63, (n >> 6) & 63, n & 63];
-        for (i, part) in idx.iter().enumerate() {
-            if i <= chunk.len() {
-                out.push(char::from(ALPHABET[*part as usize]));
-            } else {
-                out.push('=');
-            }
-        }
-    }
-    out
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
 /// A `Cache-Control` an application asked for, checked before it is ever

@@ -1122,30 +1122,11 @@ fn query_pairs(query: Option<&str>) -> Vec<(String, String)> {
         .collect()
 }
 
-/// `%20` and `+`, which is all a query has ever needed here.
+/// `%20` and `+`, which is all a query has ever needed here. A malformed
+/// escape stays as written.
 fn percent_decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes.get(i) {
-            Some(b'+') => out.push(b' '),
-            Some(b'%') => {
-                let hex = s.get(i.saturating_add(1)..i.saturating_add(3));
-                match hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
-                    Some(byte) => {
-                        out.push(byte);
-                        i = i.saturating_add(2);
-                    }
-                    None => out.push(b'%'),
-                }
-            }
-            Some(c) => out.push(*c),
-            None => break,
-        }
-        i = i.saturating_add(1);
-    }
-    String::from_utf8_lossy(&out).into_owned()
+    let spaced = s.replace('+', " ");
+    String::from_utf8_lossy(&urlencoding::decode_binary(spaced.as_bytes())).into_owned()
 }
 
 /// The client's viewport as the application sees it, in `params`.
@@ -1162,6 +1143,16 @@ pub(super) fn viewport_json(v: &eui_proto::Viewport) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn query_values_decode_plus_and_percent_and_keep_malformed_escapes() {
+        assert_eq!(percent_decode("a+b%20c%2B"), "a b c+");
+        assert_eq!(percent_decode("%C3%A9"), "é");
+        assert_eq!(percent_decode("100%"), "100%");
+        assert_eq!(percent_decode("%zz"), "%zz");
+        // Not a byte: `u8::from_str_radix` used to read `+f` as 15.
+        assert_eq!(percent_decode("%+f"), "% f");
+    }
+
     use super::*;
 
     #[test]
