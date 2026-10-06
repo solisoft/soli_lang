@@ -71,7 +71,9 @@ pub(super) fn handle(
     // symlinks, so a cached key has no link in it to resolve). The bytes were
     // read from inside the jail at boot.
     if !dev_mode && !asset_cache.is_empty() {
-        if let Some(relative) = sanitized_relative_path(path) {
+        if let Some(relative) = sanitized_relative_path(path)
+            .filter(|relative| super::asset_cache::may_be_cached(relative))
+        {
             if let Some(asset) = asset_cache.get(&canonical_public.join(relative.as_ref())) {
                 return Some(respond(
                     Source::Memory(asset.bytes.clone()),

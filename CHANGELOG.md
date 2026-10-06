@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Performance
+
+* **serve:** **3.6% more requests per CPU on a dynamic route.** Profiling `soli serve` under load turned up two costs every request paid for nothing. The interpreter's source path was re-keyed for coverage on every middleware and controller call — `std::path::absolute` walking the path into a fresh buffer, 1.7% of the CPU of a plaintext route, coverage on or off; an already-normalized absolute path is now kept as it is. And every dynamic GET looked itself up in the production asset cache — a joined `PathBuf`, SipHashed component by component — although that cache holds only `.css` and `.js` files; any other path now skips it. Measured on a fresh `soli new` app, 4 workers: 48.3k → 50.0k requests per CPU-second at 256 connections, +1.3% at 16.
+
 ## [2.17.1] - 2026-10-06
 
 ### Fixed

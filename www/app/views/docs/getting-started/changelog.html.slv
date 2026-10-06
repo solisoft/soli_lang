@@ -22,6 +22,11 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.17.1.</p>
 
+        <h3 id="unreleased-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">3.6% more requests per CPU on a dynamic route.</strong> A profile of <code class="text-cyan-400">soli serve</code> under load found two costs every request paid for nothing: the interpreter re-keyed its source path for coverage on every middleware and controller call, coverage on or off (1.7% of the CPU), and every dynamic GET was looked up in the production asset cache, which only ever holds <code class="text-cyan-400">.css</code> and <code class="text-cyan-400">.js</code> files. Both are skipped now. On a fresh <code class="text-cyan-400">soli new</code> app: 48.3k &rarr; 50.0k requests per CPU-second at 256 connections.</li>
+        </ul>
+
     </section>
 
     <section id="v2-17-1" class="mb-16 scroll-mt-24">

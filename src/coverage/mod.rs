@@ -26,7 +26,37 @@ pub use tracker::{
 /// `..` segments are left alone, since resolving them means resolving
 /// symlinks, which is the thing this avoids.
 pub fn coverage_path_key(path: &std::path::Path) -> std::path::PathBuf {
+    if is_normalized_absolute(path) {
+        return path.to_path_buf();
+    }
     std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// [`coverage_path_key`] for a path the caller owns: an already-normalized
+/// absolute path is kept as it is, without a copy.
+///
+/// The server re-sets the interpreter's source path on every middleware and
+/// controller call, and `std::path::absolute` walks the path component by
+/// component into a fresh buffer even when there is nothing to change — 1.7%
+/// of the CPU of a plaintext route, coverage on or off.
+pub fn coverage_path_key_owned(path: std::path::PathBuf) -> std::path::PathBuf {
+    if is_normalized_absolute(&path) {
+        return path;
+    }
+    coverage_path_key(&path)
+}
+
+/// Whether `std::path::absolute` would hand `path` back unchanged: absolute,
+/// with no empty segment (`//`) and no `.` segment, which are the two things
+/// it rewrites in an absolute path. `..` is kept by `absolute` too.
+fn is_normalized_absolute(path: &std::path::Path) -> bool {
+    if !path.is_absolute() {
+        return false;
+    }
+    let bytes = path.as_os_str().as_encoded_bytes();
+    !bytes.windows(2).any(|w| w == b"//")
+        && !bytes.windows(3).any(|w| w == b"/./")
+        && !bytes.ends_with(b"/.")
 }
 
 #[cfg(test)]
@@ -47,6 +77,38 @@ mod key_tests {
 
         assert_eq!(coverage_path_key(&linked), linked);
         assert_ne!(coverage_path_key(&linked), coverage_path_key(&shared));
+    }
+
+    /// The fast path must give exactly what `std::path::absolute` gives, or a
+    /// file would be keyed twice.
+    #[test]
+    #[cfg(unix)]
+    fn the_fast_path_agrees_with_std_absolute() {
+        for raw in [
+            "/srv/app/models/post.sl",
+            "/srv/app/../shared/post.sl",
+            "/srv/app/",
+            "/srv//app/post.sl",
+            "//srv/app/post.sl",
+            "///srv/app/post.sl",
+            "/srv/./app/post.sl",
+            "/srv/app/.",
+            "/.",
+            "/",
+            "/srv/.hidden/post.sl",
+            "/srv/app/post.sl.",
+            "app/models/post.sl",
+            "./app/post.sl",
+        ] {
+            let path = std::path::Path::new(raw);
+            let expected = std::path::absolute(path).unwrap();
+            assert_eq!(coverage_path_key(path), expected, "{raw}");
+            assert_eq!(
+                super::coverage_path_key_owned(path.to_path_buf()),
+                expected,
+                "{raw} (owned)"
+            );
+        }
     }
 
     /// Relative and absolute spellings of one file still have to meet: the

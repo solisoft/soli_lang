@@ -218,7 +218,7 @@ impl Interpreter {
         // Absolute but symlink-preserving: see `coverage_path_key`. Every
         // function declared in this file carries the path as its
         // `source_path`, and that is what its line hits are keyed by.
-        self.current_source_path = Some(crate::coverage::coverage_path_key(&path));
+        self.current_source_path = Some(crate::coverage::coverage_path_key_owned(path));
     }
 
     /// Whether any coverage tracker would record a hit. Checked before the

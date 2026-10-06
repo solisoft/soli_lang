@@ -31,6 +31,14 @@ pub fn empty() -> AssetCache {
     Arc::new(HashMap::new())
 }
 
+/// Whether a URL path could name a cached asset. Only `.css` and `.js` files
+/// are loaded (see `walk`), so any other path is a certain miss and the
+/// lookup — a joined `PathBuf`, SipHashed component by component — can be
+/// skipped on every dynamic route.
+pub fn may_be_cached(relative_url_path: &str) -> bool {
+    relative_url_path.ends_with(".css") || relative_url_path.ends_with(".js")
+}
+
 pub fn build(public_dir: &Path, dev_mode: bool) -> AssetCache {
     if dev_mode || !public_dir.exists() {
         return Arc::new(HashMap::new());
@@ -85,6 +93,8 @@ fn walk(dir: &Path, out: &mut HashMap<PathBuf, CachedAsset>, total: &mut u64) {
             Some(e) => e,
             None => continue,
         };
+        // Keep in step with `may_be_cached`, which lets a request skip the
+        // lookup for any other extension.
         let content_type: &'static str = match ext {
             "css" => "text/css",
             "js" => "application/javascript",
