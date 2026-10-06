@@ -663,6 +663,27 @@ impl Vm {
         self.check_private_value(&self.stack[receiver_idx], name)
     }
 
+    /// The model persist/delete native a bare `record.<name>` would
+    /// auto-invoke, when `name` is one: a model instance with no field of that
+    /// name, and a native that runs with no arguments.
+    fn bare_model_mutator(
+        &self,
+        inst: &Rc<RefCell<Instance>>,
+        name: &str,
+    ) -> Option<Rc<NativeFunction>> {
+        if !crate::interpreter::executor::calls::function::is_model_instance_mutator(name) {
+            return None;
+        }
+        let inst_ref = inst.borrow();
+        if !inst_ref.class.is_model_subclass() || inst_ref.fields.contains_key(name) {
+            return None;
+        }
+        inst_ref
+            .class
+            .find_native_method(name)
+            .filter(|native| native.is_auto_invocable || native.arity == Some(0))
+    }
+
     pub fn op_get_property_member(
         &mut self,
         object: &Value,
@@ -719,6 +740,17 @@ impl Vm {
                         return Ok(result);
                     }
                 }
+            }
+        }
+        // A paren-less `record.save` / `.delete` / … runs the lifecycle
+        // callbacks, veto and cascades exactly like `record.save()` does on
+        // CallMethod. Auto-invoking the bound native below skipped them all.
+        if let Value::Instance(inst) = object {
+            if let Some(native) = self.bare_model_mutator(inst, name) {
+                let receiver_idx = self.stack.len();
+                self.push(object.clone());
+                self.call_model_instance_native(inst.clone(), native, receiver_idx, 0, name, span)?;
+                return Ok(self.pop());
             }
         }
         let val = self.op_get_property(object, name, span)?;

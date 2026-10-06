@@ -6180,6 +6180,74 @@ mod tests {
         );
     }
 
+    /// A paren-less `record.save` used to auto-invoke the bound native
+    /// directly, so no callback ran and a `before_save` veto could not stop
+    /// the write. It now goes through the same wrapper as `record.save()`.
+    #[test]
+    fn test_vm_bare_model_save_runs_callbacks() {
+        use crate::interpreter::builtins::model::callbacks::register_callback;
+        use crate::interpreter::value::{Class, Function, Instance};
+        use std::collections::HashMap;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        static NATIVE_RAN: AtomicBool = AtomicBool::new(false);
+        NATIVE_RAN.store(false, Ordering::SeqCst);
+
+        let body_tokens = Scanner::new("return false")
+            .scan_tokens()
+            .expect("lex veto");
+        let body = Parser::new(body_tokens)
+            .parse()
+            .expect("parse veto")
+            .statements;
+
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let mut native_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        native_methods.insert(
+            "save".to_string(),
+            Rc::new(NativeFunction::new_auto_invocable(
+                "Model.save",
+                None,
+                |_| {
+                    NATIVE_RAN.store(true, Ordering::SeqCst);
+                    Ok(Value::Bool(true))
+                },
+            )),
+        );
+        let record_class = Rc::new(Class {
+            name: "BareVetoUser".to_string(),
+            superclass: Some(model_base),
+            native_methods,
+            ..Default::default()
+        });
+        record_class.methods.borrow_mut().insert(
+            "veto".to_string(),
+            Rc::new(Function {
+                name: "veto".to_string(),
+                body: body.into(),
+                ..Function::default()
+            }),
+        );
+        register_callback("BareVetoUser", "before_save", "veto");
+        let record = Value::Instance(Rc::new(RefCell::new(Instance::new(record_class))));
+
+        let source = "let x = record.save";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.globals.insert("record".to_string(), record);
+        vm.execute(&module.main).expect("veto bare save");
+        assert_eq!(vm.globals.get("x"), Some(&Value::Bool(false)));
+        assert!(
+            !NATIVE_RAN.load(Ordering::SeqCst),
+            "a bare save must honour the before_save veto"
+        );
+    }
+
     #[test]
     fn test_vm_model_class_create_runs_on_vm() {
         use crate::interpreter::value::Class;

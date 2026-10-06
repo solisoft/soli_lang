@@ -1365,12 +1365,11 @@ user.full_name;
 puts "Hello world";
 ```
 
-> **Model writes are the exception (current limitation).** On a model
-> instance, a bare `record.save` / `record.update` / `record.delete` writes
-> but runs no lifecycle callback — no `before_save`, no `before_delete` veto,
-> no `dependent:` cascade. Bare static `Model.new`, `Model.delete_all`,
-> `Model.with_deleted` return the function and do nothing. Write
-> `record.save()`, `record.delete()`, `Model.delete_all()`, `Model.new()`.
+> **Bare static model calls are the exception (current limitation).**
+> `Model.new`, `Model.delete_all` and `Model.with_deleted` without
+> parentheses return the function and do nothing: write `Model.new()`,
+> `Model.delete_all()`. Instance writes are fine bare — `record.save` runs
+> the same lifecycle callbacks as `record.save()`.
 
 This works for:
 - Method calls on objects with named arguments: `obj.method arg: value`

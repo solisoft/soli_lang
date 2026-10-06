@@ -364,7 +364,6 @@ describe("against SoliDB") do
     end
 
     test("a bare save runs before_save too") do
-      pending("bug: record.save / .update / .delete without () persist but skip every lifecycle callback")
       item = InstCallbackItem.new()
       item.name = "  Hello  "
       item.save

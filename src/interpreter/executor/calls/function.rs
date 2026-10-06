@@ -589,22 +589,10 @@ impl Interpreter {
                 // the call. A spy still runs them (the real method, callbacks
                 // included) and records the call on its Mock.
                 if !safe_navigation {
-                    match model_stub_for_call(&obj_val, name) {
-                        Some((_, false)) => {}
-                        Some((mock, true)) => {
-                            if let Some(result) =
-                                self.call_model_spy(&obj_val, &mock, name, arguments, span)?
-                            {
-                                return Ok(result);
-                            }
-                        }
-                        None => {
-                            if let Some(result) =
-                                self.run_model_interceptors(&obj_val, name, arguments, span)?
-                            {
-                                return Ok(result);
-                            }
-                        }
+                    if let Some(result) =
+                        self.run_model_call_hooks(&obj_val, name, arguments, span)?
+                    {
+                        return Ok(result);
                     }
                 }
 
@@ -885,6 +873,28 @@ impl Interpreter {
             }
         }
         Ok(None)
+    }
+
+    /// The model hooks a method call on `obj_val` goes through before the
+    /// regular member route: the callback interceptors, or the spy when a
+    /// test spies on the method; nothing when a test stubbed it (the stub
+    /// answers from its Mock instead of running the real persistence).
+    ///
+    /// Shared by `record.save()` and the paren-less `record.save`, which used
+    /// to bypass every lifecycle callback — a bare `record.delete` deleted
+    /// through a `before_delete` veto.
+    pub(crate) fn run_model_call_hooks(
+        &mut self,
+        obj_val: &Value,
+        name: &str,
+        arguments: &[Argument],
+        span: Span,
+    ) -> RuntimeResult<Option<Value>> {
+        match model_stub_for_call(obj_val, name) {
+            Some((_, false)) => Ok(None),
+            Some((mock, true)) => self.call_model_spy(obj_val, &mock, name, arguments, span),
+            None => self.run_model_interceptors(obj_val, name, arguments, span),
+        }
     }
 
     /// A spied model method: record the call on `mock`, then run the real one
@@ -2768,6 +2778,16 @@ impl Interpreter {
             _ => Err(RuntimeError::not_callable(span)),
         }
     }
+}
+
+/// The model instance methods whose call runs lifecycle callbacks (and, for
+/// `delete`, the `before_delete` veto and `dependent:` cascades). Read bare,
+/// they must run them too; every other member keeps the plain path.
+pub(crate) fn is_model_instance_mutator(name: &str) -> bool {
+    matches!(
+        name,
+        "save" | "update" | "delete" | "restore" | "touch" | "increment" | "decrement"
+    )
 }
 
 /// The stub standing in for `name` on a model receiver (class or instance),

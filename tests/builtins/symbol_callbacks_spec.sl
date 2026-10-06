@@ -79,7 +79,6 @@ describe("Callback DSL with symbols and strings") do
     end
 
     test("save without parentheses runs before_save like save()") do
-      pending("bug: bare `record.save` persists but skips before_save; `record.save()` runs it")
       record = SpecCallbacks.new()
       record.name = "BARE"
       record.save

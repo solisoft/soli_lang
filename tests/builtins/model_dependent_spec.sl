@@ -1,8 +1,8 @@
 # Cascade deletes: has_many/has_one dependent: "delete" | "delete_all" | "nullify".
 # Cascades fire on hard instance deletes (and Model.delete(id) on classes that
 # declare dependents), after before_delete and before the owner row goes.
-# Soft-delete owners keep their children; bulk writes never cascade. Owner
-# deletes keep their parentheses: a bare `delete` skips the cascade (pending).
+# Soft-delete owners keep their children; bulk writes never cascade. A bare
+# `delete` cascades exactly like `delete()`.
 class CascAuthor < Model
   has_many("casc_posts", dependent: "delete")
 end
@@ -204,7 +204,6 @@ describe("cascades against SoliDB") do
     end
 
     test("a bare delete cascades too") do
-      pending("bug: record.delete without () removes the row but skips the dependent cascade")
       author = CascAuthor.create({"name": "bare"})
       CascPost.create({"casc_author_id": author._key, "title": "orphaned"})
       author.delete

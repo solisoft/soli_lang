@@ -3,8 +3,7 @@
 #   has_many "comments", as: "commentable"          (type-guarded inverse)
 # The child accessor resolves the target class from the type field at runtime.
 # Eager-loading a polymorphic belongs_to raises (the collection varies per
-# row); the as: inverse eager-loads fine. `delete()` keeps its parentheses:
-# the bare form skips dependent cascades (see model_dependent_spec.sl).
+# row); the as: inverse eager-loads fine.
 
 class PolyComment < Model
   belongs_to(

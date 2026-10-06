@@ -91,6 +91,11 @@ impl Interpreter {
             ExprKind::Pipeline { left, right } => self.evaluate_pipeline(left, right, expr.span),
 
             // Access
+            ExprKind::Member { object, name }
+                if super::calls::function::is_model_instance_mutator(name) =>
+            {
+                self.evaluate_bare_model_mutator(object, name, expr.span)
+            }
             ExprKind::Member { object, name } => {
                 let val = self.evaluate_member(object, name, expr.span)?;
                 self.try_auto_invoke(val, expr.span, AutoInvokeContext::Member)
@@ -799,6 +804,47 @@ impl Interpreter {
             return self.call_value(val, vec![], span);
         }
         Ok(val)
+    }
+
+    /// A paren-less `record.save` / `.update` / `.delete` / … : the same
+    /// lifecycle callbacks, cascades and stub/spy handling as `record.save()`,
+    /// then — for any other receiver, or a method no hook claims — the plain
+    /// member read and auto-invoke every bare member gets.
+    fn evaluate_bare_model_mutator(
+        &mut self,
+        object: &Expr,
+        name: &str,
+        span: Span,
+    ) -> RuntimeResult<Value> {
+        // `@save` in a view is a lenient local read; leave it to evaluate_member.
+        if matches!(object.kind, ExprKind::This)
+            && crate::interpreter::executor::template_lenient_vars_enabled()
+            && self.environment.borrow().get("this").is_none()
+        {
+            let val = self.evaluate_member(object, name, span)?;
+            return self.try_auto_invoke(val, span, AutoInvokeContext::Member);
+        }
+        let obj_val = self.evaluate(object)?;
+        self.check_private_access(object, &obj_val, name, span)?;
+        let is_model_instance = matches!(
+            &obj_val,
+            Value::Instance(inst) if inst.borrow().class.is_model_subclass()
+                && !inst.borrow().fields.contains_key(name)
+        );
+        if is_model_instance {
+            if let Some(result) = self.run_model_call_hooks(&obj_val, name, &[], span)? {
+                return Ok(result);
+            }
+        }
+        let was_instance = matches!(obj_val, Value::Instance(_));
+        let val = self.evaluate_member_on_value(obj_val, name, span)?;
+        if was_instance {
+            if let Value::Deferred(cell) = &val {
+                return crate::interpreter::builtins::model::batch::force(cell)
+                    .map_err(|e| RuntimeError::General { message: e, span });
+            }
+        }
+        self.try_auto_invoke(val, span, AutoInvokeContext::Member)
     }
 
     /// Auto-invoke a value read as a member (`builder.count`), with the

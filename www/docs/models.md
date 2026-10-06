@@ -960,13 +960,11 @@ Both class-level methods (`Model.create`, `Model.update`) and instance-level mut
 
 After-callbacks only fire when the persist call succeeds. If the native method returns `false` (validation or DB error) the after-callbacks are skipped and the instance carries `_errors`.
 
-> **Write the parentheses: `save()`, `update()`, `delete()` (current
-> limitation).** Called without them — `record.save`, `record.delete` — the
-> instance methods write but run **no** callback from this table: no
-> `before_save` normalisation, no `after_*`, a `before_*` that returns
-> `false` does not veto, and `dependent:` cascades are skipped. Nothing
-> errors. Bare static `Model.delete_all`, `Model.new`, `Model.with_deleted`
-> and `Model.only_deleted` return the function itself and do nothing.
+> `record.save`, `record.update` and `record.delete` run every callback in
+> this table with or without parentheses. Bare **static** calls are the
+> exception (current limitation): `Model.delete_all`, `Model.new`,
+> `Model.with_deleted` and `Model.only_deleted` without parentheses return
+> the function itself and do nothing — write `Model.delete_all()`.
 >
 > `instance.update(attrs)` and `instance.save(attrs)` run `before_save`, but
 > the hash's values are what gets written: a field the callback rewrites keeps

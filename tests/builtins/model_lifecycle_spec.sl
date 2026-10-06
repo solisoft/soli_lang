@@ -3,8 +3,8 @@
 # uploaders, attr_accessible) and the schema DSL (soft_delete, timeseries,
 # columnar/column, fulltext_index, table, enum_field + state_machine).
 #
-# Persistence calls keep their parentheses here — `save()`, `update()`,
-# `delete()` — because the bare forms skip every callback (pending tests below).
+# Persistence calls are written both ways on purpose: `record.save` without
+# parentheses runs the same callbacks as `record.save()`.
 
 class HookDoc < Model
   before_save("stamp_before_save")
@@ -148,8 +148,6 @@ end
 const CREATE_CHAIN = "before_save;before_create;after_create;after_save;"
 const ABORTED_DELETE = "before_delete callback returned false; persistence aborted"
 const WIDGETS_QUERY = "FOR doc IN mock_widgets RETURN doc"
-const BARE_CALL_BUG = "bug: record.save / .update / .delete without () persist but skip every lifecycle callback"
-
 # A record whose _key does not exist in the database (`_key` is read-only on
 # instances, so it is hydrated from a mocked read).
 def phantom(model, collection, key)
@@ -197,7 +195,6 @@ describe("lifecycle hooks") do
     end
 
     test("a bare save runs the hooks too") do
-      pending(BARE_CALL_BUG)
       doc = HookDoc.new({"title": "bare"})
       doc.save
       assert_eq(doc.chain, CREATE_CHAIN)
@@ -259,7 +256,6 @@ describe("lifecycle hooks") do
     end
 
     test("a bare delete honours the veto too") do
-      pending(BARE_CALL_BUG)
       doc = VetoDeleteDoc.create({"title": "keep"})
       doc.delete
       assert_eq(VetoDeleteDoc.count, 1)
