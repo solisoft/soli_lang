@@ -721,6 +721,30 @@ impl Vm {
                 }
             }
         }
+        // A Model instance's zero-arg natives read bare (`record.delete`,
+        // `record.save`) go through `call_model_instance_native`, exactly like
+        // the parenthesised call: the plain auto-invoke below called the
+        // native directly, so callbacks, cascades and the attachment purge
+        // were skipped, and a `before_delete` returning false could not veto.
+        if let Value::Instance(inst) = object {
+            let native = {
+                let inst_ref = inst.borrow();
+                if inst_ref.class.is_model_subclass() && !inst_ref.fields.contains_key(name) {
+                    inst_ref
+                        .class
+                        .find_native_method(name)
+                        .filter(|native| native.is_auto_invocable || native.arity == Some(0))
+                } else {
+                    None
+                }
+            };
+            if let Some(native) = native {
+                let receiver_idx = self.stack.len();
+                self.push(object.clone());
+                self.call_model_instance_native(inst.clone(), native, receiver_idx, 0, name, span)?;
+                return Ok(self.pop());
+            }
+        }
         let val = self.op_get_property(object, name, span)?;
         // Native methods (DateTime/Duration/Model instance wrappers, static
         // class methods like `DateTime.now`): bare access auto-invokes
