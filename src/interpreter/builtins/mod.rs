@@ -61,7 +61,6 @@ pub mod encoding;
 pub mod env;
 #[cfg(feature = "es")]
 pub mod es;
-pub mod expectations;
 pub mod factories;
 pub mod fcm;
 pub mod file;
@@ -676,7 +675,6 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
         factories::register_factories(env);
         test_helpers::register_test_helpers(env);
         assertions::register_assertions(env);
-        expectations::register_expectation_class(env);
         test_dsl::register_test_builtins(env);
         test_server::register_test_server_builtins(env);
         mock_http::register_mock_http_builtins(env);

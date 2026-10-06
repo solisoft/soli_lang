@@ -37,8 +37,6 @@ pub mod platform;
 pub(crate) mod redaction;
 pub mod regex_cache;
 pub mod repl_common;
-pub mod repl_highlight;
-pub mod repl_simple;
 pub mod repl_tui;
 pub mod scaffold;
 pub mod serve;

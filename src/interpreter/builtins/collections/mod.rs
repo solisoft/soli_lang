@@ -8,7 +8,6 @@ pub mod array;
 pub mod hash;
 pub mod range;
 pub mod set;
-pub mod traits;
 pub mod utils;
 
 pub use array::register_array_class;
