@@ -379,19 +379,20 @@ post_comment_path(5, 9)</code></pre>
 
     <h3 class="text-xl font-semibold text-white mb-4">Plural-to-singular limitations</h3>
     <p class="text-gray-400 mb-4">
-        <code>resources()</code> derives the member-route helper (<code>&lt;singular&gt;_path</code>) and the nested-resource param (<code>:&lt;singular&gt;_id</code>) from the resource name by a small built-in inflector. It handles three cases:
+        <code>resources()</code> derives the member-route helper (<code>&lt;singular&gt;_path</code>) and the nested-resource param (<code>:&lt;singular&gt;_id</code>) from the resource name with the inflector models use for relation and class names. It handles four cases:
     </p>
     <ul class="list-disc list-inside text-gray-400 mb-6 space-y-1">
         <li><strong>Trailing <code>s</code></strong> &mdash; <code>posts &rarr; post</code>, <code>users &rarr; user</code>.</li>
-        <li><strong><code>ies &rarr; y</code> after a consonant</strong> &mdash; <code>categories &rarr; category</code>, <code>parties &rarr; party</code>, <code>companies &rarr; company</code>.</li>
-        <li><strong>A short irregulars table</strong> &mdash; <code>people &rarr; person</code>, <code>men &rarr; man</code>, <code>women &rarr; woman</code>, <code>children &rarr; child</code>, <code>mice &rarr; mouse</code>, <code>geese &rarr; goose</code>, <code>feet &rarr; foot</code>, <code>teeth &rarr; tooth</code>.</li>
+        <li><strong><code>ies &rarr; y</code> after a consonant</strong> &mdash; <code>categories &rarr; category</code>, <code>parties &rarr; party</code>, <code>companies &rarr; company</code>; a one-letter stem keeps its <code>ie</code> (<code>pies &rarr; pie</code>).</li>
+        <li><strong><code>es</code> after a sibilant</strong> &mdash; <code>boxes &rarr; box</code>, <code>addresses &rarr; address</code>, <code>statuses &rarr; status</code>, <code>watches &rarr; watch</code>.</li>
+        <li><strong>Irregulars and uncountables</strong> &mdash; <code>people &rarr; person</code>, <code>men &rarr; man</code>, <code>women &rarr; woman</code>, <code>children &rarr; child</code>, <code>mice &rarr; mouse</code>, <code>geese &rarr; goose</code>, <code>feet &rarr; foot</code>, <code>teeth &rarr; tooth</code>, <code>oxen &rarr; ox</code>; <code>news</code>, <code>series</code>, <code>species</code>, <code>sheep</code>, <code>fish</code>, <code>deer</code>, <code>rice</code>, <code>money</code>, <code>information</code> and <code>equipment</code> stay as they are.</li>
     </ul>
     <p class="text-gray-400 mb-4">
         Anything else falls through unchanged, which can produce a confusing helper name or a collision with the collection helper. The two failure modes worth knowing:
     </p>
     <ul class="list-disc list-inside text-gray-400 mb-6 space-y-2">
-        <li><strong>Words whose plural doesn't end in <code>s</code> and aren't in the irregulars table</strong> (e.g. <code>data</code>, <code>sheep</code>, <code>series</code>, <code>news</code>) leave the singular equal to the plural, so <code>data_path()</code> would mean <em>both</em> the collection and the member route. The member registration overwrites the collection in the route table &mdash; usually not what you want. Pick a different resource name (e.g. <code>entries</code>).</li>
-        <li><strong>Words where <code>ies &rarr; y</code> produces nonsense</strong> are caught by the consonant guard (<code>pies &rarr; pie</code>, not <code>py</code>), but exotic forms still won't round-trip. When in doubt, register the routes manually with <code>get(..., name: "...")</code>.</li>
+        <li><strong>Uncountables, and words whose plural doesn't end in <code>s</code> and aren't irregular</strong> (e.g. <code>data</code>, <code>sheep</code>, <code>series</code>, <code>news</code>) leave the singular equal to the plural, so <code>data_path()</code> would mean <em>both</em> the collection and the member route. The member registration overwrites the collection in the route table &mdash; usually not what you want. Pick a different resource name (e.g. <code>entries</code>).</li>
+        <li><strong>Words where <code>ies &rarr; y</code> produces nonsense</strong> are mostly caught by the consonant guard (<code>pies &rarr; pie</code>, not <code>py</code>), but not all: <code>movies</code> gives <code>movy</code>. When in doubt, register the routes manually with <code>get(..., name: "...")</code>.</li>
     </ul>
 
     <h3 class="text-xl font-semibold text-white mb-4">Duplicate names</h3>

@@ -118,16 +118,17 @@ get("/about", "pages#about", name: "about");
 
 ### Plural-to-singular limitations
 
-`resources()` derives the member-route helper (`<singular>_path`) and the nested-resource param (`:<singular>_id`) from the resource name by a small built-in inflector. It handles three cases:
+`resources()` derives the member-route helper (`<singular>_path`) and the nested-resource param (`:<singular>_id`) from the resource name with the inflector models use for relation and class names. It handles four cases:
 
 - **Trailing `s`** — `posts → post`, `users → user`.
-- **`ies → y` after a consonant** — `categories → category`, `parties → party`, `companies → company`.
-- **A short irregulars table** — `people → person`, `men → man`, `women → woman`, `children → child`, `mice → mouse`, `geese → goose`, `feet → foot`, `teeth → tooth`.
+- **`ies → y` after a consonant** — `categories → category`, `parties → party`, `companies → company`; a one-letter stem keeps its `ie` (`pies → pie`).
+- **`es` after a sibilant** — `boxes → box`, `addresses → address`, `statuses → status`, `watches → watch`.
+- **Irregulars and uncountables** — `people → person`, `men → man`, `women → woman`, `children → child`, `mice → mouse`, `geese → goose`, `feet → foot`, `teeth → tooth`, `oxen → ox`; `news`, `series`, `species`, `sheep`, `fish`, `deer`, `rice`, `money`, `information` and `equipment` stay as they are.
 
 Anything else falls through unchanged, which can produce a confusing helper name or a collision with the collection helper. The two failure modes worth knowing:
 
-- **Words whose plural doesn't end in `s` and aren't in the irregulars table** (e.g. `data`, `sheep`, `series`, `news`) leave the singular equal to the plural, so `data_path()` would mean *both* the collection and the member route. The member registration overwrites the collection in the route table — usually not what you want. Pick a different resource name (e.g. `entries`).
-- **Words where `ies → y` produces nonsense** are caught by the consonant guard (`pies → pie`, not `py`), but exotic forms still won't round-trip. When in doubt, register the routes manually with `get(..., name: "...")`.
+- **Uncountables, and words whose plural doesn't end in `s` and aren't irregular** (e.g. `data`, `sheep`, `series`, `news`) leave the singular equal to the plural, so `data_path()` would mean *both* the collection and the member route. The member registration overwrites the collection in the route table — usually not what you want. Pick a different resource name (e.g. `entries`).
+- **Words where `ies → y` produces nonsense** are mostly caught by the consonant guard (`pies → pie`, not `py`), but not all: `movies` gives `movy`. When in doubt, register the routes manually with `get(..., name: "...")`.
 
 ### Duplicate names
 

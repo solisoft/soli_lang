@@ -6,63 +6,6 @@ use crate::interpreter::value::{NativeFunction, Value};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-/// Singularize a plural resource name for member-route naming.
-///
-/// Handles three cases, in order:
-/// 1. A small irregulars table for the most common English plurals that
-///    don't follow the `s` rule (`people → person`, `mice → mouse`, ...).
-/// 2. `ies → y` when the letter before `ies` is a consonant
-///    (`categories → category`, `parties → party`). The consonant guard
-///    prevents `pies → py` / `lies → ly` regressions.
-/// 3. A trailing `s` (`posts → post`, `users → user`).
-///
-/// Everything else falls through unchanged. See `www/docs/routing.md`
-/// (Plural-to-singular limitations) for the documented edge cases that
-/// require choosing a different resource name (`news`, `species`, ...).
-fn singularize(name: &str) -> String {
-    // Irregulars table: lowercase plural → lowercase singular. Matched on a
-    // lowercased copy of `name` so `People` and `people` both work, while
-    // preserving any user-chosen casing on the result is not attempted
-    // because resource names in routes are conventionally lowercase.
-    const IRREGULARS: &[(&str, &str)] = &[
-        ("people", "person"),
-        ("men", "man"),
-        ("women", "woman"),
-        ("children", "child"),
-        ("mice", "mouse"),
-        ("geese", "goose"),
-        ("feet", "foot"),
-        ("teeth", "tooth"),
-    ];
-    let lower = name.to_ascii_lowercase();
-    for (pl, sg) in IRREGULARS {
-        if lower == *pl {
-            return (*sg).to_string();
-        }
-    }
-
-    // `ies → y` when preceded by a consonant. Requires stem length ≥ 2 so
-    // single-letter stems (`pies`, `lies`, `ties`, `dies`) fall through to
-    // the bare `s` rule — those are singular nouns ending in `ie`, not
-    // `y`-plurals. Two-letter+ stems (`cities`, `flies`, `cries`, `tries`,
-    // `parties`, `companies`, `agencies`) are virtually always `y`-plurals.
-    if let Some(stem) = name.strip_suffix("ies") {
-        let last = stem.chars().last().map(|c| c.to_ascii_lowercase());
-        let consonant_stem =
-            matches!(last, Some(c) if !matches!(c, 'a' | 'e' | 'i' | 'o' | 'u' | 'y'));
-        if consonant_stem && stem.len() >= 2 {
-            return format!("{}y", stem);
-        }
-    }
-
-    // Generic `s` rule. Falls back to the original name when no trailing `s`.
-    if let Some(stripped) = name.strip_suffix('s') {
-        stripped.to_string()
-    } else {
-        name.to_string()
-    }
-}
-
 /// Compose a Rails-style route name from the ancestor chain plus the
 /// current segment. `prefix` is the underscore-joined chain of singular
 /// ancestor names (empty at the top level).
@@ -365,7 +308,7 @@ pub fn register_router_builtins(env: &mut Environment) {
                     // PATCH/DELETE variants share the GET name's path so we
                     // intentionally leave them unnamed (calling `post_path(p)`
                     // returns the same string regardless of HTTP verb intent).
-                    let singular = singularize(&name);
+                    let singular = crate::inflect::singularize(&name);
                     let collection_name = compose_name(&current.name_prefix, &name);
                     let member_name = compose_name(&current.name_prefix, &singular);
                     let new_name = compose_name(&current.name_prefix, &format!("new_{}", singular));
@@ -1534,63 +1477,6 @@ pub fn register_router_builtins(env: &mut Environment) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn singularize_strips_trailing_s() {
-        assert_eq!(singularize("posts"), "post");
-        assert_eq!(singularize("users"), "user");
-        assert_eq!(singularize("comments"), "comment");
-    }
-
-    #[test]
-    fn singularize_handles_ies_to_y() {
-        assert_eq!(singularize("categories"), "category");
-        assert_eq!(singularize("parties"), "party");
-        assert_eq!(singularize("cities"), "city");
-        assert_eq!(singularize("companies"), "company");
-        assert_eq!(singularize("agencies"), "agency");
-        assert_eq!(singularize("summaries"), "summary");
-    }
-
-    #[test]
-    fn singularize_skips_ies_for_single_letter_stems() {
-        // Single-letter stems are singular nouns ending in "ie" (pies, lies,
-        // ties, dies), not "y"-plurals. The bare-s rule gives the right
-        // answer: `pies → pie`, not `py`.
-        assert_eq!(singularize("pies"), "pie");
-        assert_eq!(singularize("lies"), "lie");
-        assert_eq!(singularize("ties"), "tie");
-        assert_eq!(singularize("dies"), "die");
-    }
-
-    #[test]
-    fn singularize_two_letter_stems_take_ies_to_y() {
-        // Two-letter stems are typically y-plurals (flies, cries, tries).
-        assert_eq!(singularize("flies"), "fly");
-        assert_eq!(singularize("cries"), "cry");
-        assert_eq!(singularize("tries"), "try");
-    }
-
-    #[test]
-    fn singularize_handles_irregulars() {
-        assert_eq!(singularize("people"), "person");
-        assert_eq!(singularize("men"), "man");
-        assert_eq!(singularize("women"), "woman");
-        assert_eq!(singularize("children"), "child");
-        assert_eq!(singularize("mice"), "mouse");
-        assert_eq!(singularize("geese"), "goose");
-        assert_eq!(singularize("feet"), "foot");
-        assert_eq!(singularize("teeth"), "tooth");
-    }
-
-    #[test]
-    fn singularize_leaves_unmatched_words_alone() {
-        // No trailing `s`, not in the irregulars table — return as-is. The
-        // helper will end up named the same as the collection helper, which
-        // routing.md documents as a known limitation.
-        assert_eq!(singularize("data"), "data");
-        assert_eq!(singularize("info"), "info");
-    }
 
     #[test]
     fn compose_name_joins_with_underscore() {

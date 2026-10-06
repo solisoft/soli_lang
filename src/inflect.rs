@@ -98,9 +98,17 @@ pub fn singularize(word: &str) -> String {
 
     let n = word.len();
 
-    // ies → y (categories → category)
-    if word.ends_with("ies") && n > 3 {
-        return format!("{}y", &word[..n - 3]);
+    // ies → y after a consonant (categories → category). A one-letter stem
+    // is a singular ending in `ie` (pies, lies, ties, dies), which the
+    // trailing-`s` rule below gets right: `pies → pie`, not `py`.
+    if let Some(stem) = word.strip_suffix("ies") {
+        let consonant_stem = stem
+            .bytes()
+            .last()
+            .is_some_and(|b| !is_vowel_byte(b) && !b.eq_ignore_ascii_case(&b'y'));
+        if consonant_stem && stem.len() >= 2 {
+            return format!("{stem}y");
+        }
     }
 
     // sibilant + es → strip "es" (boxes → box, buses → bus, brushes → brush)
@@ -225,6 +233,25 @@ mod tests {
     fn singularize_irregular() {
         assert_eq!(singularize("people"), "person");
         assert_eq!(singularize("children"), "child");
+    }
+
+    #[test]
+    fn singularize_keeps_ie_for_one_letter_stems() {
+        assert_eq!(singularize("pies"), "pie");
+        assert_eq!(singularize("lies"), "lie");
+        assert_eq!(singularize("ties"), "tie");
+        assert_eq!(singularize("flies"), "fly");
+        assert_eq!(singularize("summaries"), "summary");
+    }
+
+    #[test]
+    fn singularize_leaves_uncountables_and_bare_words_alone() {
+        // `news` used to lose its `s` in the router's own inflector, naming the
+        // member helper `new_path` — the `new` action's.
+        assert_eq!(singularize("news"), "news");
+        assert_eq!(singularize("data"), "data");
+        assert_eq!(singularize("addresses"), "address");
+        assert_eq!(singularize("statuses"), "status");
     }
 
     #[test]
