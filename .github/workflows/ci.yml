@@ -53,28 +53,6 @@ jobs:
           --health-retries 15
           --health-start-period 30s
 
-      # SoliKV speaks RESP, and every command the KV specs exercise is a
-      # standard Redis one, so Redis backs them here. Without a server the
-      # KV specs skip every test and still report a pass: `kv_spec.sl` and
-      # `kv_extended_spec.sl` contributed 0 assertions to a green suite.
-      # With this service they contribute 165.
-      #
-      # Caveat worth keeping in mind: this verifies the *client* against RESP,
-      # not SoliKV itself. Should SoliKV ever diverge on one of these commands,
-      # CI stays green while SoliKV fails. Swap in a SoliKV image once one is
-      # published.
-      solikv:
-        image: redis:8
-        ports:
-          # The client defaults to 6380 (DEFAULT_RESP_PORT); Redis listens on
-          # 6379 inside the container.
-          - 6380:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-
     env:
       PG_DATABASE_URL: postgres://soli:soli@localhost:5432/soli_test
       MYSQL_URL: mysql://root:soli@127.0.0.1:3306/soli_test
@@ -159,6 +137,26 @@ jobs:
           cat /tmp/solidb/server.log
           exit 1
 
+      # SoliKV for the KV and Cache specs: the real server, not a stand-in.
+      # Redis backed them until a SoliKV binary was published, and the
+      # stand-in hid exactly what its own caveat warned about — SoliKV 0.4.3
+      # answers SINTER/SUNION/SDIFF/SMOVE differently and lacks RPOPLPUSH and
+      # SMISMEMBER, which Redis passed. Those specs are `pending` with the
+      # reason, so the day SoliKV catches up they say so. On 6380, the
+      # client's default, which the job env already names.
+      - name: Start SoliKV (KV and Cache specs)
+        run: |
+          curl -fsSL -o /tmp/solikv.tgz https://github.com/solisoft/kv/releases/download/v0.4.3/solikv-linux-amd64.tar.gz
+          mkdir -p /tmp/solikv && tar -xzf /tmp/solikv.tgz -C /tmp/solikv
+          nohup "$(find /tmp/solikv -type f -name solikv | head -1)" --bind 127.0.0.1 --port 6380 \
+            --rest-port 15021 --appendonly false --dir /tmp/solikv > /tmp/solikv/server.log 2>&1 &
+          for i in $(seq 1 30); do
+            (exec 3<>/dev/tcp/127.0.0.1/6380) 2>/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/solikv/server.log
+          exit 1
+
       - name: Run tests
         run: cargo test --locked
 
@@ -170,7 +168,19 @@ jobs:
       - name: Run PDF engine tests
         run: cargo test --locked --manifest-path pdf/Cargo.toml
 
+      # The specs run against the SoliDB started above (16745) and SoliKV. A
+      # spec that needs one calls `requires_solidb()` / `requires_solikv()` in
+      # a `before_each`, which skips when the service does not answer — and
+      # the job's SOLI_REQUIRE_DB=1 turns that skip into a failure, so a
+      # broken service cannot make the suite pass by testing nothing. Until
+      # this step named a SoliDB, every DB spec probed localhost:6745, found
+      # nothing and returned early, and the suites guarded by
+      # `if __db_available` were never even registered.
       - name: Run Soli tests
+        env:
+          SOLI_TEST_SOLIDB_HOST: http://127.0.0.1:16745
+          SOLIDB_USERNAME: admin
+          SOLIDB_PASSWORD: admin
         run: cargo run --locked -- test
 
   # Keeps the Windows port from silently re-breaking. The crate has no
