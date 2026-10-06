@@ -1,330 +1,290 @@
-# ============================================================================
-# Interfaces Test Suite
-# ============================================================================
+# Interfaces: declaration, `implements` / `~`, combined with a superclass.
+# A missing method is a static error (`soli check`, the type checker), not a
+# runtime one, so it is not exercised here.
 
-describe("Interface Declaration", fn() {
-  test("interface with method signature", fn() {
-    interface Greetable {
-      fn greet()
-    }
+interface Greetable {
+  fn greet()
+}
 
-    class Person implements Greetable
-      def greet
-        return "Hello"
-      end
-    end
+interface Crud {
+  fn create()
+  fn read()
+  fn update(data)
+  fn delete()
+}
 
-    let p = new Person()
-    assert_eq(p.greet(), "Hello")
-  })
+interface Calculator {
+  fn add(a, b)
+  fn multiply(a, b)
+}
 
-  test("interface with multiple methods", fn() {
-    interface CRUD {
-      fn create()
-      fn read()
-      fn update(data)
-      fn delete()
-    }
+interface Blank {
+}
 
-    class SimpleStore implements CRUD
-      data: String = ""
+interface Printable {
+  fn print()
+}
 
-      def create
-        this.data = "created"
-      end
+interface Loggable {
+  fn log()
+}
 
-      def read
-        return this.data
-      end
+interface Serializable {
+  fn serialize()
+}
 
-      def update(data)
-        this.data = data
-      end
+interface Incrementable {
+  fn increment()
+}
 
-      def delete
-        this.data = ""
-      end
-    end
+interface Summable {
+  fn sum(a: Int, b: Int) -> Int
+}
 
-    let store = new SimpleStore()
-    store.create()
-    assert_eq(store.read(), "created")
+interface Formatter {
+  fn format(name: String, age: Int) -> String
+}
+
+interface Drawable {
+  fn draw() -> String
+}
+
+interface Resizable {
+  def resize(factor: Float) -> Float
+}
+
+class Person implements Greetable
+  def greet
+    "Hello"
+  end
+end
+
+class SimpleStore implements Crud
+  data: String = ""
+
+  def create
+    @data = "created"
+  end
+
+  def read
+    @data
+  end
+
+  def update(data)
+    @data = data
+  end
+
+  def delete
+    @data = ""
+  end
+end
+
+class SimpleCalc implements Calculator
+  def add(a, b)
+    a + b
+  end
+
+  def multiply(a, b)
+    a * b
+  end
+end
+
+class BlankImpl implements Blank
+  def ping
+    "pong"
+  end
+end
+
+class Document implements Printable
+  content: String
+
+  new(content: String)
+    @content = content
+  end
+
+  def print
+    @content
+  end
+end
+
+class Datum implements Loggable, Serializable
+  value: Int
+
+  new(value: Int)
+    @value = value
+  end
+
+  def log
+    "Data: " + str(@value)
+  end
+
+  def serialize
+    "{\"value\":" + str(@value) + "}"
+  end
+end
+
+class Base
+  base_value: Int = 10
+end
+
+class Derived < Base implements Incrementable
+  def increment
+    @base_value = @base_value + 1
+  end
+end
+
+class Adder implements Summable
+  def sum(a: Int, b: Int) -> Int
+    a + b
+  end
+end
+
+class PersonFormatter implements Formatter
+  def format(name: String, age: Int) -> String
+    name + " is " + str(age) + " years old"
+  end
+end
+
+class Circle implements Drawable
+  def draw -> String
+    "Circle"
+  end
+end
+
+class Square implements Drawable
+  def draw -> String
+    "Square"
+  end
+end
+
+class Greeter ~ Greetable
+  def greet
+    "Hi"
+  end
+end
+
+class Box ~ Drawable, Resizable
+  size: Float = 1.0
+
+  def draw -> String
+    "Box"
+  end
+
+  def resize(factor: Float) -> Float
+    @size = @size * factor
+  end
+end
+
+class Animal
+  def breathe -> String
+    "breathing"
+  end
+end
+
+class Dog extends Animal ~ Greetable
+  def greet
+    "woof"
+  end
+end
+
+class Cat < Animal ~ Greetable
+  def greet
+    "meow"
+  end
+end
+
+describe("Interface declaration") do
+  test("a single method signature") do
+    assert_eq(new Person().greet, "Hello")
+  end
+
+  test("several method signatures") do
+    store = new SimpleStore()
+    store.create
+    assert_eq(store.read, "created")
     store.update("updated")
-    assert_eq(store.read(), "updated")
-    store.delete()
-    assert_eq(store.read(), "")
-  })
+    assert_eq(store.read, "updated")
+    store.delete
+    assert_eq(store.read, "")
+  end
 
-  test("interface with typed parameters", fn() {
-    interface Calculator {
-      fn add(a, b)
-      fn multiply(a, b)
-    }
-
-    class SimpleCalc implements Calculator
-      def add(a, b)
-        return a + b
-      end
-
-      def multiply(a, b)
-        return a * b
-      end
-    end
-
-    let calc = new SimpleCalc()
+  test("untyped parameters") do
+    calc = new SimpleCalc()
     assert_eq(calc.add(3, 4), 7)
     assert_eq(calc.multiply(2, 5), 10)
-  })
+  end
 
-  test("empty interface", fn() {
-    interface Empty {
-    }
+  test("an empty interface puts no constraint on the class") do
+    assert_eq(new BlankImpl().ping, "pong")
+  end
 
-    class EmptyImpl implements Empty
-    end
+  test("a signature may be written with def") do
+    assert_eq(new Box().resize(2.0), 2.0)
+  end
+end
 
-    let e = new EmptyImpl()
-    assert_not_null(e)
-  })
-})
+describe("Interface implementation") do
+  test("a class implements one interface") do
+    assert_eq(new Document("Hello World").print, "Hello World")
+  end
 
-describe("Interface Implementation", fn() {
-  test("class implements single interface", fn() {
-    interface Printable {
-      fn print()
-    }
+  test("a class implements several interfaces") do
+    datum = new Datum(42)
+    assert_eq(datum.log, "Data: 42")
+    assert_eq(datum.serialize, "{\"value\":42}")
+  end
 
-    class Document implements Printable
-      content: String
+  test("a superclass and an interface together") do
+    derived = new Derived()
+    assert_eq(derived.base_value, 10)
+    assert_eq(derived.increment, 11)
+    assert_eq(derived.increment, 12)
+  end
 
-      new(content: String)
-        this.content = content
-      end
-
-      def print
-        return this.content
-      end
-    end
-
-    let doc = new Document("Hello World")
-    assert_eq(doc.print(), "Hello World")
-  })
-
-  test("class implements multiple interfaces", fn() {
-    interface Loggable {
-      fn log()
-    }
-
-    interface Serializable {
-      fn serialize()
-    }
-
-    class Data implements Loggable, Serializable
-      value: Int
-
-      new(value: Int)
-        this.value = value
-      end
-
-      def log
-        return "Data: " + str(this.value)
-      end
-
-      def serialize
-        return "{\"value\":" + str(this.value) + "}"
-      end
-    end
-
-    let d = new Data(42)
-    assert_eq(d.log(), "Data: 42")
-    assert_eq(d.serialize(), "{\"value\":42}")
-  })
-
-  test("class with interface and inheritance", fn() {
-    class Base
-      base_value: Int = 10
-    end
-
-    interface Incrementable {
-      fn increment()
-    }
-
-    class Derived < Base implements Incrementable
-      def increment
-        this.base_value = this.base_value + 1
-        return this.base_value
-      end
-    end
-
-    let d = new Derived()
-    assert_eq(d.base_value, 10)
-    assert_eq(d.increment(), 11)
-    assert_eq(d.increment(), 12)
-  })
-
-  test("implementation order does not matter", fn() {
-    interface A {
-      fn method_a()
-    }
-
-    interface B {
-      fn method_b()
-    }
-
-    class AB implements A, B
-      def method_a
-        return "A"
-      end
-
-      def method_b
-        return "B"
-      end
-    end
-
-    let ab = new AB()
-    assert_eq(ab.method_a(), "A")
-    assert_eq(ab.method_b(), "B")
-  })
-
-  test("interface with return type", fn() {
-    interface Summable {
-      fn sum(a: Int, b: Int) -> Int
-    }
-
-    class Adder implements Summable
-      def sum(a: Int, b: Int) -> Int
-        return a + b
-      end
-    end
-
-    let adder = new Adder()
+  test("a signature with a return type") do
+    adder = new Adder()
     assert_eq(adder.sum(3, 4), 7)
     assert_eq(adder.sum(10, 20), 30)
-  })
+  end
 
-  test("interface with typed parameters and return type", fn() {
-    interface Formatter {
-      fn format(name: String, age: Int) -> String
-    }
+  test("a signature with typed parameters and a return type") do
+    formatter = new PersonFormatter()
+    assert_eq(formatter.format("Alice", 30), "Alice is 30 years old")
+    assert_eq(formatter.format("Bob", 25), "Bob is 25 years old")
+  end
 
-    class PersonFormatter implements Formatter
-      def format(name: String, age: Int) -> String
-        return name + " is " + str(age) + " years old"
-      end
-    end
+  test("different classes behind one interface are used alike") do
+    shapes = [new Circle(), new Square()]
+    assert_eq(shapes.map { |shape| shape.draw }, ["Circle", "Square"])
+  end
 
-    let pf = new PersonFormatter()
-    assert_eq(pf.format("Alice", 30), "Alice is 30 years old")
-    assert_eq(pf.format("Bob", 25), "Bob is 25 years old")
-  })
+  test("an interface is not a runtime type for is_a?") do
+    assert_eq(new Person().is_a?("Person"), true)
+    assert_eq(new Person().is_a?("Greetable"), false)
+  end
+end
 
-  test("interface in array type annotation", fn() {
-    interface Drawable {
-      fn draw() -> String
-    }
+describe("The ~ shorthand") do
+  test("replaces implements for a single interface") do
+    assert_eq(new Greeter().greet, "Hi")
+  end
 
-    class Circle implements Drawable
-      def draw -> String
-        return "Circle"
-      end
-    end
+  test("accepts a comma-separated list") do
+    box = new Box()
+    assert_eq(box.draw, "Box")
+    assert_eq(box.resize(3.0), 3.0)
+    assert_eq(box.resize(2.0), 6.0)
+  end
 
-    class Square implements Drawable
-      def draw -> String
-        return "Square"
-      end
-    end
+  test("combines with extends") do
+    dog = new Dog()
+    assert_eq(dog.breathe, "breathing")
+    assert_eq(dog.greet, "woof")
+  end
 
-    let shapes = [new Circle(), new Square()]
-    assert_eq(len(shapes), 2)
-    assert_eq(shapes[0].draw(), "Circle")
-    assert_eq(shapes[1].draw(), "Square")
-  })
-})
-
-describe("Interface `~` Shorthand", fn() {
-  test("~ replaces `implements` for a single interface", fn() {
-    interface Greetable {
-      fn greet()
-    }
-
-    class Person implements Greetable
-      def greet
-        return "Hello"
-      end
-    end
-
-    let p = new Person()
-    assert_eq(p.greet(), "Hello")
-  })
-
-  test("~ accepts a comma-separated list", fn() {
-    interface Drawable {
-      fn draw() -> String
-    }
-    interface Resizable {
-      fn resize(factor: Float) -> Float
-    }
-
-    class Box implements Drawable, Resizable
-      size: Float = 1.0
-
-      def draw -> String
-        return "Box"
-      end
-
-      def resize(factor: Float) -> Float
-        this.size = this.size * factor
-        return this.size
-      end
-    end
-
-    let b = new Box()
-    assert_eq(b.draw(), "Box")
-    assert_eq(b.resize(3.0), 3.0)
-  })
-
-  test("extends combined with ~", fn() {
-    interface Greetable {
-      fn greet()
-    }
-
-    class Animal
-      def breathe -> String
-        return "breathing"
-      end
-    end
-
-    class Dog < Animal implements Greetable
-      def greet
-        return "woof"
-      end
-    end
-
-    let d = new Dog()
-    assert_eq(d.breathe(), "breathing")
-    assert_eq(d.greet(), "woof")
-  })
-
-  test("< combined with ~", fn() {
-    interface Greetable {
-      fn greet()
-    }
-
-    class Animal
-      def breathe -> String
-        return "breathing"
-      end
-    end
-
-    class Cat < Animal implements Greetable
-      def greet
-        return "meow"
-      end
-    end
-
-    let c = new Cat()
-    assert_eq(c.breathe(), "breathing")
-    assert_eq(c.greet(), "meow")
-  })
-})
+  test("combines with <") do
+    cat = new Cat()
+    assert_eq(cat.breathe, "breathing")
+    assert_eq(cat.greet, "meow")
+  end
+end

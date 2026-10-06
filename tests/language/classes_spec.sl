@@ -1,516 +1,603 @@
-# Reads `obj.<name>` through an untyped parameter: the static checker cannot
-# see the receiver's class, so the runtime's refusal is what gets tested.
-def read_member(obj, name)
-  return obj.password rescue "refused" if name == "password"
-  return obj.value rescue "refused" if name == "value"
-  return obj.email rescue "refused" if name == "email"
-  return nil
-end
+# Classes: fields, methods, constructors, static methods (every spelling),
+# static and const fields, visibility, nested classes, and keyword method names.
+# NOTE: this file spells static methods as `def self.x`, `fn self.x` and
+# `class << self` on purpose — `soli fmt` rewrites those to `static def`, so
+# do not run the formatter over it.
 
-# ============================================================================
-# Classes Test Suite
-# ============================================================================
-
-describe("Basic Classes", fn() {
-  test("class declaration and instantiation", fn() {
+describe("Basic classes") do
+  test("declaration and instantiation") do
     class Point
       x: Int
       y: Int
 
       new(x: Int, y: Int)
-        this.x = x
-        this.y = y
+        @x = x
+        @y = y
       end
     end
-    let p = new Point(3, 4)
-    assert_eq(p.x, 3)
-    assert_eq(p.y, 4)
-  })
 
-  test("class with methods", fn() {
+    point = new Point(3, 4)
+    assert_eq(point.x, 3)
+    assert_eq(point.y, 4)
+  end
+
+  test("instance methods") do
     class Rectangle
       width: Int
       height: Int
 
-      new(w: Int, h: Int)
-        this.width = w
-        this.height = h
+      new(width: Int, height: Int)
+        @width = width
+        @height = height
       end
 
       def area
-        return this.width * this.height
+        @width * @height
       end
 
       def perimeter
-        return 2 * (this.width + this.height)
+        2 * (@width + @height)
       end
     end
-    let rect = new Rectangle(5, 3)
-    assert_eq(rect.area(), 15)
-    assert_eq(rect.perimeter(), 16)
-  })
 
-  test("class with default field values", fn() {
+    rect = new Rectangle(5, 3)
+    assert_eq(rect.area, 15)
+    assert_eq(rect.perimeter, 16)
+  end
+
+  test("default field values, and each instance has its own") do
     class Counter
       count: Int = 0
 
       def increment
-        this.count = this.count + 1
-      end
-
-      def get
-        return this.count
+        @count = @count + 1
       end
     end
-    let c = new Counter()
-    assert_eq(c.get(), 0)
-    c.increment()
-    c.increment()
-    assert_eq(c.get(), 2)
-  })
 
-  test("class method chaining", fn() {
+    counter = new Counter()
+    other = new Counter()
+    assert_eq(counter.count, 0)
+    counter.increment
+    counter.increment
+    assert_eq(counter.count, 2)
+    assert_eq(other.count, 0)
+  end
+
+  test("a field is writable from outside") do
+    class Settable
+      label: String = "before"
+    end
+
+    settable = new Settable()
+    settable.label = "after"
+    assert_eq(settable.label, "after")
+  end
+
+  test("method chaining by returning this") do
     class Builder
       value: String = ""
 
-      def add(s: String)
-        this.value = this.value + s
-        return this
+      def add(text: String)
+        @value = @value + text
+        this
       end
 
       def build
-        return this.value
+        @value
       end
     end
-    let result = new Builder().add("Hello").add(" ").add("World").build()
-    assert_eq(result, "Hello World")
-  })
-})
 
-describe("Static Methods", fn() {
-  test("static method can be called without instance", fn() {
+    assert_eq(new Builder().add("Hello").add(" ").add("World").build, "Hello World")
+  end
+
+  test("a wrong argument count to a constructor raises") do
+    class Pair
+      left: Int
+      right: Int
+
+      new(left: Int, right: Int)
+        @left = left
+        @right = right
+      end
+    end
+
+    assert_raises("Wrong number of arguments: expected 2, got 3") do
+      new Pair(1, 2, 3)
+    end
+  end
+
+  test("classes compare with ==, and .class names the class") do
+    class EqAccount
+    end
+
+    class EqOther
+    end
+
+    klass = EqAccount
+    assert(klass == EqAccount)
+    assert(EqAccount == EqAccount)
+    assert(klass != EqOther)
+    record = new EqAccount()
+    assert_eq(record.class, "EqAccount")
+    assert(record.class == EqAccount)
+    assert(record.class != EqOther)
+  end
+end
+
+describe("Static methods") do
+  test("called on the class without an instance") do
     class MathUtils
       static def random
-        return 42
+        42
       end
     end
-    assert_eq(MathUtils.random(), 42)
-  })
 
-  test("static method with parameters", fn() {
+    assert_eq(MathUtils.random, 42)
+  end
+
+  test("with typed parameters and a return type") do
     class MathUtils
       static def add(a: Int, b: Int) -> Int
-        return a + b
+        a + b
       end
-    end
-    assert_eq(MathUtils.add(5, 3), 8)
-  })
 
-  test("static method with return type", fn() {
-    class Calculator
       static def multiply(a: Float, b: Float) -> Float
-        return a * b
+        a * b
       end
     end
-    assert_eq(Calculator.multiply(3.0, 4.0), 12.0)
-  })
 
-  test("static method inheritance", fn() {
-    class Base
+    assert_eq(MathUtils.add(5, 3), 8)
+    assert_eq(MathUtils.multiply(3.0, 4.0), 12.0)
+  end
+
+  test("are inherited") do
+    class StaticBase
       static def greet -> String
-        return "Hello"
+        "Hello"
       end
     end
 
-    class Derived < Base
+    class StaticDerived < StaticBase
     end
 
-    assert_eq(Derived.greet(), "Hello")
-  })
+    assert_eq(StaticDerived.greet, "Hello")
+  end
 
-  test("static method override", fn() {
-    class Base
+  test("can be overridden") do
+    class StaticBase
       static def get_value -> Int
-        return 10
+        10
       end
     end
 
-    class Derived < Base
+    class StaticDerived < StaticBase
       static def get_value -> Int
-        return 20
+        20
       end
     end
 
-    assert_eq(Derived.get_value(), 20)
-  })
+    assert_eq(StaticDerived.get_value, 20)
+    assert_eq(StaticBase.get_value, 10)
+  end
 
-  test("static method can call other static methods", fn() {
+  test("call each other through the class name") do
     class MathOps
       static def double(x: Int) -> Int
-        return x * 2
+        x * 2
       end
 
       static def quadruple(x: Int) -> Int
-        return MathOps.double(MathOps.double(x))
+        MathOps.double(MathOps.double(x))
       end
     end
-    assert_eq(MathOps.quadruple(5), 20)
-  })
 
-  test("static factory method pattern", fn() {
-    class Point
+    assert_eq(MathOps.quadruple(5), 20)
+  end
+
+  test("a static factory builds instances") do
+    class Vec
       x: Float
       y: Float
 
       new(x: Float, y: Float)
-        this.x = x
-        this.y = y
+        @x = x
+        @y = y
       end
 
-      static def origin -> Point
-        return new Point(0.0, 0.0)
+      static def origin -> Vec
+        new Vec(0.0, 0.0)
       end
 
-      static def unit -> Point
-        return new Point(1.0, 1.0)
+      static def unit -> Vec
+        new Vec(1.0, 1.0)
+      end
+    end
+
+    origin = Vec.origin
+    assert_eq([origin.x, origin.y], [0.0, 0.0])
+    unit = Vec.unit
+    assert_eq([unit.x, unit.y], [1.0, 1.0])
+  end
+
+  test("are not callable on an instance") do
+    class OnlyStatic
+      static def tool
+        "tool"
       end
     end
 
-    let origin = Point.origin()
-    assert_eq(origin.x, 0.0)
-    assert_eq(origin.y, 0.0)
+    assert_raises("Cannot access property 'tool' on OnlyStatic") do
+      new OnlyStatic().tool
+    end
+  end
 
-    let unit = Point.unit()
-    assert_eq(unit.x, 1.0)
-    assert_eq(unit.y, 1.0)
-  })
-
-  test("def self.foo declares a static method", fn() {
-    class MathUtils
-      static def random
-        return 42
+  test("def self.foo declares one") do
+    class SelfUtils
+      def self.random
+        42
       end
     end
-    assert_eq(MathUtils.random(), 42)
-  })
 
-  test("def self.foo with parameters and return type", fn() {
-    class MathUtils
-      static def add(a: Int, b: Int) -> Int
-        return a + b
+    assert_eq(SelfUtils.random, 42)
+  end
+
+  test("def self.foo with parameters and a return type") do
+    class SelfUtils
+      def self.add(a: Int, b: Int) -> Int
+        a + b
       end
     end
-    assert_eq(MathUtils.add(5, 3), 8)
-  })
 
-  test("fn self.foo also works as a static method", fn() {
-    class Calculator
-      static def multiply(a: Float, b: Float) -> Float
-        return a * b
+    assert_eq(SelfUtils.add(5, 3), 8)
+  end
+
+  test("fn self.foo declares one too") do
+    class SelfCalculator
+      fn self.multiply(a: Float, b: Float) -> Float
+        a * b
       end
     end
-    assert_eq(Calculator.multiply(3.0, 4.0), 12.0)
-  })
 
-  test("static def self.foo combines harmlessly (still static)", fn() {
-    class MathUtils
-      static def cube(x: Int) -> Int
-        return x * x * x
+    assert_eq(SelfCalculator.multiply(3.0, 4.0), 12.0)
+  end
+
+  test("static def self.foo is still one static method") do
+    class SelfUtils
+      static def self.cube(x: Int) -> Int
+        x * x * x
       end
     end
-    assert_eq(MathUtils.cube(3), 27)
-  })
 
-  test("class can mix def self.foo, static def, and instance methods", fn() {
+    assert_eq(SelfUtils.cube(3), 27)
+  end
+
+  test("def self.foo, static def and instance methods mix") do
     class Box
       value: Int
 
       new(value: Int)
-        this.value = value
+        @value = value
       end
 
-      static def zero -> Box
-        return new Box(0)
+      def self.zero -> Box
+        new Box(0)
       end
 
       static def one -> Box
-        return new Box(1)
+        new Box(1)
       end
 
       def get -> Int
-        return this.value
+        @value
       end
     end
 
-    assert_eq(Box.zero().get(), 0)
-    assert_eq(Box.one().get(), 1)
-    assert_eq(new Box(7).get(), 7)
-  })
-})
+    assert_eq(Box.zero.get, 0)
+    assert_eq(Box.one.get, 1)
+    assert_eq(new Box(7).get, 7)
+  end
+end
 
-describe("class << self block", fn() {
-  test("single static method declared inside the block", fn() {
-    class MathUtils
-      static def square(x: Int) -> Int
-        return x * x
+describe("class << self block") do
+  test("declares a static method") do
+    class SingletonUtils
+      class << self
+        def square(x: Int) -> Int
+          x * x
+        end
       end
     end
-    assert_eq(MathUtils.square(4), 16)
-  })
 
-  test("multiple static methods grouped in one block", fn() {
-    class MathUtils
-      static def square(x: Int) -> Int
-        return x * x
-      end
+    assert_eq(SingletonUtils.square(4), 16)
+  end
 
-      static def cube(x: Int) -> Int
-        return x * x * x
-      end
-    end
-    assert_eq(MathUtils.square(3), 9)
-    assert_eq(MathUtils.cube(3), 27)
-  })
+  test("groups several static methods") do
+    class SingletonUtils
+      class << self
+        def square(x: Int) -> Int
+          x * x
+        end
 
-  test("def alias works inside the block", fn() {
-    class Greeter
-      static def hello -> String
-        return "hi"
+        def cube(x: Int) -> Int
+          x * x * x
+        end
       end
     end
-    assert_eq(Greeter.hello(), "hi")
-  })
 
-  test("instance methods coexist with class << self block", fn() {
-    class Counter
+    assert_eq(SingletonUtils.square(3), 9)
+    assert_eq(SingletonUtils.cube(3), 27)
+  end
+
+  test("accepts fn as well as def") do
+    class SingletonGreeter
+      class << self
+        fn hello -> String
+          "hi"
+        end
+      end
+    end
+
+    assert_eq(SingletonGreeter.hello, "hi")
+  end
+
+  test("its methods are static only, next to instance methods") do
+    class SingletonCounter
       value: Int = 0
 
-      new()
-        this.value = 0
-      end
-
       def increment
-        this.value = this.value + 1
+        @value = @value + 1
       end
 
-      static def zero -> Int
-        return 0
-      end
+      class << self
+        def zero -> Int
+          0
+        end
 
-      static def one -> Int
-        return 1
+        def one -> Int
+          1
+        end
       end
     end
-    let c = new Counter()
-    c.increment()
-    c.increment()
-    assert_eq(c.value, 2)
-    assert_eq(Counter.zero(), 0)
-    assert_eq(Counter.one(), 1)
-  })
 
-  test("class << self methods can call each other via the class name", fn() {
+    counter = new SingletonCounter()
+    counter.increment
+    counter.increment
+    assert_eq(counter.value, 2)
+    assert_eq(SingletonCounter.zero, 0)
+    assert_eq(SingletonCounter.one, 1)
+    assert_raises("Cannot access property 'zero'") do
+      counter.zero
+    end
+  end
+
+  test("its methods call each other through the class name") do
     class Math2
-      static def double(x: Int) -> Int
-        return x * 2
-      end
+      class << self
+        def double(x: Int) -> Int
+          x * 2
+        end
 
-      static def quadruple(x: Int) -> Int
-        return Math2.double(Math2.double(x))
+        def quadruple(x: Int) -> Int
+          Math2.double(Math2.double(x))
+        end
       end
     end
-    assert_eq(Math2.quadruple(5), 20)
-  })
 
-  test("class << self block alongside top-level static fn", fn() {
+    assert_eq(Math2.quadruple(5), 20)
+  end
+
+  test("sits alongside a plain static def") do
     class Mixed
       static def outside -> Int
-        return 1
+        1
       end
 
-      static def inside -> Int
-        return 2
+      class << self
+        def inside -> Int
+          2
+        end
       end
     end
-    assert_eq(Mixed.outside(), 1)
-    assert_eq(Mixed.inside(), 2)
-  })
-})
 
-describe("Static Fields", fn() {
-  test("static field declaration and access", fn() {
-    class Counter
+    assert_eq(Mixed.outside, 1)
+    assert_eq(Mixed.inside, 2)
+  end
+end
+
+describe("Static fields") do
+  test("declared with a type and an initial value") do
+    class StaticConfig
       static count: Int = 0
-    end
-    assert_eq(Counter.count, 0)
-  })
-
-  test("static field initial value", fn() {
-    class Config
       static debug: Bool = false
       static version: String = "1.0.0"
+      static pi: Float = 3.14159
     end
-    assert_eq(Config.debug, false)
-    assert_eq(Config.version, "1.0.0")
-  })
 
-  test("static field mutation via Class.field = value", fn() {
-    class Config
+    assert_eq(StaticConfig.count, 0)
+    assert_eq(StaticConfig.debug, false)
+    assert_eq(StaticConfig.version, "1.0.0")
+    assert_eq(StaticConfig.pi, 3.14159)
+  end
+
+  test("mutated with Class.field = value") do
+    class MutableConfig
       static debug: Bool = false
     end
-    Config.debug = true
-    assert_eq(Config.debug, true)
-  })
 
-  test("static field in subclass shares with parent", fn() {
-    class Base
+    MutableConfig.debug = true
+    assert_eq(MutableConfig.debug, true)
+  end
+
+  test("a subclass shares its parent's static field") do
+    class SharedBase
       static instance_count: Int = 0
     end
 
-    class Derived < Base
+    class SharedDerived < SharedBase
     end
 
-    assert_eq(Derived.instance_count, 0)
-    Base.instance_count = 5
-    assert_eq(Derived.instance_count, 5)
-  })
+    assert_eq(SharedDerived.instance_count, 0)
+    SharedBase.instance_count = 5
+    assert_eq(SharedDerived.instance_count, 5)
+  end
 
-  test("static field for class-level state", fn() {
+  test("holds class-level state between calls") do
     class IdGenerator
       static next_id: Int = 1
 
       static def generate -> Int
-        let id = IdGenerator.next_id
+        id = IdGenerator.next_id
         IdGenerator.next_id = IdGenerator.next_id + 1
-        return id
+        id
       end
     end
 
-    assert_eq(IdGenerator.generate(), 1)
-    assert_eq(IdGenerator.generate(), 2)
-    assert_eq(IdGenerator.generate(), 3)
-  })
+    assert_eq(IdGenerator.generate, 1)
+    assert_eq(IdGenerator.generate, 2)
+    assert_eq(IdGenerator.generate, 3)
+  end
 
-  test("static field with type annotation", fn() {
-    class Constants
-      static pi: Float = 3.14159
-      static max_size: Int = 1000
+  test("an instance does not see a static field") do
+    class StaticOnly
+      static total: Int = 3
     end
-    assert_eq(Constants.pi, 3.14159)
-    assert_eq(Constants.max_size, 1000)
-  })
-})
 
-describe("Private and Protected Visibility", fn() {
-  test("a private field is reachable on self only", fn() {
+    assert_raises("Cannot access property 'total'") do
+      new StaticOnly().total
+    end
+  end
+end
+
+describe("Private and protected visibility") do
+  test("a private field is reachable on self only") do
     class Secret
       private password: String = "secret"
 
       def get_password
-        return this.password
+        @password
       end
     end
-    let s = new Secret()
-    assert_eq(s.get_password(), "secret")
-    assert_eq(read_member(s, "password"), "refused")
-  })
 
-  test("a private method is callable on self only", fn() {
+    secret = new Secret()
+    assert_eq(secret.get_password, "secret")
+    assert_raises("private field 'password' accessed for an instance of Secret") do
+      secret.password
+    end
+    assert_raises("private field 'password' accessed for an instance of Secret") do
+      secret.password = "stolen"
+    end
+  end
+
+  test("a private method is callable on self only") do
     class Container
       private
 
       def compute -> Int
-        return 42
+        42
       end
 
       public
 
       def get_value
-        return this.compute()
+        @compute
       end
     end
-    let c = new Container()
-    assert_eq(c.get_value(), 42)
-    let result = c.compute() rescue "refused"
-    assert_eq(result, "refused")
-  })
 
-  test("a protected field is refused from outside", fn() {
-    class Base
+    container = new Container()
+    assert_eq(container.get_value, 42)
+    assert_raises("private method 'compute' called for an instance of Container") do
+      container.compute
+    end
+  end
+
+  test("a protected field is reachable from the class, refused from outside") do
+    class Guarded
       protected value: Int = 10
 
       def value_of(other)
-        return other.value
+        other.value
       end
     end
-    let b = new Base()
-    assert_eq(b.value_of(new Base()), 10)
-    assert_eq(read_member(b, "value"), "refused")
-  })
 
-  test("a protected method is reachable from its class, not from outside", fn() {
-    class Base
+    guarded = new Guarded()
+    assert_eq(guarded.value_of(new Guarded()), 10)
+    assert_raises("protected field 'value'") do
+      guarded.value
+    end
+  end
+
+  test("a protected method is reachable from its class, refused from outside") do
+    class Internal
       protected
 
       def internal_method -> String
-        return "internal"
+        "internal"
       end
 
       public
 
       def peek(other)
-        return other.internal_method()
+        other.internal_method
       end
     end
-    let b = new Base()
-    assert_eq(b.peek(new Base()), "internal")
-    let result = b.internal_method() rescue "refused"
-    assert_eq(result, "refused")
-  })
 
-  test("private field with default value", fn() {
+    internal = new Internal()
+    assert_eq(internal.peek(new Internal()), "internal")
+    assert_raises("protected method 'internal_method' called for an instance of Internal") do
+      internal.internal_method
+    end
+  end
+
+  test("private fields with defaults keep state across calls") do
     class SafeBox
       private code: String = "1234"
       private attempts: Int = 0
 
       def try_code(input: String) -> Bool
-        this.attempts = this.attempts + 1
-        return this.code == input
+        @attempts = @attempts + 1
+        @code == input
       end
 
       def get_attempts -> Int
-        return this.attempts
+        @attempts
       end
     end
-    let box = new SafeBox()
+
+    box = new SafeBox()
     assert_eq(box.try_code("0000"), false)
     assert_eq(box.try_code("1234"), true)
-    assert_eq(box.get_attempts(), 2)
-  })
+    assert_eq(box.get_attempts, 2)
+  end
 
-  test("class with multiple visibility modifiers", fn() {
-    class User
+  test("one class mixes private, protected and public fields") do
+    class Member
       private id: Int
       protected email: String
       name: String
 
       new(id: Int, email: String, name: String)
-        this.id = id
-        this.email = email
-        this.name = name
+        @id = id
+        @email = email
+        @name = name
       end
 
       def get_id -> Int
-        return this.id
+        @id
       end
     end
-    let u = new User(1, "test@example.com", "Alice")
-    assert_eq(u.get_id(), 1)
-    assert_eq(read_member(u, "email"), "refused")
-    assert_eq(u.name, "Alice")
-  })
 
-  test("static private field", fn() {
+    member = new Member(1, "test@example.com", "Alice")
+    assert_eq(member.get_id, 1)
+    assert_eq(member.name, "Alice")
+    assert_raises("private field 'id'") do
+      member.id
+    end
+    assert_raises("protected field 'email'") do
+      member.email
+    end
+  end
+
+  test("a private static field works from static methods") do
     class SecureCounter
       private static counter: Int = 0
 
@@ -519,446 +606,453 @@ describe("Private and Protected Visibility", fn() {
       end
 
       static def get_count -> Int
-        return SecureCounter.counter
+        SecureCounter.counter
       end
     end
-    assert_eq(SecureCounter.get_count(), 0)
-    SecureCounter.increment()
-    SecureCounter.increment()
-    assert_eq(SecureCounter.get_count(), 2)
-  })
-})
 
-describe("Native Static Methods", fn() {
-  test("DateTime.now() returns current datetime", fn() {
-    let now = DateTime.now()
-    assert_not_null(now)
+    assert_eq(SecureCounter.get_count, 0)
+    SecureCounter.increment
+    SecureCounter.increment
+    assert_eq(SecureCounter.get_count, 2)
+  end
+
+  test("a private static field is refused from outside") do
+    pending("bug: `private static` fields are readable and writable from outside the class")
+    class HiddenCounter
+      private static counter: Int = 0
+    end
+
+    assert_raises("private") do
+      HiddenCounter.counter
+    end
+  end
+end
+
+describe("Native static methods") do
+  test("DateTime.now returns the current DateTime") do
+    before = datetime_now()
+    now = DateTime.now
+    after = datetime_now()
     assert_eq(type(now), "DateTime")
-  })
+    assert(now.to_unix >= before)
+    assert(now.to_unix <= after)
+  end
 
-  test("DateTime.parse() parses ISO string", fn() {
-    let dt = DateTime.parse("2024-01-15T10:30:00Z")
-    assert_not_null(dt)
-    assert_eq(type(dt), "DateTime")
-  })
+  test("DateTime.parse parses an ISO string") do
+    parsed = DateTime.parse("2024-01-15T10:30:00Z")
+    assert_eq(type(parsed), "DateTime")
+    assert_eq(parsed.to_unix, 1705314600)
+    assert_eq(parsed.year, 2024)
+  end
 
-  test("Duration.of_seconds() creates duration", fn() {
-    let dur = Duration.of_seconds(120)
-    assert_not_null(dur)
-    assert_eq(type(dur), "Duration")
-  })
+  test("DateTime.parse raises on garbage") do
+    assert_raises() do
+      DateTime.parse("garbage")
+    end
+  end
 
-  test("Duration.of_minutes() creates duration", fn() {
-    let dur = Duration.of_minutes(5)
-    assert_not_null(dur)
-  })
+  test("Duration.of_seconds / of_minutes / of_hours") do
+    assert_eq(type(Duration.of_seconds(120)), "Duration")
+    assert_eq(Duration.of_seconds(120).total_seconds, 120)
+    assert_eq(Duration.of_minutes(5).total_seconds, 300)
+    assert_eq(Duration.of_hours(2).total_seconds, 7200)
+  end
 
-  test("Duration.of_hours() creates duration", fn() {
-    let dur = Duration.of_hours(2)
-    assert_not_null(dur)
-  })
+  test("Duration.between is signed, later minus earlier") do
+    earlier = DateTime.parse("2024-01-15T10:00:00Z")
+    later = DateTime.parse("2024-01-15T11:30:00Z")
+    assert_eq(Duration.between(earlier, later).total_seconds, 5400)
+    assert_eq(Duration.between(later, earlier).total_seconds, -5400)
+  end
+end
 
-  test("Duration.between() calculates difference", fn() {
-    let dt1 = DateTime.parse("2024-01-15T10:00:00Z")
-    let dt2 = DateTime.parse("2024-01-15T11:30:00Z")
-    let dur = Duration.between(dt1, dt2)
-    assert_not_null(dur)
-  })
-})
-
-describe("Constructor Named Parameters", fn() {
-  test("constructor with all named parameters", fn() {
-    class User
+describe("Constructor named parameters") do
+  test("every argument named") do
+    class Account
       name: String
       age: Int
       active: Bool
 
       new(name: String = "Guest", age: Int = 0, active: Bool = true)
-        this.name = name
-        this.age = age
-        this.active = active
+        @name = name
+        @age = age
+        @active = active
       end
     end
-    let user = new User(name: "Alice", age: 30, active: false)
-    assert_eq(user.name, "Alice")
-    assert_eq(user.age, 30)
-    assert_eq(user.active, false)
-  })
 
-  test("constructor with mixed positional and named parameters", fn() {
-    class Config
+    account = new Account(name: "Alice", age: 30, active: false)
+    assert_eq([account.name, account.age, account.active], ["Alice", 30, false])
+    guest = new Account()
+    assert_eq([guest.name, guest.age, guest.active], ["Guest", 0, true])
+  end
+
+  test("positional then named, skipping a default") do
+    class ConnectionConfig
       host: String
       port: Int
       ssl: Bool
       debug: Bool
 
       new(host: String, port: Int = 80, ssl: Bool = false, debug: Bool = false)
-        this.host = host
-        this.port = port
-        this.ssl = ssl
-        this.debug = debug
+        @host = host
+        @port = port
+        @ssl = ssl
+        @debug = debug
       end
     end
-    let config = new Config("example.com", ssl: true)
+
+    config = new ConnectionConfig("example.com", ssl: true)
     assert_eq(config.host, "example.com")
     assert_eq(config.port, 80)
     assert_eq(config.ssl, true)
     assert_eq(config.debug, false)
-  })
+  end
 
-  test("constructor with some named parameters", fn() {
+  test("named arguments in any order") do
     class Server
       name: String
       port: Int
       workers: Int
 
       new(name: String, port: Int = 8080, workers: Int = 4)
-        this.name = name
-        this.port = port
-        this.workers = workers
+        @name = name
+        @port = port
+        @workers = workers
       end
     end
-    let server = new Server("api-server", workers: 8)
-    assert_eq(server.name, "api-server")
-    assert_eq(server.port, 8080)
-    assert_eq(server.workers, 8)
-  })
 
-  test("constructor duplicate named parameter throws error", fn() {
-    class Point
+    server = new Server("api-server", workers: 8)
+    assert_eq([server.name, server.port, server.workers], ["api-server", 8080, 8])
+    swapped = new Server(workers: 2, name: "jobs", port: 9000)
+    assert_eq([swapped.name, swapped.port, swapped.workers], ["jobs", 9000, 2])
+  end
+
+  test("a duplicate named argument raises") do
+    class Coord
       x: Int
       y: Int
 
       new(x: Int = 0, y: Int = 0)
-        this.x = x
-        this.y = y
+        @x = x
+        @y = y
       end
     end
-    let error_thrown = false
-    try
-      new Point(x: 5, x: 10)
-    catch error
-      error_thrown = true
-    end
-    assert_eq(error_thrown, true)
-  })
 
-  test("constructor unknown parameter name throws error", fn() {
+    assert_raises("duplicate named argument 'x'") do
+      new Coord(x: 5, x: 10)
+    end
+  end
+
+  test("an unknown argument name raises") do
     class Circle
       radius: Int
 
       new(radius: Int = 1)
-        this.radius = radius
+        @radius = radius
       end
     end
-    let error_thrown = false
-    try
+
+    assert_raises("'diameter'") do
       new Circle(diameter: 10)
-    catch error
-      error_thrown = true
     end
-    assert_eq(error_thrown, true)
-  })
-})
+  end
+end
 
-describe("Nested Classes", fn() {
-  test("basic nested class declaration", fn() {
+describe("Nested classes") do
+  test("instantiated through Outer::Inner") do
     class Outer
-
       class Inner
         def greet
-          return "Hello from Inner"
+          "Hello from Inner"
         end
       end
     end
-    let inner = new Outer::Inner()
-    assert_eq(inner.greet(), "Hello from Inner")
-  })
 
-  test("nested class with constructor", fn() {
-    class Container
+    inner = new Outer::Inner()
+    assert_eq(inner.greet, "Hello from Inner")
+    assert_eq(type(inner), "Inner")
+  end
 
-      class Item
-        def create_value
-          return 42
-        end
-      end
-    end
-    let item = new Container::Item()
-    assert_eq(item.create_value(), 42)
-  })
-
-  test("multiple nested classes", fn() {
+  test("several nested classes in one outer class") do
     class Service
-
       class Database
         def connect
-          return "DB connected"
+          "DB connected"
         end
       end
 
       class Cache
         def get(key)
-          return "cached:" + key
+          "cached:" + key
         end
       end
     end
-    let db = new Service::Database()
-    let cache = new Service::Cache()
-    assert_eq(db.connect(), "DB connected")
-    assert_eq(cache.get("test"), "cached:test")
-  })
 
-  test("nested class accessing parent class", fn() {
+    assert_eq(new Service::Database().connect, "DB connected")
+    assert_eq(new Service::Cache().get("test"), "cached:test")
+  end
+
+  test("a nested class does not shadow a top-level class of the same name") do
+    class Item
+      name: String
+
+      new(name)
+        @name = name
+      end
+    end
+
+    class Container
+      class Item
+        def create_value
+          42
+        end
+      end
+    end
+
+    assert_eq(new Container::Item().create_value, 42)
+    assert_eq(new Item("top").name, "top")
+  end
+
+  test("a nested class uses its outer class and a sibling by full name") do
     class Parent
       def get_name
-        return "Parent"
+        "Parent"
       end
 
       class Child
         def introduce
-          return "Child of Parent"
+          "Child of " + new Parent().get_name
+        end
+
+        def sibling
+          new Parent::Sibling().hi
+        end
+      end
+
+      class Sibling
+        def hi
+          "sibling"
         end
       end
     end
-    let child = new Parent::Child()
-    assert_eq(child.introduce(), "Child of Parent")
-  })
-})
 
-describe("Const Fields", fn() {
-  test("const instance field declaration", fn() {
-    class Config
+    child = new Parent::Child()
+    assert_eq(child.introduce, "Child of Parent")
+    assert_eq(child.sibling, "sibling")
+  end
+
+  test("an unknown nested name raises") do
+    class Shell
+    end
+
+    assert_raises("Cannot access property 'Missing' on Shell") do
+      new Shell::Missing()
+    end
+  end
+end
+
+describe("Const fields") do
+  test("an instance const") do
+    class MaxConfig
       const MAX_LENGTH = 500
     end
-    let c = new Config()
-    assert_eq(c.MAX_LENGTH, 500)
-  })
 
-  test("static const field declaration", fn() {
+    assert_eq(new MaxConfig().MAX_LENGTH, 500)
+  end
+
+  test("static consts") do
     class Message
       static const TYPE_REPLY = "reply"
       static const TYPE_FORWARD = "forward"
     end
+
     assert_eq(Message.TYPE_REPLY, "reply")
     assert_eq(Message.TYPE_FORWARD, "forward")
-  })
+  end
 
-  test("const field with type annotation", fn() {
+  test("consts with a type annotation") do
     class Limits
       const MAX_SIZE: Int = 1000
-    end
-    let l = new Limits()
-    assert_eq(l.MAX_SIZE, 1000)
-  })
-
-  test("static const field with type annotation", fn() {
-    class Api
       static const VERSION: String = "2.0"
     end
-    assert_eq(Api.VERSION, "2.0")
-  })
 
-  test("const instance field cannot be reassigned", fn() {
+    assert_eq(new Limits().MAX_SIZE, 1000)
+    assert_eq(Limits.VERSION, "2.0")
+  end
+
+  test("an instance const cannot be reassigned") do
     class Immutable
       const VALUE = 42
     end
-    let obj = new Immutable()
-    let error_thrown = false
-    try
-      obj.VALUE = 100
-    catch e
-      error_thrown = true
-    end
-    assert_eq(error_thrown, true)
-    assert_eq(obj.VALUE, 42)
-  })
 
-  test("static const field cannot be reassigned", fn() {
+    immutable = new Immutable()
+    assert_raises("cannot reassign const field 'VALUE'") do
+      immutable.VALUE = 100
+    end
+    assert_eq(immutable.VALUE, 42)
+  end
+
+  test("a static const cannot be reassigned") do
     class Constants
       static const PI = 3.14159
     end
-    let error_thrown = false
-    try
-      Constants.PI = 0
-    catch e
-      error_thrown = true
-    end
-    assert_eq(error_thrown, true)
-    assert_eq(Constants.PI, 3.14159)
-  })
 
-  test("const field accessible via this in method", fn() {
-    class Settings
+    assert_raises("cannot reassign static const field 'PI'") do
+      Constants.PI = 0
+    end
+    assert_eq(Constants.PI, 3.14159)
+  end
+
+  test("an instance const reads through @ in a method") do
+    class LimitSettings
       const LIMIT = 10
 
       def get_limit
-        return this.LIMIT
+        @LIMIT
       end
     end
-    let s = new Settings()
-    assert_eq(s.get_limit(), 10)
-  })
 
-  test("static const field accessible from method", fn() {
-    class Counter
+    assert_eq(new LimitSettings().get_limit, 10)
+  end
+
+  test("a static const reads through the class name in a static method") do
+    class MaxCounter
       static const MAX = 100
 
       static def get_max
-        return Counter.MAX
+        MaxCounter.MAX
       end
     end
-    assert_eq(Counter.get_max(), 100)
-  })
 
-  test("mixed const and mutable fields", fn() {
-    class Item
+    assert_eq(MaxCounter.get_max, 100)
+  end
+
+  test("const and mutable instance fields side by side") do
+    class Product
       const CATEGORY = "default"
       name: String = "unnamed"
 
       new(name: String)
-        this.name = name
+        @name = name
       end
     end
-    let item = new Item("Widget")
-    assert_eq(item.CATEGORY, "default")
-    assert_eq(item.name, "Widget")
-    item.name = "Updated"
-    assert_eq(item.name, "Updated")
-  })
 
-  test("mixed static const and static mutable fields", fn() {
+    product = new Product("Widget")
+    assert_eq(product.CATEGORY, "default")
+    assert_eq(product.name, "Widget")
+    product.name = "Updated"
+    assert_eq(product.name, "Updated")
+  end
+
+  test("static const and static mutable fields side by side") do
     class Registry
       static const TYPE = "singleton"
       static count: Int = 0
     end
+
     assert_eq(Registry.TYPE, "singleton")
     assert_eq(Registry.count, 0)
     Registry.count = 5
     assert_eq(Registry.count, 5)
-  })
-})
+  end
+end
 
-# ============================================================================
-# Method named "new" (keyword used as method name)
-# ============================================================================
-
-describe("Method named new", fn() {
-  test("def new as a regular method (end-style)", fn() {
+describe("A method named new") do
+  test("def new is an ordinary method; calling the class builds an instance") do
     class AppsController
       def new(req)
-        return "new form"
+        "new form"
       end
     end
-    let c = AppsController()
-    assert_eq(c.new("GET"), "new form")
-  })
 
-  test("fn new as a regular method (brace-style)", fn() {
+    controller = AppsController()
+    assert_eq(controller.new("GET"), "new form")
+  end
+
+  test("fn new is an ordinary method too") do
     class UsersController
-      def new(req)
-        return "create user form"
+      fn new(req)
+        "create user form"
       end
     end
-    let c = new UsersController()
-    assert_eq(c.new("GET"), "create user form")
-  })
 
-  test("new method alongside other methods", fn() {
+    assert_eq(new UsersController().new("GET"), "create user form")
+  end
+
+  test("sits among other action methods") do
     class ItemsController
       def index(req)
-        return "list"
+        "list"
       end
 
       def new(req)
-        return "new form"
+        "new form"
       end
 
       def create(req)
-        return "created"
+        "created"
       end
 
       def show(req)
-        return "detail"
+        "detail"
       end
     end
-    let c = ItemsController()
-    assert_eq(c.index("GET"), "list")
-    assert_eq(c.new("GET"), "new form")
-    assert_eq(c.create("POST"), "created")
-    assert_eq(c.show("GET"), "detail")
-  })
 
-  test("new method with constructor in same class", fn() {
+    controller = ItemsController()
+    assert_eq(controller.index("GET"), "list")
+    assert_eq(controller.new("GET"), "new form")
+    assert_eq(controller.create("POST"), "created")
+    assert_eq(controller.show("GET"), "detail")
+  end
+
+  test("coexists with a constructor") do
     class Widget
       name: String
 
       new(name: String)
-        this.name = name
+        @name = name
       end
 
       def new(req)
-        return "new " + this.name + " form"
+        "new " + @name + " form"
       end
     end
-    let w = new Widget("button")
-    assert_eq(w.name, "button")
-    assert_eq(w.new("GET"), "new button form")
-  })
-})
 
-# ============================================================================
-# Method named "match" (keyword used as method name)
-# ============================================================================
+    widget = new Widget("button")
+    assert_eq(widget.name, "button")
+    assert_eq(widget.new("GET"), "new button form")
+  end
+end
 
-describe("Method named match", fn() {
-  test("match as a method name in a class", fn() {
+describe("A method named match") do
+  test("is an ordinary method") do
     class Validator
       def match(pattern)
-        return "matched: " + pattern
+        "matched: " + pattern
       end
     end
-    let v = new Validator()
-    assert_eq(v.match("^[a-z]+$"), "matched: ^[a-z]+$")
-  })
 
-  test("calling .match() on a string", fn() {
-    let name = "hello"
-    let result = name.match("^[a-z]+$")
-    assert_eq(result.empty?(), false)
-  })
+    assert_eq(new Validator().match("^[a-z]+$"), "matched: ^[a-z]+$")
+  end
 
-  test("match method alongside match expression", fn() {
+  test("String#match returns the matches, or nil") do
+    assert_eq("hello".match("^[a-z]+$"), ["hello"])
+    assert_null("HELLO".match("^[a-z]+$"))
+  end
+
+  test("does not break the match expression") do
     class Checker
       def match(input)
-        return "checking: " + input
+        "checking: " + input
       end
     end
-    let c = new Checker()
-    assert_eq(c.match("test"), "checking: test")
 
-    # match expression still works
-    let x = 42
-    let result = match x {
+    assert_eq(new Checker().match("test"), "checking: test")
+    answer = 42
+    result = match answer {
       42 => "forty-two",
       _ => "other",
     }
     assert_eq(result, "forty-two")
-  })
-
-  test("classes compare with ==", fn() {
-    class EqAccount
-    end
-    class EqOther
-    end
-    klass = EqAccount
-    assert(klass == EqAccount)
-    assert(EqAccount == EqAccount)
-    assert(klass != EqOther)
-    # `.class` answers the class name; it compares equal to the class too.
-    record = new EqAccount()
-    assert(record.class == EqAccount)
-    assert(record.class == "EqAccount")
-    assert(record.class != EqOther)
-  })
-})
+  end
+end

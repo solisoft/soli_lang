@@ -1,36 +1,37 @@
-# ============================================================================
-# Class Inheritance Test Suite
-# ============================================================================
+# Class inheritance: what a subclass inherits (methods, fields, constructors,
+# static methods), overriding, super chains, and `this` in inherited code.
+# Each test declares its own small hierarchy.
 
-describe("Class Inheritance Basics", fn() {
-  test("subclass inherits from superclass", fn() {
+describe("Inheritance basics") do
+  test("a subclass inherits the constructor and fields, and overrides a method") do
     class Animal
       name: String
 
       new(name: String)
-        this.name = name
+        @name = name
       end
 
       def speak -> String
-        return "..."
+        "..."
       end
     end
 
     class Dog < Animal
       def speak -> String
-        return "Woof!"
+        "Woof!"
       end
     end
 
-    let dog = new Dog("Buddy")
+    dog = new Dog("Buddy")
     assert_eq(dog.name, "Buddy")
-    assert_eq(dog.speak(), "Woof!")
-  })
+    assert_eq(dog.speak, "Woof!")
+    assert_eq(new Animal("Generic").speak, "...")
+  end
 
-  test("subclass can extend inherited behavior", fn() {
+  test("a subclass adds fields and methods next to the inherited ones") do
     class Shape
       def description -> String
-        return "A shape"
+        "A shape"
       end
     end
 
@@ -38,108 +39,135 @@ describe("Class Inheritance Basics", fn() {
       radius: Float
 
       new(radius: Float)
-        this.radius = radius
+        @radius = radius
       end
 
       def area -> Float
-        return 3.14159 * this.radius * this.radius
+        3.14159 * @radius * @radius
       end
     end
 
-    let c = new Circle(5.0)
-    assert_eq(c.description(), "A shape")
-    assert_eq(c.area(), 78.53975)
-  })
+    circle = new Circle(5.0)
+    assert_eq(circle.description, "A shape")
+    assert_eq(circle.area, 78.53975)
+  end
 
-  test("deep inheritance chain", fn() {
-    class A
+  test("methods come from every level of a chain") do
+    class ChainA
       def method_a -> String
-        return "A"
+        "A"
       end
     end
 
-    class B < A
+    class ChainB < ChainA
       def method_b -> String
-        return "B"
+        "B"
       end
     end
 
-    class C < B
+    class ChainC < ChainB
       def method_c -> String
-        return "C"
+        "C"
       end
     end
 
-    let c = new C()
-    assert_eq(c.method_a(), "A")
-    assert_eq(c.method_b(), "B")
-    assert_eq(c.method_c(), "C")
-  })
+    leaf = new ChainC()
+    assert_eq(leaf.method_a, "A")
+    assert_eq(leaf.method_b, "B")
+    assert_eq(leaf.method_c, "C")
+  end
 
-  test("< as alias for extends", fn() {
+  test("< and extends declare the same thing") do
     class Awesome
       def greet -> String
-        return "awesome"
+        "awesome"
       end
     end
 
-    class Demo < Awesome
+    class ViaLess < Awesome
     end
 
-    let d = new Demo()
-    assert_eq(d.greet(), "awesome")
-    assert_eq(type(d), "Demo")
-  })
-
-  test("instance type shows most derived class", fn() {
-    class Base
+    class ViaExtends extends Awesome
     end
 
-    class Derived < Base
+    assert_eq(new ViaLess().greet, "awesome")
+    assert_eq(new ViaExtends().greet, "awesome")
+  end
+
+  test("type() and .class name the most derived class") do
+    class TypeBase
     end
 
-    let d = new Derived()
-    assert_eq(type(d), "Derived")
-  })
-})
+    class TypeDerived < TypeBase
+    end
 
-describe("super Keyword", fn() {
-  test("super.method() in instance methods", fn() {
-    class Base
+    derived = new TypeDerived()
+    assert_eq(type(derived), "TypeDerived")
+    assert_eq(derived.class, "TypeDerived")
+  end
+
+  test("is_a? sees every ancestor, not descendants") do
+    class Vehicle
+    end
+
+    class Car < Vehicle
+    end
+
+    assert(new Car().is_a?("Car"))
+    assert(new Car().is_a?("Vehicle"))
+    assert_not(new Vehicle().is_a?("Car"))
+  end
+
+  test("an unknown method still raises on a subclass") do
+    class Quiet
+    end
+
+    class Quieter < Quiet
+    end
+
+    assert_raises("Cannot access property 'shout' on Quieter") do
+      new Quieter().shout
+    end
+  end
+end
+
+describe("super") do
+  test("super.method in an override") do
+    class Greeting
       def greet -> String
-        return "Hello"
+        "Hello"
       end
     end
 
-    class Derived < Base
+    class LoudGreeting < Greeting
       def greet -> String
-        return super.greet() + " World"
+        super.greet + " World"
       end
     end
 
-    assert_eq(new Derived().greet(), "Hello World")
-  })
+    assert_eq(new LoudGreeting().greet, "Hello World")
+  end
 
-  test("super with field access", fn() {
-    class Base
+  test("an inherited field default is read through @") do
+    class Defaults
       value: Int = 10
     end
 
-    class Derived < Base
+    class MoreDefaults < Defaults
       def get_value -> Int
-        return this.value
+        @value
       end
     end
 
-    assert_eq(new Derived().get_value(), 10)
-  })
+    assert_eq(new MoreDefaults().get_value, 10)
+  end
 
-  test("super in constructor", fn() {
+  test("super(args) in a constructor runs the parent's") do
     class Person
       name: String
 
       new(name: String)
-        this.name = name
+        @name = name
       end
     end
 
@@ -148,518 +176,515 @@ describe("super Keyword", fn() {
 
       new(name: String, id: Int)
         super(name)
-        this.employee_id = id
+        @employee_id = id
       end
     end
 
-    let e = new Employee("Alice", 123)
-    assert_eq(e.name, "Alice")
-    assert_eq(e.employee_id, 123)
-  })
+    employee = new Employee("Alice", 123)
+    assert_eq(employee.name, "Alice")
+    assert_eq(employee.employee_id, 123)
+  end
 
-  test("super chaining in deep hierarchy", fn() {
+  test("super chains through three levels") do
     class GrandParent
       def identify -> String
-        return "GrandParent"
+        "GrandParent"
       end
     end
 
     class Parent < GrandParent
       def identify -> String
-        return super.identify() + " -> Parent"
+        super.identify + " -> Parent"
       end
     end
 
     class Child < Parent
       def identify -> String
-        return super.identify() + " -> Child"
+        super.identify + " -> Child"
       end
     end
 
-    assert_eq(new Child().identify(), "GrandParent -> Parent -> Child")
-  })
+    assert_eq(new Child().identify, "GrandParent -> Parent -> Child")
+  end
 
-  test("calling parent static method explicitly", fn() {
-    # Note: super.method() in static methods is not supported
-    # Use explicit class name instead
-    class Base
+  test("a static override calls the parent's static method by name") do
+    class NamedBase
       static def get_class_name -> String
-        return "Base"
+        "Base"
       end
     end
 
-    class Derived < Base
+    class NamedDerived < NamedBase
       static def get_class_name -> String
-        return Base.get_class_name() + "_Derived"
+        NamedBase.get_class_name + "_Derived"
       end
     end
 
-    assert_eq(Derived.get_class_name(), "Base_Derived")
-  })
+    assert_eq(NamedDerived.get_class_name, "Base_Derived")
+    assert_eq(NamedBase.get_class_name, "Base")
+  end
 
-  test("super with static method inheritance", fn() {
+  test("a static method is inherited") do
     class Logger
       static def level -> String
-        return "INFO"
+        "INFO"
       end
     end
 
     class DebugLogger < Logger
     end
 
-    assert_eq(DebugLogger.level(), "INFO")
-  })
+    assert_eq(DebugLogger.level, "INFO")
+  end
 
-  test("super in multiple inheritance levels", fn() {
+  test("super values compose across levels") do
     class Level1
       def level -> Int
-        return 1
+        1
       end
     end
 
     class Level2 < Level1
       def level -> Int
-        return super.level() + 10
+        super.level + 10
       end
     end
 
     class Level3 < Level2
       def level -> Int
-        return super.level() + 100
+        super.level + 100
       end
     end
 
-    assert_eq(new Level3().level(), 111)
-  })
-})
+    assert_eq(new Level3().level, 111)
+    assert_eq(new Level2().level, 11)
+  end
+end
 
-describe("this Keyword", fn() {
-  test("this.field access in methods", fn() {
-    class Point
-      x: Int
-      y: Int
-
-      new(x: Int, y: Int)
-        this.x = x
-        this.y = y
+describe("this in inherited code") do
+  test("an inherited method dispatches through this to the subclass override") do
+    class Speaker
+      def speak
+        "..."
       end
 
-      def get_x -> Int
-        return this.x
-      end
-
-      def get_y -> Int
-        return this.y
+      def intro
+        "I say " + this.speak
       end
     end
 
-    let p = new Point(5, 10)
-    assert_eq(p.get_x(), 5)
-    assert_eq(p.get_y(), 10)
-  })
+    class Barker < Speaker
+      def speak
+        "Woof"
+      end
+    end
 
-  test("this.method() calls", fn() {
+    assert_eq(new Barker().intro, "I say Woof")
+    assert_eq(new Speaker().intro, "I say ...")
+  end
+
+  test("inherited chaining methods return the subclass instance") do
     class Chainer
       value: Int = 0
 
       def add(n: Int)
-        this.value = this.value + n
-        return this
+        @value = @value + n
+        this
       end
 
       def multiply(n: Int)
-        this.value = this.value * n
-        return this
+        @value = @value * n
+        this
       end
 
       def reset
-        this.value = 0
-        return this
+        @value = 0
+        this
       end
     end
 
-    let c = new Chainer()
-    assert_eq(c.add(5).multiply(2).value, 10)
-    assert_eq(c.reset().add(3).value, 3)
-  })
+    class SubChainer < Chainer
+    end
 
-  test("this in constructor", fn() {
+    chainer = new SubChainer()
+    assert_eq(chainer.add(5).multiply(2).value, 10)
+    assert_eq(chainer.reset.add(3).value, 3)
+    assert_eq(type(chainer.add(1)), "SubChainer")
+  end
+
+  test("an inherited constructor sets the subclass instance's fields") do
     class Box
       width: Int
       height: Int
       depth: Int
 
-      new(w: Int, h: Int, d: Int)
-        this.width = w
-        this.height = h
-        this.depth = d
+      new(width: Int, height: Int, depth: Int)
+        @width = width
+        @height = height
+        @depth = depth
       end
+    end
 
+    class Crate < Box
       def volume -> Int
-        return this.width * this.height * this.depth
+        @width * @height * @depth
       end
     end
 
-    let box = new Box(2, 3, 4)
-    assert_eq(box.volume(), 24)
-  })
+    assert_eq(new Crate(2, 3, 4).volume, 24)
+  end
 
-  test("this in nested method calls", fn() {
-    class Outer
-      value: Int = 100
-    end
+  test("an inherited method reads a field the subclass constructor set") do
+    class NameBase
+      name: String = "default"
 
-    let o = new Outer()
-    assert_eq(o.value, 100)
-  })
-
-  test("this in static context throws error", fn() {
-    let threw = false
-    try
-      class Test
-        static def bad
-          return this
-        end
+      def get_name -> String
+        @name
       end
-      Test.bad()
-    catch e
-      threw = true
     end
-    assert(threw)
-  })
-})
 
-describe("Method Overriding", fn() {
-  test("method override completely replaces super", fn() {
-    class Base
+    class NameMiddle < NameBase
+    end
+
+    class NameLeaf < NameMiddle
+      new
+        @name = "leaf"
+      end
+    end
+
+    assert_eq(new NameLeaf().get_name, "leaf")
+    assert_eq(new NameMiddle().get_name, "default")
+  end
+
+  test("this in a static method raises") do
+    class StaticThis
+      static def bad
+        this
+      end
+    end
+
+    assert_raises("'this' outside of class") do
+      StaticThis.bad
+    end
+  end
+end
+
+describe("Method overriding") do
+  test("an override replaces the parent's method for the subclass only") do
+    class Original
       def get_value -> Int
-        return 1
+        1
       end
     end
 
-    class Derived < Base
+    class Replacement < Original
       def get_value -> Int
-        return 2
+        2
       end
     end
 
-    assert_eq(new Base().get_value(), 1)
-    assert_eq(new Derived().get_value(), 2)
-  })
+    assert_eq(new Original().get_value, 1)
+    assert_eq(new Replacement().get_value, 2)
+  end
 
-  test("override with super call", fn() {
-    class Base
+  test("an override builds on super's result") do
+    class Doubler
       def compute(x: Int) -> Int
-        return x * 2
+        x * 2
       end
     end
 
-    class Derived < Base
+    class DoublerPlusOne < Doubler
       def compute(x: Int) -> Int
-        let result = super.compute(x)
-        return result + 1
+        super.compute(x) + 1
       end
     end
 
-    assert_eq(new Derived().compute(5), 11)
-  })
+    assert_eq(new DoublerPlusOne().compute(5), 11)
+  end
 
-  test("override with different signature", fn() {
-    class Base
+  test("an override may change the signature") do
+    class Processor
       def process(data: String) -> String
-        return "processed: " + data
+        "processed: " + data
       end
     end
 
-    class Derived < Base
+    class PrefixProcessor < Processor
       def process(data: String, prefix: String) -> String
-        return prefix + ": " + data
+        prefix + ": " + data
       end
     end
 
-    assert_eq(new Base().process("test"), "processed: test")
-  })
+    assert_eq(new Processor().process("test"), "processed: test")
+    assert_eq(new PrefixProcessor().process("test", "p"), "p: test")
+    assert_raises("Wrong number of arguments: expected 2, got 1") do
+      new PrefixProcessor().process("test")
+    end
+  end
 
-  test("override adds new methods", fn() {
-    class Base
+  test("a subclass adds new methods") do
+    class Existing
       def existing -> String
-        return "exists"
+        "exists"
       end
     end
 
-    class Derived < Base
+    class Extended < Existing
       def new_method -> String
-        return "new"
+        "new"
       end
     end
 
-    let d = new Derived()
-    assert_eq(d.existing(), "exists")
-    assert_eq(d.new_method(), "new")
-  })
-})
+    extended = new Extended()
+    assert_eq(extended.existing, "exists")
+    assert_eq(extended.new_method, "new")
+    assert_raises("Cannot access property 'new_method' on Existing") do
+      new Existing().new_method
+    end
+  end
+end
 
-describe("Constructor Behavior", fn() {
-  test("default constructor when no new defined", fn() {
+describe("Constructor behavior") do
+  test("a class without new gets a default constructor and field defaults") do
     class Simple
       value: Int = 42
     end
 
-    let s = new Simple()
-    assert_eq(s.value, 42)
-  })
+    assert_eq(new Simple().value, 42)
+  end
 
-  test("custom constructor", fn() {
+  test("a custom constructor") do
     class Rectangle
       width: Int
       height: Int
 
-      new(w: Int, h: Int)
-        this.width = w
-        this.height = h
+      new(width: Int, height: Int)
+        @width = width
+        @height = height
       end
 
       def area -> Int
-        return this.width * this.height
+        @width * @height
       end
     end
 
-    let r = new Rectangle(5, 3)
-    assert_eq(r.area(), 15)
-  })
+    assert_eq(new Rectangle(5, 3).area, 15)
+  end
 
-  test("constructor with default parameters", fn() {
-    class Box
+  test("a constructor with default parameters, inherited by a subclass") do
+    class Cuboid
       width: Int
       height: Int
       depth: Int
 
-      new(w: Int, h: Int = 1, d: Int = 1)
-        this.width = w
-        this.height = h
-        this.depth = d
+      new(width: Int, height: Int = 1, depth: Int = 1)
+        @width = width
+        @height = height
+        @depth = depth
       end
 
       def volume -> Int
-        return this.width * this.height * this.depth
+        @width * @height * @depth
       end
     end
 
-    assert_eq(new Box(2).volume(), 2)
-    assert_eq(new Box(2, 3).volume(), 6)
-    assert_eq(new Box(2, 3, 4).volume(), 24)
-  })
-})
+    class Cube < Cuboid
+    end
 
-describe("Multi-level Inheritance", fn() {
-  test("3-level inheritance chain with method override", fn() {
+    assert_eq(new Cuboid(2).volume, 2)
+    assert_eq(new Cuboid(2, 3).volume, 6)
+    assert_eq(new Cuboid(2, 3, 4).volume, 24)
+    assert_eq(new Cube(2, 2).volume, 4)
+  end
+end
+
+describe("Multi-level inheritance") do
+  test("a leaf override and a middle-level addition") do
     class Controller
       def action -> String
-        return "Controller"
+        "Controller"
       end
     end
 
     class BaseController < Controller
       def before -> String
-        return "authenticated"
+        "authenticated"
       end
     end
 
     class HomeController < BaseController
       def action -> String
-        return "home"
+        "home"
       end
     end
 
-    let c = new HomeController()
-    assert_eq(c.action(), "home")
-    assert_eq(c.before(), "authenticated")
-  })
+    home = new HomeController()
+    assert_eq(home.action, "home")
+    assert_eq(home.before, "authenticated")
+  end
 
-  test("3-level inheritance with super chaining", fn() {
-    class Controller
+  test("super chaining across three controller levels") do
+    class RootController
       def action -> String
-        return "base"
+        "base"
       end
     end
 
-    class BaseController < Controller
+    class AppController < RootController
       def action -> String
-        return super.action() + " -> base_ctrl"
+        super.action + " -> base_ctrl"
       end
     end
 
-    class HomeController < BaseController
+    class PageController < AppController
       def action -> String
-        return super.action() + " -> home"
+        super.action + " -> home"
       end
     end
 
-    assert_eq(new HomeController().action(), "base -> base_ctrl -> home")
-  })
+    assert_eq(new PageController().action, "base -> base_ctrl -> home")
+  end
 
-  test("inheriting fields through 3 levels", fn() {
-    class A
+  test("fields from three levels") do
+    class FieldA
       x: Int = 1
     end
 
-    class B < A
+    class FieldB < FieldA
       y: Int = 2
     end
 
-    class C < B
+    class FieldC < FieldB
       z: Int = 3
     end
 
-    let c = new C()
-    assert_eq(c.x, 1)
-    assert_eq(c.y, 2)
-    assert_eq(c.z, 3)
-  })
+    leaf = new FieldC()
+    assert_eq([leaf.x, leaf.y, leaf.z], [1, 2, 3])
+  end
 
-  test("constructor inheritance through 3 levels", fn() {
-    class Base
+  test("a constructor inherited through two constructor-less levels") do
+    class Root
       name: String
 
       new(name: String)
-        this.name = name
+        @name = name
       end
     end
 
-    class Middle < Base
+    class Middle < Root
     end
 
     class Leaf < Middle
     end
 
-    let leaf = new Leaf("hello")
-    assert_eq(leaf.name, "hello")
-  })
+    assert_eq(new Leaf("hello").name, "hello")
+  end
 
-  test("4-level inheritance chain", fn() {
+  test("a four-level super chain") do
     class L1
       def id -> String
-        return "L1"
+        "L1"
       end
     end
 
     class L2 < L1
       def id -> String
-        return super.id() + ".L2"
+        super.id + ".L2"
       end
     end
 
     class L3 < L2
       def id -> String
-        return super.id() + ".L3"
+        super.id + ".L3"
       end
     end
 
     class L4 < L3
       def id -> String
-        return super.id() + ".L4"
+        super.id + ".L4"
       end
     end
 
-    assert_eq(new L4().id(), "L1.L2.L3.L4")
-  })
+    assert_eq(new L4().id, "L1.L2.L3.L4")
+  end
 
-  test("middle class adds methods accessible by leaf", fn() {
-    class Controller
+  test("a leaf calls helpers the middle class added") do
+    class EmptyRoot
     end
 
-    class BaseController < Controller
+    class HelperController < EmptyRoot
       def layout -> String
-        return "application"
+        "application"
       end
 
       def current_user -> String
-        return "admin"
+        "admin"
       end
     end
 
-    class PostsController < BaseController
+    class PostsController < HelperController
       def index -> String
-        return this.current_user() + " - " + this.layout()
+        @current_user + " - " + @layout
       end
     end
 
-    let pc = new PostsController()
-    assert_eq(pc.index(), "admin - application")
-  })
+    assert_eq(new PostsController().index, "admin - application")
+  end
 
-  test("override in middle class, inherit in leaf", fn() {
-    class A
+  test("a middle override is what the leaf inherits") do
+    class GreetA
       def greet -> String
-        return "A"
+        "A"
       end
 
       def farewell -> String
-        return "bye from A"
+        "bye from A"
       end
     end
 
-    class B < A
+    class GreetB < GreetA
       def greet -> String
-        return "B"
+        "B"
       end
     end
 
-    class C < B
+    class GreetC < GreetB
     end
 
-    let c = new C()
-    assert_eq(c.greet(), "B")
-    assert_eq(c.farewell(), "bye from A")
-  })
+    leaf = new GreetC()
+    assert_eq(leaf.greet, "B")
+    assert_eq(leaf.farewell, "bye from A")
+  end
 
-  test("this refers to actual instance in inherited method", fn() {
-    class Base
-      name: String = "default"
-
-      def get_name -> String
-        return this.name
-      end
-    end
-
-    class Middle < Base
-    end
-
-    class Leaf < Middle
-      new()
-        this.name = "leaf"
-      end
-    end
-
-    assert_eq(new Leaf().get_name(), "leaf")
-  })
-
-  test("static method inheritance through 3 levels", fn() {
-    class A
+  test("a static method inherited through three levels") do
+    class StaticA
       static def class_type -> String
-        return "A"
+        "A"
       end
     end
 
-    class B < A
+    class StaticB < StaticA
     end
 
-    class C < B
+    class StaticC < StaticB
     end
 
-    assert_eq(C.class_type(), "A")
-  })
+    assert_eq(StaticC.class_type, "A")
+  end
 
-  test("type reflects most derived class", fn() {
-    class A
-    end
-    class B < A
-    end
-    class C < B
+  test("type() names each level's own class") do
+    class TypeA
     end
 
-    assert_eq(type(new C()), "C")
-    assert_eq(type(new B()), "B")
-    assert_eq(type(new A()), "A")
-  })
-})
+    class TypeB < TypeA
+    end
+
+    class TypeC < TypeB
+    end
+
+    assert_eq(type(new TypeC()), "TypeC")
+    assert_eq(type(new TypeB()), "TypeB")
+    assert_eq(type(new TypeA()), "TypeA")
+  end
+end

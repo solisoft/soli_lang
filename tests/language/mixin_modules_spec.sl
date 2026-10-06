@@ -1,3 +1,6 @@
+# Mixin modules: `include` copies instance methods, `extend` adds class
+# methods, a module's own methods are callable on it, hooks see the host.
+
 module MixinGreetable
   def greet
     "hello, " + @name
@@ -5,10 +8,11 @@ module MixinGreetable
 end
 
 class MixinUser
+  include MixinGreetable
+
   new(name)
     @name = name
   end
-  include MixinGreetable
 end
 
 module MixinFromModule
@@ -19,6 +23,7 @@ end
 
 class MixinOverride
   include MixinFromModule
+
   def greet
     "from class"
   end
@@ -68,7 +73,6 @@ module MixinOnly
 end
 
 module MixinAdmin
-
   class User
     def role
       "admin"
@@ -122,39 +126,54 @@ class MixinTaggedHost
   include MixinTagged
 end
 
-describe("Mixin modules", fn() {
-  test("include copies instance methods", fn() { assert_eq(new MixinUser("Ada").greet, "hello, Ada") })
+describe("Mixin modules") do
+  test("include copies instance methods") do
+    assert_eq(new MixinUser("Ada").greet, "hello, Ada")
+  end
 
-  test("class methods win over included methods", fn() { assert_eq(new MixinOverride().greet, "from class") })
+  test("class methods win over included methods") do
+    assert_eq(new MixinOverride().greet, "from class")
+  end
 
-  test("extend adds class methods", fn() { assert_eq(MixinWidget.build, "built") })
+  test("extend adds class methods") do
+    assert_eq(MixinWidget.build, "built")
+  end
 
-  test("module methods are callable on the module", fn() { assert_eq(MixinMathish.double(21), 42) })
-
-  test("first include wins when both define the same method", fn() {
-    let c = new MixinCombo()
-    assert_eq(c.tag, "a")
-    assert_eq(c.extra, "x")
-  })
-
-  test("cannot instantiate a module", fn() {
-    let raised = false
-    try
-      new MixinOnly()
-    catch e
-      raised = true
+  test("extend does not add instance methods") do
+    assert_raises("Cannot access property 'build'") do
+      new MixinWidget().build
     end
-    assert(raised)
-  })
+  end
 
-  test("nested class inside a module", fn() { assert_eq(new MixinAdmin::User().role, "admin") })
+  test("module methods are callable on the module") do
+    assert_eq(MixinMathish.double(21), 42)
+  end
 
-  test("self.included and self.extended receive the host class", fn() {
-    assert(HOOK_LOG.includes?("included:<class MixinTrackedHost>"))
-    assert(HOOK_LOG.includes?("extended:<class MixinTrackedExt>"))
-  })
+  test("first include wins when both define the same method") do
+    combo = new MixinCombo()
+    assert_eq(combo.tag, "a")
+    assert_eq(combo.extra, "x")
+  end
 
-  test("class_methods become class methods on the includer", fn() { assert_eq(MixinItem.label, "finders") })
+  test("cannot instantiate a module") do
+    assert_raises("cannot instantiate module MixinOnly") do
+      new MixinOnly()
+    end
+  end
 
-  test("included do runs against the host class", fn() { assert_eq(new MixinTaggedHost().hooked, "from-included-do") })
-})
+  test("nested class inside a module") do
+    assert_eq(new MixinAdmin::User().role, "admin")
+  end
+
+  test("static def included / extended receive the host class") do
+    assert_eq(HOOK_LOG, ["included:<class MixinTrackedHost>", "extended:<class MixinTrackedExt>"])
+  end
+
+  test("class_methods become class methods on the includer") do
+    assert_eq(MixinItem.label, "finders")
+  end
+
+  test("included do runs against the host class") do
+    assert_eq(new MixinTaggedHost().hooked, "from-included-do")
+  end
+end

@@ -1,122 +1,143 @@
-# ============================================================================
-# Special Methods (? suffix) Test Suite
-# ============================================================================
+# Predicate methods (`?` suffix), the pipeline operator `|>` and the ternary
+# `? :` — three uses of `?`/`|` the lexer must keep apart.
 
-describe("Predicate Methods with ?", fn() {
-  test("empty? method on array", fn() {
-    let arr = []
-    assert(arr.empty?())
+def double(x)
+  x * 2
+end
 
-    let arr2 = [1, 2, 3]
-    assert_not(arr2.empty?())
-  })
+def add(x, y)
+  x + y
+end
 
-  test("empty? method on string", fn() {
-    let s = ""
-    assert(s.empty?())
+class Account
+  balance: Int
 
-    let s2 = "hello"
-    assert_not(s2.empty?())
-  })
+  new(balance: Int)
+    @balance = balance
+  end
 
-  test("includes? method on array", fn() {
-    let arr = [1, 2, 3]
-    assert(arr.includes?(2))
-    assert_not(arr.includes?(5))
-  })
+  def overdrawn?
+    @balance < 0
+  end
+end
 
-  test("includes? method on string", fn() {
-    let s = "hello world"
-    assert(s.includes?("world"))
-    assert_not(s.includes?("xyz"))
-  })
+describe("Predicate methods with ?") do
+  test("empty? on an array") do
+    assert([].empty?)
+    assert_not([1, 2, 3].empty?)
+  end
 
-  test("starts_with? method", fn() {
-    let s = "hello world"
-    assert(s.starts_with?("hello"))
-    assert_not(s.starts_with?("world"))
-  })
+  test("empty? on a string") do
+    assert("".empty?)
+    assert_not("hello".empty?)
+    assert_not(" ".empty?)
+  end
 
-  test("ends_with? method", fn() {
-    let s = "hello world"
-    assert(s.ends_with?("world"))
-    assert_not(s.ends_with?("hello"))
-  })
+  test("includes? on an array") do
+    numbers = [1, 2, 3]
+    assert(numbers.includes?(2))
+    assert_not(numbers.includes?(5))
+    assert([1, nil].includes?(nil))
+  end
 
-  test("predicate methods in conditions", fn() {
-    let items = [1, 2, 3]
-    if (items.empty?())
-      assert(false)
-    else
-      assert(true)
-    end
-  })
+  test("includes? on a string") do
+    text = "hello world"
+    assert(text.includes?("world"))
+    assert_not(text.includes?("xyz"))
+  end
 
-  test("chained predicate checks", fn() {
-    let s = "hello"
-    assert(s.includes?("ell") && s.starts_with?("he"))
-    # Test that neither xyz is included nor does it end with "xyz"
-    assert_not(s.includes?("xyz") || s.ends_with?("xyz"))
-  })
-})
+  test("starts_with?") do
+    text = "hello world"
+    assert(text.starts_with?("hello"))
+    assert_not(text.starts_with?("world"))
+    assert(text.starts_with?(""))
+  end
 
-describe("Pipeline Operator", fn() {
-  test("simple pipeline", fn() {
-    let result = 5 |> fn(x) { x * 2 } |> fn(x) { x + 1 }
-    assert_eq(result, 11)
-  })
+  test("ends_with?") do
+    text = "hello world"
+    assert(text.ends_with?("world"))
+    assert_not(text.ends_with?("hello"))
+  end
 
-  test("pipeline with lambda", fn() {
-    let result = "hello" |> fn(s) { s.upcase() }
-    assert_eq(result, "HELLO")
-  })
+  test("a predicate drives a condition") do
+    items = [1, 2, 3]
+    label = items.empty? ? "none" : "some"
+    assert_eq(label, "some")
+    label = "none" if [].empty?
+    assert_eq(label, "none")
+  end
 
-  test("pipeline with multiple steps", fn() {
-    let result = [1, 2, 3, 4, 5] |> fn(arr) { arr.filter(fn(x) { x > 2 }) } |> fn(arr) { arr.map(fn(x) { x * 2 }) }
-    assert_eq(result, [
-      6,
-      8,
-      10
-    ])
-  })
+  test("chained predicate checks") do
+    text = "hello"
+    assert(text.includes?("ell") && text.starts_with?("he"))
+    assert_not(text.includes?("xyz") || text.ends_with?("xyz"))
+  end
 
-  test("pipeline with method via lambda", fn() {
-    let result = "hello" |> fn(s) { s.length() }
-    assert_eq(result, 5)
-  })
+  test("a user-defined method may end in ?") do
+    assert(new Account(-5).overdrawn?)
+    assert_not(new Account(10).overdrawn?)
+  end
+end
 
-  test("pipeline preserves types", fn() {
-    let result = 10 |> fn(x) { x + 5 }
+describe("Pipeline operator") do
+  test("feeds a value through lambdas") do
+    assert_eq(5 |> fn(x) { x * 2 } |> fn(x) { x + 1 }, 11)
+  end
+
+  test("a lambda can call a method on the piped value") do
+    assert_eq("hello" |> fn(text) { text.upcase }, "HELLO")
+    assert_eq("hello" |> fn(text) { text.length }, 5)
+  end
+
+  test("chains several collection steps") do
+    result = [1, 2, 3, 4, 5]
+      |> fn(numbers) { numbers.filter { |x| x > 2 } }
+      |> fn(numbers) { numbers.map { |x| x * 2 } }
+    assert_eq(result, [6, 8, 10])
+  end
+
+  test("feeds a named function, as its first argument") do
+    assert_eq(5 |> double(), 10)
+    assert_eq(5 |> double() |> add(1), 11)
+  end
+
+  test("preserves the value's type") do
+    result = 10 |> fn(x) { x + 5 }
     assert_eq(result, 15)
-    assert(type(result) == "int")
-  })
+    assert_eq(type(result), "int")
+  end
 
-  test("pipeline with string operations", fn() {
-    let result = "  hello world  " |> fn(s) { s.trim() } |> fn(s) { s.upcase() }
+  test("string operations") do
+    result = "  hello world  " |> fn(text) { text.trim } |> fn(text) { text.upcase }
     assert_eq(result, "HELLO WORLD")
-  })
-})
+  end
+end
 
-describe("Question Mark Operator", fn() {
-  test("ternary operator true branch", fn() {
-    let result = true ? "yes" : "no"
-    assert_eq(result, "yes")
-  })
+describe("Ternary operator") do
+  test("true branch") do
+    assert_eq(true ? "yes" : "no", "yes")
+  end
 
-  test("ternary operator false branch", fn() {
-    let result = false ? "yes" : "no"
-    assert_eq(result, "no")
-  })
+  test("false branch") do
+    assert_eq(false ? "yes" : "no", "no")
+  end
 
-  test("ternary in expressions", fn() {
-    let x = 5
-    let result = x > 0 ? "positive" : "non-positive"
-    assert_eq(result, "positive")
-  })
+  test("nil and 0 take the false branch") do
+    assert_eq(nil ? "yes" : "no", "no")
+    assert_eq(0 ? "yes" : "no", "no")
+  end
 
-  test("nested ternary", fn() {
-    let x = 0
-    let result = x > 0 ? "positive" : x < 0 ? "negative" : "zero"
-    assert_eq(result, "zero")
-  })
-})
+  test("in an expression") do
+    count = 5
+    assert_eq(count > 0 ? "positive" : "non-positive", "positive")
+  end
+
+  test("nested in the else branch") do
+    count = 0
+    assert_eq(count > 0 ? "positive" : count < 0 ? "negative" : "zero", "zero")
+  end
+
+  test("nested in the then branch") do
+    assert_eq(true ? false ? 1 : 2 : 3, 2)
+  end
+end

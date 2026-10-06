@@ -1,238 +1,339 @@
-# ============================================================================
-# `@foo` sugar for `this.foo` — read/write inside class methods.
-# ============================================================================
+# `@foo` is sugar for `this.foo`: a field read or write, or a method call on
+# self, inside any instance method or constructor.
 
-describe("@ sigil desugars to this", fn() {
-  test("@foo reads this.foo", fn() {
-    class Box
-      value: Int
+class Box
+  value: Int
 
-      new(v: Int)
-        this.value = v
-      end
+  new(value: Int)
+    this.value = value
+  end
 
-      def peek -> Int
-        @value
-      end
+  def peek -> Int
+    @value
+  end
+end
+
+class Counter
+  n: Int
+
+  new
+    @n = 0
+  end
+
+  def bump
+    @n = @n + 1
+  end
+
+  def get -> Int
+    @n
+  end
+end
+
+class Twin
+  x: Int
+
+  new
+    @x = 0
+  end
+
+  def via_at(value: Int)
+    @x = value
+  end
+
+  def via_this -> Int
+    this.x
+  end
+
+  def this_write(value: Int)
+    this.x = value
+  end
+
+  def at_read -> Int
+    @x
+  end
+end
+
+class Greeter
+  name: String
+
+  new(name: String)
+    @name = name
+  end
+
+  def hello -> String
+    "Hello, " + @name_upcase()
+  end
+
+  def hello_bare -> String
+    "Hello, " + @name_upcase
+  end
+
+  def name_upcase -> String
+    @name.upcase
+  end
+
+  def add(a, b)
+    a + b
+  end
+
+  def sum
+    @add(1, 2)
+  end
+
+  def short?
+    @name.length < 4
+  end
+
+  def asks
+    @short?
+  end
+end
+
+class Acc
+  total: Int
+
+  new
+    @total = 10
+  end
+
+  def add(n: Int)
+    @total += n
+  end
+end
+
+class Inner
+  label: String
+
+  new(label: String)
+    @label = label
+  end
+end
+
+class Outer
+  inner: Any
+
+  new(inner)
+    @inner = inner
+  end
+
+  def inner_label -> String
+    @inner.label
+  end
+end
+
+class Bag
+  items: Array
+
+  new
+    @items = ["a", "b", "c"]
+  end
+
+  def second -> String
+    @items[1]
+  end
+
+  def push(item: String)
+    @items.push(item)
+  end
+end
+
+class Tagged
+  tag: String
+
+  new(tag: String)
+    @tag = tag
+  end
+end
+
+class TaggedChild < Tagged
+  new(tag: String)
+    super(tag)
+  end
+
+  def wrapped -> String
+    "<" + @tag + ">"
+  end
+end
+
+class Log
+  entries: Array
+
+  new
+    @entries = []
+  end
+
+  def add(line: String)
+    @entries.push(line)
+  end
+
+  def count -> Int
+    @entries.length
+  end
+end
+
+class Cache
+  value: Any
+  calls: Int = 0
+
+  def get -> Int
+    @value = @compute if @value.nil?
+    @value
+  end
+
+  def memo
+    @memoized ||= @compute
+  end
+
+  def compute
+    @calls += 1
+    42
+  end
+end
+
+class MaybeSet
+  slot: Any
+
+  def peek -> Any
+    @slot
+  end
+end
+
+class Scaler
+  items: Array
+
+  new
+    @items = [1, 2, 3]
+    @factor = 10
+  end
+
+  def scaled
+    @items.map { |x| x * @factor }
+  end
+
+  def with_lambda
+    times = fn(x) { x * @factor }
+    times(3)
+  end
+end
+
+def outside_any_class
+  @value
+end
+
+describe("@ sigil") do
+  context("fields") do
+    test("@foo reads the field this.foo set") do
+      assert_eq(new Box(7).peek, 7)
     end
-    let b = new Box(7)
-    assert_eq(b.peek(), 7)
-  })
 
-  test("@foo = x writes to this.foo", fn() {
-    class Counter
-      n: Int
-
-      new()
-        this.n = 0
-      end
-
-      def bump
-        @n = @n + 1
-      end
-
-      def get -> Int
-        @n
-      end
+    test("@foo = x writes the field") do
+      counter = new Counter()
+      counter.bump
+      counter.bump
+      counter.bump
+      assert_eq(counter.get, 3)
     end
-    let c = new Counter()
-    c.bump()
-    c.bump()
-    c.bump()
-    assert_eq(c.get(), 3)
-  })
 
-  test("@foo and this.foo reference the same field", fn() {
-    class Twin
-      x: Int
-
-      new()
-        this.x = 0
-      end
-
-      def via_at(v: Int)
-        @x = v
-      end
-
-      def via_this -> Int
-        return this.x
-      end
+    test("@foo and this.foo are the same field, both ways") do
+      twin = new Twin()
+      twin.via_at(42)
+      assert_eq(twin.via_this, 42)
+      twin.this_write(7)
+      assert_eq(twin.at_read, 7)
     end
-    let t = new Twin()
-    t.via_at(42)
-    assert_eq(t.via_this(), 42)
-  })
 
-  test("@foo() calls an instance method", fn() {
-    class Greeter
-      name: String
-
-      new(n: String)
-        this.name = n
-      end
-
-      def hello -> String
-        return "Hello, " + @name_upcase()
-      end
-
-      def name_upcase -> String
-        return @name.upcase()
-      end
+    test("@foo += n compound-assigns") do
+      acc = new Acc()
+      acc.add(5)
+      acc.add(3)
+      assert_eq(acc.total, 18)
     end
-    let g = new Greeter("ada")
-    assert_eq(g.hello(), "Hello, ADA")
-  })
 
-  test("@foo += n compound-assigns to the instance field", fn() {
-    class Acc
-      total: Int
-
-      new()
-        this.total = 10
-      end
-
-      def add(n: Int)
-        @total += n
-      end
+    test("@foo.bar chains member access") do
+      assert_eq(new Outer(new Inner("nested")).inner_label, "nested")
     end
-    let a = new Acc()
-    a.add(5)
-    a.add(3)
-    assert_eq(a.total, 18)
-  })
 
-  test("@foo.bar chains member access", fn() {
-    class Inner
-      label: String
-
-      new(s: String)
-        this.label = s
-      end
+    test("@foo[k] indexes, and @foo.push mutates the field") do
+      bag = new Bag()
+      assert_eq(bag.second, "b")
+      bag.push("d")
+      assert_eq(bag.items, ["a", "b", "c", "d"])
     end
-    class Outer
-      inner: Any
 
-      new(i)
-        this.inner = i
-      end
-
-      def inner_label -> String
-        return @inner.label
-      end
+    test("reads a field the parent's constructor set") do
+      assert_eq(new TaggedChild("hi").wrapped, "<hi>")
     end
-    let o = new Outer(new Inner("nested"))
-    assert_eq(o.inner_label(), "nested")
-  })
 
-  test("@foo[k] indexes into a collection field", fn() {
-    class Bag
-      items: Array
-
-      new()
-        this.items = [
-          "a",
-          "b",
-          "c"
-        ]
-      end
-
-      def second -> String
-        return @items[1]
-      end
-
-      def push(x: String)
-        @items.push(x)
-      end
+    test("a mutation persists across method calls") do
+      log = new Log()
+      log.add("one")
+      log.add("two")
+      log.add("three")
+      assert_eq(log.count, 3)
+      assert_eq(log.entries, ["one", "two", "three"])
     end
-    let b = new Bag()
-    assert_eq(b.second(), "b")
-    b.push("d")
-    assert_eq(b.items.length, 4)
-  })
 
-  test("@foo resolves to fields set by the parent class", fn() {
-    class Base
-      tag: String
-
-      new(t: String)
-        this.tag = t
-      end
+    test("a parameter of the same name does not shadow the field") do
+      assert_eq(new Greeter("soli").name, "soli")
     end
-    class Child < Base
-      new(t: String)
-        super(t)
-      end
 
-      def wrapped -> String
-        return "<" + @tag + ">"
-      end
+    test("reads nil for a declared field never set") do
+      assert_null(new MaybeSet().peek)
     end
-    let c = new Child("hi")
-    assert_eq(c.wrapped(), "<hi>")
-  })
 
-  test("@foo mutation persists across method calls", fn() {
-    class Log
-      entries: Array
-
-      new()
-        this.entries = []
-      end
-
-      def add(line: String)
-        @entries.push(line)
-      end
-
-      def count -> Int
-        return @entries.length
-      end
+    test("an undeclared field can be assigned in the constructor") do
+      assert_eq(new Scaler().factor, 10)
     end
-    let l = new Log()
-    l.add("one")
-    l.add("two")
-    l.add("three")
-    assert_eq(l.count(), 3)
-  })
+  end
 
-  test("@foo works for lazy initialization", fn() {
-    class Cache
-      value: Any
-
-      new()
-        this.value = null
-      end
-
-      def get -> Int
-        @value = 42 if @value.nil?
-        return @value
-      end
+  context("lazy initialization") do
+    test("@foo = x if @foo.nil? computes once") do
+      cache = new Cache()
+      assert_eq(cache.get, 42)
+      assert_eq(cache.get, 42)
+      assert_eq(cache.calls, 1)
     end
-    let c = new Cache()
-    assert_eq(c.get(), 42)
-    assert_eq(c.get(), 42)
-  })
 
-  test("assigning @foo from a parameter of the same name works", fn() {
-    class Rec
-      name: String
-
-      new(name: String)
-        @name = name
-      end
+    test("@foo ||= x computes once") do
+      cache = new Cache()
+      assert_eq(cache.memo, 42)
+      assert_eq(cache.memo, 42)
+      assert_eq(cache.calls, 1)
     end
-    let r = new Rec("soli")
-    assert_eq(r.name, "soli")
-  })
+  end
 
-  test("@foo reads null for an unset declared field", fn() {
-    class MaybeSet
-      slot: Any
-
-      def peek -> Any
-        return @slot
-      end
+  context("method calls") do
+    test("@foo() calls an instance method") do
+      assert_eq(new Greeter("ada").hello, "Hello, ADA")
     end
-    let m = new MaybeSet()
-    assert_null(m.peek())
-  })
-})
+
+    test("@foo without parentheses calls it too") do
+      assert_eq(new Greeter("ada").hello_bare, "Hello, ADA")
+    end
+
+    test("@foo(args) passes arguments") do
+      assert_eq(new Greeter("ada").sum, 3)
+    end
+
+    test("@foo? calls a predicate method") do
+      assert(new Greeter("ada").asks)
+      assert_not(new Greeter("grace").asks)
+    end
+  end
+
+  context("closures") do
+    test("a block inside a method sees @foo") do
+      assert_eq(new Scaler().scaled, [10, 20, 30])
+    end
+
+    test("a lambda inside a method sees @foo") do
+      assert_eq(new Scaler().with_lambda, 30)
+    end
+  end
+
+  test("outside any class it raises") do
+    assert_raises("'this' outside of class") do
+      outside_any_class()
+    end
+  end
+end
