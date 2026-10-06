@@ -1,62 +1,81 @@
-# ============================================================================
-# Clock/Time Functions Test Suite
-# ============================================================================
+# clock(), sleep(), Int#sleep / Float#sleep and DateTime.microtime.
 
-describe("Clock Functions", fn() {
-  test("clock() returns current time", fn() {
-    let t1 = clock()
-    let t2 = clock()
-    assert(t2 >= t1)
-    assert(t1 > 0)
-  })
+describe("clock") do
+  test("is the wall clock in fractional Unix seconds") do
+    now = clock()
+    assert_eq(type(now), "float")
+    assert_lt((now - DateTime.now.to_unix).abs, 2)
+  end
 
-  test("clock() returns Unix timestamp", fn() {
-    let now = clock()
-    assert(now > 1600000000)
-  })
+  test("never goes backwards") do
+    first = clock()
+    second = clock()
+    assert(second >= first)
+  end
 
-  test("sleep() pauses execution", fn() {
-    let start = clock()
+  test("ignores freeze_time") do
+    freeze_time(1000)
+    assert_gt(clock(), 1700000000)
+  end
+end
+
+describe("sleep") do
+  test("pauses for a fraction of a second") do
+    start = clock()
     sleep(0.01)
-    let elapsed = clock() - start
-    assert(elapsed >= 0.01)
-  })
+    assert(clock() - start >= 0.01)
+  end
 
-  test("Int.sleep pauses execution", fn() {
-    let start = clock()
-    0.sleep
-    let elapsed = clock() - start
-    assert(elapsed >= 0)
-    assert(elapsed < 0.5)
-  })
+  test("returns nil") do
+    assert_null(sleep(0))
+  end
 
-  test("Float.sleep pauses execution", fn() {
-    let start = clock()
-    (0.01).sleep
-    let elapsed = clock() - start
-    assert(elapsed >= 0.01)
-  })
+  test("raises on a non-number") do
+    assert_raises("sleep() expects number") do
+      sleep(["x"][0])
+    end
+  end
 
-  test("Int.sleep returns null", fn() {
-    let r = 0.sleep
-    assert_null(r)
-  })
+  test("a negative Int is a no-op") do
+    pending("bug: sleep(-1) casts -1 to u64 and blocks forever")
+    start = clock()
+    sleep(-1)
+    assert_lt(clock() - start, 0.5)
+  end
 
-  test("Float.sleep returns null", fn() {
-    let r = (0.0).sleep
-    assert_null(r)
-  })
+  test("a negative Float is a no-op") do
+    pending("bug: sleep(-0.5) panics the interpreter (negative Duration)")
+    start = clock()
+    sleep(-0.5)
+    assert_lt(clock() - start, 0.5)
+  end
+end
 
-  test("Negative sleep is a no-op", fn() {
-    let start = clock()
+describe("Int#sleep and Float#sleep") do
+  test("Int#sleep pauses and returns nil") do
+    start = clock()
+    assert_null(0.sleep)
+    assert_lt(clock() - start, 0.5)
+  end
+
+  test("Float#sleep pauses for a fraction of a second") do
+    start = clock()
+    assert_null((0.01).sleep)
+    assert(clock() - start >= 0.01)
+  end
+
+  test("a negative receiver is a no-op") do
+    start = clock()
     (-1).sleep
     (-0.5).sleep
-    let elapsed = clock() - start
-    assert(elapsed < 0.5)
-  })
+    assert_lt(clock() - start, 0.5)
+  end
+end
 
-  test("DateTime.microtime() returns microseconds", fn() {
-    let mt = DateTime.microtime()
-    assert(mt > 0)
-  })
-})
+describe("DateTime.microtime") do
+  test("is the wall clock in microseconds") do
+    micros = DateTime.microtime
+    assert_eq(type(micros), "float")
+    assert_lt((micros / 1000000 - clock()).abs, 1)
+  end
+end

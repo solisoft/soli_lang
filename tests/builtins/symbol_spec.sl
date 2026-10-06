@@ -1,119 +1,131 @@
-# ============================================================================
-# Symbol Test Suite
-# ============================================================================
+# Symbols: literals, equality, hash keys, String#to_sym and the &:method
+# shorthand.
 
-describe("Symbol Literals", fn() {
-  test("basic symbol creation", fn() {
-    let s = :name
-    assert_eq(s, :name)
-  })
+describe("symbol literals") do
+  test("a symbol equals itself") do
+    assert_eq(:name, :name)
+  end
 
-  test("symbol type name", fn() { assert_eq(:name.class, "symbol") })
+  test("class and type are symbol") do
+    assert_eq(:name.class, "symbol")
+    assert_eq(type(:name), "symbol")
+  end
 
-  test("symbol is truthy", fn() {
-    let result = :name ? true : false
-    assert(result)
-  })
+  test("a symbol is truthy and present") do
+    assert_eq(:name ? "truthy" : "falsy", "truthy")
+    assert(:name.present?)
+    assert_not(:name.blank?)
+  end
 
-  test("symbol inspect shows colon prefix", fn() {
+  test("inspect shows the colon") do
     assert_eq(:name.inspect, ":name")
     assert_eq(:hello_world.inspect, ":hello_world")
-  })
+  end
 
-  test("symbol to_s returns string without colon", fn() {
+  test("to_s and to_string drop the colon") do
     assert_eq(:name.to_s, "name")
     assert_eq(:hello.to_string, "hello")
-  })
+  end
 
-  test("symbol nil? returns false", fn() { assert_eq(:name.nil?, false) })
+  test("str and interpolation keep the colon") do
+    assert_eq(str(:abc), ":abc")
+    assert_eq("#{:abc}", ":abc")
+  end
 
-  test("symbol with trailing ? and !", fn() {
-    let s1 = :empty?
-    assert_eq(s1.inspect, ":empty?")
-    let s2 = :save!
-    assert_eq(s2.inspect, ":save!")
-  })
-})
+  test("nil? is false") do
+    assert_eq(:name.nil?, false)
+  end
 
-describe("Symbol Equality", fn() {
-  test("same symbols are equal", fn() {
-    assert_eq(:name, :name)
+  test("may end in ? or !") do
+    assert_eq(:empty?.inspect, ":empty?")
+    assert_eq(:save!.inspect, ":save!")
+  end
+
+  test("is_a? names the symbol type") do
+    pending("bug: Symbol#is_a? is in the method registry but raises \"symbol does not support methods\"")
+    assert(:name.is_a?("symbol"))
+  end
+end
+
+describe("symbol equality") do
+  test("same names are equal") do
     assert_eq(:foo, :foo)
-  })
+    assert(:foo == :foo)
+  end
 
-  test("different symbols are not equal", fn() { assert(:name != :age) })
+  test("different names are not") do
+    assert(:name != :age)
+  end
 
-  test("symbols are not equal to strings", fn() {
+  test("a symbol never equals the string of its name") do
     assert(:name != "name")
     assert("name" != :name)
-  })
-})
+  end
+end
 
-describe("Symbol as Hash Keys", fn() {
-  test("symbol keys in hash literals", fn() {
-    let h = {:name: "John", :age: 30}
-    assert_eq(h[:name], "John")
-    assert_eq(h[:age], 30)
-  })
+describe("symbols as hash keys") do
+  test("in a literal with colon keys") do
+    person = {:name: "John", :age: 30}
+    assert_eq(person[:name], "John")
+    assert_eq(person[:age], 30)
+  end
 
-  test("symbol keys distinct from string keys", fn() {
-    let h = {:name: "sym_value"}
-    h["name"] = "str_value"
-    assert_eq(h[:name], "sym_value")
-    assert_eq(h["name"], "str_value")
-    assert_eq(h.length, 2)
-  })
+  # `soli fmt` rewrites `=>` to `:`; keep the arrow, it is what this tests.
+  test("in a literal with fat-arrow keys") do
+    point = {:x => 1, "y" => 2}
+    assert_eq(point[:x], 1)
+    assert_eq(point["y"], 2)
+    assert_eq(point.keys, [:x, "y"])
+  end
 
-  test("hash with fat arrow and symbol keys", fn() {
-    let h = {:x: 1, :y: 2}
-    assert_eq(h[:x], 1)
-    assert_eq(h[:y], 2)
-  })
-})
+  test("a symbol key and a string key of the same name are distinct") do
+    values = {:name: "sym_value"}
+    values["name"] = "str_value"
+    assert_eq(values[:name], "sym_value")
+    assert_eq(values["name"], "str_value")
+    assert_eq(values.length, 2)
+  end
 
-describe("String.to_sym", fn() {
-  test("converts string to symbol", fn() {
-    let s = "hello"
-    let sym = s.to_sym
-    assert_eq(sym, :hello)
-    assert_eq(sym.class, "symbol")
-  })
+  test("survive to_json") do
+    pending("bug: to_json drops symbol keys, {:a => 1}.to_json is \"{}\"")
+    assert_eq({:a => 1}.to_json, "{\"a\":1}")
+  end
 
-  test("round-trip string to symbol to string", fn() {
-    let original = "test"
-    let sym = original.to_sym
-    let back = sym.to_s
-    assert_eq(back, original)
-  })
-})
+  test("as array values, become strings in JSON") do
+    assert_eq([:a, :b].to_json, "[\"a\",\"b\"]")
+  end
+end
 
-describe("Symbol with &: shorthand", fn() {
-  test("&:method shorthand works with symbols", fn() {
-    let arr = [1, 2, 3]
-    let strings = arr.map(&:to_s)
-    assert_eq(strings, [
-      "1",
-      "2",
-      "3"
-    ])
-  })
+describe("String#to_sym") do
+  test("makes the symbol of that name") do
+    symbol = "hello".to_sym
+    assert_eq(symbol, :hello)
+    assert_eq(symbol.class, "symbol")
+  end
 
-  test("&:method with predicate", fn() {
-    let arr = [1, 2, 3, 4, 5, 6]
-    let evens = arr.filter(&:even?)
-    assert_eq(evens, [
-      2,
-      4,
-      6
-    ])
-  })
-})
+  test("round-trips through to_s") do
+    assert_eq("test".to_sym.to_s, "test")
+  end
+end
 
-describe("Ternary with Symbols", fn() {
-  test("ternary returns symbols correctly", fn() {
-    let result = true ? :yes : :no
-    assert_eq(result, :yes)
-    let result2 = false ? :yes : :no
-    assert_eq(result2, :no)
-  })
-})
+describe("&:method shorthand") do
+  test("maps with a method") do
+    assert_eq([1, 2, 3].map(&:to_s), ["1", "2", "3"])
+  end
+
+  test("filters with a predicate") do
+    assert_eq([1, 2, 3, 4, 5, 6].filter(&:even?), [2, 4, 6])
+  end
+end
+
+describe("symbols in expressions") do
+  test("a ternary returns either symbol") do
+    assert_eq(true ? :yes : :no, :yes)
+    assert_eq(false ? :yes : :no, :no)
+  end
+
+  test("sort orders symbols by name") do
+    pending("bug: Array#sort leaves symbols in their original order ([:b, :a].sort() is [:b, :a])")
+    assert_eq([:b, :a].sort(), [:a, :b])
+  end
+end

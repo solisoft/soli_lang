@@ -1,641 +1,377 @@
-# ============================================================================
-# Collection Classes Test Suite
-# Tests for String, Array, and Hash wrapper classes with to_string() methods
-# ============================================================================
+# Array and Hash builtin methods, to_string, and len(). String methods are in
+# strings_spec.sl, Base64 in base64_spec.sl; the array and hash *syntax* is
+# covered by tests/language/arrays_spec.sl and hashes_spec.sl.
 
-describe("Collection Classes", fn() {
-  describe("String Class", fn() {
-    test("String literals are wrapped in String class", fn() {
-      let s = "hello"
-      assert_eq(s.to_string(), "hello")
-    })
+describe("Array") do
+  describe("to_string and len") do
+    test("to_string renders the elements") do
+      assert_eq([1, 2, 3].to_string, "[1, 2, 3]")
+      assert_eq(["a", nil, true].to_string, "[a, null, true]")
+      assert_eq([].to_string, "[]")
+    end
 
-    test("String.length() returns string length", fn() {
-      let s = "hello"
-      assert_eq(s.length(), 5)
-    })
+    test("length and len() count elements") do
+      assert_eq([1, 2].length, 2)
+      assert_eq(len([1, 2]), 2)
+      assert_eq([].length, 0)
+    end
+  end
 
-    test("String.upcase() returns uppercase string", fn() {
-      let s = "hello"
-      let upper = s.upcase()
-      assert_eq(upper.to_string(), "HELLO")
-    })
+  describe("reading") do
+    test("get reads an index, negative from the end") do
+      letters = ["first", "second", "third"]
+      assert_eq(letters.get(0), "first")
+      assert_eq(letters.get(-1), "third")
+      assert_eq(letters.get(-2), "second")
+    end
 
-    test("String.downcase() returns lowercase string", fn() {
-      let s = "HELLO"
-      let lower = s.downcase()
-      assert_eq(lower.to_string(), "hello")
-    })
+    test("get past the end is nil") do
+      assert_null([1].get(5))
+    end
 
-    test("String.trim() removes whitespace", fn() {
-      let s = "  hello  "
-      let trimmed = s.trim()
-      assert_eq(trimmed.to_string(), "hello")
-    })
+    test("first and last") do
+      assert_eq([1, 2, 3].first, 1)
+      assert_eq([1, 2, 3].last, 3)
+    end
 
-    test("String.contains() checks for substring", fn() {
-      let s = "hello world"
-      assert(s.contains("world"))
-      assert_not(s.contains("foo"))
-    })
+    test("first and last of an empty array are nil") do
+      assert_null([].first)
+      assert_null([].last)
+    end
 
-    test("String.starts_with() checks prefix", fn() {
-      let s = "hello world"
-      assert(s.starts_with("hello"))
-      assert_not(s.starts_with("world"))
-    })
+    test("empty?") do
+      assert([].empty?)
+      assert_not([1, 2, 3].empty?)
+    end
 
-    test("String.ends_with() checks suffix", fn() {
-      let s = "hello world"
-      assert(s.ends_with("world"))
-      assert_not(s.ends_with("hello"))
-    })
+    test("includes? and its alias include?") do
+      assert([1, 2, 3].includes?(2))
+      assert_not([1, 2, 3].includes?(5))
+      assert([1, 2].include?(2))
+      assert_not([1, 2].include?(3))
+    end
 
-    test("String.split() returns array of parts", fn() {
-      let s = "a,b,c"
-      let parts = s.split(",")
-      assert_eq(len(parts), 3)
-    })
+    test("find returns the first match") do
+      assert_eq([1, 2, 3, 4, 5].find { |x| x > 3 }, 4)
+    end
 
-    test("String.index_of() returns substring position", fn() {
-      let s = "hello world"
-      assert_eq(s.index_of("world"), 6)
-      assert_eq(s.index_of("hello"), 0)
-      assert_eq(s.index_of("foo"), -1)
-    })
+    test("find returns nil without a match") do
+      assert_null([1, 2, 3].find { |x| x > 10 })
+    end
 
-    test("String.substring() extracts part of string", fn() {
-      let s = "hello world"
-      assert_eq(s.substring(0, 5).to_string(), "hello")
-      assert_eq(s.substring(6, 11).to_string(), "world")
-    })
+    test("any? and all?") do
+      assert([1, 2, 3, 4].any? { |x| x > 3 })
+      assert_not([1, 2, 3, 4].any? { |x| x > 10 })
+      assert([2, 4, 6].all? { |x| x % 2 == 0 })
+      assert_not([1, 2, 3].all? { |x| x > 2 })
+    end
 
-    test("String.substring() handles multi-byte UTF-8 without panicking", fn() {
-      let s = "ab↩cd"
-      assert_eq(s.substring(0, 3).to_string(), "ab↩")
-      assert_eq(s.substring(2, 3).to_string(), "↩")
-      assert_eq(s.substring(0, 100).to_string(), "ab↩cd")
-    })
+    test("any? is false and all? true on an empty array") do
+      assert_not([].any? { |x| x })
+      assert([].all? { |x| false })
+    end
+  end
 
-    test("String.replace() replaces substring", fn() {
-      let s = "hello world"
-      let replaced = s.replace("world", "soli")
-      assert_eq(replaced.to_string(), "hello soli")
-    })
+  describe("mutating") do
+    test("push appends") do
+      numbers = []
+      numbers.push(42)
+      assert_eq(numbers, [42])
+    end
 
-    test("String.lpad() left pads string", fn() {
-      let s = "hi"
-      assert_eq(s.lpad(5).to_string(), "   hi")
-      assert_eq(s.lpad(5, "*").to_string(), "***hi")
-    })
+    test("pop removes and returns the last element") do
+      numbers = [1, 2]
+      assert_eq(numbers.pop, 2)
+      assert_eq(numbers, [1])
+    end
 
-    test("String.rpad() right pads string", fn() {
-      let s = "hi"
-      assert_eq(s.rpad(5).to_string(), "hi   ")
-      assert_eq(s.rpad(5, "*").to_string(), "hi***")
-    })
-  })
+    test("pop on an empty array is nil") do
+      assert_null([].pop)
+    end
 
-  describe("Array Class", fn() {
-    test("Array literals are wrapped in Array class", fn() {
-      let arr = [1, 2, 3]
-      let repr = arr.to_string()
-      assert(repr.contains("1"))
-      assert(repr.contains("2"))
-      assert(repr.contains("3"))
-    })
+    test("clear empties the array") do
+      numbers = [1, 2, 3]
+      numbers.clear
+      assert_eq(numbers, [])
+    end
+  end
 
-    test("Array.to_string() returns formatted string", fn() {
-      let arr = [1, 2, 3]
-      assert_eq(arr.to_string(), "[1, 2, 3]")
-    })
+  describe("concat") do
+    test("appends another array in place") do
+      numbers = [1, 2]
+      numbers.concat([3, 4])
+      assert_eq(numbers, [1, 2, 3, 4])
+    end
 
-    test("Array.length() returns array length", fn() {
-      let arr = [1, 2]
-      assert_eq(arr.length(), 2)
-    })
+    test("returns the receiver itself") do
+      numbers = [1, 2]
+      result = numbers.concat([3])
+      numbers.push(99)
+      assert_eq(result, [1, 2, 3, 99])
+    end
 
-    test("Array.push() adds element", fn() {
-      let arr = []
-      arr.push(42)
-      assert_eq(arr.get(0), 42)
-    })
+    test("accepts several arrays") do
+      numbers = [1]
+      numbers.concat([2, 3], [4, 5])
+      assert_eq(numbers, [1, 2, 3, 4, 5])
+    end
 
-    test("Array.pop() removes and returns last element", fn() {
-      let arr = [1, 2]
-      let popped = arr.pop()
-      assert_eq(popped, 2)
-      assert_eq(arr.length(), 1)
-    })
+    test("an empty array changes nothing") do
+      numbers = [1, 2, 3]
+      numbers.concat([])
+      assert_eq(numbers, [1, 2, 3])
+    end
 
-    test("Array.get() returns element at index", fn() {
-      let arr = ["first", "second"]
-      assert_eq(arr.get(0), "first")
-      assert_eq(arr.get(1), "second")
-    })
+    test("leaves the argument unchanged") do
+      numbers = [1, 2]
+      more = [3, 4]
+      numbers.concat(more)
+      assert_eq(more, [3, 4])
+    end
 
-    test("Array.get() supports negative index", fn() {
-      let arr = [1, 2, 3]
-      assert_eq(arr.get(-1), 3)
-      assert_eq(arr.get(-2), 2)
-    })
-
-    test("Array.clear() removes all elements", fn() {
-      let arr = [1, 2, 3]
-      arr.clear()
-      assert_eq(arr.length(), 0)
-    })
-
-    test("Array.first() returns first element", fn() {
-      let arr = [1, 2, 3]
-      assert_eq(arr.first(), 1)
-    })
-
-    test("Array.last() returns last element", fn() {
-      let arr = [1, 2, 3]
-      assert_eq(arr.last(), 3)
-    })
-
-    test("Array.reverse() returns reversed array", fn() {
-      let arr = [1, 2, 3]
-      let rev = arr.reverse()
-      assert_eq(rev.first(), 3)
-      assert_eq(rev.last(), 1)
-    })
-
-    test("Array.uniq() removes duplicates", fn() {
-      let arr = [1, 2, 2, 3, 3, 3]
-      let unique = arr.uniq()
-      assert_eq(unique.length(), 3)
-    })
-
-    test("Array.take() returns first n elements", fn() {
-      let arr = [1, 2, 3, 4, 5]
-      let taken = arr.take(3)
-      assert_eq(taken.length(), 3)
-      assert_eq(taken.last(), 3)
-    })
-
-    test("Array.drop() returns array without first n elements", fn() {
-      let arr = [1, 2, 3, 4, 5]
-      let dropped = arr.drop(2)
-      assert_eq(dropped.length(), 3)
-      assert_eq(dropped.first(), 3)
-    })
-
-    test("Array.sum() returns sum of elements", fn() {
-      let arr = [1, 2, 3, 4, 5]
-      assert_eq(arr.sum(), 15.0)
-    })
-
-    test("Array.min() returns minimum value", fn() {
-      let arr = [3, 1, 4, 1, 5]
-      assert_eq(arr.min(), 1)
-    })
-
-    test("Array.max() returns maximum value", fn() {
-      let arr = [3, 1, 4, 1, 5]
-      assert_eq(arr.max(), 5)
-    })
-
-    test("Array.empty?() checks if array is empty", fn() {
-      let empty = []
-      let full = [1, 2, 3]
-      assert(empty.empty?())
-      assert_not(full.empty?())
-    })
-
-    test("Array.includes?() checks if array contains element", fn() {
-      let arr = [1, 2, 3]
-      assert(arr.includes?(2))
-      assert_not(arr.includes?(5))
-    })
-
-    test("Array.join() joins elements with delimiter", fn() {
-      let arr = [1, 2, 3]
-      assert_eq(arr.join("-"), "1-2-3")
-    })
-
-    test("Array.zip() pairs elements with another array", fn() {
-      let a = [1, 2, 3]
-      let b = [4, 5, 6]
-      let zipped = a.zip(b)
-      assert_eq(zipped.length(), 3)
-    })
-
-    test("Array.find() returns first matching element", fn() {
-      let arr = [1, 2, 3, 4, 5]
-      let found = arr.find(fn(x) { x > 3 })
-      assert_eq(found, 4)
-    })
-
-    test("Array.find() returns null when no match", fn() {
-      let arr = [1, 2, 3]
-      let found = arr.find(fn(x) { x > 10 })
-      assert_null(found)
-    })
-
-    test("Array.any?() checks if any element matches", fn() {
-      let arr = [1, 2, 3, 4]
-      assert(arr.any?(fn(x) { x > 3 }))
-      assert_not(arr.any?(fn(x) { x > 10 }))
-    })
-
-    test("Array.all?() checks if all elements match", fn() {
-      let arr = [2, 4, 6]
-      assert(arr.all?(fn(x) { x % 2 == 0 }))
-      assert_not([1, 2, 3].all?(fn(x) { x > 2 }))
-    })
-
-    test("Array.sort() sorts elements", fn() {
-      let arr = [3, 1, 4, 1, 5]
-      let sorted = arr.sort()
-      assert_eq(sorted.get(0), 1)
-      assert_eq(sorted.get(1), 1)
-      assert_eq(sorted.get(4), 5)
-    })
-
-    test("Array.sort() sorts strings", fn() {
-      let arr = ["banana", "apple", "cherry"]
-      let sorted = arr.sort()
-      assert_eq(sorted.get(0), "apple")
-      assert_eq(sorted.get(2), "cherry")
-    })
-
-    test("Array.sort_by() sorts by key function", fn() {
-      let arr = [{"name": "Charlie"}, {"name": "Alice"}, {"name": "Bob"}]
-      let sorted = arr.sort_by("name")
-      assert_eq(sorted.get(0).get("name"), "Alice")
-      assert_eq(sorted.get(2).get("name"), "Charlie")
-    })
-
-    test("Array.compact() removes null values", fn() {
-      let arr = [1, null, 2, null, 3]
-      let compacted = arr.compact()
-      assert_eq(compacted.length(), 3)
-      assert_eq(compacted.get(0), 1)
-      assert_eq(compacted.get(1), 2)
-      assert_eq(compacted.get(2), 3)
-    })
-
-    test("Array.concat() appends another array in place", fn() {
-      let arr = [1, 2]
-      arr.concat([3, 4])
-      assert_eq(arr.length(), 4)
-      assert_eq(arr.get(0), 1)
-      assert_eq(arr.get(1), 2)
-      assert_eq(arr.get(2), 3)
-      assert_eq(arr.get(3), 4)
-    })
-
-    test("Array.concat() returns the receiver (same instance)", fn() {
-      let arr = [1, 2]
-      let result = arr.concat([3])
-      assert_eq(result.length(), 3)
-      # Mutating via the original binding is reflected in the returned reference
-      arr.push(99)
-      assert_eq(result.length(), 4)
-      assert_eq(result.get(3), 99)
-    })
-
-    test("Array.concat() accepts multiple array arguments", fn() {
-      let arr = [1]
-      arr.concat([2, 3], [4, 5])
-      assert_eq(arr.length(), 5)
-      assert_eq(arr.get(0), 1)
-      assert_eq(arr.get(4), 5)
-    })
-
-    test("Array.concat() with an empty array is a no-op", fn() {
-      let arr = [1, 2, 3]
-      arr.concat([])
-      assert_eq(arr.length(), 3)
-      assert_eq(arr.get(0), 1)
-      assert_eq(arr.get(2), 3)
-    })
-
-    test("Array.concat() does not mutate the passed-in array", fn() {
-      let a = [1, 2]
-      let b = [3, 4]
-      a.concat(b)
-      assert_eq(b.length(), 2)
-      assert_eq(b.get(0), 3)
-      assert_eq(b.get(1), 4)
-    })
-
-    test("Array.concat() raises on non-Array argument", fn() {
-      let threw = false
-      try
-        let arr = [1, 2]
-        arr.concat(42)
-      catch e
-        threw = true
+    test("raises on a non-array") do
+      assert_raises("Array.concat() argument must be an Array") do
+        [1, 2].concat([42][0])
       end
-      assert(threw)
-    })
+    end
+  end
 
-    test("Array.flatten() flattens nested arrays", fn() {
-      let arr = [1, [2, 3], [4, [5, 6]]]
-      let flat = arr.flatten()
-      assert_eq(flat.length(), 6)
-      assert_eq(flat.get(0), 1)
-      assert_eq(flat.get(5), 6)
-    })
+  describe("deriving") do
+    test("reverse") do
+      assert_eq([1, 2, 3].reverse, [3, 2, 1])
+    end
 
-    test("Array.sample() returns an element from the array", fn() {
-      let arr = [1, 2, 3, 4, 5]
-      let s = arr.sample()
-      assert(arr.includes?(s))
-    })
+    test("uniq keeps the first of each value") do
+      assert_eq([1, 2, 2, 3, 3, 3, "a", "a"].uniq, [1, 2, 3, "a"])
+    end
 
-    test("Array.shuffle() returns shuffled array with same elements", fn() {
-      let arr = [1, 2, 3, 4, 5]
-      let shuffled = arr.shuffle()
-      assert_eq(shuffled.length(), 5)
-      assert(shuffled.includes?(1))
-      assert(shuffled.includes?(5))
-    })
-  })
+    test("take and drop") do
+      assert_eq([1, 2, 3, 4, 5].take(3), [1, 2, 3])
+      assert_eq([1, 2, 3, 4, 5].drop(2), [3, 4, 5])
+    end
 
-  describe("Hash Class", fn() {
-    test("Hash literals are wrapped in Hash class", fn() {
-      let h = {"key": "value"}
-      let repr = h.to_string()
-      assert(repr.contains("key"))
-      assert(repr.contains("value"))
-    })
+    test("take and drop past the end") do
+      assert_eq([1, 2, 3].take(5), [1, 2, 3])
+      assert_eq([1, 2, 3].drop(5), [])
+      assert_eq([1, 2, 3].take(0), [])
+    end
 
-    test("Hash.to_string() formats hash correctly", fn() {
-      let h = {"a": 1, "b": 2}
-      let repr = h.to_string()
-      assert(repr.contains("a => 1"))
-      assert(repr.contains("b => 2"))
-    })
+    test("zip pairs elements, stopping at the shorter array") do
+      assert_eq([1, 2, 3].zip([4, 5, 6]), [[1, 4], [2, 5], [3, 6]])
+      assert_eq([1, 2].zip([3]), [[1, 3]])
+    end
 
-    test("Hash.length() returns entry count", fn() {
-      let h = {"a": 1, "b": 2}
-      assert_eq(h.length(), 2)
-    })
+    test("compact drops nils") do
+      assert_eq([1, nil, 2, nil, 3].compact, [1, 2, 3])
+    end
 
-    test("Hash.get() returns value by key", fn() {
-      let h = {"name": "test"}
-      assert_eq(h.get("name"), "test")
-    })
+    test("flatten flattens every level, or a given depth") do
+      assert_eq([1, [2, 3], [4, [5, 6]]].flatten, [1, 2, 3, 4, 5, 6])
+      assert_eq([1, [2, [3]]].flatten(1), [1, 2, [3]])
+    end
 
-    test("Hash.get() returns null for missing key", fn() {
-      let h = {"a": 1}
-      assert_null(h.get("missing"))
-    })
+    test("join") do
+      assert_eq([1, 2, 3].join("-"), "1-2-3")
+    end
+  end
 
-    test("Hash.set() sets value by key", fn() {
-      let h = {}
-      h.set("key", "value")
-      assert_eq(h.get("key"), "value")
-    })
+  describe("aggregating") do
+    test("sum") do
+      assert_eq([1, 2, 3, 4, 5].sum, 15)
+      assert_eq([1.5, 2].sum, 3.5)
+      assert_eq([].sum, 0)
+    end
 
-    test("Hash.has_key() checks key existence", fn() {
-      let h = {"exists": true}
-      assert(h.has_key("exists"))
-      assert_not(h.has_key("missing"))
-    })
+    test("sum of Ints is an Int") do
+      pending("bug: [1, 2].sum is a Float")
+      assert_eq(type([1, 2].sum), "int")
+    end
 
-    test("Hash.keys() returns array of keys", fn() {
-      let h = {"a": 1, "b": 2}
-      let k = h.keys()
-      assert_eq(k.length(), 2)
-    })
+    test("min and max") do
+      assert_eq([3, 1, 4, 1, 5].min, 1)
+      assert_eq([3, 1, 4, 1, 5].max, 5)
+    end
 
-    test("Hash.values() returns array of values", fn() {
-      let h = {"a": 1, "b": 2}
-      let v = h.values()
-      assert_eq(v.length(), 2)
-    })
+    test("fold folds from an initial value") do
+      assert_eq([1, 2, 3].fold(fn(acc, x) { acc + x }, 10), 16)
+      assert_eq([].fold(fn(acc, x) { acc + x }, 0), 0)
+    end
 
-    test("Hash.delete() removes key and returns value", fn() {
-      let h = {"a": 1, "b": 2}
-      let deleted = h.delete("a")
-      assert_eq(deleted, 1)
-      assert_eq(h.length(), 1)
-      assert_not(h.has_key("a"))
-    })
+    test("reduce with and without an initial value") do
+      assert_eq([1, 2, 3].reduce(fn(acc, x) { acc + x }, 0), 6)
+      assert_eq([1, 2, 3].reduce(fn(acc, x) { acc * x }), 6)
+    end
+  end
 
-    test("Hash.merge() combines two hashes", fn() {
-      let h1 = {"a": 1}
-      let h2 = {"b": 2}
-      let merged = h1.merge(h2)
-      assert_eq(merged.length(), 2)
-      assert_eq(merged.get("a"), 1)
-      assert_eq(merged.get("b"), 2)
-    })
+  describe("sorting") do
+    test("sort numbers, Int and Float mixed") do
+      assert_eq([3, 1, 4, 1, 5].sort(), [1, 1, 3, 4, 5])
+      assert_eq([2.5, 1, 3].sort(), [1, 2.5, 3])
+    end
 
-    test("Hash.entries() returns key-value pairs", fn() {
-      let h = {"a": 1}
-      let e = h.entries()
-      assert_eq(e.length(), 1)
-    })
+    test("sort strings") do
+      assert_eq(["banana", "apple", "cherry"].sort(), ["apple", "banana", "cherry"])
+    end
 
-    test("Hash.clear() removes all entries", fn() {
-      let h = {"a": 1, "b": 2}
-      h.clear()
-      assert_eq(h.length(), 0)
-    })
+    test("sort_by a hash key") do
+      people = [{"name": "Charlie"}, {"name": "Alice"}, {"name": "Bob"}]
+      assert_eq(people.sort_by("name").map { |person| person["name"] }, ["Alice", "Bob", "Charlie"])
+    end
 
-    test("Hash.empty?() checks if hash is empty", fn() {
-      assert({}.empty?())
-      assert_not({"a": 1}.empty?())
-    })
+    test("sort_by a block") do
+      assert_eq(["ccc", "a", "bb"].sort_by { |word| word.length }, ["a", "bb", "ccc"])
+    end
+  end
 
-    test("Hash.each() iterates over entries", fn() {
-      let h = {"a": 1, "b": 2}
-      let keys = []
-      h.each(fn(k, v) { keys.push(k) })
-      assert_eq(keys.length(), 2)
-    })
+  describe("randomness") do
+    test("sample returns an element") do
+      numbers = [1, 2, 3, 4, 5]
+      assert(numbers.includes?(numbers.sample))
+    end
 
-    test("Hash.map() transforms entries", fn() {
-      let h = {"a": 1, "b": 2}
-      let result = h.map(fn(k, v) { [k, v * 10] })
-      assert_eq(result.get("a"), 10)
-      assert_eq(result.get("b"), 20)
-    })
+    test("sample of an empty array is nil") do
+      assert_null([].sample)
+    end
 
-    test("Hash.filter() filters entries", fn() {
-      let h = {
-        "a": 1,
-        "b": 2,
-        "c": 3
-      }
-      let result = h.filter(fn(k, v) { v > 1 })
-      assert_eq(result.length(), 2)
-      assert_not(result.has_key("a"))
-    })
+    test("shuffle keeps the same elements") do
+      assert_eq([1, 2, 3, 4, 5].shuffle.sort(), [1, 2, 3, 4, 5])
+    end
+  end
 
-    test("Hash.fetch() retrieves value or raises error", fn() {
-      let h = {"a": 1}
-      assert_eq(h.fetch("a"), 1)
-      assert_eq(h.fetch("missing", "default"), "default")
-    })
+  test("nil.to_a is an empty array") do
+    assert_eq(nil.to_a, [])
+    assert_eq(nil.to_array, [])
+  end
+end
 
-    test("Hash.fetch() throws on missing key without default", fn() {
-      let threw = false
-      try
-        let h = {"a": 1}
-        h.fetch("missing")
-      catch e
-        threw = true
+describe("Hash") do
+  describe("to_string and len") do
+    test("to_string renders the entries") do
+      assert_eq({"a": 1, "b": 2}.to_string, "{a => 1, b => 2}")
+      assert_eq({}.to_string, "{}")
+    end
+
+    test("length and len() count entries") do
+      assert_eq({"a": 1, "b": 2}.length, 2)
+      assert_eq(len({"a": 1, "b": 2}), 2)
+    end
+
+    test("len() raises on a number") do
+      assert_raises("len() expects array, string, or hash, got int") do
+        len([5][0])
       end
-      assert(threw)
-    })
+    end
+  end
 
-    test("Hash.invert() swaps keys and values", fn() {
-      let h = {"a": 1, "b": 2}
-      let inverted = h.invert()
-      assert_eq(inverted.get(1), "a")
-      assert_eq(inverted.get(2), "b")
-    })
+  describe("reading") do
+    test("get reads a key, nil when missing") do
+      assert_eq({"name": "test"}.get("name"), "test")
+      assert_null({"a": 1}.get("missing"))
+    end
 
-    test("Hash.transform_values() transforms all values", fn() {
-      let h = {"a": 1, "b": 2}
-      let result = h.transform_values(fn(v) { v * 10 })
-      assert_eq(result.get("a"), 10)
-      assert_eq(result.get("b"), 20)
-    })
+    test("has_key") do
+      flags = {"exists": true}
+      assert(flags.has_key("exists"))
+      assert_not(flags.has_key("missing"))
+    end
 
-    test("Hash.transform_keys() transforms all keys", fn() {
-      let h = {"hello": 1, "world": 2}
-      let result = h.transform_keys(fn(k) { k.upcase() })
-      assert_eq(result.get("HELLO"), 1)
-      assert_eq(result.get("WORLD"), 2)
-    })
+    test("keys, values and entries keep insertion order") do
+      letters = {"a": 1, "b": 2}
+      assert_eq(letters.keys, ["a", "b"])
+      assert_eq(letters.values, [1, 2])
+      assert_eq(letters.entries, [["a", 1], ["b", 2]])
+    end
 
-    test("Hash.select() selects matching entries", fn() {
-      let h = {
-        "a": 1,
-        "b": 2,
-        "c": 3
-      }
-      let result = h.select(fn(k, v) { v >= 2 })
-      assert_eq(result.length(), 2)
-      assert(result.has_key("b"))
-      assert(result.has_key("c"))
-    })
+    test("empty?") do
+      assert({}.empty?)
+      assert_not({"a": 1}.empty?)
+    end
 
-    test("Hash.reject() rejects matching entries", fn() {
-      let h = {
-        "a": 1,
-        "b": 2,
-        "c": 3
-      }
-      let result = h.reject(fn(k, v) { v >= 2 })
-      assert_eq(result.length(), 1)
-      assert(result.has_key("a"))
-    })
+    test("fetch returns the value or the default") do
+      assert_eq({"a": 1}.fetch("a"), 1)
+      assert_eq({"a": 1}.fetch("missing", "default"), "default")
+    end
 
-    test("Hash.slice() returns subset by keys", fn() {
-      let h = {
-        "a": 1,
-        "b": 2,
-        "c": 3
-      }
-      let result = h.slice(["a", "c"])
-      assert_eq(result.length(), 2)
-      assert_eq(result.get("a"), 1)
-      assert_eq(result.get("c"), 3)
-    })
+    test("fetch raises on a missing key without a default") do
+      assert_raises("key not found: missing") do
+        {"a": 1}.fetch("missing")
+      end
+    end
+  end
 
-    test("Hash.except() returns hash without specified keys", fn() {
-      let h = {
-        "a": 1,
-        "b": 2,
-        "c": 3
-      }
-      let result = h.except(["b"])
-      assert_eq(result.length(), 2)
-      assert_not(result.has_key("b"))
-    })
+  describe("mutating") do
+    test("set writes a key") do
+      values = {}
+      values.set("key", "value")
+      assert_eq(values, {"key": "value"})
+    end
 
-    test("Hash.compact() removes null values", fn() {
-      let h = {
-        "a": 1,
-        "b": null,
-        "c": 3
-      }
-      let result = h.compact()
-      assert_eq(result.length(), 2)
-      assert_not(result.has_key("b"))
-    })
-  })
+    test("delete removes a key and returns its value") do
+      letters = {"a": 1, "b": 2}
+      assert_eq(letters.delete("a"), 1)
+      assert_eq(letters, {"b": 2})
+    end
 
-  describe("REPL to_string() Integration", fn() {
-    test("String literals show to_string() in REPL", fn() {
-      let s = "hello"
-      let result = s.to_string()
-      assert_eq(result, "hello")
-    })
+    test("delete of a missing key is nil") do
+      assert_null({"a": 1}.delete("x"))
+    end
 
-    test("Array literals show to_string() in REPL", fn() {
-      let arr = [1, 2, 3]
-      let repr = arr.to_string()
-      assert(repr == "[1, 2, 3]")
-    })
+    test("clear empties the hash") do
+      letters = {"a": 1, "b": 2}
+      letters.clear
+      assert_eq(letters, {})
+    end
+  end
 
-    test("Hash literals show to_string() in REPL", fn() {
-      let h = {"a": 1, "b": 2}
-      let repr = h.to_string()
-      assert(repr.contains("a"))
-      assert(repr.contains("b"))
-    })
-  })
+  describe("iterating") do
+    test("each yields key and value in order") do
+      seen = []
+      {"a": 1, "b": 2}.each do |key, value|
+        seen.push("#{key}=#{value}")
+      end
+      assert_eq(seen, ["a=1", "b=2"])
+    end
 
-  describe("Global len() Function with Literals", fn() {
-    test("len() works with string literal", fn() {
-      let s = "hello"
-      assert_eq(len(s), 5)
-    })
+    test("map builds a hash from [key, value] pairs") do
+      assert_eq({"a": 1, "b": 2}.map { |key, value| [key, value * 10] }, {"a": 10, "b": 20})
+    end
 
-    test("len() works with array literal", fn() {
-      let arr = [1, 2]
-      assert_eq(len(arr), 2)
-    })
+    test("filter and select keep matching entries") do
+      letters = {"a": 1, "b": 2, "c": 3}
+      assert_eq(letters.filter { |key, value| value > 1 }, {"b": 2, "c": 3})
+      assert_eq(letters.select { |key, value| value >= 2 }, {"b": 2, "c": 3})
+    end
 
-    test("len() works with hash literal", fn() {
-      let h = {"a": 1, "b": 2}
-      assert_eq(len(h), 2)
-    })
-  })
+    test("reject drops matching entries") do
+      assert_eq({"a": 1, "b": 2, "c": 3}.reject { |key, value| value >= 2 }, {"a": 1})
+    end
+  end
 
-  describe("Base64 Class", fn() {
-    test("Base64.encode() encodes string to base64", fn() {
-      let encoded = Base64.encode("hello")
-      assert_eq(encoded, "aGVsbG8=")
-    })
+  describe("deriving") do
+    test("merge, the argument winning on a shared key") do
+      assert_eq({"a": 1}.merge({"b": 2}), {"a": 1, "b": 2})
+      assert_eq({"a": 1, "b": 1}.merge({"b": 2}), {"a": 1, "b": 2})
+    end
 
-    test("Base64.decode() decodes base64 to string", fn() {
-      let decoded = Base64.decode("aGVsbG8=")
-      assert_eq(decoded, "hello")
-    })
+    test("invert swaps keys and values") do
+      assert_eq({"a": 1, "b": 2}.invert, {1: "a", 2: "b"})
+    end
 
-    test("Base64 round-trip works", fn() {
-      let original = "Hello, World! 123"
-      let encoded = Base64.encode(original)
-      let decoded = Base64.decode(encoded)
-      assert_eq(decoded, original)
-    })
+    test("transform_values and transform_keys") do
+      assert_eq({"a": 1, "b": 2}.transform_values { |value| value * 10 }, {"a": 10, "b": 20})
+      assert_eq({"hello": 1, "world": 2}.transform_keys { |key| key.upcase }, {"HELLO": 1, "WORLD": 2})
+    end
 
-    test("Base64.encode() handles empty string", fn() {
-      let encoded = Base64.encode("")
-      assert_eq(encoded, "")
-    })
+    test("slice keeps the given keys that exist") do
+      assert_eq({"a": 1, "b": 2, "c": 3}.slice(["a", "c", "z"]), {"a": 1, "c": 3})
+    end
 
-    test("Base64.encode() handles special characters", fn() {
-      let encoded = Base64.encode("Hello\nWorld\t!")
-      assert_eq(encoded, "SGVsbG8KV29ybGQJIQ==")
-    })
+    test("except drops the given keys") do
+      assert_eq({"a": 1, "b": 2, "c": 3}.except(["b", "z"]), {"a": 1, "c": 3})
+    end
 
-    test("Base64.decode() handles URL-safe base64", fn() {
-      let encoded = Base64.encode("foo/bar?query=value")
-      let decoded = Base64.decode(encoded)
-      assert_eq(decoded, "foo/bar?query=value")
-    })
-  })
-})
+    test("compact drops nil values") do
+      assert_eq({"a": 1, "b": nil, "c": 3}.compact, {"a": 1, "c": 3})
+    end
+  end
+end

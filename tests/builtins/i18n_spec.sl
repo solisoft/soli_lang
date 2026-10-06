@@ -1,271 +1,271 @@
-# ============================================================================
-# I18n.translate, I18n.plural, I18n.format_number, I18n.format_date Tests
-# ============================================================================
+# I18n: the current locale, translate, CLDR plural, format_number, format_date
+# and the per-locale table cache. Currency formatting is in i18n_currency_spec.sl.
 
-describe("I18n.locale and I18n.set_locale", fn() {
-  test("I18n.locale returns current locale", fn() {
-    let locale = I18n.locale()
-    assert(!locale.nil?)
-    assert(type(locale) == "string")
-  })
+# Legacy translation tables: "<locale>.<key>" => text.
+GREETINGS = {"en.greeting": "Hello", "fr.greeting": "Bonjour", "de.greeting": "Hallo"}
 
-  test("I18n.set_locale changes locale and returns it", fn() {
-    let original = I18n.locale()
-    let result = I18n.set_locale("fr")
-    assert_eq(result, "fr")
-    assert_eq(I18n.locale(), "fr")
-    I18n.set_locale(original)
-  })
+ITEMS = {
+  "en.item_zero": "No items",
+  "en.item_one": "1 item",
+  "en.item_other": "{count} items",
+  "fr.item_one": "{count} article",
+  "fr.item_other": "{count} articles",
+  "ru.item_one": "one",
+  "ru.item_few": "few",
+  "ru.item_many": "many",
+  "ru.item_other": "other",
+  "ja.item_one": "never used",
+  "ja.item_other": "{count} ko"
+}
 
-  test("I18n.set_locale returns error for non-string", fn() {
-    let failed = false
-    try
-      I18n.set_locale(123)
-    catch e
-      failed = true
-    end
-    assert(failed)
-  })
-})
+# 2026-01-15 11:00 UTC. format_date reads the local zone; this is the 15th from
+# UTC-11 to UTC+12, and a day past 12 tells day and month order apart.
+JANUARY_15 = 1768474800
 
-describe("I18n.translate", fn() {
-  test("translate with translations hash", fn() {
-    let t = {"en.greeting": "Hello", "fr.greeting": "Bonjour"}
-    assert_eq(I18n.translate("greeting", "en", t), "Hello")
-    assert_eq(I18n.translate("greeting", "fr", t), "Bonjour")
-  })
-
-  test("translate falls back to en if locale key not found", fn() {
-    let t = {"en.greeting": "Hello"}
-    assert_eq(I18n.translate("greeting", "de", t), "Hello")
-  })
-
-  test("translate returns key if no translation found", fn() {
-    let t = {}
-    assert_eq(I18n.translate("unknown_key", "en", t), "unknown_key")
-  })
-
-  test("translate expects string key", fn() {
-    let failed = false
-    try
-      I18n.translate(123, "en", {})
-    catch e
-      failed = true
-    end
-    assert(failed)
-  })
-
-  # ---- New (post-YAML-store) behavior ------------------------------------
-
-  test("translate with one arg returns the key when nothing resolves", fn() {
-    # In the test environment the auto-loaded store is empty, so a key
-    # with no matching locale entry is returned verbatim.
-    assert_eq(I18n.translate("missing.key"), "missing.key")
-  })
-
-  test("translate with null locale uses current locale", fn() {
-    let original = I18n.locale()
+describe("I18n") do
+  before_each() do
     I18n.set_locale("en")
-    let t = {"en.hi": "Hello"}
-    assert_eq(I18n.translate("hi", null, t), "Hello")
-    I18n.set_locale(original)
-  })
+  end
 
-  test("translate rejects non-string non-hash second arg", fn() {
-    let failed = false
-    try
-      I18n.translate("greeting", 42)
-    catch e
-      failed = true
-    end
-    assert(failed)
-  })
-
-  test("translate rejects non-hash third arg", fn() {
-    let failed = false
-    try
-      I18n.translate("greeting", "en", "not a hash")
-    catch e
-      failed = true
-    end
-    assert(failed)
-  })
-
-  test("translate with values-hash 2nd arg uses current locale", fn() {
-    # No matching translation in the empty auto-store, so the key falls
-    # through as-is. Asserts the disambiguation does not raise.
-    let result = I18n.translate("missing", {"name": "Alice"})
-    assert_eq(result, "missing")
-  })
-
-  test("translate treats non-dotted-key 3rd arg as values not legacy", fn() {
-    # 3rd-arg hash whose keys don't all contain a dot is interpolation
-    # values. The auto-store miss returns the key (no `{}`), so values
-    # are unused but the call must not raise nor be misclassified.
-    let result = I18n.translate("missing", "en", {"name": "Alice"})
-    assert_eq(result, "missing")
-  })
-})
-
-describe("I18n.plural", fn() {
-  test("plural returns a string", fn() {
-    let t = {}
-    let result = I18n.plural("items", 0, "en", t)
-    assert(type(result) == "string")
-  })
-
-  test("plural with no matching translation returns key", fn() {
-    let t = {}
-    assert_eq(I18n.plural("items", 5, "en", t), "items")
-  })
-
-  test("plural expects number as second argument", fn() {
-    let failed = false
-    try
-      I18n.plural("items", "five", "en", {})
-    catch e
-      failed = true
-    end
-    assert(failed)
-  })
-
-  test("plural with legacy translations selects suffix by count", fn() {
-    let t = {
-      "en.items_zero": "No items",
-      "en.items_one": "1 item",
-      "en.items_other": "Many items"
-    }
-    assert_eq(I18n.plural("items", 0, "en", t), "No items")
-    assert_eq(I18n.plural("items", 1, "en", t), "1 item")
-    assert_eq(I18n.plural("items", 5, "en", t), "Many items")
-  })
-
-  test("plural rejects non-string non-hash third arg", fn() {
-    let failed = false
-    try
-      I18n.plural("items", 5, 99)
-    catch e
-      failed = true
-    end
-    assert(failed)
-  })
-})
-
-describe("I18n.format_number", fn() {
-  test("format_number with English locale uses dot", fn() {
-    assert_eq(I18n.format_number(1234.56, "en"), "1234.56")
-  })
-
-  test("format_number with French locale uses comma", fn() {
-    assert_eq(I18n.format_number(1234.56, "fr"), "1234,56")
-  })
-
-  test("format_number with German locale uses comma", fn() {
-    assert_eq(I18n.format_number(1234.56, "de"), "1234,56")
-  })
-
-  test("format_number with integer", fn() { assert_eq(I18n.format_number(100, "en"), "100") })
-
-  test("format_number with float", fn() { assert_eq(I18n.format_number(9.99, "en"), "9.99") })
-
-  test("format_number expects number", fn() {
-    let failed = false
-    try
-      I18n.format_number("not a number")
-    catch e
-      failed = true
-    end
-    assert(failed)
-  })
-})
-
-describe("I18n.format_date", fn() {
-  test("format_date formats timestamp", fn() {
-    let ts = 1704067200
-    let result = I18n.format_date(ts, "en")
-    assert(type(result) == "string")
-    assert(result.contains("/"))
-  })
-
-  test("format_date with French locale uses dd/mm/yyyy", fn() {
-    let ts = 1704067200
-    let result = I18n.format_date(ts, "fr")
-    assert(result.contains("/"))
-  })
-
-  test("format_date with German locale uses dd.mm.yyyy", fn() {
-    let ts = 1704067200
-    let result = I18n.format_date(ts, "de")
-    assert(result.contains("."))
-  })
-
-  test("format_date with unknown locale uses yyyy-mm-dd", fn() {
-    let ts = 1704067200
-    let result = I18n.format_date(ts, "xx")
-    assert(result.contains("-"))
-  })
-
-  test("format_date expects timestamp", fn() {
-    let failed = false
-    try
-      I18n.format_date("not a timestamp")
-    catch e
-      failed = true
-    end
-    assert(failed)
-  })
-
-  test("format_date with null locale uses current locale", fn() {
-    let ts = 1704067200
-    let original = I18n.locale()
+  # The locale is process-wide and outlives this file.
+  after_each() do
     I18n.set_locale("en")
-    let result = I18n.format_date(ts, null)
-    assert(!result.nil?)
-    I18n.set_locale(original)
-  })
-})
+  end
 
-describe("I18n.cache_table and I18n.cached_table", fn() {
-  # Synthetic locale codes ("zz*") keep these independent of any real
-  # locale another test might cache on this thread.
-  test("cached_table returns null before anything is cached", fn() {
-    assert_eq(I18n.cached_table("zz-fresh"), null)
-  })
-
-  test("cache_table stores and returns the table, cached_table reads it back", fn() {
-    let table = {"greeting": "hi", "bye": "ciao"}
-    let returned = I18n.cache_table("zz1", table)
-    assert_eq(returned["greeting"], "hi")
-
-    let fetched = I18n.cached_table("zz1")
-    assert(!fetched.nil?)
-    assert_eq(fetched["greeting"], "hi")
-    assert_eq(fetched["bye"], "ciao")
-  })
-
-  test("locales are cached independently", fn() {
-    I18n.cache_table("zz2", {"k": "two"})
-    assert_eq(I18n.cached_table("zz1")["greeting"], "hi")
-    assert_eq(I18n.cached_table("zz2")["k"], "two")
-  })
-
-  test("cached_table rejects a non-string locale", fn() {
-    let failed = false
-    try
-      I18n.cached_table(123)
-    catch e
-      failed = true
+  describe("locale and set_locale") do
+    test("locale is a string, en by default here") do
+      assert_eq(I18n.locale, "en")
     end
-    assert(failed)
-  })
 
-  test("cache_table rejects a non-hash table", fn() {
-    let failed = false
-    try
-      I18n.cache_table("zz3", "not-a-hash")
-    catch e
-      failed = true
+    test("set_locale changes the locale and returns it") do
+      assert_eq(I18n.set_locale("fr"), "fr")
+      assert_eq(I18n.locale, "fr")
     end
-    assert(failed)
-  })
-})
+
+    test("the global set_locale is the same setting") do
+      assert_eq(set_locale("de"), "de")
+      assert_eq(I18n.locale, "de")
+    end
+
+    test("set_locale raises on a non-string") do
+      assert_raises("I18n.set_locale expects a string, got int") do
+        I18n.set_locale([123][0])
+      end
+    end
+  end
+
+  describe("translate") do
+    test("looks the key up in the given locale") do
+      assert_eq(I18n.translate("greeting", "en", GREETINGS), "Hello")
+      assert_eq(I18n.translate("greeting", "fr", GREETINGS), "Bonjour")
+      assert_eq(I18n.translate("greeting", "de", GREETINGS), "Hallo")
+    end
+
+    test("a nil locale means the current one") do
+      I18n.set_locale("fr")
+      assert_eq(I18n.translate("greeting", nil, GREETINGS), "Bonjour")
+    end
+
+    test("falls back to en when the locale has no entry") do
+      assert_eq(I18n.translate("greeting", "es", {"en.greeting": "Hello"}), "Hello")
+    end
+
+    test("dotted keys are looked up whole") do
+      assert_eq(I18n.translate("nav.home", "en", {"en.nav.home": "Home"}), "Home")
+    end
+
+    test("returns the key when nothing resolves") do
+      assert_eq(I18n.translate("unknown_key", "en", {}), "unknown_key")
+    end
+
+    # The test environment loads no translation files, so the store is empty.
+    test("with only a key, reads the empty store and returns the key") do
+      assert_eq(I18n.translate("missing.key"), "missing.key")
+    end
+
+    test("a values hash as second argument means the current locale") do
+      assert_eq(I18n.translate("missing", {"name": "Alice"}), "missing")
+    end
+
+    # A third-argument hash whose keys are not all dotted is interpolation
+    # values, not a legacy table.
+    test("a non-dotted third-argument hash is values, not a table") do
+      assert_eq(I18n.translate("missing", "en", {"name": "Alice"}), "missing")
+    end
+
+    test("raises on a non-string key") do
+      assert_raises("I18n.translate expects a key string") do
+        I18n.translate([123][0], "en", {})
+      end
+    end
+
+    test("raises on a second argument that is neither locale nor values") do
+      assert_raises("second arg must be a locale string or values hash, got int") do
+        I18n.translate("greeting", [42][0])
+      end
+    end
+
+    test("raises on a third argument that is not a hash") do
+      assert_raises("third arg must be a hash, got string") do
+        I18n.translate("greeting", "en", ["not a hash"][0])
+      end
+    end
+  end
+
+  describe("plural") do
+    test("English: zero, one, other, with the count interpolated") do
+      assert_eq(I18n.plural("item", 0, "en", ITEMS), "No items")
+      assert_eq(I18n.plural("item", 1, "en", ITEMS), "1 item")
+      assert_eq(I18n.plural("item", 5, "en", ITEMS), "5 items")
+    end
+
+    test("French: 0 is singular when no _zero key exists") do
+      assert_eq(I18n.plural("item", 0, "fr", ITEMS), "0 article")
+      assert_eq(I18n.plural("item", 3, "fr", ITEMS), "3 articles")
+    end
+
+    test("Russian: one, few, many") do
+      assert_eq(I18n.plural("item", 1, "ru", ITEMS), "one")
+      assert_eq(I18n.plural("item", 3, "ru", ITEMS), "few")
+      assert_eq(I18n.plural("item", 5, "ru", ITEMS), "many")
+      assert_eq(I18n.plural("item", 21, "ru", ITEMS), "one")
+    end
+
+    test("Japanese: always other") do
+      assert_eq(I18n.plural("item", 1, "ja", ITEMS), "1 ko")
+    end
+
+    test("a locale without the key falls back to en") do
+      assert_eq(I18n.plural("item", 2, "de", ITEMS), "2 items")
+    end
+
+    test("a nil locale means the current one") do
+      I18n.set_locale("fr")
+      assert_eq(I18n.plural("item", 3, nil, ITEMS), "3 articles")
+    end
+
+    test("returns the key when nothing resolves") do
+      assert_eq(I18n.plural("items", 5, "en", {}), "items")
+    end
+
+    test("raises on a non-number count") do
+      assert_raises("I18n.plural expects a number") do
+        I18n.plural("items", ["five"][0], "en", {})
+      end
+    end
+
+    test("raises on a third argument that is neither locale nor values") do
+      assert_raises("third arg must be a locale string or values hash, got int") do
+        I18n.plural("items", 5, [99][0])
+      end
+    end
+  end
+
+  describe("format_number") do
+    test("en uses a decimal point") do
+      assert_eq(I18n.format_number(1234.56, "en"), "1234.56")
+    end
+
+    test("fr, de and es use a decimal comma") do
+      assert_eq(I18n.format_number(1234.56, "fr"), "1234,56")
+      assert_eq(I18n.format_number(1234.56, "de"), "1234,56")
+      assert_eq(I18n.format_number(1234.56, "es"), "1234,56")
+    end
+
+    test("an Int has no decimals") do
+      assert_eq(I18n.format_number(100, "en"), "100")
+      assert_eq(I18n.format_number(0, "fr"), "0")
+    end
+
+    test("keeps the Float's digits and sign") do
+      assert_eq(I18n.format_number(9.99, "en"), "9.99")
+      assert_eq(I18n.format_number(-1234.5, "fr"), "-1234,5")
+    end
+
+    test("an unknown locale formats like en") do
+      assert_eq(I18n.format_number(1234.56, "xx"), "1234.56")
+    end
+
+    test("defaults to the current locale") do
+      I18n.set_locale("fr")
+      assert_eq(I18n.format_number(1.5), "1,5")
+    end
+
+    test("raises on a non-number") do
+      assert_raises("I18n.format_number expects a number") do
+        I18n.format_number(["not a number"][0])
+      end
+    end
+  end
+
+  describe("format_date") do
+    test("en is MM/DD/YYYY") do
+      assert_eq(I18n.format_date(JANUARY_15, "en"), "01/15/2026")
+    end
+
+    test("fr is DD/MM/YYYY") do
+      assert_eq(I18n.format_date(JANUARY_15, "fr"), "15/01/2026")
+    end
+
+    test("de is DD.MM.YYYY") do
+      assert_eq(I18n.format_date(JANUARY_15, "de"), "15.01.2026")
+    end
+
+    test("es, ja and unknown locales are ISO") do
+      assert_eq(I18n.format_date(JANUARY_15, "es"), "2026-01-15")
+      assert_eq(I18n.format_date(JANUARY_15, "ja"), "2026-01-15")
+      assert_eq(I18n.format_date(JANUARY_15, "xx"), "2026-01-15")
+    end
+
+    test("a nil or missing locale means the current one") do
+      I18n.set_locale("fr")
+      assert_eq(I18n.format_date(JANUARY_15, nil), "15/01/2026")
+      assert_eq(I18n.format_date(JANUARY_15), "15/01/2026")
+    end
+
+    test("raises on a non-timestamp") do
+      assert_raises("I18n.format_date requires a timestamp") do
+        I18n.format_date(["not a timestamp"][0])
+      end
+    end
+  end
+
+  # Synthetic locale codes ("zz*") keep these independent of any real locale
+  # another test might cache on this thread.
+  describe("cache_table and cached_table") do
+    test("cached_table is nil before anything is cached") do
+      assert_null(I18n.cached_table("zz-fresh"))
+    end
+
+    test("cache_table stores the table and returns it") do
+      table = {"greeting": "hi", "bye": "ciao"}
+      assert_eq(I18n.cache_table("zz1", table), table)
+      assert_eq(I18n.cached_table("zz1"), {"greeting": "hi", "bye": "ciao"})
+    end
+
+    test("locales are cached independently") do
+      I18n.cache_table("zz1", {"greeting": "hi"})
+      I18n.cache_table("zz2", {"k": "two"})
+      assert_eq(I18n.cached_table("zz1")["greeting"], "hi")
+      assert_eq(I18n.cached_table("zz2")["k"], "two")
+    end
+
+    test("caching again replaces the table") do
+      I18n.cache_table("zz4", {"k": "old"})
+      I18n.cache_table("zz4", {"k": "new"})
+      assert_eq(I18n.cached_table("zz4"), {"k": "new"})
+    end
+
+    test("cached_table raises on a non-string locale") do
+      assert_raises("I18n.cached_table expects a locale string, got int") do
+        I18n.cached_table([123][0])
+      end
+    end
+
+    test("cache_table raises on a non-hash table") do
+      assert_raises("I18n.cache_table expects a hash table, got string") do
+        I18n.cache_table("zz3", ["not-a-hash"][0])
+      end
+    end
+  end
+end
