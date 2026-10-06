@@ -85,10 +85,6 @@ vsce package
             <p class="text-gray-400 text-xs mt-1">Fold classes and functions</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-            <code class="text-amber-400 text-sm">inlayHint</code>
-            <p class="text-gray-400 text-xs mt-1">Inline type annotations</p>
-        </div>
-        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <code class="text-amber-400 text-sm">codeAction</code>
             <p class="text-gray-400 text-xs mt-1">Quick fixes for lint violations</p>
         </div>

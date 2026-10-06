@@ -31,27 +31,3 @@ pub fn goto_definition(
 
     None
 }
-
-pub fn goto_type_definition(
-    source: &str,
-    position: Position,
-    table: &SymbolTable,
-) -> Option<GotoDefinitionResponse> {
-    let offset = position_to_offset(source, position)?;
-
-    if let Some(scoped) = table.find_at_position(offset) {
-        if let Some(type_name) = &scoped.symbol.type_name {
-            let type_symbols = table.find_by_name(type_name);
-            if let Some(first) = type_symbols.first() {
-                let definition = Location {
-                    uri: Url::from_file_path("")
-                        .unwrap_or_else(|_| Url::parse("file:///").unwrap()),
-                    range: lsp_range_from_span(first.symbol.span),
-                };
-                return Some(GotoDefinitionResponse::Scalar(definition));
-            }
-        }
-    }
-
-    None
-}

@@ -4441,7 +4441,6 @@ The VS Code / Cursor extension (`editors/vscode/`) provides full Language Server
 - **Find references** - locate all uses of a symbol
 - **Document symbols** - outline view of classes, functions, and methods
 - **Code folding** - fold code blocks and classes
-- **Inlay hints** - type annotations displayed inline
 
 #### Installation
 
@@ -4515,7 +4514,6 @@ require('lspconfig').soli.setup({
 | `textDocument/references` | Find all references to a symbol |
 | `textDocument/documentSymbol` | Hierarchical symbol tree |
 | `textDocument/foldingRange` | Fold classes, functions, and blocks |
-| `textDocument/inlayHint` | Type annotations for variables |
 | `textDocument/codeAction` | Quick fixes for lint violations |
 | `textDocument/formatting` | Format document |
 

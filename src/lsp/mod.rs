@@ -6,10 +6,8 @@ pub mod folding;
 pub mod format;
 pub mod goto;
 pub mod hover;
-pub mod inlay;
 pub mod references;
 pub mod rename;
-pub mod semantic;
 pub mod symbols;
 pub mod symbols_lsp;
 mod util;
@@ -70,9 +68,6 @@ impl LanguageServer for Backend {
                 hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
                 completion_provider: Some(lsp_types::CompletionOptions::default()),
                 definition_provider: Some(lsp_types::OneOf::Left(true)),
-                type_definition_provider: Some(
-                    lsp_types::TypeDefinitionProviderCapability::Simple(true),
-                ),
                 references_provider: Some(lsp_types::OneOf::Left(true)),
                 document_symbol_provider: Some(lsp_types::OneOf::Left(true)),
                 rename_provider: Some(lsp_types::OneOf::Left(true)),
@@ -82,7 +77,6 @@ impl LanguageServer for Backend {
                 folding_range_provider: Some(lsp_types::FoldingRangeProviderCapability::Simple(
                     true,
                 )),
-                inlay_hint_provider: Some(lsp_types::OneOf::Left(true)),
                 ..Default::default()
             },
             ..Default::default()

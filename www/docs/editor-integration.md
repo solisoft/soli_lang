@@ -2,7 +2,7 @@
 
 Soli ships a Language Server (`soli lsp`) so any editor that speaks LSP can
 offer hover, completion, go-to-definition, references, rename, format,
-diagnostics, document symbols, folding ranges, inlay hints, and code actions.
+diagnostics, document symbols, folding ranges, and code actions.
 
 ## Requirements
 
@@ -122,8 +122,8 @@ The Soli LSP currently advertises these capabilities:
 
 - `hover` — type/kind info and builtin docs
 - `completion` — keywords, types, in-scope symbols
-- `definition`, `typeDefinition`, `references`, `rename`
-- `documentSymbol`, `foldingRange`, `inlayHint`
+- `definition`, `references`, `rename`
+- `documentSymbol`, `foldingRange`
 - `formatting`, `rangeFormatting`
 - `codeAction` — quick-fixes for lint violations
 - diagnostics streamed from `soli lint`

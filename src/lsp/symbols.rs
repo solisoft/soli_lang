@@ -53,12 +53,6 @@ impl SymbolTable {
             .filter(|s| s.symbol.name == name)
             .collect()
     }
-
-    pub fn get_in_scope(&self, scope_level: usize, name: &str) -> Option<&ScopedSymbol> {
-        self.symbols
-            .iter()
-            .find(|s| s.symbol.scope_level == scope_level && s.symbol.name == name)
-    }
 }
 
 pub fn build_symbol_table(source: &str) -> Option<SymbolTable> {
