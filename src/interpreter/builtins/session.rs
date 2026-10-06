@@ -20,6 +20,7 @@ use uuid::Uuid;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value_json::{json_ref_to_value_or_null as json_to_value, value_to_json};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum SessionDriver {
@@ -1267,16 +1268,6 @@ pub fn finalize_session_cookie(
             .map(|sealed| create_session_cookie(&sealed, secure));
     }
     session_cookie_if_changed(current, cookie, secure)
-}
-
-/// Convert a Soli Value to JSON for storage.
-fn value_to_json(value: &Value) -> Result<JsonValue, String> {
-    crate::interpreter::value::value_to_json(value)
-}
-
-/// Convert a JSON value back to a Soli Value.
-fn json_to_value(json: &JsonValue) -> Value {
-    crate::interpreter::value::json_to_value_ref(json).unwrap_or(Value::Null)
 }
 
 /// Register session builtins in the given environment.

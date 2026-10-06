@@ -9,6 +9,9 @@ use super::core::{
     db_url, force_refresh_jwt_token, get_cursor_url, get_database_name, get_jwt_token,
     resolve_api_key, resolve_basic_auth,
 };
+pub use crate::interpreter::value_json::{
+    json_ref_to_value_or_null as json_to_value, json_to_value_or_null as json_to_value_owned,
+};
 
 /// Apply DB authentication headers.
 ///
@@ -517,19 +520,6 @@ where
         Ok(json) => crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null),
         Err(e) => Value::String(format!("Error: {}", e).into()),
     }
-}
-
-/// Convert a serde_json::Value reference to a Soli Value (infallible wrapper).
-/// Prefer [`json_to_value_owned`] when you hold an owned tree — it moves strings
-/// instead of cloning them.
-pub fn json_to_value(json: &serde_json::Value) -> Value {
-    crate::interpreter::value::json_to_value_ref(json).unwrap_or(Value::Null)
-}
-
-/// Consuming conversion: moves string bytes into Soli rather than cloning.
-#[inline]
-pub fn json_to_value_owned(json: serde_json::Value) -> Value {
-    crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null)
 }
 
 /// Normalize a document key: "default:users/UUID" → "UUID" (strip everything up to last '/').

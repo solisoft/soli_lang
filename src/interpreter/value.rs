@@ -2173,20 +2173,7 @@ fn convert_future_result(raw_data: &str, kind: &HttpFutureKind) -> Result<Value,
     }
 }
 
-/// Convert a serde_json::Value to a Soli Value (consuming — moves strings instead of cloning).
-pub fn json_to_value(json: serde_json::Value) -> Result<Value, String> {
-    crate::interpreter::value_json::json_to_value(json)
-}
-
-/// Convert a serde_json::Value reference to a Soli Value (clones strings).
-pub fn json_to_value_ref(json: &serde_json::Value) -> Result<Value, String> {
-    crate::interpreter::value_json::json_to_value_ref(json)
-}
-
-/// Convert a Soli Value to serde_json::Value.
-pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
-    crate::interpreter::value_json::value_to_json(value)
-}
+pub use crate::interpreter::value_json::{json_to_value, json_to_value_ref, value_to_json};
 
 /// SEC-013: which fields of a `Value::Instance` are safe to include
 /// when the runtime serialises an instance via `render_json` /

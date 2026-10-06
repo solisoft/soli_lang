@@ -192,6 +192,21 @@ pub fn json_to_value_ref(json: &serde_json::Value) -> Result<Value, String> {
     inner(json, 0)
 }
 
+/// [`json_to_value`], with a value too deep to convert read as `Null`.
+pub fn json_to_value_or_null(json: serde_json::Value) -> Value {
+    json_to_value(json).unwrap_or(Value::Null)
+}
+
+/// [`json_to_value_ref`], with a value too deep to convert read as `Null`.
+pub fn json_ref_to_value_or_null(json: &serde_json::Value) -> Value {
+    json_to_value_ref(json).unwrap_or(Value::Null)
+}
+
+/// [`value_to_json`], with a value it cannot convert written as `null`.
+pub fn value_to_json_or_null(value: &Value) -> serde_json::Value {
+    value_to_json(value).unwrap_or(serde_json::Value::Null)
+}
+
 /// Convert a Soli Value to serde_json::Value.
 pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
     fn inner(value: &Value, depth: usize) -> Result<serde_json::Value, String> {

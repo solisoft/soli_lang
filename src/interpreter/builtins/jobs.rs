@@ -19,6 +19,7 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{empty_hash, value_to_json, Class, NativeFunction, Value};
 use crate::jobs::{scheduler, store, JobDoc};
 
+use crate::interpreter::value_json::json_to_value_or_null;
 use std::cell::RefCell;
 
 thread_local! {
@@ -82,10 +83,6 @@ fn arg_hash_as_json(args: &[Value], idx: usize) -> Result<serde_json::Value, Str
             other.type_name()
         )),
     }
-}
-
-fn json_to_value_or_null(json: serde_json::Value) -> Value {
-    crate::interpreter::value::json_to_value(json).unwrap_or(Value::Null)
 }
 
 // ===== Duration parser (for perform_in) =====

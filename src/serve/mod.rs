@@ -77,7 +77,6 @@ pub(crate) mod error_tracker;
 pub(crate) mod file_upload;
 pub(crate) mod internal_store;
 pub mod job_worker;
-mod json;
 mod notify;
 mod operator_push;
 pub(crate) mod query_stats;
@@ -331,6 +330,9 @@ use crate::interpreter::builtins::controller::CONTROLLER_REGISTRY;
 use crate::interpreter::builtins::session::set_current_session_id;
 use crate::interpreter::builtins::template::{clear_template_cache, init_templates};
 use crate::interpreter::value::{HashKey, HashPairs, StrKey};
+use crate::interpreter::value_json::{
+    json_ref_to_value_or_null as json_to_value, value_to_json_or_null as value_to_json,
+};
 use crate::interpreter::{Interpreter, Value};
 use crate::span::Span;
 
@@ -4137,16 +4139,6 @@ fn render_and_send_patch(
     );
 
     Ok(())
-}
-
-/// Convert serde_json::Value reference to interpreter Value
-fn json_to_value(json: &serde_json::Value) -> Value {
-    json::json_to_value(json)
-}
-
-/// Convert interpreter Value to serde_json::Value
-fn value_to_json(value: &Value) -> serde_json::Value {
-    json::value_to_json(value)
 }
 
 /// Record a VM→interpreter handler demotion: bump the metrics counter

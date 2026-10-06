@@ -30,6 +30,8 @@ use hyper::{Request, Response, StatusCode};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
+use crate::interpreter::value_json::json_to_value_or_null as convert_json_to_value;
+
 use super::dev_catalog::{
     handle_component_catalog, handle_component_preview, handle_mailer_catalog,
     handle_mailer_preview,
@@ -37,7 +39,7 @@ use super::dev_catalog::{
 use super::pipeline;
 use super::repl_session::REPL_STORE;
 use super::{
-    add_header_checked, dev_bar, dev_inbox, dev_store, full, json, load_models, prod_log,
+    add_header_checked, dev_bar, dev_inbox, dev_store, full, load_models, prod_log,
     server_constants, RequestData, ResponseBody, WorkerResponse, WorkerSender,
 };
 
@@ -760,11 +762,6 @@ fn execute_repl_code(
     };
 
     (result, session_id)
-}
-
-/// Helper to convert JSON to Value, returning Null on error.
-fn convert_json_to_value(json: serde_json::Value) -> crate::interpreter::value::Value {
-    json::convert_json_to_value(json)
 }
 
 /// A peer is "trusted" for the dev REPL only when it's on the host itself
