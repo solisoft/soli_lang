@@ -76,24 +76,6 @@ pub fn alias_user_method(t: PrimType, new_name: String, old_name: &str) -> bool 
     })
 }
 
-/// Map a primitive class name (as used in Soli source) to its `PrimType`.
-/// Used by `class_eval` / `define_method` to detect when the target class
-/// is a primitive that should route writes to `USER_METHODS`.
-pub fn prim_type_from_class_name(name: &str) -> Option<PrimType> {
-    match name {
-        "Int" => Some(PrimType::Int),
-        "Float" => Some(PrimType::Float),
-        "Bool" => Some(PrimType::Bool),
-        "Null" | "Nil" => Some(PrimType::Null),
-        "Decimal" => Some(PrimType::Decimal),
-        "String" => Some(PrimType::String),
-        "Array" => Some(PrimType::Array),
-        "Hash" => Some(PrimType::Hash),
-        "Symbol" => Some(PrimType::Symbol),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,15 +100,5 @@ mod tests {
             // Nothing registered yet for this type on this thread — lookup misses.
             assert!(lookup_user_method(t, "definitely_not_a_real_method_xyz").is_none());
         }
-    }
-
-    #[test]
-    fn name_to_prim_type() {
-        assert_eq!(prim_type_from_class_name("Int"), Some(PrimType::Int));
-        assert_eq!(prim_type_from_class_name("String"), Some(PrimType::String));
-        assert_eq!(prim_type_from_class_name("Null"), Some(PrimType::Null));
-        assert_eq!(prim_type_from_class_name("Nil"), Some(PrimType::Null));
-        assert_eq!(prim_type_from_class_name("Object"), None);
-        assert_eq!(prim_type_from_class_name(""), None);
     }
 }

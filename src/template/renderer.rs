@@ -11,7 +11,7 @@ use crate::interpreter::executor::Interpreter;
 use crate::interpreter::value::{HashKey, HashPairs, Value};
 use crate::span::Span;
 use crate::template::core_eval;
-use crate::template::parser::{Expr, TemplateNode};
+use crate::template::parser::TemplateNode;
 
 /// Type alias for partial renderer callbacks to reduce type complexity.
 pub type PartialRenderer<'a> = Option<&'a dyn Fn(&str, &Value) -> Result<String, String>>;
@@ -91,11 +91,9 @@ pub(crate) fn render_walker(
 ) -> Result<(), String> {
     for node in nodes {
         let node_line = match node {
-            TemplateNode::Output { line, .. } => Some(*line),
             TemplateNode::If { line, .. } => Some(*line),
             TemplateNode::For { line, .. } => Some(*line),
             TemplateNode::Partial { line, .. } => Some(*line),
-            TemplateNode::CodeBlock { line, .. } => Some(*line),
             TemplateNode::CoreCodeBlock { line, .. } => Some(*line),
             TemplateNode::CoreOutput { line, .. } => Some(*line),
             TemplateNode::ContentFor { line, .. } => Some(*line),
@@ -108,14 +106,6 @@ pub(crate) fn render_walker(
             match node {
                 TemplateNode::Literal(s) => {
                     output.push_str(s);
-                }
-                TemplateNode::Output {
-                    expr,
-                    escaped,
-                    line: _,
-                } => {
-                    let value = core_eval::evaluate_with_interpreter(expr, interpreter)?;
-                    write_value_to_output(&value, *escaped, output);
                 }
                 TemplateNode::If {
                     condition,
@@ -395,15 +385,6 @@ pub(crate) fn render_walker(
                         return Err(format!("Partial rendering not available for '{}'", name));
                     }
                 }
-                TemplateNode::CodeBlock { expr, line: _ } => match expr {
-                    Expr::Assign(name, value_expr) => {
-                        let value = core_eval::evaluate_with_interpreter(value_expr, interpreter)?;
-                        core_eval::define_var(interpreter, name, value);
-                    }
-                    _ => {
-                        core_eval::evaluate_with_interpreter(expr, interpreter)?;
-                    }
-                },
                 TemplateNode::CoreCodeBlock { stmts, line: _ } => {
                     for stmt in stmts {
                         interpreter
@@ -736,11 +717,9 @@ mod tests {
 
     #[test]
     fn test_render_output_escaped() {
-        let nodes = vec![TemplateNode::Output {
-            expr: Expr::Var("name".to_string()),
-            escaped: true,
-            line: 1,
-        }];
+        let Ok(nodes) = parse_template("<%= name %>") else {
+            panic!("template should parse");
+        };
         let data = make_hash(vec![("name", Value::String("<script>".into()))]);
         let result = render_nodes(&nodes, &data, None).unwrap();
         assert_eq!(result, "&lt;script&gt;");
@@ -748,11 +727,9 @@ mod tests {
 
     #[test]
     fn test_render_output_raw() {
-        let nodes = vec![TemplateNode::Output {
-            expr: Expr::Var("html".to_string()),
-            escaped: false,
-            line: 1,
-        }];
+        let Ok(nodes) = parse_template("<%- html %>") else {
+            panic!("template should parse");
+        };
         let data = make_hash(vec![("html", Value::String("<b>bold</b>".into()))]);
         let result = render_nodes(&nodes, &data, None).unwrap();
         assert_eq!(result, "<b>bold</b>");

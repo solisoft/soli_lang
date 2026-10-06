@@ -6,10 +6,10 @@
 use std::fs;
 use std::path::Path;
 
+use solilang::scaffold::create_scaffold_with_fields;
 use solilang::scaffold::utils::{
     to_pascal_case, to_snake_case, to_snake_case_plural, to_title_case,
 };
-use solilang::scaffold::{create_scaffold, create_scaffold_with_fields};
 
 fn make_app_skeleton(root: &Path) {
     for sub in [
@@ -60,7 +60,7 @@ fn create_scaffold_writes_model_controller_views() {
     let dir = tempfile::tempdir().unwrap();
     make_app_skeleton(dir.path());
 
-    let result = create_scaffold(dir.path().to_str().unwrap(), "Post");
+    let result = create_scaffold_with_fields(dir.path().to_str().unwrap(), "Post", &[]);
     assert!(result.is_ok(), "scaffold failed: {:?}", result.err());
 
     // Model file lives at app/models/<snake>_model.sl
@@ -125,7 +125,8 @@ fn create_scaffold_with_fields_writes_migration() {
 
 #[test]
 fn create_scaffold_rejects_missing_directory() {
-    let result = create_scaffold("/nonexistent/path/that/should/not/exist/xyz", "Foo");
+    let result =
+        create_scaffold_with_fields("/nonexistent/path/that/should/not/exist/xyz", "Foo", &[]);
     assert!(result.is_err());
     let msg = result.err().unwrap();
     assert!(
@@ -140,7 +141,7 @@ fn create_scaffold_appends_routes() {
     let dir = tempfile::tempdir().unwrap();
     make_app_skeleton(dir.path());
 
-    create_scaffold(dir.path().to_str().unwrap(), "Widget").expect("scaffold ok");
+    create_scaffold_with_fields(dir.path().to_str().unwrap(), "Widget", &[]).expect("scaffold ok");
 
     let routes = fs::read_to_string(dir.path().join("config/routes.sl")).expect("read routes");
     assert!(

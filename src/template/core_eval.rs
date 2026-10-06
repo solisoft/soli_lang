@@ -11,12 +11,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::ast::expr::{self as core_expr, Argument, BinaryOp, ExprKind, UnaryOp};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::executor::Interpreter;
-use crate::interpreter::value::{StrKey, Value};
-use crate::span::Span;
-use crate::template::parser::{self as tpl, Expr};
+use crate::interpreter::value::Value;
 
 // ---------------------------------------------------------------------------
 // Thread-local shared builtins environment (Rc, not cloned)
@@ -140,285 +137,35 @@ pub fn define_var(interpreter: &mut Interpreter, name: &str, value: Value) {
         .define_or_update(name, value);
 }
 
-/// Evaluate a template expression using an existing interpreter.
-/// Fast paths bypass translate_expr → core Expr allocation → evaluate dispatch
-/// for the most common template patterns (variable lookup, field access, literals).
-#[inline]
-pub fn evaluate_with_interpreter(
-    expr: &Expr,
-    interpreter: &mut Interpreter,
-) -> Result<Value, String> {
-    match expr {
-        // Fast path: direct variable lookup (e.g., <%= title %>)
-        // Bypasses: String clone + ExprKind alloc + match dispatch
-        // Missing variables return Null rather than erroring — templates
-        // commonly reference optional locals like `flash` that a particular
-        // controller didn't pass in, and Rails/Jinja/Handlebars all treat
-        // those as null rather than a hard failure.
-        Expr::Var(name) => {
-            return Ok(interpreter
-                .environment
-                .borrow()
-                .get(name)
-                .unwrap_or(Value::Null));
-        }
-        // Fast path: hash field access (e.g., <%= user.name %>)
-        // Zero-alloc StrKey lookup; returns Null for missing keys on hashes.
-        // Only falls through to full evaluate for non-hash bases (e.g., method calls on arrays/strings).
-        Expr::Field(base, field) => {
-            let base_val = evaluate_with_interpreter(base, interpreter)?;
-            if let Value::Hash(ref hash) = base_val {
-                return match hash.borrow().get(&StrKey(field)) {
-                    Some(v) => Ok(v.clone()),
-                    None => Ok(Value::Null),
-                };
-            }
-            // Non-hash: fall through to full evaluate for methods
-        }
-        // Fast path: literals (no allocation except StringLit clone)
-        Expr::IntLit(n) => return Ok(Value::Int(*n)),
-        Expr::FloatLit(n) => return Ok(Value::Float(*n)),
-        Expr::BoolLit(b) => return Ok(Value::Bool(*b)),
-        Expr::Null => return Ok(Value::Null),
-        Expr::StringLit(s) => return Ok(Value::String(s.clone().into())),
-        // Fast path: common no-arg method calls (e.g., items.length, name.upcase)
-        // Bypasses: translate_expr Box allocations + evaluate dispatch + method resolution
-        Expr::MethodCall { base, method, args } if args.is_empty() => {
-            let base_val = evaluate_with_interpreter(base, interpreter)?;
-            match (&base_val, method.as_str()) {
-                (Value::String(s), "length" | "len") => return Ok(Value::Int(s.len() as i64)),
-                (Value::String(s), "upcase" | "uppercase") => {
-                    return Ok(Value::String(s.to_uppercase()))
-                }
-                (Value::String(s), "downcase" | "lowercase") => {
-                    return Ok(Value::String(s.to_lowercase()))
-                }
-                (Value::String(s), "strip" | "trim") => {
-                    return Ok(Value::String(s.trim().to_string().into()))
-                }
-                (Value::String(s), "empty?") => return Ok(Value::Bool(s.is_empty())),
-                (Value::String(s), "reverse") => {
-                    return Ok(Value::String(
-                        crate::interpreter::executor::calls::string_methods::reverse_string(s)
-                            .into(),
-                    ))
-                }
-                (Value::String(s), "to_i") => return Ok(Value::Int(s.parse::<i64>().unwrap_or(0))),
-                (Value::Float(f), "to_i") => return Ok(Value::Int(*f as i64)),
-                (Value::Int(n), "to_i") => return Ok(Value::Int(*n)),
-                (Value::String(s), "to_f" | "to_float") => {
-                    return Ok(Value::Float(s.parse::<f64>().unwrap_or(0.0)))
-                }
-                (Value::Float(f), "to_f" | "to_float") => return Ok(Value::Float(*f)),
-                (Value::Int(n), "to_f" | "to_float") => return Ok(Value::Float(*n as f64)),
-                (Value::Array(arr), "length" | "len") => {
-                    return Ok(Value::Int(arr.borrow().len() as i64))
-                }
-                (Value::Array(arr), "empty?") => return Ok(Value::Bool(arr.borrow().is_empty())),
-                (Value::Array(arr), "first") => {
-                    return Ok(arr.borrow().first().cloned().unwrap_or(Value::Null))
-                }
-                (Value::Array(arr), "last") => {
-                    return Ok(arr.borrow().last().cloned().unwrap_or(Value::Null))
-                }
-                (Value::Hash(h), "length" | "len") => {
-                    return Ok(Value::Int(h.borrow().len() as i64))
-                }
-                (Value::Hash(h), "empty?") => return Ok(Value::Bool(h.borrow().is_empty())),
-                (Value::Hash(h), "keys") => {
-                    let keys: Vec<Value> = h.borrow().keys().map(|k| k.to_value()).collect();
-                    return Ok(Value::Array(Rc::new(RefCell::new(keys))));
-                }
-                (Value::Hash(h), "values") => {
-                    let vals: Vec<Value> = h.borrow().values().cloned().collect();
-                    return Ok(Value::Array(Rc::new(RefCell::new(vals))));
-                }
-                (Value::String(s), "to_s" | "to_string") => return Ok(Value::String(s.clone())),
-                (Value::Int(_) | Value::Float(_), "to_s" | "to_string") => {
-                    return Ok(Value::String(format!("{}", base_val).into()));
-                }
-                (Value::Bool(b), "to_s" | "to_string") => {
-                    return Ok(Value::String(
-                        if *b { "true" } else { "false" }.to_string().into(),
-                    ))
-                }
-                (Value::Null, "to_s" | "to_string") => {
-                    return Ok(Value::String(String::new().into()))
-                }
-                (Value::Array(arr), "to_a" | "to_array") => {
-                    return Ok(Value::Array(Rc::clone(arr)))
-                }
-                (Value::Null, "to_a" | "to_array") => {
-                    return Ok(Value::Array(Rc::new(RefCell::new(Vec::new()))))
-                }
-                _ => {} // Fall through to full evaluate
-            }
-        }
-        _ => {}
-    }
-    // Full path for complex expressions. Undefined-variable errors here are
-    // treated as Null to match the fast-path Var handler above — this way
-    // `flash` used inside a hash literal in an ERB tag doesn't blow up when
-    // the controller forgot to pass it.
-    let core_kind = translate_expr(expr);
-    let core_expr = core_expr::Expr::new(core_kind, Span::default());
-    match interpreter.evaluate(&core_expr) {
-        Ok(v) => Ok(v),
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("Undefined variable") {
-                Ok(Value::Null)
-            } else {
-                Err(format!("Evaluation error: {}", msg))
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Fallback: standalone evaluate (creates interpreter per call)
-// ---------------------------------------------------------------------------
-
-/// Evaluate a template expression with the given data context.
-/// Creates a new interpreter per call. Prefer create_template_interpreter +
-/// evaluate_with_interpreter for rendering multiple expressions.
-pub fn evaluate_expression(expr: &Expr, data: &Value) -> Result<Value, String> {
-    let mut interpreter = create_template_interpreter(data);
-    evaluate_with_interpreter(expr, &mut interpreter)
-}
-
-// ---------------------------------------------------------------------------
-// Direct AST translation: template Expr → core ExprKind
-// ---------------------------------------------------------------------------
-
-/// Helper to wrap an ExprKind into a boxed core Expr with a default span.
-#[inline]
-fn boxed(kind: ExprKind) -> Box<core_expr::Expr> {
-    Box::new(core_expr::Expr::new(kind, Span::default()))
-}
-
-/// Translate a template expression directly into a core language ExprKind.
-/// This avoids the expensive to_source() → lex → parse round-trip.
-pub fn translate_expr(expr: &Expr) -> ExprKind {
-    match expr {
-        Expr::StringLit(s) => ExprKind::StringLiteral(s.clone()),
-        Expr::IntLit(n) => ExprKind::IntLiteral(*n),
-        Expr::FloatLit(n) => ExprKind::FloatLiteral(*n),
-        Expr::BoolLit(b) => ExprKind::BoolLiteral(*b),
-        Expr::Null => ExprKind::Null,
-
-        Expr::ArrayLit(elements) => ExprKind::Array(
-            elements
-                .iter()
-                .map(|e| core_expr::Expr::new(translate_expr(e), Span::default()))
-                .collect(),
-        ),
-
-        Expr::Var(name) => ExprKind::Variable(name.clone()),
-
-        Expr::Field(base, field) => ExprKind::Member {
-            object: boxed(translate_expr(base)),
-            name: field.clone(),
-        },
-
-        Expr::Index(base, key) => ExprKind::Index {
-            object: boxed(translate_expr(base)),
-            index: boxed(translate_expr(key)),
-        },
-
-        Expr::Binary(left, op, right) => {
-            let core_op = match op {
-                tpl::BinaryOp::Add => BinaryOp::Add,
-                tpl::BinaryOp::Subtract => BinaryOp::Subtract,
-                tpl::BinaryOp::Multiply => BinaryOp::Multiply,
-                tpl::BinaryOp::Divide => BinaryOp::Divide,
-                tpl::BinaryOp::Modulo => BinaryOp::Modulo,
-            };
-            ExprKind::Binary {
-                left: boxed(translate_expr(left)),
-                operator: core_op,
-                right: boxed(translate_expr(right)),
-            }
-        }
-
-        Expr::Compare(left, op, right) => {
-            let core_op = match op {
-                tpl::CompareOp::Eq => BinaryOp::Equal,
-                tpl::CompareOp::Ne => BinaryOp::NotEqual,
-                tpl::CompareOp::Lt => BinaryOp::Less,
-                tpl::CompareOp::Le => BinaryOp::LessEqual,
-                tpl::CompareOp::Gt => BinaryOp::Greater,
-                tpl::CompareOp::Ge => BinaryOp::GreaterEqual,
-            };
-            ExprKind::Binary {
-                left: boxed(translate_expr(left)),
-                operator: core_op,
-                right: boxed(translate_expr(right)),
-            }
-        }
-
-        Expr::And(left, right) => ExprKind::LogicalAnd {
-            left: boxed(translate_expr(left)),
-            right: boxed(translate_expr(right)),
-        },
-
-        Expr::Or(left, right) => ExprKind::LogicalOr {
-            left: boxed(translate_expr(left)),
-            right: boxed(translate_expr(right)),
-        },
-
-        Expr::Not(inner) => ExprKind::Unary {
-            operator: UnaryOp::Not,
-            operand: boxed(translate_expr(inner)),
-        },
-
-        Expr::Method(base, method) => ExprKind::Member {
-            object: boxed(translate_expr(base)),
-            name: method.clone(),
-        },
-
-        Expr::MethodCall { base, method, args } => ExprKind::Call {
-            callee: boxed(ExprKind::Member {
-                object: boxed(translate_expr(base)),
-                name: method.clone(),
-            }),
-            arguments: args
-                .iter()
-                .map(|a| {
-                    Argument::Positional(core_expr::Expr::new(translate_expr(a), Span::default()))
-                })
-                .collect(),
-        },
-
-        Expr::Call(name, args) => ExprKind::Call {
-            callee: boxed(ExprKind::Variable(name.clone())),
-            arguments: args
-                .iter()
-                .map(|a| {
-                    Argument::Positional(core_expr::Expr::new(translate_expr(a), Span::default()))
-                })
-                .collect(),
-        },
-
-        Expr::Assign(name, value) => ExprKind::Assign {
-            target: boxed(ExprKind::Variable(name.clone())),
-            value: boxed(translate_expr(value)),
-        },
-
-        Expr::Range(start, end) => ExprKind::Binary {
-            left: boxed(translate_expr(start)),
-            operator: BinaryOp::Range,
-            right: boxed(translate_expr(end)),
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::interpreter::value::{HashKey, HashPairs};
     use std::cell::RefCell;
     use std::rc::Rc;
+
+    /// Evaluate `source` the way `<%= … %>` does (`TemplateNode::CoreOutput`):
+    /// through the core parser and the interpreter, an undefined name reading
+    /// as `nil`.
+    fn eval(source: &str, interp: &mut Interpreter) -> Result<Value, String> {
+        use crate::ast::stmt::StmtKind;
+        let tokens = crate::lexer::Scanner::new(source)
+            .scan_tokens()
+            .map_err(|e| e.to_string())?;
+        let program = crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|e| e.to_string())?;
+        let Some(StmtKind::Expression(expr)) =
+            program.statements.into_iter().next().map(|s| s.kind)
+        else {
+            return Err(format!("{source:?} is not an expression"));
+        };
+        match interp.evaluate(&expr) {
+            Ok(value) => Ok(value),
+            Err(e) if e.to_string().contains("Undefined variable") => Ok(Value::Null),
+            Err(e) => Err(e.to_string()),
+        }
+    }
 
     fn make_hash(pairs: Vec<(&str, Value)>) -> Value {
         let mut map = HashPairs::default();
@@ -429,35 +176,10 @@ mod tests {
     }
 
     #[test]
-    fn test_translate_int_literal() {
-        let expr = Expr::IntLit(42);
-        let core = translate_expr(&expr);
-        assert!(matches!(core, ExprKind::IntLiteral(42)));
-    }
-
-    #[test]
-    fn test_translate_string_literal() {
-        let expr = Expr::StringLit("hello".to_string());
-        let core = translate_expr(&expr);
-        assert!(matches!(core, ExprKind::StringLiteral(s) if s == "hello"));
-    }
-
-    #[test]
-    fn test_translate_variable() {
-        let expr = Expr::Field(Box::new(Expr::Var("user".to_string())), "name".to_string());
-        let core = translate_expr(&expr);
-        assert!(matches!(core, ExprKind::Member { .. }));
-    }
-
-    #[test]
     fn test_evaluate_with_context() {
         let data = make_hash(vec![("name", Value::String("World".into()))]);
-        let expr = Expr::Binary(
-            Box::new(Expr::StringLit("Hello ".to_string())),
-            tpl::BinaryOp::Add,
-            Box::new(Expr::Var("name".to_string())),
-        );
-        let result = evaluate_expression(&expr, &data);
+        let mut interp = create_template_interpreter(&data);
+        let result = eval("\"Hello \" + name", &mut interp);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Value::String("Hello World".into()));
     }
@@ -466,8 +188,8 @@ mod tests {
     fn test_evaluate_nested_hash_access() {
         let user = make_hash(vec![("name", Value::String("Alice".into()))]);
         let data = make_hash(vec![("user", user)]);
-        let expr = Expr::Field(Box::new(Expr::Var("user".to_string())), "name".to_string());
-        let result = evaluate_expression(&expr, &data);
+        let mut interp = create_template_interpreter(&data);
+        let result = eval("user.name", &mut interp);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Value::String("Alice".into()));
     }
@@ -477,12 +199,10 @@ mod tests {
         let data = make_hash(vec![("x", Value::Int(10)), ("y", Value::Int(20))]);
         let mut interp = create_template_interpreter(&data);
 
-        let expr1 = Expr::Var("x".to_string());
-        let r1 = evaluate_with_interpreter(&expr1, &mut interp).unwrap();
+        let r1 = eval("x", &mut interp).unwrap();
         assert_eq!(r1, Value::Int(10));
 
-        let expr2 = Expr::Var("y".to_string());
-        let r2 = evaluate_with_interpreter(&expr2, &mut interp).unwrap();
+        let r2 = eval("y", &mut interp).unwrap();
         assert_eq!(r2, Value::Int(20));
     }
 
@@ -493,11 +213,11 @@ mod tests {
 
         push_scope(&mut interp);
         define_var(&mut interp, "x", Value::Int(99));
-        let r = evaluate_with_interpreter(&Expr::Var("x".to_string()), &mut interp).unwrap();
+        let r = eval("x", &mut interp).unwrap();
         assert_eq!(r, Value::Int(99));
         pop_scope(&mut interp);
 
-        let r = evaluate_with_interpreter(&Expr::Var("x".to_string()), &mut interp).unwrap();
+        let r = eval("x", &mut interp).unwrap();
         assert_eq!(r, Value::Int(1));
     }
 
@@ -526,8 +246,7 @@ mod tests {
         // enclosing BUILTINS_RC env seeded by inject_helpers_into_env.
         let data = make_hash(vec![("other", Value::Int(1))]);
         let mut interp = create_template_interpreter(&data);
-        let expr = Expr::Var("__spec_helper_uppercase".to_string());
-        let v = evaluate_with_interpreter(&expr, &mut interp).unwrap();
+        let v = eval("__spec_helper_uppercase", &mut interp).unwrap();
         assert!(matches!(v, Value::NativeFunction(_)));
 
         clear_view_helpers();
@@ -563,15 +282,12 @@ mod tests {
         // (proves the helper is bound in the template's enclosing env).
         let data = make_hash(vec![]);
         let mut interp = create_template_interpreter(&data);
-        let resolved =
-            evaluate_with_interpreter(&Expr::Var("admin_path".to_string()), &mut interp).unwrap();
+        let resolved = eval("admin_path", &mut interp).unwrap();
         assert!(matches!(resolved, Value::NativeFunction(_)));
 
         // And actually invoking `admin_path()` must produce the registered
         // path string — this is the user-visible behavior the fix restores.
-        let called =
-            evaluate_with_interpreter(&Expr::Call("admin_path".to_string(), vec![]), &mut interp)
-                .unwrap();
+        let called = eval("admin_path()", &mut interp).unwrap();
         assert_eq!(called, Value::String("/admin".into()));
 
         clear_routes();
@@ -593,7 +309,7 @@ mod tests {
         // The form builder still resolves in the rebuilt env.
         let data = make_hash(vec![]);
         let mut interp = create_template_interpreter(&data);
-        let form_with = evaluate_with_interpreter(&Expr::Var("form_with".to_string()), &mut interp);
+        let form_with = eval("form_with", &mut interp);
         assert!(
             form_with.is_ok_and(|value| !matches!(value, Value::Null)),
             "form_with no longer resolves after a reset"
@@ -612,8 +328,7 @@ mod tests {
         // Force BUILTINS_RC initialization with no helpers registered.
         let data = make_hash(vec![]);
         let mut interp_before = create_template_interpreter(&data);
-        let expr = Expr::Var("__spec_reset_helper".to_string());
-        let before = evaluate_with_interpreter(&expr, &mut interp_before).unwrap();
+        let before = eval("__spec_reset_helper", &mut interp_before).unwrap();
         assert!(matches!(before, Value::Null));
 
         // Register a helper and reset — the next interpreter must see it.
@@ -626,7 +341,7 @@ mod tests {
         reset_builtins_rc();
 
         let mut interp_after = create_template_interpreter(&data);
-        let after = evaluate_with_interpreter(&expr, &mut interp_after).unwrap();
+        let after = eval("__spec_reset_helper", &mut interp_after).unwrap();
         assert!(matches!(after, Value::NativeFunction(_)));
 
         clear_view_helpers();

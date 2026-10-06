@@ -81,11 +81,6 @@ impl FieldDefinition {
     }
 }
 
-/// Create scaffold for a resource (model, controller, views)
-pub fn create_scaffold(folder: &str, name: &str) -> Result<(), String> {
-    create_scaffold_with_fields(folder, name, &[])
-}
-
 /// Create scaffold for a resource with field definitions
 pub fn create_scaffold_with_fields(
     folder: &str,

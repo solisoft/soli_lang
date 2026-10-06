@@ -212,18 +212,6 @@ pub fn ensure_runtime_ready() -> Result<(), DbError> {
     Ok(())
 }
 
-/// Require a capability; return an operator-facing error if missing.
-pub fn require_cap(cap: &str, available: bool) -> Result<(), String> {
-    if available {
-        return Ok(());
-    }
-    Err(format!(
-        "{cap} is SoliDB-only (current connection: {}). \
-         See docs/sql-adapter-design.md.",
-        adapter_label()
-    ))
-}
-
 /// Human one-liner for boot banners / CLI.
 pub fn adapter_label() -> String {
     active_spec()
@@ -402,37 +390,6 @@ mod tests {
                 } else {
                     assert!(matches!(err, DbError::FeatureNotCompiled { .. }));
                 }
-            },
-        );
-    }
-
-    #[test]
-    fn require_cap_names_adapter() {
-        let mut connections = HashMap::new();
-        connections.insert(
-            "primary".into(),
-            ConnectionSpec {
-                name: "primary".into(),
-                adapter: Adapter::Postgres,
-                url: Some("postgres://localhost/x".into()),
-                solidb_host: None,
-                solidb_database: None,
-                solidb_username: None,
-                solidb_password: None,
-                solidb_api_key: None,
-                pool_size: None,
-            },
-        );
-        with_registry(
-            ConnectionRegistry {
-                default: "primary".into(),
-                connections,
-                from_file: false,
-            },
-            || {
-                let err = require_cap("Graph traversal", false).unwrap_err();
-                assert!(err.contains("SoliDB-only"));
-                assert!(err.contains("postgres") || err.contains("primary"));
             },
         );
     }

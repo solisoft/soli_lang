@@ -1,66 +1,15 @@
 //! Layout support for templates.
 //!
 //! Handles wrapping rendered content with layout templates that use `<%= yield %>`.
-//! Uses a single interpreter per render call for optimal performance.
+//! The request path renders the view and its layout with one interpreter.
 //! Writes directly into a shared output buffer (no intermediate String allocations).
 
 use crate::interpreter::executor::Interpreter;
 use crate::interpreter::value::Value;
-use crate::template::core_eval;
-use crate::template::parser::{parse_template, TemplateNode};
+use crate::template::parser::TemplateNode;
 
 /// Type alias for partial renderer callback to reduce type complexity.
 type PartialRenderer<'a> = Option<&'a dyn Fn(&str, &Value) -> Result<String, String>>;
-
-/// Render content with a layout that has a yield placeholder.
-pub fn render_with_layout(
-    layout_source: &str,
-    content: &str,
-    data: &Value,
-    partial_renderer: PartialRenderer<'_>,
-) -> Result<String, String> {
-    render_with_layout_path(layout_source, content, data, partial_renderer, None)
-}
-
-/// Render content with a layout, including layout path for error reporting.
-pub fn render_with_layout_path(
-    layout_source: &str,
-    content: &str,
-    data: &Value,
-    partial_renderer: PartialRenderer<'_>,
-    layout_path: Option<&str>,
-) -> Result<String, String> {
-    let layout_nodes = parse_template(layout_source).map_err(|e| {
-        if let Some(path) = layout_path {
-            format!("{} in {}", e, path)
-        } else {
-            e
-        }
-    })?;
-    render_layout_nodes_with_path(&layout_nodes, content, data, partial_renderer, layout_path)
-}
-
-/// Render layout nodes with path for error reporting.
-pub fn render_layout_nodes_with_path(
-    nodes: &[TemplateNode],
-    content: &str,
-    data: &Value,
-    partial_renderer: PartialRenderer<'_>,
-    layout_path: Option<&str>,
-) -> Result<String, String> {
-    let mut interpreter = core_eval::create_template_interpreter(data);
-    let mut output = String::new();
-    crate::template::renderer::render_walker(
-        &mut interpreter,
-        nodes,
-        data,
-        partial_renderer,
-        layout_path,
-        &mut output,
-        crate::template::renderer::YieldMode::Layout { content },
-    )?;
-    Ok(output)
-}
 
 /// Render layout nodes with an existing interpreter (avoids creating a new one).
 /// Used to share a single interpreter across view + layout rendering.
@@ -90,8 +39,30 @@ pub fn render_layout_with_interpreter(
 mod tests {
     use super::*;
     use crate::interpreter::value::{HashKey, HashPairs};
+    use crate::template::core_eval;
+    use crate::template::parser::parse_template;
     use std::cell::RefCell;
     use std::rc::Rc;
+
+    /// Parse `layout` and render it around `content` the way a request does:
+    /// one template interpreter, through `render_layout_with_interpreter`.
+    fn render_with_layout(
+        layout: &str,
+        content: &str,
+        data: &Value,
+        partial_renderer: PartialRenderer<'_>,
+    ) -> Result<String, String> {
+        let nodes = parse_template(layout)?;
+        let mut interpreter = core_eval::create_template_interpreter(data);
+        render_layout_with_interpreter(
+            &mut interpreter,
+            &nodes,
+            content,
+            data,
+            partial_renderer,
+            None,
+        )
+    }
 
     fn make_hash(pairs: Vec<(&str, Value)>) -> Value {
         let hash: HashPairs = pairs

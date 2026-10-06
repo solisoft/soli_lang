@@ -456,11 +456,6 @@ impl WebSocketRegistry {
         }
     }
 
-    /// Get the number of active connections.
-    pub async fn connection_count(&self) -> usize {
-        self.connections.lock().await.len()
-    }
-
     // ========== Presence Methods ==========
 
     /// Track a connection's presence in a channel.
@@ -1580,17 +1575,6 @@ mod tests {
         registry
             .broadcast_to_channel_except("room:lobby", r#"{"msg":"hello"}"#, &conn_id1)
             .await;
-    }
-
-    #[tokio::test]
-    async fn test_connection_count() {
-        let registry = WebSocketRegistry::new();
-
-        // Initially empty
-        assert_eq!(registry.connection_count().await, 0);
-
-        // Note: We can't fully test connection registration without real WebSocket senders,
-        // but we can verify the method works
     }
 
     #[tokio::test]

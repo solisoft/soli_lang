@@ -93,6 +93,7 @@ pub fn get_symbol(s: &str) -> SymbolId {
 }
 
 /// Look up a SymbolId for a string (returns None if not interned).
+#[cfg(test)]
 pub fn lookup_symbol(s: &str) -> Option<SymbolId> {
     SYMBOL_TABLE.read().unwrap().lookup(s)
 }

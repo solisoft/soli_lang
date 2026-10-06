@@ -992,47 +992,6 @@ impl SoliDBClient {
         Ok(())
     }
 
-    // ===== Queue API =====
-
-    /// Enqueue a job. `run_at` is an optional ISO-8601 timestamp for delayed
-    /// execution; when `None`, the job is run as soon as a worker picks it up.
-    ///
-    /// `opts` is an optional JSON object whose keys are merged into the enqueue
-    /// payload as-is — the same queue-scheduling knobs the webhook path accepts,
-    /// notably `priority` (Int, higher runs first) and `max_retries` (Int).
-    pub fn enqueue_job(
-        &self,
-        queue: &str,
-        handler: &str,
-        args: Value,
-        callback_url: &str,
-        run_at: Option<&str>,
-        opts: Option<Value>,
-    ) -> Result<String, SoliDBError> {
-        let db = self.get_db()?;
-        let mut payload = serde_json::json!({
-            "handler": handler,
-            "args": args,
-            "callback_url": callback_url,
-        });
-        if let Some(when) = run_at {
-            payload["run_at"] = serde_json::Value::String(when.to_string());
-        }
-        if let Some(Value::Object(map)) = opts {
-            if let Some(o) = payload.as_object_mut() {
-                for (k, v) in map {
-                    o.insert(k, v);
-                }
-            }
-        }
-        let response: Value = self.request(
-            reqwest::Method::POST,
-            &format!("/_api/database/{}/queues/{}/enqueue", seg(db)?, seg(queue)?),
-            Some(&payload),
-        )?;
-        Ok(extract_id(&response))
-    }
-
     // ===== Cron API =====
 
     /// List all cron entries in the current database.
@@ -1078,21 +1037,6 @@ fn extract_array(response: &Value, keys: &[&str]) -> Vec<Value> {
         }
     }
     response.as_array().cloned().unwrap_or_default()
-}
-
-/// Pull an id out of a create-style response. SolidB endpoints have used
-/// `id`, `_key`, and `job_id` historically; accept any.
-fn extract_id(response: &Value) -> String {
-    for key in ["id", "_key", "job_id", "cron_id"] {
-        if let Some(s) = response.get(key).and_then(|v| v.as_str()) {
-            return s.to_string();
-        }
-    }
-    // Some endpoints may return a bare string id.
-    if let Some(s) = response.as_str() {
-        return s.to_string();
-    }
-    String::new()
 }
 
 #[cfg(test)]

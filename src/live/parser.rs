@@ -67,13 +67,6 @@ fn parse_single_directive(attr_name: &str, attr_value: &str) -> Option<LiveDirec
     }
 }
 
-pub fn is_live_directive(attr_name: &str) -> bool {
-    matches!(
-        attr_name,
-        "soli-click" | "soli-submit" | "soli-change" | "soli-target"
-    ) || attr_name.starts_with("soli-value-")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,12 +78,5 @@ mod tests {
         assert_eq!(directives.len(), 1);
         assert_eq!(directives[0].event, "click");
         assert_eq!(directives[0].handler, "increment");
-    }
-
-    #[test]
-    fn test_is_live_directive() {
-        assert!(is_live_directive("soli-click"));
-        assert!(is_live_directive("soli-value-step"));
-        assert!(!is_live_directive("class"));
     }
 }

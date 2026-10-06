@@ -46,38 +46,12 @@ pub struct EngineMount {
 /// resolve a view or a route through an engine it never mounted.
 static MOUNTED_ENGINES: TenantValue<HashMap<String, Engine>> = TenantValue::new(HashMap::new);
 
-pub fn get_mounted_engine(name: &str) -> Option<Engine> {
-    MOUNTED_ENGINES.read(|engines| engines.get(name).cloned())
-}
-
 pub fn get_all_mounted_engines() -> Vec<Engine> {
     MOUNTED_ENGINES.read(|engines| engines.values().cloned().collect())
 }
 
 pub fn is_engine_name(name: &str) -> bool {
     MOUNTED_ENGINES.read(|engines| engines.contains_key(name))
-}
-
-pub fn get_engine_for_path(path: &str) -> Option<Engine> {
-    MOUNTED_ENGINES.read(|engines| {
-        engines
-            .values()
-            .find(|engine| path.starts_with(&engine.mounted_at))
-            .cloned()
-    })
-}
-
-pub fn strip_engine_path(path: &str) -> String {
-    if let Some(engine) = get_engine_for_path(path) {
-        path.strip_prefix(&engine.mounted_at)
-            .map(|p| {
-                let stripped = p.trim_start_matches('/');
-                stripped.to_string()
-            })
-            .unwrap_or_else(|| path.to_string())
-    } else {
-        path.to_string()
-    }
 }
 
 pub fn load_engines_config(app_path: &Path) -> Result<EngineConfig, String> {
@@ -1037,7 +1011,7 @@ mount "blog", at: "/blog"
     }
 
     #[test]
-    fn test_mount_engines_registers_and_strips_path() {
+    fn test_mount_engines_registers_the_engine() {
         let _engine_guard = crate::serve::engine_loader::lock_engine_context_for_test();
         // Clean state
         reset_engine_context();
@@ -1063,21 +1037,10 @@ mount "blog", at: "/blog"
 
         mount_engines(dir.path(), &config).unwrap();
 
-        let engine = get_mounted_engine("shop");
-        assert!(engine.is_some());
-        let engine = engine.unwrap();
-        assert_eq!(engine.mounted_at, "/shop");
-
-        // get_engine_for_path
-        let found = get_engine_for_path("/shop/products");
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().name, "shop");
-
-        assert!(get_engine_for_path("/other").is_none());
-
-        // strip_engine_path
-        assert_eq!(strip_engine_path("/shop/products"), "products");
-        assert_eq!(strip_engine_path("/other"), "/other");
+        assert!(is_engine_name("shop"));
+        let mounted = get_all_mounted_engines();
+        assert_eq!(mounted.len(), 1);
+        assert_eq!(mounted[0].mounted_at, "/shop");
 
         // Cleanup
         reset_engine_context();

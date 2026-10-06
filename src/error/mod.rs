@@ -561,11 +561,6 @@ impl RuntimeError {
         }
     }
 
-    /// Check if this error has captured environment
-    pub fn has_captured_env(&self) -> bool {
-        matches!(self, Self::WithEnv { .. })
-    }
-
     /// Get the stack trace from a breakpoint or WithEnv error.
     pub fn breakpoint_stack_trace(&self) -> Option<&[String]> {
         match self {
@@ -957,7 +952,6 @@ mod tests {
         let trace = vec!["frame_z".to_string()];
         let e = RuntimeError::with_env("boom", span(1, 1), r#"{"y":2}"#.to_string(), trace.clone());
         assert!(!e.is_breakpoint());
-        assert!(e.has_captured_env());
         assert_eq!(e.breakpoint_env_json(), Some(r#"{"y":2}"#));
         assert_eq!(e.breakpoint_stack_trace(), Some(trace.as_slice()));
     }
@@ -966,7 +960,6 @@ mod tests {
     fn non_breakpoint_errors_have_no_env_or_trace() {
         let e = RuntimeError::division_by_zero(span(1, 1));
         assert!(!e.is_breakpoint());
-        assert!(!e.has_captured_env());
         assert!(e.breakpoint_env_json().is_none());
         assert!(e.breakpoint_stack_trace().is_none());
     }

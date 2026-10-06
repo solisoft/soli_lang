@@ -998,11 +998,6 @@ fn validate_cookie_pair(name: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Store a response cookie to be emitted as a Set-Cookie header.
-pub fn set_response_cookie(name: &str, value: &str) {
-    set_response_cookie_with_attrs(name, value, "; Path=/");
-}
-
 /// Store a response cookie with a pre-validated attribute suffix.
 pub fn set_response_cookie_with_attrs(name: &str, value: &str, attrs: &str) {
     // Trip the response cache dirty flag so a stale cached body
@@ -1107,6 +1102,7 @@ pub fn session_id_from_cookie_pairs(cookies: &HashPairs) -> Option<String> {
 /// the backend layer. Only the disk store had its own input
 /// validation; centralising it here closes the gap for every
 /// implementor.
+#[cfg(test)]
 pub fn ensure_session(cookie_session_id: Option<&str>) -> String {
     let store = get_current_store();
     // The cookie driver's "session ID" is the sealed payload itself, which is
@@ -2041,7 +2037,7 @@ mod tests {
     #[test]
     fn response_cookies_carry_attributes() {
         clear_response_cookies();
-        set_response_cookie("plain", "v");
+        set_response_cookie_with_attrs("plain", "v", "; Path=/");
         set_response_cookie_with_attrs("remember", "abc", "; Path=/; Max-Age=60; HttpOnly");
         let drained = take_response_cookies();
         assert_eq!(drained.len(), 2);

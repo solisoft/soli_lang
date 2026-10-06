@@ -20,11 +20,6 @@ pub fn take_pending_path() -> Option<String> {
     PENDING_PATH.lock().ok().and_then(|mut g| g.take())
 }
 
-/// Peek without clearing — used when minting the grant redirect.
-pub fn peek_pending_path() -> Option<String> {
-    PENDING_PATH.lock().ok().and_then(|g| g.clone())
-}
-
 /// Map a CLI arg or protocol URL to an in-app path (`/…`).
 ///
 /// Accepts:
@@ -138,7 +133,6 @@ mod tests {
     #[test]
     fn pending_roundtrip() {
         set_pending_path("/a");
-        assert_eq!(peek_pending_path().as_deref(), Some("/a"));
         assert_eq!(take_pending_path().as_deref(), Some("/a"));
         assert_eq!(take_pending_path(), None);
     }

@@ -781,20 +781,6 @@ impl Value {
         }
     }
 
-    /// Check if this value can be used as a hash key (must be comparable).
-    /// Note: Floats are excluded because NaN != NaN breaks hash map invariants.
-    pub fn is_hashable(&self) -> bool {
-        matches!(
-            self,
-            Value::Int(_)
-                | Value::Decimal(_)
-                | Value::String(_)
-                | Value::Symbol(_)
-                | Value::Bool(_)
-                | Value::Null
-        )
-    }
-
     /// Convert this value to a HashKey if possible.
     pub fn to_hash_key(&self) -> Option<HashKey> {
         HashKey::from_value(self)
@@ -3009,15 +2995,6 @@ mod decimal_tests {
         let value = Value::Decimal(decimal_value);
 
         assert!(value.is_truthy());
-    }
-
-    #[test]
-    fn test_value_decimal_is_hashable() {
-        let decimal = Decimal::from_str("19.99").unwrap();
-        let decimal_value = DecimalValue(decimal, 2);
-        let value = Value::Decimal(decimal_value);
-
-        assert!(value.is_hashable());
     }
 
     #[test]

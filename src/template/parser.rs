@@ -12,133 +12,6 @@
 //! escape-encoded storage. Templates that reach for it are rejected at
 //! parse time with a migration hint.
 
-/// Pre-compiled expression for fast evaluation.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Expr {
-    /// String literal: "hello"
-    StringLit(String),
-    /// Integer literal: 42
-    IntLit(i64),
-    /// Float literal: 3.14
-    FloatLit(f64),
-    /// Boolean literal: true/false
-    BoolLit(bool),
-    /// Null literal
-    Null,
-    /// Array literal: [1, 2, 3]
-    ArrayLit(Vec<Expr>),
-    /// Simple variable lookup: name
-    Var(String),
-    /// Field access: expr.field
-    Field(Box<Expr>, String),
-    /// Index access: expr[key]
-    Index(Box<Expr>, Box<Expr>),
-    /// Binary operation: expr op expr (for +, -, *, /)
-    Binary(Box<Expr>, BinaryOp, Box<Expr>),
-    /// Comparison: expr op expr
-    Compare(Box<Expr>, CompareOp, Box<Expr>),
-    /// Logical AND: expr && expr
-    And(Box<Expr>, Box<Expr>),
-    /// Logical OR: expr || expr
-    Or(Box<Expr>, Box<Expr>),
-    /// Logical NOT: !expr
-    Not(Box<Expr>),
-    /// Method call: expr.length (for built-in methods without args)
-    Method(Box<Expr>, String),
-    /// Method call with arguments: expr.join(",")
-    MethodCall {
-        base: Box<Expr>,
-        method: String,
-        args: Vec<Expr>,
-    },
-    /// Function call: name(arg1, arg2, ...)
-    Call(String, Vec<Expr>),
-    /// Assignment: name = value or let name = value
-    Assign(String, Box<Expr>),
-    /// Range: start..end
-    Range(Box<Expr>, Box<Expr>),
-}
-
-impl Expr {
-    pub fn to_source(&self) -> String {
-        match self {
-            Expr::StringLit(s) => format!("\"{}\"", s),
-            Expr::IntLit(n) => n.to_string(),
-            Expr::FloatLit(n) => n.to_string(),
-            Expr::BoolLit(b) => b.to_string(),
-            Expr::Null => "null".to_string(),
-            Expr::ArrayLit(elements) => {
-                let parts: Vec<String> = elements.iter().map(|e| e.to_source()).collect();
-                format!("[{}]", parts.join(", "))
-            }
-            Expr::Var(name) => name.clone(),
-            Expr::Field(base, field) => format!("{}.{}", base.to_source(), field),
-            Expr::Index(base, key) => format!("{}[{}]", base.to_source(), key.to_source()),
-            Expr::Binary(left, op, right) => {
-                let op_str = match op {
-                    BinaryOp::Add => "+",
-                    BinaryOp::Subtract => "-",
-                    BinaryOp::Multiply => "*",
-                    BinaryOp::Divide => "/",
-                    BinaryOp::Modulo => "%",
-                };
-                format!("({} {} {})", left.to_source(), op_str, right.to_source())
-            }
-            Expr::Compare(left, op, right) => {
-                let op_str = match op {
-                    CompareOp::Eq => "==",
-                    CompareOp::Ne => "!=",
-                    CompareOp::Lt => "<",
-                    CompareOp::Le => "<=",
-                    CompareOp::Gt => ">",
-                    CompareOp::Ge => ">=",
-                };
-                format!("({} {} {})", left.to_source(), op_str, right.to_source())
-            }
-            Expr::And(left, right) => format!("({} && {})", left.to_source(), right.to_source()),
-            Expr::Or(left, right) => format!("({} || {})", left.to_source(), right.to_source()),
-            Expr::Not(inner) => format!("!{}", inner.to_source()),
-            Expr::Method(base, method) => format!("{}.{}", base.to_source(), method),
-            Expr::MethodCall { base, method, args } => {
-                let arg_sources: Vec<String> = args.iter().map(|e| e.to_source()).collect();
-                format!(
-                    "{}.{}({})",
-                    base.to_source(),
-                    method,
-                    arg_sources.join(", ")
-                )
-            }
-            Expr::Call(name, args) => {
-                let arg_sources: Vec<String> = args.iter().map(|e| e.to_source()).collect();
-                format!("{}({})", name, arg_sources.join(", "))
-            }
-            Expr::Assign(name, value) => format!("{} = {}", name, value.to_source()),
-            Expr::Range(start, end) => format!("{}..{}", start.to_source(), end.to_source()),
-        }
-    }
-}
-
-/// Binary operators for arithmetic and string operations
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BinaryOp {
-    Add,      // +
-    Subtract, // -
-    Multiply, // *
-    Divide,   // /
-    Modulo,   // %
-}
-
-/// Comparison operators
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CompareOp {
-    Eq, // ==
-    Ne, // !=
-    Lt, // <
-    Le, // <=
-    Gt, // >
-    Ge, // >=
-}
-
 /// The pre-parsed pieces of a `form_with ... do |f|` block: the
 /// `form_with(...)` builder call, the block variable, and the synthesized
 /// `<var>.open()` / `<var>.close()` calls the renderer wraps the body in.
@@ -166,13 +39,6 @@ pub struct ComponentParts {
 pub enum TemplateNode {
     /// Raw HTML/text content
     Literal(String),
-    /// Output expression: `<%= expr %>` (escaped) or `<%- expr %>` (raw).
-    /// `<%== expr %>` was removed in SEC-023.
-    Output {
-        expr: Expr,
-        escaped: bool,
-        line: usize,
-    },
     /// If conditional block
     If {
         condition: crate::ast::expr::Expr,
@@ -220,8 +86,6 @@ pub enum TemplateNode {
         context: Option<crate::ast::expr::Expr>,
         line: usize,
     },
-    /// Code block to execute (for variable assignments, etc.)
-    CodeBlock { expr: Expr, line: usize },
     /// Code block parsed by the core language parser (full language support)
     CoreCodeBlock {
         stmts: Vec<crate::ast::stmt::Stmt>,

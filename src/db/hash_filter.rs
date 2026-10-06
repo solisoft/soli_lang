@@ -474,17 +474,9 @@ fn unique_bind(field: &str, suffix: &str, n: &mut u32) -> String {
     }
 }
 
-/// Compile a hash filter against a JSON document column (`doc`).
-pub fn compile_doc_pred(
-    d: super::sql_compile::Dialect,
-    pred: &HashFilter,
-    params: &mut Vec<super::sql_compile::SqlBind>,
-) -> Result<String, String> {
-    compile_doc_pred_on(d, None, pred, params, 0)
-}
-
-/// Same as [`compile_doc_pred`], qualifying extracts with `table.doc` so a
-/// correlated `EXISTS` cannot resolve `doc` to the parent row.
+/// Compile a hash filter against a JSON document column (`doc`). With a
+/// `table`, extracts are qualified `table.doc` so a correlated `EXISTS`
+/// cannot resolve `doc` to the parent row.
 ///
 /// `param_offset` is the number of binds already claimed by the outer
 /// statement (e.g. the patch in `UPDATE … SET`), so `$n` stays sequential.
@@ -892,7 +884,7 @@ mod tests {
                 )
                 .unwrap_or_else(|e| panic!("{op:?} should parse: {e}"));
                 let mut params = Vec::new();
-                compile_doc_pred(Dialect::Sqlite, &filter, &mut params).unwrap()
+                compile_doc_pred_on(Dialect::Sqlite, None, &filter, &mut params, 0).unwrap()
             };
             assert_eq!(compile(symbol), compile(name), "{symbol} vs {name}");
         }
@@ -915,7 +907,7 @@ mod tests {
                 ],
             };
             let mut params = Vec::new();
-            let sql = compile_doc_pred(dialect, &f, &mut params).unwrap();
+            let sql = compile_doc_pred_on(dialect, None, &f, &mut params, 0).unwrap();
             assert!(
                 sql.contains(" OR "),
                 "{dialect:?}: expected disjuncts: {sql}"
@@ -938,7 +930,7 @@ mod tests {
                 },
             ]);
             let mut params = Vec::new();
-            let sql = compile_doc_pred(dialect, &combined, &mut params).unwrap();
+            let sql = compile_doc_pred_on(dialect, None, &combined, &mut params, 0).unwrap();
             let (before_and, _) = sql.split_once(" AND ").expect("an AND join: {sql}");
             assert!(
                 before_and.starts_with('(') && before_and.ends_with(')'),
@@ -956,7 +948,7 @@ mod tests {
             values: vec![serde_json::json!(7)],
         };
         let mut params = Vec::new();
-        let sql = compile_doc_pred(Dialect::Sqlite, &f, &mut params).unwrap();
+        let sql = compile_doc_pred_on(Dialect::Sqlite, None, &f, &mut params, 0).unwrap();
         assert!(!sql.contains(" OR "), "{sql}");
     }
 
@@ -968,7 +960,7 @@ mod tests {
             values: vec![],
         };
         let mut params = Vec::new();
-        let sql = compile_doc_pred(Dialect::Sqlite, &f, &mut params).unwrap();
+        let sql = compile_doc_pred_on(Dialect::Sqlite, None, &f, &mut params, 0).unwrap();
         assert_eq!(sql, "1 = 0");
     }
 
