@@ -189,7 +189,9 @@ jobs:
           # set; the SoliKV started above is disposable, so let the specs
           # exercise them rather than skip.
           SOLI_KV_ALLOW_ADMIN: "1"
-        run: cargo run --locked -- test
+        # --require-assertions: a spec that passes without asserting anything
+        # fails. Every spec in tests/ asserts; keep it that way.
+        run: cargo run --locked -- test --require-assertions
 
   # Keeps the Windows port from silently re-breaking. The crate has no
   # structural pressure to stay portable, so without a gate the next
