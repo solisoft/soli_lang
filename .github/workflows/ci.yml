@@ -116,7 +116,11 @@ jobs:
 
       # SoliDB for tests/solidb_driver_test.rs, which checks the native driver
       # (`solidb-driver`, on by default) end to end: rows decoded straight into
-      # Soli values must equal the JSON path's. Not a service container: the
+      # Soli values must equal the JSON path's — and for the `.sl` specs below.
+      # The current release, not an old pin: the specs assert the server's
+      # answers (an aggregate over an empty match, a duplicate `_key`), and
+      # 1.1.0 answered both differently from the 2.x every app runs on.
+      # Not a service container: the
       # published image (ghcr.io/solisoft/solidb:v1.1.0) puts a binary built
       # for glibc 2.39 on a bookworm base (2.36) and exits on start. The
       # release binary runs on the runner itself (ubuntu-latest, glibc 2.39).
@@ -124,9 +128,9 @@ jobs:
       # those ports starts talking to it. `--host` is explicit because SoliDB
       # reads a `.env` from any parent directory, and a `SOLIDB_HOST` URL meant
       # for its clients would become its listen address.
-      - name: Start SoliDB (native driver test)
+      - name: Start SoliDB (native driver test and specs)
         run: |
-          curl -fsSL -o /tmp/solidb.tgz https://github.com/solisoft/solidb/releases/download/v1.1.0/solidb-linux-amd64.tar.gz
+          curl -fsSL -o /tmp/solidb.tgz https://github.com/solisoft/solidb/releases/download/v2.2.0/solidb-linux-amd64.tar.gz
           mkdir -p /tmp/solidb && tar -xzf /tmp/solidb.tgz -C /tmp/solidb
           SOLIDB_ADMIN_PASSWORD=admin JWT_SECRET=ci-only-jwt-secret-for-the-test-server \
             nohup /tmp/solidb/solidb --host 127.0.0.1 --port 16745 --data-dir /tmp/solidb/data > /tmp/solidb/server.log 2>&1 &
