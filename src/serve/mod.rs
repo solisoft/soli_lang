@@ -6025,6 +6025,7 @@ fn handle_request(
     for (handler, name) in middleware::plan(&scoped_middleware, &global_middleware) {
         match middleware::run(
             interpreter,
+            vm.as_mut(),
             data,
             handler,
             name.as_deref(),

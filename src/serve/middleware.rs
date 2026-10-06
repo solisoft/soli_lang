@@ -489,6 +489,7 @@ pub(crate) enum Step {
 /// context to stderr, and nothing else to the client).
 pub(crate) fn run(
     interpreter: &mut Interpreter,
+    vm: Option<&mut crate::vm::Vm>,
     data: &RequestData,
     handler: Value,
     preferred_name: Option<&str>,
@@ -498,6 +499,7 @@ pub(crate) fn run(
     let (mw_name, mw_source, mw_span) = middleware_source_info(&handler, preferred_name);
     let call_result = invoke_middleware_with_frame(
         interpreter,
+        vm,
         &mw_name,
         mw_source.as_deref(),
         mw_span,
@@ -661,6 +663,7 @@ fn middleware_fallback_stack(name: &str, source_path: Option<&str>) -> Vec<Strin
 /// carry the middleware's source path in their captured stack trace.
 fn invoke_middleware_with_frame(
     interpreter: &mut Interpreter,
+    vm: Option<&mut crate::vm::Vm>,
     name: &str,
     source_path: Option<&str>,
     span: Span,
@@ -677,25 +680,52 @@ fn invoke_middleware_with_frame(
     let record_dev = middleware_log::is_enabled();
     let mw_start = (record_metrics || record_dev).then(std::time::Instant::now);
 
-    interpreter.push_frame(name, span, source_path.map(|s| s.to_string()));
-    if let Some(path) = source_path {
-        interpreter.set_source_path(PathBuf::from(path));
-    }
     // `def name` without a parameter list reads the request through the `req`
     // global, as an action does — so publish this request's hash there (it
     // still holds the previous request's otherwise) and call with no argument.
     let wants_request = !matches!(&handler, Value::Function(f) if f.full_arity() == 0);
-    let args = if wants_request {
-        vec![request_hash]
-    } else {
-        interpreter
-            .global_env()
-            .borrow_mut()
-            .define_or_update("req", request_hash);
-        Vec::new()
+
+    let vm_attempt = match vm {
+        Some(vm)
+            if !middleware_demoted(name) && !stays_on_tree_walker(name, &handler, interpreter) =>
+        {
+            call_on_vm(
+                vm,
+                interpreter,
+                name,
+                &handler,
+                &request_hash,
+                wants_request,
+                span,
+            )
+        }
+        _ => VmAttempt::NotTried,
     };
-    let result = interpreter.call_value(handler, args, span);
-    interpreter.pop_frame();
+    let result = match vm_attempt {
+        VmAttempt::Done(result) => result,
+        VmAttempt::NotTried | VmAttempt::FellBack => {
+            let fell_back = matches!(vm_attempt, VmAttempt::FellBack);
+            interpreter.push_frame(name, span, source_path.map(|s| s.to_string()));
+            if let Some(path) = source_path {
+                interpreter.set_source_path(PathBuf::from(path));
+            }
+            let args = if wants_request {
+                vec![request_hash]
+            } else {
+                interpreter
+                    .global_env()
+                    .borrow_mut()
+                    .define_or_update("req", request_hash);
+                Vec::new()
+            };
+            let result = interpreter.call_value(handler, args, span);
+            interpreter.pop_frame();
+            if fell_back {
+                super::settle_engine_divergence(result.is_ok());
+            }
+            result
+        }
+    };
 
     if let Some(start) = mw_start {
         let elapsed = start.elapsed();
@@ -707,6 +737,160 @@ fn invoke_middleware_with_frame(
         }
     }
     result
+}
+
+/// What running a middleware on the VM came to.
+enum VmAttempt {
+    /// No VM (dev mode), or this middleware was demoted earlier.
+    NotTried,
+    /// The VM's answer — including a raised `halt`/404/403, and a failure
+    /// after a durable commit, which must not run a second time.
+    Done(Result<Value, RuntimeError>),
+    /// The VM failed before doing anything durable: run it on the tree-walker.
+    FellBack,
+}
+
+thread_local! {
+    /// Middleware the VM failed on in this worker: run on the tree-walker from
+    /// then on, like a demoted action (`Vm::failed_handlers`). Kept apart so a
+    /// middleware and an action that share a name cannot demote each other.
+    static DEMOTED_MIDDLEWARE: std::cell::RefCell<ahash::AHashSet<String>> =
+        std::cell::RefCell::new(ahash::AHashSet::new());
+}
+
+fn middleware_demoted(name: &str) -> bool {
+    DEMOTED_MIDDLEWARE.with(|demoted| demoted.borrow().contains(name))
+}
+
+thread_local! {
+    /// Per middleware, whether it must keep running on the tree-walker (see
+    /// `stays_on_tree_walker`). Worked out on its first request in a worker.
+    static TREE_WALKER_ONLY: std::cell::RefCell<ahash::AHashMap<String, bool>> =
+        std::cell::RefCell::new(ahash::AHashMap::new());
+}
+
+/// Whether a middleware must stay on the tree-walker because it — or a
+/// function it calls — reads a zero-argument function without parentheses
+/// (`user = current_user`).
+///
+/// The tree-walker calls such a function; the VM hands over the function
+/// itself, and nothing fails, so the fallback never fires: the middleware
+/// would just see a truthy function where it used to see a user. Middleware
+/// has always run on the tree-walker, so it may rely on this — scripts get the
+/// same treatment (`bare_call_reason`).
+fn stays_on_tree_walker(name: &str, handler: &Value, interpreter: &Interpreter) -> bool {
+    if let Some(known) = TREE_WALKER_ONLY.with(|cache| cache.borrow().get(name).copied()) {
+        return known;
+    }
+    let reason = bare_call_in(handler, interpreter);
+    if let Some(ref reason) = reason {
+        if std::env::var("SOLI_ENGINE_LOG")
+            .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        {
+            eprintln!("[soli engine] middleware '{name}' runs on the interpreter: {reason}");
+        }
+    }
+    let stays = reason.is_some();
+    TREE_WALKER_ONLY.with(|cache| cache.borrow_mut().insert(name.to_string(), stays));
+    stays
+}
+
+/// The first bare call to a zero-argument function in `handler` or in a
+/// global function it calls, transitively, as "`fn` calls `name` without
+/// parentheses".
+fn bare_call_in(handler: &Value, interpreter: &Interpreter) -> Option<String> {
+    use crate::ast::expr::ExprKind;
+
+    let Value::Function(root) = handler else {
+        return None;
+    };
+    let env = interpreter.environment.clone();
+    let mut visited: ahash::AHashSet<String> = ahash::AHashSet::new();
+    let mut pending = vec![root.clone()];
+    while let Some(function) = pending.pop() {
+        if !visited.insert(function.name.clone()) {
+            continue;
+        }
+        let program = crate::ast::Program::new(function.body.to_vec());
+        let params: Vec<&str> = function.params.iter().map(|p| p.name.as_str()).collect();
+        let zero_arg = |candidate: &str| {
+            !params.contains(&candidate)
+                && match env.borrow().get(candidate) {
+                    Some(Value::Function(f)) => f.params.iter().all(|p| p.default_value.is_some()),
+                    Some(Value::NativeFunction(native)) => {
+                        native.is_auto_invocable || native.arity == Some(0)
+                    }
+                    _ => false,
+                }
+        };
+        if let Some(bare) = crate::bare_call_reason(&program, &zero_arg) {
+            let caller = if function.name.is_empty() {
+                "it"
+            } else {
+                function.name.as_str()
+            };
+            return Some(format!("{caller} calls `{bare}` without parentheses"));
+        }
+        let mut callees = Vec::new();
+        crate::ast::walk::walk_program(&program, &mut |_| {}, &mut |expr| {
+            if let ExprKind::Call { callee, .. } = &expr.kind {
+                if let ExprKind::Variable(callee_name) = &callee.kind {
+                    callees.push(callee_name.clone());
+                }
+            }
+        });
+        for callee_name in callees {
+            if let Some(Value::Function(callee)) = env.borrow().get(&callee_name) {
+                pending.push(callee);
+            }
+        }
+    }
+    None
+}
+
+/// Run a middleware on the VM, as production runs actions.
+///
+/// It used to go through the tree-walker every time: a one-line middleware
+/// (`req["started_at"] = DateTime.utc.to_unix`) cost 8% of a plaintext
+/// route's CPU, more than the action itself on the VM. The fallback rules are
+/// the action's (`call_handler`): a raised response is the answer, anything
+/// else demotes the middleware for good and re-runs it on the tree-walker —
+/// unless the VM run already committed a transaction, where a re-run would
+/// repeat the write.
+fn call_on_vm(
+    vm: &mut crate::vm::Vm,
+    interpreter: &mut Interpreter,
+    name: &str,
+    handler: &Value,
+    request_hash: &Value,
+    wants_request: bool,
+    span: Span,
+) -> VmAttempt {
+    crate::interpreter::builtins::model::crud::clear_durable_commit();
+    let outcome = if wants_request {
+        vm.call_value_direct_one(handler.clone(), request_hash.clone(), span)
+    } else {
+        interpreter
+            .global_env()
+            .borrow_mut()
+            .define_or_update("req", request_hash.clone());
+        vm.globals.insert("req".to_string(), request_hash.clone());
+        vm.call_value_direct(handler.clone(), &[], span)
+    };
+    vm.reset();
+    match outcome {
+        Ok(value) => VmAttempt::Done(Ok(value)),
+        Err(err) if super::raised_response(&err).is_some() => VmAttempt::Done(Err(err)),
+        Err(err) => {
+            super::record_vm_demotion(name, &err);
+            DEMOTED_MIDDLEWARE.with(|demoted| demoted.borrow_mut().insert(name.to_string()));
+            if crate::interpreter::builtins::model::crud::had_durable_commit() {
+                return VmAttempt::Done(Err(err));
+            }
+            super::note_possible_divergence(name, &err);
+            VmAttempt::FellBack
+        }
+    }
 }
 
 /// Build a production 500 response for a middleware that returned an
@@ -919,6 +1103,7 @@ end
         let request_hash = Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
         let err = invoke_middleware_with_frame(
             &mut interpreter,
+            None,
             &name,
             source_path.as_deref(),
             span,
@@ -1032,7 +1217,7 @@ end
         "#,
         );
         let data = request_data();
-        match run(&mut interpreter, &data, handler, None, request, true) {
+        match run(&mut interpreter, None, &data, handler, None, request, true) {
             Step::Halt(response) => {
                 assert_eq!(response.status, 429);
                 assert_eq!(String::from_utf8_lossy(&response.body), "slow down");
@@ -1047,7 +1232,7 @@ end
             }
         "#,
         );
-        match run(&mut interpreter, &data, handler, None, request, false) {
+        match run(&mut interpreter, None, &data, handler, None, request, false) {
             Step::Halt(response) => assert_eq!(response.status, 403),
             Step::Continue(_) => panic!("forbidden must stop the chain"),
         }
@@ -1083,7 +1268,7 @@ end
         "#,
         );
         let data = request_data();
-        match run(&mut interpreter, &data, handler, None, request, false) {
+        match run(&mut interpreter, None, &data, handler, None, request, false) {
             Step::Halt(response) => {
                 assert_eq!(response.status, 401);
                 assert!(String::from_utf8_lossy(&response.body).contains("nope"));
@@ -1106,7 +1291,7 @@ end
         pairs.insert(HashKey::String("path".into()), Value::String("/x".into()));
         let request = Value::Hash(Rc::new(RefCell::new(pairs)));
         let data = request_data();
-        match run(&mut interpreter, &data, handler, None, request, false) {
+        match run(&mut interpreter, None, &data, handler, None, request, false) {
             Step::Continue(Value::Hash(hash)) => {
                 let hash = hash.borrow();
                 assert_eq!(
@@ -1156,6 +1341,236 @@ end
         (interpreter, handler, request)
     }
 
+    /// A production worker's VM: every global of the interpreter copied in,
+    /// as `worker_loop` does at startup.
+    fn vm_for(interpreter: &Interpreter) -> crate::vm::Vm {
+        let mut vm = crate::vm::Vm::new();
+        for (name, value) in interpreter.environment.borrow().get_all_bindings() {
+            vm.globals.insert(name, value);
+        }
+        vm
+    }
+
+    fn stamp_of(step: &Step) -> Option<Value> {
+        match step {
+            Step::Continue(Value::Hash(hash)) => {
+                hash.borrow().get(&HashKey::String("stamp".into())).cloned()
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn on_the_vm_a_middleware_hands_on_its_request() {
+        let (mut interpreter, handler, request) = middleware_from(
+            r#"
+            fn mw(req) {
+                req["stamp"] = "vm"
+                return req
+            }
+        "#,
+        );
+        let mut vm = vm_for(&interpreter);
+        let data = request_data();
+        let step = run(
+            &mut interpreter,
+            Some(&mut vm),
+            &data,
+            handler,
+            None,
+            request,
+            false,
+        );
+        assert_eq!(stamp_of(&step), Some(Value::String("vm".into())));
+        assert!(
+            !middleware_demoted("mw"),
+            "a passing middleware stays on the VM"
+        );
+    }
+
+    #[test]
+    fn on_the_vm_a_parameterless_middleware_reads_the_req_global() {
+        let (mut interpreter, handler, _) = middleware_from(
+            r#"
+            def mw
+              req["stamp"] = "global"
+              req
+            end
+        "#,
+        );
+        let mut vm = vm_for(&interpreter);
+        let request = Value::Hash(Rc::new(RefCell::new(HashPairs::default())));
+        let data = request_data();
+        let step = run(
+            &mut interpreter,
+            Some(&mut vm),
+            &data,
+            handler,
+            None,
+            request,
+            false,
+        );
+        assert_eq!(stamp_of(&step), Some(Value::String("global".into())));
+        assert!(!middleware_demoted("mw"));
+    }
+
+    #[test]
+    fn on_the_vm_halt_and_render_json_are_the_response_not_a_demotion() {
+        let (mut interpreter, handler, request) = middleware_from(
+            r#"
+            fn mw(req) {
+                halt(429, "slow down")
+            }
+        "#,
+        );
+        let mut vm = vm_for(&interpreter);
+        let data = request_data();
+        let step = run(
+            &mut interpreter,
+            Some(&mut vm),
+            &data,
+            handler,
+            None,
+            request,
+            false,
+        );
+        assert_eq!(body_of(&step), "slow down");
+        assert!(
+            !middleware_demoted("mw"),
+            "halt is an answer, not a VM failure"
+        );
+
+        let (mut interpreter, handler, request) = middleware_from(
+            r#"
+            fn mw(req) {
+                return render_json({"error": "nope"}, 401)
+            }
+        "#,
+        );
+        let mut vm = vm_for(&interpreter);
+        match run(
+            &mut interpreter,
+            Some(&mut vm),
+            &data,
+            handler,
+            None,
+            request,
+            false,
+        ) {
+            Step::Halt(response) => assert_eq!(response.status, 401),
+            Step::Continue(_) => panic!("render_json must answer"),
+        }
+        assert!(!middleware_demoted("mw"));
+    }
+
+    /// The VM hands over a zero-argument function read without `()`; the
+    /// tree-walker calls it. Such a middleware keeps the tree-walker, which is
+    /// what it was written against.
+    #[test]
+    fn a_middleware_reading_a_function_bare_stays_on_the_tree_walker() {
+        let (mut interpreter, handler, request) = middleware_from(
+            r#"
+            def current_flag
+              "called"
+            end
+            fn mw(req) {
+                req["stamp"] = current_flag
+                return req
+            }
+        "#,
+        );
+        let mut vm = vm_for(&interpreter);
+        let data = request_data();
+        let step = run(
+            &mut interpreter,
+            Some(&mut vm),
+            &data,
+            handler,
+            None,
+            request,
+            false,
+        );
+        assert_eq!(stamp_of(&step), Some(Value::String("called".into())));
+        assert!(stays_on_tree_walker("mw", &Value::Null, &interpreter));
+    }
+
+    #[test]
+    fn a_bare_call_in_a_function_the_middleware_calls_counts_too() {
+        let (mut interpreter, handler, request) = middleware_from(
+            r#"
+            def current_flag
+              "called"
+            end
+            def flag_for(req)
+              current_flag
+            end
+            fn mw(req) {
+                req["stamp"] = flag_for(req)
+                return req
+            }
+        "#,
+        );
+        let mut vm = vm_for(&interpreter);
+        let data = request_data();
+        let step = run(
+            &mut interpreter,
+            Some(&mut vm),
+            &data,
+            handler,
+            None,
+            request,
+            false,
+        );
+        assert_eq!(stamp_of(&step), Some(Value::String("called".into())));
+    }
+
+    #[test]
+    fn reading_the_request_parameter_bare_keeps_the_vm() {
+        let (interpreter, handler, _) = middleware_from(
+            r#"
+            def stamp_value
+              "x"
+            end
+            fn mw(req) {
+                req["stamp"] = stamp_value()
+                return req
+            }
+        "#,
+        );
+        assert!(bare_call_in(&handler, &interpreter).is_none());
+    }
+
+    #[test]
+    fn a_middleware_failing_on_the_vm_is_demoted_and_rerun_on_the_tree_walker() {
+        let (mut interpreter, handler, request) = middleware_from(
+            r#"
+            fn mw(req) {
+                return no_such_function_anywhere(req)
+            }
+        "#,
+        );
+        let mut vm = vm_for(&interpreter);
+        let data = request_data();
+        let step = run(
+            &mut interpreter,
+            Some(&mut vm),
+            &data,
+            handler.clone(),
+            None,
+            request,
+            false,
+        );
+        // The tree-walker fails the same way: the production error page.
+        match step {
+            Step::Halt(response) => assert_eq!(response.status, 500),
+            Step::Continue(_) => panic!("an undefined function cannot pass"),
+        }
+        assert!(
+            middleware_demoted("mw"),
+            "the VM failure demotes the middleware"
+        );
+    }
+
     fn body_of(step: &Step) -> String {
         match step {
             Step::Halt(response) => String::from_utf8_lossy(&response.body).to_string(),
@@ -1174,7 +1589,7 @@ end
         "#,
         );
         let data = request_data();
-        match run(&mut interpreter, &data, handler, None, request, false) {
+        match run(&mut interpreter, None, &data, handler, None, request, false) {
             Step::Continue(modified) => {
                 let Value::Hash(hash) = modified else {
                     panic!("expected a hash back")
@@ -1200,7 +1615,7 @@ end
         "#,
         );
         let data = request_data();
-        match run(&mut interpreter, &data, handler, None, request, false) {
+        match run(&mut interpreter, None, &data, handler, None, request, false) {
             Step::Halt(response) => {
                 assert_eq!(response.status, 401);
                 assert_eq!(String::from_utf8_lossy(&response.body), "sign in");
@@ -1222,7 +1637,7 @@ end
 
         let (mut interpreter, handler, request) = middleware_from(source);
         let data = request_data();
-        let dev = run(&mut interpreter, &data, handler, None, request, true);
+        let dev = run(&mut interpreter, None, &data, handler, None, request, true);
         assert!(matches!(&dev, Step::Halt(r) if r.status == 500));
         assert!(
             body_of(&dev).contains(complaint),
@@ -1230,7 +1645,7 @@ end
         );
 
         let (mut interpreter, handler, request) = middleware_from(source);
-        let prod = run(&mut interpreter, &data, handler, None, request, false);
+        let prod = run(&mut interpreter, None, &data, handler, None, request, false);
         assert!(matches!(&prod, Step::Halt(r) if r.status == 500));
         assert!(
             !body_of(&prod).contains(complaint),
@@ -1251,7 +1666,7 @@ end
 
         let (mut interpreter, handler, request) = middleware_from(source);
         let data = request_data();
-        let dev = run(&mut interpreter, &data, handler, None, request, true);
+        let dev = run(&mut interpreter, None, &data, handler, None, request, true);
         assert!(matches!(&dev, Step::Halt(r) if r.status == 500));
         assert!(
             body_of(&dev).contains("undefined_variable"),
@@ -1259,7 +1674,7 @@ end
         );
 
         let (mut interpreter, handler, request) = middleware_from(source);
-        let prod = run(&mut interpreter, &data, handler, None, request, false);
+        let prod = run(&mut interpreter, None, &data, handler, None, request, false);
         assert!(matches!(&prod, Step::Halt(r) if r.status == 500));
         assert!(
             !body_of(&prod).contains("undefined_variable"),
