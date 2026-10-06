@@ -511,7 +511,11 @@ fn format_duration(duration: Duration) -> String {
     } else if micros < 1_000_000 {
         format!("{}ms", (micros + 500) / 1000)
     } else {
-        format!("{}.{}s", micros / 1_000_000, (micros % 1_000_000) / 10000)
+        format!(
+            "{}.{:02}s",
+            micros / 1_000_000,
+            (micros % 1_000_000) / 10000
+        )
     }
 }
 
@@ -2678,6 +2682,15 @@ fn collect_and_register_sources(tracker: &mut CoverageTracker, dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn seconds_keep_their_leading_zero_hundredths() {
+        // 1.05s printed as "1.5s": the hundredths were not zero-padded.
+        assert_eq!(format_duration(Duration::from_millis(1050)), "1.05s");
+        assert_eq!(format_duration(Duration::from_millis(2500)), "2.50s");
+        assert_eq!(format_duration(Duration::from_micros(999)), "999µs");
+        assert_eq!(format_duration(Duration::from_micros(1_499)), "1ms");
+    }
 
     /// Visible width of a rendered row: the ANSI SGR sequences it is built
     /// from occupy no cells.
