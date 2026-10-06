@@ -2272,7 +2272,8 @@ impl Interpreter {
             bind_block_item(&call_env_rc, &func.params, &param_name, item.clone());
             let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
-                _ => Value::Null,
+                ControlFlow::Throw(v) => return Err(RuntimeError::Thrown { value: v, span }),
+                ControlFlow::Continue | ControlFlow::Break => Value::Null,
             };
             if !val.is_truthy() {
                 result.push(item.clone());
@@ -2313,7 +2314,8 @@ impl Interpreter {
             bind_block_item(&call_env_rc, &func.params, &param_name, item.clone());
             let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
-                _ => Value::Null,
+                ControlFlow::Throw(v) => return Err(RuntimeError::Thrown { value: v, span }),
+                ControlFlow::Continue | ControlFlow::Break => Value::Null,
             };
             if val.is_truthy() {
                 return Ok(Value::Bool(false));
@@ -2355,7 +2357,8 @@ impl Interpreter {
             bind_block_item(&call_env_rc, &func.params, &param_name, item.clone());
             let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                 ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
-                _ => Value::Null,
+                ControlFlow::Throw(v) => return Err(RuntimeError::Thrown { value: v, span }),
+                ControlFlow::Continue | ControlFlow::Break => Value::Null,
             };
             if val.is_truthy() {
                 if found {
@@ -2439,7 +2442,10 @@ impl Interpreter {
                     bind_block_item(&call_env_rc, &func.params, &param_name, item.clone());
                     let val = match self.execute_block_in(&func.body, call_env_rc.clone())? {
                         ControlFlow::Return(v) | ControlFlow::Normal(v) => v,
-                        _ => Value::Null,
+                        ControlFlow::Throw(v) => {
+                            return Err(RuntimeError::Thrown { value: v, span })
+                        }
+                        ControlFlow::Continue | ControlFlow::Break => Value::Null,
                     };
                     if val.is_truthy() {
                         count += 1;

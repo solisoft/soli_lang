@@ -73,6 +73,13 @@ const CASES: &[(&str, &str)] = &[
         "print([[1, [2]], 3].flatten())\nprint([1, [2, [3, [4]]]].flatten(1))",
     ),
     (
+        // The VM's `count` only took a `Function`, so a block (a VmClosure)
+        // fell through to the equality count and gave 0; the tree-walker's
+        // reject/none?/one?/count dropped a `throw` raised in the block.
+        "array_block_predicates_count_and_propagate_throw",
+        "xs = [1, 2, 3]\nprint(xs.count { |x| x > 1 })\nprint(xs.reject { |x| x > 1 })\nprint(xs.none? { |x| x > 5 })\nprint(xs.one? { |x| x == 2 })\ntry { xs.reject { |x| throw \"reject\" } } catch e { print(e) }\ntry { xs.none? { |x| throw \"none\" } } catch e { print(e) }\ntry { xs.one? { |x| throw \"one\" } } catch e { print(e) }\ntry { xs.count { |x| throw \"count\" } } catch e { print(e) }",
+    ),
+    (
         "array_uniq_compact",
         "print([1, 2, 2, 3, 1].uniq())\nprint([1, null, 2, null].compact())",
     ),

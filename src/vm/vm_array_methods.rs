@@ -991,8 +991,9 @@ impl Vm {
                     return Ok(Value::Int(arr.borrow().len() as i64));
                 }
                 if args.len() == 1 {
-                    if let Value::Function(_) = &args[0] {
-                        expect_callback(&args[0], name, span)?;
+                    // A block is a VmClosure here; matching Function alone sent
+                    // `count { |x| … }` to the equality count below, which gave 0.
+                    if matches!(&args[0], Value::Function(_) | Value::VmClosure(_)) {
                         let cb = args[0].clone();
                         let len = arr.borrow().len();
                         let mut count = 0i64;
