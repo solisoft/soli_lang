@@ -22,6 +22,11 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.17.1.</p>
 
+        <h3 id="unreleased-database" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Database</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">record.delete</code> without parentheses runs the delete callbacks.</strong> Read bare, a model&rsquo;s zero-argument methods skipped the wrap the parenthesised call goes through: no <code class="text-cyan-400">before_delete</code> / <code class="text-cyan-400">after_delete</code>, no <code class="text-cyan-400">dependent:</code> cascades, no purge of <code class="text-cyan-400">uploader</code> blobs, and a <code class="text-cyan-400">before_delete</code> returning <code class="text-cyan-400">false</code> could not stop it &mdash; a deleted record left its files behind. <code class="text-cyan-400">record.delete</code>, <code class="text-cyan-400">record.save</code> and the other zero-argument persistence methods now behave as with parentheses in the app; a spec&rsquo;s own code still needs them. <a href="/docs/database/validations#callbacks" class="text-cyan-400 hover:underline">Callbacks</a></li>
+        </ul>
+
     </section>
 
     <section id="v2-17-1" class="mb-16 scroll-mt-24">

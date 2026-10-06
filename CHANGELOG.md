@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+* **db:** **`record.delete` without parentheses runs the delete callbacks.** Read bare, a Model instance's zero-argument natives were auto-invoked straight, past the wrap the parenthesised call goes through: `record.delete` skipped `before_delete` and `after_delete`, the `dependent:` cascades and the purge of `uploader` blobs, and a `before_delete` returning `false` could not stop it. Deleting a record with an attachment that way left its files stored and unreachable. Bare `delete`, `save` and the other zero-argument persistence methods now take the same path as with parentheses on the VM, which runs the app (requests, test servers). Code run by the tree-walking interpreter, such as a spec's own body, still needs the parentheses. [Docs](www/docs/models.md#callbacks)
+
 ## [2.17.1] - 2026-10-06
 
 ### Fixed

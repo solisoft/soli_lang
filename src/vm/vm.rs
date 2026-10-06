@@ -6585,6 +6585,77 @@ mod tests {
     }
 
     #[test]
+    fn test_vm_model_bare_delete_runs_the_delete_wrap() {
+        // `record.delete` without parentheses auto-invoked the native
+        // directly: no before_delete, so a veto could not stop the delete
+        // (and no cascades, no attachment purge). It must take the same wrap
+        // as `record.delete()`.
+        use crate::interpreter::builtins::model::callbacks::register_callback;
+        use crate::interpreter::value::{Class, Function, Instance};
+        use std::collections::HashMap;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static DELETES: AtomicUsize = AtomicUsize::new(0);
+        DELETES.store(0, Ordering::SeqCst);
+
+        let body = Parser::new(
+            Scanner::new("return false")
+                .scan_tokens()
+                .expect("lex veto"),
+        )
+        .parse()
+        .expect("parse veto")
+        .statements;
+        let model_base = Rc::new(Class {
+            name: "Model".to_string(),
+            ..Default::default()
+        });
+        let mut natives: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+        natives.insert(
+            "delete".to_string(),
+            Rc::new(NativeFunction::new("Model#delete", Some(0), |_| {
+                DELETES.fetch_add(1, Ordering::SeqCst);
+                Ok(Value::Bool(true))
+            })),
+        );
+        let class = Rc::new(Class {
+            name: "BareDeleteVeto".to_string(),
+            superclass: Some(model_base),
+            native_methods: natives,
+            ..Default::default()
+        });
+        class.methods.borrow_mut().insert(
+            "veto".to_string(),
+            Rc::new(Function {
+                name: "veto".to_string(),
+                body: body.into(),
+                ..Function::default()
+            }),
+        );
+        register_callback("BareDeleteVeto", "before_delete", "veto");
+
+        for source in ["let x = record.delete;", "let x = record.delete();"] {
+            let mut inst = Instance::new(class.clone());
+            inst.set("_key", Value::String("bare-1".into()));
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            let module = Compiler::compile(&program).expect("compile error");
+            let mut vm = Vm::new();
+            vm.globals.insert(
+                "record".to_string(),
+                Value::Instance(Rc::new(RefCell::new(inst))),
+            );
+            vm.execute(&module.main).expect("delete on VM");
+            assert_eq!(vm.globals.get("x"), Some(&Value::Bool(false)), "{source}");
+        }
+        assert_eq!(
+            DELETES.load(Ordering::SeqCst),
+            0,
+            "the veto must stop both forms"
+        );
+    }
+
+    #[test]
     fn test_vm_model_delete_purges_attachments_on_vm() {
         use crate::interpreter::builtins::model::uploaders::{register_uploader, UploaderConfig};
         use crate::interpreter::value::{Class, Instance};
