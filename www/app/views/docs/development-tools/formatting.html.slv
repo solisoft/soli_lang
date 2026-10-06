@@ -74,6 +74,7 @@ soli fmt --stdin &lt; in.sl &gt; out.sl</code></pre>
                 <tr><td class="px-4 py-3 text-white">Raw strings</td><td class="px-4 py-3"><code>""" … """</code> and <code>r"…"</code> are copied from source verbatim — never re-escaped</td></tr>
                 <tr><td class="px-4 py-3 text-white">Escapes</td><td class="px-4 py-3">A <code>"…"</code> literal written with <code>\u</code>, <code>\e</code> or <code>\0</code> is kept as written; elsewhere, control and invisible characters (NBSP, zero-width, bidi) are written as <code>\e</code>, <code>\0</code> or <code>\u{…}</code>, never as raw bytes</td></tr>
                 <tr><td class="px-4 py-3 text-white"><code>begin</code>/<code>rescue</code></td><td class="px-4 py-3">Canonicalized to the <code>try</code>/<code>catch</code> synonym</td></tr>
+                <tr><td class="px-4 py-3 text-white">Nil comparisons</td><td class="px-4 py-3"><code>x == nil</code> becomes <code>x.nil?</code> and <code>x != nil</code> becomes <code>!x.nil?</code> (<code>null</code> alike) &mdash; never <code>.present?</code>, which is false for <code>""</code> and <code>[]</code>. An operator expression is left as written: <code>a + b == nil</code> stays, <code>(a + b) != nil</code> becomes <code>!(a + b).nil?</code></td></tr>
             </tbody>
         </table>
     </div>

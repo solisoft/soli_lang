@@ -1172,3 +1172,24 @@ fn line_opening_with_paren_is_not_glued_to_the_line_above() {
     assert_fmt(src, src);
     assert_idempotent(src);
 }
+
+#[test]
+fn nil_comparisons_become_nil_predicates_without_changing_meaning() {
+    assert_fmt("ok = x == nil\n", "ok = x.nil?\n");
+    assert_fmt("ok = nil == user.email\n", "ok = user.email.nil?\n");
+    // `!= nil` keeps its meaning: an empty array or string is not nil, but it
+    // is not `present?` either, so this must not become `rows.present?`.
+    assert_fmt("ok = rows != nil\n", "ok = !rows.nil?\n");
+    assert_fmt(
+        "ok = result[\"records\"] != null\n",
+        "ok = !result[\"records\"].nil?\n",
+    );
+    assert_idempotent("ok = !rows.nil?\n");
+}
+
+#[test]
+fn a_nil_comparison_on_an_operator_expression_is_left_as_written() {
+    // `a + b.nil?` would test `b` alone.
+    assert_fmt("ok = a + b == nil\n", "ok = a + b == nil\n");
+    assert_fmt("ok = (a + b) != nil\n", "ok = !(a + b).nil?\n");
+}

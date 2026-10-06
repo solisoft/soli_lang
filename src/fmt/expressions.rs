@@ -1138,21 +1138,26 @@ impl Printer<'_> {
     fn print_binary_op(&mut self, left: &Expr, operator: BinaryOp, right: &Expr) {
         let op_str = binary_op_str(operator);
 
-        // Stylistic rewrite: collapse `x == null` / `x == nil` to `x.nil?`,
-        // and `x != null` / `x != nil` to `x.present?`. Handles either
-        // ordering of operands. Note: `.present?` differs from `!= null`
-        // for empty strings/arrays (it returns false); this is intentional
-        // per project style.
+        // Stylistic rewrite: `x == nil` → `x.nil?` and `x != nil` → `!x.nil?`
+        // (either operand order, `null` alike). Never `x.present?` for `!=`:
+        // `.present?` is false for `""` and `[]`, so that rewrite turned
+        // `assert(rows != nil)` into an assertion that fails on an empty
+        // result — a formatter must not change what a program does.
+        //
+        // Only when the operand is a primary/postfix expression: appending
+        // `.nil?` to `a + b` would bind to `b` alone.
         if op_str == "==" || op_str == "!=" {
-            let null_method = if op_str == "==" { ".nil?" } else { ".present?" };
-            if matches!(right.kind, ExprKind::Null) {
-                self.print_expr(left);
-                self.write(null_method);
-                return;
-            }
-            if matches!(left.kind, ExprKind::Null) {
-                self.print_expr(right);
-                self.write(null_method);
+            let operand = match (&left.kind, &right.kind) {
+                (_, ExprKind::Null) => Some(left),
+                (ExprKind::Null, _) => Some(right),
+                _ => None,
+            };
+            if let Some(operand) = operand.filter(|operand| takes_postfix_method(operand)) {
+                if op_str == "!=" {
+                    self.write("!");
+                }
+                self.print_expr(operand);
+                self.write(".nil?");
                 return;
             }
         }
@@ -1347,4 +1352,25 @@ fn source_starts_with_nil(source: &str, at: usize) -> bool {
     } else {
         false
     }
+}
+
+/// Whether `.method` can be appended to `expr` as printed and still apply to
+/// all of it: true for variables, member/index access, calls and literals;
+/// false for operators, which `.method` would bind inside of.
+fn takes_postfix_method(expr: &Expr) -> bool {
+    matches!(
+        expr.kind,
+        ExprKind::Variable(_)
+            | ExprKind::Member { .. }
+            | ExprKind::SafeMember { .. }
+            | ExprKind::QualifiedName { .. }
+            | ExprKind::Index { .. }
+            | ExprKind::Call { .. }
+            | ExprKind::Grouping(_)
+            | ExprKind::This
+            | ExprKind::StringLiteral(_)
+            | ExprKind::IntLiteral(_)
+            | ExprKind::FloatLiteral(_)
+            | ExprKind::BoolLiteral(_)
+    )
 }

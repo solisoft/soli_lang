@@ -44,6 +44,7 @@ A few details worth knowing:
 | Raw strings | `""" … """` and `r"…"` are copied from source verbatim — never re-escaped |
 | Escapes | A `"…"` literal written with `\u`, `\e` or `\0` is kept as written; elsewhere, control and invisible characters (NBSP, zero-width, bidi) are written as `\e`, `\0` or `\u{…}`, never as raw bytes |
 | `begin`/`rescue` | Canonicalized to the `try`/`catch` synonym |
+| Nil comparisons | `x == nil` becomes `x.nil?` and `x != nil` becomes `!x.nil?` (`null` alike) — never `.present?`, which is false for `""` and `[]`. An operator expression is left as written: `a + b == nil` stays, `(a + b) != nil` becomes `!(a + b).nil?` |
 
 An early return gets breathing room from the body below it, while a run of
 guards stays grouped as one paragraph:

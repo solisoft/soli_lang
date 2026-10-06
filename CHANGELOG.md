@@ -19,6 +19,7 @@
 
 ### Fixed
 
+* **fmt:** **`soli fmt` no longer changes what a `!= nil` comparison means.** It rewrote `x != nil` to `x.present?`, which is false for `""` and `[]`: `assert(rows != nil)` became an assertion that fails on an empty result. It now writes `!x.nil?`, as the `idiom/nil-comparison` lint rule recommends. Neither rewrite is applied any more to an operator expression, where an appended `.nil?` bound to the last operand alone (`a + b == nil` printed as `a + b.nil?`); a parenthesized one is rewritten as `!(a + b).nil?`.
 * **docs:** **Factory sequence numbers need a raw string.** `#{n}` in a factory template is only literal in `r"user#{n}@test.com"`; the documented `"user#{n}@test.com"` is interpolated by Soli first and fails with `Undefined variable 'n'`. The testing docs also stop claiming that `expect(x).to_match` is a regex (it is a substring check; `assert_match` is the regex), that tests run in parallel by default (1 worker, or 3 with `app/controllers`), that assertions take no message, and — in the `soli new` testing guide — that coverage is off without `--coverage` and that `soli test` has no `--filter`.
 
 ### Performance
