@@ -911,6 +911,10 @@ pub fn serve_folder_with_options_and_hooks(
     // Initialize template engine with views directory
     let views_dir = app_dir.join("views");
     init_templates(views_dir.clone());
+    // `public_path()` stamps `?v=<mtime>` from this directory; unset, it read
+    // `./public`, so an app served from another working directory lost its
+    // cache-busting versions.
+    crate::interpreter::builtins::template::init_public_dir(folder.join("public"));
     if views_dir.exists() {
         println!("Template engine initialized from {}", views_dir.display());
     }
