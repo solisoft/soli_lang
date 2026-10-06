@@ -1555,7 +1555,7 @@ impl Interpreter {
 
 /// Increment a string like Ruby's `String#succ`.
 /// Finds the last alphanumeric run and increments it with carry.
-fn string_succ(s: &str) -> String {
+pub(crate) fn string_succ(s: &str) -> String {
     let chars: Vec<char> = s.chars().collect();
     if chars.is_empty() {
         return s.to_string();

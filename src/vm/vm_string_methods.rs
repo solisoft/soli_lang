@@ -24,7 +24,8 @@ impl Vm {
         span: Span,
     ) -> Result<Value, RuntimeError> {
         use crate::interpreter::executor::calls::string_methods::{
-            downcase_string, identity_string, reuse_or_slice, upcase_string,
+            camelize_string, downcase_string, identity_string, reuse_or_slice, string_succ,
+            upcase_string,
         };
         let text: &str = s.as_ref();
         // Universal zero-argument methods, guarded in one place. The
@@ -846,81 +847,6 @@ fn expect_positive_int_named(
     }
 }
 
-/// Increment a string like Ruby's `String#succ`.
-fn string_succ(s: &str) -> String {
-    let chars: Vec<char> = s.chars().collect();
-    if chars.is_empty() {
-        return s.to_string();
-    }
-
-    let mut end = chars.len();
-    while end > 0 {
-        end -= 1;
-        if chars[end].is_alphanumeric() {
-            break;
-        }
-    }
-    if !chars[end].is_alphanumeric() {
-        return s.to_string();
-    }
-
-    let mut start = end;
-    while start > 0 && chars[start - 1].is_alphanumeric() {
-        start -= 1;
-    }
-
-    let mut result: Vec<char> = chars.clone();
-    let mut carry = true;
-    let mut j = end;
-    loop {
-        if !carry || j < start {
-            break;
-        }
-        let c = result[j];
-        if c.is_ascii_digit() {
-            if c == '9' {
-                result[j] = '0';
-            } else {
-                result[j] = (c as u8 + 1) as char;
-                carry = false;
-            }
-        } else if c.is_ascii_lowercase() {
-            if c == 'z' {
-                result[j] = 'a';
-            } else {
-                result[j] = (c as u8 + 1) as char;
-                carry = false;
-            }
-        } else if c.is_ascii_uppercase() {
-            if c == 'Z' {
-                result[j] = 'A';
-            } else {
-                result[j] = (c as u8 + 1) as char;
-                carry = false;
-            }
-        }
-        if j > start {
-            j -= 1;
-        } else {
-            break;
-        }
-    }
-
-    if carry {
-        let first = chars[start];
-        let new = if first.is_ascii_digit() {
-            '1'
-        } else if first.is_ascii_lowercase() {
-            'a'
-        } else {
-            'A'
-        };
-        result.insert(start, new);
-    }
-
-    result.into_iter().collect()
-}
-
 /// Check if a pattern contains regex metacharacters.
 #[inline]
 fn has_regex_metacharacters(pattern: &str) -> bool {
@@ -942,43 +868,6 @@ fn has_regex_metacharacters(pattern: &str) -> bool {
                 | b'|'
         )
     })
-}
-
-/// Convert `snake_case` / `kebab-case` input to camel case. With `upper=false`
-/// the first emitted char is lowercased (`fooBar`); with `upper=true` it is
-/// uppercased (`FooBar`). Leading and consecutive separators are collapsed,
-/// internal capitals are preserved (so already-camelized input is idempotent).
-fn camelize_string(s: &str, upper: bool) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut emitted_first = false;
-    let mut capitalize_next = false;
-    for ch in s.chars() {
-        if ch == '_' || ch == '-' {
-            capitalize_next = true;
-            continue;
-        }
-        if !emitted_first {
-            if upper {
-                for u in ch.to_uppercase() {
-                    out.push(u);
-                }
-            } else {
-                for l in ch.to_lowercase() {
-                    out.push(l);
-                }
-            }
-            emitted_first = true;
-            capitalize_next = false;
-        } else if capitalize_next {
-            for u in ch.to_uppercase() {
-                out.push(u);
-            }
-            capitalize_next = false;
-        } else {
-            out.push(ch);
-        }
-    }
-    out
 }
 
 /// String replacen without regex.
