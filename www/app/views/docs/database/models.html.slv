@@ -597,12 +597,12 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                     <td class="py-3 px-4 text-gray-400">Execute a named scope (returns QueryBuilder)</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-amber-300">Model.with_deleted</code></td>
-                    <td class="py-3 px-4 text-gray-400">Include soft-deleted records (QueryBuilder)</td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.with_deleted()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Include soft-deleted records (QueryBuilder). The parentheses are required</td>
                 </tr>
                 <tr>
-                    <td class="py-3 px-4"><code class="text-amber-300">Model.only_deleted</code></td>
-                    <td class="py-3 px-4 text-gray-400">Query only deleted records (QueryBuilder)</td>
+                    <td class="py-3 px-4"><code class="text-amber-300">Model.only_deleted()</code></td>
+                    <td class="py-3 px-4 text-gray-400">Query only deleted records (QueryBuilder). The parentheses are required</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.includes(rel, ...)</code></td>
@@ -618,7 +618,7 @@ p.save({ "price": 12.50 })      # name stays "Widget", price becomes 12.50</code
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.sum(field) / avg / min / max</code></td>
-                    <td class="py-3 px-4 text-gray-400">Aggregation (returns QueryBuilder, chain <code>.first</code> to execute)</td>
+                    <td class="py-3 px-4 text-gray-400">Aggregation (returns QueryBuilder, chain <code>.first</code> to execute). <strong class="text-white">Currently always <code>nil</code></strong> &mdash; use <code>Model.aggregate({ "total": ["sum", field] }).first</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">Model.group_by(field, func, agg_field)</code></td>

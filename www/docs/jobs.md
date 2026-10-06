@@ -150,7 +150,7 @@ Cron.update("nightly_report", { "cron_expression": "0 0 4 * * *" });
 Cron.delete("nightly_report");
 ```
 
-`Cron.schedule` is **idempotent**. Calling it twice with the same name updates the existing entry rather than creating a duplicate, so it's safe to call from a boot script. `Cron.update` and `Cron.delete` take the schedule **name** (the same one you passed to `schedule`).
+`Cron.schedule` is **idempotent**. Calling it twice with the same name updates the existing entry rather than creating a duplicate, so it's safe to call from a boot script. `Cron.update` and `Cron.delete` take the schedule **name** (the same one you passed to `schedule`). `Cron.delete` returns `true`, and **raises** (`Cron.delete failed: HTTP 404 …`) for a name that does not exist — `Cron.delete(name) rescue false` when it may already be gone. (`Job.cancel` and `Webhook.cancel` return `false` for an unknown id instead.)
 
 An invalid expression is rejected by `Cron.schedule` / `Cron.update` with an error naming the expected shape — a schedule that could never fire is never stored.
 

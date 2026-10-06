@@ -151,11 +151,14 @@ envelope = SOAP.wrap(body)</code></pre>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400">
-                    <code class="text-orange-400">Hash</code> - Nested Hash with element names as keys
+                    <code class="text-orange-400">Hash</code> - keyed by the root element's name. An element holding only text is that text, as a String; an element with children is a Hash of them; text beside children goes under <code class="text-amber-400">"_text"</code>; an empty element is <code class="text-amber-400">nil</code>; a repeated element becomes an Array. Attributes are dropped, and namespace prefixes stay in the keys (<code class="text-amber-400">"soap:Body"</code>).
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">xml = "&lt;?xml version=\"1.0\"?&gt;&lt;root&gt;&lt;item&gt;value&lt;/item&gt;&lt;/root&gt;"
+                <pre data-filename="Example"><code class="language-soli text-sm">xml = "&lt;?xml version=\"1.0\"?&gt;&lt;root&gt;&lt;item&gt;value&lt;/item&gt;&lt;item&gt;two&lt;/item&gt;&lt;empty/&gt;&lt;/root&gt;"
 parsed = SOAP.parse(xml)
-# Returns: { "root" => { "item" => { "_text" => "value" } } }</code></pre>
+# { "root" =&gt; { "item" =&gt; ["value", "two"], "empty" =&gt; nil } }
+
+SOAP.parse("&lt;a&gt;&lt;b&gt;t&lt;c&gt;u&lt;/c&gt;&lt;/b&gt;&lt;/a&gt;")
+# { "a" =&gt; { "b" =&gt; { "_text" =&gt; "t", "c" =&gt; "u" } } }</code></pre>
             </div>
         </section>
     </section>

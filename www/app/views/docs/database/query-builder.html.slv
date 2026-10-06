@@ -144,19 +144,19 @@ User.where("active == @a", { "a": false }).update_all({ "archived": true })</cod
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">.sum(field)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Set sum aggregation (chain with <code>.first</code> to execute)</td>
+                    <td class="py-3 px-4 text-gray-400">Set sum aggregation (chain with <code>.first</code> to execute). <strong class="text-white">Currently always <code>nil</code></strong> &mdash; use <code>.aggregate({ "x": ["sum", field] }).first</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">.avg(field)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Set average aggregation (chain with <code>.first</code> to execute)</td>
+                    <td class="py-3 px-4 text-gray-400">Set average aggregation (chain with <code>.first</code> to execute). <strong class="text-white">Currently always <code>nil</code></strong> &mdash; use <code>.aggregate({ "x": ["avg", field] }).first</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">.min(field)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Set minimum aggregation (chain with <code>.first</code> to execute)</td>
+                    <td class="py-3 px-4 text-gray-400">Set minimum aggregation (chain with <code>.first</code> to execute). <strong class="text-white">Currently always <code>nil</code></strong> &mdash; use <code>.aggregate({ "x": ["min", field] }).first</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">.max(field)</code></td>
-                    <td class="py-3 px-4 text-gray-400">Set maximum aggregation (chain with <code>.first</code> to execute)</td>
+                    <td class="py-3 px-4 text-gray-400">Set maximum aggregation (chain with <code>.first</code> to execute). <strong class="text-white">Currently always <code>nil</code></strong> &mdash; use <code>.aggregate({ "x": ["max", field] }).first</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">.group_by(field, func, agg_field)</code></td>

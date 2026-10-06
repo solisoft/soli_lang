@@ -492,8 +492,8 @@ Order.where({ "status": "open" }).exists
 Order.sum("total").all                       # sum/avg/min/max on numeric columns
 Order.create({ "name": "Ada", "total": "19.99" })
 order.status = "closed"
-order.save
-order.delete
+order.save()
+order.delete()
 Order.transaction(fn() { ... })              # real SQL transaction</code></pre>
         </div>
     </div>

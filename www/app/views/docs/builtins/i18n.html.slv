@@ -149,10 +149,10 @@ I18n.plural("items", 5)   # "5 items"</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Format a number according to locale conventions.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">I18n.format_number(1234.56, "en")  # "1,234.56"
-I18n.format_number(1234.56, "fr")  # "1 234,56"
-I18n.format_number(1234.56, "de")  # "1.234,56"</code></pre>
+                <p class="text-gray-400 mb-3">Format a number with the locale's decimal separator. It does not group thousands &mdash; use <code class="text-amber-400">format_currency</code> for grouped amounts.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">I18n.format_number(1234.56, "en")  # "1234.56"
+I18n.format_number(1234.56, "fr")  # "1234,56"
+I18n.format_number(1234.56, "de")  # "1234,56"</code></pre>
             </div>
         </section>
 

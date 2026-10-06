@@ -137,13 +137,15 @@ If you run a model, service, or controller file directly with `soli path/to/file
 ### Creating Records
 
 ```soli
-result = User.create({
+user = User.create({
   "email": "alice@example.com",
   "name": "Alice",
   "age": 30
-});
-# Returns: { "valid": true, "record": { "id": "...", "email": "...", ... } }
-# Or on validation failure: { "valid": false, "errors": [...] }
+})
+# Returns the User instance: user._key, user.email, ...
+# On validation failure it is the unsaved instance with
+# user._errors = [{ "field": "email", "message": "can't be blank" }, ...]
+# (`_errors` is nil on success)
 ```
 
 #### Choosing the key
@@ -534,13 +536,13 @@ ordered field sort first.
 | `.first` | Execute query, return the first record, or `null` when there is none |
 | `.first(n)` | Execute query, return the first `n` records as an **array**. Equivalent to `.limit(n).all`; an existing `.limit()` is overridden. Not available on aggregate or `exists` queries, which return a single value rather than rows. |
 | `.count` | Execute query, return count |
-| `.exists` | Execute query, return boolean (true if records exist) |
+| `.exists` | Returns a QueryBuilder; chain `.first` for the boolean (`User.where(...).exists.first`) |
 | `.delete_all` | Execute as a bulk REMOVE — every matching row is deleted in a single statement. Hard delete (ignores soft-delete mode); order/limit/offset/select/group_by are ignored since they don't compose with REMOVE. Returns `null`. |
 | `.update_all(hash)` | Execute as a bulk UPDATE — every matching row is patched with `hash` in a single statement, applying [merge-patch semantics](#merge-patch-semantics). Skips validations and lifecycle callbacks; order/limit/offset/select/group_by are ignored since they don't compose with UPDATE. Returns `null`. On Postgres a patch containing a *nested object* is refused — merging into a stored object needs per-row recursion, which a bulk statement cannot do. |
-| `.sum(field)` | Execute aggregation, return sum of field |
-| `.avg(field)` | Execute aggregation, return average of field |
-| `.min(field)` | Execute aggregation, return minimum of field |
-| `.max(field)` | Execute aggregation, return maximum of field |
+| `.sum(field)` | Sum of field (chain `.first`). **Currently always `nil`** — use `.aggregate({ "total": ["sum", field] }).first` |
+| `.avg(field)` | Average of field (chain `.first`). **Currently always `nil`** — use `.aggregate` |
+| `.min(field)` | Minimum of field (chain `.first`). **Currently always `nil`** — use `.aggregate` |
+| `.max(field)` | Maximum of field (chain `.first`). **Currently always `nil`** — use `.aggregate` |
 | `.group_by(field, func, agg_field)` | Legacy grouping aggregation — returns `[{group, result}]` (chain `.all`) |
 | `.group_by(fields)` | Grouped mode — field name or array of names; combine with `.aggregate` (alone: implicit count per group as `n`). Chain `.all`. See [Analytics](analytics.md#rich-aggregation-document-models). |
 | `.aggregate(spec)` | Multi-aggregate spec `{ alias: [func, field] }` or `{ alias: ["count"] }` — funcs: sum, avg, min, max, count, count_distinct, median, stddev, variance |
@@ -957,6 +959,21 @@ Both class-level methods (`Model.create`, `Model.update`) and instance-level mut
 | `instance.delete()` (soft + hard) | `before_delete` | UPDATE / DELETE | `after_delete` |
 
 After-callbacks only fire when the persist call succeeds. If the native method returns `false` (validation or DB error) the after-callbacks are skipped and the instance carries `_errors`.
+
+> **Write the parentheses: `save()`, `update()`, `delete()` (current
+> limitation).** Called without them — `record.save`, `record.delete` — the
+> instance methods write but run **no** callback from this table: no
+> `before_save` normalisation, no `after_*`, a `before_*` that returns
+> `false` does not veto, and `dependent:` cascades are skipped. Nothing
+> errors. Bare static `Model.delete_all`, `Model.new`, `Model.with_deleted`
+> and `Model.only_deleted` return the function itself and do nothing.
+>
+> `instance.update(attrs)` and `instance.save(attrs)` run `before_save`, but
+> the hash's values are what gets written: a field the callback rewrites keeps
+> the value from `attrs`. A downcasing `before_save` therefore does not apply
+> to `user.update({ "email": "A@X.COM" })`. Assign the fields and call
+> `save()` instead, or use `Model.update(key, attrs)`, which writes the
+> callback's value.
 
 In the after-callbacks of `Model.create(attrs)`, `this` is the record `create` returns, so a field a callback sets is visible on it. For `Model.update(id, attrs)`, `this` holds the attributes passed (after the before-callbacks), plus `_key`/`id` and the metadata the database returned — not the whole stored row; load it with `find` when a callback needs the rest.
 
@@ -1944,25 +1961,40 @@ These methods return the first matching record or `null` if not found.
 
 ## Aggregations
 
-Calculate sums, averages, min, max on query results:
+Calculate sums, averages, min, max on query results. Each returns a
+QueryBuilder; chain `.first` for the value:
 
 ```soli
 # Sum
-total = User.where("age > @a", { "a": 18 }).sum("balance");
+total = User.where("age > @a", { "a": 18 }).sum("balance").first
 
 # Average
-avg = User.avg("score");
+avg = User.avg("score").first
 
 # Minimum
-min_score = User.min("score");
+min_score = User.min("score").first
 
 # Maximum
-max_score = User.max("views");
+max_score = User.max("views").first
 
 # Group by aggregation (legacy 3-arg form, unchanged)
 by_country = User.group_by("country", "sum", "balance");
 # Returns: [{ group: "US", result: 1000 }, { group: "FR", result: 500 }, ...]
 ```
+
+> **Current limitation:** `.sum`, `.avg`, `.min` and `.max` come back `nil`
+> — SoliDB rejects the query they generate. Until that is fixed, compute them
+> with `aggregate`, which works and returns all of them in one round-trip:
+>
+> ```soli
+> stats = User.where("age > @a", { "a": 18 })
+>   .aggregate({ "total": ["sum", "balance"], "avg": ["avg", "score"],
+>                "lo": ["min", "score"], "hi": ["max", "score"] })
+>   .first
+> stats["total"]   # the sum; stats["avg"], stats["lo"], stats["hi"]
+> ```
+>
+> `median`, `stddev`, `variance` and `count_distinct` are not affected.
 
 ### Rich grouped aggregation
 
@@ -2008,8 +2040,8 @@ users = User.pluck("name", "email");
 users = User.pluck(:name, :email).all
 posts = Post.order(:created_at, :desc).limit(10).all
 
-# Check if records exist (returns boolean)
-exists = User.where("role = @r", { "r": "admin" }).exists;
+# Check if records exist: `.exists` builds the query, `.first` runs it
+exists = User.where("role = @r", { "r": "admin" }).exists.first
 # Returns: true or false
 ```
 
@@ -2230,20 +2262,30 @@ class Post < Model
 end
 
 # Delete sets deleted_at timestamp
-post.delete();
+post.delete()
 
 # Restore clears deleted_at
-post.restore();
+post.restore()
 
 # Query without deleted records (default behavior)
-posts = Post.all;
+posts = Post.where("doc.published == true").all
 
-# Include soft-deleted records
-all = Post.with_deleted.all;
+# Include soft-deleted records — the parentheses are required
+everything = Post.with_deleted().all
 
 # Query only deleted records
-deleted = Post.only_deleted.all;
+deleted = Post.only_deleted().all
 ```
+
+`Post.with_deleted` without parentheses is the function itself, not a query:
+`.all` on it raises `Cannot access property 'all' on Function`.
+
+> **Current limitation:** the soft-delete filter is applied to the rows of a
+> built query — `Post.where(...).all`, `Post.order(...).all`,
+> `Post.limit(...).all`, `Post.where(...).first`. A bare `Post.all`, every `.count` (with or
+> without `where`), and `find_by` still include soft-deleted rows. Until
+> that is fixed, filter explicitly where it matters:
+> `Post.where("doc.deleted_at == null").count`.
 
 Interactions with other features: a soft `delete()` **does not run
 [`dependent:` cascades](#cascade-deletes)** (children survive, so `restore()`
@@ -2504,7 +2546,7 @@ Notes:
   are no-ops, and iteration yields nothing.
 - If the related model uses `soft_delete`, soft-deleted children are filtered
   out of the relation (consistent with `Related.where(...)`). Use the static
-  `Related.with_deleted` / `Related.only_deleted` to query them explicitly.
+  `Related.with_deleted()` / `Related.only_deleted()` to query them explicitly.
 - `belongs_to` and `has_one` still return a single instance (or `nil`),
   not a QueryBuilder.
 
@@ -2732,7 +2774,7 @@ order = Order.transaction do
   account = Account.find(account_id)   # `find` (key lookup) sees in-transaction state
   account.balance -= amount
   account.save()
-  Order.create({ "account_id": account_id, "total": amount })["record"]
+  Order.create({ "account_id": account_id, "total": amount })
 end
 ```
 

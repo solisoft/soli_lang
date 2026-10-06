@@ -27,7 +27,7 @@ end
 | Declaration | Description |
 |-------------|-------------|
 | `vector_index field, dimension:, metric:` | HNSW vector index for ANN search on an embedding field. Optional: `m:`, `ef_construction:`, `quantization:`, `name:`. |
-| `fulltext_index field, ...` | Fulltext index over one or more fields; powers `Model.search`. |
+| `fulltext_index field, ...` | Fulltext index over one or more fields; powers `Model.search`, which searches **one** field per call — the first one declared unless `field:` names another. |
 | `geo_index field` | Geospatial index; the field holds a `{ "lat": ..., "lon": ... }` hash. Powers `near` / `within`. |
 | `index field_or_fields, options?` | Secondary index. A field name or an array (compound). Options: `unique:`, `type:` (`"persistent"` default, or `"hash"` / `"fulltext"` / `"bloom"` / `"cuckoo"`), `name:` (defaults to `idx_<collection>_<fields>`). |
 
@@ -143,11 +143,16 @@ run a `before_save embed(...)` hook on every model.
 
 ## Fulltext Search (`search`)
 
-Requires a `fulltext_index` covering the field(s). Results are ranked;
-each carries `_search_score`:
+Requires a `fulltext_index` covering the field(s). A call searches **one
+field**: the first one the `fulltext_index` declares, unless the `field`
+option names another. With `fulltext_index "title", "body"`, a plain
+`Article.search(q)` looks in `title` only — a word that appears only in `body`
+is not found. Search each field you need and merge the results. Results are
+ranked; each carries `_search_score`:
 
 ```soli
-results = Article.search("database indexing")
+results = Article.search("database indexing")                     # title only
+in_body = Article.search("database indexing", { "field": "body" }) # body only
 results[0]._search_score
 
 # Fuzzy, field-scoped, highlighted
@@ -157,7 +162,7 @@ results[0]._highlighted
 
 | Option | Description |
 |--------|-------------|
-| `field` | Restrict the search to one indexed field |
+| `field` | The indexed field to search (default: the first field the `fulltext_index` declares) |
 | `distance` | Fuzzy matching: maximum edit distance |
 | `limit` | Maximum number of results |
 | `highlight` | Adds a `_highlighted` field with match markup |

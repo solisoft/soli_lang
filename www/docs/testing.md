@@ -264,21 +264,26 @@ SOLI_TEST_SOLIDB_HOST=http://localhost:6746 soli test
 For **per-example** isolation inside a spec, wrap DB writes in `with_transaction` — it begins a SolidB transaction, runs your block, then **always rolls back** (even when the block succeeds):
 
 ```soli
-describe("User model", fn() {
-  test("creates user", fn() {
+describe("User model") do
+  test("creates user") do
     Factory.define("user", {"email": "tx@test.com", "name": "Test"})
     Factory.bind("user", User)
 
     with_transaction(fn() {
       user = Factory.insert("user")
-      assert_eq(User.count(), 1)
+      assert(user._key.present?)
       assert_eq(user.name, "Test")
     })
-    # Rolled back — count is 0 again
-    assert_eq(User.count(), 0)
-  })
-})
+    # Rolled back — nothing persisted
+    assert_eq(User.count, 0)
+  end
+end
 ```
+
+Assert on the records the block creates, not on reads: only the writes join
+the transaction. A query inside the block (`User.count`, `User.all`,
+`find`) reads committed data and does not see the block's own inserts —
+`User.count` there is still `0`.
 
 Unlike `Model.transaction { }`, which commits on success, `with_transaction` is test-only and never commits.
 

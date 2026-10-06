@@ -17,15 +17,10 @@
   end
 end</code></pre>
 
-        <p class="text-gray-400 mb-3">Import a module.</p>
-        <pre data-filename="main.sl"><code class="language-soli text-sm">import MyModule from "./my_module.sl"
+        <p class="text-gray-400 mb-3">Import the file, then call through the module name.</p>
+        <pre data-filename="main.sl"><code class="language-soli text-sm">import "./my_module.sl"
 
 MyModule.hello()</code></pre>
-
-        <p class="text-gray-400 mb-3">Import specific members.</p>
-        <pre data-filename="main.sl"><code class="language-soli text-sm">import { hello } from "./my_module.sl"
-
-hello()</code></pre>
         <p class="text-xl text-gray-300 leading-8">
             Organize code with exports, imports, mixin modules, classes, and package structure.
         </p>
@@ -261,18 +256,18 @@ end</code></pre>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Import classes from modules using named imports or module namespace.</p>
-<pre data-filename="main.sl"><code class="language-soli text-sm"># Import the Commerce module from commerce.sl
-import Commerce from "./commerce.sl"
+                <p class="text-gray-400 mb-3">Import the file that declares the module, then reach its classes with <code>::</code>. There is no <code>import Name from</code> form. <strong class="text-white">Current limitation:</strong> the VM (<code>soli file.sl</code>, <code>soli serve</code>) refuses <code>new Commerce::Product(...)</code> with &ldquo;cannot instantiate module&rdquo;; the tree-walker (<code>soli --tree</code>) runs it.</p>
+<pre data-filename="main.sl"><code class="language-soli text-sm"># Import commerce.sl, which declares the Commerce module
+import "./commerce.sl"
 
-# Use classes from the module
-book = new Commerce.Product("Soli Guide", 29.99, 10)
-shirt = new Commerce.Product("T-Shirt", 19.99, 3)
+# Reach the classes through ::
+book = new Commerce::Product("Soli Guide", 29.99, 10)
+shirt = new Commerce::Product("T-Shirt", 19.99, 3)
 
 println(book.in_stock())          # true
 println(book.discounted(20.0))    # 23.992
 
-cart = new Commerce.Cart()
+cart = new Commerce::Cart()
 cart.add(book)
 cart.add(shirt)
 println(cart.total())             # 49.98</code></pre>
@@ -298,19 +293,16 @@ import "./math.sl"
 print(add(2, 3));        # 5
 print(factorial(5));     # 120
 
-# Named imports
+# Named imports - the names must be exported
 import { add, multiply } from "./math.sl"
-sum = add(1, 2);          # 3
-product = multiply(3, 4); # 12
+sum = add(1, 2)           # 3
+product = multiply(3, 4)  # 12
 
 # Aliased imports
 import { add as sum, multiply as times } from "./math.sl"
-result = sum(10, 20);  # 30
-doubled = times(5, 6); # 30
-
-# Import everything with a namespace
-import "./utils.sl" as utils
-formatted = utils.format_date(DateTime.utc());</code></pre>
+result = sum(10, 20)   # 30
+doubled = times(5, 6)  # 30</code></pre>
+                <p class="text-gray-400 mt-3">Those three forms are the whole syntax. There is no namespace import: <code class="text-amber-400">import "./utils.sl" as utils</code> is a parse error, and <code class="text-amber-400">import * as utils from "./utils.sl"</code> parses but binds no <code class="text-amber-400">utils</code> &mdash; it behaves like a whole-file import. To group functions under a name, declare a <code class="text-amber-400">module</code> in the file and call through it. A named import does not hide the rest of the module either: it loads the whole file into the shared global namespace, checking that the names you list are exported and letting you alias them.</p>
             </div>
         </section>
 
@@ -511,24 +503,5 @@ sha256-…, but the installed files hash to sha256-…. Refusing to use it.</cod
         </ul>
     </section>
 
-    <!-- Use Keyword -->
-    <section id="section-use" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">Use Keyword</h2>
-
-        <section id="kw-use" class="scroll-mt-20 mb-6">
-            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <a href="#kw-use" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">use</code>
-                    <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                </a>
-                <p class="text-gray-400 mb-3">Alternative syntax for importing (alias for import).</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">use "./math.sl"
-use { add, multiply } from "./math.sl"
-use "./utils.sl" as utils;</code></pre>
-            </div>
-        </section>
-    </section>
 
 </div>

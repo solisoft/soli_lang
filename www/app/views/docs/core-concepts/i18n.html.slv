@@ -139,7 +139,7 @@ print(usd);  # "$1,999.99"
 
 # Euros with French locale
 eur = I18n.format_currency(price, "EUR", "fr")
-print(eur);  # "€1.999,99"
+print(eur);  # "1.999,99 €"  (plain space before €)
 
 # British Pounds
 gbp = I18n.format_currency(price, "GBP", "en")
@@ -325,7 +325,7 @@ form based on count.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <code class="text-orange-300 font-bold">I18n.format_number(n, locale?)</code>
-            <p class="text-sm text-gray-400 mt-2">Formats a number according to locale conventions (decimal separator).</p>
+            <p class="text-sm text-gray-400 mt-2">Formats a number with the locale's decimal separator. No thousands grouping.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <code class="text-orange-300 font-bold">I18n.format_currency(amount, currency, locale?)</code>

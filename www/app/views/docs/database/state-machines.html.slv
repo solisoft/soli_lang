@@ -218,7 +218,7 @@ end</code></pre>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">order.pay    # field becomes Paid in memory; nothing written yet
-order.save   # persist later, by hand
+order.save()   # persist later, by hand
 
 order.pay!   # transition + persist in one step</code></pre>
         </div>

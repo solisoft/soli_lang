@@ -107,14 +107,14 @@ end
 
 # Rest pattern
 arr = [1, 2, 3, 4, 5]
-match arr
-  [first, second, ...rest]
-    print("First two: " + str(first) + ", " + str(second))
-    print("Remaining: " + str(rest));  # [3, 4, 5]
-  end
-end</code></pre>
+summary = match arr
+  [first, second, ...rest] => "First two: #{first}, #{second}; remaining: #{rest}",
+  _ => "too short"
+end
+# "First two: 1, 2; remaining: [3, 4, 5]"</code></pre>
             </div>
         </div>
+        <p class="text-gray-400 mb-6">An arm is a single expression: <code class="text-amber-400">=&gt; { … }</code> is read as a hash literal, so several statements belong in a method the arm calls. In a type-checked script (<code class="text-amber-400">soli file.sl</code>) an arm that uses the <code class="text-amber-400">...rest</code> binding is currently refused with <em>Undefined variable 'rest'</em>; it runs in a served app, in <code class="text-amber-400">soli test</code>, and with <code class="text-amber-400">--no-type-check</code>.</p>
     </section>
 
     <!-- Hash Patterns -->
@@ -152,24 +152,35 @@ end</code></pre>
     <!-- Type-Based Dispatch -->
     <section id="section-type-dispatch" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Type-Based Dispatch</h2>
+        <p class="text-gray-400 mb-4">A type pattern puts the type first and the binding after it: <code class="text-amber-400">Int: n</code>. It exists for the four primitive types &mdash; <code class="text-amber-400">Int</code>, <code class="text-amber-400">Float</code>, <code class="text-amber-400">Bool</code> and <code class="text-amber-400">String</code>. The name-first form <code class="text-amber-400">n: Int</code> does not parse, since those type names are keywords. For a class, the name-first <code class="text-amber-400">p: Point</code> is a class test that <strong class="text-white">binds nothing</strong> &mdash; <code class="text-amber-400">p</code> is undefined in the arm; read the value through the scrutinee, or bind it with a guard (<code class="text-amber-400">p if type(p) == "Point"</code>). Arrays and hashes have no type pattern (<code class="text-amber-400">Array: a</code> is a type error): bind the value and test it in a guard with <code class="text-amber-400">type()</code>.</p>
         <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-soli text-sm">def describe_value(val: Any) -> String
-  match val
-    s: String => "String with " + str(len(s)) + " characters",
-    n: Int => "Integer: " + str(n),
-    f: Float => "Float: " + str(f),
-    b: Bool => "Boolean: " + str(b),
-    arr: Array => "Array with " + str(len(arr)) + " elements",
-    h: Hash => "Hash with " + str(len(h)) + " keys",
-    null => "Null value",
-    _ => "Unknown type: " + type(val),
+<pre><code class="language-soli text-sm">class Point
+  x: Int
+
+  new(x)
+    @x = x
   end
 end
 
-print(describe_value("hello"));     # "String with 5 characters"
-print(describe_value(42));          # "Integer: 42"
-print(describe_value([1, 2, 3]));   # "Array with 3 elements"</code></pre>
+def describe_value(val) -> String
+  match val {
+    String: s => "String with #{s.length} characters",
+    Int: n => "Integer: #{n}",
+    Float: f => "Float: #{f}",
+    Bool: b => "Boolean: #{b}",
+    arr if type(arr) == "array" => "Array with #{arr.length} elements",
+    h if type(h) == "hash" => "Hash with #{h.length} keys",
+    p if type(p) == "Point" => "Point at #{p.x}",
+    nil => "nil",
+    _ => "Unknown type: #{type(val)}"
+  }
+end
+
+print(describe_value("hello"))       # "String with 5 characters"
+print(describe_value(42))            # "Integer: 42"
+print(describe_value([1, 2, 3]))     # "Array with 3 elements"
+print(describe_value(new Point(3)))  # "Point at 3"</code></pre>
             </div>
         </div>
     </section>

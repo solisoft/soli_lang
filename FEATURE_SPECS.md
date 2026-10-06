@@ -2,6 +2,11 @@
 
 This document specifies the new language features to be implemented.
 
+> **Status.** This is a design document, written before the code. Blocks
+> marked **Not implemented** describe syntax the parser rejects today; the
+> user docs (`www/docs/soli-language.md`) describe what runs. Checked against
+> soli 2.17.1.
+
 ---
 
 ## 1. Pattern Matching
@@ -30,24 +35,31 @@ match x {
 **Variable Patterns:**
 ```soli
 match user {
-    {name, age} => name + " is " + str(age),
+    {name: n, age: a} => n + " is " + a.to_s,
 }
 ```
+> **Not implemented.** The shorthand `{name, age}` (key = binding) does not parse;
+> name each binding: `{name: n, age: a}`.
 
 **Typed Patterns:**
 ```soli
 match value {
-    s: String => "String: " + s,
-    n: Int => "Int: " + str(n),
+    String: s => "String: " + s,
+    Int: n => "Int: " + n.to_s,
 }
 ```
+The type comes first. Only `Int`, `Float`, `Bool` and `String` have a type
+pattern; the name-first form `s: String` does not parse (type names are
+keywords). For a class, `p: Point` tests the class but binds nothing; there
+is no pattern for arrays or hashes — use a guard with `type()`.
 
 **Nested Patterns:**
 ```soli
 match data {
-    {user: {name, email}, posts: [first, ...]} => name,
+    {user: {name: n, email: e}} => n,
 }
 ```
+> **Not implemented.** A bare `...` with no name (`[first, ...]`) does not parse.
 
 **Array Patterns:**
 ```soli
@@ -57,17 +69,24 @@ match list {
     [first, second, ...rest] => first + " and " + second,
 }
 ```
+> **Limitation.** The `...rest` binding works at run time, but the type
+> checker reports `Undefined variable 'rest'` when the arm uses it (scripts;
+> `--no-type-check` skips the check).
 
 **Guard Clauses:**
 ```soli
 match x {
-    n: Int if n > 0 => "positive",
-    n: Int if n < 0 => "negative",
+    Int: n if n > 0 => "positive",
+    Int: n if n < 0 => "negative",
     0 => "zero",
 }
 ```
 
 ### Destructuring
+
+> **Not implemented.** Neither form below parses (`let {…}` / `let […]` is a parse
+> error, `[a, b] = …` an invalid assignment target). Use `match`, or index.
+
 Extract values from hashes and arrays:
 ```soli
 let user = {"name": "Alice", "age": 30, "city": "Paris"};
@@ -244,8 +263,12 @@ connect(database: "users_db", ssl: false);
 let a = [1, 2, 3];
 let b = [0, ...a, 4];  // [0, 1, 2, 3, 4]
 ```
+> **Limitation.** The tree-walker (`soli --tree`, the test runner) splices;
+> the VM currently nests the array instead (`[0, [1, 2, 3], 4]`).
 
 ### Spread in Hashes
+
+> **Not implemented.** `...` inside a hash literal is a parse error.
 ```soli
 let defaults = {"host": "localhost", "port": 8080};
 let config = {"port": 3000, ...defaults};
@@ -253,6 +276,9 @@ let config = {"port": 3000, ...defaults};
 ```
 
 ### Rest in Parameters
+
+> **Not implemented.** `...` in a parameter list (`def f(...xs)`, `fn(...xs)`) is a
+> parse error. Take an array parameter instead.
 ```soli
 fn sum(...numbers: Int[]) -> Int {
     let total = 0;
@@ -266,6 +292,8 @@ sum(1, 2, 3, 4, 5);  // 15
 ```
 
 ### Rest in Destructuring
+
+> **Not implemented.** (see Destructuring above).
 ```soli
 let [head, ...tail] = [1, 2, 3, 4, 5];
 // head = 1, tail = [2, 3, 4, 5]
@@ -282,7 +310,7 @@ let {name, ...rest} = {"name": "Alice", "age": 30, "city": "Paris"};
 ```soli
 let name = "Alice";
 let age = 30;
-let message = "User \(name) is \(age) years old";
+let message = "User #{name} is #{age} years old";
 // "User Alice is 30 years old"
 ```
 
@@ -290,17 +318,19 @@ let message = "User \(name) is \(age) years old";
 ```soli
 let x = 10;
 let y = 20;
-let result = "\(x) + \(y) = \(x + y)";
+let result = "#{x} + #{y} = #{x + y}";
 // "10 + 20 = 30"
 ```
 
+`#{…}` is the only interpolation form; `\(` is an invalid escape.
+
 ### Multi-line Strings
+
+> **Not implemented.** `@"…"` is not a string form, and a `"…"` string cannot
+> span lines. `"""…"""` spans lines but is raw (no interpolation, no escapes):
+
 ```soli
-let template = @"
-Hello \(name),
-Your order #\(order_id) is ready.
-Total: $\(total)
-";
+let template = "Hello #{name},\nYour order ##{order_id} is ready.\nTotal: $#{total}";
 ```
 
 ---
@@ -325,14 +355,17 @@ let result = await(future);   # await(...) is a builtin call, not a keyword
 ```soli
 let squares = [x * x for x in numbers];
 let evens = [x for x in numbers if x % 2 == 0];
-let pairs = [a + b for a in [1,2,3] for b in [4,5,6]];
+let pairs = [a + b for a in [1,2,3] for b in [4,5,6]];  // not implemented
 ```
+> The single-`for` forms work. Chained `for … for …` does not parse.
 
 ### Hash Comprehensions
 ```soli
-let squares = {x: x * x for x in numbers};
-let filtered = {k: v for (k, v) in hash.items() if v > 0};
+let squares = {"#{x}": x * x for x in numbers};   // {"1" => 1, "2" => 4, …}
 ```
+> A bare-identifier key is a literal name, as in any hash: `{x: x * x for x in
+> numbers}` builds the single key `"x"`. A tuple binding `for (k, v) in …`
+> does not parse.
 
 ---
 
@@ -445,31 +478,35 @@ myproject/
     └── user.sl
 ```
 
-### Import Syntax
+### Import Syntax (implemented)
 ```soli
-// Import entire module
-import "./utils/math.sl";
-print(utils.add(1, 2));
+import "./utils/math.sl"                          # whole file, into the global namespace
+import { uppercase, lowercase } from "./utils/strings.sl"   # names must be exported
+import { uppercase as up } from "./utils/strings.sl"
 
-// Import specific items
+export def helper
+  1
+end
+export class MyClass
+end
+```
+
+> **Not implemented.** The original design below does not parse: `from "…" import
+> {…}`, `pub fn`, `pub class`, `pub mod`, and a namespace binding
+> (`import "./x.sl" as x` is a parse error; `import * as x from "./x.sl"`
+> parses but binds no `x`).
+
+```soli
 from "./utils/strings" import {uppercase, lowercase};
-
-// Re-export from module
-// In utils/mod.sl:
 pub mod strings;
-pub mod math;
-
-// Export declarations
 pub fn helper() { }
 pub class MyClass { }
 ```
 
 ### Module Scope
-```soli
-// utils.sl
-let private_var = "hidden";
-pub fn public_fn() { }
-```
+
+Modules share one global namespace: a non-exported declaration is not part of
+the module's interface, but it is defined, and the importer can call it.
 
 ---
 
@@ -484,7 +521,7 @@ pub fn public_fn() { }
 
 2. **Phase 2 (Pattern Matching)**
    - Pattern matching expression
-   - Destructuring
+   - Destructuring (not implemented)
    - Guards
 
 3. **Phase 3 (Error Handling)**
@@ -493,7 +530,8 @@ pub fn public_fn() { }
    - Custom error classes
 
 4. **Phase 4 (Modern Features) - COMPLETED**
-   - Spread/Rest operators
+   - Spread/Rest operators (array spread and `...rest` in array patterns only;
+     hash spread and rest parameters are not implemented)
    - Comprehensions
    - Nullish Coalescing Operator (`??`)
    - Percent Literal Arrays (`%w[]`, `%i[]`, `%n[]`)

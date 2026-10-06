@@ -933,19 +933,21 @@ expect(hash).to_have_key("name")</code></pre>
         <p class="text-gray-400 mb-4"><code class="text-amber-400">SOLI_TEST_SOLIDB_HOST</code> sends test runs to a SoliDB of their own, overriding the <code>SOLIDB_HOST</code> from <code>.env.test</code> for the runner and its test servers &mdash; useful on a workstation whose <code>localhost:6745</code> is the dev instance every <code>soli serve --dev</code> shares. Set it in the shell (<code>SOLI_TEST_SOLIDB_HOST=http://localhost:6746 soli test</code>); CI leaves it unset.</p>
         <p class="text-gray-400 mb-4">Wrap per-example writes in <code>with_transaction</code> &mdash; it always rolls back, even on success (unlike <code>Model.transaction</code>):</p>
 
-        <pre data-filename="tests/models_spec.sl"><code class="language-soli text-sm">describe("User model", fn() {
-  test("creates user", fn() {
+        <pre data-filename="tests/models_spec.sl"><code class="language-soli text-sm">describe("User model") do
+  test("creates user") do
     Factory.define("user", {"email": "tx@test.com", "name": "Test"})
     Factory.bind("user", User)
 
     with_transaction(fn() {
       user = Factory.insert("user")
-      assert_eq(User.count(), 1)
+      assert(user._key.present?)
       assert_eq(user.name, "Test")
     })
-    assert_eq(User.count(), 0)
-  })
-})</code></pre>
+    # Rolled back — nothing persisted
+    assert_eq(User.count, 0)
+  end
+end</code></pre>
+        <p class="text-gray-400 mb-4">Assert on the records the block creates, not on reads: only the writes join the transaction. A query inside the block (<code>User.count</code>, <code>User.all</code>, <code>find</code>) reads committed data and does not see the block&rsquo;s own inserts &mdash; <code>User.count</code> there is still <code>0</code>.</p>
 
         <h3 class="text-xl font-semibold text-white mb-4" id="section-service-helpers">Specs that need a service</h3>
         <p class="text-gray-400 mb-4">Call <code class="text-emerald-300">requires_solidb()</code> or <code class="text-emerald-300">requires_solikv()</code> from a <code>before_each</code>. When the service does not answer, each test is skipped (<code>needs SoliDB: &hellip;</code>) and counted as pending instead of failing on a connection error. SoliDB is probed with a health check of the models' <code>SOLIDB_HOST</code>, SoliKV with a <code>PING</code> to <code>SOLIKV_RESP_HOST</code>/<code>SOLIKV_RESP_PORT</code>. <code class="text-emerald-300">solidb_available?()</code> / <code class="text-emerald-300">solikv_available?()</code> return the answer as a Bool.</p>

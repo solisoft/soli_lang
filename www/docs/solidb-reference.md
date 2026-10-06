@@ -348,7 +348,7 @@ Every method the client exposes, grouped. Reference: [database.md](database.md#r
 |--------|---------|-------------|
 | `Solidb(host, database)` | `Solidb` | Build a client. Nothing opens until the first call. |
 | `db.auth(user, pass)` | — | Attach basic-auth; sent on every subsequent call. |
-| `db.ping` | `String` | Server timestamp. |
+| `db.ping` | `Bool` | `true` when the server answers; raises (`Ping failed: …`) otherwise. |
 | `db.connected()` | `Bool` | Whether `auth` has been called on this instance. |
 | `db.close()` | — | Drop per-instance state (optional; instances are GC'd). |
 
@@ -364,10 +364,10 @@ Every method the client exposes, grouped. Reference: [database.md](database.md#r
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `db.get(coll, key)` | `Hash` \| `null` | Fetch one document by `_key`. |
+| `db.get(coll, key)` | `Hash` | Fetch one document by `_key`. Meant to return `nil` on a missing key, but currently **raises** `Get failed: HTTP 404 … DocumentNotFound` — write `db.get(coll, key) rescue nil` for the "or nil" shape. |
 | `db.insert(coll, key?, doc)` | `Hash` | Create; pass `null` key to auto-generate. |
 | `db.update(coll, key, doc)` | `Hash` | Patch an existing document (fails if missing). |
-| `db.upsert(coll, key, doc)` | `Hash` | Update if present, else insert. |
+| `db.upsert(coll, key, doc)` | `Hash` | Merge `doc` into an **existing** document. A missing key raises `Update failed: HTTP 404 … DocumentNotFound` — it does not insert. For create-or-update: `db.upsert(c, k, d) rescue db.insert(c, k, d)`, or an SDBQL `UPSERT`. |
 | `db.delete(coll, key)` | `String` | Remove a document. |
 | `db.list(coll)` | `Array` | List documents (capped at 100 — use `query` for more). |
 
@@ -375,9 +375,9 @@ Every method the client exposes, grouped. Reference: [database.md](database.md#r
 
 | Method | Description |
 |--------|-------------|
-| `db.create_collection(name, type?)` | `type`: `"blob"` / `"edge"` / `"timeseries"` / default document. `"columnar"` raises — use `create_columnar`. |
+| `db.create_collection(name, type?)` | `type`: `"blob"` / `"edge"` / `"timeseries"` / `"columnar"` / default document. `"columnar"` creates an empty columnar collection; `create_columnar` declares its columns. |
 | `db.drop_collection(name)` | Drop a collection. |
-| `db.list_collections()` | Names of all (document/blob/edge/timeseries) collections. |
+| `db.list_collections()` | One hash per collection: `name`, `type`, `count`, `stats`, … |
 | `db.collection_stats(name)` | Document count, index list, storage size. |
 
 **Columnar & timeseries admin**
@@ -393,10 +393,10 @@ Every method the client exposes, grouped. Reference: [database.md](database.md#r
 
 | Method | Description |
 |--------|-------------|
-| `db.create_index(coll, name, fields, options?)` | `options`: `{ "unique": true }`, `{ "type": "persistent"\|"hash"\|"fulltext"\|"bloom"\|"cuckoo" }`. |
+| `db.create_index(coll, name, fields, options)` | `options` is required — pass `{}` for the defaults: `{ "unique": true }`, `{ "type": "persistent"\|"hash"\|"fulltext"\|"bloom"\|"cuckoo" }`. |
 | `db.drop_index(coll, name)` | Drop an index by name. |
 | `db.list_indexes(coll)` | All indexes on `coll` (including the primary index). |
-| `db.create_vector_index(coll, name, field, dimension, options?)` | HNSW vector index; `options` is a metric string or `{metric, quantization}` hash. |
+| `db.create_vector_index(coll, name, field, dimension, options)` | HNSW vector index; `options` (required) is a metric string (`"cosine"`) or `{metric, quantization}` hash. |
 | `db.drop_vector_index(coll, name)` | Drop a vector index. |
 
 **Blob storage** (on collections created with `type = "blob"`; payloads are base64)
@@ -409,15 +409,13 @@ Every method the client exposes, grouped. Reference: [database.md](database.md#r
 | `db.blob_response(coll, blob_id, req, headers?)` | A response that streams the blob to the client, with `Range` (`206`/`416`), `HEAD` and `304`. Nothing is buffered. |
 | `db.delete_blob(coll, blob_id)` | Remove a blob. |
 
-**Global one-shot helpers** — stateless, take the host (and database) each call.
-For anything past a single call, use a `Solidb` instance instead.
+**Global helpers** — apart from `solidb_connect`, they take a `Solidb`
+instance as their first argument, not a host.
 
 | Function | Description |
 |----------|-------------|
-| `solidb_connect(addr)` | Connect and ping; returns `"Connected (ping: …)"`. |
-| `solidb_ping(addr)` | Server timestamp. |
-| `solidb_auth(addr, db, user, pass)` | One-off authentication check. |
-| `solidb_query(addr, db, sdbql, binds?)` | Execute a query with no persistent state. |
+| `solidb_connect(addr)` | Unauthenticated connect + ping; returns `"Connected (ping: …)"` (a server that requires auth answers 401). |
+| `solidb_<method>(db, …)` | Every client method also exists as a global taking the `Solidb` instance first: `solidb_ping(db)`, `solidb_query(db, sdbql, binds?)`, `solidb_auth(db, user, pass)`. Passing an address string instead raises `must be called on a Solidb instance`. |
 
 ---
 
@@ -556,12 +554,12 @@ end
 
 | Helper | Description |
 |--------|-------------|
-| `db.create_collection(name, type?)` | `"blob"` / `"edge"` / `"timeseries"` / default document. `"columnar"` raises — use `create_columnar`. |
+| `db.create_collection(name, type?)` | `"blob"` / `"edge"` / `"timeseries"` / `"columnar"` / default document. |
 | `db.create_columnar(name, columns, options?)` | Columnar store; `columns` = `{name, type, nullable?, indexed?}` hashes. |
 | `db.drop_columnar(name)` / `db.prune_collection(name, cutoff)` | Columnar drop / timeseries retention. |
 | `db.drop_collection(name)` / `db.list_collections()` / `db.collection_stats(name)` | Collection admin. |
 | `db.create_index(coll, name, fields, options)` | `unique:`, `type:` (`hash` default, `persistent`, `fulltext`, `bloom`, `cuckoo`). |
-| `db.create_vector_index(coll, name, field, dimension, options?)` / `db.drop_vector_index(coll, name)` | HNSW vector index. |
+| `db.create_vector_index(coll, name, field, dimension, options)` / `db.drop_vector_index(coll, name)` | HNSW vector index; `options` (a metric string or hash) is required. |
 | `db.drop_index(coll, name)` / `db.list_indexes(coll)` | Index admin. |
 
 Model-declared indexes (`index`, `vector_index`, …) are metadata-only —

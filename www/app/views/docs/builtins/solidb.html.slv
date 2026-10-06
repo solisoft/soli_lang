@@ -68,7 +68,7 @@ db.auth("admin", "secret")</code></pre>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.ping</code></td>
-                            <td class="py-3">Returns the server's current timestamp as a <code class="text-orange-400">String</code>.</td>
+                            <td class="py-3">Returns <code class="text-orange-400">true</code> when the server answers; raises (<code class="text-orange-400">Ping failed: &hellip;</code>) otherwise.</td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.connected()</code></td>
@@ -144,8 +144,8 @@ db.timeout(60).query(sdbql)</code></pre>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.get(coll, key)</code></td>
-                            <td class="py-3 pr-4">Fetch one document by <code class="text-orange-400">_key</code>.</td>
-                            <td class="py-3"><code class="text-orange-400">Hash</code> | <code class="text-orange-400">null</code></td>
+                            <td class="py-3 pr-4">Fetch one document by <code class="text-orange-400">_key</code>. Meant to return <code class="text-orange-400">nil</code> on a missing key, but currently <strong>raises</strong> <code class="text-orange-400">Get failed: HTTP 404 &hellip; DocumentNotFound</code> &mdash; write <code class="text-emerald-400">db.get(coll, key) rescue nil</code> for the &ldquo;or nil&rdquo; shape.</td>
+                            <td class="py-3"><code class="text-orange-400">Hash</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.insert(coll, key?, doc)</code></td>
@@ -159,7 +159,7 @@ db.timeout(60).query(sdbql)</code></pre>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.upsert(coll, key, doc)</code></td>
-                            <td class="py-3 pr-4">Update if it exists, insert otherwise.</td>
+                            <td class="py-3 pr-4">Merge <code class="text-orange-400">doc</code> into an <strong>existing</strong> document. A missing key raises <code class="text-orange-400">Update failed: HTTP 404 &hellip; DocumentNotFound</code> &mdash; it does not insert. For create-or-update: <code class="text-emerald-400">db.upsert(c, k, d) rescue db.insert(c, k, d)</code>, or an SDBQL <code class="text-orange-400">UPSERT</code>.</td>
                             <td class="py-3"><code class="text-orange-400">Hash</code></td>
                         </tr>
                         <tr class="border-b border-white/5">
@@ -178,8 +178,9 @@ db.timeout(60).query(sdbql)</code></pre>
             <pre data-filename="Example" class="mt-4"><code class="language-soli text-sm">db.insert("users", "1", { "name": "Alice", "email": "alice@example.com" })
 db.insert("users", null, { "name": "Bob" })   # auto-generated key
 db.update("users", "1", { "age": 31 })
-db.upsert("users", "2", { "name": "Bob", "active": true })
+db.upsert("users", "1", { "active": true })    # merges into the existing "1"
 db.get("users", "1")
+db.get("users", "404") rescue nil               # nil on a missing key
 db.delete("users", "1")</code></pre>
         </div>
     </section>
@@ -200,7 +201,7 @@ db.delete("users", "1")</code></pre>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.create_collection(name, type?)</code></td>
-                            <td class="py-3"><code class="text-orange-400">type</code> is optional &mdash; <code class="text-orange-400">"blob"</code>, <code class="text-orange-400">"columnar"</code>, <code class="text-orange-400">"timeseries"</code>, &hellip; default is a regular document collection.</td>
+                            <td class="py-3"><code class="text-orange-400">type</code> is optional &mdash; <code class="text-orange-400">"blob"</code>, <code class="text-orange-400">"edge"</code>, <code class="text-orange-400">"columnar"</code>, <code class="text-orange-400">"timeseries"</code>; default is a regular document collection.</td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.drop_collection(name)</code></td>
@@ -208,7 +209,7 @@ db.delete("users", "1")</code></pre>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.list_collections()</code></td>
-                            <td class="py-3">Names of all collections in the database.</td>
+                            <td class="py-3">One hash per collection: <code class="text-orange-400">name</code>, <code class="text-orange-400">type</code>, <code class="text-orange-400">count</code>, <code class="text-orange-400">stats</code>, &hellip;</td>
                         </tr>
                         <tr>
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.collection_stats(name)</code></td>
@@ -235,8 +236,8 @@ db.delete("users", "1")</code></pre>
                     </thead>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-emerald-400">db.create_index(coll, name, fields, options?)</code></td>
-                            <td class="py-3"><code class="text-orange-400">fields</code> is an Array of field names (or a single String). Common options: <code class="text-orange-400">{ "unique": true }</code>, <code class="text-orange-400">{ "sparse": true }</code>.</td>
+                            <td class="py-3 pr-4"><code class="text-emerald-400">db.create_index(coll, name, fields, options)</code></td>
+                            <td class="py-3"><code class="text-orange-400">fields</code> is an Array of field names (or a single String). <code class="text-orange-400">options</code> is required &mdash; pass <code class="text-orange-400">{}</code> for the defaults (likewise <code class="text-emerald-400">db.create_vector_index(coll, name, field, dimension, options)</code> needs its metric, e.g. <code class="text-orange-400">"cosine"</code>). Common options: <code class="text-orange-400">{ "unique": true }</code>, <code class="text-orange-400">{ "sparse": true }</code>.</td>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">db.drop_index(coll, name)</code></td>
@@ -295,7 +296,7 @@ db.drop_index("users", "idx_email")</code></pre>
     <!-- Global helpers -->
     <section id="section-global" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Global Helpers</h2>
-        <p class="text-gray-400 mb-4">Stateless one-shots that take the host (and database) on every call. Convenient for quick checks; for anything beyond a single call, use a <code class="text-emerald-400">Solidb</code> instance instead.</p>
+        <p class="text-gray-400 mb-4">Apart from <code class="text-emerald-400">solidb_connect</code>, these take a <code class="text-emerald-400">Solidb</code> instance as their first argument, not a host.</p>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-4">
             <div class="overflow-x-auto">
@@ -309,19 +310,11 @@ db.drop_index("users", "idx_email")</code></pre>
                     <tbody class="text-gray-300">
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-emerald-400">solidb_connect(addr)</code></td>
-                            <td class="py-3">Connect and ping. Returns <code class="text-orange-400">"Connected (ping: ...)"</code>.</td>
-                        </tr>
-                        <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-emerald-400">solidb_ping(addr)</code></td>
-                            <td class="py-3">Server timestamp.</td>
-                        </tr>
-                        <tr class="border-b border-white/5">
-                            <td class="py-3 pr-4"><code class="text-emerald-400">solidb_auth(addr, db, user, pass)</code></td>
-                            <td class="py-3">One-off authentication check.</td>
+                            <td class="py-3">Connect <strong>without credentials</strong> and ping. Returns <code class="text-orange-400">"Connected (ping: ...)"</code>; a server that requires auth answers 401 and the call raises.</td>
                         </tr>
                         <tr>
-                            <td class="py-3 pr-4"><code class="text-emerald-400">solidb_query(addr, db, sdbql, bindvars?)</code></td>
-                            <td class="py-3">Execute a query with no persistent state.</td>
+                            <td class="py-3 pr-4"><code class="text-emerald-400">solidb_&lt;method&gt;(db, &hellip;)</code></td>
+                            <td class="py-3">Every client method as a global that takes the <code class="text-emerald-400">Solidb</code> instance first: <code class="text-emerald-400">solidb_ping(db)</code>, <code class="text-emerald-400">solidb_query(db, sdbql, bindvars?)</code>, <code class="text-emerald-400">solidb_auth(db, user, pass)</code>. An address string raises <code class="text-orange-400">must be called on a Solidb instance</code>.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -339,11 +332,13 @@ db.drop_index("users", "idx_email")</code></pre>
             <pre data-filename="scripts/seed_users.sl"><code class="language-soli text-sm">db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"))
 db.auth(env("SOLIDB_USERNAME"), env("SOLIDB_PASSWORD"))
 
-["Alice", "Bob", "Carol"].each(fn(name) {
-  db.upsert("users", name.downcase, { "name": name })
-})
+["Alice", "Bob", "Carol"].each do |name|
+  doc = { "name": name }
+  # upsert only merges into an existing key; insert the first time
+  db.upsert("users", name.downcase, doc) rescue db.insert("users", name.downcase, doc)
+end
 
-println("seeded " + str(len(db.list("users"))) + " users")</code></pre>
+println("seeded #{db.query("FOR u IN users RETURN 1").length} users")</code></pre>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">

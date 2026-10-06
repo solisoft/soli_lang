@@ -134,6 +134,15 @@ min_score = User.min("score").first</code></pre>
 max_score = User.max("views").first</code></pre>
         </div>
 
+        <div class="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <p class="text-amber-300 text-sm mb-2"><strong>Current limitation:</strong> <code>.sum</code>, <code>.avg</code>, <code>.min</code> and <code>.max</code> come back <code>nil</code> &mdash; SoliDB rejects the query they generate. Until that is fixed, compute them with <code>aggregate</code>, which works and returns all of them in one round-trip. <code>median</code>, <code>stddev</code>, <code>variance</code> and <code>count_distinct</code> are not affected.</p>
+            <pre><code class="language-soli text-sm">stats = User.where("age > @a", { "a": 18 })
+  .aggregate({ "total": ["sum", "balance"], "avg": ["avg", "score"],
+               "lo": ["min", "score"], "hi": ["max", "score"] })
+  .first
+stats["total"]   # the sum; stats["avg"], stats["lo"], stats["hi"]</code></pre>
+        </div>
+
         <div>
             <h3 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
                 <span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400 text-xs font-mono">GROUP_BY</span>
@@ -273,7 +282,7 @@ user.decrement("stock")            # -1</code></pre>
                 Updates the <code>_updated_at</code> timestamp without modifying any other fields.
             </p>
             <pre><code class="language-soli text-sm"># Update timestamp only
-user.touch  # Updates _updated_at</code></pre>
+user.touch()  # Updates _updated_at</code></pre>
         </div>
 
         <div>

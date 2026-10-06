@@ -89,7 +89,7 @@ let user: Hash = {"name": "Alice", "age": 30};</code></pre>
                     </svg>
                 </a>
                 <p class="text-sm text-gray-400">64-bit floating-point</p>
-                <code class="text-xs text-gray-500 block mt-2">3.14, 0.001, 2.5e10</code>
+                <code class="text-xs text-gray-500 block mt-2">3.14, 0.001, -40.0</code>
             </section>
             <section id="type-decimal" class="scroll-mt-20 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30">
                 <a href="/docs/language/decimal" class="group">

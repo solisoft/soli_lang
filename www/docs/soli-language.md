@@ -142,7 +142,7 @@ large = 9_000_000;  # Underscores for readability
 # Float - 64-bit floating-point
 pi = 3.14159;
 small = 0.001;
-scientific = 2.5e10;  # 25000000000.0
+# No exponent literal: `2.5e10` does not parse. Use "2.5e10".to_f
 
 # String - UTF-8 text
 greeting = "Hello, World!";
@@ -770,13 +770,14 @@ result = match x {
 };
 print(result);  # "the answer"
 
-# Type matching
-let value: Any = "hello";
+# Type matching: the type comes first (Int, Float, Bool, String).
+# `Any` keeps the checker from refusing the Int arm of a known String.
+let value: Any = "hello"
 match value {
-  s: String => "String: " + s,
-  n: Int => "Int: " + str(n),
-  _ => "Unknown",
-};
+  String: s => "String: " + s,
+  Int: n => "Int: " + n.to_s,
+  _ => "Unknown"
+}
 ```
 
 ### Truthiness
@@ -1355,14 +1356,21 @@ You can also call methods on objects without parentheses, using Ruby-style synta
 ```soli
 # With parentheses (standard)
 user.update(name: "Bob", age: 30);
-user.save();
+user.full_name();
 puts("Hello world");
 
 # Without parentheses (Ruby-style)
 user.update name: "Bob", age: 30;
-user.save;
+user.full_name;
 puts "Hello world";
 ```
+
+> **Model writes are the exception (current limitation).** On a model
+> instance, a bare `record.save` / `record.update` / `record.delete` writes
+> but runs no lifecycle callback — no `before_save`, no `before_delete` veto,
+> no `dependent:` cascade. Bare static `Model.new`, `Model.delete_all`,
+> `Model.with_deleted` return the function and do nothing. Write
+> `record.save()`, `record.delete()`, `Model.delete_all()`, `Model.new()`.
 
 This works for:
 - Method calls on objects with named arguments: `obj.method arg: value`
@@ -3118,14 +3126,19 @@ result = match numbers {
 };
 
 # Rest pattern
-arr = [1, 2, 3, 4, 5];
-match arr {
-  [first, second, ...rest] => {
-    print("First two: " + str(first) + ", " + str(second));
-    print("Remaining: " + str(rest));  # [3, 4, 5]
-  },
-};
+arr = [1, 2, 3, 4, 5]
+summary = match arr {
+  [first, second, ...rest] => "First two: #{first}, #{second}; remaining: #{rest}",
+  _ => "too short"
+}
+# "First two: 1, 2; remaining: [3, 4, 5]"
 ```
+
+An arm is a single expression: `=> { … }` is read as a hash literal, so
+several statements belong in a method the arm calls. In a type-checked script
+(`soli file.sl`) an arm that uses the `...rest` binding is currently refused
+with *Undefined variable 'rest'*; it runs in a served app, in `soli test`,
+and with `--no-type-check`.
 
 ### Hash Patterns
 
@@ -3148,50 +3161,68 @@ data = {
 };
 
 match data {
-  {user: {name: n}, posts: posts} => {
-    print(n + " wrote " + str(len(posts)) + " posts");
-  },
-  _ => "no match",
-};
+  {user: {name: n}, posts: posts} => "#{n} wrote #{posts.length} posts",
+  _ => "no match"
+}
 ```
 
 ### Type-Based Matching
 
-```soli
-# Type patterns with Any values
-let value: Any = get_some_value();
+A type pattern puts the type first and the binding after it: `Int: n`.
+It exists for the four primitive types — `Int`, `Float`, `Bool` and
+`String`. The name-first form (`n: Int`) does not parse, because those type
+names are keywords. For a class, the name-first `p: Point` is a class test
+that **binds nothing** — `p` is undefined in the arm; read the value through
+the scrutinee, or bind it with a guard (`p if type(p) == "Point"`). Arrays and
+hashes have no type pattern (`Array: a` is a type error): bind the value and
+test it in a guard with `type()`.
 
-def describe_value(val: Any) -> String {
+```soli
+class Point
+  x: Int
+
+  new(x)
+    @x = x
+  end
+end
+
+def describe_value(val) -> String
   match val {
-    s: String => "String with " + str(len(s)) + " characters",
-    n: Int => "Integer: " + str(n),
-    f: Float => "Float: " + str(f),
-    b: Bool => "Boolean: " + str(b),
-    arr: Array => "Array with " + str(len(arr)) + " elements",
-    h: Hash => "Hash with " + str(len(h)) + " keys",
-    null => "Null value",
-    _ => "Unknown type: " + type(val),
+    String: s => "String with #{s.length} characters",
+    Int: n => "Integer: #{n}",
+    Float: f => "Float: #{f}",
+    Bool: b => "Boolean: #{b}",
+    arr if type(arr) == "array" => "Array with #{arr.length} elements",
+    h if type(h) == "hash" => "Hash with #{h.length} keys",
+    p if type(p) == "Point" => "Point at #{p.x}",
+    nil => "nil",
+    _ => "Unknown type: #{type(val)}"
   }
-}
+end
+
+describe_value("hello")     # "String with 5 characters"
+describe_value(42)          # "Integer: 42"
+describe_value([1, 2, 3])   # "Array with 3 elements"
+describe_value(new Point(3)) # "Point at 3"
+
+# A type pattern takes a guard too
+size = match 5 { Int: n if n > 3 => "big #{n}", _ => "small" }   # "big 5"
 
 # Practical example: JSON value handler
-def handle_json_value(value: Any) -> String {
+def handle_json_value(value) -> String
   match value {
-    null => "null",
-    s: String => "\"" + s + "\"",
-    n: Int => str(n),
-    n: Float => str(n),
-    true => "true",
-    false => "false",
-    arr: Array => "[" + join(arr.map(fn(x) handle_json_value(x)), ", ") + "]",
-    h: Hash => "{" + join(h.entries.map(fn(pair) {
-      k = pair[0];
-      v = pair[1];
-      "\"" + k + "\": " + handle_json_value(v)
-    }), ", ") + "}",
-    _ => "\"unknown\"",
+    nil => "null",
+    String: s => "\"" + s + "\"",
+    Int: n => n.to_s,
+    Float: n => n.to_s,
+    Bool: b => b.to_s,
+    arr if type(arr) == "array" => "[" + arr.map { |x| handle_json_value(x) }.join(", ") + "]",
+    h if type(h) == "hash" => "{" + h.entries.map { |pair| "\"" + pair[0] + "\": " + handle_json_value(pair[1]) }.join(", ") + "}",
+    _ => "\"unknown\""
   }
-}
+end
+
+handle_json_value({"a": [1, 2.5, "x", nil, true]})   # {"a": [1, 2.5, "x", null, true]}
 ```
 
 ### Advanced Pattern Matching Examples
@@ -3612,7 +3643,7 @@ print(add(2, 3));        # 5
 print(factorial(5));     # 120
 print(fibonacci(10));    # 55
 
-# Named imports - only import specific functions
+# Named imports - the names must be exported by the module
 import { add, multiply } from "./math.sl";
 
 sum = add(1, 2);          # 3
@@ -3623,13 +3654,17 @@ import { add as sum, multiply as times } from "./math.sl";
 
 result = sum(10, 20);  # 30
 doubled = times(5, 6); # 30
-
-# Import everything with a namespace
-import "./utils.sl" as utils;
-
-formatted = utils.format_date(DateTime.utc());
-cleaned = utils.sanitize_input(user_input);
 ```
+
+Those three forms are the whole syntax. There is no namespace import:
+`import "./utils.sl" as utils` is a parse error, and `import * as utils from
+"./utils.sl"` parses but binds no `utils` — it behaves like a whole-file
+import. To group functions under a name, declare a `module` in the file and
+call through it (`Utils.format_date(...)`).
+
+Naming a function in `{ … }` does not hide the rest of the module: a named
+import loads the whole file into the shared global namespace (see below), so
+it checks that the names you list are exported and lets you alias them.
 
 ### What an Import Brings
 
@@ -3690,16 +3725,13 @@ my-project/
 
 ```soli
 # src/main.sl
-import "./config.sl";
-import "./utils/mod.sl" as utils;
-import "../lib/math/mod.sl" as math;
+import "./config.sl"
+import { process_data } from "./utils/mod.sl"
+import { calculate } from "../lib/math/mod.sl"
 
-def main() {
-  config = load_config();
-  processed = utils.process_data(config);
-  result = math.calculate(processed);
-  print(result);
-}
+config = load_config()
+processed = process_data(config)
+print(calculate(processed))
 ```
 
 ### Package Configuration
@@ -4509,9 +4541,11 @@ Soli is written Ruby-style — in apps, specs, docs and `soli new` scaffolds ali
 - **Implicit returns** — the last expression is the value; `return` is for early
   exits, and before a last line that would start with `fn(` (read as a named
   function declaration). A line opening with `(` is its own statement.
-- **No `()` on a zero-argument method call** — `Post.all`, `@post.save`,
+- **No `()` on a zero-argument method call** — `Post.all`,
   `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`. Keep
-  them on a **bare function** (`current_user()`, `session_destroy()`): without
+  them on model writes for now — `@post.save()`, `@post.delete()`,
+  `Post.delete_all()`, `Post.new()`: bare, a write skips its lifecycle
+  callbacks and a static returns the function. Keep them on a **bare function** (`current_user()`, `session_destroy()`): without
   them the VM passes the function itself instead of calling it. Keep them
   before an index too — `list.sort()[0]`: the type checker refuses
   `list.sort[0]`. `.any?`, `.all?` and `.none?` take a block

@@ -154,7 +154,7 @@ The plain event method (`pay`) mutates the record **in memory only**. The bang f
 
 ```soli
 order.pay    # field becomes Paid in memory; nothing written yet
-order.save   # persist later, by hand
+order.save()   # persist later, by hand
 
 order.pay!   # transition + persist in one step
 ```

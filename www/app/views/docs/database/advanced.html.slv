@@ -27,25 +27,28 @@
 end
 
 # Delete sets deleted_at timestamp
-post.delete
+post.delete()
 
 # Restore clears deleted_at
-post.restore
+post.restore()
 
 # Query without deleted records (default behavior)
-posts = Post.all
+posts = Post.where("doc.published == true").all
 
-# Include soft-deleted records
-all = Post.with_deleted.all
+# Include soft-deleted records — the parentheses are required
+everything = Post.with_deleted().all
 
 # Query only deleted records
-deleted = Post.only_deleted.all</code></pre>
+deleted = Post.only_deleted().all</code></pre>
         </div>
     </div>
 
     <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-12">
         <p class="text-amber-300 text-sm">
-            <strong>How it works:</strong> When <code>soft_delete</code> is declared, calling <code>.delete</code> on an instance sets a <code>deleted_at</code> timestamp instead of removing the document. All standard queries automatically filter out soft-deleted records unless you explicitly opt in with <code>.with_deleted</code> or <code>.only_deleted</code>.
+            <strong>How it works:</strong> When <code>soft_delete</code> is declared, calling <code>.delete</code> on an instance sets a <code>deleted_at</code> timestamp instead of removing the document. Queries filter out soft-deleted records unless you explicitly opt in with <code>with_deleted()</code> or <code>only_deleted()</code> &mdash; with the parentheses: <code>Post.with_deleted</code> alone is the function, and <code>.all</code> on it raises.
+        </p>
+        <p class="text-amber-300 text-sm mt-2">
+            <strong>Current limitation:</strong> the filter is applied to the rows of a built query &mdash; <code>Post.where(...).all</code>, <code>Post.order(...).all</code>, <code>Post.limit(...).all</code>, <code>Post.where(...).first</code>. A bare <code>Post.all</code>, every <code>.count</code> (with or without <code>where</code>), and <code>find_by</code> still include soft-deleted rows. Until that is fixed, filter explicitly where it matters: <code>Post.where("doc.deleted_at == null").count</code>.
         </p>
     </div>
 
@@ -112,7 +115,7 @@ order = Order.transaction do
   account = Account.find(account_id)
   account.balance -= amount
   account.save()
-  Order.create({ "account_id": account_id, "total": amount })["record"]
+  Order.create({ "account_id": account_id, "total": amount })
 end
 # The block's value is returned. A `throw` anywhere inside rolls back every write.</code></pre>
         </div>

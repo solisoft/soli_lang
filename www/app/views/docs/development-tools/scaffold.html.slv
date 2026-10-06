@@ -224,7 +224,7 @@
   <span class="text-orange-400">def</span> <span class="text-blue-400">create</span>
     permitted = <span class="text-orange-400">this</span>._permit_params(params)
     user = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">create</span>(permitted)
-    <span class="text-orange-400">if</span> user[<span class="text-green-400">"valid"</span>] == <span class="text-orange-400">true</span>
+    <span class="text-orange-400">unless</span> user.<span class="text-blue-400">_errors</span>
       <span class="text-orange-400">return</span> <span class="text-blue-400">redirect</span>(<span class="text-green-400">"/users"</span>)
     end
     <span class="text-blue-400">render</span>(<span class="text-green-400">"users/new"</span>, {
@@ -390,7 +390,7 @@
             <pre class="text-sm leading-7"><code class="language-soli"><span class="text-orange-400">describe</span>(<span class="text-green-400">"UsersModel"</span>) <span class="text-orange-400">do</span>
   <span class="text-blue-400">test</span>(<span class="text-green-400">"creates a valid record"</span>) <span class="text-orange-400">do</span>
     result = <span class="text-yellow-200">Users</span>.<span class="text-blue-400">create</span>({ <span class="text-green-400">"name"</span>: <span class="text-green-400">"Test User"</span> })
-    <span class="text-blue-400">assert</span>(result[<span class="text-green-400">"valid"</span>])
+    <span class="text-blue-400">assert_null</span>(result.<span class="text-blue-400">_errors</span>)
   <span class="text-orange-400">end</span>
 <span class="text-orange-400">end</span></code></pre>
         </div>

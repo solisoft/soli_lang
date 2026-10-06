@@ -324,20 +324,21 @@ Cron.schedule("warm_cache",     Cron.every("5 minutes"),  "WarmCacheJob", {})</c
         <section id="def-cron-update" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-cron-update" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">Cron.update(id, fields)</code>
+                    <code class="text-lg font-mono text-amber-400">Cron.update(name, fields)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Update an existing cron entry. Pass a hash of fields to change.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">Cron.update(cron_id, { "schedule": "0 4 * * *" })</code></pre>
+                <p class="text-gray-400 mb-3">Update an existing cron entry, by the name given to <code class="text-amber-400">Cron.schedule</code>. Pass a hash of fields to change.</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Cron.update("nightly_report", { "cron_expression": "0 0 4 * * *" })</code></pre>
             </div>
         </section>
 
         <section id="def-cron-delete" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-cron-delete" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">Cron.delete(id)</code>
+                    <code class="text-lg font-mono text-amber-400">Cron.delete(name)</code>
                 </a>
-                <p class="text-gray-400 mb-3">Delete a cron entry by id.</p>
-                <pre data-filename="Example"><code class="language-soli text-sm">Cron.delete(cron_id)</code></pre>
+                <p class="text-gray-400 mb-3">Delete a cron entry by the name given to <code class="text-amber-400">Cron.schedule</code>. Returns <code class="text-amber-400">true</code>; an unknown name <strong>raises</strong> <code class="text-amber-400">Cron.delete failed: HTTP 404 &hellip;</code> (unlike <code class="text-amber-400">Job.cancel</code> / <code class="text-amber-400">Webhook.cancel</code>, which return <code class="text-amber-400">false</code>).</p>
+                <pre data-filename="Example"><code class="language-soli text-sm">Cron.delete("nightly_report")
+Cron.delete("maybe_gone") rescue false   # tolerate a missing entry</code></pre>
             </div>
         </section>
     </section>

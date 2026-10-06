@@ -39,11 +39,8 @@ response = HTTP.request("DELETE", "https://api.example.com/users/1")</code></pre
             <p class="text-gray-300 mb-3 text-sm">
                 Every URL passed to <code class="text-amber-400">HTTP.*</code> is validated up-front: schemes other than <code class="text-amber-400">http</code>/<code class="text-amber-400">https</code> are rejected, as are hosts that resolve to loopback / private / link-local IP ranges. A request to <code class="text-amber-400">http://169.254.169.254/...</code> (cloud metadata) or <code class="text-amber-400">http://10.0.0.1/</code> fails immediately. The blocklist also covers <code class="text-amber-400">0.0.0.0/8</code>, <code class="text-amber-400">192.0.0.0/24</code>, <code class="text-amber-400">198.18.0.0/15</code> and <code class="text-amber-400">240.0.0.0/4</code>, and IPv6 addresses that embed a blocked IPv4 &mdash; NAT64 (<code class="text-amber-400">64:ff9b::/96</code>, <code class="text-amber-400">64:ff9b:1::/48</code>), 6to4 (<code class="text-amber-400">2002::/16</code>), Teredo and IPv4-compatible forms.
             </p>
-            <p class="text-gray-300 mb-3 text-sm">
-                Auto-redirects are <strong>not</strong> followed by the synchronous <code class="text-amber-400">HTTP.get</code> / <code class="text-amber-400">HTTP.post</code> / <code class="text-amber-400">HTTP.request</code> paths &mdash; a 3xx response is returned as-is so a redirect-controlled <code class="text-amber-400">Location</code> cannot bypass the blocklist. Asynchronous and Model-driven HTTP (the reqwest-backed paths) follow redirects with a custom policy that re-runs the SSRF check on every hop.
-            </p>
             <p class="text-gray-300 text-sm">
-                Apps that need to follow a 3xx from <code class="text-amber-400">HTTP.get</code> should inspect <code class="text-amber-400">response["status"]</code> and <code class="text-amber-400">response["headers"]["location"]</code> and re-issue the request manually.
+                Redirects are followed (up to 10 hops) by every <code class="text-amber-400">HTTP.*</code> call, <code class="text-amber-400">HTTP.request</code> included, and the SSRF check runs again on each hop: a 3xx whose <code class="text-amber-400">Location</code> points at a blocked address fails with <code class="text-amber-400">SSRF: redirect target rejected: &hellip;</code> instead of being followed.
             </p>
         </div>
     </section>
@@ -80,11 +77,11 @@ response = HTTP.request("DELETE", "https://api.example.com/users/1")</code></pre
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
-            <p class="text-gray-400 mb-3">Perform an HTTP GET request. Returns a Future that resolves to the response body as a string.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.get("https://api.example.com/users")
-if resp["status"] == 200
-  println(resp["body"])
-end
+            <p class="text-gray-400 mb-3">Perform an HTTP GET request. Returns the response body as a String (in a plain script, a Future that settles to it on first use). A non-2xx response <strong>raises</strong> <code class="text-amber-400">HTTP &lt;status&gt; error: &lt;body&gt;</code>; to read the status of a 4xx/5xx instead, use <a href="#def-http-request" class="text-amber-400 hover:underline">HTTP.request</a>. <code class="text-amber-400">put</code>, <code class="text-amber-400">patch</code>, <code class="text-amber-400">post</code> and <code class="text-amber-400">delete</code> behave the same way.</p>
+            <pre data-filename="Example"><code class="language-soli text-sm">body = HTTP.get("https://api.example.com/users")   # String; raises on 4xx/5xx
+println(body)
+
+page = HTTP.get("https://api.example.com/maybe-missing") rescue nil
 
 # Request headers ride along in the options hash.
 me = HTTP.get("https://api.example.com/me", {
@@ -184,9 +181,9 @@ println(feed["items"][0])</code></pre>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
-            <p class="text-gray-400 mb-3">Perform an HTTP HEAD request.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.head("https://api.example.com/users")
-println(resp["headers"])</code></pre>
+            <p class="text-gray-400 mb-3">Perform an HTTP HEAD request. Returns the status line as a String.</p>
+            <pre data-filename="Example"><code class="language-soli text-sm">status_line = HTTP.head("https://api.example.com/users")
+println(status_line)   # "200 OK"</code></pre>
         </section>
 
         <section id="def-http-download" class="scroll-mt-20 mb-6">
@@ -275,9 +272,9 @@ HTTP.put("https://storage.example.com/reports/q3.pdf", pdf, {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
-            <p class="text-gray-400 mb-3">GET request with automatic JSON parsing of response body. Sends <code class="text-amber-400">Accept: application/json</code> unless <code class="text-amber-400">options.headers</code> overrides it.</p>
-            <pre data-filename="Example"><code class="language-soli text-sm">data = HTTP.get_json("https://api.example.com/users/1")
-println(data["body"]["name"])
+            <p class="text-gray-400 mb-3">GET request with automatic JSON parsing of response body. Returns the parsed body itself (Hash, Array, &hellip;) &mdash; no status/headers wrapper &mdash; and raises <code class="text-amber-400">HTTP &lt;status&gt; error: &lt;body&gt;</code> on a non-2xx response. Sends <code class="text-amber-400">Accept: application/json</code> unless <code class="text-amber-400">options.headers</code> overrides it.</p>
+            <pre data-filename="Example"><code class="language-soli text-sm">user = HTTP.get_json("https://api.example.com/users/1")
+println(user["name"])
 
 # Authenticated, with a 10-second budget.
 me = HTTP.get_json("https://api.example.com/me", {
@@ -293,7 +290,7 @@ me = HTTP.get_json("https://api.example.com/me", {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
             </a>
-            <p class="text-gray-400 mb-3">POST request with automatic JSON serialization.</p>
+            <p class="text-gray-400 mb-3">POST request with automatic JSON serialization. Returns the parsed JSON response body; raises on a non-2xx response. <code class="text-amber-400">put_json</code> and <code class="text-amber-400">patch_json</code> do the same.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.post_json(
   "https://api.example.com/users",
   { "name": "Alice", "email": "alice@example.com" }
@@ -341,7 +338,9 @@ me = HTTP.get_json("https://api.example.com/me", {
                 </svg>
             </a>
             <p class="text-gray-400 mb-3">Perform any HTTP method (GET, POST, PUT, PATCH, DELETE, etc.). The headers hash accepts a <code class="text-amber-400">timeout</code> key (seconds) that is consumed as the per-call timeout rather than sent as a header. The body takes the same shapes as <code class="text-amber-400">HTTP.post</code> (string, hash as JSON, byte array, or multipart with <code class="text-amber-400">"multipart": true</code> in the headers hash), but no <code>Content-Type</code> is implied unless it is multipart.</p>
+            <p class="text-gray-400 mb-3">Returns <code class="text-amber-400">{ "status", "status_text", "headers", "body" }</code>. Unlike the verb helpers it does <strong>not</strong> raise on a 4xx/5xx &mdash; branch on <code class="text-amber-400">resp["status"]</code>. Only a transport failure (DNS, refused connection, timeout, SSRF refusal) raises. <code class="text-amber-400">HTTP.parallel</code> returns one such hash per request.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">resp = HTTP.request("DELETE", "https://api.example.com/users/1")
+println("gone") if resp["status"] == 404
 resp = HTTP.request("PATCH", url, headers, json)
 
 # Custom header plus a 3-second per-call timeout.
@@ -352,60 +351,7 @@ resp = HTTP.request("GET", url, { "Authorization": "Bearer " + token, "timeout":
     <!-- Status Code Helpers -->
     <section id="section-status-helpers" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Status Code Helpers</h2>
-
-        <div class="rounded-xl bg-white/5 border border-white/10 p-5 mb-6">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <section id="def-http-ok" class="scroll-mt-20">
-                    <a href="#def-http-ok" class="group flex items-center gap-2">
-                        <code class="font-mono text-amber-400">http_ok(resp)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 text-sm mt-1">Check if status is exactly 200</p>
-                </section>
-
-                <section id="def-http-success" class="scroll-mt-20">
-                    <a href="#def-http-success" class="group flex items-center gap-2">
-                        <code class="font-mono text-amber-400">http_success(resp)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 text-sm mt-1">Check if status is 2xx</p>
-                </section>
-
-                <section id="def-http-redirect" class="scroll-mt-20">
-                    <a href="#def-http-redirect" class="group flex items-center gap-2">
-                        <code class="font-mono text-amber-400">http_redirect(resp)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 text-sm mt-1">Check if status is 3xx</p>
-                </section>
-
-                <section id="def-http-client-error" class="scroll-mt-20">
-                    <a href="#def-http-client-error" class="group flex items-center gap-2">
-                        <code class="font-mono text-amber-400">http_client_error(resp)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 text-sm mt-1">Check if status is 4xx</p>
-                </section>
-
-                <section id="def-http-server-error" class="scroll-mt-20">
-                    <a href="#def-http-server-error" class="group flex items-center gap-2">
-                        <code class="font-mono text-amber-400">http_server_error(resp)</code>
-                        <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                        </svg>
-                    </a>
-                    <p class="text-gray-400 text-sm mt-1">Check if status is 5xx</p>
-                </section>
-            </div>
-        </div>
+        <p class="text-gray-400">There are none: <code class="text-amber-400">http_ok</code>, <code class="text-amber-400">http_success</code>, <code class="text-amber-400">http_redirect</code>, <code class="text-amber-400">http_client_error</code> and <code class="text-amber-400">http_server_error</code> went with the standalone <code>http_*</code> helpers and are undefined at run time. Compare <code class="text-amber-400">resp["status"]</code> from <a href="#def-http-request" class="text-amber-400 hover:underline">HTTP.request</a>, or rely on the verb helpers raising on non-2xx.</p>
     </section>
 
     <!-- JSON Helpers -->

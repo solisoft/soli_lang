@@ -47,7 +47,7 @@ end</code></pre>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">fulltext_index field, ...</code></td>
-                    <td class="py-3 px-4 text-gray-400">Fulltext index over one or more fields; powers <code>Model.search</code>.</td>
+                    <td class="py-3 px-4 text-gray-400">Fulltext index over one or more fields; powers <code>Model.search</code>, which searches <strong class="text-white">one</strong> field per call &mdash; the first one declared unless <code>field:</code> names another.</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">geo_index field</code></td>
@@ -154,11 +154,12 @@ articles.each_with_index(fn(article, i) {
 
     <h2 id="fulltext-search" class="text-2xl font-bold text-white mb-6">Fulltext Search (<code>search</code>)</h2>
     <p class="text-gray-400 mb-4">
-        Requires a <code>fulltext_index</code> covering the field(s). Results are ranked; each carries <code>_search_score</code>:
+        Requires a <code>fulltext_index</code> covering the field(s). A call searches <strong class="text-white">one field</strong>: the first one the <code>fulltext_index</code> declares, unless the <code>field</code> option names another. With <code>fulltext_index "title", "body"</code>, a plain <code>Article.search(q)</code> looks in <code>title</code> only &mdash; a word that appears only in <code>body</code> is not found. Search each field you need and merge the results. Results are ranked; each carries <code>_search_score</code>:
     </p>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
-            <pre><code class="language-soli text-sm">results = Article.search("database indexing")
+            <pre><code class="language-soli text-sm">results = Article.search("database indexing")                     # title only
+in_body = Article.search("database indexing", { "field": "body" }) # body only
 results[0]._search_score
 
 # Fuzzy, field-scoped, highlighted
@@ -177,7 +178,7 @@ results[0]._highlighted</code></pre>
             <tbody class="divide-y divide-white/5">
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">field</code></td>
-                    <td class="py-3 px-4 text-gray-400">Restrict the search to one indexed field</td>
+                    <td class="py-3 px-4 text-gray-400">The indexed field to search (default: the first field the <code>fulltext_index</code> declares)</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">distance</code></td>

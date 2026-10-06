@@ -839,13 +839,10 @@ this class-based API.
 > immediately). The blocklist also covers `0.0.0.0/8`, `192.0.0.0/24`,
 > `198.18.0.0/15` and `240.0.0.0/4`, and IPv6 addresses that embed a blocked
 > IPv4 — NAT64 (`64:ff9b::/96`, `64:ff9b:1::/48`), 6to4 (`2002::/16`), Teredo
-> and IPv4-compatible forms. Auto-redirects are **not** followed by the synchronous
-> `HTTP.get` / `HTTP.post` / `HTTP.request` paths — a 3xx response is returned
-> as-is so a redirect-controlled `Location` cannot bypass the blocklist.
-> Asynchronous and Model-driven HTTP (the reqwest-backed paths) follow redirects
-> with a custom policy that re-runs the SSRF check on every hop. Apps that need
-> to follow a 3xx from `HTTP.get` should inspect `response["status"]` and
-> `response["headers"]["location"]` and re-issue the request manually.
+> and IPv4-compatible forms. Redirects are followed (up to 10 hops) by every
+> `HTTP.*` call, `HTTP.request` included, and the SSRF check runs again on each
+> hop: a 3xx whose `Location` points at a blocked address fails with
+> `SSRF: redirect target rejected: …` instead of being followed.
 >
 > **Reaching a trusted sidecar.** An app that must call something on loopback —
 > a control plane talking to a proxy admin API, for instance — should name it in
@@ -907,14 +904,18 @@ verb: `get`, `post`, `put`, `patch`, `delete`, `head`, `get_json`,
 `get_jsonp`, `post_json`, `put_json`, `patch_json`, and (applied to every URL
 in the batch) `get_all` / `get_all_json`.
 
-**Returns:** Hash - `{ "status": Int, "body": String, "headers": Hash }`
+**Returns:** String - the response body. A non-2xx response **raises**
+`HTTP <status> error: <body>` (e.g. `HTTP 404 error: {"error": "nope"}`).
+To read the status of a non-2xx response instead, use `HTTP.request` (below),
+which returns `{ "status", "status_text", "headers", "body" }` and does not
+raise.
 
 **Example:**
 ```soli
-response = HTTP.get("https://api.example.com/data")
-if response["status"] == 200
-  println(response["body"])
-end
+body = HTTP.get("https://api.example.com/data")   # String; raises on 4xx/5xx
+println(body)
+
+page = HTTP.get("https://api.example.com/maybe-missing") rescue nil
 
 # Authenticated call: headers ride along in the options hash.
 me = HTTP.get_json("https://api.example.com/me", {
@@ -941,7 +942,8 @@ Performs an HTTP POST request.
   - `timeout` (Int|Float) - Per-call timeout in seconds (see `HTTP.get`)
   - `multipart` (Bool) - `true` sends the body hash as `multipart/form-data`
 
-**Returns:** Hash - `{ "status": Int, "body": String, "headers": Hash }`
+**Returns:** String - the response body. A non-2xx response raises
+`HTTP <status> error: <body>`, as for `HTTP.get`.
 
 **Example:**
 ```soli
@@ -966,7 +968,8 @@ Performs an HTTP POST request with JSON body.
 - `options` (Hash, optional) - Request options (`headers`, `timeout` — see
   `HTTP.get`)
 
-**Returns:** Hash - Response with parsed JSON body if applicable
+**Returns:** The parsed JSON response body (Hash, Array, …) — not a
+status/headers wrapper. A non-2xx response raises `HTTP <status> error: <body>`.
 
 **Example:**
 ```soli
@@ -993,12 +996,13 @@ Performs an HTTP GET request and parses JSON response.
   `HTTP.get`). An `Accept` header here overrides the default
   `application/json`.
 
-**Returns:** Hash - Response with parsed JSON body
+**Returns:** The parsed JSON response body itself (Hash, Array, …). A non-2xx
+response raises `HTTP <status> error: <body>`.
 
 **Example:**
 ```soli
-data = HTTP.get_json("https://api.example.com/users/1")
-println(data["body"]["name"])
+user = HTTP.get_json("https://api.example.com/users/1")
+println(user["name"])
 ```
 
 ### HTTP.get_jsonp(url, options?)
@@ -1028,7 +1032,9 @@ println(feed["items"][0])
 PUT / PATCH / DELETE / HEAD counterparts to `HTTP.get` and `HTTP.post`. JSON
 variants (`HTTP.put_json`, `HTTP.patch_json`) serialize the body automatically.
 All of them take the same trailing options hash (`headers`, `timeout`) as
-`HTTP.get`.
+`HTTP.get`. `put`, `patch` and `delete` return the body String and raise on a
+non-2xx response, like `get`/`post`; the `*_json` variants return the parsed
+body. `HTTP.head` returns the status line as a String (`"200 OK"`).
 
 ```soli
 HTTP.delete("https://api.example.com/users/1", {
@@ -1107,11 +1113,15 @@ Performs a custom HTTP request.
   `HTTP.post` (see [Request bodies](#request-bodies-bytes-and-multipart)), but
   no `Content-Type` is implied unless it is multipart
 
-**Returns:** Hash - Response object
+**Returns:** Hash - `{ "status": Int, "status_text": String, "headers": Hash, "body": String }`.
+Unlike the verb helpers it does **not** raise on a 4xx/5xx — branch on
+`response["status"]`. Only a transport failure (DNS, refused connection,
+timeout, SSRF refusal) raises.
 
 **Example:**
 ```soli
 response = HTTP.request("DELETE", "https://api.example.com/users/1")
+println("gone") if response["status"] == 404
 
 # Custom headers plus a 3-second per-call timeout.
 response = HTTP.request("GET", "https://api.example.com/slow", {
@@ -1122,32 +1132,11 @@ response = HTTP.request("GET", "https://api.example.com/slow", {
 
 ### HTTP Status Helpers
 
-#### http_ok(response)
-
-Checks if response status is 200.
-
-**Example:**
-```soli
-if http_ok(response)
-  println("Success!")
-end
-```
-
-#### http_success(response)
-
-Checks if response status is 2xx.
-
-#### http_redirect(response)
-
-Checks if response status is 3xx.
-
-#### http_client_error(response)
-
-Checks if response status is 4xx.
-
-#### http_server_error(response)
-
-Checks if response status is 5xx.
+There are none: `http_ok`, `http_success`, `http_redirect`,
+`http_client_error` and `http_server_error` went with the standalone `http_*`
+helpers and are undefined at run time. Compare `response["status"]` from
+`HTTP.request` (`response["status"] >= 200 && response["status"] < 300`), or
+rely on the verb helpers raising on non-2xx.
 
 ### HTTP.get_all(urls, options?)
 
@@ -1210,7 +1199,8 @@ Performs multiple custom requests in parallel.
   `headers`, optional `body`, and an optional per-request `timeout` (Int|Float
   seconds)
 
-**Returns:** Array - Array of response objects
+**Returns:** Array - one `{ "status", "status_text", "headers", "body" }` hash
+per request, in order (no raise on 4xx/5xx, as with `HTTP.request`)
 
 **Example:**
 ```soli
@@ -3231,13 +3221,23 @@ Parses an XML string into a nested Hash structure for easy access.
 **Parameters:**
 - `xml` (String) - XML string to parse
 
-**Returns:** Hash - Nested Hash with element names as keys and text/attributes as values
+**Returns:** Hash - keyed by the root element's name. Inside it:
+
+- an element holding only text is that text, as a String (numbers stay strings: `"1.90"`);
+- an element with children is a Hash of its children;
+- an element with both text and children keeps the text under `"_text"`;
+- an empty element is `nil`;
+- a repeated element becomes an Array, in document order;
+- attributes are dropped, and namespace prefixes stay in the keys (`"soap:Body"`).
 
 **Example:**
 ```soli
-xml = "<?xml version=\"1.0\"?><root><item>value</item></root>"
+xml = "<?xml version=\"1.0\"?><root><item>value</item><item>two</item><empty/></root>"
 parsed = SOAP.parse(xml)
-# Returns: { "root" => { "item" => { "_text" => "value" } } }
+# { "root" => { "item" => ["value", "two"], "empty" => nil } }
+
+SOAP.parse("<a><b>t<c>u</c></b></a>")
+# { "a" => { "b" => { "_text" => "t", "c" => "u" } } }
 ```
 
 ### SOAP.xml_escape(text)
@@ -4451,13 +4451,18 @@ Cron.schedule("nightly_report", Cron.daily_at("03:00"), "ReportJob", {})
 
 Returns all cron entries.
 
-#### Cron.update(id, fields)
+#### Cron.update(name, fields)
 
-Updates an existing cron entry. Pass a hash of fields.
+Updates an existing cron entry, by the name given to `Cron.schedule`. Pass a
+hash of fields (`{ "cron_expression": "0 0 4 * * *" }`).
 
-#### Cron.delete(id)
+#### Cron.delete(name)
 
-Deletes a cron entry by id. Returns Bool.
+Deletes a cron entry by the name given to `Cron.schedule`. Returns `true`.
+An unknown name **raises** `Cron.delete failed: HTTP 404 … DocumentNotFound`
+(unlike `Job.cancel` / `Webhook.cancel`, which return `false` for an unknown
+id) — write `Cron.delete(name) rescue false` when the entry may already be
+gone.
 
 ### Cron expression helpers
 
@@ -4735,11 +4740,13 @@ Runs a block inside a SolidB transaction and **always rolls back** when the bloc
 
 ```soli
 with_transaction(fn() {
-  Factory.insert("user")
-  assert_eq(User.count(), 1)
+  user = Factory.insert("user")
+  assert(user._key.present?)
 })
-assert_eq(User.count(), 0)
+assert_eq(User.count, 0)
 ```
+
+Only the writes join the transaction: a query inside the block (`User.count`, `find`) reads committed data and does not see the block's own inserts, so assert on the returned records instead.
 
 ### freeze_time(timestamp) / travel_to(timestamp) / unfreeze_time()
 
@@ -5954,60 +5961,26 @@ Generates a URL for downloading a blob.
 
 ## SolidB Standalone Functions
 
-Global functions for connecting to SolidB without creating an instance.
+Every `Solidb` client method also exists as a global function that takes the
+instance as its first argument — `solidb_ping(db)`, `solidb_query(db, sdbql,
+bindvars?)`, `solidb_auth(db, username, password)`, … — and behaves like the
+method (`db.ping`, `db.query(...)`). Passing an address string instead raises
+`solidb_<name>() must be called on a Solidb instance`.
+
+```soli
+db = Solidb(env("SOLIDB_HOST"), env("SOLIDB_DATABASE"))
+db.auth(env("SOLIDB_USERNAME"), env("SOLIDB_PASSWORD"))
+solidb_ping(db)                    # true
+solidb_query(db, "RETURN 1")       # [1]
+```
 
 ### solidb_connect(address)
 
-Connect to a SolidB server and ping it.
+The one string-addressed helper: connects to `address` **without
+credentials** and pings it.
 
-**Parameters:**
-- `address` (String) - SolidB server address (e.g., `localhost:5678`)
-
-**Returns:** String - Connection confirmation with ping response
-
-**Example:**
-```soli
-result = solidb_connect("localhost:5678")
-# Returns: "Connected (ping: timestamp)"
-```
-
-### solidb_ping(address)
-
-Ping a SolidB server.
-
-**Parameters:**
-- `address` (String) - SolidB server address
-
-**Returns:** String - Timestamp from server
-
-### solidb_auth(address, database, username, password)
-
-Authenticate with a SolidB server.
-
-**Parameters:**
-- `address` (String) - SolidB server address
-- `database` (String) - Database name
-- `username` (String) - Username
-- `password` (String) - Password
-
-**Returns:** String - "Authenticated" on success
-
-### solidb_query(address, database, sdbql, bindvars?)
-
-Execute a SDBQL query against a SolidB database.
-
-**Parameters:**
-- `address` (String) - SolidB server address
-- `database` (String) - Database name
-- `sdbql` (String) - SDBQL query string
-- `bindvars` (Hash, optional) - Bind variables for the query
-
-**Returns:** Array - Query results as array of hashes
-
-**Example:**
-```soli
-results = solidb_query("localhost:5678", "myapp", "FOR doc IN collection RETURN doc")
-```
+**Returns:** String - `"Connected (ping: …)"`. A server that requires
+authentication answers 401 and the call raises (`Ping failed: HTTP 401 …`).
 
 ---
 
@@ -6173,12 +6146,13 @@ Parses a SOAP XML response into a Hash.
 **Parameters:**
 - `xml_string` (String) - The SOAP response XML
 
-**Returns:** Hash - Parsed response with extracted data
+**Returns:** Hash - keyed by the root element, prefixes included; see
+`SOAP.parse(xml)` under "SOAP Class" above for the full shape.
 
 **Example:**
 ```soli
 response = SOAP.parse(xml_response)
-customer_name = response["Body"]["GetCustomerResponse"]["Name"]
+customer_name = response["soap:Envelope"]["soap:Body"]["GetCustomerResponse"]["Name"]
 ```
 
 #### SOAP.xml_escape(string)

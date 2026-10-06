@@ -31,7 +31,7 @@
 <pre><code class="language-soli text-sm">pi = 3.14159
 temp = -40.0
 tiny = 0.001
-sci = 2.5e10          # Scientific notation
+sci = "2.5e10".to_f    # No exponent literal: 2.5e10 does not parse
 let typed: Float = 1.5</code></pre>
             </div>
         </div>
