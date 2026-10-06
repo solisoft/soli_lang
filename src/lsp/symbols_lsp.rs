@@ -1,4 +1,5 @@
 //! Document symbols provider for LSP.
+use super::util::lsp_range_from_span;
 use crate::lsp::symbols::SymbolTable;
 use tower_lsp::lsp_types::{DocumentSymbol, DocumentSymbolResponse, Position, Range, SymbolKind};
 
@@ -105,17 +106,4 @@ fn get_children_for_symbol(
     }
 
     children
-}
-
-fn lsp_range_from_span(span: crate::span::Span) -> Range {
-    Range {
-        start: Position {
-            line: span.line.saturating_sub(1),
-            character: span.column.saturating_sub(1),
-        },
-        end: Position {
-            line: span.line.saturating_sub(1),
-            character: span.column + (span.end - span.start),
-        },
-    }
 }

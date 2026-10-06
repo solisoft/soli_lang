@@ -1,6 +1,7 @@
 //! Find references provider for LSP.
+use super::util::{extract_word_at_offset, lsp_range_from_span, position_to_offset};
 use crate::lsp::symbols::SymbolTable;
-use tower_lsp::lsp_types::{Location, Position, Range, Url};
+use tower_lsp::lsp_types::{Location, Position, Url};
 
 pub fn find_references(
     source: &str,
@@ -26,60 +27,5 @@ pub fn find_references(
         None
     } else {
         Some(references)
-    }
-}
-
-fn extract_word_at_offset(source: &str, offset: usize) -> Option<String> {
-    let chars: Vec<char> = source.chars().collect();
-    if offset >= chars.len() {
-        return None;
-    }
-
-    let mut start = offset;
-    let mut end = offset;
-
-    while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
-        start -= 1;
-    }
-
-    while end < chars.len() && (chars[end].is_alphanumeric() || chars[end] == '_') {
-        end += 1;
-    }
-
-    if start == end {
-        return None;
-    }
-
-    Some(chars[start..end].iter().collect())
-}
-
-fn position_to_offset(source: &str, position: Position) -> Option<usize> {
-    let mut offset = 0;
-
-    for (line, line_str) in source.lines().enumerate() {
-        if line as u32 == position.line {
-            let col = position.character as usize;
-            for (char_offset, (i, _)) in line_str.char_indices().enumerate() {
-                if char_offset >= col {
-                    return Some(offset + i);
-                }
-            }
-            return Some(offset + line_str.len().min(col));
-        }
-        offset += line_str.len() + 1;
-    }
-    None
-}
-
-fn lsp_range_from_span(span: crate::span::Span) -> Range {
-    Range {
-        start: Position {
-            line: span.line.saturating_sub(1),
-            character: span.column.saturating_sub(1),
-        },
-        end: Position {
-            line: span.line.saturating_sub(1),
-            character: span.column + (span.end - span.start),
-        },
     }
 }

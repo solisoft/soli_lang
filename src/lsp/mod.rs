@@ -12,6 +12,7 @@ pub mod rename;
 pub mod semantic;
 pub mod symbols;
 pub mod symbols_lsp;
+mod util;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

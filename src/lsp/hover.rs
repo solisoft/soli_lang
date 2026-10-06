@@ -1,6 +1,6 @@
 //! Hover provider for LSP.
-use crate::span::Span;
-use tower_lsp::lsp_types::{Hover, HoverContents, MarkedString, Position, Range};
+use super::util::{lsp_range_from_span, position_to_offset};
+use tower_lsp::lsp_types::{Hover, HoverContents, MarkedString, Position};
 
 pub fn get_hover(source: &str, position: Position) -> Option<Hover> {
     let offset = position_to_offset(source, position)?;
@@ -72,35 +72,4 @@ fn get_builtin_docs(name: &str) -> Option<String> {
     };
 
     Some(docs.to_string())
-}
-
-fn position_to_offset(source: &str, position: Position) -> Option<usize> {
-    let mut offset = 0;
-
-    for (line, line_str) in source.lines().enumerate() {
-        if line as u32 == position.line {
-            let col = position.character as usize;
-            for (char_offset, (i, _)) in line_str.char_indices().enumerate() {
-                if char_offset >= col {
-                    return Some(offset + i);
-                }
-            }
-            return Some(offset + line_str.len().min(col));
-        }
-        offset += line_str.len() + 1;
-    }
-    None
-}
-
-fn lsp_range_from_span(span: Span) -> Range {
-    Range {
-        start: Position {
-            line: span.line.saturating_sub(1),
-            character: span.column.saturating_sub(1),
-        },
-        end: Position {
-            line: span.line.saturating_sub(1),
-            character: span.column + (span.end - span.start),
-        },
-    }
 }
