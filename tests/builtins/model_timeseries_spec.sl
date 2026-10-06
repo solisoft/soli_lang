@@ -1,8 +1,5 @@
-# ============================================================================
-# Model Timeseries Test Suite
-# Tests for the `timeseries` declaration: insert-only enforcement,
-# time_bucket() aggregation, and prune() retention.
-# ============================================================================
+# The `timeseries` model declaration: insert-only enforcement, time_bucket()
+# aggregation, and prune() retention.
 
 class TsTestMetric < Model
   timeseries(retention: "30d")
@@ -20,405 +17,273 @@ end
 class TsTestPlain < Model
 end
 
-# Detect DB availability
-let __db_available = false
-try
-  let __probe = TsTestMetric.create({
-    "device": "__probe__",
-    "value": 0
-  })
-  if !__probe.nil? && !__probe._errors
-    __db_available = true
-    __probe.delete()
-  end
-catch e
+INSERT_ONLY = "TsTestMetric is a timeseries model: records are insert-only."
+
+# Sum one column over every bucket row: fresh docs are stamped by the server
+# with the current time, so a 1d bucket holds them all except on the rare run
+# that straddles midnight UTC — a total is the same either way.
+def sum_of(values)
+  values.reduce(fn(total, value) { total + value }, 0)
 end
 
-# ============================================================================
-# Tests that do NOT require a DB connection
-# ============================================================================
+def column_total(rows, column)
+  sum_of(rows.map { |row| row[column] })
+end
 
-describe("time_bucket() query generation", fn() {
-  test("static form buckets on _created_at with the aggregate", fn() {
-    let q = TsTestMetric.time_bucket("1h", {"avg": "value"}).to_query
-    assert(q.contains("TIME_BUCKET(doc._created_at, \"1h\")"))
-    assert(q.contains("AGGREGATE avg = AVG(doc.value)"))
-    assert(q.contains("SORT bucket"))
-  })
+describe("time_bucket() query generation") do
+  test("the static form buckets on _created_at with the aggregate") do
+    assert_eq(TsTestMetric.time_bucket("1h", {"avg": "value"}).to_query,
+      "FOR doc IN ts_test_metrics COLLECT bucket = TIME_BUCKET(doc._created_at, \"1h\") " +
+      "AGGREGATE avg = AVG(doc.value) SORT bucket RETURN {bucket: bucket, avg: avg}")
+  end
 
-  test("chains after where() and keeps the filter", fn() {
-    let q = TsTestMetric.where("device = @d", {"d": "srv1"}).time_bucket(
-      "5m",
-      {"avg": "value", "max": "value"}
-    ).to_query
-    assert(q.contains("FILTER doc.device == @d"))
-    assert(q.contains("avg = AVG(doc.value)"))
-    assert(q.contains("max = MAX(doc.value)"))
-    assert(q.contains("TIME_BUCKET(doc._created_at, \"5m\")"))
-  })
+  test("chains after where() and keeps the filter") do
+    query = TsTestMetric.where("device = @d", {"d": "srv1"})
+      .time_bucket("5m", {"avg": "value", "max": "value"})
+      .to_query
 
-  test("keyword style works like the hash form", fn() {
-    let q = TsTestMetric.time_bucket("1h", avg: "value").to_query
-    assert(q.contains("AGGREGATE avg = AVG(doc.value)"))
-  })
+    assert_match(query, "^FOR doc IN ts_test_metrics FILTER doc.device == @d COLLECT bucket = " +
+      "TIME_BUCKET\\(doc._created_at, \"5m\"\\) AGGREGATE avg = AVG\\(doc.value\\), max = MAX\\(doc.value\\) ")
+  end
 
-  test("declared timestamp: field replaces _created_at", fn() {
-    let q = TsTestReading.time_bucket("5m", {"avg": "value"}).to_query
-    assert(q.contains("TIME_BUCKET(doc.recorded_at, \"5m\")"))
-  })
+  test("the keyword style builds the same query as the hash form") do
+    assert_eq(TsTestMetric.time_bucket("1h", avg: "value").to_query,
+      TsTestMetric.time_bucket("1h", {"avg": "value"}).to_query)
+  end
 
-  test("bare time_bucket counts rows per bucket", fn() {
-    let q = TsBareEvent.time_bucket("1d").to_query
-    assert(q.contains("TIME_BUCKET(doc._created_at, \"1d\")"))
-    assert(q.contains("count = COUNT()"))
-  })
+  test("a declared timestamp: field replaces _created_at") do
+    assert_contains(TsTestReading.time_bucket("5m", {"avg": "value"}).to_query,
+      "COLLECT bucket = TIME_BUCKET(doc.recorded_at, \"5m\")")
+  end
 
-  test("count: true aggregate is explicit COUNT", fn() {
-    let q = TsTestMetric.time_bucket("1d", count: true).to_query
-    assert(q.contains("count = COUNT()"))
-  })
-})
+  test("a bare time_bucket counts rows per bucket") do
+    assert_eq(TsBareEvent.time_bucket("1d").to_query,
+      "FOR doc IN ts_bare_events COLLECT bucket = TIME_BUCKET(doc._created_at, \"1d\") " +
+      "AGGREGATE count = COUNT() SORT bucket RETURN {bucket: bucket, count: count}")
+  end
 
-describe("time_bucket() validation", fn() {
-  test("invalid interval unit raises", fn() {
-    let msg = ""
-    try
+  test("count: true is an explicit COUNT") do
+    assert_contains(TsTestMetric.time_bucket("1d", count: true).to_query, "AGGREGATE count = COUNT()")
+  end
+
+  test("min and sum map to MIN and SUM") do
+    assert_contains(TsTestMetric.time_bucket("1d", {"min": "value", "sum": "value"}).to_query,
+      "AGGREGATE min = MIN(doc.value), sum = SUM(doc.value)")
+  end
+end
+
+describe("time_bucket() validation") do
+  test("an invalid interval unit raises") do
+    assert_raises("time_bucket() invalid interval \"5x\": expected <number><unit> with unit s/m/h/d") do
       TsTestMetric.time_bucket("5x")
-    catch e
-      msg = str(e)
     end
-    assert(msg.contains("invalid interval"))
-  })
+  end
 
-  test("zero interval raises", fn() {
-    let msg = ""
-    try
+  test("a zero interval raises") do
+    assert_raises("time_bucket() invalid interval \"0m\"") do
       TsTestMetric.time_bucket("0m", {"avg": "value"})
-    catch e
-      msg = str(e)
     end
-    assert(msg.contains("invalid interval"))
-  })
+  end
 
-  test("unknown aggregate raises", fn() {
-    let msg = ""
-    try
+  test("an unknown aggregate raises") do
+    assert_raises("unknown aggregate 'median': expected sum, avg, min, max, or count") do
       TsTestMetric.time_bucket("1h", {"median": "value"})
-    catch e
-      msg = str(e)
     end
-    assert(msg.contains("unknown aggregate"))
-  })
+  end
 
-  test("non-timeseries model raises on static time_bucket", fn() {
-    let msg = ""
-    try
+  test("a non-timeseries model raises on the static time_bucket") do
+    assert_raises("TsTestPlain.time_bucket() requires a `timeseries` declaration") do
       TsTestPlain.time_bucket("1h", {"avg": "value"})
-    catch e
-      msg = str(e)
     end
-    assert(msg.contains("requires a `timeseries` declaration"))
-  })
-})
+  end
+end
 
-describe("Insert-only enforcement (no DB round trip)", fn() {
-  test("static update raises insert-only", fn() {
-    let msg = ""
-    try
+describe("Insert-only enforcement (no DB round trip)") do
+  test("static update raises insert-only") do
+    assert_raises("#{INSERT_ONLY} update is not supported — use prune() for retention.") do
       TsTestMetric.update("some_key", {"value": 1})
-    catch e
-      msg = str(e)
     end
-    assert(msg.contains("insert-only"))
-  })
+  end
 
-  test("static upsert raises insert-only", fn() {
-    let msg = ""
-    try
+  test("static upsert raises insert-only") do
+    assert_raises("#{INSERT_ONLY} upsert is not supported") do
       TsTestMetric.upsert("some_key", {"value": 1})
-    catch e
-      msg = str(e)
     end
-    assert(msg.contains("insert-only"))
-  })
+  end
 
-  test("instance update raises insert-only", fn() {
-    let metric = TsTestMetric.new({
-      "device": "srv1",
-      "value": 1
-    })
-    let msg = ""
-    try
+  test("instance update raises insert-only") do
+    metric = TsTestMetric.new({"device": "srv1", "value": 1})
+
+    assert_raises("#{INSERT_ONLY} update is not supported") do
       metric.update({"value": 2})
-    catch e
-      msg = str(e)
     end
-    assert(msg.contains("insert-only"))
-  })
+  end
 
-  test("increment raises insert-only", fn() {
-    let metric = TsTestMetric.new({
-      "device": "srv1",
-      "value": 1
-    })
-    let msg = ""
-    try
+  test("increment raises insert-only") do
+    metric = TsTestMetric.new({"device": "srv1", "value": 1})
+
+    assert_raises("#{INSERT_ONLY} increment is not supported") do
       metric.increment("value")
-    catch e
-      msg = str(e)
     end
-    assert(msg.contains("insert-only"))
-  })
+  end
 
-  test("update_all through a where() chain raises insert-only", fn() {
-    let msg = ""
-    try
+  test("update_all through a where() chain raises insert-only") do
+    assert_raises("#{INSERT_ONLY} update_all is not supported") do
       TsTestMetric.where({"device": "srv1"}).update_all({"value": 0})
-    catch e
-      msg = str(e)
     end
-    assert(msg.contains("insert-only"))
-  })
-})
+  end
+end
 
-describe("prune() argument validation", fn() {
-  test("non-timeseries model raises", fn() {
-    let msg = ""
-    try
+describe("prune() argument validation") do
+  test("a non-timeseries model raises") do
+    assert_raises("TsTestPlain.prune() requires a `timeseries` declaration") do
       TsTestPlain.prune
-    catch e
-      msg = str(e)
     end
-    assert(msg.contains("requires a `timeseries` declaration"))
-  })
+  end
 
-  test("garbage argument raises mentioning duration/RFC3339", fn() {
-    let msg = ""
-    try
+  test("a garbage argument raises naming both accepted forms") do
+    assert_raises("expects a duration (\"30d\") or an RFC3339 timestamp, got \"not-a-date\"") do
       TsTestMetric.prune("not-a-date")
-    catch e
-      msg = str(e)
     end
-    assert(msg.contains("RFC3339"))
-    assert(msg.contains("duration"))
-  })
+  end
 
-  test("bare timeseries model without retention needs an argument", fn() {
-    let msg = ""
-    try
+  test("a bare timeseries model without retention needs an argument") do
+    assert_raises("TsBareEvent.prune requires an argument or a retention: declaration") do
       TsBareEvent.prune
-    catch e
-      msg = str(e)
     end
-    assert(msg.contains("requires an argument or a retention:"))
-  })
-})
+  end
+end
 
-# ============================================================================
-# Tests that REQUIRE a DB connection.
-#
-# NOTE: suite extraction is static and only sees top-level describe() calls,
-# so wrapping the describes in `if __db_available ... end` would silently
-# skip them even WITH a live DB. Instead each test early-returns when no DB
-# is reachable (they then pass trivially, contributing 0 assertions).
-# ============================================================================
+describe("Timeseries against the database") do
+  before_each() do
+    requires_solidb()
+  end
 
-describe("Timeseries create/delete (DB)", fn() {
-  before_each(fn() { TsTestMetric.delete_all() rescue null })
+  after_each() do
+    TsTestMetric.delete_all()
+    TsTestReading.delete_all()
+  end
 
-  test("create works normally and returns a persisted instance", fn() {
-    return if !__db_available
+  describe("create and delete") do
+    test("create works normally and returns a persisted instance") do
+      metric = TsTestMetric.create({"device": "srv1", "value": 0.5})
 
-    let metric = TsTestMetric.create({
-      "device": "srv1",
-      "value": 0.5
-    })
-    assert_null(metric._errors)
-    assert_not_null(metric._key)
-
-    let reloaded = TsTestMetric.find(metric._key)
-    assert_eq(reloaded.device, "srv1")
-  })
-
-  test("save on a persisted record raises insert-only", fn() {
-    return if !__db_available
-
-    let metric = TsTestMetric.create({
-      "device": "srv1",
-      "value": 1
-    })
-    assert_not_null(metric._key)
-
-    let msg = ""
-    try
-      metric.save()
-    catch e
-      msg = str(e)
+      assert_null(metric._errors)
+      reloaded = TsTestMetric.find(metric._key)
+      assert_eq(reloaded.device, "srv1")
+      assert_eq(reloaded.value, 0.5)
     end
-    assert(msg.contains("insert-only"))
-  })
 
-  test("instance delete still works", fn() {
-    return if !__db_available
+    test("save on a persisted record raises insert-only") do
+      metric = TsTestMetric.create({"device": "srv1", "value": 1})
 
-    let metric = TsTestMetric.create({
-      "device": "gone",
-      "value": 1
-    })
-    metric.delete()
-    assert_eq(TsTestMetric.where({"device": "gone"}).count, 0)
-  })
-
-  test("static delete still works", fn() {
-    return if !__db_available
-
-    let metric = TsTestMetric.create({
-      "device": "gone2",
-      "value": 1
-    })
-    TsTestMetric.delete(metric._key)
-    assert_eq(TsTestMetric.where({"device": "gone2"}).count, 0)
-  })
-})
-
-describe("time_bucket() execution (DB)", fn() {
-  before_each(fn() {
-    TsTestMetric.delete_all() rescue null
-    TsTestReading.delete_all() rescue null
-  })
-
-  test("aggregates seeded docs into bucket rows", fn() {
-    return if !__db_available
-
-    TsTestMetric.create({"device": "srv1", "value": 10})
-    TsTestMetric.create({"device": "srv1", "value": 20})
-    TsTestMetric.create({"device": "srv1", "value": 30})
-
-    # A 1d bucket keeps all fresh docs in one (very rarely two) buckets;
-    # summing over rows makes the assertions deterministic either way.
-    let rows = TsTestMetric.time_bucket(
-      "1d",
-      {"avg": "value", "count": true}
-    ).all
-    assert(len(rows) >= 1)
-    assert(rows[0].has_key("bucket"))
-    assert_not_null(rows[0]["bucket"])
-    assert(rows[0].has_key("avg"))
-
-    let total = 0
-    for row in rows
-      total = total + row["count"]
+      assert_raises("#{INSERT_ONLY} save is not supported") do
+        metric.save
+      end
     end
-    assert_eq(total, 3)
-  })
 
-  test("where() chain restricts the bucketed docs", fn() {
-    return if !__db_available
+    test("instance delete still works") do
+      metric = TsTestMetric.create({"device": "gone", "value": 1})
+      metric.delete
 
-    TsTestMetric.create({"device": "srv1", "value": 10})
-    TsTestMetric.create({"device": "srv1", "value": 20})
-    TsTestMetric.create({"device": "srv2", "value": 99})
-
-    let rows = TsTestMetric.where("device = @d", {"d": "srv1"}).time_bucket(
-      "1d",
-      {"max": "value", "count": true}
-    ).all
-
-    let total = 0
-    let max_seen = 0
-    for row in rows
-      total = total + row["count"]
-      max_seen = row["max"] if row["max"] > max_seen
+      assert_eq(TsTestMetric.where({"device": "gone"}).count, 0)
     end
-    assert_eq(total, 2)
-    assert_eq(max_seen, 20)
-  })
 
-  test("bare time_bucket returns count per bucket", fn() {
-    return if !__db_available
+    test("static delete still works") do
+      metric = TsTestMetric.create({"device": "gone2", "value": 1})
+      TsTestMetric.delete(metric._key)
 
-    TsTestMetric.create({"device": "srv1", "value": 1})
-    TsTestMetric.create({"device": "srv1", "value": 2})
-
-    let rows = TsTestMetric.time_bucket("1d").all
-    let total = 0
-    for row in rows
-      total = total + row["count"]
+      assert_eq(TsTestMetric.where({"device": "gone2"}).count, 0)
     end
-    assert_eq(total, 2)
-  })
+  end
 
-  test("declared timestamp: buckets on the custom field", fn() {
-    return if !__db_available
+  describe("time_bucket() execution") do
+    test("aggregates the seeded docs into bucket rows") do
+      [10, 20, 30].each do |value|
+        TsTestMetric.create({"device": "srv1", "value": value})
+      end
 
-    # recorded_at drives the buckets, so historical timestamps make the
-    # bucket layout fully deterministic: two docs in the 10:00 hour,
-    # one in the 11:00 hour.
-    TsTestReading.create({
-      "sensor": "s1",
-      "value": 1,
-      "recorded_at": "2024-01-15T10:05:00Z"
-    })
-    TsTestReading.create({
-      "sensor": "s1",
-      "value": 2,
-      "recorded_at": "2024-01-15T10:25:00Z"
-    })
-    TsTestReading.create({
-      "sensor": "s1",
-      "value": 3,
-      "recorded_at": "2024-01-15T11:05:00Z"
-    })
+      rows = TsTestMetric.time_bucket("1d", {"avg": "value", "count": true}).all
 
-    let rows = TsTestReading.time_bucket("1h", {"count": true}).all
-    assert_eq(len(rows), 2)
-    # SORT bucket → the 10:00 bucket (2 docs) comes before 11:00 (1 doc).
-    assert_eq(rows[0]["count"], 2)
-    assert_eq(rows[1]["count"], 1)
-  })
-})
+      assert_eq(rows[0].keys.sort(), ["avg", "bucket", "count"])
+      assert_match(rows[0]["bucket"], "^\\d{4}-\\d{2}-\\d{2}T00:00:00")
+      assert_eq(column_total(rows, "count"), 3)
+      # The count-weighted average over every bucket is the plain average.
+      assert_eq(sum_of(rows.map { |row| row["avg"] * row["count"] }) / 3, 20)
+    end
 
-describe("prune() execution (DB)", fn() {
-  before_each(fn() { TsTestMetric.delete_all() rescue null })
+    test("a where() chain restricts the bucketed docs") do
+      TsTestMetric.create({"device": "srv1", "value": 10})
+      TsTestMetric.create({"device": "srv1", "value": 20})
+      TsTestMetric.create({"device": "srv2", "value": 99})
 
-  test("future ISO cutoff deletes all seeded docs", fn() {
-    return if !__db_available
+      rows = TsTestMetric.where("device = @d", {"d": "srv1"})
+        .time_bucket("1d", {"max": "value", "count": true})
+        .all
 
-    TsTestMetric.create({"device": "old", "value": 1})
-    TsTestMetric.create({"device": "old", "value": 2})
-    TsTestMetric.create({"device": "old", "value": 3})
+      assert_eq(column_total(rows, "count"), 2)
+      assert_eq(rows.map { |row| row["max"] }.max, 20)
+    end
 
-    let deleted = TsTestMetric.prune("2100-01-01T00:00:00Z")
-    assert(deleted >= 3)
-    # NOTE: post-prune assertions use len(.all) instead of .count —
-    # COLLECTION_COUNT's O(1) metadata undercounts after the prune
-    # endpoint (server-side quirk); real queries see the true state.
-    assert_eq(len(TsTestMetric.all), 0)
-  })
+    test("a bare time_bucket returns the count per bucket") do
+      TsTestMetric.create({"device": "srv1", "value": 1})
+      TsTestMetric.create({"device": "srv1", "value": 2})
 
-  test("duration cutoff only deletes docs older than the window", fn() {
-    return if !__db_available
+      assert_eq(column_total(TsTestMetric.time_bucket("1d").all, "count"), 2)
+    end
 
-    TsTestMetric.create({"device": "old", "value": 1})
-    TsTestMetric.create({"device": "old", "value": 2})
-    sleep(1.1)
-    TsTestMetric.create({"device": "fresh", "value": 3})
+    test("a declared timestamp: buckets on the custom field") do
+      # recorded_at drives the buckets, so historical timestamps make the
+      # layout fully deterministic: two docs at 10:00, one at 11:00.
+      ["2024-01-15T10:05:00Z", "2024-01-15T10:25:00Z", "2024-01-15T11:05:00Z"].each do |recorded_at|
+        TsTestReading.create({"sensor": "s1", "value": 1, "recorded_at": recorded_at})
+      end
 
-    let deleted = TsTestMetric.prune("1s")
-    assert_eq(deleted, 2)
-    let survivors = TsTestMetric.all
-    assert_eq(len(survivors), 1)
-    assert_eq(survivors[0].device, "fresh")
-  })
+      rows = TsTestReading.time_bucket("1h", {"count": true}).all
 
-  test("no argument uses the declared retention", fn() {
-    return if !__db_available
+      assert_eq(rows.map { |row| row["count"] }, [2, 1])
+      assert_match(rows[0]["bucket"], "^2024-01-15T10:00:00")
+      assert_match(rows[1]["bucket"], "^2024-01-15T11:00:00")
+    end
+  end
 
-    TsTestMetric.create({"device": "fresh", "value": 1})
+  describe("prune() execution") do
+    # Post-prune checks use `.all.length` rather than `.count`: COLLECTION_COUNT's
+    # O(1) metadata has undercounted after the prune endpoint.
+    test("a future RFC3339 cutoff deletes every doc") do
+      3.times do |i|
+        TsTestMetric.create({"device": "old", "value": i})
+      end
 
-    # retention: "30d" — fresh data survives, and the call returns an Int.
-    let deleted = TsTestMetric.prune
-    assert_eq(deleted, 0)
-    assert_eq(len(TsTestMetric.all), 1)
-  })
-})
+      assert_eq(TsTestMetric.prune("2100-01-01T00:00:00Z"), 3)
+      assert_eq(TsTestMetric.all.length, 0)
+    end
+
+    test("a past RFC3339 cutoff deletes nothing") do
+      TsTestMetric.create({"device": "fresh", "value": 1})
+
+      assert_eq(TsTestMetric.prune("2000-01-01T00:00:00Z"), 0)
+      assert_eq(TsTestMetric.all.length, 1)
+    end
+
+    test("a duration cutoff only deletes docs older than the window") do
+      # _created_at is stamped by the server, so freeze_time cannot age a doc:
+      # this one test waits out the window on the wall clock.
+      TsTestMetric.create({"device": "old", "value": 1})
+      TsTestMetric.create({"device": "old", "value": 2})
+      sleep(1.1)
+      TsTestMetric.create({"device": "fresh", "value": 3})
+
+      assert_eq(TsTestMetric.prune("1s"), 2)
+      assert_eq(TsTestMetric.all.map { |metric| metric.device }, ["fresh"])
+    end
+
+    test("no argument uses the declared retention") do
+      TsTestMetric.create({"device": "fresh", "value": 1})
+
+      # retention: "30d" — fresh data survives, and the call returns an Int.
+      assert_eq(TsTestMetric.prune, 0)
+      assert_eq(TsTestMetric.all.length, 1)
+    end
+  end
+end

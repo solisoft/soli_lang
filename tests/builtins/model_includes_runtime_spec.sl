@@ -1,20 +1,13 @@
-# ============================================================================
-# .includes() / .includes_count() runtime behavior
-# ----------------------------------------------------------------------------
-# Verifies two contracts:
-#   1. After `.includes(:rel).all()`, accessing the preloaded relation on an
-#      instance does NOT issue a fresh query — it returns the cached rows.
-#   2. `.includes_count(:rel).all()` exposes a `<rel>_count` field on each
-#      parent doc.
-#
-# The cache assertion is done by mutating/deleting the related rows in the DB
-# after the eager fetch and confirming the cached relation still reports the
-# pre-mutation state. If the accessor were re-querying, the assertions would
-# flip.
-# ============================================================================
+# .includes() / .includes_count() at runtime.
+#   1. After `.includes(rel)`, a habtm, belongs_to or has_one accessor returns
+#      the preloaded rows without a fresh query. The specs prove it by deleting
+#      the related rows after the eager fetch: a re-query would see them gone.
+#      has_many stays a chainable QueryBuilder and is NOT served from the cache.
+#   2. `.includes_count(rel)` exposes a `<rel>_count` field on each parent.
 
 class IncRtAuthor < Model
   has_many("inc_rt_books")
+  has_one("inc_rt_pet")
   has_and_belongs_to_many("inc_rt_tags")
 end
 
@@ -30,184 +23,203 @@ class IncRtPet < Model
   belongs_to("inc_rt_author")
 end
 
-# Force has_one collection name to match the side-effect of has_many style FK.
-class IncRtAuthorWithPet < Model
-  has_one("inc_rt_pet")
+def load_author(key, relation)
+  IncRtAuthor.where("_key == @k", {"k": key}).includes(relation).first
 end
 
-# ----- Probe DB availability -------------------------------------------------
-let __db_available = false
-try
-  let __probe = IncRtAuthor.create({"name": "__probe__"})
-  if !__probe.nil? && !__probe._errors
-    __db_available = true
-    __probe.delete()
+def load_author_counting(key, relation)
+  IncRtAuthor.where("_key == @k", {"k": key}).includes_count(relation).first
+end
+
+def tag_names(tags)
+  tags.map { |tag| tag.name }.sort()
+end
+
+describe("includes_count - query structure") do
+  test("has_many emits a LENGTH subquery and merges it as <rel>_count") do
+    assert_eq(IncRtAuthor.includes_count("inc_rt_books").to_query,
+      "FOR doc IN inc_rt_authors " +
+      "LET _rel_inc_rt_books_count = LENGTH(" +
+      "FOR rel IN inc_rt_books FILTER rel.inc_rt_author_id == doc._key RETURN 1) " +
+      "RETURN MERGE(doc, {inc_rt_books_count: _rel_inc_rt_books_count})")
   end
-catch e
+
+  test("habtm counts rows of the join table") do
+    assert_eq(IncRtAuthor.includes_count("inc_rt_tags").to_query,
+      "FOR doc IN inc_rt_authors " +
+      "LET _rel_inc_rt_tags_count = LENGTH(" +
+      "FOR jt IN inc_rt_authors_inc_rt_tags FILTER jt.inc_rt_author_id == doc._key RETURN 1) " +
+      "RETURN MERGE(doc, {inc_rt_tags_count: _rel_inc_rt_tags_count})")
+  end
+
+  test("rejects a singular relation") do
+    assert_raises("only supported for has_many and has_and_belongs_to_many") do
+      IncRtBook.includes_count("inc_rt_author").to_query
+    end
+  end
+
+  test("combining .includes and .includes_count merges both") do
+    query = IncRtAuthor.includes("inc_rt_books").includes_count("inc_rt_tags").to_query
+
+    assert_contains(query, "LET _rel_inc_rt_books = ")
+    assert_contains(query, "LET _rel_inc_rt_tags_count = LENGTH(")
+    assert_contains(query,
+      "RETURN MERGE(doc, {inc_rt_books: _rel_inc_rt_books, inc_rt_tags_count: _rel_inc_rt_tags_count})")
+  end
 end
 
-# ============================================================================
-# Query-string assertions (no DB required)
-# ============================================================================
+describe("includes - runtime (DB)") do
+  before_each() do
+    requires_solidb()
+  end
 
-describe("includes_count - query structure", fn() {
-  test("has_many emits LENGTH subquery and MERGE alias", fn() {
-    let q = IncRtAuthor.includes_count("inc_rt_books").to_query
-    assert(q.contains("LET _rel_inc_rt_books_count = LENGTH("))
-    assert(q.contains("FOR rel IN inc_rt_books FILTER rel.inc_rt_author_id == doc._key RETURN 1"))
-    assert(q.contains("inc_rt_books_count: _rel_inc_rt_books_count"))
-  })
-
-  test("habtm emits join-table LENGTH subquery", fn() {
-    let q = IncRtAuthor.includes_count("inc_rt_tags").to_query
-    assert(q.contains("LET _rel_inc_rt_tags_count = LENGTH("))
-    assert(q.contains("FOR jt IN"))
-    assert(q.contains("FILTER jt.inc_rt_author_id == doc._key RETURN 1"))
-    assert(q.contains("inc_rt_tags_count: _rel_inc_rt_tags_count"))
-  })
-
-  test("rejects singular relations", fn() {
-    let raised = false
-    try
-      IncRtBook.includes_count("inc_rt_author").to_query
-    catch e
-      raised = true
+  after_each() do
+    IncRtAuthor.all.each do |author|
+      author.remove_inc_rt_tag(author.inc_rt_tags)
     end
-    assert(raised)
-  })
+    IncRtBook.delete_all()
+    IncRtPet.delete_all()
+    IncRtTag.delete_all()
+    IncRtAuthor.delete_all()
+  end
 
-  test("combining .includes and .includes_count merges both", fn() {
-    let q = IncRtAuthor.includes("inc_rt_books").includes_count("inc_rt_tags").to_query
-    assert(q.contains("LET _rel_inc_rt_books = "))
-    assert(q.contains("LET _rel_inc_rt_tags_count = LENGTH("))
-    assert(q.contains("inc_rt_books: _rel_inc_rt_books"))
-    assert(q.contains("inc_rt_tags_count: _rel_inc_rt_tags_count"))
-  })
-})
+  describe("has_and_belongs_to_many") do
+    test("the accessor reads the cached preload after the join rows are deleted") do
+      author = IncRtAuthor.create({"name": "Cache HABTM"})
+      rust = IncRtTag.create({"name": "rust"})
+      soli = IncRtTag.create({"name": "soli"})
+      author.add_inc_rt_tag(rust, soli)
 
-# ============================================================================
-# DB-backed cache assertions
-# ============================================================================
+      loaded = load_author(author._key, "inc_rt_tags")
+      author.remove_inc_rt_tag([rust, soli])
 
-describe("includes() caches relation on instance (DB)", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("has_many: accessor reads cached preload after rows are deleted", fn() {
-    let author = IncRtAuthor.create({"name": "Cache HM"})
-    IncRtBook.create({"title": "B1", "inc_rt_author_id": author._key})
-    IncRtBook.create({"title": "B2", "inc_rt_author_id": author._key})
-
-    let loaded = IncRtAuthor.where("_key == @k", {"k": author._key}).includes("inc_rt_books").first
-    # First access materialises the QueryBuilder (HasMany still returns a
-    # QueryBuilder by design). Note: HasMany preload caching is out of
-    # scope for the current fix — this test just locks in the existing
-    # contract: includes() doesn't break has_many's chainable accessor.
-    assert_eq(loaded.inc_rt_books.length, 2)
-
-    # Cleanup
-    IncRtBook.where("inc_rt_author_id == @k", {"k": author._key}).delete_all
-    author.delete()
-  })
-
-  test("habtm: accessor reads cached preload after join rows are deleted", fn() {
-    let author = IncRtAuthor.create({"name": "Cache HABTM"})
-    let t1 = IncRtTag.create({"name": "rust"})
-    let t2 = IncRtTag.create({"name": "soli"})
-    author.add_inc_rt_tag(t1)
-    author.add_inc_rt_tag(t2)
-
-    let loaded = IncRtAuthor.where("_key == @k", {"k": author._key}).includes("inc_rt_tags").first
-    # Sanity: preloaded tags visible.
-    assert_eq(loaded.inc_rt_tags.length, 2)
-
-    # Wipe join rows from the DB. If the accessor re-queried, the next
-    # read would return an empty array. The cache fix makes it return
-    # the originally-loaded 2-element array.
-    IncRtAuthor.where("_key == @k", {"k": author._key}).first.inc_rt_tags  // ignore
-    # Direct join-table delete: clear all join rows for this author.
-    try
-      # Use the auto-generated remove helper; if broken, fall back to
-      # wiping the join collection in bulk.
-      let stale = IncRtAuthor.find(author._key)
-    catch e
-      # Force-clear via a fresh, non-cached instance; just to ensure the
-      # DB really has no join rows when we re-check the cached value.
+      # A fresh, non-preloaded read sees the join rows are gone...
+      assert_eq(IncRtAuthor.find(author._key).inc_rt_tags, [])
+      # ...while the preloaded instance still answers from its cache.
+      assert_eq(tag_names(loaded.inc_rt_tags), ["rust", "soli"])
     end
 
-    # Re-access on the SAME `loaded` instance — must hit cache.
-    assert_eq(loaded.inc_rt_tags.length, 2)
-    # Each element is a Tag instance, not a raw hash.
-    assert_eq(loaded.inc_rt_tags[0].class, "IncRtTag")
+    test("preloaded rows are model instances, not raw hashes") do
+      author = IncRtAuthor.create({"name": "Instances"})
+      author.add_inc_rt_tag(IncRtTag.create({"name": "rust"}))
 
-    # Cleanup
-    author.delete()
-    t1.delete()
-    t2.delete()
-  })
+      loaded = load_author(author._key, "inc_rt_tags")
 
-  test("habtm: empty preload returns empty array, no query", fn() {
-    let author = IncRtAuthor.create({"name": "Cache empty"})
-    let loaded = IncRtAuthor.where("_key == @k", {"k": author._key}).includes("inc_rt_tags").first
-    assert_eq(loaded.inc_rt_tags.length, 0)
-    assert_eq(loaded.inc_rt_tags.class, "array")
+      assert_eq(loaded.inc_rt_tags[0].class, "IncRtTag")
+      assert_eq(loaded.inc_rt_tags[0].name, "rust")
+    end
 
-    author.delete()
-  })
+    test("an empty preload is an empty array") do
+      author = IncRtAuthor.create({"name": "Cache empty"})
 
-  test("habtm: second access returns identical cached array (no re-conversion)", fn() {
-    let author = IncRtAuthor.create({"name": "Cache idempotent"})
-    let t1 = IncRtTag.create({"name": "alpha"})
-    author.add_inc_rt_tag(t1)
+      assert_eq(load_author(author._key, "inc_rt_tags").inc_rt_tags, [])
+    end
 
-    let loaded = IncRtAuthor.where("_key == @k", {"k": author._key}).includes("inc_rt_tags").first
-    let first_read = loaded.inc_rt_tags
-    let second_read = loaded.inc_rt_tags
-    # Both reads should be Instance arrays (idempotent conversion).
-    assert_eq(first_read.length, 1)
-    assert_eq(second_read.length, 1)
-    assert_eq(first_read[0].class, "IncRtTag")
-    assert_eq(second_read[0].class, "IncRtTag")
+    test("a second access returns the same converted instances") do
+      author = IncRtAuthor.create({"name": "Cache idempotent"})
+      author.add_inc_rt_tag(IncRtTag.create({"name": "alpha"}))
 
-    author.delete()
-    t1.delete()
-  })
-})
+      loaded = load_author(author._key, "inc_rt_tags")
+      first_read = loaded.inc_rt_tags
+      second_read = loaded.inc_rt_tags
 
-describe("includes_count() exposes <rel>_count field (DB)", fn() {
-  before_each(fn() { requires_solidb() })
+      assert_eq(first_read.length, 1)
+      assert_eq(second_read.length, 1)
+      assert_eq(first_read[0].class, "IncRtTag")
+      assert_eq(second_read[0].class, "IncRtTag")
+      assert_eq(second_read[0]._key, first_read[0]._key)
+    end
+  end
 
-  test("has_many count matches related row count", fn() {
-    let author = IncRtAuthor.create({"name": "Counter HM"})
-    IncRtBook.create({"title": "C1", "inc_rt_author_id": author._key})
-    IncRtBook.create({"title": "C2", "inc_rt_author_id": author._key})
-    IncRtBook.create({"title": "C3", "inc_rt_author_id": author._key})
+  describe("belongs_to and has_one") do
+    test("belongs_to reads the cached parent after the parent is deleted") do
+      author = IncRtAuthor.create({"name": "Cached parent"})
+      book = IncRtBook.create({"title": "B1", "inc_rt_author_id": author._key})
 
-    let loaded = IncRtAuthor.where("_key == @k", {"k": author._key}).includes_count("inc_rt_books").first
-    assert_eq(loaded.inc_rt_books_count, 3)
+      loaded = IncRtBook.where("_key == @k", {"k": book._key}).includes("inc_rt_author").first
+      author.delete
 
-    IncRtBook.where("inc_rt_author_id == @k", {"k": author._key}).delete_all
-    author.delete()
-  })
+      assert_null(IncRtBook.find(book._key).inc_rt_author)
+      assert_eq(loaded.inc_rt_author.class, "IncRtAuthor")
+      assert_eq(loaded.inc_rt_author.name, "Cached parent")
+    end
 
-  test("habtm count matches join row count", fn() {
-    let author = IncRtAuthor.create({"name": "Counter HABTM"})
-    let t1 = IncRtTag.create({"name": "x"})
-    let t2 = IncRtTag.create({"name": "y"})
-    author.add_inc_rt_tag(t1)
-    author.add_inc_rt_tag(t2)
+    test("has_one reads the cached child after the child is deleted") do
+      author = IncRtAuthor.create({"name": "Pet owner"})
+      pet = IncRtPet.create({"name": "Rex", "inc_rt_author_id": author._key})
 
-    let loaded = IncRtAuthor.where("_key == @k", {"k": author._key}).includes_count("inc_rt_tags").first
-    assert_eq(loaded.inc_rt_tags_count, 2)
+      loaded = load_author(author._key, "inc_rt_pet")
+      pet.delete
 
-    author.delete()
-    t1.delete()
-    t2.delete()
-  })
+      assert_null(IncRtAuthor.find(author._key).inc_rt_pet)
+      assert_eq(loaded.inc_rt_pet.class, "IncRtPet")
+      assert_eq(loaded.inc_rt_pet.name, "Rex")
+    end
+  end
 
-  test("zero count for parents with no related rows", fn() {
-    let author = IncRtAuthor.create({"name": "Counter zero"})
-    let loaded = IncRtAuthor.where("_key == @k", {"k": author._key}).includes_count("inc_rt_books").first
-    assert_eq(loaded.inc_rt_books_count, 0)
-    author.delete()
-  })
-})
+  describe("has_many") do
+    test("includes keeps the chainable accessor, which re-queries") do
+      author = IncRtAuthor.create({"name": "Chainable"})
+      IncRtBook.create({"title": "B1", "inc_rt_author_id": author._key})
+      IncRtBook.create({"title": "B2", "inc_rt_author_id": author._key})
+
+      loaded = load_author(author._key, "inc_rt_books")
+      assert_eq(loaded.inc_rt_books.class, "query_builder")
+      assert_eq(loaded.inc_rt_books.length, 2)
+
+      IncRtBook.find_by("title", "B1").delete
+
+      assert_eq(loaded.inc_rt_books.length, 1)
+    end
+  end
+end
+
+describe("includes_count - runtime (DB)") do
+  before_each() do
+    requires_solidb()
+  end
+
+  after_each() do
+    IncRtAuthor.all.each do |author|
+      author.remove_inc_rt_tag(author.inc_rt_tags)
+    end
+    IncRtBook.delete_all()
+    IncRtTag.delete_all()
+    IncRtAuthor.delete_all()
+  end
+
+  test("has_many count matches the related row count") do
+    author = IncRtAuthor.create({"name": "Counter HM"})
+    ["C1", "C2", "C3"].each do |title|
+      IncRtBook.create({"title": title, "inc_rt_author_id": author._key})
+    end
+
+    assert_eq(load_author_counting(author._key, "inc_rt_books").inc_rt_books_count, 3)
+  end
+
+  test("habtm count matches the join row count") do
+    author = IncRtAuthor.create({"name": "Counter HABTM"})
+    author.add_inc_rt_tag(IncRtTag.create({"name": "x"}), IncRtTag.create({"name": "y"}))
+
+    assert_eq(load_author_counting(author._key, "inc_rt_tags").inc_rt_tags_count, 2)
+  end
+
+  test("a parent with no related rows counts zero") do
+    author = IncRtAuthor.create({"name": "Counter zero"})
+
+    assert_eq(load_author_counting(author._key, "inc_rt_books").inc_rt_books_count, 0)
+  end
+
+  test("each parent gets its own count") do
+    busy = IncRtAuthor.create({"name": "busy"})
+    idle = IncRtAuthor.create({"name": "idle"})
+    IncRtBook.create({"title": "only", "inc_rt_author_id": busy._key})
+
+    counts = {}
+    IncRtAuthor.includes_count("inc_rt_books").all.each do |author|
+      counts[author.name] = author.inc_rt_books_count
+    end
+
+    assert_eq(counts, {"busy": 1, "idle": 0})
+  end
+end
