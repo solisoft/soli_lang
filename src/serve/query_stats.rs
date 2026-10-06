@@ -42,7 +42,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::internal_store;
-use super::slow_queries::{self, Dialect};
+use super::slow_queries::{self, round_ms, Dialect};
 use super::tenant::TenantId;
 pub(crate) use super::tenant_writer::StatsSnapshot;
 use super::tenant_writer::{self, Stats, Writers};
@@ -95,16 +95,7 @@ thread_local! {
 
 /// Whether query stats are recorded at all.
 pub(crate) fn enabled() -> bool {
-    let setting = std::env::var("SOLI_QUERY_STATS")
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    match setting.as_str() {
-        "off" | "0" | "false" | "no" => false,
-        "on" | "1" | "true" | "yes" => true,
-        _ => std::env::var("APP_ENV")
-            .map(|v| v != "test")
-            .unwrap_or(true),
-    }
+    super::error_tracker::env_switch("SOLI_QUERY_STATS")
 }
 
 /// This application's writer counters, since the process started.
@@ -342,7 +333,7 @@ impl Table {
             let shape = slow_queries::normalize_query(&text, dialect);
             Arc::new(Shape {
                 fingerprint: slow_queries::fingerprint(&shape),
-                text: slow_queries::truncate_chars(&shape, MAX_QUERY_CHARS),
+                text: super::error_tracker::truncate_chars(&shape, MAX_QUERY_CHARS),
             })
         });
         let mut entry = Entry {
@@ -374,7 +365,7 @@ impl Table {
                 if entry.in_unit > entry.totals.peak {
                     entry.totals.peak = entry.in_unit;
                     entry.totals.peak_context =
-                        slow_queries::truncate_chars(context, MAX_CONTEXT_CHARS);
+                        super::error_tracker::truncate_chars(context, MAX_CONTEXT_CHARS);
                 }
             }
             entry.in_unit = 0;
@@ -725,10 +716,6 @@ pub(crate) fn parse_hourly(value: Option<&serde_json::Value>) -> BTreeMap<String
         );
     }
     out
-}
-
-fn round_ms(ms: f64) -> f64 {
-    (ms * 10.0).round() / 10.0
 }
 
 // --- the store the dashboard reads -------------------------------------------

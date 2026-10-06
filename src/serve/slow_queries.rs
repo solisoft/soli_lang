@@ -45,6 +45,7 @@ use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 
+use super::error_tracker::{hour_of, hourly_json, truncate_chars};
 use super::internal_store;
 use super::tenant::TenantId;
 pub(crate) use super::tenant_writer::StatsSnapshot;
@@ -57,9 +58,6 @@ pub(crate) const MAX_SAMPLES: usize = 5;
 
 /// Distinct query shapes kept per application.
 pub(crate) const MAX_GROUPS: u64 = 1000;
-
-/// Hours of per-hour counts kept on a group, for the list's trend line.
-pub(crate) const HOURS_KEPT: usize = 24;
 
 const DEFAULT_THRESHOLD_MS: u64 = 200;
 const QUEUE_CAP: usize = 1024;
@@ -107,16 +105,7 @@ pub(crate) fn threshold_ms() -> u64 {
 
 /// Whether slow queries are recorded at all.
 pub(crate) fn enabled() -> bool {
-    let setting = std::env::var("SOLI_SLOW_QUERIES")
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    match setting.as_str() {
-        "off" | "0" | "false" | "no" => false,
-        "on" | "1" | "true" | "yes" => true,
-        _ => std::env::var("APP_ENV")
-            .map(|v| v != "test")
-            .unwrap_or(true),
-    }
+    super::error_tracker::env_switch("SOLI_SLOW_QUERIES")
 }
 
 fn keep_binds() -> bool {
@@ -452,27 +441,12 @@ fn merged_patch(existing: &serde_json::Value, group: Pending) -> serde_json::Val
     })
 }
 
-/// `2026-09-25T18:34:17Z` → `2026-09-25T18`.
-fn hour_of(iso: &str) -> String {
-    iso.chars().take(13).collect()
-}
-
-/// The newest [`HOURS_KEPT`] hours as `[[hour, count], …]`, oldest first.
-fn hourly_json(hourly: BTreeMap<String, u64>) -> serde_json::Value {
-    let skip = hourly.len().saturating_sub(HOURS_KEPT);
-    hourly
-        .into_iter()
-        .skip(skip)
-        .map(|(hour, n)| serde_json::json!([hour, n]))
-        .collect()
-}
-
 /// Read back what [`hourly_json`] wrote; anything malformed is skipped.
 pub(crate) fn parse_hourly(value: Option<&serde_json::Value>) -> BTreeMap<String, u64> {
     super::error_tracker::parse_hourly(value)
 }
 
-fn round_ms(ms: f64) -> f64 {
+pub(crate) fn round_ms(ms: f64) -> f64 {
     (ms * 10.0).round() / 10.0
 }
 
@@ -631,13 +605,6 @@ fn cut_value(value: serde_json::Value) -> serde_json::Value {
     }
     let head: String = text.chars().take(MAX_BIND_CHARS).collect();
     serde_json::Value::String(format!("{head}\u{2026} ({chars} chars)"))
-}
-
-pub(crate) fn truncate_chars(s: &str, max: usize) -> String {
-    match s.char_indices().nth(max) {
-        Some((idx, _)) => format!("{}\u{2026}", &s[..idx]),
-        None => s.to_string(),
-    }
 }
 
 #[cfg(test)]

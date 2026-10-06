@@ -73,7 +73,7 @@ pub mod engine_loader;
 pub mod env_loader;
 mod error_logging;
 mod error_pages;
-mod error_tracker;
+pub(crate) mod error_tracker;
 pub(crate) mod file_upload;
 pub(crate) mod internal_store;
 pub mod job_worker;

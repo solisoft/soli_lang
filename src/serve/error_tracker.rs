@@ -108,9 +108,14 @@ pub(crate) fn stats() -> StatsSnapshot {
 
 /// Whether failures are recorded at all.
 pub(crate) fn enabled() -> bool {
-    let setting = std::env::var("SOLI_ERRORS")
-        .unwrap_or_default()
-        .to_ascii_lowercase();
+    env_switch("SOLI_ERRORS")
+}
+
+/// An observability store's on/off switch: `var` set to `off`/`0`/`false`/`no`
+/// or `on`/`1`/`true`/`yes`; unset or anything else means on, except under
+/// `APP_ENV=test`. Shared by the error tracker, slow queries and query stats.
+pub(crate) fn env_switch(var: &str) -> bool {
+    let setting = std::env::var(var).unwrap_or_default().to_ascii_lowercase();
     match setting.as_str() {
         "off" | "0" | "false" | "no" => false,
         "on" | "1" | "true" | "yes" => true,
@@ -511,14 +516,14 @@ fn merged_patch(existing: &serde_json::Value, group: Pending) -> serde_json::Val
 }
 
 /// `2026-09-24T18:34:17Z` → `2026-09-24T18`.
-fn hour_of(iso: &str) -> String {
+pub(crate) fn hour_of(iso: &str) -> String {
     iso.chars().take(13).collect()
 }
 
 /// The newest [`HOURS_KEPT`] hours as `[[hour, count], …]`, oldest first. An
 /// array rather than an object: a merge-patch deep-merges objects, so hours
 /// dropped here would survive in the stored document.
-fn hourly_json(hourly: BTreeMap<String, u64>) -> serde_json::Value {
+pub(crate) fn hourly_json(hourly: BTreeMap<String, u64>) -> serde_json::Value {
     let skip = hourly.len().saturating_sub(HOURS_KEPT);
     hourly
         .into_iter()
@@ -707,7 +712,7 @@ fn normalize_message(message: &str) -> String {
     out
 }
 
-fn truncate_chars(s: &str, max: usize) -> String {
+pub(crate) fn truncate_chars(s: &str, max: usize) -> String {
     match s.char_indices().nth(max) {
         Some((idx, _)) => format!("{}\u{2026}", &s[..idx]),
         None => s.to_string(),

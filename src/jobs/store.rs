@@ -10,6 +10,7 @@ use std::sync::{Mutex, OnceLock};
 use super::{JobDoc, JobState, CRON_COLLECTION, JOBS_COLLECTION};
 use crate::db;
 use crate::interpreter::builtins::model::crud;
+use crate::serve::error_tracker::truncate_chars;
 
 /// Build a `ListQuery` over `table` with equality filters only — the portable
 /// subset every SQL backend supports.
@@ -445,14 +446,6 @@ pub fn delete_cron(name: &str) -> Result<(), String> {
 /// Escape a value interpolated into an SDBQL string literal.
 fn escape_sdbql(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-/// Truncate to `max` characters on a char boundary (never mid-UTF-8).
-fn truncate_chars(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        return s.to_string();
-    }
-    s.chars().take(max).collect::<String>() + "…"
 }
 
 #[cfg(test)]
