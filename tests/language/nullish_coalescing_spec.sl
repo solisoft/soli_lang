@@ -146,9 +146,9 @@ describe("Nullish coalescing ??") do
       assert_eq(settings, {"a": 1, "b": "value"})
     end
 
-    test("negating the result") do
-      assert_eq(!(nil ?? "default"), false)
-      assert_eq(!("value" ?? "default"), false)
+    test("negating the result with not and !") do
+      assert_eq(not (nil ?? "default"), false)
+      assert_eq(not ("value" ?? "default"), false)
       assert_eq(!(nil ?? nil), true)
     end
   end

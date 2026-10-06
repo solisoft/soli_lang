@@ -4,7 +4,8 @@
 # `soli fmt` strips `then` and braces and folds a one-statement block `if`
 # into a postfix one. Blocks whose form is the point of a test carry a comment
 # or a second statement, which fmt keeps; the `then` and brace tests cannot be
-# protected that way, so do not run fmt over this file without restoring them.
+# protected that way, so do not run fmt over this file without restoring them
+# (the same goes for the brace forms of for, while and unless).
 #
 # Nested blocks are what many of these tests exercise; inside describe/context/
 # test they pass the linter's depth limit by design.
@@ -277,6 +278,14 @@ describe("unless") do
       flagged.push("checked")
     end
     assert_eq(flagged, ["banned", "checked"])
+  end
+
+  test("takes braces instead of end") do
+    result = 0
+    unless (false) {
+      result = 1
+    }
+    assert_eq(result, 1)
   end
 
   test("takes a parenthesized condition") do
@@ -637,6 +646,14 @@ describe("while") do
     assert_eq(count, 3)
   end
 
+  test("takes braces instead of end") do
+    count = 0
+    while (count < 3) {
+      count = count + 1
+    }
+    assert_eq(count, 3)
+  end
+
   test("while true with break runs at least once, like do-while") do
     count = 0
     while true
@@ -752,6 +769,19 @@ describe("for") do
     end
     # visit 1, pop 4; visit 2, pop 3; length 2, stop
     assert_eq(visited, [1, 2])
+  end
+
+  test("takes a parenthesized header and braces instead of end") do
+    sum = 0
+    for (i in 0..5) {
+      sum = sum + i
+    }
+    labels = []
+    for (value, i in [5, 6]) {
+      labels.push("#{i}:#{value}")
+    }
+    assert_eq(sum, 10)
+    assert_eq(labels, ["0:5", "1:6"])
   end
 
   test("refuses a hash") do

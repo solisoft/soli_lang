@@ -1,4 +1,6 @@
 # The pipeline operator: `x |> f(args)` calls `f(x, args)`, left to right.
+# Do not run `soli fmt` here: it rewrites the `|x| { … }` lambda under test to
+# `fn(x) { … }`.
 
 def double(x)
   x * 2

@@ -1,5 +1,6 @@
 # Literals: numbers, strings, booleans, nil, symbols, arrays and hashes — what
-# each spelling evaluates to and which type it carries.
+# each spelling evaluates to and which type it carries. The spellings are the
+# subject (`=>` hashes, `1_000`, quotes): do not run `soli fmt` over this file.
 
 describe("Literals") do
   context("integers") do
@@ -131,6 +132,23 @@ describe("Literals") do
   context("hashes") do
     test("with quoted keys") do
       settings = {"a": 1, "b": 2}
+      assert_eq(settings["a"], 1)
+      assert_eq(settings["b"], 2)
+    end
+
+    test("with fat arrows") do
+      settings = {"a" => 1, "b" => 2}
+      assert_eq(settings, {"a": 1, "b": 2})
+    end
+
+    test("fat arrows take non-string keys") do
+      names = {1 => "one", 2 => "two"}
+      assert_eq(names[1], "one")
+      assert_eq(names.keys, [1, 2])
+    end
+
+    test("with bare keys") do
+      settings = {a: 1, b: 2}
       assert_eq(settings["a"], 1)
       assert_eq(settings["b"], 2)
     end

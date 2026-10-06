@@ -1,6 +1,8 @@
 # Error handling: throw, try/catch/finally (and the begin/rescue/ensure
 # aliases), typed catch, what catch receives, postfix rescue, and a throw
 # crossing a native callback.
+# Do not run `soli fmt` here: it rewrites begin/rescue/ensure, braces and `or`,
+# which some tests exist to cover.
 
 class SpecAppError
   message: String
@@ -167,6 +169,18 @@ describe("try/catch") do
       order.push("finally")
     }
     assert_eq(order, ["catch: braced", "finally"])
+  end
+
+  test("typed catch with braces and a parenthesized clause") do
+    result = ""
+    try {
+      throw new SpecAppError("braced")
+    } catch (SpecUnrelatedError error) {
+      result = "unrelated"
+    } catch (SpecAppError error) {
+      result = "app: " + error.message
+    }
+    assert_eq(result, "app: braced")
   end
 
   test("nested: a throw from an inner catch reaches the outer catch") do
@@ -615,8 +629,9 @@ describe("Postfix rescue") do
     assert_eq(throws_oops() rescue 1 + 2 * 3, 7)
   end
 
-  test("the fallback takes ||") do
+  test("the fallback takes || and the or keyword") do
     assert_eq(throws_oops() rescue "a" || "b", "a")
+    assert_eq(throws_oops() rescue nil or "b", "b")
   end
 
   test("the fallback takes ??") do

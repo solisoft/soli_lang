@@ -1,4 +1,6 @@
-# Negation with `!` and the `not` keyword, and method names ending in `!`.
+# The `not` keyword (and `!`), and method names ending in `!`.
+# `soli fmt` rewrites `not` to `!`; the keyword is this file's subject, so do
+# not run fmt over it.
 
 class BangHelper
   def save!
@@ -39,65 +41,61 @@ def three_items
 end
 
 describe("Negation") do
-  context("with !") do
+  context("with not") do
     test("flips booleans") do
-      assert_eq(!true, false)
-      assert_eq(!false, true)
+      assert_eq(not true, false)
+      assert_eq(not false, true)
     end
 
     test("nil negates to true") do
-      assert_eq(!nil, true)
+      assert_eq(not nil, true)
     end
 
     test("flips a variable") do
       flag = true
-      assert_eq(!flag, false)
+      assert_eq(not flag, false)
       other = false
-      assert_eq(!other, true)
+      assert_eq(not other, true)
     end
 
     test("flips a parenthesized comparison") do
-      assert_eq(!(1 == 2), true)
-      assert_eq(!(1 != 1), true)
-      assert_eq(!(5 > 3), false)
+      assert_eq(not (1 == 2), true)
+      assert_eq(not (1 != 1), true)
+      assert_eq(not (5 > 3), false)
     end
 
-    test("double negation gives the truthiness as a Bool") do
-      assert_eq(!!true, true)
-      assert_eq(!!false, false)
-      assert_eq(!!"text", true)
-      assert_eq(!!nil, false)
+    test("not not gives the truthiness as a Bool") do
+      assert_eq(not not true, true)
+      assert_eq(not not false, false)
+      assert_eq(not not "text", true)
+      assert_eq(not not nil, false)
     end
 
     test("flips a parenthesized logical expression") do
-      assert_eq(!(true && false), true)
-      assert_eq(!(false || false), true)
-      assert_eq(!(true && true), false)
+      assert_eq(not (true && false), true)
+      assert_eq(not (false || false), true)
+      assert_eq(not (true && true), false)
     end
 
     test("applies to a call result") do
-      assert_eq(!three_items().empty?, true)
-      assert_eq(!!three_items().empty?, false)
+      assert_eq(not three_items().empty?, true)
+      assert_eq(not not three_items().empty?, false)
     end
   end
 
-  context("with not") do
-    test("flips booleans and nil like !") do
-      assert_eq(not true, false)
-      assert_eq(not false, true)
-      assert_eq(not nil, true)
+  context("with !") do
+    test("flips booleans and nil like not") do
+      assert_eq(!true, false)
+      assert_eq(!false, true)
+      assert_eq(!nil, true)
+      assert_eq(!!"text", true)
     end
 
-    test("gives the same result as ! for every value") do
+    test("gives the same result as not for every value") do
       values = [true, false, nil, 0, 1, "", "a", [], [1], {}, 0.0]
       values.each do |value|
         assert_eq(not value, !value)
       end
-    end
-
-    test("not not gives the truthiness as a Bool") do
-      assert_eq(not not 0, false)
-      assert_eq(not not "a", true)
     end
   end
 
@@ -118,10 +116,10 @@ describe("Negation") do
     test("so a negated comparison needs parentheses") do
       x = 5
       assert_raises("Cannot compare bool and int") do
-        !x > 3
+        not x > 3
       end
       assert_raises("Cannot compare bool and int") do
-        not x > 3
+        !x > 3
       end
       assert_eq(not (x > 3), false)
     end
@@ -129,27 +127,28 @@ describe("Negation") do
 
   context("falsy values") do
     test("empty string") do
-      assert_eq(!"", true)
-      assert_eq(!!"", false)
+      assert_eq(not "", true)
+      assert_eq(not not "", false)
     end
 
     test("zero") do
-      assert_eq(!0, true)
-      assert_eq(!!0, false)
+      assert_eq(not 0, true)
+      assert_eq(not not 0, false)
     end
 
     test("0.0 is truthy, unlike 0") do
+      assert_eq(not 0.0, false)
       assert_eq(!0.0, false)
     end
 
     test("empty array") do
-      assert_eq(![], true)
-      assert_eq(!![], false)
+      assert_eq(not [], true)
+      assert_eq(not not [], false)
     end
 
     test("empty hash") do
-      assert_eq(!{}, true)
-      assert_eq(!!{}, false)
+      assert_eq(not {}, true)
+      assert_eq(not not {}, false)
     end
   end
 end

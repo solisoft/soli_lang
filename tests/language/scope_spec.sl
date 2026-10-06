@@ -2,6 +2,8 @@
 # can see and change of the bindings around them. The spec runner uses the
 # tree-walking engine, which scopes strictly by block; the VM lets a name first
 # assigned in an `if`/`while` body be read after it (see www/docs/soli-language.md).
+# The `if` blocks below carry a comment so `soli fmt` keeps them blocks rather
+# than folding them into postfix modifiers, which would change what is tested.
 
 def reads_callers_local
   # soli-lint-disable-next-line smell/undefined-local
@@ -80,6 +82,7 @@ describe("Scope") do
     test("an if body updates an outer variable") do
       result = ""
       if true
+        # a block body, on purpose
         result = "inside if"
       end
       assert_eq(result, "inside if")
@@ -96,6 +99,7 @@ describe("Scope") do
 
     test("a name first assigned in an if body is gone after it") do
       if true
+        # a block body, on purpose
         branch_local = 1
       end
       # soli-lint-disable-next-line smell/undefined-local
