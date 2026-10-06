@@ -1281,3 +1281,36 @@ fn a_solidb_blob_streams_whole_and_by_range() {
     assert!(lower[4].contains("/_api/blob/e2e/media/ep1"));
     assert!(!lower[4].contains("range:"));
 }
+
+/// `/_metrics` answers a loopback scraper with the Prometheus text format, and
+/// counts the requests served. It replaces `tests/metrics_spec.sl`, which
+/// needed a server already running on :3000 and so only ever skipped.
+#[test]
+fn metrics_endpoint_serves_prometheus_text_to_loopback() {
+    let server = shared_server();
+    ureq::get(&server.url("/ping"))
+        .timeout(Duration::from_secs(3))
+        .call()
+        .expect("ping request");
+
+    let resp = ureq::get(&server.url("/_metrics"))
+        .timeout(Duration::from_secs(3))
+        .call()
+        .expect("metrics request");
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.header("Content-Type"),
+        Some("text/plain; charset=utf-8")
+    );
+    let body = body_string(resp);
+    assert!(
+        body.contains("# TYPE soli_http_requests_total counter"),
+        "body was: {body}"
+    );
+    let requests = body
+        .lines()
+        .find_map(|line| line.strip_prefix("soli_http_requests_total "))
+        .and_then(|count| count.trim().parse::<u64>().ok())
+        .unwrap_or_else(|| panic!("no soli_http_requests_total sample in: {body}"));
+    assert!(requests >= 1, "the /ping above was not counted: {body}");
+}
