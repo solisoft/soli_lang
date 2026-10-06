@@ -11,3 +11,13 @@ pub mod dirs;
 pub mod job;
 pub mod lock;
 pub mod process;
+
+/// Seconds since the Unix epoch by the wall clock (0 for a clock set before
+/// it). Not the frozen test clock: token expiries and cookie lifetimes are
+/// checked against real time.
+pub fn unix_now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}

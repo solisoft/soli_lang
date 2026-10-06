@@ -21,7 +21,6 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use aes_gcm::{
     aead::{Aead, KeyInit, Payload},
@@ -43,6 +42,7 @@ use sha2::Sha256;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
+use crate::platform::unix_now_secs as current_timestamp;
 
 /// Default record size (rs) for aes128gcm. 4096 is the canonical value
 /// used by every browser push service; tightening it just wastes a byte
@@ -616,13 +616,6 @@ fn arg_subscription_keys(value: &Value, fn_name: &str) -> Result<SubscriptionKey
         p256dh: p256dh.to_string(),
         auth: auth.to_string(),
     })
-}
-
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 /// Decode a base64url string, tolerating optional padding. Browser

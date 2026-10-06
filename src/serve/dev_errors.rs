@@ -16,6 +16,7 @@ use crate::interpreter::builtins::server::parse_query_string;
 use super::error_tracker::{self, STATUSES};
 use super::operator_shell::{self, Section};
 use super::{admin_auth, dev_bar, full, html_ok, Bytes, ResponseBody};
+use crate::platform::process::shell_quote;
 
 const BASE: &str = "/__soli/errors";
 
@@ -579,10 +580,6 @@ fn curl_command(request: &serde_json::Value) -> String {
         }
     }
     out
-}
-
-fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 /// The triage buttons for a group in `status`. `detail` keeps the page on the

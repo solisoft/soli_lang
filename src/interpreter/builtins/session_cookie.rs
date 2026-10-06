@@ -27,7 +27,6 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
@@ -39,6 +38,7 @@ use uuid::Uuid;
 
 use super::crypto::{aes_decrypt_bytes, aes_encrypt_bytes};
 use super::session::SessionStore;
+use crate::platform::unix_now_secs as now_unix_secs;
 
 /// Version prefix on every sealed value — leaves room to rotate the wire
 /// format (or KDF) without breaking existing cookies.
@@ -118,13 +118,6 @@ pub fn is_plausible_sealed_value(value: &str) -> bool {
         && value
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
-}
-
-fn now_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 fn fresh_state(replaced: bool) -> CookieSessionState {

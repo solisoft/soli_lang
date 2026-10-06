@@ -22,6 +22,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::platform::process::arm_parent_death;
 use serde_json::{json, Value as Json};
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
@@ -883,27 +884,6 @@ fn kill_child(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
 }
-
-/// On Linux, ask the kernel to kill the browser when its parent thread dies.
-///
-/// The signal fires when the *spawning thread* exits rather than the process,
-/// which is exactly right here: a browser belongs to one test worker, so it
-/// should not outlive that worker even if the runner is killed outright.
-#[cfg(target_os = "linux")]
-fn arm_parent_death(command: &mut Command) {
-    use std::os::unix::process::CommandExt;
-    // SAFETY: `prctl` is async-signal-safe and this closure runs in the child
-    // between fork and exec, where only such calls are permitted.
-    unsafe {
-        command.pre_exec(|| {
-            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
-            Ok(())
-        });
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn arm_parent_death(_command: &mut Command) {}
 
 /// JavaScript truthiness, for values that crossed the protocol as JSON.
 fn is_truthy(value: &Json) -> bool {

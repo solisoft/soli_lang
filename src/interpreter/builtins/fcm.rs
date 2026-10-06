@@ -31,13 +31,13 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
+use crate::platform::unix_now_secs as now_unix_secs;
 
 /// The scope an access token must carry to send a message.
 const SCOPE: &str = "https://www.googleapis.com/auth/firebase.messaging";
@@ -48,13 +48,6 @@ const TOKEN_REUSE_SECS: u64 = 55 * 60;
 
 /// The assertion's own lifetime. Google caps it at an hour.
 const ASSERTION_TTL_SECS: u64 = 3600;
-
-fn now_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
 
 /// The fields of a service-account JSON file this needs. Everything else in
 /// that file (`type`, `client_id`, the cert URLs) is irrelevant to sending.

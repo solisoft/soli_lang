@@ -38,6 +38,32 @@ fn is_alive_impl(_pid: u32) -> bool {
     true
 }
 
+/// Have the kernel SIGKILL the child `command` spawns when this process dies,
+/// so a helper (a browser, a database, a test server) never outlives a runner
+/// that was killed outright. Linux only (`PR_SET_PDEATHSIG`); a no-op
+/// elsewhere.
+#[cfg(target_os = "linux")]
+pub fn arm_parent_death(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    // SAFETY: `prctl` is async-signal-safe and this closure runs in the child
+    // between fork and exec, where only such calls are permitted.
+    unsafe {
+        command.pre_exec(|| {
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+            Ok(())
+        });
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn arm_parent_death(_command: &mut std::process::Command) {}
+
+/// `value` as one POSIX shell word: single-quoted, with each `'` written
+/// `'\''`.
+pub fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', r"'\''"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

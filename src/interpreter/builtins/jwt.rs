@@ -5,7 +5,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use jsonwebtoken::{
     decode, decode_header, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation,
@@ -35,6 +34,7 @@ struct Claims {
 
 // Use centralized conversion functions from value module
 use crate::interpreter::value::{json_to_value, value_to_json};
+use crate::platform::unix_now_secs as current_timestamp;
 
 const MIN_SECRET_BYTES: usize = 32;
 
@@ -63,14 +63,6 @@ fn string_list_option(value: &Value, func: &str, option: &str) -> Result<Vec<Str
             other.type_name()
         )),
     }
-}
-
-/// Get current Unix timestamp.
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
 }
 
 /// Register JWT builtins in the given environment.

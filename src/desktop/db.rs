@@ -12,6 +12,7 @@
 //! - **The child must not outlive the parent.** An orphaned database keeps the
 //!   data directory locked, so the next launch fails. See [`arm_parent_death`].
 
+use crate::platform::process::arm_parent_death;
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -208,34 +209,6 @@ fn pick_loopback_port() -> Result<u16, String> {
         .map(|addr| addr.port())
         .map_err(|e| format!("cannot read the reserved port: {}", e))
 }
-
-/// On Linux, ask the kernel to kill this process when its parent dies.
-///
-/// This is the only orphan guard that survives the parent being `SIGKILL`ed.
-/// It is armed in the child between fork and exec.
-///
-/// Caveat worth knowing: the signal fires when the *spawning thread* exits, not
-/// the process — so the caller must spawn from a thread that lives as long as
-/// the app.
-///
-/// macOS has no equivalent (no `PDEATHSIG`, no job objects), so there the
-/// guarantee degrades to the explicit shutdown path plus the stale-process
-/// sweep at next launch. Windows gets a job object in the Windows phase.
-#[cfg(target_os = "linux")]
-fn arm_parent_death(command: &mut Command) {
-    use std::os::unix::process::CommandExt;
-    // SAFETY: `prctl` is async-signal-safe and this closure runs in the child
-    // between fork and exec, where only such calls are permitted.
-    unsafe {
-        command.pre_exec(|| {
-            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
-            Ok(())
-        });
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn arm_parent_death(_command: &mut Command) {}
 
 /// Start the database and wait until it accepts connections.
 ///

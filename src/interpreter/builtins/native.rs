@@ -39,7 +39,6 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
@@ -49,6 +48,7 @@ use sha2::Sha256;
 use crate::interpreter::builtins::crypto::{do_secure_compare, hmac_sha256_bytes};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
+use crate::platform::unix_now_secs as now_unix_secs;
 
 /// SSE topic prefix. Namespaced so an app's own `sse_broadcast` topics can
 /// never collide with — or be reachable through — a native channel token.
@@ -72,13 +72,6 @@ const MAX_TOKEN_LEN: usize = 512;
 
 /// Bounds a channel name. Long channels are a mistake, not a use case.
 const MAX_CHANNEL_LEN: usize = 128;
-
-fn now_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
 
 /// The SSE topic backing a channel.
 pub fn topic_for(channel: &str) -> String {

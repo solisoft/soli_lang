@@ -17,6 +17,7 @@
 use super::plan::Step;
 use super::proxy::{wait_healthy, Admin};
 use super::release::{Layout, ReleaseId};
+use solilang::platform::process::shell_quote;
 use std::process::Command;
 use std::time::Duration;
 
@@ -173,11 +174,6 @@ fn is_release_path(path: &str) -> bool {
     }
     // …/releases/<app>/<id>
     parts.next().is_some() && parts.any(|segment| segment == "releases")
-}
-
-/// Single-quotes a value for a POSIX shell.
-fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', r"'\''"))
 }
 
 #[cfg(test)]

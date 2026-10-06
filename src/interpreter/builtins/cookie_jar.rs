@@ -26,7 +26,6 @@
 //! return `null`, indistinguishable from an absent cookie.
 
 use std::cell::RefCell;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
@@ -42,6 +41,7 @@ use super::crypto::{
 };
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{json_to_value_ref, HashKey, NativeFunction, Value};
+use crate::platform::unix_now_secs as now_unix_secs;
 
 const ENC_PREFIX: &str = "enc.v1.";
 const SIG_PREFIX: &str = "sig.v1.";
@@ -77,13 +77,6 @@ pub(crate) enum SealMode {
 pub(crate) struct CookieJar {
     enc_key: [u8; 32],
     sig_key: [u8; 32],
-}
-
-fn now_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 /// The purpose-binding bytes: `info ‖ NUL ‖ cookie name`. NUL is unambiguous —

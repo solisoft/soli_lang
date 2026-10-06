@@ -35,7 +35,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
@@ -44,6 +43,7 @@ use p256::pkcs8::DecodePrivateKey;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
+use crate::platform::unix_now_secs as now_unix_secs;
 
 /// Production and development gateways. The wrong one is the single most
 /// common cause of `BadDeviceToken`: a token minted by a development build is
@@ -59,13 +59,6 @@ const TOKEN_REUSE_SECS: u64 = 45 * 60;
 /// A device token is 32 bytes hex-encoded, but Apple has widened it before;
 /// bound it loosely rather than pin an exact length that a future device breaks.
 const MAX_DEVICE_TOKEN_LEN: usize = 200;
-
-fn now_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
 
 /// Provider tokens, keyed by (key id, team id), each with the time it was
 /// minted. One process may legitimately send for several apps under several

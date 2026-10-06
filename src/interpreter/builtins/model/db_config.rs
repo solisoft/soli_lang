@@ -1,6 +1,6 @@
+use crate::platform::unix_now_secs as now_epoch;
 use crate::serve::tenant::TenantValue;
 use std::cell::RefCell;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 thread_local! {
     /// Per-thread DB name override. When set, replaces the cached
@@ -205,13 +205,6 @@ pub fn token_expires_at(token: &str) -> u64 {
 
 pub fn init_jwt_token() {
     let _ = get_jwt_token();
-}
-
-fn now_epoch() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 /// Extract the `exp` claim (epoch seconds) from a JWT without verifying its
