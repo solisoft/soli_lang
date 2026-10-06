@@ -1793,13 +1793,13 @@ impl Parser {
 
             // `v: Type` — a type test. Reached only when the identifier is
             // followed by a colon, because the arm above takes every other
-            // identifier; so the name is consumed, discarded, and the type
-            // after the colon is the whole pattern.
-            Identifier(_) => {
+            // identifier; the type after the colon is the whole test, and the
+            // name binds nothing.
+            Identifier(name) => {
                 self.advance();
                 self.expect(&TokenKind::Colon)?;
                 let type_name = self.expect_identifier()?;
-                Ok(MatchPattern::Destructuring { type_name })
+                Ok(MatchPattern::Destructuring { name, type_name })
             }
 
             _ => Err(ParserError::unexpected_token(

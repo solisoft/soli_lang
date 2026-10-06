@@ -1193,3 +1193,28 @@ fn a_nil_comparison_on_an_operator_expression_is_left_as_written() {
     assert_fmt("ok = a + b == nil\n", "ok = a + b == nil\n");
     assert_fmt("ok = (a + b) != nil\n", "ok = !(a + b).nil?\n");
 }
+
+#[test]
+fn a_type_first_match_pattern_keeps_its_order() {
+    // `n: Int` does not parse: Int is a keyword.
+    let src = "x = match v {\n  Int: n => n,\n  nil => 0,\n  _ => 1,\n}\n";
+    assert_fmt(src, src);
+}
+
+#[test]
+fn an_interpolated_block_call_stays_on_one_line() {
+    // Printing the block's body on its own lines split the string literal,
+    // and the output no longer lexed.
+    let src = "s = \"#{[1, 2].map { |x| x * 2 }.join(\",\")}\"\n";
+    let out = format_source(src).expect("format_source failed");
+    assert_eq!(out.lines().count(), 1, "{out}");
+    assert!(format_source(&out).is_ok());
+    assert_idempotent(src);
+}
+
+#[test]
+fn a_class_type_pattern_keeps_its_name() {
+    // `_: Shape` does not parse: `_` is the wildcard.
+    let src = "x = match v {\n  shape: Shape => 1,\n  _ => 0,\n}\n";
+    assert_fmt(src, src);
+}

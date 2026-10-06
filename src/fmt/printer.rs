@@ -63,6 +63,39 @@ impl<'a> Printer<'a> {
         }
     }
 
+    /// Print with `f`, and keep the output only if it stays on one line;
+    /// otherwise roll the printer back as if `f` never ran and return false.
+    ///
+    /// For text that cannot span lines in the source, like a `"…"` literal,
+    /// where a multi-line rendering would not even lex.
+    pub(super) fn try_single_line(&mut self, f: impl FnOnce(&mut Self)) -> bool {
+        let out_len = self.out.len();
+        let saved = (
+            self.indent,
+            self.at_line_start,
+            self.column,
+            self.comment_cursor,
+            self.last_emitted_line,
+            self.last_stmt_rewrote_to_postfix,
+            self.suppress_do_block,
+        );
+        f(self);
+        if !self.out[out_len..].contains('\n') {
+            return true;
+        }
+        self.out.truncate(out_len);
+        (
+            self.indent,
+            self.at_line_start,
+            self.column,
+            self.comment_cursor,
+            self.last_emitted_line,
+            self.last_stmt_rewrote_to_postfix,
+            self.suppress_do_block,
+        ) = saved;
+        false
+    }
+
     /// Run `f` with trailing `do … end` blocks suppressed, restoring the
     /// previous setting afterwards (the contexts nest).
     pub(super) fn without_do_blocks(&mut self, f: impl FnOnce(&mut Self)) {

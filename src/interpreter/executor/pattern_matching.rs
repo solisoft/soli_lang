@@ -135,7 +135,7 @@ impl Interpreter {
             }
 
             // `v: Type` — a class test that binds nothing.
-            MatchPattern::Destructuring { type_name } => {
+            MatchPattern::Destructuring { type_name, .. } => {
                 let Value::Instance(instance) = value else {
                     return Ok(None);
                 };

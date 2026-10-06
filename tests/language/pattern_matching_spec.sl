@@ -1,8 +1,6 @@
 # match: literal, wildcard, binding, typed, array, hash and nested patterns,
 # guards, and what happens when no arm matches. Enum-variant patterns are
 # covered in tests/builtins/enum_spec.sl.
-# Do not run `soli fmt` here: it rewrites the type-first pattern `Int: n` into
-# `n: Int`, which does not parse, and `nil` patterns into `null`.
 
 class MatchCat
   name: String

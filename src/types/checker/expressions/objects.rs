@@ -394,7 +394,7 @@ impl TypeChecker {
                 Ok(())
             }
 
-            MatchPattern::Destructuring { type_name } => {
+            MatchPattern::Destructuring { type_name, .. } => {
                 if let Some(class) = self.env.get_class(type_name).cloned() {
                     if !input_type.is_assignable_to(&Type::Class(class.clone())) {
                         return Err(TypeError::mismatch(

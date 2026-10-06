@@ -416,28 +416,13 @@ impl Printer<'_> {
                 self.write("\"");
             }
             ExprKind::InterpolatedString(parts) => {
-                self.write("\"");
-                for part in parts {
-                    match part {
-                        InterpolatedPart::Literal(s) => {
-                            for c in s.chars() {
-                                match escape_literal_char(c) {
-                                    Some(escaped) => self.write(&escaped),
-                                    None => {
-                                        let mut buf = [0u8; 4];
-                                        self.write(c.encode_utf8(&mut buf));
-                                    }
-                                }
-                            }
-                        }
-                        InterpolatedPart::Expression(e) => {
-                            self.write("#{");
-                            self.print_expr(e);
-                            self.write("}");
-                        }
-                    }
+                // A `"…"` literal cannot span lines, but an expression inside
+                // `#{…}` can print as several — a block call does — and the
+                // result no longer lexed. Such a string keeps its source text.
+                let printed = self.try_single_line(|p| p.print_interpolated_string(parts));
+                if !printed {
+                    self.write_string_literal_source(expr.span);
                 }
-                self.write("\"");
             }
             ExprKind::CommandSubstitution(s) => {
                 self.write("`");
@@ -1202,15 +1187,62 @@ impl Printer<'_> {
         self.newline();
     }
 
+    fn print_interpolated_string(&mut self, parts: &[InterpolatedPart]) {
+        self.write("\"");
+        for part in parts {
+            match part {
+                InterpolatedPart::Literal(s) => {
+                    for c in s.chars() {
+                        match escape_literal_char(c) {
+                            Some(escaped) => self.write(&escaped),
+                            None => {
+                                let mut buf = [0u8; 4];
+                                self.write(c.encode_utf8(&mut buf));
+                            }
+                        }
+                    }
+                }
+                InterpolatedPart::Expression(e) => {
+                    self.write("#{");
+                    self.print_expr(e);
+                    self.write("}");
+                }
+            }
+        }
+        self.write("\"");
+    }
+
+    /// Copy a string literal from the source, quotes included (a string's
+    /// span stops short of both).
+    fn write_string_literal_source(&mut self, span: crate::span::Span) {
+        let mut start = span.start_usize().min(self.source.len());
+        if start > 0
+            && self.source.as_bytes()[start] != b'"'
+            && self.source.as_bytes()[start - 1] == b'"'
+        {
+            start -= 1;
+        }
+        let mut end = span.end_usize().min(self.source.len());
+        if self.source.as_bytes().get(end) == Some(&b'"') {
+            end += 1;
+        }
+        self.write_source_span(start, end);
+    }
+
     fn print_match_pattern(&mut self, p: &MatchPattern) {
         match p {
             MatchPattern::Wildcard => self.write("_"),
             MatchPattern::Variable(name) => self.write(name),
+            // Parsed only from the type-first spelling, `Int: n`; the
+            // name-first one does not parse, the type names being keywords.
             MatchPattern::Typed { name, type_name } => {
-                self.write(name);
-                self.write(": ");
                 self.write(type_name);
+                self.write(": ");
+                self.write(name);
             }
+            // `nil` and `null` are one value; a pattern has no source span to
+            // read the author's spelling from, so write the house one.
+            MatchPattern::Literal(ExprKind::Null) => self.write("nil"),
             MatchPattern::Literal(kind) => {
                 // Re-wrap into a temporary Expr to reuse the literal printer.
                 let tmp_expr = Expr {
@@ -1255,11 +1287,11 @@ impl Printer<'_> {
                 }
                 self.write("}");
             }
-            // `v: Type`. The bound name is not in the AST — the parser
-            // discards it — so the printed form uses the placeholder every
-            // other reader of this pattern sees.
-            MatchPattern::Destructuring { type_name } => {
-                self.write("_: ");
+            // `v: Type`, printed back with the author's name: `_: Type`
+            // does not parse, `_` being the wildcard.
+            MatchPattern::Destructuring { name, type_name } => {
+                self.write(name);
+                self.write(": ");
                 self.write(type_name);
             }
             MatchPattern::EnumVariant {
