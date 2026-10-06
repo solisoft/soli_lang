@@ -866,15 +866,31 @@ pub fn exec_async_query_with_binds(
 
     let result = run_db_future(future);
 
+    record_sdbql_observations(stats_key, started, &sent_body, log_query, log_binds);
+
+    result
+}
+
+/// What every SDBQL round-trip feeds after it returns: per-shape query stats,
+/// the slow-query log, and — when the dev query log is on (`log_query` is
+/// `Some`) — a flamegraph span and a query-log row; always the Prometheus
+/// DB-time counter.
+fn record_sdbql_observations(
+    stats_key: Option<u64>,
+    started: std::time::Instant,
+    sent_body: &bytes::Bytes,
+    log_query: Option<String>,
+    log_binds: Option<HashMap<String, serde_json::Value>>,
+) {
     let elapsed = started.elapsed().as_secs_f64() * 1000.0;
     crate::serve::query_stats::record_key(
         stats_key,
         crate::serve::slow_queries::Dialect::Sdbql,
         elapsed,
-        || sent_query(&sent_body),
+        || sent_query(sent_body),
     );
     if crate::serve::slow_queries::is_slow(elapsed) {
-        observe_sent_query(&sent_body, elapsed);
+        observe_sent_query(sent_body, elapsed);
     }
 
     let db_duration = if let Some(q) = log_query {
@@ -896,8 +912,6 @@ pub fn exec_async_query_with_binds(
     // Always feed the coarse production Prometheus counter (Phase A).
     // The rich per-query log stays gated to --dev.
     crate::metrics::Metrics::global().record_db_queries(db_duration);
-
-    result
 }
 
 /// Simple async query without bind variables - convenience wrapper.
@@ -991,36 +1005,7 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
         Err(e) => Value::String(format!("Error: {}", e).into()),
     };
 
-    let elapsed = started.elapsed().as_secs_f64() * 1000.0;
-    crate::serve::query_stats::record_key(
-        stats_key,
-        crate::serve::slow_queries::Dialect::Sdbql,
-        elapsed,
-        || sent_query(&sent_body),
-    );
-    if crate::serve::slow_queries::is_slow(elapsed) {
-        observe_sent_query(&sent_body, elapsed);
-    }
-
-    let db_duration = if let Some(q) = log_query {
-        let dur_us = (elapsed * 1000.0).max(0.0) as u64;
-        let span_name: String = q.chars().take(80).collect();
-        crate::serve::span_log::record(
-            &span_name,
-            crate::serve::span_log::SpanKind::Db,
-            started,
-            dur_us,
-            None,
-        );
-        super::query_log::record(q, None, elapsed);
-        std::time::Duration::from_millis(elapsed as u64)
-    } else {
-        std::time::Duration::ZERO
-    };
-
-    // Always feed the coarse production Prometheus counter (Phase A).
-    // The rich per-query log stays gated to --dev.
-    crate::metrics::Metrics::global().record_db_queries(db_duration);
+    record_sdbql_observations(stats_key, started, &sent_body, log_query, None);
 
     result
 }

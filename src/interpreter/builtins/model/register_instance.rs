@@ -22,7 +22,7 @@ use std::rc::Rc;
 use super::core::*;
 use super::crud::{exec_delete, exec_get, exec_insert, exec_update, json_to_value};
 use super::query::QueryBuilder;
-use crate::interpreter::value::{value_to_json, HashKey};
+use crate::interpreter::value::{value_to_json, HashKey, Instance};
 use crate::interpreter::value::{NativeFunction, Value};
 
 pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>) {
@@ -59,7 +59,6 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
             #[allow(clippy::collapsible_match)]
             |args| {
                 use super::validation::run_validations;
-                use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
                 use crate::interpreter::builtins::model::get_translated_fields;
 
                 let instance = match &args[0] {
@@ -105,45 +104,8 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                 // Handle pending translations before updating
                 let translated_field_names = get_translated_fields(&class_name);
                 if !translated_field_names.is_empty() {
-                    let locale = i18n_helpers::get_locale();
-
-                    // Get or create translated_fields JSON structure
-                    let mut translated_fields_json: serde_json::Map<String, serde_json::Value> =
-                        serde_json::Map::new();
-
-                    // If instance already has translated_fields, copy it
-                    if let Some(tf) = inst_ref.get("translated_fields") {
-                        if let Ok(tf_json) = value_to_json(&tf) {
-                            if let serde_json::Value::Object(obj) = tf_json {
-                                translated_fields_json = obj;
-                            }
-                        }
-                    }
-
-                    // Get pending translations and merge them
-                    if let Some(pending) = inst_ref.get("_pending_translations") {
-                        if let Ok(pending_json) = value_to_json(&pending) {
-                            if let serde_json::Value::Object(pending_obj) = pending_json {
-                                for field_name in &translated_field_names {
-                                    if let Some(pending_value) = pending_obj.get(field_name) {
-                                        // Get or create the locale object for this field
-                                        let field_obj = translated_fields_json
-                                            .entry(field_name.clone())
-                                            .or_insert_with(|| {
-                                                serde_json::Value::Object(serde_json::Map::new())
-                                            });
-
-                                        if let serde_json::Value::Object(ref mut locale_obj) =
-                                            *field_obj
-                                        {
-                                            locale_obj
-                                                .insert(locale.clone(), pending_value.clone());
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    let translated_fields_json =
+                        merged_translations(&inst_ref, &translated_field_names);
 
                     // Update the instance's translated_fields field
                     drop(inst_ref);
@@ -233,7 +195,6 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
             #[allow(clippy::collapsible_match)]
             |args| {
                 use super::validation::run_validations;
-                use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
                 use crate::interpreter::builtins::model::get_translated_fields;
 
                 let instance = match &args[0] {
@@ -322,45 +283,8 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                     serde_json::Map<String, serde_json::Value>,
                     Vec<String>,
                 )> = if has_translations {
-                    let locale = i18n_helpers::get_locale();
-
-                    // Get or create translated_fields JSON structure
-                    let mut translated_fields_json: serde_json::Map<String, serde_json::Value> =
-                        serde_json::Map::new();
-
-                    // If instance already has translated_fields, copy it
-                    if let Some(tf) = inst_ref.get("translated_fields") {
-                        if let Ok(tf_json) = value_to_json(&tf) {
-                            if let serde_json::Value::Object(obj) = tf_json {
-                                translated_fields_json = obj;
-                            }
-                        }
-                    }
-
-                    // Get pending translations and merge them
-                    if let Some(pending) = inst_ref.get("_pending_translations") {
-                        if let Ok(pending_json) = value_to_json(&pending) {
-                            if let serde_json::Value::Object(pending_obj) = pending_json {
-                                for field_name in &translated_field_names {
-                                    if let Some(pending_value) = pending_obj.get(field_name) {
-                                        // Get or create the locale object for this field
-                                        let field_obj = translated_fields_json
-                                            .entry(field_name.clone())
-                                            .or_insert_with(|| {
-                                                serde_json::Value::Object(serde_json::Map::new())
-                                            });
-
-                                        if let serde_json::Value::Object(ref mut locale_obj) =
-                                            *field_obj
-                                        {
-                                            locale_obj
-                                                .insert(locale.clone(), pending_value.clone());
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    let translated_fields_json =
+                        merged_translations(&inst_ref, &translated_field_names);
 
                     Some((translated_fields_json, translated_field_names))
                 } else {
@@ -974,4 +898,33 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
             ))
         })),
     );
+}
+
+/// The record's `translated_fields`, with each pending translation of
+/// `fields` (`_pending_translations`) written under the current locale.
+fn merged_translations(
+    inst: &Instance,
+    fields: &[String],
+) -> serde_json::Map<String, serde_json::Value> {
+    let locale = crate::interpreter::builtins::i18n::helpers::get_locale();
+    let mut translated = match inst.get("translated_fields").map(|tf| value_to_json(&tf)) {
+        Some(Ok(serde_json::Value::Object(obj))) => obj,
+        _ => serde_json::Map::new(),
+    };
+    let pending = match inst.get("_pending_translations").map(|p| value_to_json(&p)) {
+        Some(Ok(serde_json::Value::Object(obj))) => obj,
+        _ => return translated,
+    };
+    for field_name in fields {
+        let Some(pending_value) = pending.get(field_name) else {
+            continue;
+        };
+        let field_obj = translated
+            .entry(field_name.clone())
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        if let serde_json::Value::Object(locale_obj) = field_obj {
+            locale_obj.insert(locale.clone(), pending_value.clone());
+        }
+    }
+    translated
 }
