@@ -1,3 +1,4 @@
+use crate::interpreter::builtins::model::db_config::is_loopback_host as is_loopback_solidb_host;
 use reqwest;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -58,29 +59,6 @@ impl From<reqwest::Error> for SoliDBError {
             message: format!("HTTP error: {}", e),
         }
     }
-}
-
-/// SEC-027: detect loopback DB hosts so `SoliDBClient::connect` can
-/// keep defaulting them to plaintext `http://` while remote hosts
-/// upgrade to `https://`. Mirrors the loopback detector in the
-/// session layer (handles IPv4/IPv6/userinfo/`localhost.*`).
-fn is_loopback_solidb_host(host: &str) -> bool {
-    let host = host.rsplit_once('@').map(|(_, h)| h).unwrap_or(host);
-    let hostname = if let Some(rest) = host.strip_prefix('[') {
-        rest.split(']').next().unwrap_or(rest)
-    } else if host.matches(':').count() >= 2 {
-        host
-    } else {
-        host.split(':').next().unwrap_or(host)
-    };
-    let lower = hostname.to_ascii_lowercase();
-    if lower == "localhost" || lower.starts_with("localhost.") {
-        return true;
-    }
-    if let Ok(ip) = lower.parse::<std::net::IpAddr>() {
-        return ip.is_loopback();
-    }
-    false
 }
 
 /// Percent-encode one URL path segment.

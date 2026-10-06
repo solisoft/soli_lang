@@ -1,3 +1,4 @@
+use super::args::hash_str;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -632,20 +633,6 @@ fn append_query(base: &str, pairs: &[(String, String)]) -> String {
         first = false;
     }
     out
-}
-
-/// Register the read-only uploader helpers (`upload_url`, `find_uploaded_file`)
-/// directly in the env so they're available everywhere — including the
-/// template-rendering env that doesn't see app-level Soli definitions.
-/// The mutation helpers (`attach_upload`, `detach_upload`, etc.) live in the
-/// Soli prelude in `serve::uploads_prelude` because they're only invoked from
-/// controllers and benefit from staying overridable in plain Soli.
-/// Read a string value from a hash by key, or `None` if absent/non-string.
-fn hash_str(h: &HashPairs, key: &str) -> Option<String> {
-    match h.get(&HashKey::String(key.into())) {
-        Some(Value::String(s)) => Some(s.to_string()),
-        _ => None,
-    }
 }
 
 /// Read an integer value from a hash by key, or `None` if absent/non-int.

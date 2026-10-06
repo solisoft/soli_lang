@@ -28,6 +28,7 @@ use rusoto_s3::{
     GetObjectRequest, ListObjectsV2Request, PutObjectRequest, S3Client, S3,
 };
 
+use super::args::string_arg as extract_string;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, NativeFunction, Value};
 use crate::serve::get_tokio_handle;
@@ -97,24 +98,6 @@ fn scrub_s3_error(error: &str) -> String {
     }
 
     result
-}
-
-fn extract_string(
-    args: &[Value],
-    idx: usize,
-    fn_name: &str,
-    param: &str,
-) -> Result<String, String> {
-    match args.get(idx) {
-        Some(Value::String(s)) => Ok(s.clone().to_string()),
-        Some(other) => Err(format!(
-            "{}() expects string {}, got {}",
-            fn_name,
-            param,
-            other.type_name()
-        )),
-        None => Err(format!("{}() missing argument: {}", fn_name, param)),
-    }
 }
 
 /// SEC-021: validate an S3 bucket name against the conservative subset

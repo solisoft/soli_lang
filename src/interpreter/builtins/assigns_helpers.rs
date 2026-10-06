@@ -10,6 +10,7 @@
 
 use std::cell::RefCell;
 
+use super::args::expect_string as extract_string;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{empty_hash, HashKey, NativeFunction, Value};
 
@@ -101,13 +102,6 @@ fn get_view_path() -> Result<Value, String> {
         Some(path) => Ok(Value::String(path.clone().into())),
         None => Ok(Value::String(String::new().into())),
     })
-}
-
-fn extract_string(value: &Value, context: &str) -> Result<String, String> {
-    match value {
-        Value::String(s) => Ok(s.clone().to_string()),
-        _ => Err(format!("{} expects string argument", context)),
-    }
 }
 
 #[cfg(test)]

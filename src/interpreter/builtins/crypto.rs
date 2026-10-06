@@ -22,6 +22,7 @@ use sha2::{Digest, Sha256, Sha512};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{hash_from_pairs, Class, HashKey, NativeFunction, Value};
 
+use super::args::value_to_raw_bytes;
 use super::hex::{encode as bytes_to_hex, HexError};
 
 const X25519_PRIVATE_KEY_LENGTH: usize = 32;
@@ -212,33 +213,6 @@ pub(crate) fn merkle_root_hex(leaves: &[String]) -> String {
         level = next;
     }
     level.into_iter().next().unwrap()
-}
-
-/// Bytes of a `Crypto.hmac` / `Crypto.sha1` argument: a String is its UTF-8
-/// bytes, an Array is raw bytes (what `Hex.decode` and `Base64.decode` return),
-/// so a binary key such as Paybox's hex-encoded HMAC key can be passed as is.
-fn value_to_raw_bytes(value: &Value, what: &str) -> Result<Vec<u8>, String> {
-    match value {
-        Value::String(s) => Ok(s.as_bytes().to_vec()),
-        Value::Array(arr) => arr
-            .borrow()
-            .iter()
-            .map(|v| match v {
-                Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
-                Value::Int(n) => Err(format!("{}: byte value {} out of range 0-255", what, n)),
-                other => Err(format!(
-                    "{}: expected byte (Int 0-255), got {}",
-                    what,
-                    other.type_name()
-                )),
-            })
-            .collect(),
-        other => Err(format!(
-            "{}: expected string or byte array, got {}",
-            what,
-            other.type_name()
-        )),
-    }
 }
 
 /// HMAC of `message` under `key` with `algorithm` (`sha1`, `sha256`,

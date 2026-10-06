@@ -9,27 +9,10 @@ fn value_to_raw(v: &Value) -> String {
         other => format!("{}", other),
     }
 }
+use super::args::string_arg as extract_string;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-
-fn extract_string(
-    args: &[Value],
-    idx: usize,
-    fn_name: &str,
-    param: &str,
-) -> Result<String, String> {
-    match args.get(idx) {
-        Some(Value::String(s)) => Ok(s.clone().to_string()),
-        Some(other) => Err(format!(
-            "{}() expects string {}, got {}",
-            fn_name,
-            param,
-            other.type_name()
-        )),
-        None => Err(format!("{}() missing argument: {}", fn_name, param)),
-    }
-}
 
 fn extract_int(args: &[Value], idx: usize, fn_name: &str, param: &str) -> Result<i64, String> {
     match args.get(idx) {

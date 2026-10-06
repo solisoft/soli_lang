@@ -25,34 +25,9 @@ use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
 
+use super::args::value_to_raw_bytes;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
-
-/// Convert a Soli value to raw bytes: a `String` yields its UTF-8 bytes, an
-/// `Array` its byte values. Matches `Base64.encode`'s input handling.
-fn value_to_raw_bytes(value: &Value, what: &str) -> Result<Vec<u8>, String> {
-    match value {
-        Value::String(s) => Ok(s.as_bytes().to_vec()),
-        Value::Array(arr) => arr
-            .borrow()
-            .iter()
-            .map(|v| match v {
-                Value::Int(n) if (0..=255).contains(n) => Ok(*n as u8),
-                Value::Int(n) => Err(format!("{}: byte value {} out of range 0-255", what, n)),
-                other => Err(format!(
-                    "{}: expected byte (Int 0-255), got {}",
-                    what,
-                    other.type_name()
-                )),
-            })
-            .collect(),
-        other => Err(format!(
-            "{}: expected string or byte array, got {}",
-            what,
-            other.type_name()
-        )),
-    }
-}
 
 /// Bytes past which non-UTF-8 inflate output comes back base64-encoded instead
 /// of as a `Value::Int` per byte.

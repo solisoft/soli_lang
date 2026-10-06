@@ -18,6 +18,7 @@ use crate::serve::tenant::TenantValue;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
+use crate::interpreter::builtins::model::db_config::is_loopback_host as is_loopback_session_host;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 use crate::interpreter::value_json::{json_ref_to_value_or_null as json_to_value, value_to_json};
@@ -551,36 +552,6 @@ fn session_allow_insecure_http() -> bool {
     std::env::var("SOLI_SESSION_ALLOW_INSECURE_HTTP")
         .map(|v| matches!(v.as_str(), "1" | "true" | "yes"))
         .unwrap_or(false)
-}
-
-/// SEC-025: detect loopback-only session storage hosts. Loopback has no
-/// network path so plaintext / no-auth SoliDB is acceptable there.
-/// Accepts the same set of names `is_blocked_host` does in the SSRF
-/// guard so the two surfaces agree on what counts as loopback.
-fn is_loopback_session_host(host: &str) -> bool {
-    let host = host.trim_end_matches('/');
-    let host = host
-        .strip_prefix("http://")
-        .or_else(|| host.strip_prefix("https://"))
-        .unwrap_or(host);
-    let host = host.rsplit_once('@').map(|(_, h)| h).unwrap_or(host);
-    // Extract just the hostname, handling bracketed `[::1]:8080`,
-    // bare IPv6 like `::1`, and `host:port`.
-    let hostname = if let Some(rest) = host.strip_prefix('[') {
-        rest.split(']').next().unwrap_or(rest)
-    } else if host.matches(':').count() >= 2 {
-        host
-    } else {
-        host.split(':').next().unwrap_or(host)
-    };
-    let lower = hostname.to_ascii_lowercase();
-    if lower == "localhost" || lower.starts_with("localhost.") {
-        return true;
-    }
-    if let Ok(ip) = lower.parse::<std::net::IpAddr>() {
-        return ip.is_loopback();
-    }
-    false
 }
 
 /// Session settings for the application on this thread.

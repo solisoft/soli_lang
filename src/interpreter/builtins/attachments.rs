@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use super::args::hash_str;
 #[cfg(feature = "cloud")]
 use crate::serve::get_tokio_handle;
 
@@ -517,14 +518,6 @@ fn delete_s3(collection: &str, id: &str) -> Result<(), String> {
             .map(|_| ())
             .map_err(|e| format!("attachment s3 delete: {e}"))
     })
-}
-
-fn hash_str(hash: &HashPairs, key: &str) -> Option<String> {
-    hash.get(&HashKey::String(key.into()))
-        .and_then(|v| match v {
-            Value::String(s) => Some(s.to_string()),
-            _ => None,
-        })
 }
 
 /// Borrow a string field instead of copying it.

@@ -173,34 +173,7 @@ pub fn write_graph(
         .unwrap_or(0);
 
     // Traversal + filter indexes. Best-effort — never fatal.
-    let _ = client.create_index(
-        EDGE_COLLECTION,
-        "edge_from",
-        vec!["_from".to_string()],
-        false,
-        "hash",
-    );
-    let _ = client.create_index(
-        EDGE_COLLECTION,
-        "edge_to",
-        vec!["_to".to_string()],
-        false,
-        "hash",
-    );
-    let _ = client.create_index(
-        EDGE_COLLECTION,
-        "edge_kind",
-        vec!["edge_kind".to_string()],
-        false,
-        "hash",
-    );
-    let _ = client.create_index(
-        NODE_COLLECTION,
-        "node_kind",
-        vec!["kind".to_string()],
-        false,
-        "hash",
-    );
+    ensure_indexes(&client);
 
     let node_docs: Vec<serde_json::Value> = graph
         .nodes

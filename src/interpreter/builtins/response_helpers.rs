@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use super::args::expect_string as extract_string;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
@@ -298,11 +299,4 @@ fn is_unprocessable(response: &Value) -> bool {
 
 fn extract_location(response: &Value) -> Result<Value, String> {
     extract_header(response, "Location")
-}
-
-fn extract_string(value: &Value, context: &str) -> Result<String, String> {
-    match value {
-        Value::String(s) => Ok(s.clone().to_string()),
-        _ => Err(format!("{} expects string argument", context)),
-    }
 }

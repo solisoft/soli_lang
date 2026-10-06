@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use super::args::expect_string as extract_string;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
 
@@ -245,13 +246,6 @@ fn extract_int(value: &Value, context: &str) -> Result<i64, String> {
     match value {
         Value::Int(n) => Ok(*n),
         _ => Err(format!("{} expects integer argument", context)),
-    }
-}
-
-fn extract_string(value: &Value, context: &str) -> Result<String, String> {
-    match value {
-        Value::String(s) => Ok(s.clone().to_string()),
-        _ => Err(format!("{} expects string argument", context)),
     }
 }
 

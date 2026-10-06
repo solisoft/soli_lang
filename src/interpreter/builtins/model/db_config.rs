@@ -61,11 +61,19 @@ pub(super) fn parse_solidb_host(raw: &str) -> (String, String) {
     (scheme.to_string(), trimmed.to_string())
 }
 
-/// SEC-027: detect loopback hosts so `parse_solidb_host` can default an
-/// unscheme'd `localhost:6745` to `http://` instead of breaking the
-/// common `soli new` / dev-loop deployment.
-fn is_loopback_db_host(host: &str) -> bool {
+/// Is `host` (optionally with a scheme, userinfo, port or brackets) the
+/// local machine? SEC-027: an unscheme'd loopback DB host defaults to
+/// `http://`, a remote one to `https://`; the session stores and the
+/// SoliDB client use the same test (SEC-025).
+pub(crate) fn is_loopback_host(host: &str) -> bool {
+    let host = host.trim_end_matches('/');
+    let host = host
+        .strip_prefix("http://")
+        .or_else(|| host.strip_prefix("https://"))
+        .unwrap_or(host);
     let host = host.rsplit_once('@').map(|(_, h)| h).unwrap_or(host);
+    // Extract just the hostname, handling bracketed `[::1]:8080`,
+    // bare IPv6 like `::1`, and `host:port`.
     let hostname = if let Some(rest) = host.strip_prefix('[') {
         rest.split(']').next().unwrap_or(rest)
     } else if host.matches(':').count() >= 2 {
@@ -82,6 +90,8 @@ fn is_loopback_db_host(host: &str) -> bool {
     }
     false
 }
+
+use is_loopback_host as is_loopback_db_host;
 
 /// Cached JWT for the SolidB model layer.
 ///
