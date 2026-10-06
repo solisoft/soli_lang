@@ -185,6 +185,10 @@ jobs:
           SOLI_TEST_SOLIDB_HOST: http://127.0.0.1:16745
           SOLIDB_USERNAME: admin
           SOLIDB_PASSWORD: admin
+          # The KV admin commands (FLUSHDB, KEYS, …) are refused unless this is
+          # set; the SoliKV started above is disposable, so let the specs
+          # exercise them rather than skip.
+          SOLI_KV_ALLOW_ADMIN: "1"
         run: cargo run --locked -- test
 
   # Keeps the Windows port from silently re-breaking. The crate has no
