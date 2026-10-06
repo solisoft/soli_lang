@@ -25,7 +25,6 @@ use crate::serve::tenant::TenantCell;
 use super::app_loader::{load_jobs_in_worker, load_models};
 use super::set_tokio_handle;
 use super::uploads_prelude;
-use super::FileTracker;
 use crate::interpreter::builtins::server::{set_worker_routes, WorkerRoute};
 use crate::interpreter::builtins::{mailer, named_routes, template};
 use crate::interpreter::value::Value;
@@ -253,9 +252,8 @@ fn build_job_interpreter(id: usize, interpreter: &mut Interpreter, config: &Pool
 
     // Job classes + `__soli_get_class`/callback prelude registration.
     if config.jobs_dir.exists() {
-        let mut tracker = FileTracker::new();
         // `false`: never sync `static cron` — web worker 0 already did.
-        load_jobs_in_worker(id, interpreter, &config.jobs_dir, &mut tracker, false);
+        load_jobs_in_worker(id, interpreter, &config.jobs_dir, false);
     }
 
     define_bg_runner(id, interpreter);

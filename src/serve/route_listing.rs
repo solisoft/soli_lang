@@ -16,7 +16,6 @@ use crate::interpreter::Interpreter;
 
 use super::app_loader::{define_routes_dsl, execute_file, load_middleware};
 use super::engine_loader;
-use super::hot_reload::FileTracker;
 use super::websocket::WebSocketRoute;
 
 /// The collected route table: HTTP routes in registration order, plus
@@ -55,8 +54,7 @@ pub fn collect_routes(app_path: &Path) -> Result<RouteListing, String> {
     // `middleware_names` are recorded either way.
     let middleware_dir = app_path.join("app").join("middleware");
     if middleware_dir.is_dir() {
-        let mut file_tracker = FileTracker::new();
-        if let Err(e) = load_middleware(&mut interpreter, &middleware_dir, &mut file_tracker) {
+        if let Err(e) = load_middleware(&mut interpreter, &middleware_dir) {
             eprintln!("Warning: Failed to load middleware: {}", e);
         }
     }

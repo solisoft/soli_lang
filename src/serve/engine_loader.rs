@@ -17,7 +17,6 @@ use crate::serve::app_loader::{
 };
 use crate::serve::router::{derive_routes_from_controller, to_pascal_case_controller};
 use crate::serve::tenant::TenantValue;
-use crate::serve::FileTracker;
 use crate::span::Span;
 
 #[derive(Debug, Clone)]
@@ -271,14 +270,11 @@ pub fn mount_engines(app_path: &Path, config: &EngineConfig) -> Result<(), Strin
     Ok(())
 }
 
-pub fn load_engine_controllers(
-    interpreter: &mut Interpreter,
-    file_tracker: &mut FileTracker,
-) -> Result<(), RuntimeError> {
+pub fn load_engine_controllers(interpreter: &mut Interpreter) -> Result<(), RuntimeError> {
     let engines = get_all_mounted_engines();
 
     for engine in engines {
-        load_engine_controller_directory(interpreter, &engine, file_tracker)?;
+        load_engine_controller_directory(interpreter, &engine)?;
     }
 
     Ok(())
@@ -287,7 +283,6 @@ pub fn load_engine_controllers(
 fn load_engine_controller_directory(
     interpreter: &mut Interpreter,
     engine: &Engine,
-    file_tracker: &mut FileTracker,
 ) -> Result<(), RuntimeError> {
     let controllers_dir = engine.path.join("app/controllers");
 
@@ -306,8 +301,6 @@ fn load_engine_controller_directory(
     sort_controllers_by_dependency(&mut controllers);
 
     for controller_path in &controllers {
-        file_tracker.track(controller_path);
-
         let controller_key = controller_key_from_path(&controllers_dir, controller_path);
 
         let source =

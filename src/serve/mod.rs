@@ -31,7 +31,6 @@ mod file_watcher;
 pub mod files;
 mod finalize;
 mod framework_assets;
-mod hot_reload;
 pub mod live_reload;
 mod live_reload_ws; // WebSocket-based live reload
 pub(crate) mod middleware;
@@ -75,7 +74,6 @@ pub mod env_loader;
 mod error_logging;
 mod error_pages;
 mod error_tracker;
-mod file_tracker;
 pub(crate) mod file_upload;
 pub(crate) mod internal_store;
 pub mod job_worker;
@@ -90,7 +88,6 @@ mod tenant_writer;
 mod worker_pool;
 
 pub use crate::interpreter::builtins::router::{get_controllers, set_controllers};
-pub use hot_reload::FileTracker;
 pub use middleware::{
     clear_middleware, extract_middleware_functions, extract_middleware_result, get_middleware,
     get_middleware_by_name, has_middleware, register_middleware, register_middleware_with_options,
@@ -837,22 +834,19 @@ pub fn serve_folder_with_options_and_hooks(
     }
     boot_trace("mailers loaded");
 
-    // Initialize file tracker for hot reload
-    let mut file_tracker = FileTracker::new();
-
     // Load background-job classes (app/jobs/*_job.sl) before controllers so
     // controllers can reference them. Worker 0 also syncs `static cron`
     // declarations to SolidB.
     let jobs_dir = app_dir.join("jobs");
     if jobs_dir.exists() {
-        app_loader::load_jobs_in_worker(0, &mut interpreter, &jobs_dir, &mut file_tracker, true);
+        app_loader::load_jobs_in_worker(0, &mut interpreter, &jobs_dir, true);
     }
     boot_trace("jobs loaded");
 
     // Load middleware
     let middleware_dir = app_dir.join("middleware");
     if middleware_dir.exists() {
-        load_middleware(&mut interpreter, &middleware_dir, &mut file_tracker)?;
+        load_middleware(&mut interpreter, &middleware_dir)?;
     }
     boot_trace("middleware loaded");
 
@@ -873,15 +867,6 @@ pub fn serve_folder_with_options_and_hooks(
                 eprintln!("Error loading view helpers: {}", e);
             }
         }
-        // Track helper and component files for hot reload
-        for dir in [&helpers_dir, &app_dir.join("components")] {
-            for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
-                let path = entry.path();
-                if path.extension().is_some_and(|ext| ext == "sl") {
-                    file_tracker.track(&path);
-                }
-            }
-        }
     }
     boot_trace("helpers loaded");
 
@@ -896,12 +881,7 @@ pub fn serve_folder_with_options_and_hooks(
     // Scan and load controllers
     let controller_files = scan_controllers(&controllers_dir)?;
     for controller_path in &controller_files {
-        load_controller(
-            &mut interpreter,
-            &controllers_dir,
-            controller_path,
-            &mut file_tracker,
-        )?;
+        load_controller(&mut interpreter, &controllers_dir, controller_path)?;
     }
     boot_trace("controllers loaded");
 
@@ -925,9 +905,7 @@ pub fn serve_folder_with_options_and_hooks(
                     eprintln!("Warning: Failed to mount engines: {}", e);
                 }
                 // Load engine controllers and models
-                if let Err(e) =
-                    engine_loader::load_engine_controllers(&mut interpreter, &mut file_tracker)
-                {
+                if let Err(e) = engine_loader::load_engine_controllers(&mut interpreter) {
                     eprintln!("Warning: Failed to load engine controllers: {}", e);
                 }
                 if let Err(e) = engine_loader::load_engine_models(&mut interpreter) {
@@ -941,29 +919,11 @@ pub fn serve_folder_with_options_and_hooks(
     }
     boot_trace("engines loaded");
 
-    // Track model files too
-    if models_dir.exists() {
-        for entry in std::fs::read_dir(&models_dir)
-            .map_err(|e| RuntimeError::General {
-                message: format!("Failed to read models directory: {}", e),
-                span: Span::default(),
-            })?
-            .flatten()
-        {
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "sl") {
-                file_tracker.track(&path);
-            }
-        }
-    }
-
     // Initialize template engine with views directory
     let views_dir = app_dir.join("views");
     init_templates(views_dir.clone());
     if views_dir.exists() {
         println!("Template engine initialized from {}", views_dir.display());
-        // Track view files for hot reload
-        track_view_files(&views_dir, &mut file_tracker)?;
     }
     boot_trace("templates initialized");
 
@@ -1070,7 +1030,6 @@ pub fn serve_folder_with_options_and_hooks(
         middleware_dir,
         helpers_dir,
         public_dir,
-        file_tracker,
         dev_mode,
         workers,
         views_dir,
@@ -1123,7 +1082,6 @@ fn serve_folder_as_files(
         app_dir.join("middleware"),
         app_dir.join("helpers"),
         folder.join("public"),
-        FileTracker::new(),
         dev_mode,
         workers,
         views_dir,
@@ -1136,7 +1094,7 @@ fn serve_folder_as_files(
 // Import app_loader functions
 use app_loader::{
     define_routes_dsl, execute_file, load_controller, load_controllers_in_worker, load_middleware,
-    load_models, reload_routes_in_worker, scan_controllers, track_view_files,
+    load_models, reload_routes_in_worker, scan_controllers,
 };
 
 // Import tailwind functions
@@ -1151,7 +1109,6 @@ fn run_hyper_server_worker_pool(
     middleware_dir: PathBuf,
     helpers_dir: PathBuf,
     public_dir: PathBuf,
-    _file_tracker: FileTracker,
     dev_mode: bool,
     num_workers: usize,
     views_dir: PathBuf,
@@ -1994,8 +1951,7 @@ fn worker_loop(
         if current_middleware != last_middleware_version {
             last_middleware_version = current_middleware;
             // Clear and reload middleware
-            let mut file_tracker = FileTracker::new();
-            if let Err(e) = load_middleware(interpreter, &middleware_dir, &mut file_tracker) {
+            if let Err(e) = load_middleware(interpreter, &middleware_dir) {
                 eprintln!("Worker {}: Error reloading middleware: {}", worker_id, e);
             }
         }
@@ -2027,14 +1983,7 @@ fn worker_loop(
         if current_jobs != last_jobs_version {
             last_jobs_version = current_jobs;
             if jobs_dir.exists() {
-                let mut tracker = FileTracker::new();
-                app_loader::load_jobs_in_worker(
-                    worker_id,
-                    interpreter,
-                    &jobs_dir,
-                    &mut tracker,
-                    true,
-                );
+                app_loader::load_jobs_in_worker(worker_id, interpreter, &jobs_dir, true);
             }
             // Update VM globals so production-mode bytecode sees reloaded job classes
             if let Some(ref mut vm) = vm {
@@ -2064,14 +2013,7 @@ fn worker_loop(
         // Routes changed - reload routes.sl
         if current_routes != last_routes_version {
             last_routes_version = current_routes;
-            let mut file_tracker = FileTracker::new();
-            reload_routes_in_worker(
-                worker_id,
-                interpreter,
-                &routes_file,
-                &controllers_dir,
-                &mut file_tracker,
-            );
+            reload_routes_in_worker(worker_id, interpreter, &routes_file, &controllers_dir);
             // Drop the template builtins env so the next render rebuilds it
             // and re-seeds `<name>_path` / `<name>_url` helpers from the
             // refreshed route table — otherwise views keep calling the old

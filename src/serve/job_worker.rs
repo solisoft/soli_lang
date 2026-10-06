@@ -11,7 +11,6 @@ use super::background_jobs::{self, PoolConfig};
 use super::env_loader::load_env_files;
 use super::server_constants;
 use super::set_tokio_handle;
-use super::FileTracker;
 use crate::interpreter::builtins::mailer;
 use crate::interpreter::Interpreter;
 use crate::jobs::store;
@@ -52,8 +51,7 @@ pub fn run_worker(folder: &Path, cli_workers: Option<usize>) -> Result<(), Strin
     if jobs_dir.exists() {
         let mut interpreter = Interpreter::new_for_serve();
         mailer::ensure_prelude(&mut interpreter);
-        let mut tracker = FileTracker::new();
-        load_jobs_in_worker(0, &mut interpreter, &jobs_dir, &mut tracker, true);
+        load_jobs_in_worker(0, &mut interpreter, &jobs_dir, true);
     }
 
     background_jobs::start_pool(PoolConfig {

@@ -1,7 +1,6 @@
 //! Application Loader
 //!
 //! This module handles loading controllers, models, middleware, and executing files.
-//! It also provides view file tracking for hot reload.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -9,7 +8,6 @@ use std::path::{Path, PathBuf};
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::router::register_controller_action;
 use crate::interpreter::{Interpreter, Value};
-use crate::serve::hot_reload::FileTracker;
 use crate::serve::middleware::{
     clear_middleware, extract_middleware_functions, register_middleware_with_options,
     scan_middleware_files,
@@ -294,7 +292,6 @@ pub(crate) fn load_jobs_in_worker(
     worker_id: usize,
     interpreter: &mut Interpreter,
     jobs_dir: &Path,
-    file_tracker: &mut FileTracker,
     // Whether this loader may upsert `static cron` schedules (only the
     // designated web worker 0 does). Background-pool loaders pass `false` so they
     // never duplicate the cron registration the web pool already performed.
@@ -309,7 +306,6 @@ pub(crate) fn load_jobs_in_worker(
     };
 
     for path in &job_files {
-        file_tracker.track(path);
         let expected_class = job_class_name_from_path(path);
         if let Err(e) = execute_file(interpreter, path) {
             eprintln!(
@@ -427,7 +423,6 @@ fn load_sl_dir_recursive(interpreter: &mut Interpreter, dir: &Path) -> Result<()
 pub(crate) fn load_middleware(
     interpreter: &mut Interpreter,
     middleware_dir: &Path,
-    file_tracker: &mut FileTracker,
 ) -> Result<(), RuntimeError> {
     // Clear existing middleware
     clear_middleware();
@@ -439,9 +434,6 @@ pub(crate) fn load_middleware(
     }
 
     for middleware_path in middleware_files {
-        // Track file for hot reload
-        file_tracker.track(&middleware_path);
-
         // Read source to extract function names and orders. The directives
         // (`# order:`, `# global_only:`, `# scope_only:`) live in comments,
         // which a protected bundle's serialized AST does not keep — for
@@ -504,12 +496,8 @@ pub(crate) fn load_controller(
     interpreter: &mut Interpreter,
     controllers_dir: &Path,
     controller_path: &Path,
-    file_tracker: &mut FileTracker,
 ) -> Result<(), RuntimeError> {
     let controller_key = controller_key_from_path(controllers_dir, controller_path);
-
-    // Track file for hot reload
-    file_tracker.track(controller_path);
 
     // Derive routes from the controller (pass the full key so nested
     // controllers get a base path like `/admin/merchants`).
@@ -642,36 +630,6 @@ pub(crate) fn execute_file(interpreter: &mut Interpreter, path: &Path) -> Result
     // Execute (skip type checking for flexibility)
     interpreter.set_source_path(path.to_path_buf());
     interpreter.interpret(&program)
-}
-
-/// Recursively track view files for hot reload.
-pub(crate) fn track_view_files(
-    views_dir: &Path,
-    file_tracker: &mut FileTracker,
-) -> Result<(), RuntimeError> {
-    fn track_recursive(dir: &Path, file_tracker: &mut FileTracker) -> Result<(), RuntimeError> {
-        if !dir.exists() {
-            return Ok(());
-        }
-
-        for entry in std::fs::read_dir(dir)
-            .map_err(|e| RuntimeError::General {
-                message: format!("Failed to read views directory: {}", e),
-                span: Span::default(),
-            })?
-            .flatten()
-        {
-            let path = entry.path();
-            if path.is_dir() {
-                track_recursive(&path, file_tracker)?;
-            } else if path.extension().is_some_and(|ext| ext == "erb") {
-                file_tracker.track(&path);
-            }
-        }
-        Ok(())
-    }
-
-    track_recursive(views_dir, file_tracker)
 }
 
 /// Load all controllers in a worker thread.
@@ -954,8 +912,7 @@ pub(crate) fn load_app_in_worker(
 ) {
     // Load middleware in this worker (needed for scoped middleware resolution by name)
     {
-        let mut file_tracker = FileTracker::new();
-        if let Err(e) = load_middleware(interpreter, middleware_dir, &mut file_tracker) {
+        if let Err(e) = load_middleware(interpreter, middleware_dir) {
             eprintln!("Worker {}: Error loading middleware: {}", worker_id, e);
         }
     }
@@ -984,8 +941,7 @@ pub(crate) fn load_app_in_worker(
     // `XJob.perform_later(...)`. Worker 0 also syncs `static cron`
     // declarations to SolidB.
     if jobs_dir.exists() {
-        let mut tracker = FileTracker::new();
-        load_jobs_in_worker(worker_id, interpreter, jobs_dir, &mut tracker, true);
+        load_jobs_in_worker(worker_id, interpreter, jobs_dir, true);
     }
 
     // Define `<name>_path` / `<name>_url` helpers in this worker's env from
@@ -1005,7 +961,6 @@ pub(crate) fn reload_controllers_in_worker(
     worker_id: usize,
     interpreter: &mut Interpreter,
     controllers_dir: &Path,
-    file_tracker: &mut FileTracker,
 ) {
     let controller_files = match scan_controllers(controllers_dir) {
         Ok(files) => files,
@@ -1019,8 +974,7 @@ pub(crate) fn reload_controllers_in_worker(
     };
 
     for controller_path in &controller_files {
-        if let Err(e) = load_controller(interpreter, controllers_dir, controller_path, file_tracker)
-        {
+        if let Err(e) = load_controller(interpreter, controllers_dir, controller_path) {
             eprintln!(
                 "Worker {}: Error reloading controller {}: {}",
                 worker_id,
@@ -1052,7 +1006,6 @@ pub(crate) fn reload_routes_in_worker(
     interpreter: &mut Interpreter,
     routes_file: &Path,
     controllers_dir: &Path,
-    file_tracker: &mut FileTracker,
 ) {
     // 1. Save current routes before clearing (for rollback on failure)
     let saved_routes = crate::interpreter::builtins::server::take_routes();
@@ -1063,7 +1016,7 @@ pub(crate) fn reload_routes_in_worker(
     crate::serve::engine_loader::reset_engine_context();
 
     // 3. Reload controllers to ensure OOP controller classes are available
-    reload_controllers_in_worker(worker_id, interpreter, controllers_dir, file_tracker);
+    reload_controllers_in_worker(worker_id, interpreter, controllers_dir);
 
     // 4. Clear old routes and re-execute routes.sl
     crate::interpreter::builtins::server::clear_routes();
