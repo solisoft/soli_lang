@@ -1208,10 +1208,13 @@ fn normalize_text(ty: ColType, raw: &str) -> String {
         return raw.to_string();
     }
     let mut out = raw.replacen(' ', "T", 1);
-    if let Some(pos) = out.rfind('+') {
-        // "+00" -> "+00:00" so the offset is well-formed.
-        if out.len() - pos == 3 {
-            out.push_str(":00");
+    // "+00" / "-05" -> "+00:00" / "-05:00" so the offset is RFC 3339. Looked
+    // for after the `T` only: the date's own dashes are not an offset.
+    if let Some(t) = out.find('T') {
+        if let Some(rel) = out[t..].rfind(['+', '-']) {
+            if out.len() - (t + rel) == 3 {
+                out.push_str(":00");
+            }
         }
     }
     out
@@ -1685,6 +1688,22 @@ fn bind_owned(params: &[SqlBind]) -> Vec<OwnedParam> {
 
 fn bind_refs(owned: &[OwnedParam]) -> Vec<&(dyn ToSql + Sync)> {
     owned.iter().map(|p| p as &(dyn ToSql + Sync)).collect()
+}
+
+#[cfg(test)]
+mod normalize_tests {
+    use super::*;
+
+    #[test]
+    fn a_timestamp_offset_is_padded_to_rfc_3339_either_side_of_utc() {
+        // A server not on UTC sends `-05`; only `+00` used to be padded.
+        let t = |raw| normalize_text(ColType::DateTime, raw);
+        assert_eq!(t("2026-10-07 06:00:00-04"), "2026-10-07T06:00:00-04:00");
+        assert_eq!(t("2026-10-07 10:00:00.5+00"), "2026-10-07T10:00:00.5+00:00");
+        assert_eq!(t("2026-10-07 15:30:00+05:30"), "2026-10-07T15:30:00+05:30");
+        // A plain timestamp: the date's dashes are not an offset.
+        assert_eq!(t("2026-10-07 10:00:00"), "2026-10-07T10:00:00");
+    }
 }
 
 #[cfg(test)]
