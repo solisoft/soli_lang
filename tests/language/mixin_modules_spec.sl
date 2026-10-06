@@ -83,11 +83,11 @@ end
 HOOK_LOG = []
 
 module MixinTracked
-  static def included(base)
+  def self.included(base)
     HOOK_LOG.push("included:" + base.inspect)
   end
 
-  static def extended(base)
+  def self.extended(base)
     HOOK_LOG.push("extended:" + base.inspect)
   end
 end

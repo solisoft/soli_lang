@@ -1,5 +1,5 @@
 # Concern hooks (the ActiveSupport::Concern shape): `included do`,
-# `extended do`, `class_methods do`, `static def included(base)` /
+# `extended do`, `class_methods do`, `def self.included(base)` /
 # `extended(base)`, and the forms `include` accepts.
 
 HOOK_LOG = []
@@ -96,11 +96,11 @@ class Untouched
 end
 
 module Watch
-  static def included(base)
+  def self.included(base)
     HOOK_LOG.push("in:" + base.inspect)
   end
 
-  static def extended(base)
+  def self.extended(base)
     HOOK_LOG.push("ex:" + base.inspect)
   end
 end

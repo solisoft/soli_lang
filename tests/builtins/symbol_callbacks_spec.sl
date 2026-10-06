@@ -1,13 +1,14 @@
 # Callback DSL: a callback names its method with a symbol (`:normalize`) or a
-# string ("string_cb"). Both register, run in declaration order, and a name
-# registered twice runs twice.
+# string ("string_cb"), with or without parentheses. All four register, run in
+# declaration order, and a name registered twice runs twice. The paren-less
+# forms are the subject: do not run `soli fmt` on this file, it adds parens.
 
 class SpecCallbacks < Model
   before_save(:normalize)
-  before_save(:normalize)
+  before_save :normalize
   before_save("string_cb")
   after_create(:notify)
-  after_create("notify_str")
+  after_create "notify_str"
 
   def normalize
     @calls = (@calls ?? []) + ["normalize"]
