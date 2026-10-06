@@ -41,17 +41,6 @@ pub fn datetime_method(name: &str) -> Option<Rc<NativeFunction>> {
     DATETIME_METHODS.with(|m| m.borrow().as_ref().and_then(|map| map.get(name).cloned()))
 }
 
-/// Every method name DateTime answers to — used by the type checker and by
-/// `respond_to?`-style checks so they agree with dispatch by construction.
-pub fn datetime_method_names() -> Vec<String> {
-    DATETIME_METHODS.with(|m| {
-        m.borrow()
-            .as_ref()
-            .map(|map| map.keys().cloned().collect())
-            .unwrap_or_default()
-    })
-}
-
 fn duration_instance_class() -> Result<Rc<Class>, String> {
     DURATION_INSTANCE_CLASS
         .with(|c| c.borrow().clone())

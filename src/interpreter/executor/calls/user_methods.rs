@@ -76,15 +76,6 @@ pub fn alias_user_method(t: PrimType, new_name: String, old_name: &str) -> bool 
     })
 }
 
-/// Enumerate all user method names for a given primitive type. Used by
-/// REPL/LSP completion, not on hot paths.
-pub fn user_method_names(t: PrimType) -> Vec<String> {
-    if !has_user_methods(t) {
-        return Vec::new();
-    }
-    USER_METHOD_TABLES.with(|tables| tables[t as usize].borrow().keys().cloned().collect())
-}
-
 /// Map a primitive class name (as used in Soli source) to its `PrimType`.
 /// Used by `class_eval` / `define_method` to detect when the target class
 /// is a primitive that should route writes to `USER_METHODS`.

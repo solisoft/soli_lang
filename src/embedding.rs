@@ -137,19 +137,3 @@ pub fn cosine_similarity(a: &[f64], b: &[f64]) -> f64 {
         dot / (norm_a * norm_b)
     }
 }
-
-/// Score a document against a query embedding by comparing the field value.
-/// The field can be a JSON array of floats (embedding vector) or other types.
-pub fn score_against_embedding(query_vec: &[f64], field_value: &serde_json::Value) -> f64 {
-    match field_value {
-        serde_json::Value::Array(arr) => {
-            let doc_vec: Vec<f64> = arr.iter().filter_map(|v| v.as_f64()).collect();
-            if doc_vec.len() == query_vec.len() {
-                cosine_similarity(query_vec, &doc_vec)
-            } else {
-                0.0
-            }
-        }
-        _ => 0.0,
-    }
-}

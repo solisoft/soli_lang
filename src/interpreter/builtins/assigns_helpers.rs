@@ -31,12 +31,6 @@ pub fn set_last_render(view_path: Option<String>, assigns_json: Option<String>) 
     LAST_RENDERED.with(|cell| *cell.borrow_mut() = rendered);
 }
 
-/// Reset the captured render (no template). Mostly covered by `set_last_render`
-/// running on every response, but kept for explicit teardown.
-pub fn clear_last_render() {
-    set_last_render(None, None);
-}
-
 pub fn register_assigns_helpers(env: &mut Environment) {
     env.define(
         "assigns".to_string(),

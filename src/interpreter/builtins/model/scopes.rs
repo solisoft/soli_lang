@@ -52,15 +52,3 @@ pub fn copy_scopes(parent: &str, child: &str) {
         }
     });
 }
-
-/// All registered scope names for a class, used by REPL completion and
-/// reflection.
-pub fn scopes_for(class_name: &str) -> Vec<String> {
-    SCOPES.with(|s| {
-        s.borrow()
-            .keys()
-            .filter(|(c, _)| c == class_name)
-            .map(|(_, n)| n.clone())
-            .collect()
-    })
-}

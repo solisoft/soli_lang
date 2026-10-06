@@ -40,16 +40,6 @@ pub fn render_with_layout_path(
     render_layout_nodes_with_path(&layout_nodes, content, data, partial_renderer, layout_path)
 }
 
-/// Render layout nodes, replacing Yield nodes with the content.
-pub fn render_layout_nodes(
-    nodes: &[TemplateNode],
-    content: &str,
-    data: &Value,
-    partial_renderer: PartialRenderer<'_>,
-) -> Result<String, String> {
-    render_layout_nodes_with_path(nodes, content, data, partial_renderer, None)
-}
-
 /// Render layout nodes with path for error reporting.
 pub fn render_layout_nodes_with_path(
     nodes: &[TemplateNode],

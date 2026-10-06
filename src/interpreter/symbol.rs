@@ -102,14 +102,6 @@ pub fn symbol_string(id: SymbolId) -> Option<&'static str> {
     SYMBOL_TABLE.read().unwrap().get(id)
 }
 
-/// Get or create a SymbolId from a Value (for Value::String).
-pub fn value_to_symbol(value: &super::value::Value) -> Option<SymbolId> {
-    match value {
-        super::value::Value::String(s) => Some(get_symbol(s)),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -347,23 +347,6 @@ impl LiveRegistry {
         None
     }
 
-    /// Attach another socket to an existing instance (second browser tab).
-    pub fn add_sender(
-        &self,
-        id: &str,
-        sender: Arc<async_channel::Sender<Result<Message, tungstenite::Error>>>,
-    ) -> bool {
-        self.with_instance(id, |inst| {
-            inst.senders.retain(|s| !s.is_closed());
-            if !inst.senders.iter().any(|s| Arc::ptr_eq(s, &sender)) {
-                inst.senders.push(sender);
-            }
-            inst.detached_at = None;
-            inst.touch();
-        })
-        .is_some()
-    }
-
     /// Drop one socket. Returns true when no sockets remain (caller should detach).
     pub fn drop_sender(
         &self,

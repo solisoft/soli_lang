@@ -669,27 +669,6 @@ pub fn compile_doc_pred_on(
     }
 }
 
-#[allow(dead_code)]
-fn push_doc_bind(
-    d: super::sql_compile::Dialect,
-    field: &str,
-    value: &serde_json::Value,
-    params: &mut Vec<super::sql_compile::SqlBind>,
-    phs: &mut Vec<String>,
-    param_offset: usize,
-) {
-    use super::sql_compile::SqlBind;
-    let n = param_offset + params.len() + 1;
-    let ph = d.ph(n);
-    if let serde_json::Value::String(text) = value {
-        params.push(SqlBind::Text(text.clone()));
-    } else {
-        params.push(SqlBind::Json(value.clone()));
-    }
-    let _ = field;
-    phs.push(ph);
-}
-
 fn push_cmp_bind(value: &serde_json::Value, params: &mut Vec<super::sql_compile::SqlBind>) {
     use super::sql_compile::SqlBind;
     match value {

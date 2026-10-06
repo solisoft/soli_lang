@@ -9,8 +9,6 @@ use super::core::{
     db_url, force_refresh_jwt_token, get_cursor_url, get_database_name, get_jwt_token,
     resolve_api_key, resolve_basic_auth,
 };
-#[allow(unused_imports)]
-use super::registry::{clear_model_classes, get_model_class, register_model_class};
 
 /// Apply DB authentication headers.
 ///
@@ -2278,6 +2276,9 @@ mod tests {
     }
 
     use super::*;
+    use crate::interpreter::builtins::model::registry::{
+        clear_model_classes, register_model_class,
+    };
 
     #[test]
     fn cursor_batch_reports_continuation() {

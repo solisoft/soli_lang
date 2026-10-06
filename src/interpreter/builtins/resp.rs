@@ -7,17 +7,14 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub(crate) enum RespValue {
     SimpleString(String),
-    Error(String),
     Integer(i64),
     BulkString(String),
     Null,
     Array(Vec<RespValue>),
 }
 
-#[allow(dead_code)]
 impl RespValue {
     pub fn as_i64(&self) -> Option<i64> {
         match self {
@@ -34,21 +31,9 @@ impl RespValue {
         }
     }
 
-    pub fn is_null(&self) -> bool {
-        matches!(self, RespValue::Null)
-    }
-
-    pub fn into_array(self) -> Option<Vec<RespValue>> {
-        match self {
-            RespValue::Array(a) => Some(a),
-            _ => None,
-        }
-    }
-
     pub fn to_json(&self) -> serde_json::Value {
         match self {
             RespValue::SimpleString(s) => serde_json::Value::String(s.clone()),
-            RespValue::Error(e) => serde_json::Value::String(e.clone()),
             RespValue::Integer(i) => serde_json::json!(*i),
             RespValue::BulkString(s) => serde_json::Value::String(s.clone()),
             RespValue::Null => serde_json::Value::Null,

@@ -25,11 +25,6 @@ pub fn set_current_action(action: &str) {
     });
 }
 
-/// Clear the recorded action name (called when a request finishes).
-pub fn clear_current_action() {
-    CURRENT_ACTION.with(|cell| cell.borrow_mut().clear());
-}
-
 /// The action name recorded for the current request, or "" outside a request.
 pub fn current_action_name() -> String {
     CURRENT_ACTION.with(|cell| cell.borrow().clone())

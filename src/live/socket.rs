@@ -127,14 +127,6 @@ pub fn extract_session_id(cookies: Option<&str>) -> String {
         .unwrap_or_else(|| format!("sess-{}", Uuid::new_v4()))
 }
 
-/// Extract component name from URL path.
-#[allow(dead_code)]
-fn _extract_component_from_path(path: &str) -> String {
-    path.trim_start_matches("/live/")
-        .trim_end_matches("/socket")
-        .to_string()
-}
-
 /// First-paint state for the Field Desk sample. The connect handler reseeds
 /// the same shape; this exists so the initial Render is not an error page
 /// (unknown components only get `{ id }` before `connect` runs).

@@ -260,12 +260,6 @@ pub fn run_on_collection_connection<T>(collection: &str, f: impl FnOnce() -> T) 
     }
 }
 
-/// Effective connection name for a class (declared or registry default).
-#[allow(dead_code)]
-pub fn effective_connection_name(class_name: &str) -> String {
-    get_connection_for_class(class_name).unwrap_or_else(|| crate::db::registry().default.clone())
-}
-
 /// The declared SolidB collection type for a collection, if any.
 pub fn get_collection_type(collection: &str) -> Option<String> {
     COLLECTION_TYPES.read(|c| c.get(collection).cloned())

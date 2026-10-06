@@ -638,8 +638,6 @@ pub fn get_current_store() -> Arc<dyn SessionStore> {
 #[derive(Clone)]
 struct Session {
     data: HashMap<String, JsonValue>,
-    #[allow(dead_code)]
-    created_at: Instant,
     last_accessed: Instant,
 }
 
@@ -648,7 +646,6 @@ impl Session {
         let now = Instant::now();
         Self {
             data: HashMap::new(),
-            created_at: now,
             last_accessed: now,
         }
     }

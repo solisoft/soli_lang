@@ -1088,17 +1088,6 @@ impl Encoder {
         self.handler_of(found, event)
     }
 
-    /// A node's props with atom names resolved, as JSON, for the handler's
-    /// `params["props"]`. This is how a row in a list says which row it is.
-    pub fn props_of(&self, node: u32) -> serde_json::Map<String, Json> {
-        match self.prev.as_ref().and_then(|tree| find(tree, node)) {
-            Some(found) => self.props_json(found),
-            None => serde_json::Map::new(),
-        }
-    }
-
-    /// [`handler_name`] and [`props_of`] for one event, from one walk of
-    /// the tree: what `validate` needs, at the cost of one lookup.
     /// The version this session speaks; ours when nobody has said.
     fn protocol(&self) -> u32 {
         if self.version == 0 {
@@ -1119,6 +1108,9 @@ impl Encoder {
         self.version = version;
     }
 
+    /// [`handler_name`] and the node's props (atom names resolved, as the
+    /// handler's `params["props"]`) for one event, from one walk of the tree:
+    /// what `validate` needs, at the cost of one lookup.
     pub fn event_target(
         &self,
         node: u32,

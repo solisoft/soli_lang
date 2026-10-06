@@ -254,11 +254,6 @@ fn parse_number(s: &str) -> Option<JsonValue> {
     s.parse::<f64>().ok().map(|f| json!(f))
 }
 
-/// Wrap child markup so the client stamps events with `_component`.
-pub fn wrap_component(name: &str, inner: &str) -> String {
-    wrap_component_cid(name, name, inner)
-}
-
 pub fn wrap_component_cid(name: &str, cid: &str, inner: &str) -> String {
     // `cid` carries `spec["id"]`, which is application data — the whole point of
     // the keyed-child pattern is `live_component("row", {"id": row.slug})`. It

@@ -333,10 +333,6 @@ pub fn quote_ident(name: &str) -> Result<String, String> {
     Dialect::Postgres.quote_ident(name)
 }
 
-pub fn compile_select(q: &ListQuery) -> Result<CompiledSql, String> {
-    compile_select_d(Dialect::Postgres, q)
-}
-
 pub fn compile_select_d(d: Dialect, q: &ListQuery) -> Result<CompiledSql, String> {
     if q.hash_filter.is_none() {
         assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
@@ -361,10 +357,6 @@ pub fn compile_select_d(d: Dialect, q: &ListQuery) -> Result<CompiledSql, String
     Ok(CompiledSql { sql, params })
 }
 
-pub fn compile_count(q: &ListQuery) -> Result<CompiledSql, String> {
-    compile_count_d(Dialect::Postgres, q)
-}
-
 pub fn compile_count_d(d: Dialect, q: &ListQuery) -> Result<CompiledSql, String> {
     if q.hash_filter.is_none() {
         assert_portable_filter(q.filter_sdbql.as_deref(), &q.eq_filters)?;
@@ -377,10 +369,6 @@ pub fn compile_count_d(d: Dialect, q: &ListQuery) -> Result<CompiledSql, String>
         sql.push_str(&where_sql);
     }
     Ok(CompiledSql { sql, params })
-}
-
-pub fn compile_exists(q: &ListQuery) -> Result<CompiledSql, String> {
-    compile_exists_d(Dialect::Postgres, q)
 }
 
 pub fn compile_exists_d(d: Dialect, q: &ListQuery) -> Result<CompiledSql, String> {
@@ -936,10 +924,6 @@ pub fn drop_table_sql(table: &str) -> Result<String, String> {
 pub fn drop_table_sql_d(d: Dialect, table: &str) -> Result<String, String> {
     let t = d.quote_ident(table)?;
     Ok(format!("DROP TABLE IF EXISTS {t}"))
-}
-
-pub fn migrations_table_sql() -> &'static str {
-    migrations_table_sql_d(Dialect::Postgres)
 }
 
 pub fn migrations_table_sql_d(d: Dialect) -> &'static str {

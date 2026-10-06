@@ -344,16 +344,6 @@ impl QueryBuilder {
         head
     }
 
-    pub fn set_similar(&mut self, query: String, field: String, top_k: usize) {
-        self.similar_query = Some(SimilarSpec {
-            input: SimilarInput::Text(query),
-            field,
-            top_k,
-            exact: false,
-            ef_search: None,
-        });
-    }
-
     pub fn set_pluck(&mut self, fields: Vec<String>) {
         self.pluck_fields = Some(fields);
     }

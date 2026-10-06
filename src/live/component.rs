@@ -40,16 +40,10 @@ impl ComponentState {
 
 /// Component instance with state.
 pub struct ComponentInstance {
-    #[allow(dead_code)]
-    name: String,
     state: JsonValue,
 }
 
 impl ComponentInstance {
-    pub fn new(name: String, state: JsonValue) -> Self {
-        Self { name, state }
-    }
-
     pub fn mount(_session: JsonValue, params: JsonValue) -> Result<Self, String> {
         let id = params
             .get("id")
@@ -69,10 +63,7 @@ impl ComponentInstance {
             "count": initial
         });
 
-        Ok(Self {
-            name: "counter".to_string(),
-            state,
-        })
+        Ok(Self { state })
     }
 
     pub fn handle_event(&mut self, event: String, _params: JsonValue) -> Result<(), String> {
@@ -91,21 +82,6 @@ impl ComponentInstance {
     pub fn state(&self) -> &JsonValue {
         &self.state
     }
-
-    pub fn state_mut(&mut self) -> &mut JsonValue {
-        &mut self.state
-    }
-}
-
-/// Get the counter component instance.
-pub fn get_counter_component() -> Result<ComponentInstance, String> {
-    Ok(ComponentInstance::new(
-        "counter".to_string(),
-        json!({
-            "id": format!("counter-{}", Uuid::new_v4().to_string().split('-').next().unwrap()),
-            "count": 0
-        }),
-    ))
 }
 
 /// Wrap a render/mount failure as the markup the client morphs into the DOM.

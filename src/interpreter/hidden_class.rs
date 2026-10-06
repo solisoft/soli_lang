@@ -148,18 +148,6 @@ impl HiddenClassRegistry {
             class.is_sealed = true;
         }
     }
-
-    pub fn own_properties(&self, id: HiddenClassId) -> Vec<(SymbolId, usize)> {
-        if let Some(class) = self.classes.read().unwrap().get(&id) {
-            class
-                .property_offsets
-                .iter()
-                .map(|(k, v)| (*k, *v))
-                .collect()
-        } else {
-            vec![]
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

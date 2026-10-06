@@ -14,7 +14,7 @@
 //! not wedge the worker that was driving it.
 
 use std::collections::VecDeque;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStderr, Command, Stdio};
@@ -948,14 +948,6 @@ fn virtual_key_code(key: &str) -> u32 {
         " " | "Space" => 32,
         _ => 0,
     }
-}
-
-/// Read a whole stream, used only by tests that inspect a spawned browser.
-#[allow(dead_code)]
-fn drain(mut source: impl Read) -> String {
-    let mut buffer = String::new();
-    let _ = source.read_to_string(&mut buffer);
-    buffer
 }
 
 #[cfg(test)]

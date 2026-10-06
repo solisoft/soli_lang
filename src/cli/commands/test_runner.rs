@@ -737,18 +737,7 @@ pub fn run_test(
         formats
     };
     let tracker = if enable_coverage {
-        let config = CoverageConfig {
-            enabled: true,
-            output_dir: PathBuf::from("coverage"),
-            formats: output_formats.clone(),
-            threshold: coverage_min.or(Some(80.0)),
-            exclude_patterns: Vec::new(),
-            exclude_lines: Vec::new(),
-            show_uncovered: true,
-            per_test: false,
-            root_dir: Some(app_dir.clone()),
-        };
-        let tracker = CoverageTracker::new(config);
+        let tracker = CoverageTracker::new();
         let tracker = Arc::new(Mutex::new(tracker));
         {
             let mut tracker_guard = tracker.lock().unwrap();

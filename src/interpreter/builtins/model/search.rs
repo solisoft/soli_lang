@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use crate::interpreter::value::{Class, Value};
 
-use super::crud::{exec_db_api_request, json_doc_to_instance, json_to_value};
+use super::crud::{exec_db_api_request, json_doc_to_instance};
 
 /// One ANN hit: (doc_key, score, document).
 pub struct VectorHit {
@@ -249,18 +249,6 @@ pub fn attach_score(value: Value, score: f64) -> Value {
             .set("_similarity_score".to_string(), Value::Float(score));
     }
     value
-}
-
-/// Convert raw JSON rows into Soli Values (borrowing — clones strings).
-pub fn raw_rows_to_values(rows: &[serde_json::Value]) -> Vec<Value> {
-    rows.iter().map(json_to_value).collect()
-}
-
-/// Consuming conversion for owned row vectors (batch / query results).
-pub fn raw_rows_to_values_owned(rows: Vec<serde_json::Value>) -> Vec<Value> {
-    rows.into_iter()
-        .map(super::crud::json_to_value_owned)
-        .collect()
 }
 
 /// Options for `Model.rag`.

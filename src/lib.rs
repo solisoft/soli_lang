@@ -59,11 +59,6 @@ pub fn run(source: &str) -> Result<(), SolilangError> {
     run_with_options(source, true)
 }
 
-/// Run a Solilang program with optional type checking.
-pub fn run_with_type_check(source: &str, type_check: bool) -> Result<(), SolilangError> {
-    run_with_options(source, type_check)
-}
-
 /// Run a Solilang program with full control over execution options.
 pub fn run_with_options(source: &str, type_check: bool) -> Result<(), SolilangError> {
     run_with_path(source, None, type_check)
@@ -664,16 +659,6 @@ fn is_test_path(path: &std::path::Path) -> bool {
         .and_then(|s| s.to_str())
         .is_some_and(|stem| stem.ends_with("_spec") || stem.ends_with("_test"));
     in_test_dir || named_like_a_spec
-}
-
-/// Run a Solilang program through the bytecode VM (faster execution).
-pub fn run_file_vm(path: &std::path::Path, type_check: bool) -> Result<(), SolilangError> {
-    let source = std::fs::read_to_string(path).map_err(|e| error::RuntimeError::General {
-        message: format!("Failed to read file '{}': {}", path.display(), e),
-        span: span::Span::new(0, 0, 1, 1),
-    })?;
-
-    run_vm(&source, Some(path), type_check)
 }
 
 /// Run a Solilang program through the bytecode VM.

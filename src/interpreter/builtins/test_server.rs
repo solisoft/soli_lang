@@ -1,7 +1,6 @@
 //! Test server infrastructure for Rails-like E2E controller testing.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::net::SocketAddr;
 
 use tokio::net::TcpListener;
@@ -35,12 +34,6 @@ thread_local! {
     /// global `TEST_SERVER_PORT` atomic. Set by the parallel test runner
     /// so each worker hits its own subprocess on its own port.
     static THREAD_TEST_SERVER_PORT: Cell<Option<u16>> = const { Cell::new(None) };
-
-    static LAST_RESPONSE: RefCell<Option<Value>> = const { RefCell::new(None) };
-    static LAST_REQUEST: RefCell<Option<HashMap<String, Value>>> = const { RefCell::new(None) };
-    static LAST_ASSIGNS: RefCell<Option<HashMap<String, Value>>> = const { RefCell::new(None) };
-    static LAST_VIEW_PATH: RefCell<Option<String>> = const { RefCell::new(None) };
-    static CURRENT_USER: RefCell<Option<Value>> = const { RefCell::new(None) };
 
     /// The most recent render() captured during the current request (server
     /// side, test-runner only). Reset at request start, taken at response
@@ -169,54 +162,6 @@ pub fn get_test_server_port() -> Option<u16> {
     }
 }
 
-/// Store the last response for inspection.
-pub fn set_last_response(response: Value) {
-    LAST_RESPONSE.with(|cell| {
-        *cell.borrow_mut() = Some(response);
-    });
-}
-
-/// Get the last response.
-pub fn get_last_response() -> Option<Value> {
-    LAST_RESPONSE.with(|cell| cell.borrow().clone())
-}
-
-/// Store the last request for inspection.
-pub fn set_last_request(request: HashMap<String, Value>) {
-    LAST_REQUEST.with(|cell| {
-        *cell.borrow_mut() = Some(request);
-    });
-}
-
-/// Get the last request.
-pub fn get_last_request() -> Option<HashMap<String, Value>> {
-    LAST_REQUEST.with(|cell| cell.borrow().clone())
-}
-
-/// Store the last view assigns.
-pub fn set_last_assigns(assigns: HashMap<String, Value>) {
-    LAST_ASSIGNS.with(|cell| {
-        *cell.borrow_mut() = Some(assigns);
-    });
-}
-
-/// Get the last view assigns.
-pub fn get_last_assigns() -> Option<HashMap<String, Value>> {
-    LAST_ASSIGNS.with(|cell| cell.borrow().clone())
-}
-
-/// Store the last view path.
-pub fn set_last_view_path(path: String) {
-    LAST_VIEW_PATH.with(|cell| {
-        *cell.borrow_mut() = Some(path);
-    });
-}
-
-/// Get the last view path.
-pub fn get_last_view_path() -> Option<String> {
-    LAST_VIEW_PATH.with(|cell| cell.borrow().clone())
-}
-
 /// Record the view path + locals JSON rendered during this request
 /// (test-runner only). The last render in a request wins, matching how a
 /// controller's final `render()` determines the response body.
@@ -239,25 +184,6 @@ pub fn take_captured_render() -> Option<CapturedRender> {
 /// prior request on the same pooled worker thread never leaks into the next.
 pub fn clear_captured_render() {
     CAPTURED_RENDER.with(|cell| {
-        *cell.borrow_mut() = None;
-    });
-}
-
-/// Set the current user from session.
-pub fn set_current_user(user: Value) {
-    CURRENT_USER.with(|cell| {
-        *cell.borrow_mut() = Some(user);
-    });
-}
-
-/// Get the current user.
-pub fn get_current_user() -> Option<Value> {
-    CURRENT_USER.with(|cell| cell.borrow().clone())
-}
-
-/// Clear the current user.
-pub fn clear_current_user() {
-    CURRENT_USER.with(|cell| {
         *cell.borrow_mut() = None;
     });
 }

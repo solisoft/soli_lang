@@ -579,13 +579,6 @@ th { background: #f1f5f9; font-weight: 600; font-size: 14px; }
             packages
         )
     }
-
-    pub fn check_threshold(&self, coverage: &AggregatedCoverage) -> bool {
-        if let Some(threshold) = self.config.threshold {
-            return coverage.total_line_coverage_percent() >= threshold;
-        }
-        true
-    }
 }
 
 /// Map a coverage percentage to a green / orange / red ANSI color escape.

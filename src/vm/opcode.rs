@@ -483,6 +483,7 @@ pub enum Op {
 /// `Loop` is deliberately absent: it is the one backward branch, so it does not
 /// share the forward-offset arithmetic the others do, and it is checked
 /// separately.
+#[cfg(test)]
 pub const FORWARD_BRANCH_OPS: &[Op] = &[
     Op::Jump(0),
     Op::JumpIfFalse(0),

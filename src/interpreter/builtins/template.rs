@@ -131,22 +131,6 @@ pub fn set_helper_request_context(
     });
 }
 
-/// Clear request-scoped bindings from the helper env. Called on request exit
-/// (or interpreter teardown) so a stale request's `req` doesn't bleed into the
-/// next one if helpers happen to be re-entered outside a request scope.
-pub fn clear_helper_request_context() {
-    VIEW_HELPER_ENV.with(|cell| {
-        if let Some(env_rc) = cell.borrow().as_ref() {
-            let mut env = env_rc.borrow_mut();
-            env.define_or_update("req", Value::Null);
-            env.define_or_update("params", Value::Null);
-            env.define_or_update("session", Value::Null);
-            env.define_or_update("cookies", Value::Null);
-            env.define_or_update("headers", Value::Null);
-        }
-    });
-}
-
 /// Set the current request context (called before template rendering).
 pub fn set_current_request(req: Value) {
     CURRENT_REQUEST.with(|ctx| *ctx.borrow_mut() = Some(req));
@@ -421,14 +405,6 @@ pub fn clear_template_cache() {
     if let Some(tc) = TEMPLATE_CACHE.get() {
         tc.clear();
     }
-}
-
-/// Check if templates have changes (for hot reload).
-pub fn templates_have_changes() -> bool {
-    TEMPLATE_CACHE
-        .get()
-        .map(|tc| tc.has_changes())
-        .unwrap_or(false)
 }
 
 /// Get the template cache, initializing if necessary.

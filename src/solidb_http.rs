@@ -5,7 +5,6 @@ use std::collections::HashMap;
 fn deserialize_msgpack(bytes: &[u8]) -> Result<Value, SoliDBError> {
     rmp_serde::from_slice(bytes).map_err(|e| SoliDBError {
         message: format!("MessagePack deserialization error: {}", e),
-        code: None,
     })
 }
 
@@ -41,10 +40,8 @@ pub struct SoliDBClient {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct SoliDBError {
     message: String,
-    code: Option<i32>,
 }
 
 impl std::fmt::Display for SoliDBError {
@@ -59,7 +56,6 @@ impl From<reqwest::Error> for SoliDBError {
     fn from(e: reqwest::Error) -> Self {
         SoliDBError {
             message: format!("HTTP error: {}", e),
-            code: None,
         }
     }
 }
@@ -111,7 +107,6 @@ fn seg(value: &str) -> Result<String, SoliDBError> {
                 "invalid path segment {:?}: empty, \".\" and \"..\" are not valid names or keys",
                 value
             ),
-            code: None,
         });
     }
     Ok(urlencoding::encode(value).into_owned())
@@ -172,7 +167,6 @@ impl SoliDBClient {
     fn get_db(&self) -> Result<&str, SoliDBError> {
         self.database.as_deref().ok_or_else(|| SoliDBError {
             message: "No database specified".to_string(),
-            code: None,
         })
     }
 
@@ -229,7 +223,6 @@ impl SoliDBClient {
         if let Some(b) = body {
             let json_bytes = serde_json::to_vec(b).map_err(|e| SoliDBError {
                 message: format!("Failed to serialize request body: {}", e),
-                code: None,
             })?;
             request = request
                 .header("Content-Type", "application/json")
@@ -245,7 +238,6 @@ impl SoliDBClient {
         block_on(async move {
             let response = request.send().await.map_err(|e| SoliDBError {
                 message: format!("HTTP request failed: {}", e),
-                code: None,
             })?;
 
             let status = response.status();
@@ -257,7 +249,6 @@ impl SoliDBClient {
                     .unwrap_or_else(|_| "Unknown error".to_string());
                 return Err(SoliDBError {
                     message: format!("HTTP {} {}: {}", status, path_owned, error_text),
-                    code: Some(status.as_u16() as i32),
                 });
             }
 
@@ -270,7 +261,6 @@ impl SoliDBClient {
 
             let bytes = response.bytes().await.map_err(|e| SoliDBError {
                 message: format!("Failed to read response: {}", e),
-                code: None,
             })?;
 
             if bytes.is_empty() {
@@ -284,7 +274,6 @@ impl SoliDBClient {
                 }
                 return Err(SoliDBError {
                     message: format!("Empty response for HTTP {} {}", method_clone, path_owned),
-                    code: None,
                 });
             }
 
@@ -299,7 +288,6 @@ impl SoliDBClient {
                         e,
                         String::from_utf8_lossy(&bytes)
                     ),
-                    code: None,
                 })
             }
         })
@@ -638,7 +626,6 @@ impl SoliDBClient {
             .map(|s| s.to_string())
             .ok_or_else(|| SoliDBError {
                 message: format!("No transaction id in response: {response}"),
-                code: None,
             })
     }
 
@@ -823,7 +810,6 @@ impl SoliDBClient {
                 .mime_str(&content_type)
                 .map_err(|e| SoliDBError {
                     message: format!("Invalid content type: {}", e),
-                    code: None,
                 })?;
             let form = reqwest::multipart::Form::new().part("file", part);
 
@@ -839,7 +825,6 @@ impl SoliDBClient {
 
             let response = request.send().await.map_err(|e| SoliDBError {
                 message: format!("HTTP request failed: {}", e),
-                code: None,
             })?;
 
             let status = response.status();
@@ -850,13 +835,11 @@ impl SoliDBClient {
                     .unwrap_or_else(|_| "Unknown error".to_string());
                 return Err(SoliDBError {
                     message: format!("HTTP {} {}: {}", status, url, error_text),
-                    code: Some(status.as_u16() as i32),
                 });
             }
 
             let doc: Value = response.json().await.map_err(|e| SoliDBError {
                 message: format!("Failed to parse upload response: {}", e),
-                code: None,
             })?;
 
             doc.get("_key")
@@ -864,7 +847,6 @@ impl SoliDBClient {
                 .map(|s| s.to_string())
                 .ok_or_else(|| SoliDBError {
                     message: "Blob upload response missing _key".to_string(),
-                    code: None,
                 })
         })
     }
@@ -897,7 +879,6 @@ impl SoliDBClient {
 
             let response = request.send().await.map_err(|e| SoliDBError {
                 message: format!("HTTP request failed: {}", e),
-                code: None,
             })?;
 
             let status = response.status();
@@ -908,13 +889,11 @@ impl SoliDBClient {
                     .unwrap_or_else(|_| "Unknown error".to_string());
                 return Err(SoliDBError {
                     message: format!("HTTP {} {}: {}", status, url, error_text),
-                    code: Some(status.as_u16() as i32),
                 });
             }
 
             let bytes = response.bytes().await.map_err(|e| SoliDBError {
                 message: format!("Failed to read blob bytes: {}", e),
-                code: None,
             })?;
             Ok(bytes.to_vec())
         })
@@ -1015,63 +994,6 @@ impl SoliDBClient {
 
     // ===== Queue API =====
 
-    /// List all queues in the current database.
-    pub fn list_queues(&self) -> Result<Vec<Value>, SoliDBError> {
-        let db = self.get_db()?;
-        let response: Value = self.request(
-            reqwest::Method::GET,
-            &format!("/_api/database/{}/queues", seg(db)?),
-            None,
-        )?;
-        Ok(extract_array(&response, &["queues", "result", "data"]))
-    }
-
-    /// List jobs in a queue.
-    pub fn list_jobs(&self, queue: &str) -> Result<Vec<Value>, SoliDBError> {
-        let db = self.get_db()?;
-        let response: Value = self.request(
-            reqwest::Method::GET,
-            &format!("/_api/database/{}/queues/{}/jobs", seg(db)?, seg(queue)?),
-            None,
-        )?;
-        Ok(extract_array(&response, &["jobs", "result", "data"]))
-    }
-
-    /// Enqueue a job whose target is a webhook URL — when the worker fires it,
-    /// SolidB itself POSTs `args` to `webhook_url` with `X-Webhook-Signature`
-    /// (HMAC-SHA256 of the body, keyed with `webhook_secret`) and
-    /// `X-Webhook-Event: job` / `X-Webhook-Delivery: <job_id>`.
-    ///
-    /// `opts` is forwarded as-is and may include `priority`, `max_retries`,
-    /// `webhook_secret`, `webhook_headers`, and `run_at` (Unix seconds or
-    /// RFC-3339 string).
-    pub fn enqueue_webhook(
-        &self,
-        queue: &str,
-        webhook_url: &str,
-        args: Value,
-        opts: Option<Value>,
-    ) -> Result<String, SoliDBError> {
-        let db = self.get_db()?;
-        let mut payload = serde_json::json!({
-            "webhook_url": webhook_url,
-            "args": args,
-        });
-        if let Some(Value::Object(map)) = opts {
-            if let Some(o) = payload.as_object_mut() {
-                for (k, v) in map {
-                    o.insert(k, v);
-                }
-            }
-        }
-        let response: Value = self.request(
-            reqwest::Method::POST,
-            &format!("/_api/database/{}/queues/{}/enqueue", seg(db)?, seg(queue)?),
-            Some(&payload),
-        )?;
-        Ok(extract_id(&response))
-    }
-
     /// Enqueue a job. `run_at` is an optional ISO-8601 timestamp for delayed
     /// execution; when `None`, the job is run as soon as a worker picks it up.
     ///
@@ -1111,17 +1033,6 @@ impl SoliDBClient {
         Ok(extract_id(&response))
     }
 
-    /// Cancel an enqueued (not yet started) job by id.
-    pub fn cancel_job(&self, job_id: &str) -> Result<(), SoliDBError> {
-        let db = self.get_db()?;
-        self.request(
-            reqwest::Method::DELETE,
-            &format!("/_api/database/{}/queues/jobs/{}", seg(db)?, seg(job_id)?),
-            None,
-        )?;
-        Ok(())
-    }
-
     // ===== Cron API =====
 
     /// List all cron entries in the current database.
@@ -1133,31 +1044,6 @@ impl SoliDBClient {
             None,
         )?;
         Ok(extract_array(&response, &["crons", "result", "data"]))
-    }
-
-    /// Create a new cron entry. Returns the SolidB-issued id.
-    pub fn create_cron(
-        &self,
-        name: &str,
-        expr: &str,
-        handler: &str,
-        args: Value,
-        callback_url: &str,
-    ) -> Result<String, SoliDBError> {
-        let db = self.get_db()?;
-        let payload = serde_json::json!({
-            "name": name,
-            "cron_expression": expr,
-            "handler": handler,
-            "args": args,
-            "callback_url": callback_url,
-        });
-        let response: Value = self.request(
-            reqwest::Method::POST,
-            &format!("/_api/database/{}/cron", seg(db)?),
-            Some(&payload),
-        )?;
-        Ok(extract_id(&response))
     }
 
     /// Update a cron entry. `fields` is a JSON object of fields to change.

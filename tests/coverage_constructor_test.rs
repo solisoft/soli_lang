@@ -9,7 +9,7 @@
 //! unaffected because `call_function_with_this` pushes a frame carrying the
 //! method's `source_path`. The fix pushes the same frame for constructors.
 
-use solilang::coverage::{CoverageConfig, CoverageTracker};
+use solilang::coverage::CoverageTracker;
 use std::sync::{Arc, Mutex};
 
 #[test]
@@ -35,7 +35,7 @@ class Widget {
     let test_src = "let a = Widget(\"hi\");\nlet b = new Widget(\"yo\");\n";
     std::fs::write(&test_path, test_src).unwrap();
 
-    let mut tracker = CoverageTracker::new(CoverageConfig::new());
+    let mut tracker = CoverageTracker::new();
     tracker.register_executable_lines_from_source(&model_path, model_src);
     let tracker = Arc::new(Mutex::new(tracker));
 

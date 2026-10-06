@@ -73,15 +73,7 @@ pub struct PresenceDiff {
     pub leaves: HashMap<String, UserPresencePayload>,
 }
 
-/// Full presence state message sent to new joiners.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PresenceState {
-    /// All users in the channel (keyed by user_id)
-    #[serde(flatten)]
-    pub presences: HashMap<String, UserPresencePayload>,
-}
-
-/// A WebSocket connection with its sender and metadata.
+/// A WebSocket connection with its sender.
 #[derive(Clone)]
 pub struct WebSocketConnection {
     /// Unique identifier for this connection
@@ -90,8 +82,6 @@ pub struct WebSocketConnection {
     pub sender: Arc<tokio::sync::mpsc::Sender<Result<Message, tungstenite::Error>>>,
     /// Channels this connection is subscribed to
     pub channels: Vec<String>,
-    /// User-defined metadata for this connection
-    pub metadata: HashMap<String, String>,
 }
 
 impl WebSocketConnection {
@@ -103,7 +93,6 @@ impl WebSocketConnection {
             id: Uuid::new_v4(),
             sender,
             channels: Vec::new(),
-            metadata: HashMap::new(),
         }
     }
 }
@@ -340,12 +329,6 @@ impl WebSocketRegistry {
         connections.get(id).cloned()
     }
 
-    /// Get all connection IDs.
-    pub async fn get_all_ids(&self) -> Vec<Uuid> {
-        let connections = self.connections.lock().await;
-        connections.keys().cloned().collect()
-    }
-
     /// Get all connections in a channel.
     pub async fn get_channel_ids(&self, channel: &str) -> Vec<Uuid> {
         let channels = self.channels.lock().await;
@@ -470,14 +453,6 @@ impl WebSocketRegistry {
                 reason: std::borrow::Cow::Owned(reason.to_string()),
             };
             let _ = sender.send(Ok(Message::Close(Some(close_frame)))).await;
-        }
-    }
-
-    /// Set metadata for a connection.
-    pub async fn set_metadata(&self, id: &Uuid, key: &str, value: &str) {
-        let mut connections = self.connections.lock().await;
-        if let Some(conn) = connections.get_mut(id) {
-            conn.metadata.insert(key.to_string(), value.to_string());
         }
     }
 
@@ -741,14 +716,6 @@ impl WebSocketRegistry {
         })
         .to_string()
     }
-}
-
-/// WebSocket event types for the single handler pattern.
-#[derive(Clone)]
-pub enum WebSocketEventType {
-    Connect,
-    Message(String),
-    Disconnect,
 }
 
 /// A WebSocket event passed to the handler.

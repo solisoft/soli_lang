@@ -144,20 +144,6 @@ impl RouteIndex {
     }
 }
 
-// Track if routes are "direct" (http_server_get/post) vs MVC (get/post DSL)
-static DIRECT_ROUTES_MODE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-/// Mark that we're using direct route registration (http_server_get/post)
-pub fn set_direct_routes_mode() {
-    DIRECT_ROUTES_MODE.store(true, std::sync::atomic::Ordering::SeqCst);
-}
-
-/// Check if we're using direct route registration
-pub fn is_direct_routes_mode() -> bool {
-    DIRECT_ROUTES_MODE.load(std::sync::atomic::Ordering::SeqCst)
-}
-
 /// Clear all registered routes (useful for testing or restarting).
 pub fn clear_routes() {
     ROUTES.with(|routes| routes.borrow_mut().clear());
@@ -177,23 +163,6 @@ pub fn take_routes() -> Vec<Route> {
 pub fn restore_routes(routes: Vec<Route>) {
     ROUTES.with(|r| *r.borrow_mut() = routes);
     ROUTE_INDEX.with(|index| *index.borrow_mut() = RouteIndex::new());
-}
-
-/// Clear routes that match a specific path prefix.
-/// Used for hot reload to clear routes from a specific controller.
-pub fn clear_routes_for_prefix(prefix: &str) {
-    ROUTES.with(|routes| {
-        routes.borrow_mut().retain(|r| {
-            if prefix == "/" {
-                let path = &r.path_pattern;
-                if path == "/" {
-                    return false;
-                }
-                return true;
-            }
-            !r.path_pattern.starts_with(prefix)
-        });
-    });
 }
 
 /// Register a route with a handler name.
@@ -457,13 +426,6 @@ pub fn routes_to_worker_routes(routes: &[Route]) -> Vec<WorkerRoute> {
             openapi: r.openapi.clone(),
         })
         .collect()
-}
-
-/// Set routes in the current thread's storage.
-/// Used by worker threads to initialize their route tables from the main thread.
-pub fn set_routes(routes: Vec<Route>) {
-    ROUTES.with(|r| *r.borrow_mut() = routes);
-    rebuild_route_index();
 }
 
 /// Set worker routes in the current thread's storage (for worker threads).

@@ -46,11 +46,6 @@ impl ProgressDisplay {
         println!("\x1b[33m⊘\x1b[0m \x1b[2m{}\x1b[0m", reason);
     }
 
-    #[allow(dead_code)]
-    pub fn fail(reason: &str) {
-        println!("\x1b[31m✗\x1b[0m \x1b[2m{}\x1b[0m", reason);
-    }
-
     pub fn info(message: &str) {
         println!("  \x1b[2m│\x1b[0m  {}", message);
     }

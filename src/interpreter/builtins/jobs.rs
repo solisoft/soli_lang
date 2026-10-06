@@ -965,18 +965,6 @@ pub fn read_static_cron(class: &Class) -> Option<String> {
     }
 }
 
-/// Whether a job class declares `static background: Bool = true`.
-///
-/// Retained for compatibility: under the Soli job engine every job already runs
-/// on the worker pool rather than a request thread, so this flag no longer
-/// changes behavior.
-pub fn read_static_background(class: &Class) -> bool {
-    matches!(
-        class.static_fields.borrow().get("background"),
-        Some(Value::Bool(true))
-    )
-}
-
 /// Idempotently register a `static cron`-declared schedule. Equivalent to
 /// `Cron.schedule(name, expr, handler, {})` but callable from Rust during
 /// worker boot.

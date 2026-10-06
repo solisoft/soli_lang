@@ -89,14 +89,6 @@ impl ControllerRegistry {
     pub fn all(&self) -> Vec<&ControllerInfo> {
         self.controllers.values().collect()
     }
-
-    /// Get all action names for a controller.
-    pub fn get_actions(&self, class_name: &str) -> Vec<String> {
-        self.controllers
-            .get(class_name)
-            .map(|c| c.actions.iter().map(|a| a.action_name.clone()).collect())
-            .unwrap_or_default()
-    }
 }
 
 /// Scan controllers directory and register all controllers.
@@ -1103,72 +1095,6 @@ pub fn setup_controller_context(
 
     // Also set the current request context for view rendering
     template_module::set_current_request(req.clone());
-}
-
-/// Get a field from a controller instance.
-pub fn get_controller_field(controller: &Value, field_name: &str) -> Option<Value> {
-    match controller {
-        Value::Instance(inst_rc) => {
-            let inst = inst_rc.borrow();
-            inst.fields.get(field_name).cloned()
-        }
-        _ => None,
-    }
-}
-
-/// Set a field in a controller instance.
-pub fn set_controller_field(controller: &Value, field_name: &str, value: Value) {
-    if let Value::Instance(inst_rc) = controller {
-        let mut inst = inst_rc.borrow_mut();
-        inst.fields.insert(field_name.into(), value);
-    }
-}
-
-/// Call a controller action method by name.
-pub fn call_controller_action(
-    controller_class_name: &str,
-    action_name: &str,
-    interpreter: &mut Interpreter,
-) -> Result<Value, String> {
-    // Look up the action function in the controller class
-    // For OOP controllers, actions are defined as methods on the class
-    // We need to look up the function and call it with the controller instance
-
-    // First, try to get the function from the environment (for function-based controllers)
-    let func_name = format!("{}_{}", controller_class_name, action_name);
-    let func_opt = interpreter.environment.borrow().get(&func_name);
-
-    // Release the borrow before calling call_function_value
-    drop(interpreter.environment.borrow());
-
-    if let Some(func) = func_opt {
-        // Call the function directly (function-based controller)
-        let args = vec![];
-        return call_function_value(&func, &args, interpreter);
-    }
-
-    // For OOP controllers, we need to look up the method on the class
-    // This is a placeholder - actual implementation would involve
-    // looking up the method on the controller class and binding it to the instance
-    Err(format!(
-        "Action '{}' not found in controller '{}'",
-        action_name, controller_class_name
-    ))
-}
-
-/// Call a function value with the given arguments.
-fn call_function_value(
-    func: &Value,
-    args: &[Value],
-    _interpreter: &mut Interpreter,
-) -> Result<Value, String> {
-    match func {
-        Value::Function(_func_data) => {
-            Err("Function calls not yet implemented for OOP controllers".to_string())
-        }
-        Value::NativeFunction(native_func) => (native_func.func)(args),
-        _ => Err("Cannot call non-function value".to_string()),
-    }
 }
 
 #[cfg(test)]

@@ -489,29 +489,6 @@ pub fn load_engine_routes(interpreter: &mut Interpreter) -> Result<(), RuntimeEr
     Ok(())
 }
 
-pub fn get_engine_view_path(engine_name: &str, view_name: &str) -> Option<PathBuf> {
-    let engines = get_all_mounted_engines();
-
-    for engine in engines {
-        if engine.name == engine_name {
-            let view_path = engine.path.join("app/views").join(view_name);
-            if view_path.exists() {
-                return Some(view_path);
-            }
-
-            let erb_path = engine
-                .path
-                .join("app/views")
-                .join(format!("{}.erb", view_name));
-            if erb_path.exists() {
-                return Some(erb_path);
-            }
-        }
-    }
-
-    None
-}
-
 /// Ensure engines are loaded and mounted from config. Needed for CLI commands
 /// that run outside the server (db:migrate, db:rollback).
 fn ensure_engines_mounted(app_path: &Path) -> Result<(), String> {

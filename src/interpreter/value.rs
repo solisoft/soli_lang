@@ -596,12 +596,6 @@ impl Value {
         Value::DateTime(nanos, false)
     }
 
-    /// Construct a DateTime whose component accessors use UTC.
-    #[inline]
-    pub fn datetime_utc_view(nanos: i64) -> Value {
-        Value::DateTime(nanos, true)
-    }
-
     /// Whether calling this value with `()` can dispatch somewhere — i.e.
     /// it is a function-like value rather than plain data. Used by both
     /// engines to treat `obj.m()` like `obj.m` when the member access
@@ -804,25 +798,6 @@ impl Value {
     /// Convert this value to a HashKey if possible.
     pub fn to_hash_key(&self) -> Option<HashKey> {
         HashKey::from_value(self)
-    }
-
-    /// Value equality for hash key comparison (legacy method, kept for compatibility).
-    pub fn hash_eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            // By instant, so two DateTimes built from the same moment are
-            // equal. As an `Instance` this was handled by the Instance arm's
-            // `datetime_ts` comparison; the native variant needs its own.
-            (Value::DateTime(a, _), Value::DateTime(b, _)) => a == b,
-            (Value::Int(a), Value::Int(b)) => a == b,
-            (Value::Float(a), Value::Float(b)) => a == b,
-            (Value::Decimal(a), Value::Decimal(b)) => a == b,
-            (Value::Int(a), Value::Float(b)) => (*a as f64) == *b,
-            (Value::Float(a), Value::Int(b)) => *a == (*b as f64),
-            (Value::String(a), Value::String(b)) => a == b,
-            (Value::Bool(a), Value::Bool(b)) => a == b,
-            (Value::Null, Value::Null) => true,
-            _ => false,
-        }
     }
 
     #[inline]
@@ -1437,14 +1412,6 @@ impl Function {
         self.params.len()
     }
 
-    /// Check if a parameter at index has a default value
-    pub fn param_has_default(&self, index: usize) -> bool {
-        self.params
-            .get(index)
-            .map(|p| p.default_value.is_some())
-            .unwrap_or(false)
-    }
-
     /// Get the default value expression for a parameter at index
     pub fn param_default_value(&self, index: usize) -> Option<&Expr> {
         self.params
@@ -1544,14 +1511,6 @@ impl fmt::Debug for ValueMethod {
             self.method_name
         )
     }
-}
-
-/// Kinds of value methods for arrays
-#[derive(Clone, Copy, Debug)]
-pub enum ArrayMethodKind {
-    Map,
-    Filter,
-    Each,
 }
 
 /// Tag identifying one of Soli's primitive types. Used on `Class.primitive`

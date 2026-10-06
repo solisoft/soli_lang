@@ -207,7 +207,7 @@ const PRELUDE_NAMES: &[&[&str]] = &[
 ];
 
 /// Preludes the runtime evaluates as Soli source.
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(test)]
 const SOLI_PRELUDES: &[&str] = &[
     crate::serve::app_loader::ROUTES_DSL_SOURCE,
     crate::interpreter::builtins::mailer::MAILER_PRELUDE,
@@ -219,7 +219,7 @@ const SOLI_PRELUDES: &[&str] = &[
 ];
 
 /// The top-level functions and classes one Soli prelude declares.
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(test)]
 ///
 /// A prelude that stops parsing contributes nothing rather than failing the
 /// check: it is the runtime's own source, and if it were broken the server

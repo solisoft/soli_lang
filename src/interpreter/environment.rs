@@ -93,14 +93,6 @@ impl Environment {
         }
     }
 
-    /// Reset this environment for reuse in template rendering.
-    /// Clears local variables (keeps HashMap capacity) and updates the data hash.
-    #[inline]
-    pub fn reset_for_reuse(&mut self, data_hash: Option<Rc<RefCell<HashPairs>>>) {
-        self.values.clear();
-        self.data_hash = data_hash;
-    }
-
     /// Reset this environment for reuse as a function call frame.
     /// Clears locals and constants (keeping HashMap capacity) while preserving
     /// the enclosing-chain pointer, so the cached env can serve another call
@@ -230,36 +222,9 @@ impl Environment {
         AssignResult::NotFound
     }
 
-    /// Check if a variable exists in the current scope only (values or consts).
-    pub fn contains_local(&self, name: &str) -> bool {
-        self.values.contains_key(name) || self.consts.contains_key(name)
-    }
-
     /// Get all variable names in the current scope (for REPL introspection).
     pub fn get_var_names(&self) -> Vec<String> {
         self.values.keys().cloned().collect()
-    }
-
-    /// Get a variable from local scope only (no parent chain traversal).
-    /// Useful when you know the variable should be in the current scope.
-    #[inline]
-    pub fn get_local(&self, name: &str) -> Option<Value> {
-        self.consts
-            .get(name)
-            .or_else(|| self.values.get(name))
-            .cloned()
-    }
-
-    /// Assign a value to a variable, or define it if not found.
-    /// This is useful for loop variables that need to be reassigned each iteration.
-    /// Returns false only if the variable is a constant.
-    pub fn assign_or_define(&mut self, name: &str, value: Value) -> bool {
-        if self.consts.contains_key(name) {
-            return false;
-        }
-        // Always define in local scope - this is for loop variables
-        self.values.insert(name.to_string(), value);
-        true
     }
 
     /// Get the enclosing environment.

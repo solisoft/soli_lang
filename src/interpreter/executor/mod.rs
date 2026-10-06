@@ -191,25 +191,6 @@ impl Interpreter {
         }
     }
 
-    pub fn with_coverage_tracker(tracker: Arc<Mutex<CoverageTracker>>) -> Self {
-        let globals = Rc::new(RefCell::new(Environment::with_builtins_capacity()));
-        register_builtins(&mut globals.borrow_mut(), true);
-        crate::interpreter::builtins::retry::register_retry_class(&globals)
-            .expect("retry stdlib must evaluate");
-        crate::interpreter::builtins::mock::register_mock_class(&globals)
-            .expect("mock stdlib must evaluate");
-
-        Self {
-            environment: globals,
-            coverage_tracker: Some(tracker),
-            kernels: None,
-            current_source_path: None,
-            call_stack: Vec::new(),
-            assertion_count: 0,
-            vm_globals: None,
-        }
-    }
-
     pub fn set_coverage_tracker(&mut self, tracker: Arc<Mutex<CoverageTracker>>) {
         self.coverage_tracker = Some(tracker);
     }
@@ -246,10 +227,6 @@ impl Interpreter {
                 }
             }
         }
-    }
-
-    pub fn get_assertion_count(&self) -> i64 {
-        self.assertion_count
     }
 
     pub fn global_env(&self) -> &Rc<RefCell<Environment>> {

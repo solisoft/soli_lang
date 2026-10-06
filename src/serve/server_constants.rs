@@ -333,10 +333,6 @@ fn env_usize(name: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
-/// Hot reload file check interval in seconds
-#[allow(dead_code)]
-pub const HOT_RELOAD_CHECK_INTERVAL_SECS: u64 = 1;
-
 /// Static file cache control max-age for production (1 year in seconds)
 pub const STATIC_CACHE_MAX_AGE: &str = "public, max-age=31536000, immutable";
 
@@ -403,68 +399,6 @@ pub const STATIC_FILE_EXTENSIONS: &[&str] = &[
     "css", "js", "svg", "ico", "png", "jpg", "jpeg", "gif", "woff", "woff2", "ttf",
 ];
 
-/// Valid static file extensions for serving. Keep in step with the bundler's
-/// `BUNDLE_EXTENSIONS`: an asset that ships inside a bundle but is not listed
-/// here is 404 in a standalone app while working fine from disk in dev.
-pub const VALID_STATIC_EXTENSIONS: &[&str] = &[
-    "css",
-    "js",
-    "svg",
-    "ico",
-    "png",
-    "jpg",
-    "jpeg",
-    "gif",
-    "woff",
-    "woff2",
-    "ttf",
-    "html",
-    "json",
-    "mp4",
-    "webm",
-    "ogg",
-    "mp3",
-    "wav",
-    "webmanifest",
-    "webp",
-    "avif",
-    "bmp",
-    "otf",
-    "mjs",
-    "map",
-    "htm",
-    "txt",
-    "xml",
-    "m4a",
-    "oga",
-    "vtt",
-    "wasm",
-];
-
-/// HTTP success status code range start (inclusive)
-#[allow(dead_code)]
-pub const HTTP_SUCCESS_RANGE_START: u16 = 200;
-
-/// HTTP success status code range end (inclusive)
-#[allow(dead_code)]
-pub const HTTP_SUCCESS_RANGE_END: u16 = 299;
-
-/// WebSocket event channel capacity
-#[allow(dead_code)]
-pub const WS_EVENT_CHANNEL_CAPACITY: usize = 16;
-
-/// LiveView event channel capacity
-#[allow(dead_code)]
-pub const LV_EVENT_CHANNEL_CAPACITY: usize = 32;
-
-/// LiveView message channel capacity
-#[allow(dead_code)]
-pub const LV_MESSAGE_CHANNEL_CAPACITY: usize = 32;
-
-/// Broadcast channel capacity for live reload
-#[allow(dead_code)]
-pub const LIVE_RELOAD_BROADCAST_CAPACITY: usize = 16;
-
 /// Get the MIME type for a file based on its extension.
 ///
 /// Matched case-insensitively: `LOGO.PNG` is a PNG. Serving it as
@@ -486,12 +420,6 @@ pub fn generate_etag(modified: SystemTime) -> String {
         .unwrap_or_default()
         .as_secs();
     format!("\"{:x}\"", secs)
-}
-
-/// Check if an extension is a valid static file extension.
-#[allow(dead_code)]
-pub fn is_static_extension(ext: &str) -> bool {
-    VALID_STATIC_EXTENSIONS.contains(&ext)
 }
 
 /// Check if a file extension is tracked for hot reload.
@@ -944,21 +872,6 @@ mod tests {
     // ---------- extension predicates ----------
 
     #[test]
-    fn is_static_extension_recognises_common_assets() {
-        for ext in ["css", "js", "html", "json", "png", "mp3", "wav", "mp4"] {
-            assert!(is_static_extension(ext), "expected {ext} to be static");
-        }
-    }
-
-    #[test]
-    fn is_static_extension_rejects_unknown() {
-        assert!(!is_static_extension("xyz"));
-        assert!(!is_static_extension(""));
-        // Case-sensitive: uppercase variants are not recognised.
-        assert!(!is_static_extension("CSS"));
-    }
-
-    #[test]
     fn is_tracked_extension_subset_excludes_html_json_video_audio() {
         // The "tracked" list is for hot-reload watching — code
         // assets only, not media or HTML/JSON.
@@ -966,12 +879,8 @@ mod tests {
         assert!(is_tracked_static_extension("js"));
         assert!(is_tracked_static_extension("png"));
 
-        // These ARE valid static extensions but NOT tracked for hot reload.
-        assert!(is_static_extension("html"));
         assert!(!is_tracked_static_extension("html"));
-        assert!(is_static_extension("json"));
         assert!(!is_tracked_static_extension("json"));
-        assert!(is_static_extension("mp4"));
         assert!(!is_tracked_static_extension("mp4"));
     }
 

@@ -416,11 +416,6 @@ impl SmallMap {
     }
 
     #[inline]
-    pub fn into_keys(self) -> impl DoubleEndedIterator<Item = HashKey> + ExactSizeIterator {
-        self.into_iter().map(|(k, _)| k)
-    }
-
-    #[inline]
     pub fn into_values(self) -> impl DoubleEndedIterator<Item = Value> + ExactSizeIterator {
         self.into_iter().map(|(_, v)| v)
     }

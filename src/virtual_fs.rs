@@ -201,10 +201,6 @@ impl BundleFS {
         Ok(BundleFS { entries })
     }
 
-    pub fn into_entries(self) -> HashMap<String, Vec<u8>> {
-        self.entries
-    }
-
     pub fn entries(&self) -> &HashMap<String, Vec<u8>> {
         &self.entries
     }

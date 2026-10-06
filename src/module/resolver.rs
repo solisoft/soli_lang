@@ -117,21 +117,6 @@ impl ModuleResolver {
         }
     }
 
-    /// Create a module resolver with an explicit package.
-    pub fn with_package(base_dir: &Path, package: Package) -> Self {
-        // Try to load lock file
-        let lock_path = base_dir.join("soli.lock");
-        let lock = LockFile::load(&lock_path).ok();
-
-        ModuleResolver {
-            base_dir: base_dir.to_path_buf(),
-            package: Some(package),
-            lock,
-            cache: HashMap::new(),
-            resolving: Vec::new(),
-        }
-    }
-
     /// Resolve all imports in a program and return a combined program.
     ///
     /// The returned program contains:

@@ -568,31 +568,6 @@ pub fn machines_for(class_name: &str) -> Vec<StateMachineDef> {
     get_state_machines(class_name)
 }
 
-/// Whether `name` resolves to a state machine member (event `pay`, bang `pay!`,
-/// query `can_pay?`, or state predicate `paid?`) for `class_name`. Used by the
-/// VM to decide when to fall back to the interpreter (which owns the full
-/// guard/callback machinery).
-pub fn is_sm_member(class_name: &str, name: &str) -> bool {
-    let machines = machines_for(class_name);
-    for machine in &machines {
-        if let Some(stem) = name.strip_suffix('?') {
-            if let Some(event) = stem.strip_prefix("can_") {
-                if machine.event(event).is_some() {
-                    return true;
-                }
-            }
-            if machine.states.iter().any(|t| snake_case(t) == stem) {
-                return true;
-            }
-        }
-        let event = name.strip_suffix('!').unwrap_or(name);
-        if machine.event(event).is_some() {
-            return true;
-        }
-    }
-    false
-}
-
 /// Snake-case an enum variant tag for predicate dispatch: `InTransit` →
 /// `in_transit`, `Paid` → `paid`. ASCII-only, matching Soli's snake_case lint.
 pub fn snake_case(tag: &str) -> String {

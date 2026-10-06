@@ -744,19 +744,8 @@ pub fn serve_folder_with_options_and_hooks(
     // to the parent via the `/__coverage__` JSON endpoint at shutdown.
     if std::env::var("SOLI_COVERAGE_ENABLED").is_ok() {
         use crate::coverage::tracker::set_global_coverage_tracker;
-        use crate::coverage::{CoverageConfig, CoverageTracker, OutputFormat};
-        let config = CoverageConfig {
-            enabled: true,
-            output_dir: std::path::PathBuf::from("coverage"),
-            formats: vec![OutputFormat::Console],
-            threshold: None,
-            exclude_patterns: Vec::new(),
-            exclude_lines: Vec::new(),
-            show_uncovered: false,
-            per_test: false,
-            root_dir: Some(folder.to_path_buf()),
-        };
-        let mut tracker = CoverageTracker::new(config);
+        use crate::coverage::CoverageTracker;
+        let mut tracker = CoverageTracker::new();
         coverage::register_app_source_lines(&mut tracker, folder);
         set_global_coverage_tracker(std::sync::Arc::new(std::sync::Mutex::new(tracker)));
     }
@@ -2209,20 +2198,6 @@ struct WebSocketContext {
     query: Vec<(String, String)>,
     /// Peer address of the socket.
     peer_ip: String,
-}
-
-/// Actions to take after processing a WebSocket event.
-#[allow(dead_code)]
-struct WebSocketActionData {
-    join: Option<String>,
-    leave: Option<String>,
-    send: Option<String>,
-    broadcast: Option<String>,
-    broadcast_room: Option<String>,
-    close: Option<String>,
-    track: Option<std::collections::HashMap<String, String>>,
-    untrack: Option<String>,
-    set_presence: Option<std::collections::HashMap<String, String>>,
 }
 
 /// Data for LiveView events sent to the interpreter thread.
@@ -6095,7 +6070,6 @@ pub(crate) fn html_ok(html: String) -> Response<ResponseBody> {
         .unwrap()
 }
 
-#[allow(dead_code)]
 #[cfg(test)]
 mod tests {
     use super::*;

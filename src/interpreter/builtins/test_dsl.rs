@@ -688,15 +688,6 @@ pub fn register_test_builtins(env: &mut Environment) {
     );
 }
 
-pub fn get_and_reset_test_suites() -> Vec<TestSuite> {
-    TEST_SUITES.with(|suites| {
-        let mut suites = suites.borrow_mut();
-        let result = suites.clone();
-        suites.clear();
-        result
-    })
-}
-
 pub fn clear_test_suites() {
     TEST_SUITES.with(|suites| {
         suites.borrow_mut().clear();

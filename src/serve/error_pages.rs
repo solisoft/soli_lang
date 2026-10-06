@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::path::Path;
 
 use crate::interpreter::Interpreter;
 
@@ -994,24 +993,6 @@ pub(super) fn redacted_request_snapshot(
 fn build_redacted_request_data_json(request_data: &RequestData, redact_body: bool) -> String {
     let doc = redacted_request_snapshot(request_data, redact_body);
     serde_json::to_string(&doc).unwrap_or_else(|_| "{}".to_string())
-}
-
-#[allow(dead_code)]
-pub(super) fn get_source_file(
-    file_path: &str,
-    _line: usize,
-) -> Option<HashMap<String, HashMap<usize, String>>> {
-    let path = Path::new(file_path);
-    if !path.exists() {
-        return None;
-    }
-    let content = std::fs::read_to_string(path).ok()?;
-    let lines: HashMap<usize, String> = content
-        .lines()
-        .enumerate()
-        .map(|(i, line)| (i + 1, line.to_string()))
-        .collect();
-    Some([(file_path.to_string(), lines)].iter().cloned().collect())
 }
 
 /// The `message` an app's custom `errors/<status>` template is given.

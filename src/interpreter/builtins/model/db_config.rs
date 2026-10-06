@@ -16,11 +16,6 @@ pub fn set_database_override(name: String) {
     DB_OVERRIDE.with(|o| *o.borrow_mut() = Some(name));
 }
 
-/// Clear the per-thread DB override.
-pub fn clear_database_override() {
-    DB_OVERRIDE.with(|o| *o.borrow_mut() = None);
-}
-
 fn override_database() -> Option<String> {
     DB_OVERRIDE.with(|o| o.borrow().clone())
 }

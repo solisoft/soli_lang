@@ -11,7 +11,7 @@
 //! services looked broken. The fix takes the calling frame's file, as
 //! statement coverage already does.
 
-use solilang::coverage::{CoverageConfig, CoverageTracker};
+use solilang::coverage::CoverageTracker;
 use std::sync::{Arc, Mutex};
 
 #[test]
@@ -49,7 +49,7 @@ end
     let test_src = "let a = Shapes.from_static();\nlet b = Shapes.new().from_instance();\n";
     std::fs::write(&test_path, test_src).unwrap();
 
-    let mut tracker = CoverageTracker::new(CoverageConfig::new());
+    let mut tracker = CoverageTracker::new();
     tracker.register_executable_lines_from_source(&service_path, service_src);
     let tracker = Arc::new(Mutex::new(tracker));
 

@@ -26,6 +26,3 @@ pub mod plan;
 pub mod proxy;
 pub mod release;
 pub mod run;
-
-#[allow(unused_imports)]
-pub use release::{Layout, ReleaseId};

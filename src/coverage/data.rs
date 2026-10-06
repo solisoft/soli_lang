@@ -2,15 +2,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
-pub struct CoverageData {
-    pub source_file: PathBuf,
-    pub lines: HashMap<usize, LineCoverage>,
-    pub branches: HashMap<usize, BranchCoverage>,
-    pub total_statements: u32,
-    pub covered_statements: u32,
-}
-
-#[derive(Debug, Clone)]
 pub struct LineCoverage {
     pub line_number: usize,
     pub hits: u32,
