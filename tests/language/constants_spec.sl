@@ -1,154 +1,189 @@
-# ============================================================================
-# Constants Test Suite
-# ============================================================================
+# const: immutable bindings (not immutable values), and const_get, which
+# resolves a constant, class, function or variable by name.
 
-describe("Constants", fn() {
-  test("basic const declaration", fn() {
-    const PI = 3.14159
-    assert_eq(PI, 3.14159)
-  })
+const CONSTANTS_SPEC_LIMIT = 10
 
-  test("const with integer value", fn() {
-    const MAX_SIZE = 1000
-    assert_eq(MAX_SIZE, 1000)
-  })
+class ConstGetUser
+  def greet
+    "hi"
+  end
+end
 
-  test("const with string value", fn() {
-    const GREETING = "Hello, World!"
-    assert_eq(GREETING, "Hello, World!")
-  })
+def const_greet(name)
+  "hello " + name
+end
 
-  test("const with boolean value", fn() {
-    const ENABLED = true
-    assert_eq(ENABLED, true)
-    const DISABLED = false
-    assert_eq(DISABLED, false)
-  })
+def limit_plus_one
+  CONSTANTS_SPEC_LIMIT + 1
+end
 
-  test("const with array value", fn() {
-    const COLORS = ["red", "green", "blue"]
-    assert_eq(COLORS[0], "red")
-    assert_eq(COLORS[1], "green")
-    assert_eq(COLORS[2], "blue")
-  })
+def radius_area
+  const PI = 3.14159
+  PI * 10
+end
 
-  test("const with hash value", fn() {
-    const CONFIG = {"host": "localhost", "port": 3000}
-    assert_eq(CONFIG["host"], "localhost")
-    assert_eq(CONFIG["port"], 3000)
-  })
-
-  test("const with type annotation", fn() {
-    const PI: Float = 3.14159
-    assert_eq(PI, 3.14159)
-  })
-
-  test("multiple consts in same scope", fn() {
-    const A = 1
-    const B = 2
-    const C = 3
-    assert_eq(A, 1)
-    assert_eq(B, 2)
-    assert_eq(C, 3)
-  })
-
-  test("const expression", fn() {
-    const SUM = 10 + 20
-    assert_eq(SUM, 30)
-  })
-
-  test("const can be used in expressions", fn() {
-    const VALUE = 100
-    const DOUBLED = VALUE * 2
-    assert_eq(DOUBLED, 200)
-  })
-
-  test("const in function", fn() {
-    def get_radius
+describe("Constants") do
+  context("declaring") do
+    test("holds a float") do
       const PI = 3.14159
-      return PI * 10
+      assert_eq(PI, 3.14159)
     end
-    assert_eq(get_radius(), 31.4159)
-  })
 
-  test("const shadows let variable", fn() {
-    let x = 10
-    const x = 20
-    assert_eq(x, 20)
-  })
-})
-
-describe("Const Reassignment Error", fn() {
-  test("reassigning const throws error", fn() {
-    const VALUE = 42
-    assert_eq(VALUE, 42)
-
-    let error_caught = false
-    try
-      VALUE = 100
-    catch e
-      error_caught = true
+    test("holds an integer") do
+      const MAX_SIZE = 1000
+      assert_eq(MAX_SIZE, 1000)
     end
-    assert(error_caught)
-  })
 
-  test("const array elements are still mutable", fn() {
-    # const protects the binding, not the contents (like JavaScript)
-    const ARR = [1, 2, 3]
-    ARR[0] = 100
-    assert_eq(ARR[0], 100)
-  })
+    test("holds a string") do
+      const GREETING = "Hello, World!"
+      assert_eq(GREETING, "Hello, World!")
+    end
 
-  test("const hash values are still mutable", fn() {
-    # const protects the binding, not the contents (like JavaScript)
-    const H = {"key": "value"}
-    H["key"] = "new"
-    assert_eq(H["key"], "new")
-  })
-})
+    test("holds booleans") do
+      const ENABLED = true
+      const DISABLED = false
+      assert_eq(ENABLED, true)
+      assert_eq(DISABLED, false)
+    end
 
-describe("const_get", fn() {
-  test("resolves a const by name", fn() {
+    test("holds an array") do
+      const COLORS = ["red", "green", "blue"]
+      assert_eq(COLORS, ["red", "green", "blue"])
+    end
+
+    test("holds a hash") do
+      const CONFIG = {"host": "localhost", "port": 3000}
+      assert_eq(CONFIG["host"], "localhost")
+      assert_eq(CONFIG["port"], 3000)
+    end
+
+    test("takes a type annotation") do
+      const PI: Float = 3.14159
+      assert_eq(PI, 3.14159)
+      assert_eq(type(PI), "float")
+    end
+
+    test("several in one scope are independent") do
+      const A = 1
+      const B = 2
+      const C = 3
+      assert_eq([A, B, C], [1, 2, 3])
+    end
+
+    test("evaluates its initializer once") do
+      const SUM = 10 + 20
+      assert_eq(SUM, 30)
+    end
+
+    test("can be built from another constant") do
+      const VALUE = 100
+      const DOUBLED = VALUE * 2
+      assert_eq(DOUBLED, 200)
+    end
+  end
+
+  context("visibility") do
+    test("a top-level constant is readable from a function") do
+      assert_eq(limit_plus_one(), 11)
+    end
+
+    test("a constant declared in a function is local to it") do
+      assert_eq(radius_area(), 31.4159)
+    end
+
+    test("a const of the same name replaces a let binding") do
+      let value = 10
+      const value = 20
+      assert_eq(value, 20)
+    end
+
+    test("a const in a nested block shadows the outer one") do
+      const LEVEL = 1
+      inner = 0
+      if true
+        const LEVEL = 2
+        inner = LEVEL
+      end
+      assert_eq(inner, 2)
+      assert_eq(LEVEL, 1)
+    end
+  end
+
+  context("reassigning") do
+    test("assignment raises and leaves the value") do
+      const VALUE = 42
+      assert_raises("cannot reassign constant 'VALUE'") do
+        VALUE = 100
+      end
+      assert_eq(VALUE, 42)
+    end
+
+    test("a compound assignment raises too") do
+      const VALUE = 42
+      assert_raises("cannot reassign constant 'VALUE'") do
+        VALUE += 1
+      end
+      assert_eq(VALUE, 42)
+    end
+
+    test("array elements stay mutable: const protects the binding only") do
+      const NUMBERS = [1, 2, 3]
+      NUMBERS[0] = 100
+      NUMBERS.push(4)
+      assert_eq(NUMBERS, [100, 2, 3, 4])
+    end
+
+    test("hash values stay mutable") do
+      const SETTINGS = {"key": "value"}
+      SETTINGS["key"] = "new"
+      SETTINGS["other"] = 1
+      assert_eq(SETTINGS, {"key": "new", "other": 1})
+    end
+  end
+end
+
+describe("const_get") do
+  test("resolves a const by name") do
     const MY_VALUE = 42
-    let result = const_get("MY_VALUE")
-    assert_eq(result, 42)
-  })
+    assert_eq(const_get("MY_VALUE"), 42)
+  end
 
-  test("resolves a class by name and instantiates it", fn() {
-    class User
-    end
-    let cls = const_get("User")
-    assert_eq(type(cls), "Class")
-    let instance = cls.new()
-    assert_eq(type(instance), "User")
-  })
+  test("resolves a top-level const by name") do
+    assert_eq(const_get("CONSTANTS_SPEC_LIMIT"), 10)
+  end
 
-  test("resolves a function by name and calls it", fn() {
-    def greet(name)
-      "hello " + name
-    end
-    let result = const_get("greet")
-    assert_eq(result("world"), "hello world")
-  })
+  test("resolves a class by name and instantiates it") do
+    user_class = const_get("ConstGetUser")
+    assert_eq(type(user_class), "Class")
+    instance = user_class.new()
+    assert_eq(type(instance), "ConstGetUser")
+    assert_eq(instance.greet, "hi")
+  end
 
-  test("resolves a let variable by name", fn() {
-    let value = 99
-    let result = const_get("value")
-    assert_eq(result, 99)
-  })
+  test("resolves a function by name and calls it") do
+    greet = const_get("const_greet")
+    assert_eq(greet("world"), "hello world")
+  end
 
-  test("returns null for undefined name", fn() {
-    let result = const_get("DefinitelyNotDefined")
-    assert_null(result)
-  })
+  test("resolves a variable by name") do
+    value = 99
+    assert_eq(value, 99)
+    assert_eq(const_get("value"), 99)
+  end
 
-  test("throws error when passed a non-string argument", fn() {
-    let threw = false
-    try
+  test("returns nil for an undefined name") do
+    assert_null(const_get("DefinitelyNotDefined"))
+  end
+
+  test("raises when passed a non-string argument") do
+    assert_raises("const_get() expects a string, got int") do
       const_get(123)
-    catch e
-      threw = true
     end
-    assert(threw)
-  })
-})
+  end
+
+  test("raises without an argument") do
+    assert_raises("expected 1, got 0") do
+      const_get()
+    end
+  end
+end

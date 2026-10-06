@@ -1,166 +1,163 @@
-# ============================================================================
-# Nullish Coalescing Operator Test Suite
-# ============================================================================
+# The nullish coalescing operator `??`: the right side only when the left is
+# nil — false, 0, "" and empty collections are kept. `??=` is covered in
+# compound_operators_spec.sl.
 
-describe("Nullish Coalescing Operator ??", fn() {
-  test("returns right operand when left is null", fn() {
-    let result = null ?? "default"
-    assert_eq(result, "default")
-  })
+def greet(name)
+  "Hello, " + (name ?? "Guest") + "!"
+end
 
-  test("returns left operand when left is not null", fn() {
-    let result = "value" ?? "default"
-    assert_eq(result, "value")
-  })
+def value_if(flag)
+  return "found" if flag
 
-  test("returns right operand when left is undefined (null equivalent)", fn() {
-    let result = null ?? 42
-    assert_eq(result, 42)
-  })
+  nil
+end
 
-  test("works with numbers", fn() {
-    assert_eq(0 ?? 100, 0)
-    assert_eq(null ?? 100, 100)
-  })
-
-  test("works with booleans", fn() {
-    assert_eq(false ?? true, false)
-    assert_eq(null ?? true, true)
-  })
-
-  test("works with empty string", fn() {
-    assert_eq("" ?? "default", "")
-    assert_eq(null ?? "default", "default")
-  })
-
-  test("works with empty array", fn() {
-    assert_eq([] ?? [1, 2, 3], [])
-    assert_eq(null ?? [
-      1,
-      2,
-      3
-    ], [1, 2, 3])
-  })
-
-  test("works with empty hash", fn() {
-    assert_eq({} ?? {"key": "value"}, {})
-    assert_eq(null ?? {"key": "value"}, {"key": "value"})
-  })
-
-  test("chained nullish coalescing", fn() {
-    let result = null ?? null ?? "final"
-    assert_eq(result, "final")
-  })
-
-  test("first non-null value is returned", fn() {
-    let result = null ?? null ?? "third" ?? "fourth"
-    assert_eq(result, "third")
-  })
-
-  test("with variables", fn() {
-    let a = null
-    let b = "found"
-    assert_eq(a ?? b, "found")
-
-    let c = "value"
-    assert_eq(c ?? b, "value")
-  })
-
-  test("combined with other operators", fn() {
-    let result = null ?? 5 + 3
-    assert_eq(result, 8)
-
-    let x = null ?? (true && false)
-    assert_eq(x, false)
-  })
-
-  test("in function parameters", fn() {
-    def greet(name)
-      return "Hello, " + (name ?? "Guest") + "!"
+describe("Nullish coalescing ??") do
+  context("choosing a side") do
+    test("returns the right operand when the left is nil") do
+      assert_eq(nil ?? "default", "default")
+      assert_eq(nil ?? 42, 42)
     end
 
-    assert_eq(greet(null), "Hello, Guest!")
-    assert_eq(greet("Alice"), "Hello, Alice!")
-  })
-
-  test("with method calls on default value", fn() {
-    let result = null ?? "default"
-    assert_eq(result.uppercase(), "DEFAULT")
-  })
-
-  test("precedence with logical AND", fn() {
-    let result = true && (null ?? "fallback")
-    assert_eq(result, "fallback")
-
-    let result2 = false && (null ?? "fallback")
-    assert_eq(result2, false)
-  })
-
-  test("precedence with logical OR", fn() {
-    let result = false || (null ?? "fallback")
-    assert_eq(result, "fallback")
-
-    let result2 = true || (null ?? "fallback")
-    assert_eq(result2, true)
-  })
-
-  test("with pipeline operator", fn() {
-    let result = (null ?? [
-      1,
-      2,
-      3
-    ]).length()
-    assert_eq(result, 3)
-
-    let result2 = (["a", "b"] ?? [1, 2]).first()
-    assert_eq(result2, "a")
-  })
-})
-
-describe("Nullish Coalescing with Not Keyword", fn() {
-  test("not null coalescing result", fn() {
-    assert_eq(!(null ?? "default"), false)
-    assert_eq(!("value" ?? "default"), false)
-  })
-
-  test("not on nullish result", fn() {
-    let result = null ?? null
-    assert_eq(!result, true)
-  })
-})
-
-describe("Edge Cases", fn() {
-  test("nullish coalescing with functions returning null", fn() {
-    def get_value(flag)
-      return "found" if (flag)
-      return null
+    test("returns the left operand when it is not nil") do
+      assert_eq("value" ?? "default", "value")
     end
 
-    assert_eq(get_value(false) ?? "default", "default")
-    assert_eq(get_value(true) ?? "default", "found")
-  })
+    test("keeps falsy values that are not nil") do
+      assert_eq(0 ?? 100, 0)
+      assert_eq(false ?? true, false)
+      assert_eq("" ?? "default", "")
+      assert_eq([] ?? [1, 2, 3], [])
+      assert_eq({} ?? {"key": "value"}, {})
+    end
 
-  test("nested nullish coalescing", fn() {
-    let config = null
-    let result = (config ?? {"db": null}).db ?? "sqlite"
-    assert_eq(result, "sqlite")
+    test("returns collections from the right") do
+      assert_eq(nil ?? [1, 2, 3], [1, 2, 3])
+      assert_eq(nil ?? {"key": "value"}, {"key": "value"})
+    end
 
-    let config2 = {"db": "postgresql"}
-    let result2 = (config2 ?? {"db": null}).db ?? "sqlite"
-    assert_eq(result2, "postgresql")
-  })
+    test("gives nil when both sides are nil") do
+      assert_null(nil ?? nil)
+    end
 
-  test("in array literals", fn() {
-    let arr = [1, null ?? 2, 3]
-    assert_eq(arr, [1, 2, 3])
+    test("works on variables") do
+      missing = nil
+      found = "found"
+      present = "value"
+      assert_eq(missing ?? found, "found")
+      assert_eq(present ?? found, "value")
+    end
 
-    let arr2 = [1, "a" ?? 2, 3]
-    assert_eq(arr2, [1, "a", 3])
-  })
+    test("a missing hash key reads nil, so ?? supplies the default") do
+      settings = {"db": nil}
+      assert_eq(settings["db"] ?? "sqlite", "sqlite")
+      assert_eq(settings["absent"] ?? "none", "none")
+    end
+  end
 
-  test("in hash literals", fn() {
-    let h = {"a": null ?? 1, "b": "value" ?? 2}
-    assert_eq(h.a, 1)
-    assert_eq(h.b, "value")
-  })
-})
+  context("evaluation") do
+    test("does not evaluate the right side when the left is not nil") do
+      calls = []
+      record = fn(value) {
+        calls.push(value)
+        value
+      }
+      assert_eq("left" ?? record("right"), "left")
+      assert_eq(calls, [])
+      assert_eq(nil ?? record("right"), "right")
+      assert_eq(calls, ["right"])
+    end
+  end
+
+  context("chaining") do
+    test("returns the first non-nil value") do
+      assert_eq(nil ?? nil ?? "final", "final")
+      assert_eq(nil ?? nil ?? "third" ?? "fourth", "third")
+    end
+
+    test("stops at the first false") do
+      assert_eq(nil ?? false ?? "later", false)
+    end
+  end
+
+  context("precedence") do
+    test("binds looser than arithmetic") do
+      assert_eq(nil ?? 5 + 3, 8)
+      assert_eq(1 ?? 5 + 3, 1)
+      assert_eq(nil ?? 2 * 3, 6)
+    end
+
+    test("binds looser than ==") do
+      missing = nil
+      other = nil
+      # (missing == other) ?? 1 is true; missing == (other ?? 1) would be false
+      assert_eq(missing == other ?? 1, true)
+    end
+
+    test("binds looser than || and &&") do
+      # false ?? (nil || "x"): false is not nil, so it is kept
+      assert_eq(false ?? nil || "x", false)
+      # (false || nil) ?? "y"
+      assert_eq(false || nil ?? "y", "y")
+      # (true && nil) ?? "z"
+      assert_eq(true && nil ?? "z", "z")
+    end
+
+    test("a parenthesized ?? inside && and ||") do
+      assert_eq(true && (nil ?? "fallback"), "fallback")
+      assert_eq(false && (nil ?? "fallback"), false)
+      assert_eq(false || (nil ?? "fallback"), "fallback")
+      assert_eq(true || (nil ?? "fallback"), true)
+      assert_eq(nil ?? (true && false), false)
+    end
+  end
+
+  context("in expressions") do
+    test("as a function argument default") do
+      assert_eq(greet(nil), "Hello, Guest!")
+      assert_eq(greet("Alice"), "Hello, Alice!")
+    end
+
+    test("on a function that may return nil") do
+      assert_eq(value_if(false) ?? "default", "default")
+      assert_eq(value_if(true) ?? "default", "found")
+    end
+
+    test("the result takes method calls") do
+      assert_eq((nil ?? "default").upcase, "DEFAULT")
+      assert_eq((nil ?? [1, 2, 3]).length, 3)
+      assert_eq((["a", "b"] ?? [1, 2]).first, "a")
+    end
+
+    test("nested: a default hash, then a default field") do
+      config = nil
+      assert_eq((config ?? {"db": nil}).db ?? "sqlite", "sqlite")
+      other_config = {"db": "postgresql"}
+      assert_eq((other_config ?? {"db": nil}).db ?? "sqlite", "postgresql")
+    end
+
+    test("inside array literals") do
+      assert_eq([1, nil ?? 2, 3], [1, 2, 3])
+      assert_eq([1, "a" ?? 2, 3], [1, "a", 3])
+    end
+
+    test("inside hash literals") do
+      settings = {"a": nil ?? 1, "b": "value" ?? 2}
+      assert_eq(settings, {"a": 1, "b": "value"})
+    end
+
+    test("negating the result") do
+      assert_eq(!(nil ?? "default"), false)
+      assert_eq(!("value" ?? "default"), false)
+      assert_eq(!(nil ?? nil), true)
+    end
+  end
+
+  context("safe navigation &.") do
+    test("returns nil on a nil receiver instead of raising") do
+      user = nil
+      assert_null(user&.name)
+      assert_eq(user&.name ?? "anonymous", "anonymous")
+    end
+  end
+end

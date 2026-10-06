@@ -1,371 +1,387 @@
-# ============================================================================
-# Control Flow Test Suite
-# ============================================================================
+# Control flow: if/elsif/else, unless, postfix modifiers, while, for, break,
+# next, and conditions that start with a parenthesis.
+#
+# `soli fmt` strips `then` and braces and folds a one-statement block `if`
+# into a postfix one. Blocks whose form is the point of a test carry a comment
+# or a second statement, which fmt keeps; the `then` and brace tests cannot be
+# protected that way, so do not run fmt over this file without restoring them.
+#
+# Nested blocks are what many of these tests exercise; inside describe/context/
+# test they pass the linter's depth limit by design.
+# soli-lint-disable smell/deep-nesting
 
-describe("If/Else Statements", fn() {
-  test("if true executes block", fn() {
-    let result = 0
-    result = 1 if (true)
-    assert_eq(result, 1)
-  })
+def letter_for(score)
+  if score >= 90
+    "A"
+  elsif score >= 80
+    "B"
+  elsif score >= 70
+    "C"
+  else
+    "F"
+  end
+end
 
-  test("if with then keyword executes block", fn() {
-    let result = 0
-    result = 1 if true
-    assert_eq(result, 1)
-  })
+def first_even(numbers)
+  for number in numbers
+    return number if number % 2 == 0
+  end
+  nil
+end
 
-  test("if with then keyword skips block when false", fn() {
-    let result = 0
-    result = 1 if false
-    assert_eq(result, 0)
-  })
+def compute_log
+  log = []
+  log.push("work")
+  if true
+    # a block if right after a statement, then a return value
+    log.push("done")
+  end
+  log
+end
 
-  test("if with then and else", fn() {
-    let result = 0
-    if false
+class BoundaryWorker
+  def process(log)
+    log.push("processing")
+    if log.length > 0
+      # a block if right after a call, inside a method
+      log.push("has items")
+    end
+    log
+  end
+end
+
+describe("if") do
+  context("block form") do
+    test("runs the body when the condition is true") do
+      result = 0
+      if true
+        # block form on purpose
+        result = 1
+      end
+      assert_eq(result, 1)
+    end
+
+    test("skips the body when the condition is false") do
+      result = 0
+      if false
+        # block form on purpose
+        result = 1
+      end
+      assert_eq(result, 0)
+    end
+
+    test("runs else when the condition is false") do
+      result = 0
+      if false
+        result = 1
+      else
+        result = 2
+      end
+      assert_eq(result, 2)
+    end
+
+    test("takes the first true branch of an elsif chain, as its value") do
+      assert_eq(letter_for(95), "A")
+      assert_eq(letter_for(85), "B")
+      assert_eq(letter_for(75), "C")
+      assert_eq(letter_for(10), "F")
+    end
+
+    test("an elsif chain with no true branch and no else runs nothing") do
+      result = "unchanged"
+      if false
+        result = "if"
+      elsif false
+        result = "elsif"
+      end
+      assert_eq(result, "unchanged")
+    end
+
+    test("nests") do
+      outer = true
+      inner = true
+      result = 0
+      if outer
+        if inner
+          # nested block on purpose
+          result = 1
+        end
+      end
+      assert_eq(result, 1)
+    end
+
+    test("takes a compound condition") do
+      x = 5
+      y = 10
+      result = ""
+      if x > 0 && y > 0
+        # block form on purpose
+        result = "both positive"
+      end
+      assert_eq(result, "both positive")
+    end
+
+    test("tests truthiness: 0 is falsy, 0.0 is truthy") do
+      ran = []
+      if 0
+        ran.push("zero")
+      end
+      if 0.0
+        ran.push("zero float")
+      end
+      assert_eq(ran, ["zero float"])
+    end
+  end
+
+  context("then keyword") do
+    test("then after the condition runs the body") do
+      result = 0
+      if true then
+        result = 1
+      end
+      assert_eq(result, 1)
+    end
+
+    test("then skips the body when false") do
+      result = 0
+      if false then
+        result = 1
+      end
+      assert_eq(result, 0)
+    end
+
+    test("then with else") do
+      result = 0
+      if false then
+        result = 1
+      else
+        result = 2
+      end
+      assert_eq(result, 2)
+    end
+
+    test("then on elsif") do
+      x = 2
+      result = ""
+      if x == 1 then
+        result = "one"
+      elsif x == 2 then
+        result = "two"
+      else
+        result = "other"
+      end
+      assert_eq(result, "two")
+    end
+
+    test("then with a parenthesized condition") do
+      result = 0
+      if (true) then
+        result = 1
+      end
+      assert_eq(result, 1)
+    end
+
+    test("then puts the body on the condition's line") do
+      result = 0
+      if true then result = 5 end
+      assert_eq(result, 5)
+    end
+  end
+
+  context("parentheses and braces") do
+    test("a parenthesized condition") do
+      result = 0
+      if (1 + 1 == 2)
+        # block form on purpose
+        result = 1
+      end
+      assert_eq(result, 1)
+    end
+
+    test("braces instead of end, with elsif and else") do
+      result = 0
+      if (false) {
+        result = 1
+      } elsif (true) {
+        result = 2
+      } else {
+        result = 3
+      }
+      assert_eq(result, 2)
+    end
+  end
+end
+
+describe("unless") do
+  test("runs the body when the condition is false") do
+    result = 0
+    unless false
+      # block form on purpose
       result = 1
-    else
-      result = 2
     end
-    assert_eq(result, 2)
-  })
-
-  test("if-elsif with then keyword", fn() {
-    let x = 2
-    let result = ""
-    if x == 1
-      result = "one"
-    elsif x == 2
-      result = "two"
-    else
-      result = "other"
-    end
-    assert_eq(result, "two")
-  })
-
-  test("if with then and parentheses", fn() {
-    let result = 0
-    result = 1 if (true)
     assert_eq(result, 1)
-  })
+  end
 
-  test("if false skips block", fn() {
-    let result = 0
-    result = 1 if (false)
-    assert_eq(result, 0)
-  })
-
-  test("if-else executes else branch", fn() {
-    let result = 0
-    if (false)
+  test("skips the body when the condition is true") do
+    result = 0
+    unless true
+      # block form on purpose
       result = 1
-    else
-      result = 2
     end
-    assert_eq(result, 2)
-  })
-
-  test("if-elsif-else chain", fn() {
-    let x = 2
-    let result = ""
-    if (x == 1)
-      result = "one"
-    elsif (x == 2)
-      result = "two"
-    else
-      result = "other"
-    end
-    assert_eq(result, "two")
-  })
-
-  test("nested if statements", fn() {
-    let a = true
-    let b = true
-    let result = 0
-    if (a)
-      result = 1 if (b)
-    end
-    assert_eq(result, 1)
-  })
-
-  test("if with complex condition", fn() {
-    let x = 5
-    let y = 10
-    let result = ""
-    result = "both positive" if (x > 0 && y > 0)
-    assert_eq(result, "both positive")
-  })
-})
-
-describe("Unless/End Statements", fn() {
-  test("unless false executes the body", fn() {
-    let result = 0
-    result = 1 unless false
-    assert_eq(result, 1)
-  })
-
-  test("unless true skips the body", fn() {
-    let result = 0
-    result = 1 unless true
     assert_eq(result, 0)
-  })
+  end
 
-  test("unless with then", fn() {
-    let result = 0
-    result = 1 unless false
+  test("takes then") do
+    result = 0
+    unless false then
+      result = 1
+    end
     assert_eq(result, 1)
-  })
+  end
 
-  test("unless else runs the else when the condition is true", fn() {
-    let result = 0
+  test("runs else when the condition is true") do
+    result = 0
     unless true
       result = 1
     else
       result = 2
     end
     assert_eq(result, 2)
-  })
+  end
 
-  test("unless else runs the body when the condition is false", fn() {
-    let result = 0
+  test("skips else when the condition is false") do
+    result = 0
     unless false
       result = 1
     else
       result = 2
     end
     assert_eq(result, 1)
-  })
+  end
 
-  test("unless over or keeps the original meaning", fn() {
-    let result = ""
+  test("negates the whole condition: unless a || b") do
+    result = ""
     unless false || true
       result = "neither"
     else
       result = "some"
     end
     assert_eq(result, "some")
-  })
+  end
 
-  test("postfix unless is unchanged", fn() {
-    let x = 0
-    x = 42 unless false
-    assert_eq(x, 42)
-    x = 7 unless true
-    assert_eq(x, 42)
-  })
-})
-
-describe("While Loops", fn() {
-  test("while loop iterates", fn() {
-    let count = 0
-    while (count < 5)
-      count = count + 1
+  test("guards a multi-line body") do
+    status = "banned"
+    flagged = []
+    unless ["up", "late", "overdue"].includes?(status)
+      flagged.push(status)
+      flagged.push("checked")
     end
-    assert_eq(count, 5)
-  })
+    assert_eq(flagged, ["banned", "checked"])
+  end
 
-  test("while loop with false condition never executes", fn() {
-    let executed = false
-    while (false)
-      executed = true
+  test("takes a parenthesized condition") do
+    n = 5
+    result = false
+    unless (n + 1) == 99
+      # block form on purpose
+      result = true
     end
-    assert_not(executed)
-  })
+    assert(result)
+  end
+end
 
-  test("while loop with complex condition", fn() {
-    let i = 0
-    let sum = 0
-    while (i < 10 && sum < 20)
-      sum = sum + i
-      i = i + 1
-    end
-    assert(sum >= 20 || i >= 10)
-  })
-})
-
-describe("For-In Loops", fn() {
-  test("for-in iterates over array", fn() {
-    let arr = [1, 2, 3]
-    let sum = 0
-    for x in arr
-      sum = sum + x
-    end
-    assert_eq(sum, 6)
-  })
-
-  test("for-in iterates over range", fn() {
-    let sum = 0
-    for i in range(1, 5)
-      sum = sum + i
-    end
-    assert_eq(sum, 10)
-  })
-
-  test("for-in with empty array", fn() {
-    let count = 0
-    for x in []
-      count = count + 1
-    end
-    assert_eq(count, 0)
-  })
-
-  test("for-in can access loop variable", fn() {
-    let result = []
-    for i in range(0, 3)
-      result.push(i * 2)
-    end
-    assert_eq(result[0], 0)
-    assert_eq(result[1], 2)
-    assert_eq(result[2], 4)
-  })
-
-  test("nested for-in loops", fn() {
-    let sum = 0
-    for i in range(0, 3)
-      for j in range(0, 3)
-        sum = sum + 1
-      end
-    end
-    assert_eq(sum, 9)
-  })
-
-  test("for-in over range literal iterates without materializing", fn() {
-    let sum = 0
-    for i in 0 .. 5
-      sum = sum + i
-    end
-    assert_eq(sum, 10)
-  })
-
-  test("for-in over empty and inverted range literals does not iterate", fn() {
-    let count = 0
-    for i in 5 .. 5
-      count = count + 1
-    end
-    for i in 5 .. 2
-      count = count + 1
-    end
-    assert_eq(count, 0)
-  })
-
-  test("for-in over range literal supports index variable", fn() {
-    let pairs = []
-    for v, i in 10 .. 13
-      pairs.push(str(i) + ":" + str(v))
-    end
-    assert_eq(pairs.join(","), "0:10,1:11,2:12")
-  })
-
-  test("for-in iterates the array live when the body appends", fn() {
-    # Iteration is live (bounds-checked indexing): items appended by the
-    # body are visited. Pinned so both engines keep agreeing on this.
-    let arr = [1, 2, 3]
-    for x in arr
-      arr.push(x + 10) if (x < 3)
-    end
-    assert_eq(arr.join(","), "1,2,3,11,12")
-  })
-
-  test("for-in sees a shortened array when the body removes items", fn() {
-    let arr = [1, 2, 3, 4]
-    let visited = []
-    for x in arr
-      visited.push(x)
-      arr.pop()
-    end
-    # [1,2,3,4] -> visit 1, pop 4 -> visit 2, pop 3 -> len 2, stop.
-    assert_eq(visited.join(","), "1,2")
-  })
-})
-
-describe("Postfix Conditionals", fn() {
-  test("postfix if executes when true", fn() {
-    let result = 0
-    result = 42 if (true)
+describe("Postfix modifiers") do
+  test("if runs the statement when true") do
+    result = 0
+    result = 42 if true
     assert_eq(result, 42)
-  })
+  end
 
-  test("postfix if skips when false", fn() {
-    let result = 0
-    result = 42 if (false)
+  test("if skips the statement when false") do
+    result = 0
+    result = 42 if false
     assert_eq(result, 0)
-  })
+  end
 
-  test("postfix unless executes when false", fn() {
-    let result = 0
-    result = 42 unless (false)
+  test("unless runs the statement when false") do
+    result = 0
+    result = 42 unless false
     assert_eq(result, 42)
-  })
+  end
 
-  test("postfix unless skips when true", fn() {
-    let result = 0
-    result = 42 unless (true)
+  test("unless skips the statement when true") do
+    result = 0
+    result = 42 unless true
     assert_eq(result, 0)
-  })
+  end
 
-  test("postfix if still works on same line", fn() {
-    let x = 0
-    x = 10 if true
-    assert_eq(x, 10)
-    x = 20 if false
-    assert_eq(x, 10)
-  })
+  test("the condition can be parenthesized") do
+    result = 0
+    result = 42 if (1 + 1 == 2)
+    assert_eq(result, 42)
+    result = 7 unless (true)
+    assert_eq(result, 42)
+  end
 
-  test("postfix unless still works on same line", fn() {
-    let x = 0
-    x = 10 unless false
-    assert_eq(x, 10)
-    x = 20 unless true
-    assert_eq(x, 10)
-  })
-
-  test("postfix if with function call on same line", fn() {
-    let log = []
+  test("modify a call") do
+    log = []
     log.push("yes") if true
     log.push("no") if false
-    assert_eq(len(log), 1)
-    assert_eq(log[0], "yes")
-  })
+    assert_eq(log, ["yes"])
+  end
 
-  test("postfix if with expression &&parenthesized condition", fn() {
-    let x = 0
-    x = 42 if (1 + 1 == 2)
-    assert_eq(x, 42)
-  })
-})
+  test("modify an index assignment and read its own target") do
+    data = {"name": "test", "value": 42}
+    data["value"] = data["value"] + 1 if data["value"] > 0
+    assert_eq(data["value"], 43)
+  end
 
-# ============================================================================
-# Postfix-if same-line boundary: expression followed by block-if on next line
-# must NOT be treated as postfix-if.
-# ============================================================================
+  test("compound conditions choose which fields to update") do
+    user = {"name": "Alice", "email": "alice@test.com"}
+    params = {"name": "Alice B", "email": ""}
+    updates = {}
+    updates["name"] = params["name"] if params["name"].present?
+    updates["email"] = params["email"] if params["email"].present?
+    updates.keys.each do |key|
+      user[key] = updates[key]
+    end
+    assert_eq(user, {"name": "Alice B", "email": "alice@test.com"})
+  end
 
-describe("Expression followed by if/end block", fn() {
-  test("simple call then if/end", fn() {
-    let log = []
+  test("return if exits a function from inside a loop") do
+    assert_eq(first_even([1, 3, 4, 6]), 4)
+    assert_null(first_even([1, 3]))
+  end
+end
+
+# A statement followed by a block `if` on the NEXT line must not be read as a
+# postfix `if` of that statement. Each block keeps a comment so `soli fmt`
+# leaves it a block.
+describe("A statement followed by a block on the next line") do
+  test("a call then if/end") do
+    log = []
     log.push("a")
-    log.push("b") if true
-    assert_eq(len(log), 2)
-    assert_eq(log[0], "a")
-    assert_eq(log[1], "b")
-  })
+    if true
+      # separate block
+      log.push("b")
+    end
+    assert_eq(log, ["a", "b"])
+  end
 
-  test("call then if/else/end", fn() {
-    let log = []
+  test("a call then if/else/end") do
+    log = []
     log.push("before")
     if false
       log.push("then")
     else
       log.push("else")
     end
-    assert_eq(len(log), 2)
-    assert_eq(log[0], "before")
-    assert_eq(log[1], "else")
-  })
+    assert_eq(log, ["before", "else"])
+  end
 
-  test("call then if/elsif/else/end", fn() {
-    let x = 2
-    let log = []
+  test("a call then if/elsif/else/end") do
+    x = 2
+    log = []
     log.push("start")
     if x == 1
       log.push("one")
@@ -374,662 +390,444 @@ describe("Expression followed by if/end block", fn() {
     else
       log.push("other")
     end
-    assert_eq(len(log), 2)
-    assert_eq(log[1], "two")
-  })
+    assert_eq(log, ["start", "two"])
+  end
 
-  test("call then nested if/end blocks", fn() {
-    let log = []
+  test("a call then nested if blocks") do
+    log = []
     log.push("outer")
     if true
-      log.push("inner") if true
+      if true
+        # separate block
+        log.push("inner")
+      end
     end
-    assert_eq(len(log), 2)
-    assert_eq(log[1], "inner")
-  })
+    assert_eq(log, ["outer", "inner"])
+  end
 
-  test("call then if/end followed by return value", fn() {
-    def compute
-      let log = []
-      log.push("work")
-      log.push("done") if true
-      return log
-    end
-    let result = compute()
-    assert_eq(len(result), 2)
-    assert_eq(result[0], "work")
-    assert_eq(result[1], "done")
-  })
+  test("inside a function, before its return value") do
+    assert_eq(compute_log(), ["work", "done"])
+  end
 
-  test("hash-arg method call then if/end", fn() {
-    let items = []
+  test("inside a method") do
+    assert_eq(new BoundaryWorker().process([]), ["processing", "has items"])
+  end
+
+  test("a call with a hash argument then if/end") do
+    items = []
     items.push({"key": "a"})
-    items.push({"key": "b"}) if true
-    assert_eq(len(items), 2)
-    assert_eq(items[0]["key"], "a")
-    assert_eq(items[1]["key"], "b")
-  })
+    if true
+      # separate block
+      items.push({"key": "b"})
+    end
+    assert_eq(items, [{"key": "a"}, {"key": "b"}])
+  end
 
-  test("hash-arg call then if/else/end", fn() {
-    let items = []
+  test("a call with a hash argument then if/else/end") do
+    items = []
     items.push({"status": "created"})
     if false
       items.push({"status": "running"})
     else
       items.push({"status": "error"})
     end
-    assert_eq(len(items), 2)
-    assert_eq(items[1]["status"], "error")
-  })
+    assert_eq(items, [{"status": "created"}, {"status": "error"}])
+  end
 
-  test("multiple calls then if/end", fn() {
-    let log = []
+  test("several calls then if/end") do
+    log = []
     log.push("one")
     log.push("two")
     log.push("three")
-    log.push("four") if true
-    assert_eq(len(log), 4)
-  })
+    if true
+      # separate block
+      log.push("four")
+    end
+    assert_eq(log, ["one", "two", "three", "four"])
+  end
 
-  test("call then for/end loop", fn() {
-    let log = []
+  test("a call then a for loop") do
+    log = []
     log.push("before")
     for i in range(0, 3)
       log.push(str(i))
     end
-    assert_eq(len(log), 4)
-    assert_eq(log[0], "before")
-    assert_eq(log[1], "0")
-  })
+    assert_eq(log, ["before", "0", "1", "2"])
+  end
 
-  test("call then while/end loop", fn() {
-    let log = []
+  test("a call then a while loop") do
+    log = []
     log.push("start")
-    let i = 0
+    i = 0
     while i < 3
       log.push(str(i))
       i = i + 1
     end
-    assert_eq(len(log), 4)
-    assert_eq(log[0], "start")
-  })
+    assert_eq(log, ["start", "0", "1", "2"])
+  end
 
-  test("call then if/end inside for loop", fn() {
-    let log = []
+  test("a call then if/end inside a for loop") do
+    log = []
     for i in range(0, 3)
       log.push("iter")
-      log.push("match") if i == 1
+      if i == 1
+        # separate block
+        log.push("match")
+      end
     end
-    assert_eq(len(log), 4)
-  })
+    assert_eq(log, ["iter", "iter", "match", "iter"])
+  end
 
-  test("call then if/end inside if/end", fn() {
-    let log = []
+  test("a call then if/end inside if/end") do
+    log = []
     if true
       log.push("outer")
-      log.push("inner") if true
+      if true
+        # separate block
+        log.push("inner")
+      end
     end
-    assert_eq(len(log), 2)
-  })
+    assert_eq(log, ["outer", "inner"])
+  end
 
-  test("sequential if/end blocks after calls", fn() {
-    let log = []
+  test("alternating calls and if blocks") do
+    log = []
     log.push("a")
-    log.push("b") if true
+    if true
+      # separate block
+      log.push("b")
+    end
     log.push("c")
-    log.push("d") if true
-    assert_eq(len(log), 4)
-    assert_eq(log[0], "a")
-    assert_eq(log[1], "b")
-    assert_eq(log[2], "c")
-    assert_eq(log[3], "d")
-  })
-
-  test("complex controller-like pattern", fn() {
-    # Simulates the real pattern from Soli Host controllers
-    def update_record(id, data)
-      return {"id": id, "data": data}
+    if true
+      # separate block
+      log.push("d")
     end
+    assert_eq(log, ["a", "b", "c", "d"])
+  end
 
-    let port = 3001
-    let result = update_record("vm1", {"next_port": port + 1})
-    assert_eq(result["data"]["next_port"], 3002)
-
-    let items = []
-    items.push({"app_id": "a1", "role": "primary"})
-
+  test("an if/else after statements, with a loop in the taken branch") do
+    port = 3001
+    items = [{"app_id": "a1"}]
     if port > 3000
-      let r = update_record("a1", {"status": "running"})
-      let servers = ["s1", "s2"]
-      for s in servers
-        let r2 = update_record(s, {"status": "ready"})
-        items.push(r2)
+      ["s1", "s2"].each do |server|
+        items.push({"server": server, "status": "ready"})
       end
     else
-      let r = update_record("a1", {"status": "error"})
-      items.push(r)
+      items.push({"status": "error"})
     end
+    assert_eq(items.length, 3)
+    assert_eq(items[2], {"server": "s2", "status": "ready"})
+  end
 
-    assert_eq(len(items), 3)
-    assert_eq(items[0]["app_id"], "a1")
-  })
-
-  test("class method with call then if/end", fn() {
-    class Worker
-      def process(log)
-        log.push("processing")
-        log.push("has items") if len(log) > 0
-        return log
-      end
-    end
-    let w = new Worker()
-    let result = w.process([])
-    assert_eq(len(result), 2)
-    assert_eq(result[0], "processing")
-    assert_eq(result[1], "has items")
-  })
-
-  test("multiline expression ending before if/end on next line", fn() {
-    let data = {"name": "test", "value": 42}
-    data["value"] = data["value"] + 1 if data["value"] > 0
-    assert_eq(data["value"], 43)
-  })
-
-  test("assignment expression then if/end", fn() {
-    let x = 0
+  test("an assignment then if/end") do
+    x = 0
     x = 10
-    x = x + 1 if x > 5
+    if x > 5
+      # separate block
+      x = x + 1
+    end
     assert_eq(x, 11)
-  })
+  end
 
-  test("string method call then if/end", fn() {
-    let name = "hello"
-    let size = len(name)
-    name = name + " world" if size > 3
+  test("a call result stored then if/end") do
+    name = "hello"
+    size = name.length
+    if size > 3
+      # separate block
+      name = name + " world"
+    end
     assert_eq(name, "hello world")
-  })
-})
+  end
+end
 
-# ============================================================================
-# Real-world MVC controller patterns
-# These reproduce actual code from Soli Host controllers that triggered
-# the postfix-if parser bug. Each test is self-contained (test scope is isolated).
-# ============================================================================
-
-describe("MVC controller patterns", fn() {
-  test("create resource with validation &&if/end", fn() {
-    let name = "my-app"
-
-    assert(false, "should not reach here") if name == "" || len(name) < 2
-
-    let attrs = {
-      "name": name,
-      "user_id": "u1",
-      "status": "creating",
-      "port": 3001
-    }
-
-    assert(false, "should not reach here") if attrs["name"].nil?
-
-    assert_eq(attrs["name"], "my-app")
-    assert_eq(attrs["status"], "creating")
-  })
-
-  test("update then if/else/end with nested for/end", fn() {
-    let app = {
-      "name": "test-app",
-      "user_id": "u1",
-      "status": "creating",
-      "port": 3001
-    }
-
-    let server = {
-      "app_id": "a1",
-      "role": "primary",
-      "status": "provisioning"
-    }
-
-    let success = true
-    if success
-      app["status"] = "running"
-      let servers = ["s1", "s2", "s3"]
-      for s in servers
-        let rec = {"server_name": s, "status": "ready"}
+describe("Branches with loops inside") do
+  test("if/elsif with nested loops and ifs") do
+    desired = 3
+    current = 1
+    scaled = []
+    if desired > current
+      for i in range(0, desired - current)
+        name = "worker-" + str(current + i + 1)
+        scaled.push(name) if name.length > 0
       end
-    else
-      app["status"] = "error"
-    end
-
-    assert_eq(app["status"], "running")
-  })
-
-  test("deploy pattern: create record, branch, update status", fn() {
-    let app = {"name": "deploy-test", "status": "running"}
-    let dep = {"status": "building", "build_log": ""}
-
-    let exit_code = 0
-    let workers = ["w1", "w2"]
-    for worker in workers
-      # simulate ssh_exec on each worker
-      let worker_result = "ok"
-    end
-
-    if exit_code == 0
-      dep["status"] = "live"
-    else
-      dep["status"] = "failed"
-      dep["build_log"] = "error output"
-    end
-
-    assert_eq(dep["status"], "live")
-  })
-
-  test("scale up pattern: if/elsif with nested loops", fn() {
-    let desired_workers = 3
-    let current_count = 1
-    let scaled = []
-
-    if desired_workers > current_count
-      let to_add = desired_workers - current_count
-      for i in range(0, to_add)
-        let server_name = "worker-" + str(current_count + i + 1)
-        let vm_result = {
-          "name": server_name,
-          "status": "provisioning",
-          "type": "worker",
-          "valid": true
-        }
-
-        if vm_result["valid"]
-          let server_rec = {
-            "vm_id": "v1",
-            "role": "worker",
-            "status": "provisioning",
-            "port": 3000
-          }
-          scaled.push(server_name)
-        end
-      end
-    elsif desired_workers < current_count
-      let to_remove = current_count - desired_workers
-      for i in range(0, to_remove)
+    elsif desired < current
+      for i in range(0, current - desired)
         scaled.push("removed-" + str(i))
       end
     end
+    assert_eq(scaled, ["worker-2", "worker-3"])
+  end
 
-    assert_eq(len(scaled), 2)
-    assert_eq(scaled[0], "worker-2")
-    assert_eq(scaled[1], "worker-3")
-  })
-
-  test("destroy pattern: delete related records in loops", fn() {
-    let records = {
-      "a1": {"name": "doomed-app", "status": "running"},
-      "s1": {"role": "primary", "status": "ready"},
-      "s2": {"role": "worker", "status": "ready"},
-      "d1": {"type": "deployment", "status": "live"},
-      "d2": {"type": "deployment", "status": "failed"}
-    }
-
-    # Destroy: delete workers
-    let workers = ["s1", "s2"]
-    for worker in workers
-      records[worker] = null
+  test("a loop with a postfix if finds a match") do
+    users = [{"id": "1", "email": "user@test.com"}, {"id": "2", "email": "other@test.com"}]
+    found = nil
+    for user in users
+      found = user if user["email"] == "user@test.com"
     end
+    assert_eq(found["id"], "1")
+  end
 
-    # Delete deployments
-    let deps = ["d1", "d2"]
-    for dep in deps
-      records[dep] = null
-    end
-
-    # Delete app record
-    records["a1"] = null
-
-    assert_eq(records["a1"], null)
-    assert_eq(records["s1"], null)
-    assert_eq(records["d1"], null)
-  })
-
-  test("settings update pattern: conditional updates with hash", fn() {
-    let user = {
-      "name": "Alice",
-      "email": "alice@test.com",
-      "password_hash": "hashed123"
-    }
-
-    let params = {"name": "Alice B", "email": ""}
-    let updates = {}
-
-    updates["name"] = params["name"] if !params["name"].nil? && params["name"] != ""
-    updates["email"] = params["email"] if !params["email"].nil? && params["email"] != ""
-
-    if len(updates) > 0
-      for key in updates.keys()
-        user[key] = updates[key]
-      end
-    end
-
-    assert_eq(user["name"], "Alice B")
-    assert_eq(user["email"], "alice@test.com")
-  })
-
-  test("SSH key pattern: create with external call then if/end", fn() {
-    let name = "my-key"
-    let public_key = "ssh-rsa AAAA..."
-
-    assert(false, "should not reach here") if name == "" || public_key == ""
-
-    # Simulate Hetzner API call
-    let hetzner_result = {"id": 42, "fingerprint": "ab:cd:ef"}
-    let hetzner_key_id = ""
-    let fingerprint = ""
-    if hetzner_result["error"].nil?
-      hetzner_key_id = str(hetzner_result["id"])
-      fingerprint = hetzner_result["fingerprint"]
-    end
-
-    let key_record = {
-      "user_id": "u1",
-      "name": name,
-      "public_key": public_key,
-      "fingerprint": fingerprint,
-      "hetzner_key_id": hetzner_key_id
-    }
-
-    assert_eq(key_record["name"], "my-key")
-    assert_eq(key_record["fingerprint"], "ab:cd:ef")
-    assert_eq(key_record["hetzner_key_id"], "42")
-  })
-
-  test("API status poll pattern: check &&update server status", fn() {
-    let server = {
-      "app_id": "a1",
-      "role": "primary",
-      "status": "provisioning",
-      "vm_id": "v1"
-    }
-    let vm = {"ip": "10.0.0.1", "status": "provisioning"}
-
-    # Simulate provisioning check
-    let is_ready = true
-    if server["status"] == "provisioning"
-      if is_ready
-        server["status"] = "ready"
-        vm["status"] = "ready"
-      end
-    end
-
-    assert_eq(server["status"], "ready")
-    assert_eq(vm["status"], "ready")
-  })
-
-  test("auth pattern: validate, query, verify, session", fn() {
-    let users = [{
-      "id": "1",
-      "email": "user@test.com",
-      "password_hash": "secret"
-    }]
-
-    let email = "user@test.com"
-    let password = "secret"
-
-    assert(false, "should not reach here") if email == "" || password == ""
-
-    # Find user by email
-    let found = null
-    for u in users
-      found = u if u["email"] == email
-    end
-
-    assert(false, "user not found") if found.nil?
-
-    assert(false, "password mismatch") if password != found["password_hash"]
-
-    # Simulate session
-    let session = {}
-    session["user_id"] = found["id"]
-    assert_eq(session["user_id"], "1")
-  })
-
-  test("register pattern: validate, check duplicate, create, session", fn() {
-    let name = "Bob"
-    let email = "bob@test.com"
-    let password = "secret123"
-    let password_confirm = "secret123"
-
-    assert(false, "fields required") if name == "" || email == "" || password == ""
-
-    assert(false, "passwords mismatch") if password != password_confirm
-
-    assert(false, "password too short") if len(password) < 8
-
-    let existing = []
-    assert(false, "already exists") if len(existing) > 0
-
-    let result = {"valid": true, "record": {
-      "id": "1",
-      "name": name,
-      "email": email,
-      "password_hash": "hashed_" + password
-    }}
-
-    if result["valid"]
-      let session = {}
-      session["user_id"] = result["record"]["id"]
-      assert_eq(session["user_id"], "1")
-    else
-      assert(false, "creation failed")
-    end
-  })
-
-  test("proxy config update after app changes", fn() {
-    let app = {
-      "name": "web",
-      "domain": "web.solihost.dev",
-      "vm_id": "v1",
-      "user_id": "u1",
-      "status": "running",
-      "port": 3001
-    }
-
-    let params = {"domain": "custom.example.com"}
-    let updates = {}
-    updates["domain"] = params["domain"] if !params["domain"].nil?
-
-    for key in updates.keys()
-      app[key] = updates[key]
-    end
-
-    # After domain change, update proxy config
-    if !updates["domain"].nil?
-      let vm_status = "ready"
-      if vm_status == "ready"
-        let conf_lines = []
-        let apps = [app]
-        for a in apps
-          conf_lines.push(a["domain"] + " -> localhost:" + str(a["port"]))
-        end
-        assert_eq(len(conf_lines), 1)
-        assert_eq(conf_lines[0], "custom.example.com -> localhost:3001")
-      end
-    end
-
-    assert_eq(app["domain"], "custom.example.com")
-  })
-
-  test("restart pattern: primary + workers loop", fn() {
-    let actions = []
-
-    let app_name = "my-app"
-    actions.push("restart:" + app_name)
-
-    let workers = [
-      {"vm_ip": "10.0.0.2", "status": "ready"},
-      {"vm_ip": "10.0.0.3", "status": "ready"},
-      {"vm_ip": "10.0.0.4", "status": "error"}
+  test("a loop with a postfix if filters") do
+    actions = ["restart:my-app"]
+    workers = [
+      {"ip": "10.0.0.2", "status": "ready"},
+      {"ip": "10.0.0.3", "status": "ready"},
+      {"ip": "10.0.0.4", "status": "error"}
     ]
     for worker in workers
-      actions.push("restart-worker:" + worker["vm_ip"]) if worker["status"] == "ready"
+      actions.push("restart-worker:" + worker["ip"]) if worker["status"] == "ready"
     end
+    assert_eq(actions, ["restart:my-app", "restart-worker:10.0.0.2", "restart-worker:10.0.0.3"])
+  end
 
-    assert_eq(len(actions), 3)
-    assert_eq(actions[0], "restart:my-app")
-    assert_eq(actions[1], "restart-worker:10.0.0.2")
-    assert_eq(actions[2], "restart-worker:10.0.0.3")
-  })
-
-  test("stop &&update status pattern", fn() {
-    let app = {
-      "name": "stopping-app",
-      "user_id": "u1",
-      "status": "running"
-    }
-
-    # Simulate ssh_exec stop
-    let actions = []
-    actions.push("stop:" + app["name"])
-    app["status"] = "stopped"
-
-    assert_eq(app["status"], "stopped")
-    assert_eq(len(actions), 1)
-    assert_eq(actions[0], "stop:stopping-app")
-  })
-
-  test("full create flow: validate, provision VM, assign port, create app, create server", fn() {
-    let name = "full-test"
-    let region = "eu-central"
-
-    # Validate
-    assert(false, "name too short") if name == "" || len(name) < 2
-
-    # Simulate VM provisioning
-    let vm = {
-      "id": "v1",
-      "name": "vm-" + region,
-      "status": "ready",
-      "ip_address": "10.0.0.1",
-      "region": region,
-      "next_port": 3001
-    }
-
-    # Assign port
-    let port = vm["next_port"]
-    vm["next_port"] = port + 1
-
-    # Create app
-    let domain = name + ".solihost.dev"
-    let app = {
-      "id": "a1",
-      "name": name,
-      "user_id": "u1",
-      "status": "creating",
-      "domain": domain,
-      "vm_id": vm["id"],
-      "port": port
-    }
-
-    # Create primary server
-    let server = {
-      "app_id": app["id"],
-      "vm_id": vm["id"],
-      "role": "primary",
-      "status": "provisioning",
-      "port": port
-    }
-
-    # Provision if VM ready
-    if vm["status"] == "ready"
-      let exit_code = 0
+  test("a loop in a nested if mutates hashes held in an array") do
+    server = {"status": "provisioning"}
+    app = {"status": "creating"}
+    vm_ready = true
+    exit_code = 0
+    if vm_ready
       if exit_code == 0
         app["status"] = "running"
-
-        # Update all servers to ready
-        let servers = [server]
-        for s in servers
-          s["status"] = "ready"
+        [server].each do |each_server|
+          each_server["status"] = "ready"
         end
-
-        # Generate proxy config
-        let conf = name + ".solihost.dev -> localhost:" + str(port)
-        assert_eq(conf, "full-test.solihost.dev -> localhost:3001")
       else
         app["status"] = "error"
       end
     end
-
     assert_eq(app["status"], "running")
-    assert_eq(app["domain"], "full-test.solihost.dev")
-    assert_eq(vm["next_port"], 3002)
     assert_eq(server["status"], "ready")
-  })
-})
+  end
+end
 
-describe("Break Statement", fn() {
-  test("break exits a while loop", fn() {
-    let i = 0
-    while (true)
+describe("while") do
+  test("repeats while the condition holds") do
+    count = 0
+    while count < 5
+      count = count + 1
+    end
+    assert_eq(count, 5)
+  end
+
+  test("never runs on a false condition") do
+    executed = false
+    while false
+      executed = true
+    end
+    assert_not(executed)
+  end
+
+  test("stops on the first part of a compound condition to fail") do
+    i = 0
+    sum = 0
+    while i < 10 && sum < 20
+      sum = sum + i
       i = i + 1
-      if (i >= 3)
+    end
+    # sum runs 0, 1, 3, 6, 10, 15, 21: the sum condition ends it first
+    assert_eq(sum, 21)
+    assert_eq(i, 7)
+  end
+
+  test("a parenthesized condition") do
+    count = 0
+    while (count < 3)
+      count = count + 1
+    end
+    assert_eq(count, 3)
+  end
+
+  test("while true with break runs at least once, like do-while") do
+    count = 0
+    while true
+      count = count + 1
+      break if count >= 3
+    end
+    assert_eq(count, 3)
+  end
+end
+
+describe("for") do
+  test("iterates over an array") do
+    sum = 0
+    for x in [1, 2, 3]
+      sum = sum + x
+    end
+    assert_eq(sum, 6)
+  end
+
+  test("iterates over range()") do
+    sum = 0
+    for i in range(1, 5)
+      sum = sum + i
+    end
+    assert_eq(sum, 10)
+  end
+
+  test("iterates over range() with a step") do
+    seen = []
+    for i in range(0, 10, 3)
+      seen.push(i)
+    end
+    assert_eq(seen, [0, 3, 6, 9])
+  end
+
+  test("never runs over an empty array") do
+    count = 0
+    for x in []
+      count = count + 1
+    end
+    assert_eq(count, 0)
+  end
+
+  test("gives the body the loop variable") do
+    result = []
+    for i in range(0, 3)
+      result.push(i * 2)
+    end
+    assert_eq(result, [0, 2, 4])
+  end
+
+  test("nests") do
+    pairs = []
+    for i in range(0, 2)
+      for j in range(0, 2)
+        pairs.push([i, j])
+      end
+    end
+    assert_eq(pairs, [[0, 0], [0, 1], [1, 0], [1, 1]])
+  end
+
+  test("iterates over a range literal") do
+    sum = 0
+    for i in 0..5
+      sum = sum + i
+    end
+    assert_eq(sum, 10)
+  end
+
+  test("an empty or inverted range literal does not iterate") do
+    count = 0
+    for i in 5..5
+      count = count + 1
+    end
+    for i in 5..2
+      count = count + 1
+    end
+    assert_eq(count, 0)
+  end
+
+  test("a second variable takes the index, on a range") do
+    pairs = []
+    for value, i in 10..13
+      pairs.push(str(i) + ":" + str(value))
+    end
+    assert_eq(pairs.join(","), "0:10,1:11,2:12")
+  end
+
+  test("a second variable takes the index, on an array") do
+    labels = []
+    for fruit, i in ["apple", "banana"]
+      labels.push("#{i}: #{fruit}")
+    end
+    assert_eq(labels, ["0: apple", "1: banana"])
+  end
+
+  test("iterates the array live when the body appends") do
+    # Iteration is live (bounds-checked indexing): items appended by the body
+    # are visited. Pinned so both engines keep agreeing on this.
+    numbers = [1, 2, 3]
+    for x in numbers
+      numbers.push(x + 10) if x < 3
+    end
+    assert_eq(numbers, [1, 2, 3, 11, 12])
+  end
+
+  test("sees a shortened array when the body removes items") do
+    numbers = [1, 2, 3, 4]
+    visited = []
+    for x in numbers
+      visited.push(x)
+      numbers.pop
+    end
+    # visit 1, pop 4; visit 2, pop 3; length 2, stop
+    assert_eq(visited, [1, 2])
+  end
+
+  test("refuses a hash") do
+    assert_raises("cannot iterate over hash") do
+      for key in {"a": 1}
+        key
+      end
+    end
+  end
+end
+
+describe("break") do
+  test("exits a while loop") do
+    i = 0
+    while true
+      i = i + 1
+      if i >= 3
+        # block form on purpose
         break
       end
     end
     assert_eq(i, 3)
-  })
+  end
 
-  test("break exits a for loop over an array", fn() {
-    let seen = []
+  test("exits a for loop over an array") do
+    seen = []
     for n in [1, 2, 3, 4, 5]
-      if (n > 3)
+      if n > 3
+        # block form on purpose
         break
       end
       seen.push(n)
     end
     assert_eq(seen, [1, 2, 3])
-  })
+  end
 
-  test("break exits a for loop over a range", fn() {
-    let total = 0
-    for x in 1 .. 100
+  test("exits a for loop over a range") do
+    total = 0
+    for x in 1..100
       total = total + x
-      if (total > 10)
-        break
-      end
+      break if total > 10
     end
     assert_eq(total, 15)
-  })
+  end
 
-  test("postfix break if", fn() {
-    let count = 0
-    for y in [1, 2, 3, 4, 5]
-      break if y > 3
+  test("takes a postfix if") do
+    count = 0
+    for n in [1, 2, 3, 4, 5]
+      break if n > 3
       count = count + 1
     end
     assert_eq(count, 3)
-  })
+  end
 
-  test("postfix break unless", fn() {
-    let count = 0
-    for y in [1, 2, 3, 4]
-      break unless y < 3
+  test("takes a postfix unless") do
+    count = 0
+    for n in [1, 2, 3, 4]
+      break unless n < 3
       count = count + 1
     end
     assert_eq(count, 2)
-  })
+  end
 
-  test("break only exits the innermost loop", fn() {
-    let pairs = []
-    for a in [1, 2]
-      for b in [10, 20, 30]
-        break if b == 20
-        pairs.push([a, b])
+  test("exits only the innermost loop") do
+    pairs = []
+    for outer in [1, 2]
+      for inner in [10, 20, 30]
+        break if inner == 20
+        pairs.push([outer, inner])
       end
     end
     assert_eq(pairs, [[1, 10], [2, 10]])
-  })
+  end
 
-  test("break inside try runs finally then exits the loop", fn() {
-    let log = []
+  test("inside try runs finally, then exits the loop") do
+    log = []
     for v in [1, 2, 3]
       try
         log.push(v)
@@ -1039,11 +837,11 @@ describe("Break Statement", fn() {
       end
     end
     assert_eq(log, [1, "f", 2, "f"])
-  })
+  end
 
-  test("break inside a lambda is absorbed at the function boundary", fn() {
-    # It stops the lambda body, but must not break the enclosing for loop.
-    let seen = []
+  test("inside a lambda is absorbed at the function boundary") do
+    # It stops the lambda body but must not break the enclosing for loop.
+    seen = []
     for n in [1, 2]
       [10, 20, 30].each(fn(x) {
         break
@@ -1052,106 +850,132 @@ describe("Break Statement", fn() {
       seen.push(n)
     end
     assert_eq(seen, [1, 2])
-  })
+  end
 
-  test("break inside a nested block still exits the loop", fn() {
-    let seen = []
+  test("inside nested ifs still exits the loop") do
+    seen = []
     for n in [1, 2, 3, 4]
-      if (n > 0)
-        if (n == 3)
-          break
-        end
+      if n > 0
+        break if n == 3
         seen.push(n)
       end
     end
     assert_eq(seen, [1, 2])
-  })
-})
+  end
+end
 
-# A condition that *begins* with a parenthesis used to end at the matching
-# `)`, so `if (a ?? "") == ""` reported `Unexpected token '=='` — a guard that
-# reads naturally and parses fine on the right of an assignment.
-describe("conditions starting with a parenthesis", fn() {
-  test("block if continues past the closing paren", fn() {
-    let row = {"url": ""}
-    let fired = false
-    fired = true if (row["url"] ?? "") == ""
+describe("next") do
+  test("skips the rest of a for iteration") do
+    odd = []
+    for n in [1, 2, 3, 4, 5]
+      next if n % 2 == 0
+      odd.push(n)
+    end
+    assert_eq(odd, [1, 3, 5])
+  end
+
+  test("skips the rest of a while iteration") do
+    seen = []
+    i = 0
+    while i < 5
+      i += 1
+      next if i == 2
+      seen.push(i)
+    end
+    assert_eq(seen, [1, 3, 4, 5])
+  end
+
+  test("skips only the innermost loop's iteration") do
+    pairs = []
+    for outer in [1, 2]
+      for inner in [1, 2, 3]
+        next if inner == 2
+        pairs.push([outer, inner])
+      end
+    end
+    assert_eq(pairs, [[1, 1], [1, 3], [2, 1], [2, 3]])
+  end
+
+  test("skips the rest of an each block") do
+    seen = []
+    [1, 2, 3].each do |x|
+      next if x == 2
+      seen.push(x)
+    end
+    assert_eq(seen, [1, 3])
+  end
+
+  test("inside try runs finally before the next iteration") do
+    log = []
+    for n in [1, 2, 3]
+      try
+        next if n == 2
+        log.push("t#{n}")
+      finally
+        log.push("f#{n}")
+      end
+    end
+    assert_eq(log, ["t1", "f1", "f2", "t3", "f3"])
+  end
+
+  test("combines with break") do
+    total = 0
+    for n in range(1, 11)
+      next if n % 2 == 0
+      break if n > 7
+      total = total + n
+    end
+    assert_eq(total, 16)
+  end
+end
+
+# A condition that begins with a parenthesis used to end at the matching `)`,
+# so `if (a ?? "") == ""` reported `Unexpected token '=='`.
+describe("Conditions starting with a parenthesis") do
+  test("a block if continues past the closing paren") do
+    row = {"url": ""}
+    fired = false
+    # The guard is written the way it was reported; the point is how it parses.
+    # soli-lint-disable-next-line idiom/prefer-blank, idiom/prefer-to-s
+    if (row["url"] ?? "") == ""
+      # block form on purpose
+      fired = true
+    end
     assert(fired)
-  })
+  end
 
-  test("postfix if and unless continue past it too", fn() {
-    let n = 1
-    let a = false
-    let b = false
-    a = true if (n + 1) == 2
-    b = true unless (n + 1) == 3
-    assert(a)
-    assert(b)
-  })
+  test("postfix if and unless continue past it too") do
+    n = 1
+    by_if = false
+    by_unless = false
+    by_if = true if (n + 1) == 2
+    by_unless = true unless (n + 1) == 3
+    assert(by_if)
+    assert(by_unless)
+  end
 
-  test("while and elsif conditions too", fn() {
-    let i = 0
+  test("while and elsif conditions too") do
+    i = 0
     while (i + 1) <= 2
       i = i + 1
     end
     assert_eq(i, 2)
-
-    let label = ""
+    label = ""
     if (i) == 9
       label = "no"
     elsif (i + 1) == 3
       label = "elsif"
     end
     assert_eq(label, "elsif")
-  })
+  end
 
-  test("the plain parenthesised form still works", fn() {
-    let n = 1
-    let seen = false
+  test("the fully parenthesized form still works") do
+    n = 1
+    seen = false
     seen = true if (n == 1)
     assert(seen)
-    let braced = false
-    braced = true if (n) == 1
-    assert(braced)
-  })
-})
-
-# `unless` existed only as a postfix modifier, so the multi-line guard shown in
-# the project's own instructions did not parse.
-describe("block-form unless", fn() {
-  test("guards a multi-line body", fn() {
-    let status = "banned"
-    let flagged = false
-    unless ["up", "late", "overdue"].includes?(status)
-      flagged = true
-    end
-    assert(flagged)
-  })
-
-  test("takes an else branch", fn() {
-    let n = 5
-    let which = ""
-    unless n > 10
-      which = "small"
-    else
-      which = "large"
-    end
-    assert_eq(which, "small")
-  })
-
-  test("does not run its body when the condition holds", fn() {
-    let ran = false
-    ran = true unless true
-    assert(!ran)
-  })
-
-  test("accepts a parenthesised condition, and postfix still works", fn() {
-    let n = 5
-    let a = false
-    a = true unless (n + 1) == 99
-    assert(a)
-    let b = false
-    b = true unless n > 10
-    assert(b)
-  })
-})
+    partly = false
+    partly = true if (n) == 1
+    assert(partly)
+  end
+end

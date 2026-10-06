@@ -1,169 +1,192 @@
-# ============================================================================
-# Not Keyword and Bang Suffix Test Suite
-# ============================================================================
+# Negation with `!` and the `not` keyword, and method names ending in `!`.
 
-describe("Not Keyword", fn() {
-  test("not true equals false", fn() { assert_eq(!true, false) })
+class BangHelper
+  def save!
+    "saved"
+  end
 
-  test("not false equals true", fn() { assert_eq(!false, true) })
+  def delete!
+    "deleted"
+  end
 
-  test("not null equals true", fn() { assert_eq(!null, true) })
+  def valid?
+    true
+  end
+end
 
-  test("not with variables", fn() {
-    let flag = true
-    assert_eq(!flag, false)
+def insert!
+  "inserted"
+end
 
-    let flag2 = false
-    assert_eq(!flag2, true)
-  })
+def delete_record!(id)
+  "deleted " + id
+end
 
-  test("not with expressions", fn() {
-    assert_eq(!(1 == 2), true)
-    assert_eq(!(1 != 1), true)
-    assert_eq(!(5 > 3), false)
-  })
+def validate!
+  false
+end
 
-  test("double negation", fn() {
-    assert_eq(!!true, true)
-    assert_eq(!!false, false)
-  })
+def step_one!
+  1
+end
 
-  test("not with logical operators", fn() {
-    assert(!(true && false))
-    assert(!(false || false))
-    assert(!(true && true) == false)
-  })
+def step_two!
+  2
+end
 
-  test("not with function calls", fn() {
-    let non_empty = fn() { [
-      1,
-      2,
-      3
-    ] }
-    # non_empty().empty?() is false, so not false is true
-    assert(!non_empty().empty?())
-    # Double negation: not not false = false, which equals empty?() result
-    assert(non_empty().empty?() == !!non_empty().empty?())
-  })
-})
+def three_items
+  [1, 2, 3]
+end
 
-describe("Bang Suffix for Methods", fn() {
-  test("method names can end with bang", fn() {
-    def insert!
-      return "insert called"
+describe("Negation") do
+  context("with !") do
+    test("flips booleans") do
+      assert_eq(!true, false)
+      assert_eq(!false, true)
     end
 
-    let result = insert!()
-    assert_eq(result, "insert called")
-  })
-
-  test("bang method with parameters", fn() {
-    def delete!(id)
-      return "deleted " + id
+    test("nil negates to true") do
+      assert_eq(!nil, true)
     end
 
-    let result = delete!("123")
-    assert_eq(result, "deleted 123")
-  })
+    test("flips a variable") do
+      flag = true
+      assert_eq(!flag, false)
+      other = false
+      assert_eq(!other, true)
+    end
 
-  test("bang methods in classes", fn() {
-    class FileHelper
-      def save!
-        return "saved"
+    test("flips a parenthesized comparison") do
+      assert_eq(!(1 == 2), true)
+      assert_eq(!(1 != 1), true)
+      assert_eq(!(5 > 3), false)
+    end
+
+    test("double negation gives the truthiness as a Bool") do
+      assert_eq(!!true, true)
+      assert_eq(!!false, false)
+      assert_eq(!!"text", true)
+      assert_eq(!!nil, false)
+    end
+
+    test("flips a parenthesized logical expression") do
+      assert_eq(!(true && false), true)
+      assert_eq(!(false || false), true)
+      assert_eq(!(true && true), false)
+    end
+
+    test("applies to a call result") do
+      assert_eq(!three_items().empty?, true)
+      assert_eq(!!three_items().empty?, false)
+    end
+  end
+
+  context("with not") do
+    test("flips booleans and nil like !") do
+      assert_eq(not true, false)
+      assert_eq(not false, true)
+      assert_eq(not nil, true)
+    end
+
+    test("gives the same result as ! for every value") do
+      values = [true, false, nil, 0, 1, "", "a", [], [1], {}, 0.0]
+      values.each do |value|
+        assert_eq(not value, !value)
       end
+    end
 
-      def delete!
-        return "deleted"
+    test("not not gives the truthiness as a Bool") do
+      assert_eq(not not 0, false)
+      assert_eq(not not "a", true)
+    end
+  end
+
+  context("precedence") do
+    test("! binds tighter than ==") do
+      # (!1) == 2 is false; !(1 == 2) would be true
+      assert_eq(!1 == 2, false)
+    end
+
+    test("not binds as tightly as !, unlike Ruby's low-precedence not") do
+      # (not 1) == 2 is false; not (1 == 2) would be true
+      assert_eq(not 1 == 2, false)
+      # (not true) && false is false; not (true && false) would be true
+      assert_eq(not true && false, false)
+      assert_eq(!true && false, false)
+    end
+
+    test("so a negated comparison needs parentheses") do
+      x = 5
+      assert_raises("Cannot compare bool and int") do
+        !x > 3
       end
+      assert_raises("Cannot compare bool and int") do
+        not x > 3
+      end
+      assert_eq(not (x > 3), false)
+    end
+  end
+
+  context("falsy values") do
+    test("empty string") do
+      assert_eq(!"", true)
+      assert_eq(!!"", false)
     end
 
-    let fh = new FileHelper()
-    assert_eq(fh.save!(), "saved")
-    assert_eq(fh.delete!(), "deleted")
-  })
-
-  test("multiple bang methods", fn() {
-    def fail!
-      return "failed"
-    end
-    def insert!
-      return "inserted"
-    end
-    def update!
-      return "updated"
-    end
-    def delete!
-      return "deleted"
+    test("zero") do
+      assert_eq(!0, true)
+      assert_eq(!!0, false)
     end
 
-    assert_eq(fail!(), "failed")
+    test("0.0 is truthy, unlike 0") do
+      assert_eq(!0.0, false)
+    end
+
+    test("empty array") do
+      assert_eq(![], true)
+      assert_eq(!![], false)
+    end
+
+    test("empty hash") do
+      assert_eq(!{}, true)
+      assert_eq(!!{}, false)
+    end
+  end
+end
+
+describe("Bang suffix on method names") do
+  test("a top-level function name can end with !") do
     assert_eq(insert!(), "inserted")
-    assert_eq(update!(), "updated")
-    assert_eq(delete!(), "deleted")
-  })
+  end
 
-  test("bang suffix with predicate", fn() {
-    def validate!
-      return false
-    end
+  test("with parameters") do
+    assert_eq(delete_record!("123"), "deleted 123")
+  end
 
+  test("on instance methods, called without parentheses") do
+    helper = new BangHelper()
+    assert_eq(helper.save!, "saved")
+    assert_eq(helper.delete!, "deleted")
+  end
+
+  test("the suffix is part of the name: a ! in front still negates") do
+    assert_eq(!insert!(), false)
+    assert_eq(!new BangHelper().valid?, false)
+  end
+
+  test("a bang method can return false") do
     assert_eq(validate!(), false)
-  })
-})
+  end
 
-describe("Not Keyword vs Bang Operator Equivalence", fn() {
-  test("not and ! produce same results", fn() {
-    let values = [true, false, null, 1 == 1, 1 != 2]
+  test("results of bang functions combine like any value") do
+    assert_eq(step_one!() + step_two!(), 3)
+  end
 
-    for v in values
-      assert_eq(!v, !v)
-    end
-  })
-
-  test("not and ! have same precedence", fn() {
-    let x = 5
-    # Test with explicit parentheses to ensure consistent behavior
-    let result1 = !(x > 3)
-    let result2 = !(x > 3)
-    assert_eq(result1, result2)
-
-    # Also test with boolean values directly
-    assert_eq(!true, !true)
-    assert_eq(!false, !false)
-  })
-})
-
-describe("Edge Cases", fn() {
-  test("not with empty string", fn() {
-    assert_eq(!"", true)
-    assert_eq(!!"", false)
-  })
-
-  test("not with zero", fn() {
-    assert_eq(!0, true)
-    assert_eq(!!0, false)
-  })
-
-  test("not with empty array", fn() {
-    assert_eq(![], true)
-    assert_eq(!![], false)
-  })
-
-  test("not with empty hash", fn() {
-    assert_eq(!{}, true)
-    assert_eq(!!{}, false)
-  })
-
-  test("chained bang methods", fn() {
-    def step1!
-      return 1
-    end
-    def step2!
-      return 2
-    end
-
-    let a = step1!()
-    let b = step2!()
-    assert_eq(a + b, 3)
-  })
-})
+  test("a name followed by != without spaces compares") do
+    # `count!=1` lexes as an assignment to a new name `count!`; Ruby reads it
+    # as `count != 1`.
+    pending("bug: `x!=1` assigns to `x!` instead of comparing")
+    count = 2
+    assert_eq(count!=1, true)
+  end
+end
