@@ -3,9 +3,8 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::scaffold::app_generator::write_file;
+use crate::scaffold::app_generator::{write_file, write_if_absent, write_migration_once};
 use crate::scaffold::templates::oidc;
 
 /// Generate the OIDC provider scaffold into the application at `folder`.
@@ -110,11 +109,11 @@ pub fn create_oidc_provider(folder: &str) -> Result<(), String> {
         write_if_absent(app_path, rel, contents)?;
     }
 
-    write_migration(
+    write_migration_once(
         app_path,
         "add_oauth_indexes",
         0,
-        oidc::oauth_indexes_migration,
+        &oidc::oauth_indexes_migration(),
     )?;
     add_routes(app_path)?;
 
@@ -142,52 +141,6 @@ fn ensure_directory_structure(app_path: &Path) -> Result<(), String> {
                 .map_err(|e| format!("Failed to create directory '{}': {}", path.display(), e))?;
         }
     }
-    Ok(())
-}
-
-/// Write `rel` under `app_path` unless it already exists (then warn + skip).
-fn write_if_absent(app_path: &Path, rel: &str, contents: &str) -> Result<(), String> {
-    let path = app_path.join(rel);
-    if path.exists() {
-        println!("  \x1b[33mskip\x1b[0m   {} (already exists)", rel);
-        return Ok(());
-    }
-    write_file(&path, contents)?;
-    println!("  \x1b[32mcreate\x1b[0m {}", rel);
-    Ok(())
-}
-
-/// Write a timestamped migration, skipping if one with the same name exists.
-///
-/// `offset` keeps migrations written in the same second ordered.
-fn write_migration(
-    app_path: &Path,
-    name: &str,
-    offset: u64,
-    body: fn() -> String,
-) -> Result<(), String> {
-    let migrations_dir = app_path.join("db/migrations");
-    if let Ok(entries) = fs::read_dir(&migrations_dir) {
-        for entry in entries.flatten() {
-            if entry.file_name().to_string_lossy().contains(name) {
-                println!(
-                    "  \x1b[33mskip\x1b[0m   db/migrations ({} migration already exists)",
-                    name
-                );
-                return Ok(());
-            }
-        }
-    }
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| format!("Failed to get timestamp: {}", e))?
-        .as_secs()
-        + offset;
-    let filename = format!("{}_{}.sl", timestamp, name);
-    let path = migrations_dir.join(&filename);
-    write_file(&path, &body())?;
-    println!("  \x1b[32mcreate\x1b[0m db/migrations/{}", filename);
     Ok(())
 }
 

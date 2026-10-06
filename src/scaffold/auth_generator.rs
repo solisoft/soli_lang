@@ -3,9 +3,8 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::scaffold::app_generator::write_file;
+use crate::scaffold::app_generator::{write_file, write_if_absent, write_migration_once};
 use crate::scaffold::templates::auth;
 
 /// Generate the auth scaffold into the application at `folder`.
@@ -89,8 +88,14 @@ pub fn create_auth(folder: &str) -> Result<(), String> {
         auth::REGISTRATIONS_NEW_VIEW,
     )?;
 
-    write_migration(app_path)?;
-    write_token_indexes_migration(app_path)?;
+    write_migration_once(app_path, "create_users", 0, &auth::users_migration())?;
+    // +1 orders it after a create_users migration written this second.
+    write_migration_once(
+        app_path,
+        "add_auth_token_indexes",
+        1,
+        &auth::auth_token_indexes_migration(),
+    )?;
     add_routes(app_path)?;
 
     Ok(())
@@ -119,76 +124,6 @@ fn ensure_directory_structure(app_path: &Path) -> Result<(), String> {
                 .map_err(|e| format!("Failed to create directory '{}': {}", path.display(), e))?;
         }
     }
-    Ok(())
-}
-
-/// Write `rel` under `app_path` unless it already exists (then warn + skip).
-fn write_if_absent(app_path: &Path, rel: &str, contents: &str) -> Result<(), String> {
-    let path = app_path.join(rel);
-    if path.exists() {
-        println!("  \x1b[33mskip\x1b[0m   {} (already exists)", rel);
-        return Ok(());
-    }
-    write_file(&path, contents)?;
-    println!("  \x1b[32mcreate\x1b[0m {}", rel);
-    Ok(())
-}
-
-/// Write a timestamped `create_users` migration (skips if one already exists).
-fn write_migration(app_path: &Path) -> Result<(), String> {
-    let migrations_dir = app_path.join("db/migrations");
-    // Don't add a second users migration if one is already present.
-    if let Ok(entries) = fs::read_dir(&migrations_dir) {
-        for entry in entries.flatten() {
-            if entry.file_name().to_string_lossy().contains("create_users") {
-                println!(
-                    "  \x1b[33mskip\x1b[0m   db/migrations (create_users migration already exists)"
-                );
-                return Ok(());
-            }
-        }
-    }
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| format!("Failed to get timestamp: {}", e))?
-        .as_secs();
-    let filename = format!("{}_create_users.sl", timestamp);
-    let path = migrations_dir.join(&filename);
-    write_file(&path, &auth::users_migration())?;
-    println!("  \x1b[32mcreate\x1b[0m db/migrations/{}", filename);
-    Ok(())
-}
-
-/// Write the token-index migration (skips if already present). Separate from
-/// `create_users` so apps generated before the Devise-style flows pick it up
-/// on a re-run.
-fn write_token_indexes_migration(app_path: &Path) -> Result<(), String> {
-    let migrations_dir = app_path.join("db/migrations");
-    if let Ok(entries) = fs::read_dir(&migrations_dir) {
-        for entry in entries.flatten() {
-            if entry
-                .file_name()
-                .to_string_lossy()
-                .contains("add_auth_token_indexes")
-            {
-                println!(
-                    "  \x1b[33mskip\x1b[0m   db/migrations (add_auth_token_indexes migration already exists)"
-                );
-                return Ok(());
-            }
-        }
-    }
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| format!("Failed to get timestamp: {}", e))?
-        .as_secs();
-    // +1 keeps it ordered after a create_users migration written this second.
-    let filename = format!("{}_add_auth_token_indexes.sl", timestamp + 1);
-    let path = migrations_dir.join(&filename);
-    write_file(&path, &auth::auth_token_indexes_migration())?;
-    println!("  \x1b[32mcreate\x1b[0m db/migrations/{}", filename);
     Ok(())
 }
 

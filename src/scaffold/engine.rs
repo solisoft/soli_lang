@@ -16,6 +16,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::scaffold::ui::Spinner;
+use crate::scaffold::utils::to_pascal_case;
 
 /// Create a new engine with the given name
 pub fn create_engine(name: &str) -> Result<(), String> {
@@ -190,24 +191,6 @@ fn up(db: Any) -> Any {{
         .map_err(|e| format!("Failed to create placeholder migration: {}", e))?;
 
     Ok(())
-}
-
-fn to_pascal_case(s: &str) -> String {
-    let mut result = String::new();
-    let mut capitalize_next = true;
-
-    for c in s.chars() {
-        if c == '_' || c == '-' {
-            capitalize_next = true;
-        } else if capitalize_next {
-            result.push(c.to_ascii_uppercase());
-            capitalize_next = false;
-        } else {
-            result.push(c);
-        }
-    }
-
-    result
 }
 
 #[cfg(test)]

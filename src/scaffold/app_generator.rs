@@ -4,6 +4,7 @@ use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::scaffold::templates::{self, agents, app, bundled_docs};
 use crate::scaffold::ui::{ProgressDisplay, Spinner};
@@ -64,6 +65,85 @@ pub fn write_file(path: &Path, content: &str) -> Result<(), String> {
         File::create(path).map_err(|e| format!("Failed to create '{}': {}", path.display(), e))?;
     file.write_all(bytes)
         .map_err(|e| format!("Failed to write to '{}': {}", path.display(), e))?;
+    Ok(())
+}
+
+/// Create `app_path/rel` with `contents` unless it exists, printing the
+/// scaffold's `create` / `skip` line. Generators re-run on an existing app.
+pub(crate) fn write_if_absent(app_path: &Path, rel: &str, contents: &str) -> Result<(), String> {
+    let path = app_path.join(rel);
+    if path.exists() {
+        println!("  \x1b[33mskip\x1b[0m   {} (already exists)", rel);
+        return Ok(());
+    }
+    write_file(&path, contents)?;
+    println!("  \x1b[32mcreate\x1b[0m {}", rel);
+    Ok(())
+}
+
+/// Write `db/migrations/<now + offset>_<name>.sl` unless a migration whose
+/// file name contains `name` is already there. `offset` orders migrations a
+/// generator writes within the same second.
+pub(crate) fn write_migration_once(
+    app_path: &Path,
+    name: &str,
+    offset: u64,
+    contents: &str,
+) -> Result<(), String> {
+    let migrations_dir = app_path.join("db/migrations");
+    if let Ok(entries) = fs::read_dir(&migrations_dir) {
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().contains(name) {
+                println!(
+                    "  \x1b[33mskip\x1b[0m   db/migrations ({} migration already exists)",
+                    name
+                );
+                return Ok(());
+            }
+        }
+    }
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("Failed to get timestamp: {}", e))?
+        .as_secs()
+        + offset;
+    let filename = format!("{}_{}.sl", timestamp, name);
+    write_file(&migrations_dir.join(&filename), contents)?;
+    println!("  \x1b[32mcreate\x1b[0m db/migrations/{}", filename);
+    Ok(())
+}
+
+/// Append `snippet` to `config/routes.sl` unless the file already contains
+/// `marker`; `label` names the feature in the `skip` line.
+pub(crate) fn append_routes_once(
+    app_path: &Path,
+    marker: &str,
+    snippet: &str,
+    label: &str,
+) -> Result<(), String> {
+    let routes_file = app_path.join("config/routes.sl");
+    let mut content = if routes_file.exists() {
+        fs::read_to_string(&routes_file)
+            .map_err(|e| format!("Failed to read routes file: {}", e))?
+    } else {
+        String::new()
+    };
+
+    if content.contains(marker) {
+        println!(
+            "  \x1b[33mskip\x1b[0m   config/routes.sl ({} routes already present)",
+            label
+        );
+        return Ok(());
+    }
+
+    if !content.ends_with('\n') && !content.is_empty() {
+        content.push('\n');
+    }
+    content.push_str(snippet);
+    write_file(&routes_file, &content)?;
+    println!("  \x1b[32mupdate\x1b[0m config/routes.sl");
     Ok(())
 }
 

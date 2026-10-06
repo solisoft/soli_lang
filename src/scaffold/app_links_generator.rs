@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::scaffold::app_generator::write_file;
+use crate::scaffold::app_generator::{append_routes_once, write_file};
 use crate::scaffold::templates::app_links_gen;
 
 pub struct AppLinksOptions {
@@ -69,30 +69,12 @@ pub fn create_app_links(folder: &str, opts: &AppLinksOptions) -> Result<(), Stri
         println!("  \x1b[32mcreate\x1b[0m {}", rel);
     }
 
-    add_routes(app_path)?;
-    Ok(())
-}
-
-fn add_routes(app_path: &Path) -> Result<(), String> {
-    let routes_file = app_path.join("config/routes.sl");
-    let mut content = if routes_file.exists() {
-        fs::read_to_string(&routes_file)
-            .map_err(|e| format!("Failed to read routes file: {}", e))?
-    } else {
-        String::new()
-    };
-
-    if content.contains(app_links_gen::ROUTES_MARKER) {
-        println!("  \x1b[33mskip\x1b[0m   config/routes.sl (app_links routes already present)");
-        return Ok(());
-    }
-
-    if !content.ends_with('\n') && !content.is_empty() {
-        content.push('\n');
-    }
-    content.push_str(&app_links_gen::routes_snippet());
-    write_file(&routes_file, &content)?;
-    println!("  \x1b[32mupdate\x1b[0m config/routes.sl");
+    append_routes_once(
+        app_path,
+        app_links_gen::ROUTES_MARKER,
+        &app_links_gen::routes_snippet(),
+        "app_links",
+    )?;
     Ok(())
 }
 

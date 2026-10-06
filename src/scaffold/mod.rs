@@ -51,33 +51,11 @@ impl FieldDefinition {
     }
 
     pub fn to_snake_case(&self) -> String {
-        let mut result = String::new();
-        for (i, c) in self.name.chars().enumerate() {
-            if c.is_uppercase() {
-                if i > 0 {
-                    result.push('_');
-                }
-                result.push(c.to_ascii_lowercase());
-            } else {
-                result.push(c);
-            }
-        }
-        result
+        utils::to_snake_case(&self.name)
     }
 
     pub fn to_title_case(&self) -> String {
-        let snake = self.to_snake_case();
-        snake
-            .split('_')
-            .map(|word| {
-                let mut chars = word.chars();
-                match chars.next() {
-                    Some(c) => c.to_ascii_uppercase().to_string() + chars.as_str(),
-                    None => String::new(),
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" ")
+        utils::to_title_case(&self.name)
     }
 }
 

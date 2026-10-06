@@ -5,9 +5,8 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::scaffold::app_generator::write_file;
+use crate::scaffold::app_generator::{append_routes_once, write_if_absent, write_migration_once};
 use crate::scaffold::templates::oauth;
 
 /// Supported providers.
@@ -105,8 +104,18 @@ pub fn create_oauth(folder: &str, provider: &str) -> Result<(), String> {
     )?;
     warn_if_controller_is_hardcoded(app_path);
 
-    write_migration(app_path)?;
-    add_routes(app_path)?;
+    write_migration_once(
+        app_path,
+        "create_oauth_identities",
+        0,
+        &oauth::identities_migration(),
+    )?;
+    append_routes_once(
+        app_path,
+        oauth::ROUTES_MARKER,
+        &oauth::routes_snippet(),
+        "oauth",
+    )?;
     print_success(provider);
     Ok(())
 }
@@ -124,67 +133,6 @@ fn warn_if_controller_is_hardcoded(app_path: &Path) {
             );
         }
     }
-}
-
-fn write_if_absent(app_path: &Path, rel: &str, contents: &str) -> Result<(), String> {
-    let path = app_path.join(rel);
-    if path.exists() {
-        println!("  \x1b[33mskip\x1b[0m   {rel} (already exists)");
-        return Ok(());
-    }
-    write_file(&path, contents)?;
-    println!("  \x1b[32mcreate\x1b[0m {rel}");
-    Ok(())
-}
-
-fn write_migration(app_path: &Path) -> Result<(), String> {
-    let migrations_dir = app_path.join("db/migrations");
-    if let Ok(entries) = fs::read_dir(&migrations_dir) {
-        for entry in entries.flatten() {
-            if entry
-                .file_name()
-                .to_string_lossy()
-                .contains("create_oauth_identities")
-            {
-                println!(
-                    "  \x1b[33mskip\x1b[0m   db/migrations (create_oauth_identities already exists)"
-                );
-                return Ok(());
-            }
-        }
-    }
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| format!("Failed to get timestamp: {e}"))?
-        .as_secs();
-    let filename = format!("{timestamp}_create_oauth_identities.sl");
-    let path = migrations_dir.join(&filename);
-    write_file(&path, &oauth::identities_migration())?;
-    println!("  \x1b[32mcreate\x1b[0m db/migrations/{filename}");
-    Ok(())
-}
-
-fn add_routes(app_path: &Path) -> Result<(), String> {
-    let routes_file = app_path.join("config/routes.sl");
-    let mut content = if routes_file.exists() {
-        fs::read_to_string(&routes_file).map_err(|e| format!("Failed to read routes file: {e}"))?
-    } else {
-        String::new()
-    };
-
-    if content.contains(oauth::ROUTES_MARKER) {
-        println!("  \x1b[33mskip\x1b[0m   config/routes.sl (oauth routes already present)");
-        return Ok(());
-    }
-
-    if !content.ends_with('\n') && !content.is_empty() {
-        content.push('\n');
-    }
-    content.push_str(&oauth::routes_snippet());
-    write_file(&routes_file, &content)?;
-    println!("  \x1b[32mupdate\x1b[0m config/routes.sl");
-    Ok(())
 }
 
 fn print_success(provider: &str) {

@@ -2,9 +2,8 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::scaffold::app_generator::write_file;
+use crate::scaffold::app_generator::{append_routes_once, write_if_absent, write_migration_once};
 use crate::scaffold::templates::offline;
 
 pub fn create_offline(folder: &str) -> Result<(), String> {
@@ -48,69 +47,18 @@ pub fn create_offline(folder: &str) -> Result<(), String> {
         "public/js/soli_outbox.js",
         offline::CLIENT_OUTBOX_JS,
     )?;
-    write_migration(app_path)?;
-    add_routes(app_path)?;
-    Ok(())
-}
-
-fn write_if_absent(app_path: &Path, rel: &str, contents: &str) -> Result<(), String> {
-    let path = app_path.join(rel);
-    if path.exists() {
-        println!("  \x1b[33mskip\x1b[0m   {} (already exists)", rel);
-        return Ok(());
-    }
-    write_file(&path, contents)?;
-    println!("  \x1b[32mcreate\x1b[0m {}", rel);
-    Ok(())
-}
-
-fn write_migration(app_path: &Path) -> Result<(), String> {
-    let migrations_dir = app_path.join("db/migrations");
-    if let Ok(entries) = fs::read_dir(&migrations_dir) {
-        for entry in entries.flatten() {
-            if entry
-                .file_name()
-                .to_string_lossy()
-                .contains("create_sync_events")
-            {
-                println!(
-                    "  \x1b[33mskip\x1b[0m   db/migrations (create_sync_events already exists)"
-                );
-                return Ok(());
-            }
-        }
-    }
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| format!("Failed to get timestamp: {}", e))?
-        .as_secs();
-    let filename = format!("{}_create_sync_events.sl", timestamp);
-    write_file(
-        &migrations_dir.join(&filename),
+    write_migration_once(
+        app_path,
+        "create_sync_events",
+        0,
         &offline::sync_events_migration(),
     )?;
-    println!("  \x1b[32mcreate\x1b[0m db/migrations/{}", filename);
-    Ok(())
-}
-
-fn add_routes(app_path: &Path) -> Result<(), String> {
-    let routes_file = app_path.join("config/routes.sl");
-    let mut content = if routes_file.exists() {
-        fs::read_to_string(&routes_file)
-            .map_err(|e| format!("Failed to read routes file: {}", e))?
-    } else {
-        String::new()
-    };
-    if content.contains(offline::ROUTES_MARKER) {
-        println!("  \x1b[33mskip\x1b[0m   config/routes.sl (offline routes already present)");
-        return Ok(());
-    }
-    if !content.ends_with('\n') && !content.is_empty() {
-        content.push('\n');
-    }
-    content.push_str(&offline::routes_snippet());
-    write_file(&routes_file, &content)?;
-    println!("  \x1b[32mupdate\x1b[0m config/routes.sl");
+    append_routes_once(
+        app_path,
+        offline::ROUTES_MARKER,
+        &offline::routes_snippet(),
+        "offline",
+    )?;
     Ok(())
 }
 
