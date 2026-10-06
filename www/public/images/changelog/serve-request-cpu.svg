@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 474" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" role="img" aria-label="Requests per CPU-second on a plaintext route: v2.17.1 76491, with the two per-request fixes 78859, with middleware on the VM 80772, at 256 connections; and where a request's CPU went in 2.17.1">
+<rect width="920" height="474" fill="#0b0d0f"/>
+<style>.t{fill:#f3f4f6;font-size:15px;font-weight:700}.l{fill:#9ca3af;font-size:12px}.s{fill:#6b7280;font-size:11px}.v{fill:#e5e7eb;font-size:12px;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.d{font-size:11px;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}</style>
+<text class="t" x="20" y="32">Requests per CPU-second — <tspan fill="#67e8f9" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="14">soli serve</tspan>, plaintext route</text>
+<text class="s" x="20" y="52">Fresh <tspan fill="#67e8f9">soli new</tspan> app, 4 workers on 4 cores of a Ryzen 9 9950X; oha on 4 others. Median of 2–3 interleaved rounds, each free of any other build. Higher is better.</text>
+<text class="l" x="20" y="90" font-weight="600" fill="#e5e7eb">256 connections</text>
+<text class="s" x="220" y="111" text-anchor="end">v2.17.1</text>
+<rect x="230" y="100" width="491.0" height="16" rx="4" fill="#4b5563"/>
+<text class="v" x="729.0" y="112">76.5k</text>
+<text class="s" x="220" y="135" text-anchor="end">+ two per-request costs skipped</text>
+<rect x="230" y="124" width="506.2" height="16" rx="4" fill="#22d3ee"/>
+<text class="v" x="744.2" y="136">78.9k</text>
+<text class="d" x="794.2" y="136" fill="#22d3ee">+3.1%</text>
+<text class="s" x="220" y="159" text-anchor="end">+ middleware on the VM</text>
+<rect x="230" y="148" width="518.5" height="16" rx="4" fill="#34d399"/>
+<text class="v" x="756.5" y="160">80.8k</text>
+<text class="d" x="806.5" y="160" fill="#34d399">+5.6%</text>
+<text class="l" x="20" y="200" font-weight="600" fill="#e5e7eb">16 connections</text>
+<text class="s" x="220" y="221" text-anchor="end">v2.17.1</text>
+<rect x="230" y="210" width="413.9" height="16" rx="4" fill="#4b5563"/>
+<text class="v" x="651.9" y="222">64.5k</text>
+<text class="s" x="220" y="245" text-anchor="end">+ two per-request costs skipped</text>
+<rect x="230" y="234" width="429.8" height="16" rx="4" fill="#22d3ee"/>
+<text class="v" x="667.8" y="246">67.0k</text>
+<text class="d" x="717.8" y="246" fill="#22d3ee">+3.8%</text>
+<text class="s" x="220" y="269" text-anchor="end">+ middleware on the VM</text>
+<rect x="230" y="258" width="444.3" height="16" rx="4" fill="#34d399"/>
+<text class="v" x="682.3" y="270">69.2k</text>
+<text class="d" x="732.3" y="270" fill="#34d399">+7.3%</text>
+<line x1="20" y1="304" x2="900" y2="304" stroke="#1f2937"/>
+<text class="t" x="20" y="332">Where a request's CPU went in 2.17.1</text>
+<text class="s" x="20" y="352">perf profile under load, share of all CPU. Hatched: moved to the VM. Also gone: 2.5% of path re-keying and asset lookups spread over the action, middleware and request path.</text>
+<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#0b0d0f" stroke-width="2"/></pattern></defs>
+<rect x="20.0" y="368" width="290.4" height="26" rx="3" fill="#374151"/>
+<rect x="312.4" y="368" width="166.4" height="26" rx="3" fill="#4b5563"/>
+<rect x="480.8" y="368" width="139.8" height="26" rx="3" fill="#0e7490"/>
+<rect x="622.6" y="368" width="84.0" height="26" rx="3" fill="#065f46"/>
+<rect x="708.6" y="368" width="69.8" height="26" rx="3" fill="#34d399"/>
+<rect x="708.6" y="368" width="69.8" height="26" rx="3" fill="url(#hatch)"/>
+<rect x="780.4" y="368" width="37.0" height="26" rx="3" fill="#047857"/>
+<rect x="819.4" y="368" width="78.6" height="26" rx="3" fill="#1f2937"/>
+<rect x="20.0" y="410" width="12" height="12" rx="2" fill="#374151"/>
+<text class="s" x="38.0" y="420" fill="#9ca3af">Kernel TCP <tspan class="v" font-size="11">33%</tspan></text>
+<rect x="240.0" y="410" width="12" height="12" rx="2" fill="#4b5563"/>
+<text class="s" x="258.0" y="420" fill="#9ca3af">hyper + tokio <tspan class="v" font-size="11">19%</tspan></text>
+<rect x="460.0" y="410" width="12" height="12" rx="2" fill="#0e7490"/>
+<text class="s" x="478.0" y="420" fill="#9ca3af">Soli request path <tspan class="v" font-size="11">16%</tspan></text>
+<rect x="680.0" y="410" width="12" height="12" rx="2" fill="#065f46"/>
+<text class="s" x="698.0" y="420" fill="#9ca3af">action <tspan class="v" font-size="11">9.7%</tspan></text>
+<rect x="20.0" y="432" width="12" height="12" rx="2" fill="#34d399"/>
+<rect x="20.0" y="432" width="12" height="12" rx="2" fill="url(#hatch)"/>
+<text class="s" x="38.0" y="442" fill="#e5e7eb">middleware, tree-walker <tspan class="v" font-size="11">8.1%</tspan></text>
+<rect x="240.0" y="432" width="12" height="12" rx="2" fill="#047857"/>
+<text class="s" x="258.0" y="442" fill="#9ca3af">request hash <tspan class="v" font-size="11">4.4%</tspan></text>
+<rect x="460.0" y="432" width="12" height="12" rx="2" fill="#1f2937"/>
+<text class="s" x="478.0" y="442" fill="#9ca3af">rest of the worker <tspan class="v" font-size="11">9.1%</tspan></text>
+</svg>
