@@ -1,13 +1,11 @@
-# ============================================================================
 # Polymorphic associations:
 #   belongs_to "commentable", polymorphic: true    (child: {name}_id + {name}_type)
 #   has_many "comments", as: "commentable"          (type-guarded inverse)
-# The child accessor resolves the target class/collection from the type field
-# at runtime. Eager-loading a polymorphic belongs_to raises (per-row dynamic
-# collections don't fit one query) — the as: inverse eager-loads fine.
-# DSL-validation and .to_query assertions run without a database; behavior
-# is gated behind the DB availability probe.
-# ============================================================================
+# The child accessor resolves the target class from the type field at runtime.
+# Eager-loading a polymorphic belongs_to raises (the collection varies per
+# row); the as: inverse eager-loads fine. `delete()` keeps its parentheses:
+# the bare form skips dependent cascades (see model_dependent_spec.sl).
+
 class PolyComment < Model
   belongs_to(
     "poly_commentable",
@@ -48,283 +46,197 @@ end
 class PolyDslProbe < Model
 end
 
-# Detect DB availability
-let __db_available = false
-try
-  let __probe = PolyPost.create({"title": "__probe__"})
-  if !__probe.nil? && !__probe._errors
-    __db_available = true
-    __probe.delete()
-  end
-catch e
-  __db_available = false
+const NOT_EAGER = "a polymorphic belongs_to can't be eager-loaded or join-filtered"
+
+# The SDBQL text of a builder, without the bind-variable dump that follows it.
+def query_of(builder)
+  builder.to_query.split(" | bind_vars:")[0]
 end
 
-describe("polymorphic DSL validation", fn() {
-  test("polymorphic: true on has_many raises", fn() {
-    let raised = false
-    try
+def comment_on(parent, body)
+  PolyComment.create({"body": body, "poly_commentable_id": parent._key, "poly_commentable_type": parent.class})
+end
+
+describe("polymorphic DSL validation") do
+  test("polymorphic: true on has_many is refused") do
+    assert_raises("`polymorphic:` is only supported on belongs_to relations") do
       PolyDslProbe.has_many("poly_things", {"polymorphic": true})
-    catch e
-      raised = true
-      assert(str(e).includes?("belongs_to"))
     end
-    assert(raised)
-  })
+  end
 
-  test("as: on belongs_to raises", fn() {
-    let raised = false
-    try
+  test("as: on belongs_to is refused") do
+    assert_raises("`as:` is only supported on has_many/has_one relations") do
       PolyDslProbe.belongs_to("poly_thing", {"as": "poly_taggable"})
-    catch e
-      raised = true
-      assert(str(e).includes?("has_many/has_one"))
     end
-    assert(raised)
-  })
+  end
 
-  test("polymorphic: true with class_name raises", fn() {
-    let raised = false
-    try
-      PolyDslProbe.belongs_to(
-        "poly_ref",
-        {"polymorphic": true, "class_name": "PolyPost"}
-      )
-    catch e
-      raised = true
-      assert(str(e).includes?("class_name"))
+  test("polymorphic: true with class_name is refused") do
+    assert_raises("`polymorphic: true` cannot be combined with `class_name:`") do
+      PolyDslProbe.belongs_to("poly_ref", {"polymorphic": true, "class_name": "PolyPost"})
     end
-    assert(raised)
-  })
+  end
 
-  test("polymorphic: with a non-boolean raises", fn() {
-    let raised = false
-    try
+  test("polymorphic: with a non-boolean is refused") do
+    assert_raises("`polymorphic:` expects true or false") do
       PolyDslProbe.belongs_to("poly_ref2", {"polymorphic": "yes"})
-    catch e
-      raised = true
-      assert(str(e).includes?("true or false"))
     end
-    assert(raised)
-  })
-})
+  end
+end
 
-describe("polymorphic query shapes", fn() {
-  test("the as: inverse carries the type guard", fn() {
-    if __db_available
-      let post = PolyPost.create({"title": "shape probe"})
-      let q = post.poly_comments.to_query
-      assert(q.includes?("poly_commentable_id == @__rel_fk"))
-      assert(q.includes?("poly_commentable_type == @__rel_type"))
-      post.delete()
-    end
-  })
+describe("polymorphic query shapes") do
+  test("includes of an as: relation carries the type guard in the subquery") do
+    expected = "FOR doc IN poly_posts LET _rel_poly_comments = (FOR rel IN poly_comments " +
+      "FILTER rel.poly_commentable_id == doc._key AND rel.poly_commentable_type == \"PolyPost\" RETURN rel) " +
+      "RETURN MERGE(doc, {poly_comments: _rel_poly_comments})"
+    assert_eq(query_of(PolyPost.includes("poly_comments")), expected)
+  end
 
-  test("includes of an as: relation carries the type guard in the subquery", fn() {
-    let q = PolyPost.includes("poly_comments").to_query
-    assert(q.includes?("rel.poly_commentable_id == doc._key"))
-    assert(q.includes?("rel.poly_commentable_type == \"PolyPost\""))
-  })
-
-  test("eager-loading a polymorphic belongs_to raises", fn() {
-    let raised = false
-    try
+  test("eager-loading a polymorphic belongs_to is refused") do
+    assert_raises(NOT_EAGER) do
       PolyComment.includes("poly_commentable")
-    catch e
-      raised = true
-      assert(str(e).includes?("polymorphic"))
     end
-    assert(raised)
-  })
+  end
 
-  test("joining on a polymorphic belongs_to raises", fn() {
-    let raised = false
-    try
+  test("joining on a polymorphic belongs_to is refused") do
+    assert_raises(NOT_EAGER) do
       PolyComment.join("poly_commentable")
-    catch e
-      raised = true
-      assert(str(e).includes?("polymorphic"))
     end
-    assert(raised)
-  })
-})
+  end
+end
 
-describe("polymorphic runtime behavior", fn() {
-  test("the child accessor returns the right class per row", fn() {
-    if __db_available
-      let post = PolyPost.create({"title": "a post"})
-      let photo = PolyPhoto.create({"caption": "a photo"})
-      let on_post = PolyComment.create({
-        "body": "on the post",
-        "poly_commentable_id": post._key,
-        "poly_commentable_type": "PolyPost"
-      })
-      let on_photo = PolyComment.create({
-        "body": "on the photo",
-        "poly_commentable_id": photo._key,
-        "poly_commentable_type": "PolyPhoto"
-      })
+describe("polymorphic runtime behavior") do
+  before_each() do
+    requires_solidb()
+  end
 
-      assert_eq(on_post.poly_commentable.title, "a post")
-      assert_eq(on_photo.poly_commentable.caption, "a photo")
-
-      on_post.delete()
-      on_photo.delete()
-      post.delete()
-      photo.delete()
+  after_each() do
+    [PolyComment, PolyPost, PolyPhoto, PolyProduct, PolyImage, PolyNullifyOwner, PolyTag].each do |model|
+      model.delete_all()
     end
-  })
+  end
 
-  test("the accessor returns null when type or id is missing", fn() {
-    if __db_available
-      let orphan = PolyComment.create({"body": "unattached"})
-      assert_null(orphan.poly_commentable)
-      orphan.delete()
+  test("the as: inverse binds the owner's key and class") do
+    post = PolyPost.create({"title": "shape probe"})
+    query = post.poly_comments.to_query
+    assert_contains(query, "FILTER doc.poly_commentable_id == @__rel_fk AND doc.poly_commentable_type == @__rel_type")
+    bind_vars = query.split(" | bind_vars:")[1]
+    assert_contains(bind_vars, "PolyPost")
+    assert_contains(bind_vars, post._key)
+  end
+
+  test("the child accessor returns the right class per row") do
+    post = PolyPost.create({"title": "a post"})
+    photo = PolyPhoto.create({"caption": "a photo"})
+    on_post = comment_on(post, "on the post")
+    on_photo = comment_on(photo, "on the photo")
+
+    assert(on_post.poly_commentable.is_a?("PolyPost"))
+    assert_eq(on_post.poly_commentable.title, "a post")
+    assert(on_photo.poly_commentable.is_a?("PolyPhoto"))
+    assert_eq(on_photo.poly_commentable.caption, "a photo")
+  end
+
+  test("the accessor returns nil when type or id is missing") do
+    assert_null(PolyComment.create({"body": "unattached"}).poly_commentable)
+    assert_null(PolyComment.create({"body": "no type", "poly_commentable_id": "k"}).poly_commentable)
+  end
+
+  test("an unknown type string raises naming it") do
+    bad = PolyComment.create({"body": "bad", "poly_commentable_id": "whatever", "poly_commentable_type": "NoSuchClass"})
+    assert_raises("poly_commentable_type == \"NoSuchClass\" does not name a known model class") do
+      bad.poly_commentable
     end
-  })
+  end
 
-  test("an unknown type string raises naming it", fn() {
-    if __db_available
-      let bad = PolyComment.create({
-        "body": "bad type",
-        "poly_commentable_id": "whatever",
-        "poly_commentable_type": "NoSuchClass"
-      })
-      let raised = false
-      try
-        bad.poly_commentable
-      catch e
-        raised = true
-        assert(str(e).includes?("NoSuchClass"))
-      end
-      assert(raised)
-      bad.delete()
-    end
-  })
+  test("the inverse sees only its own typed children") do
+    post = PolyPost.create({"title": "p"})
+    photo = PolyPhoto.create({"caption": "ph"})
+    comment_on(post, "c1")
+    comment_on(photo, "c2")
+    # Same key on a different type: only the type guard separates them.
+    PolyComment.create({"body": "c3", "poly_commentable_id": post._key, "poly_commentable_type": "PolyPhoto"})
 
-  test("the inverse sees only its own typed children", fn() {
-    if __db_available
-      let post = PolyPost.create({"title": "p"})
-      let photo = PolyPhoto.create({"caption": "ph"})
-      # Same parent key shape on purpose: only the type guard separates them.
-      PolyComment.create({
-        "body": "c1",
-        "poly_commentable_id": post._key,
-        "poly_commentable_type": "PolyPost"
-      })
-      PolyComment.create({
-        "body": "c2",
-        "poly_commentable_id": photo._key,
-        "poly_commentable_type": "PolyPhoto"
-      })
+    assert_eq(post.poly_comments.all.map { |comment| comment.body }, ["c1"])
+    assert_eq(photo.poly_comments.all.map { |comment| comment.body }, ["c2"])
+  end
 
-      assert_eq(post.poly_comments.count(), 1)
-      assert_eq(photo.poly_comments.count(), 1)
+  test("includes loads only the owner's typed children") do
+    post = PolyPost.create({"title": "eager"})
+    comment_on(post, "mine")
+    PolyComment.create({"body": "other type", "poly_commentable_id": post._key, "poly_commentable_type": "PolyPhoto"})
+    loaded = PolyPost.includes("poly_comments").first
+    assert_eq(loaded.poly_comments.map { |comment| comment["body"] }, ["mine"])
+  end
 
-      PolyComment.where("poly_commentable_type != @x", {"x": ""}).delete_all()
-      post.delete()
-      photo.delete()
-    end
-  })
+  test("has_one with as: resolves through the type guard") do
+    product = PolyProduct.create({"name": "widget"})
+    PolyImage.create({"url": "/w.png", "poly_imageable_id": product._key, "poly_imageable_type": "PolyProduct"})
+    assert_eq(product.poly_image.url, "/w.png")
+    assert_null(PolyProduct.create({"name": "bare"}).poly_image)
+  end
 
-  test("has_one with as: resolves through the type guard", fn() {
-    if __db_available
-      let product = PolyProduct.create({"name": "widget"})
-      PolyImage.create({
-        "url": "/w.png",
-        "poly_imageable_id": product._key,
-        "poly_imageable_type": "PolyProduct"
-      })
-      assert_eq(product.poly_image.url, "/w.png")
-      PolyImage.where("poly_imageable_id == @k", {"k": product._key}).delete_all()
-      product.delete()
-    end
-  })
-
-  test("counter caches bump per parent type", fn() {
-    if __db_available
-      let post = PolyPost.create({"title": "counted post"})
-      let photo = PolyPhoto.create({"caption": "counted photo"})
-      let c1 = PolyComment.create({
-        "body": "1",
-        "poly_commentable_id": post._key,
-        "poly_commentable_type": "PolyPost"
-      })
-      let c2 = PolyComment.create({
-        "body": "2",
-        "poly_commentable_id": post._key,
-        "poly_commentable_type": "PolyPost"
-      })
-      let c3 = PolyComment.create({
-        "body": "3",
-        "poly_commentable_id": photo._key,
-        "poly_commentable_type": "PolyPhoto"
-      })
-
+  describe("counter caches") do
+    test("each parent type counts its own children") do
+      post = PolyPost.create({"title": "counted post"})
+      photo = PolyPhoto.create({"caption": "counted photo"})
+      comment_on(post, "1")
+      comment_on(post, "2")
+      comment_on(photo, "3")
       assert_eq(PolyPost.find(post._key).poly_comments_count, 2)
       assert_eq(PolyPhoto.find(photo._key).poly_comments_count, 1)
+    end
 
-      # Retargeting across TYPES moves the count between collections.
-      c2.poly_commentable_id = photo._key
-      c2.poly_commentable_type = "PolyPhoto"
-      c2.save()
-      assert_eq(PolyPost.find(post._key).poly_comments_count, 1)
-      assert_eq(PolyPhoto.find(photo._key).poly_comments_count, 2)
-
-      c3.delete()
+    test("retargeting across types moves the count between collections") do
+      post = PolyPost.create({"title": "from"})
+      photo = PolyPhoto.create({"caption": "to"})
+      moved = comment_on(post, "moves")
+      moved.poly_commentable_id = photo._key
+      moved.poly_commentable_type = "PolyPhoto"
+      moved.save
+      assert_eq(PolyPost.find(post._key).poly_comments_count, 0)
       assert_eq(PolyPhoto.find(photo._key).poly_comments_count, 1)
+    end
 
-      # reset_counters recounts with the type guard.
+    test("delete decrements the owner's count") do
+      photo = PolyPhoto.create({"caption": "shrinks"})
+      comment_on(photo, "stays")
+      comment_on(photo, "goes").delete
+      assert_eq(PolyPhoto.find(photo._key).poly_comments_count, 1)
+    end
+
+    test("reset_counters recounts with the type guard") do
+      post = PolyPost.create({"title": "recount"})
+      comment_on(post, "real")
+      PolyComment.create({"body": "other type", "poly_commentable_id": post._key, "poly_commentable_type": "PolyPhoto"})
       PolyPost.update(post._key, {"poly_comments_count": 42})
       assert_eq(PolyPost.reset_counters(post._key, "poly_comments"), 1)
-
-      c1.delete()
-      c2.delete()
-      post.delete()
-      photo.delete()
+      assert_eq(PolyPost.find(post._key).poly_comments_count, 1)
     end
-  })
+  end
 
-  test("dependent: delete_all on an as: relation removes only own children", fn() {
-    if __db_available
-      let post = PolyPost.create({"title": "cascading"})
-      let photo = PolyPhoto.create({"caption": "surviving"})
-      PolyComment.create({
-        "body": "goes",
-        "poly_commentable_id": post._key,
-        "poly_commentable_type": "PolyPost"
-      })
-      let survivor = PolyComment.create({
-        "body": "stays",
-        "poly_commentable_id": photo._key,
-        "poly_commentable_type": "PolyPhoto"
-      })
+  describe("dependent cascades") do
+    test("delete_all on an as: relation removes only the owner's children") do
+      post = PolyPost.create({"title": "cascading"})
+      photo = PolyPhoto.create({"caption": "surviving"})
+      comment_on(post, "goes")
+      survivor = comment_on(photo, "stays")
 
       post.delete()
 
-      assert_eq(PolyComment.where("poly_commentable_type == @t", {"t": "PolyPost"}).count(), 0)
-      assert_not_null(PolyComment.find_by("_key", survivor._key))
-
-      survivor.delete()
-      photo.delete()
+      assert_eq(PolyComment.where("poly_commentable_type == @t", {"t": "PolyPost"}).count, 0)
+      assert_eq(PolyComment.find_by("_key", survivor._key).body, "stays")
     end
-  })
 
-  test("dependent: nullify clears both the fk and the type field", fn() {
-    if __db_available
-      let owner = PolyNullifyOwner.create({"name": "o"})
-      let tag = PolyTag.create({
-        "label": "t",
-        "poly_taggable_id": owner._key,
-        "poly_taggable_type": "PolyNullifyOwner"
-      })
+    test("nullify clears both the foreign key and the type field") do
+      owner = PolyNullifyOwner.create({"name": "o"})
+      tag = PolyTag.create({"label": "t", "poly_taggable_id": owner._key, "poly_taggable_type": "PolyNullifyOwner"})
 
       owner.delete()
 
-      let reloaded = PolyTag.find(tag._key)
+      reloaded = PolyTag.find(tag._key)
+      assert_eq(reloaded.label, "t")
       assert_null(reloaded.poly_taggable_id)
       assert_null(reloaded.poly_taggable_type)
-      reloaded.delete()
     end
-  })
-})
+  end
+end

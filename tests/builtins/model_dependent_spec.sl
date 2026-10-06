@@ -1,11 +1,8 @@
-# ============================================================================
-# Cascade deletes: has_many/has_one dependent: "delete" | "delete_all" | "nullify"
-# Cascades fire on HARD instance deletes (and Model.delete(id) on classes that
-# declare dependents), after before_delete and before the owner row is removed.
-# Soft-delete owners keep their children. Bulk writes never cascade.
-# DSL-validation assertions run without a database; behavior assertions are
-# gated behind the DB availability probe, matching model_instances_spec.sl.
-# ============================================================================
+# Cascade deletes: has_many/has_one dependent: "delete" | "delete_all" | "nullify".
+# Cascades fire on hard instance deletes (and Model.delete(id) on classes that
+# declare dependents), after before_delete and before the owner row goes.
+# Soft-delete owners keep their children; bulk writes never cascade. Owner
+# deletes keep their parentheses: a bare `delete` skips the cascade (pending).
 class CascAuthor < Model
   has_many("casc_posts", dependent: "delete")
 end
@@ -36,7 +33,6 @@ class CascBulkItem < Model
   before_delete("veto")
 
   def veto
-
     # delete_all must bypass callbacks entirely — if this veto ever ran,
     # per-row deletion would fail and the rows would survive.
     false
@@ -81,221 +77,204 @@ class CascNode < Model
   )
 end
 
-# Named-arg symbol value parses (class loading is the assertion).
+# A symbol strategy given as a named argument.
 class CascNamedArgOwner < Model
   has_many("casc_named_items", dependent: :delete_all)
+end
+
+class CascNamedItem < Model
+  belongs_to("casc_named_arg_owner")
+end
+
+# "destroy" is accepted as an alias of "delete".
+class CascAliasOwner < Model
+  has_many("casc_alias_items", dependent: "destroy")
+end
+
+class CascAliasItem < Model
+  belongs_to("casc_alias_owner")
 end
 
 # Throwaway class for post-hoc DSL error assertions.
 class CascDslProbe < Model
 end
 
-# Detect DB availability
-let __db_available = false
-try
-  let __probe = CascAuthor.create({"name": "__probe__"})
-  if !__probe.nil? && !__probe._errors
-    __db_available = true
-    __probe.delete()
-  end
-catch e
-  __db_available = false
-end
+const CASCADE_MODELS = [
+  CascAuthor, CascPost, CascComment, CascProfileOwner, CascProfile, CascBulkOwner, CascBulkItem,
+  CascNullifyOwner, CascNullifyItem, CascSoftOwner, CascSoftChild, CascVetoParent, CascVetoChild,
+  CascNode, CascNamedArgOwner, CascNamedItem, CascAliasOwner, CascAliasItem
+]
 
-describe("dependent: option validation", fn() {
-  test("all three strategies and the destroy alias parse", fn() {
+describe("dependent: option validation") do
+  test("every strategy and the destroy alias declare the relation") do
     CascDslProbe.has_many("casc_probe_a", {"dependent": "delete"})
     CascDslProbe.has_many("casc_probe_b", {"dependent": "destroy"})
     CascDslProbe.has_many("casc_probe_c", {"dependent": "delete_all"})
     CascDslProbe.has_one("casc_probe_d", {"dependent": "nullify"})
-    assert(true)
-  })
+    probe = CascDslProbe.new({})
+    # An unsaved owner's has_many accessor matches nothing.
+    assert_eq(probe.casc_probe_a.to_query, "FOR doc IN casc_probe_a FILTER 1 == 0 RETURN doc")
+    assert_eq(probe.casc_probe_c.to_query, "FOR doc IN casc_probe_c FILTER 1 == 0 RETURN doc")
+  end
 
-  test("an unknown strategy raises naming the bad value", fn() {
-    let raised = false
-    try
+  test("an unknown strategy is refused, naming the bad value") do
+    assert_raises("`dependent:` expects \"delete\", \"delete_all\" or \"nullify\", got \"purge\"") do
       CascDslProbe.has_many("casc_probe_bad", {"dependent": "purge"})
-    catch e
-      raised = true
-      assert(str(e).includes?("purge"))
     end
-    assert(raised)
-  })
+  end
 
-  test("dependent: on belongs_to raises", fn() {
-    let raised = false
-    try
+  test("dependent: on belongs_to is refused") do
+    assert_raises("`dependent:` is only supported on has_many/has_one relations") do
       CascDslProbe.belongs_to("casc_probe_parent", {"dependent": "delete"})
-    catch e
-      raised = true
-      assert(str(e).includes?("has_many/has_one"))
     end
-    assert(raised)
-  })
+  end
 
-  test("dependent: combined with through: raises", fn() {
-    let raised = false
-    try
-      CascDslProbe.has_many(
-        "casc_probe_combo",
-        {"dependent": "delete", "through": "casc_probe_a"}
-      )
-    catch e
-      raised = true
-      assert(str(e).includes?("through"))
+  test("dependent: combined with through: is refused") do
+    assert_raises("`dependent:` cannot be combined with `through:`") do
+      CascDslProbe.has_many("casc_probe_combo", {"dependent": "delete", "through": "casc_probe_a"})
     end
-    assert(raised)
-  })
-})
+  end
+end
 
-describe("dependent: \"delete\"", fn() {
-  test("removes children and grandchildren through their callbacks", fn() {
-    if __db_available
-      let author = CascAuthor.create({"name": "a"})
-      let post_one = CascPost.create({
-        "casc_author_id": author._key,
-        "title": "p1"
-      })
-      let post_two = CascPost.create({
-        "casc_author_id": author._key,
-        "title": "p2"
-      })
+describe("cascades against SoliDB") do
+  before_each() do
+    requires_solidb()
+  end
+
+  after_each() do
+    CASCADE_MODELS.each do |model|
+      model.delete_all()
+    end
+  end
+
+  describe("dependent: \"delete\"") do
+    test("removes children and grandchildren") do
+      author = CascAuthor.create({"name": "a"})
+      post_one = CascPost.create({"casc_author_id": author._key, "title": "p1"})
+      post_two = CascPost.create({"casc_author_id": author._key, "title": "p2"})
       CascComment.create({"casc_post_id": post_one._key, "body": "c1"})
       CascComment.create({"casc_post_id": post_two._key, "body": "c2"})
+      CascPost.create({"casc_author_id": "someone-else", "title": "unrelated"})
 
       author.delete()
 
-      assert_eq(CascPost.where("casc_author_id == @k", {"k": author._key}).count(), 0)
-      assert_eq(CascComment.where("casc_post_id == @k", {"k": post_one._key}).count(), 0)
-      assert_eq(CascComment.where("casc_post_id == @k", {"k": post_two._key}).count(), 0)
+      assert_eq(CascAuthor.count, 0)
+      assert_eq(CascPost.all.map { |post| post.title }, ["unrelated"])
+      assert_eq(CascComment.count, 0)
     end
-  })
 
-  test("has_one cascades too", fn() {
-    if __db_available
-      let owner = CascProfileOwner.create({"name": "o"})
+    test("has_one cascades too") do
+      owner = CascProfileOwner.create({"name": "o"})
       CascProfile.create({"casc_profile_owner_id": owner._key})
 
       owner.delete()
 
-      assert_eq(CascProfile.where("casc_profile_owner_id == @k", {"k": owner._key}).count(), 0)
+      assert_eq(CascProfile.count, 0)
     end
-  })
 
-  test("a child before_delete veto aborts the owner delete", fn() {
-    if __db_available
-      let parent = CascVetoParent.create({"name": "p"})
-      let child = CascVetoChild.create({"casc_veto_parent_id": parent._key})
+    test("the destroy alias cascades like delete") do
+      owner = CascAliasOwner.create({"name": "alias"})
+      CascAliasItem.create({"casc_alias_owner_id": owner._key})
 
-      let raised = false
-      try
+      owner.delete()
+
+      assert_eq(CascAliasItem.count, 0)
+    end
+
+    test("a child before_delete veto aborts the owner delete") do
+      parent = CascVetoParent.create({"name": "p"})
+      child = CascVetoChild.create({"casc_veto_parent_id": parent._key})
+
+      assert_raises("dependent: \"delete\" aborted: child casc_veto_children/#{child._key} could not be deleted") do
         parent.delete()
-      catch e
-        raised = true
       end
-      assert(raised)
-      # Both rows survive: the cascade aborted before the owner row delete.
-      assert_not_null(CascVetoParent.find_by("_key", parent._key))
-      assert_not_null(CascVetoChild.find_by("_key", child._key))
-
-      # Clean up (child veto blocks its instance delete; bypass via class bulk).
-      CascVetoChild.where("_key == @k", {"k": child._key}).delete_all()
-      parent.delete()
+      assert_eq(CascVetoParent.find_by("_key", parent._key).name, "p")
+      assert_eq(CascVetoChild.find_by("_key", child._key).casc_veto_parent_id, parent._key)
     end
-  })
 
-  test("a two-node parent cycle terminates", fn() {
-    if __db_available
-      let node_one = CascNode.create({"label": "n1"})
-      let node_two = CascNode.create({
-        "label": "n2",
-        "parent_id": node_one._key
-      })
-      node_one.parent_id = node_two._key
+    test("a two-node parent cycle terminates") do
+      node_one = CascNode.create({"label": "n1"})
+      CascNode.create({"label": "n2", "parent_id": node_one._key})
+      node_one.parent_id = CascNode.find_by("label", "n2")._key
       node_one.update()
 
       node_one.delete()
 
-      assert_null(CascNode.find_by("_key", node_one._key))
-      assert_null(CascNode.find_by("_key", node_two._key))
+      assert_eq(CascNode.count, 0)
     end
-  })
-})
 
-describe("dependent: \"delete_all\" and \"nullify\"", fn() {
-  test("delete_all bulk-removes children without firing callbacks", fn() {
-    if __db_available
-      let owner = CascBulkOwner.create({"name": "b"})
+    test("a bare delete cascades too") do
+      pending("bug: record.delete without () removes the row but skips the dependent cascade")
+      author = CascAuthor.create({"name": "bare"})
+      CascPost.create({"casc_author_id": author._key, "title": "orphaned"})
+      author.delete
+      assert_eq(CascPost.count, 0)
+    end
+  end
+
+  describe("dependent: \"delete_all\" and \"nullify\"") do
+    test("delete_all bulk-removes children without firing their callbacks") do
+      owner = CascBulkOwner.create({"name": "b"})
       CascBulkItem.create({"casc_bulk_owner_id": owner._key})
       CascBulkItem.create({"casc_bulk_owner_id": owner._key})
 
       owner.delete()
 
-      # Rows are gone even though CascBulkItem's before_delete always vetoes:
-      # the bulk REMOVE never consults callbacks.
-      assert_eq(CascBulkItem.where("casc_bulk_owner_id == @k", {"k": owner._key}).count(), 0)
+      # Gone even though CascBulkItem's before_delete always vetoes: the bulk
+      # REMOVE never consults callbacks.
+      assert_eq(CascBulkItem.count, 0)
     end
-  })
 
-  test("nullify clears the foreign key and keeps the rows", fn() {
-    if __db_available
-      let owner = CascNullifyOwner.create({"name": "n"})
-      let item = CascNullifyItem.create({
-        "casc_nullify_owner_id": owner._key,
-        "tag": "casc-nullify"
-      })
+    test("a symbol strategy given as a named argument works") do
+      owner = CascNamedArgOwner.create({"name": "n"})
+      CascNamedItem.create({"casc_named_arg_owner_id": owner._key})
 
       owner.delete()
 
-      let reloaded = CascNullifyItem.find(item._key)
+      assert_eq(CascNamedItem.count, 0)
+    end
+
+    test("nullify clears the foreign key and keeps the rows") do
+      owner = CascNullifyOwner.create({"name": "n"})
+      item = CascNullifyItem.create({"casc_nullify_owner_id": owner._key, "tag": "casc-nullify"})
+
+      owner.delete()
+
+      reloaded = CascNullifyItem.find(item._key)
+      assert_eq(reloaded.tag, "casc-nullify")
       assert_null(reloaded.casc_nullify_owner_id)
-      reloaded.delete()
     end
-  })
-})
+  end
 
-describe("cascade boundaries", fn() {
-  test("a soft-delete owner keeps its children", fn() {
-    if __db_available
-      let owner = CascSoftOwner.create({"name": "s"})
-      let child = CascSoftChild.create({"casc_soft_owner_id": owner._key})
+  describe("cascade boundaries") do
+    test("a soft-delete owner keeps its children") do
+      owner = CascSoftOwner.create({"name": "s"})
+      CascSoftChild.create({"casc_soft_owner_id": owner._key})
 
-      owner.delete()  # soft delete: sets deleted_at, no cascade
+      owner.delete()
 
-      assert_eq(CascSoftChild.where("casc_soft_owner_id == @k", {"k": owner._key}).count(), 1)
-      child.delete()
+      assert_eq(CascSoftOwner.find(owner._key).deleted_at.present?, true)
+      assert_eq(CascSoftChild.where("casc_soft_owner_id == @k", {"k": owner._key}).count, 1)
     end
-  })
 
-  test("the class form Model.delete(id) cascades", fn() {
-    if __db_available
-      let author = CascAuthor.create({"name": "cf"})
-      let post = CascPost.create({
-        "casc_author_id": author._key,
-        "title": "cf-post"
-      })
+    test("the class form Model.delete(id) cascades") do
+      author = CascAuthor.create({"name": "cf"})
+      CascPost.create({"casc_author_id": author._key, "title": "cf-post"})
 
       CascAuthor.delete(author._key)
 
       assert_null(CascAuthor.find_by("_key", author._key))
-      assert_eq(CascPost.where("casc_author_id == @k", {"k": author._key}).count(), 0)
+      assert_eq(CascPost.count, 0)
     end
-  })
 
-  test("QueryBuilder delete_all never cascades", fn() {
-    if __db_available
-      let author = CascAuthor.create({"name": "qb"})
-      let post = CascPost.create({
-        "casc_author_id": author._key,
-        "title": "orphan"
-      })
+    test("QueryBuilder delete_all never cascades") do
+      author = CascAuthor.create({"name": "qb"})
+      CascPost.create({"casc_author_id": author._key, "title": "orphan"})
 
-      CascAuthor.where("_key == @k", {"k": author._key}).delete_all()
+      CascAuthor.where("_key == @k", {"k": author._key}).delete_all
 
       assert_null(CascAuthor.find_by("_key", author._key))
-      # The child survives as an orphan — bulk writes skip cascades.
-      assert_eq(CascPost.where("casc_author_id == @k", {"k": author._key}).count(), 1)
-      post.delete()
+      assert_eq(CascPost.where("casc_author_id == @k", {"k": author._key}).count, 1)
     end
-  })
-})
+  end
+end

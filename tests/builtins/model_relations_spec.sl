@@ -1,220 +1,198 @@
-# ============================================================================
-# Model Relations Test Suite
-# Tests has_many, has_one, belongs_to DSL and query generation
-# ============================================================================
+# Relation DSL (has_many, has_one, belongs_to, has_and_belongs_to_many) and the
+# SDBQL it compiles to for includes, join, filtered includes and select. Every
+# test reads `.to_query`; none needs a database.
 
-# Define test models with relations at top level
-class User < Model
-  has_many("posts")
-  has_one("profile")
+class Writer < Model
+  has_many("essays")
+  has_one("biography")
 end
 
-class Post < Model
-  belongs_to("user")
-  has_many("comments")
+class Essay < Model
+  belongs_to("writer")
+  has_many("remarks")
 end
 
-class Comment < Model
-  belongs_to("post")
+class Remark < Model
+  belongs_to("essay")
 end
 
-class Tag < Model
-  has_and_belongs_to_many("posts")
+class Label < Model
+  has_and_belongs_to_many("essays")
 end
 
-class Article < Model
-  has_and_belongs_to_many("labels", {"class_name": "Tag"})
+class Journal < Model
+  has_and_belongs_to_many("stickers", {"class_name": "Label"})
 end
 
-class PostHabtm < Model
-  has_and_belongs_to_many("tags")
+class Magazine < Model
+  has_and_belongs_to_many("labels")
 end
 
-describe("Model Relations - includes", fn() {
-  test("has_many generates subquery", fn() {
-    let q = User.includes("posts").to_query
-    assert(q.contains("LET _rel_posts"))
-    assert(q.contains("FOR rel IN posts FILTER rel.user_id == doc._key RETURN rel"))
-    assert(q.contains("RETURN MERGE(doc, {posts: _rel_posts})"))
-  })
+const ESSAYS_SUBQUERY = "LET _rel_essays = (FOR rel IN essays FILTER rel.writer_id == doc._key RETURN rel)"
+const BIOGRAPHY_SUBQUERY = "LET _rel_biography = " +
+  "(FOR rel IN biographies FILTER rel.writer_id == doc._key LIMIT 1 RETURN rel)"
 
-  test("has_one generates LIMIT 1 subquery", fn() {
-    let q = User.includes("profile").to_query
-    assert(q.contains("LET _rel_profile"))
-    assert(q.contains("FILTER rel.user_id == doc._key LIMIT 1"))
-    assert(q.contains("profile: FIRST(_rel_profile)"))
-  })
+# The SDBQL text of a builder, without the bind-variable dump that follows it.
+def query_of(builder)
+  builder.to_query.split(" | bind_vars:")[0]
+end
 
-  test("belongs_to uses doc FK to match rel._key", fn() {
-    let q = Post.includes("user").to_query
-    assert(q.contains("FILTER rel._key == doc.user_id"))
-    assert(q.contains("user: FIRST(_rel_user)"))
-  })
+describe("includes") do
+  test("has_many loads the children through the foreign key") do
+    expected = "FOR doc IN writers #{ESSAYS_SUBQUERY} RETURN MERGE(doc, {essays: _rel_essays})"
+    assert_eq(query_of(Writer.includes("essays")), expected)
+  end
 
-  test("multiple relations", fn() {
-    let q = User.includes("posts", "profile").to_query
-    assert(q.contains("_rel_posts"))
-    assert(q.contains("_rel_profile"))
-    assert(q.contains("RETURN MERGE"))
-  })
+  test("has_one stops at the first child and unwraps it") do
+    expected = "FOR doc IN writers #{BIOGRAPHY_SUBQUERY} RETURN MERGE(doc, {biography: FIRST(_rel_biography)})"
+    assert_eq(query_of(Writer.includes("biography")), expected)
+  end
 
-  test("chained with where", fn() {
-    let q = User.includes("posts").where("active = @a", {"a": true}).to_query
-    assert(q.contains("FILTER doc.active == @a"))
-    assert(q.contains("LET _rel_posts"))
-    assert(q.contains("RETURN MERGE"))
-  })
-})
+  test("belongs_to matches the parent key against the document's foreign key") do
+    expected = "FOR doc IN essays " +
+      "LET _rel_writer = (FOR rel IN writers FILTER rel._key == doc.writer_id LIMIT 1 RETURN rel) " +
+      "RETURN MERGE(doc, {writer: FIRST(_rel_writer)})"
+    assert_eq(query_of(Essay.includes("writer")), expected)
+  end
 
-describe("Model Relations - join", fn() {
-  test("generates existence check", fn() {
-    let q = User.join("posts").to_query
-    assert(q.contains("FILTER LENGTH(FOR rel IN posts FILTER rel.user_id == doc._key LIMIT 1 RETURN 1) > 0"))
-    assert(q.contains("RETURN doc"))
-  })
+  test("several relations share one MERGE") do
+    expected = "FOR doc IN writers #{ESSAYS_SUBQUERY} #{BIOGRAPHY_SUBQUERY} " +
+      "RETURN MERGE(doc, {essays: _rel_essays, biography: FIRST(_rel_biography)})"
+    assert_eq(query_of(Writer.includes("essays", "biography")), expected)
+  end
 
-  test("with filter condition", fn() {
-    let q = User.join("posts", "published = @p", {"p": true}).to_query
-    assert(q.contains("rel.published == @p"))
-    assert(q.contains("rel.user_id == doc._key"))
-  })
-})
+  test("a second-level model resolves its own relations") do
+    expected = "FOR doc IN remarks " +
+      "LET _rel_essay = (FOR rel IN essays FILTER rel._key == doc.essay_id LIMIT 1 RETURN rel) " +
+      "RETURN MERGE(doc, {essay: FIRST(_rel_essay)})"
+    assert_eq(query_of(Remark.includes("essay")), expected)
+    remarks_query = query_of(Essay.includes("remarks"))
+    assert_contains(remarks_query, "FOR rel IN remarks FILTER rel.essay_id == doc._key RETURN rel")
+  end
 
-describe("Model Relations - chaining", fn() {
-  test("includes then where", fn() {
-    let q = User.includes("posts").where("name = @n", {"n": "Alice"}).to_query
-    assert(q.contains("FILTER doc.name == @n"))
-    assert(q.contains("LET _rel_posts"))
-  })
+  test("an undeclared relation is refused") do
+    assert_raises("nope") do
+      Writer.includes("nope").to_query
+    end
+  end
+end
 
-  test("where then includes", fn() {
-    let q = User.where("active = @a", {"a": true}).includes("posts").to_query
-    assert(q.contains("FILTER doc.active == @a"))
-    assert(q.contains("LET _rel_posts"))
-  })
+describe("join") do
+  test("keeps parents with at least one child") do
+    expected = "FOR doc IN writers " +
+      "FILTER LENGTH(FOR rel IN essays FILTER rel.writer_id == doc._key LIMIT 1 RETURN 1) > 0 RETURN doc"
+    assert_eq(query_of(Writer.join("essays")), expected)
+  end
 
-  test("join then where", fn() {
-    let q = User.join("posts").where("active = @a", {"a": true}).to_query
-    assert(q.contains("FILTER LENGTH"))
-    assert(q.contains("FILTER doc.active == @a"))
-  })
-})
+  test("ANDs a filter onto the child match") do
+    query = query_of(Writer.join("essays", "published = @p", {"p": true}))
+    assert_contains(query, "FILTER rel.writer_id == doc._key AND rel.published == @p LIMIT 1 RETURN 1")
+  end
+end
 
-describe("Model Relations - filtered includes", fn() {
-  test("has_many with filter", fn() {
-    let q = User.includes("posts", "published = @p", {"p": true}).to_query
-    assert(q.contains("rel.user_id == doc._key AND rel.published == @p"))
-    assert(q.contains("RETURN rel)"))
-    assert(q.contains("bind_vars"))
-  })
+describe("chaining") do
+  test("where before or after includes gives the same query") do
+    includes_first = query_of(Writer.includes("essays").where("active = @a", {"a": true}))
+    where_first = query_of(Writer.where("active = @a", {"a": true}).includes("essays"))
+    assert_eq(includes_first, where_first)
+    expected = "FOR doc IN writers FILTER doc.active == @a #{ESSAYS_SUBQUERY} RETURN MERGE(doc, {essays: _rel_essays})"
+    assert_eq(where_first, expected)
+  end
 
-  test("has_many with filter and fields", fn() {
-    let q = User.includes("posts", "published = @p", {
-      "p": true,
-      "fields": ["title", "body"]
-    }).to_query
-    assert(q.contains("rel.user_id == doc._key AND rel.published == @p"))
-    assert(q.contains("RETURN {title: rel.title, body: rel.body}"))
-  })
+  test("a where after join adds a second FILTER") do
+    query = query_of(Writer.join("essays").where("active = @a", {"a": true}))
+    assert_contains(query, "LIMIT 1 RETURN 1) > 0 FILTER doc.active == @a RETURN doc")
+  end
 
-  test("hash arg includes with fields", fn() {
-    let q = User.includes({"posts": ["title", "body"]}).to_query
-    assert(q.contains("RETURN {title: rel.title, body: rel.body}"))
-    assert(q.contains("RETURN MERGE(doc"))
-  })
+  test("the where filter text survives into the query") do
+    query = query_of(Writer.includes("essays").where("name = @n", {"n": "Alice"}))
+    assert_contains(query, "FILTER doc.name == @n LET _rel_essays")
+  end
+end
 
-  test("hash arg includes without fields", fn() {
-    let q = User.includes({"posts": nil}).to_query
-    assert(q.contains("RETURN rel)"))
-  })
+describe("filtered includes") do
+  test("a filter narrows the children") do
+    query = query_of(Writer.includes("essays", "published = @p", {"p": true}))
+    assert_contains(query, "(FOR rel IN essays FILTER rel.writer_id == doc._key AND rel.published == @p RETURN rel)")
+    assert_contains(Writer.includes("essays", "published = @p", {"p": true}).to_query, "bind_vars")
+  end
 
-  test("multiple chained includes", fn() {
-    let q = User.includes("posts", "published = @p", {"p": true}).includes("profile").to_query
-    assert(q.contains("_rel_posts"))
-    assert(q.contains("_rel_profile"))
-    assert(q.contains("rel.published == @p"))
-    assert(q.contains("RETURN MERGE"))
-  })
-})
+  test("a fields key projects the children") do
+    query = query_of(Writer.includes("essays", "published = @p", {"p": true, "fields": ["title", "body"]}))
+    assert_contains(query, "AND rel.published == @p RETURN {title: rel.title, body: rel.body})")
+  end
 
-describe("Model Relations - select/fields", fn() {
-  test("select on main collection", fn() {
-    let q = User.select("name", "email").to_query
-    assert(q.contains("RETURN {name: doc.name, email: doc.email, _key: doc._key}"))
-  })
+  test("a hash argument projects without a filter") do
+    expected = "FOR doc IN writers LET _rel_essays = (FOR rel IN essays FILTER rel.writer_id == doc._key " +
+      "RETURN {title: rel.title, body: rel.body}) RETURN MERGE(doc, {essays: _rel_essays})"
+    assert_eq(query_of(Writer.includes({"essays": ["title", "body"]})), expected)
+  end
 
-  test("fields alias works same as select", fn() {
-    let q = User.fields("name", "email").to_query
-    assert(q.contains("RETURN {name: doc.name, email: doc.email, _key: doc._key}"))
-  })
+  test("a hash argument with nil fields loads whole children") do
+    assert_eq(query_of(Writer.includes({"essays": nil})), query_of(Writer.includes("essays")))
+  end
 
-  test("select with includes", fn() {
-    let q = User.select("name", "email").includes("posts").to_query
-    assert(q.contains("RETURN MERGE({name: doc.name, email: doc.email, _key: doc._key}, {posts: _rel_posts})"))
-  })
+  test("a filtered include chains with a plain one") do
+    query = query_of(Writer.includes("essays", "published = @p", {"p": true}).includes("biography"))
+    assert_contains(query, "AND rel.published == @p RETURN rel) #{BIOGRAPHY_SUBQUERY}")
+    assert_contains(query, "RETURN MERGE(doc, {essays: _rel_essays, biography: FIRST(_rel_biography)})")
+  end
+end
 
-  test("select chained after where", fn() {
-    let q = User.where("active = @a", {"a": true}).select("name").to_query
-    assert(q.contains("FILTER doc.active == @a"))
-    assert(q.contains("RETURN {name: doc.name, _key: doc._key}"))
-  })
+describe("select and fields") do
+  test("select projects the main collection and keeps _key") do
+    expected = "FOR doc IN writers RETURN {name: doc.name, email: doc.email, _key: doc._key}"
+    assert_eq(query_of(Writer.select("name", "email")), expected)
+  end
 
-  test("select with filtered includes and fields", fn() {
-    let q = User.select("name").includes("posts", "published = @p", {
-      "p": true,
-      "fields": ["title"]
-    }).to_query
-    assert(q.contains("RETURN MERGE({name: doc.name, _key: doc._key}"))
-    assert(q.contains("RETURN {title: rel.title}"))
-    assert(q.contains("rel.published == @p"))
-  })
-})
+  test("fields is an alias of select") do
+    assert_eq(query_of(Writer.fields("name", "email")), query_of(Writer.select("name", "email")))
+  end
 
-describe("Model Relations - has_and_belongs_to_many", fn() {
-  test("habtm includes generates two-stage subquery", fn() {
-    let q = PostHabtm.includes("tags").to_query
-    assert(q.contains("LET _rel_tags"))
-    assert(q.contains("FOR jt IN post_habtms_tags FILTER jt.post_habtm_id == doc._key"))
-    assert(q.contains("FOR rel IN tags FILTER rel._key == jt.tag_id"))
-    assert(q.contains("RETURN MERGE(doc, {tags: _rel_tags})"))
-  })
+  test("select merges the projection with includes") do
+    query = query_of(Writer.select("name", "email").includes("essays"))
+    assert_contains(query, "RETURN MERGE({name: doc.name, email: doc.email, _key: doc._key}, {essays: _rel_essays})")
+  end
 
-  test("habtm join generates existence check via join table", fn() {
-    let q = PostHabtm.join("tags").to_query
-    assert(q.contains("FILTER LENGTH(FOR jt IN post_habtms_tags"))
-    assert(q.contains("FOR rel IN tags FILTER rel._key == jt.tag_id"))
-  })
+  test("select chains after where") do
+    query = query_of(Writer.where("active = @a", {"a": true}).select("name"))
+    assert_eq(query, "FOR doc IN writers FILTER doc.active == @a RETURN {name: doc.name, _key: doc._key}")
+  end
 
-  test("habtm with filter on related collection", fn() {
-    let q = PostHabtm.includes("tags", "active = @a", {"a": true}).to_query
-    assert(q.contains("FOR jt IN post_habtms_tags FILTER jt.post_habtm_id == doc._key"))
-    assert(q.contains("rel._key == jt.tag_id AND rel.active == @a"))
-  })
+  test("select with a filtered, projected include") do
+    query = query_of(Writer.select("name").includes("essays", "published = @p", {"p": true, "fields": ["title"]}))
+    assert_contains(query, "AND rel.published == @p RETURN {title: rel.title})")
+    assert_contains(query, "RETURN MERGE({name: doc.name, _key: doc._key}, {essays: _rel_essays})")
+  end
+end
 
-  test("habtm join table uses alphabetical order on Tag side", fn() {
-    let q = Tag.includes("posts").to_query
-    assert(q.contains("FOR jt IN posts_tags FILTER jt.tag_id == doc._key"))
-    assert(q.contains("FOR rel IN posts FILTER rel._key == jt.post_id"))
-  })
+describe("has_and_belongs_to_many") do
+  test("includes walks the join table, then the related collection") do
+    expected = "FOR doc IN magazines LET _rel_labels = (FOR jt IN labels_magazines FILTER jt.magazine_id == doc._key " +
+      "FOR rel IN labels FILTER rel._key == jt.label_id RETURN rel) RETURN MERGE(doc, {labels: _rel_labels})"
+    assert_eq(query_of(Magazine.includes("labels")), expected)
+  end
 
-  test("habtm with class_name override uses override class", fn() {
-    let q = Article.includes("labels").to_query
-    # Article ↔ Tag through the alphabetical join "articles_tags"
-    assert(q.contains("FOR jt IN articles_tags FILTER jt.article_id == doc._key"))
-    assert(q.contains("FOR rel IN tags FILTER rel._key == jt.tag_id"))
-    assert(q.contains("RETURN MERGE(doc, {labels: _rel_labels})"))
-  })
-})
+  test("join checks existence through the join table") do
+    expected = "FOR doc IN magazines FILTER LENGTH(FOR jt IN labels_magazines FILTER jt.magazine_id == doc._key " +
+      "FOR rel IN labels FILTER rel._key == jt.label_id LIMIT 1 RETURN 1) > 0 RETURN doc"
+    assert_eq(query_of(Magazine.join("labels")), expected)
+  end
 
-describe("Model Relations - nested models", fn() {
-  test("Comment belongs_to post", fn() {
-    let q = Comment.includes("post").to_query
-    assert(q.contains("FILTER rel._key == doc.post_id"))
-    assert(q.contains("FOR rel IN posts"))
-  })
+  test("a filter applies to the related collection") do
+    query = query_of(Magazine.includes("labels", "active = @a", {"a": true}))
+    assert_contains(query, "FOR rel IN labels FILTER rel._key == jt.label_id AND rel.active == @a RETURN rel")
+  end
 
-  test("Post has_many comments", fn() {
-    let q = Post.includes("comments").to_query
-    assert(q.contains("FOR rel IN comments FILTER rel.post_id == doc._key"))
-  })
-})
+  test("both sides name the join table alphabetically") do
+    query = query_of(Label.includes("essays"))
+    assert_contains(query, "FOR jt IN essays_labels FILTER jt.label_id == doc._key")
+    assert_contains(query, "FOR rel IN essays FILTER rel._key == jt.essay_id")
+  end
+
+  test("class_name points the relation at another model") do
+    expected = "FOR doc IN journals LET _rel_stickers = (FOR jt IN journals_labels FILTER jt.journal_id == doc._key " +
+      "FOR rel IN labels FILTER rel._key == jt.label_id RETURN rel) RETURN MERGE(doc, {stickers: _rel_stickers})"
+    assert_eq(query_of(Journal.includes("stickers")), expected)
+  end
+end

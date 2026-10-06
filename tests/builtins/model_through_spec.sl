@@ -1,9 +1,7 @@
-# ============================================================================
-# has_many through: — traverse an intermediate relation as a chainable
-# QueryBuilder. Read-only in v1: eager-loading and bulk writes raise.
-# Query-shape assertions run without a database via .to_query; behavior
-# assertions are gated behind the DB availability probe.
-# ============================================================================
+# has_many through: traverses an intermediate relation as a chainable
+# QueryBuilder. Read-only apart from `<<`: eager-loading and bulk writes raise.
+# Query shapes and error paths need no database; live reads run on SoliDB.
+
 class ThrUser < Model
   has_many("thr_memberships")
   has_many("thr_teams", through: "thr_memberships")
@@ -72,237 +70,186 @@ class ThrCarrier < Model
   belongs_to("thr_no_source")
 end
 
-# Detect DB availability
-let __db_available = false
-try
-  let __probe = ThrUser.create({"name": "__probe__"})
-  if !__probe.nil? && !__probe._errors
-    __db_available = true
-    __probe.delete()
-  end
-catch e
-  __db_available = false
+const TEAMS_QUERY = "FOR doc IN thr_teams FILTER doc._key IN " +
+  "(FOR jt IN thr_memberships FILTER jt.thr_user_id == @__soli_through_fk RETURN jt.thr_team_id)"
+
+# The SDBQL text of a builder, without the bind-variable dump that follows it.
+def query_of(builder)
+  builder.to_query.split(" | bind_vars:")[0]
 end
 
-describe("through: query shape", fn() {
-  test("belongs_to source emits the membership subquery", fn() {
-    let q = ThrUser.new({}).thr_teams.to_query
-    assert(q.includes?("FOR doc IN thr_teams"))
-    assert(q.includes?("doc._key IN (FOR jt IN thr_memberships"))
-    assert(q.includes?("jt.thr_user_id == @__soli_through_fk"))
-    assert(q.includes?("RETURN jt.thr_team_id)"))
-  })
+def names_of(records)
+  records.map { |record| record.name }
+end
 
-  test("chained where keeps both filters", fn() {
-    let q = ThrUser.new({}).thr_teams.where("active == @a", {"a": true}).to_query
-    assert(q.includes?("doc._key IN (FOR jt IN thr_memberships"))
-    assert(q.includes?("doc.active == @a"))
-  })
+describe("through: query shape") do
+  test("a belongs_to source selects targets whose key the join rows hold") do
+    assert_eq(query_of(ThrUser.new({}).thr_teams), "#{TEAMS_QUERY} RETURN doc")
+  end
 
-  test("source: override changes the selected foreign key", fn() {
-    let q = ThrUser.new({}).thr_employers.to_query
-    assert(q.includes?("FOR doc IN thr_companies"))
-    assert(q.includes?("RETURN jt.thr_company_id)"))
-  })
+  test("a chained where keeps both filters") do
+    query = query_of(ThrUser.new({}).thr_teams.where("active == @a", {"a": true}))
+    assert_eq(query, "#{TEAMS_QUERY} FILTER doc.active == @a RETURN doc")
+  end
 
-  test("has_many source targets the distant children", fn() {
-    let q = ThrBlogUser.new({}).thr_comments.to_query
-    assert(q.includes?("FOR doc IN thr_comments"))
-    assert(q.includes?("doc.thr_post_id IN (FOR jt IN thr_posts"))
-    assert(q.includes?("jt.thr_blog_user_id == @__soli_through_fk"))
-    assert(q.includes?("RETURN jt._key)"))
-  })
+  test("source: picks the foreign key the join rows hold") do
+    expected = "FOR doc IN thr_companies FILTER doc._key IN " +
+      "(FOR jt IN thr_memberships FILTER jt.thr_user_id == @__soli_through_fk RETURN jt.thr_company_id) RETURN doc"
+    assert_eq(query_of(ThrUser.new({}).thr_employers), expected)
+  end
 
-  test("a soft-deleting through model guards the join rows", fn() {
-    let q = ThrSdUser.new({}).thr_sd_groups.to_query
-    assert(q.includes?("jt.deleted_at == null"))
-  })
+  test("a has_many source targets the distant children") do
+    expected = "FOR doc IN thr_comments FILTER doc.thr_post_id IN " +
+      "(FOR jt IN thr_posts FILTER jt.thr_blog_user_id == @__soli_through_fk RETURN jt._key) RETURN doc"
+    assert_eq(query_of(ThrBlogUser.new({}).thr_comments), expected)
+  end
 
-  test("count and aggregations carry the through filter", fn() {
-    let q = ThrUser.new({}).thr_teams.sum("budget").to_query
-    assert(q.includes?("doc._key IN (FOR jt IN thr_memberships"))
-  })
-})
+  test("a soft-deleting through model skips deleted join rows") do
+    query = query_of(ThrSdUser.new({}).thr_sd_groups)
+    assert_contains(query, "FILTER jt.thr_sd_user_id == @__soli_through_fk AND jt.deleted_at == null")
+  end
 
-describe("through: error paths", fn() {
-  test("an undeclared through relation raises with both names", fn() {
-    let raised = false
-    try
+  test("aggregations carry the through filter") do
+    assert_eq(query_of(ThrUser.new({}).thr_teams.sum("budget")), "#{TEAMS_QUERY} RETURN SUM(doc.budget)")
+  end
+end
+
+describe("through: error paths") do
+  test("an undeclared through relation names the relation and the model") do
+    assert_raises("on ThrBroken: no relation \"thr_ghosts\" is declared") do
       ThrBroken.new({}).thr_ghost_things
-    catch e
-      raised = true
-      assert(str(e).includes?("thr_ghosts"))
-      assert(str(e).includes?("ThrBroken"))
     end
-    assert(raised)
-  })
+  end
 
-  test("a missing source relation suggests source:", fn() {
-    let raised = false
-    try
+  test("a missing source relation suggests source:") do
+    message = assert_raises("ThrCarrier declares no relation \"thr_orphan_widget\"") do
       ThrNoSource.new({}).thr_orphan_widgets
-    catch e
-      raised = true
-      assert(str(e).includes?("source:"))
     end
-    assert(raised)
-  })
+    assert_contains(message, "pick one with source:")
+  end
 
-  test("eager-loading a through relation raises", fn() {
-    let raised = false
-    try
+  test("eager-loading a through relation is refused") do
+    assert_raises("through: relations can't be eager-loaded or join-filtered yet") do
       ThrUser.includes("thr_teams")
-    catch e
-      raised = true
-      assert(str(e).includes?("through"))
     end
-    assert(raised)
-  })
+  end
 
-  test("delete_all on a through relation raises", fn() {
-    let raised = false
-    try
+  test("delete_all on a through relation is refused") do
+    assert_raises("delete_all on a through: relation is not supported") do
       ThrUser.new({}).thr_teams.delete_all()
-    catch e
-      raised = true
-      assert(str(e).includes?("through"))
     end
-    assert(raised)
-  })
+  end
 
-  test("update_all on a through relation raises", fn() {
-    let raised = false
-    try
+  test("update_all on a through relation is refused") do
+    assert_raises("update_all on a through: relation is not supported") do
       ThrUser.new({}).thr_teams.update_all({"x": 1})
-    catch e
-      raised = true
-      assert(str(e).includes?("through"))
     end
-    assert(raised)
-  })
-})
+  end
+end
 
-describe("through: live queries", fn() {
-  test("reads related records across the join", fn() {
-    if __db_available
-      let user = ThrUser.create({"name": "u"})
-      let team_a = ThrTeam.create({
-        "name": "Team A",
-        "active": true
-      })
-      let team_b = ThrTeam.create({
-        "name": "Team B",
-        "active": false
-      })
-      let team_c = ThrTeam.create({
-        "name": "Team C",
-        "active": true
-      })
-      let m1 = ThrMembership.create({
-        "thr_user_id": user._key,
-        "thr_team_id": team_a._key
-      })
-      let m2 = ThrMembership.create({
-        "thr_user_id": user._key,
-        "thr_team_id": team_b._key
-      })
+describe("through: live queries") do
+  before_each() do
+    requires_solidb()
+  end
 
-      assert_eq(user.thr_teams.count(), 2)
-      assert_eq(user.thr_teams.exists().first, true)
-      assert_eq(user.thr_teams.where("active == @a", {"a": true}).count(), 1)
-      let names = user.thr_teams.order("name", "asc").all().map(fn(t) { t.name })
-      assert_eq(names, ["Team A", "Team B"])
-
-      # Unrelated team stays invisible.
-      assert_eq(user.thr_teams.where("name == @n", {"n": "Team C"}).count(), 0)
-
-      m1.delete()
-      m2.delete()
-      team_a.delete()
-      team_b.delete()
-      team_c.delete()
-      user.delete()
+  after_each() do
+    [ThrUser, ThrTeam, ThrMembership, ThrBlogUser, ThrComment, ThrSdUser, ThrSdGroup, ThrSdMembership].each do |model|
+      model.delete_all()
     end
-  })
+  end
 
-  test("an unpersisted owner sees no rows", fn() {
-    if __db_available
-      let team = ThrTeam.create({"name": "Loose"})
-      assert_eq(ThrUser.new({}).thr_teams.count(), 0)
-      team.delete()
+  test("reads related records across the join") do
+    user = ThrUser.create({"name": "u"})
+    team_a = ThrTeam.create({"name": "Team A", "active": true})
+    team_b = ThrTeam.create({"name": "Team B", "active": false})
+    ThrTeam.create({"name": "Team C", "active": true})
+    ThrMembership.create({"thr_user_id": user._key, "thr_team_id": team_a._key})
+    ThrMembership.create({"thr_user_id": user._key, "thr_team_id": team_b._key})
+
+    assert_eq(user.thr_teams.count, 2)
+    assert_eq(user.thr_teams.exists.first, true)
+    assert_eq(user.thr_teams.where("active == @a", {"a": true}).count, 1)
+    assert_eq(names_of(user.thr_teams.order("name", "asc").all), ["Team A", "Team B"])
+    assert_eq(user.thr_teams.where("name == @n", {"n": "Team C"}).count, 0)
+  end
+
+  test("another owner's join rows stay invisible") do
+    owner = ThrUser.create({"name": "owner"})
+    stranger = ThrUser.create({"name": "stranger"})
+    team = ThrTeam.create({"name": "Owned"})
+    ThrMembership.create({"thr_user_id": owner._key, "thr_team_id": team._key})
+    assert_eq(stranger.thr_teams.count, 0)
+    assert_null(stranger.thr_teams.first)
+  end
+
+  test("exists respects the through filter") do
+    pending("bug: executing .exists rebuilds the query from `FOR doc IN <collection>` and drops the through: filter")
+    owner = ThrUser.create({"name": "owner"})
+    stranger = ThrUser.create({"name": "stranger"})
+    team = ThrTeam.create({"name": "Owned"})
+    ThrMembership.create({"thr_user_id": owner._key, "thr_team_id": team._key})
+    assert_eq(stranger.thr_teams.exists.first, false)
+  end
+
+  test("source: reads through the other foreign key") do
+    user = ThrUser.create({"name": "employee"})
+    company = ThrCompany.create({"name": "Acme"})
+    ThrMembership.create({"thr_user_id": user._key, "thr_company_id": company._key})
+    assert_eq(names_of(user.thr_employers.all), ["Acme"])
+    ThrCompany.delete_all()
+  end
+
+  test("a has_many source reads the distant children") do
+    blog_user = ThrBlogUser.create({"name": "writer"})
+    post = ThrPost.create({"thr_blog_user_id": blog_user._key})
+    ThrComment.create({"thr_post_id": post._key, "name": "first"})
+    ThrComment.create({"thr_post_id": "someone-else", "name": "stray"})
+    assert_eq(names_of(blog_user.thr_comments.all), ["first"])
+    ThrPost.delete_all()
+  end
+
+  test("an unpersisted owner sees no rows") do
+    ThrTeam.create({"name": "Loose"})
+    assert_eq(ThrUser.new({}).thr_teams.count, 0)
+  end
+
+  test("<< creates the join record from an instance or a key") do
+    user = ThrUser.create({"name": "pusher"})
+    team = ThrTeam.create({"name": "Pushed Team"})
+    user.thr_teams << team
+    assert_eq(user.thr_teams.count, 1)
+    membership = ThrMembership.first_by("thr_user_id", user._key)
+    assert_eq(membership.thr_team_id, team._key)
+
+    team_two = ThrTeam.create({"name": "Keyed Team"})
+    user.thr_teams << team_two._key
+    assert_eq(names_of(user.thr_teams.order("name").all), ["Keyed Team", "Pushed Team"])
+  end
+
+  test("<< on an unpersisted owner is refused") do
+    team = ThrTeam.create({"name": "Orphaned"})
+    assert_raises("cannot push to \"thr_teams\": save the owner record first") do
+      ThrUser.new({}).thr_teams << team
     end
-  })
+    assert_eq(ThrMembership.count, 0)
+  end
 
-  test("shovel creates the join record", fn() {
-    if __db_available
-      let user = ThrUser.create({"name": "pusher"})
-      let team = ThrTeam.create({"name": "Pushed Team"})
-
-      user.thr_teams << team
-      assert_eq(user.thr_teams.count(), 1)
-
-      # Pushing a raw key works too.
-      let team_two = ThrTeam.create({"name": "Keyed Team"})
-      user.thr_teams << team_two._key
-      assert_eq(user.thr_teams.count(), 2)
-
-      ThrMembership.where("thr_user_id == @k", {"k": user._key}).delete_all()
-      team.delete()
-      team_two.delete()
-      user.delete()
+  test("<< on a has_many-source through is refused") do
+    blog_user = ThrBlogUser.create({"name": "writer"})
+    assert_raises("its through source is a has_many") do
+      blog_user.thr_comments << ThrComment.new({})
     end
-  })
+  end
 
-  test("shovel on an unpersisted owner raises", fn() {
-    if __db_available
-      let team = ThrTeam.create({"name": "Orphaned"})
-      let raised = false
-      try
-        ThrUser.new({}).thr_teams << team
-      catch e
-        raised = true
-        assert(str(e).includes?("save the owner"))
-      end
-      assert(raised)
-      team.delete()
-    end
-  })
+  test("soft-deleted join rows drop out until restored") do
+    user = ThrSdUser.create({"name": "sd"})
+    group = ThrSdGroup.create({"name": "G"})
+    membership = ThrSdMembership.create({"thr_sd_user_id": user._key, "thr_sd_group_id": group._key})
 
-  test("shovel on a has_many-source through raises", fn() {
-    if __db_available
-      let blog_user = ThrBlogUser.create({"name": "writer"})
-      let raised = false
-      try
-        blog_user.thr_comments << ThrComment.new({})
-      catch e
-        raised = true
-        assert(str(e).includes?("has_many"))
-      end
-      assert(raised)
-      blog_user.delete()
-    end
-  })
-
-  test("soft-deleted join rows drop out of the association", fn() {
-    if __db_available
-      let user = ThrSdUser.create({"name": "sd"})
-      let group = ThrSdGroup.create({"name": "G"})
-      let membership = ThrSdMembership.create({
-        "thr_sd_user_id": user._key,
-        "thr_sd_group_id": group._key
-      })
-
-      assert_eq(user.thr_sd_groups.count(), 1)
-      membership.delete()  # soft delete
-      assert_eq(user.thr_sd_groups.count(), 0)
-
-      membership.restore()
-      assert_eq(user.thr_sd_groups.count(), 1)
-
-      # Clean up (hard-remove the soft-deleted join row via bulk).
-      ThrSdMembership.where("_key == @k", {"k": membership._key}).delete_all()
-      group.delete()
-      user.delete()
-    end
-  })
-})
+    assert_eq(user.thr_sd_groups.count, 1)
+    membership.delete
+    assert_eq(user.thr_sd_groups.count, 0)
+    membership.restore
+    assert_eq(user.thr_sd_groups.count, 1)
+  end
+end

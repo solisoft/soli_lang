@@ -1,984 +1,519 @@
-# ============================================================================
-# Model Instances Test Suite
-# Tests that Model methods return class instances and instance methods work
-# ============================================================================
+# Model methods hand back class instances, and those instances carry the
+# persistence API: save/update (with or without a hash), delete, reload, errors.
+# Validation failures stop before the database, so they run without one.
 
-# Define test models
-class Product < Model
+class InstProduct < Model
 end
 
-class Order < Model
-  has_many("products")
-end
-
-class ValidatedItem < Model
+class InstValidatedItem < Model
   validates("title", {"presence": true})
   validates("title", {"min_length": 3})
 end
 
-class ValidatedWithBareHash < Model
+class InstBareHashItem < Model
   validates(:name, presence: true)
   validates(:name, min_length: 2)
   validates(:email, presence: true, format: "^[^@]+@[^@]+$")
 end
 
-class ValidatedMixedStyle < Model
+class InstMixedStyleItem < Model
   validates("name", {"presence": true})
   validates(:name, min_length: 2)
   validates(:email, presence: true, format: "^[^@]+@[^@]+$")
 end
 
-class ValidatedStringBareHash < Model
+class InstStringBareHashItem < Model
   validates("title", presence: true)
   validates("title", min_length: 3)
   validates("title", max_length: 100)
 end
 
-class ValidatedNumericBareHash < Model
+class InstNumericItem < Model
   validates(:quantity, numericality: true, min: 0, max: 1000)
   validates(:price, presence: true, numericality: true, min: 0.01)
 end
 
-class ValidatedUniquenessBareHash < Model
+class InstUniqueCode < Model
   validates(:code, presence: true, uniqueness: true)
 end
 
-class CallbackWithExtraArgs < Model
+class InstCallbackItem < Model
   before_save(:normalize_name)
 
   def normalize_name
-    this.name = this.name.trim().downcase() unless this.name.blank?
+    @name = @name.trim.downcase unless @name.blank?
   end
 end
 
-# Detect DB availability
-let __db_available = false
-try
-  let __probe = Product.create({
-    "name": "__probe__",
-    "price": 0
-  })
-  if !__probe.nil? && !__probe._errors
-    __db_available = true
-    __probe.delete()
-  end
-catch e
+const BLANK = "can't be blank"
+
+# The record seeded by the "_id as a key" suite.
+widget = nil
+
+def error(field, message)
+  {"field": field, "message": message}
 end
 
-# ============================================================================
-# Tests that do NOT require a DB connection
-# ============================================================================
+# Builds `model` from `attributes`, saves it and returns the errors it collected.
+def errors_on_save(model, attributes)
+  record = model.new(attributes)
+  assert_eq(record.save, false, "save should be refused")
+  record.errors
+end
 
-describe("Instance .errors (no DB)", fn() {
-  test("returns empty array on fresh instance", fn() {
-    let product = Product.new()
-    assert_eq(len(product.errors), 0)
-  })
-})
+def wipe_collections
+  [InstProduct, InstValidatedItem, InstUniqueCode, InstCallbackItem, InstStringBareHashItem].each do |model|
+    model.delete_all()
+  end
+end
 
-describe("Instance .save() with validation errors (no DB)", fn() {
-  test("returns false when validation fails on insert", fn() {
-    let item = ValidatedItem.new()
-    # title is missing — presence validation should fail
-    let ok = item.save()
-    assert_eq(ok, false)
-  })
-
-  test("stores errors on instance after failed save", fn() {
-    let item = ValidatedItem.new()
-    item.save()
-
-    let errors = item.errors
-    assert(len(errors) > 0)
-    assert_eq(errors[0]["field"], "title")
-    assert_eq(errors[0]["message"], "can't be blank")
-  })
-
-  test("min_length validation on save", fn() {
-    let item = ValidatedItem.new()
-    item.title = "ab"  // too short (min 3)
-    let ok = item.save()
-    assert_eq(ok, false)
-
-    let errors = item.errors
-    assert(len(errors) > 0)
-    let has_length_error = false
-    for e in errors
-      has_length_error = true if e["message"].contains("too short")
-    end
-    assert(has_length_error)
-  })
-})
-
-describe("Model.create return shape on validation failure (no DB)", fn() {
-  test("returns a class instance (not a hash)", fn() {
-    let item = ValidatedItem.create({"title": ""})
-    assert_eq(item.class, "ValidatedItem")
-  })
-
-  test("instance is not persisted — no _key", fn() {
-    let item = ValidatedItem.create({"title": ""})
-    assert_null(item._key)
-  })
-
-  test("_errors is an array of {field, message} entries", fn() {
-    let item = ValidatedItem.create({"title": ""})
-    assert_not_null(item._errors)
-    assert(len(item._errors) > 0)
-    assert_eq(item._errors[0]["field"], "title")
-  })
-
-  test("user-supplied attributes still present on failed instance", fn() {
-    let item = ValidatedItem.create({"title": "ab"})  // min_length 3
-    assert_eq(item.title, "ab")
-    assert_not_null(item._errors)
-  })
-})
-
-describe("Instance validation with bare-hash syntax (no DB)", fn() {
-  test("validates presence with bare hash options", fn() {
-    let item = ValidatedWithBareHash.new()
-    let ok = item.save()
-    assert_eq(ok, false)
-
-    let errors = item.errors
-    assert(len(errors) > 0)
-    assert_eq(errors[0]["field"], "name")
-    assert_eq(errors[0]["message"], "can't be blank")
-  })
-
-  test("validates min_length with bare hash options", fn() {
-    let item = ValidatedWithBareHash.new()
-    item.name = "a"  // too short (min 2)
-    let ok = item.save()
-    assert_eq(ok, false)
-
-    let errors = item.errors
-    assert(len(errors) > 0)
-    let has_length_error = false
-    for e in errors
-      has_length_error = true if e["message"].contains("too short")
-    end
-    assert(has_length_error)
-  })
-
-  test("validates multiple bare hash options", fn() {
-    let item = ValidatedWithBareHash.new()
-    item.name = "OK"
-    item.email = "not-an-email"  // format validation
-    let ok = item.save()
-    assert_eq(ok, false)
-
-    let errors = item.errors
-    assert(len(errors) > 0)
-    let has_format_error = false
-    for e in errors
-      has_format_error = true if e["field"] == "email"
-    end
-    assert(has_format_error)
-  })
-
-  test("validates with string field name and bare hash", fn() {
-    let item = ValidatedStringBareHash.new()
-    let ok = item.save()
-    assert_eq(ok, false)
-
-    let errors = item.errors
-    assert(len(errors) > 0)
-    assert_eq(errors[0]["field"], "title")
-    assert_eq(errors[0]["message"], "can't be blank")
-  })
-
-  test("validates string field name with min_length via bare hash", fn() {
-    let item = ValidatedStringBareHash.new()
-    item.title = "ab"  // too short (min 3)
-    let ok = item.save()
-    assert_eq(ok, false)
-
-    let errors = item.errors
-    let has_length_error = false
-    for e in errors
-      has_length_error = true if e["message"].contains("too short")
-    end
-    assert(has_length_error)
-  })
-
-  test("validates max_length via bare hash", fn() {
-    let item = ValidatedStringBareHash.new()
-    let mut
-    long = ""
-    for i in 0 .. 101
-      long = long + "x"
-    end
-    item.title = long
-    let ok = item.save()
-    assert_eq(ok, false)
-
-    let errors = item.errors
-    let has_length_error = false
-    for e in errors
-      has_length_error = true if e["message"].contains("too long")
-    end
-    assert(has_length_error)
-  })
-
-  test("validates numericality with bare hash options", fn() {
-    let item = ValidatedNumericBareHash.new()
-    item.quantity = "not-a-number"
-    let ok = item.save()
-    assert_eq(ok, false)
-
-    let errors = item.errors
-    let has_numericality_error = false
-    for e in errors
-      has_numericality_error = true if e["field"] == "quantity"
-    end
-    assert(has_numericality_error)
-  })
-
-  test("validates min and max with bare hash on numeric field", fn() {
-    let item = ValidatedNumericBareHash.new()
-    item.quantity = -1  # below min 0
-    let ok = item.save()
-    assert_eq(ok, false)
-  })
-
-  test("validates multiple numeric and presence options via bare hash", fn() {
-    let item = ValidatedNumericBareHash.new()
-    # price missing → presence failure
-    item.quantity = 5
-    let ok = item.save()
-    assert_eq(ok, false)
-
-    let errors = item.errors
-    let has_price_error = false
-    for e in errors
-      has_price_error = true if e["field"] == "price"
-    end
-    assert(has_price_error)
-  })
-
-  test("mixed old and new syntax work together", fn() {
-    let item = ValidatedMixedStyle.new()
-    # name presence (old style) should trigger
-    let ok = item.save()
-    assert_eq(ok, false)
-
-    let errors = item.errors
-    assert(len(errors) > 0)
-    # At least one error for name field
-    let has_name_error = false
-    for e in errors
-      has_name_error = true if e["field"] == "name"
-    end
-    assert(has_name_error)
-  })
-
-  test("mixed syntax format validation works", fn() {
-    let item = ValidatedMixedStyle.new()
-    item.name = "OK"
-    item.email = "bad-email"
-    let ok = item.save()
-    assert_eq(ok, false)
-
-    let errors = item.errors
-    let has_email_error = false
-    for e in errors
-      has_email_error = true if e["field"] == "email"
-    end
-    assert(has_email_error)
-  })
-
-  test("before_save with symbol syntax still works", fn() {
-    let item = CallbackWithExtraArgs.new()
-    item.name = "  Hello  "
-    item.save()
-    # The symbol argument form is converted correctly by the executor
-    assert_eq(item.name, "hello")
-  })
-})
-
-# ============================================================================
-# Tests that REQUIRE a DB connection
-# ============================================================================
-
-describe("Model.create return shape on success (DB)", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("_errors is nil on successful create", fn() {
-    let product = Product.create({
-      "name": "ShapeOk",
-      "price": 1.0
-    })
+describe("validation failures (no database reached)") do
+  test("a fresh instance has no errors") do
+    product = InstProduct.new()
+    assert_eq(product.errors, [])
     assert_null(product._errors)
-    product.delete()
-  })
+  end
 
-  test("_key and id are populated on success", fn() {
-    let product = Product.create({
-      "name": "ShapeIds",
-      "price": 1.0
-    })
-    assert_not_null(product._key)
-    assert_not_null(product.id)
-    product.delete()
-  })
-})
-
-describe("Model _id key normalization", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("Model.find uses normalized key from _id", fn() {
-    let result = Product.create({
-      "name": "Widget",
-      "price": 9.99
-    })
-    assert_null(result._errors)
-
-    let record = result
-    let id = record._id
-    let key = record._key
-
-    let found_by_key = Product.find(key)
-    assert_not_null(found_by_key)
-    assert_eq(found_by_key.name, "Widget")
-
-    let found_by_id = Product.find(id)
-    assert_not_null(found_by_id)
-    assert_eq(found_by_id.name, "Widget")
-
-    found_by_key.delete()
-  })
-
-  test("Model.update works with _id composite key", fn() {
-    let result = Product.create({
-      "name": "Gadget",
-      "price": 19.99
-    })
-    let record = result
-
-    Product.update(record._id, {"name": "Updated Gadget"})
-
-    let updated = Product.find(record._key)
-    assert_eq(updated.name, "Updated Gadget")
-
-    updated.delete()
-  })
-
-  test("Model.delete works with _id composite key", fn() {
-    let result = Product.create({
-      "name": "Temporary",
-      "price": 1.0
-    })
-    let record = result
-
-    Product.delete(record._id)
-
-    let raised = false
-    try
-      Product.find(record._key)
-    catch e
-      raised = true
+  describe("save") do
+    test("a missing title is refused as blank") do
+      assert_eq(errors_on_save(InstValidatedItem, {}), [error("title", BLANK)])
     end
-    assert_eq(raised, true)
-  })
-})
 
-describe("Model.create returns instance", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("record is a class instance", fn() {
-    let result = Product.create({
-      "name": "Test Item",
-      "price": 5.0
-    })
-    assert_null(result._errors)
-
-    let record = result
-    assert(record.is_a?("Product"))
-    assert_eq(record.name, "Test Item")
-    assert_not_null(record._key)
-
-    record.delete()
-  })
-})
-
-describe("Model.find returns instance", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("returns a class instance", fn() {
-    let result = Product.create({
-      "name": "Findable",
-      "price": 7.0
-    })
-    let key = result._key
-
-    let found = Product.find(key)
-    assert(found.is_a?("Product"))
-    assert_eq(found.name, "Findable")
-    assert_eq(found._key, key)
-
-    found.delete()
-  })
-
-  test("raises RecordNotFound for missing document", fn() {
-    let raised = false
-    let message = ""
-    try
-      Product.find("nonexistent_key_12345")
-    catch e
-      raised = true
-      message = str(e)
+    test("a short title fails min_length") do
+      errors = errors_on_save(InstValidatedItem, {"title": "ab"})
+      assert_eq(errors, [error("title", "is too short (minimum is 3 characters)")])
     end
-    assert_eq(raised, true)
-    assert(message.contains("Product"))
-    assert(message.contains("nonexistent_key_12345"))
-  })
-})
 
-describe("Model.all returns instances", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("returns array of class instances", fn() {
-    let r1 = Product.create({"name": "AllTest1", "price": 1.0})
-    let r2 = Product.create({"name": "AllTest2", "price": 2.0})
-
-    let all = Product.all()
-    assert(len(all) >= 2)
-
-    let first = all[0]
-    assert(first.is_a?("Product"))
-    assert_not_null(first._key)
-    assert_not_null(first.name)
-
-    r1.delete()
-    r2.delete()
-  })
-
-  test("Model.all auto-invokes without parentheses", fn() {
-    let r1 = Product.create({"name": "AutoInvokeTest1", "price": 1.0})
-    let r2 = Product.create({"name": "AutoInvokeTest2", "price": 2.0})
-
-    let with_parens = Product.all()
-    let without_parens = Product.all
-    assert_eq(len(with_parens), len(without_parens))
-    assert_eq(type(without_parens), "array")
-
-    r1.delete()
-    r2.delete()
-  })
-
-  test("chaining after auto-invoke works", fn() {
-    let count = Product.all.length
-    assert(count >= 0)
-  })
-})
-
-describe("Model.count auto-invoke", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("Model.count auto-invokes without parentheses", fn() {
-    let with_parens = Product.count()
-    let without_parens = Product.count
-    assert_eq(with_parens, without_parens)
-    assert_eq(type(without_parens), "int")
-  })
-})
-
-describe("Model.all_json auto-invoke", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("Model.all_json auto-invokes without parentheses", fn() {
-    let with_parens = Product.all_json()
-    let without_parens = Product.all_json
-    assert_eq(with_parens, without_parens)
-    assert_eq(type(without_parens), "string")
-  })
-})
-
-describe("Instance .update()", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("persists changed fields to DB", fn() {
-    let result = Product.create({
-      "name": "Original",
-      "price": 10.0
-    })
-    let product = result
-
-    product.name = "Modified"
-    let ok = product.update()
-    assert_eq(ok, true)
-
-    let reloaded = Product.find(product._key)
-    assert_eq(reloaded.name, "Modified")
-
-    reloaded.delete()
-  })
-})
-
-describe("Instance .delete()", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("removes document from DB", fn() {
-    let result = Product.create({
-      "name": "Deletable",
-      "price": 3.0
-    })
-    let product = result
-    let key = product._key
-
-    product.delete()
-
-    let raised = false
-    try
-      Product.find(key)
-    catch e
-      raised = true
+    test("an empty title fails presence and min_length") do
+      errors = errors_on_save(InstValidatedItem, {"title": ""})
+      assert_eq(errors, [error("title", BLANK), error("title", "is too short (minimum is 3 characters)")])
     end
-    assert_eq(raised, true)
-  })
-})
+  end
 
-describe("Model.update with instance data", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("accepts instance as data argument", fn() {
-    let result = Product.create({
-      "name": "StaticUpdate",
-      "price": 15.0
-    })
-    let product = result
-
-    product.name = "StaticUpdated"
-    Product.update(product._key, product)
-
-    let reloaded = Product.find(product._key)
-    assert_eq(reloaded.name, "StaticUpdated")
-
-    reloaded.delete()
-  })
-})
-
-describe("QueryBuilder returns instances", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("where().first returns an instance", fn() {
-    let result = Product.create({
-      "name": "QBFirst",
-      "price": 42.0
-    })
-
-    let found = Product.where("name = @n", {"n": "QBFirst"}).first
-    assert_not_null(found)
-    assert(found.is_a?("Product"))
-    assert_eq(found.name, "QBFirst")
-
-    found.delete()
-  })
-
-  test("where().all returns array of instances", fn() {
-    let r1 = Product.create({"name": "QBAll", "price": 1.0})
-    let r2 = Product.create({"name": "QBAll", "price": 2.0})
-
-    let results = Product.where("name = @n", {"n": "QBAll"}).all
-    assert(len(results) >= 2)
-    assert(results[0].is_a?("Product"))
-
-    r1.delete()
-    r2.delete()
-  })
-
-  test("order().first returns an instance", fn() {
-    let r1 = Product.create({"name": "QBOrder A", "price": 100.0})
-    let r2 = Product.create({"name": "QBOrder B", "price": 200.0})
-
-    let first = Product.order("name", "asc").first
-    assert_not_null(first)
-    assert(first.is_a?("Product"))
-
-    r1.delete()
-    r2.delete()
-  })
-
-  test("limit returns instances", fn() {
-    let r1 = Product.create({"name": "QBLimit1", "price": 1.0})
-    let r2 = Product.create({"name": "QBLimit2", "price": 2.0})
-
-    let results = Product.limit(1).all
-    assert_eq(len(results), 1)
-    assert(results[0].is_a?("Product"))
-
-    r1.delete()
-    r2.delete()
-  })
-})
-
-describe("Instance field access", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("can read all fields from instance", fn() {
-    let result = Product.create({
-      "name": "FieldAccess",
-      "price": 25.0
-    })
-    let product = result
-
-    assert_eq(product.name, "FieldAccess")
-    assert_not_null(product._key)
-    assert_not_null(product._id)
-
-    product.delete()
-  })
-
-  test("can set fields on instance", fn() {
-    let result = Product.create({
-      "name": "SetField",
-      "price": 30.0
-    })
-    let product = result
-
-    product.name = "NewName"
-    assert_eq(product.name, "NewName")
-
-    product.delete()
-  })
-})
-
-describe("Instance .save()", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("inserts new record when no _key, returns true", fn() {
-    let product = Product.new()
-    product.name = "SaveNew"
-    product.price = 99.0
-
-    let result = product.save()
-    assert_eq(result, true)
-    assert_not_null(product._key)
-    assert_eq(product.name, "SaveNew")
-
-    let found = Product.find(product._key)
-    assert_not_null(found)
-    assert_eq(found.name, "SaveNew")
-
-    product.delete()
-  })
-
-  test("updates existing record when _key present, returns true", fn() {
-    let result = Product.create({
-      "name": "SaveExisting",
-      "price": 10.0
-    })
-    let product = result
-
-    product.name = "SaveUpdated"
-    let ok = product.save()
-    assert_eq(ok, true)
-
-    let found = Product.find(product._key)
-    assert_eq(found.name, "SaveUpdated")
-
-    found.delete()
-  })
-
-  test("populates _key on instance after insert", fn() {
-    let product = Product.new()
-    product.name = "SaveReturn"
-    product.price = 5.0
-
-    product.save()
-    assert_not_null(product._key)
-
-    product.delete()
-  })
-
-  test("errors is empty after successful save", fn() {
-    let product = Product.new()
-    product.name = "NoErrors"
-    product.price = 1.0
-
-    product.save()
-    assert_eq(len(product.errors), 0)
-
-    product.delete()
-  })
-})
-
-describe("Instance .save(hash)", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("applies hash attributes then inserts", fn() {
-    let p = Product.new()
-    let ok = p.save({"name": "BulkSave", "price": 12.5})
-    assert_eq(ok, true)
-    assert_not_null(p._key)
-    assert_eq(p.name, "BulkSave")
-    assert_eq(p.price, 12.5)
-
-    let found = Product.find(p._key)
-    assert_eq(found.name, "BulkSave")
-
-    p.delete()
-  })
-
-  test("merges hash onto pre-assigned fields without overwriting unmentioned", fn() {
-    let p = Product.new()
-    p.name = "Original"
-    let ok = p.save({"price": 99.0})
-    assert_eq(ok, true)
-    assert_eq(p.name, "Original")
-    assert_eq(p.price, 99.0)
-
-    p.delete()
-  })
-
-  test("hash value wins over pre-assigned field on conflict", fn() {
-    let p = Product.new()
-    p.name = "Old"
-    p.save({"name": "New"})
-    assert_eq(p.name, "New")
-
-    p.delete()
-  })
-
-  test("updates existing record when _key is present", fn() {
-    let result = Product.create({
-      "name": "SaveHashSeed",
-      "price": 1.0
-    })
-    let p = result
-
-    let ok = p.save({"name": "SaveHashRenamed", "price": 2.0})
-    assert_eq(ok, true)
-
-    let found = Product.find(p._key)
-    assert_eq(found.name, "SaveHashRenamed")
-    assert_eq(found.price, 2.0)
-
-    found.delete()
-  })
-
-  test("surfaces validation errors when hash produces invalid state", fn() {
-    let item = ValidatedItem.new()
-    let ok = item.save({"title": ""})
-    assert_eq(ok, false)
-    assert(len(item.errors) > 0)
-  })
-
-  test("non-hash argument raises", fn() {
-    let p = Product.new()
-    let raised = false
-    try
-      p.save("not a hash")
-    catch e
-      raised = true
+  describe("create") do
+    test("returns an unpersisted instance of the class, not a hash") do
+      item = InstValidatedItem.create({"title": ""})
+      assert_eq(item.class, "InstValidatedItem")
+      assert(item.is_a?("InstValidatedItem"))
+      assert_null(item._key)
     end
-    assert_eq(raised, true)
-  })
-})
 
-describe("Instance .update(hash)", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("applies hash then updates existing record", fn() {
-    let result = Product.create({
-      "name": "UpdHashSeed",
-      "price": 1.0
-    })
-    let p = result
-
-    let ok = p.update({"name": "UpdHashRenamed", "price": 2.0})
-    assert_eq(ok, true)
-    assert_eq(p.name, "UpdHashRenamed")
-    assert_eq(p.price, 2.0)
-
-    let found = Product.find(p._key)
-    assert_eq(found.name, "UpdHashRenamed")
-    assert_eq(found.price, 2.0)
-
-    found.delete()
-  })
-
-  test("no-arg update() still works (backcompat)", fn() {
-    let result = Product.create({
-      "name": "UpdBackcompat",
-      "price": 1.0
-    })
-    let p = result
-
-    p.name = "UpdBackcompatRenamed"
-    let ok = p.update()
-    assert_eq(ok, true)
-
-    p.delete()
-  })
-
-  test("surfaces validation errors when hash produces invalid state", fn() {
-    let result = ValidatedItem.create({"title": "Valid Title"})
-    let item = result
-
-    let ok = item.update({"title": ""})
-    assert_eq(ok, false)
-    assert(len(item.errors) > 0)
-
-    item.update({"title": "Valid Title"})
-    item.delete()
-  })
-
-  test("non-hash argument raises", fn() {
-    let result = Product.create({
-      "name": "UpdHashArgType",
-      "price": 1.0
-    })
-    let p = result
-
-    let raised = false
-    try
-      p.update(42)
-    catch e
-      raised = true
+    test("_errors lists {field, message} entries") do
+      item = InstValidatedItem.create({"title": ""})
+      assert_eq(item._errors, [error("title", BLANK), error("title", "is too short (minimum is 3 characters)")])
+      assert_eq(item.errors, item._errors)
     end
-    assert_eq(raised, true)
 
-    p.delete()
-  })
-})
+    test("keeps the attributes it was given") do
+      item = InstValidatedItem.create({"title": "ab"})
+      assert_eq(item.title, "ab")
+      assert_eq(item._errors, [error("title", "is too short (minimum is 3 characters)")])
+    end
+  end
 
-describe("Instance .update() returns boolean", fn() {
-  before_each(fn() { requires_solidb() })
+  describe("bare-hash validates options") do
+    test("presence on every declared field") do
+      assert_eq(errors_on_save(InstBareHashItem, {}), [error("name", BLANK), error("email", BLANK)])
+    end
 
-  test("returns true on success", fn() {
-    let result = Product.create({
-      "name": "UpdateBool",
-      "price": 10.0
-    })
-    let product = result
+    test("min_length") do
+      errors = errors_on_save(InstBareHashItem, {"name": "a", "email": "a@b"})
+      assert_eq(errors, [error("name", "is too short (minimum is 2 characters)")])
+    end
 
-    product.name = "UpdatedBool"
-    let ok = product.update()
-    assert_eq(ok, true)
+    test("format") do
+      errors = errors_on_save(InstBareHashItem, {"name": "OK", "email": "not-an-email"})
+      assert_eq(errors, [error("email", "is invalid")])
+    end
 
-    let found = Product.find(product._key)
-    assert_eq(found.name, "UpdatedBool")
+    test("a string field name with a bare hash") do
+      assert_eq(errors_on_save(InstStringBareHashItem, {}), [error("title", BLANK)])
+    end
 
-    found.delete()
-  })
+    test("min_length with a string field name") do
+      errors = errors_on_save(InstStringBareHashItem, {"title": "ab"})
+      assert_eq(errors, [error("title", "is too short (minimum is 3 characters)")])
+    end
 
-  test("errors is empty after successful update", fn() {
-    let result = Product.create({
-      "name": "UpdateNoErr",
-      "price": 10.0
-    })
-    let product = result
+    test("max_length refuses one character too many") do
+      errors = errors_on_save(InstStringBareHashItem, {"title": "x" * 101})
+      assert_eq(errors, [error("title", "is too long (maximum is 100 characters)")])
+    end
 
-    product.name = "UpdatedNoErr"
-    product.update()
-    assert_eq(len(product.errors), 0)
+    test("numericality refuses a string") do
+      errors = errors_on_save(InstNumericItem, {"quantity": "not-a-number", "price": 1})
+      assert_eq(errors, [error("quantity", "is not a number")])
+    end
 
-    product.delete()
-  })
-})
+    test("numericality min and max bound the value") do
+      below = errors_on_save(InstNumericItem, {"quantity": -1, "price": 1})
+      assert_eq(below, [error("quantity", "must be greater than or equal to 0")])
+      above = errors_on_save(InstNumericItem, {"quantity": 1001, "price": 1})
+      assert_eq(above, [error("quantity", "must be less than or equal to 1000")])
+    end
 
-describe("Instance .save() with validation errors (DB)", fn() {
-  before_each(fn() { requires_solidb() })
+    test("presence and a float minimum on the same field") do
+      assert_eq(errors_on_save(InstNumericItem, {"quantity": 5}), [error("price", BLANK)])
+      too_cheap = errors_on_save(InstNumericItem, {"quantity": 5, "price": 0})
+      assert_eq(too_cheap, [error("price", "must be greater than or equal to 0.01")])
+    end
+  end
 
-  test("returns false when validation fails on update", fn() {
-    let result = ValidatedItem.create({"title": "Valid Title"})
-    assert_null(result._errors)
-    let item = result
+  describe("mixed old and new validates syntax") do
+    test("presence from both styles") do
+      assert_eq(errors_on_save(InstMixedStyleItem, {}), [error("name", BLANK), error("email", BLANK)])
+    end
 
-    item.title = ""
-    let ok = item.update()
-    assert_eq(ok, false)
+    test("format from the bare-hash style") do
+      errors = errors_on_save(InstMixedStyleItem, {"name": "OK", "email": "bad-email"})
+      assert_eq(errors, [error("email", "is invalid")])
+    end
+  end
+end
 
-    let errors = item.errors
-    assert(len(errors) > 0)
+describe("against SoliDB") do
+  before_each() do
+    requires_solidb()
+  end
 
-    item.title = "Valid Title"
-    item.save()
-    item.delete()
-  })
+  after_each() do
+    wipe_collections()
+  end
 
-  test("clears errors after successful save", fn() {
-    let item = ValidatedItem.new()
-    item.save()  // fails — no title
-    assert(len(item.errors) > 0)
+  describe("create") do
+    test("returns a persisted instance with no errors") do
+      product = InstProduct.create({"name": "ShapeOk", "price": 1.0})
+      assert(product.is_a?("InstProduct"))
+      assert_null(product._errors)
+      assert_eq(product.errors, [])
+      assert_eq(product.name, "ShapeOk")
+      assert_eq(product.price, 1.0)
+    end
 
-    item.title = "Now Valid"
-    let ok = item.save()
-    assert_eq(ok, true)
-    assert_eq(len(item.errors), 0)
+    test("populates _key, id and _id consistently") do
+      product = InstProduct.create({"name": "ShapeIds", "price": 1.0})
+      assert_eq(product.id, product._key)
+      assert(product._id.ends_with("inst_products/#{product._key}"), product._id)
+    end
 
-    item.delete()
-  })
-})
+    test("a value the uniqueness rule has seen is refused") do
+      assert_null(InstUniqueCode.create({"code": "A"})._errors)
+      duplicate = InstUniqueCode.create({"code": "A"})
+      assert_eq(duplicate._errors, [error("code", "has already been taken")])
+      assert_null(duplicate._key)
+      assert_eq(InstUniqueCode.count, 1)
+    end
+  end
 
-describe("Instance .errors (DB)", fn() {
-  before_each(fn() { requires_solidb() })
+  describe("_id as a key") do
+    before_each() do
+      widget = InstProduct.create({"name": "Widget", "price": 9.99})
+    end
 
-  test("returns empty array after successful operations", fn() {
-    let result = Product.create({
-      "name": "ErrTest",
-      "price": 5.0
-    })
-    let product = result
+    test("find accepts the _key or the composite _id") do
+      assert_eq(InstProduct.find(widget._key).name, "Widget")
+      assert_eq(InstProduct.find(widget._id).name, "Widget")
+    end
 
-    product.name = "ErrTestUpdated"
-    product.save()
-    assert_eq(len(product.errors), 0)
+    test("Model.update accepts the composite _id") do
+      InstProduct.update(widget._id, {"name": "Updated Widget"})
+      updated = InstProduct.find(widget._key)
+      assert_eq(updated.name, "Updated Widget")
+      assert_eq(updated.price, 9.99)
+    end
 
-    product.delete()
-  })
-})
+    test("Model.delete accepts the composite _id") do
+      InstProduct.delete(widget._id)
+      assert_raises("not found") do
+        InstProduct.find(widget._key)
+      end
+    end
+  end
 
-describe("Instance .reload()", fn() {
-  before_each(fn() { requires_solidb() })
+  describe("find") do
+    test("returns a class instance") do
+      key = InstProduct.create({"name": "Findable", "price": 7.0})._key
+      found = InstProduct.find(key)
+      assert(found.is_a?("InstProduct"))
+      assert_eq(found.name, "Findable")
+      assert_eq(found._key, key)
+    end
 
-  test("refreshes fields from DB", fn() {
-    let result = Product.create({
-      "name": "ReloadMe",
-      "price": 10.0
-    })
-    let product = result
+    test("raises RecordNotFound naming the model and the key") do
+      message = assert_raises() do
+        InstProduct.find("nonexistent_key_12345")
+      end
+      assert_contains(message, "InstProduct with id 'nonexistent_key_12345' not found")
+    end
+  end
 
-    product.name = "LocalOnly"
-    assert_eq(product.name, "LocalOnly")
+  describe("all and count") do
+    before_each() do
+      InstProduct.create({"name": "AllTest1", "price": 1.0})
+      InstProduct.create({"name": "AllTest2", "price": 2.0})
+    end
 
-    product.reload()
-    assert_eq(product.name, "ReloadMe")
+    test("all returns class instances") do
+      products = InstProduct.order("name").all
+      assert_eq(products.map { |product| product.name }, ["AllTest1", "AllTest2"])
+      assert(products.all? { |product| product.is_a?("InstProduct") })
+    end
 
-    product.delete()
-  })
+    test("all runs without parentheses") do
+      assert_eq(type(InstProduct.all), "array")
+      assert_eq(InstProduct.all.length, InstProduct.all().length)
+    end
 
-  test("picks up changes made by others", fn() {
-    let result = Product.create({
-      "name": "BeforeUpdate",
-      "price": 20.0
-    })
-    let product = result
+    test("a chain continues on the auto-invoked result") do
+      assert_eq(InstProduct.all.length, 2)
+    end
 
-    Product.update(product._key, {"name": "AfterUpdate"})
+    test("count runs without parentheses") do
+      assert_eq(InstProduct.count, 2)
+      assert_eq(InstProduct.count(), 2)
+      assert_eq(type(InstProduct.count), "int")
+    end
 
-    assert_eq(product.name, "BeforeUpdate")
+    test("all_json runs without parentheses and returns the raw cursor") do
+      json = InstProduct.all_json
+      assert_eq(type(json), "string")
+      assert_eq(json_parse(json)["count"], 2)
+      assert_eq(json_parse(InstProduct.all_json())["count"], 2)
+    end
+  end
 
-    product.reload()
-    assert_eq(product.name, "AfterUpdate")
+  describe("query builder results") do
+    test("where.first returns an instance") do
+      InstProduct.create({"name": "QBFirst", "price": 42.0})
+      found = InstProduct.where("name = @n", {"n": "QBFirst"}).first
+      assert(found.is_a?("InstProduct"))
+      assert_eq(found.price, 42.0)
+    end
 
-    product.delete()
-  })
+    test("where.all returns every match as an instance") do
+      InstProduct.create({"name": "QBAll", "price": 1.0})
+      InstProduct.create({"name": "QBAll", "price": 2.0})
+      InstProduct.create({"name": "Other", "price": 3.0})
+      results = InstProduct.where("name = @n", {"n": "QBAll"}).order("price").all
+      assert_eq(results.map { |product| product.price }, [1.0, 2.0])
+      assert(results[0].is_a?("InstProduct"))
+    end
 
-  test("returns the instance itself", fn() {
-    let result = Product.create({
-      "name": "ReloadReturn",
-      "price": 5.0
-    })
-    let product = result
+    test("order.first returns the first instance in that order") do
+      InstProduct.create({"name": "QBOrder B", "price": 200.0})
+      InstProduct.create({"name": "QBOrder A", "price": 100.0})
+      first = InstProduct.order("name", "asc").first
+      assert(first.is_a?("InstProduct"))
+      assert_eq(first.name, "QBOrder A")
+    end
 
-    let reloaded = product.reload()
-    assert(reloaded.is_a?("Product"))
-    assert_eq(reloaded._key, product._key)
+    test("limit caps the instances returned") do
+      InstProduct.create({"name": "QBLimit1", "price": 1.0})
+      InstProduct.create({"name": "QBLimit2", "price": 2.0})
+      results = InstProduct.limit(1).all
+      assert_eq(results.length, 1)
+      assert(results[0].is_a?("InstProduct"))
+    end
+  end
 
-    product.delete()
-  })
-})
+  describe("field access") do
+    test("reads persisted fields") do
+      product = InstProduct.create({"name": "FieldAccess", "price": 25.0})
+      assert_eq(product.name, "FieldAccess")
+      assert_eq(product.price, 25.0)
+      assert_eq(product._id, InstProduct.find(product._key)._id)
+    end
+
+    test("an assignment changes the instance but not the stored row") do
+      product = InstProduct.create({"name": "SetField", "price": 30.0})
+      product.name = "NewName"
+      assert_eq(product.name, "NewName")
+      assert_eq(InstProduct.find(product._key).name, "SetField")
+    end
+  end
+
+  describe("save") do
+    test("inserts a record without a _key and returns true") do
+      product = InstProduct.new()
+      product.name = "SaveNew"
+      product.price = 99.0
+      assert_eq(product.save, true)
+      assert_eq(product.errors, [])
+      found = InstProduct.find(product._key)
+      assert_eq(found.name, "SaveNew")
+      assert_eq(found.price, 99.0)
+    end
+
+    test("updates a record that has a _key and returns true") do
+      product = InstProduct.create({"name": "SaveExisting", "price": 10.0})
+      key = product._key
+      product.name = "SaveUpdated"
+      assert_eq(product.save, true)
+      assert_eq(product._key, key)
+      assert_eq(InstProduct.find(key).name, "SaveUpdated")
+      assert_eq(InstProduct.count, 1)
+    end
+
+    test("runs a before_save given as a symbol") do
+      item = InstCallbackItem.new()
+      item.name = "  Hello  "
+      # `save()` with parentheses: the bare form skips callbacks (see the next test).
+      assert_eq(item.save(), true)
+      assert_eq(item.name, "hello")
+      assert_eq(InstCallbackItem.find(item._key).name, "hello")
+    end
+
+    test("a bare save runs before_save too") do
+      pending("bug: record.save / .update / .delete without () persist but skip every lifecycle callback")
+      item = InstCallbackItem.new()
+      item.name = "  Hello  "
+      item.save
+      assert_eq(InstCallbackItem.find(item._key).name, "hello")
+    end
+
+    test("a refused update returns false and keeps the stored row") do
+      item = InstValidatedItem.create({"title": "Valid Title"})
+      item.title = ""
+      assert_eq(item.update, false)
+      assert_eq(item.errors, [error("title", BLANK), error("title", "is too short (minimum is 3 characters)")])
+      assert_eq(InstValidatedItem.find(item._key).title, "Valid Title")
+    end
+
+    test("a successful save clears the previous errors") do
+      item = InstValidatedItem.new()
+      assert_eq(item.save, false)
+      assert_eq(item.errors, [error("title", BLANK)])
+
+      item.title = "Now Valid"
+      assert_eq(item.save, true)
+      assert_eq(item.errors, [])
+    end
+  end
+
+  describe("save(hash)") do
+    test("applies the hash, then inserts") do
+      product = InstProduct.new()
+      assert_eq(product.save({"name": "BulkSave", "price": 12.5}), true)
+      assert_eq(product.name, "BulkSave")
+      assert_eq(product.price, 12.5)
+      assert_eq(InstProduct.find(product._key).name, "BulkSave")
+    end
+
+    test("keeps fields the hash does not mention") do
+      product = InstProduct.new()
+      product.name = "Original"
+      assert_eq(product.save({"price": 99.0}), true)
+      found = InstProduct.find(product._key)
+      assert_eq(found.name, "Original")
+      assert_eq(found.price, 99.0)
+    end
+
+    test("the hash wins over a field assigned before") do
+      product = InstProduct.new()
+      product.name = "Old"
+      product.save({"name": "New"})
+      assert_eq(product.name, "New")
+      assert_eq(InstProduct.find(product._key).name, "New")
+    end
+
+    test("updates a record that has a _key") do
+      product = InstProduct.create({"name": "SaveHashSeed", "price": 1.0})
+      assert_eq(product.save({"name": "SaveHashRenamed", "price": 2.0}), true)
+      found = InstProduct.find(product._key)
+      assert_eq(found.name, "SaveHashRenamed")
+      assert_eq(found.price, 2.0)
+    end
+
+    test("returns false and collects errors when the hash makes it invalid") do
+      item = InstValidatedItem.new()
+      assert_eq(item.save({"title": "no"}), false)
+      assert_eq(item.errors, [error("title", "is too short (minimum is 3 characters)")])
+      assert_eq(InstValidatedItem.count, 0)
+    end
+
+    test("refuses an argument that is not a hash") do
+      assert_raises("expected a Hash of attributes, got string") do
+        InstProduct.new().save("not a hash")
+      end
+    end
+  end
+
+  describe("update") do
+    test("update(hash) applies the hash and persists it") do
+      product = InstProduct.create({"name": "UpdHashSeed", "price": 1.0})
+      assert_eq(product.update({"name": "UpdHashRenamed", "price": 2.0}), true)
+      assert_eq(product.name, "UpdHashRenamed")
+      assert_eq(product.price, 2.0)
+      found = InstProduct.find(product._key)
+      assert_eq(found.name, "UpdHashRenamed")
+      assert_eq(found.price, 2.0)
+    end
+
+    test("update without arguments persists assigned fields") do
+      product = InstProduct.create({"name": "UpdateBool", "price": 10.0})
+      product.name = "UpdatedBool"
+      assert_eq(product.update, true)
+      assert_eq(product.errors, [])
+      assert_eq(InstProduct.find(product._key).name, "UpdatedBool")
+    end
+
+    test("update(hash) returns false and keeps the stored row when invalid") do
+      item = InstValidatedItem.create({"title": "Valid Title"})
+      assert_eq(item.update({"title": "ab"}), false)
+      assert_eq(item.errors, [error("title", "is too short (minimum is 3 characters)")])
+      assert_eq(InstValidatedItem.find(item._key).title, "Valid Title")
+    end
+
+    test("refuses an argument that is not a hash") do
+      product = InstProduct.create({"name": "UpdHashArgType", "price": 1.0})
+      assert_raises("expected a Hash of attributes, got int") do
+        product.update(42)
+      end
+    end
+
+    test("Model.update accepts an instance as the data") do
+      product = InstProduct.create({"name": "StaticUpdate", "price": 15.0})
+      product.name = "StaticUpdated"
+      InstProduct.update(product._key, product)
+      found = InstProduct.find(product._key)
+      assert_eq(found.name, "StaticUpdated")
+      assert_eq(found.price, 15.0)
+    end
+  end
+
+  describe("delete") do
+    test("removes the document") do
+      product = InstProduct.create({"name": "Deletable", "price": 3.0})
+      product.delete
+      assert_raises("not found") do
+        InstProduct.find(product._key)
+      end
+      assert_eq(InstProduct.count, 0)
+    end
+  end
+
+  describe("reload") do
+    test("drops unsaved local changes") do
+      product = InstProduct.create({"name": "ReloadMe", "price": 10.0})
+      product.name = "LocalOnly"
+      product.reload
+      assert_eq(product.name, "ReloadMe")
+    end
+
+    test("picks up changes written elsewhere") do
+      product = InstProduct.create({"name": "BeforeUpdate", "price": 20.0})
+      InstProduct.update(product._key, {"name": "AfterUpdate"})
+      assert_eq(product.name, "BeforeUpdate")
+      product.reload
+      assert_eq(product.name, "AfterUpdate")
+    end
+
+    test("returns the instance itself") do
+      product = InstProduct.create({"name": "ReloadReturn", "price": 5.0})
+      reloaded = product.reload
+      assert(reloaded.is_a?("InstProduct"))
+      assert_eq(reloaded._key, product._key)
+      assert_eq(reloaded.name, "ReloadReturn")
+    end
+  end
+end

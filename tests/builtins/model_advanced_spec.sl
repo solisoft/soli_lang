@@ -1,708 +1,496 @@
-# ============================================================================
-# Model Advanced Features Test Suite
-# Tests for finders, aggregations, scopes, soft delete, etc.
-# ============================================================================
+# Model query surface beyond plain CRUD: pluck, exists, aggregates, offset,
+# pagination, finders, upsert, create_many, transactions, increment/decrement,
+# touch and soft delete. Query-shape tests read `.to_query` and need no
+# database; the rest run against SoliDB.
 
-class TestUser < Model
+class AdvUser < Model
+  scope("big_spenders", fn() { this.where("value > @v", {"v": 100}) })
 end
 
-class TestPost < Model
-  belongs_to("user")
-end
-
-class TestSoft < Model
+class AdvSoft < Model
   soft_delete
 end
 
-# Detect DB availability
-let __db_available = false
-try
-  let __probe = TestUser.create({
-    "name": "__probe__",
-    "value": 0
-  })
-  if __probe["valid"]
-    __db_available = true
-    __probe["record"].delete()
-  end
-catch e
+# The SDBQL text of a builder, without the bind-variable dump that follows it.
+def query_of(builder)
+  builder.to_query.split(" | bind_vars:")[0]
 end
 
-# ============================================================================
-# Tests that do NOT require a DB connection
-# ============================================================================
+const AGGREGATE_BUG = "bug: Model.sum/avg/min/max emit `FOR doc IN c RETURN SUM(doc.f)`, which SoliDB rejects " +
+  "(Unknown function: SUM); the error is swallowed and .first is nil"
 
-describe("Model.exists() query generation", fn() {
-  test("generates EXISTS query", fn() {
-    let q = TestUser.where("active = @a", {"a": true}).exists.to_query
-    assert(q.contains("LIMIT 1 RETURN true"))
-  })
-})
+def create_then_throw(name)
+  AdvUser.transaction do
+    AdvUser.create({"name": name})
+    throw "boom"
+  end
+end
 
-describe("Model.pluck() query generation", fn() {
-  test("generates PLUCK query for single field", fn() {
-    let q = TestUser.where("active = @a", {"a": true}).pluck("name").to_query
-    assert(q.contains("RETURN doc.name"))
-  })
+def names_of(records)
+  records.map { |record| record.name }
+end
 
-  test("generates PLUCK query for multiple fields", fn() {
-    # Hashes, self-describing in JSON output. (Array#pluck on in-memory
-    # arrays returns arrays — the two forms differ deliberately.)
-    let q = TestUser.pluck("name", "email").to_query
-    assert(q.contains("RETURN {name: doc.name, email: doc.email}"))
-  })
-})
-
-describe("Symbols as field names", fn() {
-  # Ruby-style symbols are accepted wherever a field name is expected, on
-  # both the Model statics and the chained QueryBuilder methods.
-  test("pluck accepts symbols", fn() {
-    let q = TestUser.pluck(:name, :email).to_query
-    assert(q.contains("RETURN {name: doc.name, email: doc.email}"))
-  })
-
-  test("chained pluck accepts symbols", fn() {
-    let q = TestUser.where("active = @a", {"a": true}).pluck(:name).to_query
-    assert(q.contains("RETURN doc.name"))
-  })
-
-  test("order accepts a symbol field and direction", fn() {
-    let q = TestUser.order(:created_at, :desc).to_query
-    assert(q.contains("SORT doc.created_at DESC"))
-  })
-
-  test("select accepts symbols", fn() {
-    let q = TestUser.select(:name, :email).to_query
-    assert(q.contains("name: doc.name"))
-    assert(q.contains("_key: doc._key"))
-  })
-
-  test("aggregates accept symbols", fn() {
-    let q = TestUser.sum(:balance).to_query
-    assert(q.contains("RETURN SUM(doc.balance)"))
-  })
-})
-
-describe("Model.sum/avg/min/max query generation", fn() {
-  test("sum generates correct query", fn() {
-    let q = TestUser.where("age > @a", {"a": 18}).sum("balance").to_query
-    assert(q.contains("RETURN SUM(doc.balance)"))
-  })
-
-  test("avg generates correct query", fn() {
-    let q = TestUser.avg("score").to_query
-    assert(q.contains("RETURN AVG(doc.score)"))
-  })
-
-  test("min generates correct query", fn() {
-    let q = TestUser.min("price").to_query
-    assert(q.contains("RETURN MIN(doc.price)"))
-  })
-
-  test("max generates correct query", fn() {
-    let q = TestUser.max("views").to_query
-    assert(q.contains("RETURN MAX(doc.views)"))
-  })
-})
-
-describe("Model.group_by() query generation", fn() {
-  test("group_by generates COLLECT query", fn() {
-    let q = TestUser.group_by("country", "sum", "balance").to_query
-    assert(q.contains("COLLECT group = doc.country"))
-    assert(q.contains("AGGREGATE result = SUM(doc.balance)"))
-  })
-})
-
-describe("Model.where() with optional bind variables", fn() {
-  test("where() accepts filter without bind variables", fn() {
-    let q = TestUser.where("doc.active == true").to_query
-    assert(q.contains("FILTER doc.active == true"))
-  })
-
-  test("where() accepts filter with empty bind variables", fn() {
-    let q = TestUser.where("doc.active == true", {}).to_query
-    assert(q.contains("FILTER doc.active == true"))
-  })
-})
-
-describe("Model.where() with AQL functions", fn() {
-  test("LOWER() function is passed through correctly", fn() {
-    let q = TestUser.where("LOWER(doc.email) == @email", {"email": "test@example.com"}).to_query
-    assert(q.contains("FILTER LOWER(doc.email) == @email"))
-  })
-
-  test("UPPER() function is passed through correctly", fn() {
-    let q = TestUser.where("UPPER(doc.name) == @name", {"name": "JOHN"}).to_query
-    assert(q.contains("FILTER UPPER(doc.name) == @name"))
-  })
-
-  test("TRIM() function is passed through correctly", fn() {
-    let q = TestUser.where("TRIM(doc.field) == @val", {"val": "test"}).to_query
-    assert(q.contains("FILTER TRIM(doc.field) == @val"))
-  })
-
-  test("nested function calls with LOWER", fn() {
-    let q = TestUser.where("LOWER(doc.email) == LOWER(@email)", {"email": "Test@Example.COM"}).to_query
-    assert(q.contains("FILTER LOWER(doc.email) == LOWER(@email)"))
-  })
-})
-
-describe("Model.offset() method", fn() {
-  test("creates query with offset", fn() {
-    let q = TestUser.offset(20).to_query
-    assert(q.contains("LIMIT 20,"))
-  })
-
-  test("can chain with where", fn() {
-    let q = TestUser.where("active = @a", {"a": true}).offset(10).to_query
-    assert(q.contains("FILTER doc.active == @a"))
-    assert(q.contains("LIMIT 10,"))
-  })
-})
-
-describe("Model.paginate() query generation", fn() {
-  test("static form sets offset and limit", fn() {
-    # Can't call .to_query on terminal method, so verify the static method exists
-    assert(!TestUser.paginate.nil?)
-  })
-
-  test("chain form returns hash with records and pagination keys", fn() {
-    # paginate is terminal — verify it returns a hash with expected keys
-    let result = TestUser.where("name = @n", {"n": "__paginate_test__"}).paginate({
-      "page": 1,
-      "per": 10
-    })
-    assert(!result["records"].nil?)
-    assert(!result["pagination"].nil?)
-    assert(result["pagination"]["page"] == 1)
-    assert(result["pagination"]["per"] == 10)
-    assert(result["pagination"]["total"] >= 0)
-    assert(result["pagination"]["total_pages"] >= 1)
-  })
-})
-
-describe("Model.find_by() query generation", fn() {
-  test("generates correct query structure", fn() {
-    # We can't test actual query without DB, but can verify method exists
-    assert(!TestUser.find_by.nil?)
-  })
-})
-
-describe("Model.first_by() query generation", fn() {
-  test("generates correct query structure", fn() { assert(!TestUser.first_by.nil?) })
-})
-
-describe("Model.find_or_create_by() query generation", fn() {
-  test("generates correct query structure", fn() { assert(!TestUser.find_or_create_by.nil?) })
-})
-
-describe("Model.upsert() method", fn() {
-  test("generates correct query structure", fn() { assert(!TestUser.upsert.nil?) })
-})
-
-describe("Model.create_many() method", fn() {
-  test("generates correct query structure", fn() { assert(!TestUser.create_many.nil?) })
-})
-
-describe("Model.scope() method", fn() {
-  test("scope method exists on Model", fn() { assert(!TestUser.scope.nil?) })
-})
-
-describe("Model.with_deleted() method", fn() {
-  test("with_deleted exists for soft delete models", fn() { assert(!TestSoft.with_deleted.nil?) })
-})
-
-describe("Model.only_deleted() method", fn() {
-  test("only_deleted exists for soft delete models", fn() { assert(!TestSoft.only_deleted.nil?) })
-})
-
-describe("Model.transaction() method", fn() {
-  test("transaction placeholder exists", fn() { assert(!TestUser.transaction.nil?) })
-})
-
-describe("Instance methods exist", fn() {
-  test("increment method exists", fn() {
-    let user = TestUser.new()
-    assert(!user.increment.nil?)
-  })
-
-  test("decrement method exists", fn() {
-    let user = TestUser.new()
-    assert(!user.decrement.nil?)
-  })
-
-  test("touch method exists", fn() {
-    let user = TestUser.new()
-    assert(!user.touch.nil?)
-  })
-
-  test("restore method exists", fn() {
-    let user = TestSoft.new()
-    assert(!user.restore.nil?)
-  })
-})
-
-# ============================================================================
-# Tests that REQUIRE a DB connection
-# ============================================================================
-
-describe("Model.create_many batch insert", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("creates multiple records", fn() {
-    let batch = TestUser.create_many([
-      {"name": "Batch1", "value": 1},
-      {"name": "Batch2", "value": 2},
-      {"name": "Batch3", "value": 3}
-    ])
-
-    assert(batch["created"] >= 3)
-
-    # Cleanup
-    let users = TestUser.where("name LIKE @n", {"n": "Batch%"}).all()
-    for u in users
-      u.delete()
+describe("query generation") do
+  describe("exists") do
+    test("stops at the first match and returns true") do
+      query = query_of(AdvUser.where("active = @a", {"a": true}).exists)
+      assert_eq(query, "FOR doc IN adv_users FILTER doc.active == @a LIMIT 1 RETURN true")
     end
-  })
-})
+  end
 
-describe("Model.find_by finder", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("finds by field value", fn() {
-    let created = TestUser.create({
-      "name": "FindByTest",
-      "value": 42
-    })
-    let found = TestUser.find_by("name", "FindByTest")
-
-    assert_not_null(found)
-    assert_eq(found.name, "FindByTest")
-
-    found.delete()
-  })
-
-  test("returns null for missing record", fn() {
-    let found = TestUser.find_by("name", "NonExistent12345")
-    assert_null(found)
-  })
-})
-
-describe("Model dynamic find_by_* methods", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("find_by_field generates correct query", fn() {
-    let q = TestUser.find_by_email("test@example.com")
-    assert(q.nil?)  // Just verifies method exists and is callable
-  })
-
-  test("find_by_field_and_field generates correct query", fn() {
-    let q = TestUser.find_by_name_and_active("TestUser", true)
-    assert(q.nil?)  // Just verifies method exists and is callable
-  })
-
-  test("three field compound finder works", fn() {
-    let q = TestUser.find_by_name_and_active_and_role("TestUser", true, "admin")
-    assert(q.nil?)  // Just verifies method exists and is callable
-  })
-})
-
-describe("Model dynamic find_by_* methods (DB)", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("find_by_email actually finds record", fn() {
-    let created = TestUser.create({
-      "name": "DynFindTest",
-      "value": 42
-    })
-    let found = TestUser.find_by_name("DynFindTest")
-
-    assert_not_null(found)
-    assert_eq(found.name, "DynFindTest")
-
-    found.delete()
-  })
-})
-
-describe("Model.first_by finder with ordering", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("finds first by field with ordering", fn() {
-    # Create multiple records with same name
-    TestUser.create({"name": "FirstByTest", "value": 1})
-    TestUser.create({"name": "FirstByTest", "value": 2})
-
-    let found = TestUser.first_by("name", "FirstByTest")
-    assert_not_null(found)
-    assert_eq(found.name, "FirstByTest")
-
-    # Cleanup
-    let all = TestUser.where("name = @n", {"n": "FirstByTest"}).all()
-    for u in all
-      u.delete()
+  describe("pluck") do
+    test("one field returns the bare value") do
+      query = query_of(AdvUser.where("active = @a", {"a": true}).pluck("name"))
+      assert_eq(query, "FOR doc IN adv_users FILTER doc.active == @a RETURN doc.name")
     end
-  })
-})
 
-describe("Model.find_or_create_by finder", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("finds existing record", fn() {
-    let created = TestUser.create({
-      "name": "FindOrCreate",
-      "value": 100
-    })
-
-    let found = TestUser.find_or_create_by("name", "FindOrCreate", {"value": 999})
-
-    assert_not_null(found)
-    assert_eq(found.value, 100)  // Should be original value, not 999
-
-    found.delete()
-  })
-
-  test("creates new record when not found", fn() {
-    let found = TestUser.find_or_create_by("name", "FindOrCreateNew", {"value": 555})
-
-    assert_not_null(found)
-    assert_eq(found.name, "FindOrCreateNew")
-    assert_eq(found.value, 555)
-
-    found.delete()
-  })
-})
-
-describe("Model.upsert", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("inserts new record when not exists", fn() {
-    let result = TestUser.upsert(
-      "upsert_key_123",
-      {"name": "UpsertNew", "value": 1}
-    )
-
-    # Should return something (either the new record or success indicator)
-    assert(!result.nil?)
-
-    # Cleanup
-    TestUser.delete("upsert_key_123")
-  })
-})
-
-describe("QueryBuilder.exists()", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("returns true when records exist", fn() {
-    pending("written against the pre-2.x create shape ({valid, record}); never ran until the runner stopped dropping DB suites")
-    let created = TestUser.create({
-      "name": "ExistsTest",
-      "value": 1
-    })
-
-    let exists = TestUser.where("name = @n", {"n": "ExistsTest"}).exists.first
-    assert_eq(exists, true)
-
-    created["record"].delete()
-  })
-
-  test("returns false when no records", fn() {
-    let exists = TestUser.where("name = @n", {"n": "NonExistent99999"}).exists.first
-    assert_eq(exists, false)
-  })
-})
-
-describe("QueryBuilder.pluck()", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("returns array of single field values", fn() {
-    TestUser.create({"name": "Pluck1", "value": 1})
-    TestUser.create({"name": "Pluck2", "value": 2})
-
-    let names = TestUser.where("name LIKE @n", {"n": "Pluck%"}).pluck("name").all
-
-    assert(len(names) >= 2)
-
-    # Cleanup
-    let all = TestUser.where("name LIKE @n", {"n": "Pluck%"}).all
-    for u in all
-      u.delete()
+    test("several fields return a hash per row") do
+      query = query_of(AdvUser.pluck("name", "email"))
+      assert_eq(query, "FOR doc IN adv_users RETURN {name: doc.name, email: doc.email}")
     end
-  })
-})
+  end
 
-describe("QueryBuilder.sum() aggregation", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("returns sum of field", fn() {
-    pending("written against the pre-2.x create shape ({valid, record}); never ran until the runner stopped dropping DB suites")
-    TestUser.create({"name": "Sum1", "value": 10})
-    TestUser.create({"name": "Sum2", "value": 20})
-    TestUser.create({"name": "Sum3", "value": 30})
-
-    let total = TestUser.where("name LIKE @n", {"n": "Sum%"}).sum("value").first
-
-    assert(total >= 60)
-
-    # Cleanup
-    let all = TestUser.where("name LIKE @n", {"n": "Sum%"}).all
-    for u in all
-      u.delete()
+  describe("symbols as field names") do
+    test("pluck accepts symbols") do
+      assert_eq(query_of(AdvUser.pluck(:name, :email)), query_of(AdvUser.pluck("name", "email")))
     end
-  })
-})
 
-describe("QueryBuilder.avg() aggregation", fn() {
-  before_each(fn() { requires_solidb() })
-
-  test("returns average of field", fn() {
-    pending("written against the pre-2.x create shape ({valid, record}); never ran until the runner stopped dropping DB suites")
-    TestUser.create({"name": "Avg1", "value": 10})
-    TestUser.create({"name": "Avg2", "value": 20})
-
-    let avg = TestUser.where("name LIKE @n", {"n": "Avg%"}).avg("value").first
-
-    assert(avg >= 15)
-
-    # Cleanup
-    let all = TestUser.where("name LIKE @n", {"n": "Avg%"}).all
-    for u in all
-      u.delete()
+    test("chained pluck accepts symbols") do
+      query = query_of(AdvUser.where("active = @a", {"a": true}).pluck(:name))
+      assert_eq(query, "FOR doc IN adv_users FILTER doc.active == @a RETURN doc.name")
     end
-  })
-})
 
-describe("Instance.increment()", fn() {
-  before_each(fn() { requires_solidb() })
+    test("order accepts a symbol field and direction") do
+      assert_contains(query_of(AdvUser.order(:created_at, :desc)), "SORT doc.created_at DESC")
+    end
 
-  test("increments numeric field", fn() {
-    pending("written against the pre-2.x create shape ({valid, record}); never ran until the runner stopped dropping DB suites")
-    let created = TestUser.create({
-      "name": "IncrementTest",
-      "value": 10
-    })
-    let user = created["record"]
+    test("select accepts symbols and always keeps _key") do
+      query = query_of(AdvUser.select(:name, :email))
+      assert_contains(query, "name: doc.name")
+      assert_contains(query, "email: doc.email")
+      assert_contains(query, "_key: doc._key")
+    end
 
-    user.increment("value")
-    user.reload()
+    test("aggregates accept symbols") do
+      assert_eq(query_of(AdvUser.sum(:balance)), query_of(AdvUser.sum("balance")))
+    end
+  end
 
-    assert_eq(user.value, 11)
+  describe("aggregates") do
+    test("sum keeps the where filter") do
+      query = query_of(AdvUser.where("age > @a", {"a": 18}).sum("balance"))
+      assert_contains(query, "FILTER doc.age > @a")
+      assert_contains(query, "SUM(doc.balance)")
+    end
 
-    user.increment("value", 5)
-    user.reload()
+    test("avg, min and max name their function") do
+      assert_contains(query_of(AdvUser.avg("score")), "AVG(doc.score)")
+      assert_contains(query_of(AdvUser.min("price")), "MIN(doc.price)")
+      assert_contains(query_of(AdvUser.max("views")), "MAX(doc.views)")
+    end
 
-    assert_eq(user.value, 16)
+    test("group_by with a function collects per group") do
+      query = query_of(AdvUser.group_by("country", "sum", "balance"))
+      assert_contains(query, "COLLECT group = doc.country")
+      assert_contains(query, "AGGREGATE result = SUM(doc.balance)")
+    end
+  end
 
-    user.delete()
-  })
-})
+  describe("where") do
+    test("accepts a filter without bind variables") do
+      query = query_of(AdvUser.where("doc.active == true"))
+      assert_eq(query, "FOR doc IN adv_users FILTER doc.active == true RETURN doc")
+    end
 
-describe("Instance.decrement()", fn() {
-  before_each(fn() { requires_solidb() })
+    test("accepts an empty bind-variable hash") do
+      assert_eq(query_of(AdvUser.where("doc.active == true", {})), query_of(AdvUser.where("doc.active == true")))
+    end
 
-  test("decrements numeric field", fn() {
-    pending("written against the pre-2.x create shape ({valid, record}); never ran until the runner stopped dropping DB suites")
-    let created = TestUser.create({
-      "name": "DecrementTest",
-      "value": 100
-    })
-    let user = created["record"]
+    test("passes LOWER, UPPER and TRIM through") do
+      ["LOWER(doc.email) == @x", "UPPER(doc.name) == @x", "TRIM(doc.field) == @x"].each do |filter|
+        assert_contains(query_of(AdvUser.where(filter, {"x": "value"})), "FILTER #{filter}")
+      end
+    end
 
-    user.decrement("value")
-    user.reload()
+    test("passes a function applied to a bind variable through") do
+      query = query_of(AdvUser.where("LOWER(doc.email) == LOWER(@email)", {"email": "Test@Example.COM"}))
+      assert_contains(query, "FILTER LOWER(doc.email) == LOWER(@email)")
+    end
+  end
 
-    assert_eq(user.value, 99)
+  describe("offset") do
+    test("becomes the first LIMIT argument") do
+      assert_contains(query_of(AdvUser.offset(20)), "LIMIT 20,")
+    end
 
-    user.delete()
-  })
-})
+    test("chains after where") do
+      query = query_of(AdvUser.where("active = @a", {"a": true}).offset(10))
+      assert_contains(query, "FILTER doc.active == @a")
+      assert_contains(query, "LIMIT 10,")
+    end
+  end
 
-describe("Instance.touch()", fn() {
-  before_each(fn() { requires_solidb() })
+  describe("scopes") do
+    test("a declared scope is a class method returning its filter") do
+      query = query_of(AdvUser.big_spenders)
+      assert_eq(query, "FOR doc IN adv_users FILTER doc.value > @v RETURN doc")
+    end
+  end
 
-  test("updates _updated_at timestamp", fn() {
-    pending("written against the pre-2.x create shape ({valid, record}); never ran until the runner stopped dropping DB suites")
-    let created = TestUser.create({
-      "name": "TouchTest",
-      "value": 1
-    })
-    let user = created["record"]
+  describe("soft-delete modes") do
+    test("a soft-delete model hides deleted rows by default") do
+      assert_contains(query_of(AdvSoft.where("name = @n", {"n": "x"})), "FILTER doc.deleted_at == null")
+    end
 
-    let original_updated = user._updated_at
+    test("with_deleted drops the guard") do
+      assert_eq(query_of(AdvSoft.with_deleted()), "FOR doc IN adv_softs RETURN doc")
+    end
 
-    # Wait a moment to ensure timestamp changes
-    # Note: In real tests, you might want to use a sleep or check for different values
+    test("only_deleted inverts it") do
+      assert_eq(query_of(AdvSoft.only_deleted()), "FOR doc IN adv_softs FILTER doc.deleted_at != null RETURN doc")
+    end
+  end
+end
 
-    user.touch()
-    user.reload()
+describe("against SoliDB") do
+  before_each() do
+    requires_solidb()
+  end
 
-    assert(!user._updated_at.nil?)
+  after_each() do
+    AdvUser.delete_all()
+    AdvSoft.delete_all()
+  end
 
-    user.delete()
-  })
-})
+  describe("create_many") do
+    test("inserts every row and reports the count") do
+      batch = AdvUser.create_many([
+        {"name": "Batch1", "value": 1},
+        {"name": "Batch2", "value": 2},
+        {"name": "Batch3", "value": 3}
+      ])
+      assert_eq(batch["created"], 3)
+      assert_eq(names_of(AdvUser.order("value").all), ["Batch1", "Batch2", "Batch3"])
+    end
 
-describe("Soft delete functionality", fn() {
-  before_each(fn() { requires_solidb() })
+    test("an empty batch creates nothing") do
+      assert_eq(AdvUser.create_many([])["created"], 0)
+      assert_eq(AdvUser.count, 0)
+    end
+  end
 
-  test("soft delete sets deleted_at", fn() {
-    pending("written against the pre-2.x create shape ({valid, record}); never ran until the runner stopped dropping DB suites")
-    let created = TestSoft.create({
-      "name": "SoftDeleteTest",
-      "value": 1
-    })
-    let record = created["record"]
+  describe("find_by") do
+    test("finds by field value") do
+      created = AdvUser.create({"name": "FindByTest", "value": 42})
+      found = AdvUser.find_by("name", "FindByTest")
+      assert_eq(found._key, created._key)
+      assert_eq(found.value, 42)
+    end
 
-    # Delete should set deleted_at instead of removing
-    record.delete()
+    test("returns nil for a missing record") do
+      assert_null(AdvUser.find_by("name", "NonExistent12345"))
+    end
+  end
 
-    # Record should not be found with normal query
-    let found = TestSoft.find(record._key)
-    assert_null(found)
+  describe("dynamic find_by_* finders") do
+    before_each() do
+      AdvUser.create({"name": "Dyn", "role": "admin", "active": true})
+    end
 
-    # But should be found with with_deleted
-    let with_del = TestSoft.with_deleted.find(record._key)
-    assert_not_null(with_del)
-  })
+    test("one field") do
+      assert_eq(AdvUser.find_by_name("Dyn").role, "admin")
+    end
 
-  test("restore clears deleted_at", fn() {
-    pending("written against the pre-2.x create shape ({valid, record}); never ran until the runner stopped dropping DB suites")
-    let created = TestSoft.create({
-      "name": "RestoreTest",
-      "value": 1
-    })
-    let record = created["record"]
+    test("two fields are ANDed") do
+      assert_eq(AdvUser.find_by_name_and_active("Dyn", true).name, "Dyn")
+      assert_null(AdvUser.find_by_name_and_active("Dyn", false))
+    end
 
-    record.delete()
+    test("three fields are ANDed") do
+      assert_eq(AdvUser.find_by_name_and_active_and_role("Dyn", true, "admin").name, "Dyn")
+      assert_null(AdvUser.find_by_name_and_active_and_role("Dyn", true, "guest"))
+    end
 
-    # Restore
-    record.restore()
+    test("no match returns nil") do
+      assert_null(AdvUser.find_by_name("nobody"))
+    end
+  end
 
-    # Should be findable again
-    let found = TestSoft.find(record._key)
-    assert_not_null(found)
+  describe("first_by") do
+    test("returns the match with the lowest key") do
+      AdvUser.create({"name": "FirstByTest", "value": 2}, {"key": "first_by_b"})
+      AdvUser.create({"name": "FirstByTest", "value": 1}, {"key": "first_by_a"})
+      found = AdvUser.first_by("name", "FirstByTest")
+      assert_eq(found._key, "first_by_a")
+      assert_eq(found.value, 1)
+    end
 
-    found.delete()
-  })
+    test("returns nil without a match") do
+      assert_null(AdvUser.first_by("name", "nobody"))
+    end
+  end
 
-  test("only_deleted queries deleted records", fn() {
-    pending("written against the pre-2.x create shape ({valid, record}); never ran until the runner stopped dropping DB suites")
-    let created = TestSoft.create({
-      "name": "OnlyDeletedTest",
-      "value": 1
-    })
-    let record = created["record"]
+  describe("find_or_create_by") do
+    test("returns the existing record untouched") do
+      created = AdvUser.create({"name": "FindOrCreate", "value": 100})
+      found = AdvUser.find_or_create_by("name", "FindOrCreate", {"value": 999})
+      assert_eq(found._key, created._key)
+      assert_eq(found.value, 100)
+      assert_eq(AdvUser.count, 1)
+    end
 
-    record.delete()
+    test("creates the record from the field and the extra data") do
+      found = AdvUser.find_or_create_by("name", "FindOrCreateNew", {"value": 555})
+      assert_eq(found.name, "FindOrCreateNew")
+      assert_eq(found.value, 555)
+      assert_eq(AdvUser.find(found._key).value, 555)
+    end
+  end
 
-    let deleted = TestSoft.only_deleted.where("name = @n", {"n": "OnlyDeletedTest"}).all
+  describe("upsert") do
+    test("inserts under the given key when it is free") do
+      record = AdvUser.upsert("upsert_key_123", {"name": "UpsertNew", "value": 1})
+      assert_eq(record._key, "upsert_key_123")
+      assert_eq(AdvUser.find("upsert_key_123").name, "UpsertNew")
+    end
 
-    assert(len(deleted) >= 1)
-  })
-})
+    test("replaces the document when the key exists") do
+      AdvUser.upsert("upsert_key_456", {"name": "Before", "value": 1})
+      AdvUser.upsert("upsert_key_456", {"name": "After", "value": 2})
+      found = AdvUser.find("upsert_key_456")
+      assert_eq(found.name, "After")
+      assert_eq(found.value, 2)
+      assert_eq(AdvUser.count, 1)
+    end
+  end
 
-describe("Model.offset()", fn() {
-  before_each(fn() { requires_solidb() })
+  describe("transaction") do
+    test("commits the block's writes") do
+      AdvUser.transaction do
+        AdvUser.create({"name": "tx_a"})
+        AdvUser.create({"name": "tx_b"})
+      end
+      assert_eq(AdvUser.count, 2)
+    end
 
-  test("offsets results", fn() {
-    pending("written against the pre-2.x create shape ({valid, record}); never ran until the runner stopped dropping DB suites")
-    # Create 3 records
-    let r1 = TestUser.create({"name": "Offset1", "value": 1})
-    let r2 = TestUser.create({"name": "Offset2", "value": 2})
-    let r3 = TestUser.create({"name": "Offset3", "value": 3})
+    test("rolls back and re-raises when the block throws") do
+      assert_raises("boom") do
+        create_then_throw("tx_lost")
+      end
+      assert_null(AdvUser.find_by("name", "tx_lost"))
+      assert_eq(AdvUser.count, 0)
+    end
+  end
 
-    let all = TestUser.where("name LIKE @n", {"n": "Offset%"}).order("value", "asc").all
+  describe("exists") do
+    test("is true when a row matches") do
+      AdvUser.create({"name": "ExistsTest", "value": 1})
+      assert_eq(AdvUser.where("name = @n", {"n": "ExistsTest"}).exists.first, true)
+    end
 
-    let offset_results = TestUser.where("name LIKE @n", {"n": "Offset%"}).order("value", "asc").offset(1).all
+    test("is false when nothing matches") do
+      assert_eq(AdvUser.where("name = @n", {"n": "NonExistent99999"}).exists.first, false)
+    end
+  end
 
-    assert_eq(len(offset_results), 2)
+  describe("pluck") do
+    test("returns the field values in query order") do
+      AdvUser.create({"name": "Pluck2", "value": 2})
+      AdvUser.create({"name": "Pluck1", "value": 1})
+      names = AdvUser.where("name LIKE @n", {"n": "Pluck%"}).order("value").pluck("name").all
+      assert_eq(names, ["Pluck1", "Pluck2"])
+    end
 
-    # Cleanup
-    r1["record"].delete()
-    r2["record"].delete()
-    r3["record"].delete()
-  })
-})
+    test("several fields return hashes") do
+      AdvUser.create({"name": "Pluck1", "value": 1})
+      assert_eq(AdvUser.pluck("name", "value").all, [{"name": "Pluck1", "value": 1}])
+    end
+  end
 
-describe("Model.paginate()", fn() {
-  before_each(fn() { requires_solidb() })
+  describe("aggregates") do
+    before_each() do
+      AdvUser.create({"name": "Agg1", "value": 10})
+      AdvUser.create({"name": "Agg2", "value": 20})
+      AdvUser.create({"name": "Agg3", "value": 30})
+    end
 
-  test("paginates results with static method", fn() {
-    pending("written against the pre-2.x create shape ({valid, record}); never ran until the runner stopped dropping DB suites")
-    let r1 = TestUser.create({"name": "PagA", "value": 1})
-    let r2 = TestUser.create({"name": "PagB", "value": 2})
-    let r3 = TestUser.create({"name": "PagC", "value": 3})
+    test("sum adds the field over the filtered rows") do
+      pending(AGGREGATE_BUG)
+      assert_eq(AdvUser.where("value > @v", {"v": 10}).sum("value").first, 50)
+    end
 
-    let result = TestUser.where("name LIKE @n", {"n": "Pag%"}).order("value", "asc").paginate({
-      "page": 1,
-      "per": 2
-    })
+    test("avg, min and max") do
+      pending(AGGREGATE_BUG)
+      assert_eq(AdvUser.avg("value").first, 20)
+      assert_eq(AdvUser.min("value").first, 10)
+      assert_eq(AdvUser.max("value").first, 30)
+    end
 
-    assert_eq(len(result["records"]), 2)
-    assert(result["pagination"]["page"] == 1)
-    assert(result["pagination"]["per"] == 2)
-    assert(result["pagination"]["total"] == 3)
-    assert(result["pagination"]["total_pages"] == 2)
+    test("median goes through a collected list") do
+      assert_eq(AdvUser.median("value").first, 20)
+    end
 
-    # Second page
-    let result2 = TestUser.where("name LIKE @n", {"n": "Pag%"}).order("value", "asc").paginate({
-      "page": 2,
-      "per": 2
-    })
+    test("a multi-aggregate spec returns one row") do
+      row = AdvUser.aggregate({"total": ["sum", "value"], "n": ["count"]}).first
+      assert_eq(row["total"], 60)
+      assert_eq(row["n"], 3)
+    end
+  end
 
-    assert_eq(len(result2["records"]), 1)
-    assert(result2["pagination"]["page"] == 2)
+  describe("increment and decrement") do
+    test("increment adds one, or the given step, and persists") do
+      user = AdvUser.create({"name": "IncrementTest", "value": 10})
+      user.increment("value")
+      assert_eq(user.value, 11)
+      user.increment("value", 5)
+      assert_eq(user.value, 16)
+      assert_eq(AdvUser.find(user._key).value, 16)
+    end
 
-    # Cleanup
-    r1["record"].delete()
-    r2["record"].delete()
-    r3["record"].delete()
-  })
+    test("increment starts a missing field from zero") do
+      user = AdvUser.create({"name": "IncrementMissing"})
+      user.increment("visits")
+      assert_eq(AdvUser.find(user._key).visits, 1)
+    end
 
-  test("paginate clamps page to valid range", fn() {
-    pending("written against the pre-2.x create shape ({valid, record}); never ran until the runner stopped dropping DB suites")
-    let r1 = TestUser.create({"name": "Clamp1", "value": 1})
+    test("decrement subtracts one, or the given step, and persists") do
+      user = AdvUser.create({"name": "DecrementTest", "value": 100})
+      user.decrement("value")
+      assert_eq(user.value, 99)
+      user.decrement("value", 9)
+      assert_eq(AdvUser.find(user._key).value, 90)
+    end
 
-    # Page 1 with per=1 — one record, so only 1 page exists
-    let result = TestUser.where("name LIKE @n", {"n": "Clamp%"}).order("value", "asc").paginate({
-      "page": 999,
-      "per": 1
-    })
+    test("an unsaved record has no key to update") do
+      assert_raises("no _key") do
+        AdvUser.new({"name": "Unsaved", "value": 1}).increment("value")
+      end
+    end
+  end
 
-    assert_eq(len(result["records"]), 1)
-    assert(result["pagination"]["page"] == 1)
-    assert(result["pagination"]["total_pages"] == 1)
+  describe("touch") do
+    test("moves _updated_at forward and leaves _created_at alone") do
+      user = AdvUser.create({"name": "TouchTest", "value": 1})
+      created_at = user._created_at
+      original_updated = user._updated_at
+      user.touch
+      user.reload
+      assert(user._updated_at > original_updated, "#{user._updated_at} should be after #{original_updated}")
+      assert_eq(user._created_at, created_at)
+    end
+  end
 
-    r1["record"].delete()
-  })
+  describe("soft delete") do
+    test("delete stamps deleted_at instead of removing the row") do
+      record = AdvSoft.create({"name": "SoftDeleteTest"})
+      assert_eq(record.delete, true)
+      assert_not_null(record.deleted_at)
+      assert_eq(AdvSoft.with_deleted().all.length, 1)
+    end
 
-  test("paginate uses defaults for page and per", fn() {
-    pending("written against the pre-2.x create shape ({valid, record}); never ran until the runner stopped dropping DB suites")
-    let r1 = TestUser.create({"name": "Def1", "value": 1})
-    let r2 = TestUser.create({"name": "Def2", "value": 1})
-    let r3 = TestUser.create({"name": "Def3", "value": 1})
+    test("filtered queries skip deleted rows") do
+      record = AdvSoft.create({"name": "SoftDeleteTest"})
+      record.delete
+      assert_eq(AdvSoft.where("name = @n", {"n": "SoftDeleteTest"}).all.length, 0)
+      assert_eq(AdvSoft.with_deleted().where("name = @n", {"n": "SoftDeleteTest"}).first._key, record._key)
+    end
 
-    # No explicit page/per — defaults to page=1, per=25
-    let result = TestUser.where("name LIKE @n", {"n": "Def%"}).order("value", "asc").paginate({})
+    test("Model.all and Model.count skip deleted rows") do
+      pending("bug: unfiltered Model.all / Model.count include soft-deleted rows (only where adds the guard)")
+      AdvSoft.create({"name": "Kept"})
+      AdvSoft.create({"name": "Gone"}).delete
+      assert_eq(names_of(AdvSoft.all), ["Kept"])
+      assert_eq(AdvSoft.count, 1)
+    end
 
-    assert(result["pagination"]["page"] == 1)
-    assert(result["pagination"]["per"] == 25)
-    assert(result["pagination"]["total"] == 3)
+    test("only_deleted returns just the deleted rows") do
+      AdvSoft.create({"name": "Kept"})
+      AdvSoft.create({"name": "OnlyDeletedTest"}).delete
+      assert_eq(names_of(AdvSoft.only_deleted().all), ["OnlyDeletedTest"])
+    end
 
-    r1["record"].delete()
-    r2["record"].delete()
-    r3["record"].delete()
-  })
+    test("restore clears deleted_at") do
+      record = AdvSoft.create({"name": "RestoreTest"})
+      record.delete
+      assert_eq(record.restore, true)
+      assert_null(record.deleted_at)
+      assert_null(AdvSoft.find(record._key).deleted_at)
+      assert_eq(AdvSoft.only_deleted().all.length, 0)
+      assert_eq(AdvSoft.where("name = @n", {"n": "RestoreTest"}).first._key, record._key)
+    end
+  end
 
-  test("paginate returns empty records for page beyond total", fn() {
-    # No records match
-    let result = TestUser.where("name = @n", {"n": "NONEXISTENT_PAGINATE"}).paginate({
-      "page": 1,
-      "per": 10
-    })
+  describe("delete_all") do
+    test("wipes the collection") do
+      AdvUser.create({"name": "Wiped"})
+      AdvUser.delete_all()
+      assert_eq(AdvUser.count, 0)
+    end
 
-    assert_eq(len(result["records"]), 0)
-    assert(result["pagination"]["total"] == 0)
-    assert(result["pagination"]["total_pages"] == 1)
-    assert(result["pagination"]["page"] == 1)
-  })
-})
+    test("runs without parentheses like any zero-argument method") do
+      pending("bug: static delete_all, clear_mocks, with_deleted, only_deleted without () return the bound fn")
+      AdvUser.create({"name": "Wiped"})
+      AdvUser.delete_all
+      assert_eq(AdvUser.count, 0)
+    end
+  end
+
+  describe("offset") do
+    test("skips the first rows of the ordered result") do
+      AdvUser.create({"name": "Offset1", "value": 1})
+      AdvUser.create({"name": "Offset2", "value": 2})
+      AdvUser.create({"name": "Offset3", "value": 3})
+      offset_results = AdvUser.where("name LIKE @n", {"n": "Offset%"}).order("value", "asc").offset(1).all
+      assert_eq(names_of(offset_results), ["Offset2", "Offset3"])
+    end
+  end
+
+  describe("paginate") do
+    before_each() do
+      AdvUser.create({"name": "PagA", "value": 1})
+      AdvUser.create({"name": "PagB", "value": 2})
+      AdvUser.create({"name": "PagC", "value": 3})
+    end
+
+    test("splits the ordered result into pages") do
+      matches = AdvUser.where("name LIKE @n", {"n": "Pag%"}).order("value", "asc")
+      first_page = matches.paginate({"page": 1, "per": 2})
+      assert_eq(names_of(first_page["records"]), ["PagA", "PagB"])
+      assert_eq(first_page["pagination"], {"page": 1, "per": 2, "total": 3, "total_pages": 2})
+
+      second_page = matches.paginate({"page": 2, "per": 2})
+      assert_eq(names_of(second_page["records"]), ["PagC"])
+      assert_eq(second_page["pagination"], {"page": 2, "per": 2, "total": 3, "total_pages": 2})
+    end
+
+    test("the static form pages the whole collection") do
+      result = AdvUser.paginate({"page": 3, "per": 1})
+      assert_eq(result["records"].length, 1)
+      assert_eq(result["pagination"], {"page": 3, "per": 1, "total": 3, "total_pages": 3})
+    end
+
+    test("clamps a page past the end to the last page") do
+      result = AdvUser.order("value", "asc").paginate({"page": 999, "per": 2})
+      assert_eq(names_of(result["records"]), ["PagC"])
+      assert_eq(result["pagination"]["page"], 2)
+    end
+
+    test("clamps page 0 to the first page") do
+      result = AdvUser.order("value", "asc").paginate({"page": 0, "per": 2})
+      assert_eq(names_of(result["records"]), ["PagA", "PagB"])
+      assert_eq(result["pagination"]["page"], 1)
+    end
+
+    test("defaults to page 1 and 25 per page") do
+      result = AdvUser.order("value", "asc").paginate({})
+      assert_eq(result["records"].length, 3)
+      assert_eq(result["pagination"], {"page": 1, "per": 25, "total": 3, "total_pages": 1})
+    end
+
+    test("an empty match is one empty page") do
+      result = AdvUser.where("name = @n", {"n": "NONEXISTENT_PAGINATE"}).paginate({"page": 1, "per": 10})
+      assert_eq(result["records"], [])
+      assert_eq(result["pagination"], {"page": 1, "per": 10, "total": 0, "total_pages": 1})
+    end
+  end
+end

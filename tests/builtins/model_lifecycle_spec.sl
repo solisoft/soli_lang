@@ -1,18 +1,11 @@
-# ============================================================================
-# Model lifecycle hooks, schema-DSL globals, and mock-query-driven APIs.
+# Model lifecycle hooks and vetoes, mock-served reads (mock_query_result,
+# live_where, variance), class-level helpers (broadcast, columnar_stats,
+# uploaders, attr_accessible) and the schema DSL (soft_delete, timeseries,
+# columnar/column, fulltext_index, table, enum_field + state_machine).
 #
-# Runs with or without a database:
-#   - Reads (all / live_where / variance) are served from query mocks
-#     registered with Model.mock_query_result(query, rows).
-#   - Writes may or may not land. Hook *ordering* does not depend on that,
-#     so it is asserted unconditionally; only the after_* callbacks, which
-#     are suppressed when persistence fails, are conditioned on the outcome.
-#     Assuming persistence always failed made these pass in CI and fail on
-#     any machine with a SoliDB running.
-#   - Schema DSL (soft_delete/timeseries/columnar/column/table/enum_field/
-#     fulltext_index/state_machine) is exercised by defining classes with
-#     it and asserting definition-time behavior + introspection.
-# ============================================================================
+# Persistence calls keep their parentheses here — `save()`, `update()`,
+# `delete()` — because the bare forms skip every callback (pending tests below).
+
 class HookDoc < Model
   before_save("stamp_before_save")
   before_create("stamp_before_create")
@@ -20,19 +13,19 @@ class HookDoc < Model
   after_save("stamp_after_save")
 
   def stamp_before_save
-    this.chain = (this.chain || "") + "before_save;"
+    @chain = (@chain || "") + "before_save;"
   end
 
   def stamp_before_create
-    this.chain = (this.chain || "") + "before_create;"
+    @chain = (@chain || "") + "before_create;"
   end
 
   def stamp_after_create
-    this.chain = (this.chain || "") + "after_create;"
+    @chain = (@chain || "") + "after_create;"
   end
 
   def stamp_after_save
-    this.chain = (this.chain || "") + "after_save;"
+    @chain = (@chain || "") + "after_save;"
   end
 end
 
@@ -40,8 +33,8 @@ class VetoCreateDoc < Model
   before_create("refuse")
 
   def refuse
-    this.veto_ran = true
-    return false
+    @veto_ran = true
+    false
   end
 end
 
@@ -50,11 +43,11 @@ class DeleteHookDoc < Model
   after_delete("log_after_delete")
 
   def log_before_delete
-    this.delete_chain = (this.delete_chain || "") + "before_delete;"
+    @delete_chain = (@delete_chain || "") + "before_delete;"
   end
 
   def log_after_delete
-    this.delete_chain = (this.delete_chain || "") + "after_delete;"
+    @delete_chain = (@delete_chain || "") + "after_delete;"
   end
 end
 
@@ -62,7 +55,7 @@ class VetoDeleteDoc < Model
   before_delete("refuse_delete")
 
   def refuse_delete
-    return false
+    false
   end
 end
 
@@ -71,15 +64,13 @@ class UpdateHookDoc < Model
   after_update("stamp_after_update")
 
   def stamp_before_update
-    this.update_chain = (this.update_chain || "") + "before_update;"
+    @update_chain = (@update_chain || "") + "before_update;"
   end
 
   def stamp_after_update
-    this.update_chain = (this.update_chain || "") + "after_update;"
+    @update_chain = (@update_chain || "") + "after_update;"
   end
 end
-
-# --- Mock-backed reads ------------------------------------------------------
 
 class MockWidget < Model
 end
@@ -104,8 +95,6 @@ end
 class AttrWhitelistDoc < Model
   attr_accessible("title")
 end
-
-# --- Schema DSL -------------------------------------------------------------
 
 class SoftDoc < Model
   soft_delete
@@ -156,430 +145,399 @@ class Lamp < Model
   end
 end
 
-# ============================================================================
-# These assert hook *ordering*, which does not depend on whether the write
-# lands. They used to assume no database was reachable — `_errors` present,
-# `save()` false — so they passed in CI and failed on any machine with a
-# SoliDB running. The afters are the only part that differs, so that is the
-# only part conditioned on the outcome.
-describe("create/save lifecycle hooks", fn() {
-  test("create fires before_save then before_create, in declaration order", fn() {
-    let result = HookDoc.create({"title": "hello"})
-    # The ordering invariant holds either way: the pre-write hooks run
-    # first, in declaration order. This is what the test is actually for.
-    assert(result.chain.starts_with("before_save;before_create;"))
-    if result._errors.nil?
-      # A write that landed fires after_create then after_save on the
-      # record, like `new(...).save()` below. These waited for a
-      # `{valid, record}` hash `create()` no longer returns, so they never ran.
-      assert_eq(result.chain, "before_save;before_create;after_create;after_save;")
-    else
-      # Persistence failed, so the afters must stay suppressed.
-      assert_eq(result.chain, "before_save;before_create;")
+const CREATE_CHAIN = "before_save;before_create;after_create;after_save;"
+const ABORTED_DELETE = "before_delete callback returned false; persistence aborted"
+const WIDGETS_QUERY = "FOR doc IN mock_widgets RETURN doc"
+const BARE_CALL_BUG = "bug: record.save / .update / .delete without () persist but skip every lifecycle callback"
+
+# A record whose _key does not exist in the database (`_key` is read-only on
+# instances, so it is hydrated from a mocked read).
+def phantom(model, collection, key)
+  model.mock_query_result("FOR doc IN #{collection} RETURN doc", [{"_key": key, "title": "persisted"}])
+  model.all()[0]
+end
+
+describe("lifecycle hooks") do
+  before_each() do
+    requires_solidb()
+  end
+
+  after_each() do
+    [HookDoc, VetoCreateDoc, DeleteHookDoc, VetoDeleteDoc, UpdateHookDoc, AttrWhitelistDoc].each do |model|
+      model.clear_mocks()
+      model.delete_all()
     end
-  })
+  end
 
-  test("a new-record save() runs the create chain", fn() {
-    let rec = HookDoc.new({"title": "fresh"})
-    let saved = rec.save()
-    if saved
-      assert_eq(rec.chain, "before_save;before_create;after_create;after_save;")
-    else
-      assert_eq(rec.chain, "before_save;before_create;")
+  describe("create and save") do
+    test("create runs the before hooks in declaration order, then the afters") do
+      doc = HookDoc.create({"title": "hello"})
+      assert_null(doc._errors)
+      assert_eq(doc.chain, CREATE_CHAIN)
     end
-  })
 
-  test("a persisted record's save() runs the update chain", fn() {
-    # `_key` is read-only on instances, so hydrate a keyed record from a mock.
-    HookDoc.mock_query_result("FOR doc IN hook_docs RETURN doc", [{
-      "_key": "hk1",
-      "title": "persisted"
-    }])
-    let rec = HookDoc.all()[0]
-    assert_eq(rec._key, "hk1")
-    assert(rec.save() == false)
-    assert_eq(rec.chain, "before_save;")
-  })
-
-  test("update() fires before_update but suppresses after_update on failure", fn() {
-    UpdateHookDoc.mock_query_result("FOR doc IN update_hook_docs RETURN doc", [{
-      "_key": "uh1",
-      "title": "x"
-    }])
-    let rec = UpdateHookDoc.all()[0]
-    assert_eq(rec._key, "uh1")
-    assert(rec.update({"title": "y"}) == false)
-    assert_eq(rec.update_chain, "before_update;")
-  })
-})
-
-describe("callback veto (SEC-086a)", fn() {
-  test("a before_create returning false aborts persistence", fn() {
-    let doc = VetoCreateDoc.create({"title": "nope"})
-    assert(doc.veto_ran == true)
-    assert_not_null(doc._errors)
-    assert(doc._errors[0]["message"].contains("aborted"))
-  })
-
-  test("a before_delete returning false vetoes delete()", fn() {
-    let rec = VetoDeleteDoc.new({})
-    assert_eq(rec.delete(), false)
-    assert_not_null(rec._errors)
-    assert(rec._errors[0]["message"].contains("aborted"))
-  })
-})
-
-describe("delete lifecycle hooks", fn() {
-  test("before_delete runs; after_delete is suppressed when delete fails", fn() {
-    let rec = DeleteHookDoc.new({})
-    # An unsaved record has no _key, so the native delete raises after the
-    # before-callback has already run.
-    let raised = false
-    try
-      rec.delete()
-    catch e
-      raised = true
+    test("save() on a new record runs the create chain") do
+      doc = HookDoc.new({"title": "fresh"})
+      assert_eq(doc.save(), true)
+      assert_eq(doc.chain, CREATE_CHAIN)
     end
-    assert(raised)
-    assert(rec.delete_chain.contains("before_delete;"))
-    assert(!rec.delete_chain.contains("after_delete;"))
-  })
-})
 
-# ============================================================================
-describe("mock_query_result serves reads without a database", fn() {
-  test("Model.all hydrates mocked rows into instances", fn() {
-    MockWidget.mock_query_result("FOR doc IN mock_widgets RETURN doc", [
-      {"_key": "w1", "name": "Alpha"},
-      {"_key": "w2", "name": "Beta"}
-    ])
-    let widgets = MockWidget.all()
-    assert(widgets.is_a?("array"))
-    assert_eq(len(widgets), 2)
-    assert_eq(widgets[0].name, "Alpha")
-    assert_eq(widgets[1]._key, "w2")
-  })
+    test("save() on a persisted record skips the create hooks") do
+      doc = HookDoc.create({"title": "first"})
+      doc.chain = ""
+      assert_eq(doc.save(), true)
+      assert_eq(doc.chain, "before_save;after_save;")
+    end
 
-  test("mocks are keyed by exact query string", fn() {
-    MockWidget.mock_query_result("FOR doc IN mock_widgets RETURN doc", [{
-      "_key": "w1",
-      "name": "Alpha"
-    }])
-    # A different query has no mock → falls through to the (absent) DB.
-    let miss = MockWidget.where({"name": "Alpha"}).all
-    assert(miss.is_a?("array") && len(miss) == 0 || miss.is_a?("string"))
-  })
+    test("a failed save() runs before_save but suppresses after_save") do
+      doc = phantom(HookDoc, "hook_docs", "hk1")
+      assert_eq(doc._key, "hk1")
+      assert_eq(doc.save(), false)
+      assert_eq(doc.chain, "before_save;")
+    end
 
-  test("clear_mocks drops every registered response", fn() {
-    MockWidget.mock_query_result("FOR doc IN mock_widgets RETURN doc", [{
-      "_key": "w1",
-      "name": "Alpha"
-    }])
-    assert_eq(len(MockWidget.all()), 1)
+    test("a bare save runs the hooks too") do
+      pending(BARE_CALL_BUG)
+      doc = HookDoc.new({"title": "bare"})
+      doc.save
+      assert_eq(doc.chain, CREATE_CHAIN)
+    end
+  end
+
+  describe("update") do
+    test("update(hash) runs before_update then after_update") do
+      doc = UpdateHookDoc.create({"title": "x"})
+      assert_eq(doc.update({"title": "y"}), true)
+      assert_eq(doc.update_chain, "before_update;after_update;")
+      assert_eq(UpdateHookDoc.find(doc._key).title, "y")
+    end
+
+    test("a failed update(hash) runs before_update but suppresses after_update") do
+      doc = phantom(UpdateHookDoc, "update_hook_docs", "uh1")
+      assert_eq(doc.update({"title": "y"}), false)
+      assert_eq(doc.update_chain, "before_update;")
+    end
+  end
+
+  describe("delete") do
+    test("delete() runs before_delete then after_delete") do
+      doc = DeleteHookDoc.create({})
+      doc.delete()
+      assert_eq(doc.delete_chain, "before_delete;after_delete;")
+      assert_eq(DeleteHookDoc.count, 0)
+    end
+
+    test("an unsaved record raises after before_delete, and after_delete stays silent") do
+      doc = DeleteHookDoc.new({})
+      assert_raises("no _key") do
+        doc.delete()
+      end
+      assert_eq(doc.delete_chain, "before_delete;")
+    end
+  end
+
+  describe("callback veto (SEC-086a)") do
+    test("a before_create returning false aborts persistence") do
+      doc = VetoCreateDoc.create({"title": "nope"})
+      assert_eq(doc.veto_ran, true)
+      assert_eq(doc._errors, [{"message": "before_create / before_save callback returned false; persistence aborted"}])
+      assert_null(doc._key)
+      assert_eq(VetoCreateDoc.count, 0)
+    end
+
+    test("a before_delete returning false vetoes delete() on an unsaved record") do
+      doc = VetoDeleteDoc.new({})
+      assert_eq(doc.delete(), false)
+      assert_eq(doc._errors, [{"message": ABORTED_DELETE}])
+    end
+
+    test("a before_delete returning false keeps a stored record") do
+      doc = VetoDeleteDoc.create({"title": "keep"})
+      assert_eq(doc.delete(), false)
+      assert_eq(doc._errors, [{"message": ABORTED_DELETE}])
+      assert_eq(VetoDeleteDoc.count, 1)
+    end
+
+    test("a bare delete honours the veto too") do
+      pending(BARE_CALL_BUG)
+      doc = VetoDeleteDoc.create({"title": "keep"})
+      doc.delete
+      assert_eq(VetoDeleteDoc.count, 1)
+    end
+  end
+
+  describe("attr_accessible") do
+    test("drops keys outside the whitelist before the write") do
+      doc = AttrWhitelistDoc.create({"title": "kept", "is_admin": true})
+      assert_eq(doc.title, "kept")
+      assert_null(doc["is_admin"])
+      stored = AttrWhitelistDoc.find(doc._key)
+      assert_eq(stored.title, "kept")
+      assert_null(stored["is_admin"])
+    end
+  end
+end
+
+describe("mock_query_result") do
+  after_each() do
     MockWidget.clear_mocks()
-    # Without the mock the read hits the wire: a connection error string when
-    # no server answers, an empty result when one does. Either way the canned
-    # row is gone, which is what clearing the mock has to mean. (The sibling
-    # test above already accepts both shapes.)
-    let after = MockWidget.all()
-    assert(after.is_a?("string") || (after.is_a?("array") && len(after) == 0))
-    # Re-register so later suites still have their fixtures.
-    MockWidget.mock_query_result("FOR doc IN mock_widgets RETURN doc", [
-      {"_key": "w1", "name": "Alpha"},
-      {"_key": "w2", "name": "Beta"}
-    ])
-  })
-})
+  end
 
-describe("live_where", fn() {
-  test("runs like where() against a mock and returns instances", fn() {
+  test("Model.all hydrates mocked rows into instances") do
+    MockWidget.mock_query_result(WIDGETS_QUERY, [{"_key": "w1", "name": "Alpha"}, {"_key": "w2", "name": "Beta"}])
+    widgets = MockWidget.all
+    assert(widgets[0].is_a?("MockWidget"))
+    assert_eq(widgets.map { |widget| widget.name }, ["Alpha", "Beta"])
+    assert_eq(widgets[1]._key, "w2")
+  end
+
+  describe("against SoliDB") do
+    before_each() do
+      requires_solidb()
+    end
+
+    test("a mock answers only its exact query string") do
+      MockWidget.mock_query_result(WIDGETS_QUERY, [{"_key": "w1", "name": "Alpha"}])
+      assert_eq(MockWidget.where({"name": "Alpha"}).all, [])
+    end
+
+    test("clear_mocks drops every registered response") do
+      MockWidget.mock_query_result(WIDGETS_QUERY, [{"_key": "w1", "name": "Alpha"}])
+      assert_eq(MockWidget.all.length, 1)
+      MockWidget.clear_mocks()
+      assert_eq(MockWidget.all, [])
+    end
+  end
+end
+
+describe("live_where") do
+  after_each() do
+    MockWidget.clear_mocks()
+  end
+
+  test("runs like where() against a mock and returns instances") do
     MockWidget.mock_query_result("FOR doc IN mock_widgets FILTER doc.status == @status__eq_1 RETURN doc", [{
       "_key": "w9",
       "status": "paid",
       "name": "Paid Widget"
     }])
-    let rows = MockWidget.live_where({"status": "paid"})
-    assert(rows.is_a?("array"))
-    assert_eq(len(rows), 1)
+    rows = MockWidget.live_where({"status": "paid"})
+    assert_eq(rows.length, 1)
+    assert(rows[0].is_a?("MockWidget"))
     assert_eq(rows[0].name, "Paid Widget")
-  })
+  end
 
-  test("rejects a bind-vars hash with the hash-filter form", fn() {
-    let raised = false
-    try
+  test("refuses a bind-vars hash with the hash-filter form") do
+    assert_raises("the bind-vars hash is only valid with the string filter form") do
       MockWidget.live_where({"status": "paid"}, {})
-    catch e
-      raised = true
     end
-    assert(raised)
-  })
+  end
 
-  test("requires a filter argument", fn() {
-    let raised = false
-    try
+  test("requires a filter argument") do
+    assert_raises("Model.live_where() requires a filter argument") do
       MockWidget.live_where()
-    catch e
-      raised = true
     end
-    assert(raised)
-  })
-})
+  end
+end
 
-describe("variance aggregation", fn() {
-  test("variance(field).first unwraps the mocked scalar", fn() {
+describe("variance aggregation") do
+  after_each() do
+    MockWidget.clear_mocks()
+  end
+
+  test("variance(field).first unwraps the mocked scalar") do
     MockWidget.mock_query_result(
       "FOR doc IN mock_widgets COLLECT AGGREGATE __soli_vals = COLLECT_LIST(doc.amount) RETURN VARIANCE(__soli_vals)",
       [7.5]
     )
     assert_eq(MockWidget.variance("amount").first, 7.5)
-  })
+  end
 
-  test("variance rejects a non-string field name", fn() {
-    let raised = false
-    try
+  test("refuses a field name that is not a string") do
+    assert_raises("variance() expects a field name (string or symbol)") do
       MockWidget.variance(42)
-    catch e
-      raised = true
     end
-    assert(raised)
-  })
-})
+  end
+end
 
-describe("broadcast", fn() {
-  test("returns the subscriber count as an Int (0 with no subscribers)", fn() {
-    let delivered = MockWidget.broadcast({
-      "kind": "changed",
-      "id": "w1"
-    })
-    assert(delivered.is_a?("int"))
-    assert(delivered >= 0)
-  })
+describe("broadcast") do
+  test("returns 0 deliveries when nobody subscribes") do
+    assert_eq(MockWidget.broadcast({"kind": "changed", "id": "w1"}), 0)
+  end
 
-  test("string payloads are accepted too", fn() {
-    let delivered = MockWidget.broadcast("plain message")
-    assert(delivered.is_a?("int"))
-  })
+  test("accepts a string payload") do
+    assert_eq(MockWidget.broadcast("plain message"), 0)
+  end
 
-  test("broadcast requires a payload argument", fn() {
-    let raised = false
-    try
+  test("requires a payload argument") do
+    assert_raises("Model.broadcast() requires a payload argument") do
       MockWidget.broadcast()
-    catch e
-      raised = true
     end
-    assert(raised)
-  })
-})
+  end
+end
 
-describe("columnar_stats", fn() {
-  test("raises a clean error on a non-columnar model", fn() {
-    let msg = ""
-    try
+describe("columnar_stats") do
+  test("names the model and the missing declaration on a regular model") do
+    assert_raises("MockWidget.columnar_stats requires a `columnar` declaration") do
       MockWidget.columnar_stats()
-    catch e
-      msg = str(e)
     end
-    assert(msg.contains("columnar"))
-    assert(msg.contains("MockWidget"))
-  })
-})
+  end
+end
 
-# ============================================================================
-describe("has_and_belongs_to_many DSL", fn() {
-  test("generates association mutators that demand a saved owner", fn() {
-    let post = HabtmPost.new({"title": "unsaved"})
-    let raised = false
-    try
+describe("has_and_belongs_to_many DSL") do
+  test("the generated mutators demand a saved owner") do
+    post = HabtmPost.new({"title": "unsaved"})
+    assert_raises("owner instance has no _key (save the record first)") do
       post.add_tag("t1")
-    catch e
-      raised = str(e).contains("_key")
     end
-    assert(raised)
-  })
-})
+  end
+end
 
-describe("attachment DSL + uploader helpers", fn() {
-  test("model_uploader_fields lists every declared attachment", fn() {
-    let fields = model_uploader_fields(UploadDoc)
-    assert(fields.includes?("avatar"))
-    assert(fields.includes?("gallery"))
-    assert(fields.includes?("raw_dump"))
-  })
+describe("attachment DSL and uploader helpers") do
+  test("model_uploader_fields lists every declared attachment") do
+    fields = model_uploader_fields(UploadDoc)
+    assert_eq(fields.sort(), ["avatar", "gallery", "raw_dump"])
+  end
 
-  test("model_uploader_fields accepts a string class name", fn() {
-    let fields = model_uploader_fields("UploadDoc")
-    assert_eq(len(fields), 3)
-  })
+  test("model_uploader_fields accepts a string class name") do
+    assert_eq(model_uploader_fields("UploadDoc").sort(), ["avatar", "gallery", "raw_dump"])
+  end
 
-  test("apply_uploader_transform passes non-images through untouched", fn() {
-    let file = {
-      "filename": "notes.pdf",
-      "content_type": "application/pdf",
-      "data": "AAAA",
-      "size": 3
-    }
-    let out = apply_uploader_transform(file, {"max_width": 100})
-    assert_eq(out["filename"], "notes.pdf")
-    assert_eq(out["data"], "AAAA")
-    assert_eq(out["size"], 3)
-  })
+  test("apply_uploader_transform passes non-images through untouched") do
+    file = {"filename": "notes.pdf", "content_type": "application/pdf", "data": "AAAA", "size": 3}
+    assert_eq(apply_uploader_transform(file, {"max_width": 100}), file)
+  end
 
-  test("apply_uploader_transform with an empty config is a no-op", fn() {
-    let file = {
-      "filename": "pic.png",
-      "content_type": "image/png",
-      "data": "AAAA"
-    }
-    let out = apply_uploader_transform(file, {})
-    assert_eq(out["filename"], "pic.png")
-    assert_eq(out["data"], "AAAA")
-  })
+  test("apply_uploader_transform with an empty config is a no-op") do
+    file = {"filename": "pic.png", "content_type": "image/png", "data": "AAAA"}
+    assert_eq(apply_uploader_transform(file, {}), file)
+  end
 
-  test("find_model_class_by_collection resolves the registry", fn() {
-    let klass = find_model_class_by_collection("mock_widgets")
-    assert(!klass.nil?)
-    assert_eq(str(klass), str(MockWidget))
-  })
+  test("find_model_class_by_collection resolves the registry") do
+    assert_eq(find_model_class_by_collection("mock_widgets"), MockWidget)
+  end
 
-  test("find_model_class_by_collection returns null for unknown collections", fn() {
-    assert(find_model_class_by_collection("no_such_collection").nil?)
-  })
-})
+  test("find_model_class_by_collection returns nil for an unknown collection") do
+    assert_null(find_model_class_by_collection("no_such_collection"))
+  end
+end
 
-describe("attr_accessible strong params", fn() {
-  test("non-whitelisted keys are dropped before instance population", fn() {
-    let doc = AttrWhitelistDoc.create({
-      "title": "kept",
-      "is_admin": true
-    })
-    assert_eq(doc.title, "kept")
-    assert(doc["is_admin"].nil?)
-  })
-})
+describe("schema DSL") do
+  describe("soft_delete") do
+    test("queries gain the deleted_at guard") do
+      assert_contains(SoftDoc.where({"name": "x"}).to_query, "FILTER doc.deleted_at == null")
+    end
+  end
 
-# ============================================================================
-describe("schema DSL: soft_delete", fn() {
-  test("queries gain the deleted_at guard", fn() {
-    let q = SoftDoc.where({"name": "x"}).to_query
-    assert(q.contains("FILTER doc.deleted_at == null"))
-  })
-})
+  describe("timeseries") do
+    test("a declared model still builds instances") do
+      assert_eq(TimeseriesReading.new({"value": 1}).value, 1)
+    end
 
-describe("schema DSL: timeseries", fn() {
-  test("declares retention and timestamp options", fn() {
-    let reading = TimeseriesReading.new({"value": 1})
-    assert_eq(reading.value, 1)
-  })
-
-  test("rejects an unknown option at load time", fn() {
-    let raised = false
-    try
-      class BadTimeseries < Model
-        timeseries(frobnicate: "10d")
+    test("rejects an unknown option at load time") do
+      assert_raises() do
+        class BadTimeseries < Model
+          timeseries(frobnicate: "10d")
+        end
       end
-    catch e
-      raised = true
     end
-    assert(raised)
-  })
-})
+  end
 
-describe("schema DSL: columnar + column", fn() {
-  test("columns accept type, nullable and indexed options", fn() {
-    let ev = ColumnarEvent.new({})
-    assert(str(ev).contains("ColumnarEvent"))
-  })
+  describe("columnar and column") do
+    test("a declared model still builds instances") do
+      event = ColumnarEvent.new({"url": "/a", "views": 3})
+      assert_eq(event.url, "/a")
+      assert_eq(event.views, 3)
+    end
 
-  test("column rejects an unknown type at load time", fn() {
-    let raised = false
-    try
-      class BadColumnar < Model
-        columnar
-        column("url", "kryotype")
+    test("column rejects an unknown type at load time") do
+      assert_raises() do
+        class BadColumnar < Model
+          columnar
+          column("url", "kryotype")
+        end
       end
-    catch e
-      raised = true
     end
-    assert(raised)
-  })
-})
+  end
 
-describe("schema DSL: fulltext_index", fn() {
-  test("declares a multi-field index", fn() {
-    let doc = FulltextDoc.new({"title": "hi"})
-    assert_eq(doc.title, "hi")
-  })
-
-  test("fulltext_index requires at least one field", fn() {
-    let raised = false
-    try
-      class NoFieldFulltext < Model
-        fulltext_index()
+  describe("fulltext_index") do
+    test("requires at least one field") do
+      assert_raises() do
+        class NoFieldFulltext < Model
+          fulltext_index()
+        end
       end
-    catch e
-      raised = true
     end
-    assert(raised)
-  })
-})
+  end
 
-describe("schema DSL: table", fn() {
-  test("binds the model to an existing relational table", fn() {
-    let row = TableBoundDoc.new({})
-    assert(str(row).contains("TableBoundDoc"))
-  })
+  describe("table") do
+    test("binds a SQL table without renaming the SoliDB collection") do
+      assert_contains(TableBoundDoc.where({"a": 1}).to_query, "FOR doc IN table_bound_docs")
+    end
 
-  test("rejects an unusable SQL identifier at load time", fn() {
-    let raised = false
-    try
-      class BadTableDoc < Model
-        table("not; a table")
+    test("rejects an unusable SQL identifier at load time") do
+      assert_raises() do
+        class BadTableDoc < Model
+          table("not; a table")
+        end
       end
-    catch e
-      raised = true
     end
-    assert(raised)
-  })
-})
+  end
 
-describe("schema DSL: enum_field + state_machine", fn() {
-  test("transitions set the enum value and run both hooks", fn() {
-    let lamp = Lamp.new({})
-    assert_eq(lamp.off?, true)
-    lamp.switch_on
-    assert_eq(lamp.on?, true)
-    assert_eq(lamp.state.variant(), "On")
-    assert_eq(lamp.flip_log, "before_on;after_on;")
-  })
-
-  test("can_X? reflects legality from the current state", fn() {
-    let lamp = Lamp.new({})
-    assert_eq(lamp.can_switch_on?, true)
-    assert_eq(lamp.can_switch_off?, false)
-    lamp.switch_on
-    assert_eq(lamp.can_switch_off?, true)
-  })
-
-  test("an illegal transition raises", fn() {
-    let lamp = Lamp.new({})
-    let raised = false
-    try
-      lamp.switch_off
-    catch e
-      raised = true
+  describe("enum_field and state_machine") do
+    test("a transition sets the enum value and runs both hooks") do
+      lamp = Lamp.new({})
+      assert_eq(lamp.off?, true)
+      lamp.switch_on
+      assert_eq(lamp.on?, true)
+      assert_eq(lamp.state.variant(), "On")
+      assert_eq(lamp.flip_log, "before_on;after_on;")
     end
-    assert(raised)
-  })
 
-  test("enum_field demands an enum class as its second argument", fn() {
-    let raised = false
-    try
-      class BadEnumDoc < Model
-        enum_field(:mood, "NotAClass")
+    test("can_X? reflects legality from the current state") do
+      lamp = Lamp.new({})
+      assert_eq(lamp.can_switch_on?, true)
+      assert_eq(lamp.can_switch_off?, false)
+      lamp.switch_on
+      assert_eq(lamp.can_switch_off?, true)
+    end
+
+    test("an illegal transition raises and keeps the state") do
+      lamp = Lamp.new({})
+      assert_raises() do
+        lamp.switch_off
       end
-    catch e
-      raised = true
+      assert_eq(lamp.off?, true)
     end
-    assert(raised)
-  })
-})
+
+    test("enum_field demands an enum class as its second argument") do
+      assert_raises() do
+        class BadEnumDoc < Model
+          enum_field(:mood, "NotAClass")
+        end
+      end
+    end
+  end
+end
+
+describe("fulltext_index search") do
+  before_each() do
+    requires_solidb()
+    __sync_model_indexes()
+    FulltextDoc.create({"title": "hello world", "body": "x"})
+    FulltextDoc.create({"title": "other", "body": "hello there"})
+    FulltextDoc.create({"title": "unrelated", "body": "y"})
+  end
+
+  after_each() do
+    FulltextDoc.delete_all()
+  end
+
+  test("searches the first declared field by default") do
+    assert_eq(FulltextDoc.search("hello").map { |doc| doc.title }, ["hello world"])
+  end
+
+  test("field: picks another declared field") do
+    assert_eq(FulltextDoc.search("hello", {"field": "body"}).map { |doc| doc.title }, ["other"])
+  end
+end

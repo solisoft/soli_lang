@@ -1,11 +1,9 @@
-# ============================================================================
 # Association writers on has_many accessors (plain and polymorphic as:):
 #   owner.rel << record          — stamps the FK (+ type pair) and saves
 #   owner.rel.create({...})      — creates the child with the seed applied
 # Both route through the regular save path: validations, callbacks, counter
-# caches, and dirty tracking all apply. Error paths run without a database;
-# behavior is gated behind the DB availability probe.
-# ============================================================================
+# caches and dirty tracking all apply.
+
 class AwAuthor < Model
   has_many("aw_books")
 end
@@ -39,195 +37,142 @@ class AwNote < Model
   )
 end
 
-# Detect DB availability
-let __db_available = false
-try
-  let __probe = AwAuthor.create({"name": "__probe__"})
-  if !__probe.nil? && !__probe._errors
-    __db_available = true
-    __probe.delete()
-  end
-catch e
-  __db_available = false
+def titles_of(relation)
+  relation.order("title").all.map { |book| book.title }
 end
 
-describe("has_many shovel writes", fn() {
-  test("pushing a persisted record adopts it", fn() {
-    if __db_available
-      let author = AwAuthor.create({"name": "a"})
-      let book = AwBook.create({"title": "loose book"})
+describe("association writes without a database") do
+  test("pushing onto an unpersisted owner is refused") do
+    assert_raises("cannot push to \"aw_books\": save the owner record first") do
+      AwAuthor.new({}).aw_books << AwBook.new({})
+    end
+  end
+
+  test("create on a plain where-QueryBuilder is refused") do
+    assert_raises("create() is only available on a has_many relation accessor of a persisted record") do
+      AwBook.where("title == @t", {"t": "x"}).create({"title": "nope"})
+    end
+  end
+end
+
+describe("association writes against SoliDB") do
+  before_each() do
+    requires_solidb()
+  end
+
+  after_each() do
+    [AwAuthor, AwBook, AwStrictShelf, AwStrictBook, AwCustomer, AwSupplier, AwNote].each do |model|
+      model.delete_all()
+    end
+  end
+
+  describe("<<") do
+    test("pushing a persisted record adopts it") do
+      author = AwAuthor.create({"name": "a"})
+      book = AwBook.create({"title": "loose book"})
 
       author.aw_books << book
 
-      assert_eq(author.aw_books.count(), 1)
+      assert_eq(titles_of(author.aw_books), ["loose book"])
       assert_eq(AwBook.find(book._key).aw_author_id, author._key)
-
-      book.delete()
-      author.delete()
     end
-  })
 
-  test("pushing an unpersisted record creates it", fn() {
-    if __db_available
-      let author = AwAuthor.create({"name": "a"})
-      let draft = AwBook.new({"title": "draft"})
+    test("pushing an unpersisted record creates it") do
+      author = AwAuthor.create({"name": "a"})
+      draft = AwBook.new({"title": "draft"})
 
       author.aw_books << draft
 
-      assert_not_null(draft._key)
-      assert_eq(author.aw_books.count(), 1)
-
-      draft.delete()
-      author.delete()
+      assert_eq(AwBook.find(draft._key).aw_author_id, author._key)
+      assert_eq(AwBook.count, 1)
     end
-  })
 
-  test("pushing an array adopts every record", fn() {
-    if __db_available
-      let author = AwAuthor.create({"name": "a"})
-      let b1 = AwBook.new({"title": "one"})
-      let b2 = AwBook.new({"title": "two"})
-
-      author.aw_books << [b1, b2]
-
-      assert_eq(author.aw_books.count(), 2)
-
-      b1.delete()
-      b2.delete()
-      author.delete()
+    test("pushing an array adopts every record") do
+      author = AwAuthor.create({"name": "a"})
+      author.aw_books << [AwBook.new({"title": "one"}), AwBook.new({"title": "two"})]
+      assert_eq(titles_of(author.aw_books), ["one", "two"])
     end
-  })
 
-  test("pushing onto a polymorphic inverse auto-sets id and type", fn() {
-    if __db_available
-      let customer = AwCustomer.create({"name": "c"})
-      let note = AwNote.create({"message": "bla"})
+    test("an empty array is a no-op") do
+      author = AwAuthor.create({"name": "a"})
+      author.aw_books << []
+      assert_eq(author.aw_books.count, 0)
+    end
+
+    test("pushing onto a polymorphic inverse sets id, type and the counter") do
+      customer = AwCustomer.create({"name": "c"})
+      note = AwNote.create({"message": "bla"})
 
       customer.aw_notes << note
 
-      let reloaded = AwNote.find(note._key)
+      reloaded = AwNote.find(note._key)
       assert_eq(reloaded.aw_notable_id, customer._key)
       assert_eq(reloaded.aw_notable_type, "AwCustomer")
-      assert_eq(customer.aw_notes.count(), 1)
-      # Counter cache bumped through the FK-change path.
+      assert_eq(customer.aw_notes.count, 1)
       assert_eq(AwCustomer.find(customer._key).aw_notes_count, 1)
-
-      note.delete()
-      customer.delete()
     end
-  })
 
-  test("pushing a non-instance raises", fn() {
-    if __db_available
-      let author = AwAuthor.create({"name": "a"})
-      let raised = false
-      try
+    test("pushing something that is not an instance is refused") do
+      author = AwAuthor.create({"name": "a"})
+      assert_raises("\"aw_books\" << expects a model instance (or an array of them), got string") do
         author.aw_books << "some-key"
-      catch e
-        raised = true
-        assert(str(e).includes?("model instance"))
       end
-      assert(raised)
-      author.delete()
     end
-  })
 
-  test("pushing onto an unpersisted owner raises", fn() {
-    let raised = false
-    try
-      AwAuthor.new({}).aw_books << AwBook.new({})
-    catch e
-      raised = true
-      assert(str(e).includes?("save the owner"))
-    end
-    assert(raised)
-  })
-
-  test("a failing save aborts the push loudly", fn() {
-    if __db_available
-      let shelf = AwStrictShelf.create({"name": "s"})
-      let invalid = AwStrictBook.new({})  # missing required title
-      let raised = false
-      try
-        shelf.aw_strict_books << invalid
-      catch e
-        raised = true
-        assert(str(e).includes?("_errors"))
+    test("a failing save aborts the push loudly") do
+      shelf = AwStrictShelf.create({"name": "s"})
+      assert_raises("\"aw_strict_books\" << failed: the record did not save (check its _errors)") do
+        shelf.aw_strict_books << AwStrictBook.new({})
       end
-      assert(raised)
-      shelf.delete()
+      assert_eq(AwStrictBook.count, 0)
     end
-  })
-})
+  end
 
-describe("has_many relation create", fn() {
-  test("create seeds the foreign key", fn() {
-    if __db_available
-      let author = AwAuthor.create({"name": "a"})
+  describe("relation create") do
+    test("seeds the foreign key") do
+      author = AwAuthor.create({"name": "a"})
 
-      let book = author.aw_books.create({"title": "seeded"})
+      book = author.aw_books.create({"title": "seeded"})
 
       assert_null(book._errors)
       assert_eq(book.aw_author_id, author._key)
       assert_eq(book.title, "seeded")
-      assert_eq(author.aw_books.count(), 1)
-
-      book.delete()
-      author.delete()
+      assert_eq(titles_of(author.aw_books), ["seeded"])
     end
-  })
 
-  test("create on a polymorphic inverse seeds id and type", fn() {
-    if __db_available
-      let customer = AwCustomer.create({"name": "c"})
-      let supplier = AwSupplier.create({"name": "s"})
+    test("on a polymorphic inverse seeds id and type and bumps the counter") do
+      customer = AwCustomer.create({"name": "c"})
+      supplier = AwSupplier.create({"name": "s"})
 
-      let note = customer.aw_notes.create({"message": "bla"})
+      note = customer.aw_notes.create({"message": "bla"})
 
       assert_eq(note.aw_notable_id, customer._key)
       assert_eq(note.aw_notable_type, "AwCustomer")
-      assert_eq(customer.aw_notes.count(), 1)
-      assert_eq(supplier.aw_notes.count(), 0)
+      assert_eq(customer.aw_notes.count, 1)
+      assert_eq(supplier.aw_notes.count, 0)
       assert_eq(AwCustomer.find(customer._key).aw_notes_count, 1)
+    end
 
-      # The seed wins over caller-supplied values.
-      let hijack = customer.aw_notes.create({
-        "message": "sneaky",
-        "aw_notable_id": supplier._key,
-        "aw_notable_type": "AwSupplier"
-      })
+    test("the seed wins over caller-supplied foreign keys") do
+      customer = AwCustomer.create({"name": "c"})
+      supplier = AwSupplier.create({"name": "s"})
+
+      forged = {"message": "sneaky", "aw_notable_id": supplier._key, "aw_notable_type": "AwSupplier"}
+      hijack = customer.aw_notes.create(forged)
+
       assert_eq(hijack.aw_notable_id, customer._key)
       assert_eq(hijack.aw_notable_type, "AwCustomer")
-
-      note.delete()
-      hijack.delete()
-      customer.delete()
-      supplier.delete()
+      assert_eq(supplier.aw_notes.count, 0)
     end
-  })
 
-  test("a validation failure returns the instance with _errors", fn() {
-    if __db_available
-      let shelf = AwStrictShelf.create({"name": "s"})
+    test("a validation failure returns the instance with _errors") do
+      shelf = AwStrictShelf.create({"name": "s"})
 
-      let invalid = shelf.aw_strict_books.create({})
+      invalid = shelf.aw_strict_books.create({})
 
-      assert_not_null(invalid._errors)
+      assert_eq(invalid._errors, [{"field": "title", "message": "can't be blank"}])
       assert_null(invalid._key)
-      assert_eq(shelf.aw_strict_books.count(), 0)
-
-      shelf.delete()
+      assert_eq(shelf.aw_strict_books.count, 0)
     end
-  })
-
-  test("create on a plain where-QueryBuilder raises", fn() {
-    let raised = false
-    try
-      AwBook.where("title == @t", {"t": "x"}).create({"title": "nope"})
-    catch e
-      raised = true
-      assert(str(e).includes?("relation accessor"))
-    end
-    assert(raised)
-  })
-})
+  end
+end
