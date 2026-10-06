@@ -548,13 +548,8 @@ pub fn get_relation(class_name: &str, relation_name: &str) -> Option<RelationDef
 // Naming helpers
 // ---------------------------------------------------------------------------
 
-fn pluralize(s: &str) -> String {
-    crate::inflect::pluralize(s)
-}
-
-pub fn singularize(s: &str) -> String {
-    crate::inflect::singularize(s)
-}
+use crate::inflect::pluralize;
+pub use crate::inflect::singularize;
 
 /// Convert a relation name to PascalCase class name.
 /// "posts" → "Post", "blog_posts" → "BlogPost", "profile" → "Profile"

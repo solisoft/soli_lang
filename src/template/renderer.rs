@@ -579,20 +579,7 @@ pub fn attr_escape(s: &str) -> Cow<'_, str> {
 /// Escape for use in a URL query parameter context.
 /// Percent-encodes characters that are not safe in query values.
 pub fn url_escape(s: &str) -> Cow<'_, str> {
-    let mut result = String::new();
-    for c in s.chars() {
-        match c {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => result.push(c),
-            _ => {
-                let mut buf = [0u8; 4];
-                let encoded = c.encode_utf8(&mut buf);
-                for byte in encoded.bytes() {
-                    result.push_str(&format!("%{:02X}", byte));
-                }
-            }
-        }
-    }
-    Cow::Owned(result)
+    urlencoding::encode(s)
 }
 
 /// Auto-call callable values (Function, NativeFunction, Method) with no arguments.
