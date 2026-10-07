@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.18.2] - 2026-10-07
+
 ### Fixed
 
 * **language:** **`"" * n` returns at once, whatever `n`.** Repeating an empty string checked the result against the allocation limit (0 bytes, so it passed) and then appended the empty string `n` times: `"" * 100000000000` held a worker for minutes, on both engines. An app repeating a string by a user-supplied count could be stalled this way. Found by the `template_parse_render` fuzz target; the input is now a seed.
