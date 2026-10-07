@@ -270,7 +270,7 @@ The levers, cheapest first:
 | `ssh` | on | `soli deploy` (`ssh2`, which compiles OpenSSL from source) |
 | `office` | on | `Spreadsheet` — xlsx and csv (`umya-spreadsheet`, `calamine`) |
 | `pdf` | on | `Pdf` — rendering, Factur-X, PAdES signatures (`soli-pdf`, CMS, X.509) |
-| `cloud` | on | `S3` and the `s3` attachment service (Rusoto) |
+| `cloud` | on | `S3` and the `s3` attachment service (a built-in Signature V4 client; no extra crate) |
 | `mail` | on | `Mailer`, `Imap`, `Pop3` |
 | `lsp` | on | `soli lsp`, the language server (`tower-lsp`) |
 | `eui` | on | EUI components — `router_eui`, `eui_capabilities`, `eui_stats` and the `/_eui` session endpoint (`eui-proto`, `blake3`, `ring`) |

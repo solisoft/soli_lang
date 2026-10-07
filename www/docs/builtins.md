@@ -1233,6 +1233,8 @@ S3_REGION=us-east-1
 # S3_ENDPOINT=http://localhost:9000
 ```
 
+**Compatibility:** requests are signed with AWS Signature V4 and use path-style URLs (`https://host/bucket/key`), which AWS, Garage, SeaweedFS, MinIO, Cloudflare R2 (`S3_REGION=auto`) and DigitalOcean Spaces all accept. An `S3_ENDPOINT` without a scheme is reached over `https://`. A failed call raises an error that carries the HTTP status and S3's own code, e.g. `S3 404 NoSuchKey: The specified key does not exist.`; on AWS outside `us-east-1`, `create_bucket` names the region as AWS requires.
+
 ### S3.list_buckets()
 
 Lists all buckets in the S3 account.

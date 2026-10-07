@@ -6,8 +6,6 @@
 //! The existing `uploader(...)` DSL still defaults to SoliDB blobs.
 
 use std::fs;
-#[cfg(feature = "cloud")]
-use std::io::Read;
 use std::path::PathBuf;
 
 use crate::interpreter::environment::Environment;
@@ -17,22 +15,12 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 // keeps disk attachments and answers plainly for the other service rather
 // than pretending to store anything.
 #[cfg(feature = "cloud")]
-use rusoto_core::Region;
-#[cfg(feature = "cloud")]
-use rusoto_credential::StaticProvider;
-#[cfg(feature = "cloud")]
-use rusoto_s3::util::{PreSignedRequest, PreSignedRequestOption};
-#[cfg(feature = "cloud")]
-use rusoto_s3::{
-    DeleteObjectRequest, GetObjectRequest, HeadObjectRequest, PutObjectRequest, S3Client, S3,
-};
+use super::s3_client::{metadata_value, run as run_s3, ObjectInfo, S3Client};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::args::hash_str;
-#[cfg(feature = "cloud")]
-use crate::serve::get_tokio_handle;
 
 const DEFAULT_DISK_ROOT: &str = "./storage/attachments";
 
@@ -168,44 +156,16 @@ fn store_s3_from_path(
     let bucket = s3_bucket()?;
     let id = uuid::Uuid::new_v4().to_string();
     let key = s3_key(collection, &id);
-    let client = s3_client()?;
-    let file = fs::File::open(source).map_err(|e| format!("attachment s3 open: {e}"))?;
-    let size = file
-        .metadata()
-        .map_err(|e| format!("attachment s3 stat: {e}"))?
-        .len();
-    // A megabyte at a time, so the file is never resident whole.
-    let stream = futures_util::stream::unfold(file, |mut file| async move {
-        let mut buffer = vec![0u8; 1024 * 1024];
-        match file.read(&mut buffer) {
-            Ok(0) => None,
-            Ok(read) => {
-                buffer.truncate(read);
-                Some((Ok(bytes::Bytes::from(buffer)), file))
-            }
-            Err(e) => Some((Err(e), file)),
-        }
-    });
-    let request = PutObjectRequest {
-        bucket,
-        key,
-        body: Some(rusoto_core::ByteStream::new(stream)),
-        content_length: Some(size as i64),
-        content_type: Some(content_type.to_string()),
-        metadata: Some(
-            [("original-filename".to_string(), filename.to_string())]
-                .into_iter()
-                .collect(),
-        ),
-        ..Default::default()
-    };
-    run_s3(async move {
-        client
-            .put_object(request)
-            .await
-            .map_err(|e| format!("attachment s3 put: {e}"))?;
-        Ok(id)
-    })
+    let client = S3Client::from_env()?;
+    run_s3(client.put_object_file(
+        &bucket,
+        &key,
+        source,
+        content_type,
+        &[("original-filename", filename)],
+    ))
+    .map_err(|e| format!("attachment s3 put: {e}"))?;
+    Ok(id)
 }
 
 /// What a browser needs to send one file straight to the bucket.
@@ -221,8 +181,8 @@ struct DirectUpload {
 #[cfg(feature = "cloud")]
 const MAX_PRESIGN_SECS: u64 = 3600;
 
-/// A presigned `PUT` for a brand-new blob. The signature (rusoto's) covers the
-/// host and the `x-amz-meta-original-filename` header, *not* `Content-Type` or
+/// A presigned `PUT` for a brand-new blob. The signature covers the host and
+/// the `x-amz-meta-original-filename` header, *not* `Content-Type` or
 /// `Content-Length`: S3 will accept whatever the browser sends to this URL.
 /// The limits are therefore enforced when the upload is finished, against what
 /// the bucket reports (`direct_upload_finish`), which deletes an object that
@@ -232,70 +192,31 @@ fn presign_direct_upload(
     collection: &str,
     filename: &str,
     content_type: &str,
-    size: u64,
+    _size: u64,
     expires_in: u64,
 ) -> Result<DirectUpload, String> {
     let bucket = s3_bucket()?;
     let id = uuid::Uuid::new_v4().to_string();
     let key = s3_key(collection, &id);
-    let (region, credentials) = s3_region_and_credentials()?;
     let expires_in = expires_in.clamp(1, MAX_PRESIGN_SECS);
-    let request = PutObjectRequest {
-        bucket,
-        key,
-        content_type: Some(content_type.to_string()),
-        content_length: Some(size as i64),
-        metadata: Some(
-            [("original-filename".to_string(), filename.to_string())]
-                .into_iter()
-                .collect(),
-        ),
-        ..Default::default()
-    };
-    let url = request.get_presigned_url(
-        &region,
-        &credentials,
-        &PreSignedRequestOption {
-            expires_in: std::time::Duration::from_secs(expires_in),
-        },
+    // The browser sends this header verbatim, and a browser cannot send a
+    // non-ASCII header value: the name travels as the encoded word S3 uses.
+    let filename_header = metadata_value(filename);
+    let url = S3Client::from_env()?.presign_put(
+        &bucket,
+        &key,
+        expires_in,
+        &[("x-amz-meta-original-filename", &filename_header)],
     );
     Ok(DirectUpload {
         id,
         url,
         headers: vec![
             ("Content-Type".to_string(), content_type.to_string()),
-            (
-                "x-amz-meta-original-filename".to_string(),
-                filename.to_string(),
-            ),
+            ("x-amz-meta-original-filename".to_string(), filename_header),
         ],
         expires_in,
     })
-}
-
-#[cfg(feature = "cloud")]
-fn s3_region_and_credentials() -> Result<(Region, rusoto_credential::AwsCredentials), String> {
-    let access_key = std::env::var("AWS_ACCESS_KEY_ID")
-        .or_else(|_| std::env::var("S3_ACCESS_KEY"))
-        .map_err(|_| "S3_ACCESS_KEY or AWS_ACCESS_KEY_ID not set".to_string())?;
-    let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY")
-        .or_else(|_| std::env::var("S3_SECRET_KEY"))
-        .map_err(|_| "S3_SECRET_KEY or AWS_SECRET_ACCESS_KEY not set".to_string())?;
-    let region_name = std::env::var("AWS_REGION")
-        .or_else(|_| std::env::var("S3_REGION"))
-        .unwrap_or_else(|_| "us-east-1".to_string());
-    let region = if let Ok(endpoint) = std::env::var("S3_ENDPOINT") {
-        Region::Custom {
-            name: region_name,
-            endpoint,
-        }
-    } else {
-        region_name.parse().unwrap_or(Region::UsEast1)
-    };
-    Ok((
-        region,
-        rusoto_credential::AwsCredentials::new(access_key, secret_key, None, None),
-    ))
 }
 
 /// What the bucket actually holds under `id`, or `None` when nothing landed.
@@ -303,34 +224,26 @@ fn s3_region_and_credentials() -> Result<(Region, rusoto_credential::AwsCredenti
 fn head_s3(collection: &str, id: &str) -> Result<Option<BlobMeta>, String> {
     let bucket = s3_bucket()?;
     let key = s3_key(collection, id);
-    let client = s3_client()?;
-    run_s3(async move {
-        match client
-            .head_object(HeadObjectRequest {
-                bucket,
-                key,
-                ..Default::default()
-            })
-            .await
-        {
-            Ok(head) => Ok(Some(BlobMeta {
-                filename: head
-                    .metadata
-                    .as_ref()
-                    .and_then(|m| m.get("original-filename").cloned())
-                    .unwrap_or_else(|| "file".to_string()),
-                content_type: head
-                    .content_type
-                    .unwrap_or_else(|| "application/octet-stream".to_string()),
-                size: head.content_length.unwrap_or(0).max(0) as u64,
-            })),
-            Err(rusoto_core::RusotoError::Service(_)) => Ok(None),
-            Err(rusoto_core::RusotoError::Unknown(response)) if response.status.as_u16() == 404 => {
-                Ok(None)
-            }
-            Err(e) => Err(format!("attachment s3 head: {e}")),
-        }
-    })
+    let head = run_s3(S3Client::from_env()?.head_object(&bucket, &key))
+        .map_err(|e| format!("attachment s3 head: {e}"))?;
+    Ok(head.map(|info| blob_meta(&info, info.content_length.unwrap_or(0))))
+}
+
+/// The blob's name and type as the upload recorded them on the object.
+#[cfg(feature = "cloud")]
+fn blob_meta(info: &ObjectInfo, size: u64) -> BlobMeta {
+    BlobMeta {
+        filename: info
+            .metadata
+            .get("original-filename")
+            .cloned()
+            .unwrap_or_else(|| "file".to_string()),
+        content_type: info
+            .content_type
+            .clone()
+            .unwrap_or_else(|| "application/octet-stream".to_string()),
+        size,
+    }
 }
 
 fn store_disk(
@@ -389,48 +302,6 @@ fn s3_key(collection: &str, id: &str) -> String {
 }
 
 #[cfg(feature = "cloud")]
-fn s3_client() -> Result<S3Client, String> {
-    let access_key = std::env::var("AWS_ACCESS_KEY_ID")
-        .or_else(|_| std::env::var("S3_ACCESS_KEY"))
-        .map_err(|_| "S3_ACCESS_KEY or AWS_ACCESS_KEY_ID not set".to_string())?;
-    let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY")
-        .or_else(|_| std::env::var("S3_SECRET_KEY"))
-        .map_err(|_| "S3_SECRET_KEY or AWS_SECRET_ACCESS_KEY not set".to_string())?;
-    let region_name = std::env::var("AWS_REGION")
-        .or_else(|_| std::env::var("S3_REGION"))
-        .unwrap_or_else(|_| "us-east-1".to_string());
-    let region = if let Ok(ep) = std::env::var("S3_ENDPOINT") {
-        Region::Custom {
-            name: region_name,
-            endpoint: ep,
-        }
-    } else {
-        region_name.parse().unwrap_or(Region::UsEast1)
-    };
-    Ok(S3Client::new_with(
-        rusoto_core::HttpClient::new().map_err(|e| e.to_string())?,
-        StaticProvider::new(access_key, secret_key, None, None),
-        region,
-    ))
-}
-
-#[cfg(feature = "cloud")]
-fn run_s3<F, T>(future: F) -> Result<T, String>
-where
-    F: std::future::Future<Output = Result<T, String>>,
-{
-    if let Some(rt) = get_tokio_handle() {
-        rt.block_on(future)
-    } else {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| e.to_string())?
-            .block_on(future)
-    }
-}
-
-#[cfg(feature = "cloud")]
 fn store_s3(
     collection: &str,
     filename: &str,
@@ -440,84 +311,33 @@ fn store_s3(
     let bucket = s3_bucket()?;
     let id = uuid::Uuid::new_v4().to_string();
     let key = s3_key(collection, &id);
-    let client = s3_client()?;
-    let request = PutObjectRequest {
-        bucket,
-        key,
-        body: Some(data.into()),
-        content_type: Some(content_type.to_string()),
-        metadata: Some(
-            [("original-filename".to_string(), filename.to_string())]
-                .into_iter()
-                .collect(),
-        ),
-        ..Default::default()
-    };
-    run_s3(async move {
-        client
-            .put_object(request)
-            .await
-            .map_err(|e| format!("attachment s3 put: {e}"))?;
-        Ok(id)
-    })
+    let client = S3Client::from_env()?;
+    run_s3(client.put_object(
+        &bucket,
+        &key,
+        data.into(),
+        content_type,
+        &[("original-filename", filename)],
+    ))
+    .map_err(|e| format!("attachment s3 put: {e}"))?;
+    Ok(id)
 }
 
 #[cfg(feature = "cloud")]
 fn read_s3(collection: &str, id: &str) -> Result<(BlobMeta, Vec<u8>), String> {
     let bucket = s3_bucket()?;
     let key = s3_key(collection, id);
-    let client = s3_client()?;
-    run_s3(async move {
-        let out = client
-            .get_object(GetObjectRequest {
-                bucket,
-                key,
-                ..Default::default()
-            })
-            .await
-            .map_err(|_| "attachment not found".to_string())?;
-        let mut data = Vec::new();
-        if let Some(body) = out.body {
-            body.into_blocking_read()
-                .read_to_end(&mut data)
-                .map_err(|e| e.to_string())?;
-        }
-        let filename = out
-            .metadata
-            .as_ref()
-            .and_then(|m| m.get("original-filename"))
-            .cloned()
-            .unwrap_or_else(|| "file".to_string());
-        let content_type = out
-            .content_type
-            .unwrap_or_else(|| "application/octet-stream".to_string());
-        Ok((
-            BlobMeta {
-                filename,
-                content_type,
-                size: data.len() as u64,
-            },
-            data,
-        ))
-    })
+    let (info, data) = run_s3(S3Client::from_env()?.get_object(&bucket, &key))
+        .map_err(|_| "attachment not found".to_string())?;
+    Ok((blob_meta(&info, data.len() as u64), data.to_vec()))
 }
 
 #[cfg(feature = "cloud")]
 fn delete_s3(collection: &str, id: &str) -> Result<(), String> {
     let bucket = s3_bucket()?;
     let key = s3_key(collection, id);
-    let client = s3_client()?;
-    run_s3(async move {
-        client
-            .delete_object(DeleteObjectRequest {
-                bucket,
-                key,
-                ..Default::default()
-            })
-            .await
-            .map(|_| ())
-            .map_err(|e| format!("attachment s3 delete: {e}"))
-    })
+    run_s3(S3Client::from_env()?.delete_object(&bucket, &key))
+        .map_err(|e| format!("attachment s3 delete: {e}"))
 }
 
 /// Borrow a string field instead of copying it.

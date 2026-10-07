@@ -119,10 +119,10 @@ office = ["dep:calamine", "dep:umya-spreadsheet", "dep:csv"]
 # beside this one brings printpdf, lopdf and a full SVG stack; the
 # signature half brings CMS and X.509.
 pdf = ["dep:soli-pdf", "dep:cms", "dep:x509-cert"]
-# `S3` and the S3 attachment service. Rusoto's generated bindings are a
-# few megabytes, and the crate is unmaintained (see .cargo/audit.toml);
-# disk attachments do not need it.
-cloud = ["dep:rusoto_s3", "dep:rusoto_core", "dep:rusoto_credential"]
+# `S3` and the S3 attachment service, on the in-tree Signature V4 client
+# (src/interpreter/builtins/s3_client.rs). It needs no crate of its own;
+# disk attachments do not need it at all.
+cloud = []
 # `soli lsp` — the language server an editor talks to. A packaged
 # application never starts one.
 lsp = ["dep:tower-lsp"]
@@ -327,11 +327,6 @@ pulldown-cmark = "0.12"
 # entity-encoded attributes, unquoted attributes, SVG sub-trees, etc.
 ammonia = "4"
 
-# S3 support
-rusoto_s3 = { version = "0.48", optional = true }
-rusoto_core = { version = "0.48", optional = true }
-rusoto_credential = { version = "0.48", optional = true }
-
 # Archive extraction for git archive
 flate2 = "1.0"
 tar = "0.4"
@@ -371,8 +366,8 @@ time = ">=0.3.47, <0.3.52"
 # linking the system `libssl`. This removes the only reason the release CI's
 # arm64 cross-build needed `libssl-dev:arm64` from the (flaky, sometimes
 # unreachable) `ports.ubuntu.com` multiarch mirror. Feature unification makes
-# every `openssl-sys` consumer in the graph vendored too (e.g. rusoto's
-# native-tls), so no target needs a system OpenSSL.
+# every `openssl-sys` consumer in the graph vendored too, so no target needs
+# a system OpenSSL.
 # Moved to the cfg(unix) dependency section below.
 
 # Language Server Protocol (used by `soli lsp`)

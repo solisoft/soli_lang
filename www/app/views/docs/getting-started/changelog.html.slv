@@ -48,6 +48,11 @@
             <figcaption class="text-xs text-gray-500 mt-2">Each step on its own, measured on a Ryzen 9 9950X; below, the 2.17.1 profile that pointed at them &mdash; middleware on the tree-walker cost almost as much as the action.</figcaption>
         </figure>
 
+        <h3 id="unreleased-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Security</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">S3</code> runs on a built-in client; rusoto is gone.</strong> The unmaintained rusoto crate kept hyper 0.14 and an h2 0.3 with a waived HTTP/2 denial-of-service advisory in every build. A small Signature V4 client replaces it: 26 crates leave the build and two audit waivers go. <code class="text-cyan-400">S3.*</code>, its environment variables and S3 attachments work as before; errors now name the HTTP status and S3&rsquo;s code (<code class="text-cyan-400">S3 404 NoSuchKey: &hellip;</code>), <code class="text-cyan-400">create_bucket</code> works on AWS outside <code class="text-cyan-400">us-east-1</code>, and an attachment with a non-ASCII filename keeps its name. <a href="/docs/builtins/s3" class="text-cyan-400 hover:underline">S3</a></li>
+        </ul>
+
         <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Postgres timestamps from a server west of UTC parse.</strong> A <code class="text-cyan-400">timestamptz</code> read from a server whose time zone is not UTC came back as <code class="text-cyan-400">2026-10-07T06:00:00-04</code>, which is not RFC 3339: only <code class="text-cyan-400">+00</code> offsets were padded to <code class="text-cyan-400">+00:00</code>. Negative ones are now too. <a href="/docs/database/multi-database" class="text-cyan-400 hover:underline">SQL databases</a></li>

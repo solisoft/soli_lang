@@ -149,6 +149,8 @@ pub mod router;
 pub mod rsa_key;
 #[cfg(feature = "cloud")]
 pub mod s3;
+#[cfg(feature = "cloud")]
+pub(crate) mod s3_client;
 pub mod secure_cookies;
 pub mod security_headers;
 pub mod server;
