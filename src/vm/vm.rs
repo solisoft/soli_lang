@@ -4617,9 +4617,9 @@ impl Vm {
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a * *b as f64)),
             (Value::String(s), Value::Int(n)) | (Value::Int(n), Value::String(s)) => {
-                crate::interpreter::limits::check_string_repeat(s.len(), *n, "string * count")
+                let repeated = crate::interpreter::limits::repeat_string(s, *n, "string * count")
                     .map_err(|message| RuntimeError::General { message, span })?;
-                Ok(Value::String(s.repeat(*n as usize)))
+                Ok(Value::String(repeated.into()))
             }
             _ => Err(RuntimeError::type_error(
                 format!("Cannot multiply {} and {}", a.type_name(), b.type_name()),

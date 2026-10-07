@@ -223,6 +223,20 @@ describe("Operand-valued operators") do
     assert_eq("abc" * 0, "")
   end
 
+  test("an empty string repeats to an empty string at once, however large the count") do
+    # It used to append the empty string once per count: 10^11 passes, minutes.
+    started = clock()
+    assert_eq("" * 100000000000, "")
+    assert_eq(100000000000 * "", "")
+    assert_lt(clock() - started, 1.0)
+  end
+
+  test("a repeat too large for the limit raises instead of allocating") do
+    assert_raises("over the") do
+      "ab" * 100000000000
+    end
+  end
+
   test("a negative repeat count raises") do
     assert_raises("string * count needs a non-negative count, got -1") do
       "abc" * -1

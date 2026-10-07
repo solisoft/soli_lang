@@ -94,6 +94,22 @@ pub fn check_string_repeat(len: usize, count: i64, what: &str) -> Result<(), Str
     Ok(())
 }
 
+/// `string * count`: checked against the allocation limit, then built.
+///
+/// An empty string or a zero count is answered at once. `EcoString::repeat`
+/// appends the string once per count, so `"" * 100_000_000_000` passed the
+/// size check above (0 bytes) and then spun through 10^11 empty appends,
+/// holding the worker for minutes (found by the `template_parse_render`
+/// fuzz target). `str::repeat` doubles its buffer instead of looping, and the
+/// check bounds the count for a non-empty string.
+pub fn repeat_string(text: &str, count: i64, what: &str) -> Result<String, String> {
+    check_string_repeat(text.len(), count, what)?;
+    if text.is_empty() || count == 0 {
+        return Ok(String::new());
+    }
+    Ok(text.repeat(count as usize))
+}
+
 /// Validate a stepped `range(start, end, step)` before it is materialised.
 ///
 /// `step` must already be non-zero (the callers reject zero with their own
@@ -180,6 +196,16 @@ mod tests {
     fn ordinary_repetition_is_allowed() {
         assert!(check_string_repeat(8, 100, "string * count").is_ok());
         assert!(check_string_repeat(0, i64::MAX, "string * count").is_ok());
+        // ...and building it returns at once instead of looping i64::MAX times.
+        assert_eq!(
+            repeat_string("", i64::MAX, "string * count").as_deref(),
+            Ok("")
+        );
+        assert_eq!(repeat_string("ab", 0, "string * count").as_deref(), Ok(""));
+        assert_eq!(
+            repeat_string("ab", 3, "string * count").as_deref(),
+            Ok("ababab")
+        );
     }
 
     #[test]

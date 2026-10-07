@@ -22,6 +22,11 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.18.0.</p>
 
+        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">"" * n</code> returns at once, whatever <code class="text-cyan-400">n</code>.</strong> Repeating an empty string passed the allocation check (the result is 0 bytes) and then appended nothing <code class="text-cyan-400">n</code> times: <code class="text-cyan-400">"" * 100000000000</code> held a worker for minutes. An app repeating a string by a user-supplied count could be stalled this way; both engines now answer <code class="text-cyan-400">""</code> immediately.</li>
+        </ul>
+
     </section>
 
     <section id="v2-18-1" class="mb-16 scroll-mt-24">

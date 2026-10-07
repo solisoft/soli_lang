@@ -552,9 +552,9 @@ create the record first, or use {}.create({{...}})",
                 // `*n as usize` turned a negative count into `usize::MAX` and a
                 // large one into a multi-gigabyte allocation; both took the
                 // process down rather than the request.
-                crate::interpreter::limits::check_string_repeat(s.len(), *n, "string * count")
+                let repeated = crate::interpreter::limits::repeat_string(s, *n, "string * count")
                     .map_err(|message| RuntimeError::General { message, span })?;
-                Ok(Value::String(s.repeat(*n as usize)))
+                Ok(Value::String(repeated.into()))
             }
             _ => Err(RuntimeError::type_error(
                 format!(

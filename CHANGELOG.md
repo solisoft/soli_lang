@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+* **language:** **`"" * n` returns at once, whatever `n`.** Repeating an empty string checked the result against the allocation limit (0 bytes, so it passed) and then appended the empty string `n` times: `"" * 100000000000` held a worker for minutes, on both engines. An app repeating a string by a user-supplied count could be stalled this way. Found by the `template_parse_render` fuzz target; the input is now a seed.
+
 ## [2.18.1] - 2026-10-07
 
 v2.18.0 was tagged but never published: its CI stopped on six KV specs that SoliKV 0.4.3, the server CI runs, cannot pass. v2.18.1 is v2.18.0 plus that fix — the release notes are under 2.18.0.
