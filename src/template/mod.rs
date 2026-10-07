@@ -21,7 +21,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 
 use crate::interpreter::value::{SoliStr, Value};
 use crate::serve::{vfs_exists, vfs_read_to_string};
@@ -29,11 +29,11 @@ use parser::parse_template;
 use renderer::{render_nodes_with_path, render_with_interpreter};
 use std::rc::Rc;
 
-/// A cached template with its parsed AST and modification time.
+/// A cached template's parsed AST. Hot reload clears the cache; nothing
+/// re-checks a file's mtime.
 #[derive(Debug, Clone)]
 struct CachedTemplate {
     nodes: Arc<Vec<parser::TemplateNode>>,
-    modified: SystemTime,
 }
 
 /// Reject template names that could escape the views directory or contain
@@ -765,10 +765,6 @@ impl TemplateCache {
         let source = vfs_read_to_string(&path_str)
             .map_err(|e| format!("Failed to read template '{}': {}", path.display(), e))?;
 
-        let modified = std::fs::metadata(path)
-            .and_then(|m| m.modified())
-            .unwrap_or(SystemTime::UNIX_EPOCH);
-
         // Surface the .slv path on parse failures. Without this, errors from
         // the template parser (e.g. a reserved keyword used as a `<% for ... %>`
         // loop variable) bubble up through the controller's `render(...)` call,
@@ -788,7 +784,6 @@ impl TemplateCache {
                 path.to_path_buf(),
                 CachedTemplate {
                     nodes: nodes.clone(),
-                    modified,
                 },
             );
         }
@@ -807,26 +802,6 @@ impl TemplateCache {
         if let Ok(mut c) = self.missing_cache.write() {
             c.clear();
         }
-    }
-
-    /// Check if any tracked templates have changed.
-    pub fn has_changes(&self) -> bool {
-        let Ok(cache) = self.cache.read() else {
-            return false;
-        };
-        for (path, cached) in cache.iter() {
-            let path_str = path.to_string_lossy().to_string();
-            if vfs_exists(&path_str) {
-                if let Ok(metadata) = std::fs::metadata(path) {
-                    if let Ok(modified) = metadata.modified() {
-                        if modified != cached.modified {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-        false
     }
 }
 
