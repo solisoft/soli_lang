@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.18.0] - 2026-10-07
+
 ### Added
 
 * **testing:** **`assert_raises`.** `assert_raises() do … end`, `assert_raises("part of the message") do … end` or `assert_raises(fn() { … })` passes when the block raises (with the fragment in its message) and returns the error message, so a spec can assert more on it. It fails when the block raises nothing or a different error; a failed assertion or a `skip`/`pending` inside the block propagates instead of being taken for the expected error. Replaces the hand-rolled `raised = false` + `try`/`catch` + `assert(raised)`. Write the parentheses: `assert_raises do` does not parse. [Docs](www/docs/testing-assertions.md#assert_raises)
@@ -19,7 +21,7 @@
 * **lsp:** **The language server stops advertising inlay hints and go-to-type-definition.** It declared both capabilities in `initialize` but implemented neither request, so an editor asked and got nothing. The never-called helpers behind them (`lsp/inlay.rs`, `lsp/semantic.rs`) are gone, and the editor docs no longer list them.
 * **testing:** **A spec declaration the runner cannot register fails the file.** The runner reads the spec tree without running `describe` bodies, and used to drop what it could not register in silence — an `if db_available … describe(…) … end` guard never ran a single test. The file now fails with `N spec declaration problem(s)` and a line per problem: a `describe`/`context`/`test`/`it`/`specify` inside a top-level `if`/`unless`/loop/`try`, a `test` outside any `describe`, any other statement in a `describe` body (`url = "/posts"` there never ran), a suite or test name that is not a string literal, a second hook of the same kind in one `describe`. [Docs](www/docs/testing.md#how-the-runner-reads-a-spec)
 * **testing:** **Nested suites inherit hooks.** Every enclosing `before_each` runs, outermost first; `after_each` hooks run innermost first. An outer `before_each` used not to run for tests in a nested `describe`. [Docs](www/docs/testing.md#hooks)
-* **testing:** **Hook failures are no longer swallowed.** A raising `before_each` fails the test with `before_each: <error>` and its body does not run; `skip("why")`/`pending("why")` in a `before_each` marks the test pending, which is how a suite skips itself. A raising `after_each` fails the test; teardown hooks always run. A raising `before_all` fails the suite (`<suite> (before_all, N test(s) not run)`) without running its tests, and a raising `after_all` is reported as a failure.
+* **testing:** **Hook failures are no longer swallowed.** A raising `before_each` fails the test with `before_each: <error>` and its body does not run; `skip("why")`/`pending("why")` in a `before_each` marks the test pending, which is how a suite skips itself. A raising `after_each` fails the test; teardown hooks always run. A raising `before_all` fails the suite (`<suite> (before_all, N test(s) not run)`) without running its tests, and a raising `after_all` is reported as a failure. **Upgrading:** specs written from the guides of apps generated before 2.6.6 call `db_migrate("up")` in a `before_all` — a function that never existed, whose error used to be swallowed. Delete the line: `soli test` migrates the test database itself. The same goes for a hook that calls a helper the file never defines.
 * **testing:** **`assert_gt`/`assert_lt` and the `expect` comparisons accept an Int and a Float mixed** (`expect(3).to_be_greater_than(2.5)`).
 
 ### Fixed
