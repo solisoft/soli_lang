@@ -66,7 +66,18 @@ fn openapi_path(pattern: &str) -> (String, Vec<String>) {
             continue;
         }
         out.push('/');
-        if let Some(name) = seg.strip_prefix(':').or_else(|| seg.strip_prefix('*')) {
+        if let Some((head, ext)) = crate::interpreter::builtins::server::split_format_segment(seg) {
+            // `photo.:fmt` → `photo.{fmt}`, `:id.:fmt` → `{id}.{fmt}`.
+            match head.strip_prefix(':') {
+                Some(name) => {
+                    out.push_str(&format!("{{{}}}", name));
+                    params.push(name.to_string());
+                }
+                None => out.push_str(head),
+            }
+            out.push_str(&format!(".{{{}}}", ext));
+            params.push(ext.to_string());
+        } else if let Some(name) = seg.strip_prefix(':').or_else(|| seg.strip_prefix('*')) {
             out.push('{');
             out.push_str(name);
             out.push('}');
@@ -513,6 +524,20 @@ mod tests {
         assert_eq!(
             openapi_path("/files/*path"),
             ("/files/{path}".into(), vec!["path".into()])
+        );
+        assert_eq!(
+            openapi_path("/posts/:id/cover.:fmt"),
+            (
+                "/posts/{id}/cover.{fmt}".into(),
+                vec!["id".into(), "fmt".into()]
+            )
+        );
+        assert_eq!(
+            openapi_path("/files/:name.:fmt"),
+            (
+                "/files/{name}.{fmt}".into(),
+                vec!["name".into(), "fmt".into()]
+            )
         );
         assert_eq!(openapi_path("/"), ("/".into(), Vec::<String>::new()));
         assert_eq!(

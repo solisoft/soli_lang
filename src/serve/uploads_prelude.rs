@@ -119,21 +119,34 @@ def attach_upload(model: Any, field_name: String, file: Any) -> Bool
     end
     tus_discard(tus_id) if !tus_id.nil?
 
-    __soli_link_blob(model, field_name, config, service, blob_id)
+    __soli_link_blob(model, field_name, config, service, blob_id, file["content_type"])
 end
 
 # Record `blob_id` on the model (single or multiple) and delete the blob it
 # replaces. Shared by `attach_upload` and `direct_upload_finish`.
-def __soli_link_blob(model: Any, field_name: String, config: Any, service: String, blob_id: Any) -> Bool
+#
+# The content type goes next to the id — `<field>_content_type`, or a
+# `{blob_id: type}` hash in `<field>_content_types` — so `upload_url` can end
+# the URL in the original's extension without asking the store. A column-mode
+# table without that column keeps the id alone, and its URLs no extension.
+def __soli_link_blob(model: Any, field_name: String, config: Any, service: String, blob_id: Any, content_type: Any = null) -> Bool
     if config["multiple"]
         ids = model["#{field_name}_blob_ids"] ?? []
         ids.push(blob_id)
-        model.update({ "#{field_name}_blob_ids": ids })
+        changes = { "#{field_name}_blob_ids": ids }
+        types_field = "#{field_name}_content_types"
+        if !content_type.nil? && __soli_model_stores_field(model, types_field)
+            changes[types_field] = (model[types_field] ?? {}).merge({ "#{blob_id}": content_type })
+        end
+        model.update(changes)
         return true
     end
 
     previous = model["#{field_name}_blob_id"]
-    model.update({ "#{field_name}_blob_id": blob_id })
+    changes = { "#{field_name}_blob_id": blob_id }
+    type_field = "#{field_name}_content_type"
+    changes[type_field] = content_type if !content_type.nil? && __soli_model_stores_field(model, type_field)
+    model.update(changes)
     if !previous.nil?
         if service == "disk" || service == "s3"
             delete_attachment(config, previous)
@@ -206,7 +219,7 @@ def direct_upload_finish(model: Any, field_name: String, blob_id: String) -> Boo
         return false
     end
 
-    __soli_link_blob(model, field_name, config, "s3", blob_id)
+    __soli_link_blob(model, field_name, config, "s3", blob_id, head["content_type"])
 end
 
 def detach_upload(model: Any, field_name: String, blob_id: Any = null) -> Bool
@@ -226,7 +239,10 @@ def detach_upload(model: Any, field_name: String, blob_id: Any = null) -> Bool
             solidb_delete_blob(client, config["collection"], blob_id)
         end
         kept = ids.filter(fn(id) id != blob_id)
-        model.update({ "#{field_name}_blob_ids": kept })
+        changes = { "#{field_name}_blob_ids": kept }
+        types = model["#{field_name}_content_types"]
+        changes["#{field_name}_content_types"] = types.reject { |id, _| id == blob_id } unless types.nil?
+        model.update(changes)
         return true
     end
 
@@ -237,7 +253,9 @@ def detach_upload(model: Any, field_name: String, blob_id: Any = null) -> Bool
     else
         solidb_delete_blob(client, config["collection"], current)
     end
-    model.update({ "#{field_name}_blob_id": null })
+    changes = { "#{field_name}_blob_id": null }
+    changes["#{field_name}_content_type"] = null unless model["#{field_name}_content_type"].nil?
+    model.update(changes)
     true
 end
 
@@ -310,10 +328,14 @@ class AttachmentsController < Controller
             return halt(404, "Not found") if stored.nil?
             meta = stored
             b64 = stored["data"]
+            query = this._apply_path_format(query, stored["content_type"] ?? "", ctx["ext"])
+            return halt(404, "Not found") if query.nil?
         else
             client = __soli_resolve_solidb_client()
             meta   = solidb_get_blob_metadata(client, config["collection"], blob_id)
             ct     = meta["content_type"] ?? "application/octet-stream"
+            query  = this._apply_path_format(query, ct, ctx["ext"])
+            return halt(404, "Not found") if query.nil?
 
             # Unless an image transform needs the decoded pixels, the blob is
             # streamed from SoliDB to the client by the server, chunk by chunk,
@@ -404,7 +426,13 @@ class AttachmentsController < Controller
         return null if parts.length() < 3
 
         resource = parts[0]
-        field    = parts[2]
+        field    = parts[2].split(".")[0]
+
+        # `photo.webp`, `gallery/<blob_id>.webp`: only GET has routes that
+        # take an extension, and the last segment carries it.
+        ext = null
+        last_pieces = parts[parts.length() - 1].split(".")
+        ext = last_pieces[last_pieces.length() - 1] if last_pieces.length() > 1
 
         model_class = find_model_class_by_collection(resource)
         return null if model_class.nil?
@@ -415,7 +443,35 @@ class AttachmentsController < Controller
         config = model_uploader_config(model_class, field)
         return null if config.nil?
 
-        { "record": record, "field": field, "config": config }
+        { "record": record, "field": field, "config": config, "ext": ext }
+    end
+
+    # `photo.webp` asks for what `photo?fmt=webp` asks for, under a name a CDN
+    # caches by extension. The extension wins over a `fmt` in the query, since
+    # it is what the response gets typed by; one that names the stored format
+    # re-encodes nothing (`photo.jpg` of a JPEG is the raw bytes); one an image
+    # cannot be encoded to is a 404 rather than a lie. Anything but an image
+    # keeps its bytes whatever the extension: `cv.pdf` is only a name.
+    def _apply_path_format(query, ct, ext)
+        return query if ext.nil? || !ct.starts_with("image/")
+        wanted = ext.downcase
+        wanted = "jpg" if wanted == "jpeg"
+        wanted = "tiff" if wanted == "tif"
+        # The table `upload_url` builds the extension from, so every URL it
+        # hands out for an original is the stored bytes here.
+        return query.merge({ "fmt": "" }) if wanted == __soli_content_type_ext(ct)
+        return null unless ["jpg", "png", "gif", "webp", "bmp", "tiff", "ico"].contains(wanted)
+        query.merge({ "fmt": wanted })
+    end
+
+    # The Content-Type of an output format, `jpg` and `jpeg` alike: `fmt=jpg`
+    # used to answer `image/jpg`, which is not a type.
+    def _format_content_type(fmt)
+        {
+            "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+            "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp",
+            "tif": "image/tiff", "tiff": "image/tiff", "ico": "image/x-icon"
+        }[fmt.downcase]
     end
 
     def _target_blob_id(record, field, config, requested_id)
@@ -548,7 +604,7 @@ class AttachmentsController < Controller
             out_ct = original_ct
             if !fmt.nil? && fmt != ""
                 img = img.format(fmt)
-                out_ct = "image/" + fmt
+                out_ct = this._format_content_type(fmt) ?? "image/" + fmt
             end
 
             q = this._int_param(query, "q")
@@ -780,6 +836,40 @@ __dispositions = [
         assert_eq!(
             got.map(|v| v.to_string()).as_deref(),
             Some("inline,inline,inline,inline,attachment,attachment,attachment")
+        );
+    }
+
+    /// `photo.<ext>` becomes the `fmt` the query would have carried: the stored
+    /// format re-encodes nothing, an image format is asked for, one an image
+    /// cannot become is refused (nil → 404), and a non-image ignores it.
+    #[test]
+    fn a_path_extension_becomes_fmt() {
+        let mut interpreter = Interpreter::new();
+        define_uploads_prelude(&mut interpreter).expect("prelude loads");
+        interpret_source(
+            &mut interpreter,
+            r#"
+__c = AttachmentsController.new()
+__show = fn(q) { q.nil? ? "404" : (q["fmt"] ?? "-") + "|" + (q["w"] ?? "-") }
+__formats = [
+    __show(__c._apply_path_format({"w": "9"}, "image/jpeg", nil)),
+    __show(__c._apply_path_format({}, "image/jpeg", "jpg")),
+    __show(__c._apply_path_format({"fmt": "png"}, "image/jpeg", "WEBP")),
+    __show(__c._apply_path_format({}, "image/png", "pdf")),
+    __show(__c._apply_path_format({}, "image/png", "svg")),
+    __show(__c._apply_path_format({}, "image/svg+xml", "svg")),
+    __show(__c._apply_path_format({}, "image/avif", "avif")),
+    __show(__c._apply_path_format({}, "image/jpeg", "JPEG")),
+    __show(__c._apply_path_format({}, "application/pdf", "pdf")),
+    __c._format_content_type("jpg")
+].join(",")
+"#,
+        )
+        .expect("snippet runs");
+        let got = interpreter.global_env().borrow().get("__formats");
+        assert_eq!(
+            got.map(|v| v.to_string()).as_deref(),
+            Some("-|9,|-,webp|-,404,404,|-,|-,|-,-|-,image/jpeg")
         );
     }
 }

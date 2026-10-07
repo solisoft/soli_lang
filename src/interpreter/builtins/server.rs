@@ -470,9 +470,58 @@ fn register_route(
     });
 }
 
+/// A segment that ends in a format extension — `photo.:fmt` or `:id.:fmt` —
+/// split into the part before the dot and the extension's param name.
+pub(crate) fn split_format_segment(seg: &str) -> Option<(&str, &str)> {
+    let (head, ext) = seg.rsplit_once(".:")?;
+    (!head.is_empty() && !ext.is_empty()).then_some((head, ext))
+}
+
+/// Match one path segment against one non-splat pattern segment, inserting
+/// any params it binds. `photo.:fmt` takes `photo.webp`; `:id.:fmt` splits at
+/// the last dot, so `a.b.png` gives `id = a.b`, `fmt = png`. Neither takes a
+/// segment with nothing after the dot.
+fn match_segment(pat: &str, actual: &str, params: &mut HashMap<String, String>) -> bool {
+    if let Some(format) = split_format_segment(pat) {
+        return match_format_segment(format, actual, params);
+    }
+    if let Some(param_name) = pat.strip_prefix(':') {
+        params.insert(param_name.to_string(), actual.to_string());
+        return true;
+    }
+    pat == actual
+}
+
+fn match_format_segment(
+    (head, ext_name): (&str, &str),
+    actual: &str,
+    params: &mut HashMap<String, String>,
+) -> bool {
+    let split = match head.strip_prefix(':') {
+        Some(_) => actual.rsplit_once('.'),
+        None => actual
+            .strip_prefix(head)
+            .and_then(|rest| rest.strip_prefix('.'))
+            .map(|ext| (head, ext)),
+    };
+    let Some((value, ext)) = split else {
+        return false;
+    };
+    if value.is_empty() || ext.is_empty() {
+        return false;
+    }
+    if let Some(param_name) = head.strip_prefix(':') {
+        params.insert(param_name.to_string(), value.to_string());
+    }
+    params.insert(ext_name.to_string(), ext.to_string());
+    true
+}
+
 /// Match a path against a pattern and extract parameters.
 /// Pattern format: "/users/:id" matches "/users/123" with params {"id": "123"}
 /// Splat format: "/files/*path" matches "/files/a/b" with params {"path": "/a/b"}
+/// Format segment: "/users/:id/photo.:fmt" matches "/users/1/photo.webp" with
+/// params {"id": "1", "fmt": "webp"}
 pub fn match_path(pattern: &str, path: &str) -> Option<HashMap<String, String>> {
     // Fast path: exact match (no params)
     if pattern == path {
@@ -509,9 +558,7 @@ pub fn match_path(pattern: &str, path: &str) -> Option<HashMap<String, String>> 
     if splat_indices.is_empty() {
         // No splats - exact part matching
         for (pat, actual) in pattern_parts.iter().zip(path_parts.iter()) {
-            if let Some(param_name) = pat.strip_prefix(':') {
-                params.insert(param_name.to_string(), actual.to_string());
-            } else if pat != actual {
+            if !match_segment(pat, actual, &mut params) {
                 return None;
             }
         }
@@ -551,9 +598,7 @@ pub fn match_path(pattern: &str, path: &str) -> Option<HashMap<String, String>> 
                 if path_idx >= path_parts.len() {
                     return None;
                 }
-                if let Some(param_name) = pat.strip_prefix(':') {
-                    params.insert(param_name.to_string(), path_parts[path_idx].to_string());
-                } else if *pat != path_parts[path_idx] {
+                if !match_segment(pat, path_parts[path_idx], &mut params) {
                     return None;
                 }
                 path_idx += 1;
@@ -667,6 +712,32 @@ mod match_path_tests {
     #[test]
     fn test_empty_path() {
         assert_eq!(match_path("/", "/"), Some(HashMap::new()));
+    }
+
+    #[test]
+    fn test_format_segment_after_literal() {
+        let params = match_path("/users/:id/photo.:fmt", "/users/7/photo.webp").unwrap();
+        assert_eq!(params.get("id"), Some(&"7".to_string()));
+        assert_eq!(params.get("fmt"), Some(&"webp".to_string()));
+        assert!(match_path("/users/:id/photo.:fmt", "/users/7/photo").is_none());
+        assert!(match_path("/users/:id/photo.:fmt", "/users/7/photo.").is_none());
+        assert!(match_path("/users/:id/photo.:fmt", "/users/7/photos.png").is_none());
+    }
+
+    #[test]
+    fn test_format_segment_after_param_splits_at_last_dot() {
+        let params = match_path("/files/:name.:fmt", "/files/a.b.png").unwrap();
+        assert_eq!(params.get("name"), Some(&"a.b".to_string()));
+        assert_eq!(params.get("fmt"), Some(&"png".to_string()));
+        assert!(match_path("/files/:name.:fmt", "/files/noext").is_none());
+        assert!(match_path("/files/:name.:fmt", "/files/.png").is_none());
+    }
+
+    #[test]
+    fn test_format_segment_next_to_a_splat() {
+        let params = match_path("/*scope/logo.:fmt", "/acme/logo.svg").unwrap();
+        assert_eq!(params.get("scope"), Some(&"/acme".to_string()));
+        assert_eq!(params.get("fmt"), Some(&"svg".to_string()));
     }
 
     #[test]

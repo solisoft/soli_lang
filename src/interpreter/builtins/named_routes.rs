@@ -144,11 +144,31 @@ fn value_to_path_segment(value: &Value) -> String {
     urlencoding::encode(&raw).into_owned()
 }
 
+/// Split a pattern segment into its placeholders and literal text:
+/// `:id` → one param, `photo.:fmt` → literal `photo.` then param `fmt`,
+/// `:id.:fmt` → param, literal `.`, param.
+fn segment_pieces(seg: &str) -> Vec<(bool, &str)> {
+    if let Some((head, ext)) = super::server::split_format_segment(seg) {
+        let mut pieces = match head.strip_prefix(':') {
+            Some(name) => vec![(true, name), (false, ".")],
+            None => vec![(false, &seg[..head.len() + 1])],
+        };
+        pieces.push((true, ext));
+        return pieces;
+    }
+    match seg.strip_prefix(':') {
+        Some(name) => vec![(true, name)],
+        None => vec![(false, seg)],
+    }
+}
+
 /// Extract `:param`-style placeholders from a path pattern in declaration order.
 fn extract_param_names(pattern: &str) -> Vec<String> {
     pattern
         .split('/')
-        .filter_map(|seg| seg.strip_prefix(':').map(|s| s.to_string()))
+        .flat_map(segment_pieces)
+        .filter(|(is_param, _)| *is_param)
+        .map(|(_, name)| name.to_string())
         .collect()
 }
 
@@ -202,18 +222,20 @@ fn build_path_for_name(name: &str, args: &[Value]) -> Result<String, String> {
             out.push('/');
         }
         first = false;
-        if let Some(p) = seg.strip_prefix(':') {
-            match values.get(p) {
+        for (is_param, piece) in segment_pieces(seg) {
+            if !is_param {
+                out.push_str(piece);
+                continue;
+            }
+            match values.get(piece) {
                 Some(v) => out.push_str(v),
                 None => {
                     return Err(format!(
                         "{}: missing param :{} (pattern: {})",
-                        name, p, entry.path_pattern
+                        name, piece, entry.path_pattern
                     ));
                 }
             }
-        } else {
-            out.push_str(seg);
         }
     }
     Ok(out)
@@ -364,6 +386,26 @@ mod tests {
         assert_eq!(
             build_path_for_name("post", &[Value::Int(42)]).unwrap(),
             "/posts/42"
+        );
+    }
+
+    #[test]
+    fn format_segments_take_their_extension_as_a_param() {
+        install(vec![
+            ("cover", entry("GET", "/posts/:id/cover.:fmt")),
+            ("file", entry("GET", "/files/:name.:fmt")),
+        ]);
+        assert_eq!(
+            build_path_for_name("cover", &[Value::Int(3), Value::String("webp".into())]).unwrap(),
+            "/posts/3/cover.webp"
+        );
+        assert_eq!(
+            build_path_for_name(
+                "file",
+                &[Value::String("a".into()), Value::String("pdf".into())]
+            )
+            .unwrap(),
+            "/files/a.pdf"
         );
     }
 

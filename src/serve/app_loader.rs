@@ -896,10 +896,16 @@ pub(crate) const ROUTES_DSL_SOURCE: &str = r#"
 
         fn websocket(path: Any, action: Any) { router_websocket(path, action); }
 
+        // `<field>.<ext>` is the same file with `fmt` taken from the
+        // extension, so a CDN that caches by extension caches it. The
+        // `:blob_id.:fmt` route goes first: `:blob_id` alone would take
+        // `abc.webp` whole.
         fn uploads(resource: Any, field: Any) {
             router_match("GET", "/" + resource + "/:id/" + field, "attachments#show");
+            router_match("GET", "/" + resource + "/:id/" + field + ".:fmt", "attachments#show");
             router_match("POST", "/" + resource + "/:id/" + field, "attachments#create");
             router_match("DELETE", "/" + resource + "/:id/" + field, "attachments#destroy");
+            router_match("GET", "/" + resource + "/:id/" + field + "/:blob_id.:fmt", "attachments#show");
             router_match("GET", "/" + resource + "/:id/" + field + "/:blob_id", "attachments#show");
             router_match("DELETE", "/" + resource + "/:id/" + field + "/:blob_id", "attachments#destroy");
         }

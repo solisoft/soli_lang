@@ -42,6 +42,17 @@ def show
 end
 ```
 
+### Format extensions
+
+A segment can end in `.:param`, which takes what follows the last dot:
+
+```soli
+get("/reports/:id.:fmt", "reports#show")       # /reports/7.csv → id: "7", fmt: "csv"
+get("/users/:id/avatar.:fmt", "users#avatar")  # /users/7/avatar.webp → fmt: "webp"
+```
+
+After a `:param` the segment splits at the **last** dot (`/reports/a.b.csv` → `id: "a.b"`). Nothing after the dot, or no dot at all, does not match — declare the extension-less route too when both forms are wanted. A `:param` route declared first takes the dotted segment whole, so put the `.:fmt` route before it. Named-route helpers fill the extension like any param (`report_path(7, "csv")` → `/reports/7.csv`), and the OpenAPI document writes it `/reports/{id}.{fmt}`.
+
 ## Query Strings
 
 Query parameters are automatically parsed:

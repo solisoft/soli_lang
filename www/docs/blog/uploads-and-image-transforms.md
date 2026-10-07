@@ -68,7 +68,7 @@ The same `GET /contacts/:id/photo` endpoint understands query parameters that dr
 
 ```soli
 <%= contact.photo_url({ "square": 100 }) %>
-<!-- → <img src="/contacts/42/photo?v=abc&square=100"> -->
+<!-- → <img src="/contacts/42/photo.jpg?v=abc&square=100"> -->
 ```
 
 The full param list:

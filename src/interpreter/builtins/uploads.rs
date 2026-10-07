@@ -605,6 +605,67 @@ fn parse_upload_url_options(opts: Option<&Value>) -> (Option<String>, Vec<(Strin
     (blob_id_arg, query_pairs)
 }
 
+/// Move a `fmt` transform out of the query and into the path as an extension:
+/// `/posts/1/cover.webp?v=…` rather than `/posts/1/cover?v=…&fmt=webp`. A CDN
+/// such as Cloudflare decides what to cache by extension, and the route serves
+/// both forms. A value that is not a plain extension stays in the query.
+fn take_format_extension(query_pairs: &mut Vec<(String, String)>) -> Option<String> {
+    let pos = query_pairs.iter().position(|(k, v)| {
+        k == "fmt" && !v.is_empty() && v.chars().all(|c| c.is_ascii_alphanumeric())
+    })?;
+    let (_, fmt) = query_pairs.remove(pos);
+    Some(format!(".{}", fmt.to_ascii_lowercase()))
+}
+
+/// The extension an attachment URL carries for its stored content type, so
+/// the original is cached by extension too: `image/jpeg` → `jpg`. `None` for a
+/// type with no settled extension; that URL has none. `AttachmentsController`
+/// reads the same table (`__soli_content_type_ext`), so an extension built
+/// here is always one the route serves as the stored bytes.
+pub(crate) fn content_type_extension(content_type: &str) -> Option<&'static str> {
+    let essence = content_type.split(';').next().unwrap_or("").trim();
+    Some(match essence.to_ascii_lowercase().as_str() {
+        "image/jpeg" | "image/jpg" | "image/pjpeg" => "jpg",
+        "image/png" => "png",
+        "image/webp" => "webp",
+        "image/gif" => "gif",
+        "image/bmp" => "bmp",
+        "image/tiff" => "tiff",
+        "image/x-icon" | "image/vnd.microsoft.icon" => "ico",
+        "image/svg+xml" => "svg",
+        "image/avif" => "avif",
+        "image/heic" => "heic",
+        "application/pdf" => "pdf",
+        "audio/mpeg" => "mp3",
+        "audio/mp4" => "m4a",
+        "audio/ogg" => "ogg",
+        "audio/wav" | "audio/x-wav" => "wav",
+        "video/mp4" => "mp4",
+        "video/webm" => "webm",
+        "video/quicktime" => "mov",
+        "text/csv" => "csv",
+        "text/plain" => "txt",
+        "application/json" => "json",
+        "application/zip" => "zip",
+        _ => return None,
+    })
+}
+
+/// `.ext` for one blob of a `multiple` field, from the `{blob_id: type}` hash
+/// in `<field>_content_types`; empty when the blob was attached without one.
+fn stored_extension(types: Option<Value>, blob_id: &str) -> String {
+    let Some(Value::Hash(types)) = types else {
+        return String::new();
+    };
+    let types = types.borrow();
+    match types.get(&HashKey::String(blob_id.into())) {
+        Some(Value::String(ct)) => content_type_extension(ct)
+            .map(|ext| format!(".{ext}"))
+            .unwrap_or_default(),
+        _ => String::new(),
+    }
+}
+
 /// Build a URL by appending `?key=value&...` if `pairs` is non-empty. Values
 /// are percent-encoded for query strings; keys are assumed to be the small
 /// canonical set defined in `upload_url` and don't need escaping.
@@ -834,7 +895,8 @@ fn register_uploader_helpers(env: &mut Environment) {
             //   Hash   → options { blob_id?, w?, h?, thumb?, crop?, fit?,
             //                       fmt?, q?, gray? }
             //   Null   → no options
-            let (blob_id_arg, query_pairs) = parse_upload_url_options(args.get(2));
+            let (blob_id_arg, mut query_pairs) = parse_upload_url_options(args.get(2));
+            let fmt_ext = take_format_extension(&mut query_pairs);
 
             let inst_ref = inst.borrow();
             let class_name = inst_ref.class.name.clone();
@@ -856,7 +918,10 @@ fn register_uploader_helpers(env: &mut Environment) {
                 };
                 // Blob id is in the path → URL is unique per blob without a
                 // cache buster. Query string just carries transforms.
-                let path = format!("{}/{}", base, blob_id);
+                let ext = fmt_ext.unwrap_or_else(|| {
+                    stored_extension(inst_ref.get(&format!("{}_content_types", field)), &blob_id)
+                });
+                let path = format!("{}/{}{}", base, blob_id, ext);
                 return Ok(Value::String(append_query(&path, &query_pairs).into()));
             }
 
@@ -869,10 +934,67 @@ fn register_uploader_helpers(env: &mut Environment) {
             else {
                 return Ok(Value::Null);
             };
+            let ext = fmt_ext.unwrap_or_else(|| {
+                get_uploader_field_value_as_string(&inst_ref, &format!("{}_content_type", field))
+                    .and_then(|ct| content_type_extension(&ct))
+                    .map(|ext| format!(".{ext}"))
+                    .unwrap_or_default()
+            });
             let mut all_pairs = vec![("v".to_string(), stored_id)];
             all_pairs.extend(query_pairs);
-            Ok(Value::String(append_query(&base, &all_pairs).into()))
+            let path = format!("{}{}", base, ext);
+            Ok(Value::String(append_query(&path, &all_pairs).into()))
         })),
+    );
+
+    // __soli_content_type_ext("image/jpeg") → "jpg", or nil: the table
+    // `upload_url` builds extensions from, for `AttachmentsController`.
+    env.define(
+        "__soli_content_type_ext".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "__soli_content_type_ext",
+            Some(1),
+            |args| {
+                Ok(match args.first() {
+                    Some(Value::String(ct)) => content_type_extension(ct)
+                        .map(|ext| Value::String(ext.into()))
+                        .unwrap_or(Value::Null),
+                    _ => Value::Null,
+                })
+            },
+        )),
+    );
+
+    // __soli_model_stores_field(record, field) → Bool: whether a write of
+    // `field` would be kept. Always, except on a column-mode model (`table
+    // "…"`), whose write refuses a field that is not a column — so the
+    // attachment helpers record a content type only where it has somewhere
+    // to go, and an existing SQL table needs no new column.
+    env.define(
+        "__soli_model_stores_field".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "__soli_model_stores_field",
+            Some(2),
+            |args| {
+                let class_name = match args.first() {
+                    Some(Value::Instance(i)) => i.borrow().class.name.clone(),
+                    Some(Value::Class(c)) => c.name.clone(),
+                    _ => return Ok(Value::Bool(false)),
+                };
+                let Some(Value::String(field)) = args.get(1) else {
+                    return Ok(Value::Bool(false));
+                };
+                use super::model::column_mode;
+                let collection = super::model::class_name_to_collection(&class_name);
+                if !column_mode::is_column_mode(&collection) {
+                    return Ok(Value::Bool(true));
+                }
+                Ok(Value::Bool(
+                    column_mode::schema_for_collection(&collection)
+                        .is_some_and(|schema| schema.column(field).is_some()),
+                ))
+            },
+        )),
     );
 
     env.define(

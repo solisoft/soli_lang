@@ -1208,8 +1208,27 @@ stored byte-for-byte. If the bytes can't be decoded as an image, the original is
 stored unchanged so an upload is never blocked by a transform failure.
 
 > The same lossy WebP/quality encoding powers the read-time URL transform
-> pipeline (`photo_url(...)` with `?fmt=webp&w=...`), so you can also keep a
-> larger original and convert per-request instead.
+> pipeline (`photo_url({"fmt": "webp", "w": 800})` → `/listings/42/photo.webp?v=…&w=800`),
+> so you can also keep a larger original and convert per-request instead.
+
+**Every URL ends in an extension.** `upload_url` / `<field>_url` end the path in
+the stored file's extension — `photo_url({"thumb": 200})` →
+`/contacts/42/photo.jpg?v=abc&thumb=200` — or in `fmt`'s when given
+(`/contacts/42/photo.webp?v=abc&w=200`; `/contacts/42/photos/<blob_id>.webp` for
+`multiple: true`), so a CDN such as Cloudflare, which caches by extension,
+caches the original and every variant. `attach_<field>` records the content
+type for this next to the blob id: `<field>_content_type`, or a
+`{blob_id: type}` hash in `<field>_content_types` for `multiple: true`. A record
+attached before this, a type with no settled extension, or a SQL
+`table "…"` model without that column gets no extension — add a
+`photo_content_type` column to have one.
+
+The route answers `photo.webp` exactly as it answers `photo?fmt=webp`, and the
+extension-less URLs keep working. The extension wins over a `fmt` in the
+query. One that names the stored format re-encodes nothing (`photo.jpg` of a
+JPEG is the stored bytes); one an image cannot be encoded to (`photo.pdf`,
+`photo.svg` of a PNG) is a `404`; a file that is not an image ignores it.
+`fmt=jpg` answers `image/jpeg` now, where it used to answer `image/jpg`.
 
 For drag-and-drop / AJAX flows that prefer JSON 204/422 over redirects, use `uploads("contacts", "document")` in `config/routes.sl` instead — that auto-mounts a generic `AttachmentsController` for upload, download, and per-blob delete. The first argument is the model's collection name, the segment `<field>_url` builds: `GiftCardTemplate` → `uploads("gift_card_templates", "logo")`.
 

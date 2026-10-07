@@ -1114,9 +1114,9 @@ end</code></pre>
         <li><code>SOLIDB_USERNAME</code> / <code>SOLIDB_PASSWORD</code> &mdash; auth skipped if unset</li>
     </ul>
 
-    <h3 class="text-lg font-semibold text-white mb-3">Image transforms via URL</h3>
+    <h3 class="text-lg font-semibold text-white mb-3 scroll-mt-24" id="image-transforms-via-url">Image transforms via URL</h3>
     <p class="text-gray-400 mb-4">
-        For image attachments, the auto-routed <code>GET /&lt;resource&gt;/:id/&lt;field&gt;</code> endpoint can resize, crop, recompress, and reformat on the fly. Pass options to <code>upload_url(...)</code> (or the auto-generated <code>&lt;field&gt;_url(...)</code> dot-method) and they're rendered into the URL's query string. The <code>AttachmentsController</code> reads the same params from <code>req["query"]</code>, runs the bytes through the
+        For image attachments, the auto-routed <code>GET /&lt;resource&gt;/:id/&lt;field&gt;</code> endpoint &mdash; and <code>GET /&lt;resource&gt;/:id/&lt;field&gt;.&lt;ext&gt;</code>, where the extension fills <code>fmt</code> &mdash; can resize, crop, recompress, and reformat on the fly. Pass options to <code>upload_url(...)</code> (or the auto-generated <code>&lt;field&gt;_url(...)</code> dot-method) and they're rendered into the URL: the path ends in the original&rsquo;s extension, or <code>fmt</code>&rsquo;s when given, so a CDN that caches by extension (Cloudflare) caches it; the rest goes in the query string. The <code>AttachmentsController</code> reads the same params from <code>req["query"]</code>, runs the bytes through the
         <a href="/docs/builtins/image" class="text-amber-400 hover:underline">Image class</a>, and returns the transformed payload.
     </p>
 
@@ -1145,7 +1145,7 @@ end</code></pre>
                 <tr><td class="px-6 py-3 font-mono text-amber-300">hue</td><td class="px-6 py-3 text-gray-400">Int degrees</td><td class="px-6 py-3 text-gray-400">Hue rotation (<code>img.hue_rotate(degrees)</code>).</td></tr>
                 <tr><td class="px-6 py-3 font-mono text-amber-300">gray</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Convert to grayscale (<code>img.grayscale()</code>).</td></tr>
                 <tr><td class="px-6 py-3 font-mono text-amber-300">invert</td><td class="px-6 py-3 text-gray-400">Truthy flag</td><td class="px-6 py-3 text-gray-400">Invert all colors (<code>img.invert</code>).</td></tr>
-                <tr><td class="px-6 py-3 font-mono text-amber-300">fmt</td><td class="px-6 py-3 text-gray-400">String</td><td class="px-6 py-3 text-gray-400">Output format: <code>jpeg</code>, <code>png</code>, <code>webp</code>, <code>gif</code>, <code>bmp</code>, <code>tiff</code>, <code>ico</code>. Sets the response <code>Content-Type</code>.</td></tr>
+                <tr><td class="px-6 py-3 font-mono text-amber-300">fmt</td><td class="px-6 py-3 text-gray-400">String</td><td class="px-6 py-3 text-gray-400">Output format: <code>jpeg</code>, <code>png</code>, <code>webp</code>, <code>gif</code>, <code>bmp</code>, <code>tiff</code>, <code>ico</code>. Sets the response <code>Content-Type</code>. Also given as an extension, <code>/contacts/42/photo.webp</code>, which is what <code>upload_url</code> builds &mdash; see below.</td></tr>
                 <tr><td class="px-6 py-3 font-mono text-amber-300">q</td><td class="px-6 py-3 text-gray-400">Int 1–100</td><td class="px-6 py-3 text-gray-400">JPEG/WebP quality.</td></tr>
             </tbody>
         </table>
@@ -1178,7 +1178,7 @@ end</code></pre>
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">In a view — request a 200 px thumbnail</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">&lt;img src="&lt;%= contact.photo_url({ "thumb": 200 }) %&gt;" alt="..."&gt;
-# →  &lt;img src="/contacts/42/photo?v=abc&amp;thumb=200" alt="..."&gt;</code></pre>
+# →  &lt;img src="/contacts/42/photo.jpg?v=abc&amp;thumb=200" alt="..."&gt;</code></pre>
         </div>
     </div>
 
@@ -1192,18 +1192,25 @@ end</code></pre>
   "q":    80,
   "gray": true
 })
-# →  /contacts/42/photo?v=abc&amp;w=800&amp;h=600&amp;fmt=webp&amp;q=80&amp;gray=1</code></pre>
+# →  /contacts/42/photo.webp?v=abc&amp;w=800&amp;h=600&amp;q=80&amp;gray=1</code></pre>
         </div>
     </div>
+
+    <p class="text-gray-400 mb-6">
+        Every URL ends in an extension, so a CDN such as Cloudflare, which decides what to cache by extension, caches the original and each variant. Without <code>fmt</code> it is the stored file&rsquo;s (<code>photo.jpg</code> for a JPEG); with one, the requested format (<code>photo.webp</code>). <code>attach_&lt;field&gt;</code> records the content type next to the blob id for this &mdash; <code>&lt;field&gt;_content_type</code>, or a <code>{blob_id: type}</code> hash in <code>&lt;field&gt;_content_types</code> for <code>multiple: true</code>, whose URLs read <code>/contacts/42/photos/&lt;blob_id&gt;.jpg</code>. A record attached before this, a type with no settled extension, or a SQL <code>table "&hellip;"</code> model without that column gets no extension (add a <code>photo_content_type</code> column to have one).
+    </p>
+    <p class="text-gray-400 mb-6">
+        The route answers <code>/photo.webp</code> exactly as it answers <code>/photo?fmt=webp</code>, and the extension-less URLs keep working. The extension wins over a <code>fmt</code> in the query; one naming the stored format re-encodes nothing (<code>photo.jpg</code> of a JPEG is the stored bytes); one an image cannot be encoded to is a <code>404</code>; a file that is not an image ignores it.
+</p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Square avatar — shorthand vs. longhand (identical result)</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">contact.photo_url({ "square": 200 })
-# →  /contacts/42/photo?v=abc&amp;square=200
+# →  /contacts/42/photo.jpg?v=abc&amp;square=200
 
 contact.photo_url({ "w": 200, "h": 200, "fit": "cover" })
-# →  /contacts/42/photo?v=abc&amp;w=200&amp;h=200&amp;fit=cover
+# →  /contacts/42/photo.jpg?v=abc&amp;w=200&amp;h=200&amp;fit=cover
 
 # Both render exactly 200×200, content scaled-and-cropped.</code></pre>
         </div>
@@ -1213,7 +1220,7 @@ contact.photo_url({ "w": 200, "h": 200, "fit": "cover" })
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Crop a region of interest then resize (Array shorthand)</label>
         <div class="p-4 overflow-x-auto">
             <pre><code class="language-soli text-sm">contact.photo_url({ "crop": [100, 50, 600, 600], "w": 200 })
-# →  /contacts/42/photo?v=abc&amp;w=200&amp;crop=100%2C50%2C600%2C600
+# →  /contacts/42/photo.jpg?v=abc&amp;w=200&amp;crop=100%2C50%2C600%2C600
 # (the comma is percent-encoded; the AttachmentsController decodes it.)</code></pre>
         </div>
     </div>
@@ -1227,7 +1234,7 @@ contact.photo_url({ "w": 200, "h": 200, "fit": "cover" })
   "bright":   15,
   "contrast": 1.2
 })
-# →  /contacts/42/photo?v=abc&amp;rot=90&amp;blur=2.5&amp;bright=15&amp;contrast=1.2</code></pre>
+# →  /contacts/42/photo.jpg?v=abc&amp;rot=90&amp;blur=2.5&amp;bright=15&amp;contrast=1.2</code></pre>
         </div>
     </div>
 

@@ -142,14 +142,36 @@ describe("upload_url") do
       assert_eq(upload_url(saved_doc, "avatar"), "/uploaded_docs/#{saved_doc._key}/avatar?v=b1")
     end
 
-    test("transform options become query parameters") do
+    test("transform options become query parameters, fmt the extension") do
       url = upload_url(saved_doc, "avatar", {"w": 100, "fmt": "webp"})
-      assert_eq(url, "/uploaded_docs/#{saved_doc._key}/avatar?v=b1&w=100&fmt=webp")
+      assert_eq(url, "/uploaded_docs/#{saved_doc._key}/avatar.webp?v=b1&w=100")
     end
 
     test("a multiple attachment URL puts the blob id in the path, and needs one") do
       assert_eq(upload_url(saved_doc, "gallery", "blob9"), "/uploaded_docs/#{saved_doc._key}/gallery/blob9")
       assert_null(upload_url(saved_doc, "gallery"))
+    end
+
+    test("a multiple attachment URL puts fmt after the blob id") do
+      url = upload_url(saved_doc, "gallery", {"blob_id": "blob9", "fmt": "PNG", "w": 40})
+      assert_eq(url, "/uploaded_docs/#{saved_doc._key}/gallery/blob9.png?w=40")
+    end
+
+    test("a recorded content type ends the URL in the original's extension") do
+      saved_doc.update({"avatar_content_type": "image/png"})
+      assert_eq(upload_url(saved_doc, "avatar", {"thumb": 200}), "/uploaded_docs/#{saved_doc._key}/avatar.png?v=b1&thumb=200")
+      assert_eq(upload_url(saved_doc, "avatar", {"fmt": "webp"}), "/uploaded_docs/#{saved_doc._key}/avatar.webp?v=b1")
+    end
+
+    test("a multiple field reads each blob's type from <field>_content_types") do
+      saved_doc.update({"gallery_content_types": {"blob9": "image/jpeg"}})
+      assert_eq(upload_url(saved_doc, "gallery", "blob9"), "/uploaded_docs/#{saved_doc._key}/gallery/blob9.jpg")
+      assert_eq(upload_url(saved_doc, "gallery", "blob8"), "/uploaded_docs/#{saved_doc._key}/gallery/blob8")
+    end
+
+    test("a type with no settled extension gives none") do
+      saved_doc.update({"avatar_content_type": "application/x-unknown"})
+      assert_eq(upload_url(saved_doc, "avatar"), "/uploaded_docs/#{saved_doc._key}/avatar?v=b1")
     end
 
     test("an unknown field gives nil") do

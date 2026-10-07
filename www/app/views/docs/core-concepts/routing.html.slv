@@ -96,6 +96,21 @@ end</code></pre>
         </div>
     </div>
 
+    <h3 class="text-xl font-semibold text-white mb-4" id="format-extensions">Format extensions</h3>
+    <p class="text-gray-400 mb-6">A segment can end in <code>.:param</code>, which takes what follows the last dot:</p>
+
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/routes.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">get("/reports/:id.:fmt", "reports#show")       # /reports/7.csv → id: "7", fmt: "csv"
+get("/users/:id/avatar.:fmt", "users#avatar")  # /users/7/avatar.webp → fmt: "webp"</code></pre>
+        </div>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        After a <code>:param</code> the segment splits at the <strong>last</strong> dot (<code>/reports/a.b.csv</code> &rarr; <code>id: "a.b"</code>). Nothing after the dot, or no dot at all, does not match &mdash; declare the extension-less route too when both forms are wanted. A <code>:param</code> route declared first takes the dotted segment whole, so put the <code>.:fmt</code> route before it. Named-route helpers fill the extension like any param (<code>report_path(7, "csv")</code> &rarr; <code>/reports/7.csv</code>), and the OpenAPI document writes it <code>/reports/{id}.{fmt}</code>.
+    </p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Splat Routes</h2>
     <p class="text-gray-400 mb-6">Use <code>*param_name</code> to capture the remaining path segments greedously:</p>
 
@@ -455,9 +470,11 @@ get("/about", "home#about")</code></pre>
             </thead>
             <tbody class="divide-y divide-white/5">
                 <tr><td class="px-6 py-4 text-amber-300 font-mono">GET</td><td class="px-6 py-4 font-mono text-gray-400">/contacts/:id/photo</td><td class="px-6 py-4 text-gray-400">attachments#show</td><td class="px-6 py-4 text-gray-400">single, or first of many</td></tr>
+                <tr><td class="px-6 py-4 text-amber-300 font-mono">GET</td><td class="px-6 py-4 font-mono text-gray-400">/contacts/:id/photo.:fmt</td><td class="px-6 py-4 text-gray-400">attachments#show</td><td class="px-6 py-4 text-gray-400">same file, <code>fmt</code> from the extension</td></tr>
                 <tr><td class="px-6 py-4 text-amber-300 font-mono">POST</td><td class="px-6 py-4 font-mono text-gray-400">/contacts/:id/photo</td><td class="px-6 py-4 text-gray-400">attachments#create</td><td class="px-6 py-4 text-gray-400">multipart upload</td></tr>
                 <tr><td class="px-6 py-4 text-amber-300 font-mono">DELETE</td><td class="px-6 py-4 font-mono text-gray-400">/contacts/:id/photo</td><td class="px-6 py-4 text-gray-400">attachments#destroy</td><td class="px-6 py-4 text-gray-400">clears the field (single)</td></tr>
                 <tr><td class="px-6 py-4 text-amber-300 font-mono">GET</td><td class="px-6 py-4 font-mono text-gray-400">/contacts/:id/photo/:blob_id</td><td class="px-6 py-4 text-gray-400">attachments#show</td><td class="px-6 py-4 text-gray-400"><code>multiple: true</code> only</td></tr>
+                <tr><td class="px-6 py-4 text-amber-300 font-mono">GET</td><td class="px-6 py-4 font-mono text-gray-400">/contacts/:id/photo/:blob_id.:fmt</td><td class="px-6 py-4 text-gray-400">attachments#show</td><td class="px-6 py-4 text-gray-400"><code>multiple: true</code>, <code>fmt</code> from the extension</td></tr>
                 <tr><td class="px-6 py-4 text-amber-300 font-mono">DELETE</td><td class="px-6 py-4 font-mono text-gray-400">/contacts/:id/photo/:blob_id</td><td class="px-6 py-4 text-gray-400">attachments#destroy</td><td class="px-6 py-4 text-gray-400"><code>multiple: true</code> only</td></tr>
             </tbody>
         </table>
@@ -470,6 +487,9 @@ get("/about", "home#about")</code></pre>
         For image fields, the <code>show</code> endpoint also supports on-the-fly transforms via query params: <code>?square=200</code> (avatar shorthand), <code>?w=200&amp;h=200&amp;fit=cover</code>, <code>?thumb=100</code>, <code>?crop=10,20,300,200</code>, <code>?rot=90&amp;flipx=1</code>, <code>?blur=2.5&amp;bright=10&amp;contrast=1.2</code>, <code>?gray=1&amp;invert=1</code>, <code>?fmt=webp&amp;q=80</code>. See
         <a href="/docs/database/models#image-transforms-via-url" class="text-amber-400 hover:underline">Image transforms via URL</a>
         in the model docs for the full param list and the matching <code>upload_url(model, field, options)</code> builder.
+    </p>
+    <p class="text-gray-400 mb-4">
+        An extension on the field (or the blob id) is the <code>fmt</code> param: <code>/contacts/42/photo.webp?w=200</code> answers what <code>/contacts/42/photo?w=200&amp;fmt=webp</code> answers, under a URL a CDN such as Cloudflare caches by extension. The extension wins over a <code>fmt</code> in the query. One that names the stored format re-encodes nothing (<code>photo.png</code> of a PNG is the stored bytes); one an image cannot be encoded to (<code>photo.pdf</code>, <code>photo.svg</code>) is a <code>404</code>. On a file that is not an image the extension is only a name. <code>upload_url</code> and <code>&lt;field&gt;_url</code> always end in one: the original&rsquo;s (<code>photo_url({"thumb": 200})</code> &rarr; <code>/contacts/42/photo.jpg?v=abc&amp;thumb=200</code>), or <code>fmt</code>&rsquo;s when given (<code>/contacts/42/photo.webp?v=abc</code>). The extension-less URLs keep working.
     </p>
     <p class="text-gray-400 mb-12">
         To customize behavior (extra auth, alternative response shape, different storage), define your own <code>class AttachmentsController &lt; ApplicationController</code> in <code>app/controllers/attachments_controller.sl</code> &mdash; user controllers load after the framework prelude so your version wins automatically.
