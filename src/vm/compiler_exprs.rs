@@ -460,7 +460,7 @@ impl Compiler {
         if self.class_context.is_none()
             || name == "this"
             || name.starts_with(|c: char| c.is_ascii_uppercase())
-            || self.known_globals.borrow().contains(name)
+            || self.is_known_global(name)
         {
             return false;
         }

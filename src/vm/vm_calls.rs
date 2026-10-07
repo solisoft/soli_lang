@@ -31,7 +31,33 @@ pub(crate) fn jit_compile_function<I: IntoIterator<Item = String>>(
     if let Some(proto) = func.jit_cache.borrow().clone() {
         return Ok(proto);
     }
+    jit_compile_function_by(func, |program, source_path| {
+        Compiler::compile_with_globals_from(program, globals, source_path)
+    })
+}
 
+/// [`jit_compile_function`] with the known globals as a shared set: what the
+/// worker warmup uses, so its thousand-odd compiles do not each copy the
+/// worker's whole global table into a fresh set.
+pub(crate) fn jit_compile_function_with_base(
+    func: &Function,
+    base: &super::compiler::GlobalNames,
+) -> Result<Arc<FunctionProto>, String> {
+    if let Some(proto) = func.jit_cache.borrow().clone() {
+        return Ok(proto);
+    }
+    jit_compile_function_by(func, |program, source_path| {
+        Compiler::compile_with_base_globals_from(program, base, source_path)
+    })
+}
+
+fn jit_compile_function_by(
+    func: &Function,
+    compile: impl FnOnce(
+        &Program,
+        Option<Arc<std::path::PathBuf>>,
+    ) -> crate::vm::compiler::CompileResult<crate::vm::chunk::CompiledModule>,
+) -> Result<Arc<FunctionProto>, String> {
     let func_decl = FunctionDecl {
         name: func.name.clone(),
         params: func.params.to_vec(),
@@ -52,8 +78,7 @@ pub(crate) fn jit_compile_function<I: IntoIterator<Item = String>>(
         .source_path
         .as_ref()
         .map(|p| Arc::new(std::path::PathBuf::from(p)));
-    let module = Compiler::compile_with_globals_from(&program, globals, source_path)
-        .map_err(|e| e.to_string())?;
+    let module = compile(&program, source_path).map_err(|e| e.to_string())?;
 
     // Extract the compiled FunctionProto from the module's constant pool.
     let proto = module
@@ -88,6 +113,22 @@ pub(crate) fn jit_compile_method<I: IntoIterator<Item = String>>(
         return Ok(proto);
     }
     let proto = Compiler::compile_method_standalone(func, globals).map_err(|e| e.to_string())?;
+    let arc = std::sync::Arc::new(proto);
+    *func.jit_cache.borrow_mut() = Some(arc.clone());
+    Ok(arc)
+}
+
+/// [`jit_compile_method`] with the known globals as a shared set; see
+/// [`jit_compile_function_with_base`].
+pub(crate) fn jit_compile_method_with_base(
+    func: &Function,
+    base: &super::compiler::GlobalNames,
+) -> Result<Arc<FunctionProto>, String> {
+    if let Some(proto) = func.jit_cache.borrow().clone() {
+        return Ok(proto);
+    }
+    let proto =
+        Compiler::compile_method_standalone_with_base(func, base).map_err(|e| e.to_string())?;
     let arc = std::sync::Arc::new(proto);
     *func.jit_cache.borrow_mut() = Some(arc.clone());
     Ok(arc)

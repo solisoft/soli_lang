@@ -187,9 +187,13 @@ soli serve . --dev
 In `--dev` mode the server compiles your Tailwind CSS for you: it scans
 `app/assets/css/*.css`, detects whether the project is **Tailwind v3 or v4**
 (from your CSS directives, and from `package.json` if you keep one), and
-writes the result to `public/css/`. It recompiles on startup and whenever
-views, asset CSS, controllers, or helpers change, so new utility classes show
-up on the next reload.
+writes the result to `public/css/`. It recompiles whenever views, asset CSS,
+controllers, or helpers change, so new utility classes show up on the next
+reload. On startup it compiles only when the CSS is out of date — when
+anything under `app/` or `config/`, a top-level file such as `soli.toml`, or a
+path named by an `@source` directive is newer than `public/css/` — and
+otherwise prints `Tailwind CSS up to date`. Delete `public/css/` to force a
+compile.
 
 Which Tailwind binary it uses:
 

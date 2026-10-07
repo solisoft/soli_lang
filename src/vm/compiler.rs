@@ -57,6 +57,10 @@ pub enum FunctionType {
     Lambda,
 }
 
+/// A set of global names shared, read-only, between compilers — see
+/// [`Compiler::base_globals`].
+pub type GlobalNames = Rc<HashSet<String>>;
+
 /// The compiler: transforms AST into bytecode.
 pub struct Compiler {
     /// Emit `Op::CoverLine` markers: a coverage tracker was installed when
@@ -89,6 +93,12 @@ pub struct Compiler {
     /// VM's full global table, so the decision matches the tree-walker exactly;
     /// for whole-program compiles it accumulates top-level names as they appear.
     pub known_globals: Rc<RefCell<HashSet<String>>>,
+    /// A read-only set of names that count as known globals too, shared by
+    /// every compiler that is handed it: a worker's whole global table, built
+    /// once per worker rather than copied into `known_globals` for each of
+    /// the hundreds of handlers and methods it pre-compiles. Consult both
+    /// through [`Compiler::is_known_global`].
+    pub base_globals: Option<GlobalNames>,
     /// Tracked value-stack height (relative to the frame base) at the current
     /// emit point. Updated in `emit` by each op's `stack_effect`, reset to
     /// `locals.len()` at every statement boundary (and a few known-clean points
@@ -201,6 +211,7 @@ impl Compiler {
             loop_context: None,
             class_context: None,
             known_globals: Rc::new(RefCell::new(HashSet::new())),
+            base_globals: None,
             stack_height: 0,
             try_stack: Vec::new(),
             program_globals: Rc::new(RefCell::new(HashSet::new())),
@@ -264,15 +275,36 @@ impl Compiler {
         Self::compile_full(program, std::iter::empty(), None, kernels)
     }
 
+    /// `compile_with_globals_from`, with the known globals given as a shared
+    /// set instead of an iterator copied into this compiler.
+    pub fn compile_with_base_globals_from(
+        program: &Program,
+        base: &GlobalNames,
+        source_path: Option<Arc<std::path::PathBuf>>,
+    ) -> CompileResult<CompiledModule> {
+        let mut compiler = Compiler::new(FunctionType::Script, String::new());
+        compiler.base_globals = Some(base.clone());
+        Self::compile_script(compiler, program, source_path, None)
+    }
+
     fn compile_full<I: IntoIterator<Item = String>>(
         program: &Program,
         globals: I,
         source_path: Option<Arc<std::path::PathBuf>>,
         kernels: Option<crate::native::KernelSet>,
     ) -> CompileResult<CompiledModule> {
-        let mut compiler = Compiler::new(FunctionType::Script, String::new());
-        compiler.kernels = kernels;
+        let compiler = Compiler::new(FunctionType::Script, String::new());
         compiler.known_globals.borrow_mut().extend(globals);
+        Self::compile_script(compiler, program, source_path, kernels)
+    }
+
+    fn compile_script(
+        mut compiler: Compiler,
+        program: &Program,
+        source_path: Option<Arc<std::path::PathBuf>>,
+        kernels: Option<crate::native::KernelSet>,
+    ) -> CompileResult<CompiledModule> {
+        compiler.kernels = kernels;
         compiler.proto.source_path = source_path;
         for stmt in &program.statements {
             compiler.compile_stmt(stmt)?;
@@ -299,8 +331,26 @@ impl Compiler {
         func: &crate::interpreter::value::Function,
         globals: I,
     ) -> CompileResult<FunctionProto> {
-        let mut compiler = Compiler::new(FunctionType::Method, func.name.clone());
+        let compiler = Compiler::new(FunctionType::Method, func.name.clone());
         compiler.known_globals.borrow_mut().extend(globals);
+        Self::compile_method_with(compiler, func)
+    }
+
+    /// `compile_method_standalone`, with the known globals given as a shared
+    /// set instead of an iterator copied into this compiler.
+    pub fn compile_method_standalone_with_base(
+        func: &crate::interpreter::value::Function,
+        base: &GlobalNames,
+    ) -> CompileResult<FunctionProto> {
+        let mut compiler = Compiler::new(FunctionType::Method, func.name.clone());
+        compiler.base_globals = Some(base.clone());
+        Self::compile_method_with(compiler, func)
+    }
+
+    fn compile_method_with(
+        mut compiler: Compiler,
+        func: &crate::interpreter::value::Function,
+    ) -> CompileResult<FunctionProto> {
         compiler.proto.source_path = func
             .source_path
             .as_ref()
@@ -467,6 +517,16 @@ impl Compiler {
     /// already a parameter/local, is captured from an enclosing scope (so it
     /// stays an upvalue), or is a known global (so the assignment targets the
     /// existing global) — matching the tree-walking interpreter.
+    /// Whether `name` is a global this compiler knows of: declared so far, or
+    /// in the shared base set it was handed.
+    pub(crate) fn is_known_global(&self, name: &str) -> bool {
+        self.known_globals.borrow().contains(name)
+            || self
+                .base_globals
+                .as_ref()
+                .is_some_and(|base| base.contains(name))
+    }
+
     pub fn hoist_locals(&mut self, body: &[Stmt], line: usize) {
         if !optional_let_enabled() {
             return;
@@ -475,7 +535,7 @@ impl Compiler {
             if self.resolve_local(&name).is_some() {
                 continue;
             }
-            if self.known_globals.borrow().contains(&name) {
+            if self.is_known_global(&name) {
                 continue;
             }
             if self.enclosing_has_local(&name) {
@@ -600,6 +660,7 @@ impl Compiler {
         // Nested functions share the module's known-globals set so they make
         // the same local-vs-global decision for bare assignments.
         new_compiler.known_globals = self.known_globals.clone();
+        new_compiler.base_globals = self.base_globals.clone();
         new_compiler.program_globals = self.program_globals.clone();
 
         // Add parameters as locals

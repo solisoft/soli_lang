@@ -560,6 +560,132 @@ fn semver_major_after_key(pkg_json: &str, key: &str) -> Option<u8> {
 /// Compile all CSS files in app/assets/css/ to public/css/.
 /// Each `app/assets/css/foo.css` is compiled to `public/css/foo.css`.
 /// Returns true if all compilations were successful.
+/// Compile the Tailwind CSS at server start, unless it is already up to date.
+///
+/// A dev server used to run the Tailwind compiler on every start — a
+/// subprocess that took 150–300 ms, half of a dev boot, to rewrite the same
+/// file. Skipped when every compiled stylesheet exists and is newer than
+/// everything that can change it (see [`tailwind_outputs_fresh`]). The file
+/// watcher still recompiles on every edit through
+/// [`compile_tailwind_css_once`]; delete `public/css/` to force a compile.
+pub(crate) fn compile_tailwind_css_at_boot(folder: &Path) -> bool {
+    if tailwind_outputs_fresh(folder) {
+        println!("Tailwind CSS up to date");
+        return true;
+    }
+    compile_tailwind_css_once(folder)
+}
+
+/// Whether every `public/css/<name>.css` compiled from `app/assets/css/`
+/// is newer than every file Tailwind's output can depend on: the entry
+/// stylesheets, everything under `app/` and `config/` (the templates and code
+/// it scans for class names), the project's top-level files (`soli.toml`,
+/// which pins the Tailwind version, a `tailwind.config.*`, package manifests)
+/// and any path an `@source` directive names.
+pub(crate) fn tailwind_outputs_fresh(folder: &Path) -> bool {
+    let root = folder
+        .canonicalize()
+        .unwrap_or_else(|_| folder.to_path_buf());
+    let assets_dir = root.join("app/assets/css");
+    let Ok(entries) = std::fs::read_dir(&assets_dir) else {
+        return false;
+    };
+    let inputs: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|ext| ext == "css"))
+        .collect();
+    if inputs.is_empty() {
+        return false;
+    }
+
+    // The oldest output: every one of them must be newer than the inputs.
+    let mut oldest_output: Option<std::time::SystemTime> = None;
+    for input in &inputs {
+        let Some(name) = input.file_name() else {
+            return false;
+        };
+        let Some(modified) = modified_time(&root.join("public/css").join(name)) else {
+            return false;
+        };
+        oldest_output = Some(oldest_output.map_or(modified, |oldest| oldest.min(modified)));
+    }
+    let Some(oldest_output) = oldest_output else {
+        return false;
+    };
+
+    let mut scanned: Vec<PathBuf> = vec![root.join("app"), root.join("config")];
+    for input in &inputs {
+        let Ok(css) = std::fs::read_to_string(input) else {
+            return false;
+        };
+        let base = input.parent().unwrap_or(&root);
+        scanned.extend(
+            source_directives(&css)
+                .into_iter()
+                .map(|path| base.join(path)),
+        );
+    }
+    if let Ok(entries) = std::fs::read_dir(&root) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            if entry.file_type().is_ok_and(|t| t.is_file()) {
+                scanned.push(entry.path());
+            }
+        }
+    }
+
+    !scanned
+        .iter()
+        .any(|path| newer_than(path, oldest_output, 0))
+}
+
+/// The paths named by `@source "…"` / `@source '…'` lines (Tailwind v4).
+fn source_directives(css: &str) -> Vec<String> {
+    css.lines()
+        .filter_map(|line| line.trim().strip_prefix("@source"))
+        .filter_map(|rest| {
+            let rest = rest.trim().trim_start_matches("not").trim();
+            let quote = rest.chars().next().filter(|c| *c == '"' || *c == '\'')?;
+            let inner = &rest[1..];
+            let end = inner.find(quote)?;
+            // A glob's directory part is what can be walked.
+            let path = &inner[..end];
+            let dir = path.split(['*', '{']).next().unwrap_or(path);
+            Some(dir.trim_end_matches('/').to_string())
+        })
+        .collect()
+}
+
+fn modified_time(path: &Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path).ok()?.modified().ok()
+}
+
+/// Whether `path`, or anything under it, was modified after `than`. A path
+/// that cannot be read counts as newer, so the compile runs.
+fn newer_than(path: &Path, than: std::time::SystemTime, depth: usize) -> bool {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    if metadata.is_dir() {
+        if depth > 32 {
+            return false;
+        }
+        let skip = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| matches!(n, "node_modules" | ".git" | "target"));
+        if skip {
+            return false;
+        }
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return true;
+        };
+        return entries
+            .filter_map(|e| e.ok())
+            .any(|entry| newer_than(&entry.path(), than, depth + 1));
+    }
+    metadata.modified().map_or(true, |modified| modified > than)
+}
+
 pub(crate) fn compile_tailwind_css_once(folder: &Path) -> bool {
     // The compiler runs with `current_dir(folder)` so Tailwind's `@source`
     // globs resolve against the project. That makes a *relative* `folder`
@@ -650,6 +776,13 @@ pub(crate) fn compile_tailwind_css_once(folder: &Path) -> bool {
 
         match result {
             Ok(r) if r.status.success() => {
+                // Tailwind leaves an unchanged output untouched, so its mtime
+                // would stay older than the sources it was just checked
+                // against and every boot would recompile. Stamp it as compiled.
+                let _ = std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(&output)
+                    .and_then(|file| file.set_modified(std::time::SystemTime::now()));
                 println!("   ✓ {}", filename.to_string_lossy());
             }
             Ok(r) => {
@@ -676,6 +809,95 @@ mod tests {
             std::fs::create_dir_all(parent).unwrap();
         }
         std::fs::write(path, bytes).unwrap();
+    }
+
+    /// A project with one entry stylesheet, one view and a `soli.toml`.
+    fn tailwind_project() -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        write(
+            &tmp.path().join("app/assets/css/app.css"),
+            b"@import \"tailwindcss\";\n",
+        );
+        write(
+            &tmp.path().join("app/views/home/index.html.slv"),
+            b"<p class=\"p-4\"></p>",
+        );
+        write(&tmp.path().join("soli.toml"), b"[app]\n");
+        tmp
+    }
+
+    fn touch_later(path: &Path) {
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+        let file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+        file.set_modified(later).unwrap();
+    }
+
+    #[test]
+    fn compiled_css_newer_than_every_source_is_fresh() {
+        let project = tailwind_project();
+        let output = project.path().join("public/css/app.css");
+        write(&output, b".p-4{padding:1rem}");
+        touch_later(&output);
+        assert!(tailwind_outputs_fresh(project.path()));
+    }
+
+    #[test]
+    fn a_missing_output_is_not_fresh() {
+        let project = tailwind_project();
+        assert!(!tailwind_outputs_fresh(project.path()));
+    }
+
+    #[test]
+    fn a_view_edited_after_the_compile_makes_it_stale() {
+        let project = tailwind_project();
+        write(
+            &project.path().join("public/css/app.css"),
+            b".p-4{padding:1rem}",
+        );
+        touch_later(&project.path().join("app/views/home/index.html.slv"));
+        assert!(!tailwind_outputs_fresh(project.path()));
+    }
+
+    #[test]
+    fn a_pinned_version_change_in_soli_toml_makes_it_stale() {
+        let project = tailwind_project();
+        write(
+            &project.path().join("public/css/app.css"),
+            b".p-4{padding:1rem}",
+        );
+        touch_later(&project.path().join("soli.toml"));
+        assert!(!tailwind_outputs_fresh(project.path()));
+    }
+
+    #[test]
+    fn a_file_under_an_at_source_path_is_watched() {
+        let project = tailwind_project();
+        write(
+            &project.path().join("app/assets/css/app.css"),
+            b"@import \"tailwindcss\";\n@source \"../../../vendor/ui\";\n",
+        );
+        write(
+            &project.path().join("vendor/ui/button.html"),
+            b"<b class=\"m-2\">",
+        );
+        let output = project.path().join("public/css/app.css");
+        write(&output, b".m-2{margin:.5rem}");
+        let now = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&output)
+            .unwrap()
+            .set_modified(now)
+            .unwrap();
+        assert!(tailwind_outputs_fresh(project.path()));
+        let later = now + std::time::Duration::from_secs(5);
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(project.path().join("vendor/ui/button.html"))
+            .unwrap()
+            .set_modified(later)
+            .unwrap();
+        assert!(!tailwind_outputs_fresh(project.path()));
     }
 
     #[test]

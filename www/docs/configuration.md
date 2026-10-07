@@ -57,7 +57,7 @@ The files are read from the app folder passed to `soli serve`. When serving a bu
 | `SOLI_OPENAPI` | Set to `1`/`true` to expose an OpenAPI 3 spec at `/openapi.json` (generated from the routes) and a Scalar API-reference UI at `/openapi`. On by default under `--dev` (`0` turns it off there); elsewhere opt-in (404 otherwise), then served in every environment. See [Routing → OpenAPI](routing.md#openapi-soli_openapi). | unset |
 | `SOLI_OPENAPI_TITLE` | Title of the generated OpenAPI document. | `Soli API` |
 | `SOLI_SHUTDOWN_GRACE_SECS` | How long a `SIGTERM`/`SIGINT` shutdown waits for in-flight requests to finish before exiting anyway. See [Health checks and graceful shutdown](#health-checks-and-graceful-shutdown). `0` exits immediately. | `25` |
-| `SOLI_TRACE_BOOT` | Prints boot timing trace when set. | unset |
+| `SOLI_TRACE_BOOT` | Prints a boot timing trace to stderr when set: each startup phase, then each worker's (`templates and helpers ready`, `app loaded (N files: parse Xms, run Yms)`, `handlers compiled`). | unset |
 
 ### Structured logs and OpenTelemetry
 

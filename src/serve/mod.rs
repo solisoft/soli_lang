@@ -1010,7 +1010,7 @@ pub fn serve_folder_with_options_and_hooks(
     // Tests hit controllers directly, so the CSS bundle is irrelevant.
     let app_env = std::env::var("APP_ENV").unwrap_or_default();
     if dev_mode && app_env != "test" {
-        tailwind::compile_tailwind_css_once(folder);
+        tailwind::compile_tailwind_css_at_boot(folder);
         boot_trace("tailwind compiled");
     }
 
@@ -1678,10 +1678,14 @@ fn warm_vm_handlers(worker_id: usize, vm: &crate::vm::Vm) {
     // Seed the compiler with the worker's full set of global names so bare
     // assignments inside handlers resolve local-vs-global exactly as the
     // tree-walking interpreter would.
-    let global_names: Vec<String> = vm.globals.keys().cloned().collect();
+    //
+    // One shared set for every compile below: copying the table into a fresh
+    // set per handler cost more than compiling the handlers.
+    let global_names: crate::vm::compiler::GlobalNames =
+        std::rc::Rc::new(vm.globals.keys().cloned().collect());
     for value in vm.globals.values() {
         if let crate::interpreter::value::Value::Function(f) = value {
-            if crate::vm::vm_calls::jit_compile_function(f, global_names.iter().cloned()).is_ok() {
+            if crate::vm::vm_calls::jit_compile_function_with_base(f, &global_names).is_ok() {
                 warmed += 1;
             }
         }
@@ -1696,8 +1700,7 @@ fn warm_vm_handlers(worker_id: usize, vm: &crate::vm::Vm) {
     for value in vm.globals.values() {
         if let crate::interpreter::value::Value::Class(class) = value {
             for method in class.methods.borrow().values() {
-                if crate::vm::vm_calls::jit_compile_method(method, global_names.iter().cloned())
-                    .is_ok()
+                if crate::vm::vm_calls::jit_compile_method_with_base(method, &global_names).is_ok()
                 {
                     warmed_methods += 1;
                 }
@@ -1803,6 +1806,7 @@ fn worker_loop(
     // initialized above already points at.
     let app_mode = files::files_root().is_none();
 
+    boot_trace(&format!("worker {worker_id}: templates and helpers ready"));
     if app_mode {
         app_loader::load_app_in_worker(
             worker_id,
@@ -1812,6 +1816,12 @@ fn worker_loop(
             &controllers_dir,
             &jobs_dir,
         );
+        let (parse, run, files) = app_loader::take_load_stats();
+        boot_trace(&format!(
+            "worker {worker_id}: app loaded ({files} files: parse {}ms, run {}ms)",
+            parse.as_millis(),
+            run.as_millis()
+        ));
     }
 
     // Create VM for production mode (bytecode execution for handler calls)
@@ -1828,7 +1838,9 @@ fn worker_loop(
         // JIT-compiled lazily on its FIRST request, so the first hit to every
         // route pays a one-time compile cost — felt as a "cold start", and
         // paid again per worker (round-robin) and after any worker restart.
+        boot_trace(&format!("worker {worker_id}: vm globals copied"));
         warm_vm_handlers(worker_id, &vm);
+        boot_trace(&format!("worker {worker_id}: handlers compiled"));
         Some(vm)
     } else {
         None

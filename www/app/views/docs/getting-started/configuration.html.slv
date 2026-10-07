@@ -78,7 +78,7 @@ SOLIDB_DATABASE=myapp_development</code></pre>
                     <tr><td class="py-3 px-4"><code>SOLI_OPENAPI</code></td><td class="py-3 px-4">Set to <code>1</code>/<code>true</code> to expose an OpenAPI 3 spec at <code>/openapi.json</code> (from the routes) and a Scalar API-reference UI at <code>/openapi</code>. On by default under <code>--dev</code> (<code>0</code> turns it off there); elsewhere opt-in (404 otherwise), then served in every environment.</td><td class="py-3 px-4">unset (on under <code>--dev</code>)</td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_OPENAPI_TITLE</code></td><td class="py-3 px-4">Title of the generated OpenAPI document.</td><td class="py-3 px-4"><code>Soli API</code></td></tr>
                     <tr><td class="py-3 px-4"><code>SOLI_SHUTDOWN_GRACE_SECS</code></td><td class="py-3 px-4">How long a <code>SIGTERM</code>/<code>SIGINT</code> shutdown waits for in-flight requests to finish before exiting anyway. See <a href="#health-checks" class="text-amber-400 hover:underline">Health checks and graceful shutdown</a>. <code>0</code> exits immediately.</td><td class="py-3 px-4"><code>25</code></td></tr>
-                    <tr><td class="py-3 px-4"><code>SOLI_TRACE_BOOT</code></td><td class="py-3 px-4">Prints boot timing trace when set.</td><td class="py-3 px-4">unset</td></tr>
+                    <tr><td class="py-3 px-4"><code>SOLI_TRACE_BOOT</code></td><td class="py-3 px-4">Prints a boot timing trace to stderr when set: each startup phase, then each worker&rsquo;s (<code>templates and helpers ready</code>, <code>app loaded (N files: parse Xms, run Yms)</code>, <code>handlers compiled</code>).</td><td class="py-3 px-4">unset</td></tr>
                 </tbody>
             </table>
         </div>

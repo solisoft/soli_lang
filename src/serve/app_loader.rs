@@ -579,8 +579,95 @@ pub(crate) fn load_controller(
     Ok(())
 }
 
+thread_local! {
+    /// Time this thread spent in `execute_file`, split into reading+parsing
+    /// and running, plus the files it loaded — reported by `SOLI_TRACE_BOOT`.
+    static LOAD_STATS: std::cell::Cell<(std::time::Duration, std::time::Duration, usize)> =
+        const { std::cell::Cell::new((std::time::Duration::ZERO, std::time::Duration::ZERO, 0)) };
+}
+
+/// Take this thread's `execute_file` totals: `(parse, run, files)`.
+pub(crate) fn take_load_stats() -> (std::time::Duration, std::time::Duration, usize) {
+    LOAD_STATS
+        .with(|stats| stats.replace((std::time::Duration::ZERO, std::time::Duration::ZERO, 0)))
+}
+
+/// Parsed application files, shared by every interpreter of the process.
+///
+/// The boot interpreter and then each worker load the whole application, and
+/// each used to read, lex and parse every file itself: in an app of a few
+/// hundred files that was most of a worker's start-up, repeated per worker. A
+/// `Program` is plain owned data (`Send + Sync`), and running one only borrows
+/// it — function bodies are copied into the worker's own `Rc`s — so one parse
+/// serves them all.
+///
+/// Keyed by path, valid while the file's modification time and length are
+/// unchanged, so a hot reload re-parses what changed. A file with imports is
+/// not cached: its resolved program depends on the files it imports.
+static PARSED_APP_FILES: std::sync::LazyLock<std::sync::Mutex<ParsedFiles>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// Path → the stamp it was parsed at, and the program.
+type ParsedFiles =
+    std::collections::HashMap<PathBuf, (FileStamp, std::sync::Arc<crate::ast::Program>)>;
+
+/// What a cached parse is checked against: modification time and length.
+type FileStamp = (Option<std::time::SystemTime>, u64);
+
+const _: () = {
+    const fn shareable<T: Send + Sync>() {}
+    shareable::<crate::ast::Program>();
+};
+
+fn file_stamp(path: &Path) -> Option<FileStamp> {
+    let metadata = std::fs::metadata(path).ok()?;
+    Some((metadata.modified().ok(), metadata.len()))
+}
+
+/// The parsed program for `path`, from the shared cache when the file has not
+/// changed since it was parsed.
+fn cached_app_file(path: &Path) -> Result<std::sync::Arc<crate::ast::Program>, RuntimeError> {
+    let stamp = file_stamp(path);
+    if let Some(stamp) = stamp {
+        let cache = PARSED_APP_FILES.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_stamp, program)) = cache.get(path) {
+            if *cached_stamp == stamp {
+                return Ok(program.clone());
+            }
+        }
+    }
+    let program = parse_app_file(path)?;
+    let program = std::sync::Arc::new(program);
+    if let Some(stamp) = stamp.filter(|_| !crate::has_imports(&program)) {
+        PARSED_APP_FILES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(path.to_path_buf(), (stamp, program.clone()));
+    }
+    Ok(program)
+}
+
 /// Execute a Soli file with the given interpreter.
 pub(crate) fn execute_file(interpreter: &mut Interpreter, path: &Path) -> Result<(), RuntimeError> {
+    let parse_started = std::time::Instant::now();
+    let program = cached_app_file(path)?;
+    let run_started = std::time::Instant::now();
+    interpreter.set_source_path(path.to_path_buf());
+    let result = interpreter.interpret(&program);
+    let finished = std::time::Instant::now();
+    LOAD_STATS.with(|stats| {
+        let (parse, run, files) = stats.get();
+        stats.set((
+            parse + (run_started - parse_started),
+            run + (finished - run_started),
+            files + 1,
+        ))
+    });
+    result
+}
+
+/// Read, parse and module-resolve one application file.
+fn parse_app_file(path: &Path) -> Result<crate::ast::Program, RuntimeError> {
     let bytes = std::fs::read(path).map_err(|e| RuntimeError::General {
         message: format!("Failed to read file '{}': {}", path.display(), e),
         span: Span::default(),
@@ -627,9 +714,7 @@ pub(crate) fn execute_file(interpreter: &mut Interpreter, path: &Path) -> Result
             })?;
     }
 
-    // Execute (skip type checking for flexibility)
-    interpreter.set_source_path(path.to_path_buf());
-    interpreter.interpret(&program)
+    Ok(program)
 }
 
 /// Load all controllers in a worker thread.

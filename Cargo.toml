@@ -157,8 +157,15 @@ dirs = "5.0"
 # into every scaffolded app under docs/.
 include_dir = "0.7"
 
-# Memory allocator - much better RSS behavior than glibc for multi-threaded apps
-mimalloc = { version = "0.1", default-features = false }
+# Memory allocator - much better RSS behavior than glibc for multi-threaded apps.
+#
+# `no_thp`: mimalloc otherwise `madvise(MADV_HUGEPAGE)`s every arena it commits,
+# so each fresh region of a booting worker faults in 2 MiB pages, zeroed and —
+# when free memory is fragmented — compacted synchronously, on every thread at
+# once. On a 16-worker app that was most of the boot: measured on grc, first
+# response 400–650 ms → ~200 ms and boot CPU ~4 s → ~0.7 s, with steady-state
+# throughput unchanged (fresh app ~195k req/s either way) and RSS 10–35% lower.
+mimalloc = { version = "0.1", default-features = false, features = ["no_thp"] }
 
 # Decimal type for financial calculations
 rust_decimal = { version = "1.34", features = ["std", "serde"] }

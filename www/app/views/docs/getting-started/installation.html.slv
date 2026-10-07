@@ -139,6 +139,7 @@ soli serve . --dev</code></pre>
         In <code class="bg-white/10 px-1 rounded">--dev</code> mode the server also compiles your Tailwind CSS automatically &mdash; it
         auto-detects Tailwind v3 vs v4 (v4 needs no <code class="bg-white/10 px-1 rounded">tailwind.config.js</code>) and recompiles
         <code class="bg-white/10 px-1 rounded">app/assets/css</code> into <code class="bg-white/10 px-1 rounded">public/css</code> on change, so a separate watcher is optional.
+        At startup it compiles only when the CSS is out of date (something under <code class="bg-white/10 px-1 rounded">app/</code>, <code class="bg-white/10 px-1 rounded">config/</code>, a top-level file such as <code class="bg-white/10 px-1 rounded">soli.toml</code>, or an <code class="bg-white/10 px-1 rounded">@source</code> path is newer than <code class="bg-white/10 px-1 rounded">public/css</code>); delete <code class="bg-white/10 px-1 rounded">public/css</code> to force a compile.
     </p>
 
     <p class="mb-8 text-gray-400">
