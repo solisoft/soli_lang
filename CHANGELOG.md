@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.18.3] - 2026-10-07
+
 ### Added
 
 * **uploads:** **An attachment's format can be its extension, so a CDN caches it.** `uploads(resource, field)` also mounts `GET /<resource>/:id/<field>.:fmt` and `GET /<resource>/:id/<field>/:blob_id.:fmt` on `attachments#show`: `/contacts/42/photo.webp?w=200` answers what `/contacts/42/photo?w=200&fmt=webp` answers, under a URL Cloudflare (which caches by extension) caches. The extension wins over a `fmt` in the query; one naming the stored format serves the stored bytes without re-encoding; one an image cannot be encoded to (`.pdf`, `.svg` of a PNG) is a 404; on a non-image file the extension is only a name. `upload_url` / `<field>_url` now always end the path in an extension: the stored file's (`photo_url({"thumb": 200})` → `/contacts/42/photo.jpg?v=…&thumb=200`), or `fmt`'s when given (`/contacts/42/photo.webp?v=…`, no longer `?fmt=`); the old URLs keep working. For the original's extension `attach_<field>` / `direct_upload_finish` record the content type next to the blob id — `<field>_content_type`, or a `{blob_id: type}` hash in `<field>_content_types` for `multiple` — and detaching clears it. Records attached earlier, and SQL `table "…"` models without that column (the write is skipped there, not refused), get no extension. `fmt=jpg` answers `Content-Type: image/jpeg`, where it answered the non-type `image/jpg`. [Docs](www/docs/models.md#attachments)
