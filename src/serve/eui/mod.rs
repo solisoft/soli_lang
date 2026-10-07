@@ -24,7 +24,7 @@ pub mod tree;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crossbeam::channel;
+use crossbeam_channel as channel;
 use eui_proto::Frame;
 use hyper::{HeaderMap, Response};
 use tungstenite::Message;

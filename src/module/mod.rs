@@ -8,11 +8,9 @@
 
 pub mod builder;
 pub mod credentials;
-// `soli deploy` is built on ssh2, which is a Unix-only dependency and, since
-// it compiles OpenSSL from source, the most expensive one here (see the note
-// in Cargo.toml). Deploying to a remote server is a server-ops feature; a
-// Windows desktop build has no use for it and must not fail to compile over
-// it, and an offline build drops it with the `ssh` feature.
+// `soli deploy` drives the system `ssh` and `rsync`, so it is Unix-only.
+// Deploying to a remote server is a server-ops feature a Windows desktop
+// build has no use for, and a build can drop it with the `ssh` feature.
 #[cfg(all(unix, feature = "ssh"))]
 pub mod deploy;
 // Reading deploy.toml is not: `soli cloud` and `soli env` take their target

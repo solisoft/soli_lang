@@ -22,7 +22,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use crossbeam::channel;
+use crossbeam_channel as channel;
 use futures_util::{SinkExt, StreamExt};
 use hyper::body::Incoming;
 use hyper::{Request, Response, StatusCode};
@@ -700,14 +700,14 @@ async fn enqueue_ws_event(
         };
         match tx.try_send(data) {
             Ok(()) => return true,
-            Err(crossbeam::channel::TrySendError::Full(returned)) => {
+            Err(crossbeam_channel::TrySendError::Full(returned)) => {
                 if tokio::time::Instant::now() >= deadline {
                     return false;
                 }
                 pending = Some(returned);
                 tokio::time::sleep(Duration::from_millis(1)).await;
             }
-            Err(crossbeam::channel::TrySendError::Disconnected(_)) => return false,
+            Err(crossbeam_channel::TrySendError::Disconnected(_)) => return false,
         }
     }
 }

@@ -20,6 +20,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::LazyLock;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
@@ -143,9 +144,8 @@ impl Circuit {
     }
 }
 
-lazy_static::lazy_static! {
-    static ref CIRCUITS: RwLock<HashMap<String, Circuit>> = RwLock::new(HashMap::new());
-}
+static CIRCUITS: LazyLock<RwLock<HashMap<String, Circuit>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 fn with_circuit<R>(name: &str, f: impl FnOnce(&mut Circuit) -> R) -> R {
     let mut guard = CIRCUITS.write().unwrap_or_else(|e| e.into_inner());
@@ -433,9 +433,8 @@ struct SemaphoreSlot {
     held: Vec<u64>,
 }
 
-lazy_static::lazy_static! {
-    static ref SEMAPHORES: RwLock<HashMap<String, SemaphoreSlot>> = RwLock::new(HashMap::new());
-}
+static SEMAPHORES: LazyLock<RwLock<HashMap<String, SemaphoreSlot>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 fn semaphore_arg_name(v: &Value, ctx: &str) -> Result<String, String> {
     string_arg(v, ctx)

@@ -16,7 +16,7 @@ use std::rc::Rc;
 
 use calamine::{open_workbook, Reader, Xlsx};
 use csv::ReaderBuilder;
-use umya_spreadsheet::{new_file, writer};
+use std::io::Write;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashPairs, NativeFunction, Value};
@@ -292,60 +292,192 @@ fn write_excel_file(
 ) -> Result<Value, String> {
     let (headers, rows) = extract_rows_for(data, columns)?;
 
-    let mut spreadsheet = new_file();
-    // umya 3.x takes the index by value and answers a `Result`; `new_file()`
-    // always makes sheet 0, so a failure here would be the crate breaking its
-    // own contract rather than anything the caller did — but it is reported
-    // rather than unwrapped, because this runs on a request.
-    let worksheet = spreadsheet
-        .sheet_mut(0)
-        .map_err(|e| format!("Spreadsheet.excel_write() cannot open the sheet: {e}"))?;
-
-    for (col_idx, header) in headers.iter().enumerate() {
-        let col_letter = column_letters(col_idx);
-        worksheet
-            .cell_mut(format!("{col_letter}1"))
-            .set_value(header.clone());
-    }
-
     // Int and Float values are written as numbers (Excel can sum them);
     // everything else as text, Strings included even when they look numeric
     // (a postcode or an order number keeps its leading zeros).
     let data_ref = data.borrow();
+    let mut sheet = XlsxSheet::new();
+    sheet.row(headers.iter().map(|header| Cell::Text(header)));
     for (row_idx, row) in rows.iter().enumerate() {
-        let row_number = row_idx + 2;
         let source = match data_ref.get(row_idx) {
             Some(Value::Hash(hash)) => Some(hash.clone()),
             _ => None,
         };
-        for (col_idx, value) in row.iter().enumerate() {
-            let col_letter = column_letters(col_idx);
-            let cell = worksheet.cell_mut(format!("{col_letter}{row_number}"));
-            let original = source.as_ref().and_then(|hash| {
-                let key =
-                    crate::interpreter::value::HashKey::String(headers[col_idx].clone().into());
-                hash.borrow().get(&key).cloned()
-            });
-            match original {
-                Some(Value::Int(n)) => {
-                    cell.set_value_number(n as f64);
+        let cells: Vec<Cell> = row
+            .iter()
+            .enumerate()
+            .map(|(col_idx, value)| {
+                let original = source.as_ref().and_then(|hash| {
+                    let key =
+                        crate::interpreter::value::HashKey::String(headers[col_idx].clone().into());
+                    hash.borrow().get(&key).cloned()
+                });
+                match original {
+                    Some(Value::Int(n)) => Cell::Number(n as f64),
+                    Some(Value::Float(f)) => Cell::Number(f),
+                    _ => Cell::Text(value),
                 }
-                Some(Value::Float(f)) => {
-                    cell.set_value_number(f);
-                }
-                _ => {
-                    cell.set_value_string(value.clone());
-                }
-            }
-        }
+            })
+            .collect();
+        sheet.row(cells);
     }
 
-    let target = std::path::Path::new(path);
-    writer::xlsx::write(&spreadsheet, target)
+    sheet
+        .save(std::path::Path::new(path))
         .map_err(|e| format!("Spreadsheet.excel_write() cannot write to {}: {}", path, e))?;
 
     Ok(Value::Null)
 }
+
+/// One cell of a written sheet.
+enum Cell<'a> {
+    Number(f64),
+    Text(&'a str),
+}
+
+/// A one-sheet workbook, written as the smallest package Excel, LibreOffice,
+/// Numbers and calamine all open: six parts in a zip. Text is stored inline
+/// in its cell (`inlineStr`), which needs no shared-string table.
+///
+/// This replaced `umya-spreadsheet`, a full read-modify-write model of the
+/// format (a megabyte of code, a dozen crates) used here for exactly this.
+struct XlsxSheet {
+    rows: String,
+    row_count: usize,
+}
+
+impl XlsxSheet {
+    fn new() -> Self {
+        XlsxSheet {
+            rows: String::new(),
+            row_count: 0,
+        }
+    }
+
+    fn row<'a>(&mut self, cells: impl IntoIterator<Item = Cell<'a>>) {
+        use std::fmt::Write as _;
+        self.row_count += 1;
+        let row = self.row_count;
+        let _ = write!(self.rows, "<row r=\"{row}\">");
+        for (col_idx, cell) in cells.into_iter().enumerate() {
+            let reference = format!("{}{row}", column_letters(col_idx));
+            match cell {
+                Cell::Number(n) if n.is_finite() => {
+                    let _ = write!(self.rows, "<c r=\"{reference}\"><v>{n}</v></c>");
+                }
+                // NaN and infinities have no spreadsheet number; keep the text.
+                Cell::Number(n) => {
+                    let _ = write!(
+                        self.rows,
+                        "<c r=\"{reference}\" t=\"inlineStr\"><is><t>{n}</t></is></c>"
+                    );
+                }
+                Cell::Text(text) => {
+                    let _ = write!(
+                        self.rows,
+                        "<c r=\"{reference}\" t=\"inlineStr\"><is><t xml:space=\"preserve\">"
+                    );
+                    push_xml_text(&mut self.rows, text);
+                    self.rows.push_str("</t></is></c>");
+                }
+            }
+        }
+        self.rows.push_str("</row>");
+    }
+
+    fn save(&self, path: &std::path::Path) -> Result<(), String> {
+        let file = File::create(path).map_err(|e| e.to_string())?;
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        let sheet = format!(
+            "{XML_DECLARATION}<worksheet xmlns=\"{MAIN_NS}\"><sheetData>{}</sheetData></worksheet>",
+            self.rows
+        );
+        let parts: [(&str, &str); 6] = [
+            ("[Content_Types].xml", CONTENT_TYPES),
+            ("_rels/.rels", ROOT_RELS),
+            ("xl/workbook.xml", WORKBOOK),
+            ("xl/_rels/workbook.xml.rels", WORKBOOK_RELS),
+            ("xl/styles.xml", STYLES),
+            ("xl/worksheets/sheet1.xml", &sheet),
+        ];
+        for (name, content) in parts {
+            zip.start_file(name, options).map_err(|e| e.to_string())?;
+            zip.write_all(content.as_bytes())
+                .map_err(|e| e.to_string())?;
+        }
+        zip.finish().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
+/// Escape `text` for an XML text node. Control characters other than tab,
+/// newline and carriage return cannot appear in XML at all and are dropped.
+fn push_xml_text(out: &mut String, text: &str) {
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '\t' | '\n' | '\r' => out.push(c),
+            c if (c as u32) < 0x20 || c == '\u{FFFE}' || c == '\u{FFFF}' => {}
+            c => out.push(c),
+        }
+    }
+}
+
+const XML_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+const MAIN_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+
+const CONTENT_TYPES: &str = concat!(
+    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n",
+    "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">",
+    "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>",
+    "<Default Extension=\"xml\" ContentType=\"application/xml\"/>",
+    "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>",
+    "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>",
+    "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>",
+    "</Types>"
+);
+
+const ROOT_RELS: &str = concat!(
+    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n",
+    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
+    "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>",
+    "</Relationships>"
+);
+
+const WORKBOOK: &str = concat!(
+    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n",
+    "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" ",
+    "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">",
+    "<sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>",
+    "</workbook>"
+);
+
+const WORKBOOK_RELS: &str = concat!(
+    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n",
+    "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
+    "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>",
+    "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>",
+    "</Relationships>"
+);
+
+/// The minimum Excel insists on: one font, the two reserved fills, one
+/// border, one cell format.
+const STYLES: &str = concat!(
+    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n",
+    "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">",
+    "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>",
+    "<fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill>",
+    "<fill><patternFill patternType=\"gray125\"/></fill></fills>",
+    "<borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders>",
+    "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>",
+    "<cellXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/></cellXfs>",
+    "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>",
+    "</styleSheet>"
+);
 
 fn get_spreadsheet_class() -> Rc<Class> {
     thread_local! {

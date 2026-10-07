@@ -125,25 +125,6 @@ fn bench_parse_paths(c: &mut Criterion) {
         })
     });
 
-    group.bench_function("sonic_then_json_to_value", |b| {
-        b.iter(|| {
-            let v: serde_json::Value = sonic_rs::from_str(black_box(&json)).unwrap();
-            json_to_value(v).unwrap()
-        })
-    });
-
-    group.bench_function("sonic_direct_value", |b| {
-        b.iter(|| {
-            let _: Value = sonic_rs::from_str(black_box(&json)).unwrap();
-        })
-    });
-
-    group.bench_function("sonic_direct_value_compact_200", |b| {
-        b.iter(|| {
-            let _: Value = sonic_rs::from_str(black_box(&compact)).unwrap();
-        })
-    });
-
     group.finish();
 }
 
@@ -153,7 +134,7 @@ fn bench_stringify_paths(c: &mut Criterion) {
     let mut group = c.benchmark_group("json_stringify");
     group.sample_size(80);
 
-    group.bench_function("stringify_to_string_sonic", |b| {
+    group.bench_function("stringify_to_string", |b| {
         b.iter(|| stringify_to_string(black_box(&value)).unwrap())
     });
 

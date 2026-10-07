@@ -78,14 +78,22 @@ Per-server keys, under `[[servers]]`:
 3. **Deploy — all servers in parallel.** `POST` to the soli-proxy deploy API, which health-checks
    the new slot and switches traffic.
 
+A server whose sync fails is reported and left on its current release: it is not switched to a
+new slot, and migrations run on the first server that did sync.
+
 ### Requirements
 
-- SSH key-based authentication, with the key loaded into `ssh-agent`.
+- OpenSSH's `ssh` and `rsync` on your `PATH`. Every step runs the system `ssh`, so your
+  `~/.ssh/config` applies — host aliases, ports, `ProxyJump`, `IdentityFile`.
+- Key-based authentication: an agent key or one `~/.ssh/config` names. `ssh` runs with
+  `BatchMode=yes`, so a server that wants a password fails rather than prompting.
+- Host keys are checked with `StrictHostKeyChecking=accept-new`: a server seen for the first time
+  is added to `~/.ssh/known_hosts`, and a server whose key changed is refused.
 - The `soli` binary on the target's `PATH`.
 - soli-proxy running on each server, with matching API keys.
 
-`soli deploy` is Unix-only — it is built on ssh2. Reading `deploy.toml` is not, so `soli env`
-works everywhere.
+`soli deploy` is Unix-only — it drives `ssh` and `rsync`. Reading `deploy.toml` is not, so
+`soli env` works everywhere.
 
 ### Assets during a deploy
 

@@ -93,32 +93,28 @@ solidb-driver = ["dep:solidb-client"]
 # PASETO v4 builtins (`Paseto` class). Omit to drop `pasetors` from the link.
 paseto = ["dep:pasetors"]
 # SQL document adapters (Model when SOLI_DB_ADAPTER / database.toml selects them).
-postgres = [
-    "dep:postgres",
-    "dep:r2d2_postgres",
-    "dep:r2d2",
-    "dep:tokio-postgres-rustls",
-]
-mysql = ["dep:mysql", "dep:r2d2_mysql", "dep:r2d2"]
+# Pooled by src/db/pool.rs, not r2d2: r2d2 validated every checkout (and
+# r2d2_mysql every check-in), one or two extra round trips per query.
+postgres = ["dep:postgres", "dep:tokio-postgres-rustls"]
+mysql = ["dep:mysql"]
 # SQLite document adapter. Bundled: no system libsqlite3 needed, and it pins a
 # SQLite new enough for the `->>` JSON operator (3.38+) and RETURNING (3.35+).
-sqlite = ["dep:rusqlite", "dep:r2d2_sqlite", "dep:r2d2"]
+sqlite = ["dep:rusqlite"]
 # Every SQL backend.
 sql = ["postgres", "mysql", "sqlite"]
-# `soli deploy`: rsync-over-SSH to a server. It is the single most
-# expensive thing in the binary that an application never calls — `ssh2`
-# compiles OpenSSL from source and links 2 MB of it — so an offline or
-# desktop build drops it. Unix-only either way.
-ssh = ["dep:ssh2"]
-# `Spreadsheet` — reading and writing xlsx and csv. `umya-spreadsheet` is
-# a megabyte of it and brings `image` 0.24 and `exr` along for pictures in
-# a sheet, which is why an application that never opens one should not pay
-# for them.
-office = ["dep:calamine", "dep:umya-spreadsheet", "dep:csv"]
+# `soli deploy`: rsync and commands over the system `ssh` (src/module/
+# deploy.rs). It needs no crate of its own any more — it used `ssh2`, which
+# compiled OpenSSL from source — and stays a feature so a build can still
+# leave the command out. Unix-only either way.
+ssh = []
+# `Spreadsheet` — reading and writing xlsx and csv: calamine reads, an
+# in-tree writer writes (it replaced `umya-spreadsheet`, a megabyte of code
+# and a dozen crates), `csv` does csv.
+office = ["dep:calamine", "dep:zip", "dep:csv"]
 # `Pdf` — rendering, Factur-X, and PAdES signatures. The `soli-pdf` crate
 # beside this one brings printpdf, lopdf and a full SVG stack; the
 # signature half brings CMS and X.509.
-pdf = ["dep:soli-pdf", "dep:cms", "dep:x509-cert"]
+pdf = ["dep:soli-pdf", "dep:cms"]
 # `S3` and the S3 attachment service, on the in-tree Signature V4 client
 # (src/interpreter/builtins/s3_client.rs). It needs no crate of its own;
 # disk attachments do not need it at all.
@@ -150,7 +146,6 @@ eui-desktop = ["eui", "dep:eui-client"]
 
 [dependencies]
 thiserror = "1.0"
-colored = "2.1"
 dirs = "5.0"
 
 # Embed www/docs/*.md into the binary so `soli new` can copy them
@@ -183,7 +178,6 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking", "coo
 ureq = { version = "2.9", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sonic-rs = "0.3"
 itoa = "1"
 ryu = "1"
 # SIMD/memchr string scanning for the hand-rolled JSON parser.
@@ -202,13 +196,10 @@ tokio-tungstenite = "0.24"
 hyper-tungstenite = "0.15"
 bytes = "1.11.1"
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
-ulid = "1"
-nanoid = "0.4"
 tungstenite = "0.24"
-lazy_static = "1.4"
 lru = "0.18"
 futures-util = "0.3"
-crossbeam = "0.8"
+crossbeam-channel = "0.5"
 
 # Cryptography
 argon2 = { version = "0.5", features = ["std", "rand"] }
@@ -232,9 +223,11 @@ pasetors = { version = "0.8", default-features = false, features = ["std", "v4",
 # exclusive XML C14N to build XML-DSig / WS-Security signing in Soli.
 num-bigint = "0.4"
 
-# X.509 certificate parsing (X509.public_key) — extracts the RSA modulus /
-# exponent from an IdP signing certificate for SAML signature verification.
-x509-parser = "0.16"
+# X.509 certificates (X509.public_key / info / spki_pin, PAdES) are read with
+# `x509-cert` (below) on the RustCrypto `der` stack already here for keys.
+# They replaced `x509-parser` and the second ASN.1 stack it brought (nom 7,
+# asn1-rs, der-parser); the port printed the same subject, issuer, serial,
+# dates, SAN names, key and pin for all 146 certificates of a system CA bundle.
 
 # RSA private-key (PKCS#8 / PKCS#1 PEM) parsing for RsaKey.private_from_pem —
 # extracts (n, d, e) so an SP can *sign* envelopes via Crypto.modexp. We use the
@@ -281,7 +274,6 @@ hkdf = "0.12"
 aes-gcm = "0.10"
 
 # LiveView support
-diff = "0.1.13"
 async-channel = "2.3"
 
 # Used for Unix-only `O_NOFOLLOW` open flag in the file builtins (SEC-006a).
@@ -342,16 +334,17 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 webp = "0.3"
 
 # Spreadsheet support (CSV and Excel).
-# These two were held at 0.26 / 1.0 for a year because every release of either
-# resolved quick-xml below 0.41, which left RUSTSEC-2026-0194 / -0195 (quadratic
-# duplicate-attribute scan; unbounded namespace-declaration allocation) waived in
-# `.cargo/audit.toml` — the only *vulnerability*, as opposed to unmaintained-crate,
-# advisory this repository has ever waived. calamine 0.36.1 and umya-spreadsheet
-# 3.1.0 require quick-xml ^0.41, so the waiver is gone and `cargo audit` is clean
-# of vulnerabilities again. Do not lower either floor without putting it back.
+# calamine was held at 0.26 for a year because every release resolved quick-xml
+# below 0.41, which left RUSTSEC-2026-0194 / -0195 (quadratic duplicate-attribute
+# scan; unbounded namespace-declaration allocation) waived in `.cargo/audit.toml`
+# — the only *vulnerability*, as opposed to unmaintained-crate, advisory this
+# repository has ever waived. calamine 0.36.1 requires quick-xml ^0.41, so the
+# waiver is gone. Do not lower the floor without putting it back.
 calamine = { version = "0.36", optional = true }
 csv = { version = "1.3", optional = true }
-umya-spreadsheet = { version = "3.1", optional = true }
+# Writing xlsx is in-tree (`XlsxSheet` in builtins/spreadsheet.rs): six XML
+# parts in a zip, on the same `zip` build calamine already uses.
+zip = { version = "8.6", default-features = false, features = ["deflate"], optional = true }
 
 # Pinned transitive dependency. Floor >=0.3.47 fixes RUSTSEC-2026-0009; ceiling
 # <0.3.52 keeps `cookie` 0.18.1 building — time 0.3.52 changed `Parsable::parse`
@@ -361,19 +354,9 @@ umya-spreadsheet = { version = "3.1", optional = true }
 # to compile cookie. Drop the ceiling once cookie ships a release built on time 0.3.52.
 time = ">=0.3.47, <0.3.52"
 
-# SSH support for deploy.
-# `vendored-openssl` compiles OpenSSL from source (statically) instead of
-# linking the system `libssl`. This removes the only reason the release CI's
-# arm64 cross-build needed `libssl-dev:arm64` from the (flaky, sometimes
-# unreachable) `ports.ubuntu.com` multiarch mirror. Feature unification makes
-# every `openssl-sys` consumer in the graph vendored too, so no target needs
-# a system OpenSSL.
-# Moved to the cfg(unix) dependency section below.
-
 # Language Server Protocol (used by `soli lsp`)
 tower-lsp = { version = "0.20", optional = true }
 log = "0.4"
-env_logger = "0.11"
 # POP3 email reading: sync rustls over std TcpStream + MIME parsing.
 # `ring` provider matches the rest of the build (reqwest/jsonwebtoken use ring, not aws-lc-rs).
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
@@ -415,11 +398,9 @@ blake3 = { version = "1", optional = true }
 # `.soligraph.toml` config for `soli graph build` on non-Soli repos.
 toml = "0.8"
 cms = { version = "0.2", features = ["std"], optional = true }
-x509-cert = { version = "0.2", optional = true }
+x509-cert = "0.2"
 # SQL document adapters — features `postgres` / `mysql` (on by default).
 postgres = { version = "0.19.14", features = ["with-serde_json-1"], optional = true }
-r2d2 = { version = "0.8.10", optional = true }
-r2d2_postgres = { version = "0.18.2", optional = true }
 # TLS for the postgres client. rustls with the `ring` provider — the same
 # provider the POP3/SMTP clients use, so the binary links one crypto backend
 # and still cross-compiles without a system OpenSSL.
@@ -430,10 +411,8 @@ mysql = { version = "28.0.0", features = [
     "default",
     "rustls-tls-ring",
 ], optional = true }
-r2d2_mysql = { version = "28.0.0", optional = true }
 
 rusqlite = { version = "0.31", features = ["bundled", "serde_json"], optional = true }
-r2d2_sqlite = { version = "0.24", optional = true }
 
 # Cron expression parsing for the job scheduler (src/jobs/scheduler.rs). Six
 # fields (`sec min hour dom mon dow`) — the same crate and semantics the
@@ -459,14 +438,10 @@ windows-sys = { version = "0.59", features = [
 #
 # These were unconditional, which made the crate impossible to build for
 # Windows at dependency-resolution time — before a single cfg mismatch was even
-# reached. `daemonize` is Unix-only by nature; `nix` wraps POSIX signals; and
-# `ssh2` with `vendored-openssl` compiles OpenSSL from source, which on MSVC
-# additionally needs Perl and NASM. `ssh2` exists solely for `soli deploy`, a
-# server-ops feature a Windows desktop app has no use for.
+# reached. `nix` wraps POSIX signals. (`daemonize` and `ssh2` were here too;
+# `soli serve -d` now forks itself and `soli deploy` runs the system `ssh`.)
 [target.'cfg(unix)'.dependencies]
-daemonize = "0.5"
 nix = { version = "0.29", features = ["signal", "process"] }
-ssh2 = { version = "0.9", features = ["vendored-openssl"], optional = true }
 
 [dev-dependencies]
 pretty_assertions = "1.4"

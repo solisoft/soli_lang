@@ -35,10 +35,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use base64::Engine;
+use der::{Decode, Encode, Tag, Tagged};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
-use x509_parser::prelude::*;
-use x509_parser::public_key::PublicKey;
+use x509_cert::ext::pkix::name::GeneralName;
+use x509_cert::ext::pkix::SubjectAltName;
+use x509_cert::name::Name;
+use x509_cert::spki::ObjectIdentifier;
+use x509_cert::Certificate;
 
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{verify_tls12_signature, verify_tls13_signature, CryptoProvider};
@@ -119,6 +123,171 @@ fn iso_utc(unix: i64) -> String {
         .unwrap_or_default()
 }
 
+fn parse_certificate(der: &[u8]) -> Result<Certificate, String> {
+    Certificate::from_der(der).map_err(|e| format!("invalid certificate: {}", e))
+}
+
+const RSA_ENCRYPTION: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
+const SUBJECT_ALT_NAME: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.5.29.17");
+
+/// Why a certificate's RSA key could not be read.
+enum RsaKeyError {
+    NotRsa,
+    Malformed(String),
+}
+
+/// The RSA modulus and public exponent, as unsigned big-endian bytes.
+fn rsa_public_key(cert: &Certificate) -> Result<(Vec<u8>, Vec<u8>), RsaKeyError> {
+    let spki = &cert.tbs_certificate.subject_public_key_info;
+    if spki.algorithm.oid != RSA_ENCRYPTION {
+        return Err(RsaKeyError::NotRsa);
+    }
+    let key = pkcs1::RsaPublicKey::from_der(spki.subject_public_key.raw_bytes())
+        .map_err(|e| RsaKeyError::Malformed(e.to_string()))?;
+    Ok((
+        strip_leading_zeros(key.modulus.as_bytes()).to_vec(),
+        strip_leading_zeros(key.public_exponent.as_bytes()).to_vec(),
+    ))
+}
+
+/// The DER of the SubjectPublicKeyInfo — what an SPKI pin hashes.
+fn spki_der(cert: &Certificate) -> Result<Vec<u8>, String> {
+    cert.tbs_certificate
+        .subject_public_key_info
+        .to_der()
+        .map_err(|e| format!("cannot encode the public key: {}", e))
+}
+
+/// The DNS names of the subjectAltName extension; none when it is absent or
+/// unreadable.
+fn dns_names(cert: &Certificate) -> Vec<String> {
+    let mut names = Vec::new();
+    for extension in cert.tbs_certificate.extensions.iter().flatten() {
+        if extension.extn_id != SUBJECT_ALT_NAME {
+            continue;
+        }
+        if let Ok(san) = SubjectAltName::from_der(extension.extn_value.as_bytes()) {
+            for name in san.0 {
+                if let GeneralName::DnsName(dns) = name {
+                    names.push(dns.to_string());
+                }
+            }
+        }
+    }
+    names
+}
+
+/// The serial number as colon-separated lowercase hex of its encoded bytes
+/// (`00:a3:…` — the sign byte included), as `openssl x509 -serial` groups it.
+fn serial_string(cert: &Certificate) -> String {
+    cert.tbs_certificate
+        .serial_number
+        .as_bytes()
+        .iter()
+        .map(|byte| format!("{:02x}", byte))
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
+/// Short names for attribute types, in the form `X509.info` has always
+/// printed them (`CN=example.com, O=Acme`): the usual abbreviations first,
+/// then the X.500 attribute names.
+const ATTRIBUTE_NAMES: &[(&str, &str)] = &[
+    ("2.5.4.3", "CN"),
+    ("2.5.4.6", "C"),
+    ("2.5.4.7", "L"),
+    ("2.5.4.8", "ST"),
+    ("2.5.4.10", "O"),
+    ("2.5.4.11", "OU"),
+    ("0.9.2342.19200300.100.1.25", "DC"),
+    ("1.2.840.113549.1.9.1", "Email"),
+    ("0.9.2342.19200300.100.1.1", "uid"),
+    ("0.9.2342.19200300.100.1.25", "domainComponent"),
+    ("1.3.6.1.4.1.311.60.2.1.1", "msJurisdictionLocality"),
+    ("1.3.6.1.4.1.311.60.2.1.2", "msJurisdictionStateOrProvince"),
+    ("1.3.6.1.4.1.311.60.2.1.3", "msJurisdictionCountry"),
+    ("2.5.4.0", "objectClass"),
+    ("2.5.4.1", "aliasedEntryName"),
+    ("2.5.4.2", "knowledgeInformation"),
+    ("2.5.4.3", "commonName"),
+    ("2.5.4.4", "surname"),
+    ("2.5.4.5", "serialNumber"),
+    ("2.5.4.6", "countryName"),
+    ("2.5.4.7", "localityName"),
+    ("2.5.4.8", "stateOrProvinceName"),
+    ("2.5.4.9", "streetAddress"),
+    ("2.5.4.10", "organizationName"),
+    ("2.5.4.11", "organizationalUnit"),
+    ("2.5.4.12", "title"),
+    ("2.5.4.13", "description"),
+    ("2.5.4.14", "searchGuide"),
+    ("2.5.4.15", "businessCategory"),
+    ("2.5.4.16", "postalAddress"),
+    ("2.5.4.17", "postalCode"),
+    ("2.5.4.41", "name"),
+    ("2.5.4.42", "givenName"),
+    ("2.5.4.43", "initials"),
+    ("2.5.4.44", "generationQualifier"),
+    ("2.5.4.45", "uniqueIdentifier"),
+    ("2.5.4.46", "dnQualifier"),
+];
+
+/// A distinguished name in RDN order, `TYPE=value` joined by `, ` (and `+`
+/// inside a multi-valued RDN). String values print as text; anything else as
+/// uppercase hex of its content.
+fn name_to_string(name: &Name) -> String {
+    let mut out = String::new();
+    for rdn in name.0.iter() {
+        if !out.is_empty() {
+            out.push_str(", ");
+        }
+        for (i, attribute) in rdn.0.iter().enumerate() {
+            if i > 0 {
+                out.push_str(" + ");
+            }
+            let oid = attribute.oid.to_string();
+            match ATTRIBUTE_NAMES.iter().find(|(known, _)| *known == oid) {
+                Some((_, short)) => out.push_str(short),
+                None => {
+                    out.push_str("OID(");
+                    out.push_str(&oid);
+                    out.push(')');
+                }
+            }
+            out.push('=');
+            let Some(value) = attribute_value(attribute.value.tag(), attribute.value.value())
+            else {
+                return "<X509Error: Invalid X.509 name>".to_string();
+            };
+            out.push_str(&value);
+        }
+    }
+    out
+}
+
+fn attribute_value(tag: Tag, content: &[u8]) -> Option<String> {
+    match tag {
+        Tag::Utf8String
+        | Tag::PrintableString
+        | Tag::Ia5String
+        | Tag::TeletexString
+        | Tag::VideotexString
+        | Tag::NumericString
+        | Tag::VisibleString => std::str::from_utf8(content).ok().map(str::to_string),
+        Tag::BmpString => {
+            if !content.len().is_multiple_of(2) {
+                return None;
+            }
+            let units: Vec<u16> = content
+                .chunks(2)
+                .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
+                .collect();
+            String::from_utf16(&units).ok()
+        }
+        _ => Some(content.iter().map(|b| format!("{:02X}", b)).collect()),
+    }
+}
+
 /// DER → PEM, 64 columns, the way `openssl x509` writes it.
 fn der_to_pem(der: &[u8]) -> String {
     let body = base64::engine::general_purpose::STANDARD.encode(der);
@@ -138,33 +307,27 @@ fn der_to_pem(der: &[u8]) -> String {
 /// certificate has expired: a probe compares it to a threshold, and "zero"
 /// must not mean both "expires today" and "expired yesterday".
 fn cert_info_pairs(der: &[u8], now: i64) -> Result<Vec<(String, Value)>, String> {
-    let (_, cert) =
-        X509Certificate::from_der(der).map_err(|e| format!("invalid certificate: {}", e))?;
-    let validity = cert.validity();
-    let not_before = validity.not_before.timestamp();
-    let not_after = validity.not_after.timestamp();
-
-    let mut dns_names = Vec::new();
-    if let Ok(Some(san)) = cert.subject_alternative_name() {
-        for name in &san.value.general_names {
-            if let GeneralName::DNSName(dns) = name {
-                dns_names.push(Value::String((*dns).to_string().into()));
-            }
-        }
-    }
+    let cert = parse_certificate(der)?;
+    let validity = &cert.tbs_certificate.validity;
+    let not_before = validity.not_before.to_unix_duration().as_secs() as i64;
+    let not_after = validity.not_after.to_unix_duration().as_secs() as i64;
+    let dns_names: Vec<Value> = dns_names(&cert)
+        .into_iter()
+        .map(|name| Value::String(name.into()))
+        .collect();
 
     Ok(vec![
         (
             "subject".to_string(),
-            Value::String(cert.subject().to_string().into()),
+            Value::String(name_to_string(&cert.tbs_certificate.subject).into()),
         ),
         (
             "issuer".to_string(),
-            Value::String(cert.issuer().to_string().into()),
+            Value::String(name_to_string(&cert.tbs_certificate.issuer).into()),
         ),
         (
             "serial".to_string(),
-            Value::String(cert.raw_serial_as_string().into()),
+            Value::String(serial_string(&cert).into()),
         ),
         (
             "not_before".to_string(),
@@ -333,23 +496,18 @@ pub fn register_x509_builtins(env: &mut Environment) {
         "public_key".to_string(),
         Rc::new(NativeFunction::new("X509.public_key", Some(1), |args| {
             let der = to_der(&args[0]).map_err(|e| format!("X509.public_key(): {}", e))?;
-            let (_, cert) = X509Certificate::from_der(&der)
-                .map_err(|e| format!("X509.public_key(): invalid certificate: {}", e))?;
-            match cert.public_key().parsed() {
-                Ok(PublicKey::RSA(rsa)) => {
-                    let n = strip_leading_zeros(rsa.modulus);
-                    let e = strip_leading_zeros(rsa.exponent);
-                    Ok(hash_from_pairs([
-                        ("algorithm".to_string(), Value::String("RSA".into())),
-                        ("n".to_string(), Value::String(bytes_to_hex(n).into())),
-                        ("e".to_string(), Value::String(bytes_to_hex(e).into())),
-                        ("bits".to_string(), Value::Int((n.len() * 8) as i64)),
-                    ]))
-                }
-                Ok(_) => Err(
+            let cert = parse_certificate(&der).map_err(|e| format!("X509.public_key(): {}", e))?;
+            match rsa_public_key(&cert) {
+                Ok((n, e)) => Ok(hash_from_pairs([
+                    ("algorithm".to_string(), Value::String("RSA".into())),
+                    ("n".to_string(), Value::String(bytes_to_hex(&n).into())),
+                    ("e".to_string(), Value::String(bytes_to_hex(&e).into())),
+                    ("bits".to_string(), Value::Int((n.len() * 8) as i64)),
+                ])),
+                Err(RsaKeyError::NotRsa) => Err(
                     "X509.public_key(): certificate does not contain an RSA public key".to_string(),
                 ),
-                Err(e) => Err(format!(
+                Err(RsaKeyError::Malformed(e)) => Err(format!(
                     "X509.public_key(): could not parse public key: {}",
                     e
                 )),
@@ -407,12 +565,11 @@ pub fn register_x509_builtins(env: &mut Environment) {
         "spki_pin".to_string(),
         Rc::new(NativeFunction::new("X509.spki_pin", Some(1), |args| {
             let der = to_der(&args[0]).map_err(|e| format!("X509.spki_pin(): {}", e))?;
-            let (_, cert) = X509Certificate::from_der(&der)
-                .map_err(|e| format!("X509.spki_pin(): invalid certificate: {}", e))?;
-            // The raw DER of the SubjectPublicKeyInfo — pinning this and not the
+            let cert = parse_certificate(&der).map_err(|e| format!("X509.spki_pin(): {}", e))?;
+            // The DER of the SubjectPublicKeyInfo — pinning this and not the
             // whole certificate is the entire point.
-            let spki = cert.public_key().raw;
-            let digest = Sha256::digest(spki);
+            let spki = spki_der(&cert).map_err(|e| format!("X509.spki_pin(): {}", e))?;
+            let digest = Sha256::digest(&spki);
             let pin = base64::engine::general_purpose::STANDARD.encode(digest);
             Ok(Value::String(format!("sha256/{}", pin).into()))
         })),
@@ -540,8 +697,8 @@ IZV30Dp1
 
         let pin = |pem: &str| -> String {
             let der = to_der(&Value::String(pem.into())).unwrap();
-            let (_, cert) = X509Certificate::from_der(&der).unwrap();
-            let digest = Sha256::digest(cert.public_key().raw);
+            let cert = parse_certificate(&der).unwrap();
+            let digest = Sha256::digest(spki_der(&cert).unwrap());
             format!(
                 "sha256/{}",
                 base64::engine::general_purpose::STANDARD.encode(digest)

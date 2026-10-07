@@ -10,13 +10,45 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use ::nanoid::{alphabet, format, rngs};
+use rand::RngCore;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
 
 const DEFAULT_SIZE: usize = 21;
 const MAX_ALPHABET_LEN: usize = u8::MAX as usize;
+
+/// The URL-safe alphabet, in the reference implementation's order.
+const SAFE: &[char; 64] = &[
+    '_', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g',
+    'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+    'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+];
+
+/// `size` characters drawn uniformly from `alphabet` (1-255 entries): each
+/// random byte is masked to the next power of two and rejected when it falls
+/// past the alphabet. Bytes come from the thread's CSPRNG — the `nanoid` crate
+/// seeded a fresh `StdRng` from the OS for every id.
+fn generate(alphabet: &[char], size: usize) -> String {
+    let mask = alphabet.len().next_power_of_two() - 1;
+    let mut rng = rand::thread_rng();
+    let mut id = String::with_capacity(size);
+    let mut count = 0;
+    let mut bytes = [0u8; 64];
+    loop {
+        rng.fill_bytes(&mut bytes);
+        for &byte in &bytes {
+            if let Some(&c) = alphabet.get(byte as usize & mask) {
+                id.push(c);
+                count += 1;
+                if count == size {
+                    return id;
+                }
+            }
+        }
+    }
+}
 
 fn parse_size(value: &Value) -> Result<usize, String> {
     match value {
@@ -61,8 +93,8 @@ fn make_nanoid(args: &[Value]) -> Result<Value, String> {
     };
 
     let id = match alphabet {
-        Some(custom) => format(rngs::default, &custom, size),
-        None => format(rngs::default, &alphabet::SAFE, size),
+        Some(custom) => generate(&custom, size),
+        None => generate(SAFE, size),
     };
     Ok(Value::String(id.into()))
 }
@@ -141,6 +173,28 @@ mod tests {
                 }
             }
             other => panic!("expected string, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn a_multibyte_alphabet_gives_the_requested_number_of_characters() {
+        // The `nanoid` crate compared the byte length, so this came back short.
+        let v = make_nanoid(&[Value::Int(12), Value::String("é✓".into())]).unwrap();
+        match v {
+            Value::String(s) => {
+                assert_eq!(s.chars().count(), 12);
+                assert!(s.chars().all(|c| c == 'é' || c == '✓'));
+            }
+            other => panic!("expected string, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn every_character_of_the_alphabet_is_reachable() {
+        let id = generate(&['a', 'b', 'c'], 3000);
+        for c in ['a', 'b', 'c'] {
+            let n = id.chars().filter(|&x| x == c).count();
+            assert!((800..1200).contains(&n), "{c}: {n} of 3000");
         }
     }
 

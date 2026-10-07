@@ -237,7 +237,7 @@ pub fn log_timestamp() -> String {
 }
 
 use bytes::Bytes;
-use crossbeam::channel;
+use crossbeam_channel as channel;
 use futures_util::StreamExt;
 use http_body_util::combinators::BoxBody;
 use http_body_util::BodyExt;

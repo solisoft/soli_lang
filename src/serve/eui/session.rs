@@ -140,7 +140,7 @@ pub fn upgrade(
     component: String,
     query: Option<String>,
     session_id: String,
-    lv_event_tx: crossbeam::channel::Sender<LiveViewEventData>,
+    lv_event_tx: crossbeam_channel::Sender<LiveViewEventData>,
     slot: WsConnectionSlot,
 ) -> Result<Response<ResponseBody>, hyper::Error> {
     if !super::is_eui_component(&component) {
@@ -1017,7 +1017,7 @@ fn validate(liveview_id: &str, e: &EventFrame) -> Option<(String, serde_json::Va
 /// application's own kept objects are. The shared queue is the fallback for
 /// a process that has no pinned queues, such as a test.
 async fn post(
-    lv_event_tx: &crossbeam::channel::Sender<LiveViewEventData>,
+    lv_event_tx: &crossbeam_channel::Sender<LiveViewEventData>,
     sender: &WsSender,
     liveview_id: &str,
     component: &str,

@@ -2357,7 +2357,7 @@ impl Value {
     }
 }
 
-/// Serialize a Value to a JSON string using sonic-rs SIMD-accelerated writer.
+/// Serialize a Value to a JSON string (see `value_stringify`).
 #[inline]
 pub fn stringify_to_string(value: &Value) -> Result<String, String> {
     crate::interpreter::value_stringify::stringify_to_string(value)
@@ -2436,9 +2436,8 @@ fn fast_parse_i64_digits(digits: &[u8], neg: bool) -> Value {
 /// Parse a JSON string into a Soli [`Value`].
 ///
 /// One-pass hand-rolled parser (no intermediate serde tree). sonic-rs direct
-/// `Deserialize` was measured and does not beat this path once Values are
-/// materialised (IndexMap + Rc/RefCell dominate either way); keep sonic for
-/// stringify only.
+/// `Deserialize` was measured and did not beat this path once Values are
+/// materialised (IndexMap + Rc/RefCell dominate either way).
 #[inline]
 pub fn parse_json(s: &str) -> Result<Value, String> {
     parse_json_bytes(s.as_bytes())

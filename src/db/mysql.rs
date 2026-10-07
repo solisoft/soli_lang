@@ -2,6 +2,7 @@
 //!
 //! Same document model as PostgreSQL: `_key` PK + `doc` JSON column.
 
+use super::pool::{Manager, Pool, Pooled};
 use super::registry::{active_connection_name, active_spec};
 use super::sql_compile::{
     compile_aggregate_d, compile_count_d, compile_delete_all_d, compile_exists_d,
@@ -11,15 +12,27 @@ use super::sql_compile::{
 };
 use mysql::prelude::*;
 use mysql::{Opts, OptsBuilder, Value as MysqlValue};
-use r2d2::Pool;
-use r2d2_mysql::MySqlConnectionManager;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-type MyPool = Pool<MySqlConnectionManager>;
-type MyConn = r2d2::PooledConnection<MySqlConnectionManager>;
+struct MyManager(OptsBuilder);
+
+impl Manager for MyManager {
+    type Conn = mysql::Conn;
+
+    fn connect(&self) -> Result<mysql::Conn, String> {
+        mysql::Conn::new(self.0.clone()).map_err(|e| e.to_string())
+    }
+
+    fn ping(&self, conn: &mut mysql::Conn) -> bool {
+        conn.ping().is_ok()
+    }
+}
+
+type MyPool = Pool<MyManager>;
+type MyConn = Pooled<MyManager>;
 
 static POOLS: OnceLock<Mutex<HashMap<String, MyPool>>> = OnceLock::new();
 
@@ -137,9 +150,9 @@ fn pool_opts_for(url: &str, name: &str) -> Result<OptsBuilder, String> {
             Err(_) => builder.ssl_opts(None),
         });
     }
-    // A mandatory mode is worth one probe connection: r2d2 otherwise retries
-    // until its timeout and reports "timed out waiting for connection", which
-    // buries the certificate error underneath it.
+    // A mandatory mode is worth one probe connection: it fails the pool's
+    // creation with the mode named beside the certificate error, instead of
+    // leaving a bare driver error to the first query.
     mysql::Conn::new(builder.clone()).map_err(|e| {
         format!(
             "connection {name:?} asked for ssl-mode={}: {e}",
@@ -230,13 +243,19 @@ fn pool_for_active_uncached() -> Result<MyPool, String> {
         return Ok(p.clone());
     }
     let builder = pool_opts_for(&url, &name)?;
-    let manager = MySqlConnectionManager::new(builder);
     let max = spec.pool_size.unwrap_or(10).max(1);
-    let pool = Pool::builder()
-        .max_size(max as u32)
-        .connection_timeout(Duration::from_secs(10))
-        .build(manager)
-        .map_err(|e| format!("mysql pool ({name}): {e}"))?;
+    let pool = Pool::new(
+        MyManager(builder),
+        max,
+        Duration::from_secs(10),
+        Some(super::pool::PING_AFTER),
+    );
+    // Open the first connection now: an unreachable server fails here, once
+    // per pool, rather than on the first query — `ensure_connected` relies on
+    // it. The connection then stays in the pool.
+    if let Err(e) = pool.get() {
+        return Err(format!("mysql pool ({name}): {e}"));
+    }
     map.insert(cache_key, pool.clone());
     remember(&pool);
     Ok(pool)
@@ -392,8 +411,14 @@ fn with_conn<T>(f: impl FnOnce(&mut MyConn) -> Result<T, String>) -> Result<T, S
 
     let pool = pool_for_active()?;
     let mut conn = pool.get().map_err(|e| format!("mysql checkout: {e}"))?;
-    let _guard = ActiveConnGuard::set(&mut conn, name);
-    f(&mut conn)
+    let result = {
+        let _guard = ActiveConnGuard::set(&mut conn, name);
+        f(&mut conn)
+    };
+    if result.is_err() {
+        conn.mark_suspect();
+    }
+    result
 }
 
 fn to_mysql_params(params: &[SqlBind]) -> Vec<MysqlValue> {
@@ -500,10 +525,13 @@ fn insert_many_into_existing(
 }
 
 pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> {
-    if !table_exists(table)? {
-        return Ok(None);
-    }
-    with_conn(|conn| get_on(conn, table, key))
+    super::ensured::read_with_table(
+        table,
+        has_active_tx(),
+        table_exists,
+        || None,
+        || with_conn(|conn| get_on(conn, table, key)),
+    )
 }
 
 pub fn update(
@@ -579,35 +607,41 @@ fn update_existing(
 }
 
 pub fn delete(table: &str, key: &str) -> Result<(), String> {
-    if !table_exists(table)? {
-        return Ok(());
-    }
-    let table_q = Dialect::Mysql.quote_ident(table)?;
-    let sql = format!("DELETE FROM {table_q} WHERE _key = ?");
-    let _trace = super::trace::start_plain(&sql);
-    with_conn(|conn| {
-        conn.exec_drop(&sql, (key,))
-            .map_err(|e| my_error("mysql delete", &e))?;
-        Ok(())
-    })
+    super::ensured::read_with_table(
+        table,
+        has_active_tx(),
+        table_exists,
+        || (),
+        || {
+            let table_q = Dialect::Mysql.quote_ident(table)?;
+            let sql = format!("DELETE FROM {table_q} WHERE _key = ?");
+            let _trace = super::trace::start_plain(&sql);
+            with_conn(|conn| {
+                conn.exec_drop(&sql, (key,))
+                    .map_err(|e| my_error("mysql delete", &e))?;
+                Ok(())
+            })
+        },
+    )
 }
 
 pub fn select(q: &ListQuery) -> Result<Vec<serde_json::Value>, String> {
-    if !table_exists(&q.table)? {
-        return Ok(Vec::new());
-    }
-    let compiled = compile_select_d(Dialect::Mysql, q)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    query_docs(&compiled.sql, &compiled.params)
+    super::ensured::read_with_table(&q.table, has_active_tx(), table_exists, Vec::new, || {
+        let compiled = compile_select_d(Dialect::Mysql, q)?;
+        let _trace = super::trace::start(&compiled.sql, &compiled.params);
+        query_docs(&compiled.sql, &compiled.params)
+    })
 }
 
 pub fn select_by_keys(table: &str, keys: &[String]) -> Result<Vec<serde_json::Value>, String> {
-    if keys.is_empty() || !table_exists(table)? {
+    if keys.is_empty() {
         return Ok(Vec::new());
     }
-    let compiled = compile_select_by_keys_d(Dialect::Mysql, table, keys)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    query_docs(&compiled.sql, &compiled.params)
+    super::ensured::read_with_table(table, has_active_tx(), table_exists, Vec::new, || {
+        let compiled = compile_select_by_keys_d(Dialect::Mysql, table, keys)?;
+        let _trace = super::trace::start(&compiled.sql, &compiled.params);
+        query_docs(&compiled.sql, &compiled.params)
+    })
 }
 
 pub fn select_json_text_in(
@@ -615,12 +649,14 @@ pub fn select_json_text_in(
     field: &str,
     values: &[String],
 ) -> Result<Vec<serde_json::Value>, String> {
-    if values.is_empty() || !table_exists(table)? {
+    if values.is_empty() {
         return Ok(Vec::new());
     }
-    let compiled = compile_select_json_text_in_d(Dialect::Mysql, table, field, values)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    query_docs(&compiled.sql, &compiled.params)
+    super::ensured::read_with_table(table, has_active_tx(), table_exists, Vec::new, || {
+        let compiled = compile_select_json_text_in_d(Dialect::Mysql, table, field, values)?;
+        let _trace = super::trace::start(&compiled.sql, &compiled.params);
+        query_docs(&compiled.sql, &compiled.params)
+    })
 }
 
 pub fn group_by(
@@ -628,41 +664,40 @@ pub fn group_by(
     group_fields: &[String],
     aggs: &[GroupAgg],
 ) -> Result<Vec<serde_json::Value>, String> {
-    if !table_exists(&q.table)? {
-        return Ok(Vec::new());
-    }
-    let compiled = compile_group_by_d(Dialect::Mysql, q, group_fields, aggs)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    // Build expected column order: group fields then agg aliases (or "n").
-    let mut col_names: Vec<String> = group_fields.to_vec();
-    if aggs.is_empty() {
-        col_names.push("n".into());
-    } else {
-        for a in aggs {
-            col_names.push(a.alias.clone());
-        }
-    }
-    with_conn(|conn| {
-        let params = to_mysql_params(&compiled.params);
-        let rows: Vec<mysql::Row> = conn
-            .exec(&compiled.sql, params)
-            .map_err(|e| my_error("mysql group_by", &e))?;
-        let mut out = Vec::with_capacity(rows.len());
-        for row in rows {
-            let mut map = serde_json::Map::new();
-            for (i, name) in col_names.iter().enumerate() {
-                let v: Option<MysqlValue> = row.get(i);
-                // Group keys keep whatever the column held; only aggregates are
-                // numeric by construction. Coercing keys turned a `"00042"`
-                // group into `42` and merged `"01"` with `"1"`.
-                map.insert(
-                    name.clone(),
-                    mysql_value_to_json(v, i >= group_fields.len()),
-                );
+    super::ensured::read_with_table(&q.table, has_active_tx(), table_exists, Vec::new, || {
+        let compiled = compile_group_by_d(Dialect::Mysql, q, group_fields, aggs)?;
+        let _trace = super::trace::start(&compiled.sql, &compiled.params);
+        // Build expected column order: group fields then agg aliases (or "n").
+        let mut col_names: Vec<String> = group_fields.to_vec();
+        if aggs.is_empty() {
+            col_names.push("n".into());
+        } else {
+            for a in aggs {
+                col_names.push(a.alias.clone());
             }
-            out.push(serde_json::Value::Object(map));
         }
-        Ok(out)
+        with_conn(|conn| {
+            let params = to_mysql_params(&compiled.params);
+            let rows: Vec<mysql::Row> = conn
+                .exec(&compiled.sql, params)
+                .map_err(|e| my_error("mysql group_by", &e))?;
+            let mut out = Vec::with_capacity(rows.len());
+            for row in rows {
+                let mut map = serde_json::Map::new();
+                for (i, name) in col_names.iter().enumerate() {
+                    let v: Option<MysqlValue> = row.get(i);
+                    // Group keys keep whatever the column held; only aggregates are
+                    // numeric by construction. Coercing keys turned a `"00042"`
+                    // group into `42` and merged `"01"` with `"1"`.
+                    map.insert(
+                        name.clone(),
+                        mysql_value_to_json(v, i >= group_fields.len()),
+                    );
+                }
+                out.push(serde_json::Value::Object(map));
+            }
+            Ok(out)
+        })
     })
 }
 
@@ -691,102 +726,127 @@ fn mysql_value_to_json(v: Option<MysqlValue>, parse_text: bool) -> serde_json::V
 }
 
 pub fn count(q: &ListQuery) -> Result<i64, String> {
-    if !table_exists(&q.table)? {
-        return Ok(0);
-    }
-    let compiled = compile_count_d(Dialect::Mysql, q)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|conn| {
-        let params = to_mysql_params(&compiled.params);
-        let n: Option<i64> = conn
-            .exec_first(&compiled.sql, params)
-            .map_err(|e| my_error("mysql count", &e))?;
-        Ok(n.unwrap_or(0))
-    })
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || 0,
+        || {
+            let compiled = compile_count_d(Dialect::Mysql, q)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|conn| {
+                let params = to_mysql_params(&compiled.params);
+                let n: Option<i64> = conn
+                    .exec_first(&compiled.sql, params)
+                    .map_err(|e| my_error("mysql count", &e))?;
+                Ok(n.unwrap_or(0))
+            })
+        },
+    )
 }
 
 pub fn exists(q: &ListQuery) -> Result<bool, String> {
-    if !table_exists(&q.table)? {
-        return Ok(false);
-    }
-    let compiled = compile_exists_d(Dialect::Mysql, q)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|conn| {
-        let params = to_mysql_params(&compiled.params);
-        let row: Option<i64> = conn
-            .exec_first(&compiled.sql, params)
-            .map_err(|e| my_error("mysql exists", &e))?;
-        Ok(row.is_some())
-    })
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || false,
+        || {
+            let compiled = compile_exists_d(Dialect::Mysql, q)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|conn| {
+                let params = to_mysql_params(&compiled.params);
+                let row: Option<i64> = conn
+                    .exec_first(&compiled.sql, params)
+                    .map_err(|e| my_error("mysql exists", &e))?;
+                Ok(row.is_some())
+            })
+        },
+    )
 }
 
 pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json::Value, String> {
-    if !table_exists(&q.table)? {
-        return Ok(serde_json::Value::Null);
-    }
-    let compiled = compile_aggregate_d(Dialect::Mysql, q, func, field)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|conn| {
-        let params = to_mysql_params(&compiled.params);
-        if matches!(func, SqlAgg::Count) {
-            let n: Option<i64> = conn
-                .exec_first(&compiled.sql, params)
-                .map_err(|e| my_error("mysql aggregate", &e))?;
-            return Ok(serde_json::json!(n.unwrap_or(0)));
-        }
-        // SUM/AVG may come back as Decimal string or f64
-        let row: Option<MysqlValue> = conn
-            .exec_first(&compiled.sql, params)
-            .map_err(|e| my_error("mysql aggregate", &e))?;
-        Ok(match row {
-            None | Some(MysqlValue::NULL) => serde_json::Value::Null,
-            Some(v) => {
-                let s = match v {
-                    MysqlValue::Bytes(b) => String::from_utf8_lossy(&b).into_owned(),
-                    MysqlValue::Int(n) => n.to_string(),
-                    MysqlValue::UInt(n) => n.to_string(),
-                    MysqlValue::Float(n) => n.to_string(),
-                    MysqlValue::Double(n) => n.to_string(),
-                    other => format!("{other:?}"),
-                };
-                if let Ok(f) = s.parse::<f64>() {
-                    serde_json::json!(f)
-                } else {
-                    serde_json::Value::String(s)
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || serde_json::Value::Null,
+        || {
+            let compiled = compile_aggregate_d(Dialect::Mysql, q, func, field)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|conn| {
+                let params = to_mysql_params(&compiled.params);
+                if matches!(func, SqlAgg::Count) {
+                    let n: Option<i64> = conn
+                        .exec_first(&compiled.sql, params)
+                        .map_err(|e| my_error("mysql aggregate", &e))?;
+                    return Ok(serde_json::json!(n.unwrap_or(0)));
                 }
-            }
-        })
-    })
+                // SUM/AVG may come back as Decimal string or f64
+                let row: Option<MysqlValue> = conn
+                    .exec_first(&compiled.sql, params)
+                    .map_err(|e| my_error("mysql aggregate", &e))?;
+                Ok(match row {
+                    None | Some(MysqlValue::NULL) => serde_json::Value::Null,
+                    Some(v) => {
+                        let s = match v {
+                            MysqlValue::Bytes(b) => String::from_utf8_lossy(&b).into_owned(),
+                            MysqlValue::Int(n) => n.to_string(),
+                            MysqlValue::UInt(n) => n.to_string(),
+                            MysqlValue::Float(n) => n.to_string(),
+                            MysqlValue::Double(n) => n.to_string(),
+                            other => format!("{other:?}"),
+                        };
+                        if let Ok(f) = s.parse::<f64>() {
+                            serde_json::json!(f)
+                        } else {
+                            serde_json::Value::String(s)
+                        }
+                    }
+                })
+            })
+        },
+    )
 }
 
 pub fn delete_all(q: &ListQuery) -> Result<u64, String> {
-    if !table_exists(&q.table)? {
-        return Ok(0);
-    }
-    let compiled = compile_delete_all_d(Dialect::Mysql, q)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|conn| {
-        let params = to_mysql_params(&compiled.params);
-        let result = conn
-            .exec_iter(&compiled.sql, params)
-            .map_err(|e| my_error("mysql delete_all", &e))?;
-        Ok(result.affected_rows())
-    })
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || 0,
+        || {
+            let compiled = compile_delete_all_d(Dialect::Mysql, q)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|conn| {
+                let params = to_mysql_params(&compiled.params);
+                let result = conn
+                    .exec_iter(&compiled.sql, params)
+                    .map_err(|e| my_error("mysql delete_all", &e))?;
+                Ok(result.affected_rows())
+            })
+        },
+    )
 }
 
 pub fn update_all(q: &ListQuery, patch: serde_json::Value) -> Result<u64, String> {
-    if !table_exists(&q.table)? {
-        return Ok(0);
-    }
-    let compiled = compile_update_all_d(Dialect::Mysql, q, &patch)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|conn| {
-        let params = to_mysql_params(&compiled.params);
-        let result = conn
-            .exec_iter(&compiled.sql, params)
-            .map_err(|e| my_error("mysql update_all", &e))?;
-        Ok(result.affected_rows())
-    })
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || 0,
+        || {
+            let compiled = compile_update_all_d(Dialect::Mysql, q, &patch)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|conn| {
+                let params = to_mysql_params(&compiled.params);
+                let result = conn
+                    .exec_iter(&compiled.sql, params)
+                    .map_err(|e| my_error("mysql update_all", &e))?;
+                Ok(result.affected_rows())
+            })
+        },
+    )
 }
 
 fn query_docs(sql: &str, params: &[SqlBind]) -> Result<Vec<serde_json::Value>, String> {
@@ -876,28 +936,33 @@ pub fn increment_field(
     field: &str,
     delta: i64,
 ) -> Result<Option<i64>, String> {
-    if !table_exists(table)? {
-        return Ok(None);
-    }
-    Dialect::Mysql.quote_ident(field)?;
-    let table_q = Dialect::Mysql.quote_ident(table)?;
-    let update = format!(
-        "UPDATE {table_q} SET doc = JSON_SET(doc, '$.{field}', \
-             COALESCE(JSON_EXTRACT(doc, '$.{field}'), 0) + ?) WHERE _key = ?"
-    );
-    // MySQL has no RETURNING, so the read-back rides the same connection —
-    // still inside the statement's own atomicity for the write itself.
-    let select = format!(
-        "SELECT JSON_UNQUOTE(JSON_EXTRACT(doc, '$.{field}')) FROM {table_q} WHERE _key = ?"
-    );
-    with_conn(|conn| {
-        conn.exec_drop(&update, (delta, key))
-            .map_err(|e| my_error("mysql increment", &e))?;
-        let text: Option<Option<String>> = conn
-            .exec_first(&select, (key,))
-            .map_err(|e| my_error("mysql increment read-back", &e))?;
-        Ok(text.flatten().and_then(|t| super::parse_counter(&t)))
-    })
+    super::ensured::read_with_table(
+        table,
+        has_active_tx(),
+        table_exists,
+        || None,
+        || {
+            Dialect::Mysql.quote_ident(field)?;
+            let table_q = Dialect::Mysql.quote_ident(table)?;
+            let update = format!(
+                "UPDATE {table_q} SET doc = JSON_SET(doc, '$.{field}', \
+                     COALESCE(JSON_EXTRACT(doc, '$.{field}'), 0) + ?) WHERE _key = ?"
+            );
+            // MySQL has no RETURNING, so the read-back rides the same connection —
+            // still inside the statement's own atomicity for the write itself.
+            let select = format!(
+                "SELECT JSON_UNQUOTE(JSON_EXTRACT(doc, '$.{field}')) FROM {table_q} WHERE _key = ?"
+            );
+            with_conn(|conn| {
+                conn.exec_drop(&update, (delta, key))
+                    .map_err(|e| my_error("mysql increment", &e))?;
+                let text: Option<Option<String>> = conn
+                    .exec_first(&select, (key,))
+                    .map_err(|e| my_error("mysql increment read-back", &e))?;
+                Ok(text.flatten().and_then(|t| super::parse_counter(&t)))
+            })
+        },
+    )
 }
 
 /// Index names on `table`.
@@ -1443,36 +1508,37 @@ pub fn claim_jobs(
     locked_until_iso: &str,
     batch: usize,
 ) -> Result<Vec<serde_json::Value>, String> {
-    if !table_exists("_jobs")? {
-        return Ok(Vec::new());
-    }
-    let token = format!("{}#{}", worker_id, uuid::Uuid::new_v4());
-    let update = "UPDATE `_jobs` SET doc = JSON_SET(doc, \
-                      '$.state', 'running', '$.locked_by', ?, '$.locked_until', ?, \
-                      '$.attempts', COALESCE(JSON_EXTRACT(doc, '$.attempts'), 0) + 1) \
-                  WHERE ((JSON_UNQUOTE(JSON_EXTRACT(doc, '$.state')) IN ('pending','scheduled','failed') \
-                          AND JSON_UNQUOTE(JSON_EXTRACT(doc, '$.run_at')) <= ?) \
-                     OR (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.state')) = 'running' \
-                         AND JSON_UNQUOTE(JSON_EXTRACT(doc, '$.locked_until')) < ?)) \
-                  ORDER BY COALESCE(JSON_EXTRACT(doc, '$.priority'), 0) DESC, \
-                           JSON_UNQUOTE(JSON_EXTRACT(doc, '$.run_at')) ASC \
-                  LIMIT ?";
-    with_conn(|conn| {
-        conn.exec_drop(
-            update,
-            (&token, locked_until_iso, now_iso, now_iso, batch as u64),
-        )
-        .map_err(|e| my_error("mysql claim_jobs", &e))?;
-        let rows: Vec<String> = conn
-            .exec(
-                "SELECT doc FROM `_jobs` \
-                 WHERE JSON_UNQUOTE(JSON_EXTRACT(doc, '$.locked_by')) = ?",
-                (&token,),
+    super::ensured::read_with_table("_jobs", has_active_tx(), table_exists, Vec::new, || {
+        let token = format!("{}#{}", worker_id, uuid::Uuid::new_v4());
+        let update = "UPDATE `_jobs` SET doc = JSON_SET(doc, \
+                              '$.state', 'running', '$.locked_by', ?, '$.locked_until', ?, \
+                              '$.attempts', COALESCE(JSON_EXTRACT(doc, '$.attempts'), 0) + 1) \
+                          WHERE ((JSON_UNQUOTE(JSON_EXTRACT(doc, '$.state')) IN ('pending','scheduled','failed') \
+                                  AND JSON_UNQUOTE(JSON_EXTRACT(doc, '$.run_at')) <= ?) \
+                             OR (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.state')) = 'running' \
+                                 AND JSON_UNQUOTE(JSON_EXTRACT(doc, '$.locked_until')) < ?)) \
+                          ORDER BY COALESCE(JSON_EXTRACT(doc, '$.priority'), 0) DESC, \
+                                   JSON_UNQUOTE(JSON_EXTRACT(doc, '$.run_at')) ASC \
+                          LIMIT ?";
+        with_conn(|conn| {
+            conn.exec_drop(
+                update,
+                (&token, locked_until_iso, now_iso, now_iso, batch as u64),
             )
-            .map_err(|e| my_error("mysql claim_jobs select", &e))?;
-        rows.into_iter()
-            .map(|s| serde_json::from_str(&s).map_err(|e| format!("mysql claim_jobs json: {e}")))
-            .collect()
+            .map_err(|e| my_error("mysql claim_jobs", &e))?;
+            let rows: Vec<String> = conn
+                .exec(
+                    "SELECT doc FROM `_jobs` \
+                         WHERE JSON_UNQUOTE(JSON_EXTRACT(doc, '$.locked_by')) = ?",
+                    (&token,),
+                )
+                .map_err(|e| my_error("mysql claim_jobs select", &e))?;
+            rows.into_iter()
+                .map(|s| {
+                    serde_json::from_str(&s).map_err(|e| format!("mysql claim_jobs json: {e}"))
+                })
+                .collect()
+        })
     })
 }
 
@@ -1484,22 +1550,27 @@ pub fn claim_cron_slot(
     expected_next_run_at: &str,
     patch: serde_json::Value,
 ) -> Result<bool, String> {
-    if !table_exists("_cron_jobs")? {
-        return Ok(false);
-    }
-    let patch_str = patch.to_string();
-    with_conn(|conn| {
-        let affected = conn
-            .exec_iter(
-                "UPDATE `_cron_jobs` \
-                 SET doc = JSON_MERGE_PATCH(doc, CAST(? AS JSON)) \
-                 WHERE _key = ? AND JSON_UNQUOTE(JSON_EXTRACT(doc, '$.next_run_at')) = ?",
-                (&patch_str, key, expected_next_run_at),
-            )
-            .map_err(|e| my_error("mysql claim_cron_slot", &e))?
-            .affected_rows();
-        Ok(affected == 1)
-    })
+    super::ensured::read_with_table(
+        "_cron_jobs",
+        has_active_tx(),
+        table_exists,
+        || false,
+        || {
+            let patch_str = patch.to_string();
+            with_conn(|conn| {
+                let affected = conn
+                    .exec_iter(
+                        "UPDATE `_cron_jobs` \
+                         SET doc = JSON_MERGE_PATCH(doc, CAST(? AS JSON)) \
+                         WHERE _key = ? AND JSON_UNQUOTE(JSON_EXTRACT(doc, '$.next_run_at')) = ?",
+                        (&patch_str, key, expected_next_run_at),
+                    )
+                    .map_err(|e| my_error("mysql claim_cron_slot", &e))?
+                    .affected_rows();
+                Ok(affected == 1)
+            })
+        },
+    )
 }
 
 fn table_exists(table: &str) -> Result<bool, String> {

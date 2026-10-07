@@ -24,10 +24,10 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::LazyLock;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use lazy_static::lazy_static;
 use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 
@@ -52,10 +52,9 @@ struct Pop3Conn {
     reader: BufReader<Box<dyn Stream>>,
 }
 
-lazy_static! {
-    /// Process-global registry of open connections, keyed by instance id.
-    static ref POP3_CONNS: Mutex<HashMap<usize, Pop3Conn>> = Mutex::new(HashMap::new());
-}
+/// Process-global registry of open connections, keyed by instance id.
+static POP3_CONNS: LazyLock<Mutex<HashMap<usize, Pop3Conn>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 static POP3_NEXT_ID: AtomicUsize = AtomicUsize::new(1);
 
 // ---------------------------------------------------------------------------

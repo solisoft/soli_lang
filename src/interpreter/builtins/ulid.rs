@@ -7,13 +7,31 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use ::ulid::Ulid;
+use rand::RngCore;
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, NativeFunction, Value};
 
+const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/// 48 bits of Unix milliseconds, then 80 random bits, as 26 Crockford Base32
+/// characters (the top two of the 130 encoded bits are zero).
+fn ulid_string() -> String {
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+        & 0xFFFF_FFFF_FFFF;
+    let mut random = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut random[6..]);
+    let value = (u128::from(millis) << 80) | u128::from_be_bytes(random);
+    (0..26)
+        .map(|i| CROCKFORD[((value >> (125 - 5 * i)) & 0x1f) as usize] as char)
+        .collect()
+}
+
 fn make_ulid(_args: &[Value]) -> Result<Value, String> {
-    Ok(Value::String(Ulid::new().to_string().into()))
+    Ok(Value::String(ulid_string().into()))
 }
 
 pub fn register_ulid_builtins(env: &mut Environment) {
@@ -71,7 +89,16 @@ mod tests {
                         c
                     );
                 }
-                Ulid::from_string(&s).expect("round-trips through ulid crate");
+                // The first ten characters are the creation time in ms.
+                let millis = s[..10].bytes().fold(0u64, |acc, c| {
+                    let digit = CROCKFORD.iter().position(|&d| d == c).unwrap() as u64;
+                    acc * 32 + digit
+                });
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64;
+                assert!(now.abs_diff(millis) < 5_000, "{millis} vs {now}");
             }
             other => panic!("expected string, got {:?}", other),
         }

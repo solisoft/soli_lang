@@ -28,6 +28,8 @@ pub mod introspect;
 pub mod merge;
 #[cfg(feature = "mysql")]
 pub mod mysql;
+#[cfg(any(feature = "postgres", feature = "mysql", feature = "sqlite"))]
+pub mod pool;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 pub mod registry;

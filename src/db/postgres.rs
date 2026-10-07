@@ -3,6 +3,7 @@
 //! Each model collection is a table with `_key TEXT PRIMARY KEY` and
 //! `doc JSONB` holding the full Soli document (including system fields).
 
+use super::pool::{Manager, Pool, Pooled};
 use super::registry::{active_connection_name, active_spec};
 use super::sql_compile::{
     compile_aggregate_d, compile_count_d, compile_delete_all_d, compile_exists_d,
@@ -12,15 +13,139 @@ use super::sql_compile::{
 };
 use super::tls::MaybeTls;
 use postgres::types::{ToSql, Type};
-use r2d2::Pool;
-use r2d2_postgres::PostgresConnectionManager;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-type PgPool = Pool<PostgresConnectionManager<MaybeTls>>;
-type PgPooled = r2d2::PooledConnection<PostgresConnectionManager<MaybeTls>>;
+struct PgManager {
+    config: postgres::Config,
+    tls: MaybeTls,
+}
+
+impl Manager for PgManager {
+    type Conn = PgConn;
+
+    fn connect(&self) -> Result<PgConn, String> {
+        let client = self
+            .config
+            .connect(self.tls.clone())
+            .map_err(|e| error_chain(&e))?;
+        Ok(PgConn {
+            client,
+            statements: HashMap::new(),
+        })
+    }
+
+    fn ping(&self, conn: &mut PgConn) -> bool {
+        conn.client.simple_query("").is_ok()
+    }
+
+    fn is_broken(&self, conn: &mut PgConn) -> bool {
+        conn.client.is_closed()
+    }
+}
+
+/// Statements kept per connection. The adapter's SQL comes from a few shapes,
+/// but a filter can inline an `IN` list of any length: past this many the
+/// cache starts over rather than growing (a dropped `Statement` is closed on
+/// the server).
+const STATEMENT_CACHE: usize = 256;
+
+/// A pooled connection and the statements prepared on it.
+///
+/// `Client::query(&str, …)` prepares the statement on every call — a Parse /
+/// Describe round trip before the Bind / Execute one — and closes it after, so
+/// every query cost two round trips and a fresh plan. Here a statement is
+/// prepared once per connection: a repeated query is one round trip, and the
+/// server can settle on a generic plan.
+///
+/// The three methods shadow the `Client` ones of the same name and signature,
+/// so call sites read as before; everything else derefs to the `Client`.
+pub(crate) struct PgConn {
+    client: postgres::Client,
+    statements: HashMap<String, postgres::Statement>,
+}
+
+impl PgConn {
+    fn statement(&mut self, sql: &str) -> Result<postgres::Statement, postgres::Error> {
+        if let Some(statement) = self.statements.get(sql) {
+            return Ok(statement.clone());
+        }
+        let statement = self.client.prepare(sql)?;
+        if self.statements.len() >= STATEMENT_CACHE {
+            self.statements.clear();
+        }
+        self.statements.insert(sql.to_owned(), statement.clone());
+        Ok(statement)
+    }
+
+    fn run<T>(
+        &mut self,
+        sql: &str,
+        call: impl Fn(&mut postgres::Client, &postgres::Statement) -> Result<T, postgres::Error>,
+    ) -> Result<T, postgres::Error> {
+        let statement = self.statement(sql)?;
+        match call(&mut self.client, &statement) {
+            Ok(value) => Ok(value),
+            Err(e) => {
+                // Whatever failed, do not keep a statement that may be stale.
+                self.statements.remove(sql);
+                // The server re-plans a statement after DDL by itself, but
+                // refuses one whose result columns changed (0A000 "cached plan
+                // must not change result type"). Prepare it again — unless a
+                // transaction is open, which the error has already aborted.
+                let replan = e.code() == Some(&postgres::error::SqlState::FEATURE_NOT_SUPPORTED);
+                if replan && !TX_ACTIVE.get() {
+                    let statement = self.statement(sql)?;
+                    return call(&mut self.client, &statement);
+                }
+                Err(e)
+            }
+        }
+    }
+
+    pub fn query(
+        &mut self,
+        sql: &str,
+        params: &[&(dyn ToSql + Sync)],
+    ) -> Result<Vec<postgres::Row>, postgres::Error> {
+        self.run(sql, |client, statement| client.query(statement, params))
+    }
+
+    pub fn query_one(
+        &mut self,
+        sql: &str,
+        params: &[&(dyn ToSql + Sync)],
+    ) -> Result<postgres::Row, postgres::Error> {
+        self.run(sql, |client, statement| client.query_one(statement, params))
+    }
+
+    pub fn execute(
+        &mut self,
+        sql: &str,
+        params: &[&(dyn ToSql + Sync)],
+    ) -> Result<u64, postgres::Error> {
+        self.run(sql, |client, statement| client.execute(statement, params))
+    }
+}
+
+impl std::ops::Deref for PgConn {
+    type Target = postgres::Client;
+
+    fn deref(&self) -> &postgres::Client {
+        &self.client
+    }
+}
+
+impl std::ops::DerefMut for PgConn {
+    fn deref_mut(&mut self) -> &mut postgres::Client {
+        &mut self.client
+    }
+}
+
+type PgPool = Pool<PgManager>;
+type PgPooled = Pooled<PgManager>;
 
 static POOLS: OnceLock<Mutex<HashMap<String, PgPool>>> = OnceLock::new();
 
@@ -43,7 +168,7 @@ thread_local! {
     /// Re-entrancy for `with_conn` (e.g. `insert` → `ensure_table` →
     /// `with_conn`): the live client plus the connection name it belongs to,
     /// so a nested op on a DIFFERENT named connection never borrows it.
-    static ACTIVE_CLIENT: RefCell<Option<(*mut postgres::Client, String)>> =
+    static ACTIVE_CLIENT: RefCell<Option<(*mut PgConn, String)>> =
         const { RefCell::new(None) };
 }
 
@@ -52,8 +177,8 @@ thread_local! {
 struct ActiveClientGuard;
 
 impl ActiveClientGuard {
-    fn set(client: &mut postgres::Client, name: String) -> Self {
-        ACTIVE_CLIENT.with(|c| *c.borrow_mut() = Some((client as *mut postgres::Client, name)));
+    fn set(client: &mut PgConn, name: String) -> Self {
+        ACTIVE_CLIENT.with(|c| *c.borrow_mut() = Some((client as *mut PgConn, name)));
         ActiveClientGuard
     }
 }
@@ -223,28 +348,25 @@ fn pool_for_active_uncached() -> Result<PgPool, String> {
         return Ok(p.clone());
     }
     let (config, tls) = config_and_tls(&url, &name)?;
-    // A mandatory TLS mode is worth one probe connection: r2d2 retries a failing
-    // connection until its timeout and then reports "timed out waiting for
-    // connection", losing the reason. Connecting once here surfaces the real
-    // cause ("server does not support TLS") immediately instead of ten seconds
-    // later with the diagnosis missing. Pools are cached per connection name,
-    // so this is once per pool, not per checkout.
-    if let Some(mode) = mandatory_tls_mode(&url) {
-        config.connect(tls.clone()).map_err(|e| {
-            format!(
-                "connection {name:?} asked for sslmode={}: {}",
-                mode.as_str(),
-                error_chain(&e)
-            )
-        })?;
-    }
-    let manager = PostgresConnectionManager::new(config, tls);
     let max = spec.pool_size.unwrap_or(10).max(1);
-    let pool = Pool::builder()
-        .max_size(max as u32)
-        .connection_timeout(Duration::from_secs(10))
-        .build(manager)
-        .map_err(|e| format!("postgres pool ({name}): {}", error_chain(&e)))?;
+    let pool = Pool::new(
+        PgManager { config, tls },
+        max,
+        Duration::from_secs(10),
+        Some(super::pool::PING_AFTER),
+    );
+    // Open the first connection now: an unreachable server or a refused TLS
+    // handshake fails here, once per pool, rather than on the first query —
+    // `ensure_connected` relies on it. The connection then stays in the pool.
+    if let Err(e) = pool.get() {
+        return Err(match mandatory_tls_mode(&url) {
+            Some(mode) => format!(
+                "connection {name:?} asked for sslmode={}: {e}",
+                mode.as_str()
+            ),
+            None => format!("postgres pool ({name}): {e}"),
+        });
+    }
     map.insert(cache_key, pool.clone());
     remember(&pool);
     Ok(pool)
@@ -374,7 +496,7 @@ pub fn clear_transaction() {
     });
 }
 
-fn with_conn<T>(f: impl FnOnce(&mut postgres::Client) -> Result<T, String>) -> Result<T, String> {
+fn with_conn<T>(f: impl FnOnce(&mut PgConn) -> Result<T, String>) -> Result<T, String> {
     let name = active_connection_name();
 
     // Re-entrant (insert → ensure_table → with_conn) — reuse the outer client
@@ -407,7 +529,7 @@ fn with_conn<T>(f: impl FnOnce(&mut postgres::Client) -> Result<T, String>) -> R
     if tx_matches {
         let mut restore = RestoreTx(TX.with(|c| c.borrow_mut().take()));
         if let Some(ref mut state) = restore.0 {
-            let client: &mut postgres::Client = &mut state.conn;
+            let client: &mut PgConn = &mut state.conn;
             let _guard = ActiveClientGuard::set(client, name);
             return f(client);
         }
@@ -415,9 +537,15 @@ fn with_conn<T>(f: impl FnOnce(&mut postgres::Client) -> Result<T, String>) -> R
 
     let pool = pool_for_active()?;
     let mut conn = pool.get().map_err(|e| format!("postgres checkout: {e}"))?;
-    let client: &mut postgres::Client = &mut conn;
-    let _guard = ActiveClientGuard::set(client, name);
-    f(client)
+    let result = {
+        let client: &mut PgConn = &mut conn;
+        let _guard = ActiveClientGuard::set(client, name);
+        f(client)
+    };
+    if result.is_err() {
+        conn.mark_suspect();
+    }
+    result
 }
 
 // ---------- document CRUD ----------
@@ -493,18 +621,23 @@ fn insert_many_into_existing(
 }
 
 pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> {
-    if !table_exists(table)? {
-        return Ok(None);
-    }
-    let table_q = Dialect::Postgres.quote_ident(table)?;
-    let sql = format!("SELECT doc FROM {table_q} WHERE _key = $1");
-    let _trace = super::trace::start_plain(&sql);
-    with_conn(|client| {
-        let rows = client
-            .query(&sql, &[&key])
-            .map_err(|e| pg_error("postgres get", &e))?;
-        Ok(rows.first().map(|r| r.get(0)))
-    })
+    super::ensured::read_with_table(
+        table,
+        has_active_tx(),
+        table_exists,
+        || None,
+        || {
+            let table_q = Dialect::Postgres.quote_ident(table)?;
+            let sql = format!("SELECT doc FROM {table_q} WHERE _key = $1");
+            let _trace = super::trace::start_plain(&sql);
+            with_conn(|client| {
+                let rows = client
+                    .query(&sql, &[&key])
+                    .map_err(|e| pg_error("postgres get", &e))?;
+                Ok(rows.first().map(|r| r.get(0)))
+            })
+        },
+    )
 }
 
 /// Update a document. When `merge` is true (Model.update / soft_delete /
@@ -666,37 +799,43 @@ fn update_existing(
 }
 
 pub fn delete(table: &str, key: &str) -> Result<(), String> {
-    if !table_exists(table)? {
-        return Ok(());
-    }
-    let table_q = Dialect::Postgres.quote_ident(table)?;
-    let sql = format!("DELETE FROM {table_q} WHERE _key = $1");
-    let _trace = super::trace::start_plain(&sql);
-    with_conn(|client| {
-        client
-            .execute(&sql, &[&key])
-            .map_err(|e| pg_error("postgres delete", &e))?;
-        Ok(())
-    })
+    super::ensured::read_with_table(
+        table,
+        has_active_tx(),
+        table_exists,
+        || (),
+        || {
+            let table_q = Dialect::Postgres.quote_ident(table)?;
+            let sql = format!("DELETE FROM {table_q} WHERE _key = $1");
+            let _trace = super::trace::start_plain(&sql);
+            with_conn(|client| {
+                client
+                    .execute(&sql, &[&key])
+                    .map_err(|e| pg_error("postgres delete", &e))?;
+                Ok(())
+            })
+        },
+    )
 }
 
 pub fn select(q: &ListQuery) -> Result<Vec<serde_json::Value>, String> {
-    if !table_exists(&q.table)? {
-        return Ok(Vec::new());
-    }
-    let compiled = compile_select_d(Dialect::Postgres, q)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    query_docs(&compiled.sql, &compiled.params)
+    super::ensured::read_with_table(&q.table, has_active_tx(), table_exists, Vec::new, || {
+        let compiled = compile_select_d(Dialect::Postgres, q)?;
+        let _trace = super::trace::start(&compiled.sql, &compiled.params);
+        query_docs(&compiled.sql, &compiled.params)
+    })
 }
 
 /// Batch-fetch documents by primary key (includes belongs_to).
 pub fn select_by_keys(table: &str, keys: &[String]) -> Result<Vec<serde_json::Value>, String> {
-    if keys.is_empty() || !table_exists(table)? {
+    if keys.is_empty() {
         return Ok(Vec::new());
     }
-    let compiled = compile_select_by_keys_d(Dialect::Postgres, table, keys)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    query_docs(&compiled.sql, &compiled.params)
+    super::ensured::read_with_table(table, has_active_tx(), table_exists, Vec::new, || {
+        let compiled = compile_select_by_keys_d(Dialect::Postgres, table, keys)?;
+        let _trace = super::trace::start(&compiled.sql, &compiled.params);
+        query_docs(&compiled.sql, &compiled.params)
+    })
 }
 
 /// Batch-fetch where a JSON text field is in `values` (includes has_many/has_one).
@@ -705,12 +844,14 @@ pub fn select_json_text_in(
     field: &str,
     values: &[String],
 ) -> Result<Vec<serde_json::Value>, String> {
-    if values.is_empty() || !table_exists(table)? {
+    if values.is_empty() {
         return Ok(Vec::new());
     }
-    let compiled = compile_select_json_text_in_d(Dialect::Postgres, table, field, values)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    query_docs(&compiled.sql, &compiled.params)
+    super::ensured::read_with_table(table, has_active_tx(), table_exists, Vec::new, || {
+        let compiled = compile_select_json_text_in_d(Dialect::Postgres, table, field, values)?;
+        let _trace = super::trace::start(&compiled.sql, &compiled.params);
+        query_docs(&compiled.sql, &compiled.params)
+    })
 }
 
 /// Multi-row GROUP BY returning plain objects keyed by group fields + aliases.
@@ -719,29 +860,28 @@ pub fn group_by(
     group_fields: &[String],
     aggs: &[GroupAgg],
 ) -> Result<Vec<serde_json::Value>, String> {
-    if !table_exists(&q.table)? {
-        return Ok(Vec::new());
-    }
-    let compiled = compile_group_by_d(Dialect::Postgres, q, group_fields, aggs)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|client| {
-        let owned = bind_owned(&compiled.params);
-        let refs = bind_refs(&owned);
-        let rows = client
-            .query(&compiled.sql, &refs)
-            .map_err(|e| pg_error("postgres group_by", &e))?;
-        let mut out = Vec::with_capacity(rows.len());
-        for row in rows {
-            let mut map = serde_json::Map::new();
-            let cols = row.columns();
-            for (i, col) in cols.iter().enumerate() {
-                let name = col.name();
-                let v = pg_cell_to_json(&row, i);
-                map.insert(name.to_string(), v);
+    super::ensured::read_with_table(&q.table, has_active_tx(), table_exists, Vec::new, || {
+        let compiled = compile_group_by_d(Dialect::Postgres, q, group_fields, aggs)?;
+        let _trace = super::trace::start(&compiled.sql, &compiled.params);
+        with_conn(|client| {
+            let owned = bind_owned(&compiled.params);
+            let refs = bind_refs(&owned);
+            let rows = client
+                .query(&compiled.sql, &refs)
+                .map_err(|e| pg_error("postgres group_by", &e))?;
+            let mut out = Vec::with_capacity(rows.len());
+            for row in rows {
+                let mut map = serde_json::Map::new();
+                let cols = row.columns();
+                for (i, col) in cols.iter().enumerate() {
+                    let name = col.name();
+                    let v = pg_cell_to_json(&row, i);
+                    map.insert(name.to_string(), v);
+                }
+                out.push(serde_json::Value::Object(map));
             }
-            out.push(serde_json::Value::Object(map));
-        }
-        Ok(out)
+            Ok(out)
+        })
     })
 }
 
@@ -768,91 +908,116 @@ fn pg_cell_to_json(row: &postgres::Row, i: usize) -> serde_json::Value {
 }
 
 pub fn count(q: &ListQuery) -> Result<i64, String> {
-    if !table_exists(&q.table)? {
-        return Ok(0);
-    }
-    let compiled = compile_count_d(Dialect::Postgres, q)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|client| {
-        let owned = bind_owned(&compiled.params);
-        let refs = bind_refs(&owned);
-        let row = client
-            .query_one(&compiled.sql, &refs)
-            .map_err(|e| pg_error("postgres count", &e))?;
-        let n: i64 = row.get(0);
-        Ok(n)
-    })
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || 0,
+        || {
+            let compiled = compile_count_d(Dialect::Postgres, q)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|client| {
+                let owned = bind_owned(&compiled.params);
+                let refs = bind_refs(&owned);
+                let row = client
+                    .query_one(&compiled.sql, &refs)
+                    .map_err(|e| pg_error("postgres count", &e))?;
+                let n: i64 = row.get(0);
+                Ok(n)
+            })
+        },
+    )
 }
 
 pub fn exists(q: &ListQuery) -> Result<bool, String> {
-    if !table_exists(&q.table)? {
-        return Ok(false);
-    }
-    let compiled = compile_exists_d(Dialect::Postgres, q)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|client| {
-        let owned = bind_owned(&compiled.params);
-        let refs = bind_refs(&owned);
-        let rows = client
-            .query(&compiled.sql, &refs)
-            .map_err(|e| pg_error("postgres exists", &e))?;
-        Ok(!rows.is_empty())
-    })
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || false,
+        || {
+            let compiled = compile_exists_d(Dialect::Postgres, q)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|client| {
+                let owned = bind_owned(&compiled.params);
+                let refs = bind_refs(&owned);
+                let rows = client
+                    .query(&compiled.sql, &refs)
+                    .map_err(|e| pg_error("postgres exists", &e))?;
+                Ok(!rows.is_empty())
+            })
+        },
+    )
 }
 
 pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json::Value, String> {
-    if !table_exists(&q.table)? {
-        return Ok(serde_json::Value::Null);
-    }
-    let compiled = compile_aggregate_d(Dialect::Postgres, q, func, field)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|client| {
-        let owned = bind_owned(&compiled.params);
-        let refs = bind_refs(&owned);
-        let row = client
-            .query_one(&compiled.sql, &refs)
-            .map_err(|e| pg_error("postgres aggregate", &e))?;
-        // COUNT returns i64; SUM/AVG may be f64 or Decimal as string via float.
-        if matches!(func, SqlAgg::Count) {
-            let n: i64 = row.get(0);
-            return Ok(serde_json::json!(n));
-        }
-        let v: Option<f64> = row.try_get(0).ok();
-        Ok(v.map(|f| serde_json::json!(f))
-            .unwrap_or(serde_json::Value::Null))
-    })
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || serde_json::Value::Null,
+        || {
+            let compiled = compile_aggregate_d(Dialect::Postgres, q, func, field)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|client| {
+                let owned = bind_owned(&compiled.params);
+                let refs = bind_refs(&owned);
+                let row = client
+                    .query_one(&compiled.sql, &refs)
+                    .map_err(|e| pg_error("postgres aggregate", &e))?;
+                // COUNT returns i64; SUM/AVG may be f64 or Decimal as string via float.
+                if matches!(func, SqlAgg::Count) {
+                    let n: i64 = row.get(0);
+                    return Ok(serde_json::json!(n));
+                }
+                let v: Option<f64> = row.try_get(0).ok();
+                Ok(v.map(|f| serde_json::json!(f))
+                    .unwrap_or(serde_json::Value::Null))
+            })
+        },
+    )
 }
 
 pub fn delete_all(q: &ListQuery) -> Result<u64, String> {
-    if !table_exists(&q.table)? {
-        return Ok(0);
-    }
-    let compiled = compile_delete_all_d(Dialect::Postgres, q)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|client| {
-        let owned = bind_owned(&compiled.params);
-        let refs = bind_refs(&owned);
-        let n = client
-            .execute(&compiled.sql, &refs)
-            .map_err(|e| pg_error("postgres delete_all", &e))?;
-        Ok(n)
-    })
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || 0,
+        || {
+            let compiled = compile_delete_all_d(Dialect::Postgres, q)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|client| {
+                let owned = bind_owned(&compiled.params);
+                let refs = bind_refs(&owned);
+                let n = client
+                    .execute(&compiled.sql, &refs)
+                    .map_err(|e| pg_error("postgres delete_all", &e))?;
+                Ok(n)
+            })
+        },
+    )
 }
 
 pub fn update_all(q: &ListQuery, patch: serde_json::Value) -> Result<u64, String> {
-    if !table_exists(&q.table)? {
-        return Ok(0);
-    }
-    let compiled = compile_update_all_d(Dialect::Postgres, q, &patch)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|client| {
-        let owned = bind_owned(&compiled.params);
-        let refs = bind_refs(&owned);
-        let n = client
-            .execute(&compiled.sql, &refs)
-            .map_err(|e| pg_error("postgres update_all", &e))?;
-        Ok(n)
-    })
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || 0,
+        || {
+            let compiled = compile_update_all_d(Dialect::Postgres, q, &patch)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|client| {
+                let owned = bind_owned(&compiled.params);
+                let refs = bind_refs(&owned);
+                let n = client
+                    .execute(&compiled.sql, &refs)
+                    .map_err(|e| pg_error("postgres update_all", &e))?;
+                Ok(n)
+            })
+        },
+    )
 }
 
 fn query_docs(sql: &str, params: &[SqlBind]) -> Result<Vec<serde_json::Value>, String> {
@@ -1018,27 +1183,32 @@ pub fn increment_field(
     field: &str,
     delta: i64,
 ) -> Result<Option<i64>, String> {
-    if !table_exists(table)? {
-        return Ok(None);
-    }
-    // Validated as an identifier before it reaches a JSON path literal.
-    Dialect::Postgres.quote_ident(field)?;
-    let table_q = Dialect::Postgres.quote_ident(table)?;
-    let sql = format!(
-        "UPDATE {table_q} SET doc = jsonb_set(doc, '{{{field}}}', \
-             to_jsonb(COALESCE((doc->>'{field}')::numeric, 0) + $1::bigint)) \
-         WHERE _key = $2 RETURNING (doc->>'{field}')"
-    );
-    let _trace = super::trace::start_plain(&sql);
-    with_conn(|client| {
-        let rows = client
-            .query(&sql, &[&delta, &key])
-            .map_err(|e| pg_error("postgres increment", &e))?;
-        Ok(rows
-            .first()
-            .and_then(|r| r.get::<_, Option<String>>(0))
-            .and_then(|text| super::parse_counter(&text)))
-    })
+    super::ensured::read_with_table(
+        table,
+        has_active_tx(),
+        table_exists,
+        || None,
+        || {
+            // Validated as an identifier before it reaches a JSON path literal.
+            Dialect::Postgres.quote_ident(field)?;
+            let table_q = Dialect::Postgres.quote_ident(table)?;
+            let sql = format!(
+                "UPDATE {table_q} SET doc = jsonb_set(doc, '{{{field}}}', \
+                     to_jsonb(COALESCE((doc->>'{field}')::numeric, 0) + $1::bigint)) \
+                 WHERE _key = $2 RETURNING (doc->>'{field}')"
+            );
+            let _trace = super::trace::start_plain(&sql);
+            with_conn(|client| {
+                let rows = client
+                    .query(&sql, &[&delta, &key])
+                    .map_err(|e| pg_error("postgres increment", &e))?;
+                Ok(rows
+                    .first()
+                    .and_then(|r| r.get::<_, Option<String>>(0))
+                    .and_then(|text| super::parse_counter(&text)))
+            })
+        },
+    )
 }
 
 /// Index names on `table`.
@@ -1540,29 +1710,28 @@ pub fn claim_jobs(
     locked_until_iso: &str,
     batch: usize,
 ) -> Result<Vec<serde_json::Value>, String> {
-    if !table_exists("_jobs")? {
-        return Ok(Vec::new());
-    }
-    let sql = "UPDATE _jobs SET doc = doc || jsonb_build_object(\
-                   'state', 'running', 'locked_by', $1::text, 'locked_until', $2::text, \
-                   'attempts', COALESCE((doc->>'attempts')::bigint, 0) + 1) \
-               WHERE _key IN (\
-                   SELECT _key FROM _jobs \
-                   WHERE ((doc->>'state') IN ('pending','scheduled','failed') \
-                          AND (doc->>'run_at') <= $3) \
-                      OR ((doc->>'state') = 'running' AND (doc->>'locked_until') < $3) \
-                   ORDER BY COALESCE((doc->>'priority')::bigint, 0) DESC, (doc->>'run_at') ASC \
-                   LIMIT $4 FOR UPDATE SKIP LOCKED) \
-               RETURNING doc";
-    let _trace = super::trace::start_plain(sql);
-    with_conn(|client| {
-        let rows = client
-            .query(
-                sql,
-                &[&worker_id, &locked_until_iso, &now_iso, &(batch as i64)],
-            )
-            .map_err(|e| pg_error("postgres claim_jobs", &e))?;
-        Ok(rows.iter().map(|r| r.get(0)).collect())
+    super::ensured::read_with_table("_jobs", has_active_tx(), table_exists, Vec::new, || {
+        let sql = "UPDATE _jobs SET doc = doc || jsonb_build_object(\
+                           'state', 'running', 'locked_by', $1::text, 'locked_until', $2::text, \
+                           'attempts', COALESCE((doc->>'attempts')::bigint, 0) + 1) \
+                       WHERE _key IN (\
+                           SELECT _key FROM _jobs \
+                           WHERE ((doc->>'state') IN ('pending','scheduled','failed') \
+                                  AND (doc->>'run_at') <= $3) \
+                              OR ((doc->>'state') = 'running' AND (doc->>'locked_until') < $3) \
+                           ORDER BY COALESCE((doc->>'priority')::bigint, 0) DESC, (doc->>'run_at') ASC \
+                           LIMIT $4 FOR UPDATE SKIP LOCKED) \
+                       RETURNING doc";
+        let _trace = super::trace::start_plain(sql);
+        with_conn(|client| {
+            let rows = client
+                .query(
+                    sql,
+                    &[&worker_id, &locked_until_iso, &now_iso, &(batch as i64)],
+                )
+                .map_err(|e| pg_error("postgres claim_jobs", &e))?;
+            Ok(rows.iter().map(|r| r.get(0)).collect())
+        })
     })
 }
 
@@ -1574,19 +1743,24 @@ pub fn claim_cron_slot(
     expected_next_run_at: &str,
     patch: serde_json::Value,
 ) -> Result<bool, String> {
-    if !table_exists("_cron_jobs")? {
-        return Ok(false);
-    }
-    with_conn(|client| {
-        let n = client
-            .execute(
-                "UPDATE _cron_jobs SET doc = doc || $1 \
-                 WHERE _key = $2 AND (doc->>'next_run_at') = $3",
-                &[&patch, &key, &expected_next_run_at],
-            )
-            .map_err(|e| pg_error("postgres claim_cron_slot", &e))?;
-        Ok(n == 1)
-    })
+    super::ensured::read_with_table(
+        "_cron_jobs",
+        has_active_tx(),
+        table_exists,
+        || false,
+        || {
+            with_conn(|client| {
+                let n = client
+                    .execute(
+                        "UPDATE _cron_jobs SET doc = doc || $1 \
+                         WHERE _key = $2 AND (doc->>'next_run_at') = $3",
+                        &[&patch, &key, &expected_next_run_at],
+                    )
+                    .map_err(|e| pg_error("postgres claim_cron_slot", &e))?;
+                Ok(n == 1)
+            })
+        },
+    )
 }
 
 // ---------- helpers ----------

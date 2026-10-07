@@ -15,6 +15,7 @@
 //!   does its select-then-update inside that transaction. The claim is short,
 //!   and correctness comes from the lock rather than from row-level skipping.
 
+use super::pool::{Manager, Pool, Pooled};
 use super::registry::{active_connection_name, active_spec};
 use super::sql_compile::{
     compile_aggregate_d, compile_count_d, compile_delete_all_d, compile_exists_d,
@@ -22,8 +23,6 @@ use super::sql_compile::{
     compile_select_json_text_in_d, compile_update_all_d, create_table_sql_d, drop_table_sql_d,
     migrations_table_sql_d, Dialect, GroupAgg, ListQuery, SqlAgg, SqlBind,
 };
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::types::{Value as SqlValue, ValueRef};
 use rusqlite::{params_from_iter, OptionalExtension};
 use std::cell::{Cell, RefCell};
@@ -32,8 +31,29 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-type SqPool = Pool<SqliteConnectionManager>;
-type SqConn = r2d2::PooledConnection<SqliteConnectionManager>;
+struct SqManager(Target);
+
+impl Manager for SqManager {
+    type Conn = rusqlite::Connection;
+
+    fn connect(&self) -> Result<rusqlite::Connection, String> {
+        let mut conn = match &self.0 {
+            Target::File(path) => rusqlite::Connection::open(path),
+            Target::Memory => rusqlite::Connection::open_in_memory(),
+        }
+        .map_err(|e| e.to_string())?;
+        init_conn(&mut conn).map_err(|e| e.to_string())?;
+        Ok(conn)
+    }
+
+    // A local handle does not go stale; the pool never calls this.
+    fn ping(&self, _conn: &mut rusqlite::Connection) -> bool {
+        true
+    }
+}
+
+type SqPool = Pool<SqManager>;
+type SqConn = Pooled<SqManager>;
 
 static POOLS: OnceLock<Mutex<HashMap<String, SqPool>>> = OnceLock::new();
 
@@ -155,12 +175,42 @@ fn pools() -> &'static Mutex<HashMap<String, SqPool>> {
 /// busy timeout turns writer contention into a wait rather than an error.
 fn init_conn(conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
     conn.busy_timeout(Duration::from_secs(10))?;
+    // Statements are prepared through the connection's cache; rusqlite's
+    // default of 16 is fewer than the shapes one app's models generate.
+    conn.set_prepared_statement_cache_capacity(256);
     // A memory database has no journal to switch; ignore the answer either way.
     let _: Result<String, _> = conn.query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0));
     conn.execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;")
 }
 
+thread_local! {
+    /// The pool this thread handed out last, with the connection name and url
+    /// it is cached under in `POOLS` — the same shortcut the postgres and mysql
+    /// adapters take, so a query does not lock the global map and `format!` its
+    /// key. `POOLS` never evicts, so an entry here never outlives its original.
+    static LAST_POOL: RefCell<Option<(String, String, SqPool)>> = const { RefCell::new(None) };
+}
+
 fn pool_for_active() -> Result<SqPool, String> {
+    let recent = super::registry::with_active_spec(|spec| {
+        if spec.adapter != super::Adapter::Sqlite {
+            return None;
+        }
+        let url = spec.url.as_deref()?;
+        LAST_POOL.with(|last| {
+            last.borrow()
+                .as_ref()
+                .filter(|(name, cached_url, _)| *name == spec.name && cached_url == url)
+                .map(|(_, _, pool)| pool.clone())
+        })
+    })?;
+    if let Some(pool) = recent {
+        return Ok(pool);
+    }
+    pool_for_active_uncached()
+}
+
+fn pool_for_active_uncached() -> Result<SqPool, String> {
     let name = active_connection_name();
     let spec = active_spec()?;
     if spec.adapter != super::Adapter::Sqlite {
@@ -180,35 +230,40 @@ fn pool_for_active() -> Result<SqPool, String> {
     // file, so reads and writes silently went to the previous database — and a
     // deleted file left a pool of handles to nothing.
     let cache_key = format!("{name}\u{1f}{url}");
+    let remember = |pool: &SqPool| {
+        LAST_POOL.with(|last| {
+            *last.borrow_mut() = Some((name.clone(), url.clone(), pool.clone()));
+        });
+    };
     let mut map = pools().lock().unwrap();
     if let Some(p) = map.get(&cache_key) {
+        remember(p);
         return Ok(p.clone());
     }
     let target = parse_target(&url);
-    let (manager, max) = match &target {
+    let max = match &target {
         Target::File(path) => {
             // A missing parent directory is the common first-run failure
             // (`sqlite://db/app.sqlite3`); create it rather than erroring.
             if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
                 let _ = std::fs::create_dir_all(parent);
             }
-            let max = spec.pool_size.unwrap_or(5).max(1) as u32;
-            (SqliteConnectionManager::file(path), max)
+            spec.pool_size.unwrap_or(5).max(1)
         }
         // Each memory connection would be its OWN empty database, so the pool
-        // must hold exactly one and never recycle it.
-        Target::Memory => (SqliteConnectionManager::memory(), 1),
+        // must hold exactly one. It never drops it either: a SQLite handle is
+        // never pinged, never reported broken, and never expires.
+        Target::Memory => 1,
     };
-    let manager = manager.with_init(init_conn);
-    let pool = Pool::builder()
-        .max_size(max)
-        .min_idle(Some(1))
-        .idle_timeout(None)
-        .max_lifetime(None)
-        .connection_timeout(Duration::from_secs(10))
-        .build(manager)
-        .map_err(|e| format!("sqlite pool ({name}): {e}"))?;
+    let pool = Pool::new(SqManager(target), max, Duration::from_secs(10), None);
+    // Open the first connection now, so a bad path fails here rather than on
+    // the first query (and a memory database exists from the start).
+    drop(
+        pool.get()
+            .map_err(|e| format!("sqlite pool ({name}): {e}"))?,
+    );
     map.insert(cache_key, pool.clone());
+    remember(&pool);
     Ok(pool)
 }
 
@@ -511,17 +566,21 @@ fn insert_many_into_existing(
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let n = conn
-            .execute(&compiled.sql, params_from_iter(params.iter()))
+            .prepare_cached(&compiled.sql)
+            .and_then(|mut stmt| stmt.execute(params_from_iter(params.iter())))
             .map_err(|e| lite_error("sqlite insert_many", &e))?;
         Ok(n as u64)
     })
 }
 
 pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> {
-    if !table_exists(table)? {
-        return Ok(None);
-    }
-    with_conn(|conn| get_on(conn, table, key))
+    super::ensured::read_with_table(
+        table,
+        has_active_tx(),
+        table_exists,
+        || None,
+        || with_conn(|conn| get_on(conn, table, key)),
+    )
 }
 
 pub fn update(
@@ -583,35 +642,41 @@ fn update_existing(
 }
 
 pub fn delete(table: &str, key: &str) -> Result<(), String> {
-    if !table_exists(table)? {
-        return Ok(());
-    }
-    let table_q = Dialect::Sqlite.quote_ident(table)?;
-    let sql = format!("DELETE FROM {table_q} WHERE _key = ?");
-    let _trace = super::trace::start_plain(&sql);
-    with_conn(|conn| {
-        conn.execute(&sql, [key])
-            .map_err(|e| lite_error("sqlite delete", &e))?;
-        Ok(())
-    })
+    super::ensured::read_with_table(
+        table,
+        has_active_tx(),
+        table_exists,
+        || (),
+        || {
+            let table_q = Dialect::Sqlite.quote_ident(table)?;
+            let sql = format!("DELETE FROM {table_q} WHERE _key = ?");
+            let _trace = super::trace::start_plain(&sql);
+            with_conn(|conn| {
+                conn.execute(&sql, [key])
+                    .map_err(|e| lite_error("sqlite delete", &e))?;
+                Ok(())
+            })
+        },
+    )
 }
 
 pub fn select(q: &ListQuery) -> Result<Vec<serde_json::Value>, String> {
-    if !table_exists(&q.table)? {
-        return Ok(Vec::new());
-    }
-    let compiled = compile_select_d(Dialect::Sqlite, q)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    query_docs(&compiled.sql, &compiled.params)
+    super::ensured::read_with_table(&q.table, has_active_tx(), table_exists, Vec::new, || {
+        let compiled = compile_select_d(Dialect::Sqlite, q)?;
+        let _trace = super::trace::start(&compiled.sql, &compiled.params);
+        query_docs(&compiled.sql, &compiled.params)
+    })
 }
 
 pub fn select_by_keys(table: &str, keys: &[String]) -> Result<Vec<serde_json::Value>, String> {
-    if keys.is_empty() || !table_exists(table)? {
+    if keys.is_empty() {
         return Ok(Vec::new());
     }
-    let compiled = compile_select_by_keys_d(Dialect::Sqlite, table, keys)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    query_docs(&compiled.sql, &compiled.params)
+    super::ensured::read_with_table(table, has_active_tx(), table_exists, Vec::new, || {
+        let compiled = compile_select_by_keys_d(Dialect::Sqlite, table, keys)?;
+        let _trace = super::trace::start(&compiled.sql, &compiled.params);
+        query_docs(&compiled.sql, &compiled.params)
+    })
 }
 
 pub fn select_json_text_in(
@@ -619,12 +684,14 @@ pub fn select_json_text_in(
     field: &str,
     values: &[String],
 ) -> Result<Vec<serde_json::Value>, String> {
-    if values.is_empty() || !table_exists(table)? {
+    if values.is_empty() {
         return Ok(Vec::new());
     }
-    let compiled = compile_select_json_text_in_d(Dialect::Sqlite, table, field, values)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    query_docs(&compiled.sql, &compiled.params)
+    super::ensured::read_with_table(table, has_active_tx(), table_exists, Vec::new, || {
+        let compiled = compile_select_json_text_in_d(Dialect::Sqlite, table, field, values)?;
+        let _trace = super::trace::start(&compiled.sql, &compiled.params);
+        query_docs(&compiled.sql, &compiled.params)
+    })
 }
 
 pub fn group_by(
@@ -632,135 +699,167 @@ pub fn group_by(
     group_fields: &[String],
     aggs: &[GroupAgg],
 ) -> Result<Vec<serde_json::Value>, String> {
-    if !table_exists(&q.table)? {
-        return Ok(Vec::new());
-    }
-    let compiled = compile_group_by_d(Dialect::Sqlite, q, group_fields, aggs)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    // Column order: group fields, then agg aliases (or "n" when there are none).
-    let mut col_names: Vec<String> = group_fields.to_vec();
-    if aggs.is_empty() {
-        col_names.push("n".into());
-    } else {
-        for a in aggs {
-            col_names.push(a.alias.clone());
-        }
-    }
-    with_conn(|conn| {
-        let params = to_sqlite_params(&compiled.params);
-        let mut stmt = conn
-            .prepare(&compiled.sql)
-            .map_err(|e| lite_error("sqlite group_by prepare", &e))?;
-        let mut rows = stmt
-            .query(params_from_iter(params.iter()))
-            .map_err(|e| lite_error("sqlite group_by", &e))?;
-        let mut out = Vec::new();
-        while let Some(row) = rows
-            .next()
-            .map_err(|e| lite_error("sqlite group_by row", &e))?
-        {
-            let mut map = serde_json::Map::new();
-            for (i, name) in col_names.iter().enumerate() {
-                let value = row.get_ref(i).map(value_to_json).unwrap_or_default();
-                map.insert(name.clone(), value);
+    super::ensured::read_with_table(&q.table, has_active_tx(), table_exists, Vec::new, || {
+        let compiled = compile_group_by_d(Dialect::Sqlite, q, group_fields, aggs)?;
+        let _trace = super::trace::start(&compiled.sql, &compiled.params);
+        // Column order: group fields, then agg aliases (or "n" when there are none).
+        let mut col_names: Vec<String> = group_fields.to_vec();
+        if aggs.is_empty() {
+            col_names.push("n".into());
+        } else {
+            for a in aggs {
+                col_names.push(a.alias.clone());
             }
-            out.push(serde_json::Value::Object(map));
         }
-        Ok(out)
-    })
-}
-
-pub fn count(q: &ListQuery) -> Result<i64, String> {
-    if !table_exists(&q.table)? {
-        return Ok(0);
-    }
-    let compiled = compile_count_d(Dialect::Sqlite, q)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|conn| {
-        let params = to_sqlite_params(&compiled.params);
-        let n: Option<i64> = conn
-            .query_row(&compiled.sql, params_from_iter(params.iter()), |r| r.get(0))
-            .optional()
-            .map_err(|e| lite_error("sqlite count", &e))?;
-        Ok(n.unwrap_or(0))
-    })
-}
-
-pub fn exists(q: &ListQuery) -> Result<bool, String> {
-    if !table_exists(&q.table)? {
-        return Ok(false);
-    }
-    let compiled = compile_exists_d(Dialect::Sqlite, q)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|conn| {
-        let params = to_sqlite_params(&compiled.params);
-        let hit: Option<i64> = conn
-            .query_row(&compiled.sql, params_from_iter(params.iter()), |r| r.get(0))
-            .optional()
-            .map_err(|e| lite_error("sqlite exists", &e))?;
-        Ok(hit.is_some())
-    })
-}
-
-pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json::Value, String> {
-    if !table_exists(&q.table)? {
-        return Ok(serde_json::Value::Null);
-    }
-    let compiled = compile_aggregate_d(Dialect::Sqlite, q, func, field)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|conn| {
-        let params = to_sqlite_params(&compiled.params);
-        let value: Option<serde_json::Value> = conn
-            .query_row(&compiled.sql, params_from_iter(params.iter()), |r| {
-                Ok(r.get_ref(0).map(value_to_json).unwrap_or_default())
-            })
-            .optional()
-            .map_err(|e| lite_error("sqlite aggregate", &e))?;
-        // COUNT of nothing is 0; SUM of nothing is null, and the compiler's
-        // aggregate already returns SQL NULL there.
-        Ok(match value {
-            None if matches!(func, SqlAgg::Count) => serde_json::json!(0),
-            None => serde_json::Value::Null,
-            Some(v) => v,
+        with_conn(|conn| {
+            let params = to_sqlite_params(&compiled.params);
+            let mut stmt = conn
+                .prepare_cached(&compiled.sql)
+                .map_err(|e| lite_error("sqlite group_by prepare", &e))?;
+            let mut rows = stmt
+                .query(params_from_iter(params.iter()))
+                .map_err(|e| lite_error("sqlite group_by", &e))?;
+            let mut out = Vec::new();
+            while let Some(row) = rows
+                .next()
+                .map_err(|e| lite_error("sqlite group_by row", &e))?
+            {
+                let mut map = serde_json::Map::new();
+                for (i, name) in col_names.iter().enumerate() {
+                    let value = row.get_ref(i).map(value_to_json).unwrap_or_default();
+                    map.insert(name.clone(), value);
+                }
+                out.push(serde_json::Value::Object(map));
+            }
+            Ok(out)
         })
     })
 }
 
+pub fn count(q: &ListQuery) -> Result<i64, String> {
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || 0,
+        || {
+            let compiled = compile_count_d(Dialect::Sqlite, q)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|conn| {
+                let params = to_sqlite_params(&compiled.params);
+                let n: Option<i64> = conn
+                    .prepare_cached(&compiled.sql)
+                    .and_then(|mut stmt| {
+                        stmt.query_row(params_from_iter(params.iter()), |r| r.get(0))
+                    })
+                    .optional()
+                    .map_err(|e| lite_error("sqlite count", &e))?;
+                Ok(n.unwrap_or(0))
+            })
+        },
+    )
+}
+
+pub fn exists(q: &ListQuery) -> Result<bool, String> {
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || false,
+        || {
+            let compiled = compile_exists_d(Dialect::Sqlite, q)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|conn| {
+                let params = to_sqlite_params(&compiled.params);
+                let hit: Option<i64> = conn
+                    .prepare_cached(&compiled.sql)
+                    .and_then(|mut stmt| {
+                        stmt.query_row(params_from_iter(params.iter()), |r| r.get(0))
+                    })
+                    .optional()
+                    .map_err(|e| lite_error("sqlite exists", &e))?;
+                Ok(hit.is_some())
+            })
+        },
+    )
+}
+
+pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json::Value, String> {
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || serde_json::Value::Null,
+        || {
+            let compiled = compile_aggregate_d(Dialect::Sqlite, q, func, field)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|conn| {
+                let params = to_sqlite_params(&compiled.params);
+                let value: Option<serde_json::Value> = conn
+                    .query_row(&compiled.sql, params_from_iter(params.iter()), |r| {
+                        Ok(r.get_ref(0).map(value_to_json).unwrap_or_default())
+                    })
+                    .optional()
+                    .map_err(|e| lite_error("sqlite aggregate", &e))?;
+                // COUNT of nothing is 0; SUM of nothing is null, and the compiler's
+                // aggregate already returns SQL NULL there.
+                Ok(match value {
+                    None if matches!(func, SqlAgg::Count) => serde_json::json!(0),
+                    None => serde_json::Value::Null,
+                    Some(v) => v,
+                })
+            })
+        },
+    )
+}
+
 pub fn delete_all(q: &ListQuery) -> Result<u64, String> {
-    if !table_exists(&q.table)? {
-        return Ok(0);
-    }
-    let compiled = compile_delete_all_d(Dialect::Sqlite, q)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|conn| {
-        let params = to_sqlite_params(&compiled.params);
-        let n = conn
-            .execute(&compiled.sql, params_from_iter(params.iter()))
-            .map_err(|e| lite_error("sqlite delete_all", &e))?;
-        Ok(n as u64)
-    })
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || 0,
+        || {
+            let compiled = compile_delete_all_d(Dialect::Sqlite, q)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|conn| {
+                let params = to_sqlite_params(&compiled.params);
+                let n = conn
+                    .prepare_cached(&compiled.sql)
+                    .and_then(|mut stmt| stmt.execute(params_from_iter(params.iter())))
+                    .map_err(|e| lite_error("sqlite delete_all", &e))?;
+                Ok(n as u64)
+            })
+        },
+    )
 }
 
 pub fn update_all(q: &ListQuery, patch: serde_json::Value) -> Result<u64, String> {
-    if !table_exists(&q.table)? {
-        return Ok(0);
-    }
-    let compiled = compile_update_all_d(Dialect::Sqlite, q, &patch)?;
-    let _trace = super::trace::start(&compiled.sql, &compiled.params);
-    with_conn(|conn| {
-        let params = to_sqlite_params(&compiled.params);
-        let n = conn
-            .execute(&compiled.sql, params_from_iter(params.iter()))
-            .map_err(|e| lite_error("sqlite update_all", &e))?;
-        Ok(n as u64)
-    })
+    super::ensured::read_with_table(
+        &q.table,
+        has_active_tx(),
+        table_exists,
+        || 0,
+        || {
+            let compiled = compile_update_all_d(Dialect::Sqlite, q, &patch)?;
+            let _trace = super::trace::start(&compiled.sql, &compiled.params);
+            with_conn(|conn| {
+                let params = to_sqlite_params(&compiled.params);
+                let n = conn
+                    .prepare_cached(&compiled.sql)
+                    .and_then(|mut stmt| stmt.execute(params_from_iter(params.iter())))
+                    .map_err(|e| lite_error("sqlite update_all", &e))?;
+                Ok(n as u64)
+            })
+        },
+    )
 }
 
 fn query_docs(sql: &str, params: &[SqlBind]) -> Result<Vec<serde_json::Value>, String> {
     with_conn(|conn| {
         let params = to_sqlite_params(params);
         let mut stmt = conn
-            .prepare(sql)
+            .prepare_cached(sql)
             .map_err(|e| lite_error("sqlite prepare", &e))?;
         let mut rows = stmt
             .query(params_from_iter(params.iter()))
@@ -900,24 +999,29 @@ pub fn increment_field(
     field: &str,
     delta: i64,
 ) -> Result<Option<i64>, String> {
-    if !table_exists(table)? {
-        return Ok(None);
-    }
-    Dialect::Sqlite.quote_ident(field)?;
-    let table_q = Dialect::Sqlite.quote_ident(table)?;
-    let sql = format!(
-        "UPDATE {table_q} SET doc = json_set(doc, '$.{field}', \
-             COALESCE(doc ->> '$.{field}', 0) + ?1) \
-         WHERE _key = ?2 RETURNING CAST((doc ->> '$.{field}') AS TEXT)"
-    );
-    let _trace = super::trace::start_plain(&sql);
-    with_conn(|conn| {
-        let value: Option<Option<String>> = conn
-            .query_row(&sql, rusqlite::params![delta, key], |r| r.get(0))
-            .optional()
-            .map_err(|e| lite_error("sqlite increment", &e))?;
-        Ok(value.flatten().and_then(|t| super::parse_counter(&t)))
-    })
+    super::ensured::read_with_table(
+        table,
+        has_active_tx(),
+        table_exists,
+        || None,
+        || {
+            Dialect::Sqlite.quote_ident(field)?;
+            let table_q = Dialect::Sqlite.quote_ident(table)?;
+            let sql = format!(
+                "UPDATE {table_q} SET doc = json_set(doc, '$.{field}', \
+                     COALESCE(doc ->> '$.{field}', 0) + ?1) \
+                 WHERE _key = ?2 RETURNING CAST((doc ->> '$.{field}') AS TEXT)"
+            );
+            let _trace = super::trace::start_plain(&sql);
+            with_conn(|conn| {
+                let value: Option<Option<String>> = conn
+                    .query_row(&sql, rusqlite::params![delta, key], |r| r.get(0))
+                    .optional()
+                    .map_err(|e| lite_error("sqlite increment", &e))?;
+                Ok(value.flatten().and_then(|t| super::parse_counter(&t)))
+            })
+        },
+    )
 }
 
 /// Index names on `table`.
@@ -1174,7 +1278,7 @@ fn col_rows(
 ) -> Result<Vec<serde_json::Value>, String> {
     let params = to_sqlite_params(params);
     let mut stmt = conn
-        .prepare(sql)
+        .prepare_cached(sql)
         .map_err(|e| lite_error(&format!("sqlite column {what} prepare"), &e))?;
     let mut rows = stmt
         .query(params_from_iter(params.iter()))
@@ -1268,7 +1372,8 @@ pub fn col_delete(
     let _trace = super::trace::start(&compiled.sql, &compiled.params);
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
-        conn.execute(&compiled.sql, params_from_iter(params.iter()))
+        conn.prepare_cached(&compiled.sql)
+            .and_then(|mut stmt| stmt.execute(params_from_iter(params.iter())))
             .map_err(|e| lite_error("sqlite column delete", &e))?;
         Ok(())
     })
@@ -1288,7 +1393,8 @@ pub fn col_increment(
     with_conn(|conn| {
         let params = to_sqlite_params(&params);
         let value: Option<Option<String>> = conn
-            .query_row(&sql, params_from_iter(params.iter()), |r| r.get(0))
+            .prepare_cached(&sql)
+            .and_then(|mut stmt| stmt.query_row(params_from_iter(params.iter()), |r| r.get(0)))
             .optional()
             .map_err(|e| lite_error("sqlite column increment", &e))?;
         Ok(value.flatten().and_then(|t| super::parse_counter(&t)))
@@ -1308,7 +1414,7 @@ pub fn col_group_by(
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let mut stmt = conn
-            .prepare(&compiled.sql)
+            .prepare_cached(&compiled.sql)
             .map_err(|e| lite_error("sqlite column group_by prepare", &e))?;
         let mut rows = stmt
             .query(params_from_iter(params.iter()))
@@ -1338,7 +1444,8 @@ pub fn col_delete_all(q: &cols::ColumnQuery) -> Result<u64, String> {
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let n = conn
-            .execute(&compiled.sql, params_from_iter(params.iter()))
+            .prepare_cached(&compiled.sql)
+            .and_then(|mut stmt| stmt.execute(params_from_iter(params.iter())))
             .map_err(|e| lite_error("sqlite column delete_all", &e))?;
         Ok(n as u64)
     })
@@ -1350,7 +1457,8 @@ pub fn col_update_all(q: &cols::ColumnQuery, patch: &serde_json::Value) -> Resul
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let n = conn
-            .execute(&compiled.sql, params_from_iter(params.iter()))
+            .prepare_cached(&compiled.sql)
+            .and_then(|mut stmt| stmt.execute(params_from_iter(params.iter())))
             .map_err(|e| lite_error("sqlite column update_all", &e))?;
         Ok(n as u64)
     })
@@ -1363,7 +1471,7 @@ pub fn query_raw(sql: &str, params: &[SqlBind]) -> Result<Vec<serde_json::Value>
     with_conn(|conn| {
         let bound = to_sqlite_params(params);
         let mut stmt = conn
-            .prepare(sql)
+            .prepare_cached(sql)
             .map_err(|e| lite_error("sqlite raw query prepare", &e))?;
         let names: Vec<String> = stmt
             .column_names()
@@ -1419,7 +1527,8 @@ pub fn col_count(q: &cols::ColumnQuery) -> Result<i64, String> {
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let n: Option<i64> = conn
-            .query_row(&compiled.sql, params_from_iter(params.iter()), |r| r.get(0))
+            .prepare_cached(&compiled.sql)
+            .and_then(|mut stmt| stmt.query_row(params_from_iter(params.iter()), |r| r.get(0)))
             .optional()
             .map_err(|e| lite_error("sqlite column count", &e))?;
         Ok(n.unwrap_or(0))
@@ -1432,7 +1541,8 @@ pub fn col_exists(q: &cols::ColumnQuery) -> Result<bool, String> {
     with_conn(|conn| {
         let params = to_sqlite_params(&compiled.params);
         let hit: Option<i64> = conn
-            .query_row(&compiled.sql, params_from_iter(params.iter()), |r| r.get(0))
+            .prepare_cached(&compiled.sql)
+            .and_then(|mut stmt| stmt.query_row(params_from_iter(params.iter()), |r| r.get(0)))
             .optional()
             .map_err(|e| lite_error("sqlite column exists", &e))?;
         Ok(hit.is_some())
@@ -1450,13 +1560,15 @@ pub fn col_aggregate(
         let params = to_sqlite_params(&compiled.params);
         if func == SqlAgg::Count {
             let n: Option<i64> = conn
-                .query_row(&compiled.sql, params_from_iter(params.iter()), |r| r.get(0))
+                .prepare_cached(&compiled.sql)
+                .and_then(|mut stmt| stmt.query_row(params_from_iter(params.iter()), |r| r.get(0)))
                 .optional()
                 .map_err(|e| lite_error("sqlite column aggregate", &e))?;
             return Ok(serde_json::json!(n.unwrap_or(0)));
         }
         let raw: Option<Option<String>> = conn
-            .query_row(&compiled.sql, params_from_iter(params.iter()), |r| r.get(0))
+            .prepare_cached(&compiled.sql)
+            .and_then(|mut stmt| stmt.query_row(params_from_iter(params.iter()), |r| r.get(0)))
             .optional()
             .map_err(|e| lite_error("sqlite column aggregate", &e))?;
         Ok(super::columns::parse_agg_text(raw.flatten()))
@@ -1590,53 +1702,55 @@ pub fn claim_jobs(
     locked_until_iso: &str,
     batch: usize,
 ) -> Result<Vec<serde_json::Value>, String> {
-    if batch == 0 || !table_exists("_jobs")? {
+    if batch == 0 {
         return Ok(Vec::new());
     }
-    with_conn(|conn| {
-        in_write_tx(conn, |conn| {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT _key FROM \"_jobs\" \
-                     WHERE ((doc ->> '$.state') IN ('pending','scheduled','failed') \
-                            AND (doc ->> '$.run_at') <= ?1) \
-                        OR ((doc ->> '$.state') = 'running' \
-                            AND (doc ->> '$.locked_until') < ?1) \
-                     ORDER BY COALESCE(doc ->> '$.priority', 0) DESC, \
-                              (doc ->> '$.run_at') ASC \
-                     LIMIT ?2",
-                )
-                .map_err(|e| lite_error("sqlite claim_jobs prepare", &e))?;
-            let keys: Vec<String> = stmt
-                .query_map(rusqlite::params![now_iso, batch as i64], |r| r.get(0))
-                .map_err(|e| lite_error("sqlite claim_jobs select", &e))?
-                .collect::<rusqlite::Result<Vec<String>>>()
-                .map_err(|e| lite_error("sqlite claim_jobs row", &e))?;
-            drop(stmt);
-
-            let mut claimed = Vec::with_capacity(keys.len());
-            for key in keys {
-                let doc: Option<String> = conn
-                    .query_row(
-                        "UPDATE \"_jobs\" SET doc = json_set(doc, \
-                             '$.state', 'running', \
-                             '$.locked_by', ?2, \
-                             '$.locked_until', ?3, \
-                             '$.attempts', COALESCE(doc ->> '$.attempts', 0) + 1) \
-                         WHERE _key = ?1 RETURNING doc",
-                        rusqlite::params![&key, worker_id, locked_until_iso],
-                        |r| r.get(0),
+    super::ensured::read_with_table("_jobs", has_active_tx(), table_exists, Vec::new, || {
+        with_conn(|conn| {
+            in_write_tx(conn, |conn| {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT _key FROM \"_jobs\" \
+                             WHERE ((doc ->> '$.state') IN ('pending','scheduled','failed') \
+                                    AND (doc ->> '$.run_at') <= ?1) \
+                                OR ((doc ->> '$.state') = 'running' \
+                                    AND (doc ->> '$.locked_until') < ?1) \
+                             ORDER BY COALESCE(doc ->> '$.priority', 0) DESC, \
+                                      (doc ->> '$.run_at') ASC \
+                             LIMIT ?2",
                     )
-                    .optional()
-                    .map_err(|e| lite_error("sqlite claim_jobs update", &e))?;
-                if let Some(text) = doc {
-                    claimed.push(
-                        serde_json::from_str(&text)
-                            .map_err(|e| format!("sqlite claim_jobs json: {e}"))?,
-                    );
+                    .map_err(|e| lite_error("sqlite claim_jobs prepare", &e))?;
+                let keys: Vec<String> = stmt
+                    .query_map(rusqlite::params![now_iso, batch as i64], |r| r.get(0))
+                    .map_err(|e| lite_error("sqlite claim_jobs select", &e))?
+                    .collect::<rusqlite::Result<Vec<String>>>()
+                    .map_err(|e| lite_error("sqlite claim_jobs row", &e))?;
+                drop(stmt);
+
+                let mut claimed = Vec::with_capacity(keys.len());
+                for key in keys {
+                    let doc: Option<String> = conn
+                        .query_row(
+                            "UPDATE \"_jobs\" SET doc = json_set(doc, \
+                                     '$.state', 'running', \
+                                     '$.locked_by', ?2, \
+                                     '$.locked_until', ?3, \
+                                     '$.attempts', COALESCE(doc ->> '$.attempts', 0) + 1) \
+                                 WHERE _key = ?1 RETURNING doc",
+                            rusqlite::params![&key, worker_id, locked_until_iso],
+                            |r| r.get(0),
+                        )
+                        .optional()
+                        .map_err(|e| lite_error("sqlite claim_jobs update", &e))?;
+                    if let Some(text) = doc {
+                        claimed.push(
+                            serde_json::from_str(&text)
+                                .map_err(|e| format!("sqlite claim_jobs json: {e}"))?,
+                        );
+                    }
                 }
-            }
-            Ok(claimed)
+                Ok(claimed)
+            })
         })
     })
 }
@@ -1649,20 +1763,25 @@ pub fn claim_cron_slot(
     expected_next_run_at: &str,
     patch: serde_json::Value,
 ) -> Result<bool, String> {
-    if !table_exists("_cron_jobs")? {
-        return Ok(false);
-    }
-    let patch_str = patch.to_string();
-    with_conn(|conn| {
-        let changed = conn
-            .execute(
-                "UPDATE \"_cron_jobs\" SET doc = json_patch(doc, json(?2)) \
-                 WHERE _key = ?1 AND (doc ->> '$.next_run_at') = ?3",
-                rusqlite::params![key, &patch_str, expected_next_run_at],
-            )
-            .map_err(|e| lite_error("sqlite claim_cron_slot", &e))?;
-        Ok(changed == 1)
-    })
+    super::ensured::read_with_table(
+        "_cron_jobs",
+        has_active_tx(),
+        table_exists,
+        || false,
+        || {
+            let patch_str = patch.to_string();
+            with_conn(|conn| {
+                let changed = conn
+                    .execute(
+                        "UPDATE \"_cron_jobs\" SET doc = json_patch(doc, json(?2)) \
+                         WHERE _key = ?1 AND (doc ->> '$.next_run_at') = ?3",
+                        rusqlite::params![key, &patch_str, expected_next_run_at],
+                    )
+                    .map_err(|e| lite_error("sqlite claim_cron_slot", &e))?;
+                Ok(changed == 1)
+            })
+        },
+    )
 }
 
 fn table_exists(table: &str) -> Result<bool, String> {

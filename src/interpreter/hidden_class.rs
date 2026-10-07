@@ -1,13 +1,12 @@
 //! Hidden Classes (Shapes) for objects - enables inline caching and fast property access.
 
 use crate::interpreter::{HiddenClassId, SymbolId, Value, INLINE_CACHE};
-use lazy_static::lazy_static;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use std::sync::RwLock;
 
-lazy_static! {
-    pub static ref HIDDEN_CLASS_REGISTRY: HiddenClassRegistry = HiddenClassRegistry::new();
-}
+pub static HIDDEN_CLASS_REGISTRY: LazyLock<HiddenClassRegistry> =
+    LazyLock::new(HiddenClassRegistry::new);
 
 #[derive(Debug, Clone)]
 pub struct HiddenClass {

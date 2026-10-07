@@ -1,14 +1,64 @@
-//! Remote deploy over SSH (Unix-only; built on ssh2).
+//! Remote deploy over SSH (Unix-only).
+//!
+//! Every remote step runs the system `ssh`, as the rsync step always did, so
+//! the user's agent, keys, `~/.ssh/config` (ports, `ProxyJump`, aliases) and
+//! `known_hosts` all apply. The deploy used to carry its own SSH client
+//! (`ssh2`, with OpenSSL compiled from source) that verified no host key at
+//! all, connected to port 22 only, and tried the agent's first key only.
 //!
 //! `deploy.toml` parsing lives in [`super::deploy_config`] so that the commands
 //! which only need to read the file still compile on Windows.
 
 use super::deploy_config::{DeployConfig, DeployMode, ServerConfig};
 use crate::platform::process::shell_quote;
-use ssh2::Session;
-use std::io::{Read, Write};
-use std::net::TcpStream;
 use std::path::Path;
+use std::process::Stdio;
+
+/// Options for every `ssh` call, rsync's included: a host seen for the first
+/// time is trusted and remembered, a changed host key is refused; `BatchMode`
+/// makes a missing key an error instead of a password prompt nobody answers.
+const SSH_OPTIONS: &[&str] = &[
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-o",
+    "BatchMode=yes",
+];
+
+/// What a remote command printed, and whether it exited 0.
+struct Remote {
+    success: bool,
+    stdout: String,
+    stderr: String,
+}
+
+/// Run `command` through the remote shell. `stdin` feeds it (a file for the
+/// bundle upload), or nothing. An `ssh` that cannot connect or log in exits
+/// 255, which is an error here rather than a failed command.
+async fn ssh_run(server: &ServerConfig, command: &str, stdin: Stdio) -> Result<Remote, String> {
+    let output = tokio::process::Command::new("ssh")
+        .args(SSH_OPTIONS)
+        .arg("--")
+        .arg(format!("{}@{}", server.username, server.ip))
+        .arg(command)
+        .stdin(stdin)
+        .output()
+        .await
+        .map_err(|e| format!("ssh spawn failed: {} (is OpenSSH installed?)", e))?;
+    let remote = Remote {
+        success: output.status.success(),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    };
+    if output.status.code() == Some(255) {
+        return Err(format!(
+            "SSH to {}@{} failed: {}",
+            server.username,
+            server.ip,
+            remote.stderr.trim()
+        ));
+    }
+    Ok(remote)
+}
 
 #[derive(Clone)]
 pub struct DeployResult {
@@ -27,8 +77,6 @@ pub async fn deploy(config: DeployConfig) -> Result<Vec<DeployResult>, String> {
         "SOLI_DEPLOY_API_KEY env var is required for the proxy deploy step. Set it before running `soli deploy`.".to_string()
     })?;
 
-    let first_server = config.servers[0].clone();
-
     println!("Phase 1: Syncing code to all servers...");
     let mut handles = Vec::new();
 
@@ -38,9 +86,13 @@ pub async fn deploy(config: DeployConfig) -> Result<Vec<DeployResult>, String> {
                 let git_url = config.git_url.clone();
                 let git_branch = config.git_branch.clone();
                 let git_folder = config.git_folder.clone();
-                handles.push(tokio::spawn(async move {
-                    sync_code_git(&server, &git_url, &git_branch, &git_folder).await
-                }));
+                let name = server.name.clone();
+                handles.push((
+                    name,
+                    tokio::spawn(async move {
+                        sync_code_git(&server, &git_url, &git_branch, &git_folder).await
+                    }),
+                ));
             }
             DeployMode::Bundle => {
                 let bundle_local = config.bundle_source.clone().unwrap();
@@ -52,30 +104,58 @@ pub async fn deploy(config: DeployConfig) -> Result<Vec<DeployResult>, String> {
                 if !bundle_path.exists() {
                     return Err(format!("Bundle not found at '{}'", bundle_path.display()));
                 }
-                handles.push(tokio::spawn(async move {
-                    sync_code_bundle(&server, &bundle_path).await
-                }));
+                let name = server.name.clone();
+                handles.push((
+                    name,
+                    tokio::spawn(async move { sync_code_bundle(&server, &bundle_path).await }),
+                ));
             }
             DeployMode::Local => {
                 let source = config.source_path.clone();
                 let mut excludes: Vec<String> =
                     DEFAULT_EXCLUDES.iter().map(|s| s.to_string()).collect();
                 excludes.extend(config.local_excludes.iter().cloned());
-                handles.push(tokio::spawn(async move {
-                    sync_code_rsync(&server, &source, &excludes).await
-                }));
+                let name = server.name.clone();
+                handles.push((
+                    name,
+                    tokio::spawn(async move { sync_code_rsync(&server, &source, &excludes).await }),
+                ));
             }
         }
     }
 
-    for handle in handles {
-        if let Err(e) = handle.await {
-            eprintln!("Task join error: {}", e);
-        }
+    // A server whose code did not sync must not be switched over: its new
+    // slot would start on whatever was there before. (A failed sync used to be
+    // dropped here, and phase 2 deployed every server regardless.)
+    let mut results = Vec::new();
+    let mut unsynced = std::collections::HashSet::new();
+    for (name, handle) in handles {
+        let failure = match handle.await {
+            Ok(Ok(())) => continue,
+            Ok(Err(e)) => e,
+            Err(e) => format!("Task join error: {}", e),
+        };
+        eprintln!("[{}] Sync failed: {}", name, failure);
+        results.push(DeployResult {
+            server_name: name.clone(),
+            success: false,
+            message: format!("Sync failed: {}", failure),
+            slot: None,
+        });
+        unsynced.insert(name);
+    }
+    if unsynced.len() == config.servers.len() {
+        return Ok(results);
     }
 
-    if let Err(e) = run_migrations(&first_server, &config.git_folder, config.mode).await {
-        eprintln!("[{}] Migration warning: {}", first_server.name, e);
+    // On the first server that synced: the others may still hold old code.
+    let migrate_on = config
+        .servers
+        .iter()
+        .find(|server| !unsynced.contains(&server.name))
+        .expect("at least one server synced");
+    if let Err(e) = run_migrations(migrate_on, &config.git_folder, config.mode).await {
+        eprintln!("[{}] Migration warning: {}", migrate_on.name, e);
     }
 
     println!();
@@ -84,12 +164,14 @@ pub async fn deploy(config: DeployConfig) -> Result<Vec<DeployResult>, String> {
     let mut deploy_handles = Vec::new();
 
     for server in config.servers.clone() {
+        if unsynced.contains(&server.name) {
+            continue;
+        }
         let key = api_key.clone();
         let handle = tokio::spawn(async move { trigger_deploy(&server, &key).await });
         deploy_handles.push(handle);
     }
 
-    let mut results = Vec::new();
     for handle in deploy_handles {
         match handle.await {
             Ok(result) => results.push(result),
@@ -116,16 +198,14 @@ async fn sync_code_git(
         server.name, server.username, server.ip
     );
 
-    let session = ssh_connect(server).await?;
-
-    let folder_exists = check_remote_folder_exists(&session, &server.folder)?;
+    let folder_exists = check_remote_folder_exists(server, &server.folder).await?;
 
     if folder_exists {
         println!("[{}] Folder exists, pulling latest changes...", server.name);
-        git_pull(&session, &server.folder, git_folder, git_branch)?;
+        git_pull(server, &server.folder, git_folder, git_branch).await?;
     } else {
         println!("[{}] Cloning repository...", server.name);
-        git_clone(&session, &server.folder, git_url, git_branch, git_folder)?;
+        git_clone(server, &server.folder, git_url, git_branch, git_folder).await?;
     }
 
     println!("[{}] Code synced ✓", server.name);
@@ -151,25 +231,24 @@ async fn sync_code_bundle(server: &ServerConfig, bundle_path: &Path) -> Result<(
 
     ensure_remote_folder(server).await?;
 
-    // Read bundle and scp it via SSH channel
-    let bundle_data = std::fs::read(bundle_path)
+    // Streamed through `cat` on the server rather than `scp`, whose remote
+    // path is shell-parsed by some OpenSSH versions and not by others.
+    let bundle = std::fs::File::open(bundle_path)
         .map_err(|e| format!("Failed to read bundle '{}': {}", bundle_path.display(), e))?;
-
-    let session = ssh_connect(server).await?;
-    let size: u64 = bundle_data
-        .len()
-        .try_into()
-        .map_err(|_| "Bundle too large for SCP".to_string())?;
-    let mut channel = session
-        .scp_send(std::path::Path::new(&remote_path), 0o644, size, None)
-        .map_err(|e| format!("Failed to start SCP to {}: {}", remote_path, e))?;
-
-    channel
-        .write_all(&bundle_data)
-        .map_err(|e| format!("Failed to write bundle via SCP: {}", e))?;
-
-    channel.send_eof().ok();
-    channel.wait_close().ok();
+    let quoted = shell_quote(&remote_path);
+    let upload = ssh_run(
+        server,
+        &format!("cat > {quoted} && chmod 644 {quoted}"),
+        Stdio::from(bundle),
+    )
+    .await?;
+    if !upload.success {
+        return Err(format!(
+            "Failed to copy bundle to {}: {}",
+            remote_path,
+            upload.stderr.trim()
+        ));
+    }
 
     println!("[{}] Bundle copied ✓", server.name);
     Ok(())
@@ -211,7 +290,7 @@ async fn sync_code_rsync(
     for ex in excludes {
         cmd.arg(format!("--exclude={}", ex));
     }
-    cmd.arg("-e").arg("ssh -o StrictHostKeyChecking=accept-new");
+    cmd.arg("-e").arg(format!("ssh {}", SSH_OPTIONS.join(" ")));
     cmd.arg(&source_arg);
     cmd.arg(&dest_arg);
 
@@ -233,25 +312,16 @@ async fn sync_code_rsync(
 }
 
 async fn ensure_remote_folder(server: &ServerConfig) -> Result<(), String> {
-    let session = ssh_connect(server).await?;
-    let mut channel = session
-        .channel_session()
-        .map_err(|e| format!("Failed to open channel: {}", e))?;
-
-    channel
-        .exec(&format!("mkdir -p {}", shell_quote(&server.folder)))
-        .map_err(|e| format!("Failed to mkdir on remote: {}", e))?;
-
-    let mut stderr = String::new();
-    channel.stderr().read_to_string(&mut stderr).ok();
-    let mut stdout = String::new();
-    channel.read_to_string(&mut stdout).ok();
-    channel.wait_close().ok();
-
-    if channel.exit_status().map(|s| s != 0).unwrap_or(false) {
+    let remote = ssh_run(
+        server,
+        &format!("mkdir -p {}", shell_quote(&server.folder)),
+        Stdio::null(),
+    )
+    .await?;
+    if !remote.success {
         return Err(format!(
             "mkdir -p {} failed: {} {}",
-            server.folder, stdout, stderr
+            server.folder, remote.stdout, remote.stderr
         ));
     }
 
@@ -264,8 +334,6 @@ async fn run_migrations(
     mode: DeployMode,
 ) -> Result<(), String> {
     println!("[{}] Running database migrations...", server.name);
-
-    let session = ssh_connect(server).await?;
 
     let target = match mode {
         DeployMode::Local => server.folder.clone(),
@@ -283,29 +351,12 @@ async fn run_migrations(
 
     let migration_cmd = format!("cd {} && soli db:migrate up", shell_quote(&target));
 
-    let mut channel = session
-        .channel_session()
-        .map_err(|e| format!("Failed to open channel: {}", e))?;
-
-    channel
-        .exec(&migration_cmd)
-        .map_err(|e| format!("Migration command failed: {}", e))?;
-
-    let mut stderr = String::new();
-    channel
-        .stderr()
-        .read_to_string(&mut stderr)
-        .map_err(|e| format!("Failed to read stderr: {}", e))?;
-
-    let mut stdout = String::new();
-    channel
-        .read_to_string(&mut stdout)
-        .map_err(|e| format!("Failed to read stdout: {}", e))?;
-
-    channel.wait_close().ok();
-
-    if channel.exit_status().map(|s| s != 0).unwrap_or(false) {
-        return Err(format!("Migration failed: {} {}", stdout, stderr));
+    let remote = ssh_run(server, &migration_cmd, Stdio::null()).await?;
+    if !remote.success {
+        return Err(format!(
+            "Migration failed: {} {}",
+            remote.stdout, remote.stderr
+        ));
     }
 
     println!("[{}] Migrations completed ✓", server.name);
@@ -340,69 +391,18 @@ async fn trigger_deploy(server: &ServerConfig, api_key: &str) -> DeployResult {
     }
 }
 
-async fn ssh_connect(server: &ServerConfig) -> Result<Session, String> {
-    let tcp = TcpStream::connect(format!("{}:22", server.ip))
-        .map_err(|e| format!("TCP connection failed: {}", e))?;
-
-    let mut session = Session::new().map_err(|e| format!("SSH session creation failed: {}", e))?;
-    session.set_tcp_stream(tcp);
-    session
-        .handshake()
-        .map_err(|e| format!("SSH handshake failed: {}", e))?;
-
-    let mut agent = session
-        .agent()
-        .map_err(|e| format!("SSH agent failed: {}", e))?;
-    agent
-        .connect()
-        .map_err(|e| format!("SSH agent connect failed: {}", e))?;
-
-    agent
-        .list_identities()
-        .map_err(|e| format!("Failed to list SSH identities: {}", e))?;
-
-    let identities = agent
-        .identities()
-        .map_err(|e| format!("Failed to get SSH identities: {}", e))?;
-    if identities.is_empty() {
-        return Err(
-            "No SSH identities found. Make sure you have SSH keys added to your agent.".to_string(),
-        );
-    }
-
-    let identity = &identities[0];
-    agent
-        .userauth(&server.username, identity)
-        .map_err(|e| format!("SSH authentication failed: {}", e))?;
-
-    if !session.authenticated() {
-        return Err("SSH authentication failed".to_string());
-    }
-
-    Ok(session)
+async fn check_remote_folder_exists(server: &ServerConfig, folder: &str) -> Result<bool, String> {
+    let remote = ssh_run(
+        server,
+        &format!("test -d {} && echo 'exists'", shell_quote(folder)),
+        Stdio::null(),
+    )
+    .await?;
+    Ok(remote.stdout.trim() == "exists")
 }
 
-fn check_remote_folder_exists(session: &Session, folder: &str) -> Result<bool, String> {
-    let mut channel = session
-        .channel_session()
-        .map_err(|e| format!("Failed to open channel: {}", e))?;
-
-    channel
-        .exec(&format!("test -d {} && echo 'exists'", shell_quote(folder)))
-        .map_err(|e| format!("Failed to execute: {}", e))?;
-
-    let mut output = String::new();
-    channel
-        .read_to_string(&mut output)
-        .map_err(|e| format!("Failed to read output: {}", e))?;
-
-    channel.wait_close().ok();
-
-    Ok(output.trim() == "exists")
-}
-
-fn git_clone(
-    session: &Session,
+async fn git_clone(
+    server: &ServerConfig,
     folder: &str,
     git_url: &str,
     branch: &str,
@@ -438,44 +438,28 @@ fn git_clone(
         )
     };
 
-    let mut channel = session
-        .channel_session()
-        .map_err(|e| format!("Failed to open channel: {}", e))?;
-
-    channel
-        .exec(&clone_cmd)
-        .map_err(|e| format!("Git clone failed: {}", e))?;
-
-    let mut stderr = String::new();
-    channel
-        .stderr()
-        .read_to_string(&mut stderr)
-        .map_err(|e| format!("Failed to read stderr: {}", e))?;
-
-    let mut stdout = String::new();
-    channel
-        .read_to_string(&mut stdout)
-        .map_err(|e| format!("Failed to read stdout: {}", e))?;
-
-    channel.wait_close().ok();
-
-    if channel.exit_status().map(|s| s != 0).unwrap_or(false) {
-        return Err(format!("Git clone failed: {} {}", stdout, stderr));
+    let remote = ssh_run(server, &clone_cmd, Stdio::null()).await?;
+    if !remote.success {
+        return Err(format!(
+            "Git clone failed: {} {}",
+            remote.stdout, remote.stderr
+        ));
     }
 
     Ok(())
 }
 
-fn git_pull(session: &Session, folder: &str, git_folder: &str, branch: &str) -> Result<(), String> {
+async fn git_pull(
+    server: &ServerConfig,
+    folder: &str,
+    git_folder: &str,
+    branch: &str,
+) -> Result<(), String> {
     let target = if git_folder == "/" || git_folder.is_empty() {
         folder.to_string()
     } else {
         format!("{}/{}", folder, git_folder.trim_end_matches('/'))
     };
-
-    let mut channel = session
-        .channel_session()
-        .map_err(|e| format!("Failed to open channel: {}", e))?;
 
     let pull_cmd = format!(
         "cd {} && git pull origin {}",
@@ -483,25 +467,12 @@ fn git_pull(session: &Session, folder: &str, git_folder: &str, branch: &str) -> 
         shell_quote(branch)
     );
 
-    channel
-        .exec(&pull_cmd)
-        .map_err(|e| format!("Git pull failed: {}", e))?;
-
-    let mut stderr = String::new();
-    channel
-        .stderr()
-        .read_to_string(&mut stderr)
-        .map_err(|e| format!("Failed to read stderr: {}", e))?;
-
-    let mut stdout = String::new();
-    channel
-        .read_to_string(&mut stdout)
-        .map_err(|e| format!("Failed to read stdout: {}", e))?;
-
-    channel.wait_close().ok();
-
-    if channel.exit_status().map(|s| s != 0).unwrap_or(false) {
-        return Err(format!("Git pull failed: {} {}", stdout, stderr));
+    let remote = ssh_run(server, &pull_cmd, Stdio::null()).await?;
+    if !remote.success {
+        return Err(format!(
+            "Git pull failed: {} {}",
+            remote.stdout, remote.stderr
+        ));
     }
 
     Ok(())

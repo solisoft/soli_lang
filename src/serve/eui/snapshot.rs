@@ -195,7 +195,7 @@ impl Ephemeral {
     /// Post `connect` to the worker that owns this id and wait for it.
     async fn connect(
         &self,
-        lv_event_tx: &crossbeam::channel::Sender<LiveViewEventData>,
+        lv_event_tx: &crossbeam_channel::Sender<LiveViewEventData>,
         viewport: Viewport,
     ) -> Result<(), Refusal> {
         let (response_tx, response_rx) = oneshot::channel();
@@ -522,7 +522,7 @@ pub async fn respond(
     component: &str,
     query: Option<&str>,
     headers: &hyper::HeaderMap,
-    lv_event_tx: &crossbeam::channel::Sender<LiveViewEventData>,
+    lv_event_tx: &crossbeam_channel::Sender<LiveViewEventData>,
 ) -> Response<ResponseBody> {
     // One lookup answers both questions: is this a component, and did it opt
     // in. A 404 for either, and the same 404, so the endpoint tells a prober

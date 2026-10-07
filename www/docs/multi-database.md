@@ -186,6 +186,27 @@ soli db:import posts users  # named only
 
 Each document is upserted as `_key` + `doc`.
 
+## Connection pool
+
+Each SQL connection keeps a pool of up to `pool` connections (`SOLI_DB_POOL_SIZE`; 10, or 5 on
+SQLite), opened as requests need them. The first opens when the pool is created, so a wrong URL
+or an unreachable server fails at boot rather than on the first query, and a refused connection
+reports the driver's error at once. When every connection is in use, a query waits up to 10 seconds
+for one to come back.
+
+A connection is handed out without a check when it was last used under half a second ago. One
+that sat idle longer, or whose last query failed, is pinged first and replaced if it is dead — so
+a busy app pays no validation round trip, and a database restart costs at most one failed query
+per stale connection.
+
+Two more round trips are saved per query:
+
+- **Statements are prepared once per connection** (Postgres, SQLite), not once per query.
+- **A table known to exist is read directly.** A read on a table that may not exist answers empty
+  (`find_by` → `nil`, `where` → `[]`); the first read checks, later ones skip the check. A table
+  dropped from outside the app still reads as empty: the error is recognised and the check comes
+  back for that table. Inside a transaction the check always runs.
+
 ## SQLite specifics
 
 The dedicated [SQLite](sqlite.md) page covers URL forms, WAL, jobs, backups,

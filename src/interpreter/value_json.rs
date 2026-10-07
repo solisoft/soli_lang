@@ -18,8 +18,8 @@ pub(crate) fn json_map_hasher() -> AHasher {
     )
 }
 
-/// Deserialize JSON directly into a Soli [`Value`] via sonic-rs / any serde
-/// deserializer — no intermediate `serde_json::Value` tree.
+/// Deserialize JSON directly into a Soli [`Value`] via any serde deserializer —
+/// no intermediate `serde_json::Value` tree.
 impl<'de> Deserialize<'de> for Value {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_any(ValueVisitor)
@@ -87,13 +87,6 @@ impl<'de> Visitor<'de> for ValueVisitor {
         }
         Ok(Value::Hash(Rc::new(RefCell::new(pairs))))
     }
-}
-
-/// SIMD-accelerated parse via sonic-rs, building Soli Values in one pass
-/// (no intermediate serde_json tree).
-#[inline]
-pub fn parse_json_sonic(s: &str) -> Result<Value, String> {
-    sonic_rs::from_str(s).map_err(|e| e.to_string())
 }
 
 /// Convert a serde_json::Value to a Soli Value (consuming — moves strings instead of cloning).

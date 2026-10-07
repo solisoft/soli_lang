@@ -314,6 +314,27 @@ soli db:import posts users  # named only</code></pre>
         </div>
     </div>
 
+    <h2 id="connection-pool" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Connection pool</h2>
+    <p class="text-gray-400 mb-4">
+        Each SQL connection keeps a pool of up to <code>pool</code> connections (<code>SOLI_DB_POOL_SIZE</code>; 10, or 5 on SQLite),
+        opened as requests need them. The first opens when the pool is created, so a wrong URL or an unreachable
+        server fails at boot rather than on the first query, and a refused connection reports the driver&rsquo;s error
+        at once. When every connection is in use, a query waits up to 10 seconds for one to come back.
+    </p>
+    <p class="text-gray-400 mb-4">
+        A connection is handed out without a check when it was last used under half a second ago. One that sat idle
+        longer, or whose last query failed, is pinged first and replaced if it is dead &mdash; so a busy app pays no
+        validation round trip, and a database restart costs at most one failed query per stale connection.
+    </p>
+    <p class="text-gray-400 mb-4">Two more round trips are saved per query:</p>
+    <ul class="list-disc list-inside text-gray-400 space-y-2 mb-12">
+        <li><strong class="text-white">Statements are prepared once per connection</strong> (Postgres, SQLite), not once per query.</li>
+        <li><strong class="text-white">A table known to exist is read directly.</strong> A read on a table that may not exist answers empty
+            (<code>find_by</code> &rarr; <code>nil</code>, <code>where</code> &rarr; <code>[]</code>); the first read checks, later ones skip the check.
+            A table dropped from outside the app still reads as empty: the error is recognised and the check comes back for
+            that table. Inside a transaction the check always runs.</li>
+    </ul>
+
     <h2 id="sqlite" class="text-2xl font-bold text-white mb-6 scroll-mt-24">SQLite specifics</h2>
     <p class="text-gray-400 mb-6">
         The dedicated <a href="/docs/database/sqlite" class="text-amber-400 hover:underline">SQLite</a>

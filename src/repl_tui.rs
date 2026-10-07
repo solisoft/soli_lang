@@ -239,7 +239,6 @@ struct TuiRepl {
 
 impl TuiRepl {
     fn new() -> Self {
-        colored::control::set_override(true);
         let history_file = if let Some(home) = dirs::home_dir() {
             home.join(HISTORY_FILE)
         } else {

@@ -18,8 +18,6 @@ use crate::cli::args::{
 };
 
 #[cfg(unix)]
-use daemonize::Daemonize;
-#[cfg(unix)]
 use nix::sys::signal::{kill, Signal};
 #[cfg(unix)]
 use nix::unistd::Pid;
@@ -578,18 +576,11 @@ pub fn run_serve(options: &crate::cli::args::ServeOptions) {
                 process::exit(1);
             });
 
-        let daemon = Daemonize::new()
-            .pid_file(&pid_file)
-            .chown_pid_file(true)
-            .working_directory(path)
-            .stdout(log.try_clone().unwrap())
-            .stderr(log);
-
         println!("Starting soli daemon...");
         println!("  PID file: {}", pid_file.display());
         println!("  Log file: {}", log_file.display());
 
-        match daemon.start() {
+        match detach(path, &pid_file, &log) {
             Ok(_) => println!("Daemon started successfully"),
             Err(e) => {
                 eprintln!("Error: Failed to daemonize: {}", e);
@@ -608,6 +599,71 @@ pub fn run_serve(options: &crate::cli::args::ServeOptions) {
         eprintln!("Error: {}", e);
         process::exit(70);
     }
+}
+
+/// Detach `soli serve -d` from its terminal: the classic double fork, then a
+/// pid file held locked for the daemon's lifetime, stdin on /dev/null and
+/// stdout/stderr on the log. Runs before any thread exists, which is what
+/// makes forking safe here.
+#[cfg(unix)]
+fn detach(working_dir: &Path, pid_file: &Path, log: &File) -> Result<(), String> {
+    use std::io::Write;
+    use std::os::unix::io::AsRawFd;
+
+    let os_error = |what: &str| format!("{what}: {}", std::io::Error::last_os_error());
+    // SAFETY: plain libc process calls on a single-threaded process. Each
+    // parent leaves with `_exit`, so no destructor or atexit handler runs twice.
+    unsafe {
+        match libc::fork() {
+            -1 => return Err(os_error("fork")),
+            0 => {}
+            _ => libc::_exit(0),
+        }
+        if libc::setsid() == -1 {
+            return Err(os_error("setsid"));
+        }
+        // The second fork: a process that is not a session leader can never
+        // acquire a controlling terminal again.
+        match libc::fork() {
+            -1 => return Err(os_error("fork")),
+            0 => {}
+            _ => libc::_exit(0),
+        }
+        libc::umask(0o027);
+    }
+    std::env::set_current_dir(working_dir)
+        .map_err(|e| format!("cannot enter {}: {e}", working_dir.display()))?;
+
+    let mut pid = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(pid_file)
+        .map_err(|e| format!("cannot open {}: {e}", pid_file.display()))?;
+    // SAFETY: flock on a descriptor this function owns.
+    if unsafe { libc::flock(pid.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Err(format!(
+            "{} is locked: a daemon is already running",
+            pid_file.display()
+        ));
+    }
+    pid.set_len(0)
+        .and_then(|()| write!(pid, "{}", process::id()))
+        .map_err(|e| format!("cannot write {}: {e}", pid_file.display()))?;
+    // Keep the descriptor, and with it the lock, for the life of the process.
+    std::mem::forget(pid);
+
+    let null = File::open("/dev/null").map_err(|e| format!("/dev/null: {e}"))?;
+    // SAFETY: dup2 onto the standard descriptors, from descriptors that are open.
+    unsafe {
+        if libc::dup2(null.as_raw_fd(), 0) == -1
+            || libc::dup2(log.as_raw_fd(), 1) == -1
+            || libc::dup2(log.as_raw_fd(), 2) == -1
+        {
+            return Err(os_error("dup2"));
+        }
+    }
+    Ok(())
 }
 
 fn serve_from_bundle(
@@ -1100,10 +1156,34 @@ pub fn run_repl() {
 #[cfg(feature = "lsp")]
 pub fn run_lsp() {
     // Logs go to stderr so they don't corrupt the LSP stdio framing.
-    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .target(env_logger::Target::Stderr)
-        .try_init();
+    let level = std::env::var("RUST_LOG")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(log::LevelFilter::Info);
+    if log::set_logger(&StderrLogger).is_ok() {
+        log::set_max_level(level);
+    }
     solilang::lsp::start_lsp();
+}
+
+/// The language server's logger: one line per record on stderr. `RUST_LOG`
+/// takes a bare level (`debug`, `warn`, `off`…); the default is `info`.
+#[cfg(feature = "lsp")]
+struct StderrLogger;
+
+#[cfg(feature = "lsp")]
+impl log::Log for StderrLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::max_level()
+    }
+
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            eprintln!("[{} {}] {}", record.level(), record.target(), record.args());
+        }
+    }
+
+    fn flush(&self) {}
 }
 
 /// The same command in a build without the `lsp` feature: an editor gets
@@ -1536,7 +1616,7 @@ fn print_unified_diff(a: &str, b: &str) {
 
 /// Deploy to a remote server over SSH.
 ///
-/// Unix-only, because it is built on ssh2 (see Cargo.toml), and present only
+/// Unix-only, because it drives the system `ssh` and `rsync`, and present only
 /// with the `ssh` feature, which the default build has. The other arm reports
 /// that rather than failing the build, so the rest of the CLI stays available
 /// in a build that cannot deploy.

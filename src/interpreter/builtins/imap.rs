@@ -27,10 +27,10 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::LazyLock;
 use std::sync::Mutex;
 
 use base64::Engine as _;
-use lazy_static::lazy_static;
 
 use crate::interpreter::builtins::bodystructure;
 use crate::interpreter::builtins::mail_parse;
@@ -51,10 +51,9 @@ struct ImapConn {
     selected_exists: Option<i64>,
 }
 
-lazy_static! {
-    /// Process-global registry of open connections, keyed by instance id.
-    static ref IMAP_CONNS: Mutex<HashMap<usize, ImapConn>> = Mutex::new(HashMap::new());
-}
+/// Process-global registry of open connections, keyed by instance id.
+static IMAP_CONNS: LazyLock<Mutex<HashMap<usize, ImapConn>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 static IMAP_NEXT_ID: AtomicUsize = AtomicUsize::new(1);
 
 // ---------------------------------------------------------------------------

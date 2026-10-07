@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::LazyLock;
 use std::sync::RwLock;
 
 use crate::solidb_http::SoliDBClient;
@@ -271,10 +272,9 @@ fn run_solidb_query(
     })
 }
 
-lazy_static::lazy_static! {
-    static ref SOLIDB_STATES: RwLock<HashMap<usize, SolidbState>> = RwLock::new(HashMap::new());
-    static ref SOLIDB_NEXT_ID: AtomicUsize = AtomicUsize::new(1);
-}
+static SOLIDB_STATES: LazyLock<RwLock<HashMap<usize, SolidbState>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+static SOLIDB_NEXT_ID: AtomicUsize = AtomicUsize::new(1);
 
 struct SolidbState {
     host: String,

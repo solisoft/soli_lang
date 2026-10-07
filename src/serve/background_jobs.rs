@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::Instant;
 
-use crossbeam::channel;
+use crossbeam_channel as channel;
 
 use crate::serve::tenant::TenantCell;
 

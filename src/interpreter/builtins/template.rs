@@ -2801,7 +2801,7 @@ pub fn register_template_builtins(env: &mut Environment) {
                 200
             };
 
-            // Serialize with sonic-rs directly from Value (same path as
+            // Serialize directly from Value (same path as
             // JSON.stringify / json_stringify). The old path was
             // value_to_json → intermediate serde_json::Value tree →
             // serde_json::to_string, which allocates every key/string twice

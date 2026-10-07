@@ -100,7 +100,7 @@ proxy_url = "https://proxy.example.com"</code></pre>
         <h4 class="text-base font-semibold text-yellow-400 mb-3">Phase 2: Migrations (first server only)</h4>
         <p class="text-gray-400 text-sm">Database migrations run only on the first server to avoid conflicts:</p>
         <ul class="list-disc list-inside text-gray-400 text-sm mt-2 space-y-1">
-            <li>SSH to first server</li>
+            <li>SSH to the first server whose code synced</li>
             <li>Run <code class="text-amber-400">soli db:migrate up</code></li>
         </ul>
     </div>
@@ -112,6 +112,7 @@ proxy_url = "https://proxy.example.com"</code></pre>
             <li>POST to soli-proxy deploy API</li>
             <li>Automatic health checks and traffic switch</li>
         </ul>
+        <p class="text-gray-400 text-sm mt-3">A server whose sync failed is reported and left on its current release &mdash; it is not switched to a new slot.</p>
     </div>
 
     <div class="my-8 p-6 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-12">
@@ -127,7 +128,9 @@ proxy_url = "https://proxy.example.com"</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Requirements</h2>
     <div class="rounded-xl bg-white/5 border border-white/10 p-6 mb-12">
         <ul class="list-disc list-inside text-gray-400 space-y-2">
-            <li>SSH key-based authentication (keys must be added to ssh-agent)</li>
+            <li>OpenSSH&rsquo;s <code class="text-amber-400">ssh</code> and <code class="text-amber-400">rsync</code> on your PATH. Every step runs the system <code class="text-amber-400">ssh</code>, so your <code class="text-amber-400">~/.ssh/config</code> applies &mdash; host aliases, ports, <code class="text-amber-400">ProxyJump</code>, <code class="text-amber-400">IdentityFile</code></li>
+            <li>Key-based authentication (an agent key, or one <code class="text-amber-400">~/.ssh/config</code> names). <code class="text-amber-400">ssh</code> runs with <code class="text-amber-400">BatchMode=yes</code>: a server that wants a password fails instead of prompting</li>
+            <li>Host keys are checked with <code class="text-amber-400">StrictHostKeyChecking=accept-new</code>: a new server is added to <code class="text-amber-400">known_hosts</code>, a server whose key changed is refused</li>
             <li>The <code class="text-amber-400">soli</code> binary must be in your PATH</li>
             <li>soli-proxy running on each target server</li>
             <li>Valid API keys configured in soli-proxy</li>

@@ -11,6 +11,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::rc::Rc;
+use std::sync::LazyLock;
 use std::sync::{RwLock, RwLockReadGuard};
 
 use crate::interpreter::environment::Environment;
@@ -57,15 +58,17 @@ fn default_level() -> Level {
         .unwrap_or(Level::Info)
 }
 
-lazy_static::lazy_static! {
-    static ref CONFIG: RwLock<Config> = RwLock::new(Config {
+static CONFIG: LazyLock<RwLock<Config>> = LazyLock::new(|| {
+    RwLock::new(Config {
         level: default_level(),
         json: false,
-    });
-    /// Bounded capture ring for tests. Entries recorded while capture is on;
-    /// the cap keeps a forgotten capture from growing without bound.
-    static ref CAPTURE: RwLock<CaptureBuffer> = RwLock::new(CaptureBuffer::default());
-}
+    })
+});
+
+/// Bounded capture ring for tests. Entries recorded while capture is on;
+/// the cap keeps a forgotten capture from growing without bound.
+static CAPTURE: LazyLock<RwLock<CaptureBuffer>> =
+    LazyLock::new(|| RwLock::new(CaptureBuffer::default()));
 
 const CAPTURE_CAP: usize = 1000;
 

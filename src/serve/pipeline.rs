@@ -492,8 +492,8 @@ pub(super) async fn enqueue(
     // per dequeue (`queue_slot_freed`).
     let mut data = match request_tx.try_send(data) {
         Ok(()) => return Ok(()),
-        Err(crossbeam::channel::TrySendError::Full(returned)) => returned,
-        Err(crossbeam::channel::TrySendError::Disconnected(_)) => return Err(queue_busy_response()),
+        Err(crossbeam_channel::TrySendError::Full(returned)) => returned,
+        Err(crossbeam_channel::TrySendError::Disconnected(_)) => return Err(queue_busy_response()),
     };
 
     let deadline =
@@ -512,8 +512,8 @@ pub(super) async fn enqueue(
 
         match request_tx.try_send(data) {
             Ok(()) => return Ok(()),
-            Err(crossbeam::channel::TrySendError::Full(returned)) => data = returned,
-            Err(crossbeam::channel::TrySendError::Disconnected(_)) => {
+            Err(crossbeam_channel::TrySendError::Full(returned)) => data = returned,
+            Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
                 return Err(queue_busy_response())
             }
         }

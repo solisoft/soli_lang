@@ -4,12 +4,10 @@
 //! [`INLINE_CACHE`]. The polymorphic property/method caches that once lived
 //! here beside the counter were never wired into either engine and are gone.
 
-use lazy_static::lazy_static;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::LazyLock;
 
-lazy_static! {
-    pub static ref INLINE_CACHE: InlineCacheRegistry = InlineCacheRegistry::new();
-}
+pub static INLINE_CACHE: LazyLock<InlineCacheRegistry> = LazyLock::new(InlineCacheRegistry::new);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HiddenClassId(pub u32);

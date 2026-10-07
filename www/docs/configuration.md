@@ -267,8 +267,8 @@ The levers, cheapest first:
 | `postgres` | on | PostgreSQL document adapter + client pool |
 | `mysql` | on | MySQL / MariaDB document adapter + client pool |
 | `sqlite` | on | SQLite document adapter (bundled client — no system library needed) |
-| `ssh` | on | `soli deploy` (`ssh2`, which compiles OpenSSL from source) |
-| `office` | on | `Spreadsheet` — xlsx and csv (`umya-spreadsheet`, `calamine`) |
+| `ssh` | on | `soli deploy` (drives the system `ssh` and `rsync`; no crate of its own) |
+| `office` | on | `Spreadsheet` — xlsx and csv (`calamine` reads, a built-in writer writes) |
 | `pdf` | on | `Pdf` — rendering, Factur-X, PAdES signatures (`soli-pdf`, CMS, X.509) |
 | `cloud` | on | `S3` and the `s3` attachment service (a built-in Signature V4 client; no extra crate) |
 | `mail` | on | `Mailer`, `Imap`, `Pop3` |

@@ -4,7 +4,7 @@
 //! - Hot reload version counters (shared between file watcher and workers)
 //! - A single shared request queue drained by all workers
 
-use crossbeam::channel;
+use crossbeam_channel as channel;
 use std::sync::atomic::AtomicU64;
 
 use crate::serve::RequestData;

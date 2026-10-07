@@ -3,15 +3,14 @@
 //! All strings are interned at compile time and assigned a unique SymbolId.
 //! This replaces HashMap<String, T> with HashMap<SymbolId, T> for better performance.
 
-use lazy_static::lazy_static;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use std::sync::RwLock;
 
-lazy_static! {
-    /// Global symbol table - all interned strings are stored here.
-    /// SymbolIds are indices into this vector.
-    pub static ref SYMBOL_TABLE: RwLock<SymbolTable> = RwLock::new(SymbolTable::new());
-}
+/// Global symbol table - all interned strings are stored here.
+/// SymbolIds are indices into this vector.
+pub static SYMBOL_TABLE: LazyLock<RwLock<SymbolTable>> =
+    LazyLock::new(|| RwLock::new(SymbolTable::new()));
 
 /// A unique identifier for an interned string.
 /// O(1) comparison and copying.

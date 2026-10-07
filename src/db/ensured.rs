@@ -6,6 +6,11 @@
 //! which `(connection, url, table)` triples have been ensured and skips the DDL
 //! for them.
 //!
+//! Reads use it the same way (`read_with_table`): a read on a table that may
+//! not exist used to ask `information_schema` / `sqlite_master` first — another
+//! round trip on every `find`, `where`, `count`. A table known to exist (ensured
+//! by a write, or seen by an earlier read) is now read directly.
+//!
 //! Staying correct when the memo is wrong:
 //! - **Inside a transaction the memo is bypassed** (neither read nor written).
 //!   Postgres and SQLite DDL is transactional, so a table created by a write
@@ -16,7 +21,7 @@
 //! - **A table dropped behind our back** (another process, a raw query) shows up
 //!   as a "missing table" error on a remembered table. The entry is forgotten,
 //!   the table ensured and the write retried once — the outcome the unmemoised
-//!   code gave.
+//!   code gave. A read gets the empty answer a missing table always gave.
 
 use std::collections::HashSet;
 use std::sync::{OnceLock, RwLock};
@@ -63,6 +68,48 @@ fn forget(key: &str) {
 /// Forget every ensured table — after a drop or arbitrary DDL.
 pub(crate) fn forget_all() {
     ensured().write().unwrap_or_else(|e| e.into_inner()).clear();
+}
+
+/// "That table does not exist", naming `table` itself — so a read on a
+/// remembered table that was dropped behind our back answers empty, while a
+/// missing column, function or other table still surfaces as an error.
+fn is_missing_this_table_error(message: &str, table: &str) -> bool {
+    message.contains(&format!("relation \"{table}\" does not exist"))
+        || message.contains(&format!(".{table}' doesn't exist"))
+        || message.contains(&format!("no such table: {table}"))
+}
+
+/// Run a document read against `table`, answering `missing()` when the table
+/// does not exist. A table known to exist is read without asking the database
+/// first; otherwise `table_exists` asks, and a yes is remembered.
+pub(crate) fn read_with_table<T>(
+    table: &str,
+    in_transaction: bool,
+    table_exists: impl FnOnce(&str) -> Result<bool, String>,
+    missing: impl FnOnce() -> T,
+    op: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let key = if in_transaction {
+        None
+    } else {
+        memo_key(table)
+    };
+    if let Some(key) = key.as_deref().filter(|key| is_known(key)) {
+        return match op() {
+            Err(e) if is_missing_this_table_error(&e, table) => {
+                forget(key);
+                Ok(missing())
+            }
+            other => other,
+        };
+    }
+    if !table_exists(table)? {
+        return Ok(missing());
+    }
+    if let Some(key) = key {
+        remember(key);
+    }
+    op()
 }
 
 /// The driver messages for "that table does not exist": Postgres (SQLSTATE
@@ -130,6 +177,25 @@ mod tests {
         ));
         assert!(!is_missing_table_error(
             "sqlite insert: UNIQUE constraint failed"
+        ));
+    }
+
+    #[test]
+    fn a_read_only_treats_its_own_table_as_missing() {
+        let pg = "postgres get: relation \"posts\" does not exist";
+        assert!(is_missing_this_table_error(pg, "posts"));
+        assert!(!is_missing_this_table_error(pg, "post"));
+        assert!(!is_missing_this_table_error(
+            "postgres list: column \"titel\" does not exist",
+            "posts"
+        ));
+        assert!(is_missing_this_table_error(
+            "mysql get: MySqlError { ERROR 1146 (42S02): Table 'app.posts' doesn't exist }",
+            "posts"
+        ));
+        assert!(is_missing_this_table_error(
+            "sqlite get: no such table: posts",
+            "posts"
         ));
     }
 }
