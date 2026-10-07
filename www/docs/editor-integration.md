@@ -1,32 +1,63 @@
 # Editor Integration
 
-Soli ships a Language Server (`soli lsp`) so any editor that speaks LSP can
-offer hover, completion, go-to-definition, references, rename, format,
-diagnostics, document symbols, folding ranges, and code actions.
+Soli ships a language server, `soli lsp`, spoken over stdio. Nova and Neovim
+use it today, and so can any editor with a generic LSP client. The VS Code /
+Cursor extension does not start it yet: it runs `soli lint` instead (see
+below).
+
+## What the language server does
+
+| Feature | What you get |
+|---|---|
+| Diagnostics | The lint rules as warnings while you type, and a syntax error as an error at its position. |
+| Hover | On a name declared in the file — at its declaration or at any use — its kind or declared type (`greet : function`). On a common builtin (`print`, `len`, `json_parse`, `HTTP`, `DateTime`…), its signature. |
+| Completion | Keywords, types, and the names declared in the file. No member completion after `.` yet. |
+| Go to definition | The declaration of the name under the cursor, in the same file. |
+| References | Every use of the name in the file, `#{…}` interpolations included — not words in plain strings or comments. |
+| Rename | The same occurrences, in one edit. A new name that is not an identifier is refused. |
+| Document symbols | An outline of the file's classes, functions and variables. |
+| Folding | Classes and functions, and multi-line `{ }`, `( )` and `[ ]` (hashes, arrays, long calls). |
+| Formatting | The whole document, with the same formatter as `soli fmt`. A file that does not parse is left alone. |
+| Code actions | On a lint finding: rename to the expected case for the naming rules (every occurrence), or insert `# soli-lint-disable-next-line <rule>` above the line. |
+
+**Limits.** Everything works on one file at a time: a model used in a
+controller is not resolved to `app/models/`, and references and rename do not
+cross files. Names are matched by spelling, so two variables called `count` in
+two functions count as one name. The server is for `.sl` files; `.slv`
+templates get no diagnostics from it.
 
 ## Requirements
 
-- The `soli` binary must be on your `PATH` (`soli --version` should work).
-- Files should use the `.sl` extension so the editor's language detection
-  kicks in.
-- A `soli.toml` at the project root helps editors detect the workspace.
+- The `soli` binary on your `PATH` (`soli --version` should work), or its
+  absolute path in the editor's settings.
+- Files with the `.sl` extension.
+- A `soli.toml` at the project root, so editors find the workspace.
 
 ## VS Code & Cursor
 
+The extension in `editors/vscode/` gives syntax highlighting and runs
+`soli lint` on a file when it is opened and saved, showing the findings as
+diagnostics; **Soli: Lint Current File** runs it on demand. It does not start
+the language server yet, so hover, completion, go-to-definition, rename and
+formatting are not available in these editors.
+
+Install the packaged extension:
+
 ```bash
-cd editors/vscode
-vsce package
-# Install the generated .vsix from your editor's command palette.
+code --install-extension editors/vscode/soli-language-0.2.0.vsix
+# Cursor:
+cursor --install-extension editors/vscode/soli-language-0.2.0.vsix
 ```
 
-Settings:
+or build it with `vsce package` from `editors/vscode/`.
 
-```json
-{
-  "soli.lsp.enable": true,
-  "soli.lint.onSave": true
-}
-```
+Settings (`settings.json`):
+
+| Setting | Default | |
+|---|---|---|
+| `soli.lint.enable` | `true` | Lint Soli files. |
+| `soli.lint.onSave` | `true` | Lint again on every save. |
+| `soli.lint.executablePath` | `"soli"` | The `soli` binary to run. |
 
 ## Nova (macOS)
 
@@ -37,7 +68,7 @@ Nova's `LanguageClient` API to spawn `soli lsp` on stdio.
 
 1. Build and install the `soli` binary so the LSP backend is available:
    ```bash
-   cargo install --path .
+   cargo install --path . --locked
    # or download a release binary from
    # https://github.com/solisoft/soli_lang/releases
    ```
@@ -74,56 +105,41 @@ example, `/Users/you/.cargo/bin/soli`).
 
 ## Neovim
 
-Built-in LSP support, configured via `lspconfig`:
+Neovim 0.11+ configures the server natively. Two things are needed besides
+the server itself: `.sl` is S-Lang (`slang`) to Neovim by default, so map it
+to a `soli` filetype first, and `nvim-lspconfig` has no `soli` entry, so
+declare the server yourself:
 
 ```lua
--- ~/.config/nvim/lua/lsp/soli.lua
-local lspconfig = require('lspconfig')
+-- ~/.config/nvim/after/plugin/soli.lua (or anywhere in your config)
+vim.filetype.add({ extension = { sl = "soli" } })
 
-lspconfig.soli.setup({
-  cmd = {"soli", "lsp"},
-  filetypes = {"soli"},
-  root_dir = function(filename)
-    return lspconfig.util.root_pattern("soli.toml", ".git")(filename)
-  end,
-  capabilities = require('cmp_nvim_lsp').default_capabilities(),
-})
-```
-
-Or, with Neovim 0.10+'s native config:
-
-```lua
-vim.lsp.config('soli', {
-  cmd = {"soli", "lsp"},
-  filetypes = {"soli"},
-  root_markers = {"soli.toml"},
+vim.lsp.config("soli", {
+  cmd = { "soli", "lsp" },
+  filetypes = { "soli" },
+  root_markers = { "soli.toml", ".git" },
 })
 
-vim.lsp.enable('soli')
+vim.lsp.enable("soli")
 ```
+
+Open a `.sl` file and `:checkhealth vim.lsp` lists the `soli` client. With
+Neovim's default mappings, `K` hovers, `CTRL-]` jumps to the definition, `grr`
+lists references, `grn` renames and `gra` offers the code actions; format with
+`:lua vim.lsp.buf.format()`.
 
 ## Other editors
 
-Any LSP-aware editor can wire `soli lsp` up directly:
+Any editor with an LSP client can start `soli lsp` on stdio for `.sl` files.
+The shape of the entry, in the style most clients use:
 
 ```json
 {
   "name": "soli",
-  "command": "soli lsp",
+  "command": ["soli", "lsp"],
   "filetypes": ["soli"],
+  "fileExtensions": [".sl"],
   "rootPatterns": ["soli.toml"],
   "languageId": "soli"
 }
 ```
-
-## LSP features
-
-The Soli LSP currently advertises these capabilities:
-
-- `hover` — type/kind info and builtin docs
-- `completion` — keywords, types, in-scope symbols
-- `definition`, `references`, `rename`
-- `documentSymbol`, `foldingRange`
-- `formatting`, `rangeFormatting`
-- `codeAction` — quick-fixes for lint violations
-- diagnostics streamed from `soli lint`

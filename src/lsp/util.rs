@@ -1,5 +1,6 @@
 //! Position helpers shared by the LSP providers.
 
+use crate::lexer::TokenKind;
 use crate::span::Span;
 use tower_lsp::lsp_types::{Position, Range};
 
@@ -62,6 +63,103 @@ pub(super) fn lsp_range_from_span(span: Span) -> Range {
     }
 }
 
+/// The LSP position of byte `offset`: zero-based line, column in UTF-16 units
+/// (the inverse of `position_to_offset`).
+pub(super) fn offset_to_position(source: &str, offset: usize) -> Position {
+    let mut offset = offset.min(source.len());
+    while !source.is_char_boundary(offset) {
+        offset -= 1;
+    }
+    let before = &source[..offset];
+    let line = before.matches('\n').count() as u32;
+    let line_start = before.rfind('\n').map_or(0, |i| i + 1);
+    let character = before[line_start..].encode_utf16().count() as u32;
+    Position { line, character }
+}
+
+/// The LSP range of the byte range `start..end`.
+pub(super) fn range_of(source: &str, start: usize, end: usize) -> Range {
+    Range {
+        start: offset_to_position(source, start),
+        end: offset_to_position(source, end),
+    }
+}
+
+/// Byte ranges of every identifier spelled `name`, in source order: in the
+/// code and inside `#{…}` interpolations (strings and `@sdbql` blocks), never
+/// in a plain string or a comment. References and rename are built on it —
+/// they used to list only the *declarations* bearing the name, so a rename
+/// left every call site behind.
+pub(super) fn identifier_occurrences(source: &str, name: &str) -> Vec<(usize, usize)> {
+    let mut found = Vec::new();
+    collect_identifiers(source, 0, name, &mut found, 0);
+    found.sort_unstable();
+    found.dedup();
+    found
+}
+
+fn collect_identifiers(
+    text: &str,
+    base: usize,
+    name: &str,
+    found: &mut Vec<(usize, usize)>,
+    depth: usize,
+) {
+    // Interpolations nest (`"#{"#{x}"}"`); the bound only guards pathological input.
+    if depth > 16 {
+        return;
+    }
+    let Ok(tokens) = crate::lexer::Scanner::new(text).scan_tokens() else {
+        return;
+    };
+    for token in &tokens {
+        let (start, end) = (token.span.start as usize, token.span.end as usize);
+        match &token.kind {
+            TokenKind::Identifier(word) if word == name => found.push((base + start, base + end)),
+            TokenKind::InterpolatedString(_) | TokenKind::SdqlBlock { .. } => {
+                let Some(raw) = text.get(start..end) else {
+                    continue;
+                };
+                for (inner_start, inner) in interpolation_bodies(raw) {
+                    collect_identifiers(inner, base + start + inner_start, name, found, depth + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The body of each `#{…}` in a string or query token, with its byte offset in
+/// that token's text. Braces nest, so `#{ {"a": 1}["a"] }` is one body.
+fn interpolation_bodies(raw: &str) -> Vec<(usize, &str)> {
+    let bytes = raw.as_bytes();
+    let mut bodies = Vec::new();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] != b'#' || bytes[i + 1] != b'{' {
+            i += 1;
+            continue;
+        }
+        let body_start = i + 2;
+        let mut depth = 1;
+        let mut j = body_start;
+        while j < bytes.len() && depth > 0 {
+            match bytes[j] {
+                b'{' => depth += 1,
+                b'}' => depth -= 1,
+                _ => {}
+            }
+            j += 1;
+        }
+        if depth != 0 {
+            break;
+        }
+        bodies.push((body_start, &raw[body_start..j - 1]));
+        i = j;
+    }
+    bodies
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,5 +201,30 @@ mod tests {
         let range = lsp_range_from_span(Span::new(4, 7, 2, 5));
         assert_eq!(range.start, at(1, 4));
         assert_eq!(range.end, at(1, 7));
+    }
+    #[test]
+    fn occurrences_are_identifiers_in_code_and_interpolations_only() {
+        let source = "# greet in a comment\ndef greet(name)\n  \"greet: #{greet_count} #{name}\"\nend\n\nprint(greet(\"é\"))\nx = \"#{greet(1)} and greet\"\n";
+        let found: Vec<&str> = identifier_occurrences(source, "greet")
+            .into_iter()
+            .map(|(start, end)| &source[start..end])
+            .collect();
+        // The declaration, the call, and the call inside an interpolation —
+        // not the comment, not the plain words in strings, not `greet_count`.
+        assert_eq!(found, vec!["greet", "greet", "greet"]);
+        let positions: Vec<Position> = identifier_occurrences(source, "greet")
+            .into_iter()
+            .map(|(start, _)| offset_to_position(source, start))
+            .collect();
+        assert_eq!(positions, vec![at(1, 4), at(5, 6), at(6, 7)]);
+    }
+
+    #[test]
+    fn a_position_after_non_ascii_text_counts_utf16_units() {
+        let source = "x = \"é😀\"\ny";
+        let y = source.rfind('y').unwrap();
+        assert_eq!(offset_to_position(source, y), at(1, 0));
+        let quote = source.rfind('"').unwrap();
+        assert_eq!(offset_to_position(source, quote), at(0, 8));
     }
 }

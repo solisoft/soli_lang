@@ -73,7 +73,6 @@ impl LanguageServer for Backend {
                 rename_provider: Some(lsp_types::OneOf::Left(true)),
                 code_action_provider: Some(lsp_types::CodeActionProviderCapability::Simple(true)),
                 document_formatting_provider: Some(lsp_types::OneOf::Left(true)),
-                document_range_formatting_provider: Some(lsp_types::OneOf::Left(true)),
                 folding_range_provider: Some(lsp_types::FoldingRangeProviderCapability::Simple(
                     true,
                 )),
@@ -171,7 +170,7 @@ impl LanguageServer for Backend {
 
         if let Some(text) = self.get_document(&uri) {
             if let Some(table) = self.get_symbol_table(&uri) {
-                return Ok(goto::goto_definition(&text, pos, &table));
+                return Ok(goto::goto_definition(&text, pos, &table, &uri));
             }
         }
         Ok(None)
@@ -185,9 +184,7 @@ impl LanguageServer for Backend {
         let pos = params.text_document_position.position;
 
         if let Some(text) = self.get_document(&uri) {
-            if let Some(table) = self.get_symbol_table(&uri) {
-                return Ok(references::find_references(&text, pos, &table));
-            }
+            return Ok(references::find_references(&text, pos, &uri));
         }
         Ok(None)
     }
@@ -201,9 +198,7 @@ impl LanguageServer for Backend {
         let new_name = params.new_name;
 
         if let Some(text) = self.get_document(&uri) {
-            if let Some(table) = self.get_symbol_table(&uri) {
-                return Ok(rename::rename_symbol(&text, pos, &new_name, &table));
-            }
+            return Ok(rename::rename_symbol(&text, pos, &new_name, &uri));
         }
         Ok(None)
     }
@@ -232,19 +227,6 @@ impl LanguageServer for Backend {
         Ok(None)
     }
 
-    async fn range_formatting(
-        &self,
-        params: lsp_types::DocumentRangeFormattingParams,
-    ) -> Result<Option<Vec<TextEdit>>, tower_lsp::jsonrpc::Error> {
-        let uri = params.text_document.uri;
-        let range = params.range;
-
-        if let Some(text) = self.get_document(&uri) {
-            return Ok(Some(format::format_range(&text, range)));
-        }
-        Ok(None)
-    }
-
     async fn code_action(
         &self,
         params: lsp_types::CodeActionParams,
@@ -254,7 +236,7 @@ impl LanguageServer for Backend {
 
         if let Some(text) = self.get_document(&uri) {
             let actions: Vec<lsp_types::CodeActionOrCommand> =
-                actions::get_code_actions(&text, range)
+                actions::get_code_actions(&text, range, &uri)
                     .into_iter()
                     .map(lsp_types::CodeActionOrCommand::CodeAction)
                     .collect();
@@ -282,36 +264,67 @@ impl Backend {
         use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity};
 
         if let Some(text) = self.get_document(&uri) {
-            let diagnostics: Vec<Diagnostic> = crate::lint(&text)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|d| {
-                    let start = lsp_types::Position::new(
-                        (d.span.line_usize().saturating_sub(1)) as u32,
-                        (d.span.column_usize().saturating_sub(1)) as u32,
-                    );
-                    let end = lsp_types::Position::new(
-                        (d.span.line_usize().saturating_sub(1)) as u32,
-                        (d.span.column_usize() + d.message.len()) as u32,
-                    );
-                    Diagnostic {
-                        range: tower_lsp::lsp_types::Range::new(start, end),
-                        severity: Some(DiagnosticSeverity::WARNING),
-                        message: d.message,
-                        code: Some(tower_lsp::lsp_types::NumberOrString::String(
-                            d.rule.to_string(),
-                        )),
-                        source: Some("soli".to_string()),
-                        ..Default::default()
-                    }
-                })
-                .collect();
+            // A file that does not lex or parse has no lint results; the error
+            // itself is the diagnostic. It used to publish an empty list — the
+            // editor cleared every mark exactly when the code was broken. Built
+            // before any `.await`: the error type is not `Send`.
+            let linted = crate::lint(&text).map_err(|error| syntax_error_diagnostic(&error));
+            let diagnostics: Vec<Diagnostic> = match linted {
+                Err(syntax_error) => vec![syntax_error],
+                Ok(found) => found
+                    .into_iter()
+                    .map(|d| {
+                        let start = lsp_types::Position::new(
+                            (d.span.line_usize().saturating_sub(1)) as u32,
+                            (d.span.column_usize().saturating_sub(1)) as u32,
+                        );
+                        let end = lsp_types::Position::new(
+                            (d.span.line_usize().saturating_sub(1)) as u32,
+                            (d.span.column_usize() + d.message.len()) as u32,
+                        );
+                        Diagnostic {
+                            range: tower_lsp::lsp_types::Range::new(start, end),
+                            severity: Some(DiagnosticSeverity::WARNING),
+                            message: d.message,
+                            code: Some(tower_lsp::lsp_types::NumberOrString::String(
+                                d.rule.to_string(),
+                            )),
+                            source: Some("soli".to_string()),
+                            ..Default::default()
+                        }
+                    })
+                    .collect(),
+            };
 
             self.client
                 .publish_diagnostics(uri, diagnostics, None)
                 .await;
         }
         Ok(())
+    }
+}
+
+/// The lexer or parser error that stopped the lint, as an ERROR at its place.
+fn syntax_error_diagnostic(error: &crate::error::SolilangError) -> lsp_types::Diagnostic {
+    use crate::error::SolilangError;
+    let span = match error {
+        SolilangError::Lexer(e) => Some(e.span()),
+        SolilangError::Parser(e) => Some(e.span()),
+        _ => None,
+    };
+    let start = span.map_or(lsp_types::Position::new(0, 0), |span| {
+        lsp_types::Position::new(
+            (span.line_usize().saturating_sub(1)) as u32,
+            (span.column_usize().saturating_sub(1)) as u32,
+        )
+    });
+    let end = lsp_types::Position::new(start.line, start.character + 1);
+    lsp_types::Diagnostic {
+        range: lsp_types::Range::new(start, end),
+        severity: Some(lsp_types::DiagnosticSeverity::ERROR),
+        message: error.to_string(),
+        source: Some("soli".to_string()),
+        ..Default::default()
     }
 }
 

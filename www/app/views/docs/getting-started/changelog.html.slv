@@ -27,6 +27,12 @@
             <li><strong class="text-white">New apps are told to test what must be refused, not only the happy path.</strong> The <code class="text-cyan-400">tests/CLAUDE.md</code> that <code class="text-cyan-400">soli new</code> writes opens with a checklist: invalid input (the 422, the field in error, nothing written), a user who may not act, an unknown id, the error raised on purpose, the boundaries, what a failure leaves behind &mdash; assert the outcome, not just the status, and break the protected code once to watch the spec fail. A worked example comes with it; the root <code class="text-cyan-400">CLAUDE.md</code>, <code class="text-cyan-400">/soli-resource</code> and <code class="text-cyan-400">/soli-verify</code> say the same. <a href="/docs/testing#section-real-tests" class="text-cyan-400 hover:underline">What a spec must prove</a></li>
         </ul>
 
+        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">The language server&rsquo;s navigation, rename, formatting and quick fixes work.</strong> Go-to-definition and references pointed at no file; rename changed the declaration and left every call behind; formatting moved every <code class="text-cyan-400">def &hellip; end</code> body to column 0, so format-on-save flattened the file; the quick fixes did nothing; and a syntax error showed no diagnostic at all. They now use the document, cover every occurrence (interpolations included), format with <code class="text-cyan-400">soli fmt</code>&rsquo;s formatter, and report a syntax error where it is. <a href="/docs/development-tools/editor-integration" class="text-cyan-400 hover:underline">Editor integration</a></li>
+            <li><strong class="text-white">The editor integration page says what exists.</strong> The VS Code / Cursor extension runs <code class="text-cyan-400">soli lint</code> on open and save &mdash; it does not start the language server, whatever the page promised &mdash; and the Neovim setup is one that works (Neovim 0.11+, with the <code class="text-cyan-400">.sl</code> filetype mapped).</li>
+        </ul>
+
     </section>
 
     <section id="v2-18-2" class="mb-16 scroll-mt-24">

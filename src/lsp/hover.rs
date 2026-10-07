@@ -1,40 +1,49 @@
 //! Hover provider for LSP.
-use super::util::{lsp_range_from_span, position_to_offset};
+use super::util::{extract_word_at_offset, position_to_offset};
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkedString, Position};
 
+/// What the identifier under the cursor is: its declaration's kind or type when
+/// the file declares it (at the `def` or at any use), and the builtin's doc for
+/// a builtin. It used to answer only on a declaration itself — never on a call.
 pub fn get_hover(source: &str, position: Position) -> Option<Hover> {
     let offset = position_to_offset(source, position)?;
-    let table = crate::lsp::symbols::build_symbol_table(source)?;
-
-    let symbol = table.find_at_position(offset)?;
+    let word = extract_word_at_offset(source, offset)?;
+    let table = crate::lsp::symbols::build_symbol_table(source);
+    let declaration = table
+        .as_ref()
+        .and_then(|table| crate::lsp::goto::declaration_of(table, &word, offset));
 
     let mut contents = Vec::new();
-
-    let type_info = match &symbol.symbol.type_name {
-        Some(t) => format!("**{}** : {}", symbol.symbol.name, t),
-        None => {
-            let kind_str = match symbol.symbol.kind {
-                crate::lsp::symbols::SymbolKind::Variable => "variable",
-                crate::lsp::symbols::SymbolKind::Function => "function",
-                crate::lsp::symbols::SymbolKind::Class => "class",
-                crate::lsp::symbols::SymbolKind::Parameter => "parameter",
-                crate::lsp::symbols::SymbolKind::Property => "property",
-                crate::lsp::symbols::SymbolKind::Method => "method",
-                crate::lsp::symbols::SymbolKind::Constant => "constant",
-            };
-            format!("**{}** : {}", symbol.symbol.name, kind_str)
-        }
-    };
-
-    contents.push(MarkedString::String(type_info));
-
-    if let Some(docs) = get_builtin_docs(&symbol.symbol.name) {
-        contents.push(MarkedString::String(docs));
+    if let Some(symbol) = declaration {
+        let type_info = match &symbol.symbol.type_name {
+            Some(t) => format!("**{}** : {}", symbol.symbol.name, t),
+            None => {
+                let kind_str = match symbol.symbol.kind {
+                    crate::lsp::symbols::SymbolKind::Variable => "variable",
+                    crate::lsp::symbols::SymbolKind::Function => "function",
+                    crate::lsp::symbols::SymbolKind::Class => "class",
+                    crate::lsp::symbols::SymbolKind::Parameter => "parameter",
+                    crate::lsp::symbols::SymbolKind::Property => "property",
+                    crate::lsp::symbols::SymbolKind::Method => "method",
+                    crate::lsp::symbols::SymbolKind::Constant => "constant",
+                };
+                format!("**{}** : {}", symbol.symbol.name, kind_str)
+            }
+        };
+        contents.push(MarkedString::String(type_info));
     }
-
+    // A name the file declares itself is that declaration, not the builtin.
+    if declaration.is_none() {
+        if let Some(docs) = get_builtin_docs(&word) {
+            contents.push(MarkedString::String(docs));
+        }
+    }
+    if contents.is_empty() {
+        return None;
+    }
     Some(Hover {
         contents: HoverContents::Array(contents),
-        range: Some(lsp_range_from_span(symbol.symbol.span)),
+        range: None,
     })
 }
 
@@ -49,18 +58,8 @@ fn get_builtin_docs(name: &str) -> Option<String> {
         "type" => "Returns the type name of a value.\n\n```\ntype(value: Any): String\n```",
         "clock" => "Returns the current time in seconds since Unix epoch.\n\n```\nclock(): Float\n```",
         "range" => "Creates a range of integers.\n\n```\nrange(start: Int, end: Int): Array<Int>\n```",
-        "abs" => "Returns the absolute value.\n\n```\nabs(n: Int|Float): Int|Float\n```",
-        "min" => "Returns the minimum of two values.\n\n```\nmin(a: Any, b: Any): Any\n```",
-        "max" => "Returns the maximum of two values.\n\n```\nmax(a: Any, b: Any): Any\n```",
-        "pow" => "Returns base raised to the power of exponent.\n\n```\npow(base: Any, exp: Any): Any\n```",
-        "sqrt" => "Returns the square root.\n\n```\nsqrt(n: Any): Float\n```",
-        "push" => "Appends an element to an array.\n\n```\npush(array: Array, element: Any): Void\n```",
-        "pop" => "Removes and returns the last element of an array.\n\n```\npop(array: Array): Any\n```",
-        "keys" => "Returns the keys of a hash.\n\n```\nkeys(hash: Hash): Array\n```",
-        "values" => "Returns the values of a hash.\n\n```\nvalues(hash: Hash): Array\n```",
         "has_key" => "Checks if a hash contains a key.\n\n```\nhas_key(hash: Hash, key: Any): Bool\n```",
         "delete" => "Deletes a key from a hash.\n\n```\ndelete(hash: Hash, key: Any): Any\n```",
-        "merge" => "Merges two hashes.\n\n```\nmerge(hash1: Hash, hash2: Hash): Hash\n```",
         "json_parse" => "Parses a JSON string.\n\n```\njson_parse(json: String): Any\n```",
         "json_stringify" => "Converts a value to JSON.\n\n```\njson_stringify(value: Any): String\n```",
         "HTTP" => "HTTP client class.\n\n```\nHTTP.get(url, options?)\nHTTP.post(url, body, options?)\nHTTP.put / HTTP.patch / HTTP.delete / HTTP.head\nHTTP.get_json / HTTP.post_json / HTTP.put_json / HTTP.patch_json\nHTTP.request(method, url, options?)\nHTTP.get_all(urls) / HTTP.parallel(requests)\n```",
@@ -72,4 +71,38 @@ fn get_builtin_docs(name: &str) -> Option<String> {
     };
 
     Some(docs.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hover_text(source: &str, line: u32, character: u32) -> Option<String> {
+        match get_hover(source, Position::new(line, character))?.contents {
+            HoverContents::Array(items) => Some(
+                items
+                    .into_iter()
+                    .map(|item| match item {
+                        MarkedString::String(text) => text,
+                        MarkedString::LanguageString(code) => code.value,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_call_shows_what_it_calls_and_a_builtin_shows_its_doc() {
+        let source = "def greet(name)\n  name\nend\n\nprint(greet(\"x\"))\n";
+        assert_eq!(
+            hover_text(source, 4, 7).as_deref(),
+            Some("**greet** : function")
+        );
+        assert!(hover_text(source, 4, 1)
+            .unwrap()
+            .contains("Prints values to stdout"));
+        assert!(hover_text(source, 1, 3).unwrap().contains("**name**"));
+    }
 }

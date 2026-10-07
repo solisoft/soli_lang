@@ -1,101 +1,47 @@
 //! Document formatting provider for LSP.
 use tower_lsp::lsp_types::{Position, Range, TextEdit};
 
+/// Format the whole document with `soli fmt`'s formatter, as one edit.
+///
+/// This used to be a re-indenter of its own that counted only `{ } ( ) [ ]`:
+/// on `def … end` code — the house style — it moved every body line to column
+/// 0, so format-on-save flattened the file. A file that does not parse is left
+/// alone, as `soli fmt` leaves it.
 pub fn format_document(source: &str) -> Vec<TextEdit> {
-    let mut edits = Vec::new();
-
-    let lines: Vec<&str> = source.lines().collect();
-    let mut indent_level: usize = 0;
-    let indent_str = "    ";
-
-    for (i, line) in lines.iter().enumerate() {
-        let trimmed = line.trim_start();
-
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let current_indent = line.len() - line.trim_start().len();
-
-        if trimmed.starts_with("}") || trimmed.starts_with(")") || trimmed.starts_with("]") {
-            indent_level = indent_level.saturating_sub(1);
-        }
-
-        let new_expected_indent = indent_level * indent_str.len();
-
-        if current_indent != new_expected_indent {
-            let range = Range {
-                start: Position {
-                    line: i as u32,
-                    character: 0,
-                },
-                end: Position {
-                    line: i as u32,
-                    character: current_indent as u32,
-                },
-            };
-            edits.push(TextEdit {
-                range,
-                new_text: indent_str.repeat(indent_level),
-            });
-        }
-
-        if trimmed.starts_with("{") || trimmed.starts_with("(") || trimmed.starts_with("[") {
-            indent_level += 1;
-        }
-    }
-
-    edits
-}
-
-pub fn format_range(source: &str, range: Range) -> Vec<TextEdit> {
-    let lines: Vec<&str> = source.lines().collect();
-    let start_line = range.start.line as usize;
-    let end_line = range.end.line as usize;
-
-    if start_line >= lines.len() || end_line >= lines.len() {
+    let Ok(formatted) = crate::fmt::format_source(source) else {
+        return Vec::new();
+    };
+    if formatted == source {
         return Vec::new();
     }
+    vec![TextEdit {
+        range: Range {
+            start: Position::new(0, 0),
+            end: super::util::offset_to_position(source, source.len()),
+        },
+        new_text: formatted,
+    }]
+}
 
-    let mut edits = Vec::new();
-    let mut indent_level: usize = 0;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    for (i, line) in lines.iter().enumerate().take(end_line + 1).skip(start_line) {
-        let trimmed = line.trim_start();
-
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let current_indent = line.len() - line.trim_start().len();
-
-        if trimmed.starts_with("}") || trimmed.starts_with(")") || trimmed.starts_with("]") {
-            indent_level = indent_level.saturating_sub(1);
-        }
-
-        let new_expected_indent = indent_level * 4;
-
-        if current_indent != new_expected_indent {
-            let range = Range {
-                start: Position {
-                    line: i as u32,
-                    character: 0,
-                },
-                end: Position {
-                    line: i as u32,
-                    character: current_indent as u32,
-                },
-            };
-            edits.push(TextEdit {
-                range,
-                new_text: "    ".repeat(indent_level),
-            });
-        }
-
-        if trimmed.ends_with("{") || trimmed.ends_with("(") || trimmed.ends_with("[") {
-            indent_level += 1;
-        }
+    #[test]
+    fn formatting_keeps_a_def_body_indented() {
+        let source = "def greet(name)\n  \"Hello #{name}\"\nend\n";
+        assert!(
+            format_document(source).is_empty(),
+            "already formatted: no edit"
+        );
+        let messy = "def greet(name)\n\"Hello #{name}\"\nend\n";
+        let edits = format_document(messy);
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].new_text, source);
     }
 
-    edits
+    #[test]
+    fn a_file_that_does_not_parse_is_left_alone() {
+        assert!(format_document("def broken(x\n  x +\nend\n").is_empty());
+    }
 }
