@@ -58,15 +58,29 @@ fn claim_solidb(
     // Over-fetch: contended rows are lost to other processes, so asking for
     // exactly `batch` would usually come back short under concurrency.
     let candidate_limit = (batch * 4).min(200);
-    let sdbql = format!(
+    // Two queries, not one `(due) OR (lease expired)`: SoliDB serves neither
+    // side of an `OR` from the `state` index, so the single form scanned the
+    // whole collection on every poll. With a week of `done` rows kept (15k on
+    // an app with a once-a-minute cron) that was ~110ms a tick, over the
+    // server's 100ms slow-query threshold, and `_slow_queries` grew by 15k rows
+    // a day. Each half below is answered from the index in well under 1ms.
+    let due = format!(
         "FOR doc IN {coll} \
-         FILTER (doc.state IN [\"pending\", \"scheduled\", \"failed\"] AND doc.run_at <= \"{now}\") \
-             OR (doc.state == \"running\" AND doc.locked_until < \"{now}\") \
+         FILTER doc.state IN [\"pending\", \"scheduled\", \"failed\"] AND doc.run_at <= \"{now}\" \
          SORT doc.priority DESC, doc.run_at ASC \
          LIMIT {candidate_limit} RETURN doc",
         coll = JOBS_COLLECTION,
     );
-    let candidates = crud::exec_query(JOBS_COLLECTION, sdbql)?;
+    let expired = format!(
+        "FOR doc IN {coll} \
+         FILTER doc.state == \"running\" AND doc.locked_until < \"{now}\" \
+         SORT doc.priority DESC, doc.run_at ASC \
+         LIMIT {candidate_limit} RETURN doc",
+        coll = JOBS_COLLECTION,
+    );
+    let mut candidates = crud::exec_query(JOBS_COLLECTION, due)?;
+    candidates.extend(crud::exec_query(JOBS_COLLECTION, expired)?);
+    order_candidates(&mut candidates, candidate_limit);
 
     let mut claimed = Vec::new();
     for candidate in candidates {
@@ -114,9 +128,46 @@ fn claim_solidb(
     Ok(claimed)
 }
 
+/// Merge the due and lease-expired candidates into the order one query would
+/// have returned — `priority` descending, then `run_at` ascending — and keep
+/// the first `limit`.
+fn order_candidates(candidates: &mut Vec<serde_json::Value>, limit: usize) {
+    let priority =
+        |row: &serde_json::Value| row.get("priority").and_then(|v| v.as_i64()).unwrap_or(0);
+    let run_at = |row: &serde_json::Value| {
+        row.get("run_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    candidates.sort_by(|a, b| {
+        priority(b)
+            .cmp(&priority(a))
+            .then_with(|| run_at(a).cmp(&run_at(b)))
+    });
+    candidates.truncate(limit);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn candidates_merge_by_priority_then_run_at_and_respect_the_limit() {
+        let mut rows = vec![
+            serde_json::json!({ "_key": "due-low", "priority": 0, "run_at": "2026-01-01T00:00:01Z" }),
+            serde_json::json!({ "_key": "due-high", "priority": 5, "run_at": "2026-01-01T00:00:09Z" }),
+            serde_json::json!({ "_key": "expired-low-early", "priority": 0, "run_at": "2026-01-01T00:00:00Z" }),
+            serde_json::json!({ "_key": "expired-high", "priority": 5, "run_at": "2026-01-01T00:00:02Z" }),
+            serde_json::json!({ "_key": "no-priority", "run_at": "2026-01-01T00:00:03Z" }),
+        ];
+        order_candidates(&mut rows, 4);
+        let keys: Vec<&str> = rows.iter().map(|r| r["_key"].as_str().unwrap()).collect();
+        assert_eq!(
+            keys,
+            ["expired-high", "due-high", "expired-low-early", "due-low"]
+        );
+    }
 
     #[test]
     fn zero_batch_never_touches_the_database() {
