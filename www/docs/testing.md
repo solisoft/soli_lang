@@ -2,6 +2,86 @@
 
 Soli provides a comprehensive testing framework for MVC applications with BDD-style DSL, parallel execution, and coverage reporting.
 
+## What a spec must prove
+
+A spec is evidence that the code does the right thing **and refuses the wrong one**. A suite of
+happy paths passes just as well against an app that accepts everything, lets anyone in and never
+checks an id. For every behavior, write the cases that must fail next to the one that must succeed:
+
+- **Invalid input** — missing, blank, wrong type, too long, out of range, a value already taken.
+  Assert the refusal (`422`), *which* field it names, and that nothing was written.
+- **Someone who may not do it** — a guest, another user's record, a role without the right.
+  Assert `401`/`403`/the redirect, and that the data did not change.
+- **Something that does not exist** — an unknown id answers `404`, not `500`.
+- **Errors raised on purpose** — `assert_raises("fragment") do … end`: the error *and* its message.
+- **Boundaries** — 0, 1, the limit and one past it, an empty list, the last page.
+- **What a failure leaves behind** — after a refused create, update or payment, the count and the
+  stored record are what they were before.
+
+Assert the outcome, not only the status code. Coverage does not catch a missing refusal test: a
+happy path executes the line of a `return … if invalid` guard without ever taking it. Before
+calling a spec done, break the code it protects — drop the validation, the permission check — and
+watch it fail.
+
+```soli
+describe("POST /posts") do
+  before_each() do
+    as_guest()
+  end
+
+  test("creates a post from valid data") do
+    response = post("/posts", { "title": "Hello", "body": "World" })
+    assert_eq(res_status(response), 302)
+    assert_eq(Post.where({ "title": "Hello" }).count, 1)
+  end
+
+  test("refuses a post without a title, and writes nothing") do
+    count_before = Post.count
+    response = post("/posts", { "body": "World" })
+    assert_eq(res_status(response), 422)
+    # The form builder marks the field in error.
+    assert_contains(res_body(response), "name=\"title\" class=\"field-error\"")
+    assert_eq(Post.count, count_before)
+  end
+end
+
+describe("GET /posts/:id") do
+  test("answers 404 for an unknown id, not 500") do
+    assert_eq(res_status(get("/posts/no-such-key")), 404)
+  end
+end
+
+describe("POST /posts/:id/publish") do
+  test("refuses a visitor, and leaves the post unpublished") do
+    as_guest()
+    post_record = Post.create({ "title": "Draft" })
+    response = post("/posts/" + post_record._key + "/publish", {})
+    assert_eq(res_status(response), 403)
+    assert(!Post.find(post_record._key).published)
+  end
+end
+
+describe("Post") do
+  test("names the field a refused create is missing, and stores nothing") do
+    post_record = Post.create({ "body": "World" })
+    assert_eq(post_record._errors[0]["field"], "title")
+    assert_null(post_record._key)
+  end
+
+  test("find raises on an unknown key") do
+    message = assert_raises() do
+      Post.find("no-such-key")
+    end
+    assert_contains(message, "no-such-key")
+  end
+end
+```
+
+The record is `post_record` because a local named `post` would replace the `post()` request
+helper for the rest of the file. The controller spec reads the refused field from the page because
+`assigns()` serialises a model the way `render_json` does, so `_errors` is not in it; check
+`_errors` in a model spec. Apps created with `soli new` carry this checklist in `tests/CLAUDE.md`.
+
 ## Test Structure
 
 Tests live in the `tests/` directory of your application:

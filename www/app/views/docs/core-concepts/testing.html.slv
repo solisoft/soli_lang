@@ -16,6 +16,10 @@
             Testing Topics
         </h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <a href="#section-real-tests" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-rose-500/20 flex items-center justify-center text-rose-400 text-sm font-mono">!</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">What a Spec Must Prove</span>
+            </a>
             <a href="#section-e2e-testing" class="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-teal-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-teal-500/20 flex items-center justify-center text-teal-400 text-sm font-mono">E2E</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">E2E Controller Testing</span>
@@ -38,6 +42,77 @@
             </a>
         </div>
     </nav>
+
+    <section id="section-real-tests" class="scroll-mt-20 mb-16">
+        <h2 class="text-3xl font-bold text-white mb-6">What a Spec Must Prove</h2>
+        <p class="text-gray-400 mb-4">A spec is evidence that the code does the right thing <strong class="text-white">and refuses the wrong one</strong>. A suite of happy paths passes just as well against an app that accepts everything, lets anyone in and never checks an id. For every behavior, write the cases that must fail next to the one that must succeed:</p>
+        <ul class="list-disc list-inside text-gray-400 space-y-2 mb-6">
+            <li><strong class="text-white">Invalid input</strong> &mdash; missing, blank, wrong type, too long, out of range, a value already taken. Assert the refusal (<code class="text-amber-400">422</code>), <em>which</em> field it names, and that nothing was written.</li>
+            <li><strong class="text-white">Someone who may not do it</strong> &mdash; a guest, another user&rsquo;s record, a role without the right. Assert <code class="text-amber-400">401</code>/<code class="text-amber-400">403</code>/the redirect, and that the data did not change.</li>
+            <li><strong class="text-white">Something that does not exist</strong> &mdash; an unknown id answers <code class="text-amber-400">404</code>, not <code class="text-amber-400">500</code>.</li>
+            <li><strong class="text-white">Errors raised on purpose</strong> &mdash; <code class="text-amber-400">assert_raises("fragment") do &hellip; end</code>: the error <em>and</em> its message.</li>
+            <li><strong class="text-white">Boundaries</strong> &mdash; 0, 1, the limit and one past it, an empty list, the last page.</li>
+            <li><strong class="text-white">What a failure leaves behind</strong> &mdash; after a refused create, update or payment, the count and the stored record are what they were before.</li>
+        </ul>
+        <p class="text-gray-400 mb-6">Assert the outcome, not only the status code. Coverage does not catch a missing refusal test: a happy path executes the line of a <code class="text-amber-400">return &hellip; if invalid</code> guard without ever taking it. Before calling a spec done, break the code it protects &mdash; drop the validation, the permission check &mdash; and watch it fail.</p>
+        <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+            <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">tests/posts_controller_spec.sl</label>
+            <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">describe("POST /posts") do
+  before_each() do
+    as_guest()
+  end
+
+  test("creates a post from valid data") do
+    response = post("/posts", { "title": "Hello", "body": "World" })
+    assert_eq(res_status(response), 302)
+    assert_eq(Post.where({ "title": "Hello" }).count, 1)
+  end
+
+  test("refuses a post without a title, and writes nothing") do
+    count_before = Post.count
+    response = post("/posts", { "body": "World" })
+    assert_eq(res_status(response), 422)
+    # The form builder marks the field in error.
+    assert_contains(res_body(response), "name=\"title\" class=\"field-error\"")
+    assert_eq(Post.count, count_before)
+  end
+end
+
+describe("GET /posts/:id") do
+  test("answers 404 for an unknown id, not 500") do
+    assert_eq(res_status(get("/posts/no-such-key")), 404)
+  end
+end
+
+describe("POST /posts/:id/publish") do
+  test("refuses a visitor, and leaves the post unpublished") do
+    as_guest()
+    post_record = Post.create({ "title": "Draft" })
+    response = post("/posts/" + post_record._key + "/publish", {})
+    assert_eq(res_status(response), 403)
+    assert(!Post.find(post_record._key).published)
+  end
+end
+
+describe("Post") do
+  test("names the field a refused create is missing, and stores nothing") do
+    post_record = Post.create({ "body": "World" })
+    assert_eq(post_record._errors[0]["field"], "title")
+    assert_null(post_record._key)
+  end
+
+  test("find raises on an unknown key") do
+    message = assert_raises() do
+      Post.find("no-such-key")
+    end
+    assert_contains(message, "no-such-key")
+  end
+end</code></pre>
+            </div>
+        </div>
+        <p class="text-gray-400">The record is <code class="text-amber-400">post_record</code> because a local named <code class="text-amber-400">post</code> would replace the <code class="text-amber-400">post()</code> request helper for the rest of the file. The controller spec reads the refused field from the page because <code class="text-amber-400">assigns()</code> serialises a model the way <code class="text-amber-400">render_json</code> does, so <code class="text-amber-400">_errors</code> is not in it; check <code class="text-amber-400">_errors</code> in a model spec. Apps created with <code class="text-amber-400">soli new</code> carry this checklist in <code class="text-amber-400">tests/CLAUDE.md</code>.</p>
+    </section>
 
     <section id="section-e2e-testing" class="scroll-mt-20 mb-16">
         <h2 class="text-3xl font-bold text-white mb-6 flex items-center gap-3">

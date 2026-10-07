@@ -639,6 +639,8 @@ Return `req` (modified or not) to proceed to the next middleware / handler. Retu
 
 Specs live in `tests/` and run with `soli test`. Use the BDD DSL with `describe` / `test` / `before_each`. Controller tests get an E2E client (`get`, `post`, `put`, `delete`, `assigns()`, `view_path()`, `as_guest()`).
 
+**Tests are real tests, not happy paths.** For every behavior, test what must be refused next to what must succeed: invalid or missing input, a user who may not do it, an id that does not exist, the error raised on purpose (`assert_raises("fragment") do … end`), the boundaries. Assert the outcome — the stored record, the count, the field in error — not only the status code, and check that a refused request wrote nothing. A spec that would still pass if the code accepted everything proves nothing; break the code once (drop the validation, the permission check) and watch its spec fail. Checklist and a worked example: `tests/CLAUDE.md` → "What a spec must prove".
+
 ```soli
 # tests/posts_controller_spec.sl
 describe("PostsController") do
@@ -660,9 +662,17 @@ describe("PostsController") do
             assert_eq(res_status(response), 302)
         end
 
-        test("rejects invalid data") do
-            response = post("/posts", {})
+        test("refuses a post without a title, and writes nothing") do
+            count_before = Post.count
+            response = post("/posts", { "body": "World" })
             assert_eq(res_status(response), 422)
+            assert_eq(Post.count, count_before)
+        end
+    end
+
+    describe("GET /posts/:id") do
+        test("answers 404 for an unknown id") do
+            assert_eq(res_status(get("/posts/no-such-key")), 404)
         end
     end
 end

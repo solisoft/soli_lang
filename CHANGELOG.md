@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+* **scaffold:** **New apps are told to test what must be refused, not only the happy path.** `tests/CLAUDE.md` opens with "What a spec must prove": for every behavior, the refusals next to the success — invalid input (the 422, the field in error, nothing written), a user who may not act, an unknown id (404 not 500), the error raised on purpose, the boundaries, what a failure leaves behind — asserting the outcome rather than the status alone, and breaking the protected code once to watch the spec fail. A worked example (verified against a generated app: removing the validation or the permission check turns its refusal tests red) and three new Do/Don't rows come with it. The root `CLAUDE.md`, `/soli-resource` and `/soli-verify` say the same; `/soli-resource` notes that the scaffold's own spec checks status codes only. The example also documents two traps: a local named `post` replaces the `post()` request helper, and `assigns()` serialises a model without `_errors`. [Docs](www/docs/testing.md#what-a-spec-must-prove)
+
 ## [2.18.2] - 2026-10-07
 
 ### Fixed

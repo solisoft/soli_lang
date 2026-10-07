@@ -11,3 +11,5 @@ Run, in order, and report any failure with the exact failing file:line:
 `fmt` goes first: it rewrites layout in place, so running it after lint would mean re-linting anyway. Report which files it reformatted — that's part of the diff you're handing off.
 
 If lint fails: fix the root cause — don't suppress with comments or weaken rules. If coverage drops below 90%: write the missing test, don't lower the threshold.
+
+Coverage does not prove the refusals are tested: a happy path runs the line of a validation or permission guard without ever taking it. For each behavior you changed, check that a spec covers what must be refused (invalid input, an unknown id, a user who may not act, the error raised) and asserts what it left behind — and report any behavior that only has a happy-path spec.

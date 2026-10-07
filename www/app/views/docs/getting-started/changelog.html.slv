@@ -22,6 +22,11 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.18.2.</p>
 
+        <h3 id="unreleased-dev-tools" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Dev tools</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">New apps are told to test what must be refused, not only the happy path.</strong> The <code class="text-cyan-400">tests/CLAUDE.md</code> that <code class="text-cyan-400">soli new</code> writes opens with a checklist: invalid input (the 422, the field in error, nothing written), a user who may not act, an unknown id, the error raised on purpose, the boundaries, what a failure leaves behind &mdash; assert the outcome, not just the status, and break the protected code once to watch the spec fail. A worked example comes with it; the root <code class="text-cyan-400">CLAUDE.md</code>, <code class="text-cyan-400">/soli-resource</code> and <code class="text-cyan-400">/soli-verify</code> say the same. <a href="/docs/testing#section-real-tests" class="text-cyan-400 hover:underline">What a spec must prove</a></li>
+        </ul>
+
     </section>
 
     <section id="v2-18-2" class="mb-16 scroll-mt-24">
