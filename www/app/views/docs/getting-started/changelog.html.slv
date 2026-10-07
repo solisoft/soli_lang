@@ -24,6 +24,11 @@
 
     </section>
 
+    <section id="v2-18-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.18.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-07</span></h2>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">v2.18.0 was tagged but never published: its CI stopped on KV specs that SoliKV 0.4.3 cannot pass (no <code class="text-cyan-400">TOUCH</code>, a <code class="text-cyan-400">RENAME</code> that loses the value, an <code class="text-cyan-400">APPEND</code> that drops the TTL). Those specs are now <code class="text-cyan-400">pending</code> with the reason. v2.18.1 is v2.18.0 plus that fix &mdash; its release notes are just below.</p>
+    </section>
+
     <section id="v2-18-0" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">v2.18.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-07</span></h2>
 

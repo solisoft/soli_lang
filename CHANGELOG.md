@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [2.18.1] - 2026-10-07
+
+v2.18.0 was tagged but never published: its CI stopped on six KV specs that SoliKV 0.4.3, the server CI runs, cannot pass. v2.18.1 is v2.18.0 plus that fix — the release notes are under 2.18.0.
+
+### Fixed
+
+* **tests:** **The KV specs mark what SoliKV 0.4.3 cannot do as `pending`, with the reason.** It has no `TOUCH`, answers `OK` to `RENAME` and loses the value, and drops a key's TTL on `APPEND` (checked over RESP against the 0.4.3 binary). The client sends the right commands; the specs say so, as they already did for `RPOPLPUSH` and `SMISMEMBER`, and will pass the day SoliKV catches up.
+
 ## [2.18.0] - 2026-10-07
 
 ### Added

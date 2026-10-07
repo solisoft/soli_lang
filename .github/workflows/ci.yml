@@ -145,7 +145,8 @@ jobs:
       # Redis backed them until a SoliKV binary was published, and the
       # stand-in hid exactly what its own caveat warned about — SoliKV 0.4.3
       # answers SINTER/SUNION/SDIFF/SMOVE differently and lacks RPOPLPUSH and
-      # SMISMEMBER, which Redis passed. Those specs are `pending` with the
+      # SMISMEMBER, which Redis passed; it also has no TOUCH, loses the value on
+      # RENAME and drops a key's TTL on APPEND. Those specs are `pending` with the
       # reason, so the day SoliKV catches up they say so. On 6380, the
       # client's default, which the job env already names.
       - name: Start SoliKV (KV and Cache specs)
