@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 550" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" role="img" aria-label="CPU per request before and after the VM gap fixes, per route">
+<rect width="920" height="550" fill="#0b0d0f"/>
+<style>.t{fill:#f3f4f6;font-size:15px;font-weight:700}.l{fill:#e5e7eb;font-size:12px;font-weight:600}.s{fill:#6b7280;font-size:11px}.v{fill:#e5e7eb;font-size:11px;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.d{font-size:12px;font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}</style>
+<text class="t" x="20" y="32">CPU per request, before and after — <tspan fill="#67e8f9" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="14">soli serve</tspan> in production</text>
+<text class="s" x="20" y="52">16 workers on 16 threads of a Ryzen 9 9950X, oha on 8 others, 200 connections. Median of 3 interleaved starts. Log scale; shorter is better.</text>
+<text class="s" x="20" y="68">Each route repeats the construct a few times so it dominates the request; requests per second at the right.</text>
+<rect x="20" y="84" width="12" height="12" rx="2" fill="#4b5563"/><text class="s" x="38" y="94" fill="#9ca3af">before: each call set up a whole interpreter, every builtin registered again</text>
+<rect x="460" y="84" width="12" height="12" rx="2" fill="#34d399"/><text class="s" x="478" y="94" fill="#9ca3af">now: the call runs in its own closure, or on the VM</text>
+<text class="s" x="800" y="104">gain</text>
+<text class="s" x="900" y="104" text-anchor="end">req/s</text>
+<line x1="300.0" y1="110" x2="300.0" y2="480" stroke="#1f2937"/>
+<text class="s" x="300.0" y="496" text-anchor="middle">10 µs</text>
+<line x1="445.4" y1="110" x2="445.4" y2="480" stroke="#1f2937"/>
+<text class="s" x="445.4" y="496" text-anchor="middle">100 µs</text>
+<line x1="590.8" y1="110" x2="590.8" y2="480" stroke="#1f2937"/>
+<text class="s" x="590.8" y="496" text-anchor="middle">1 ms</text>
+<line x1="736.2" y1="110" x2="736.2" y2="480" stroke="#1f2937"/>
+<text class="s" x="736.2" y="496" text-anchor="middle">10 ms</text>
+<text class="l" x="288" y="129" text-anchor="end">Validators</text>
+<text class="s" x="288" y="144" text-anchor="end">5 creates, 4 closure validators each</text>
+<rect x="300" y="118" width="398.3" height="14" rx="4" fill="#4b5563"/>
+<text class="v" x="704.3" y="129" fill="#9ca3af">5.5 ms</text>
+<rect x="300" y="135" width="107.4" height="14" rx="4" fill="#34d399"/>
+<text class="v" x="413.4" y="146">54.8 µs</text>
+<text class="d" x="800" y="137" fill="#34d399">×100</text>
+<text class="s" x="900" y="129" text-anchor="end">2.9k/s</text>
+<text class="s" x="900" y="146" text-anchor="end" fill="#9ca3af">257k/s</text>
+<text class="l" x="288" y="175" text-anchor="end">Method added to String</text>
+<text class="s" x="288" y="190" text-anchor="end">10 calls of String.define_method</text>
+<rect x="300" y="164" width="354.4" height="14" rx="4" fill="#4b5563"/>
+<text class="v" x="660.4" y="175" fill="#9ca3af">2.7 ms</text>
+<rect x="300" y="181" width="51.2" height="14" rx="4" fill="#34d399"/>
+<text class="v" x="357.2" y="192">22.5 µs</text>
+<text class="d" x="800" y="183" fill="#34d399">×122</text>
+<text class="s" x="900" y="175" text-anchor="end">5.8k/s</text>
+<text class="s" x="900" y="192" text-anchor="end" fill="#9ca3af">572k/s</text>
+<text class="l" x="288" y="221" text-anchor="end">Job perform_now</text>
+<text class="s" x="288" y="236" text-anchor="end">5 jobs run inline</text>
+<rect x="300" y="210" width="312.6" height="14" rx="4" fill="#4b5563"/>
+<text class="v" x="618.6" y="221" fill="#9ca3af">1.4 ms</text>
+<rect x="300" y="227" width="42.3" height="14" rx="4" fill="#34d399"/>
+<text class="v" x="348.3" y="238">19.5 µs</text>
+<text class="d" x="800" y="229" fill="#34d399">×72</text>
+<text class="s" x="900" y="221" text-anchor="end">11k/s</text>
+<text class="s" x="900" y="238" text-anchor="end" fill="#9ca3af">650k/s</text>
+<text class="l" x="288" y="267" text-anchor="end">Mailer action</text>
+<text class="s" x="288" y="282" text-anchor="end">5 messages built</text>
+<rect x="300" y="256" width="358.7" height="14" rx="4" fill="#4b5563"/>
+<text class="v" x="664.7" y="267" fill="#9ca3af">2.9 ms</text>
+<rect x="300" y="273" width="108.1" height="14" rx="4" fill="#34d399"/>
+<text class="v" x="414.1" y="284">55.4 µs</text>
+<text class="d" x="800" y="275" fill="#34d399">×53</text>
+<text class="s" x="900" y="267" text-anchor="end">5.4k/s</text>
+<text class="s" x="900" y="284" text-anchor="end" fill="#9ca3af">253k/s</text>
+<text class="l" x="288" y="313" text-anchor="end">Model scopes</text>
+<text class="s" x="288" y="328" text-anchor="end">6 chains of 3 scopes</text>
+<rect x="300" y="302" width="427.2" height="14" rx="4" fill="#4b5563"/>
+<text class="v" x="733.2" y="313" fill="#9ca3af">8.7 ms</text>
+<rect x="300" y="319" width="110.7" height="14" rx="4" fill="#34d399"/>
+<text class="v" x="416.7" y="330">57.7 µs</text>
+<text class="d" x="800" y="321" fill="#34d399">×150</text>
+<text class="s" x="900" y="313" text-anchor="end">1.8k/s</text>
+<text class="s" x="900" y="330" text-anchor="end" fill="#9ca3af">245k/s</text>
+<text class="l" x="288" y="359" text-anchor="end">Scopes calling app functions</text>
+<text class="s" x="288" y="374" text-anchor="end">2 scopes, tenant + tag</text>
+<rect x="300" y="348" width="303.6" height="14" rx="4" fill="#4b5563"/>
+<text class="v" x="609.6" y="359" fill="#9ca3af">1.2 ms</text>
+<rect x="300" y="365" width="57.3" height="14" rx="4" fill="#34d399"/>
+<text class="v" x="363.3" y="376">24.8 µs</text>
+<text class="d" x="800" y="367" fill="#34d399">×49</text>
+<text class="s" x="900" y="359" text-anchor="end">13k/s</text>
+<text class="s" x="900" y="376" text-anchor="end" fill="#9ca3af">526k/s</text>
+<text class="l" x="288" y="405" text-anchor="end">render_json(instance)</text>
+<text class="s" x="288" y="420" text-anchor="end">now honours as_json</text>
+<rect x="300" y="394" width="30.0" height="14" rx="4" fill="#4b5563"/>
+<text class="v" x="336.0" y="405" fill="#9ca3af">16.1 µs</text>
+<rect x="300" y="411" width="30.8" height="14" rx="4" fill="#34d399"/>
+<text class="v" x="336.8" y="422">16.3 µs</text>
+<text class="d" x="800" y="413" fill="#6b7280">=</text>
+<text class="s" x="900" y="405" text-anchor="end">755k/s</text>
+<text class="s" x="900" y="422" text-anchor="end" fill="#9ca3af">750k/s</text>
+<text class="l" x="288" y="451" text-anchor="end">render_json(hash)</text>
+<text class="s" x="288" y="466" text-anchor="end">no gap: the floor</text>
+<rect x="300" y="440" width="29.0" height="14" rx="4" fill="#4b5563"/>
+<text class="v" x="335.0" y="451" fill="#9ca3af">15.8 µs</text>
+<rect x="300" y="457" width="29.1" height="14" rx="4" fill="#34d399"/>
+<text class="v" x="335.1" y="468">15.8 µs</text>
+<text class="d" x="800" y="459" fill="#6b7280">=</text>
+<text class="s" x="900" y="451" text-anchor="end">762k/s</text>
+<text class="s" x="900" y="468" text-anchor="end" fill="#9ca3af">760k/s</text>
+<text class="s" x="20" y="534">render_json(instance) costs about what it did, but now sends what as_json returns: the VM used to skip it and send every field.</text>
+</svg>

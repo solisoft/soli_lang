@@ -174,30 +174,28 @@ impl Vm {
     }
 
     /// A model scope bound to a fresh builder for the class, resolved by the
-    /// tree-walker. The interpreter carries the VM's globals: a scope closure
-    /// is user code, and a tenant scope calls `Current` or an app helper.
+    /// tree-walker. A scope closure is user code — a tenant scope calls
+    /// `Current` or an app helper — but its body runs bound to the builder in
+    /// its own closure's environment (`bind_user_method_to_receiver`), which
+    /// is where those names resolve. The interpreter here only looks the scope
+    /// up and calls it, so it needs no copy of the VM's globals: copying them
+    /// (`for_vm_fragment`) was most of a scope call's cost, ~40 µs of ~42.
     pub(crate) fn model_class_scope(
         &self,
         class_val: &Value,
         name: &str,
         span: Span,
     ) -> Result<(Interpreter, Value), RuntimeError> {
-        let mut interp = Interpreter::for_vm_fragment(&self.globals);
+        let mut interp = Interpreter::for_bound_body();
         let scope = interp.evaluate_member_on_value(class_val.clone(), name, span)?;
         Ok((interp, scope))
     }
 
-    /// An interpreter for query-builder work. Scopes are user closures that
-    /// may call application helpers, so they get the VM's globals; everything
-    /// else reads only the builder and the database.
-    fn query_builder_interpreter(&self, is_scope: bool) -> Interpreter {
-        if is_scope {
-            Interpreter::for_vm_fragment(&self.globals)
-        } else {
-            Interpreter::with_environment(Rc::new(RefCell::new(
-                crate::interpreter::environment::Environment::new(),
-            )))
-        }
+    /// An interpreter for query-builder work. It reads only the builder and the
+    /// database; a scope's own body, which may call application helpers, runs
+    /// in its closure's environment (see `model_class_scope`).
+    fn query_builder_interpreter(&self) -> Interpreter {
+        Interpreter::for_bound_body()
     }
 
     fn query_builder_property(
@@ -213,7 +211,7 @@ impl Vm {
                 span,
             ));
         }
-        let mut interp = self.query_builder_interpreter(Self::is_query_builder_scope(object, name));
+        let mut interp = self.query_builder_interpreter();
         let member = interp.query_builder_member_access(name, span, object.clone())?;
         interp.auto_invoke_member(member, span)
     }
@@ -255,7 +253,7 @@ impl Vm {
             _ => {}
         }
         let is_scope = Self::is_query_builder_scope(&object, name);
-        let mut interp = self.query_builder_interpreter(is_scope);
+        let mut interp = self.query_builder_interpreter();
         if is_scope {
             let scope = interp.query_builder_member_access(name, span, object.clone())?;
             return interp.call_value(scope, args, span);

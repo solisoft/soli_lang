@@ -96,8 +96,10 @@ fn invoke_validator_value(
 }
 
 /// Execute a validator's body in `env` on a fresh interpreter.
+/// No builtin registry (`Interpreter::for_bound_body`): a model with four
+/// closure rules used to rebuild it four times per save, about a millisecond.
 fn run_validator_body(func: &Function, env: Environment, what: &str) -> Result<Value, String> {
-    let mut interp = Interpreter::default();
+    let mut interp = Interpreter::for_bound_body();
     // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
     // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
     // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un

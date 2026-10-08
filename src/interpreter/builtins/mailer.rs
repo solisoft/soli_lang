@@ -1072,7 +1072,9 @@ pub(crate) fn mail_invoke(args: &[Value]) -> Result<Value, String> {
         call_args.push(Value::Null);
     }
 
-    let mut interpreter = crate::interpreter::Interpreter::default();
+    // The action runs in its own closure's environment; the interpreter only
+    // carries the call (no builtins registry rebuilt per email).
+    let mut interpreter = crate::interpreter::Interpreter::for_bound_body();
     interpreter
         .call_function_with_this(&method, Some(Value::Instance(inst.clone())), call_args)
         .map_err(|e| e.to_string())

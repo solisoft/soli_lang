@@ -273,6 +273,21 @@ fn render_json_evaluates_its_argument_once() {
     );
 }
 
+#[test]
+fn render_json_sends_what_as_json_returns_on_the_vm() {
+    // SEC-013b: `render_json(record)` serializes what the class's `as_json`
+    // returns. The tree-walker did; the VM called the native directly and sent
+    // every field — the very fields an `as_json` exists to leave out. The
+    // fixture's `as_json` drops `token`.
+    let server = shared_server();
+    let resp = ureq::get(&server.url("/render_json_as_json"))
+        .timeout(Duration::from_secs(3))
+        .call()
+        .expect("render_json_as_json request");
+    assert_eq!(resp.status(), 200);
+    assert_eq!(body_string(resp), r#"{"label":"ok"}"#);
+}
+
 /// Model scopes resolve in an action run on the VM: bare, with empty parens,
 /// and with an argument, each applied to the query (`to_query`). Before 2.6.3
 /// the VM could not look a model scope up; the server re-ran the action on the
@@ -334,6 +349,12 @@ fn model_scopes_resolve_in_a_vm_action() {
     assert!(
         lines[3].contains("doc.kind") && lines[3].contains("lamp"),
         "argument: {body}"
+    );
+    // A scope body that calls an app helper and reads a constant: it runs in
+    // its own closure, not in a copy of the VM's globals.
+    assert!(
+        lines[4].contains("acme-eu") && lines[4].contains("rust"),
+        "scope calling helpers: {body}"
     );
 }
 

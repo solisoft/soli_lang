@@ -942,7 +942,10 @@ fn perform_now_inline(class: &Rc<Class>, args: &[Value]) -> Result<Value, String
             .map_err(|e| e.to_string());
     }
     if let Some(method) = class.find_static_method("perform") {
-        let mut interpreter = crate::interpreter::Interpreter::default();
+        // `perform` runs in its own closure's environment: the interpreter
+        // only carries the call, so it skips the builtins registry a default
+        // one rebuilds (~270 µs a call).
+        let mut interpreter = crate::interpreter::Interpreter::for_bound_body();
         return interpreter
             .call_function_with_this(&method, Some(Value::Class(class.clone())), call_args)
             .map_err(|e| e.to_string());

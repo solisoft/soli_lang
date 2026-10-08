@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" width="1024" height="576" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" role="img" aria-label="Before: each call of a validator, scope, mailer action, perform_now or method added to String built a whole interpreter and registered every builtin, about 270 microseconds, to run a body that takes under a microsecond. Now the body runs in its own closure's environment. CPU per request: validators 5.49 ms to 55 µs, model scopes 8.67 ms to 58 µs, a String method 2.74 ms to 22 µs, perform_now 1.41 ms to 20 µs, mailer actions 2.93 ms to 55 µs, tenant scopes 1.22 ms to 25 µs.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d0f12"/>
+      <stop offset="1" stop-color="#08090b"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#4b5563"/>
+    </marker>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#ef4444" stroke-opacity="0.18" stroke-width="3"/>
+    </pattern>
+  </defs>
+  <style>
+    .h{fill:#e5e7eb;font-size:22px;font-weight:700}
+    .k{fill:#f59e0b;font-size:12px;font-weight:700;letter-spacing:.12em}
+    .t{fill:#e5e7eb;font-size:14px;font-weight:600}
+    .s{fill:#8b929e;font-size:12px}
+    .m{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+    .big{font-size:20px;font-weight:700}
+  </style>
+  <rect width="1024" height="576" fill="url(#bg)"/>
+
+  <text class="h" x="40" y="58">The interpreter in every closure</text>
+  <text class="s" x="40" y="80">Validators, scopes, mailer actions, perform_now and methods added to built-in types</text>
+
+  <!-- BEFORE -->
+  <text class="k" x="40" y="118">BEFORE · EACH CALL</text>
+  <rect x="40" y="130" width="210" height="72" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text class="t" x="58" y="158">a validator closure</text>
+  <text class="s m" x="58" y="182" fill="#e5e7eb">value.present?</text>
+
+  <line x1="254" y1="166" x2="290" y2="166" stroke="#4b5563" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="294" y="130" width="420" height="72" rx="14" fill="#101319" stroke="#ef4444" stroke-opacity="0.7"/>
+  <rect x="294" y="130" width="420" height="72" rx="14" fill="url(#hatch)"/>
+  <text class="t m" x="312" y="158">Interpreter::default()</text>
+  <text class="s" x="312" y="182">a new interpreter, every builtin registered again</text>
+  <text class="m big" x="696" y="176" text-anchor="end" fill="#ef4444">270 µs</text>
+
+  <line x1="718" y1="166" x2="754" y2="166" stroke="#4b5563" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="758" y="130" width="226" height="72" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text class="t" x="776" y="158">run the body</text>
+  <text class="s" x="776" y="182">in its closure's env</text>
+  <text class="m big" x="966" y="176" text-anchor="end" fill="#8b929e">&lt;1 µs</text>
+  <text class="s" x="504" y="224" text-anchor="middle">built, then set aside: the body runs in the environment its closure already had</text>
+
+  <!-- NOW -->
+  <text class="k" x="40" y="262" fill="#22c55e">NOW</text>
+  <rect x="40" y="274" width="210" height="58" rx="14" fill="#101319" stroke="#2b3038"/>
+  <text class="t" x="58" y="300">a validator closure</text>
+  <text class="s m" x="58" y="320" fill="#e5e7eb">value.present?</text>
+  <line x1="254" y1="303" x2="754" y2="303" stroke="#22c55e" stroke-opacity="0.6" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow)"/>
+  <text class="s m" x="504" y="295" text-anchor="middle" fill="#22c55e">Interpreter::for_bound_body() · no registry</text>
+  <rect x="758" y="274" width="226" height="58" rx="14" fill="#101319" stroke="#22c55e" stroke-opacity="0.7"/>
+  <text class="t" x="776" y="300">run the body</text>
+  <text class="s" x="776" y="320">in its closure's env</text>
+
+  <!-- RESULTS -->
+  <line x1="40" y1="364" x2="984" y2="364" stroke="#1f242c"/>
+  <text class="k" x="40" y="392">CPU PER REQUEST · 16 WORKERS · RYZEN 9 9950X</text>
+
+  <g>
+    <rect x="40" y="406" width="300" height="60" rx="12" fill="#101319" stroke="#2b3038"/>
+    <text class="t" x="58" y="430">Validators</text>
+    <text class="s m" x="58" y="452">5.49 ms → 55 µs</text>
+    <text class="m big" x="322" y="446" text-anchor="end" fill="#22c55e">×100</text>
+
+    <rect x="362" y="406" width="300" height="60" rx="12" fill="#101319" stroke="#2b3038"/>
+    <text class="t" x="380" y="430">Model scopes</text>
+    <text class="s m" x="380" y="452">8.67 ms → 58 µs</text>
+    <text class="m big" x="644" y="446" text-anchor="end" fill="#22c55e">×150</text>
+
+    <rect x="684" y="406" width="300" height="60" rx="12" fill="#101319" stroke="#2b3038"/>
+    <text class="t" x="702" y="430">Method added to String</text>
+    <text class="s m" x="702" y="452">2.74 ms → 22 µs</text>
+    <text class="m big" x="966" y="446" text-anchor="end" fill="#22c55e">×122</text>
+
+    <rect x="40" y="478" width="300" height="60" rx="12" fill="#101319" stroke="#2b3038"/>
+    <text class="t m" x="58" y="502">perform_now</text>
+    <text class="s m" x="58" y="524">1.41 ms → 20 µs</text>
+    <text class="m big" x="322" y="518" text-anchor="end" fill="#22c55e">×72</text>
+
+    <rect x="362" y="478" width="300" height="60" rx="12" fill="#101319" stroke="#2b3038"/>
+    <text class="t" x="380" y="502">Mailer actions</text>
+    <text class="s m" x="380" y="524">2.93 ms → 55 µs</text>
+    <text class="m big" x="644" y="518" text-anchor="end" fill="#22c55e">×53</text>
+
+    <rect x="684" y="478" width="300" height="60" rx="12" fill="#101319" stroke="#2b3038"/>
+    <text class="t" x="702" y="502">Scopes calling app code</text>
+    <text class="s m" x="702" y="524">1.22 ms → 25 µs</text>
+    <text class="m big" x="966" y="518" text-anchor="end" fill="#22c55e">×49</text>
+  </g>
+</svg>

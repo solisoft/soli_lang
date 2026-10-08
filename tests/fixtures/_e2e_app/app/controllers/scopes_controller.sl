@@ -10,7 +10,8 @@ class ScopesController < Controller
     bare = Gadget.owned.where({"size": 2}).to_query
     parens = Gadget.owned().to_query
     args = Gadget.of_kind("lamp").to_query
-    render_text([Gadget.label(), bare, parens, args].join("\n"))
+    helpers = Gadget.for_tenant.tagged("  Rust ").to_query
+    render_text([Gadget.label(), bare, parens, args, helpers].join("\n"))
   end
 
   # GET /queries — two reads, for the query count a `soli test` server

@@ -107,7 +107,7 @@ pub(crate) fn bind_user_method_to_receiver(receiver: Value, func: Rc<Function>) 
             let env_rc = Rc::new(RefCell::new(env_inner));
             let env_clone = env_rc.borrow().clone();
 
-            let mut interp = Interpreter::default();
+            let mut interp = Interpreter::for_bound_body();
             // COUVERTURE : ce corps appartient au fichier QUI LE DECLARE.
             //
             // L'interpreteur cree ici est NEUF — pile d'appel vide,
@@ -301,7 +301,7 @@ pub(crate) fn bind_class_method_missing(
                 env_inner.define(param.name.clone(), value);
             }
             let env_clone = env_inner.clone();
-            let mut interpreter = Interpreter::default();
+            let mut interpreter = Interpreter::for_bound_body();
             // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
             // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
             // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
@@ -896,7 +896,7 @@ impl Interpreter {
                             let call_env_rc = Rc::new(RefCell::new(bound_env));
                             let env_clone = call_env_rc.borrow().clone();
 
-                            let mut interpreter = Interpreter::default();
+                            let mut interpreter = Interpreter::for_bound_body();
                             // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
                             // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
                             // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
@@ -938,7 +938,7 @@ impl Interpreter {
                             let call_env_rc = Rc::new(RefCell::new(bound_env));
                             let env_clone = call_env_rc.borrow().clone();
 
-                            let mut interpreter = Interpreter::default();
+                            let mut interpreter = Interpreter::for_bound_body();
                             // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
                             // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
                             // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
@@ -1152,7 +1152,7 @@ impl Interpreter {
                         let eval_env_rc = Rc::new(RefCell::new(eval_env));
                         let env_clone = eval_env_rc.borrow().clone();
 
-                        let mut interpreter = Interpreter::default();
+                        let mut interpreter = Interpreter::for_bound_body();
                         // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
                         // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
                         // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un
@@ -1759,7 +1759,7 @@ impl Interpreter {
                     let call_env_rc = Rc::new(RefCell::new(env_inner));
                     let env_clone = call_env_rc.borrow().clone();
 
-                    let mut interpreter = Interpreter::default();
+                    let mut interpreter = Interpreter::for_bound_body();
                     let result = match interpreter.execute_block(&mm_method.body, env_clone) {
                         Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                         Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
@@ -1973,7 +1973,7 @@ impl Interpreter {
                             let call_env_rc = Rc::new(RefCell::new(env_inner));
                             let env_clone = call_env_rc.borrow().clone();
 
-                            let mut interpreter = Interpreter::default();
+                            let mut interpreter = Interpreter::for_bound_body();
                             let result = match interpreter.execute_block(&method.body, env_clone) {
                                 Ok(crate::interpreter::executor::ControlFlow::Return(v)) => Ok(v),
                                 Ok(crate::interpreter::executor::ControlFlow::Normal(v)) => Ok(v),
@@ -2127,7 +2127,7 @@ impl Interpreter {
                         let eval_env_rc = Rc::new(RefCell::new(eval_env));
                         let env_clone = eval_env_rc.borrow().clone();
 
-                        let mut interpreter = Interpreter::default();
+                        let mut interpreter = Interpreter::for_bound_body();
                         // COUVERTURE : reporter le fichier QUI DECLARE la fonction.
                         // L'interpreteur cree ici est neuf — pile vide, `current_source_path`
                         // a `None` — si bien qu'aucune ligne de ce corps n'etait imputee a un

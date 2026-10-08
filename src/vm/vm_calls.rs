@@ -529,6 +529,22 @@ impl Vm {
         if native.name == "with_transaction" {
             return self.call_with_transaction_block(args, span);
         }
+        // SEC-013b: `render_json(record)` sends what the class's `as_json`
+        // returns, as on the tree-walker (`try_evaluate_render_json_with_as_json`).
+        // The native has no engine to call a user method with, so on the VM
+        // `as_json` was skipped and every field went out — the very fields an
+        // `as_json` is written to leave out (a password digest, a token).
+        if native.name == "render_json" {
+            if let Some(Value::Instance(inst)) = args.first() {
+                let class = inst.borrow().class.clone();
+                if class.find_vm_method_with_class("as_json").is_some()
+                    || class.find_method("as_json").is_some()
+                {
+                    let record = args[0].clone();
+                    args[0] = self.op_get_property_member(&record, "as_json", span)?;
+                }
+            }
+        }
         if native.name == "assert_raises" {
             if let Some((fragment, block)) =
                 crate::interpreter::builtins::assertions::assert_raises_args(args.clone())

@@ -166,7 +166,17 @@ impl Interpreter {
     /// to configure the host class (which is behind an `Rc`, so those changes do
     /// propagate), not to mutate program state.
     pub(crate) fn for_vm_fragment(globals: &ahash::AHashMap<String, Value>) -> Self {
-        let mut interp = Self::new();
+        // A VM's globals are a copy of an interpreter's environment, builtins
+        // included (serve workers and `soli file.sl` both seed them that way),
+        // so registering the builtins first only to overwrite them cost a full
+        // registry — the bulk of every named-scope call made from the VM. A
+        // bare VM (unit tests) has no builtins in its globals and keeps the
+        // registry.
+        let mut interp = if globals.contains_key("print") {
+            Self::with_environment(Rc::new(RefCell::new(Environment::with_builtins_capacity())))
+        } else {
+            Self::new()
+        };
         {
             let mut env = interp.environment.borrow_mut();
             for (name, value) in globals {
@@ -175,6 +185,16 @@ impl Interpreter {
         }
         interp.vm_globals = Some(Rc::new(globals.clone()));
         interp
+    }
+
+    /// An interpreter for running one bound body with `execute_block(body, env)`:
+    /// a method bound to a receiver, a block, a validator. `execute_block` runs
+    /// the body in the environment it is handed, whose chain is the body's
+    /// closure and already sees every builtin, so this one registers none.
+    /// `Interpreter::default()` registered the whole registry on every such
+    /// call — about 270 µs, against a few µs for a short body.
+    pub(crate) fn for_bound_body() -> Self {
+        Self::with_environment(Rc::new(RefCell::new(Environment::new())))
     }
 
     /// Create an interpreter with a pre-built environment (skips register_builtins).

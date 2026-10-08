@@ -18,4 +18,9 @@ class EvalsController < Controller
     this.n = 0
     return render_json(this.counted())
   }
+
+  # render_json(instance) sends what the class's as_json returns.
+  def render_json_as_json(req: Any) -> Any {
+    return render_json(new Badge("ok", "s3cret"))
+  }
 end
