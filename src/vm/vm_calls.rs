@@ -1688,6 +1688,30 @@ impl Vm {
                 return self.call_class_method_missing(receiver_idx, argc, name, span);
             }
         }
+        // `obj.send("name", args…)` calls `name` with the rest of the
+        // arguments, unless the class defines a `send` of its own — the
+        // tree-walker's universal `send`. Without it a policy that dispatched
+        // on the action (`policy.send(action + "?")`) failed on the VM and
+        // sent its `before_action`, and the actions behind it, to the
+        // interpreter for good.
+        if name == "send" && argc >= 1 {
+            if let Value::Instance(inst) = &self.stack[receiver_idx] {
+                let class = inst.borrow().class.clone();
+                let own_send = class.find_vm_method_with_class("send").is_some()
+                    || class.find_method("send").is_some()
+                    || class.find_native_method("send").is_some();
+                if !own_send {
+                    let target = match &self.stack[receiver_idx + 1] {
+                        Value::String(s) | Value::Symbol(s) => Some(s.to_string()),
+                        _ => None,
+                    };
+                    if let Some(target) = target {
+                        self.stack.remove(receiver_idx + 1);
+                        return self.call_method_slow_path(receiver_idx, argc - 1, &target);
+                    }
+                }
+            }
+        }
         let compiled = match &self.stack[receiver_idx] {
             Value::Instance(inst) => {
                 let class = inst.borrow().class.clone();

@@ -1322,6 +1322,13 @@ const CASES: &[(&str, &str)] = &[
         "bare_clock_shadowed",
         "clock = 7\nprint(clock)\ndef f(clock)\n  clock + 1\nend\nprint(f(1))",
     ),
+    (
+        // `send` on an instance calls the method it names, with the rest of
+        // the arguments; from inside a method too (`this.send`), as a policy
+        // does. The VM had no instance `send` and refused the handler.
+        "instance_send",
+        "class Policy\n  def edit?\n    true\n  end\n  def scaled(n, k)\n    n * k\n  end\n  def check(action)\n    this.send(action + \"?\")\n  end\nend\np = new Policy()\nprint(p.send(\"edit?\"))\nprint(p.send(\"scaled\", 3, 4))\nprint(p.check(\"edit\"))",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
