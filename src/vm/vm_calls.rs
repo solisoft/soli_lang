@@ -1932,6 +1932,18 @@ impl Vm {
         arg: Option<Value>,
         span: Span,
     ) -> Result<Value, RuntimeError> {
+        self.call_method_bound_args(method, instance, arg.as_slice(), span)
+    }
+
+    /// `call_method_bound` with any number of arguments (a controller's
+    /// after-action hook takes the request and the response).
+    pub fn call_method_bound_args(
+        &mut self,
+        method: &Function,
+        instance: Value,
+        args: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
         // The `let cached = ...borrow().clone()` line scopes the
         // `RefCell` borrow to the let statement so it's released before
         // the `else` branch runs. The earlier `if let Some(...) = borrow()`
@@ -1958,20 +1970,17 @@ impl Vm {
         };
         let closure = Rc::new(VmClosure::new(proto, Vec::new()));
 
-        // Stack layout after these pushes: [..., instance, arg?]. call_closure
-        // derives stack_base = len - total_params - 1, placing `instance` at
-        // slot 0 (i.e., `this`) and `arg` at slot 1 — matching the layout the
-        // method bytecode expects. Omitted parameters are padded with null
-        // (and their defaults applied) by call_closure itself.
+        // Stack layout after these pushes: [..., instance, args...].
+        // call_closure derives stack_base = len - total_params - 1, placing
+        // `instance` at slot 0 (i.e., `this`) and the arguments from slot 1 —
+        // matching the layout the method bytecode expects. Omitted parameters
+        // are padded with null (and their defaults applied) by call_closure
+        // itself.
         self.push(instance);
-        let argc = match arg {
-            Some(arg) => {
-                self.push(arg);
-                1
-            }
-            None => 0,
-        };
-        self.call_closure(closure, argc, span)?;
+        for arg in args {
+            self.push(arg.clone());
+        }
+        self.call_closure(closure, args.len(), span)?;
         self.run()
     }
 

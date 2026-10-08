@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Performance
+
+* **serve:** **Controller hooks run on the VM in production, like actions.** A `before_action` or `after_action` was re-run on the tree-walker for every request: its `fn(req) { ... }` source was re-padded, hashed to find its parsed program, the program cloned and interpreted, and everything the hook called ran interpreted too. Each hook is now built once per worker as a method the VM runs bound to the controller (`this`, `@foo = ...` and `halt` behave as before), and falls back to the tree-walker the way an action does: a hook the VM cannot compile, or that fails on it before writing anything, is re-run on the interpreter and stays there, counted in `soli_vm_handler_demotions_total`. On a Campfire port whose base controller authenticates in a `before_action`, a cached page went from 116 to 95 µs of CPU per request (+18% requests per second). `--dev` is unchanged (it has no VM). [Docs](www/docs/controllers.md#which-engine-runs-a-hook)
+
 ### Fixed
 
 * **vm:** **A bare `clock` is the time on the VM, as on the tree-walker.** The VM pushed the native function for a paren-less `clock`, so `elapsed = clock - start` raised *Cannot subtract float from Function* in compiled code (and the type checker refused it as `() -> Float` arithmetic) while the tree-walker called it; the docs' own `start = clock` example hit it. Both engines and the checker now read a bare `clock` as `clock()` — in an expression, a method's last line, a block or a lambda — and `clock()` still calls it once. A program's own `clock` (a `def`, a parameter, or a top-level `clock = …`) shadows it as before; the VM now counts a top-level bare assignment as the program's binding, as a `let` already was. Other bare functions keep their VM meaning (the function value). [Docs](www/docs/builtins.md#clock)

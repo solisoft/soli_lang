@@ -13,7 +13,7 @@ use std::rc::Rc;
 
 use super::controller::{AfterAction, BeforeAction, ControllerAction, ControllerInfo, LayoutRule};
 use crate::interpreter::builtins::template as template_module;
-use crate::interpreter::value::{Instance, Value};
+use crate::interpreter::value::{Function, Instance, Value};
 use crate::interpreter::Interpreter;
 use crate::serve::tenant::TenantValue;
 
@@ -44,6 +44,14 @@ thread_local! {
 
 /// Most parsed hook programs a thread keeps (see `get_or_compile_handler`).
 const HANDLER_PROGRAM_CACHE_MAX: usize = 256;
+
+// Thread-local cache of hooks in the form the VM runs (see `hook_function`),
+// keyed by the hook's file line, then its source: two hooks may share a source.
+// `None` keeps a hook on the interpreter.
+type HookFunctions = HashMap<usize, HashMap<String, Option<Rc<Function>>>>;
+thread_local! {
+    static HOOK_FUNCTIONS: RefCell<HookFunctions> = RefCell::new(HashMap::new());
+}
 
 /// Controller registry - stores metadata about all controllers.
 #[derive(Debug, Clone)]
@@ -943,6 +951,81 @@ fn normalize_empty_handler_body(src: &str) -> String {
     src.to_string()
 }
 
+/// A hook in the form the VM runs: its `fn(...) { ... }` as a method, so that
+/// bound to the controller instance `this` is the controller and `@foo = ...`
+/// writes to it, as in an action. Parsed once per worker thread; `None` when
+/// the source is not one lambda, or the hook was demoted to the interpreter
+/// (`demote_hook_function`).
+pub fn hook_function(handler_source: &str, source_line: usize) -> Option<Rc<Function>> {
+    HOOK_FUNCTIONS.with(|cache| {
+        if let Some(known) = cache
+            .borrow()
+            .get(&source_line)
+            .and_then(|by_source| by_source.get(handler_source))
+        {
+            return known.clone();
+        }
+        let built = build_hook_function(handler_source, source_line).map(Rc::new);
+        cache
+            .borrow_mut()
+            .entry(source_line)
+            .or_default()
+            .insert(handler_source.to_string(), built.clone());
+        built
+    })
+}
+
+/// Keep a hook on the interpreter for the rest of this thread's life.
+pub fn demote_hook_function(handler_source: &str, source_line: usize) {
+    HOOK_FUNCTIONS.with(|cache| {
+        cache
+            .borrow_mut()
+            .entry(source_line)
+            .or_default()
+            .insert(handler_source.to_string(), None);
+    });
+}
+
+fn build_hook_function(handler_source: &str, source_line: usize) -> Option<Function> {
+    // Padded like `execute_handler_source`, so spans carry the file's lines.
+    let wrapped_source = format!(
+        "{}let __handler = {};",
+        "\n".repeat(source_line.saturating_sub(1)),
+        normalize_empty_handler_body(handler_source)
+    );
+    let tokens = crate::lexer::Scanner::new(&wrapped_source)
+        .scan_tokens()
+        .ok()?;
+    let program = crate::parser::Parser::new(tokens).parse().ok()?;
+    let [stmt] = program.statements.as_slice() else {
+        return None;
+    };
+    let crate::ast::StmtKind::Let {
+        initializer: Some(lambda),
+        ..
+    } = &stmt.kind
+    else {
+        return None;
+    };
+    let crate::ast::ExprKind::Lambda {
+        params,
+        return_type,
+        body,
+    } = &lambda.kind
+    else {
+        return None;
+    };
+    Some(Function {
+        name: "hook".to_string(),
+        params: params.clone().into(),
+        body: body.clone().into(),
+        is_method: true,
+        span: Some(lambda.span),
+        return_type: return_type.as_deref().cloned(),
+        ..Function::default()
+    })
+}
+
 pub fn execute_handler_source(
     handler_source: &str,
     source_line: usize,
@@ -1100,6 +1183,39 @@ pub fn setup_controller_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The VM runs a hook as a method built from its lambda: the parameters and
+    // body are the lambda's, and its spans keep the controller file's lines.
+    #[test]
+    fn hook_function_is_the_lambda_as_a_method() {
+        let hook = build_hook_function("fn(req, response) {\n  @seen = req\n  response\n}", 12)
+            .expect("a lambda builds");
+        assert!(hook.is_method);
+        let names: Vec<&str> = hook.params.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["req", "response"]);
+        assert_eq!(hook.body.len(), 2);
+        assert_eq!(hook.span.map(|s| s.line), Some(12));
+
+        let empty = build_hook_function("fn(req) { }", 3).expect("an empty hook builds");
+        assert_eq!(
+            empty.body.len(),
+            1,
+            "its body is the `null` it is normalized to"
+        );
+
+        assert!(build_hook_function("fn(req) { req ", 1).is_none());
+    }
+
+    // A demoted hook stays on the interpreter: the cache answers `None` for it
+    // from then on, and only for that line.
+    #[test]
+    fn demoted_hook_is_not_offered_to_the_vm() {
+        let source = "fn(req) { req }";
+        assert!(hook_function(source, 7).is_some());
+        demote_hook_function(source, 7);
+        assert!(hook_function(source, 7).is_none());
+        assert!(hook_function(source, 8).is_some());
+    }
 
     // Parser quirk: `fn(x) { }; <next_stmt>` fails to parse when the body is
     // empty, so a hook stub written as `fn(req) { }` used to 500 every

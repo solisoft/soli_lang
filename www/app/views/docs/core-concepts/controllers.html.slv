@@ -80,6 +80,11 @@ end</code></pre>
   # ... actions ...
 end</code></pre>
 
+    <h3 id="hook-engine" class="text-xl font-semibold text-white mt-8 mb-4 scroll-mt-24">Which engine runs a hook</h3>
+    <p class="text-gray-400 mb-4">
+        In production, hooks run on the bytecode VM, like actions: each <code>fn(...) { ... }</code> is compiled once per worker and runs bound to the controller, so <code>@foo = ...</code>, <code>this</code>, <code>halt(...)</code> and a returned response behave as they do in an action. A hook the VM cannot compile, or that fails on it before writing anything, is re-run on the tree-walking interpreter and stays there for that worker, the way an action falls back; it is counted in <code>soli_vm_handler_demotions_total</code> (see <a href="/docs/development-tools/observability" class="text-cyan-400 hover:underline">Observability</a>). Under <code>soli serve --dev</code> they run on the interpreter, as everything does.
+    </p>
+
     <div class="my-8 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-12">
         <p class="text-amber-200/80 text-sm">
             <strong>No imports needed for models.</strong> Files under <code>app/models/</code> are auto-loaded by <code>soli serve</code> and the REPL, so classes like <code>User</code>, <code>Post</code>, etc. are available inside controller actions without <code>import</code>. (If you run a controller file standalone via <code>soli run</code>, add the imports back.) The linter warns via <code>style/redundant-model-import</code>.

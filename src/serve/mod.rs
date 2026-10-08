@@ -4846,7 +4846,7 @@ fn controller_has_hooks(controller_key: &str) -> bool {
 /// Returns Some(ResponseData) if handled, None if not an OOP controller.
 fn call_oop_controller_action(
     interpreter: &mut Interpreter,
-    vm: Option<&mut crate::vm::Vm>,
+    mut vm: Option<&mut crate::vm::Vm>,
     handler_name: &str,
     request_hash: &Value,
     dev_mode: bool,
@@ -4971,12 +4971,11 @@ fn call_oop_controller_action(
     if let Some(ref info) = controller_info {
         if let Some(before_response) = execute_before_actions(
             interpreter,
+            vm.as_deref_mut(),
+            &class_name,
             info,
             action_name,
             request_hash.clone(),
-            &params,
-            &session,
-            &headers,
         ) {
             return Some(before_response);
         }
@@ -4986,7 +4985,7 @@ fn call_oop_controller_action(
     // For OOP controllers, the method is inside the class, not in the global environment
     let action_result = call_class_method(
         interpreter,
-        vm,
+        vm.as_deref_mut(),
         &class_rc,
         &controller_instance,
         action_name,
@@ -5051,6 +5050,8 @@ fn call_oop_controller_action(
     if let Some(ref info) = controller_info {
         return Some(execute_after_actions(
             interpreter,
+            vm,
+            &class_name,
             info,
             action_name,
             request_hash.clone(),
@@ -5236,15 +5237,56 @@ fn get_hash_field(hash: &Value, field: &str) -> Option<Value> {
     }
 }
 
+/// Run a before/after-action hook on the VM, bound to the controller instance
+/// the way an action is. `None` leaves the hook to the interpreter: there is no
+/// VM (dev mode), the VM does not have the hook (its source is not one lambda,
+/// or it was demoted on this worker), or it failed on the VM before writing
+/// anything — it is then demoted, and the interpreter re-runs it from a clean
+/// slate, as `call_class_method` does for an action.
+fn run_hook_on_vm(
+    vm: Option<&mut crate::vm::Vm>,
+    class_name: &str,
+    kind: &str,
+    source: &str,
+    source_line: usize,
+    args: &[Value],
+) -> Option<Result<Value, RuntimeError>> {
+    use crate::interpreter::builtins::controller::registry;
+    use crate::interpreter::builtins::model::crud;
+    let vm = vm?;
+    let hook = registry::hook_function(source, source_line)?;
+    let instance = registry::get_current_controller()?;
+    crud::clear_durable_commit();
+    let args = &args[..args.len().min(hook.params.len())];
+    let result = vm.call_method_bound_args(&hook, instance, args, Span::default());
+    vm.reset();
+    let err = match result {
+        Ok(value) => return Some(Ok(value)),
+        Err(err) => err,
+    };
+    if raised_response(&err).is_some() {
+        return Some(Err(err));
+    }
+    let handler = format!("{class_name}#{kind}");
+    record_vm_demotion(&handler, &err);
+    note_possible_divergence(&handler, &err);
+    registry::demote_hook_function(source, source_line);
+    if crud::had_durable_commit() {
+        // Re-running would repeat the committed writes (see `no_retry_after_commit`).
+        forget_possible_divergence();
+        return Some(Err(err));
+    }
+    None
+}
+
 /// Execute before_action hooks for a controller action.
 fn execute_before_actions(
     interpreter: &mut Interpreter,
+    mut vm: Option<&mut crate::vm::Vm>,
+    class_name: &str,
     controller_info: &ControllerInfo,
     action_name: &str,
     req: Value,
-    _params: &Value,
-    _session: &Value,
-    _headers: &Value,
 ) -> Option<ResponseData> {
     for before_action in &controller_info.before_actions {
         // Check if this before_action applies to this action
@@ -5259,13 +5301,43 @@ fn execute_before_actions(
             span_log::SpanKind::BeforeAction,
             Some(action_name.to_string()),
         );
+        // On the VM when it can, bound to the controller like an action.
+        if let Some(result) = run_hook_on_vm(
+            vm.as_deref_mut(),
+            class_name,
+            "before_action",
+            &before_action.handler_source,
+            before_action.source_line,
+            std::slice::from_ref(&req),
+        ) {
+            match result {
+                Ok(result) => {
+                    if let Some(response) = check_for_response(&result) {
+                        return Some(response);
+                    }
+                    continue;
+                }
+                Err(e) => {
+                    if let Some(resp) = raised_response(&e) {
+                        return Some(resp);
+                    }
+                    return Some(ResponseData {
+                        status: 500,
+                        headers: vec![],
+                        body: format!("Before action error: Handler execution error: {}", e).into(),
+                    });
+                }
+            }
+        }
         // Execute the before_action handler
-        match crate::interpreter::builtins::controller::registry::execute_handler_source(
+        let result = crate::interpreter::builtins::controller::registry::execute_handler_source(
             &before_action.handler_source,
             before_action.source_line,
             interpreter,
             req.clone(),
-        ) {
+        );
+        settle_engine_divergence(result.is_ok());
+        match result {
             Ok(result) => {
                 // Check if the handler returned a response (short-circuit)
                 if let Some(response) = check_for_response(&result) {
@@ -5291,6 +5363,8 @@ fn execute_before_actions(
 /// Execute after_action hooks for a controller action.
 fn execute_after_actions(
     interpreter: &mut Interpreter,
+    mut vm: Option<&mut crate::vm::Vm>,
+    class_name: &str,
     controller_info: &ControllerInfo,
     action_name: &str,
     req: Value,
@@ -5342,14 +5416,30 @@ fn execute_after_actions(
             span_log::SpanKind::AfterAction,
             Some(action_name.to_string()),
         );
-        // Execute the after_action handler
-        match crate::interpreter::builtins::controller::registry::execute_after_handler_source(
+        // On the VM when it can, bound to the controller like an action.
+        let result = match run_hook_on_vm(
+            vm.as_deref_mut(),
+            class_name,
+            "after_action",
             &after_action.handler_source,
             after_action.source_line,
-            interpreter,
-            req.clone(),
-            response_value.clone(),
+            &[req.clone(), response_value.clone()],
         ) {
+            Some(result) => result.map_err(|e| format!("After handler execution error: {}", e)),
+            None => {
+                let result =
+                    crate::interpreter::builtins::controller::registry::execute_after_handler_source(
+                        &after_action.handler_source,
+                        after_action.source_line,
+                        interpreter,
+                        req.clone(),
+                        response_value.clone(),
+                    );
+                settle_engine_divergence(result.is_ok());
+                result
+            }
+        };
+        match result {
             Ok(result) => {
                 // Update response if handler returned a modified response
                 if let Some(updated) = extract_response_from_value(&result) {
