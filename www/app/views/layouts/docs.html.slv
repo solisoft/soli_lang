@@ -55,6 +55,12 @@
             overflow: hidden !important;
         }
 
+        /* Two code blocks in a row (markdown pages: blog, internals) would
+           touch, since the rule above zeroes every margin. */
+        pre + pre {
+            margin-top: 1.25rem !important;
+        }
+
         /* Code block filename label */
         pre[data-filename]::before {
             content: attr(data-filename);
