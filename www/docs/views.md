@@ -1397,7 +1397,7 @@ Access in template:
 
 In production a view is compiled once per worker to bytecode and rendered on the VM, the engine that runs actions. Its text and its `<%= %>` / `<%- %>` output are written straight into the page, so a list page spends less time in its template. What it renders is the same; nothing in the view changes.
 
-A view compiles when it is made of text, output, `if` / `elsif` / `else`, `unless`, `for` loops (including `xs.each do |x|`), `<% %>` code, component blocks (named slots included) and `content_for`. `partial(...)`, `component(...)` and every other helper are ordinary calls and compile too. A view that uses `<%= yield %>` or a `form_with` block renders on the tree-walking interpreter, as layouts do.
+A view compiles when it is made of text, output, `if` / `elsif` / `else`, `unless`, `for` loops (including `xs.each do |x|`), `<% %>` code, component blocks (named slots included) and `content_for`. `partial(...)`, `component(...)` and every other helper are ordinary calls and compile too. A view that uses `<%= yield %>` or a `form_with` block renders on the tree-walking interpreter, as layouts do. The partials and components a view renders are compiled the same way; one rendered on its own, outside a view (a controller's `render_partial`), stays on the interpreter.
 
 The rules are the tree-walker's:
 
@@ -1406,7 +1406,7 @@ The rules are the tree-walker's:
 - A `for` over a hash yields `[key, value]` pairs.
 - Helpers from `app/helpers` run on the interpreter, as they always have, so one that reads `req` sees the current request.
 
-If a compiled view fails while it renders, or writes a function by name (`<%= current_user %>`), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. Under `--dev` every view renders on the tree-walker.
+If a compiled view fails while it renders, or writes a function by name (`<%= current_user %>`), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. What it captured with `content_for` is taken back, but not a side effect it already had, such as a session value it deleted. Under `--dev` every view renders on the tree-walker.
 
 `SOLI_VM_VIEWS=0` renders every view on the tree-walker. `SOLI_VM_VIEWS_CHECK=<file>` renders each compiled view on both engines, serves the tree-walker's output and appends to `<file>` every view whose two renders differ. It is a diagnostic: it doubles the cost of a render.
 

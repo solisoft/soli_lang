@@ -27,7 +27,7 @@ use std::time::Instant;
 use crate::interpreter::value::{SoliStr, Value};
 use crate::serve::{vfs_exists, vfs_read_to_string};
 use parser::parse_template;
-use renderer::{render_nodes_with_path, render_with_interpreter};
+use renderer::render_with_interpreter;
 use std::rc::Rc;
 
 /// A cached template's parsed AST. Hot reload clears the cache; nothing
@@ -78,17 +78,17 @@ pub struct TemplateCache {
     /// Base directory for views (e.g., app/views)
     views_dir: PathBuf,
     /// Cached parsed templates (PathBuf -> nodes).
-    cache: RwLock<HashMap<PathBuf, CachedTemplate>>,
+    cache: RwLock<HashMap<PathBuf, CachedTemplate, ahash::RandomState>>,
     /// Cached path resolutions (template_name -> resolved_path).
     /// Arc so cache hits are pointer increments, not heap clones.
-    path_cache: RwLock<HashMap<String, Arc<PathBuf>>>,
+    path_cache: RwLock<HashMap<String, Arc<PathBuf>, ahash::RandomState>>,
     /// Negative path resolutions (template_name -> the "not found" error), so
     /// a name that resolves to nothing — an optional per-controller layout,
     /// say — stops costing a filesystem probe per extension on every render.
     /// Production only: under `--dev` a view created while the server runs
     /// must be found on the next request, so misses are never remembered.
     /// Bounded like `path_cache`; emptied by [`TemplateCache::clear`].
-    missing_cache: RwLock<HashMap<String, String>>,
+    missing_cache: RwLock<HashMap<String, String, ahash::RandomState>>,
 }
 
 /// Which kind of nested include is being rendered — selects the path-resolution
@@ -105,9 +105,11 @@ impl TemplateCache {
     pub fn new(views_dir: impl Into<PathBuf>) -> Self {
         Self {
             views_dir: views_dir.into(),
-            cache: RwLock::new(HashMap::new()),
-            path_cache: RwLock::new(HashMap::new()),
-            missing_cache: RwLock::new(HashMap::new()),
+            // ahash: every render and include looks a path or a name up here,
+            // and the default SipHash of a path was ~5% of a page of components.
+            cache: RwLock::new(HashMap::default()),
+            path_cache: RwLock::new(HashMap::default()),
+            missing_cache: RwLock::new(HashMap::default()),
         }
     }
 
@@ -288,9 +290,14 @@ impl TemplateCache {
         // (`vm_template`), else on the tree-walker with the shared interpreter.
         // What the compiled view assigned goes into that interpreter, where the
         // layout reads it.
-        let template_path_str = template_path.to_string_lossy();
         let content_before = vm_template::check_enabled().then(content_store::snapshot);
-        let content = match vm_template::render_view(&nodes, data, &interpreter.environment, self) {
+        let content = match vm_template::render_view(
+            &nodes,
+            data,
+            &interpreter.environment,
+            self,
+            template_path,
+        ) {
             Some(rendered) if vm_template::check_enabled() => {
                 // The tree-walker renders the view again: its `content_for`
                 // blocks must not be captured a second time.
@@ -302,9 +309,13 @@ impl TemplateCache {
                     &nodes,
                     data,
                     Some(&partial_renderer),
-                    Some(&template_path_str),
+                    Some(&template_path.to_string_lossy()),
                 )?;
-                vm_template::report_difference(&template_path_str, &rendered.html, &tree);
+                vm_template::report_difference(
+                    &template_path.to_string_lossy(),
+                    &rendered.html,
+                    &tree,
+                );
                 tree
             }
             Some(rendered) => {
@@ -318,7 +329,7 @@ impl TemplateCache {
                 &nodes,
                 data,
                 Some(&partial_renderer),
-                Some(&template_path_str),
+                Some(&template_path.to_string_lossy()),
             )?,
         };
 
@@ -520,13 +531,52 @@ impl TemplateCache {
         let partial_renderer =
             |n: &str, ctx: &Value| -> Result<String, String> { self.render_partial(n, ctx) };
 
-        let template_path_str = template_path.to_string_lossy();
-        let content = render_nodes_with_path(
-            &nodes,
-            data,
-            Some(&partial_renderer),
-            Some(&template_path_str),
-        )?;
+        // On the VM like a view (`vm_template`), but only inside a view's
+        // render: there an undefined name reads nil on both engines, while a
+        // partial rendered on its own (a controller's `render_partial`) raises
+        // for it on the tree-walker.
+        let mut interpreter = core_eval::create_template_interpreter(data);
+        let on_vm = if crate::interpreter::executor::template_lenient_vars_enabled() {
+            let content_before = vm_template::check_enabled().then(content_store::snapshot);
+            match vm_template::render_view(
+                &nodes,
+                data,
+                &interpreter.environment,
+                self,
+                &template_path,
+            ) {
+                Some(rendered) if vm_template::check_enabled() => {
+                    content_store::restore(content_before.flatten());
+                    let tree = render_with_interpreter(
+                        &mut interpreter,
+                        &nodes,
+                        data,
+                        Some(&partial_renderer),
+                        Some(&template_path.to_string_lossy()),
+                    )?;
+                    vm_template::report_difference(
+                        &template_path.to_string_lossy(),
+                        &rendered.html,
+                        &tree,
+                    );
+                    Some(tree)
+                }
+                Some(rendered) => Some(rendered.html),
+                None => None,
+            }
+        } else {
+            None
+        };
+        let content = match on_vm {
+            Some(html) => html,
+            None => render_with_interpreter(
+                &mut interpreter,
+                &nodes,
+                data,
+                Some(&partial_renderer),
+                Some(&template_path.to_string_lossy()),
+            )?,
+        };
 
         // Diff declared props against the data the component received; a declared
         // prop absent from the data (including inherited @ivars) is likely a bug.

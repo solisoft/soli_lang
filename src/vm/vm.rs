@@ -183,6 +183,10 @@ pub struct Vm {
     pub template_out: String,
     /// Pages set aside by `Op::TemplateCaptureStart`, innermost last.
     pub template_captures: Vec<String>,
+    /// The `content_for` store as it was before this render first appended to
+    /// it (`Op::TemplateContentFor`): what a failed render puts back. Taken
+    /// only then, so a render with no `content_for` copies nothing.
+    pub template_content_before: Option<Option<std::collections::HashMap<String, String>>>,
     /// Run a tree-walker function called from this VM on the tree-walker
     /// instead of compiling it here. Set on the VM views render on: a view
     /// helper resolves names such as the current `req` through its own
@@ -332,6 +336,7 @@ impl Vm {
             output: Vec::new(),
             template_out: String::new(),
             template_captures: Vec::new(),
+            template_content_before: None,
             tree_walk_functions: false,
             tree_walk_env: None,
             failed_handlers: ahash::AHashSet::new(),
@@ -4456,6 +4461,10 @@ impl Vm {
                     let content = self.stack.pop().unwrap();
                     let name = self.stack.pop().unwrap();
                     if let (Value::String(name), Value::String(content)) = (&name, &content) {
+                        if self.template_content_before.is_none() {
+                            self.template_content_before =
+                                Some(crate::template::content_store::snapshot());
+                        }
                         crate::template::content_store::append(name, content);
                     }
                     self.stack.push(Value::Null);

@@ -120,6 +120,12 @@ impl VmTemplate {
     fn run(&self, vm: &mut Vm, args: Vec<Value>) -> Result<Rendered, RuntimeError> {
         vm.template_out.clear();
         vm.template_captures.clear();
+        // The page leaves with the result (`mem::take` below), so each render
+        // starts from an empty buffer: size it as the tree-walker's renderer
+        // does instead of growing it a few times over.
+        if vm.template_out.capacity() == 0 {
+            vm.template_out.reserve(4096);
+        }
         match vm.call_value_direct(self.closure.clone(), &args, Span::default()) {
             Ok(result) => {
                 let assigned = match (self.exports, result) {
@@ -148,12 +154,19 @@ impl VmTemplate {
 /// The value a view's bare `name` reads from its data: the key itself, or the
 /// whole hash for `locals`, as `core_eval::create_template_interpreter` binds.
 fn data_value(data: &Value, name: &str) -> Option<Value> {
+    // `locals` is always a hash: the data, or an empty one when the data is
+    // not a hash (a partial rendered with no locals).
+    if name == "locals" {
+        return Some(match data {
+            Value::Hash(_) => data.clone(),
+            _ => Value::Hash(Rc::new(RefCell::new(
+                crate::interpreter::value::HashPairs::default(),
+            ))),
+        });
+    }
     let Value::Hash(map) = data else {
         return None;
     };
-    if name == "locals" {
-        return Some(data.clone());
-    }
     let value = hash_get_value(&map.borrow(), &Value::String(name.into())).cloned()?;
     // A controller `@ivar` set inside `grouped(fn() { ... })` arrives as a
     // placeholder; the tree-walker resolves it on read, as this does on bind.
@@ -451,13 +464,15 @@ fn stmt(kind: StmtKind) -> Stmt {
 // --- Serving views on the VM ---
 
 thread_local! {
-    /// This worker thread's VM for views, and the names a view resolves past
+    /// This worker thread's VMs for views, and with each the names a view resolves past
     /// its data (`core_eval::template_env_bindings`: builtins, view and route
     /// helpers). The VM's globals are the worker's (`set_worker_globals`), so
     /// a model method a view calls resolves the classes it would on an action;
     /// a name written in the view itself still resolves in the view's scope.
-    static VIEW_VM: RefCell<Option<(Vm, ahash::AHashMap<String, Value>)>> =
-        const { RefCell::new(None) };
+    static VIEW_VMS: RefCell<Vec<ViewVm>> = const { RefCell::new(Vec::new()) };
+    /// Bumped whenever the pool is emptied: a VM taken out before then is
+    /// not put back, since it holds the old globals.
+    static POOL_GENERATION: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     /// The worker VM's globals, set by serve at boot and on reload.
     static WORKER_GLOBALS: RefCell<Option<ahash::AHashMap<String, Value>>> =
         const { RefCell::new(None) };
@@ -492,6 +507,7 @@ pub fn render_view(
     data: &Value,
     env: &Rc<RefCell<crate::interpreter::environment::Environment>>,
     cache: &crate::template::TemplateCache,
+    path: &std::path::Path,
 ) -> Option<Rendered> {
     if !enabled() {
         check_log("[vm-views] off");
@@ -507,40 +523,31 @@ pub fn render_view(
         cache.insert(key, (nodes.clone(), compiled.clone()));
         compiled
     })?;
-    let outcome = VIEW_VM.with(|slot| {
-        let mut slot = slot.try_borrow_mut().ok()?;
-        let (vm, names) = slot.get_or_insert_with(|| {
-            let names: ahash::AHashMap<String, Value> =
-                crate::template::core_eval::template_env_bindings()
-                    .into_iter()
-                    .collect();
-            let mut vm = Vm::new();
-            vm.tree_walk_functions = true;
-            vm.globals = WORKER_GLOBALS
-                .with(|g| g.borrow().clone())
-                .unwrap_or_else(|| names.clone());
-            (vm, names)
-        });
-        let args = compiled.bind(data, names);
-        // What a failed render must take back: the tree-walker renders the
-        // view again, and its `content_for` blocks would be captured twice.
-        let content_before = crate::template::content_store::snapshot();
-        vm.tree_walk_env = Some(env.clone());
-        let outcome = {
-            let _cache = RenderingCache::set(cache);
-            compiled.run(vm, args)
-        };
-        vm.tree_walk_env = None;
+    // A VM from this thread's pool, held by this render alone: a component
+    // or partial rendered from inside it takes another.
+    let mut view_vm = ViewVm::take();
+    let args = compiled.bind(data, &view_vm.names);
+    view_vm.vm.tree_walk_env = Some(env.clone());
+    view_vm.vm.template_content_before = None;
+    let outcome = {
+        let _cache = RenderingCache::set(cache);
+        compiled.run(&mut view_vm.vm, args)
+    };
+    view_vm.vm.tree_walk_env = None;
+    // What a failed render must take back: the tree-walker renders the view
+    // again, and its `content_for` blocks would be captured twice.
+    if let Some(before) = view_vm.vm.template_content_before.take() {
         if outcome.is_err() {
-            crate::template::content_store::restore(content_before);
+            crate::template::content_store::restore(before);
         }
-        Some(outcome)
-    })?;
+    }
+    view_vm.put_back();
     match outcome {
         Ok(rendered) => Some(rendered),
         Err(err) => {
             check_log(&format!(
-                "[vm-views] render failed, tree-walker used: {err}"
+                "[vm-views] {}: render failed, tree-walker used: {err}",
+                path.display()
             ));
             // A refusal is about the view (a function written bare), so it
             // keeps the tree-walker from now on; any other error may be about
@@ -614,21 +621,57 @@ pub fn report_difference(path: &str, on_vm: &str, tree: &str) {
 /// worker VM has them, and again whenever it reloads them.
 pub fn set_worker_globals(globals: &ahash::AHashMap<String, Value>) {
     WORKER_GLOBALS.with(|g| *g.borrow_mut() = Some(globals.clone()));
-    VIEW_VM.with(|slot| {
-        if let Ok(mut slot) = slot.try_borrow_mut() {
-            *slot = None;
+    empty_pool();
+}
+
+/// One of this thread's view VMs, with the names a view resolves past its
+/// data and the pool generation it was made in.
+struct ViewVm {
+    vm: Vm,
+    names: ahash::AHashMap<String, Value>,
+    generation: u64,
+}
+
+impl ViewVm {
+    /// A VM from the pool, or a new one.
+    fn take() -> Self {
+        let generation = POOL_GENERATION.with(|g| g.get());
+        if let Some(vm) = VIEW_VMS.with(|pool| pool.borrow_mut().pop()) {
+            return vm;
         }
-    });
+        let names: ahash::AHashMap<String, Value> =
+            crate::template::core_eval::template_env_bindings()
+                .into_iter()
+                .collect();
+        let mut vm = Vm::new();
+        vm.tree_walk_functions = true;
+        vm.globals = WORKER_GLOBALS
+            .with(|g| g.borrow().clone())
+            .unwrap_or_else(|| names.clone());
+        ViewVm {
+            vm,
+            names,
+            generation,
+        }
+    }
+
+    /// Back into the pool, unless the pool was emptied meanwhile.
+    fn put_back(self) {
+        if self.generation == POOL_GENERATION.with(|g| g.get()) {
+            VIEW_VMS.with(|pool| pool.borrow_mut().push(self));
+        }
+    }
+}
+
+fn empty_pool() {
+    POOL_GENERATION.with(|g| g.set(g.get() + 1));
+    VIEW_VMS.with(|pool| pool.borrow_mut().clear());
 }
 
 /// Drop this thread's compiled views and view VM: the views or the helpers
 /// they resolve changed.
 pub fn reset_thread() {
-    VIEW_VM.with(|slot| {
-        if let Ok(mut slot) = slot.try_borrow_mut() {
-            *slot = None;
-        }
-    });
+    empty_pool();
     COMPILED.with(|cache| {
         if let Ok(mut cache) = cache.try_borrow_mut() {
             cache.clear();
@@ -715,6 +758,7 @@ mod tests {
             "<%= @title %>|<%= @undefined_ivar %>|",
             "<% title = @title.upcase %><%= title %>|<% count = count + 1 %><%= count %>",
             "<% settings = @settings ?? {} %><%= settings.keys().length %>",
+            "<%= locals[\"count\"] %>|<%= locals[\"absent\"].to_s %>|",
         ];
         // What serve's renderer enters: an undefined name, and an `@ivar`
         // with no instance, read as nil / the bare local.
