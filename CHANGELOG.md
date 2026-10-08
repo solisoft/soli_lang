@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.18.4] - 2026-10-08
+
 ### Changed
 
 * **scaffold:** **A new app's `.env` explains `SOLI_APP_HOSTS`.** Behind a reverse proxy an app sees `127.0.0.1:<port>`, not the browser's `Origin`, so its CSRF check refuses every form (`CSRF check failed: Origin myapp.example.com does not match request authority 127.0.0.1:20111`) until it knows its public hosts. The `.env` that `soli new` writes now carries a commented `SOLI_APP_HOSTS=` line saying so, and that soli-proxy sets it for the apps it starts. Nothing changes at run time.

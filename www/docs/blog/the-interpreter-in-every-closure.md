@@ -345,4 +345,4 @@ No. Upgrade, and the same code runs faster. If you avoided custom validators or
 scopes on hot paths because they were slow, you can put them back. If you render
 instances or records that rely on `as_json`, upgrade before anything else.
 
-The changes are in the [changelog](/docs/getting-started/changelog#unreleased).
+The changes are in the [changelog](/docs/getting-started/changelog#v2-18-4).
