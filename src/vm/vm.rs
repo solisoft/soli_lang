@@ -181,6 +181,8 @@ pub struct Vm {
     pub output: Vec<String>,
     /// The page a compiled template writes into (`Op::TemplateWrite`).
     pub template_out: String,
+    /// Pages set aside by `Op::TemplateCaptureStart`, innermost last.
+    pub template_captures: Vec<String>,
     /// Run a tree-walker function called from this VM on the tree-walker
     /// instead of compiling it here. Set on the VM views render on: a view
     /// helper resolves names such as the current `req` through its own
@@ -329,6 +331,7 @@ impl Vm {
             iter_stack: Vec::new(),
             output: Vec::new(),
             template_out: String::new(),
+            template_captures: Vec::new(),
             tree_walk_functions: false,
             tree_walk_env: None,
             failed_handlers: ahash::AHashSet::new(),
@@ -4427,6 +4430,36 @@ impl Vm {
                 }
 
                 // --- Templates ---
+                Op::TemplateCaptureStart => {
+                    let page = std::mem::take(&mut self.template_out);
+                    self.template_captures.push(page);
+                    self.stack.push(Value::Null);
+                }
+                Op::TemplateCaptureEnd => {
+                    let page = self.template_captures.pop().unwrap_or_default();
+                    let captured = std::mem::replace(&mut self.template_out, page);
+                    self.stack.push(Value::String(captured.into()));
+                }
+                Op::TemplateComponent => {
+                    let content = self.stack.pop().unwrap();
+                    let props = self.stack.pop().unwrap();
+                    let name = self.stack.pop().unwrap();
+                    let span = self.current_span();
+                    let html = crate::template::vm_template::render_component_block(
+                        &name, &props, content,
+                    )
+                    .map_err(|e| RuntimeError::new(e, span))?;
+                    self.template_out.push_str(&html);
+                    self.stack.push(Value::Null);
+                }
+                Op::TemplateContentFor => {
+                    let content = self.stack.pop().unwrap();
+                    let name = self.stack.pop().unwrap();
+                    if let (Value::String(name), Value::String(content)) = (&name, &content) {
+                        crate::template::content_store::append(name, content);
+                    }
+                    self.stack.push(Value::Null);
+                }
                 Op::TemplateIter => {
                     let value = self.stack.pop().unwrap();
                     let value = match value {

@@ -567,6 +567,30 @@ impl Compiler {
             }
             // A compiled template's output: `__tpl_write(expr)` (escaped) and
             // `__tpl_write_raw(expr)`. Only the template compiler emits them.
+            // A compiled template's captures (component and content_for
+            // blocks): `__tpl_capture_start()`, `__tpl_capture_end()`,
+            // `__tpl_component(name, props, body)`, `__tpl_content_for(name, body)`.
+            let template_op = match (name.as_str(), arguments.len()) {
+                ("__tpl_capture_start", 0) => Some(Op::TemplateCaptureStart),
+                ("__tpl_capture_end", 0) => Some(Op::TemplateCaptureEnd),
+                ("__tpl_component", 3) => Some(Op::TemplateComponent),
+                ("__tpl_content_for", 2) => Some(Op::TemplateContentFor),
+                _ => None,
+            };
+            if let Some(op) = template_op {
+                if arguments
+                    .iter()
+                    .all(|a| matches!(a, Argument::Positional(_)))
+                {
+                    for arg in arguments {
+                        if let Argument::Positional(expr) = arg {
+                            self.compile_expr(expr)?;
+                        }
+                    }
+                    self.emit(op, line);
+                    return Ok(());
+                }
+            }
             if name == "__tpl_iter" {
                 if let [Argument::Positional(arg)] = arguments {
                     self.compile_expr(arg)?;

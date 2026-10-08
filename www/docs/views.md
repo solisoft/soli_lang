@@ -1397,7 +1397,7 @@ Access in template:
 
 In production a view is compiled once per worker to bytecode and rendered on the VM, the engine that runs actions. Its text and its `<%= %>` / `<%- %>` output are written straight into the page, so a list page spends less time in its template. What it renders is the same; nothing in the view changes.
 
-A view compiles when it is made of text, output, `if` / `elsif` / `else`, `unless`, `for` loops (including `xs.each do |x|`) and `<% %>` code. `partial(...)`, `component(...)` and every other helper are ordinary calls and compile too. A view that uses `<%= yield %>`, `content_for`, a `form_with` block or a component block renders on the tree-walking interpreter, as layouts do.
+A view compiles when it is made of text, output, `if` / `elsif` / `else`, `unless`, `for` loops (including `xs.each do |x|`), `<% %>` code, component blocks (named slots included) and `content_for`. `partial(...)`, `component(...)` and every other helper are ordinary calls and compile too. A view that uses `<%= yield %>` or a `form_with` block renders on the tree-walking interpreter, as layouts do.
 
 The rules are the tree-walker's:
 

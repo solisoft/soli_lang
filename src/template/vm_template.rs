@@ -119,6 +119,7 @@ impl VmTemplate {
 
     fn run(&self, vm: &mut Vm, args: Vec<Value>) -> Result<Rendered, RuntimeError> {
         vm.template_out.clear();
+        vm.template_captures.clear();
         match vm.call_value_direct(self.closure.clone(), &args, Span::default()) {
             Ok(result) => {
                 let assigned = match (self.exports, result) {
@@ -137,6 +138,7 @@ impl VmTemplate {
             Err(e) => {
                 vm.reset();
                 vm.template_out.clear();
+                vm.template_captures.clear();
                 Err(e)
             }
         }
@@ -274,10 +276,123 @@ fn lower_nodes(
                     body: Box::new(block(lower_nodes(body, true, assigned, all_assigned)?)),
                 }));
             }
+            // `<%- component "card", props do %> body <%- end %>`: the body is
+            // captured as the `content` slot, then the component renders with
+            // it, as the renderer does (`render_component_block`). A named slot
+            // (`c.slot("x") do … end`) is a `content_for` in the body.
+            TemplateNode::Component { parts, body, .. } => {
+                out.push(call_stmt("__tpl_capture_start", vec![]));
+                out.extend(lower_nodes(body, in_for, assigned, all_assigned)?);
+                let props = parts
+                    .props
+                    .clone()
+                    .unwrap_or_else(|| Expr::new(ExprKind::Null, Span::default()));
+                out.push(call_stmt(
+                    "__tpl_component",
+                    vec![
+                        parts.name.clone(),
+                        props,
+                        call_expr("__tpl_capture_end", vec![]),
+                    ],
+                ));
+            }
+            TemplateNode::ContentFor { name, body, .. } => {
+                out.push(call_stmt("__tpl_capture_start", vec![]));
+                out.extend(lower_nodes(body, in_for, assigned, all_assigned)?);
+                let name = Expr::new(ExprKind::StringLiteral(name.clone()), Span::default());
+                out.push(call_stmt(
+                    "__tpl_content_for",
+                    vec![name, call_expr("__tpl_capture_end", vec![])],
+                ));
+            }
             other => return Err(node_kind(other).to_string()),
         }
     }
     Ok(out)
+}
+
+fn call_expr(name: &str, args: Vec<Expr>) -> Expr {
+    Expr::new(
+        ExprKind::Call {
+            callee: Box::new(Expr::new(
+                ExprKind::Variable(name.to_string()),
+                Span::default(),
+            )),
+            arguments: args.into_iter().map(Argument::Positional).collect(),
+        },
+        Span::default(),
+    )
+}
+
+fn call_stmt(name: &str, args: Vec<Expr>) -> Stmt {
+    stmt(StmtKind::Expression(call_expr(name, args)))
+}
+
+thread_local! {
+    /// The `TemplateCache` rendering the view on this thread's VM, for
+    /// `Op::TemplateComponent`: the component renders through it, as the
+    /// tree-walker's partial renderer does. Set only for the render's length.
+    static RENDERING_CACHE: std::cell::Cell<*const crate::template::TemplateCache> =
+        const { std::cell::Cell::new(std::ptr::null()) };
+}
+
+/// Sets [`RENDERING_CACHE`] for a render and clears it on drop.
+struct RenderingCache;
+
+impl RenderingCache {
+    fn set(cache: &crate::template::TemplateCache) -> Self {
+        RENDERING_CACHE.with(|c| c.set(cache as *const _));
+        RenderingCache
+    }
+}
+
+impl Drop for RenderingCache {
+    fn drop(&mut self) {
+        RENDERING_CACHE.with(|c| c.set(std::ptr::null()));
+    }
+}
+
+/// A component block's render (`Op::TemplateComponent`), as the renderer's
+/// `TemplateNode::Component` arm does it: the props when they are a hash, the
+/// captured body as `content`, the name resolved under `components/` unless it
+/// carries a `/` or a `.`.
+pub(crate) fn render_component_block(
+    name: &Value,
+    props: &Value,
+    content: Value,
+) -> Result<String, String> {
+    use crate::interpreter::value::{HashKey, HashPairs};
+    let name = match name {
+        Value::String(s) => s.to_string(),
+        other => {
+            return Err(format!(
+                "component name must evaluate to string, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let mut map = HashPairs::default();
+    if let Value::Hash(props) = props {
+        for (k, v) in props.borrow().iter() {
+            map.insert(k.clone(), v.clone());
+        }
+    }
+    map.insert(HashKey::String("content".into()), content);
+    let data = Value::Hash(Rc::new(RefCell::new(map)));
+    let path = if name.contains('/') || name.contains('.') {
+        name
+    } else {
+        format!("components/{name}")
+    };
+    let rendering = RENDERING_CACHE.with(|c| c.get());
+    if rendering.is_null() {
+        return crate::interpreter::builtins::template::get_template_cache()?
+            .render_partial(&path, &data);
+    }
+    // SAFETY: set by `render_view` from a `&TemplateCache` that outlives the
+    // render, cleared when it ends (`RenderingCache`), and read only on this
+    // thread, inside that render.
+    unsafe { &*rendering }.render_partial(&path, &data)
 }
 
 /// The bare name a code-block statement binds, if any (`x = …`, `x += …`,
@@ -376,6 +491,7 @@ pub fn render_view(
     nodes: &Arc<Vec<TemplateNode>>,
     data: &Value,
     env: &Rc<RefCell<crate::interpreter::environment::Environment>>,
+    cache: &crate::template::TemplateCache,
 ) -> Option<Rendered> {
     if !enabled() {
         check_log("[vm-views] off");
@@ -406,9 +522,18 @@ pub fn render_view(
             (vm, names)
         });
         let args = compiled.bind(data, names);
+        // What a failed render must take back: the tree-walker renders the
+        // view again, and its `content_for` blocks would be captured twice.
+        let content_before = crate::template::content_store::snapshot();
         vm.tree_walk_env = Some(env.clone());
-        let outcome = compiled.run(vm, args);
+        let outcome = {
+            let _cache = RenderingCache::set(cache);
+            compiled.run(vm, args)
+        };
         vm.tree_walk_env = None;
+        if outcome.is_err() {
+            crate::template::content_store::restore(content_before);
+        }
         Some(outcome)
     })?;
     match outcome {

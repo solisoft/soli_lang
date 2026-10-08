@@ -289,8 +289,12 @@ impl TemplateCache {
         // What the compiled view assigned goes into that interpreter, where the
         // layout reads it.
         let template_path_str = template_path.to_string_lossy();
-        let content = match vm_template::render_view(&nodes, data, &interpreter.environment) {
+        let content_before = vm_template::check_enabled().then(content_store::snapshot);
+        let content = match vm_template::render_view(&nodes, data, &interpreter.environment, self) {
             Some(rendered) if vm_template::check_enabled() => {
+                // The tree-walker renders the view again: its `content_for`
+                // blocks must not be captured a second time.
+                content_store::restore(content_before.flatten());
                 // Diagnostic (`SOLI_VM_VIEWS_CHECK=1`): render on the
                 // tree-walker too, report any difference, serve its output.
                 let tree = render_with_interpreter(

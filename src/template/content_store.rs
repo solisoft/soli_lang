@@ -52,6 +52,18 @@ impl Drop for ContentForFrame {
 /// Append captured HTML under a name. Repeated captures for the same name
 /// concatenate in document order (Rails semantics). No-op when no frame is
 /// active (node-level rendering outside a `TemplateCache` render).
+/// The store's current contents, to put back with [`restore`].
+/// `SOLI_VM_VIEWS_CHECK` renders a view twice and must not capture its
+/// `content_for` blocks twice.
+pub(crate) fn snapshot() -> Option<HashMap<String, String>> {
+    CONTENT_FOR.with(|c| c.borrow().clone())
+}
+
+/// Put back what [`snapshot`] returned.
+pub(crate) fn restore(saved: Option<HashMap<String, String>>) {
+    CONTENT_FOR.with(|c| *c.borrow_mut() = saved);
+}
+
 pub fn append(name: &str, html: &str) {
     CONTENT_FOR.with(|store| {
         if let Some(map) = store.borrow_mut().as_mut() {

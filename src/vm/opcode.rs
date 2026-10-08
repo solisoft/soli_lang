@@ -229,6 +229,19 @@ pub enum Op {
     /// pops a value and pushes a hash as an array of `[key, value]` pairs, a
     /// `grouped {}` placeholder as its rows, anything else as is.
     TemplateIter,
+    /// Start capturing a template's output: the page so far is set aside and
+    /// writes go to a fresh buffer. Pushes Null.
+    TemplateCaptureStart,
+    /// End the innermost capture: pushes what was written since its start, as
+    /// a string, and resumes the page it set aside.
+    TemplateCaptureEnd,
+    /// A component block: pops the captured body, the props and the name, and
+    /// writes `components/<name>` rendered with the props plus `content`.
+    /// Pushes Null.
+    TemplateComponent,
+    /// A `content_for` block: pops the captured body and the name and appends
+    /// the body to that name's store. Pushes Null.
+    TemplateContentFor,
 
     // --- Super-instructions (optimized compound ops) ---
     /// Increment a local integer by 1: local[slot] += 1
