@@ -18,6 +18,15 @@ impl Compiler {
     /// error raised by one of them points where the tree-walker's would. A
     /// sub-expression sets its own and this one's comes back after it.
     pub fn compile_expr(&mut self, expr: &Expr) -> CompileResult<()> {
+        if self.template_mode {
+            if let Some(local) = template_ivar(expr) {
+                return self.compile_expr(&local);
+            }
+            if matches!(expr.kind, ExprKind::This) {
+                self.emit(Op::Null, expr.span.line as usize);
+                return Ok(());
+            }
+        }
         let outer = std::mem::replace(&mut self.column, expr.span.column);
         let result = self.compile_expr_at(expr);
         self.column = outer;
@@ -546,10 +555,38 @@ impl Compiler {
         arguments: &[Argument],
         line: usize,
     ) -> CompileResult<()> {
+        if self.template_mode {
+            if let Some(local) = template_ivar(callee) {
+                return self.compile_call(&local, arguments, line);
+            }
+        }
         // Special case: print() calls
         if let ExprKind::Variable(name) = &callee.kind {
             if name == "print" || name == "puts" || name == "println" {
                 return self.compile_print(arguments, line);
+            }
+            // A compiled template's output: `__tpl_write(expr)` (escaped) and
+            // `__tpl_write_raw(expr)`. Only the template compiler emits them.
+            if name == "__tpl_iter" {
+                if let [Argument::Positional(arg)] = arguments {
+                    self.compile_expr(arg)?;
+                    self.emit(Op::TemplateIter, line);
+                    return Ok(());
+                }
+            }
+            if name == "__tpl_write" || name == "__tpl_write_raw" {
+                if let [Argument::Positional(arg)] = arguments {
+                    if let (ExprKind::StringLiteral(text), "__tpl_write_raw") =
+                        (&arg.kind, name.as_str())
+                    {
+                        let idx = self.add_constant(Constant::String(text.as_str().into()));
+                        self.emit(Op::TemplateWriteConst(idx), line);
+                        return Ok(());
+                    }
+                    self.compile_expr(arg)?;
+                    self.emit(Op::TemplateWrite(name == "__tpl_write"), line);
+                    return Ok(());
+                }
             }
         }
 
@@ -1006,6 +1043,11 @@ impl Compiler {
     }
 
     fn compile_assign(&mut self, target: &Expr, value: &Expr, line: usize) -> CompileResult<()> {
+        if self.template_mode {
+            if let Some(local) = template_ivar(target) {
+                return self.compile_assign(&local, value, line);
+            }
+        }
         match &target.kind {
             ExprKind::Variable(name) => {
                 // `name = name + <expr>` (and `name += <expr>`, desugared to
@@ -1820,5 +1862,15 @@ mod named_args_compile_tests {
             compiles("def scale(x, factor) { return x * factor }\nprint(5 |> scale(3))"),
             "positional pipeline calls must still compile"
         );
+    }
+}
+
+/// In a view, `@name` is the local `name` (see `Compiler::template_mode`).
+fn template_ivar(expr: &Expr) -> Option<Expr> {
+    match &expr.kind {
+        ExprKind::Member { object, name } if matches!(object.kind, ExprKind::This) => {
+            Some(Expr::new(ExprKind::Variable(name.clone()), expr.span))
+        }
+        _ => None,
     }
 }

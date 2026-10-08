@@ -13,6 +13,8 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use solilang::interpreter::value::{HashKey, HashPairs, Value};
 use solilang::template::parser::parse_template;
 use solilang::template::renderer::render_nodes;
+use solilang::template::vm_template::VmTemplate;
+use solilang::vm::Vm;
 
 fn rows(n: i64) -> Value {
     let items = (1..=n)
@@ -65,5 +67,27 @@ fn bench_render(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_render);
+/// The same cases compiled to the VM (`template::vm_template`). Each must
+/// render byte for byte what the tree-walker renders before it is timed.
+fn bench_render_vm(c: &mut Criterion) {
+    let mut group = c.benchmark_group("template_render_vm");
+    let mut vm = Vm::new();
+    for (name, source) in CASES {
+        let nodes = parse_template(source).expect("template parses");
+        let data = data();
+        let compiled = VmTemplate::compile(&nodes).expect("template compiles to the VM");
+        let tree = render_nodes(&nodes, &data, None).expect("template renders");
+        let on_vm = compiled
+            .render(&mut vm, &data)
+            .expect("VM template renders")
+            .html;
+        assert_eq!(on_vm, tree, "{name}: the VM and the tree-walker disagree");
+        group.bench_function(*name, |b| {
+            b.iter(|| compiled.render(&mut vm, black_box(&data)).unwrap())
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(benches, bench_render, bench_render_vm);
 criterion_main!(benches);

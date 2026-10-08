@@ -132,6 +132,14 @@ pub struct Compiler {
     /// global scope, or a function declaration, so it means what it says in
     /// both modes.
     pub program_globals: Rc<RefCell<HashSet<String>>>,
+    /// When set, every name resolved as a global is recorded here, nested
+    /// functions included. A compiled template reads its free names this way
+    /// and turns them into parameters (`template::vm_template`).
+    pub referenced_globals: Option<Rc<RefCell<HashSet<String>>>>,
+    /// Compiling a view (`template::vm_template`): a view has no instance, so
+    /// `@title` reads, calls or assigns the local `title` and a bare `this` is
+    /// nil — what the tree-walker's lenient template mode does.
+    pub template_mode: bool,
     /// Native kernels of the program (see `crate::native`). Only the
     /// top-level compiler holds them: a top-level `def` that has one gets a
     /// proto carrying it.
@@ -216,6 +224,8 @@ impl Compiler {
             stack_height: 0,
             try_stack: Vec::new(),
             program_globals: Rc::new(RefCell::new(HashSet::new())),
+            referenced_globals: None,
+            template_mode: false,
             kernels: None,
             column: 0,
         };
@@ -286,6 +296,19 @@ impl Compiler {
         let mut compiler = Compiler::new(FunctionType::Script, String::new());
         compiler.base_globals = Some(base.clone());
         Self::compile_script(compiler, program, source_path, None)
+    }
+
+    /// Compile a view's program in `template_mode`, recording into `seen`
+    /// (when given) every name it resolves as a global, nested functions
+    /// included (see `referenced_globals`).
+    pub fn compile_template(
+        program: &Program,
+        seen: Option<Rc<RefCell<HashSet<String>>>>,
+    ) -> CompileResult<CompiledModule> {
+        let mut compiler = Compiler::new(FunctionType::Script, String::new());
+        compiler.referenced_globals = seen;
+        compiler.template_mode = true;
+        Self::compile_script(compiler, program, None, None)
     }
 
     fn compile_full<I: IntoIterator<Item = String>>(
@@ -641,6 +664,9 @@ impl Compiler {
         } else if let Some(idx) = self.resolve_upvalue(name) {
             VariableAccess::Upvalue(idx)
         } else {
+            if let Some(seen) = &self.referenced_globals {
+                seen.borrow_mut().insert(name.to_string());
+            }
             VariableAccess::Global(name.to_string())
         }
     }
@@ -663,6 +689,8 @@ impl Compiler {
         new_compiler.known_globals = self.known_globals.clone();
         new_compiler.base_globals = self.base_globals.clone();
         new_compiler.program_globals = self.program_globals.clone();
+        new_compiler.referenced_globals = self.referenced_globals.clone();
+        new_compiler.template_mode = self.template_mode;
 
         // Add parameters as locals
         for param in params {
@@ -1060,6 +1088,9 @@ fn stack_effect(op: Op) -> i32 {
         Print(n) => 1 - n as i32,
         Import(_) => 0,
         JsonParse | JsonStringify => 0,
+        TemplateWrite(_) => 0,
+        TemplateWriteConst(_) => 1,
+        TemplateIter => 0,
         // Peephole super-instructions (not emitted during the tracked pass; values
         // for completeness). Hash*Const directly-emitted variants are exact.
         HashGetConst(_) | HashHasKeyConst(_) | HashDeleteConst(_) | HashGetConst2(_, _) => 0,

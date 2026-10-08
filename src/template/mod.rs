@@ -16,6 +16,7 @@ pub mod layout;
 pub mod parser;
 pub mod renderer;
 pub mod response_cache;
+pub mod vm_template;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -283,15 +284,39 @@ impl TemplateCache {
         // Create ONE interpreter for both view and layout rendering
         let mut interpreter = core_eval::create_template_interpreter(data);
 
-        // Render the template content with shared interpreter
+        // Render the view: compiled to the VM in production when it can be
+        // (`vm_template`), else on the tree-walker with the shared interpreter.
+        // What the compiled view assigned goes into that interpreter, where the
+        // layout reads it.
         let template_path_str = template_path.to_string_lossy();
-        let content = render_with_interpreter(
-            &mut interpreter,
-            &nodes,
-            data,
-            Some(&partial_renderer),
-            Some(&template_path_str),
-        )?;
+        let content = match vm_template::render_view(&nodes, data, &interpreter.environment) {
+            Some(rendered) if vm_template::check_enabled() => {
+                // Diagnostic (`SOLI_VM_VIEWS_CHECK=1`): render on the
+                // tree-walker too, report any difference, serve its output.
+                let tree = render_with_interpreter(
+                    &mut interpreter,
+                    &nodes,
+                    data,
+                    Some(&partial_renderer),
+                    Some(&template_path_str),
+                )?;
+                vm_template::report_difference(&template_path_str, &rendered.html, &tree);
+                tree
+            }
+            Some(rendered) => {
+                for (name, value) in rendered.assigned {
+                    core_eval::define_var(&mut interpreter, &name, value);
+                }
+                rendered.html
+            }
+            None => render_with_interpreter(
+                &mut interpreter,
+                &nodes,
+                data,
+                Some(&partial_renderer),
+                Some(&template_path_str),
+            )?,
+        };
 
         // If the template is a markdown file, convert to HTML. Use the
         // URL-neutralizing converter: the ERB pass above already escaped
@@ -802,6 +827,7 @@ impl TemplateCache {
         if let Ok(mut c) = self.missing_cache.write() {
             c.clear();
         }
+        vm_template::reset_thread();
     }
 }
 

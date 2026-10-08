@@ -439,7 +439,7 @@ pub(crate) fn render_walker(
 /// Write a Value directly to the output buffer, applying HTML escaping if needed.
 /// Avoids intermediate String allocations for Int/Float/Bool (which can't contain HTML chars).
 #[inline]
-fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
+pub(crate) fn write_value_to_output(value: &Value, escaped: bool, output: &mut String) {
     use std::fmt::Write;
     match value {
         Value::String(s) => {

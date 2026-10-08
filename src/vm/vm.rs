@@ -179,6 +179,17 @@ pub struct Vm {
     pub iter_stack: Vec<IterState>,
     /// Output buffer for print statements (for testing/capture).
     pub output: Vec<String>,
+    /// The page a compiled template writes into (`Op::TemplateWrite`).
+    pub template_out: String,
+    /// Run a tree-walker function called from this VM on the tree-walker
+    /// instead of compiling it here. Set on the VM views render on: a view
+    /// helper resolves names such as the current `req` through its own
+    /// closure, which this VM's globals (copied once) would not follow.
+    pub tree_walk_functions: bool,
+    /// The environment those functions are called from: the template
+    /// interpreter's, for the render in progress. A helper that reads a name
+    /// its closure lacks finds it there, as when the tree-walker renders.
+    pub tree_walk_env: Option<Rc<RefCell<crate::interpreter::environment::Environment>>>,
     /// Handlers that failed VM execution — skip VM for these and use interpreter directly.
     pub failed_handlers: ahash::AHashSet<String>,
     /// Frame depth at which `run()` should stop. Bumped by native methods that
@@ -317,6 +328,9 @@ impl Vm {
             exception_handlers: Vec::new(),
             iter_stack: Vec::new(),
             output: Vec::new(),
+            template_out: String::new(),
+            tree_walk_functions: false,
+            tree_walk_env: None,
             failed_handlers: ahash::AHashSet::new(),
             return_depth: 0,
             check_return_types: false,
@@ -771,6 +785,36 @@ impl Vm {
                         Some(value) => self.stack.push(value),
                         None => break Some(op),
                     }
+                }
+                Op::TemplateWriteConst(idx) => {
+                    // SAFETY: as for `Op::Constant` above.
+                    if let Constant::String(text) = unsafe { &*constants.add(idx as usize) } {
+                        self.template_out.push_str(text);
+                    }
+                    self.stack.push(Value::Null);
+                }
+                Op::TemplateWrite(escaped) => {
+                    // A function value goes to the general arm, which hands
+                    // the render back to the tree-walker.
+                    if matches!(
+                        self.stack.last(),
+                        Some(
+                            Value::Function(_)
+                                | Value::NativeFunction(_)
+                                | Value::VmClosure(_)
+                                | Value::Method(_)
+                        )
+                    ) {
+                        break Some(op);
+                    }
+                    let value = self.pop();
+                    crate::template::renderer::write_value_to_output(
+                        &value,
+                        escaped,
+                        &mut self.template_out,
+                    );
+                    discard(value);
+                    self.stack.push(Value::Null);
                 }
                 Op::Add | Op::Subtract | Op::Multiply => {
                     let (len, a, b) = peek_two!();
@@ -4380,6 +4424,64 @@ impl Vm {
                 Op::SetNestedIndex(obj_slot, arr_slot, idx_slot, val_slot) => {
                     let base = self.frames.last().unwrap().stack_base;
                     self.nested_index_set(base, obj_slot, arr_slot, idx_slot, val_slot)?;
+                }
+
+                // --- Templates ---
+                Op::TemplateIter => {
+                    let value = self.stack.pop().unwrap();
+                    let value = match value {
+                        Value::Deferred(_) => value.force_deferred(),
+                        other => other,
+                    };
+                    let value = match value {
+                        Value::Hash(hash) => {
+                            let pairs = hash
+                                .borrow()
+                                .iter()
+                                .map(|(k, v)| {
+                                    Value::Array(Rc::new(RefCell::new(vec![
+                                        k.to_value(),
+                                        v.clone(),
+                                    ])))
+                                })
+                                .collect();
+                            Value::Array(Rc::new(RefCell::new(pairs)))
+                        }
+                        other => other,
+                    };
+                    self.stack.push(value);
+                }
+                Op::TemplateWriteConst(idx) => {
+                    let frame = self.frames.last().unwrap();
+                    if let Constant::String(text) =
+                        &frame.closure.proto.chunk.constants[idx as usize]
+                    {
+                        self.template_out.push_str(text);
+                    }
+                    self.stack.push(Value::Null);
+                }
+                Op::TemplateWrite(escaped) => {
+                    let value = self.stack.pop().unwrap();
+                    // A function written bare (`<%= current_user %>`) is called
+                    // by the tree-walker's renderer; leave that to it.
+                    if matches!(
+                        value,
+                        Value::Function(_)
+                            | Value::NativeFunction(_)
+                            | Value::VmClosure(_)
+                            | Value::Method(_)
+                    ) {
+                        return Err(RuntimeError::EngineFallback(
+                            "template wrote a function".to_string(),
+                            self.current_span(),
+                        ));
+                    }
+                    crate::template::renderer::write_value_to_output(
+                        &value,
+                        escaped,
+                        &mut self.template_out,
+                    );
+                    self.stack.push(Value::Null);
                 }
 
                 // --- JSON ---

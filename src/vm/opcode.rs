@@ -216,6 +216,20 @@ pub enum Op {
     /// Stringify value: pops value, pushes string.
     JsonStringify,
 
+    // --- Templates ---
+    /// Write a view's output: pops a value, appends it to `Vm::template_out`
+    /// (HTML-escaped when the operand is true, as `<%= %>`; raw for `<%- %>`
+    /// and literal text), pushes Null. Emitted only for the `__tpl_write` /
+    /// `__tpl_write_raw` intrinsics a compiled template is made of.
+    TemplateWrite(bool),
+    /// Write a string constant to `Vm::template_out` as is (a template's
+    /// literal text) and push Null: no `Value` is built for the text.
+    TemplateWriteConst(u16),
+    /// A template `for` loop's iterable, as the template renderer iterates it:
+    /// pops a value and pushes a hash as an array of `[key, value]` pairs, a
+    /// `grouped {}` placeholder as its rows, anything else as is.
+    TemplateIter,
+
     // --- Super-instructions (optimized compound ops) ---
     /// Increment a local integer by 1: local[slot] += 1
     /// Replaces: GetLocal(slot), Constant(1), Add, SetLocal(slot), Pop

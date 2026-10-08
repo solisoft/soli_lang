@@ -1452,6 +1452,18 @@ impl Vm {
         // routed through user-level `try`/`rescue`, and a handler that wrapped
         // the call would swallow the VM's internal limitation as if it were an
         // application error — returning a rescue value instead of demoting.
+        if self.tree_walk_functions {
+            let callee_idx = self.stack.len() - 1 - argc;
+            let args: Vec<Value> = self.stack.drain(callee_idx + 1..).collect();
+            self.stack.pop();
+            let mut interpreter = match &self.tree_walk_env {
+                Some(env) => crate::interpreter::Interpreter::with_environment(env.clone()),
+                None => crate::interpreter::Interpreter::for_bound_body(),
+            };
+            let result = interpreter.call_function_with_this(func, None, args)?;
+            self.push(result);
+            return Ok(());
+        }
         let proto = jit_compile_function(func, self.globals.keys().cloned()).map_err(|e| {
             RuntimeError::EngineFallback(format!("a function the VM cannot compile ({})", e), span)
         })?;

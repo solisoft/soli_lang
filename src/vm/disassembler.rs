@@ -211,6 +211,16 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         }
         Op::JsonParse => out.push_str("JSON_PARSE"),
         Op::JsonStringify => out.push_str("JSON_STRINGIFY"),
+        Op::TemplateIter => out.push_str("TEMPLATE_ITER"),
+        Op::TemplateWriteConst(idx) => {
+            let text = constant_string(chunk, *idx);
+            out.push_str(&format!("TEMPLATE_WRITE_CONST {:>5} ({:?})", idx, text));
+        }
+        Op::TemplateWrite(escaped) => out.push_str(if *escaped {
+            "TEMPLATE_WRITE"
+        } else {
+            "TEMPLATE_WRITE_RAW"
+        }),
         Op::IncrLocal(slot) => out.push_str(&format!("INCR_LOCAL   {:>5}", slot)),
         Op::DecrLocal(slot) => out.push_str(&format!("DECR_LOCAL   {:>5}", slot)),
         Op::AddLocalLocal(a, b) => out.push_str(&format!("ADD_LL       {:>3},{:>3}", a, b)),

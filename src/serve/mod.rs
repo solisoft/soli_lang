@@ -1839,6 +1839,7 @@ fn worker_loop(
         // route pays a one-time compile cost — felt as a "cold start", and
         // paid again per worker (round-robin) and after any worker restart.
         boot_trace(&format!("worker {worker_id}: vm globals copied"));
+        crate::template::vm_template::set_worker_globals(&vm.globals);
         warm_vm_handlers(worker_id, &vm);
         boot_trace(&format!("worker {worker_id}: handlers compiled"));
         Some(vm)
@@ -1949,6 +1950,7 @@ fn worker_loop(
                 for (name, value) in all_globals {
                     vm.globals.insert(name, value);
                 }
+                crate::template::vm_template::set_worker_globals(&vm.globals);
                 // Re-warm so the reloaded handlers come back hot instead of
                 // cold on their next request.
                 warm_vm_handlers(worker_id, vm);
@@ -1998,6 +2000,7 @@ fn worker_loop(
                 for (name, value) in all_globals {
                     vm.globals.insert(name, value);
                 }
+                crate::template::vm_template::set_worker_globals(&vm.globals);
             }
         }
 

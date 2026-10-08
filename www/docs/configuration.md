@@ -555,6 +555,8 @@ always use the interpreter. See [Running Soli Code](soli-language.md#running-sol
 | `--vm` | Run it on the VM with no fallback. A script that needs the interpreter stops with an error where the VM cannot go on (`Cannot access property 'send' on …`), and a bare function name gives the function itself, as under `soli serve`. | unset |
 | `SOLI_ENGINE` | `tree` (or `interpreter`), `vm` or `auto`: the engine `soli script.sl` and `soli -e` use when no flag is given. A flag wins; any other value means `auto`. An executable from `soli build` keeps the engine it was built with (`soli build tool.sl --tree` or `--vm`; `auto` by default) and ignores it. | `auto` |
 | `SOLI_ENGINE_LOG` | `1` prints to stderr which engine runs a script and why — `engine: vm`, `` engine: tree-walker — the script uses `send` ``, `` engine: tree-walker — the script calls `helper` without parentheses `` — when the choice is automatic (a forced engine prints nothing). Under `soli serve` it logs each action or middleware demoted from the VM to the interpreter (see [Observability](observability.md)). | unset |
+| `SOLI_VM_VIEWS` | `0` / `off` renders every view on the tree-walking interpreter instead of compiling it to the VM (production only; `--dev` always uses the interpreter). See [Views](views.md#which-engine-renders-a-view). | on |
+| `SOLI_VM_VIEWS_CHECK` | A file path: each compiled view is also rendered on the interpreter, whose output is served, and every view whose two renders differ is appended to the file. A diagnostic; it doubles a render's cost. | unset |
 
 ## Native Kernels
 

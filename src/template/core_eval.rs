@@ -73,6 +73,14 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
 /// thread-local cache slot is cleared.
 pub fn reset_builtins_rc() {
     BUILTINS_RC.with(|cell| *cell.borrow_mut() = None);
+    // The views compiled to the VM hold this env's globals.
+    super::vm_template::reset_thread();
+}
+
+/// Every name a view resolves past its data — builtins, view helpers, route
+/// helpers — as the globals of the VM views are compiled to.
+pub(crate) fn template_env_bindings() -> std::collections::HashMap<String, Value> {
+    get_builtins_rc().borrow().get_all_bindings()
 }
 
 // ---------------------------------------------------------------------------

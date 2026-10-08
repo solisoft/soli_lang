@@ -1442,6 +1442,19 @@ end</code></pre>
         </p>
     </div>
 
+    <h2 id="view-engine" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Which Engine Renders a View</h2>
+    <p class="text-gray-400 mb-4">In production a view is compiled once per worker to bytecode and rendered on the VM, the engine that runs actions. Its text and its <code>&lt;%= %&gt;</code> / <code>&lt;%- %&gt;</code> output are written straight into the page, so a list page spends less time in its template. What it renders is the same; nothing in the view changes.</p>
+    <p class="text-gray-400 mb-4">A view compiles when it is made of text, output, <code>if</code> / <code>elsif</code> / <code>else</code>, <code>unless</code>, <code>for</code> loops (including <code>xs.each do |x|</code>) and <code>&lt;% %&gt;</code> code. <code>partial(...)</code>, <code>component(...)</code> and every other helper are ordinary calls and compile too. A view that uses <code>&lt;%= yield %&gt;</code>, <code>content_for</code>, a <code>form_with</code> block or a component block renders on the tree-walking interpreter, as layouts do.</p>
+    <p class="text-gray-400 mb-3">The rules are the tree-walker&rsquo;s:</p>
+    <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-4">
+        <li>A name a view reads is its data first (the <code>render</code> hash and the controller&rsquo;s <code>@ivars</code>), then a builtin or a helper, and nil when it is neither. <code>@title</code> reads <code>title</code>.</li>
+        <li>A variable a view assigns (<code>&lt;% heading = &quot;Posts&quot; %&gt;</code>) is still there for its layout.</li>
+        <li>A <code>for</code> over a hash yields <code>[key, value]</code> pairs.</li>
+        <li>Helpers from <code>app/helpers</code> run on the interpreter, as they always have, so one that reads <code>req</code> sees the current request.</li>
+    </ul>
+    <p class="text-gray-400 mb-4">If a compiled view fails while it renders, or writes a function by name (<code>&lt;%= current_user %&gt;</code>), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. Under <code>--dev</code> every view renders on the tree-walker.</p>
+    <p class="text-gray-400 mb-12"><code>SOLI_VM_VIEWS=0</code> renders every view on the tree-walker. <code>SOLI_VM_VIEWS_CHECK=&lt;file&gt;</code> renders each compiled view on both engines, serves the tree-walker&rsquo;s output and appends to <code>&lt;file&gt;</code> every view whose two renders differ. It is a diagnostic: it doubles the cost of a render.</p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Best Practices</h2>
     <ul class="space-y-4 mb-12">
         <li class="flex items-start gap-3">
