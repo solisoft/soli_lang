@@ -4,6 +4,8 @@
 
 ### Performance
 
+* **vm:** **`row.title`, `title.upcase` and `for x in array` cost a third less on the VM.** Three paths every action takes were slow on the VM. A hash read in dot notation (`row.title`, the form the style guide recommends) compiles to the fused `GetLocalProperty`, whose fast path only knew instances: a hash took the general path, cloned the receiver and copied the key name into a new `String` on every read. A method read without parentheses on a string or an array (`title.upcase`, `items.first`) was wrapped in a `Method` value — name copied, receiver cloned — only to be unwrapped and called at once. And `for x in array` left the VM's fast dispatch tier on every iteration. The hash key is now read in place in both tiers, the zero-arg method is called directly, property names are shared instead of copied, and array iteration stays in the fast tier. An action that reads `row.title.upcase.length + row.views` over 50 rows: 44.6 → 36.4 µs of CPU per request, 310k → 372k requests per second (+20%).
+
 * **templates:** **A list page renders in 6% less CPU.** Two costs every tree-walker expression paid, which views pay on every `<%= %>`: checking an index or arithmetic operand for an unresolved `Future` was an out-of-line call that moved the value in and out (2% of a view render), and a method called without parentheses (`<%= title.upcase %>`, `name.trim.downcase`) was looked up by scanning the type's whole method table with string compares (3%). The check is now inlined and the lookup is a set built once; the second also serves the VM. On a 50-row table page: 56.9 → 53.4 µs of CPU per request, 247k → 263k requests per second. A criterion bench, `benches/template_render.rs`, times a render per kind of expression.
 
 ## [2.18.4] - 2026-10-08

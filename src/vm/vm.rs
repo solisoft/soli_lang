@@ -456,6 +456,17 @@ impl Vm {
 
     /// Read a string constant as an owned String (for global-map keys).
     #[inline]
+    /// A string constant, shared rather than copied: a short name (`upcase`,
+    /// `title`) is stored inline, a long one is reference-counted. Property
+    /// reads use it on every access; `read_string_constant_owned` allocated.
+    fn read_string_constant(&self, idx: u16) -> crate::interpreter::value::SoliStr {
+        let frame = self.frames.last().unwrap();
+        match &frame.closure.proto.chunk.constants[idx as usize] {
+            Constant::String(s) => s.clone(),
+            _ => crate::interpreter::value::SoliStr::default(),
+        }
+    }
+
     fn read_string_constant_owned(&self, idx: u16) -> String {
         let frame = self.frames.last().unwrap();
         match &frame.closure.proto.chunk.constants[idx as usize] {
@@ -683,6 +694,82 @@ impl Vm {
                         }
                     } else {
                         unreachable!("ForIterRange used with non-range iterator");
+                    }
+                }
+                // `for x in array`: the general arm's array case, without
+                // leaving this tier on every iteration.
+                Op::ForIter(exit_offset) => {
+                    let next = match self.iter_stack.last_mut() {
+                        Some(IterState::Array { values, index }) => {
+                            let arr = values.borrow();
+                            if *index < arr.len() {
+                                let value = arr[*index].clone();
+                                *index += 1;
+                                Some(value)
+                            } else {
+                                None
+                            }
+                        }
+                        _ => break Some(op),
+                    };
+                    match next {
+                        Some(value) => self.stack.push(value),
+                        None => {
+                            self.iter_stack.pop();
+                            ip += exit_offset as usize;
+                        }
+                    }
+                }
+                // `hash.key` that finds the key, when no user method on Hash
+                // could outrank it: the general arm's first fast path, here
+                // so a `row.title` does not leave this tier. Anything else
+                // (a miss, an instance, a method) goes to the general arm.
+                Op::GetProperty(idx) => {
+                    let hit = match self.stack.last() {
+                        Some(Value::Hash(hash))
+                            if !crate::interpreter::executor::calls::user_methods::has_user_methods(
+                                crate::interpreter::executor::calls::user_methods::PrimType::Hash,
+                            ) =>
+                        {
+                            // SAFETY: as for `Op::Constant` above.
+                            match unsafe { &*constants.add(idx as usize) } {
+                                Constant::String(name) => {
+                                    hash.borrow().get(&StrKey(name.as_ref())).cloned()
+                                }
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    };
+                    match hit {
+                        Some(value) => {
+                            discard(std::mem::replace(self.stack.last_mut().unwrap(), value));
+                        }
+                        None => break Some(op),
+                    }
+                }
+                // `row.title` with `row` a local hash that has the key — the
+                // fused form of the arm above.
+                Op::GetLocalProperty(slot, idx) => {
+                    let hit = match &self.stack[base + slot as usize] {
+                        Value::Hash(hash)
+                            if !crate::interpreter::executor::calls::user_methods::has_user_methods(
+                                crate::interpreter::executor::calls::user_methods::PrimType::Hash,
+                            ) =>
+                        {
+                            // SAFETY: as for `Op::Constant` above.
+                            match unsafe { &*constants.add(idx as usize) } {
+                                Constant::String(name) => {
+                                    hash.borrow().get(&StrKey(name.as_ref())).cloned()
+                                }
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    };
+                    match hit {
+                        Some(value) => self.stack.push(value),
+                        None => break Some(op),
                     }
                 }
                 Op::Add | Op::Subtract | Op::Multiply => {
@@ -2901,7 +2988,7 @@ impl Vm {
                             }
                         }
                     }
-                    let name = self.read_string_constant_owned(idx);
+                    let name = self.read_string_constant(idx);
                     self.check_private_value(&object, &name)?;
                     let span = self.current_span();
                     let result = self.op_get_property_member(&object, &name, span)?;
@@ -2909,7 +2996,7 @@ impl Vm {
                 }
                 Op::GetPropertyOrNull(idx) => {
                     let object = self.stack.pop().unwrap();
-                    let name = self.read_string_constant_owned(idx);
+                    let name = self.read_string_constant(idx);
                     self.check_private_value(&object, &name)?;
                     let span = self.current_span();
                     let result = match self.op_get_property_member(&object, &name, span) {
@@ -4207,22 +4294,37 @@ impl Vm {
                     // owned name, no span, one ahash probe. Without this the
                     // fused form would be *slower* than the pair it replaces,
                     // because the general path allocates the name as a String.
-                    let hit = {
+                    // `(field hit, hash key hit)`. A hash key is the value as
+                    // is: no privacy rule or deferred field applies to it.
+                    let (hit, hash_hit) = {
                         let frame = self.frames.last().unwrap();
                         match (
                             &self.stack[base + slot as usize],
                             &frame.closure.proto.chunk.constants[idx as usize],
                         ) {
                             (Value::Instance(inst), Constant::String(name)) => {
-                                inst.borrow().fields.get(name.as_ref()).cloned()
+                                (inst.borrow().fields.get(name.as_ref()).cloned(), None)
                             }
-                            _ => None,
+                            // `row.title` on a hash: the key, unless a user
+                            // method on Hash outranks it (as in GetProperty).
+                            (Value::Hash(hash), Constant::String(name))
+                                if !crate::interpreter::executor::calls::user_methods::has_user_methods(
+                                    crate::interpreter::executor::calls::user_methods::PrimType::Hash,
+                                ) =>
+                            {
+                                (None, hash.borrow().get(&StrKey(name.as_ref())).cloned())
+                            }
+                            _ => (None, None),
                         }
                     };
+                    if let Some(val) = hash_hit {
+                        self.stack.push(val);
+                        continue;
+                    }
                     if let Some(val) = hit {
                         if crate::interpreter::value::restricted_methods_declared() {
                             let object = self.stack[base + slot as usize].clone();
-                            let name = self.read_string_constant_owned(idx);
+                            let name = self.read_string_constant(idx);
                             self.check_private_value(&object, &name)?;
                         }
                         let val = self.force_field_hit(val)?;
@@ -4230,7 +4332,7 @@ impl Vm {
                         continue;
                     }
                     let object = self.stack[base + slot as usize].clone();
-                    let name = self.read_string_constant_owned(idx);
+                    let name = self.read_string_constant(idx);
                     self.check_private_value(&object, &name)?;
                     let span = self.current_span();
                     let result = self.op_get_property_member(&object, &name, span)?;

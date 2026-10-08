@@ -692,6 +692,31 @@ impl Vm {
             let resolved = Self::force_lazy_receiver(object, span)?;
             return self.op_get_property_member(&resolved, name, span);
         }
+        // `title.upcase`, `items.first`: a built-in zero-arg method read bare
+        // on a string or an array is called here. `op_get_property` would wrap
+        // it in a `Method` — the name copied, the receiver cloned — only for
+        // the auto-invoke below to unwrap it and make this same call. A user
+        // method on the type outranks the built-in, so it keeps that path;
+        // so does a string's `length`, which `op_get_property` answers itself.
+        {
+            use crate::interpreter::executor::calls::method_registry::is_zero_arg_method;
+            use crate::interpreter::executor::calls::user_methods::{has_user_methods, PrimType};
+            match object {
+                Value::String(s)
+                    if name != "length"
+                        && !has_user_methods(PrimType::String)
+                        && is_zero_arg_method(name, object) =>
+                {
+                    return self.vm_call_string_method(s, name, &[], span);
+                }
+                Value::Array(arr)
+                    if !has_user_methods(PrimType::Array) && is_zero_arg_method(name, object) =>
+                {
+                    return self.vm_call_array_method(arr, name, &[], span);
+                }
+                _ => {}
+            }
+        }
         // Compiled (VmClosure) instance methods: bare access auto-invokes
         // the zero-arg form with the receiver as `this`, mirroring the
         // tree-walker's auto-invoke of zero-arg class methods. Instance

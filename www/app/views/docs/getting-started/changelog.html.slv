@@ -24,6 +24,7 @@
 
         <h3 id="unreleased-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Hash reads in dot notation, methods without parentheses and <code class="text-cyan-400">for</code> loops cost a third less in production.</strong> On the VM, <code class="text-cyan-400">row.title</code> on a hash copied the key name and the receiver on every read, <code class="text-cyan-400">title.upcase</code> built a method value only to call it at once, and <code class="text-cyan-400">for x in array</code> left the fast dispatch loop on every iteration. All three now take the short path. An action reading <code class="text-cyan-400">row.title.upcase.length + row.views</code> over 50 rows went from 44.6 to 36.4&nbsp;&micro;s of CPU per request: +20% requests per second.</li>
             <li><strong class="text-white">A list page renders in 6% less CPU.</strong> Every <code class="text-cyan-400">&lt;%= %&gt;</code> paid two avoidable costs: an out-of-line check that an operand was not an unresolved future, and, for a method called without parentheses (<code class="text-cyan-400">title.upcase</code>), a scan of the type&rsquo;s whole method table. The check is inlined and the lookup is a set built once, which the VM uses too. On a 50-row table: 56.9 &rarr; 53.4&nbsp;&micro;s of CPU per request, 247k &rarr; 263k requests per second.</li>
         </ul>
 
