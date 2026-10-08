@@ -697,7 +697,23 @@ impl Value {
 
     /// Resolve a Future value, blocking until the result is ready.
     /// For non-Future values, returns the value unchanged.
+    ///
+    /// Every tree-walker index and binary operation calls this on its
+    /// operands, and almost none is a Future: the check is inlined there and
+    /// the blocking path stays out of line (it was 2% of a template render
+    /// as a call, moving each operand in and out).
+    #[inline]
     pub fn resolve(self) -> Result<Value, String> {
+        if matches!(self, Value::Future(_)) {
+            self.resolve_future()
+        } else {
+            Ok(self)
+        }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn resolve_future(self) -> Result<Value, String> {
         match self {
             Value::Future(state) => {
                 let mut guard = state.lock().map_err(|_| "Future lock poisoned")?;

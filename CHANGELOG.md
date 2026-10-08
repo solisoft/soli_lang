@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Performance
+
+* **templates:** **A list page renders in 6% less CPU.** Two costs every tree-walker expression paid, which views pay on every `<%= %>`: checking an index or arithmetic operand for an unresolved `Future` was an out-of-line call that moved the value in and out (2% of a view render), and a method called without parentheses (`<%= title.upcase %>`, `name.trim.downcase`) was looked up by scanning the type's whole method table with string compares (3%). The check is now inlined and the lookup is a set built once; the second also serves the VM. On a 50-row table page: 56.9 → 53.4 µs of CPU per request, 247k → 263k requests per second. A criterion bench, `benches/template_render.rs`, times a render per kind of expression.
+
 ## [2.18.4] - 2026-10-08
 
 ### Changed

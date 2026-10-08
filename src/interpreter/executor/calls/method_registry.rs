@@ -470,22 +470,58 @@ pub fn is_zero_arg_method(method_name: &str, receiver: &Value) -> bool {
         }
     }
 
-    let type_name = match receiver {
-        Value::Int(_) => "int",
-        Value::Float(_) => "float",
-        Value::Decimal(_) => "decimal",
-        Value::Bool(_) => "bool",
-        Value::Null => "null",
-        Value::String(_) => "string",
-        Value::Symbol(_) => "symbol",
-        Value::Array(_) => "array",
-        Value::Hash(_) => "hash",
-        Value::QueryBuilder(_) => "query_builder",
+    // Indexes into `ZERO_ARG_TYPES`.
+    let slot = match receiver {
+        Value::Int(_) => 0,
+        Value::Float(_) => 1,
+        Value::Decimal(_) => 2,
+        Value::Bool(_) => 3,
+        Value::Null => 4,
+        Value::String(_) => 5,
+        Value::Symbol(_) => 6,
+        Value::Array(_) => 7,
+        Value::Hash(_) => 8,
+        Value::QueryBuilder(_) => 9,
         _ => return false,
     };
-    known_methods(type_name)
-        .iter()
-        .any(|m| m.name == method_name && m.zero_arg)
+    zero_arg_names(slot).contains(method_name)
+}
+
+const ZERO_ARG_TYPES: [&str; 10] = [
+    "int",
+    "float",
+    "decimal",
+    "bool",
+    "null",
+    "string",
+    "symbol",
+    "array",
+    "hash",
+    "query_builder",
+];
+
+/// The zero-arg method names of one receiver type, as a set built once.
+///
+/// `is_zero_arg_method` runs on every paren-free member access
+/// (`<%= title.upcase %>`, `name.trim.downcase`) on both engines; scanning the
+/// type's whole table with string compares there was ~3% of a template-heavy
+/// request.
+fn zero_arg_names(slot: usize) -> &'static ahash::AHashSet<&'static str> {
+    use std::sync::OnceLock;
+    static SETS: OnceLock<Vec<ahash::AHashSet<&'static str>>> = OnceLock::new();
+    let sets = SETS.get_or_init(|| {
+        ZERO_ARG_TYPES
+            .iter()
+            .map(|t| {
+                known_methods(t)
+                    .iter()
+                    .filter(|m| m.zero_arg)
+                    .map(|m| m.name)
+                    .collect()
+            })
+            .collect()
+    });
+    &sets[slot]
 }
 
 /// Return type of a method on a given type. Returns `None` if unknown.
