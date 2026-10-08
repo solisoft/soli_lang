@@ -62,6 +62,9 @@ impl Compiler {
             }
             ExprKind::Variable(name) => {
                 self.compile_variable_get(name, line)?;
+                if self.calls_bare_builtin(name) {
+                    self.emit(Op::Call(0), line);
+                }
             }
             ExprKind::Binary {
                 left,
@@ -452,6 +455,16 @@ impl Compiler {
         Ok(())
     }
 
+    /// Whether a bare read of `name` calls it: one of
+    /// [`BARE_CALL_BUILTINS`](crate::interpreter::builtins::BARE_CALL_BUILTINS),
+    /// resolving to the global builtin — no local, upvalue or program-defined
+    /// global of that name.
+    fn calls_bare_builtin(&mut self, name: &str) -> bool {
+        crate::interpreter::builtins::is_bare_call_builtin(name)
+            && matches!(self.resolve_variable(name), VariableAccess::Global(_))
+            && !self.program_globals.borrow().contains(name)
+    }
+
     /// Inside an instance method, or a block within one: could the bare `name`
     /// — no local, no upvalue, no global the compiler knows — be a method of
     /// `this`? Known globals (in `serve`, the worker's whole global table) and
@@ -701,7 +714,11 @@ impl Compiler {
             }
         }
 
-        self.compile_expr(callee)?;
+        // The callee is read, not called: `clock()` calls `clock` once.
+        match &callee.kind {
+            ExprKind::Variable(name) => self.compile_variable_get(name, line)?,
+            _ => self.compile_expr(callee)?,
+        }
         self.compile_call_arguments(arguments, line, Op::Call, Op::CallNamed)
     }
 
@@ -1053,8 +1070,11 @@ impl Compiler {
                         // body is compiled, so by the time we get here the name
                         // is either a real global (top level, or one we know
                         // exists) — define-or-update it. `SetGlobal` upserts.
+                        // At top level it is the program's own binding, as a
+                        // `let` would be: `clock = 7` shadows the builtin.
                         if self.scope_depth == 0 {
                             self.known_globals.borrow_mut().insert(name.clone());
+                            self.program_globals.borrow_mut().insert(name.clone());
                         }
                         let idx = self.add_string_constant(&name);
                         self.emit(Op::SetGlobal(idx), line);

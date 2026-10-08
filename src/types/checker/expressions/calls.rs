@@ -16,7 +16,10 @@ impl TypeChecker {
         callee: &Expr,
         arguments: &[Argument],
     ) -> TypeResult<Type> {
-        let callee_type = self.check_expr(callee)?;
+        let callee_type = match &callee.kind {
+            ExprKind::Variable(name) => self.check_variable(name, callee.span)?,
+            _ => self.check_expr(callee)?,
+        };
 
         match callee_type {
             Type::Function {

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+* **vm:** **A bare `clock` is the time on the VM, as on the tree-walker.** The VM pushed the native function for a paren-less `clock`, so `elapsed = clock - start` raised *Cannot subtract float from Function* in compiled code (and the type checker refused it as `() -> Float` arithmetic) while the tree-walker called it; the docs' own `start = clock` example hit it. Both engines and the checker now read a bare `clock` as `clock()` — in an expression, a method's last line, a block or a lambda — and `clock()` still calls it once. A program's own `clock` (a `def`, a parameter, or a top-level `clock = …`) shadows it as before; the VM now counts a top-level bare assignment as the program's binding, as a `let` already was. Other bare functions keep their VM meaning (the function value). [Docs](www/docs/builtins.md#clock)
+
 ## [2.18.3] - 2026-10-07
 
 ### Added

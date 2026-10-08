@@ -28,7 +28,7 @@ impl TypeChecker {
             | ExprKind::Null => self.check_literal(&expr.kind),
 
             // Variables and references
-            ExprKind::Variable(name) => self.check_variable(name, expr.span),
+            ExprKind::Variable(name) => self.check_variable_value(name, expr.span),
             ExprKind::QualifiedName { .. } => self.check_qualified_name(expr.span),
             ExprKind::Grouping(inner) => self.check_grouping(inner),
 

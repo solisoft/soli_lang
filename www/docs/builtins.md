@@ -816,11 +816,17 @@ Returns the current Unix timestamp as a float with sub-second precision.
 
 **Returns:** Float - Unix timestamp
 
+`clock` without parentheses is the same call, on both engines and in every
+position — `clock - start`, `clock.round`, a method's last line. (On the VM a
+bare `clock` used to be the function itself, so `clock - start` raised
+*Cannot subtract float from Function*.) A program that defines its own
+`clock` keeps it.
+
 **Example:**
 ```soli
-start = clock()
+start = clock
 # ... do work ...
-elapsed = clock() - start
+elapsed = clock - start
 println("Took " + str(elapsed) + " seconds")
 ```
 

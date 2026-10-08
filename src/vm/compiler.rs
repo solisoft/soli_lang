@@ -128,8 +128,9 @@ pub struct Compiler {
     /// with the worker's entire global table, builtins included, so asking it
     /// whether `next` is a user global says yes and the builtin stops being
     /// recognised — compiled fine at the CLI, silently wrong under the server.
-    /// This set only ever grows from a `let`/`const` at global scope or a
-    /// function declaration, so it means what it says in both modes.
+    /// This set only ever grows from a `let`/`const` or a bare assignment at
+    /// global scope, or a function declaration, so it means what it says in
+    /// both modes.
     pub program_globals: Rc<RefCell<HashSet<String>>>,
     /// Native kernels of the program (see `crate::native`). Only the
     /// top-level compiler holds them: a top-level `def` that has one gets a

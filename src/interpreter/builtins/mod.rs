@@ -30,6 +30,19 @@ pub fn current_action_name() -> String {
     CURRENT_ACTION.with(|cell| cell.borrow().clone())
 }
 
+/// Zero-argument builtins whose bare name means their value, on both engines:
+/// `clock - start` reads the time like `clock() - start`. The tree-walker
+/// calls any zero-argument function read by name; the VM passes a bare
+/// function as a value, so it calls these by name only, and the type checker
+/// gives them their return type. A program that defines its own `clock` keeps
+/// it as written.
+pub const BARE_CALL_BUILTINS: &[&str] = &["clock"];
+
+/// Whether a bare read of `name` (no local of that name) calls the builtin.
+pub fn is_bare_call_builtin(name: &str) -> bool {
+    BARE_CALL_BUILTINS.contains(&name)
+}
+
 // Re-export submodules
 pub mod apns;
 pub mod app_links;

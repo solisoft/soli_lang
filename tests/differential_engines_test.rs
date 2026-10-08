@@ -1310,6 +1310,18 @@ const CASES: &[(&str, &str)] = &[
         "instance_dynamic_field_private",
         "class Vault\n  private\n  secret: String\n\n  public\n  def put(name, value)\n    this[name] = value\n    this[name]\n  end\nend\n\nv = new Vault()\nprint(v.put(\"secret\", \"s1\"))\nfield = \"secret\"\nprint(v[field] rescue \"read refused\")\nout = (v[field] = \"x\") rescue \"write refused\"\nprint(out)\n",
     ),
+    (
+        // A bare `clock` is the time, as `clock()` is, in every position. The
+        // VM used to push the native function itself: `clock - start` raised
+        // "Cannot subtract float from Function".
+        "bare_clock_is_the_time",
+        "start = clock()\nprint(type(clock))\nprint(clock >= start)\nprint(type(clock - start))\ndef elapsed(from)\n  clock - from\nend\nprint(elapsed(start) >= 0)\nclass Timer\n  def now\n    clock\n  end\nend\nprint(type(Timer.new.now))\n[1].each do |i|\n  print(type(clock + i))\nend\nprint(type(clock.round))",
+    ),
+    (
+        // A program's own `clock` keeps what it is.
+        "bare_clock_shadowed",
+        "clock = 7\nprint(clock)\ndef f(clock)\n  clock + 1\nend\nprint(f(1))",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

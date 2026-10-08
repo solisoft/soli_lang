@@ -33,6 +33,18 @@ impl TypeChecker {
         Err(TypeError::UndefinedVariable(name.to_string(), span))
     }
 
+    /// A variable read for its value. A bare
+    /// [`BARE_CALL_BUILTINS`](crate::interpreter::builtins::BARE_CALL_BUILTINS)
+    /// name is the call, so `clock - start` is a `Float`; a callee is typed by
+    /// [`check_variable`](Self::check_variable), so `clock()` still is too.
+    pub(crate) fn check_variable_value(&mut self, name: &str, span: Span) -> TypeResult<Type> {
+        let ty = self.check_variable(name, span)?;
+        if crate::interpreter::builtins::is_bare_call_builtin(name) {
+            return Ok(super::access::collapse_zero_arg_method(ty));
+        }
+        Ok(ty)
+    }
+
     /// Check qualified name expression.
     pub(crate) fn check_qualified_name(&mut self, _span: Span) -> TypeResult<Type> {
         // For now, return Unknown for qualified names

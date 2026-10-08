@@ -188,7 +188,8 @@ Ruby-style, terse Soli — in code, specs, docs and scaffolds alike.
 - **No `()` on a zero-argument method call** — `Post.all`, `@post.save`,
   `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`. Keep
   them on a **bare function** (`current_user()`, `session_destroy()`): without
-  them the VM passes the function itself instead of calling it. Keep them
+  them the VM passes the function itself instead of calling it (`clock` is
+  the one builtin both engines call bare: `clock - start`). Keep them
   before an index too — `list.sort()[0]`: the type checker refuses
   `list.sort[0]`. `.any?`, `.all?` and `.none?` take a block
   (`xs.any? { |x| x.done }`); for emptiness write `xs.length > 0`.

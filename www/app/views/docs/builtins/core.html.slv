@@ -618,9 +618,10 @@ String.new(true)     # "true"</code></pre>
                         </svg>
                     </a>
                     <p class="text-gray-400 mb-3">Returns the current Unix timestamp as a float with sub-second precision.</p>
+                    <p class="text-gray-400 mb-3"><code>clock</code> without parentheses is the same call, on both engines and in every position &mdash; <code>clock - start</code>, <code>clock.round</code>, a method&rsquo;s last line. A program that defines its own <code>clock</code> keeps it.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">start = clock
 # ... do work ...
-elapsed = clock() - start</code></pre>
+elapsed = clock - start</code></pre>
                 </div>
             </section>
         </div>

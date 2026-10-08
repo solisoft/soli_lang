@@ -13,6 +13,13 @@ describe("clock") do
     assert(second >= first)
   end
 
+  test("reads the same without parentheses") do
+    start = clock()
+    assert_eq(type(clock), "float")
+    assert(clock - start >= 0)
+    assert_eq(type(clock.round), "int")
+  end
+
   test("ignores freeze_time") do
     freeze_time(1000)
     assert_gt(clock(), 1700000000)
