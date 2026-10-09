@@ -8,8 +8,14 @@
 //! Two SQLite facts shape this module:
 //!
 //! - **One writer at a time.** WAL mode lets readers run during a write, but
-//!   writers serialize. Every connection therefore sets a `busy_timeout`, so a
-//!   concurrent writer waits instead of failing with `SQLITE_BUSY`.
+//!   writers serialize. Every connection therefore has a busy handler, so a
+//!   concurrent writer waits instead of failing with `SQLITE_BUSY` — until the
+//!   next commit ([`busy_wait`]), not through SQLite's millisecond sleeps.
+//! - **Checkpoints are not a writer's job.** SQLite's auto-checkpoint makes the
+//!   commit that leaves the WAL past 1,000 pages copy it into the database and
+//!   fsync both before returning, holding up that request and every writer
+//!   queued behind it. Commits here only note the WAL's size ([`wal_grew`]); a
+//!   thread per database file runs the checkpoint ([`spawn_checkpointer`]).
 //! - **No `SKIP LOCKED`.** The job engine cannot lock individual rows, so
 //!   [`claim_jobs`] takes the database write lock with `BEGIN IMMEDIATE` and
 //!   does its select-then-update inside that transaction. The claim is short,
@@ -172,15 +178,172 @@ fn pools() -> &'static Mutex<HashMap<String, SqPool>> {
 }
 
 /// Per-connection setup. WAL gives concurrent readers during a write, and the
-/// busy timeout turns writer contention into a wait rather than an error.
+/// busy handler turns writer contention into a wait rather than an error.
 fn init_conn(conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
-    conn.busy_timeout(Duration::from_secs(10))?;
+    conn.busy_handler(Some(busy_wait))?;
     // Statements are prepared through the connection's cache; rusqlite's
     // default of 16 is fewer than the shapes one app's models generate.
     conn.set_prepared_statement_cache_capacity(256);
     // A memory database has no journal to switch; ignore the answer either way.
     let _: Result<String, _> = conn.query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0));
-    conn.execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;")
+    // Replaces the auto-checkpoint, which is itself a WAL hook.
+    conn.wal_hook(Some(wal_grew));
+    conn.execute_batch(
+        "PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL; PRAGMA journal_size_limit=67108864;",
+    )
+}
+
+/// SQLite's `busy_timeout` handler sleeps 1, 2, 5, 10, 15, 20, 25, 25, 25, 50,
+/// 50 and then 100 ms between retries. A write holds the lock for tens of
+/// microseconds, so a writer that lost the race slept far longer than it had to
+/// wait, and posting under load spent most of its time asleep. This one waits
+/// for the next commit instead: [`wal_grew`] runs on the committing thread once
+/// the write lock is released and wakes one waiting writer. A wait also ends
+/// after 200 µs, for what releases the lock without a commit (a rollback, a
+/// checkpoint), and the writer gives up after 10 s, as `busy_timeout(10 s)` did.
+fn busy_wait(retries: i32) -> bool {
+    use std::sync::atomic::Ordering::Relaxed;
+    thread_local! {
+        static WAITING_SINCE: Cell<Option<std::time::Instant>> = const { Cell::new(None) };
+    }
+    let now = std::time::Instant::now();
+    let since = WAITING_SINCE.with(|since| {
+        if retries == 0 || since.get().is_none() {
+            since.set(Some(now));
+        }
+        since.get().unwrap_or(now)
+    });
+    if now.duration_since(since) > Duration::from_secs(10) {
+        return false;
+    }
+    COMMITS.waiting.fetch_add(1, Relaxed);
+    let count = COMMITS.count.lock().unwrap_or_else(|e| e.into_inner());
+    let seen = *count;
+    let _ = COMMITS
+        .committed
+        .wait_timeout_while(count, Duration::from_micros(200), |c| *c == seen);
+    COMMITS.waiting.fetch_sub(1, Relaxed);
+    true
+}
+
+/// Commits, counted for the writers [`busy_wait`] has waiting.
+struct Commits {
+    count: Mutex<u64>,
+    committed: std::sync::Condvar,
+    waiting: std::sync::atomic::AtomicUsize,
+}
+
+static COMMITS: Commits = Commits {
+    count: Mutex::new(0),
+    committed: std::sync::Condvar::new(),
+    waiting: std::sync::atomic::AtomicUsize::new(0),
+};
+
+/// SQLite's auto-checkpoint threshold, in WAL pages (Rails keeps it).
+const CHECKPOINT_PAGES: i64 = 1_000;
+/// Past this many pages (~40 MB at 4 KiB) the checkpointer restarts the WAL
+/// itself: a passive checkpoint never catches up while writes keep coming, and
+/// SQLite only rewinds the WAL once one has.
+const RESTART_PAGES: i64 = 10_000;
+
+/// What the commits tell the checkpointers: a count bumped each time they
+/// should run, and whether the next run must restart the WAL.
+struct CheckpointSignal {
+    rounds: Mutex<u64>,
+    wake: std::sync::Condvar,
+    restart: std::sync::atomic::AtomicBool,
+    /// The WAL's size in pages when the checkpointers were last woken.
+    woken_at: std::sync::atomic::AtomicI64,
+}
+
+static CHECKPOINT: CheckpointSignal = CheckpointSignal {
+    rounds: Mutex::new(0),
+    wake: std::sync::Condvar::new(),
+    restart: std::sync::atomic::AtomicBool::new(false),
+    woken_at: std::sync::atomic::AtomicI64::new(0),
+};
+
+/// The WAL hook, on the committing thread after every commit, the write lock
+/// released: wake a writer [`busy_wait`] has waiting, wake the checkpointers
+/// each time the WAL has grown by [`CHECKPOINT_PAGES`], and ask for a restart
+/// past [`RESTART_PAGES`]. With nobody waiting and the WAL short, a commit costs
+/// three atomic reads.
+fn wal_grew(_wal: &rusqlite::hooks::Wal, pages: std::ffi::c_int) -> rusqlite::Result<()> {
+    use std::sync::atomic::Ordering::Relaxed;
+    if COMMITS.waiting.load(Relaxed) > 0 {
+        *COMMITS.count.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+        // One: the lock is free for one writer, and waking them all made the
+        // others lose the race again and wait once more.
+        COMMITS.committed.notify_one();
+    }
+    let pages = i64::from(pages);
+    let woken_at = CHECKPOINT.woken_at.load(Relaxed);
+    if pages < woken_at {
+        // The WAL was rewound.
+        CHECKPOINT.woken_at.store(pages, Relaxed);
+        return Ok(());
+    }
+    if pages - woken_at < CHECKPOINT_PAGES {
+        return Ok(());
+    }
+    CHECKPOINT.woken_at.store(pages, Relaxed);
+    if pages >= RESTART_PAGES {
+        CHECKPOINT.restart.store(true, Relaxed);
+    }
+    let mut rounds = CHECKPOINT.rounds.lock().unwrap_or_else(|e| e.into_inner());
+    *rounds += 1;
+    CHECKPOINT.wake.notify_all();
+    Ok(())
+}
+
+/// The checkpointer of one database file: a thread with a connection of its
+/// own that runs a PASSIVE checkpoint each time the commits wake it (writes
+/// carry on appending to the WAL meanwhile), a RESTART when asked to, and one
+/// more after a quiet minute so a WAL left behind by a burst is folded in.
+/// Started once per file, with its first pool.
+fn spawn_checkpointer(path: PathBuf) {
+    static STARTED: OnceLock<Mutex<std::collections::HashSet<PathBuf>>> = OnceLock::new();
+    let started = STARTED.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
+    if !started.lock().unwrap_or_else(|e| e.into_inner()).insert(path.clone()) {
+        return;
+    }
+    let spawned = std::thread::Builder::new()
+        .name("sqlite-checkpoint".into())
+        .spawn(move || {
+            let conn = match rusqlite::Connection::open(&path) {
+                Ok(conn) => conn,
+                Err(e) => {
+                    eprintln!("[soli] sqlite checkpointer for {} not started: {e}", path.display());
+                    return;
+                }
+            };
+            let _ = conn.busy_handler(Some(busy_wait));
+            let mut seen = *CHECKPOINT.rounds.lock().unwrap_or_else(|e| e.into_inner());
+            loop {
+                {
+                    let rounds = CHECKPOINT.rounds.lock().unwrap_or_else(|e| e.into_inner());
+                    let (rounds, _) = CHECKPOINT
+                        .wake
+                        .wait_timeout_while(rounds, Duration::from_secs(60), |r| *r == seen)
+                        .unwrap_or_else(|e| e.into_inner());
+                    seen = *rounds;
+                }
+                let restart = CHECKPOINT
+                    .restart
+                    .swap(false, std::sync::atomic::Ordering::Relaxed);
+                let sql = if restart {
+                    "PRAGMA wal_checkpoint(RESTART)"
+                } else {
+                    "PRAGMA wal_checkpoint(PASSIVE)"
+                };
+                if let Err(e) = conn.query_row(sql, [], |_| Ok(())) {
+                    eprintln!("[soli] sqlite checkpoint of {} failed: {e}", path.display());
+                }
+            }
+        });
+    if let Err(e) = spawned {
+        eprintln!("[soli] sqlite checkpointer not started: {e}");
+    }
 }
 
 thread_local! {
@@ -248,6 +411,7 @@ fn pool_for_active_uncached() -> Result<SqPool, String> {
             if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
                 let _ = std::fs::create_dir_all(parent);
             }
+            spawn_checkpointer(path.clone());
             spec.pool_size.unwrap_or(5).max(1)
         }
         // Each memory connection would be its OWN empty database, so the pool
