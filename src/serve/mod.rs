@@ -48,6 +48,7 @@ mod probes;
 pub mod prod_log;
 mod request_input;
 mod request_scope;
+mod response_cache;
 pub mod route_listing;
 pub mod route_log;
 mod route_match;
@@ -2542,6 +2543,29 @@ async fn handle_hyper_request(
         }
     }
 
+    // A reply the application asked to keep, answered without a worker while
+    // the database has not changed since it was made. See `response_cache`.
+    let cache_ticket = if dev_mode || file_template.is_some() {
+        None
+    } else {
+        response_cache::begin(&method, &path, raw_query.as_deref(), req.headers())
+    };
+    if let Some(kept) = cache_ticket.as_ref().and_then(response_cache::lookup) {
+        let headers = req.headers();
+        let if_none_match = header_str(headers, "if-none-match").map(str::to_owned);
+        let is_prefetch = prefetch::is_prefetch_request(|name| header_str(headers, name));
+        let accepts_gzip = compression::settings().is_some()
+            && header_str(headers, "accept-encoding").is_some_and(compression::accepts_gzip);
+        return Ok(pipeline::assemble(
+            WorkerResponse::Buffered(kept),
+            if_none_match.as_deref(),
+            is_prefetch,
+            dev_mode,
+            reload_tx.is_some(),
+            accepts_gzip,
+        ));
+    }
+
     // From here the request is the application's to answer: read the body,
     // hand the work to a worker, and assemble the reply. See `pipeline`.
     let pipeline::Intake {
@@ -2589,11 +2613,19 @@ async fn handle_hyper_request(
         return Ok(*busy);
     }
 
-    let worker_response =
+    let mut worker_response =
         match pipeline::await_worker(response_rx, &log_method, &log_path, request_start).await {
             Ok(worker_response) => worker_response,
             Err(response) => return Ok(*response),
         };
+    // Kept when it asked to be and nothing was committed while it was made;
+    // the header never leaves the server either way.
+    match &mut worker_response {
+        WorkerResponse::Buffered(data) => response_cache::admit(cache_ticket, data),
+        WorkerResponse::Stream { headers, .. } | WorkerResponse::Blob { headers, .. } => {
+            response_cache::take_ttl(headers);
+        }
+    }
 
     // A SoliDB blob is fetched and relayed here, on the async side, so the
     // worker is not held for the length of the download.
