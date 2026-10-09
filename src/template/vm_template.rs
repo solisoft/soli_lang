@@ -349,19 +349,19 @@ thread_local! {
         const { std::cell::Cell::new(std::ptr::null()) };
 }
 
-/// Sets [`RENDERING_CACHE`] for a render and clears it on drop.
-struct RenderingCache;
+/// Sets [`RENDERING_CACHE`] for a render and puts back, on drop, the value it
+/// replaced: a partial rendered inside a view ends before the view does.
+struct RenderingCache(*const crate::template::TemplateCache);
 
 impl RenderingCache {
     fn set(cache: &crate::template::TemplateCache) -> Self {
-        RENDERING_CACHE.with(|c| c.set(cache as *const _));
-        RenderingCache
+        RenderingCache(RENDERING_CACHE.with(|c| c.replace(cache as *const _)))
     }
 }
 
 impl Drop for RenderingCache {
     fn drop(&mut self) {
-        RENDERING_CACHE.with(|c| c.set(std::ptr::null()));
+        RENDERING_CACHE.with(|c| c.set(self.0));
     }
 }
 
