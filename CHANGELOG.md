@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [2.20.0] - 2026-10-09
+
+v2.19.1 was tagged as a patch release, but it carries a new capability (Soli apps inside Cloudflare Workers); v2.20.0 is the same code under a minor version, and the release notes are here.
+
 ### Added
 
 * **edge:** **A Soli app runs inside a Cloudflare Worker.** The library now builds for `wasm32-unknown-unknown` (the `edge/` crate, `scripts/build-edge.sh`: 9.4 MB of wasm, 3.1 MB gzipped), and `soli edge build [folder] [--out DIR] [--runtime DIR]` packages an app with that runtime as a Wrangler project: `app/`, `config/` and `lib/` go into `src/app.json` and are mounted in memory (a Worker has no filesystem), `public/` becomes the Worker's static assets, `.env` is left out, and `wrangler.toml` is written once and then kept. `serve::edge` boots the app as a `soli serve` worker does and answers each request through the same `handle_request`. Model queries reach SoliDB with the Worker's `fetch`: the synchronous interpreter suspends its wasm stack on each one through JavaScript Promise Integration (`platform::jspi`, behind `block_on_db`), so app code does not change; the JWT login goes the same way. The `HTTP` class works over `fetch` (`HTTP.parallel*` run one after another: there are no threads). File access on the app-loading path goes through `platform::fs` (`std::fs` natively, the mounted tree on the edge), the environment through `platform::env` (`std::env` natively, the Worker's vars and secrets on the edge, plus `SOLI_RUNTIME` and `SOLI_VERSION`), and clocks through `web-time`. Streaming responses answer `501`; builtins that need a socket, a thread, a subprocess or a disk return an error naming the edge build. Requests are serialised per isolate, and a panic ends the isolate (wasm is `panic = abort`). Deployed: `examples/cloudflare-worker` at https://cf.solisoft.net. Natively nothing changes: the dependency split keeps the native feature set identical, and the 4,137 Rust tests pass.
@@ -9,6 +13,10 @@
 ### Performance
 
 * **serve:** **A woken app answers its first request in half the time: 250 → 125 ms on a 200-file CRM.** Three things sat between `soli serve` and the first answer. The native driver (the default since 2.19.0) opened five pooled connections per worker and authenticated each with a full password check on SoliDB, one after the other, on the worker's first query — ~100 ms on the first request after a wake, and 80 password checks on the server for 16 workers. A worker runs one request at a time and blocks on each call, so it never had two commands in flight: the pool is now one connection, and throughput is unchanged (50-row read 284.4k → 287.8k requests per second, create 231.6k → 234.6k, two rounds each). `static cron` schedules were written to the database synchronously before the server listened (25 ms with eight scheduled jobs, the HTTP client built for them included); a thread of their own writes them now, as no request needs them. And `config/locales/*.yml` (1.3 MB in that app, 14 ms) is parsed on a thread started as the server boots, then installed at the point it always was, so the order translations become visible in is unchanged. The boot thread is ready in 34 ms instead of 72.
+
+## [2.19.1] - 2026-10-09
+
+The same code as 2.20.0, tagged as a patch release before the version was corrected — the release notes are under 2.20.0.
 
 ## [2.19.0] - 2026-10-09
 

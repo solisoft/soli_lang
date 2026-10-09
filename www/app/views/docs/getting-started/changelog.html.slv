@@ -20,18 +20,29 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.19.1.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.20.0.</p>
+
+    </section>
+
+    <section id="v2-20-0" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.20.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-09</span></h2>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">v2.19.1 was tagged as a patch release, but it carries a new capability &mdash; Soli apps inside Cloudflare Workers. v2.20.0 is the same code under a minor version; these are its release notes.</p>
+
+        <h3 id="v2-20-0-deployment" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Deployment</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A Soli app runs inside a Cloudflare Worker: <code class="text-cyan-400">soli edge build</code>.</strong> The interpreter now also builds for WebAssembly (<code class="text-cyan-400">scripts/build-edge.sh</code>, about 3&nbsp;MB compressed), and <code class="text-cyan-400">soli edge build</code> packages an app with it as a Wrangler project: <code class="text-cyan-400">app/</code>, <code class="text-cyan-400">config/</code> and <code class="text-cyan-400">lib/</code> mounted in memory, <code class="text-cyan-400">public/</code> served as static assets, <code class="text-cyan-400">.env</code> left out. Each request goes through the same routing, middleware, controllers, views and layouts as <code class="text-cyan-400">soli serve</code>; SoliDB models work over HTTPS, the wasm stack suspending on each query (JavaScript Promise Integration). Configuration comes from the Worker&rsquo;s vars and secrets through <code class="text-cyan-400">getenv()</code>. Not on the edge: WebSockets, streaming, uploads, jobs and the native database drivers. The live example is <a href="https://cf.solisoft.net" class="text-cyan-400 hover:underline">cf.solisoft.net</a>. The native binary is unchanged. <a href="/docs/development-tools/edge" class="text-cyan-400 hover:underline">Cloudflare Workers</a></li>
+        </ul>
+
+        <h3 id="v2-20-0-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A woken app answers its first request in half the time: 250 &rarr; 125&nbsp;ms on a 200-file CRM.</strong> The native SoliDB driver opened five connections per worker and authenticated each with a full password check, one after the other, on the first query: one connection is enough for a worker that runs one request at a time, with unchanged throughput. <code class="text-cyan-400">static cron</code> schedules are written from a thread of their own instead of before the server listens, and the locale files are parsed while the app loads. The boot thread is ready in 34&nbsp;ms instead of 72.</li>
+        </ul>
 
     </section>
 
     <section id="v2-19-1" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">v2.19.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-09</span></h2>
-
-        <h3 id="v2-19-1-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
-        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
-            <li><strong class="text-white">A woken app answers its first request in half the time: 250 &rarr; 125&nbsp;ms on a 200-file CRM.</strong> The native SoliDB driver opened five connections per worker and authenticated each with a full password check, one after the other, on the first query: one connection is enough for a worker that runs one request at a time, with unchanged throughput. <code class="text-cyan-400">static cron</code> schedules are written from a thread of their own instead of before the server listens, and the locale files are parsed while the app loads. The boot thread is ready in 34&nbsp;ms instead of 72.</li>
-        </ul>
-
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">The same code as v2.20.0, tagged as a patch release before the version was corrected &mdash; its release notes are just above.</p>
     </section>
 
     <section id="v2-19-0" class="mb-16 scroll-mt-24">
