@@ -242,6 +242,14 @@ pub enum Op {
     /// A `content_for` block: pops the captured body and the name and appends
     /// the body to that name's store. Pushes Null.
     TemplateContentFor,
+    /// `<%= yield %>` in a view, partial or component: pops the template's
+    /// `locals` and writes its `content` unescaped, or fails when it has none.
+    /// Pushes Null.
+    TemplateYield,
+    /// `<%= yield "name" %>` there: pops the name and writes that
+    /// `content_for` slot, or fails when nothing was captured for it. Pushes
+    /// Null.
+    TemplateYieldNamed,
 
     // --- Super-instructions (optimized compound ops) ---
     /// Increment a local integer by 1: local[slot] += 1

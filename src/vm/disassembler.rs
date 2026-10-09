@@ -216,6 +216,8 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::TemplateCaptureEnd => out.push_str("TEMPLATE_CAPTURE_END"),
         Op::TemplateComponent => out.push_str("TEMPLATE_COMPONENT"),
         Op::TemplateContentFor => out.push_str("TEMPLATE_CONTENT_FOR"),
+        Op::TemplateYield => out.push_str("TEMPLATE_YIELD"),
+        Op::TemplateYieldNamed => out.push_str("TEMPLATE_YIELD_NAMED"),
         Op::TemplateWriteConst(idx) => {
             let text = constant_string(chunk, *idx);
             out.push_str(&format!("TEMPLATE_WRITE_CONST {:>5} ({:?})", idx, text));

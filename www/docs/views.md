@@ -1397,7 +1397,9 @@ Access in template:
 
 In production a view is compiled once per worker to bytecode and rendered on the VM, the engine that runs actions. Its text and its `<%= %>` / `<%- %>` output are written straight into the page, so a list page spends less time in its template. What it renders is the same; nothing in the view changes.
 
-A view compiles when it is made of text, output, `if` / `elsif` / `else`, `unless`, `for` loops (including `xs.each do |x|`), `<% %>` code, component blocks (named slots included) and `content_for`. `partial(...)`, `component(...)` and every other helper are ordinary calls and compile too. A view that uses `<%= yield %>` or a `form_with` block renders on the tree-walking interpreter, as layouts do. The partials and components a view renders are compiled the same way; one rendered on its own, outside a view (a controller's `render_partial`), stays on the interpreter.
+A view compiles when it is made of text, output, `if` / `elsif` / `else`, `unless`, `for` loops (including `xs.each do |x|`), `<% %>` code, component blocks (named slots included) and `content_for`. `partial(...)`, `component(...)` and every other helper are ordinary calls and compile too. `yield` in a partial or component (its `content` slot, or a named slot) compiles too. A layout, or a view with a `form_with` block, renders on the tree-walking interpreter. The partials and components a view renders are compiled the same way; one rendered on its own, outside a view (a controller's `render_partial`), stays on the interpreter.
+
+A template too small to gain from it stays on the interpreter as well: one with no loop and fewer than eight dynamic parts (outputs, `<% %>` code, conditions, slots). A render on the VM has a fixed cost that a two-line component never earns back.
 
 The rules are the tree-walker's:
 

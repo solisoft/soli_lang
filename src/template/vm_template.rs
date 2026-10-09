@@ -46,6 +46,15 @@ pub struct Rendered {
 }
 
 impl VmTemplate {
+    /// What serve renders on the VM: `compile`, for a template that does
+    /// enough work to gain from it (`worth_compiling`).
+    pub fn compile_for_serve(nodes: &[TemplateNode]) -> Result<Self, String> {
+        if !worth_compiling(nodes) {
+            return Err("too small to gain from the VM".to_string());
+        }
+        Self::compile(nodes)
+    }
+
     /// Compile `nodes`, or say why they need the tree-walker.
     pub fn compile(nodes: &[TemplateNode]) -> Result<Self, String> {
         let mut assigned = std::collections::BTreeSet::new();
@@ -309,6 +318,16 @@ fn lower_nodes(
                     ],
                 ));
             }
+            // A compiled template is a view, partial or component, never a
+            // layout: `yield` is its `content` local, `yield "x"` a slot.
+            TemplateNode::Yield(None) => {
+                let locals = Expr::new(ExprKind::Variable("locals".to_string()), Span::default());
+                out.push(call_stmt("__tpl_yield", vec![locals]));
+            }
+            TemplateNode::Yield(Some(name)) => {
+                let name = Expr::new(ExprKind::StringLiteral(name.clone()), Span::default());
+                out.push(call_stmt("__tpl_yield_named", vec![name]));
+            }
             TemplateNode::ContentFor { name, body, .. } => {
                 out.push(call_stmt("__tpl_capture_start", vec![]));
                 out.extend(lower_nodes(body, in_for, assigned, all_assigned)?);
@@ -408,6 +427,50 @@ pub(crate) fn render_component_block(
     unsafe { &*rendering }.render_partial(&path, &data)
 }
 
+/// Whether a template does enough work for the VM to pay: a loop, or at least
+/// [`MIN_DYNAMIC_NODES`] dynamic nodes. A render on the VM has a fixed cost
+/// that a template with two `yield`s never earns back: a page of 50 such
+/// components took 8% more CPU with them compiled.
+fn worth_compiling(nodes: &[TemplateNode]) -> bool {
+    fn count(nodes: &[TemplateNode], dynamic: &mut usize) -> bool {
+        for node in nodes {
+            match node {
+                TemplateNode::For { .. } => return true,
+                TemplateNode::Literal(_) => {}
+                TemplateNode::If {
+                    body, else_body, ..
+                } => {
+                    *dynamic += 1;
+                    if count(body, dynamic) {
+                        return true;
+                    }
+                    if let Some(else_body) = else_body {
+                        if count(else_body, dynamic) {
+                            return true;
+                        }
+                    }
+                }
+                TemplateNode::ContentFor { body, .. }
+                | TemplateNode::FormWith { body, .. }
+                | TemplateNode::Component { body, .. } => {
+                    *dynamic += 1;
+                    if count(body, dynamic) {
+                        return true;
+                    }
+                }
+                _ => *dynamic += 1,
+            }
+        }
+        false
+    }
+    let mut dynamic = 0;
+    count(nodes, &mut dynamic) || dynamic >= MIN_DYNAMIC_NODES
+}
+
+/// See [`worth_compiling`]. The VM saves ~35 ns per expression over the
+/// tree-walker and costs ~0.2 µs more per render under serve.
+const MIN_DYNAMIC_NODES: usize = 8;
+
 /// The bare name a code-block statement binds, if any (`x = …`, `x += …`,
 /// `let x = …`).
 fn bare_name_assigned(stmt: &Stmt) -> Option<String> {
@@ -469,7 +532,10 @@ thread_local! {
     /// helpers). The VM's globals are the worker's (`set_worker_globals`), so
     /// a model method a view calls resolves the classes it would on an action;
     /// a name written in the view itself still resolves in the view's scope.
-    static VIEW_VMS: RefCell<Vec<ViewVm>> = const { RefCell::new(Vec::new()) };
+    /// Boxed: a `Vm` is large, and a render takes one out of the pool and puts
+    /// it back — by value that was two copies of the whole VM per partial.
+    #[allow(clippy::vec_box)] // the point: a pointer moves, not the VM
+    static VIEW_VMS: RefCell<Vec<Box<ViewVm>>> = const { RefCell::new(Vec::new()) };
     /// Bumped whenever the pool is emptied: a VM taken out before then is
     /// not put back, since it holds the old globals.
     static POOL_GENERATION: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
@@ -519,7 +585,7 @@ pub fn render_view(
         if let Some((_, compiled)) = cache.get(&key) {
             return compiled.clone();
         }
-        let compiled = VmTemplate::compile(nodes).ok().map(Rc::new);
+        let compiled = VmTemplate::compile_for_serve(nodes).ok().map(Rc::new);
         cache.insert(key, (nodes.clone(), compiled.clone()));
         compiled
     })?;
@@ -634,7 +700,7 @@ struct ViewVm {
 
 impl ViewVm {
     /// A VM from the pool, or a new one.
-    fn take() -> Self {
+    fn take() -> Box<Self> {
         let generation = POOL_GENERATION.with(|g| g.get());
         if let Some(vm) = VIEW_VMS.with(|pool| pool.borrow_mut().pop()) {
             return vm;
@@ -648,15 +714,15 @@ impl ViewVm {
         vm.globals = WORKER_GLOBALS
             .with(|g| g.borrow().clone())
             .unwrap_or_else(|| names.clone());
-        ViewVm {
+        Box::new(ViewVm {
             vm,
             names,
             generation,
-        }
+        })
     }
 
     /// Back into the pool, unless the pool was emptied meanwhile.
-    fn put_back(self) {
+    fn put_back(self: Box<Self>) {
         if self.generation == POOL_GENERATION.with(|g| g.get()) {
             VIEW_VMS.with(|pool| pool.borrow_mut().push(self));
         }

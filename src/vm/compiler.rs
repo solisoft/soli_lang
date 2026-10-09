@@ -1094,6 +1094,7 @@ fn stack_effect(op: Op) -> i32 {
         TemplateCaptureStart | TemplateCaptureEnd => 1,
         TemplateComponent => -2,
         TemplateContentFor => -1,
+        TemplateYield | TemplateYieldNamed => 0,
         // Peephole super-instructions (not emitted during the tracked pass; values
         // for completeness). Hash*Const directly-emitted variants are exact.
         HashGetConst(_) | HashHasKeyConst(_) | HashDeleteConst(_) | HashGetConst2(_, _) => 0,

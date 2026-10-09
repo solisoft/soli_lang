@@ -4457,6 +4457,51 @@ impl Vm {
                     self.template_out.push_str(&html);
                     self.stack.push(Value::Null);
                 }
+                // The renderer's `YieldMode::View`: a compiled template is never
+                // a layout.
+                Op::TemplateYield => {
+                    let locals = self.stack.pop().unwrap();
+                    let slot = match &locals {
+                        Value::Hash(h) => h
+                            .borrow()
+                            .get(&crate::interpreter::value::HashKey::String(
+                                "content".into(),
+                            ))
+                            .cloned(),
+                        _ => None,
+                    };
+                    match slot {
+                        Some(content) => crate::template::renderer::write_value_to_output(
+                            &content,
+                            false,
+                            &mut self.template_out,
+                        ),
+                        None => {
+                            return Err(RuntimeError::new(
+                                "yield encountered outside of layout context",
+                                self.current_span(),
+                            ))
+                        }
+                    }
+                    self.stack.push(Value::Null);
+                }
+                Op::TemplateYieldNamed => {
+                    let name = self.stack.pop().unwrap();
+                    let captured = match &name {
+                        Value::String(n) => crate::template::content_store::get(n),
+                        _ => None,
+                    };
+                    match captured {
+                        Some(html) => self.template_out.push_str(&html),
+                        None => {
+                            return Err(RuntimeError::new(
+                                "yield encountered outside of layout context",
+                                self.current_span(),
+                            ))
+                        }
+                    }
+                    self.stack.push(Value::Null);
+                }
                 Op::TemplateContentFor => {
                     let content = self.stack.pop().unwrap();
                     let name = self.stack.pop().unwrap();

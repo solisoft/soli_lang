@@ -575,6 +575,8 @@ impl Compiler {
                 ("__tpl_capture_end", 0) => Some(Op::TemplateCaptureEnd),
                 ("__tpl_component", 3) => Some(Op::TemplateComponent),
                 ("__tpl_content_for", 2) => Some(Op::TemplateContentFor),
+                ("__tpl_yield", 1) => Some(Op::TemplateYield),
+                ("__tpl_yield_named", 1) => Some(Op::TemplateYieldNamed),
                 _ => None,
             };
             if let Some(op) = template_op {
