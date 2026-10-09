@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 368" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" role="img" aria-label="CPU per request, v2.18.4 against now: a 50-row list page 56.9 to 46.8 microseconds, an action reading row.title.upcase over 50 rows 44.6 to 36.4, an action behind a policy.send hook 37.4 to 31.2, render_json of a hash unchanged at 15.8.">
+<rect width="920" height="368" fill="#0b0d0f"/>
+<style>.t{fill:#f3f4f6;font-size:15px;font-weight:700}.l{fill:#e5e7eb;font-size:12px;font-weight:600}.s{fill:#6b7280;font-size:11px}.v{fill:#e5e7eb;font-size:11px;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.d{font-size:12px;font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}</style>
+<text class="t" x="20" y="32">CPU per request since v2.18.4 — <tspan fill="#67e8f9" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="14">soli serve</tspan> in production</text>
+<text class="s" x="20" y="52">16 workers on 16 threads of a Ryzen 9 9950X, oha on 8 others, 200 connections; 2 interleaved starts per build, which agreed within 1%.</text>
+<text class="s" x="20" y="68">Each row is one measured change (the list page: two, chained). Shorter is better; requests per second at the right.</text>
+<rect x="20" y="84" width="12" height="12" rx="2" fill="#4b5563"/><text class="s" x="38" y="94" fill="#9ca3af">before</text>
+<rect x="100" y="84" width="12" height="12" rx="2" fill="#34d399"/><text class="s" x="118" y="94" fill="#9ca3af">now</text>
+<text class="s" x="772" y="108">CPU</text><text class="s" x="900" y="108" text-anchor="end">req/s</text>
+<line x1="310.0" y1="114" x2="310.0" y2="318" stroke="#1f2937"/>
+<text class="s" x="310.0" y="334" text-anchor="middle">0 µs</text>
+<line x1="435.7" y1="114" x2="435.7" y2="318" stroke="#1f2937"/>
+<text class="s" x="435.7" y="334" text-anchor="middle">20 µs</text>
+<line x1="561.4" y1="114" x2="561.4" y2="318" stroke="#1f2937"/>
+<text class="s" x="561.4" y="334" text-anchor="middle">40 µs</text>
+<line x1="687.1" y1="114" x2="687.1" y2="318" stroke="#1f2937"/>
+<text class="s" x="687.1" y="334" text-anchor="middle">60 µs</text>
+<text class="l" x="298" y="131" text-anchor="end">A 50-row list page</text>
+<text class="s" x="298" y="147" text-anchor="end">template fixes + views on the VM</text>
+<rect x="310" y="120" width="357.7" height="14" rx="4" fill="#4b5563"/>
+<text class="v" x="673.7" y="131" fill="#9ca3af">56.9 µs</text>
+<rect x="310" y="137" width="294.2" height="14" rx="4" fill="#34d399"/>
+<text class="v" x="610.2" y="148">46.8 µs</text>
+<text class="d" x="772" y="140" fill="#34d399">−18%</text>
+<text class="s" x="900" y="131" text-anchor="end">247k</text>
+<text class="s" x="900" y="148" text-anchor="end" fill="#9ca3af">295k</text>
+<text class="l" x="298" y="183" text-anchor="end">row.title.upcase in an action</text>
+<text class="s" x="298" y="199" text-anchor="end">dot reads and bare methods on the VM</text>
+<rect x="310" y="172" width="280.3" height="14" rx="4" fill="#4b5563"/>
+<text class="v" x="596.3" y="183" fill="#9ca3af">44.6 µs</text>
+<rect x="310" y="189" width="228.8" height="14" rx="4" fill="#34d399"/>
+<text class="v" x="544.8" y="200">36.4 µs</text>
+<text class="d" x="772" y="192" fill="#34d399">−18%</text>
+<text class="s" x="900" y="183" text-anchor="end">310k</text>
+<text class="s" x="900" y="200" text-anchor="end" fill="#9ca3af">372k</text>
+<text class="l" x="298" y="235" text-anchor="end">An action behind a policy.send hook</text>
+<text class="s" x="298" y="251" text-anchor="end">instance send on the VM</text>
+<rect x="310" y="224" width="235.1" height="14" rx="4" fill="#4b5563"/>
+<text class="v" x="551.1" y="235" fill="#9ca3af">37.4 µs</text>
+<rect x="310" y="241" width="196.1" height="14" rx="4" fill="#34d399"/>
+<text class="v" x="512.1" y="252">31.2 µs</text>
+<text class="d" x="772" y="244" fill="#34d399">−17%</text>
+<text class="s" x="900" y="235" text-anchor="end">365k</text>
+<text class="s" x="900" y="252" text-anchor="end" fill="#9ca3af">426k</text>
+<text class="l" x="298" y="287" text-anchor="end">render_json of a hash</text>
+<text class="s" x="298" y="303" text-anchor="end">the floor: nothing on its path changed</text>
+<rect x="310" y="276" width="99.3" height="14" rx="4" fill="#4b5563"/>
+<text class="v" x="415.3" y="287" fill="#9ca3af">15.8 µs</text>
+<rect x="310" y="293" width="99.3" height="14" rx="4" fill="#34d399"/>
+<text class="v" x="415.3" y="304">15.8 µs</text>
+<text class="d" x="772" y="296" fill="#6b7280">=</text>
+<text class="s" x="900" y="287" text-anchor="end">762k</text>
+<text class="s" x="900" y="304" text-anchor="end" fill="#9ca3af">762k</text>
+</svg>
