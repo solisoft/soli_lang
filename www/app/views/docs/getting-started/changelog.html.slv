@@ -22,6 +22,11 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.18.9.</p>
 
+        <h3 id="unreleased-orm" class="text-xl font-semibold text-white mb-4 scroll-mt-24">ORM</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Models reach SoliDB over its native driver by default: 2.5&times; the requests per second on a database page, 3.1&times; on inserts.</strong> The MessagePack driver was in every binary but used only with <code class="text-cyan-400">SOLI_DB_DRIVER=1</code>, so a plain <code class="text-cyan-400">soli serve</code> spoke HTTP to SoliDB while the published benchmarks ran on the driver. It is now the default; <code class="text-cyan-400">SOLI_DB_DRIVER=0</code> keeps HTTP. Its errors now read exactly as over HTTP &mdash; a duplicate key is a <code class="text-cyan-400">has already been taken</code> validation error, a missing collection is created, <code class="text-cyan-400">HTTP 404</code> stays <code class="text-cyan-400">HTTP 404</code> &mdash; and a composite <code class="text-cyan-400">_id</code> works as before. A worker that cannot connect stays on HTTP; an <code class="text-cyan-400">https://</code> host always does. Same binary, 16 workers: a 50-row read goes from 112.6k to 284.4k requests per second at 38 instead of 87&nbsp;&micro;s of CPU, creates from 75.2k to 231.6k, updates from 71.9k to 205.0k. <a href="/docs/getting-started/configuration" class="text-cyan-400 hover:underline">Configuration</a></li>
+        </ul>
+
     </section>
 
     <section id="v2-18-9" class="mb-16 scroll-mt-24">

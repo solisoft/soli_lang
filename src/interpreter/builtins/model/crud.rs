@@ -753,10 +753,10 @@ pub fn exec_async_query_with_binds(
     let started = std::time::Instant::now();
 
     // Native driver: one MessagePack round trip on a pooled connection instead of
-    // an HTTP cursor POST. Returns None unless the flag is on, in which case
+    // an HTTP cursor POST. Returns None when the driver is off or unusable, and
     // control falls through to the reqwest path below unchanged.
     // Asked first so the binds are only copied for a driver that could take
-    // the query — off by default, and the copy is per query.
+    // the query: the copy is per query.
     if driver::query_may_handle() {
         if let Some(result) = driver::query(&sdbql, bind_vars.clone()) {
             let ms = started.elapsed().as_secs_f64() * 1000.0;
@@ -1506,28 +1506,35 @@ pub fn exec_auto_collection_with_binds(
 /// Each `driver_*` helper returns `Some(result)` when the native SoliDB driver
 /// transport handled the operation and `None` when the caller should fall
 /// through to HTTP — which is always the case unless the crate was built with
-/// `--features solidb-driver` *and* `SOLI_DB_DRIVER=1` is set. Keeping the
-/// fallback in the type means enabling the flag can only change the transport,
-/// never the semantics.
+/// `--features solidb-driver` and `SOLI_DB_DRIVER` is not `0`. Keeping the
+/// fallback in the type means the driver can only change the transport, never
+/// the semantics.
 mod driver {
     use serde_json::Value;
 
     #[cfg(feature = "solidb-driver")]
     use crate::solidb_driver as imp;
 
-    pub fn insert(c: &str, doc: &Value, key: Option<&str>) -> Option<Result<Value, String>> {
+    // Each wrapper takes the URL the HTTP path would have used, so a refusal
+    // reads exactly as it does over HTTP (see `DriverFailure`).
+    pub fn insert(
+        c: &str,
+        doc: &Value,
+        key: Option<&str>,
+        url: &str,
+    ) -> Option<Result<Value, String>> {
         #[cfg(feature = "solidb-driver")]
-        return imp::try_insert(c, doc, key);
+        return imp::try_insert(c, doc, key).map(|r| r.map_err(|e| e.document_error(url)));
         #[cfg(not(feature = "solidb-driver"))]
         {
-            let _ = (c, doc, key);
+            let _ = (c, doc, key, url);
             None
         }
     }
 
     pub fn bulk_insert(c: &str, docs: Vec<Value>) -> Option<Result<usize, String>> {
         #[cfg(feature = "solidb-driver")]
-        return imp::try_bulk_insert(c, docs);
+        return imp::try_bulk_insert(c, docs).map(|r| r.map_err(|e| e.query_error()));
         #[cfg(not(feature = "solidb-driver"))]
         {
             let _ = (c, docs);
@@ -1535,32 +1542,32 @@ mod driver {
         }
     }
 
-    pub fn update(c: &str, key: &str, doc: &Value) -> Option<Result<Value, String>> {
+    pub fn update(c: &str, key: &str, doc: &Value, url: &str) -> Option<Result<Value, String>> {
         #[cfg(feature = "solidb-driver")]
-        return imp::try_update(c, key, doc);
+        return imp::try_update(c, key, doc).map(|r| r.map_err(|e| e.document_error(url)));
         #[cfg(not(feature = "solidb-driver"))]
         {
-            let _ = (c, key, doc);
+            let _ = (c, key, doc, url);
             None
         }
     }
 
-    pub fn delete(c: &str, key: &str) -> Option<Result<Value, String>> {
+    pub fn delete(c: &str, key: &str, url: &str) -> Option<Result<Value, String>> {
         #[cfg(feature = "solidb-driver")]
-        return imp::try_delete(c, key);
+        return imp::try_delete(c, key).map(|r| r.map_err(|e| e.document_error(url)));
         #[cfg(not(feature = "solidb-driver"))]
         {
-            let _ = (c, key);
+            let _ = (c, key, url);
             None
         }
     }
 
-    pub fn get(c: &str, key: &str) -> Option<Result<Value, String>> {
+    pub fn get(c: &str, key: &str, url: &str) -> Option<Result<Value, String>> {
         #[cfg(feature = "solidb-driver")]
-        return imp::try_get(c, key);
+        return imp::try_get(c, key).map(|r| r.map_err(|e| e.document_error(url)));
         #[cfg(not(feature = "solidb-driver"))]
         {
-            let _ = (c, key);
+            let _ = (c, key, url);
             None
         }
     }
@@ -1581,7 +1588,7 @@ mod driver {
         binds: Option<std::collections::HashMap<String, Value>>,
     ) -> Option<Result<Vec<Value>, String>> {
         #[cfg(feature = "solidb-driver")]
-        return imp::try_query(sdbql, binds);
+        return imp::try_query(sdbql, binds).map(|r| r.map_err(|e| e.query_error()));
         #[cfg(not(feature = "solidb-driver"))]
         {
             let _ = (sdbql, binds);
@@ -1595,7 +1602,7 @@ mod driver {
         binds: Option<std::collections::HashMap<String, Value>>,
     ) -> Option<Result<Vec<crate::interpreter::value::Value>, String>> {
         #[cfg(feature = "solidb-driver")]
-        return imp::try_query_values(sdbql, binds);
+        return imp::try_query_values(sdbql, binds).map(|r| r.map_err(|e| e.query_error()));
         #[cfg(not(feature = "solidb-driver"))]
         {
             let _ = (sdbql, binds);
@@ -1830,7 +1837,7 @@ fn exec_insert_inner(
         }
     }
     let url = document_base_url(collection);
-    let result = match driver::insert(collection, &document, key) {
+    let result = match driver::insert(collection, &document, key, &url) {
         Some(r) => r,
         None => exec_document_request(reqwest::Method::POST, url.clone(), Some(document.clone())),
     };
@@ -1838,7 +1845,7 @@ fn exec_insert_inner(
     let result = match &result {
         Err(e) if is_missing_collection_or_database_error(e) => {
             create_collection_sync(collection)?;
-            match driver::insert(collection, &document, key) {
+            match driver::insert(collection, &document, key, &url) {
                 Some(r) => r,
                 None => exec_document_request(reqwest::Method::POST, url, Some(document.clone())),
             }
@@ -1886,7 +1893,7 @@ pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String
         document_base_url(collection),
         encode_key_for_url(key)?
     );
-    let result = match driver::get(collection, key) {
+    let result = match driver::get(collection, key, &url) {
         Some(r) => r,
         None => exec_document_request(reqwest::Method::GET, url.clone(), None),
     };
@@ -1894,7 +1901,7 @@ pub fn exec_get(collection: &str, key: &str) -> Result<serde_json::Value, String
     match &result {
         Err(e) if is_missing_collection_or_database_error(e) => {
             create_collection_sync(collection)?;
-            match driver::get(collection, key) {
+            match driver::get(collection, key, &url) {
                 Some(r) => r,
                 None => exec_document_request(reqwest::Method::GET, url, None),
             }
@@ -1953,7 +1960,7 @@ fn exec_update_inner(
         document_base_url(collection),
         encode_key_for_url(key)?
     );
-    let result = match driver::update(collection, key, &document) {
+    let result = match driver::update(collection, key, &document, &url) {
         Some(r) => r,
         None => exec_document_request(reqwest::Method::PUT, url.clone(), Some(document.clone())),
     };
@@ -1961,7 +1968,7 @@ fn exec_update_inner(
     let result = match &result {
         Err(e) if is_missing_collection_or_database_error(e) => {
             create_collection_sync(collection)?;
-            match driver::update(collection, key, &document) {
+            match driver::update(collection, key, &document, &url) {
                 Some(r) => r,
                 None => exec_document_request(reqwest::Method::PUT, url, Some(document.clone())),
             }
@@ -2113,7 +2120,7 @@ fn exec_delete_inner(collection: &str, key: &str) -> Result<serde_json::Value, S
         document_base_url(collection),
         encode_key_for_url(key)?
     );
-    let result = match driver::delete(collection, key) {
+    let result = match driver::delete(collection, key, &url) {
         Some(r) => r,
         None => exec_document_request(reqwest::Method::DELETE, url.clone(), None),
     };
@@ -2121,7 +2128,7 @@ fn exec_delete_inner(collection: &str, key: &str) -> Result<serde_json::Value, S
     let result = match &result {
         Err(e) if is_missing_collection_or_database_error(e) => {
             create_collection_sync(collection)?;
-            match driver::delete(collection, key) {
+            match driver::delete(collection, key, &url) {
                 Some(r) => r,
                 None => exec_document_request(reqwest::Method::DELETE, url, None),
             }

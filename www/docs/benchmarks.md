@@ -82,7 +82,7 @@ with the shipped `dist` profile
 
 * `--workers 16` — 16 HTTP worker threads, the same budget as every other stack.
 * `SOLI_WS_WORKERS=0` — no worker reserved for the realtime split, so all 16 serve HTTP.
-* `SOLI_DB_DRIVER=1` — models reach SoliDB over the native MessagePack driver (pooled TCP)
+* `SOLI_DB_DRIVER=1` — models reach SoliDB over the native MessagePack driver (pooled TCP). This was opt-in when these numbers were taken and is now the default, so a plain `soli serve` runs the configuration measured here
   rather than its HTTP API.
 * SoliDB's **query-result cache is on**, which is its default; the uncached rows set
   `SOLI_DB_NO_QUERY_CACHE=1`. Soli's **response cache is on**, which is its default and cannot

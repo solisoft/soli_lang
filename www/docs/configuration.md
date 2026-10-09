@@ -275,7 +275,7 @@ The levers, cheapest first:
 | `lsp` | on | `soli lsp`, the language server (`tower-lsp`) |
 | `eui` | on | EUI components — `router_eui`, `eui_capabilities`, `eui_stats` and the `/_eui` session endpoint (`eui-proto`, `blake3`, `ring`) |
 | `sql` | off | Alias for `postgres` + `mysql` + `sqlite` |
-| `solidb-driver` | on | Native SoliDB TCP driver (MessagePack over pooled TCP). Compiled in by default; a server uses it only with `SOLI_DB_DRIVER=1` |
+| `solidb-driver` | on | Native SoliDB TCP driver (MessagePack over pooled TCP). Compiled in and used by default; `SOLI_DB_DRIVER=0` keeps a server on HTTP |
 | `native` | on | [Native kernels](native-kernels.md): typed numeric functions compiled to machine code (Cranelift). Off, every function runs on the interpreter or the VM |
 | `eui-desktop` | off | `soli desktop build --eui` — the native EUI window (`eui-client`, winit, wgpu) |
 | `full` | off | Alias for the default set (it used to add `solidb-driver`, which is now in it) |
@@ -435,8 +435,8 @@ These knobs control how the request edge handles untrusted input. See the
 | `SOLIDB_API_KEY` | API-key auth for SoliDB where supported. | unset |
 | `SOLIDB_USERNAME` | Username for SolidB login/basic auth. | unset |
 | `SOLIDB_PASSWORD` | Password paired with `SOLIDB_USERNAME`. | unset |
-| `SOLI_DB_DRIVER` | `1` routes the model layer over SoliDB's native MessagePack driver (pooled TCP on the `SOLIDB_HOST` port) instead of HTTP: document CRUD and queries, with plain reads decoded straight into Soli values. Uses the same credentials. A driver that cannot connect falls back to HTTP for that worker; a `https://` host is refused rather than downgraded. Read once per process. | unset (HTTP) |
-| `SOLI_DB_DRIVER_QUERY` | `0` keeps queries on HTTP while `SOLI_DB_DRIVER=1` routes document CRUD over the driver. | queries on the driver |
+| `SOLI_DB_DRIVER` | `0` (or `false`, `off`, `no`) keeps the model layer on SoliDB's HTTP API. Otherwise models reach SoliDB over its native MessagePack driver (pooled TCP on the `SOLIDB_HOST` port): document CRUD and queries, with plain reads decoded straight into Soli values, the same credentials, and errors worded as HTTP words them (`HTTP 404`, a 409 duplicate key as `has already been taken`). Transactions and blobs stay on HTTP. A driver that cannot connect falls back to HTTP for that worker (one line on stderr); a `https://` host uses HTTP, never a downgrade. Read once per process. | driver |
+| `SOLI_DB_DRIVER_QUERY` | `0` keeps queries on HTTP while the driver carries document CRUD. | queries on the driver |
 
 ## Sessions
 

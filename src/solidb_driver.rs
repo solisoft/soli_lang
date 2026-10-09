@@ -1,4 +1,4 @@
-//! Native-driver transport for the model layer, behind `SOLI_DB_DRIVER=1`.
+//! Native-driver transport for the model layer: the default, `SOLI_DB_DRIVER=0` opts out.
 //!
 //! SoliDB multiplexes three protocols on one port, chosen by magic bytes in its
 //! accept loop: `solidb-sync-v1` (replication), `solidb-drv-v1\0` (this one) and
@@ -25,9 +25,11 @@
 //!
 //! ## Scope
 //!
-//! `SOLI_DB_DRIVER=1` routes document CRUD **and** multi-row queries. Anything
-//! not covered falls back to HTTP by returning `None` from `try_*`, so enabling
-//! the flag can only change the transport, never the semantics.
+//! The driver routes document CRUD **and** multi-row queries. Anything not
+//! covered (transactions, blobs, a `https://` host) falls back to HTTP by
+//! returning `None` from `try_*`, so the transport can change, never the
+//! semantics. It used to be opt-in (`SOLI_DB_DRIVER=1`); the published
+//! benchmarks had been measured on it all along.
 //!
 //! Measured on the framework benchmark, against a SoliDB carrying the
 //! driver-side cache fix:
@@ -40,7 +42,7 @@
 use std::cell::RefCell;
 
 use serde_json::Value;
-use solidb_client::SoliDBClient;
+use solidb_client::{DriverError, SoliDBClient};
 
 use crate::interpreter::builtins::http_class::block_on_db;
 use crate::interpreter::builtins::model::db_config::{db_scheme_and_host, get_database_name};
@@ -57,10 +59,41 @@ thread_local! {
     static CLIENT: RefCell<Option<Result<SoliDBClient, String>>> = const { RefCell::new(None) };
 }
 
-/// Is the native driver transport switched on?
+/// Is the native driver transport switched on? It is unless `SOLI_DB_DRIVER`
+/// says `0`, `false`, `off` or `no`.
 pub fn enabled() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var("SOLI_DB_DRIVER").as_deref() == Ok("1"))
+    *ON.get_or_init(|| driver_setting() != Some(false))
+}
+
+/// `SOLI_DB_DRIVER` as written: `Some(true)` asked for the driver, `Some(false)`
+/// turned it off, `None` left the default.
+fn driver_setting() -> Option<bool> {
+    let raw = std::env::var("SOLI_DB_DRIVER").ok()?;
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "0" | "false" | "off" | "no" => Some(false),
+        "" => None,
+        _ => Some(true),
+    }
+}
+
+/// Why this worker stays on HTTP, when that is worth a line on stderr: always
+/// for a driver that was asked for, and for a default one only when SoliDB could
+/// not be reached by it. A `https://` host is HTTP's by design, not a failure.
+fn report_fallback(error: &DriverUnavailable) {
+    let asked = driver_setting() == Some(true);
+    match error {
+        DriverUnavailable::TlsHost if !asked => {}
+        DriverUnavailable::TlsHost => {
+            eprintln!("[solidb_driver] SOLI_DB_DRIVER does not support TLS hosts; using HTTP")
+        }
+        DriverUnavailable::Failed(e) => eprintln!("[solidb_driver] {e}; falling back to HTTP"),
+    }
+}
+
+enum DriverUnavailable {
+    TlsHost,
+    Failed(String),
 }
 
 /// Route multi-row SDBQL queries over the driver as well? **On** with the driver,
@@ -100,10 +133,10 @@ fn no_query_cache() -> bool {
 /// `host:port` for the driver, taken from the same `SOLIDB_HOST` the HTTP path
 /// uses. The driver speaks raw TCP, so the scheme is dropped — and a TLS host is
 /// refused rather than silently downgraded to plaintext.
-fn driver_addr() -> Result<String, String> {
+fn driver_addr() -> Result<String, DriverUnavailable> {
     let (scheme, host) = db_scheme_and_host();
     if scheme.starts_with("https") {
-        return Err("SOLI_DB_DRIVER does not support TLS hosts; refusing to downgrade".into());
+        return Err(DriverUnavailable::TlsHost);
     }
     Ok(host)
 }
@@ -133,13 +166,113 @@ async fn authenticate(client: &mut SoliDBClient, database: &str) -> Result<(), S
         .map_err(|e| format!("driver auth failed: {e}"))
 }
 
+/// Why a driver call failed, kept typed until the caller words it the way the
+/// HTTP path words the same failure. Callers read those words: a 409 becomes a
+/// uniqueness error in `_errors`, a missing collection is created and the call
+/// retried, `Cron` reports `HTTP 404`. Phrased differently, the same refusal
+/// behaved differently depending on the transport.
+#[derive(Debug)]
+pub enum DriverFailure {
+    /// SoliDB refused the command; its HTTP API answers the same error with
+    /// `status`.
+    Server {
+        status: reqwest::StatusCode,
+        message: String,
+    },
+    /// The connection failed. The worker's client is dropped so the next call
+    /// connects again.
+    Connection(String),
+}
+
+impl DriverFailure {
+    /// In the words of the HTTP document path (`exec_document_request`).
+    pub fn document_error(&self, url: &str) -> String {
+        match self {
+            DriverFailure::Server { status, message } => format!(
+                "HTTP {} {}: {}",
+                status,
+                url,
+                serde_json::json!({ "error": message })
+            ),
+            DriverFailure::Connection(message) => format!("HTTP error: {message}"),
+        }
+    }
+
+    /// In the words of the HTTP cursor path (`format_query_http_failure`).
+    pub fn query_error(&self) -> String {
+        match self {
+            DriverFailure::Server { status, message } => format!(
+                "Query failed: {} - {}",
+                status,
+                serde_json::json!({ "error": message })
+            ),
+            DriverFailure::Connection(message) => format!("HTTP error: {message}"),
+        }
+    }
+}
+
+fn classify(error: DriverError) -> DriverFailure {
+    use reqwest::StatusCode;
+    let (status, message) = match error {
+        DriverError::DatabaseError(message)
+        | DriverError::ServerError(message)
+        | DriverError::InvalidCommand(message)
+        | DriverError::TransactionError(message) => status_for(&message),
+        DriverError::AuthError(message) => (StatusCode::UNAUTHORIZED, message),
+        DriverError::MessageTooLarge => (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "message too large".to_string(),
+        ),
+        DriverError::ConnectionError(message) | DriverError::ProtocolError(message) => {
+            return DriverFailure::Connection(message)
+        }
+    };
+    DriverFailure::Server { status, message }
+}
+
+/// The status SoliDB's HTTP API gives an error (`DbError::into_response`), and
+/// the message its body carries, read back from the message the driver
+/// carries: the same `DbError`, printed. The variant's prefix decides first —
+/// a unique-index violation is an `Invalid document: … already exists`, a 400
+/// over HTTP, not a 409 — and HTTP's body holds the message without it.
+fn status_for(message: &str) -> (reqwest::StatusCode, String) {
+    use reqwest::StatusCode;
+    let prefixed = [
+        ("Invalid document: ", StatusCode::BAD_REQUEST),
+        ("Parse error: ", StatusCode::BAD_REQUEST),
+        ("Bad Request: ", StatusCode::BAD_REQUEST),
+        ("Conflict: ", StatusCode::CONFLICT),
+    ];
+    for (prefix, status) in prefixed {
+        if let Some(rest) = message.strip_prefix(prefix) {
+            return (status, rest.to_string());
+        }
+    }
+    let lower = message.to_ascii_lowercase();
+    let status = if lower.contains("not found") {
+        StatusCode::NOT_FOUND
+    } else if lower.contains("already exists") {
+        StatusCode::CONFLICT
+    } else if lower.starts_with("schema validation") {
+        StatusCode::BAD_REQUEST
+    } else if lower.starts_with("unauthorized") {
+        StatusCode::UNAUTHORIZED
+    } else if lower.starts_with("forbidden") {
+        StatusCode::FORBIDDEN
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
+    };
+    (status, message.to_string())
+}
+
 /// Run `f` against this worker's driver client, connecting on first use.
 ///
 /// Returns `None` when the driver is off or unusable, which is the caller's
-/// signal to take the HTTP path.
+/// signal to take the HTTP path. A call whose connection failed drops the
+/// client: the next one connects afresh.
 fn with_client<T>(
-    f: impl FnOnce(&mut SoliDBClient) -> Result<T, String>,
-) -> Option<Result<T, String>> {
+    f: impl FnOnce(&mut SoliDBClient) -> Result<T, DriverFailure>,
+) -> Option<Result<T, DriverFailure>> {
     if !enabled() {
         return None;
     }
@@ -150,26 +283,57 @@ fn with_client<T>(
                 let addr = driver_addr()?;
                 let mut client = SoliDBClient::connect_with_pool(&addr, POOL_SIZE)
                     .await
-                    .map_err(|e| format!("driver connect failed: {e}"))?;
+                    .map_err(|e| {
+                        DriverUnavailable::Failed(format!("driver connect failed: {e}"))
+                    })?;
                 let db = get_database_name();
-                authenticate(&mut client, &db).await?;
-                Ok::<_, String>(client)
+                authenticate(&mut client, &db)
+                    .await
+                    .map_err(DriverUnavailable::Failed)?;
+                Ok::<_, DriverUnavailable>(client)
             });
-            if let Err(e) = &connected {
-                eprintln!("[solidb_driver] {e}; falling back to HTTP");
-            }
+            let connected = connected.map_err(|e| {
+                report_fallback(&e);
+                match e {
+                    DriverUnavailable::TlsHost => "TLS host: HTTP only".to_string(),
+                    DriverUnavailable::Failed(message) => message,
+                }
+            });
             *slot = Some(connected);
         }
-        match slot.as_mut() {
-            Some(Ok(client)) => Some(f(client)),
+        let outcome = match slot.as_mut() {
+            Some(Ok(client)) => f(client),
             // Connection failed earlier: stay on HTTP for this worker's lifetime.
-            _ => None,
+            _ => return None,
+        };
+        if matches!(outcome, Err(DriverFailure::Connection(_))) {
+            *slot = None;
         }
+        Some(outcome)
     })
 }
 
+/// A read whose connection failed is asked again over HTTP. A write is not:
+/// the server may have applied it before the socket went, and HTTP reports a
+/// dropped connection as an error too.
+fn read_or_http<T>(outcome: Option<Result<T, DriverFailure>>) -> Option<Result<T, DriverFailure>> {
+    match outcome {
+        Some(Err(DriverFailure::Connection(_))) => None,
+        other => other,
+    }
+}
+
+/// A document key as the HTTP path addresses it: a composite `_id`
+/// (`products/abc`) names the document by its last segment.
+fn document_key(key: &str) -> String {
+    crate::interpreter::builtins::model::crud::normalize_key(key).to_string()
+}
+
 /// Insert many documents in one driver command. `None` means "not handled — use HTTP".
-pub fn try_bulk_insert(collection: &str, documents: Vec<Value>) -> Option<Result<usize, String>> {
+pub fn try_bulk_insert(
+    collection: &str,
+    documents: Vec<Value>,
+) -> Option<Result<usize, DriverFailure>> {
     let coll = collection.to_string();
     let db = get_database_name();
     with_client(move |client| {
@@ -177,7 +341,7 @@ pub fn try_bulk_insert(collection: &str, documents: Vec<Value>) -> Option<Result
             client
                 .bulk_insert(&db, &coll, documents)
                 .await
-                .map_err(|e| format!("driver bulk insert failed: {e}"))
+                .map_err(classify)
         })
     })
 }
@@ -187,11 +351,11 @@ pub fn try_insert(
     collection: &str,
     document: &Value,
     key: Option<&str>,
-) -> Option<Result<Value, String>> {
+) -> Option<Result<Value, DriverFailure>> {
     let (coll, doc, key) = (
         collection.to_string(),
         document.clone(),
-        key.map(str::to_string),
+        key.map(document_key),
     );
     let db = get_database_name();
     with_client(move |client| {
@@ -199,13 +363,17 @@ pub fn try_insert(
             client
                 .insert(&db, &coll, key.as_deref(), doc)
                 .await
-                .map_err(|e| format!("driver insert failed: {e}"))
+                .map_err(classify)
         })
     })
 }
 
-pub fn try_update(collection: &str, key: &str, document: &Value) -> Option<Result<Value, String>> {
-    let (coll, k, doc) = (collection.to_string(), key.to_string(), document.clone());
+pub fn try_update(
+    collection: &str,
+    key: &str,
+    document: &Value,
+) -> Option<Result<Value, DriverFailure>> {
+    let (coll, k, doc) = (collection.to_string(), document_key(key), document.clone());
     let db = get_database_name();
     with_client(move |client| {
         block_on_db(async move {
@@ -222,13 +390,13 @@ pub fn try_update(collection: &str, key: &str, document: &Value) -> Option<Resul
             client
                 .update(&db, &coll, &k, doc, false)
                 .await
-                .map_err(|e| format!("driver update failed: {e}"))
+                .map_err(classify)
         })
     })
 }
 
-pub fn try_delete(collection: &str, key: &str) -> Option<Result<Value, String>> {
-    let (coll, k) = (collection.to_string(), key.to_string());
+pub fn try_delete(collection: &str, key: &str) -> Option<Result<Value, DriverFailure>> {
+    let (coll, k) = (collection.to_string(), document_key(key));
     let db = get_database_name();
     with_client(move |client| {
         block_on_db(async move {
@@ -236,22 +404,17 @@ pub fn try_delete(collection: &str, key: &str) -> Option<Result<Value, String>> 
                 .delete(&db, &coll, &k)
                 .await
                 .map(|()| Value::Null)
-                .map_err(|e| format!("driver delete failed: {e}"))
+                .map_err(classify)
         })
     })
 }
 
-pub fn try_get(collection: &str, key: &str) -> Option<Result<Value, String>> {
-    let (coll, k) = (collection.to_string(), key.to_string());
+pub fn try_get(collection: &str, key: &str) -> Option<Result<Value, DriverFailure>> {
+    let (coll, k) = (collection.to_string(), document_key(key));
     let db = get_database_name();
-    with_client(move |client| {
-        block_on_db(async move {
-            client
-                .get(&db, &coll, &k)
-                .await
-                .map_err(|e| format!("driver get failed: {e}"))
-        })
-    })
+    read_or_http(with_client(move |client| {
+        block_on_db(async move { client.get(&db, &coll, &k).await.map_err(classify) })
+    }))
 }
 
 /// Run an SDBQL query and return its rows.
@@ -268,8 +431,8 @@ pub fn query_may_handle() -> bool {
 pub fn try_query(
     sdbql: &str,
     bind_vars: Option<std::collections::HashMap<String, Value>>,
-) -> Option<Result<Vec<Value>, String>> {
-    // Opt-in separately: measured slower than the HTTP cursor. See query_enabled().
+) -> Option<Result<Vec<Value>, DriverFailure>> {
+    // On with the driver; `SOLI_DB_DRIVER_QUERY=0` keeps queries on HTTP. See query_enabled().
     if !query_enabled() {
         return None;
     }
@@ -278,14 +441,14 @@ pub fn try_query(
     // Honour SOLI_DB_NO_QUERY_CACHE on the driver path the same way the HTTP
     // cursor payload does — otherwise the diagnostic only uncached one arm.
     let cache = !no_query_cache();
-    with_client(move |client| {
+    read_or_http(with_client(move |client| {
         block_on_db(async move {
             client
                 .query_with_cache(&db, &q, bind_vars, cache)
                 .await
-                .map_err(|e| format!("driver query failed: {e}"))
+                .map_err(classify)
         })
-    })
+    }))
 }
 
 /// [`try_query`], but the rows are decoded straight from the wire into Soli
@@ -295,21 +458,21 @@ pub fn try_query(
 pub fn try_query_values(
     sdbql: &str,
     bind_vars: Option<std::collections::HashMap<String, Value>>,
-) -> Option<Result<Vec<crate::interpreter::value::Value>, String>> {
+) -> Option<Result<Vec<crate::interpreter::value::Value>, DriverFailure>> {
     if !query_enabled() {
         return None;
     }
     let q = sdbql.to_string();
     let db = get_database_name();
     let cache = !no_query_cache();
-    with_client(move |client| {
+    read_or_http(with_client(move |client| {
         block_on_db(async move {
             client
                 .query_as::<crate::interpreter::value::Value>(&db, &q, bind_vars, cache)
                 .await
-                .map_err(|e| format!("driver query failed: {e}"))
+                .map_err(classify)
         })
-    })
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -330,3 +493,84 @@ pub fn try_query_values(
 // real and belongs to the benchmark rather than to this module: an unordered
 // SDBQL query's row order is not stable across time, so a suite that asserts
 // byte-identical payloads needs an `ORDER BY` to stay honest.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reqwest::StatusCode;
+
+    fn server(message: &str) -> DriverFailure {
+        classify(DriverError::DatabaseError(message.to_string()))
+    }
+
+    /// The messages are SoliDB's `DbError` as printed; the statuses are the ones
+    /// its HTTP API gives the same errors.
+    #[test]
+    fn a_refusal_gets_the_status_http_gives_it() {
+        let cases = [
+            ("Document with key 'k' not found", StatusCode::NOT_FOUND),
+            ("Collection 'posts' not found", StatusCode::NOT_FOUND),
+            (
+                "Conflict: Document with _key 'k' already exists",
+                StatusCode::CONFLICT,
+            ),
+            ("Collection 'posts' already exists", StatusCode::CONFLICT),
+            ("Parse error: Unexpected token", StatusCode::BAD_REQUEST),
+            ("Invalid document: not an object", StatusCode::BAD_REQUEST),
+            (
+                "Invalid document: Unique constraint violated: fields '[\"email\"]' with value \"a\" already exists in index 'idx'",
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                "Query execution error: division by zero",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+        ];
+        for (message, expected) in cases {
+            match server(message) {
+                DriverFailure::Server { status, .. } => assert_eq!(status, expected, "{message}"),
+                DriverFailure::Connection(_) => panic!("{message} read as a connection failure"),
+            }
+        }
+    }
+
+    /// What the callers look for in an error, found in the driver's too.
+    #[test]
+    fn a_refusal_reads_as_it_does_over_http() {
+        use crate::interpreter::builtins::model::validation::is_unique_violation;
+
+        let url = "http://127.0.0.1:6745/_api/database/app/document/users";
+        let duplicate =
+            server("Conflict: Document with _key 'joe' already exists").document_error(url);
+        assert!(
+            duplicate.starts_with("HTTP 409 Conflict http://"),
+            "{duplicate}"
+        );
+        assert!(is_unique_violation(&duplicate), "{duplicate}");
+
+        let missing = server("Document with key 'joe' not found").document_error(url);
+        assert!(missing.starts_with("HTTP 404 Not Found"), "{missing}");
+
+        let collection = server("Collection 'users' already exists").document_error(url);
+        assert!(!is_unique_violation(&collection), "{collection}");
+
+        let query = server("Parse error: Unexpected token").query_error();
+        assert!(
+            query.starts_with("Query failed: 400 Bad Request - "),
+            "{query}"
+        );
+    }
+
+    #[test]
+    fn a_dropped_connection_is_not_a_refusal() {
+        let failure = classify(DriverError::ConnectionError("reset by peer".into()));
+        assert!(matches!(failure, DriverFailure::Connection(_)));
+        assert_eq!(failure.document_error("u"), "HTTP error: reset by peer");
+    }
+
+    #[test]
+    fn a_composite_id_names_its_document_by_the_last_segment() {
+        assert_eq!(document_key("products/abc"), "abc");
+        assert_eq!(document_key("abc"), "abc");
+    }
+}
