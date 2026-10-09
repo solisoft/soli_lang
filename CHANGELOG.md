@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [2.18.7] - 2026-10-09
+
+v2.18.6 was tagged but never published: its CI stopped on `cargo fmt --check`, three files of the response cache, the SQLite writer changes and the WebSocket fix not being rustfmt-formatted. v2.18.7 is v2.18.6 plus that formatting — the release notes are under 2.18.6.
+
 ## [2.18.6] - 2026-10-09
 
 ### Added
