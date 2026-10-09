@@ -801,7 +801,10 @@ mod tests {
 /// The first subprotocol a WebSocket client offered, as a header value, or
 /// `None` when it offered none (or an unusable value).
 fn first_subprotocol(headers: &hyper::HeaderMap) -> Option<hyper::header::HeaderValue> {
-    let offered = headers.get(hyper::header::SEC_WEBSOCKET_PROTOCOL)?.to_str().ok()?;
+    let offered = headers
+        .get(hyper::header::SEC_WEBSOCKET_PROTOCOL)?
+        .to_str()
+        .ok()?;
     let first = offered.split(',').map(str::trim).find(|p| !p.is_empty())?;
     hyper::header::HeaderValue::from_str(first).ok()
 }
@@ -816,10 +819,15 @@ mod subprotocol_tests {
         assert!(first_subprotocol(&headers).is_none());
         headers.insert(
             hyper::header::SEC_WEBSOCKET_PROTOCOL,
-            "actioncable-v1-json, actioncable-unsupported".parse().unwrap(),
+            "actioncable-v1-json, actioncable-unsupported"
+                .parse()
+                .unwrap(),
         );
         assert_eq!(first_subprotocol(&headers).unwrap(), "actioncable-v1-json");
-        headers.insert(hyper::header::SEC_WEBSOCKET_PROTOCOL, " , ".parse().unwrap());
+        headers.insert(
+            hyper::header::SEC_WEBSOCKET_PROTOCOL,
+            " , ".parse().unwrap(),
+        );
         assert!(first_subprotocol(&headers).is_none());
     }
 }

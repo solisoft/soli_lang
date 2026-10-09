@@ -304,7 +304,11 @@ fn wal_grew(_wal: &rusqlite::hooks::Wal, pages: std::ffi::c_int) -> rusqlite::Re
 fn spawn_checkpointer(path: PathBuf) {
     static STARTED: OnceLock<Mutex<std::collections::HashSet<PathBuf>>> = OnceLock::new();
     let started = STARTED.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
-    if !started.lock().unwrap_or_else(|e| e.into_inner()).insert(path.clone()) {
+    if !started
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(path.clone())
+    {
         return;
     }
     let spawned = std::thread::Builder::new()
@@ -313,7 +317,10 @@ fn spawn_checkpointer(path: PathBuf) {
             let conn = match rusqlite::Connection::open(&path) {
                 Ok(conn) => conn,
                 Err(e) => {
-                    eprintln!("[soli] sqlite checkpointer for {} not started: {e}", path.display());
+                    eprintln!(
+                        "[soli] sqlite checkpointer for {} not started: {e}",
+                        path.display()
+                    );
                     return;
                 }
             };

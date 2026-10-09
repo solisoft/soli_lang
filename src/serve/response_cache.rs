@@ -131,7 +131,10 @@ fn open() -> Option<Store> {
     match Store::open(&path, capacity) {
         Ok(store) => Some(store),
         Err(e) => {
-            eprintln!("[soli] response cache off: cannot watch {}: {e}", path.display());
+            eprintln!(
+                "[soli] response cache off: cannot watch {}: {e}",
+                path.display()
+            );
             None
         }
     }
@@ -345,7 +348,9 @@ fn keepable(response: &ResponseData) -> bool {
             return false;
         }
     }
-    !cache_control.iter().any(|v| has_directive(v, &["no-store", "no-transform"]))
+    !cache_control
+        .iter()
+        .any(|v| has_directive(v, &["no-store", "no-transform"]))
 }
 
 fn cookie_name(set_cookie: &str) -> &str {
@@ -426,7 +431,11 @@ mod tests {
         let a = request_key(
             "/rooms/1",
             None,
-            &headers(&[("cookie", "s=1"), ("accept-encoding", "gzip"), ("if-none-match", "\"x\"")]),
+            &headers(&[
+                ("cookie", "s=1"),
+                ("accept-encoding", "gzip"),
+                ("if-none-match", "\"x\""),
+            ]),
         );
         let b = request_key("/rooms/1", None, &headers(&[("cookie", "s=1")]));
         let other_user = request_key("/rooms/1", None, &headers(&[("cookie", "s=2")]));
@@ -441,7 +450,11 @@ mod tests {
         let a = request_key("/a", Some("b=1"), &headers(&[]));
         let b = request_key("/a?b=1", None, &headers(&[]));
         assert_ne!(a, b);
-        let c = request_key("/", None, &headers(&[("turbo-frame", "x"), ("accept", "y")]));
+        let c = request_key(
+            "/",
+            None,
+            &headers(&[("turbo-frame", "x"), ("accept", "y")]),
+        );
         let d = request_key("/", None, &headers(&[("turbo-frame", "x;accept:y")]));
         assert_ne!(c, d);
     }
@@ -452,7 +465,10 @@ mod tests {
         assert!(!eligible("HEAD", &headers(&[])));
         assert!(!eligible("POST", &headers(&[])));
         assert!(!eligible("GET", &headers(&[("range", "bytes=0-1")])));
-        assert!(!eligible("GET", &headers(&[("cache-control", "max-age=0, no-cache")])));
+        assert!(!eligible(
+            "GET",
+            &headers(&[("cache-control", "max-age=0, no-cache")])
+        ));
         assert!(!eligible("GET", &headers(&[("pragma", "no-cache")])));
         assert!(!eligible("GET", &headers(&[("content-length", "3")])));
     }
@@ -474,10 +490,19 @@ mod tests {
 
     #[test]
     fn only_a_reusable_200_is_kept() {
-        assert!(keepable(&reply(200, &[("Set-Cookie", "last_room=1; Path=/")])));
+        assert!(keepable(&reply(
+            200,
+            &[("Set-Cookie", "last_room=1; Path=/")]
+        )));
         assert!(!keepable(&reply(302, &[])));
-        assert!(!keepable(&reply(200, &[("Set-Cookie", "session_id=abc; Path=/")])));
-        assert!(!keepable(&reply(200, &[("Cache-Control", "private, no-store")])));
+        assert!(!keepable(&reply(
+            200,
+            &[("Set-Cookie", "session_id=abc; Path=/")]
+        )));
+        assert!(!keepable(&reply(
+            200,
+            &[("Cache-Control", "private, no-store")]
+        )));
         let mut big = reply(200, &[]);
         big.body = Bytes::from(vec![b'x'; MAX_BODY + 1]);
         assert!(!keepable(&big));
@@ -503,14 +528,20 @@ mod tests {
         let first = ticket("k");
         assert!(store.get(&first).is_none());
         store.put(ticket("k"), &reply(200, &[]), Duration::from_secs(60));
-        assert_eq!(&store.get(&ticket("k")).unwrap().body[..], b"<html>page</html>");
+        assert_eq!(
+            &store.get(&ticket("k")).unwrap().body[..],
+            b"<html>page</html>"
+        );
 
         // Another connection commits: the entry no longer answers.
         writer.execute("INSERT INTO t VALUES (1)", []).unwrap();
         assert!(store.get(&ticket("k")).is_none());
 
         // A reply rendered under the old version is not filed under the new.
-        let stale = Ticket { key: "k".to_string(), generation: first.generation };
+        let stale = Ticket {
+            key: "k".to_string(),
+            generation: first.generation,
+        };
         store.put(stale, &reply(200, &[]), Duration::from_secs(60));
         assert!(store.get(&ticket("k")).is_none());
 
@@ -525,7 +556,8 @@ mod tests {
     #[cfg(feature = "sqlite")]
     #[test]
     fn past_its_size_the_oldest_entries_go_first() {
-        let dir = std::env::temp_dir().join(format!("soli-response-cache-size-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("soli-response-cache-size-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("app.sqlite3");
         let _ = std::fs::remove_file(&path);
@@ -535,7 +567,10 @@ mod tests {
             .unwrap();
         let store = Store::open(&path, 100).unwrap();
         let generation = store.version().unwrap();
-        let t = |key: &str| Ticket { key: key.to_string(), generation };
+        let t = |key: &str| Ticket {
+            key: key.to_string(),
+            generation,
+        };
         for key in ["a", "b", "c", "d", "e", "f"] {
             store.put(t(key), &reply(200, &[]), Duration::from_secs(60));
         }
