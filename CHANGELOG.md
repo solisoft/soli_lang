@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.18.9] - 2026-10-09
+
 ### Performance
 
 * **i18n:** **`I18n.translate` and `I18n.plural` no longer copy the translations table they are given: a `tr()` call against a 3,000-entry table is 69× faster, 51.2 → 0.74 µs.** An app that keeps its translations in a Soli hash and passes it as the last argument (`I18n.translate(key, nil, table)`, the shape of a `tr(key)` helper over `I18n.cache_table`) paid, on every call, a deep copy of the whole table, a scan of every key to decide whether it was a legacy flat table (all keys dotted, `"fr.greeting"`) or interpolation values, a linear search for the string, and the drop of the copy. The hash is now read in place, the string is found by key, and a table stored with `I18n.cache_table` is classified once, when it is cached; any other hash is still scanned, without the copy. On grc's request specs, translations were 71% of the CPU of the server's request threads, the VM's dispatch loop 1.6%. Results are unchanged: the same lookups, fallbacks and interpolation.
