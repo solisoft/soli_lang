@@ -20,14 +20,19 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.18.4.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.18.5.</p>
 
-        <h3 id="unreleased-language" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
+    </section>
+
+    <section id="v2-18-5" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.18.5 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-09</span></h2>
+
+        <h3 id="v2-18-5-language" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">contains?</code> on strings and arrays.</strong> <code class="text-cyan-400">"soli lang".contains?("lang")</code>, <code class="text-cyan-400">[1, 2].contains?(2)</code>: the same as <code class="text-cyan-400">contains</code>, named as the predicate it is, like <code class="text-cyan-400">includes?</code>, <code class="text-cyan-400">starts_with?</code> and <code class="text-cyan-400">ends_with?</code>. <a href="/docs/language/strings#method-contains" class="text-cyan-400 hover:underline">Strings</a></li>
         </ul>
 
-        <h3 id="unreleased-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
+        <h3 id="v2-18-5-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">obj.send(&quot;name&quot;, &hellip;)</code> runs in production without dropping the controller to the interpreter.</strong> A <code class="text-cyan-400">before_action</code> that authorised with <code class="text-cyan-400">policy.send(action + &quot;?&quot;)</code> failed on the VM, so the hook and every action behind it were re-run on the tree-walker for good. The VM now calls the named method itself. It was the last construct demoting handlers across six application suites: one app went from 98 demoted hooks and actions to none, and an action behind such a hook from 37.4 to 31.2&nbsp;&micro;s of CPU per request (+17% requests per second).</li>
             <li><strong class="text-white">Views render on the VM in production: a list page uses 11% less CPU.</strong> A view was the last part of a request still interpreted from its syntax tree. It is now compiled once per worker: text and <code class="text-cyan-400">&lt;%= %&gt;</code> output are written straight into the page, <code class="text-cyan-400">if</code> / <code class="text-cyan-400">for</code> and <code class="text-cyan-400">&lt;% %&gt;</code> code run as VM code, and every rule stays the tree-walker&rsquo;s &mdash; <code class="text-cyan-400">@title</code> reads <code class="text-cyan-400">title</code>, a variable the view assigns reaches its layout, helpers keep their scope. Component blocks, named slots, <code class="text-cyan-400">content_for</code>, <code class="text-cyan-400">yield</code> in a component, and the partials and components a view renders compile too, except a template too small to gain from the VM (no loop, fewer than eight dynamic parts); views using <code class="text-cyan-400">yield</code> or a <code class="text-cyan-400">form_with</code> block stay on the interpreter, and a compiled view that fails is rendered there again. Across six application suites, 4,247 renders came out byte-identical on both engines, and all but their layouts compile (239 of one app&rsquo;s 241 views). On a 50-row table: 53.6 &rarr; 47.9&nbsp;&micro;s of CPU per request, 261k &rarr; 289k requests per second. <code class="text-cyan-400">SOLI_VM_VIEWS=0</code> turns it off. <a href="/docs/core-concepts/views#view-engine" class="text-cyan-400 hover:underline">Views</a></li>

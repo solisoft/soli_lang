@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.18.5] - 2026-10-09
+
 ### Added
 
 * **language:** **`contains?` on strings and arrays.** `"soli lang".contains?("lang")`, `[1, 2].contains?(2)`: the same as `contains`, named as the predicate it is, like `includes?`, `starts_with?` and `ends_with?`. On both engines, in views, and known to the type checker.
