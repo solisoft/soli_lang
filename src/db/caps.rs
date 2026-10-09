@@ -87,6 +87,15 @@ impl BackendCaps {
     pub const fn sqlite() -> Self {
         Self::postgres()
     }
+
+    /// SQLite's surface minus what a D1 binding cannot do: interactive
+    /// transactions (D1 only batches) and, for now, column-aware tables.
+    pub const fn d1() -> Self {
+        let mut caps = Self::sqlite();
+        caps.transactions = false;
+        caps.column_tables = false;
+        caps
+    }
 }
 
 #[cfg(test)]

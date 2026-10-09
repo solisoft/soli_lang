@@ -11,7 +11,7 @@ server around them. What needs a socket, a thread, a subprocess or a disk stays 
       <li>Views, layouts, partials, components, view helpers</li>
       <li>Query strings, URL-encoded forms, JSON bodies and responses</li>
       <li>I18n from <code>config/locales</code></li>
-      <li>SoliDB models over HTTPS: <code>find</code>, <code>where</code>, <code>create</code>, <code>update</code>…</li>
+      <li>Models on Cloudflare D1 or on SoliDB over HTTPS: <code>find</code>, <code>where</code>, <code>create</code>, <code>update</code>…</li>
       <li>The <code>HTTP</code> class, over the Worker's <code>fetch</code></li>
       <li>Static files from <code>public/</code>, served by Cloudflare</li>
     </ul>
@@ -22,7 +22,7 @@ server around them. What needs a socket, a thread, a subprocess or a disk stays 
       <li>WebSockets, LiveView, server-sent events and streamed bodies (answered with a 501)</li>
       <li>Background jobs, cron, mailers that send</li>
       <li>Multipart uploads and anything that writes files</li>
-      <li>PostgreSQL, MySQL, SQLite and the native SoliDB driver</li>
+      <li>PostgreSQL, MySQL, SQLite and the native SoliDB driver; transactions on D1</li>
       <li><code>--dev</code>: hot reload, the dev bar, the REPL</li>
       <li>PDF, Office documents, lossy WebP encoding, subprocesses</li>
     </ul>

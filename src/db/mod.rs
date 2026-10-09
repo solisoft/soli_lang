@@ -18,8 +18,8 @@
 mod adapter;
 mod caps;
 pub mod columns;
+pub mod d1;
 pub mod ddl;
-#[cfg(any(feature = "postgres", feature = "mysql", feature = "sqlite"))]
 mod ensured;
 pub mod error;
 pub mod hash_filter;
@@ -111,6 +111,8 @@ pub fn adapter_feature_enabled(adapter: Adapter) -> bool {
         Adapter::Postgres => cfg!(feature = "postgres"),
         Adapter::Mysql => cfg!(feature = "mysql"),
         Adapter::Sqlite => cfg!(feature = "sqlite"),
+        // No client library: the binding belongs to the Worker (edge build).
+        Adapter::D1 => true,
     }
 }
 

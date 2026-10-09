@@ -36,6 +36,16 @@ SOLIDB_HOST = "https://db.example.com"
 SOLIDB_DATABASE = "my_app"
 SOLIDB_USERNAME = "app"</code></pre>
 <pre><code>npx wrangler secret put SOLIDB_PASSWORD</code></pre>
+    <p>For data that lives with the Worker, use D1: create a database, bind it, and
+       point the models at it.</p>
+<pre><code>npx wrangler d1 create my-app-db     # prints the database_id</code></pre>
+<pre><code>[[d1_databases]]
+binding = "DB"
+database_name = "my-app-db"
+database_id = "…"
+
+[vars]
+SOLI_DB_ADAPTER = "d1"</code></pre>
     <p>The app can tell where it runs: <code>getenv("SOLI_RUNTIME")</code> is
        <code>"cloudflare-workers"</code> there.</p>
   </li>

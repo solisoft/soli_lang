@@ -216,6 +216,13 @@ directory = "./public"
 # SOLIDB_HOST = "https://db.example.com"
 # SOLIDB_DATABASE = "my_app"
 # SOLIDB_USERNAME = "app"
+
+# Models on Cloudflare D1 instead (`npx wrangler d1 create my-app-db` prints
+# the database_id); set SOLI_DB_ADAPTER = "d1" under [vars] as well.
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "my-app-db"
+# database_id = "…"
 "#,
     );
     config

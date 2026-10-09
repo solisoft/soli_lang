@@ -3,10 +3,11 @@
 // The app's files ship inside the bundle (app.json); each isolate boots them
 // once and reuses them across requests. Requests enter wasm through
 // `WebAssembly.promising`, so a model query can suspend the stack on its fetch
-// (jspi.js). Files under public/ are served by Workers static assets before
+// (jspi.js) — a D1 query too. Files under public/ are served by Workers static assets before
 // the request ever reaches this script.
 import wasmModule from "./soli_edge_bg.wasm";
 import { initSync, mount, set_env, boot } from "./soli_edge.js";
+import { setHost } from "./jspi.js";
 import appFiles from "./app.json";
 
 let wasm = null;
@@ -21,6 +22,8 @@ function ensureBooted(env) {
   try {
     wasm = initSync({ module: wasmModule });
     handleRequest = WebAssembly.promising(wasm.soli_handle);
+    // The D1 import reads and writes wasm memory and looks bindings up in env.
+    setHost(wasm, env);
     set_env(JSON.stringify(Object.entries(env).filter(([, value]) => typeof value === "string")));
     mount(JSON.stringify(appFiles));
     boot("/app");

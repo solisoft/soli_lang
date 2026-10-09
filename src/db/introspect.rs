@@ -333,6 +333,10 @@ fn introspect(connection: &str, table: &str) -> Result<TableSchema, String> {
                 Err(feature_missing("sqlite", table))
             }
         }
+        super::Adapter::D1 => Err(format!(
+            "{table}: column-aware models are not supported on Cloudflare D1 yet; \
+             drop the column declarations to store it as documents"
+        )),
     }
 }
 

@@ -23,9 +23,10 @@
   </article>
   <article>
     <h2>Database included</h2>
-    <p>Model queries reach SoliDB over HTTPS. Soli's interpreter is synchronous and a
-       Worker's <code>fetch</code> is not: the wasm stack suspends on each query
-       (JavaScript Promise Integration) and resumes when the answer arrives.</p>
+    <p>Models run on Cloudflare D1 — SQLite next to the Worker, no server of your
+       own — or on SoliDB over HTTPS. Soli's interpreter is synchronous and both are
+       asynchronous: the wasm stack suspends on each query (JavaScript Promise
+       Integration) and resumes when the answer arrives.</p>
   </article>
 </section>
 

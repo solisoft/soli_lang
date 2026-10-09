@@ -146,7 +146,7 @@ pub fn init_from_app_path(app: &Path) -> Result<ConnectionRegistry, DbError> {
 pub fn load_registry(app: Option<&Path>) -> Result<ConnectionRegistry, DbError> {
     let toml_path = app.map(|a| a.join("config/database.toml"));
     if let Some(path) = toml_path {
-        if path.is_file() {
+        if crate::platform::fs::is_file(&path) {
             return load_from_toml(&path);
         }
     }
@@ -160,13 +160,22 @@ pub fn load_registry(app: Option<&Path>) -> Result<ConnectionRegistry, DbError> 
     env_only_primary()
 }
 
+/// The URL an adapter can do without: a D1 connection names the Worker's
+/// binding, and `DB` is the one `wrangler d1 create` suggests.
+fn default_url(adapter: Adapter) -> Option<String> {
+    (adapter == Adapter::D1).then(|| "d1://DB".to_string())
+}
+
 fn env_only_primary() -> Result<ConnectionRegistry, DbError> {
     let cfg = AdapterConfig::from_env()?;
     let mut connections = HashMap::new();
     let mut spec = ConnectionSpec {
         name: "primary".into(),
         adapter: cfg.adapter,
-        url: cfg.database_url.clone(),
+        url: cfg
+            .database_url
+            .clone()
+            .or_else(|| default_url(cfg.adapter)),
         solidb_host: crate::platform::env::var("SOLIDB_HOST").ok(),
         solidb_database: crate::platform::env::var("SOLIDB_DATABASE").ok(),
         solidb_username: crate::platform::env::var("SOLIDB_USERNAME").ok(),
@@ -197,7 +206,7 @@ fn env_only_primary() -> Result<ConnectionRegistry, DbError> {
 }
 
 fn load_from_toml(path: &Path) -> Result<ConnectionRegistry, DbError> {
-    let raw = std::fs::read_to_string(path)
+    let raw = crate::platform::fs::read_to_string(path)
         .map_err(|e| DbError::Backend(format!("read {}: {e}", path.display())))?;
     let expanded = expand_env(&raw);
     let value: toml::Value = expanded
@@ -244,7 +253,8 @@ fn load_from_toml(path: &Path) -> Result<ConnectionRegistry, DbError> {
             .get("url")
             .and_then(|v| v.as_str())
             .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
+            .filter(|s| !s.is_empty())
+            .or_else(|| default_url(adapter));
         let pool_size = table
             .get("pool")
             .and_then(|v| v.as_integer())
