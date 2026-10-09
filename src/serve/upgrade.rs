@@ -477,9 +477,15 @@ async fn handle_websocket_upgrade(
         Err(refused) => return Ok(*refused),
     };
 
+    // The subprotocol the client asked for, answered back: a browser that offers
+    // `Sec-WebSocket-Protocol` (Action Cable sends `actioncable-v1-json`) fails
+    // the handshake unless the response names one of them. The application's
+    // handler speaks whatever it speaks; the first one offered is taken.
+    let subprotocol = first_subprotocol(req.headers());
+
     // Perform the WebSocket upgrade
     let ws_config = default_websocket_config();
-    let (response, websocket) = match hyper_tungstenite::upgrade(&mut req, Some(ws_config)) {
+    let (mut response, websocket) = match hyper_tungstenite::upgrade(&mut req, Some(ws_config)) {
         Ok(result) => result,
         Err(e) => {
             eprintln!("[WS] Upgrade error: {}", e);
@@ -489,6 +495,12 @@ async fn handle_websocket_upgrade(
                 .unwrap());
         }
     };
+
+    if let Some(protocol) = subprotocol {
+        response
+            .headers_mut()
+            .insert(hyper::header::SEC_WEBSOCKET_PROTOCOL, protocol);
+    }
 
     // Spawn a task to handle the WebSocket connection
     let ws_registry = ws_registry.clone();
@@ -783,5 +795,31 @@ mod tests {
         let cfg = default_websocket_config();
         assert_eq!(cfg.max_message_size, Some(1 << 20));
         assert_eq!(cfg.max_frame_size, Some(1 << 20));
+    }
+}
+
+/// The first subprotocol a WebSocket client offered, as a header value, or
+/// `None` when it offered none (or an unusable value).
+fn first_subprotocol(headers: &hyper::HeaderMap) -> Option<hyper::header::HeaderValue> {
+    let offered = headers.get(hyper::header::SEC_WEBSOCKET_PROTOCOL)?.to_str().ok()?;
+    let first = offered.split(',').map(str::trim).find(|p| !p.is_empty())?;
+    hyper::header::HeaderValue::from_str(first).ok()
+}
+
+#[cfg(test)]
+mod subprotocol_tests {
+    use super::first_subprotocol;
+
+    #[test]
+    fn the_first_offered_subprotocol_is_answered() {
+        let mut headers = hyper::HeaderMap::new();
+        assert!(first_subprotocol(&headers).is_none());
+        headers.insert(
+            hyper::header::SEC_WEBSOCKET_PROTOCOL,
+            "actioncable-v1-json, actioncable-unsupported".parse().unwrap(),
+        );
+        assert_eq!(first_subprotocol(&headers).unwrap(), "actioncable-v1-json");
+        headers.insert(hyper::header::SEC_WEBSOCKET_PROTOCOL, " , ".parse().unwrap());
+        assert!(first_subprotocol(&headers).is_none());
     }
 }

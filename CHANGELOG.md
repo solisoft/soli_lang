@@ -10,6 +10,10 @@
 
 * **db:** **SQLite writers wait for the next commit, and checkpoints leave the request path: posting under load is 21% to 40% faster.** Two things kept concurrent writes waiting far longer than the lock was held. A writer that found the lock taken slept through SQLite's `busy_timeout` handler, 1, 2, 5, 10 ms and more between retries, for a lock held tens of microseconds; it now waits on a condition variable that every commit signals (the WAL hook runs once the lock is released), with a 200 µs safety net and the same 10 s limit. And SQLite's auto-checkpoint made the commit that took the WAL past 1,000 pages copy it into the database and fsync both before returning, holding up that request and every writer behind it; it is replaced by a thread per database file that runs a PASSIVE checkpoint each time the WAL grows by 1,000 pages (writes carry on meanwhile) and a RESTART past 10,000, as Campfire's Rust port does. `journal_size_limit` is 64 MB. On the Campfire port (Ryzen 9 9950X, 4 cores, 8 workers, 16 connections): 5.3k → 6.4k messages posted per second, p99 20 → 9.6 ms.
 
+### Fixed
+
+* **serve:** **An application WebSocket answers the subprotocol the client asked for, so browsers keep the connection.** A client that offers `Sec-WebSocket-Protocol` — Action Cable sends `actioncable-v1-json` — must get one of them back, and Chromium closes the socket otherwise ("Sent non-empty 'Sec-WebSocket-Protocol' header but no response was received"): a Rails frontend served by Soli never received a live update. The upgrade of a `websocket_routes` endpoint now answers the first subprotocol offered.
+
 ## [2.18.5] - 2026-10-09
 
 ### Changed
