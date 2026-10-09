@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.18.8] - 2026-10-09
+
 ### Performance
 
 * **views:** **A page of fifty components renders in 20% less CPU: each worker resolves a partial or a component once.** Every include formatted its on-disk name (`card` → `components/card`), looked it up in the shared path cache, then looked the path up in the shared template cache — two `RwLock` reads, the second hashing a whole path — and tested its extension for Markdown, on every render. Each worker thread now keeps what an include name resolves to (path, parsed template, whether it is a component or Markdown) and finds it by the name as written, with no lock and no allocation. A hot reload empties every thread's copy: `TemplateCache::clear` bumps a generation the threads compare on their next include, and `--dev` clears it before the first request after a view edit, as before. A name that resolved to nothing is not kept, so a missing partial behaves as it did. Instructions per request fell 10%; CPU fell twice that, the two read locks per include having been shared by every worker. Gap bench (Ryzen 9 9950X, 16 workers, median of three interleaved starts each): 50 cards with a named slot 121.6 → 97.4 µs of CPU per request, 121.7k → 148.6k requests per second; a view without includes unchanged.
