@@ -1,7 +1,6 @@
 /* Landing-page components, shared by every page on layouts/landing (home, AI). */
 .lp-section { padding: clamp(64px, 9vw, 120px) 0; }
 .lp-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--sun-text); }
-.lp-h1 { margin: 0; font-family: 'Fraunces', serif; font-weight: 600; font-size: clamp(40px, min(7vw, 9.5vh), 88px); line-height: 0.98; letter-spacing: -0.035em; }
 .lp-h2 { margin: 0; font-family: 'Fraunces', serif; font-weight: 600; font-size: clamp(34px, 4.6vw, 56px); line-height: 1.05; letter-spacing: -0.03em; }
 .lp-h3 { margin: 0; font-family: 'Fraunces', serif; font-weight: 600; font-size: 24px; letter-spacing: -0.02em; }
 .lp-lead { margin: 0; font-size: clamp(17px, 1.6vw, 20px); line-height: 1.6; color: var(--ink-soft); }
@@ -13,13 +12,45 @@
 .lp-btn-line:hover { background: var(--paper-sunk); }
 .lp-hero .lp-btn { min-height: clamp(46px, 6.5vh, 56px); }
 .lp-chip-cmd { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 400; }
+@media (max-width: 420px) { .lp-chip-cmd { gap: 8px; padding: 0 18px; font-size: 12.5px; white-space: nowrap; } }
+@media (max-width: 420px) { .lp-chip-cmd { gap: 8px; padding: 0 18px; font-size: 12.5px; white-space: nowrap; } }
 .lp-link { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--sun-text); }
 .lp-link:hover { text-decoration: underline; text-underline-offset: 4px; }
 
-/* Sun motif */
-.lp-hero { position: relative; overflow: hidden; display: flex; align-items: center; min-height: calc(100vh - 81px); min-height: calc(100svh - 81px); }
-.lp-hero > .lp-wrap { width: 100%; }
-.lp-ring { position: absolute; border-radius: 50%; pointer-events: none; }
+/* Hero: slogan and copy beside the code, then the load ramp (markup and
+   numbers: home/index; the replay script sits at the bottom of that page). */
+.lp-hero { padding: clamp(28px, 5vh, 64px) 0 clamp(24px, 5vh, 56px); }
+.lp-hero-top { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: clamp(32px, 4vw, 56px); align-items: center; }
+.lp-hero-copy { display: flex; flex-direction: column; gap: clamp(18px, 3vh, 26px); min-width: 0; }
+.lp-hero-h1 { margin: 0; font-family: 'Fraunces', serif; font-weight: 600; font-size: clamp(42px, 5.2vw, 76px); line-height: 0.96; letter-spacing: -0.035em; }
+.lp-hero-h1 > span { white-space: nowrap; }
+.lp-hero .lp-code { box-shadow: none; }
+.lp-hero .lp-code-bar { flex-wrap: wrap; row-gap: 2px; padding-top: 8px; padding-bottom: 8px; }
+.lp-hero .lp-code pre { line-height: 1.65; }
+
+.lp-ramp { margin: clamp(32px, 6vh, 56px) 0 0; padding: 24px clamp(18px, 3vw, 36px) 22px; border-radius: 20px; background: var(--paper-raised); border: 1px solid var(--line-soft); }
+.lp-ramp-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; padding-bottom: 18px; margin-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
+.lp-ramp-label { font-size: 15px; color: var(--ink-faint); }
+.lp-ramp-load { font-family: 'Fraunces', serif; font-weight: 600; font-size: clamp(38px, 4.4vw, 58px); line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.lp-ramp-unit { font-family: 'Instrument Sans', sans-serif; font-weight: 500; font-size: 18px; letter-spacing: 0; color: var(--ink-soft); }
+.lp-lane { display: grid; grid-template-columns: 150px minmax(0, 1fr) 8ch 19ch; column-gap: 20px; align-items: center; min-height: 40px; font-variant-numeric: tabular-nums; }
+.lp-lane-name { font-weight: 600; }
+.lp-lane.is-soli .lp-lane-name { color: var(--sun-text); }
+.lp-lane-track { height: 14px; border-radius: 7px; background: var(--paper-sunk); overflow: hidden; }
+.lp-lane-bar { height: 100%; border-radius: 7px; background: var(--ink-faint); }
+.lp-lane.is-soli .lp-lane-bar { background: var(--sun); }
+.lp-ramp.is-running .lp-lane:not(.is-capped):not(.is-soli) .lp-lane-bar { background: var(--ink-soft); }
+.lp-lane-value, .lp-lane-note { font-family: 'JetBrains Mono', monospace; font-size: 14px; white-space: nowrap; }
+.lp-lane-value { text-align: right; }
+.lp-lane-note { color: var(--ink-faint); }
+.lp-ramp.is-running .lp-lane:not(.is-capped) .lp-lane-note { visibility: hidden; }
+.lp-ramp-caption { margin-top: 14px; font-size: 14px; line-height: 1.55; color: var(--ink-faint); }
+/* Phones: name and number on one line, the bar under them, no p99 note */
+@media (max-width: 700px) {
+    .lp-lane { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; min-height: 0; padding: 6px 0; }
+    .lp-lane-track { grid-column: 1 / -1; grid-row: 2; }
+    .lp-lane-note { display: none; }
+}
 
 /* Code panels */
 .lp-code { border-radius: 18px; background: var(--night); color: #E9E2D6; overflow: hidden; box-shadow: 0 30px 60px -24px rgba(27, 23, 18, 0.45); }
@@ -34,16 +65,10 @@
 .lp-code .n { color: #E9E2D6; }
 .lp-code .ok { color: #7EC99A; }
 /* Hero sample: never scrolls. The type scales with the panel so its longest
-   line (43 columns; a JetBrains Mono column is 0.6em, so 25.8em) always fits. */
+   line (51 columns; a JetBrains Mono column is 0.6em, so 30.6em) always fits. */
 .lp-code-fit { container-type: inline-size; }
-.lp-code-fit pre { --pad: clamp(14px, 5cqi, 24px); padding: 22px var(--pad); font-size: min(14.5px, calc((100cqi - 2 * var(--pad)) / 26)); }
+.lp-code-fit pre { --pad: clamp(14px, 5cqi, 24px); padding: 20px var(--pad); font-size: min(14px, calc((100cqi - 2 * var(--pad)) / 31)); }
 
-/* Proof strip */
-.lp-proof { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
-.lp-proof > div { display: flex; flex-direction: column; gap: 6px; padding: 32px 0 32px 24px; border-left: 1px solid var(--line); }
-.lp-proof > div:first-child { border-left: 0; padding-left: 0; }
-.lp-proof strong { font-family: 'Fraunces', serif; font-weight: 600; font-size: clamp(34px, 4vw, 48px); letter-spacing: -0.02em; }
-.lp-proof span { font-size: 16px; color: var(--ink-soft); }
 
 /* Cards */
 .lp-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
@@ -92,13 +117,11 @@
 .lp-cta .lp-btn-line:hover { background: rgba(27, 23, 18, .1); }
 
 .lp-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 56px; align-items: center; }
-.lp-hero-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 48px; align-items: center; }
 
 @media (max-width: 900px) {
-    .lp-hero-grid, .lp-split, .lp-grid-2, .lp-grid-3 { grid-template-columns: 1fr; gap: 24px; }
+    .lp-split, .lp-grid-2, .lp-grid-3 { grid-template-columns: 1fr; gap: 24px; }
     .lp-split { gap: 40px; }
-    .lp-proof { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .lp-proof > div:nth-child(3) { border-left: 0; padding-left: 0; }
+    .lp-hero-top { grid-template-columns: minmax(0, 1fr); }
     .lp-trace { --rail-x: 8px; --gutter: 36px; }
 }
 @media (prefers-reduced-motion: reduce) { .lp-pulse { display: none; } }

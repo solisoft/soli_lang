@@ -1,21 +1,15 @@
-<!-- Hero -->
+<!-- Hero: the slogan, the code behind the numbers, and a load ramp in which
+     every stack stops at the throughput it was measured at (the "Database read
+     + HTML render" row of /docs/getting-started/benchmarks). The page renders
+     the finished state; the script at the bottom plays the ramp. -->
 <section class="lp-hero">
-    <span class="lp-ring" style="top: -360px; right: -300px; width: 900px; height: 900px; border: 1px solid var(--sun); opacity: .35;" aria-hidden="true"></span>
-    <span class="lp-ring" style="top: -220px; right: -160px; width: 620px; height: 620px; border: 1px solid var(--sun); opacity: .5;" aria-hidden="true"></span>
-    <span class="lp-ring" style="top: -100px; right: -40px; width: 380px; height: 380px; background: var(--sun); opacity: .12;" aria-hidden="true"></span>
-
-    <div class="lp-wrap" style="position: relative; padding-top: clamp(24px, 5vh, 72px); padding-bottom: clamp(24px, 6vh, 72px);">
-        <div class="lp-hero-grid">
-            <div style="display: flex; flex-direction: column; gap: clamp(16px, 3vh, 28px);">
-                <div style="display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; min-height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--ink); font-family: 'JetBrains Mono', monospace; font-size: 13px;">
-                    <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--sun);"></span>
-                    a language and a framework, written in Rust
-                </div>
-                <h1 class="lp-h1">Write it like Ruby. <span class="lp-em">Serve it like Rust.</span></h1>
-                <p class="lp-lead" style="max-width: 540px;">
-                    Soli is a programming language with a complete web framework built in. Models, auth, jobs, mail,
-                    PDF, WebSockets, live views and tests all ship in one binary, and
-                    <code style="font-size: 0.9em;">soli</code> is the only thing you install.
+    <div class="lp-wrap">
+        <div class="lp-hero-top">
+            <div class="lp-hero-copy">
+                <h1 class="lp-hero-h1"><span>Write it like Ruby.</span><br><span>Serve it like Rust.</span></h1>
+                <p class="lp-lead">
+                    Soli is a programming language with a web framework built in, written in Rust. Same machine,
+                    same 16 threads: it keeps answering long after the usual stacks top out.
                 </p>
                 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px;">
                     <a href="/docs/getting-started/introduction" class="lp-btn lp-btn-solid">Get started</a>
@@ -25,40 +19,81 @@
                         <span data-copy-label style="font-family: 'Instrument Sans', sans-serif; font-size: 13px; color: var(--ink-faint);">Copy</span>
                     </button>
                 </div>
-                <a href="https://github.com/solisoft/soli_lang" target="_blank" rel="noopener" class="lp-link" style="align-self: flex-start;">View on GitHub</a>
             </div>
 
             <div class="lp-code lp-code-fit">
-                <div class="lp-code-bar"><span>app/controllers/posts_controller.sl</span></div>
+                <div class="lp-code-bar"><span>app/controllers/posts_controller.sl</span><span style="color: #F2A365;">the code behind these numbers</span></div>
 <pre><code><span class="k">class</span> <span class="n">PostsController &lt; Controller</span>
-  <span class="c"># GET /posts — renders with @posts</span>
-  <span class="k">def</span> <span class="n">index(req)</span>
-    <span class="v">@posts</span> <span class="n">= Post.all</span>
-  <span class="k">end</span>
-
-  <span class="c"># POST /posts</span>
-  <span class="k">def</span> <span class="n">create(req)</span>
-    <span class="n">attrs = permit(params, {</span><span class="s">"title"</span><span class="n">: true})</span>
-    <span class="v">@post</span> <span class="n">= Post.create(attrs)</span>
-    <span class="k">return</span> <span class="n">render(</span><span class="s">"new"</span><span class="n">)</span> <span class="k">if</span> <span class="v">@post</span><span class="n">._errors</span>
-
-    <span class="n">redirect(post_path(</span><span class="v">@post</span><span class="n">))</span>
+  <span class="c"># GET /db-template</span>
+  <span class="k">def</span> <span class="n">db_template</span>
+    <span class="n">render(</span><span class="s">"posts/list"</span><span class="n">, {</span>
+      <span class="s">"title"</span><span class="n">: </span><span class="s">"Posts"</span><span class="n">,</span>
+      <span class="s">"items"</span><span class="n">: Post.pluck(</span><span class="v">:id</span><span class="n">, </span><span class="v">:title</span><span class="n">, </span><span class="v">:views</span><span class="n">).all</span>
+    <span class="n">})</span>
   <span class="k">end</span>
 <span class="k">end</span></code></pre>
             </div>
         </div>
+
+        <figure class="lp-ramp" id="load-ramp">
+            <div class="lp-ramp-head">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <span class="lp-ramp-label" data-ramp-label>Soli&rsquo;s ceiling: 11.9&times; Rails &plus; Puma, p99 1.20 ms</span>
+                    <span class="lp-ramp-load"><span data-ramp-load>299,012</span><span class="lp-ramp-unit"> req/s</span></span>
+                </div>
+            </div>
+
+            <div class="lp-lane is-soli" data-max="299012" data-p99="1.20 ms">
+                <span class="lp-lane-name">Soli</span>
+                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 100.00%;"></div></div>
+                <span class="lp-lane-value" data-served>299,012</span>
+                <span class="lp-lane-note">max &middot; p99 1.20 ms</span>
+            </div>
+            <div class="lp-lane" data-max="192564" data-p99="1.28 ms">
+                <span class="lp-lane-name">Kemal</span>
+                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 64.40%;"></div></div>
+                <span class="lp-lane-value" data-served>192,564</span>
+                <span class="lp-lane-note">max &middot; p99 1.28 ms</span>
+            </div>
+            <div class="lp-lane" data-max="72263" data-p99="4.40 ms">
+                <span class="lp-lane-name">Phoenix</span>
+                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 24.17%;"></div></div>
+                <span class="lp-lane-value" data-served>72,263</span>
+                <span class="lp-lane-note">max &middot; p99 4.40 ms</span>
+            </div>
+            <div class="lp-lane" data-max="70143" data-p99="4.04 ms">
+                <span class="lp-lane-name">Express</span>
+                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 23.46%;"></div></div>
+                <span class="lp-lane-value" data-served>70,143</span>
+                <span class="lp-lane-note">max &middot; p99 4.04 ms</span>
+            </div>
+            <div class="lp-lane" data-max="25024" data-p99="15.92 ms">
+                <span class="lp-lane-name">Rails + Puma</span>
+                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 8.37%;"></div></div>
+                <span class="lp-lane-value" data-served>25,024</span>
+                <span class="lp-lane-note">max &middot; p99 15.92 ms</span>
+            </div>
+            <div class="lp-lane" data-max="11759" data-p99="19.04 ms">
+                <span class="lp-lane-name">Laravel Octane</span>
+                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 3.93%;"></div></div>
+                <span class="lp-lane-value" data-served>11,759</span>
+                <span class="lp-lane-note">max &middot; p99 19.04 ms</span>
+            </div>
+            <div class="lp-lane" data-max="10896" data-p99="19.72 ms">
+                <span class="lp-lane-name">Django</span>
+                <div class="lp-lane-track"><div class="lp-lane-bar" style="width: 3.64%;"></div></div>
+                <span class="lp-lane-value" data-served>10,896</span>
+                <span class="lp-lane-note">max &middot; p99 19.72 ms</span>
+            </div>
+
+            <figcaption class="lp-ramp-caption">
+                50 rows from the database rendered into a ~3&nbsp;KB HTML page. One 32-thread machine, 16 threads per
+                stack, measured 2026-09-28/29. Each bar stops at the throughput measured for that stack.
+                <a href="/docs/getting-started/benchmarks" class="lp-link" style="display: inline;">Method and every row</a>
+            </figcaption>
+        </figure>
     </div>
 </section>
-
-<!-- Proof strip -->
-<div class="lp-wrap">
-    <div class="lp-proof">
-        <div><strong>1.2M+</strong><span>plaintext requests per second</span></div>
-        <div><strong>834k+</strong><span>JSON requests per second</span></div>
-        <div><strong>0</strong><span>dependencies to install</span></div>
-        <div><strong>1</strong><span>binary: server, tests, linter</span></div>
-    </div>
-</div>
 
 <!-- Anatomy of a request -->
 <section class="lp-section">
@@ -459,17 +494,18 @@
         <div style="max-width: 400px;">
             <h2 class="lp-h2" style="font-size: clamp(28px, 3.4vw, 40px);">Fast enough to be your whole stack</h2>
             <p style="margin: 14px 0 0; font-size: 16px; line-height: 1.55; color: var(--ink-soft);">
-                Measured by <a href="https://www.techempower.com/" target="_blank" rel="noopener" class="lp-link" style="display: inline;">TechEmpower</a> on 21&times; AWS c7i.2xlarge instances.
+                Measured against Rails, Laravel, Django, Express, Phoenix and others on one machine, with the
+                <a href="/docs/getting-started/benchmarks" class="lp-link" style="display: inline;">method and every row</a> published.
             </p>
         </div>
         <div style="display: flex; flex-wrap: wrap; gap: 40px 80px;">
-            <a href="https://www.techempower.com/benchmarks/#section=test&runid=1d5bfc8a-5c4a-4fb2-a792-ad967f1eb138&test=plaintext" target="_blank" rel="noopener">
-                <div class="lp-serif" style="font-weight: 600; font-size: clamp(36px, 4.4vw, 56px); letter-spacing: -0.02em;">1,206,408</div>
-                <div style="margin-top: 4px; font-size: 16px; color: var(--ink-soft);">Plaintext req/s</div>
+            <a href="/docs/getting-started/benchmarks">
+                <div class="lp-serif" style="font-weight: 600; font-size: clamp(36px, 4.4vw, 56px); letter-spacing: -0.02em;">561,290</div>
+                <div style="margin-top: 4px; font-size: 16px; color: var(--ink-soft);">JSON req/s, 12.9&times; Rails</div>
             </a>
-            <a href="https://www.techempower.com/benchmarks/#section=test&runid=1d5bfc8a-5c4a-4fb2-a792-ad967f1eb138&test=json" target="_blank" rel="noopener">
-                <div class="lp-serif" style="font-weight: 600; font-size: clamp(36px, 4.4vw, 56px); letter-spacing: -0.02em;">834,109</div>
-                <div style="margin-top: 4px; font-size: 16px; color: var(--ink-soft);">JSON req/s</div>
+            <a href="/docs/getting-started/benchmarks">
+                <div class="lp-serif" style="font-weight: 600; font-size: clamp(36px, 4.4vw, 56px); letter-spacing: -0.02em;">258,295</div>
+                <div style="margin-top: 4px; font-size: 16px; color: var(--ink-soft);">Database writes/s, 8.1&times; Rails</div>
             </a>
         </div>
     </div>
@@ -665,6 +701,57 @@
 
 <script>
     // Copy the "soli new" command from the hero chip.
+    // Hero load ramp: the load climbs exponentially and every bar follows it up
+    // to the throughput its stack was measured at. The markup is the finished
+    // state; the ramp plays once, when the panel comes into view.
+    (function () {
+        var ramp = document.getElementById("load-ramp");
+        if (!ramp) return;
+        var lanes = Array.prototype.map.call(ramp.querySelectorAll(".lp-lane"), function (lane) {
+            return { el: lane, max: Number(lane.dataset.max), bar: lane.querySelector(".lp-lane-bar"), served: lane.querySelector("[data-served]") };
+        });
+        var loadText = ramp.querySelector("[data-ramp-load]");
+        var label = ramp.querySelector("[data-ramp-label]");
+        var doneLabel = label.textContent;
+        var top = lanes[0].max; // Soli's lane comes first and sets the scale
+        var frame = 0;
+
+        function fmt(n) { return Math.round(n).toLocaleString("en-US"); }
+        function loadAt(p) { return top * (Math.exp(5 * p) - 1) / (Math.exp(5) - 1); }
+
+        function paint(p) {
+            var load = loadAt(p);
+            loadText.textContent = fmt(load);
+            lanes.forEach(function (lane) {
+                var served = Math.min(load, lane.max);
+                lane.bar.style.width = (served / top * 100) + "%";
+                lane.served.textContent = fmt(served);
+                lane.el.classList.toggle("is-capped", load >= lane.max);
+            });
+        }
+
+        function play() {
+            cancelAnimationFrame(frame);
+            ramp.classList.add("is-running");
+            label.textContent = "Load, ramping up";
+            var start = performance.now();
+            (function tick(now) {
+                var p = Math.min(1, Math.max(0, (now - start) / 7000));
+                paint(p);
+                if (p < 1) { frame = requestAnimationFrame(tick); return; }
+                ramp.classList.remove("is-running");
+                label.textContent = doneLabel;
+            })(start);
+        }
+
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) return;
+        new IntersectionObserver(function (entries, observer) {
+            if (!entries[0].isIntersecting) return;
+            observer.disconnect();
+            play();
+        }, { threshold: 0.35 }).observe(ramp);
+    })();
+
     function copyNewAppCmd(btn) {
         const cmd = 'soli new blog && soli serve blog';
         navigator.clipboard.writeText(cmd).then(() => {

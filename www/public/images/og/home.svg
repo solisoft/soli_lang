@@ -1,54 +1,49 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Soli — Write it like Ruby. Serve it like Rust. A programming language with a complete web framework built in: models, auth, jobs, mail, PDF, WebSockets, live views and tests in one binary.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Soli: Write it like Ruby. Serve it like Rust. Fifty database rows rendered into an HTML page, same machine, 16 threads per stack: Soli 299,012 requests a second, Kemal 192,564, Phoenix 72,263, Rails and Puma 25,024, Django 10,896.">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;1,9..144,600&amp;family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=block');
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&amp;family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=block');
     .serif { font-family: 'Fraunces', Georgia, serif; font-weight: 600; letter-spacing: -2px; }
     .sans { font-family: 'Instrument Sans', system-ui, sans-serif; }
     .mono { font-family: 'JetBrains Mono', monospace; }
-    .code text { white-space: pre; }
   </style>
 
   <rect width="1200" height="630" fill="#F6F1E7"/>
 
-  <!-- Sun motif, as in the landing hero -->
-  <circle cx="1080" cy="40" r="430" fill="none" stroke="#E8590C" stroke-opacity="0.35"/>
-  <circle cx="1080" cy="40" r="300" fill="none" stroke="#E8590C" stroke-opacity="0.5"/>
-  <circle cx="1080" cy="40" r="180" fill="#E8590C" fill-opacity="0.12"/>
-
-  <!-- Wordmark -->
+  <!-- Wordmark and address -->
   <g transform="translate(72 70)">
     <circle cx="10" cy="-8" r="10" fill="#E8590C"/>
     <text x="32" y="0" class="serif" font-size="34" fill="#1B1712" letter-spacing="-1">Soli</text>
   </g>
+  <text x="1128" y="70" class="mono" font-size="20" text-anchor="end" fill="#B4400B">soli.solisoft.net</text>
 
   <!-- Headline -->
-  <text x="72" y="236" class="serif" font-size="80" fill="#1B1712">Write it like Ruby.</text>
-  <text x="72" y="330" class="serif" font-size="80" fill="#E8590C" font-style="italic">Serve it like Rust.</text>
+  <text x="70" y="172" class="serif" font-size="76" fill="#1B1712">Write it like Ruby.</text>
+  <text x="70" y="248" class="serif" font-size="76" fill="#1B1712">Serve it like Rust.</text>
 
-  <!-- Lead -->
-  <text x="74" y="394" class="sans" font-size="26" fill="#4A4238">A language with a web framework built in:</text>
-  <text x="74" y="430" class="sans" font-size="26" fill="#4A4238">models, auth, jobs, mail, PDF, live views</text>
-  <text x="74" y="466" class="sans" font-size="26" fill="#4A4238">and tests, all in one binary.</text>
-
-  <!-- Proof strip -->
-  <line x1="72" y1="522" x2="1128" y2="522" stroke="#D8CFBE"/>
-  <g class="sans" font-size="22" fill="#6B6153">
-    <text x="72" y="568"><tspan class="serif" font-size="30" fill="#1B1712" letter-spacing="-1">1.2M+</tspan>  requests / second</text>
-    <text x="420" y="568"><tspan class="serif" font-size="30" fill="#1B1712" letter-spacing="-1">0</tspan>  dependencies to install</text>
-    <text x="760" y="568" class="mono" font-size="22" fill="#B4400B">soli.solisoft.net</text>
-  </g>
-
-  <!-- Code panel -->
-  <g transform="translate(704 160)">
-    <rect width="424" height="276" rx="18" fill="#1C1814"/>
-    <line x1="0" y1="44" x2="424" y2="44" stroke="#2E2822"/>
-    <text x="24" y="28" class="mono" font-size="14" fill="#A69C8C">app/controllers/posts_controller.sl</text>
-    <g class="mono code" font-size="17" xml:space="preserve">
-      <text x="24" y="86"><tspan fill="#F2A365">class</tspan><tspan fill="#E9E2D6"> PostsController &lt; Controller</tspan></text>
-      <text x="24" y="122" fill="#A69C8C">  # GET /posts</text>
-      <text x="24" y="150"><tspan fill="#F2A365">  def</tspan><tspan fill="#E9E2D6"> index(req)</tspan></text>
-      <text x="24" y="178"><tspan fill="#8FB8DE">    @posts</tspan><tspan fill="#E9E2D6"> = Post.all</tspan></text>
-      <text x="24" y="206" fill="#F2A365">  end</text>
-      <text x="24" y="234" fill="#F2A365">end</text>
-    </g>
+  <!-- The hero's load ramp, finished: each bar at the throughput measured for
+       its stack (Database read + HTML render, /docs/getting-started/benchmarks) -->
+  <rect x="72" y="296" width="1056" height="270" rx="18" fill="#FFFDF8" stroke="#E3DAC8"/>
+  <text x="104" y="332" class="sans" font-size="19" fill="#6B6153">50 database rows rendered into an HTML page. Same machine, 16 threads per stack.</text>
+  <line x1="104" y1="350" x2="1096" y2="350" stroke="#E3DAC8"/>
+  <g>
+    <text x="104" y="382" class="sans" font-size="20" font-weight="600" fill="#B4400B">Soli</text>
+    <rect x="300" y="370" width="600" height="12" rx="6" fill="#EADFC9"/>
+    <rect x="300" y="370" width="600.0" height="12" rx="6" fill="#E8590C"/>
+    <text x="1096" y="382" class="mono" font-size="18" text-anchor="end" fill="#1B1712">299,012 <tspan fill="#6B6153">req/s</tspan></text>
+    <text x="104" y="420" class="sans" font-size="20" font-weight="600" fill="#1B1712">Kemal</text>
+    <rect x="300" y="408" width="600" height="12" rx="6" fill="#EADFC9"/>
+    <rect x="300" y="408" width="386.4" height="12" rx="6" fill="#6B6153"/>
+    <text x="1096" y="420" class="mono" font-size="18" text-anchor="end" fill="#1B1712">192,564 <tspan fill="#6B6153">req/s</tspan></text>
+    <text x="104" y="458" class="sans" font-size="20" font-weight="600" fill="#1B1712">Phoenix</text>
+    <rect x="300" y="446" width="600" height="12" rx="6" fill="#EADFC9"/>
+    <rect x="300" y="446" width="145.0" height="12" rx="6" fill="#6B6153"/>
+    <text x="1096" y="458" class="mono" font-size="18" text-anchor="end" fill="#1B1712">72,263 <tspan fill="#6B6153">req/s</tspan></text>
+    <text x="104" y="496" class="sans" font-size="20" font-weight="600" fill="#1B1712">Rails + Puma</text>
+    <rect x="300" y="484" width="600" height="12" rx="6" fill="#EADFC9"/>
+    <rect x="300" y="484" width="50.2" height="12" rx="6" fill="#6B6153"/>
+    <text x="1096" y="496" class="mono" font-size="18" text-anchor="end" fill="#1B1712">25,024 <tspan fill="#6B6153">req/s</tspan></text>
+    <text x="104" y="534" class="sans" font-size="20" font-weight="600" fill="#1B1712">Django</text>
+    <rect x="300" y="522" width="600" height="12" rx="6" fill="#EADFC9"/>
+    <rect x="300" y="522" width="21.9" height="12" rx="6" fill="#6B6153"/>
+    <text x="1096" y="534" class="mono" font-size="18" text-anchor="end" fill="#1B1712">10,896 <tspan fill="#6B6153">req/s</tspan></text>
   </g>
 </svg>

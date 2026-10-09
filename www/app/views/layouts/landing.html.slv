@@ -23,7 +23,7 @@
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="Soli — Write it like Ruby. Serve it like Rust. A language with a web framework built in, in one binary.">
+    <meta property="og:image:alt" content="Soli — Write it like Ruby. Serve it like Rust. Fifty database rows rendered into an HTML page on one machine: Soli 299,012 requests a second, Rails and Puma 25,024.">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="<%= meta["title"] %>">
     <meta name="twitter:description" content="<%= meta["description"] %>">
