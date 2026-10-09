@@ -2,11 +2,11 @@
 
 ## [Unreleased]
 
+## [2.18.5] - 2026-10-09
+
 ### Changed
 
 * **db:** **SQLite is 3.53.2, was 3.45.0.** The bundled library comes from rusqlite 0.40 (was 0.31), the version Campfire's Rust port uses. Only one crate in a build may link `sqlite3`, so the SoliDB Rust client (`solidb-client`, behind the `solidb-driver` feature) moves to the solidb commit that does the same (9788323f), which also brings the driver's `prune`, collection sharding and vector search filter, and the `sdbql-core` function audit, from solidb 2.2.1.
-
-## [2.18.5] - 2026-10-09
 
 ### Added
 

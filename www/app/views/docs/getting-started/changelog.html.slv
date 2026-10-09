@@ -27,6 +27,11 @@
     <section id="v2-18-5" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">v2.18.5 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-09</span></h2>
 
+        <h3 id="v2-18-5-orm" class="text-xl font-semibold text-white mb-4 scroll-mt-24">ORM</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">SQLite is 3.53.2, was 3.45.0.</strong> The library bundled with Soli comes from rusqlite 0.40 (was 0.31). The SoliDB native client (<code class="text-cyan-400">solidb-driver</code>) moves along with it, and brings solidb 2.2.1&rsquo;s driver changes: <code class="text-cyan-400">prune</code>, collection sharding and the vector search filter.</li>
+        </ul>
+
         <h3 id="v2-18-5-language" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Language</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">contains?</code> on strings and arrays.</strong> <code class="text-cyan-400">"soli lang".contains?("lang")</code>, <code class="text-cyan-400">[1, 2].contains?(2)</code>: the same as <code class="text-cyan-400">contains</code>, named as the predicate it is, like <code class="text-cyan-400">includes?</code>, <code class="text-cyan-400">starts_with?</code> and <code class="text-cyan-400">ends_with?</code>. <a href="/docs/language/strings#method-contains" class="text-cyan-400 hover:underline">Strings</a></li>
