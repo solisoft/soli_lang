@@ -38,7 +38,7 @@ fn feature_missing(adapter: &str) -> String {
 
 /// Dispatch to the active SQL backend, or a clear missing-feature error.
 macro_rules! route_cols {
-    ($pg:expr, $my:expr, $lite:expr) => {{
+    ($pg:expr, $my:expr, $lite:expr, $d1:expr) => {{
         match super::registry::active_spec()?.adapter {
             Adapter::Mysql => {
                 #[cfg(feature = "mysql")]
@@ -70,6 +70,8 @@ macro_rules! route_cols {
                     Err(feature_missing("sqlite"))
                 }
             }
+            // Always compiled: no client library, the binding is the Worker's.
+            Adapter::D1 => $d1,
             Adapter::Solidb => Err("column-aware models require a SQL connection \
                                     (internal error; report this)"
                 .to_string()),
@@ -85,7 +87,8 @@ pub fn get_row(
     route_cols!(
         super::postgres::col_get(schema, pk),
         super::mysql::col_get(schema, pk),
-        super::sqlite::col_get(schema, pk)
+        super::sqlite::col_get(schema, pk),
+        super::d1::col_get(schema, pk)
     )
 }
 
@@ -97,7 +100,8 @@ pub fn insert_row(
     route_cols!(
         super::postgres::col_insert(schema, doc),
         super::mysql::col_insert(schema, doc),
-        super::sqlite::col_insert(schema, doc)
+        super::sqlite::col_insert(schema, doc),
+        super::d1::col_insert(schema, doc)
     )
 }
 
@@ -110,7 +114,8 @@ pub fn update_row(
     route_cols!(
         super::postgres::col_update(schema, pk, patch),
         super::mysql::col_update(schema, pk, patch),
-        super::sqlite::col_update(schema, pk, patch)
+        super::sqlite::col_update(schema, pk, patch),
+        super::d1::col_update(schema, pk, patch)
     )
 }
 
@@ -119,7 +124,8 @@ pub fn delete_row(schema: &Arc<TableSchema>, pk: &serde_json::Value) -> Result<(
     route_cols!(
         super::postgres::col_delete(schema, pk),
         super::mysql::col_delete(schema, pk),
-        super::sqlite::col_delete(schema, pk)
+        super::sqlite::col_delete(schema, pk),
+        super::d1::col_delete(schema, pk)
     )
 }
 
@@ -127,7 +133,8 @@ pub fn select_rows(q: &ColumnQuery) -> Result<Vec<serde_json::Value>, String> {
     route_cols!(
         super::postgres::col_select(q),
         super::mysql::col_select(q),
-        super::sqlite::col_select(q)
+        super::sqlite::col_select(q),
+        super::d1::col_select(q)
     )
 }
 
@@ -135,7 +142,8 @@ pub fn count(q: &ColumnQuery) -> Result<i64, String> {
     route_cols!(
         super::postgres::col_count(q),
         super::mysql::col_count(q),
-        super::sqlite::col_count(q)
+        super::sqlite::col_count(q),
+        super::d1::col_count(q)
     )
 }
 
@@ -143,7 +151,8 @@ pub fn exists(q: &ColumnQuery) -> Result<bool, String> {
     route_cols!(
         super::postgres::col_exists(q),
         super::mysql::col_exists(q),
-        super::sqlite::col_exists(q)
+        super::sqlite::col_exists(q),
+        super::d1::col_exists(q)
     )
 }
 
@@ -152,7 +161,8 @@ pub fn aggregate(q: &ColumnQuery, func: SqlAgg, field: &str) -> Result<serde_jso
     route_cols!(
         super::postgres::col_aggregate(q, func, field),
         super::mysql::col_aggregate(q, func, field),
-        super::sqlite::col_aggregate(q, func, field)
+        super::sqlite::col_aggregate(q, func, field),
+        super::d1::col_aggregate(q, func, field)
     )
 }
 
@@ -167,7 +177,8 @@ pub fn increment_column(
     route_cols!(
         super::postgres::col_increment(schema, pk, column, delta),
         super::mysql::col_increment(schema, pk, column, delta),
-        super::sqlite::col_increment(schema, pk, column, delta)
+        super::sqlite::col_increment(schema, pk, column, delta),
+        super::d1::col_increment(schema, pk, column, delta)
     )
 }
 
@@ -180,7 +191,8 @@ pub fn group_by(
     route_cols!(
         super::postgres::col_group_by(q, group_fields, aggs),
         super::mysql::col_group_by(q, group_fields, aggs),
-        super::sqlite::col_group_by(q, group_fields, aggs)
+        super::sqlite::col_group_by(q, group_fields, aggs),
+        super::d1::col_group_by(q, group_fields, aggs)
     )
 }
 
@@ -189,7 +201,8 @@ pub fn delete_all(q: &ColumnQuery) -> Result<u64, String> {
     route_cols!(
         super::postgres::col_delete_all(q),
         super::mysql::col_delete_all(q),
-        super::sqlite::col_delete_all(q)
+        super::sqlite::col_delete_all(q),
+        super::d1::col_delete_all(q)
     )
 }
 
@@ -198,7 +211,8 @@ pub fn update_all(q: &ColumnQuery, patch: &serde_json::Value) -> Result<u64, Str
     route_cols!(
         super::postgres::col_update_all(q, patch),
         super::mysql::col_update_all(q, patch),
-        super::sqlite::col_update_all(q, patch)
+        super::sqlite::col_update_all(q, patch),
+        super::d1::col_update_all(q, patch)
     )
 }
 

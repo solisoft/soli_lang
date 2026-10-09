@@ -114,6 +114,7 @@ may still exist under another name — try a synonym before writing it by hand.
 | Native mobile / desktop shells | `soli generate client`, `soli mobile build` / `publish`, `soli desktop build` | `docs/native/*.md`, `docs/native-bridge.md`, `docs/desktop.md`, `docs/auto-update.md` |
 | Native UI without HTML | EUI | `docs/eui/*.md` |
 | Deploy | `soli build`, `soli deploy` | `docs/deploy.md` |
+| Cloudflare Workers (no server; D1 or SoliDB) | `soli edge build`, `SOLI_DB_ADAPTER=d1` | `docs/edge.md` |
 | CI/CD on GitHub: checks, deploy, release executables | `.github/workflows/*.yml` | `docs/ci-cd.md` |
 | Fast numeric code: typed functions as machine code | `def f(n: Int) -> Int` | `docs/native-kernels.md` |
 | Debugging: breakpoints, query log, flamegraph, mail inbox | `soli serve --dev` | `docs/debugging.md`, `docs/live-reload.md` |

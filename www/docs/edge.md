@@ -32,9 +32,10 @@ npx wrangler deploy                          # on Cloudflare
 - **Every request** goes through `handle_request`, the function `soli serve`'s
   workers call: middleware, CSRF, routing, the action on the VM, the view and
   its layout.
-- **Model queries** reach SoliDB over HTTP(S) with the Worker's `fetch`. The
-  interpreter is synchronous and `fetch` is not, so the wasm stack *suspends*
-  on each query — [JavaScript Promise Integration](https://v8.dev/blog/jspi)
+- **Model queries** go to Cloudflare D1 through the Worker's binding, or to
+  SoliDB over HTTP(S) with `fetch`. The interpreter is synchronous and both are
+  asynchronous, so the wasm stack *suspends* on each query —
+  [JavaScript Promise Integration](https://v8.dev/blog/jspi)
   (`WebAssembly.Suspending` / `WebAssembly.promising`) — and resumes when the
   answer arrives. Your code does not change.
 
@@ -134,14 +135,55 @@ account from the token; with access to several, set `account_id` in
 
 ## Databases
 
-SoliDB models work as they do under `soli serve` — `find`, `where`, `create`,
-`update`, `delete`, `grouped`, validations, callbacks — over SoliDB's HTTP API.
-The Worker must be able to reach `SOLIDB_HOST`: a public `https://` address.
-Credentials follow the usual order (JWT login with `SOLIDB_USERNAME` /
-`SOLIDB_PASSWORD`, `SOLIDB_API_KEY`, then basic auth).
+Models work as they do under `soli serve` — `find`, `where`, `create`,
+`update`, `delete`, `count`, aggregates, `update_all` / `delete_all`,
+validations, callbacks — on either of two backends.
 
-Not available: PostgreSQL, MySQL and SQLite (native drivers), and the native
-SoliDB driver — the edge build always uses HTTP.
+### Cloudflare D1
+
+[D1](https://developers.cloudflare.com/d1/) is SQLite run by Cloudflare, next
+to the Worker: an app with D1 needs no database server of its own.
+
+```bash
+npx wrangler d1 create my-app-db        # prints the database_id
+```
+
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "my-app-db"
+database_id = "…"
+
+[vars]
+SOLI_DB_ADAPTER = "d1"
+```
+
+`SOLI_DB_ADAPTER = "d1"` puts models on the D1 adapter, and `DATABASE_URL`
+names the binding: `d1://DB`, which is the default. Under `wrangler dev` the
+database is local (`.wrangler/state`); `npx wrangler d1 execute my-app-db
+--local --command "SELECT …"` reads it. In `config/database.toml`, a D1
+connection is `adapter = "d1"`, `url = "d1://BINDING"`.
+
+It is the SQLite adapter's document model — a table per model with a `_key`
+and a JSON `doc` column, created on first write — and the SQLite adapter's
+SQL, sent to the binding with `prepare(…).bind(…).all()`. Each statement is a
+round trip, so writes use `RETURNING doc` rather than reading the row back.
+What D1 does not offer:
+
+- **Transactions.** D1 runs batches, not interactive transactions:
+  `Model.transaction` raises.
+- **Column-aware models** (a model that declares its columns) raise: store
+  them as documents.
+- **Jobs and cron**, which have no worker on the edge anyway.
+
+### SoliDB
+
+Over SoliDB's HTTP API. The Worker must be able to reach `SOLIDB_HOST`: a
+public `https://` address. Credentials follow the usual order (JWT login with
+`SOLIDB_USERNAME` / `SOLIDB_PASSWORD`, `SOLIDB_API_KEY`, then basic auth).
+
+Not available on the edge: PostgreSQL, MySQL and SQLite (native drivers), and
+the native SoliDB driver — the edge build uses D1 or SoliDB over HTTP.
 
 ## What runs on the edge
 
@@ -151,7 +193,7 @@ SoliDB driver — the edge build always uses HTTP.
 | views, layouts, partials, components, helpers | server-sent events, `stream`, blob streaming (answered `501`) |
 | query strings, URL-encoded forms, JSON | multipart uploads, file writes |
 | i18n from `config/locales` | background jobs, cron, sending mail |
-| SoliDB models over HTTP(S) | PostgreSQL, MySQL, SQLite, the native SoliDB driver |
+| models on D1, or on SoliDB over HTTP(S) | PostgreSQL, MySQL, SQLite, the native SoliDB driver; transactions on D1 |
 | the `HTTP` class (`fetch`); `HTTP.parallel*` run one after another | `--dev`: hot reload, dev bar, REPL |
 | static files from `public/` | PDF, Office, lossy WebP, `System.run` |
 
@@ -184,3 +226,5 @@ build ("… is not available on the edge (Cloudflare Workers) build").
 | `… is not available on the edge (Cloudflare Workers) build` | a builtin that needs a socket, a thread, a subprocess or a disk |
 | `no edge runtime found` from `soli edge build` | pass `--runtime` or set `SOLI_EDGE_RUNTIME` to the directory `build-edge.sh` wrote |
 | a model call hangs, then the request fails | `SOLIDB_HOST` is not reachable from Cloudflare (a LAN address, `localhost`) |
+| `no D1 binding named DB` | `wrangler.toml` lacks the `[[d1_databases]]` block whose `binding` the D1 url names |
+| `… is not supported on Cloudflare D1` | a transaction, a column-aware model, jobs or cron on a D1 connection |

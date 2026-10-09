@@ -14,6 +14,9 @@ pub enum Adapter {
     Mysql,
     /// SQLite document backend (`_key` + JSON `doc`), one file, no server.
     Sqlite,
+    /// Cloudflare D1: the SQLite document backend, reached through a Worker's
+    /// D1 binding (edge build). `DATABASE_URL` names the binding: `d1://DB`.
+    D1,
 }
 
 impl Adapter {
@@ -23,6 +26,7 @@ impl Adapter {
             Adapter::Postgres => "postgres",
             Adapter::Mysql => "mysql",
             Adapter::Sqlite => "sqlite",
+            Adapter::D1 => "d1",
         }
     }
 
@@ -32,11 +36,15 @@ impl Adapter {
             Adapter::Postgres => BackendCaps::postgres(),
             Adapter::Mysql => BackendCaps::mysql(),
             Adapter::Sqlite => BackendCaps::sqlite(),
+            Adapter::D1 => BackendCaps::d1(),
         }
     }
 
     pub fn is_sql(self) -> bool {
-        matches!(self, Adapter::Postgres | Adapter::Mysql | Adapter::Sqlite)
+        matches!(
+            self,
+            Adapter::Postgres | Adapter::Mysql | Adapter::Sqlite | Adapter::D1
+        )
     }
 }
 
@@ -78,6 +86,7 @@ impl AdapterConfig {
 /// - postgres, postgresql, pg
 /// - mysql, mariadb
 /// - sqlite, sqlite3
+/// - d1, cloudflare-d1
 pub fn parse_adapter(raw: Option<&str>) -> Result<Adapter, DbError> {
     let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(Adapter::Solidb);
@@ -87,6 +96,7 @@ pub fn parse_adapter(raw: Option<&str>) -> Result<Adapter, DbError> {
         "postgres" | "postgresql" | "pg" => Ok(Adapter::Postgres),
         "mysql" | "mariadb" => Ok(Adapter::Mysql),
         "sqlite" | "sqlite3" => Ok(Adapter::Sqlite),
+        "d1" | "cloudflare-d1" => Ok(Adapter::D1),
         other => Err(DbError::UnknownAdapter {
             value: other.to_string(),
         }),
@@ -125,6 +135,14 @@ mod tests {
         assert_eq!(parse_adapter(Some("sqlite")).unwrap(), Adapter::Sqlite);
         assert_eq!(parse_adapter(Some("SQLite3")).unwrap(), Adapter::Sqlite);
         assert!(Adapter::Sqlite.is_sql());
+    }
+
+    #[test]
+    fn parses_d1() {
+        assert_eq!(parse_adapter(Some("d1")).unwrap(), Adapter::D1);
+        assert_eq!(parse_adapter(Some("Cloudflare-D1")).unwrap(), Adapter::D1);
+        assert!(Adapter::D1.is_sql());
+        assert!(!Adapter::D1.caps().transactions);
     }
 
     #[test]

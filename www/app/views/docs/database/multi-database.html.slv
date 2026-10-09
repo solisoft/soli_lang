@@ -54,12 +54,12 @@
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">SOLI_DB_ADAPTER</code></td>
-                    <td class="py-3 px-4"><code>solidb</code>, <code>postgres</code>, <code>mysql</code>, or <code>sqlite</code></td>
+                    <td class="py-3 px-4"><code>solidb</code>, <code>postgres</code>, <code>mysql</code>, <code>sqlite</code>, or <code>d1</code> (Cloudflare Workers &mdash; see <a href="/docs/development-tools/edge#d1" class="text-amber-400 hover:underline">D1</a>)</td>
                     <td class="py-3 px-4"><code class="text-green-300">solidb</code></td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">DATABASE_URL</code></td>
-                    <td class="py-3 px-4">Required for SQL adapters</td>
+                    <td class="py-3 px-4">Required for SQL adapters; for <code>d1</code>, the binding (<code>d1://DB</code>, the default)</td>
                     <td class="py-3 px-4 text-gray-500">unset</td>
                 </tr>
                 <tr>
@@ -137,7 +137,7 @@ url = "sqlite://db/analytics.sqlite3"   # a path, not a server</code></pre>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">adapter</code></td>
                     <td class="py-3 px-4">all</td>
-                    <td class="py-3 px-4"><code>solidb</code>, <code>postgres</code>, <code>mysql</code>, or <code>sqlite</code></td>
+                    <td class="py-3 px-4"><code>solidb</code>, <code>postgres</code>, <code>mysql</code>, <code>sqlite</code>, or <code>d1</code> (Cloudflare Workers &mdash; see <a href="/docs/development-tools/edge#d1" class="text-amber-400 hover:underline">D1</a>)</td>
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">host</code> / <code class="text-amber-300">database</code></td>

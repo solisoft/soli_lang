@@ -55,7 +55,7 @@ pub fn is_sqlite() -> bool {
 
 /// Dispatch a SQL op to the active backend, or a clear missing-feature error.
 macro_rules! route_sql {
-    ($pg:expr, $my:expr, $lite:expr) => {{
+    ($pg:expr, $my:expr, $lite:expr, $d1:expr) => {{
         match active_adapter()? {
             Adapter::Mysql => {
                 #[cfg(feature = "mysql")]
@@ -87,6 +87,8 @@ macro_rules! route_sql {
                     Err(feature_missing("sqlite"))
                 }
             }
+            // Always compiled: no client library, the binding is the Worker's.
+            Adapter::D1 => $d1,
             Adapter::Solidb => {
                 Err("SQL facade used on a solidb connection (internal error; report this)".into())
             }
@@ -98,7 +100,8 @@ pub fn ensure_connected() -> Result<(), String> {
     route_sql!(
         super::postgres::ensure_connected(),
         super::mysql::ensure_connected(),
-        super::sqlite::ensure_connected()
+        super::sqlite::ensure_connected(),
+        super::d1::ensure_connected()
     )
 }
 
@@ -123,7 +126,8 @@ pub fn begin_transaction(isolation_level: Option<&str>) -> Result<String, String
     route_sql!(
         super::postgres::begin_transaction(isolation_level),
         super::mysql::begin_transaction(isolation_level),
-        super::sqlite::begin_transaction(isolation_level)
+        super::sqlite::begin_transaction(isolation_level),
+        super::d1::begin_transaction(isolation_level)
     )
 }
 
@@ -183,7 +187,8 @@ pub fn claim_jobs(
     route_sql!(
         super::postgres::claim_jobs(now_iso, worker_id, locked_until_iso, batch),
         super::mysql::claim_jobs(now_iso, worker_id, locked_until_iso, batch),
-        super::sqlite::claim_jobs(now_iso, worker_id, locked_until_iso, batch)
+        super::sqlite::claim_jobs(now_iso, worker_id, locked_until_iso, batch),
+        super::d1::claim_jobs(now_iso, worker_id, locked_until_iso, batch)
     )
 }
 
@@ -196,7 +201,8 @@ pub fn claim_cron_slot(
     route_sql!(
         super::postgres::claim_cron_slot(key, expected_next_run_at, patch),
         super::mysql::claim_cron_slot(key, expected_next_run_at, patch),
-        super::sqlite::claim_cron_slot(key, expected_next_run_at, patch)
+        super::sqlite::claim_cron_slot(key, expected_next_run_at, patch),
+        super::d1::claim_cron_slot(key, expected_next_run_at, patch)
     )
 }
 
@@ -208,7 +214,8 @@ pub fn insert(
     route_sql!(
         super::postgres::insert(table, key, document),
         super::mysql::insert(table, key, document),
-        super::sqlite::insert(table, key, document)
+        super::sqlite::insert(table, key, document),
+        super::d1::insert(table, key, document)
     )
 }
 
@@ -216,7 +223,8 @@ pub fn get(table: &str, key: &str) -> Result<Option<serde_json::Value>, String> 
     route_sql!(
         super::postgres::get(table, key),
         super::mysql::get(table, key),
-        super::sqlite::get(table, key)
+        super::sqlite::get(table, key),
+        super::d1::get(table, key)
     )
 }
 
@@ -229,7 +237,8 @@ pub fn update(
     route_sql!(
         super::postgres::update(table, key, document, merge),
         super::mysql::update(table, key, document, merge),
-        super::sqlite::update(table, key, document, merge)
+        super::sqlite::update(table, key, document, merge),
+        super::d1::update(table, key, document, merge)
     )
 }
 
@@ -237,7 +246,8 @@ pub fn delete(table: &str, key: &str) -> Result<(), String> {
     route_sql!(
         super::postgres::delete(table, key),
         super::mysql::delete(table, key),
-        super::sqlite::delete(table, key)
+        super::sqlite::delete(table, key),
+        super::d1::delete(table, key)
     )
 }
 
@@ -245,7 +255,8 @@ pub fn select(q: &ListQuery) -> Result<Vec<serde_json::Value>, String> {
     route_sql!(
         super::postgres::select(q),
         super::mysql::select(q),
-        super::sqlite::select(q)
+        super::sqlite::select(q),
+        super::d1::select(q)
     )
 }
 
@@ -253,7 +264,8 @@ pub fn select_by_keys(table: &str, keys: &[String]) -> Result<Vec<serde_json::Va
     route_sql!(
         super::postgres::select_by_keys(table, keys),
         super::mysql::select_by_keys(table, keys),
-        super::sqlite::select_by_keys(table, keys)
+        super::sqlite::select_by_keys(table, keys),
+        super::d1::select_by_keys(table, keys)
     )
 }
 
@@ -265,7 +277,8 @@ pub fn select_json_text_in(
     route_sql!(
         super::postgres::select_json_text_in(table, field, values),
         super::mysql::select_json_text_in(table, field, values),
-        super::sqlite::select_json_text_in(table, field, values)
+        super::sqlite::select_json_text_in(table, field, values),
+        super::d1::select_json_text_in(table, field, values)
     )
 }
 
@@ -277,7 +290,8 @@ pub fn group_by(
     route_sql!(
         super::postgres::group_by(q, group_fields, aggs),
         super::mysql::group_by(q, group_fields, aggs),
-        super::sqlite::group_by(q, group_fields, aggs)
+        super::sqlite::group_by(q, group_fields, aggs),
+        super::d1::group_by(q, group_fields, aggs)
     )
 }
 
@@ -285,7 +299,8 @@ pub fn count(q: &ListQuery) -> Result<i64, String> {
     route_sql!(
         super::postgres::count(q),
         super::mysql::count(q),
-        super::sqlite::count(q)
+        super::sqlite::count(q),
+        super::d1::count(q)
     )
 }
 
@@ -293,7 +308,8 @@ pub fn exists(q: &ListQuery) -> Result<bool, String> {
     route_sql!(
         super::postgres::exists(q),
         super::mysql::exists(q),
-        super::sqlite::exists(q)
+        super::sqlite::exists(q),
+        super::d1::exists(q)
     )
 }
 
@@ -301,7 +317,8 @@ pub fn aggregate(q: &ListQuery, func: SqlAgg, field: &str) -> Result<serde_json:
     route_sql!(
         super::postgres::aggregate(q, func, field),
         super::mysql::aggregate(q, func, field),
-        super::sqlite::aggregate(q, func, field)
+        super::sqlite::aggregate(q, func, field),
+        super::d1::aggregate(q, func, field)
     )
 }
 
@@ -309,7 +326,8 @@ pub fn delete_all(q: &ListQuery) -> Result<u64, String> {
     let result = route_sql!(
         super::postgres::delete_all(q),
         super::mysql::delete_all(q),
-        super::sqlite::delete_all(q)
+        super::sqlite::delete_all(q),
+        super::d1::delete_all(q)
     );
     if result.is_ok() {
         crate::interpreter::builtins::model::crud::mark_durable_write();
@@ -321,7 +339,8 @@ pub fn update_all(q: &ListQuery, patch: serde_json::Value) -> Result<u64, String
     let result = route_sql!(
         super::postgres::update_all(q, patch),
         super::mysql::update_all(q, patch),
-        super::sqlite::update_all(q, patch)
+        super::sqlite::update_all(q, patch),
+        super::d1::update_all(q, patch)
     );
     if result.is_ok() {
         crate::interpreter::builtins::model::crud::mark_durable_write();
@@ -333,7 +352,8 @@ pub fn ensure_table(table: &str) -> Result<(), String> {
     route_sql!(
         super::postgres::ensure_table(table),
         super::mysql::ensure_table(table),
-        super::sqlite::ensure_table(table)
+        super::sqlite::ensure_table(table),
+        super::d1::ensure_table(table)
     )
 }
 
@@ -341,7 +361,8 @@ pub fn drop_table(table: &str) -> Result<(), String> {
     route_sql!(
         super::postgres::drop_table(table),
         super::mysql::drop_table(table),
-        super::sqlite::drop_table(table)
+        super::sqlite::drop_table(table),
+        super::d1::drop_table(table)
     )
 }
 
@@ -350,7 +371,8 @@ pub fn execute_ddl(sql: &str) -> Result<(), String> {
     route_sql!(
         super::postgres::execute_ddl(sql),
         super::mysql::execute_ddl(sql),
-        super::sqlite::execute_ddl(sql)
+        super::sqlite::execute_ddl(sql),
+        super::d1::execute_ddl(sql)
     )
 }
 
@@ -363,7 +385,8 @@ pub fn execute_raw(sql: &str) -> Result<(), String> {
     route_sql!(
         super::postgres::execute_raw(sql),
         super::mysql::execute_raw(sql),
-        super::sqlite::execute_raw(sql)
+        super::sqlite::execute_raw(sql),
+        super::d1::execute_raw(sql)
     )
 }
 
@@ -391,7 +414,8 @@ pub fn insert_many(rows_table: &str, rows: &[(String, serde_json::Value)]) -> Re
         let inserted: Result<u64, String> = route_sql!(
             super::postgres::insert_many(rows_table, chunk),
             super::mysql::insert_many(rows_table, chunk),
-            super::sqlite::insert_many(rows_table, chunk)
+            super::sqlite::insert_many(rows_table, chunk),
+            super::d1::insert_many(rows_table, chunk)
         );
         match inserted {
             Ok(n) => total += n,
@@ -422,7 +446,8 @@ pub fn query_raw(
     route_sql!(
         super::postgres::query_raw(sql, params),
         super::mysql::query_raw(sql, params),
-        super::sqlite::query_raw(sql, params)
+        super::sqlite::query_raw(sql, params),
+        super::d1::query_raw(sql, params)
     )
 }
 
@@ -432,7 +457,8 @@ pub fn create_or_drop_database(drop: bool) -> Result<String, String> {
     route_sql!(
         super::postgres::create_or_drop_database(drop),
         super::mysql::create_or_drop_database(drop),
-        super::sqlite::create_or_drop_database(drop)
+        super::sqlite::create_or_drop_database(drop),
+        super::d1::create_or_drop_database(drop)
     )
 }
 
@@ -447,7 +473,8 @@ pub fn increment_field(
     route_sql!(
         super::postgres::increment_field(table, key, field, delta),
         super::mysql::increment_field(table, key, field, delta),
-        super::sqlite::increment_field(table, key, field, delta)
+        super::sqlite::increment_field(table, key, field, delta),
+        super::d1::increment_field(table, key, field, delta)
     )
 }
 
@@ -456,7 +483,8 @@ pub fn list_index_names(table: &str) -> Result<Vec<String>, String> {
     route_sql!(
         super::postgres::list_index_names(table),
         super::mysql::list_index_names(table),
-        super::sqlite::list_index_names(table)
+        super::sqlite::list_index_names(table),
+        super::d1::list_index_names(table)
     )
 }
 
@@ -471,7 +499,8 @@ pub fn ensure_doc_index(
     route_sql!(
         super::postgres::ensure_doc_index(table, fields, name, unique),
         super::mysql::ensure_doc_index(table, fields, name, unique),
-        super::sqlite::ensure_doc_index(table, fields, name, unique)
+        super::sqlite::ensure_doc_index(table, fields, name, unique),
+        super::d1::ensure_doc_index(table, fields, name, unique)
     )
 }
 
@@ -479,7 +508,8 @@ pub fn dump_schema() -> Result<String, String> {
     route_sql!(
         super::postgres::dump_schema(),
         super::mysql::dump_schema(),
-        super::sqlite::dump_schema()
+        super::sqlite::dump_schema(),
+        super::d1::dump_schema()
     )
 }
 
@@ -502,7 +532,7 @@ pub fn active_dialect() -> Result<super::sql_compile::Dialect, String> {
     match active_adapter()? {
         Adapter::Postgres => Ok(Dialect::Postgres),
         Adapter::Mysql => Ok(Dialect::Mysql),
-        Adapter::Sqlite => Ok(Dialect::Sqlite),
+        Adapter::Sqlite | Adapter::D1 => Ok(Dialect::Sqlite),
         Adapter::Solidb => Err("SQL dialect requested on a solidb connection".into()),
     }
 }
@@ -511,7 +541,8 @@ pub fn ensure_migrations_table() -> Result<(), String> {
     route_sql!(
         super::postgres::ensure_migrations_table(),
         super::mysql::ensure_migrations_table(),
-        super::sqlite::ensure_migrations_table()
+        super::sqlite::ensure_migrations_table(),
+        super::d1::ensure_migrations_table()
     )
 }
 
@@ -519,7 +550,8 @@ pub fn list_applied_migrations() -> Result<Vec<(String, String)>, String> {
     route_sql!(
         super::postgres::list_applied_migrations(),
         super::mysql::list_applied_migrations(),
-        super::sqlite::list_applied_migrations()
+        super::sqlite::list_applied_migrations(),
+        super::d1::list_applied_migrations()
     )
 }
 
@@ -527,7 +559,8 @@ pub fn record_migration(version: &str, name: &str) -> Result<(), String> {
     route_sql!(
         super::postgres::record_migration(version, name),
         super::mysql::record_migration(version, name),
-        super::sqlite::record_migration(version, name)
+        super::sqlite::record_migration(version, name),
+        super::d1::record_migration(version, name)
     )
 }
 
@@ -535,7 +568,8 @@ pub fn remove_migration(version: &str) -> Result<(), String> {
     route_sql!(
         super::postgres::remove_migration(version),
         super::mysql::remove_migration(version),
-        super::sqlite::remove_migration(version)
+        super::sqlite::remove_migration(version),
+        super::d1::remove_migration(version)
     )
 }
 
@@ -544,7 +578,7 @@ pub fn list_query_from_parts(parts: ListQueryParts) -> Result<ListQuery, String>
     let dialect = match active_adapter()? {
         Adapter::Mysql => Dialect::Mysql,
         Adapter::Postgres => Dialect::Postgres,
-        Adapter::Sqlite => Dialect::Sqlite,
+        Adapter::Sqlite | Adapter::D1 => Dialect::Sqlite,
         Adapter::Solidb => {
             return Err("list_query_from_parts on solidb connection".into());
         }
