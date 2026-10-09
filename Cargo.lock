@@ -7266,7 +7266,7 @@ dependencies = [
 
 [[package]]
 name = "solilang"
-version = "2.18.4"
+version = "2.18.5"
 dependencies = [
  "aes-gcm",
  "ahash",
@@ -10302,11 +10302,3 @@ dependencies = [
  "syn 3.0.3",
  "winnow 1.0.4",
 ]
-
-[[patch.unused]]
-name = "eui-client"
-version = "0.8.0"
-
-[[patch.unused]]
-name = "eui-proto"
-version = "0.8.0"
