@@ -68,6 +68,42 @@ const MAX_INCLUDE_DEPTH: usize = 64;
 
 thread_local! {
     static INCLUDE_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+
+    /// This thread's resolved includes, by cache, kind and the name as written
+    /// (`"card"`, `"posts/row"`). A page of fifty components asked for the same
+    /// name fifty times, and each time formatted the on-disk name, took two
+    /// locks, hashed a path and re-tested its extension.
+    static INCLUDES: RefCell<IncludeCache> = RefCell::new(IncludeCache::default());
+}
+
+/// Bumped by [`TemplateCache::clear`]: every thread drops its [`INCLUDES`] on
+/// its next include, as a hot reload must.
+static INCLUDE_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Tells two `TemplateCache`s apart in [`INCLUDES`]: an engine's views and the
+/// app's resolve the same name to different files.
+static NEXT_CACHE_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[derive(Default)]
+struct IncludeCache {
+    generation: u64,
+    /// By `(cache id, is a component include)`, then by name: a hit looks the
+    /// name up as written, with nothing allocated.
+    entries: HashMap<(u64, bool), IncludeNames, ahash::RandomState>,
+}
+
+type IncludeNames = HashMap<Box<str>, Rc<IncludeEntry>, ahash::RandomState>;
+
+/// What an include name resolves to, worked out once per thread.
+struct IncludeEntry {
+    /// The app/views-relative name: `components/card`, `posts/_row`.
+    resolved_name: String,
+    path: Arc<PathBuf>,
+    /// `path` as the renderer's error messages print it.
+    path_str: String,
+    nodes: Arc<Vec<parser::TemplateNode>>,
+    is_component: bool,
+    markdown: bool,
 }
 
 /// Template cache that stores parsed templates and tracks file changes.
@@ -77,6 +113,8 @@ thread_local! {
 pub struct TemplateCache {
     /// Base directory for views (e.g., app/views)
     views_dir: PathBuf,
+    /// This cache's key in the per-thread include cache ([`INCLUDES`]).
+    id: u64,
     /// Cached parsed templates (PathBuf -> nodes).
     cache: RwLock<HashMap<PathBuf, CachedTemplate, ahash::RandomState>>,
     /// Cached path resolutions (template_name -> resolved_path).
@@ -100,11 +138,42 @@ enum IncludeKind {
     Component,
 }
 
+impl IncludeKind {
+    /// The app/views-relative name an include of this kind resolves `name` to.
+    fn resolve_name(self, name: &str) -> String {
+        match self {
+            IncludeKind::Component => {
+                // A `/`- or `.`-bearing name is app/views-relative and used
+                // verbatim; a bare name resolves under components/.
+                if name.contains('/') || name.contains('.') {
+                    name.to_string()
+                } else {
+                    format!("components/{}", name)
+                }
+            }
+            IncludeKind::Partial => {
+                // Partials start with `_`, except components/ paths (kept clean
+                // so the block form's `components/<name>` resolves like the
+                // function-call `component()` helper).
+                if name.starts_with("components/") || name.contains("/components/") {
+                    name.to_string()
+                } else if let Some((dir, file)) = name.rsplit_once('/') {
+                    // e.g., "users/card" -> "users/_card"
+                    format!("{}/_{}", dir, file)
+                } else {
+                    format!("_{}", name)
+                }
+            }
+        }
+    }
+}
+
 impl TemplateCache {
     /// Create a new template cache for the given views directory.
     pub fn new(views_dir: impl Into<PathBuf>) -> Self {
         Self {
             views_dir: views_dir.into(),
+            id: NEXT_CACHE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             // ahash: every render and include looks a path or a name up here,
             // and the default SipHash of a path was ~5% of a page of components.
             cache: RwLock::new(HashMap::default()),
@@ -437,43 +506,8 @@ impl TemplateCache {
         data: &Value,
         kind: IncludeKind,
     ) -> Result<String, String> {
-        // Resolve the on-disk name for this include kind.
-        let resolved_name = match kind {
-            IncludeKind::Component => {
-                // A `/`- or `.`-bearing name is app/views-relative and used
-                // verbatim; a bare name resolves under components/.
-                if name.contains('/') || name.contains('.') {
-                    name.to_string()
-                } else {
-                    format!("components/{}", name)
-                }
-            }
-            IncludeKind::Partial => {
-                // Partials start with `_`, except components/ paths (kept clean
-                // so the block form's `components/<name>` resolves like the
-                // function-call `component()` helper).
-                if name.starts_with("components/") || name.contains("/components/") {
-                    name.to_string()
-                } else if name.contains('/') {
-                    // e.g., "users/card" -> "users/_card"
-                    let parts: Vec<&str> = name.rsplitn(2, '/').collect();
-                    if parts.len() == 2 {
-                        format!("{}/_{}", parts[1], parts[0])
-                    } else {
-                        format!("_{}", name)
-                    }
-                } else {
-                    format!("_{}", name)
-                }
-            }
-        };
-
-        // Anything resolving under components/ is a component for the dev bar,
-        // regardless of which syntax reached us (the block form arrives here as
-        // a Partial include with a `components/<name>` path).
-        let is_component = matches!(kind, IncludeKind::Component)
-            || resolved_name.starts_with("components/")
-            || resolved_name.contains("/components/");
+        let entry = self.include_entry(name, kind)?;
+        let is_component = entry.is_component;
         let (span_kind, marker) = if is_component {
             (crate::serve::span_log::SpanKind::Component, "component")
         } else {
@@ -496,14 +530,14 @@ impl TemplateCache {
         // progress) owns a throwaway frame instead — captures are dropped.
         let _content_frame = content_store::ensure_frame();
 
-        let template_path = self.resolve_template_path(&resolved_name)?;
-        let nodes = self.get_or_load_template(&template_path)?;
+        let template_path = &*entry.path;
+        let nodes = &entry.nodes;
 
         // A component with a class (`app/components/card_component.sl` defining
         // `CardComponent`) renders with an instance bound as `this`.
         let component_data;
         let data = match is_component
-            .then(|| instantiate_component_class(&resolved_name, data))
+            .then(|| instantiate_component_class(&entry.resolved_name, data))
             .transpose()?
             .flatten()
         {
@@ -539,26 +573,22 @@ impl TemplateCache {
         let on_vm = if crate::interpreter::executor::template_lenient_vars_enabled() {
             let content_before = vm_template::check_enabled().then(content_store::snapshot);
             match vm_template::render_view(
-                &nodes,
+                nodes,
                 data,
                 &interpreter.environment,
                 self,
-                &template_path,
+                template_path,
             ) {
                 Some(rendered) if vm_template::check_enabled() => {
                     content_store::restore(content_before.flatten());
                     let tree = render_with_interpreter(
                         &mut interpreter,
-                        &nodes,
+                        nodes,
                         data,
                         Some(&partial_renderer),
-                        Some(&template_path.to_string_lossy()),
+                        Some(&entry.path_str),
                     )?;
-                    vm_template::report_difference(
-                        &template_path.to_string_lossy(),
-                        &rendered.html,
-                        &tree,
-                    );
+                    vm_template::report_difference(&entry.path_str, &rendered.html, &tree);
                     Some(tree)
                 }
                 Some(rendered) => Some(rendered.html),
@@ -571,10 +601,10 @@ impl TemplateCache {
             Some(html) => html,
             None => render_with_interpreter(
                 &mut interpreter,
-                &nodes,
+                nodes,
                 data,
                 Some(&partial_renderer),
-                Some(&template_path.to_string_lossy()),
+                Some(&entry.path_str),
             )?,
         };
 
@@ -607,7 +637,7 @@ impl TemplateCache {
         // If the include is a markdown file, convert to HTML. URL-neutralizing
         // converter — the ERB pass already escaped interpolated data (see the
         // matching note in `render`).
-        let result = if is_markdown_template(&template_path) {
+        let result = if entry.markdown {
             markdown_to_html_safe_urls(&content)
         } else {
             content
@@ -625,6 +655,61 @@ impl TemplateCache {
             crate::metrics::Metrics::global().record_template_render(render_start.elapsed());
         }
         Ok(result)
+    }
+
+    /// Resolve an include once per thread: name, path, parsed nodes and the
+    /// facts about them every render of it asks again. Failures are not kept,
+    /// so a missing partial is looked for afresh, as before.
+    fn include_entry(&self, name: &str, kind: IncludeKind) -> Result<Rc<IncludeEntry>, String> {
+        let generation = INCLUDE_GENERATION.load(std::sync::atomic::Ordering::Acquire);
+        let is_component_kind = matches!(kind, IncludeKind::Component);
+        let found = INCLUDES.with(|includes| {
+            let mut includes = includes.borrow_mut();
+            if includes.generation != generation {
+                includes.entries.clear();
+                includes.generation = generation;
+            }
+            includes
+                .entries
+                .get(&(self.id, is_component_kind))
+                .and_then(|names| names.get(name))
+                .cloned()
+        });
+        if let Some(entry) = found {
+            return Ok(entry);
+        }
+
+        let resolved_name = kind.resolve_name(name);
+        // Anything resolving under components/ is a component for the dev bar,
+        // regardless of which syntax reached us (the block form arrives here as
+        // a Partial include with a `components/<name>` path).
+        let is_component = is_component_kind
+            || resolved_name.starts_with("components/")
+            || resolved_name.contains("/components/");
+        let path = self.resolve_template_path(&resolved_name)?;
+        let nodes = self.get_or_load_template(&path)?;
+        let entry = Rc::new(IncludeEntry {
+            markdown: is_markdown_template(&path),
+            path_str: path.to_string_lossy().into_owned(),
+            resolved_name,
+            path,
+            nodes,
+            is_component,
+        });
+        INCLUDES.with(|includes| {
+            let mut includes = includes.borrow_mut();
+            if includes.generation == generation {
+                let names = includes
+                    .entries
+                    .entry((self.id, is_component_kind))
+                    .or_default();
+                if names.len() >= PATH_CACHE_MAX_SIZE {
+                    names.clear();
+                }
+                names.insert(name.into(), entry.clone());
+            }
+        });
+        Ok(entry)
     }
 
     /// Render content with a named layout, reusing an existing interpreter.
@@ -872,6 +957,7 @@ impl TemplateCache {
 
     /// Clear the template cache (useful for hot reload).
     pub fn clear(&self) {
+        INCLUDE_GENERATION.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         if let Ok(mut c) = self.cache.write() {
             c.clear();
         }
@@ -1869,6 +1955,34 @@ mod tests {
             )
             .unwrap_err();
         assert!(err.contains("not found"), "got: {}", err);
+    }
+
+    /// An include is resolved once per thread; a hot reload (`clear`) must
+    /// still reach it.
+    #[test]
+    fn a_cached_include_follows_a_reload() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views)?;
+        let cache = TemplateCache::new(&views);
+        let data = Value::Hash(Rc::new(RefCell::new(Default::default())));
+
+        fs::write(views.join("_row.html.slv"), "first")?;
+        assert_eq!(cache.render_partial("row", &data)?, "first");
+
+        fs::write(views.join("_row.html.slv"), "second")?;
+        assert_eq!(cache.render_partial("row", &data)?, "first");
+        cache.clear();
+        assert_eq!(cache.render_partial("row", &data)?, "second");
+
+        // Another cache over other views resolves the same name to its own file.
+        let other_views = dir.path().join("other");
+        fs::create_dir_all(&other_views)?;
+        fs::write(other_views.join("_row.html.slv"), "other")?;
+        let other = TemplateCache::new(&other_views);
+        assert_eq!(other.render_partial("row", &data)?, "other");
+        assert_eq!(cache.render_partial("row", &data)?, "second");
+        Ok(())
     }
 
     #[test]
