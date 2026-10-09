@@ -412,7 +412,7 @@ mysql = { version = "28.0.0", features = [
     "rustls-tls-ring",
 ], optional = true }
 
-rusqlite = { version = "0.31", features = ["bundled", "serde_json"], optional = true }
+rusqlite = { version = "0.40", features = ["bundled", "serde_json"], optional = true }
 
 # Cron expression parsing for the job scheduler (src/jobs/scheduler.rs). Six
 # fields (`sec min hour dom mon dow`) — the same crate and semantics the
