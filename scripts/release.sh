@@ -78,8 +78,27 @@ PY
 # Update Cargo.lock package version for solilang
 cargo check --quiet 2>/dev/null || true
 
+# edge/ is a crate of its own that depends on solilang by path, and its lock
+# records solilang's version: left behind, CI's `cargo check --locked` of the
+# Workers build fails on every release (it did on v2.19.1 and v2.20.0). Only
+# that one line changes, so it is rewritten rather than re-resolved.
+python3 - "$CURRENT" "$NEW_VERSION" <<'PY'
+import sys
+from pathlib import Path
+
+current, new = sys.argv[1], sys.argv[2]
+path = Path("edge/Cargo.lock")
+if path.exists():
+    text = path.read_text()
+    old = f'name = "solilang"\nversion = "{current}"\n'
+    if text.count(old) != 1:
+        sys.exit(f"Error: expected solilang {current} once in edge/Cargo.lock")
+    path.write_text(text.replace(old, f'name = "solilang"\nversion = "{new}"\n'))
+    print(f"edge/Cargo.lock -> {new}")
+PY
+
 # Commit and tag
-git add Cargo.toml Cargo.lock
+git add Cargo.toml Cargo.lock edge/Cargo.lock
 git commit -m "chore: bump version to v${NEW_VERSION}"
 git tag -a "$TAG" -m "Release $TAG"
 
