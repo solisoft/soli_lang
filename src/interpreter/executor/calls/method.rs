@@ -543,7 +543,7 @@ impl Interpreter {
                 }
                 Some(Ok(Value::Bool(items.is_empty())))
             }
-            "includes?" | "include?" | "contains" => {
+            "includes?" | "include?" | "contains" | "contains?" => {
                 if arguments.len() != 1 {
                     return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
                 }
@@ -674,7 +674,9 @@ impl Interpreter {
             "first" => self.array_first(items, arguments, span),
             "last" => self.array_last(items, arguments, span),
             "empty?" => self.array_empty(items, arguments, span),
-            "includes?" | "include?" | "contains" => self.array_include(items, arguments, span),
+            "includes?" | "include?" | "contains" | "contains?" => {
+                self.array_include(items, arguments, span)
+            }
             "sample" => self.array_sample(items, arguments, span),
             "shuffle" => self.array_shuffle(items, arguments, span),
             "take" => self.array_take(items, arguments, span),

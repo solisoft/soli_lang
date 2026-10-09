@@ -1329,6 +1329,12 @@ const CASES: &[(&str, &str)] = &[
         "instance_send",
         "class Policy\n  def edit?\n    true\n  end\n  def scaled(n, k)\n    n * k\n  end\n  def check(action)\n    this.send(action + \"?\")\n  end\nend\np = new Policy()\nprint(p.send(\"edit?\"))\nprint(p.send(\"scaled\", 3, 4))\nprint(p.check(\"edit\"))",
     ),
+    (
+        // `contains?` is `contains`, named as the predicate it is, on strings
+        // and arrays.
+        "contains_predicate",
+        "print(\"soli lang\".contains?(\"lang\"))\nprint(\"soli\".contains?(\"x\"))\nprint([1, 2, 3].contains?(2))\nprint([1, 2].contains?(5))",
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

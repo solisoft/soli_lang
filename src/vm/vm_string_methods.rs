@@ -239,7 +239,7 @@ impl Vm {
             }
 
             // --- One-arg methods ---
-            "contains" => {
+            "contains" | "contains?" => {
                 check_arity(1, args.len(), span)?;
                 let sub = expect_string(&args[0], "contains", span)?;
                 Ok(Value::Bool(s.contains(sub)))

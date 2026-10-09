@@ -394,7 +394,7 @@ impl Interpreter {
                 }
                 Some(Ok(Value::Bool(text.is_empty())))
             }
-            "contains" | "includes?" | "include?" => {
+            "contains" | "contains?" | "includes?" | "include?" => {
                 if arguments.len() != 1 {
                     return Some(Err(RuntimeError::wrong_arity(1, arguments.len(), span)));
                 }
@@ -616,7 +616,7 @@ impl Interpreter {
                 ))
             }
             "trim" | "strip" => Ok(reuse_or_slice(s, text.trim())),
-            "contains" => self.string_contains(text, arguments, span),
+            "contains" | "contains?" => self.string_contains(text, arguments, span),
             "starts_with" => self.string_starts_with(text, arguments, span),
             "ends_with" => self.string_ends_with(text, arguments, span),
             "split" => self.string_split(text, arguments, span),

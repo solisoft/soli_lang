@@ -396,7 +396,7 @@ impl Vm {
                 arr.borrow_mut().extend(to_append);
                 Ok(Value::Array(arr.clone()))
             }
-            "contains" | "include?" | "includes?" => {
+            "contains" | "contains?" | "include?" | "includes?" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
                 }

@@ -2303,16 +2303,18 @@ impl Interpreter {
             | "each_with_index" | "reduce" | "fold" | "find" | "index_of" | "any?" | "all?"
             | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "compact_blank" | "concat"
             | "flatten" | "first" | "last" | "empty?" | "includes?" | "include?" | "contains"
-            | "sample" | "shuffle" | "take" | "drop" | "slice" | "zip" | "sum" | "min" | "max"
-            | "push" | "pop" | "clear" | "get" | "dig" | "pluck" | "pick" | "to_string"
-            | "sum_by" | "group_by" | "index_by" | "count_by" | "tally" | "avg" | "avg_by"
-            | "uniq_by" | "max_by" | "min_by" | "filter_by" | "find_by" | "to_json" | "join"
-            | "is_a?" | "all" | "includes" | "order" | "delete" | "delete_at" | "shift"
-            | "unshift" | "insert" | "rotate" | "reject" | "none?" | "one?" | "values_at"
-            | "count" | "intersection" | "union" | "difference" => Ok(Value::method(ValueMethod {
-                receiver: Box::new(obj_val),
-                method_name: name.to_string(),
-            })),
+            | "contains?" | "sample" | "shuffle" | "take" | "drop" | "slice" | "zip" | "sum"
+            | "min" | "max" | "push" | "pop" | "clear" | "get" | "dig" | "pluck" | "pick"
+            | "to_string" | "sum_by" | "group_by" | "index_by" | "count_by" | "tally" | "avg"
+            | "avg_by" | "uniq_by" | "max_by" | "min_by" | "filter_by" | "find_by" | "to_json"
+            | "join" | "is_a?" | "all" | "includes" | "order" | "delete" | "delete_at"
+            | "shift" | "unshift" | "insert" | "rotate" | "reject" | "none?" | "one?"
+            | "values_at" | "count" | "intersection" | "union" | "difference" => {
+                Ok(Value::method(ValueMethod {
+                    receiver: Box::new(obj_val),
+                    method_name: name.to_string(),
+                }))
+            }
             _ => Err(RuntimeError::NoSuchProperty {
                 value_type: "Array".to_string(),
                 property: name.to_string(),
@@ -2421,7 +2423,7 @@ impl Interpreter {
             // Enumerable-style array passthrough — materializes on call.
             | "length" | "len" | "size" | "each" | "map" | "filter" | "reduce" | "find"
             | "any?" | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact"
-            | "compact_blank" | "flatten" | "last" | "empty?" | "includes?" | "contains"
+            | "compact_blank" | "flatten" | "last" | "empty?" | "includes?" | "contains" | "contains?"
             | "sample" | "shuffle" | "take" | "drop" | "slice" | "zip" | "to_string" | "to_json"
             | "to_a" | "to_array" => Ok(Value::method(ValueMethod {
                 receiver: Box::new(obj_val),
@@ -2482,7 +2484,7 @@ impl Interpreter {
         match name {
             // Core string methods
             "length" | "len" | "size" | "to_s" | "to_string" | "to_i" | "to_int" | "to_f" | "to_float"
-            | "upcase" | "uppercase" | "downcase" | "lowercase" | "trim" | "strip" | "contains" | "starts_with"
+            | "upcase" | "uppercase" | "downcase" | "lowercase" | "trim" | "strip" | "contains" | "contains?" | "starts_with"
             | "ends_with" | "split" | "index_of" | "substring" | "replace" | "lpad"
             | "rpad" | "join" | "empty?"
             // Ruby-style methods

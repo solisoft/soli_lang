@@ -412,6 +412,7 @@ s = "Hello, World!";
 print(s.sub(0, 5));        # "Hello" (from index 0, length 5)
 print(s.find("World"));    # 7 (index of first occurrence)
 print(s.contains("Hello"));  # true
+print(s.contains?("Hello")); # true — `contains?` is `contains`, named as a predicate
 print(s.starts_with("Hell"));  # true
 print(s.ends_with("!"));      # true
 print(s.casecmp?("hello, world!"));  # true (case-insensitive equality)

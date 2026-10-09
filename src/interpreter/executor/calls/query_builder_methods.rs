@@ -113,8 +113,9 @@ impl Interpreter {
             // user.posts.map(...), user.posts.length, etc.
             "length" | "len" | "size" | "each" | "map" | "filter" | "reduce" | "find" | "any?"
             | "all?" | "sort" | "sort_by" | "reverse" | "uniq" | "compact" | "compact_blank"
-            | "flatten" | "last" | "empty?" | "includes?" | "contains" | "sample" | "shuffle"
-            | "take" | "drop" | "zip" | "to_string" | "to_json" | "is_a?" | "to_a" | "to_array" => {
+            | "flatten" | "last" | "empty?" | "includes?" | "contains" | "contains?" | "sample"
+            | "shuffle" | "take" | "drop" | "zip" | "to_string" | "to_json" | "is_a?" | "to_a"
+            | "to_array" => {
                 let materialized =
                     crate::interpreter::builtins::model::execute_query_builder(&qb.borrow());
                 let method = Rc::new(crate::interpreter::value::ValueMethod {

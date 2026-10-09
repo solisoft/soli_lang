@@ -212,7 +212,7 @@ impl TypeChecker {
                 params: vec![],
                 return_type: Box::new(Type::Bool),
             }),
-            "include?" | "contains" | "includes?" | "includes" => Ok(Type::Function {
+            "include?" | "contains" | "contains?" | "includes?" | "includes" => Ok(Type::Function {
                 params: vec![inner_type.clone()],
                 return_type: Box::new(Type::Bool),
             }),
@@ -523,7 +523,7 @@ impl TypeChecker {
                 return_type: Box::new(Type::Int),
             }),
             "starts_with?" | "ends_with?" | "empty?" | "include?" | "includes?" | "contains"
-            | "starts_with" | "ends_with" => Ok(Type::Function {
+            | "contains?" | "starts_with" | "ends_with" => Ok(Type::Function {
                 params: vec![Type::String],
                 return_type: Box::new(Type::Bool),
             }),

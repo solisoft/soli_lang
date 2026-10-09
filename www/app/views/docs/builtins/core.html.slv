@@ -464,8 +464,9 @@ h1 = {"a": 1}; h2 = {"a": 2}; h1.merge(h2)  # {"a": 2}</code></pre>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Check if a string contains a substring.</p>
+                    <p class="text-gray-400 mb-3">Check if a string contains a substring. <code>str.contains?(sub)</code> is the same, named as the predicate it is.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm">"hello world".contains("world")  # true
+"hello world".contains?("world") # true
 "hello".contains("xyz")          # false</code></pre>
                 </div>
             </section>

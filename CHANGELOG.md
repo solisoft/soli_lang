@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+* **language:** **`contains?` on strings and arrays.** `"soli lang".contains?("lang")`, `[1, 2].contains?(2)`: the same as `contains`, named as the predicate it is, like `includes?`, `starts_with?` and `ends_with?`. On both engines, in views, and known to the type checker.
+
 ### Performance
 
 * **vm:** **`obj.send("name", …)` on an instance runs on the VM: a whole controller no longer drops to the interpreter for it.** The VM had no instance `send`, so a call such as `policy.send(action + "?")` — the authorisation pattern of a `before_action` — raised *Cannot access property 'send'*, and that hook, and every action behind it, was re-run on the tree-walker and stayed there. It now calls the named method with the remaining arguments, unless the class defines its own `send`. Across the grc, bonfire, syndic and cosywee suites this was the only construct still demoting handlers: syndic's 98 demoted hooks and actions (150 demotions) are now 0. An action behind such a hook, 50 rows: 37.4 → 31.2 µs of CPU per request, 365k → 426k requests per second.
