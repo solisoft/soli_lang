@@ -62,7 +62,7 @@ const NOMINAL_HEIGHT: u32 = 800;
 fn admit() -> &'static Semaphore {
     static ADMIT: OnceLock<Semaphore> = OnceLock::new();
     ADMIT.get_or_init(|| {
-        let n = std::env::var("SOLI_EUI_VIEW_CONCURRENCY")
+        let n = crate::platform::env::var("SOLI_EUI_VIEW_CONCURRENCY")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .filter(|n| *n > 0)

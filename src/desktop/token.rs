@@ -22,7 +22,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use bytes::Bytes;
 use hyper::{Response, StatusCode};

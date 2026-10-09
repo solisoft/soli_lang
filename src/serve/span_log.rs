@@ -26,7 +26,7 @@
 //!   already enforces strict pairing so a Drop guard is unnecessary.
 
 use std::cell::{Cell, RefCell};
-use std::time::Instant;
+use web_time::Instant;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SpanKind {

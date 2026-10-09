@@ -678,7 +678,7 @@ fn invoke_middleware_with_frame(
     // middleware on every request.
     let record_metrics = crate::metrics::metrics_enabled();
     let record_dev = middleware_log::is_enabled();
-    let mw_start = (record_metrics || record_dev).then(std::time::Instant::now);
+    let mw_start = (record_metrics || record_dev).then(web_time::Instant::now);
 
     // `def name` without a parameter list reads the request through the `req`
     // global, as an action does — so publish this request's hash there (it
@@ -784,7 +784,7 @@ fn stays_on_tree_walker(name: &str, handler: &Value, interpreter: &Interpreter) 
     }
     let reason = bare_call_in(handler, interpreter);
     if let Some(ref reason) = reason {
-        if std::env::var("SOLI_ENGINE_LOG")
+        if crate::platform::env::var("SOLI_ENGINE_LOG")
             .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         {
             eprintln!("[soli engine] middleware '{name}' runs on the interpreter: {reason}");

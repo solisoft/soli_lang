@@ -91,7 +91,7 @@ pub fn enabled() -> bool {
     static FROM_ENV: OnceLock<bool> = OnceLock::new();
     *FROM_ENV.get_or_init(|| {
         !matches!(
-            std::env::var("SOLI_NATIVE")
+            crate::platform::env::var("SOLI_NATIVE")
                 .unwrap_or_default()
                 .trim()
                 .to_ascii_lowercase()
@@ -113,7 +113,7 @@ pub fn log_level() -> u8 {
     if level != u8::MAX {
         return level;
     }
-    let parsed = std::env::var("SOLI_NATIVE_LOG")
+    let parsed = crate::platform::env::var("SOLI_NATIVE_LOG")
         .ok()
         .and_then(|v| v.trim().parse::<u8>().ok())
         .unwrap_or(0);

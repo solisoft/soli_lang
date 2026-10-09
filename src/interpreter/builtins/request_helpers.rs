@@ -561,7 +561,7 @@ fn raw_http_request(
     // desormais le temps d'arriver ; une reponse qui n'arrive jamais echoue en
     // le disant.
     const RESPONSE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
-    let deadline = std::time::Instant::now() + RESPONSE_DEADLINE;
+    let deadline = web_time::Instant::now() + RESPONSE_DEADLINE;
     let mut raw = Vec::with_capacity(4096);
     let mut buf = [0u8; 8192];
     loop {
@@ -576,7 +576,7 @@ fn raw_http_request(
                     std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
                 ) =>
             {
-                if std::time::Instant::now() >= deadline {
+                if web_time::Instant::now() >= deadline {
                     return Err(format!(
                         "the test server did not answer {} {} in {}s — the request \
                          reached it, the response did not come back",

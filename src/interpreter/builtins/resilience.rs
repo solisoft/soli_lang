@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::LazyLock;
 use std::sync::RwLock;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};

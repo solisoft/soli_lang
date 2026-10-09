@@ -1,0 +1,108 @@
+//! The wasm side of a Soli Worker. The JS host (`js/worker.js`) mounts the
+//! app's files and environment, boots once per isolate, then hands every
+//! request to `soli_handle`.
+//!
+//! `soli_handle` is a raw export rather than a wasm-bindgen one: the host enters
+//! it through `WebAssembly.promising`, so that a model query inside the action
+//! can suspend the wasm stack on its `fetch` (see `solilang::platform::jspi`).
+//! wasm-bindgen's glue calls exports synchronously and could not await it.
+
+use solilang::serve::edge::{self, EdgeRequest};
+use wasm_bindgen::prelude::*;
+
+/// Mount the app: `files_json` is `[[absolute path, contents], ...]`.
+#[wasm_bindgen]
+pub fn mount(files_json: &str) -> Result<(), String> {
+    console_error_panic_hook::set_once();
+    let files: Vec<(String, String)> =
+        serde_json::from_str(files_json).map_err(|e| format!("mount: {e}"))?;
+    solilang::platform::fs::mount(
+        files
+            .into_iter()
+            .map(|(path, contents)| (path, contents.into_bytes()))
+            .collect(),
+    );
+    Ok(())
+}
+
+/// The process environment, from the Worker's string bindings: `[[name, value], ...]`,
+/// plus `SOLI_RUNTIME` and `SOLI_VERSION`.
+#[wasm_bindgen]
+pub fn set_env(vars_json: &str) -> Result<(), String> {
+    let mut vars: Vec<(String, String)> =
+        serde_json::from_str(vars_json).map_err(|e| format!("set_env: {e}"))?;
+    // What an app reads to know where it runs, unless the Worker says otherwise.
+    for (name, value) in [
+        ("SOLI_RUNTIME", "cloudflare-workers"),
+        ("SOLI_VERSION", edge::VERSION),
+    ] {
+        if !vars.iter().any(|(n, _)| n == name) {
+            vars.push((name.to_string(), value.to_string()));
+        }
+    }
+    solilang::platform::env::set(vars);
+    Ok(())
+}
+
+#[wasm_bindgen]
+pub fn boot(root: &str) -> Result<(), String> {
+    edge::boot(std::path::Path::new(root)).map_err(|e| e.to_string())
+}
+
+thread_local! {
+    static RESPONSE: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// A buffer of `len` bytes for the host to write a request into; ownership
+/// passes to `soli_handle`.
+#[no_mangle]
+pub extern "C" fn soli_alloc(len: usize) -> *mut u8 {
+    let mut buffer = Vec::<u8>::with_capacity(len);
+    let ptr = buffer.as_mut_ptr();
+    std::mem::forget(buffer);
+    ptr
+}
+
+/// Handle the JSON request at `ptr` (`{method, path, query, headers, body}`,
+/// from `soli_alloc`). Returns a pointer to the JSON response
+/// (`{status, headers, body}`), `soli_response_len` bytes long and valid until
+/// the next call.
+#[no_mangle]
+pub extern "C" fn soli_handle(ptr: *mut u8, len: usize) -> *const u8 {
+    // SAFETY: `ptr`/`len` describe the buffer `soli_alloc(len)` returned, which
+    // the host filled and hands back exactly once.
+    let input = unsafe { Vec::from_raw_parts(ptr, len, len) };
+    let response = match serde_json::from_slice::<serde_json::Value>(&input) {
+        Ok(json) => {
+            let field = |key: &str| json[key].as_str().unwrap_or_default().to_string();
+            edge::handle(EdgeRequest {
+                method: field("method"),
+                path: field("path"),
+                query: field("query"),
+                headers: serde_json::from_value(json["headers"].clone()).unwrap_or_default(),
+                body: field("body"),
+            })
+        }
+        Err(e) => edge::EdgeResponse {
+            status: 400,
+            headers: Vec::new(),
+            body: format!("Malformed request from the host: {e}").into_bytes(),
+        },
+    };
+    let output = serde_json::json!({
+        "status": response.status,
+        "headers": response.headers,
+        "body": String::from_utf8_lossy(&response.body),
+    })
+    .to_string()
+    .into_bytes();
+    RESPONSE.with(|cell| {
+        *cell.borrow_mut() = output;
+        cell.borrow().as_ptr()
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn soli_response_len() -> usize {
+    RESPONSE.with(|cell| cell.borrow().len())
+}

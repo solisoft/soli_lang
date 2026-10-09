@@ -1609,7 +1609,9 @@ mod integration_tests {
         let _g = crate::db::registry::registry_test_lock()
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let url = match std::env::var("MYSQL_URL").or_else(|_| std::env::var("DATABASE_URL")) {
+        let url = match crate::platform::env::var("MYSQL_URL")
+            .or_else(|_| crate::platform::env::var("DATABASE_URL"))
+        {
             Ok(u) if u.starts_with("mysql") => u,
             _ => {
                 crate::db::skip_unless_required("no MYSQL_URL / mysql DATABASE_URL is set");
@@ -1755,7 +1757,9 @@ mod integration_tests {
     /// there by design — that is the assertion in the other arm.
     #[test]
     fn required_mode_actually_encrypts_the_connection_when_mysql_available() {
-        let Ok(url) = std::env::var("MYSQL_URL").or_else(|_| std::env::var("DATABASE_URL")) else {
+        let Ok(url) = crate::platform::env::var("MYSQL_URL")
+            .or_else(|_| crate::platform::env::var("DATABASE_URL"))
+        else {
             crate::db::skip_unless_required("no MYSQL_URL / mysql DATABASE_URL is set");
             return;
         };

@@ -5,7 +5,7 @@ use crate::error::ParserError;
 use crate::lexer::{Token, TokenKind};
 use crate::metrics::Metrics;
 use crate::span::Span;
-use std::time::Instant;
+use web_time::Instant;
 
 pub type ParseResult<T> = Result<T, ParserError>;
 

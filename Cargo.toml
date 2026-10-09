@@ -160,24 +160,23 @@ include_dir = "0.7"
 # once. On a 16-worker app that was most of the boot: measured on grc, first
 # response 400–650 ms → ~200 ms and boot CPU ~4 s → ~0.7 s, with steady-state
 # throughput unchanged (fresh app ~195k req/s either way) and RSS 10–35% lower.
-mimalloc = { version = "0.1", default-features = false, features = ["no_thp"] }
 
 # Decimal type for financial calculations
 rust_decimal = { version = "1.34", features = ["std", "serde"] }
 
 # The REPL's screen handling and the test runner's progress line. (There
 # was a `ratatui` here; nothing in the tree ever used it.)
-crossterm = "0.28"
-gag = "1.0"
 
 # HTTP support
 # "http2" is required by APNs, which is HTTP/2-only — Apple's gateway refuses
 # an HTTP/1.1 connection outright. Existing HTTP/1.1 callers are unaffected:
 # the protocol is negotiated per-connection over ALPN.
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking", "cookies", "multipart", "stream", "http2"], default-features = false }
-ureq = { version = "2.9", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "multipart", "stream"], default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# `Instant`/`SystemTime` that work on wasm32 too (std's panic there); a plain
+# re-export of std everywhere else.
+web-time = "1"
 itoa = "1"
 ryu = "1"
 # SIMD/memchr string scanning for the hand-rolled JSON parser.
@@ -187,13 +186,11 @@ memchr = "2"
 # http2 so the same accept loop can auto-detect h1 vs h2c from the first
 # bytes (HTTP/2 prior knowledge) — no separate port, no separate config.
 hyper = { version = "1.4", features = ["server", "http1", "http2"] }
-hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto"] }
 http-body-util = "0.1"
 # "signal" powers the graceful-drain listener in `serve::spawn_drain_on_signal`.
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "net", "time", "process", "io-std", "io-util", "signal"] }
+tokio = { version = "1", features = ["sync", "macros", "rt", "time", "io-util"] }
 tokio-stream = "0.1"
-tokio-tungstenite = "0.24"
-hyper-tungstenite = "0.15"
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }
 bytes = "1.11.1"
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
 tungstenite = "0.24"
@@ -292,7 +289,6 @@ ahash = "0.8"
 ecow = { version = "0.2", features = ["serde"] }
 
 # File watching for hot reload
-notify = "8"
 
 # Test framework
 walkdir = "2"
@@ -327,11 +323,10 @@ tempfile = "3"
 # Image processing (pure Rust, no system deps)
 # Default features pull in AVIF (rav1e+ravif ~1.7MB) and EXR/HDR which Soli does not use.
 # Enable only the formats referenced in src/interpreter/builtins/image.rs.
-image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "bmp", "ico", "tiff", "webp", "rayon"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "bmp", "ico", "tiff"] }
 # Lossy WebP encoding (libwebp). The `image` crate only encodes lossless WebP,
 # which bloats photos; this gives quality-controlled lossy output for both the
 # URL transform pipeline and the storage-time uploader transform.
-webp = "0.3"
 
 # Spreadsheet support (CSV and Excel).
 # calamine was held at 0.26 for a year because every release resolved quick-xml
@@ -359,8 +354,6 @@ tower-lsp = { version = "0.20", optional = true }
 log = "0.4"
 # POP3 email reading: sync rustls over std TcpStream + MIME parsing.
 # `ring` provider matches the rest of the build (reqwest/jsonwebtoken use ring, not aws-lc-rs).
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
-rustls-pki-types = { version = "1", features = ["std"] }
 webpki-roots = "1.0.7"
 mail-parser = { version = "0.11.3", optional = true }
 # Outbound email (Mailer): RFC 5322 / MIME message construction. The SMTP
@@ -419,6 +412,35 @@ rusqlite = { version = "0.40", features = ["bundled", "hooks", "serde_json"], op
 # schedules were validated against before the scheduler moved into Soli, so
 # existing expressions keep their meaning.
 cron = "0.15"
+
+# Everything above builds for wasm32 too — the edge (Cloudflare Workers) build,
+# `edge/`. What follows needs sockets, threads, a terminal or a C toolchain, so
+# it is native-only; for `tokio`, `reqwest`, `image` and `tokio-tungstenite` it
+# adds the native features on top of the shared ones above. A native build gets
+# exactly the feature set it had before the split.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mimalloc = { version = "0.1", default-features = false, features = ["no_thp"] }
+crossterm = "0.28"
+gag = "1.0"
+reqwest = { version = "0.12", features = ["rustls-tls", "blocking", "cookies", "http2"], default-features = false }
+ureq = { version = "2.9", features = ["json"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "process", "io-std", "signal"] }
+tokio-tungstenite = "0.24"
+hyper-tungstenite = "0.15"
+notify = "8"
+image = { version = "0.25", default-features = false, features = ["webp", "rayon"] }
+webp = "0.3"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-pki-types = { version = "1", features = ["std"] }
+
+# The edge build: randomness and clocks from the JS host (`getrandom`, `uuid`,
+# `chrono`).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+chrono = { version = "0.4", features = ["wasmbind"] }
+getrandom02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+uuid = { version = "1", features = ["js"] }
 
 # Windows-only dependencies. `windows-sys` is pure Rust bindings — no C
 # toolchain involved — so it compiles for the Windows target from any host.

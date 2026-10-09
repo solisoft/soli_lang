@@ -1018,7 +1018,7 @@ mod tests {
     fn like_glob_pathological_pattern_is_linear_ish() {
         let text = "a".repeat(5_000);
         let pattern = format!("{}b", "%a".repeat(30));
-        let started = std::time::Instant::now();
+        let started = web_time::Instant::now();
         assert!(!like_glob(&text, &pattern));
         let pattern_match = "%a".repeat(30);
         assert!(like_glob(&text, &pattern_match));

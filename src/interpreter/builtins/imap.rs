@@ -75,7 +75,7 @@ enum Piece {
 /// byte arrived. 32 MiB is far beyond any real message part.
 /// `SOLI_IMAP_MAX_LITERAL_BYTES` overrides it.
 fn max_literal_bytes() -> u64 {
-    std::env::var("SOLI_IMAP_MAX_LITERAL_BYTES")
+    crate::platform::env::var("SOLI_IMAP_MAX_LITERAL_BYTES")
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())
         .filter(|n| *n > 0)
@@ -1318,7 +1318,7 @@ fn imap_fetch_all(args: &[Value]) -> Result<Value, String> {
         if exists <= 0 {
             return Ok(Vec::new());
         }
-        let cap = std::env::var("SOLI_IMAP_MAX_MESSAGES")
+        let cap = crate::platform::env::var("SOLI_IMAP_MAX_MESSAGES")
             .ok()
             .and_then(|v| v.parse::<i64>().ok())
             .filter(|n| *n > 0)

@@ -82,7 +82,9 @@ impl Build {
 }
 
 fn env_nonempty(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|v| !v.trim().is_empty())
+    crate::platform::env::var(name)
+        .ok()
+        .filter(|v| !v.trim().is_empty())
 }
 
 fn root() -> PathBuf {

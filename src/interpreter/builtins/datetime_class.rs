@@ -833,7 +833,7 @@ pub fn register_datetime_and_duration_classes(env: &mut Environment) {
     );
 
     // microtime() - Returns current time in microseconds as float (static method)
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use web_time::{SystemTime, UNIX_EPOCH};
     dt_static_methods.insert(
         "microtime".to_string(),
         Rc::new(NativeFunction::new(

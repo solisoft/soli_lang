@@ -19,7 +19,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use base64::Engine as _;
 use serde_json::{json, Value as Json};
@@ -56,7 +56,11 @@ struct EsConfig {
 
 impl EsConfig {
     fn from_env() -> Self {
-        let var = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
+        let var = |name: &str| {
+            crate::platform::env::var(name)
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+        };
         Self {
             url: var("ES_BROKER")
                 .map(|u| u.trim_end_matches('/').to_string())

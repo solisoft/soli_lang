@@ -938,7 +938,7 @@ fn relativize_meta(meta: &str, cwd_prefix: &str) -> String {
 const FLAME_MAX_DEFAULT: usize = 300;
 
 fn flame_max() -> usize {
-    match std::env::var("SOLI_DEV_FLAME_MAX") {
+    match crate::platform::env::var("SOLI_DEV_FLAME_MAX") {
         Ok(v) => v.trim().parse::<usize>().unwrap_or(FLAME_MAX_DEFAULT),
         Err(_) => FLAME_MAX_DEFAULT,
     }

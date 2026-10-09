@@ -22,6 +22,11 @@
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.19.0.</p>
 
+        <h3 id="unreleased-deployment" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Deployment</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A Soli app runs inside a Cloudflare Worker: <code class="text-cyan-400">soli edge build</code>.</strong> The interpreter now also builds for WebAssembly (<code class="text-cyan-400">scripts/build-edge.sh</code>, about 3&nbsp;MB compressed), and <code class="text-cyan-400">soli edge build</code> packages an app with it as a Wrangler project: <code class="text-cyan-400">app/</code>, <code class="text-cyan-400">config/</code> and <code class="text-cyan-400">lib/</code> mounted in memory, <code class="text-cyan-400">public/</code> served as static assets, <code class="text-cyan-400">.env</code> left out. Each request goes through the same routing, middleware, controllers, views and layouts as <code class="text-cyan-400">soli serve</code>; SoliDB models work over HTTPS, the wasm stack suspending on each query (JavaScript Promise Integration). Configuration comes from the Worker&rsquo;s vars and secrets through <code class="text-cyan-400">getenv()</code>. Not on the edge: WebSockets, streaming, uploads, jobs and the native database drivers. The live example is <a href="https://cf.solisoft.net" class="text-cyan-400 hover:underline">cf.solisoft.net</a>. The native binary is unchanged. <a href="/docs/development-tools/edge" class="text-cyan-400 hover:underline">Cloudflare Workers</a></li>
+        </ul>
+
     </section>
 
     <section id="v2-19-0" class="mb-16 scroll-mt-24">

@@ -14,7 +14,7 @@
 /// with `SOLI_EMBEDDING_TIMEOUT_SECS`; `0` or unset falls back to 60s.
 #[cfg(feature = "embedding")]
 fn embedding_timeout() -> std::time::Duration {
-    let secs = std::env::var("SOLI_EMBEDDING_TIMEOUT_SECS")
+    let secs = crate::platform::env::var("SOLI_EMBEDDING_TIMEOUT_SECS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .filter(|&s| s > 0)
@@ -26,10 +26,10 @@ fn embedding_timeout() -> std::time::Duration {
 /// Returns None if embedding API is not configured or the call fails.
 #[cfg(feature = "embedding")]
 pub fn generate_embedding(text: &str) -> Option<Vec<f64>> {
-    let api_key = std::env::var("SOLI_EMBEDDING_API_KEY").ok()?;
-    let url = std::env::var("SOLI_EMBEDDING_URL")
+    let api_key = crate::platform::env::var("SOLI_EMBEDDING_API_KEY").ok()?;
+    let url = crate::platform::env::var("SOLI_EMBEDDING_URL")
         .unwrap_or_else(|_| "https://api.openai.com/v1/embeddings".to_string());
-    let model = std::env::var("SOLI_EMBEDDING_MODEL")
+    let model = crate::platform::env::var("SOLI_EMBEDDING_MODEL")
         .unwrap_or_else(|_| "text-embedding-3-small".to_string());
 
     let body = serde_json::json!({
@@ -73,10 +73,10 @@ pub fn generate_embeddings_batch(texts: &[String]) -> Option<Vec<Vec<f64>>> {
         return Some(Vec::new());
     }
 
-    let api_key = std::env::var("SOLI_EMBEDDING_API_KEY").ok()?;
-    let url = std::env::var("SOLI_EMBEDDING_URL")
+    let api_key = crate::platform::env::var("SOLI_EMBEDDING_API_KEY").ok()?;
+    let url = crate::platform::env::var("SOLI_EMBEDDING_URL")
         .unwrap_or_else(|_| "https://api.openai.com/v1/embeddings".to_string());
-    let model = std::env::var("SOLI_EMBEDDING_MODEL")
+    let model = crate::platform::env::var("SOLI_EMBEDDING_MODEL")
         .unwrap_or_else(|_| "text-embedding-3-small".to_string());
 
     let body = serde_json::json!({

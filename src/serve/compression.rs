@@ -42,7 +42,7 @@ pub(crate) struct Settings {
 }
 
 static SETTINGS: LazyLock<Option<Settings>> =
-    LazyLock::new(|| settings_from(|name| std::env::var(name).ok()));
+    LazyLock::new(|| settings_from(|name| crate::platform::env::var(name).ok()));
 
 /// The process's settings, read once.
 pub(crate) fn settings() -> Option<&'static Settings> {

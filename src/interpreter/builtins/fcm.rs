@@ -129,6 +129,7 @@ pub struct ServiceAccountView<'a> {
     pub token_uri: &'a str,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn access_token(account: &ServiceAccount) -> Result<String, String> {
     let now = now_unix_secs();
     if let Ok(cache) = token_cache().lock() {
@@ -180,6 +181,10 @@ fn access_token(account: &ServiceAccount) -> Result<String, String> {
         );
     }
     Ok(token.access_token)
+}
+#[cfg(target_arch = "wasm32")]
+fn access_token(_account: &ServiceAccount) -> Result<String, String> {
+    Err(crate::platform::unsupported_on_edge("access_token"))
 }
 
 /// Build the `message` object FCM v1 expects.
@@ -253,6 +258,7 @@ pub fn message_json(device_token: &str, payload: &Value) -> Result<serde_json::V
     Ok(serde_json::json!({ "message": message }))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn send(device_token: &str, payload: &Value, options: &Value) -> Result<Value, String> {
     if device_token.is_empty() || device_token.len() > 512 {
         return Err("Fcm.send(): implausible device token".to_string());
@@ -313,6 +319,10 @@ pub fn send(device_token: &str, payload: &Value, options: &Value) -> Result<Valu
         Value::String(reason.into()),
     );
     Ok(Value::Hash(Rc::new(std::cell::RefCell::new(result))))
+}
+#[cfg(target_arch = "wasm32")]
+pub fn send(_device_token: &str, _payload: &Value, _options: &Value) -> Result<Value, String> {
+    Err(crate::platform::unsupported_on_edge("send"))
 }
 
 pub fn register_fcm_builtins(env: &mut Environment) {

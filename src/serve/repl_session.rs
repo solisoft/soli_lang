@@ -6,8 +6,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
 use uuid::Uuid;
+use web_time::{Duration, Instant};
 
 use crate::interpreter::Interpreter;
 

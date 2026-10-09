@@ -30,7 +30,7 @@ use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
 use std::sync::OnceLock;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use web_time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Max in-flight export batches. Past this, new batches are dropped (never
 /// block a worker on a slow collector).
@@ -70,14 +70,17 @@ impl OtelConfig {
         let forced_on = env_truthy("SOLI_OTEL");
         let enabled = forced_on || traces_endpoint.is_some();
 
-        let service_name = std::env::var("OTEL_SERVICE_NAME")
+        let service_name = crate::platform::env::var("OTEL_SERVICE_NAME")
             .ok()
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "soli".to_string());
 
-        let resource_attrs =
-            parse_resource_attributes(std::env::var("OTEL_RESOURCE_ATTRIBUTES").ok().as_deref());
+        let resource_attrs = parse_resource_attributes(
+            crate::platform::env::var("OTEL_RESOURCE_ATTRIBUTES")
+                .ok()
+                .as_deref(),
+        );
 
         // SOLI_OTEL=1 with no endpoint still enables context + span collection;
         // export uses the local default collector so a sidecar Just Works.
@@ -100,7 +103,7 @@ impl OtelConfig {
 }
 
 fn env_truthy(name: &str) -> bool {
-    std::env::var(name)
+    crate::platform::env::var(name)
         .map(|v| {
             let v = v.trim();
             v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes")
@@ -109,13 +112,13 @@ fn env_truthy(name: &str) -> bool {
 }
 
 fn resolve_traces_endpoint() -> Option<String> {
-    if let Ok(full) = std::env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") {
+    if let Ok(full) = crate::platform::env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") {
         let t = full.trim();
         if !t.is_empty() {
             return Some(t.to_string());
         }
     }
-    if let Ok(base) = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
+    if let Ok(base) = crate::platform::env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
         let t = base.trim().trim_end_matches('/');
         if !t.is_empty() {
             // OTel: if the base already ends in /v1/traces keep it; else append.
@@ -319,6 +322,7 @@ fn exporter() -> Option<&'static SyncSender<ExportBatch>> {
         .as_ref()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn post_otlp(endpoint: &str, body: &str) -> Result<(), String> {
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_millis(500))
@@ -336,6 +340,10 @@ fn post_otlp(endpoint: &str, body: &str) -> Result<(), String> {
     } else {
         Err(format!("HTTP {status}"))
     }
+}
+#[cfg(target_arch = "wasm32")]
+fn post_otlp(_endpoint: &str, _body: &str) -> Result<(), String> {
+    Err(crate::platform::unsupported_on_edge("post_otlp"))
 }
 
 /// Convert span_log records into an OTLP payload and enqueue export.

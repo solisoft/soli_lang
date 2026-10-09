@@ -228,12 +228,15 @@ pub fn build(opts: &BuildOptions<'_>) -> Result<Artifact, String> {
     let version = app_version(opts.app_dir)?;
     stamp::validate_version_name(&version)
         .map_err(|e| format!("[package].version in soli.toml: {e}"))?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let now = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let build_number =
-        stamp::resolve_build_number(opts.build_number, |v| std::env::var(v).ok(), now)?;
+    let build_number = stamp::resolve_build_number(
+        opts.build_number,
+        |v| crate::platform::env::var(v).ok(),
+        now,
+    )?;
 
     let shell = match opts.platform {
         Platform::Android => Some(pick_android_shell(opts.app_dir, opts.fcm.or(config.fcm))?),
@@ -451,7 +454,7 @@ fn build_android_plain(work: &Path, keystore: Option<&Path>) -> Result<PathBuf, 
         .arg(keystore)
         .arg("--ks-pass")
         .arg(format!("env:{password_env}"));
-    if let Ok(alias) = std::env::var("SOLI_ANDROID_KEY_ALIAS") {
+    if let Ok(alias) = crate::platform::env::var("SOLI_ANDROID_KEY_ALIAS") {
         sign.arg("--ks-key-alias").arg(alias);
     }
     if std::env::var_os("SOLI_ANDROID_KEY_PASSWORD").is_some() {
@@ -505,15 +508,16 @@ fn build_android_fcm(work: &Path, keystore: Option<&Path>) -> Result<PathBuf, St
             "app/build/outputs/apk/debug/app-debug.apk",
         ),
         Some(keystore) => {
-            let password = std::env::var("SOLI_ANDROID_KEYSTORE_PASSWORD").map_err(|_| {
-                "--keystore needs SOLI_ANDROID_KEYSTORE_PASSWORD in the environment".to_string()
-            })?;
-            let alias = std::env::var("SOLI_ANDROID_KEY_ALIAS").map_err(|_| {
+            let password =
+                crate::platform::env::var("SOLI_ANDROID_KEYSTORE_PASSWORD").map_err(|_| {
+                    "--keystore needs SOLI_ANDROID_KEYSTORE_PASSWORD in the environment".to_string()
+                })?;
+            let alias = crate::platform::env::var("SOLI_ANDROID_KEY_ALIAS").map_err(|_| {
                 "--keystore on the FCM shell needs SOLI_ANDROID_KEY_ALIAS in the environment"
                     .to_string()
             })?;
-            let key_password =
-                std::env::var("SOLI_ANDROID_KEY_PASSWORD").unwrap_or_else(|_| password.clone());
+            let key_password = crate::platform::env::var("SOLI_ANDROID_KEY_PASSWORD")
+                .unwrap_or_else(|_| password.clone());
             let keystore = std::fs::canonicalize(keystore)
                 .map_err(|e| format!("keystore {}: {e}", keystore.display()))?;
             // Project properties through ORG_GRADLE_PROJECT_*, not -P on argv,

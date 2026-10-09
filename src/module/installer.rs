@@ -66,6 +66,7 @@ fn extract_owner_repo(url: &str, host: &str) -> Result<(String, String), String>
 }
 
 /// Resolve a git ref (tag, branch, or rev) to a full commit SHA.
+#[cfg(not(target_arch = "wasm32"))]
 fn resolve_ref(host: &GitHost, git_ref: &str) -> Result<String, String> {
     match host {
         GitHost::GitHub { owner, repo } => {
@@ -116,6 +117,10 @@ fn resolve_ref(host: &GitHost, git_ref: &str) -> Result<String, String> {
         }
     }
 }
+#[cfg(target_arch = "wasm32")]
+fn resolve_ref(_host: &GitHost, _git_ref: &str) -> Result<String, String> {
+    Err(crate::platform::unsupported_on_edge("resolve_ref"))
+}
 
 /// Get the archive download URL for a given commit SHA.
 fn archive_url(host: &GitHost, sha: &str) -> String {
@@ -138,6 +143,7 @@ fn archive_url(host: &GitHost, sha: &str) -> String {
 }
 
 /// Download and extract a package archive to the cache directory.
+#[cfg(not(target_arch = "wasm32"))]
 fn download_and_extract(url: &str, dest: &Path) -> Result<(), String> {
     use flate2::read::GzDecoder;
 
@@ -161,6 +167,10 @@ fn download_and_extract(url: &str, dest: &Path) -> Result<(), String> {
     // directory; strip it during extraction. SEC-075a: the shared helper
     // also rejects `..`/absolute-root path components and link entries.
     tar_extract::extract_archive(&mut archive, dest, true)
+}
+#[cfg(target_arch = "wasm32")]
+fn download_and_extract(_url: &str, _dest: &Path) -> Result<(), String> {
+    Err(crate::platform::unsupported_on_edge("download_and_extract"))
 }
 
 /// Remove a partially or wrongly populated cache directory, best effort.

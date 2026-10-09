@@ -299,6 +299,40 @@ jobs:
       - name: Check formatting (PDF engine)
         run: cargo fmt --check --manifest-path pdf/Cargo.toml
 
+      - name: Check formatting (edge runtime)
+        run: cargo fmt --check --manifest-path edge/Cargo.toml
+
+  # The edge (Cloudflare Workers) build compiles the library for wasm32, where
+  # sockets, threads and the disk do not exist. Native code that reaches for one
+  # outside a `cfg(not(target_arch = "wasm32"))` breaks it — and nothing else in
+  # this workflow builds for wasm32, so it would surface at the next deploy.
+  # A check, not a build: the size-optimised release link takes minutes and
+  # proves nothing more about the code. See www/docs/edge.md.
+  edge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: edge
+          workspaces: edge -> ../target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Check (wasm32)
+        # getrandom 0.3 picks its JS backend from a cfg, not a feature.
+        env:
+          RUSTFLAGS: --cfg getrandom_backend="wasm_js"
+        run: >-
+          cargo check --locked --target wasm32-unknown-unknown
+          --manifest-path edge/Cargo.toml --target-dir target
+
   # A published advisory against a transitive dependency is the one class of
   # vulnerability no amount of reviewing *our* code will surface: nothing in
   # the diff changes, and the suite stays green. Soli pulls in a TLS stack, an

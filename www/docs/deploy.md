@@ -15,6 +15,9 @@ one executable — see [Script executables](#script-executables).
 `soli env` is the fourth command in the family, but it deploys *branches* rather than releases —
 see [Preview environments](#preview-environments).
 
+With no server at all, `soli edge build` packages an app as a Cloudflare Worker, the
+interpreter compiled to WebAssembly — see [Cloudflare Workers](edge.md).
+
 ## `soli deploy` — sync a working tree
 
 Create a `deploy.toml` in your project root:
@@ -487,6 +490,7 @@ soli build tool.sl --thin
 
 ## See also
 
+- [Cloudflare Workers](edge.md) — `soli edge build`: the app inside a Worker, no server.
 - [Auto-update](auto-update.md) — signed over-the-air updates for shipped binaries.
 - [Static & Markdown server](static-server.md) — `soli serve` on a folder that is not an app.
 - [Configuration](configuration.md) — the environment variables a deployed app reads.

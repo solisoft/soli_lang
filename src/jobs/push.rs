@@ -103,6 +103,16 @@ async fn run() {
 
 /// Connect, subscribe, and relay events until the socket ends or the token is
 /// about to expire.
+#[cfg(target_arch = "wasm32")]
+async fn subscribe_and_pump() -> Result<(), String> {
+    // The subscriber only runs beside the native server; the edge build has
+    // no long-lived socket to hold.
+    Err(crate::platform::unsupported_on_edge(
+        "the SoliDB live subscription",
+    ))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 async fn subscribe_and_pump() -> Result<(), String> {
     let Some(token) = db_config::get_jwt_token() else {
         return Err("no JWT available for the changefeed".to_string());
@@ -173,6 +183,7 @@ async fn subscribe_and_pump() -> Result<(), String> {
 ///
 /// Only `_jobs` is load-bearing. A refusal on `_cron_jobs` is reported and
 /// tolerated: cron still fires on the poller's own deadline.
+#[cfg(not(target_arch = "wasm32"))]
 async fn await_subscription_ack(
     socket: &mut tokio_tungstenite::WebSocketStream<
         tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,

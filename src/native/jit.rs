@@ -4,7 +4,7 @@
 //! All of the `unsafe` of the native tier lives here: building a callable
 //! from a code pointer, and handing raw pointers to generated code.
 
-use std::time::Instant;
+use web_time::Instant;
 
 use cranelift_codegen::ir::{types, AbiParam, InstBuilder, MemFlagsData, UserFuncName};
 use cranelift_codegen::settings::{self, Configurable};

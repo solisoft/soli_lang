@@ -347,6 +347,7 @@ impl BundleBuilder {
     /// Insert an auto-update descriptor into an already-built plaintext bundle,
     /// re-serializing it. Called before encryption so the descriptor rides
     /// inside the sealed payload, not beside it.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn embed_update(
         bundle_data: &[u8],
         descriptor: &crate::update::UpdateDescriptor,
@@ -360,6 +361,13 @@ impl BundleBuilder {
         let json = serde_json::to_vec(descriptor).map_err(|e| format!("embed_update: {}", e))?;
         entries.insert(crate::update::UPDATE_ENTRY.to_string(), json);
         Self::serialize_entries(&entries)
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub fn embed_update(
+        _bundle_data: &[u8],
+        _descriptor: &crate::update::UpdateDescriptor,
+    ) -> Result<Vec<u8>, String> {
+        Err(crate::platform::unsupported_on_edge("embed_update"))
     }
 
     pub fn serialize_entries(entries: &HashMap<String, Vec<u8>>) -> Result<Vec<u8>, String> {
@@ -480,6 +488,7 @@ static BUNDLE_META: OnceLock<BundleMeta> = OnceLock::new();
 
 /// The metadata of the bundle being served, if any (set once at boot).
 /// The auto-update descriptor embedded in a bundle, if any.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn update_descriptor_from(
     entries: &[(String, &[u8])],
 ) -> Option<crate::update::UpdateDescriptor> {
@@ -487,6 +496,12 @@ pub fn update_descriptor_from(
         .iter()
         .find(|(p, _)| p == crate::update::UPDATE_ENTRY)
         .and_then(|(_, data)| serde_json::from_slice(data).ok())
+}
+#[cfg(target_arch = "wasm32")]
+pub fn update_descriptor_from(
+    _entries: &[(String, &[u8])],
+) -> Option<crate::update::UpdateDescriptor> {
+    None
 }
 
 pub fn bundle_meta() -> Option<&'static BundleMeta> {

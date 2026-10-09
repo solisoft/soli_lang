@@ -64,7 +64,7 @@ pub enum LogFormat {
 pub fn format() -> LogFormat {
     static FMT: OnceLock<LogFormat> = OnceLock::new();
     *FMT.get_or_init(|| {
-        match std::env::var("SOLI_LOG_FORMAT")
+        match crate::platform::env::var("SOLI_LOG_FORMAT")
             .ok()
             .as_deref()
             .map(str::trim)
@@ -216,11 +216,11 @@ fn parse(soli_log: Option<&str>, request_log: bool, slow_ms: Option<f64>) -> Log
 pub fn channels() -> LogChannels {
     static CHANNELS: OnceLock<LogChannels> = OnceLock::new();
     *CHANNELS.get_or_init(|| {
-        let soli_log = std::env::var("SOLI_LOG").ok();
-        let request_log = std::env::var("SOLI_REQUEST_LOG")
+        let soli_log = crate::platform::env::var("SOLI_LOG").ok();
+        let request_log = crate::platform::env::var("SOLI_REQUEST_LOG")
             .map(|v| v == "1" || v == "true")
             .unwrap_or(false);
-        let slow_ms = std::env::var("SOLI_SLOW_REQUEST_MS")
+        let slow_ms = crate::platform::env::var("SOLI_SLOW_REQUEST_MS")
             .ok()
             .and_then(|s| s.parse::<f64>().ok());
         parse(soli_log.as_deref(), request_log, slow_ms)
@@ -674,7 +674,7 @@ pub(crate) fn chrono_like_ts_public() -> String {
 }
 
 fn chrono_like_ts() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use web_time::{SystemTime, UNIX_EPOCH};
     let dur = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();

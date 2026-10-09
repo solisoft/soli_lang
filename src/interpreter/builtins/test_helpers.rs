@@ -64,6 +64,7 @@ fn cached_probe(
 }
 
 /// Whether the SoliDB the models talk to answers its health check.
+#[cfg(not(target_arch = "wasm32"))]
 fn solidb_reachable() -> Result<(), String> {
     cached_probe(&SOLIDB_PROBE, || {
         let url = crate::interpreter::builtins::model::db_config::db_url("/_api/health");
@@ -76,6 +77,10 @@ fn solidb_reachable() -> Result<(), String> {
             .map(|_| ())
             .map_err(|e| format!("no SoliDB answers {url} ({e})"))
     })
+}
+#[cfg(target_arch = "wasm32")]
+fn solidb_reachable() -> Result<(), String> {
+    Err(crate::platform::unsupported_on_edge("solidb_reachable"))
 }
 
 /// Whether the SoliKV that `KV` and `Cache` use answers a PING.
@@ -91,7 +96,7 @@ fn require_service(service: &str, probe: Result<(), String>) -> Result<Value, St
     let Err(why) = probe else {
         return Ok(Value::Null);
     };
-    if std::env::var("SOLI_REQUIRE_DB").is_ok_and(|flag| flag == "1") {
+    if crate::platform::env::var("SOLI_REQUIRE_DB").is_ok_and(|flag| flag == "1") {
         return Err(format!(
             "SOLI_REQUIRE_DB=1 but this test needs {service}: {why}"
         ));

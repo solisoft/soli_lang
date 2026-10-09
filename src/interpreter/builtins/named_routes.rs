@@ -255,14 +255,14 @@ fn build_url_for_name(name: &str, args: &[Value]) -> Result<String, String> {
     let (scheme, host) = match get_current_request_host() {
         Some(pair) => pair,
         None => {
-            let host = std::env::var("SOLI_DEFAULT_URL_HOST").map_err(|_| {
+            let host = crate::platform::env::var("SOLI_DEFAULT_URL_HOST").map_err(|_| {
                 format!(
                     "{}: cannot resolve host (no active request and SOLI_DEFAULT_URL_HOST not set)",
                     name
                 )
             })?;
-            let scheme =
-                std::env::var("SOLI_DEFAULT_URL_SCHEME").unwrap_or_else(|_| "http".to_string());
+            let scheme = crate::platform::env::var("SOLI_DEFAULT_URL_SCHEME")
+                .unwrap_or_else(|_| "http".to_string());
             (scheme, host)
         }
     };
@@ -330,7 +330,7 @@ mod tests {
         fn capture(key: &'static str) -> Self {
             Self {
                 key,
-                prev: std::env::var(key).ok(),
+                prev: crate::platform::env::var(key).ok(),
             }
         }
     }

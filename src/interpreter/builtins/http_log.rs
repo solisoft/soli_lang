@@ -137,7 +137,7 @@ pub fn record(method: String, url: String, status: u16, duration_ms: f64, error:
     // measured duration — close enough for visualisation, since the
     // call site doesn't expose the original start instant here.
     let dur_us = (duration_ms * 1000.0).max(0.0) as u64;
-    let start = std::time::Instant::now() - std::time::Duration::from_micros(dur_us);
+    let start = web_time::Instant::now() - std::time::Duration::from_micros(dur_us);
     record_with_start(method, scrubbed_url, status, duration_ms, error, start);
 }
 
@@ -152,7 +152,7 @@ pub fn record_with_start(
     status: u16,
     duration_ms: f64,
     error: Option<String>,
-    real_start: std::time::Instant,
+    real_start: web_time::Instant,
 ) {
     // Mirror this call as a span so it shows up in the dev-bar flamegraph
     // nested under whatever action / view fired it. Span_log is its own

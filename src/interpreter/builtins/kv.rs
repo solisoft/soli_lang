@@ -91,7 +91,7 @@ const KV_DENYLIST: &[&str] = &[
 
 fn kv_admin_allowed() -> bool {
     matches!(
-        std::env::var("SOLI_KV_ALLOW_ADMIN").as_deref(),
+        crate::platform::env::var("SOLI_KV_ALLOW_ADMIN").as_deref(),
         Ok("1") | Ok("true") | Ok("yes")
     )
 }
@@ -1402,7 +1402,7 @@ mod tests {
 
     fn with_admin_env<F: FnOnce()>(value: Option<&str>, body: F) {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let prev = std::env::var("SOLI_KV_ALLOW_ADMIN").ok();
+        let prev = crate::platform::env::var("SOLI_KV_ALLOW_ADMIN").ok();
         // SAFETY: ENV_LOCK serializes all SOLI_KV_ALLOW_ADMIN access in
         // this module, so no other thread is reading the variable while
         // we mutate it.

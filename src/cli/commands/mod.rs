@@ -1,4 +1,5 @@
 pub mod desktop;
+pub mod edge;
 pub mod eui;
 pub mod mobile;
 mod progress;
@@ -1845,8 +1846,8 @@ pub fn run_test(
 }
 
 /// Newest modification time among the `.sl` / `.slv` files under `roots`.
-fn newest_source_mtime(roots: &[PathBuf]) -> Option<std::time::SystemTime> {
-    fn walk(dir: &Path, newest: &mut Option<std::time::SystemTime>) {
+fn newest_source_mtime(roots: &[PathBuf]) -> Option<web_time::SystemTime> {
+    fn walk(dir: &Path, newest: &mut Option<web_time::SystemTime>) {
         let Ok(entries) = fs::read_dir(dir) else {
             return;
         };
@@ -3610,8 +3611,8 @@ pub fn run_cloud(
         }
         CloudAction::Deploy => {
             let commit = git_head(app_path).unwrap_or_default();
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            let now = web_time::SystemTime::now()
+                .duration_since(web_time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
             let id = release::ReleaseId::new(now, &commit);

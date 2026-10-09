@@ -53,7 +53,7 @@ fn parse_force_secure_env(raw: Option<&str>) -> bool {
 
 fn init_from_env() {
     ENV_INIT.call_once(|| {
-        let raw = std::env::var("SOLI_FORCE_SECURE_COOKIES").ok();
+        let raw = crate::platform::env::var("SOLI_FORCE_SECURE_COOKIES").ok();
         if parse_force_secure_env(raw.as_deref()) {
             FORCE_SECURE_COOKIES.store(true, Ordering::Relaxed);
         }

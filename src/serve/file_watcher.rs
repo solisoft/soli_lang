@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use tokio::sync::broadcast;
 

@@ -18,7 +18,7 @@
 //! gated to `--dev`, matching the SoliDB path.
 
 use std::collections::HashMap;
-use std::time::Instant;
+use web_time::Instant;
 
 use super::sql_compile::SqlBind;
 use crate::interpreter::builtins::model::query_log;

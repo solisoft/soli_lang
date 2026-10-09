@@ -23,7 +23,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 /// Default ceiling for a single stage.
 const DEFAULT_STAGE_TIMEOUT: Duration = Duration::from_secs(600);
@@ -357,7 +357,7 @@ pub fn build_env() -> Vec<(String, String)> {
     INHERITED_ENV
         .iter()
         .filter_map(|key| {
-            std::env::var(key)
+            crate::platform::env::var(key)
                 .ok()
                 .map(|value| (key.to_string(), value))
         })

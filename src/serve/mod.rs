@@ -6,6 +6,7 @@
 //! - Automatic route derivation
 //! - Middleware support for request interception
 
+#[cfg(not(target_arch = "wasm32"))]
 mod accept;
 mod admin_auth;
 mod asset_cache;
@@ -21,17 +22,20 @@ mod dev_catalog;
 mod dev_errors;
 mod dev_inbox;
 mod dev_jobs;
+#[cfg(not(target_arch = "wasm32"))]
 mod dev_mobile;
 mod dev_query_stats;
 mod dev_routes;
 mod dev_slow_queries;
 pub mod dev_store;
 mod error_response;
+#[cfg(not(target_arch = "wasm32"))]
 mod file_watcher;
 pub mod files;
 mod finalize;
 mod framework_assets;
 pub mod live_reload;
+#[cfg(not(target_arch = "wasm32"))]
 mod live_reload_ws; // WebSocket-based live reload
 pub(crate) mod middleware;
 pub mod middleware_log;
@@ -61,6 +65,7 @@ mod static_files;
 pub mod template_warnings;
 pub mod tenant;
 pub mod tus;
+#[cfg(not(target_arch = "wasm32"))]
 mod upgrade;
 pub(crate) mod uploads_prelude;
 pub mod vhost;
@@ -70,6 +75,7 @@ pub mod websocket;
 // Modularized subcomponents
 pub(crate) mod app_loader;
 pub mod background_jobs;
+pub mod edge;
 pub mod engine_loader;
 pub mod env_loader;
 mod error_logging;
@@ -109,7 +115,7 @@ use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, OnceLock};
 use std::thread;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use crate::virtual_fs::VirtualFileSystem;
 
@@ -210,7 +216,7 @@ static BOOT_START: OnceLock<Instant> = OnceLock::new();
 static BOOT_LAST: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 
 fn boot_trace(phase: &str) {
-    if std::env::var("SOLI_TRACE_BOOT").is_err() {
+    if crate::platform::env::var("SOLI_TRACE_BOOT").is_err() {
         return;
     }
     let start = *BOOT_START.get_or_init(Instant::now);
@@ -389,7 +395,7 @@ pub(crate) struct RequestData {
     /// the instant the hyper handler enqueued this request — the worker
     /// diffs it at handling time to expose queue wait. `None` when logging
     /// is off so the no-logging hot path keeps zero clock reads.
-    pub(crate) enqueued_at: Option<std::time::Instant>,
+    pub(crate) enqueued_at: Option<web_time::Instant>,
     /// True when this request is a dev-bar replay of a previously captured
     /// request (`POST /__solidev/replay/:id`). The worker skips the per-form
     /// CSRF token check for replays — a rotated session token would otherwise
@@ -547,6 +553,7 @@ pub(crate) fn finish_response(
 // File upload functions are now in file_upload module
 use file_upload::uploaded_files_to_value;
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Serve an MVC application from a folder in production mode by default.
 ///
 /// Respects `SOLI_WORKERS` / `APP_ENV=production` defaults (see
@@ -558,6 +565,7 @@ pub fn serve_folder(folder: &Path, port: u16) -> Result<(), RuntimeError> {
     serve_folder_with_options(folder, port, false, num_workers)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Serve an MVC application from a folder with configurable options.
 pub fn serve_folder_with_options(
     folder: &Path,
@@ -588,6 +596,7 @@ fn quiet() -> bool {
     QUIET.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Serve an MVC application from a folder with configurable options and worker count.
 pub fn serve_folder_with_options_and_workers(
     folder: &Path,
@@ -598,6 +607,7 @@ pub fn serve_folder_with_options_and_workers(
     serve_folder_with_options_and_hooks(folder, port, dev_mode, workers, None)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// As [`serve_folder_with_options_and_workers`], but invokes `on_bound_port`
 /// with the port the server actually bound.
 ///
@@ -745,7 +755,7 @@ pub fn serve_folder_with_options_and_hooks(
     // runner), install a global coverage tracker so every interpreter in
     // every worker thread records line hits into it. The hits are returned
     // to the parent via the `/__coverage__` JSON endpoint at shutdown.
-    if std::env::var("SOLI_COVERAGE_ENABLED").is_ok() {
+    if crate::platform::env::var("SOLI_COVERAGE_ENABLED").is_ok() {
         use crate::coverage::tracker::set_global_coverage_tracker;
         use crate::coverage::CoverageTracker;
         let mut tracker = CoverageTracker::new();
@@ -945,7 +955,7 @@ pub fn serve_folder_with_options_and_hooks(
     // The locale a request starts from, and the one a lookup falls back to.
     // Process-wide, so it is set here rather than on the boot thread's
     // thread-local — that thread is reclaimed and never serves a request.
-    if let Ok(default) = std::env::var("SOLI_DEFAULT_LOCALE") {
+    if let Ok(default) = crate::platform::env::var("SOLI_DEFAULT_LOCALE") {
         if !default.trim().is_empty() {
             crate::interpreter::builtins::i18n::helpers::set_default_locale(default.trim());
         }
@@ -1009,7 +1019,7 @@ pub fn serve_folder_with_options_and_hooks(
     // worker, and `tailwindcss` is a heavy subprocess (~hundreds of ms);
     // 8 in parallel was the dominant cost of `soli test --jobs 8` boot.
     // Tests hit controllers directly, so the CSS bundle is irrelevant.
-    let app_env = std::env::var("APP_ENV").unwrap_or_default();
+    let app_env = crate::platform::env::var("APP_ENV").unwrap_or_default();
     if dev_mode && app_env != "test" {
         tailwind::compile_tailwind_css_at_boot(folder);
         boot_trace("tailwind compiled");
@@ -1035,6 +1045,7 @@ pub fn serve_folder_with_options_and_hooks(
     )
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Serve a plain directory: static files, Markdown pages, `.slv`/`.erb`
 /// templates and a generated index per folder.
 ///
@@ -1097,6 +1108,7 @@ use app_loader::{
 
 /// Run the MVC HTTP server with a worker pool for parallel request processing.
 #[allow(clippy::too_many_arguments)]
+#[cfg(not(target_arch = "wasm32"))]
 fn run_hyper_server_worker_pool(
     folder: &Path,
     port: u16,
@@ -1182,7 +1194,7 @@ fn run_hyper_server_worker_pool(
     // error rather than a silent fallback — quietly binding 0.0.0.0 when
     // the operator asked for loopback would expose an interface they
     // explicitly tried to close.
-    let bind_host: std::net::IpAddr = match std::env::var("SOLI_HOST") {
+    let bind_host: std::net::IpAddr = match crate::platform::env::var("SOLI_HOST") {
         Ok(v) if !v.trim().is_empty() => v.trim().parse().unwrap_or_else(|_| {
             eprintln!(
                 "Invalid SOLI_HOST '{}': expected an IP address like 127.0.0.1 or ::1",
@@ -1226,9 +1238,9 @@ fn run_hyper_server_worker_pool(
     // search is the whole point of the graph); `SOLI_GRAPH_WATCH=1`/`0` forces
     // it on/off regardless. The watcher signals a background reindex thread.
     let graph_watch = dev_mode
-        && match std::env::var("SOLI_GRAPH_WATCH") {
+        && match crate::platform::env::var("SOLI_GRAPH_WATCH") {
             Ok(v) => v == "1" || v.eq_ignore_ascii_case("true"),
-            Err(_) => std::env::var("SOLI_EMBEDDING_API_KEY").is_ok(),
+            Err(_) => crate::platform::env::var("SOLI_EMBEDDING_API_KEY").is_ok(),
         };
     let (graph_reindex_tx, graph_reindex_rx): (
         Option<std::sync::mpsc::Sender<()>>,
@@ -1436,9 +1448,9 @@ fn run_hyper_server_worker_pool(
     // explicitly configured: with none of these env vars set the app either
     // has no DB or talks to a loopback default, where a cold connect is
     // sub-millisecond anyway.
-    let db_configured = std::env::var("SOLIDB_HOST").is_ok()
-        || std::env::var("SOLIDB_USERNAME").is_ok()
-        || std::env::var("SOLIDB_API_KEY").is_ok();
+    let db_configured = crate::platform::env::var("SOLIDB_HOST").is_ok()
+        || crate::platform::env::var("SOLIDB_USERNAME").is_ok()
+        || crate::platform::env::var("SOLIDB_API_KEY").is_ok();
     if db_configured {
         crate::interpreter::builtins::model::db_config::spawn_db_keep_warm(&runtime_handle);
     }
@@ -1457,7 +1469,7 @@ fn run_hyper_server_worker_pool(
     // `--workers 2` behave exactly like `--workers 1` — one HTTP worker either
     // way — which silently halved throughput for anyone running a small pool.
     // An explicit `SOLI_WS_WORKERS` is always honored, at any pool size.
-    let explicit_rt_workers = std::env::var("SOLI_WS_WORKERS")
+    let explicit_rt_workers = crate::platform::env::var("SOLI_WS_WORKERS")
         .ok()
         .and_then(|v| v.parse::<usize>().ok());
     let (num_http_workers, num_rt_workers) =
@@ -1488,11 +1500,11 @@ fn run_hyper_server_worker_pool(
     // engine whether or not it uses one, and several open at once would
     // otherwise hammer a shared dev database with idle claim round-trips.
     {
-        let mailer_configured = std::env::var("SOLI_SMTP_HOST")
+        let mailer_configured = crate::platform::env::var("SOLI_SMTP_HOST")
             .ok()
             .filter(|s| !s.is_empty())
             .is_some();
-        let num_job_workers = std::env::var("SOLI_JOB_WORKERS")
+        let num_job_workers = crate::platform::env::var("SOLI_JOB_WORKERS")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(server_constants::DEFAULT_JOB_WORKERS);
@@ -2271,6 +2283,7 @@ struct TenantRuntime {
     dev_mode: bool,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn handle_hyper_request(
     mut req: Request<Incoming>,
     runtime: &TenantRuntime,
@@ -2307,7 +2320,7 @@ async fn handle_hyper_request(
     // them. The native bridge's stream route also needs the raw query string
     // to verify its channel token.
     let raw_query = req.uri().query().map(|q| q.to_string());
-    let request_start = std::time::Instant::now();
+    let request_start = web_time::Instant::now();
 
     // Increment total request counter before any routing decisions
     crate::metrics::Metrics::global()
@@ -2603,7 +2616,7 @@ async fn handle_hyper_request(
         multipart_form,
         multipart_files,
         peer_ip: peer_addr.ip().to_string(),
-        enqueued_at: prod_log::channels().any().then(std::time::Instant::now),
+        enqueued_at: prod_log::channels().any().then(web_time::Instant::now),
         replay: false,
         file_template,
         response_tx,
@@ -4215,7 +4228,7 @@ fn record_vm_demotion(handler: &str, err: &RuntimeError) {
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     static ENGINE_LOG: OnceLock<bool> = OnceLock::new();
     let log = *ENGINE_LOG.get_or_init(|| {
-        std::env::var("SOLI_ENGINE_LOG")
+        crate::platform::env::var("SOLI_ENGINE_LOG")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false)
     });
@@ -4227,7 +4240,7 @@ fn record_vm_demotion(handler: &str, err: &RuntimeError) {
     }
     static FAIL: OnceLock<bool> = OnceLock::new();
     let fail = *FAIL.get_or_init(|| {
-        std::env::var("SOLI_FAIL_ON_VM_DEMOTION")
+        crate::platform::env::var("SOLI_FAIL_ON_VM_DEMOTION")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false)
     });
@@ -4314,7 +4327,7 @@ fn forget_possible_divergence() {
 }
 
 fn engine_flag(name: &str) -> bool {
-    std::env::var(name)
+    crate::platform::env::var(name)
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
 }
@@ -6120,7 +6133,7 @@ fn handle_request(
 /// the TCP peer is a hop, not the caller. Such deployments set
 /// `SOLI_METRICS_TOKEN`.
 fn metrics_request_allowed(headers: &hyper::HeaderMap, peer: std::net::IpAddr) -> bool {
-    if let Ok(expected) = std::env::var("SOLI_METRICS_TOKEN") {
+    if let Ok(expected) = crate::platform::env::var("SOLI_METRICS_TOKEN") {
         let expected = expected.trim();
         if !expected.is_empty() {
             let presented = headers
@@ -6181,7 +6194,7 @@ mod metrics_gate_tests {
     /// loopback; a forwarding header is the tell that the peer is a hop.
     #[test]
     fn a_proxied_request_from_loopback_is_refused_without_a_token() {
-        if std::env::var("SOLI_METRICS_TOKEN").is_ok_and(|t| !t.trim().is_empty()) {
+        if crate::platform::env::var("SOLI_METRICS_TOKEN").is_ok_and(|t| !t.trim().is_empty()) {
             return;
         }
         let loopback: std::net::IpAddr = "127.0.0.1".parse().unwrap();

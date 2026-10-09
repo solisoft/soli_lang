@@ -10,7 +10,7 @@ use std::hash::BuildHasher;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use crate::interpreter::value::HashPairs;
 use crate::serve::tenant::TenantValue;
@@ -159,7 +159,7 @@ pub trait SessionStore: Send + Sync {
 /// Disable with `SOLI_SESSION_KEEP_WARM=0`. Logs only on state transitions
 /// (ok→fail, fail→ok) so an unreachable store doesn't spam one line per tick.
 pub fn spawn_session_keep_warm(runtime: tokio::runtime::Handle) {
-    if std::env::var("SOLI_SESSION_KEEP_WARM").as_deref() == Ok("0") {
+    if crate::platform::env::var("SOLI_SESSION_KEEP_WARM").as_deref() == Ok("0") {
         return;
     }
     let store = get_current_store();
@@ -356,48 +356,48 @@ pub struct SessionConfig {
 
 impl Default for SessionConfig {
     fn default() -> Self {
-        let driver = std::env::var("SOLI_SESSION_DRIVER")
+        let driver = crate::platform::env::var("SOLI_SESSION_DRIVER")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(SessionDriver::InMemory);
 
-        let path = std::env::var("SOLI_SESSION_PATH").ok();
-        let solidb_host = std::env::var("SOLI_SOLIDB_HOST").ok();
-        let solidb_database = std::env::var("SOLI_SOLIDB_DATABASE").ok();
-        let solidb_collection = std::env::var("SOLI_SOLIDB_COLLECTION").ok();
+        let path = crate::platform::env::var("SOLI_SESSION_PATH").ok();
+        let solidb_host = crate::platform::env::var("SOLI_SOLIDB_HOST").ok();
+        let solidb_database = crate::platform::env::var("SOLI_SOLIDB_DATABASE").ok();
+        let solidb_collection = crate::platform::env::var("SOLI_SOLIDB_COLLECTION").ok();
         // SEC-025: prefer session-specific overrides, fall back to the
         // generic SOLIDB_* credentials the Model layer already reads.
-        let solidb_api_key = std::env::var("SOLI_SOLIDB_API_KEY")
+        let solidb_api_key = crate::platform::env::var("SOLI_SOLIDB_API_KEY")
             .ok()
-            .or_else(|| std::env::var("SOLIDB_API_KEY").ok())
+            .or_else(|| crate::platform::env::var("SOLIDB_API_KEY").ok())
             .filter(|t| !t.is_empty());
-        let solidb_username = std::env::var("SOLI_SOLIDB_USERNAME")
+        let solidb_username = crate::platform::env::var("SOLI_SOLIDB_USERNAME")
             .ok()
-            .or_else(|| std::env::var("SOLIDB_USERNAME").ok())
+            .or_else(|| crate::platform::env::var("SOLIDB_USERNAME").ok())
             .filter(|t| !t.is_empty());
-        let solidb_password = std::env::var("SOLI_SOLIDB_PASSWORD")
+        let solidb_password = crate::platform::env::var("SOLI_SOLIDB_PASSWORD")
             .ok()
-            .or_else(|| std::env::var("SOLIDB_PASSWORD").ok())
+            .or_else(|| crate::platform::env::var("SOLIDB_PASSWORD").ok())
             .filter(|t| !t.is_empty());
-        let solikv_host = std::env::var("SOLI_SOLIKV_HOST").ok();
-        let solikv_port = std::env::var("SOLI_SOLIKV_PORT")
+        let solikv_host = crate::platform::env::var("SOLI_SOLIKV_HOST").ok();
+        let solikv_port = crate::platform::env::var("SOLI_SOLIKV_PORT")
             .ok()
             .and_then(|p| p.parse().ok());
-        let solikv_token = std::env::var("SOLI_SOLIKV_TOKEN")
+        let solikv_token = crate::platform::env::var("SOLI_SOLIKV_TOKEN")
             .ok()
             .filter(|t| !t.is_empty());
-        let secret = std::env::var("SOLI_SESSION_SECRET")
+        let secret = crate::platform::env::var("SOLI_SESSION_SECRET")
             .ok()
             .filter(|t| !t.is_empty());
-        let ttl = std::env::var("SOLI_SESSION_TTL")
+        let ttl = crate::platform::env::var("SOLI_SESSION_TTL")
             .ok()
             .and_then(|t| t.parse().ok())
             .unwrap_or(86400);
-        let same_site = std::env::var("SOLI_SESSION_SAMESITE")
+        let same_site = crate::platform::env::var("SOLI_SESSION_SAMESITE")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(SameSite::Lax);
-        let host_prefix = std::env::var("SOLI_SESSION_HOST_PREFIX")
+        let host_prefix = crate::platform::env::var("SOLI_SESSION_HOST_PREFIX")
             .ok()
             .map(|v| v == "1" || v.to_lowercase() == "true")
             .unwrap_or(false);
@@ -549,7 +549,7 @@ impl SessionConfig {
 /// plaintext / no-auth session storage via `SOLI_SESSION_ALLOW_INSECURE_HTTP=1`.
 /// Use sparingly — this disables the same-VPC TLS/auth requirement.
 fn session_allow_insecure_http() -> bool {
-    std::env::var("SOLI_SESSION_ALLOW_INSECURE_HTTP")
+    crate::platform::env::var("SOLI_SESSION_ALLOW_INSECURE_HTTP")
         .map(|v| matches!(v.as_str(), "1" | "true" | "yes"))
         .unwrap_or(false)
 }
@@ -671,7 +671,7 @@ const IN_MEMORY_SESSION_SHARDS: usize = 16;
 const DEFAULT_MAX_IN_MEMORY_SESSIONS: usize = 100_000;
 
 fn max_in_memory_sessions_from_env() -> usize {
-    std::env::var("SOLI_SESSION_MAX_IN_MEMORY")
+    crate::platform::env::var("SOLI_SESSION_MAX_IN_MEMORY")
         .ok()
         .and_then(|v| v.trim().parse().ok())
         .unwrap_or(DEFAULT_MAX_IN_MEMORY_SESSIONS)

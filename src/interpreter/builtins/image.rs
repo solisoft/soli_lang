@@ -119,7 +119,7 @@ fn validate_image_path(path: &str, op: &str) -> Result<PathBuf, String> {
 fn image_max_alloc_bytes() -> u64 {
     static CAP: OnceLock<u64> = OnceLock::new();
     *CAP.get_or_init(|| {
-        std::env::var("SOLI_IMAGE_MAX_ALLOC_BYTES")
+        crate::platform::env::var("SOLI_IMAGE_MAX_ALLOC_BYTES")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(256 * 1024 * 1024)
@@ -129,7 +129,7 @@ fn image_max_alloc_bytes() -> u64 {
 fn image_max_dimension_px() -> u32 {
     static CAP: OnceLock<u32> = OnceLock::new();
     *CAP.get_or_init(|| {
-        std::env::var("SOLI_IMAGE_MAX_DIMENSION_PX")
+        crate::platform::env::var("SOLI_IMAGE_MAX_DIMENSION_PX")
             .ok()
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(16_384)
@@ -218,6 +218,7 @@ where
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn encode_dynamic_image(
     img: &DynamicImage,
     quality: u8,
@@ -241,6 +242,14 @@ pub(crate) fn encode_dynamic_image(
             .map_err(|e| format!("Failed to encode image: {}", e))?;
     }
     Ok(buffer)
+}
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn encode_dynamic_image(
+    img: &DynamicImage,
+    quality: u8,
+    format: ImageFormat,
+) -> Result<Vec<u8>, String> {
+    Err(crate::platform::unsupported_on_edge("encode_dynamic_image"))
 }
 
 fn encode_image(data: &ImageData, format: ImageFormat) -> Result<Vec<u8>, String> {
@@ -1124,7 +1133,7 @@ mod tests {
         // this test run. Match against the parser's default rather than
         // a constant so the test still passes if a peer test sets the
         // env first — same logic, same outcome.
-        let expected = std::env::var("SOLI_IMAGE_MAX_ALLOC_BYTES")
+        let expected = crate::platform::env::var("SOLI_IMAGE_MAX_ALLOC_BYTES")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(256 * 1024 * 1024);
@@ -1133,7 +1142,7 @@ mod tests {
 
     #[test]
     fn image_max_dimension_px_default_16384() {
-        let expected = std::env::var("SOLI_IMAGE_MAX_DIMENSION_PX")
+        let expected = crate::platform::env::var("SOLI_IMAGE_MAX_DIMENSION_PX")
             .ok()
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(16_384);

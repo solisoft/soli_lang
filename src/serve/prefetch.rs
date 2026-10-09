@@ -71,7 +71,7 @@ pub fn is_enabled() -> bool {
 }
 
 fn read_is_enabled() -> bool {
-    match std::env::var("SOLI_PREFETCH") {
+    match crate::platform::env::var("SOLI_PREFETCH") {
         Ok(v) => !matches!(
             v.trim().to_ascii_lowercase().as_str(),
             "off" | "false" | "0" | "no"
@@ -151,7 +151,7 @@ pub(crate) fn prefetch_ttl() -> u64 {
 }
 
 fn read_prefetch_ttl() -> u64 {
-    std::env::var("SOLI_PREFETCH_TTL")
+    crate::platform::env::var("SOLI_PREFETCH_TTL")
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())
         .map(|secs| secs.clamp(1, 300))
@@ -183,7 +183,7 @@ mod tests {
     }
     impl EnvGuard {
         fn set(value: Option<&str>) -> Self {
-            let prior = std::env::var("SOLI_PREFETCH").ok();
+            let prior = crate::platform::env::var("SOLI_PREFETCH").ok();
             match value {
                 Some(v) => std::env::set_var("SOLI_PREFETCH", v),
                 None => std::env::remove_var("SOLI_PREFETCH"),
@@ -205,7 +205,7 @@ mod tests {
     }
     impl TtlEnvGuard {
         fn set(value: Option<&str>) -> Self {
-            let prior = std::env::var("SOLI_PREFETCH_TTL").ok();
+            let prior = crate::platform::env::var("SOLI_PREFETCH_TTL").ok();
             match value {
                 Some(v) => std::env::set_var("SOLI_PREFETCH_TTL", v),
                 None => std::env::remove_var("SOLI_PREFETCH_TTL"),

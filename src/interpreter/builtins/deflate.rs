@@ -86,7 +86,7 @@ fn do_deflate(data: &[u8]) -> Result<Vec<u8>, String> {
 const DEFAULT_INFLATE_MAX_BYTES: u64 = 8 * 1024 * 1024;
 
 fn inflate_max_bytes() -> u64 {
-    std::env::var("SOLI_DEFLATE_MAX_BYTES")
+    crate::platform::env::var("SOLI_DEFLATE_MAX_BYTES")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .filter(|&n| n > 0)

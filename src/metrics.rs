@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 /// Whether metrics collection is enabled for this process.
 ///
@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 pub fn metrics_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {
-        std::env::var("SOLI_METRICS")
+        crate::platform::env::var("SOLI_METRICS")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false)
     })

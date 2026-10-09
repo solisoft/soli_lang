@@ -138,7 +138,7 @@ struct Resumable {
     /// what came after it.
     replay: std::collections::VecDeque<(u64, Vec<u8>)>,
     /// When the socket went. `None` while one is attached.
-    detached_at: Option<std::time::Instant>,
+    detached_at: Option<web_time::Instant>,
 }
 
 /// How many unacknowledged batches a session keeps for a reconnect.
@@ -175,7 +175,7 @@ pub fn mint_handle() -> [u8; 16] {
 /// every reconnect a fresh mount — so this is the only thing that frees it,
 /// and it runs on every path that touches the map.
 fn sweep(m: &mut HashMap<String, Resumable>) {
-    let now = std::time::Instant::now();
+    let now = web_time::Instant::now();
     let gone: Vec<String> = m
         .iter()
         .filter(|(_, r)| {
@@ -215,7 +215,7 @@ pub fn detach_resumable(liveview_id: &str) {
     EUI_RESUMABLE.write(|m| {
         sweep(m);
         if let Some(r) = m.get_mut(liveview_id) {
-            r.detached_at = Some(std::time::Instant::now());
+            r.detached_at = Some(web_time::Instant::now());
         }
     });
 }
@@ -536,14 +536,14 @@ const SEND_PATIENCE: std::time::Duration = std::time::Duration::from_secs(2);
 /// Send a frame to every socket attached to an instance: encode once, send to
 /// each, and say how many bytes that was — the one number a dev bar cannot
 /// work out for itself. `deadline` is the render's, shared by all its frames.
-fn send_frame(instance: &LiveViewInstance, frame: &Frame, deadline: std::time::Instant) -> usize {
+fn send_frame(instance: &LiveViewInstance, frame: &Frame, deadline: web_time::Instant) -> usize {
     send_bytes(instance, frame.encode(), deadline)
 }
 
 /// The same, for a frame already encoded — a `Batch` is encoded once and kept
 /// for a reconnect (01 §4.1) before it is sent, and encoding it twice to do
 /// both would put the cost of resume on every render.
-fn send_bytes(instance: &LiveViewInstance, bytes: Vec<u8>, deadline: std::time::Instant) -> usize {
+fn send_bytes(instance: &LiveViewInstance, bytes: Vec<u8>, deadline: web_time::Instant) -> usize {
     let size = bytes.len();
     for sender in &instance.senders {
         send_or_close(sender, bytes.clone(), deadline);
@@ -556,7 +556,7 @@ fn send_bytes(instance: &LiveViewInstance, bytes: Vec<u8>, deadline: std::time::
 fn send_or_close(
     sender: &async_channel::Sender<Result<Message, tungstenite::Error>>,
     bytes: Vec<u8>,
-    deadline: std::time::Instant,
+    deadline: web_time::Instant,
 ) {
     let mut message = Ok(Message::Binary(bytes));
     loop {
@@ -564,7 +564,7 @@ fn send_or_close(
             Ok(()) => return,
             Err(async_channel::TrySendError::Closed(_)) => return,
             Err(async_channel::TrySendError::Full(back)) => {
-                if std::time::Instant::now() >= deadline {
+                if web_time::Instant::now() >= deadline {
                     eprintln!("[EUI] a socket is not draining its frames; closing it");
                     sender.close();
                     return;
@@ -734,7 +734,7 @@ fn run_eui_event(
                             code: 403,
                             message: reason.clone(),
                         },
-                        std::time::Instant::now() + SEND_PATIENCE,
+                        web_time::Instant::now() + SEND_PATIENCE,
                     );
                     return Err(format!("{CLOSE_MARK}{reason}"));
                 }
@@ -769,14 +769,14 @@ fn run_eui_event(
         .ok_or_else(|| format!("EUI: no view for component '{component}'"))?;
     let view = resolve(interpreter, &view_name)?;
     let state_value = state_for_view.unwrap_or_else(|| json_to_value(&instance.state));
-    let t_view = std::time::Instant::now();
+    let t_view = web_time::Instant::now();
     let tree_value = interpreter
         .call_value(view, vec![state_value], Span::default())
         .map_err(|e| format!("EUI: view '{view_name}' failed: {e}"))?;
     let view_ms = t_view.elapsed().as_secs_f64() * 1e3;
 
     let resync = data.event == RESYNC_EVENT;
-    let t_render = std::time::Instant::now();
+    let t_render = web_time::Instant::now();
     let session_id = instance.id.clone();
     // A handler that raises is one thing — a timeout inside an HTTP call is
     // transient, the session survives it, and the person's next click still
@@ -799,7 +799,7 @@ fn run_eui_event(
                     code: 400,
                     message: e.clone(),
                 },
-                std::time::Instant::now() + SEND_PATIENCE,
+                web_time::Instant::now() + SEND_PATIENCE,
             );
             return Err(e);
         }
@@ -835,7 +835,7 @@ fn run_eui_event(
         chunks: tables[3],
         ..Stats::default()
     };
-    let deadline = std::time::Instant::now() + SEND_PATIENCE;
+    let deadline = web_time::Instant::now() + SEND_PATIENCE;
     for batch in batches {
         if trace() {
             eprintln!(
@@ -877,7 +877,7 @@ mod tests {
     #[test]
     fn a_reader_that_never_drains_is_closed_not_skipped() {
         let (tx, rx) = async_channel::bounded::<Result<Message, tungstenite::Error>>(1);
-        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(20);
+        let deadline = web_time::Instant::now() + std::time::Duration::from_millis(20);
         send_or_close(&tx, vec![1], deadline);
         assert_eq!(rx.len(), 1, "the first frame fits");
         send_or_close(&tx, vec![2], deadline);
@@ -903,7 +903,7 @@ mod tests {
         // busy enough that the reading thread waits seconds to be
         // scheduled must not read as a sender giving up on it. What a
         // deadline does to a reader that never drains is the test above.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        let deadline = web_time::Instant::now() + std::time::Duration::from_secs(60);
         let drain = std::thread::spawn(move || {
             let mut got = Vec::new();
             while let Ok(Ok(Message::Binary(bytes))) = rx.recv_blocking() {

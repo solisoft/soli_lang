@@ -12,7 +12,7 @@
 //! headers they come from are moved to the worker before the reply is built.
 
 use std::borrow::Cow;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use bytes::Bytes;
 use futures_util::StreamExt;
@@ -862,7 +862,7 @@ mod read_body_tests {
         let body = StreamBody::new(
             stream::iter(frames(&["partial"])).chain(stream::pending::<FrameResult>()),
         );
-        let started = std::time::Instant::now();
+        let started = web_time::Instant::now();
         let (outcome, _) = read(body, 1024, Duration::from_millis(50));
         assert_eq!(outcome.unwrap_err(), BodyReadError::TimedOut);
         assert!(started.elapsed() < Duration::from_secs(5));

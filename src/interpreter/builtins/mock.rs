@@ -23,7 +23,7 @@ thread_local! {
 /// environment (`APP_ENV=test`, which `soli test` sets): production apps keep
 /// the name free for their own classes.
 pub fn register_mock_class(env: &Rc<RefCell<Environment>>) -> Result<(), String> {
-    if std::env::var("APP_ENV").as_deref() != Ok("test") {
+    if crate::platform::env::var("APP_ENV").as_deref() != Ok("test") {
         return Ok(());
     }
     let class = mock_class()?;

@@ -345,7 +345,7 @@ fn argon2_hasher() -> Argon2<'static> {
     // empty `SOLI_ARGON2_FAST=` — how a shell says "off" — as on.
     static FAST: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
         matches!(
-            std::env::var("SOLI_ARGON2_FAST").as_deref(),
+            crate::platform::env::var("SOLI_ARGON2_FAST").as_deref(),
             Ok("1") | Ok("true")
         )
     });
@@ -671,7 +671,7 @@ pub(crate) fn derive_aes_key(material: &[u8]) -> [u8; 32] {
 fn resolve_aes_key(explicit: Option<&str>) -> Result<[u8; 32], String> {
     let material = match explicit {
         Some(s) if !s.is_empty() => s.to_string(),
-        _ => std::env::var("SOLI_ENCRYPTION_KEY")
+        _ => crate::platform::env::var("SOLI_ENCRYPTION_KEY")
             .ok()
             .filter(|s| !s.is_empty())
             .ok_or_else(|| "no encryption key: pass one or set SOLI_ENCRYPTION_KEY".to_string())?,
@@ -1306,8 +1306,8 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                     }
                 }
             } else {
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
+                web_time::SystemTime::now()
+                    .duration_since(web_time::UNIX_EPOCH)
                     .map_err(|e| e.to_string())?
                     .as_secs()
             };
@@ -1380,8 +1380,8 @@ pub fn register_crypto_builtins(env: &mut Environment) {
                     }
                 }
             } else {
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
+                web_time::SystemTime::now()
+                    .duration_since(web_time::UNIX_EPOCH)
                     .map_err(|e| e.to_string())?
                     .as_secs()
             };

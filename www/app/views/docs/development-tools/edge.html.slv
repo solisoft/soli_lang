@@ -1,0 +1,156 @@
+<div>
+    <div class="mb-16">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Cloudflare Workers</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Run a Soli app inside a Cloudflare Worker: the interpreter compiled to WebAssembly, your app's source shipped with it, and each request answered by the same routing, controllers, views and models <code class="text-amber-400">soli serve</code> runs &mdash; next to your visitors, with no server to keep up.
+        </p>
+    </div>
+
+    <div class="my-8 p-6 rounded-xl bg-green-500/10 border border-green-500/20 mb-12">
+        <h4 class="text-lg font-semibold text-green-400 mb-1">Live example</h4>
+        <p class="text-green-200/80 text-sm">
+            <a href="https://cf.solisoft.net" class="underline">cf.solisoft.net</a> is a Soli app running this way. It is <code>examples/cloudflare-worker</code> in the Soli repository, and it explains this page in pages of its own.
+        </p>
+    </div>
+
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-12">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">./scripts/build-edge.sh                      # once per Soli version → target/edge
+soli edge build . --runtime target/edge      # your app → dist/edge
+cd dist/edge &amp;&amp; npx wrangler dev             # on workerd, locally
+npx wrangler deploy                          # on Cloudflare</code></pre>
+    </div>
+
+    <h2 id="how-it-works" class="text-3xl font-bold text-white mb-4 scroll-mt-24">How it works</h2>
+    <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-12">
+        <li><strong class="text-white">The edge runtime</strong> is the Soli library built for <code class="text-amber-400">wasm32-unknown-unknown</code> without its server, CLI and native-only builtins: about 9&nbsp;MB of WebAssembly, 3&nbsp;MB compressed. <code class="text-amber-400">scripts/build-edge.sh</code> builds it from the <code class="text-amber-400">edge/</code> crate.</li>
+        <li><strong class="text-white"><code class="text-amber-400">soli edge build</code></strong> writes a plain Wrangler project: the runtime, a small JavaScript host (<code class="text-amber-400">src/worker.js</code>), your app's source as <code class="text-amber-400">src/app.json</code>, and <code class="text-amber-400">public/</code> as the Worker's static assets.</li>
+        <li><strong class="text-white">At the first request</strong> an isolate instantiates the runtime, mounts the app's files in memory (a Worker has no filesystem) and boots the app the way a <code class="text-amber-400">soli serve</code> worker does: a few tens of milliseconds, once per isolate. Later requests take a few milliseconds.</li>
+        <li><strong class="text-white">Every request</strong> goes through <code class="text-amber-400">handle_request</code>, the function <code class="text-amber-400">soli serve</code>'s workers call: middleware, CSRF, routing, the action on the VM, the view and its layout.</li>
+        <li><strong class="text-white">Model queries</strong> reach SoliDB over HTTP(S) with the Worker's <code class="text-amber-400">fetch</code>. The interpreter is synchronous and <code class="text-amber-400">fetch</code> is not, so the wasm stack <em>suspends</em> on each query &mdash; <a href="https://v8.dev/blog/jspi" class="text-amber-400 hover:underline">JavaScript Promise Integration</a> &mdash; and resumes when the answer arrives. Your code does not change.</li>
+    </ul>
+
+    <h2 id="runtime" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Build the edge runtime</h2>
+    <p class="text-gray-400 mb-6">Once per Soli version, in the Soli source tree:</p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.126 --locked
+./scripts/build-edge.sh</code></pre>
+    </div>
+    <p class="text-gray-400 mb-6">
+        The wasm-bindgen CLI must match the version <code class="text-amber-400">edge/Cargo.toml</code> pins; the script checks and prints the install line when it does not. Nothing in the wasm build compiles C. The output, in <code class="text-amber-400">target/edge</code> (or <code class="text-amber-400">$OUT</code>):
+    </p>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-12">
+        <table class="w-full text-sm text-left">
+            <thead class="text-gray-300 border-b border-white/10"><tr><th class="py-3 px-4">File</th><th class="py-3 px-4">What it is</th></tr></thead>
+            <tbody class="text-gray-400">
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-amber-400">soli_edge_bg.wasm</code></td><td class="py-3 px-4">the interpreter (opt-level <code>z</code>, fat LTO)</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-amber-400">soli_edge.js</code></td><td class="py-3 px-4">wasm-bindgen glue</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-amber-400">worker.js</code></td><td class="py-3 px-4">the Worker: boots the app, queues requests into wasm</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-400">jspi.js</code></td><td class="py-3 px-4">the one import the stack suspends on</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="package" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Package an app: <code>soli edge build</code></h2>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli edge build [folder] [--out DIR] [--runtime DIR]</code></pre>
+    </div>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6">
+        <table class="w-full text-sm text-left">
+            <thead class="text-gray-300 border-b border-white/10"><tr><th class="py-3 px-4">Option</th><th class="py-3 px-4">Default</th></tr></thead>
+            <tbody class="text-gray-400">
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-amber-400">folder</code></td><td class="py-3 px-4"><code>.</code> &mdash; the app (it must have <code>app/controllers</code>)</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-amber-400">--out</code>, <code class="text-amber-400">-o</code></td><td class="py-3 px-4"><code>&lt;folder&gt;/dist/edge</code> &mdash; the Wrangler project to write</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-400">--runtime</code></td><td class="py-3 px-4"><code>$SOLI_EDGE_RUNTIME</code>, then <code>edge/</code> or <code>../share/soli/edge</code> next to the <code>soli</code> binary</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-12">
+        <li><code class="text-amber-400">app/</code>, <code class="text-amber-400">config/</code> and <code class="text-amber-400">lib/</code> go into <code>src/app.json</code>, mounted at <code>/app</code> in the Worker. Only UTF-8 text files: a binary file is skipped with a line saying so (binary files belong in <code>public/</code>).</li>
+        <li><code class="text-amber-400">public/</code> is copied fresh each build and served as <a href="https://developers.cloudflare.com/workers/static-assets/" class="text-amber-400 hover:underline">static assets</a>, before the Worker runs.</li>
+        <li><code class="text-amber-400">.env</code> and anything outside those directories is <strong class="text-white">not</strong> bundled.</li>
+        <li><code class="text-amber-400">wrangler.toml</code> is written on the first build only: later builds keep your name, routes, vars and account. Add <code>dist/</code> to the app's <code>.gitignore</code>.</li>
+    </ul>
+
+    <h2 id="configure" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Configure</h2>
+    <p class="text-gray-400 mb-6">
+        Everything an app reads with <code class="text-amber-400">getenv()</code> comes from the Worker's bindings: plain values under <code class="text-amber-400">[vars]</code> in <code class="text-amber-400">wrangler.toml</code>, secrets with Wrangler.
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-4">
+        <pre data-filename="wrangler.toml"><code class="language-toml text-sm">[vars]
+SOLIDB_HOST = "https://db.example.com"
+SOLIDB_DATABASE = "my_app"
+SOLIDB_USERNAME = "app"</code></pre>
+    </div>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">npx wrangler secret put SOLIDB_PASSWORD</code></pre>
+    </div>
+    <p class="text-gray-400 mb-12">
+        The runtime also sets <code class="text-amber-400">SOLI_RUNTIME</code> (<code>"cloudflare-workers"</code>) and <code class="text-amber-400">SOLI_VERSION</code>, unless the Worker does. Request headers carry what Cloudflare knows about the visitor: <code class="text-amber-400">cf-connecting-ip</code> (also the request's peer IP), <code class="text-amber-400">cf-ipcountry</code>, and <code class="text-amber-400">cf-colo</code> &mdash; the datacenter that ran the request, added by <code>worker.js</code> from <code>request.cf.colo</code>.
+    </p>
+
+    <h2 id="deploy" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Deploy</h2>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">npx wrangler deploy</code></pre>
+    </div>
+    <p class="text-gray-400 mb-6">
+        For your own domain, once its zone is on the same Cloudflare account, add to <code class="text-amber-400">wrangler.toml</code> &mdash; above the <code>[assets]</code> table, or TOML files it under it:
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="wrangler.toml"><code class="language-toml text-sm">routes = [{ pattern = "app.example.com", custom_domain = true }]</code></pre>
+    </div>
+    <p class="text-gray-400 mb-12">
+        A Wrangler API token needs <em>Workers Scripts: Edit</em> on the account, and <em>Workers Routes: Edit</em> on the zone for a custom domain. Wrangler finds the account from the token; with access to several, set <code class="text-amber-400">account_id</code> in <code>wrangler.toml</code>.
+    </p>
+
+    <h2 id="databases" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Databases</h2>
+    <p class="text-gray-400 mb-12">
+        SoliDB models work as they do under <code class="text-amber-400">soli serve</code> &mdash; <code>find</code>, <code>where</code>, <code>create</code>, <code>update</code>, <code>delete</code>, <code>grouped</code>, validations, callbacks &mdash; over SoliDB's HTTP API. The Worker must be able to reach <code class="text-amber-400">SOLIDB_HOST</code>: a public <code>https://</code> address. Credentials follow the usual order (JWT login with <code>SOLIDB_USERNAME</code> / <code>SOLIDB_PASSWORD</code>, <code>SOLIDB_API_KEY</code>, then basic auth). PostgreSQL, MySQL, SQLite and the native SoliDB driver are not available: the edge build always uses HTTP.
+    </p>
+
+    <h2 id="scope" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What runs on the edge</h2>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6">
+        <table class="w-full text-sm text-left">
+            <thead class="text-gray-300 border-b border-white/10"><tr><th class="py-3 px-4">Runs</th><th class="py-3 px-4">Stays with <code>soli serve</code></th></tr></thead>
+            <tbody class="text-gray-400">
+                <tr class="border-b border-white/5"><td class="py-3 px-4">routes, controllers, <code>before_action</code>, middleware</td><td class="py-3 px-4">WebSockets, LiveView</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4">views, layouts, partials, components, helpers</td><td class="py-3 px-4">server-sent events, <code>stream</code>, blob streaming (answered <code>501</code>)</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4">query strings, URL-encoded forms, JSON</td><td class="py-3 px-4">multipart uploads, file writes</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4">i18n from <code>config/locales</code></td><td class="py-3 px-4">background jobs, cron, sending mail</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4">SoliDB models over HTTP(S)</td><td class="py-3 px-4">PostgreSQL, MySQL, SQLite, the native SoliDB driver</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4">the <code>HTTP</code> class (<code>fetch</code>); <code>HTTP.parallel*</code> run one after another</td><td class="py-3 px-4"><code>--dev</code>: hot reload, dev bar, REPL</td></tr>
+                <tr><td class="py-3 px-4">static files from <code>public/</code></td><td class="py-3 px-4">PDF, Office, lossy WebP, <code>System.run</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12">A builtin that needs what a Worker lacks returns an error naming the edge build (&ldquo;&hellip; is not available on the edge (Cloudflare Workers) build&rdquo;).</p>
+
+    <h2 id="limits" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Limits worth knowing</h2>
+    <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-12">
+        <li><strong class="text-white">One request at a time per isolate.</strong> A request suspended on a query keeps its isolate's wasm stack; <code>worker.js</code> queues the next one behind it. Cloudflare spreads load across isolates, but a slow query delays the requests queued in the same isolate.</li>
+        <li><strong class="text-white">A Rust panic ends the isolate.</strong> wasm is <code>panic = abort</code>: where <code>soli serve</code> answers a 500 and keeps the worker, the edge build loses the isolate, and the next request boots a fresh one.</li>
+        <li><strong class="text-white">Size.</strong> About 3&nbsp;MB compressed: inside the paid plan's limit, at the edge of the free plan's 3&nbsp;MB.</li>
+        <li><strong class="text-white">Sessions.</strong> The default in-memory store lives as long as an isolate; use the <code>cookie</code> driver (<code>SOLI_SESSION_DRIVER=cookie</code> and a 32+ character <code>SOLI_SESSION_SECRET</code> secret).</li>
+        <li><strong class="text-white">Redirects</strong> of the <code>HTTP</code> class are followed by <code>fetch</code>; the SSRF check still screens every URL you pass it.</li>
+    </ul>
+
+    <h2 id="troubleshooting" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Troubleshooting</h2>
+    <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-12">
+        <table class="w-full text-sm text-left">
+            <thead class="text-gray-300 border-b border-white/10"><tr><th class="py-3 px-4">Symptom</th><th class="py-3 px-4">Cause</th></tr></thead>
+            <tbody class="text-gray-400">
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>Soli failed to boot: …</code> (500 on every request)</td><td class="py-3 px-4">the app did not load; the message is the boot error (syntax error, missing <code>app/controllers</code>…)</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>501 Streaming responses are not available…</code></td><td class="py-3 px-4">the action streams (SSE, <code>stream</code>, <code>solidb_blob_response</code>)</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>… is not available on the edge (Cloudflare Workers) build</code></td><td class="py-3 px-4">a builtin that needs a socket, a thread, a subprocess or a disk</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no edge runtime found</code> from <code>soli edge build</code></td><td class="py-3 px-4">pass <code>--runtime</code> or set <code>SOLI_EDGE_RUNTIME</code> to the directory <code>build-edge.sh</code> wrote</td></tr>
+                <tr><td class="py-3 px-4">a model call hangs, then the request fails</td><td class="py-3 px-4"><code>SOLIDB_HOST</code> is not reachable from Cloudflare (a LAN address, <code>localhost</code>)</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-gray-400 mb-12">
+        For servers you run yourself, see <a href="/docs/development-tools/deploy" class="text-amber-400 hover:underline">Deploy</a>.
+    </p>
+</div>

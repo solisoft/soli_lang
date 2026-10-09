@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{Instant, SystemTime};
+use web_time::{Instant, SystemTime};
 
 use bytes::Bytes;
 use hyper::{header, Response, StatusCode};
@@ -226,8 +226,8 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "soli-eui-assets-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            web_time::SystemTime::now()
+                .duration_since(web_time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_nanos())
         ));
         std::fs::create_dir_all(root.join("public/images")).unwrap();

@@ -257,6 +257,7 @@ fn parse_options(value: &Value) -> Result<SendOptions, String> {
 /// POST one notification. Returns `{"status": Int, "reason": String}` rather
 /// than throwing: a dead device token is an ordinary outcome to be handled
 /// (prune it), not an exception.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn send(device_token: &str, payload: &Value, options: &Value) -> Result<Value, String> {
     if device_token.is_empty() || device_token.len() > MAX_DEVICE_TOKEN_LEN {
         return Err("Apns.send(): implausible device token".to_string());
@@ -322,6 +323,10 @@ pub fn send(device_token: &str, payload: &Value, options: &Value) -> Result<Valu
         Value::String(reason.into()),
     );
     Ok(Value::Hash(Rc::new(std::cell::RefCell::new(result))))
+}
+#[cfg(target_arch = "wasm32")]
+pub fn send(_device_token: &str, _payload: &Value, _options: &Value) -> Result<Value, String> {
+    Err(crate::platform::unsupported_on_edge("send"))
 }
 
 pub fn register_apns_builtins(env: &mut Environment) {

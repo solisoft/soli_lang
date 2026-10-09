@@ -42,18 +42,20 @@ pub(crate) struct S3Config {
 
 impl S3Config {
     pub fn from_env() -> Result<Self, String> {
-        let access_key = std::env::var("AWS_ACCESS_KEY_ID")
-            .or_else(|_| std::env::var("S3_ACCESS_KEY"))
+        let access_key = crate::platform::env::var("AWS_ACCESS_KEY_ID")
+            .or_else(|_| crate::platform::env::var("S3_ACCESS_KEY"))
             .map_err(|_| "S3_ACCESS_KEY or AWS_ACCESS_KEY_ID not set".to_string())?;
-        let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY")
-            .or_else(|_| std::env::var("S3_SECRET_KEY"))
+        let secret_key = crate::platform::env::var("AWS_SECRET_ACCESS_KEY")
+            .or_else(|_| crate::platform::env::var("S3_SECRET_KEY"))
             .map_err(|_| "S3_SECRET_KEY or AWS_SECRET_ACCESS_KEY not set".to_string())?;
-        let region = std::env::var("AWS_REGION")
-            .or_else(|_| std::env::var("S3_REGION"))
+        let region = crate::platform::env::var("AWS_REGION")
+            .or_else(|_| crate::platform::env::var("S3_REGION"))
             .ok()
             .filter(|r| !r.is_empty())
             .unwrap_or_else(|| "us-east-1".to_string());
-        let endpoint = std::env::var("S3_ENDPOINT").ok().filter(|e| !e.is_empty());
+        let endpoint = crate::platform::env::var("S3_ENDPOINT")
+            .ok()
+            .filter(|e| !e.is_empty());
         Ok(Self::new(
             access_key,
             secret_key,
@@ -926,7 +928,8 @@ mod tests {
     #[test]
     #[ignore = "needs a live S3-compatible endpoint (S3_E2E_ENDPOINT, _ACCESS_KEY, _SECRET_KEY)"]
     fn round_trip_against_a_live_endpoint() {
-        let env = |name: &str| std::env::var(format!("S3_E2E_{name}")).unwrap_or_default();
+        let env =
+            |name: &str| crate::platform::env::var(format!("S3_E2E_{name}")).unwrap_or_default();
         let region = Some(env("REGION")).filter(|r| !r.is_empty());
         let config = S3Config::new(
             env("ACCESS_KEY"),

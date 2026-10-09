@@ -32,7 +32,7 @@ pub fn optional_let_enabled() -> bool {
     use std::sync::OnceLock;
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {
-        std::env::var("SOLI_VM_OPTIONAL_LET")
+        crate::platform::env::var("SOLI_VM_OPTIONAL_LET")
             .map(|v| !(v == "0" || v.eq_ignore_ascii_case("false")))
             .unwrap_or(true)
     })

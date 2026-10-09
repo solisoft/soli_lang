@@ -79,8 +79,8 @@ impl FileCoverage {
 pub struct TestCoverage {
     pub test_name: String,
     pub file_coverages: HashMap<PathBuf, FileCoverage>,
-    pub start_time: std::time::Instant,
-    pub end_time: Option<std::time::Instant>,
+    pub start_time: web_time::Instant,
+    pub end_time: Option<web_time::Instant>,
 }
 
 impl TestCoverage {
@@ -88,13 +88,13 @@ impl TestCoverage {
         Self {
             test_name,
             file_coverages: HashMap::new(),
-            start_time: std::time::Instant::now(),
+            start_time: web_time::Instant::now(),
             end_time: None,
         }
     }
 
     pub fn duration(&self) -> std::time::Duration {
-        let end = self.end_time.unwrap_or_else(std::time::Instant::now);
+        let end = self.end_time.unwrap_or_else(web_time::Instant::now);
         end - self.start_time
     }
 }
@@ -396,7 +396,7 @@ mod tests {
         let mut tc = TestCoverage::new("t".to_string());
         // Simulate a finished test by clamping end_time to start_time —
         // duration should then be effectively zero (not negative, not nanosec
-        // drift from std::time::Instant::now()).
+        // drift from web_time::Instant::now()).
         tc.end_time = Some(tc.start_time);
         assert_eq!(tc.duration(), std::time::Duration::ZERO);
     }

@@ -6,7 +6,7 @@ use crate::serve::tenant::TenantValue;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 /// Rate-limit buckets for the application on this thread.
 ///
@@ -604,7 +604,7 @@ pub fn register_rate_limit_builtins(env: &mut Environment) {
 /// whole. `SOLI_RATE_LIMIT_IPV6_PREFIX` widens or narrows this: 56 or 48
 /// aggregates a whole site.
 fn ipv6_prefix_len() -> u8 {
-    std::env::var("SOLI_RATE_LIMIT_IPV6_PREFIX")
+    crate::platform::env::var("SOLI_RATE_LIMIT_IPV6_PREFIX")
         .ok()
         .and_then(|v| v.trim().parse::<u8>().ok())
         .filter(|n| (1..=128).contains(n))

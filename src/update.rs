@@ -124,6 +124,7 @@ pub fn host_target() -> Result<String, String> {
     Ok(format!("{}-{}", os, arch))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn http_client() -> Result<reqwest::blocking::Client, String> {
     // Same TLS-1.2 floor as `run_self_update` and the runtime clients.
     reqwest::blocking::Client::builder()
@@ -134,6 +135,7 @@ fn http_client() -> Result<reqwest::blocking::Client, String> {
 }
 
 /// Fetch and parse the channel manifest.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn fetch_manifest(descriptor: &UpdateDescriptor) -> Result<UpdateManifest, String> {
     let base = descriptor.update_url.trim_end_matches('/');
     if !base.starts_with("https://") && !base.starts_with("http://") {
@@ -156,6 +158,10 @@ pub fn fetch_manifest(descriptor: &UpdateDescriptor) -> Result<UpdateManifest, S
 
     verify_signature(&manifest, descriptor.pubkey.as_deref())?;
     Ok(manifest)
+}
+#[cfg(target_arch = "wasm32")]
+pub fn fetch_manifest(_descriptor: &UpdateDescriptor) -> Result<UpdateManifest, String> {
+    Err(crate::platform::unsupported_on_edge("fetch_manifest"))
 }
 
 /// Canonical bytes a signature covers: the manifest as sorted-key JSON with the
@@ -267,6 +273,7 @@ pub fn apply(descriptor: &UpdateDescriptor) -> Result<String, String> {
     Ok(format!("updated to v{}", manifest.version))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn download_and_verify(entry: &ArtifactEntry) -> Result<Vec<u8>, String> {
     if !entry.url.starts_with("https://") && !entry.url.starts_with("http://") {
         return Err(format!(
@@ -294,6 +301,10 @@ fn download_and_verify(entry: &ArtifactEntry) -> Result<Vec<u8>, String> {
         ));
     }
     Ok(bytes)
+}
+#[cfg(target_arch = "wasm32")]
+fn download_and_verify(_entry: &ArtifactEntry) -> Result<Vec<u8>, String> {
+    Err(crate::platform::unsupported_on_edge("download_and_verify"))
 }
 
 /// Swap `bytes` in for the running executable, atomically where possible.

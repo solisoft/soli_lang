@@ -134,8 +134,8 @@ pub fn load_locales_from_config_dir(config_dir: &Path) -> usize {
     let locales_dir = config_dir.join("locales");
     let mut store: HashMap<String, serde_yaml::Value> = HashMap::new();
 
-    if locales_dir.is_dir() {
-        match std::fs::read_dir(&locales_dir) {
+    if crate::platform::fs::is_dir(&locales_dir) {
+        match crate::platform::fs::read_dir(&locales_dir) {
             Ok(entries) => {
                 let mut paths: Vec<_> = entries.flatten().map(|e| e.path()).collect();
                 paths.sort();
@@ -144,7 +144,7 @@ pub fn load_locales_from_config_dir(config_dir: &Path) -> usize {
                     if ext != "yml" && ext != "yaml" {
                         continue;
                     }
-                    let body = match std::fs::read_to_string(&path) {
+                    let body = match crate::platform::fs::read_to_string(&path) {
                         Ok(b) => b,
                         Err(e) => {
                             eprintln!("Warning: failed to read {}: {}", path.display(), e);

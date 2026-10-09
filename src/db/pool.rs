@@ -17,7 +17,7 @@
 
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 /// How long a returned network connection is trusted without a ping.
 /// HikariCP's figure: a connection used this recently is still there.

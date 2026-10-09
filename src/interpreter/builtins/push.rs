@@ -115,13 +115,13 @@ fn resolve_vapid(options: &HashPairs) -> Option<Vapid> {
         })
     };
     let public_key = from_opts("public_key")
-        .or_else(|| std::env::var("VAPID_PUBLIC_KEY").ok())
+        .or_else(|| crate::platform::env::var("VAPID_PUBLIC_KEY").ok())
         .filter(|s| !s.is_empty())?;
     let private_key = from_opts("private_key")
-        .or_else(|| std::env::var("VAPID_PRIVATE_KEY").ok())
+        .or_else(|| crate::platform::env::var("VAPID_PRIVATE_KEY").ok())
         .filter(|s| !s.is_empty())?;
     let subject = from_opts("subject")
-        .or_else(|| std::env::var("VAPID_SUBJECT").ok())
+        .or_else(|| crate::platform::env::var("VAPID_SUBJECT").ok())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "mailto:admin@localhost".to_string());
     Some(Vapid {

@@ -180,7 +180,7 @@ fn cached_env_var(
     slot: &'static OnceLock<Option<String>>,
     name: &str,
 ) -> Option<Cow<'static, str>> {
-    slot.get_or_init(|| std::env::var(name).ok())
+    slot.get_or_init(|| crate::platform::env::var(name).ok())
         .as_deref()
         .map(Cow::Borrowed)
 }
@@ -190,7 +190,7 @@ fn cached_env_var(
     _slot: &'static OnceLock<Option<String>>,
     name: &str,
 ) -> Option<Cow<'static, str>> {
-    std::env::var(name).ok().map(Cow::Owned)
+    crate::platform::env::var(name).ok().map(Cow::Owned)
 }
 
 fn app_hosts_env() -> Option<Cow<'static, str>> {
@@ -636,7 +636,7 @@ mod declared_host_tests {
 
     fn with_hosts<T>(value: Option<&str>, body: impl FnOnce() -> T) -> T {
         let _guard = HOSTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let previous = std::env::var("SOLI_APP_HOSTS").ok();
+        let previous = crate::platform::env::var("SOLI_APP_HOSTS").ok();
         match value {
             Some(v) => unsafe { std::env::set_var("SOLI_APP_HOSTS", v) },
             None => unsafe { std::env::remove_var("SOLI_APP_HOSTS") },
@@ -760,7 +760,7 @@ mod app_host_validation_tests {
 
     fn with_hosts<T>(value: Option<&str>, body: impl FnOnce() -> T) -> T {
         let _guard = HOSTS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let previous = std::env::var("SOLI_APP_HOSTS").ok();
+        let previous = crate::platform::env::var("SOLI_APP_HOSTS").ok();
         match value {
             Some(v) => unsafe { std::env::set_var("SOLI_APP_HOSTS", v) },
             None => unsafe { std::env::remove_var("SOLI_APP_HOSTS") },

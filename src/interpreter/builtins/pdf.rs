@@ -727,7 +727,7 @@ fn resolve_font_dir(dir: PathBuf) -> PathBuf {
 /// * `SOLI_PDF_PREVIEW_MAX_PAGES` — default 64.
 /// * `SOLI_PDF_PREVIEW_MAX_PIXELS` — per page, default 40M (≈160 MB RGBA).
 fn env_cap<T: std::str::FromStr + Copy>(var: &'static str, default: T) -> T {
-    std::env::var(var)
+    crate::platform::env::var(var)
         .ok()
         .and_then(|s| s.parse::<T>().ok())
         .unwrap_or(default)
@@ -1620,8 +1620,8 @@ fn facturx_meta(opts: Option<&Value>) -> FacturxMetadata {
 
 /// Current time as an `OffsetDateTime` without requiring time's `clock` feature.
 fn now_odt() -> OffsetDateTime {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let secs = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
     OffsetDateTime::from_unix_timestamp(secs).unwrap_or(OffsetDateTime::UNIX_EPOCH)

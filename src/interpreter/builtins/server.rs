@@ -862,7 +862,7 @@ mod expand_wildcard_action_tests {
 /// allocations, per request, per worker — before the nester deduplicated them.
 /// Rack caps this the same way. `SOLI_MAX_PARAM_PAIRS` overrides it.
 fn max_param_pairs() -> usize {
-    std::env::var("SOLI_MAX_PARAM_PAIRS")
+    crate::platform::env::var("SOLI_MAX_PARAM_PAIRS")
         .ok()
         .and_then(|v| v.trim().parse::<usize>().ok())
         .filter(|n| *n > 0)

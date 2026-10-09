@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= @title %> · Soli at the edge</title>
+  <meta name="description" content="Run a Soli web app inside a Cloudflare Worker: the interpreter compiled to WebAssembly.">
+  <link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/">Soli <span>at the edge</span></a>
+    <nav>
+      <a href="/guide">Guide</a>
+      <a href="/limits">Limits</a>
+      <a href="/try">Try it</a>
+      <a href="/api/info">API</a>
+    </nav>
+  </header>
+  <main>
+    <%- yield %>
+  </main>
+  <footer>
+    <% if @runtime %>
+      <p>
+        Rendered by Soli <strong><%= @runtime["version"] %></strong>
+        on <strong><%= @runtime["runtime"] %></strong>,
+        datacenter <strong><%= @runtime["colo"] %></strong>
+        (visitor in <%= @runtime["country"] %>), at <%= @runtime["rendered_at"] %>.
+      </p>
+    <% end %>
+    <p><a href="https://github.com/solisoft/soli_lang">Soli</a> · this site is <code>examples/cloudflare-worker</code> in the Soli repository.</p>
+  </footer>
+</body>
+</html>

@@ -204,9 +204,9 @@ fn init_conn(conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
 fn busy_wait(retries: i32) -> bool {
     use std::sync::atomic::Ordering::Relaxed;
     thread_local! {
-        static WAITING_SINCE: Cell<Option<std::time::Instant>> = const { Cell::new(None) };
+        static WAITING_SINCE: Cell<Option<web_time::Instant>> = const { Cell::new(None) };
     }
-    let now = std::time::Instant::now();
+    let now = web_time::Instant::now();
     let since = WAITING_SINCE.with(|since| {
         if retries == 0 || since.get().is_none() {
             since.set(Some(now));

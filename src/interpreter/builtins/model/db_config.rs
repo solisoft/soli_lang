@@ -33,8 +33,8 @@ pub struct DbConfig {
 
 impl DbConfig {
     fn from_env() -> Self {
-        let raw =
-            std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+        let raw = crate::platform::env::var("SOLIDB_HOST")
+            .unwrap_or_else(|_| "http://localhost:6745".to_string());
         let (scheme, host) = parse_solidb_host(&raw);
         Self { scheme, host }
     }
@@ -246,12 +246,15 @@ pub(super) fn jwt_exp(token: &str) -> u64 {
 /// `None` if credentials are missing or the login attempt fails — the
 /// caller decides what to do with any previously-cached token in that
 /// case.
-fn login_for_token() -> Option<CachedJwt> {
+/// The login call to make: `(url, JSON body)`, credentials from the env, then
+/// `config/database.toml`, then the loopback dev defaults. `None` when there
+/// are no credentials to log in with.
+fn login_request() -> Option<(String, serde_json::Value)> {
     let (username, password) = match (
-        std::env::var("SOLIDB_USERNAME")
+        crate::platform::env::var("SOLIDB_USERNAME")
             .ok()
             .filter(|s| !s.is_empty()),
-        std::env::var("SOLIDB_PASSWORD").ok(),
+        crate::platform::env::var("SOLIDB_PASSWORD").ok(),
     ) {
         (Some(u), Some(p)) => (u, p),
         _ => {
@@ -266,12 +269,25 @@ fn login_for_token() -> Option<CachedJwt> {
             }
         }
     };
-    let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-    let login_url = format!("{}/auth/login", host);
+    let host = crate::platform::env::var("SOLIDB_HOST")
+        .unwrap_or_else(|_| "http://localhost:6745".to_string());
     let payload = serde_json::json!({
         "username": username,
         "password": password,
     });
+    Some((format!("{}/auth/login", host), payload))
+}
+
+fn token_from_login_body(body: &str) -> Option<CachedJwt> {
+    let json: serde_json::Value = serde_json::from_str(body).ok()?;
+    let token = json.get("token").and_then(|t| t.as_str())?.to_string();
+    let exp_epoch = jwt_exp(&token);
+    Some(CachedJwt { token, exp_epoch })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn login_for_token() -> Option<CachedJwt> {
+    let (login_url, payload) = login_request()?;
     // SEC-007a: route through the redirect-disabled shared agent for
     // consistency with the rest of the HTTP layer. SOLIDB_HOST is
     // operator-configured (not user input) so this is hardening, not
@@ -288,10 +304,25 @@ fn login_for_token() -> Option<CachedJwt> {
         }
     };
     let body = crate::interpreter::builtins::http_class::read_capped_text_sync(resp).ok()?;
-    let json: serde_json::Value = serde_json::from_str(&body).ok()?;
-    let token = json.get("token").and_then(|t| t.as_str())?.to_string();
-    let exp_epoch = jwt_exp(&token);
-    Some(CachedJwt { token, exp_epoch })
+    token_from_login_body(&body)
+}
+
+/// The edge build has no `ureq`: the login is a `fetch` like any query, and
+/// suspends the same way (`block_on_db`).
+#[cfg(target_arch = "wasm32")]
+fn login_for_token() -> Option<CachedJwt> {
+    let (login_url, payload) = login_request()?;
+    let body = crate::interpreter::builtins::http_class::block_on_db(async move {
+        let client = crate::interpreter::builtins::http_class::get_http_client();
+        match client.post(&login_url).json(&payload).send().await {
+            Ok(resp) => resp.text().await.ok(),
+            Err(e) => {
+                eprintln!("Warning: JWT login failed ({}), falling back", e);
+                None
+            }
+        }
+    })?;
+    token_from_login_body(&body)
 }
 
 /// Pure decision function: does this cache entry need a refresh right
@@ -346,7 +377,7 @@ pub fn get_jwt_token() -> Option<String> {
         // one token and hands it to all children so N parallel boots don't
         // make N `/auth/login` calls from the same IP.
         if state.cache.is_none() && !std::mem::replace(&mut state.env_consumed, true) {
-            if let Ok(token) = std::env::var("SOLIDB_JWT") {
+            if let Ok(token) = crate::platform::env::var("SOLIDB_JWT") {
                 if !token.is_empty() {
                     let exp_epoch = jwt_exp(&token);
                     if exp_epoch == 0 || exp_epoch > now + JWT_REFRESH_LEEWAY_SECS {
@@ -453,18 +484,19 @@ fn with_db_config<R>(f: impl FnOnce(&CachedDbConfig) -> R) -> R {
 
 fn db_config_from_env() -> CachedDbConfig {
     {
-        let raw =
-            std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+        let raw = crate::platform::env::var("SOLIDB_HOST")
+            .unwrap_or_else(|_| "http://localhost:6745".to_string());
         let (scheme, host) = parse_solidb_host(&raw);
-        let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
+        let database =
+            crate::platform::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
         // SEC-027: build the cursor URL with the scheme `parse_solidb_host`
         // chose (preserves operator-set https://, defaults remote hosts
         // to https). Was forced to http:// regardless of intent.
         let cursor_url = format!("{}{}/_api/database/{}/cursor", scheme, host, database);
-        let api_key = std::env::var("SOLIDB_API_KEY").ok();
+        let api_key = crate::platform::env::var("SOLIDB_API_KEY").ok();
         let basic_auth = match (
-            std::env::var("SOLIDB_USERNAME").ok(),
-            std::env::var("SOLIDB_PASSWORD").ok(),
+            crate::platform::env::var("SOLIDB_USERNAME").ok(),
+            crate::platform::env::var("SOLIDB_PASSWORD").ok(),
         ) {
             (Some(u), Some(p)) => {
                 use base64::Engine;
@@ -603,8 +635,9 @@ pub fn db_url(path: &str) -> String {
 /// Logs only on state transitions (ok→fail, fail→ok) so an unreachable or
 /// unconfigured DB doesn't spam one line per tick. Disable with
 /// `SOLI_DB_KEEP_WARM=0`.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn spawn_db_keep_warm(handle: &tokio::runtime::Handle) {
-    if std::env::var("SOLI_DB_KEEP_WARM").as_deref() == Ok("0") {
+    if crate::platform::env::var("SOLI_DB_KEEP_WARM").as_deref() == Ok("0") {
         return;
     }
     let idle_secs = crate::interpreter::builtins::http_class::db_pool_idle_secs();
@@ -1042,9 +1075,9 @@ mod tests {
 
         // Save + set env. SOLIDB_HOST is read lazily by login_for_token
         // every call, so both calls go to the same stub.
-        let prev_host = std::env::var("SOLIDB_HOST").ok();
-        let prev_user = std::env::var("SOLIDB_USERNAME").ok();
-        let prev_pass = std::env::var("SOLIDB_PASSWORD").ok();
+        let prev_host = crate::platform::env::var("SOLIDB_HOST").ok();
+        let prev_user = crate::platform::env::var("SOLIDB_USERNAME").ok();
+        let prev_pass = crate::platform::env::var("SOLIDB_PASSWORD").ok();
         std::env::set_var("SOLIDB_HOST", format!("http://127.0.0.1:{}", port));
         std::env::set_var("SOLIDB_USERNAME", "test-user");
         std::env::set_var("SOLIDB_PASSWORD", "test-pass");
@@ -1118,9 +1151,9 @@ mod tests {
             make_jwt_with_exp(now_epoch() + 24 * 3600),
             make_jwt_with_exp(now_epoch() + 12 * 3600),
         ]);
-        let prev_host = std::env::var("SOLIDB_HOST").ok();
-        let prev_user = std::env::var("SOLIDB_USERNAME").ok();
-        let prev_pass = std::env::var("SOLIDB_PASSWORD").ok();
+        let prev_host = crate::platform::env::var("SOLIDB_HOST").ok();
+        let prev_user = crate::platform::env::var("SOLIDB_USERNAME").ok();
+        let prev_pass = crate::platform::env::var("SOLIDB_PASSWORD").ok();
         std::env::set_var("SOLIDB_HOST", format!("http://127.0.0.1:{}", port));
         std::env::set_var("SOLIDB_USERNAME", "test-user");
         std::env::set_var("SOLIDB_PASSWORD", "test-pass");

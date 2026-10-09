@@ -167,11 +167,11 @@ fn env_only_primary() -> Result<ConnectionRegistry, DbError> {
         name: "primary".into(),
         adapter: cfg.adapter,
         url: cfg.database_url.clone(),
-        solidb_host: std::env::var("SOLIDB_HOST").ok(),
-        solidb_database: std::env::var("SOLIDB_DATABASE").ok(),
-        solidb_username: std::env::var("SOLIDB_USERNAME").ok(),
-        solidb_password: std::env::var("SOLIDB_PASSWORD").ok(),
-        solidb_api_key: std::env::var("SOLIDB_API_KEY").ok(),
+        solidb_host: crate::platform::env::var("SOLIDB_HOST").ok(),
+        solidb_database: crate::platform::env::var("SOLIDB_DATABASE").ok(),
+        solidb_username: crate::platform::env::var("SOLIDB_USERNAME").ok(),
+        solidb_password: crate::platform::env::var("SOLIDB_PASSWORD").ok(),
+        solidb_api_key: crate::platform::env::var("SOLIDB_API_KEY").ok(),
         pool_size: cfg.pool_size,
     };
     if spec.adapter.is_sql() && spec.url.is_none() {
@@ -334,7 +334,8 @@ pub fn expand_env(input: &str) -> String {
                 } else {
                     (body, None)
                 };
-                let val = std::env::var(var).unwrap_or_else(|_| default.unwrap_or("").to_string());
+                let val = crate::platform::env::var(var)
+                    .unwrap_or_else(|_| default.unwrap_or("").to_string());
                 out.push_str(&val);
                 i = i + 2 + end + 1;
                 continue;

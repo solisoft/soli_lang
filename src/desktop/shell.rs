@@ -68,7 +68,7 @@ pub fn open(url: &str) -> Opened {
 #[cfg(target_os = "linux")]
 fn open_with_default_browser(url: &str) -> bool {
     // $BROWSER first — a user who set it means it.
-    if let Ok(browser) = std::env::var("BROWSER") {
+    if let Ok(browser) = crate::platform::env::var("BROWSER") {
         if !browser.is_empty() && spawn_detached(&browser, &[url]) {
             return true;
         }

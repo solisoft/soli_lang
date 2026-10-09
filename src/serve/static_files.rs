@@ -402,7 +402,7 @@ const STATIC_MISS_TTL: std::time::Duration = std::time::Duration::from_secs(1);
 const STATIC_MISS_CAPACITY: usize = 1024;
 
 thread_local! {
-    static STATIC_MISSES: std::cell::RefCell<lru::LruCache<String, std::time::Instant>> =
+    static STATIC_MISSES: std::cell::RefCell<lru::LruCache<String, web_time::Instant>> =
         std::cell::RefCell::new(lru::LruCache::new(
             std::num::NonZeroUsize::new(STATIC_MISS_CAPACITY).expect("capacity is non-zero"),
         ));
@@ -427,7 +427,7 @@ fn remember_miss(path: &str) {
     STATIC_MISSES.with(|misses| {
         misses
             .borrow_mut()
-            .put(path.to_string(), std::time::Instant::now());
+            .put(path.to_string(), web_time::Instant::now());
     });
 }
 
@@ -442,7 +442,7 @@ fn canonical_public_dir(public_dir: &Path, refresh: bool, dev_mode: bool) -> Opt
     thread_local! {
         static CANONICAL: std::cell::RefCell<Vec<(PathBuf, PathBuf)>> =
             const { std::cell::RefCell::new(Vec::new()) };
-        static MISSING: std::cell::RefCell<Vec<(PathBuf, std::time::Instant)>> =
+        static MISSING: std::cell::RefCell<Vec<(PathBuf, web_time::Instant)>> =
             const { std::cell::RefCell::new(Vec::new()) };
     }
     if !dev_mode && !refresh {
@@ -468,7 +468,7 @@ fn canonical_public_dir(public_dir: &Path, refresh: bool, dev_mode: bool) -> Opt
                 MISSING.with(|m| {
                     let mut m = m.borrow_mut();
                     m.retain(|(dir, _)| dir != public_dir);
-                    m.push((public_dir.to_path_buf(), std::time::Instant::now()));
+                    m.push((public_dir.to_path_buf(), web_time::Instant::now()));
                 });
             }
             return None;
@@ -843,10 +843,8 @@ mod tests {
         remember_miss(path);
         assert!(recently_missed(path));
         STATIC_MISSES.with(|m| {
-            m.borrow_mut().put(
-                path.to_string(),
-                std::time::Instant::now() - STATIC_MISS_TTL,
-            );
+            m.borrow_mut()
+                .put(path.to_string(), web_time::Instant::now() - STATIC_MISS_TTL);
         });
         assert!(!recently_missed(path), "an expired miss is re-resolved");
         assert!(!recently_missed(path), "and forgotten");

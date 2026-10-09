@@ -59,7 +59,7 @@ pub fn record(command: String, key: String, duration_ms: f64, error: Option<Stri
     // measured duration — the call site doesn't expose the original instant.
     if crate::serve::span_log::is_enabled() {
         let dur_us = (duration_ms * 1000.0).max(0.0) as u64;
-        let start = std::time::Instant::now() - std::time::Duration::from_micros(dur_us);
+        let start = web_time::Instant::now() - std::time::Duration::from_micros(dur_us);
         let name = if key.is_empty() {
             command.clone()
         } else {

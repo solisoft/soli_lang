@@ -7,7 +7,7 @@ use std::path::Path;
 pub fn load_env_files(folder: &Path) {
     load_env_file(folder, ".env", false);
 
-    if let Ok(app_env) = std::env::var("APP_ENV") {
+    if let Ok(app_env) = crate::platform::env::var("APP_ENV") {
         load_env_file(folder, &format!(".env.{}", app_env), true);
     }
 }
@@ -34,7 +34,7 @@ pub fn load_env_file(folder: &Path, filename: &str, override_existing: bool) {
         return;
     };
 
-    let protected: Vec<String> = std::env::var("SOLI_PROTECT_ENV")
+    let protected: Vec<String> = crate::platform::env::var("SOLI_PROTECT_ENV")
         .ok()
         .map(|s| {
             s.split(',')
@@ -86,7 +86,7 @@ pub fn load_env_file(folder: &Path, filename: &str, override_existing: bool) {
         }
 
         let is_protected = protected.iter().any(|p| p == key);
-        let already_set = std::env::var(key).is_ok();
+        let already_set = crate::platform::env::var(key).is_ok();
 
         if (override_existing && !is_protected) || !already_set {
             // SEC-033: `set_var` is `unsafe` because of multi-thread UB on
@@ -155,9 +155,9 @@ mod tests {
 
         load_env_file(dir.path(), ".env", true);
         assert!(
-            std::env::var(key).is_err(),
+            crate::platform::env::var(key).is_err(),
             "expected {key} to remain unset (was {:?})",
-            std::env::var(key)
+            crate::platform::env::var(key)
         );
     }
 
@@ -173,6 +173,6 @@ mod tests {
         std::fs::write(dir.path().join(".env"), format!("{probe}=value\n")).unwrap();
 
         load_env_file(dir.path(), ".env", true);
-        assert!(std::env::var(probe).is_err());
+        assert!(crate::platform::env::var(probe).is_err());
     }
 }

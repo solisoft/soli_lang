@@ -19,6 +19,7 @@ use crate::serve::{box_full, full, websocket_origin_allowed_from, ResponseBody};
 
 // Re-export the WebSocket-based live reload script
 // Note: Using crate:: to avoid circular imports
+#[cfg(not(target_arch = "wasm32"))]
 pub use crate::serve::live_reload_ws::LIVE_RELOAD_SCRIPT;
 
 /// Global flag indicating whether live reload is enabled.
@@ -158,6 +159,7 @@ pub(crate) fn rfind_ascii_case_insensitive(haystack: &str, needle: &[u8]) -> Opt
 /// otherwise appends it to the end of the HTML.
 ///
 /// Uses the WebSocket-based live reload script from live_reload_ws module.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn inject_live_reload_script(html: &str) -> String {
     // Skip if already injected
     if html.contains("__livereload_script_injected") {
@@ -186,6 +188,12 @@ pub fn inject_live_reload_script(html: &str) -> String {
         // Last resort: append at the end
         format!("{}{}", html, script)
     }
+}
+/// The edge build serves no live-reload socket (that lives in `live_reload_ws`,
+/// on hyper), and runs in production anyway: pages go out as rendered.
+#[cfg(target_arch = "wasm32")]
+pub fn inject_live_reload_script(html: &str) -> String {
+    html.to_string()
 }
 
 #[cfg(test)]

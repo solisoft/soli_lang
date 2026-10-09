@@ -34,7 +34,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use bytes::Bytes;
 
@@ -115,7 +115,7 @@ fn capacity_from(raw: Option<String>) -> usize {
 
 #[cfg(feature = "sqlite")]
 fn open() -> Option<Store> {
-    let capacity = capacity_from(std::env::var("SOLI_RESPONSE_CACHE_MB").ok());
+    let capacity = capacity_from(crate::platform::env::var("SOLI_RESPONSE_CACHE_MB").ok());
     if capacity == 0 {
         return None;
     }

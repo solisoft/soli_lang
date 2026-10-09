@@ -935,7 +935,7 @@ impl Encoder {
         // encoder: an interpreter value cannot cross threads.
         let mut pins: HashMap<usize, Value> = HashMap::new();
         let mut styles = StyleMemo::default();
-        let t_convert = std::time::Instant::now();
+        let t_convert = web_time::Instant::now();
         let tree = match self.convert_value(value, &mut pins, &mut styles, 1)? {
             Some(Child::Fresh(n)) => n,
             Some(Child::Kept(rc)) => (*rc).clone(),
@@ -957,7 +957,7 @@ impl Encoder {
         if let Some(reason) = self.overflow.take() {
             return Err(reason);
         }
-        let t_count = std::time::Instant::now();
+        let t_count = web_time::Instant::now();
         let nodes = count_nodes(&tree);
         self.phase_count = t_count.elapsed().as_secs_f64() * 1e3;
         self.last_nodes = nodes;
@@ -967,7 +967,7 @@ impl Encoder {
                 eui_proto::limits::MAX_NODES
             ));
         }
-        let t_diff = std::time::Instant::now();
+        let t_diff = web_time::Instant::now();
         let ops = match (self.prev.take(), resync) {
             (Some(prev), false) => {
                 let mut ops = Vec::new();
@@ -983,7 +983,7 @@ impl Encoder {
         // Keyed nodes converted this render are frozen behind an Arc, so the
         // next render can keep them by the identity of their view value.
         let generation = self.generation;
-        let t_freeze = std::time::Instant::now();
+        let t_freeze = web_time::Instant::now();
         if !self.session.is_empty() {
             let session = self.session.clone();
             with_memo(&session, |memo| {
@@ -1012,7 +1012,7 @@ impl Encoder {
         }
         self.phase_freeze = t_freeze.elapsed().as_secs_f64() * 1e3;
         self.prev = Some(tree);
-        let t_batch = std::time::Instant::now();
+        let t_batch = web_time::Instant::now();
         let mut all = std::mem::take(&mut self.pending);
         all.extend(ops);
         // What this pass asked to say to the person (02 §5.2). After the
@@ -3398,7 +3398,7 @@ mod fingerprint_cost {
         let style = Value::Hash(Rc::new(RefCell::new(map)));
 
         let rounds = 200_000;
-        let t = std::time::Instant::now();
+        let t = web_time::Instant::now();
         let mut sink = 0u8;
         for _ in 0..rounds {
             sink ^= fingerprint_of(&style).unwrap()[0];
@@ -3406,7 +3406,7 @@ mod fingerprint_cost {
         let full = t.elapsed().as_secs_f64() / (rounds as f64) * 1e9;
 
         // The same walk, feeding a counter instead of a hash.
-        let t = std::time::Instant::now();
+        let t = web_time::Instant::now();
         let mut bytes = 0usize;
         for _ in 0..rounds {
             bytes += walked_bytes(&style);
@@ -3415,7 +3415,7 @@ mod fingerprint_cost {
 
         // And the hash alone, over that many bytes.
         let payload = vec![0u8; bytes / rounds];
-        let t = std::time::Instant::now();
+        let t = web_time::Instant::now();
         for _ in 0..rounds {
             sink ^= blake3::hash(&payload).as_bytes()[0];
         }

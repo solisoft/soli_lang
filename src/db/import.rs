@@ -78,21 +78,23 @@ fn import_one(client: &SoliDBClient, collection: &str) -> Result<ImportCollectio
 /// Build a SoliDB client from the same `SOLIDB_*` env the Model layer uses.
 /// Auth priority mirrors `SoliDBClient::apply_auth`: JWT > API key > basic.
 fn solidb_client() -> Result<SoliDBClient, String> {
-    let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".into());
+    let host =
+        crate::platform::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".into());
     let mut client = SoliDBClient::connect(&host).map_err(|e| format!("solidb connect: {e}"))?;
-    if let Ok(jwt) = std::env::var("SOLIDB_JWT") {
+    if let Ok(jwt) = crate::platform::env::var("SOLIDB_JWT") {
         client = client.with_jwt_token(&jwt);
     }
-    if let Ok(api_key) = std::env::var("SOLIDB_API_KEY") {
+    if let Ok(api_key) = crate::platform::env::var("SOLIDB_API_KEY") {
         client = client.with_api_key(&api_key);
     }
     if let (Ok(user), Ok(pass)) = (
-        std::env::var("SOLIDB_USERNAME"),
-        std::env::var("SOLIDB_PASSWORD"),
+        crate::platform::env::var("SOLIDB_USERNAME"),
+        crate::platform::env::var("SOLIDB_PASSWORD"),
     ) {
         client = client.with_basic_auth(&user, &pass);
     }
-    let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".into());
+    let database =
+        crate::platform::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".into());
     client.set_database(&database);
     Ok(client)
 }

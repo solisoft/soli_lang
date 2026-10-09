@@ -47,7 +47,7 @@ static INFLIGHT_BYTES: AtomicUsize = AtomicUsize::new(0);
 pub fn max_inflight_body_bytes() -> usize {
     static CAP: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *CAP.get_or_init(|| {
-        std::env::var("SOLI_MAX_INFLIGHT_BODY_BYTES")
+        crate::platform::env::var("SOLI_MAX_INFLIGHT_BODY_BYTES")
             .ok()
             .and_then(|s| parse_body_limit_env(Some(s.as_str())))
             .unwrap_or_else(|| get_max_body_size().saturating_mul(DEFAULT_INFLIGHT_MULTIPLE))
@@ -89,7 +89,7 @@ type PerIpShard = std::sync::Mutex<std::collections::HashMap<std::net::IpAddr, u
 pub fn max_body_budget_per_ip() -> usize {
     static CAP: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *CAP.get_or_init(|| {
-        std::env::var("SOLI_BODY_BUDGET_PER_IP_BYTES")
+        crate::platform::env::var("SOLI_BODY_BUDGET_PER_IP_BYTES")
             .ok()
             .and_then(|s| parse_body_limit_env(Some(s.as_str())))
             .unwrap_or_else(|| {
@@ -340,7 +340,7 @@ fn parse_body_limit_env(raw: Option<&str>) -> Option<usize> {
 /// still overrides at runtime.
 fn init_from_env() {
     ENV_INIT.call_once(|| {
-        let raw = std::env::var("SOLI_MAX_BODY_SIZE").ok();
+        let raw = crate::platform::env::var("SOLI_MAX_BODY_SIZE").ok();
         if let Some(n) = parse_body_limit_env(raw.as_deref()) {
             MAX_BODY_SIZE.store(n, Ordering::Relaxed);
         }

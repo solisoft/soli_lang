@@ -64,7 +64,7 @@ pub fn is_enabled() -> bool {
 }
 
 fn read_is_enabled() -> bool {
-    match std::env::var("SOLI_NAV") {
+    match crate::platform::env::var("SOLI_NAV") {
         Ok(v) => !matches!(
             v.trim().to_ascii_lowercase().as_str(),
             "off" | "false" | "0" | "no"
@@ -75,7 +75,7 @@ fn read_is_enabled() -> bool {
 
 /// `SOLI_NAV=morph`: every page morphs unless it says otherwise.
 fn morph_by_default() -> bool {
-    std::env::var("SOLI_NAV")
+    crate::platform::env::var("SOLI_NAV")
         .map(|v| v.trim().eq_ignore_ascii_case("morph"))
         .unwrap_or(false)
 }
@@ -152,7 +152,7 @@ mod tests {
     }
     impl EnvGuard {
         fn set(name: &'static str, value: Option<&str>) -> Self {
-            let prior = std::env::var(name).ok();
+            let prior = crate::platform::env::var(name).ok();
             match value {
                 Some(v) => std::env::set_var(name, v),
                 None => std::env::remove_var(name),

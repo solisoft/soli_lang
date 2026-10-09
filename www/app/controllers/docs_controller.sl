@@ -371,6 +371,11 @@ def development_tools_desktop
   render_docs("docs/development-tools/desktop", "Desktop Apps", "development_tools", "desktop")
 end
 
+# GET /docs/development-tools/edge
+def development_tools_edge
+  render_docs("docs/development-tools/edge", "Cloudflare Workers", "development_tools", "edge")
+end
+
 def development_tools_native_bridge
   render_docs("docs/development-tools/native-bridge", "Native Bridge", "development_tools", "native-bridge")
 end

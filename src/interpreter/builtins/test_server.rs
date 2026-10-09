@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::net::SocketAddr;
 
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
 
@@ -52,8 +53,13 @@ pub fn register_test_server_builtins(env: &mut Environment) {
     env.define(
         "test_server_start".to_string(),
         Value::NativeFunction(NativeFunction::new("test_server_start", Some(0), |_args| {
-            let port = start_test_server();
-            Ok(Value::Int(port as i64))
+            #[cfg(target_arch = "wasm32")]
+            return Err(crate::platform::unsupported_on_edge("test_server_start"));
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let port = start_test_server();
+                Ok(Value::Int(port as i64))
+            }
         })),
     );
 
@@ -87,6 +93,7 @@ pub fn register_test_server_builtins(env: &mut Environment) {
 }
 
 /// Start the test server on a random available port.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn start_test_server() -> u16 {
     if TEST_SERVER_RUNNING.load(Ordering::SeqCst) {
         return TEST_SERVER_PORT.load(Ordering::SeqCst);

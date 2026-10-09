@@ -1,0 +1,49 @@
+<h1>From an app to a Worker</h1>
+<p class="lead">Five steps. The first is done once per Soli version; the others are your
+everyday loop.</p>
+
+<ol class="steps">
+  <li>
+    <h2>Build the edge runtime</h2>
+    <p>In the Soli source tree. It needs the wasm32 target and the wasm-bindgen CLI at the
+       version <code>edge/Cargo.toml</code> pins; the script says which if they are missing.</p>
+<pre><code>rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.126 --locked
+./scripts/build-edge.sh          # → target/edge</code></pre>
+  </li>
+  <li>
+    <h2>Package your app</h2>
+    <p>From the app folder. <code>app/</code>, <code>config/</code> and <code>lib/</code> go into
+       the Worker; <code>public/</code> becomes its static assets; <code>.env</code> stays out.</p>
+<pre><code>export SOLI_EDGE_RUNTIME=~/soli/target/edge
+soli edge build                  # → dist/edge</code></pre>
+    <p><code>dist/edge</code> is a plain Wrangler project. Its <code>wrangler.toml</code> is
+       written once; later builds keep your edits.</p>
+  </li>
+  <li>
+    <h2>Run it on workerd</h2>
+<pre><code>cd dist/edge
+npx wrangler dev                 # http://localhost:8787</code></pre>
+    <p>That is Cloudflare's own runtime, locally: what works here works deployed.</p>
+  </li>
+  <li>
+    <h2>Configure it</h2>
+    <p>Everything your app reads with <code>getenv()</code> comes from the Worker's
+       bindings: plain values under <code>[vars]</code> in <code>wrangler.toml</code>, secrets
+       with Wrangler.</p>
+<pre><code>[vars]
+SOLIDB_HOST = "https://db.example.com"
+SOLIDB_DATABASE = "my_app"
+SOLIDB_USERNAME = "app"</code></pre>
+<pre><code>npx wrangler secret put SOLIDB_PASSWORD</code></pre>
+    <p>The app can tell where it runs: <code>getenv("SOLI_RUNTIME")</code> is
+       <code>"cloudflare-workers"</code> there.</p>
+  </li>
+  <li>
+    <h2>Deploy</h2>
+<pre><code>npx wrangler deploy</code></pre>
+    <p>For your own domain, once its zone is on the same Cloudflare account, add to
+       <code>wrangler.toml</code>:</p>
+<pre><code>routes = [{ pattern = "app.example.com", custom_domain = true }]</code></pre>
+  </li>
+</ol>

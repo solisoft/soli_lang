@@ -12,8 +12,6 @@
 //! `.env.{APP_ENV}` (auto-loaded once at single-threaded server boot)
 //! or `SOLI_PROTECT_ENV` for the parallel test runner.
 
-use std::env;
-
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 
@@ -31,7 +29,7 @@ pub fn register_env_builtins(env: &mut Environment) {
                 }
             };
 
-            match env::var(&*name) {
+            match crate::platform::env::var(&*name) {
                 Ok(value) => Ok(Value::String(value.into())),
                 Err(_) => Ok(Value::Null),
             }
@@ -82,7 +80,7 @@ pub fn register_env_builtins(env: &mut Environment) {
                 }
             };
 
-            Ok(Value::Bool(env::var(&*name).is_ok()))
+            Ok(Value::Bool(crate::platform::env::var(&*name).is_ok()))
         })),
     );
 }

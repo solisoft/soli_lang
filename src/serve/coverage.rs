@@ -23,7 +23,9 @@ pub(super) fn handle(
     // Only active when the parent process asked us to collect coverage (via
     // SOLI_COVERAGE_ENABLED). Returns a JSON blob the test runner merges into
     // its own aggregated report.
-    if path != "/__coverage__" || method != "GET" || std::env::var("SOLI_COVERAGE_ENABLED").is_err()
+    if path != "/__coverage__"
+        || method != "GET"
+        || crate::platform::env::var("SOLI_COVERAGE_ENABLED").is_err()
     {
         return None;
     }
@@ -36,7 +38,7 @@ pub(super) fn handle(
     // an unauthenticated GET returns 403, even if `SOLI_COVERAGE_ENABLED`
     // is set. The token is required — running without it (legacy callers,
     // misconfiguration) is rejected too, so the endpoint is never open.
-    let expected = std::env::var("SOLI_COVERAGE_TOKEN")
+    let expected = crate::platform::env::var("SOLI_COVERAGE_TOKEN")
         .ok()
         .filter(|t| !t.is_empty());
     let provided = headers

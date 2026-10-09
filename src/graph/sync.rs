@@ -110,7 +110,7 @@ pub fn embed_graph(
     let total = texts.len();
     // Tailor the failure message: a missing key is a different fix from a key
     // that is set but whose endpoint errored or timed out.
-    let failure_hint = if std::env::var("SOLI_EMBEDDING_API_KEY").is_err() {
+    let failure_hint = if crate::platform::env::var("SOLI_EMBEDDING_API_KEY").is_err() {
         "Embedding failed. Set SOLI_EMBEDDING_API_KEY (and SOLI_EMBEDDING_URL / \
          SOLI_EMBEDDING_MODEL for non-OpenAI providers), or re-run with --no-embed."
     } else {
@@ -349,7 +349,7 @@ fn attach_embeddings(
 
     let mut reembedded = 0usize;
     if embed_new && !miss_idx.is_empty() {
-        if std::env::var("SOLI_EMBEDDING_API_KEY").is_err() {
+        if crate::platform::env::var("SOLI_EMBEDDING_API_KEY").is_err() {
             if strict {
                 return Err(NO_KEY.to_string());
             }
@@ -773,8 +773,8 @@ pub(crate) fn connect(database: Option<&str>) -> Result<(SoliDBClient, String), 
     } else if let Some(key) = db_config::get_api_key() {
         client = client.with_api_key(&key);
     } else if let (Ok(user), Ok(pass)) = (
-        std::env::var("SOLIDB_USERNAME"),
-        std::env::var("SOLIDB_PASSWORD"),
+        crate::platform::env::var("SOLIDB_USERNAME"),
+        crate::platform::env::var("SOLIDB_PASSWORD"),
     ) {
         client = client.with_basic_auth(&user, &pass);
     }

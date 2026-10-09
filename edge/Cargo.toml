@@ -1,0 +1,29 @@
+# The edge build: Soli compiled to wasm32 for Cloudflare Workers.
+#
+# Its own package (not a workspace member) because it only builds for
+# wasm32-unknown-unknown and pins a size-first profile. `scripts/build-edge.sh`
+# builds it and runs wasm-bindgen; `soli edge build` packages the result with
+# an app. See www/docs/edge.md.
+[package]
+name = "soli-edge"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+solilang = { path = "..", default-features = false }
+# Keep in step with the wasm-bindgen CLI: scripts/build-edge.sh checks they match.
+wasm-bindgen = "=0.2.126"
+console_error_panic_hook = "0.1"
+serde_json = "1"
+
+[profile.release]
+# Size over speed: the Workers limit applies to the compressed upload.
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"

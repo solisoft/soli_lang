@@ -58,7 +58,7 @@ pub fn path_from_open_arg(arg: &str) -> Option<String> {
 /// Recognises `--open <path>`, `--open=<path>`, and bare URLs/paths that look
 /// like open targets (not flags, not the executable path).
 pub fn pending_from_env_and_args() -> Option<String> {
-    if let Ok(v) = std::env::var("SOLI_DESKTOP_OPEN") {
+    if let Ok(v) = crate::platform::env::var("SOLI_DESKTOP_OPEN") {
         if let Some(p) = path_from_open_arg(&v) {
             return Some(p);
         }

@@ -118,7 +118,7 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
     }
 
     CONTROLLER_REGISTRY.write(|registry| {
-        if !controllers_dir.exists() {
+        if !crate::platform::fs::exists(controllers_dir) {
             return Ok(());
         }
 
@@ -131,16 +131,18 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
             registry: &mut ControllerRegistry,
             superclass_map: &mut HashMap<String, String>,
         ) -> Result<(), String> {
-            for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+            for entry in crate::platform::fs::read_dir(dir).map_err(|e| e.to_string())? {
                 let entry = entry.map_err(|e| e.to_string())?;
                 let path = entry.path();
 
-                if path.is_dir() {
+                if crate::platform::fs::is_dir(&path) {
                     walk(&path, root, registry, superclass_map)?;
                     continue;
                 }
 
-                if path.is_file() && path.extension().is_some_and(|ext| ext == "sl") {
+                if crate::platform::fs::is_file(&path)
+                    && path.extension().is_some_and(|ext| ext == "sl")
+                {
                     if let Some(file_name) = path.file_stem().and_then(|n| n.to_str()) {
                         // Skip non-controller files
                         if !file_name.ends_with("_controller") {
@@ -157,7 +159,7 @@ pub fn scan_controllers(controllers_dir: &Path) -> Result<(), String> {
 
                         match parse_controller_file(&path, file_name, &route_key) {
                             Ok(info) => {
-                                if let Ok(source) = std::fs::read_to_string(&path) {
+                                if let Ok(source) = crate::platform::fs::read_to_string(&path) {
                                     if let Some(parent) = extract_superclass_name(&source) {
                                         if parent != "Controller" {
                                             superclass_map.insert(info.name.clone(), parent);
@@ -291,7 +293,7 @@ fn parse_controller_file(
     file_name: &str,
     route_key: &str,
 ) -> Result<ControllerInfo, String> {
-    let source = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let source = crate::platform::fs::read_to_string(path).map_err(|e| e.to_string())?;
     parse_controller_source(&source, file_name, route_key)
 }
 

@@ -33,7 +33,7 @@ pub(crate) fn scan_controllers(controllers_dir: &Path) -> Result<Vec<PathBuf>, R
 }
 
 fn collect_controllers_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    for entry in std::fs::read_dir(dir)? {
+    for entry in crate::platform::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         let file_type = entry.file_type()?;
@@ -88,7 +88,7 @@ pub(crate) fn sort_controllers_by_dependency(controllers: &mut Vec<PathBuf>) {
     let metas: Vec<(PathBuf, Option<String>, Option<String>)> = controllers
         .drain(..)
         .map(|path| {
-            let (class_name, superclass) = std::fs::read(&path)
+            let (class_name, superclass) = crate::platform::fs::read(&path)
                 .ok()
                 .map(|bytes| {
                     if crate::bundle::is_ast_blob(&bytes) {
@@ -165,7 +165,7 @@ fn derive_routes_for_file(
     path: &Path,
     route_input: &str,
 ) -> Result<Vec<crate::serve::router::ControllerRoute>, RuntimeError> {
-    let bytes = std::fs::read(path).map_err(|e| RuntimeError::General {
+    let bytes = crate::platform::fs::read(path).map_err(|e| RuntimeError::General {
         message: format!("Failed to read controller file: {}", e),
         span: Span::default(),
     })?;
@@ -231,11 +231,11 @@ fn extract_superclass_from_source(source: &str) -> Option<String> {
 /// Scan `app/jobs/` for `*_job.sl` files (recursive). Sorted alphabetically.
 pub(crate) fn scan_jobs(jobs_dir: &Path) -> Result<Vec<PathBuf>, RuntimeError> {
     let mut out = Vec::new();
-    if !jobs_dir.exists() {
+    if !crate::platform::fs::exists(jobs_dir) {
         return Ok(out);
     }
     fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
-        for entry in std::fs::read_dir(dir)? {
+        for entry in crate::platform::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
             let file_type = entry.file_type()?;
@@ -385,7 +385,7 @@ fn load_sl_dir_recursive(interpreter: &mut Interpreter, dir: &Path) -> Result<()
     let mut files: Vec<PathBuf> = Vec::new();
     let mut subdirs: Vec<PathBuf> = Vec::new();
 
-    for entry in std::fs::read_dir(dir)
+    for entry in crate::platform::fs::read_dir(dir)
         .map_err(|e| RuntimeError::General {
             message: format!("Failed to read models directory: {}", e),
             span: Span::default(),
@@ -393,7 +393,7 @@ fn load_sl_dir_recursive(interpreter: &mut Interpreter, dir: &Path) -> Result<()
         .flatten()
     {
         let path = entry.path();
-        // `file_type()` (unlike `path.is_dir()`) does not follow symlinks, so a
+        // `file_type()` (unlike `crate::platform::fs::is_dir(&path)`) does not follow symlinks, so a
         // symlinked directory can't send the recursion into a loop — matching
         // the controller/job scanners.
         let Ok(file_type) = entry.file_type() else {
@@ -439,10 +439,11 @@ pub(crate) fn load_middleware(
         // which a protected bundle's serialized AST does not keep — for
         // those, the directives were precomputed at build time into the
         // bundle metadata, keyed by the entry path.
-        let bytes = std::fs::read(&middleware_path).map_err(|e| RuntimeError::General {
-            message: format!("Failed to read middleware file: {}", e),
-            span: Span::default(),
-        })?;
+        let bytes =
+            crate::platform::fs::read(&middleware_path).map_err(|e| RuntimeError::General {
+                message: format!("Failed to read middleware file: {}", e),
+                span: Span::default(),
+            })?;
 
         let functions = if crate::bundle::is_ast_blob(&bytes) {
             let meta_key = middleware_path
@@ -649,12 +650,12 @@ fn cached_app_file(path: &Path) -> Result<std::sync::Arc<crate::ast::Program>, R
 
 /// Execute a Soli file with the given interpreter.
 pub(crate) fn execute_file(interpreter: &mut Interpreter, path: &Path) -> Result<(), RuntimeError> {
-    let parse_started = std::time::Instant::now();
+    let parse_started = web_time::Instant::now();
     let program = cached_app_file(path)?;
-    let run_started = std::time::Instant::now();
+    let run_started = web_time::Instant::now();
     interpreter.set_source_path(path.to_path_buf());
     let result = interpreter.interpret(&program);
-    let finished = std::time::Instant::now();
+    let finished = web_time::Instant::now();
     LOAD_STATS.with(|stats| {
         let (parse, run, files) = stats.get();
         stats.set((
@@ -668,7 +669,7 @@ pub(crate) fn execute_file(interpreter: &mut Interpreter, path: &Path) -> Result
 
 /// Read, parse and module-resolve one application file.
 fn parse_app_file(path: &Path) -> Result<crate::ast::Program, RuntimeError> {
-    let bytes = std::fs::read(path).map_err(|e| RuntimeError::General {
+    let bytes = crate::platform::fs::read(path).map_err(|e| RuntimeError::General {
         message: format!("Failed to read file '{}': {}", path.display(), e),
         span: Span::default(),
     })?;
@@ -734,7 +735,7 @@ pub(crate) fn load_controllers_in_worker(
         controller_files: &mut Vec<PathBuf>,
         other_files: &mut Vec<PathBuf>,
     ) -> std::io::Result<()> {
-        for entry in std::fs::read_dir(dir)? {
+        for entry in crate::platform::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
             let file_type = entry.file_type()?;
@@ -967,7 +968,7 @@ pub(crate) fn load_models_and_siblings(
     // `ensure_prelude` when the worker interpreter is built.
     for sibling in ["services", "policies", "mailers"] {
         let dir = parent.join(sibling);
-        if !dir.exists() {
+        if !crate::platform::fs::exists(&dir) {
             continue;
         }
         if let Err(e) = load_models(interpreter, &dir) {
@@ -1031,7 +1032,7 @@ pub(crate) fn load_app_in_worker(
     // to the callback dispatcher and to controller code that calls
     // `XJob.perform_later(...)`. Worker 0 also syncs `static cron`
     // declarations to SolidB.
-    if jobs_dir.exists() {
+    if crate::platform::fs::exists(jobs_dir) {
         load_jobs_in_worker(worker_id, interpreter, jobs_dir, true);
     }
 
@@ -1125,7 +1126,7 @@ pub(crate) fn reload_routes_in_worker(
         return;
     }
 
-    let reload_result = if routes_file.exists() {
+    let reload_result = if crate::platform::fs::exists(routes_file) {
         execute_file(interpreter, routes_file)
     } else {
         Ok(())

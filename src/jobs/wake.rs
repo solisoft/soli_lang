@@ -16,7 +16,7 @@
 //! wake-up for work it had not yet seen.
 
 use std::sync::{Condvar, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 /// An interruptible sleep. One of these is process-global (the poller's); tests
 /// make their own so they don't contend over it.

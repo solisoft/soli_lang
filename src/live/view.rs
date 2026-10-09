@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use async_channel;
 use serde::Serialize;

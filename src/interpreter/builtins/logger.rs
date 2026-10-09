@@ -52,7 +52,7 @@ struct Config {
 }
 
 fn default_level() -> Level {
-    std::env::var("SOLI_LOG_LEVEL")
+    crate::platform::env::var("SOLI_LOG_LEVEL")
         .ok()
         .and_then(|v| Level::from_str(&v))
         .unwrap_or(Level::Info)

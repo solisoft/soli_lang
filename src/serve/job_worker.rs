@@ -20,6 +20,7 @@ use crate::jobs::store;
 /// `cli_workers` is `Some` only when `--workers` was passed; otherwise the
 /// count comes from `SOLI_JOB_WORKERS` in the app's `.env`, then the serve
 /// default.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run_worker(folder: &Path, cli_workers: Option<usize>) -> Result<(), String> {
     let folder = boot_app_db(folder)?;
     let workers = resolve_workers(cli_workers);
@@ -85,6 +86,10 @@ pub fn run_worker(folder: &Path, cli_workers: Option<usize>) -> Result<(), Strin
     // leases while draining so they are not stolen mid-flight.
     std::thread::sleep(std::time::Duration::from_millis(400));
     Ok(())
+}
+#[cfg(target_arch = "wasm32")]
+pub fn run_worker(_folder: &Path, _cli_workers: Option<usize>) -> Result<(), String> {
+    Err(crate::platform::unsupported_on_edge("run_worker"))
 }
 
 /// Print queued jobs as a table. Optional `queue` / `state` narrow the list.
@@ -192,12 +197,13 @@ pub fn resolve_workers(cli_workers: Option<usize>) -> usize {
     if let Some(n) = cli_workers {
         return n;
     }
-    std::env::var("SOLI_JOB_WORKERS")
+    crate::platform::env::var("SOLI_JOB_WORKERS")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(server_constants::DEFAULT_JOB_WORKERS)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn shutdown_signal() {
     let ctrl_c = tokio::signal::ctrl_c();
     #[cfg(unix)]

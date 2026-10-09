@@ -34,8 +34,11 @@ use crate::interpreter::builtins::server::{get_routes, OpenApiDoc, Route};
 /// `metrics_enabled()`; dev mode is a process-global set at startup.
 pub fn openapi_enabled() -> bool {
     static EXPLICIT: OnceLock<Option<bool>> = OnceLock::new();
-    let explicit =
-        *EXPLICIT.get_or_init(|| std::env::var("SOLI_OPENAPI").ok().map(|v| parse_flag(&v)));
+    let explicit = *EXPLICIT.get_or_init(|| {
+        crate::platform::env::var("SOLI_OPENAPI")
+            .ok()
+            .map(|v| parse_flag(&v))
+    });
     resolve_enabled(
         explicit,
         crate::interpreter::builtins::template::is_dev_mode(),
@@ -53,7 +56,7 @@ fn resolve_enabled(explicit: Option<bool>, dev_mode: bool) -> bool {
 
 /// The spec title (`SOLI_OPENAPI_TITLE`, default `"Soli API"`).
 fn spec_title() -> String {
-    std::env::var("SOLI_OPENAPI_TITLE").unwrap_or_else(|_| "Soli API".to_string())
+    crate::platform::env::var("SOLI_OPENAPI_TITLE").unwrap_or_else(|_| "Soli API".to_string())
 }
 
 /// Convert a Soli path pattern (`/posts/:id`, `/files/*path`) to an OpenAPI

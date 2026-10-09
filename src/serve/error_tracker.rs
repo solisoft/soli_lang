@@ -48,7 +48,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 
@@ -115,11 +115,13 @@ pub(crate) fn enabled() -> bool {
 /// or `on`/`1`/`true`/`yes`; unset or anything else means on, except under
 /// `APP_ENV=test`. Shared by the error tracker, slow queries and query stats.
 pub(crate) fn env_switch(var: &str) -> bool {
-    let setting = std::env::var(var).unwrap_or_default().to_ascii_lowercase();
+    let setting = crate::platform::env::var(var)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
     match setting.as_str() {
         "off" | "0" | "false" | "no" => false,
         "on" | "1" | "true" | "yes" => true,
-        _ => std::env::var("APP_ENV")
+        _ => crate::platform::env::var("APP_ENV")
             .map(|v| v != "test")
             .unwrap_or(true),
     }

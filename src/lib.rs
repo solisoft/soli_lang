@@ -6,6 +6,14 @@
 //!
 //! Solilang uses a tree-walking interpreter for executing programs.
 
+// The edge (wasm32) build compiles the whole library but reaches only the
+// interpreter and the request path; the server, CLI and dev-tool code it leaves
+// unused would bury real warnings. The native build keeps every lint.
+#![cfg_attr(
+    target_arch = "wasm32",
+    allow(dead_code, unused_imports, unused_variables, unused_mut)
+)]
+
 pub mod ast;
 pub mod bundle;
 pub mod cdp;
@@ -13,7 +21,10 @@ pub mod cleanup;
 pub mod compiled_cache;
 pub mod coverage;
 pub mod db;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod desktop;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod edge_build;
 pub mod embedding;
 pub mod error;
 pub mod fmt;
@@ -37,6 +48,7 @@ pub mod platform;
 pub(crate) mod redaction;
 pub mod regex_cache;
 pub mod repl_common;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod repl_tui;
 pub mod scaffold;
 pub mod serve;
@@ -257,7 +269,7 @@ pub enum Engine {
 impl Engine {
     /// `SOLI_ENGINE=tree|vm|auto`, when set and valid.
     pub fn from_env() -> Option<Engine> {
-        match std::env::var("SOLI_ENGINE")
+        match crate::platform::env::var("SOLI_ENGINE")
             .ok()?
             .trim()
             .to_ascii_lowercase()
@@ -339,7 +351,7 @@ pub fn execute_program(program: &ast::Program, engine: Engine) -> Result<(), Sol
 
 /// `SOLI_ENGINE_LOG=1`: say which engine runs the script, and why.
 fn log_engine(choice: &str) {
-    if std::env::var("SOLI_ENGINE_LOG").is_ok_and(|v| !v.is_empty() && v != "0") {
+    if crate::platform::env::var("SOLI_ENGINE_LOG").is_ok_and(|v| !v.is_empty() && v != "0") {
         eprintln!("engine: {choice}");
     }
 }

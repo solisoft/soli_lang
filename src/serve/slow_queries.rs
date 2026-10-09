@@ -41,7 +41,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 
@@ -95,7 +95,7 @@ pub(crate) fn threshold_ms() -> u64 {
     if cached != u64::MAX {
         return cached;
     }
-    let value = std::env::var("SOLI_SLOW_QUERY_MS")
+    let value = crate::platform::env::var("SOLI_SLOW_QUERY_MS")
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())
         .unwrap_or(DEFAULT_THRESHOLD_MS);
@@ -110,7 +110,7 @@ pub(crate) fn enabled() -> bool {
 
 fn keep_binds() -> bool {
     !matches!(
-        std::env::var("SOLI_SLOW_QUERY_BINDS")
+        crate::platform::env::var("SOLI_SLOW_QUERY_BINDS")
             .unwrap_or_default()
             .to_ascii_lowercase()
             .as_str(),

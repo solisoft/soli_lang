@@ -64,7 +64,7 @@ pub fn find_chrome() -> Option<PathBuf> {
 /// The override still resolves to at most one entry — falling through from a
 /// pinned browser to a different one would defeat the point of pinning it.
 pub fn find_chromes() -> Vec<PathBuf> {
-    if let Ok(explicit) = std::env::var(CHROME_PATH_ENV) {
+    if let Ok(explicit) = crate::platform::env::var(CHROME_PATH_ENV) {
         let explicit = explicit.trim();
         if !explicit.is_empty() {
             let path = PathBuf::from(explicit);
@@ -109,7 +109,7 @@ fn walk_candidates(candidates: &[&str], resolve: impl Fn(&str) -> Option<PathBuf
 /// Lets a caller tell "no browser installed" apart from "the override points at
 /// nothing", which are different problems with different fixes.
 pub fn chrome_path_override() -> Option<String> {
-    std::env::var(CHROME_PATH_ENV)
+    crate::platform::env::var(CHROME_PATH_ENV)
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())

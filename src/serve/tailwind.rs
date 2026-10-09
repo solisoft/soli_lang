@@ -190,7 +190,7 @@ fn assets_config_value(folder: &Path, key: &str) -> Option<String> {
 /// The environment always wins over `soli.toml` — CI and one-off upgrade
 /// checks shouldn't require editing a checked-in file.
 fn configured_value(folder: &Path, env_key: &str, toml_key: &str) -> Option<String> {
-    if let Ok(from_env) = std::env::var(env_key) {
+    if let Ok(from_env) = crate::platform::env::var(env_key) {
         let trimmed = from_env.trim();
         if !trimmed.is_empty() {
             return Some(trimmed.to_string());

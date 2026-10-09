@@ -16,7 +16,7 @@ const DB_RELEASE_REPO: &str = "solisoft/solidb";
 /// tests and mirrors can point elsewhere — the same escape hatch the runtime
 /// download has.
 fn release_base_url() -> String {
-    std::env::var("SOLI_DB_RELEASE_BASE_URL")
+    crate::platform::env::var("SOLI_DB_RELEASE_BASE_URL")
         .ok()
         .filter(|u| !u.trim().is_empty())
         .map(|u| u.trim().trim_end_matches('/').to_string())
@@ -28,13 +28,13 @@ fn release_base_url() -> String {
 /// Deliberately defined here rather than borrowed from the CLI: `src/cli` is
 /// the binary crate, and the library must not depend on it.
 fn cache_root() -> Result<PathBuf, String> {
-    if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
+    if let Ok(xdg) = crate::platform::env::var("XDG_CACHE_HOME") {
         if !xdg.is_empty() {
             return Ok(PathBuf::from(xdg).join("soli").join("solidb"));
         }
     }
-    let home =
-        std::env::var("HOME").map_err(|_| "cannot determine cache dir (no HOME)".to_string())?;
+    let home = crate::platform::env::var("HOME")
+        .map_err(|_| "cannot determine cache dir (no HOME)".to_string())?;
     Ok(PathBuf::from(home)
         .join(".cache")
         .join("soli")

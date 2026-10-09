@@ -1,0 +1,33 @@
+<h1>Try it</h1>
+<p class="lead">Paste some text. The statistics below are computed by a Soli controller,
+inside the Worker that answered this request.</p>
+
+<form method="get" action="/try" class="playground">
+  <textarea name="text" rows="5"><%= @text %></textarea>
+  <button class="button" type="submit">Count</button>
+</form>
+
+<div class="stats">
+  <div><span><%= @stats["words"] %></span> words</div>
+  <div><span><%= @stats["unique"] %></span> distinct</div>
+  <div><span><%= @stats["characters"] %></span> characters</div>
+  <div><span><%= @stats["reading_seconds"] %>s</span> to read</div>
+</div>
+
+<h2>Most frequent</h2>
+<ol class="top">
+  <% @stats["top"].each do |entry| %>
+    <li><code><%= entry["word"] %></code> × <%= entry["count"] %></li>
+  <% end %>
+</ol>
+<p>Longest word: <code><%= @stats["longest"] %></code></p>
+
+<h2>The code</h2>
+<pre><code>words = text.downcase.split(" ")
+  .map { |w| w.gsub("[^a-z0-9'-]", "") }
+  .filter { |w| w.length > 0 }
+counts = {}
+words.each do |w|
+  counts[w] = (counts[w] ?? 0) + 1
+end
+top = counts.keys.sort_by { |w| -counts[w] }.take(5)</code></pre>

@@ -31,7 +31,9 @@ pub(super) struct Credentials {
 }
 
 fn env_nonempty(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|s| !s.is_empty())
+    crate::platform::env::var(name)
+        .ok()
+        .filter(|s| !s.is_empty())
 }
 
 /// `SOLI_<prefix>_*` plus the shared `SOLI_ADMIN_*`.

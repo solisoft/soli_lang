@@ -218,7 +218,7 @@ impl EngineConfig {
             lease_secs: env_num("SOLI_JOBS_LEASE_SECS", d.lease_secs).max(5),
             max_retries: env_num("SOLI_JOBS_MAX_RETRIES", d.max_retries).max(0),
             retention_secs: env_num("SOLI_JOBS_RETENTION_SECS", d.retention_secs).max(0),
-            default_queue: std::env::var("SOLI_JOBS_DEFAULT_QUEUE")
+            default_queue: crate::platform::env::var("SOLI_JOBS_DEFAULT_QUEUE")
                 .ok()
                 .filter(|s| !s.is_empty())
                 .unwrap_or(d.default_queue),
@@ -229,14 +229,14 @@ impl EngineConfig {
 /// Poll interval for a process running in dev mode: [`DEV_POLL_MS`] unless the
 /// operator pinned `SOLI_JOBS_POLL_MS`, which always wins.
 pub fn dev_poll_ms() -> u64 {
-    match std::env::var("SOLI_JOBS_POLL_MS") {
+    match crate::platform::env::var("SOLI_JOBS_POLL_MS") {
         Ok(v) if v.parse::<i64>().is_ok() => config().poll_ms,
         _ => DEV_POLL_MS,
     }
 }
 
 fn env_num(name: &str, default: i64) -> i64 {
-    std::env::var(name)
+    crate::platform::env::var(name)
         .ok()
         .and_then(|v| v.parse::<i64>().ok())
         .unwrap_or(default)
@@ -253,7 +253,7 @@ pub fn config() -> &'static EngineConfig {
 pub fn worker_identity() -> &'static str {
     static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     ID.get_or_init(|| {
-        let host = std::env::var("HOSTNAME")
+        let host = crate::platform::env::var("HOSTNAME")
             .ok()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "local".to_string());
@@ -280,7 +280,7 @@ pub const DEFAULT_IDLE_POLL_MS: u64 = 30_000;
 /// The backstop interval, floored at one second so a misconfiguration cannot
 /// turn this back into a busy loop.
 pub fn idle_poll_ms() -> u64 {
-    std::env::var("SOLI_JOBS_IDLE_POLL_MS")
+    crate::platform::env::var("SOLI_JOBS_IDLE_POLL_MS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .map(|ms| ms.max(1_000))
@@ -326,7 +326,7 @@ pub fn next_future_run_at(now: i64) -> Option<i64> {
 }
 
 pub fn unix_now() -> i64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use web_time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)

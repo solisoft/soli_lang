@@ -13,7 +13,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use web_time::Instant;
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 

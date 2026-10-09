@@ -298,6 +298,11 @@ pub fn run() {
             app_name,
         } => commands::desktop::run_register_protocol(exe, scheme, app_name),
         Command::EuiOpen { url, allow } => commands::eui::open(url, allow),
+        Command::EdgeBuild {
+            folder,
+            out,
+            runtime,
+        } => commands::edge::build(folder, out.as_deref(), runtime.as_deref()),
         Command::MobileBuild {
             platform,
             folder,

@@ -406,6 +406,12 @@ pub enum Command {
         scheme: String,
         app_name: String,
     },
+    /// `soli edge build [folder]` — the app as a Cloudflare Worker project.
+    EdgeBuild {
+        folder: String,
+        out: Option<String>,
+        runtime: Option<String>,
+    },
     /// `soli mobile build android|ios [folder]` — an installable, versioned
     /// APK or IPA from `clients/<platform>/`.
     MobileBuild {
@@ -621,6 +627,8 @@ pub fn print_usage() {
     eprintln!("  mobile publish <file>  Upload a build to the app's /__soli/mobile page");
     eprintln!("                       --latest android|ios, --notes TEXT, --url URL");
     eprintln!("                       (token from SOLI_MOBILE_TOKEN; URL from config/mobile.toml)");
+    eprintln!("  edge build [folder]  Package the app as a Cloudflare Worker in dist/edge");
+    eprintln!("                       --out DIR, --runtime DIR (or SOLI_EDGE_RUNTIME)");
     eprintln!("  generate offline     Outbox sync endpoints + public/js/soli_outbox.js helper");
     eprintln!("  build <folder>       Bundle app into a single .soli file");
     eprintln!("                       --output, -o <file>  Custom output path");
@@ -2539,6 +2547,50 @@ pub fn parse_args() -> Options {
                     process::exit(64);
                 };
                 options.command = Command::EuiOpen { url, allow };
+                return options;
+            }
+            "edge" => {
+                i += 1;
+                let usage = "Usage: soli edge build [folder] [--out DIR] [--runtime DIR]";
+                if args.get(i).map(String::as_str) != Some("build") {
+                    eprintln!("{usage}");
+                    process::exit(64);
+                }
+                i += 1;
+                let mut folder: Option<String> = None;
+                let mut out = None;
+                let mut runtime = None;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        flag @ ("--out" | "-o" | "--runtime") => {
+                            i += 1;
+                            let Some(value) = args.get(i).cloned() else {
+                                eprintln!("{flag} requires a value");
+                                process::exit(64);
+                            };
+                            if flag == "--runtime" {
+                                runtime = Some(value);
+                            } else {
+                                out = Some(value);
+                            }
+                        }
+                        other if other.starts_with('-') => {
+                            eprintln!("Unknown option '{other}' for edge build\n{usage}");
+                            process::exit(64);
+                        }
+                        other if folder.is_none() => folder = Some(other.to_string()),
+                        other => {
+                            eprintln!("Unexpected argument '{other}'\n{usage}");
+                            process::exit(64);
+                        }
+                    }
+                    i += 1;
+                }
+                options.command = Command::EdgeBuild {
+                    folder: folder.unwrap_or_else(|| ".".to_string()),
+                    out,
+                    runtime,
+                };
                 return options;
             }
             "mobile" => {

@@ -23,7 +23,7 @@ use std::rc::Rc;
 pub(crate) fn max_upload_files() -> usize {
     static CAP: OnceLock<usize> = OnceLock::new();
     *CAP.get_or_init(|| {
-        std::env::var("SOLI_MAX_UPLOAD_FILES")
+        crate::platform::env::var("SOLI_MAX_UPLOAD_FILES")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .filter(|n| *n > 0)

@@ -8,7 +8,11 @@
 
 pub mod browser;
 pub mod dirs;
+pub mod env;
+pub mod fs;
 pub mod job;
+#[cfg(target_arch = "wasm32")]
+pub mod jspi;
 pub mod lock;
 pub mod process;
 
@@ -16,8 +20,14 @@ pub mod process;
 /// it). Not the frozen test clock: token expiries and cookie lifetimes are
 /// checked against real time.
 pub fn unix_now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+/// The error a builtin returns on the edge (wasm32) build when what it needs —
+/// a socket, a subprocess, a thread, the disk — does not exist there.
+pub fn unsupported_on_edge(what: &str) -> String {
+    format!("{what} is not available on the edge (Cloudflare Workers) build")
 }

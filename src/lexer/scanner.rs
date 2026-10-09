@@ -4,7 +4,7 @@ use crate::error::LexerError;
 use crate::lexer::token::{Token, TokenKind};
 use crate::metrics::Metrics;
 use crate::span::Span;
-use std::time::Instant;
+use web_time::Instant;
 
 /// The lexer transforms source code into a stream of tokens.
 pub struct Scanner<'a> {

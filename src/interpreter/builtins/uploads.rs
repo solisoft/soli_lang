@@ -44,7 +44,7 @@ pub fn get_solidb_address() -> Option<String> {
     if let Some(addr) = SOLIDB_ADDRESS.get() {
         return Some(addr);
     }
-    std::env::var("SOLIDB_HOST").ok()
+    crate::platform::env::var("SOLIDB_HOST").ok()
 }
 
 pub fn set_solidb_address(addr: &str) {
@@ -304,7 +304,7 @@ pub fn register_upload_builtins(env: &mut Environment) {
             };
 
             let database =
-                std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "solidb".to_string());
+                crate::platform::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "solidb".to_string());
             let url = format!(
                 "{}/_api/database/{}/document/{}/{}",
                 base_url.trim_end_matches('/'),
@@ -473,7 +473,7 @@ fn upload_blob_to_solidb(
     let mut client = SoliDBClient::connect(solidb_addr)
         .map_err(|e| format!("Failed to connect to SoliDB: {}", e))?;
 
-    if let Ok(db) = std::env::var("SOLIDB_DATABASE") {
+    if let Ok(db) = crate::platform::env::var("SOLIDB_DATABASE") {
         client.set_database(&db);
     }
 
@@ -485,8 +485,8 @@ fn upload_blob_to_solidb(
     } else if let Some(jwt) = get_jwt_token() {
         client = client.with_jwt_token(&jwt);
     } else if let (Ok(user), Ok(pass)) = (
-        std::env::var("SOLIDB_USERNAME"),
-        std::env::var("SOLIDB_PASSWORD"),
+        crate::platform::env::var("SOLIDB_USERNAME"),
+        crate::platform::env::var("SOLIDB_PASSWORD"),
     ) {
         client = client.with_basic_auth(&user, &pass);
     }

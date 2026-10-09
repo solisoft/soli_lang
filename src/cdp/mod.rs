@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStderr, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use crate::platform::process::arm_parent_death;
 use serde_json::{json, Value as Json};
@@ -807,6 +807,7 @@ fn wait_for_page_target(child: &mut Child, port: u16) -> Result<String, String> 
 /// Skips extension background pages and DevTools' own targets: a fresh profile
 /// still lists component-extension pages, and attaching to one of those means
 /// every later command runs against the wrong document.
+#[cfg(not(target_arch = "wasm32"))]
 fn fetch_page_target(port: u16) -> Option<String> {
     let response = ureq::get(&format!("http://127.0.0.1:{}/json/list", port))
         .timeout(Duration::from_secs(2))
@@ -824,6 +825,10 @@ fn fetch_page_target(port: u16) -> Option<String> {
         }
         Some(target.get("webSocketDebuggerUrl")?.as_str()?.to_string())
     })
+}
+#[cfg(target_arch = "wasm32")]
+fn fetch_page_target(_port: u16) -> Option<String> {
+    None
 }
 
 /// Un dépassement du délai de lecture, sous les deux noms que les plateformes

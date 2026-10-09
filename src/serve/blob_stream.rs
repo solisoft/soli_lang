@@ -462,6 +462,7 @@ pub(crate) fn map_upstream(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// The client blob downloads go through.
 ///
 /// Not the shared DB client: that one caps every request, body included, at
@@ -473,6 +474,7 @@ fn blob_client() -> &'static reqwest::Client {
     CLIENT.get_or_init(build_client)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn build_client() -> reqwest::Client {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
@@ -484,6 +486,7 @@ fn build_client() -> reqwest::Client {
         .expect("Failed to create the blob download client")
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Fetch the blob described by `spec` and relay it under `headers` (the
 /// application's response headers, marker removed).
 pub(crate) async fn respond(
@@ -493,6 +496,7 @@ pub(crate) async fn respond(
     respond_with(blob_client(), headers, spec).await
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// [`respond`] with a given client — tests pass one bound to their runtime.
 pub(crate) async fn respond_with(
     client: &reqwest::Client,
@@ -563,6 +567,7 @@ pub(crate) async fn respond_with(
     build(mapped, body)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn build(mapped: Mapped, upstream: Option<reqwest::Response>) -> Response<ResponseBody> {
     let mut builder = Response::builder()
         .status(StatusCode::from_u16(mapped.status).unwrap_or(StatusCode::BAD_GATEWAY))
@@ -589,6 +594,7 @@ fn build(mapped: Mapped, upstream: Option<reqwest::Response>) -> Response<Respon
 /// the previous frame is written — that is the back-pressure. The idle timer
 /// wraps only the wait on SoliDB. An error ends the body early, and hyper
 /// then aborts the connection rather than pretend a short body was complete.
+#[cfg(not(target_arch = "wasm32"))]
 fn relay_body(upstream: reqwest::Response) -> ResponseBody {
     let chunks = upstream.bytes_stream();
     let frames = futures_util::stream::unfold(Some(chunks), |state| async move {
@@ -1327,15 +1333,15 @@ mod tests {
     /// support answers the range with the whole blob, which is still correct.
     #[test]
     fn against_a_real_solidb_when_configured() {
-        let Some(host) = std::env::var("SOLIDB_DRIVER_TEST_HOST")
+        let Some(host) = crate::platform::env::var("SOLIDB_DRIVER_TEST_HOST")
             .ok()
             .filter(|h| !h.is_empty())
         else {
             eprintln!("skip: SOLIDB_DRIVER_TEST_HOST unset (no SoliDB to stream from)");
             return;
         };
-        let user = std::env::var("SOLIDB_USERNAME").unwrap_or_else(|_| "admin".into());
-        let pass = std::env::var("SOLIDB_PASSWORD").unwrap_or_else(|_| "admin".into());
+        let user = crate::platform::env::var("SOLIDB_USERNAME").unwrap_or_else(|_| "admin".into());
+        let pass = crate::platform::env::var("SOLIDB_PASSWORD").unwrap_or_else(|_| "admin".into());
         let database = format!("soli_blob_stream_test_{}", std::process::id());
 
         let admin = crate::solidb_http::SoliDBClient::connect(&host)

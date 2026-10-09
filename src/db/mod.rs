@@ -68,7 +68,7 @@ pub use sql_compile::{
 /// service.
 #[cfg(test)]
 pub(crate) fn skip_unless_required(reason: &str) {
-    if std::env::var("SOLI_REQUIRE_DB").is_ok_and(|flag| flag == "1") {
+    if crate::platform::env::var("SOLI_REQUIRE_DB").is_ok_and(|flag| flag == "1") {
         panic!("SOLI_REQUIRE_DB=1 but this test would have been skipped: {reason}");
     }
     eprintln!("skip: {reason}");
@@ -180,9 +180,10 @@ pub fn ensure_runtime_ready() -> Result<(), DbError> {
             // spec declaring a different target would validate here yet send
             // ALL of its traffic to the env default — silent cross-database
             // corruption. Refuse to boot instead.
-            let env_host = std::env::var("SOLIDB_HOST")
+            let env_host = crate::platform::env::var("SOLIDB_HOST")
                 .unwrap_or_else(|_| "http://localhost:6745".to_string());
-            let env_db = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
+            let env_db = crate::platform::env::var("SOLIDB_DATABASE")
+                .unwrap_or_else(|_| "default".to_string());
             let host_mismatch = spec
                 .solidb_host
                 .as_deref()
@@ -250,9 +251,10 @@ mod tests {
     /// the `analytics` one it means to test. Reading the same env with the same
     /// defaults makes both assert what they claim.
     fn solidb_primary() -> ConnectionRegistry {
-        let env_host =
-            std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-        let env_db = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
+        let env_host = crate::platform::env::var("SOLIDB_HOST")
+            .unwrap_or_else(|_| "http://localhost:6745".to_string());
+        let env_db =
+            crate::platform::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
         let mut connections = HashMap::new();
         connections.insert(
             "primary".into(),

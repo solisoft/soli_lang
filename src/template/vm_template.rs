@@ -557,7 +557,7 @@ pub fn enabled() -> bool {
     !crate::interpreter::builtins::template::is_dev_mode()
         && *ON.get_or_init(|| {
             !matches!(
-                std::env::var("SOLI_VM_VIEWS").as_deref(),
+                crate::platform::env::var("SOLI_VM_VIEWS").as_deref(),
                 Ok("0") | Ok("off") | Ok("false")
             )
         })
@@ -640,7 +640,7 @@ pub fn check_enabled() -> bool {
 fn check_file() -> Option<&'static str> {
     static FILE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
     FILE.get_or_init(|| {
-        std::env::var("SOLI_VM_VIEWS_CHECK")
+        crate::platform::env::var("SOLI_VM_VIEWS_CHECK")
             .ok()
             .filter(|v| !v.is_empty())
     })
@@ -887,19 +887,19 @@ mod tests {
     #[test]
     #[ignore]
     fn coverage_report() {
-        let Ok(dir) = std::env::var("SOLI_VM_TEMPLATE_DIR") else {
+        let Ok(dir) = crate::platform::env::var("SOLI_VM_TEMPLATE_DIR") else {
             return;
         };
         let mut reasons: std::collections::BTreeMap<String, usize> = Default::default();
         let (mut total, mut ok) = (0, 0);
         let mut stack = vec![std::path::PathBuf::from(dir)];
         while let Some(path) = stack.pop() {
-            let Ok(entries) = std::fs::read_dir(&path) else {
+            let Ok(entries) = crate::platform::fs::read_dir(&path) else {
                 continue;
             };
             for entry in entries.flatten() {
                 let p = entry.path();
-                if p.is_dir() {
+                if crate::platform::fs::is_dir(&p) {
                     stack.push(p);
                     continue;
                 }
@@ -907,7 +907,7 @@ mod tests {
                     continue;
                 }
                 total += 1;
-                let Ok(source) = std::fs::read_to_string(&p) else {
+                let Ok(source) = crate::platform::fs::read_to_string(&p) else {
                     continue;
                 };
                 let reason = match parse_template(&source) {

@@ -76,7 +76,11 @@ struct SealedPayload {
 /// however active it stays. `0` disables the cap; unset or unparsable means
 /// the 30-day default.
 fn max_lifetime_from_env() -> u64 {
-    parse_max_lifetime(std::env::var("SOLI_SESSION_MAX_LIFETIME").ok().as_deref())
+    parse_max_lifetime(
+        crate::platform::env::var("SOLI_SESSION_MAX_LIFETIME")
+            .ok()
+            .as_deref(),
+    )
 }
 
 fn parse_max_lifetime(raw: Option<&str>) -> u64 {

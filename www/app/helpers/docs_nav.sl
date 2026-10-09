@@ -109,6 +109,7 @@ def docs_nav_sections()
         { "path": "/docs/development-tools/formatting", "label": "Formatting" },
         { "path": "/docs/development-tools/deploy", "label": "Deploy" },
         { "path": "/docs/development-tools/ci-cd", "label": "CI/CD with GitHub" },
+        { "path": "/docs/development-tools/edge", "label": "Cloudflare Workers" },
         { "path": "/docs/development-tools/desktop", "label": "Desktop Apps" },
         { "path": "/docs/development-tools/auto-update", "label": "Auto-Update (OTA)" },
         { "path": "/docs/development-tools/native-bridge", "label": "Native Bridge", "collapsible": true },

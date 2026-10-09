@@ -30,7 +30,7 @@ pub fn max_string_alloc_bytes() -> u64 {
 }
 
 fn env_u64(name: &str, default: u64) -> u64 {
-    std::env::var(name)
+    crate::platform::env::var(name)
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())
         .filter(|n| *n > 0)
@@ -44,7 +44,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
 /// request, one worker, the entire table in memory. 1000 rows is already more
 /// than any page a person reads. `SOLI_MAX_PAGE_SIZE` overrides it.
 pub fn max_page_size() -> usize {
-    std::env::var("SOLI_MAX_PAGE_SIZE")
+    crate::platform::env::var("SOLI_MAX_PAGE_SIZE")
         .ok()
         .and_then(|v| v.trim().parse::<usize>().ok())
         .filter(|n| *n > 0)

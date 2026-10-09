@@ -38,7 +38,7 @@ struct BlobMeta {
 }
 
 fn disk_root() -> PathBuf {
-    std::env::var("SOLI_ATTACHMENTS_PATH")
+    crate::platform::env::var("SOLI_ATTACHMENTS_PATH")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(DEFAULT_DISK_ROOT))
 }
@@ -291,8 +291,8 @@ fn delete_disk(collection: &str, id: &str) -> Result<(), String> {
 
 #[cfg(feature = "cloud")]
 fn s3_bucket() -> Result<String, String> {
-    std::env::var("SOLI_ATTACHMENTS_BUCKET")
-        .or_else(|_| std::env::var("S3_BUCKET"))
+    crate::platform::env::var("SOLI_ATTACHMENTS_BUCKET")
+        .or_else(|_| crate::platform::env::var("S3_BUCKET"))
         .map_err(|_| "SOLI_ATTACHMENTS_BUCKET (or S3_BUCKET) is required for service: s3".into())
 }
 

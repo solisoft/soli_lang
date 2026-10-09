@@ -1899,8 +1899,8 @@ mod integration_tests {
         let _g = crate::db::registry::registry_test_lock()
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let url = std::env::var("PG_DATABASE_URL")
-            .or_else(|_| std::env::var("DATABASE_URL"))
+        let url = crate::platform::env::var("PG_DATABASE_URL")
+            .or_else(|_| crate::platform::env::var("DATABASE_URL"))
             .ok()
             .filter(|u| u.starts_with("postgres"))
             .unwrap_or_else(|| "postgres://soli@localhost:5432/soli_test".into());
@@ -2486,8 +2486,8 @@ mod column_integration_tests {
         let _g = registry_test_lock()
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let url = std::env::var("PG_DATABASE_URL")
-            .or_else(|_| std::env::var("DATABASE_URL"))
+        let url = crate::platform::env::var("PG_DATABASE_URL")
+            .or_else(|_| crate::platform::env::var("DATABASE_URL"))
             .ok()
             .filter(|u| u.starts_with("postgres"))
             .unwrap_or_else(|| "postgres://soli@localhost:5432/soli_test".into());
@@ -2784,8 +2784,8 @@ mod column_integration_tests {
     /// that URL outright rather than quietly connecting in cleartext.
     #[test]
     fn require_mode_matches_what_the_server_offers() {
-        let url = std::env::var("PG_DATABASE_URL")
-            .or_else(|_| std::env::var("DATABASE_URL"))
+        let url = crate::platform::env::var("PG_DATABASE_URL")
+            .or_else(|_| crate::platform::env::var("DATABASE_URL"))
             .ok()
             .filter(|u| u.starts_with("postgres"))
             .unwrap_or_else(|| "postgres://soli@localhost:5432/soli_test".into());

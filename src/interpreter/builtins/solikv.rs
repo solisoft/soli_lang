@@ -26,15 +26,17 @@ static SOLIKV_CONFIG: TenantValue<SolikvConfig> = TenantValue::new(solikv_config
 static RESP_POOL: TenantValue<RespPool> = TenantValue::new(resp_pool_from_config);
 
 fn solikv_config_from_env() -> SolikvConfig {
-    let resp_host = std::env::var("SOLIKV_RESP_HOST")
+    let resp_host = crate::platform::env::var("SOLIKV_RESP_HOST")
         .ok()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "localhost".to_string());
-    let resp_port = std::env::var("SOLIKV_RESP_PORT")
+    let resp_port = crate::platform::env::var("SOLIKV_RESP_PORT")
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(DEFAULT_RESP_PORT);
-    let auth_token = std::env::var("SOLIKV_TOKEN").ok().filter(|t| !t.is_empty());
+    let auth_token = crate::platform::env::var("SOLIKV_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty());
 
     SolikvConfig {
         prefix: "soli:cache:".to_string(),
@@ -70,7 +72,7 @@ pub(crate) fn resp_cmd(args: &[&str]) -> Result<RespValue, String> {
         return RESP_POOL.read(|pool| pool.execute(args));
     }
 
-    let start = std::time::Instant::now();
+    let start = web_time::Instant::now();
     let result = RESP_POOL.read(|pool| pool.execute(args));
     let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
 

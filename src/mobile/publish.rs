@@ -31,6 +31,7 @@ pub fn upload_url(base: &str) -> String {
     format!("{}/__soli/mobile/builds", base.trim_end_matches('/'))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn publish(opts: &PublishOptions<'_>) -> Result<Published, String> {
     let file_name = opts
         .file
@@ -114,6 +115,10 @@ pub fn publish(opts: &PublishOptions<'_>) -> Result<Published, String> {
                 .unwrap_or_else(|| "the upload was refused".to_string())
         )),
     }
+}
+#[cfg(target_arch = "wasm32")]
+pub fn publish(_opts: &PublishOptions<'_>) -> Result<Published, String> {
+    Err(crate::platform::unsupported_on_edge("publish"))
 }
 
 #[cfg(test)]

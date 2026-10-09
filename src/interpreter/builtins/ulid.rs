@@ -17,8 +17,8 @@ const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 /// 48 bits of Unix milliseconds, then 80 random bits, as 26 Crockford Base32
 /// characters (the top two of the 130 encoded bits are zero).
 fn ulid_string() -> String {
-    let millis = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let millis = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
         & 0xFFFF_FFFF_FFFF;
@@ -94,8 +94,8 @@ mod tests {
                     let digit = CROCKFORD.iter().position(|&d| d == c).unwrap() as u64;
                     acc * 32 + digit
                 });
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
+                let now = web_time::SystemTime::now()
+                    .duration_since(web_time::UNIX_EPOCH)
                     .unwrap()
                     .as_millis() as u64;
                 assert!(now.abs_diff(millis) < 5_000, "{millis} vs {now}");

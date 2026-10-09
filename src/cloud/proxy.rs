@@ -7,7 +7,7 @@
 //! a deploy the proxy refused is a look at the app's logs, and a health check
 //! that never went green is a rollback.
 
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 /// Where the proxy admin API is, and the key for it.
 #[derive(Debug, Clone)]

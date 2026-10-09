@@ -23,7 +23,7 @@ pub const DEFAULT_JOB_WORKERS: usize = 1;
 
 /// True when `APP_ENV` names a production-style environment (case-insensitive).
 pub fn is_production_env() -> bool {
-    std::env::var("APP_ENV")
+    crate::platform::env::var("APP_ENV")
         .map(|v| {
             let v = v.trim().to_ascii_lowercase();
             v == "production" || v == "prod"
@@ -65,7 +65,7 @@ pub fn check_production_boot(dev_mode: bool) -> Result<(), String> {
         return Ok(());
     }
 
-    let hosts_ok = std::env::var("SOLI_APP_HOSTS")
+    let hosts_ok = crate::platform::env::var("SOLI_APP_HOSTS")
         .ok()
         .map(|raw| raw.split(',').map(str::trim).any(|host| !host.is_empty()))
         .unwrap_or(false);
@@ -76,7 +76,7 @@ pub fn check_production_boot(dev_mode: bool) -> Result<(), String> {
             .to_string());
     }
 
-    let secret = std::env::var("SOLI_SESSION_SECRET").unwrap_or_default();
+    let secret = crate::platform::env::var("SOLI_SESSION_SECRET").unwrap_or_default();
     if secret.len() < PRODUCTION_SESSION_SECRET_MIN_LEN {
         return Err(format!(
             "production boot refuses to start without SOLI_SESSION_SECRET \
@@ -102,7 +102,7 @@ pub fn check_production_boot(dev_mode: bool) -> Result<(), String> {
 /// pass `None` for `cli_workers` and put the resolved value in
 /// `explicit_workers` instead — see [`resolve_http_workers_for_serve`].
 pub fn resolve_http_workers_from_env() -> usize {
-    if let Some(n) = std::env::var("SOLI_WORKERS")
+    if let Some(n) = crate::platform::env::var("SOLI_WORKERS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .filter(|&n| n > 0)
@@ -121,7 +121,7 @@ pub fn resolve_http_workers_from_env() -> usize {
 /// boot banner can say how to raise it).
 pub fn using_production_worker_default(workers: usize) -> bool {
     is_production_env()
-        && std::env::var("SOLI_WORKERS").is_err()
+        && crate::platform::env::var("SOLI_WORKERS").is_err()
         && workers == PRODUCTION_DEFAULT_WORKERS
 }
 
@@ -313,21 +313,21 @@ pub fn ws_message_burst() -> u32 {
 }
 
 fn env_u64(name: &str, default: u64) -> u64 {
-    std::env::var(name)
+    crate::platform::env::var(name)
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())
         .unwrap_or(default)
 }
 
 fn env_u32(name: &str, default: u32) -> u32 {
-    std::env::var(name)
+    crate::platform::env::var(name)
         .ok()
         .and_then(|v| v.trim().parse::<u32>().ok())
         .unwrap_or(default)
 }
 
 fn env_usize(name: &str, default: usize) -> usize {
-    std::env::var(name)
+    crate::platform::env::var(name)
         .ok()
         .and_then(|v| v.trim().parse::<usize>().ok())
         .unwrap_or(default)
@@ -624,8 +624,8 @@ mod tests {
 
     fn with_worker_env(app_env: Option<&str>, soli_workers: Option<&str>, f: impl FnOnce()) {
         let _g = lock_env();
-        let prev_app = std::env::var("APP_ENV").ok();
-        let prev_workers = std::env::var("SOLI_WORKERS").ok();
+        let prev_app = crate::platform::env::var("APP_ENV").ok();
+        let prev_workers = crate::platform::env::var("SOLI_WORKERS").ok();
         set_env("APP_ENV", app_env);
         set_env("SOLI_WORKERS", soli_workers);
         f();
@@ -673,9 +673,9 @@ mod tests {
         f: impl FnOnce(),
     ) {
         let _g = lock_env();
-        let prev_app = std::env::var("APP_ENV").ok();
-        let prev_hosts = std::env::var("SOLI_APP_HOSTS").ok();
-        let prev_secret = std::env::var("SOLI_SESSION_SECRET").ok();
+        let prev_app = crate::platform::env::var("APP_ENV").ok();
+        let prev_hosts = crate::platform::env::var("SOLI_APP_HOSTS").ok();
+        let prev_secret = crate::platform::env::var("SOLI_SESSION_SECRET").ok();
         set_env("APP_ENV", app_env);
         set_env("SOLI_APP_HOSTS", hosts);
         set_env("SOLI_SESSION_SECRET", secret);

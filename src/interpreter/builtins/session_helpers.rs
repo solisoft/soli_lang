@@ -365,6 +365,7 @@ fn get_current_user_value() -> Result<Value, String> {
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn perform_login(email: &str, password: &str) -> Result<Value, String> {
     let login_data = format!(r#"{{"email":"{}","password":"{}"}}"#, email, password);
 
@@ -431,6 +432,10 @@ fn perform_login(email: &str, password: &str) -> Result<Value, String> {
     }
 
     Ok(Value::Hash(Rc::new(RefCell::new(response_hash))))
+}
+#[cfg(target_arch = "wasm32")]
+fn perform_login(_email: &str, _password: &str) -> Result<Value, String> {
+    Err(crate::platform::unsupported_on_edge("perform_login"))
 }
 
 fn session_id_from_cookies() -> Option<String> {

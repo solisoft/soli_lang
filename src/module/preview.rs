@@ -148,7 +148,7 @@ impl PreviewConfig {
         if let Some(dir) = &self.sites_dir {
             return dir.clone();
         }
-        if let Ok(dir) = std::env::var("SOLI_SITES_DIR") {
+        if let Ok(dir) = crate::platform::env::var("SOLI_SITES_DIR") {
             if !dir.is_empty() {
                 return expand_tilde(&dir);
             }
@@ -158,7 +158,9 @@ impl PreviewConfig {
 }
 
 fn home_dir() -> PathBuf {
-    std::env::var("HOME").map(PathBuf::from).unwrap_or_default()
+    crate::platform::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default()
 }
 
 fn expand_tilde(value: &str) -> PathBuf {
@@ -718,6 +720,7 @@ fn read_db_target(env: &PreviewEnv) -> Option<(String, Option<(String, String)>)
     Some((host, auth))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn http_client() -> Result<reqwest::blocking::Client, String> {
     reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
@@ -726,6 +729,7 @@ fn http_client() -> Result<reqwest::blocking::Client, String> {
         .map_err(|e| format!("HTTP client failed: {}", e))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn stop_app(proxy_url: &str, app: &str) -> Result<(), String> {
     let url = format!(
         "{}/api/v1/apps/{}/stop",
@@ -737,7 +741,7 @@ fn stop_app(proxy_url: &str, app: &str) -> Result<(), String> {
     // The admin API accepts unauthenticated requests on a loopback bind, which
     // is the usual local setup, so a missing key is not an error here — let the
     // proxy answer 401 if it does require one.
-    if let Some(key) = std::env::var("SOLI_DEPLOY_API_KEY")
+    if let Some(key) = crate::platform::env::var("SOLI_DEPLOY_API_KEY")
         .ok()
         .filter(|key| !key.is_empty())
     {
@@ -763,12 +767,17 @@ fn stop_app(proxy_url: &str, app: &str) -> Result<(), String> {
     }
     Err(format!("{}: {}", status, body))
 }
+#[cfg(target_arch = "wasm32")]
+fn stop_app(_proxy_url: &str, _app: &str) -> Result<(), String> {
+    Err(crate::platform::unsupported_on_edge("stop_app"))
+}
 
 /// Whether the proxy currently manages an app with this name/domain.
+#[cfg(not(target_arch = "wasm32"))]
 fn app_is_known(proxy_url: &str, app: &str) -> Result<bool, String> {
     let url = format!("{}/api/v1/apps", proxy_url.trim_end_matches('/'));
     let mut request = http_client()?.get(&url);
-    if let Some(key) = std::env::var("SOLI_DEPLOY_API_KEY")
+    if let Some(key) = crate::platform::env::var("SOLI_DEPLOY_API_KEY")
         .ok()
         .filter(|key| !key.is_empty())
     {
@@ -801,7 +810,12 @@ fn app_is_known(proxy_url: &str, app: &str) -> Result<bool, String> {
         matches("name") || matches("domain")
     }))
 }
+#[cfg(target_arch = "wasm32")]
+fn app_is_known(_proxy_url: &str, _app: &str) -> Result<bool, String> {
+    Err(crate::platform::unsupported_on_edge("app_is_known"))
+}
 
+#[cfg(not(target_arch = "wasm32"))]
 fn drop_database(
     host: &str,
     auth: Option<&(String, String)>,
@@ -825,6 +839,14 @@ fn drop_database(
         status,
         response.text().unwrap_or_default()
     ))
+}
+#[cfg(target_arch = "wasm32")]
+fn drop_database(
+    _host: &str,
+    _auth: Option<&(String, String)>,
+    _database: &str,
+) -> Result<(), String> {
+    Err(crate::platform::unsupported_on_edge("drop_database"))
 }
 
 /// Preview environments discovered on disk, with their live state if the proxy

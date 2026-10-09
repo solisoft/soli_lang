@@ -177,7 +177,7 @@ async fn accept_loop(
 ) {
     // When the last exhaustion warning was printed, so a long run of them logs
     // once per interval instead of once per failed accept.
-    let mut last_exhaustion_warning: Option<std::time::Instant> = None;
+    let mut last_exhaustion_warning: Option<web_time::Instant> = None;
     loop {
         // The accept loop deliberately keeps running during a drain.
         // Breaking out would return from the enclosing `block_on`,
@@ -192,7 +192,7 @@ async fn accept_loop(
                 // connection stays in the backlog and accept fails again at
                 // once, so retrying straight away spins this thread at 100%
                 // until something closes. Back off and say why, instead.
-                let now = std::time::Instant::now();
+                let now = web_time::Instant::now();
                 if last_exhaustion_warning
                     .is_none_or(|t| now.duration_since(t) >= ACCEPT_EXHAUSTION_WARN_EVERY)
                 {

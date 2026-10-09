@@ -220,7 +220,7 @@ pub struct WsRateLimiter {
     tokens: f64,
     capacity: f64,
     refill_per_sec: f64,
-    last: std::time::Instant,
+    last: web_time::Instant,
 }
 
 impl WsRateLimiter {
@@ -233,7 +233,7 @@ impl WsRateLimiter {
             tokens: burst,
             capacity: burst,
             refill_per_sec: rate,
-            last: std::time::Instant::now(),
+            last: web_time::Instant::now(),
         }
     }
 
@@ -248,7 +248,7 @@ impl WsRateLimiter {
         if self.refill_per_sec <= 0.0 {
             return true;
         }
-        let now = std::time::Instant::now();
+        let now = web_time::Instant::now();
         let elapsed = now.duration_since(self.last).as_secs_f64();
         self.last = now;
         self.tokens = (self.tokens + elapsed * self.refill_per_sec).min(self.capacity);
@@ -468,8 +468,8 @@ impl WebSocketRegistry {
         meta: HashMap<String, String>,
     ) -> (bool, PresenceMeta) {
         let phx_ref = self.next_ref();
-        let online_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let online_at = web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
@@ -1743,7 +1743,7 @@ mod ws_limit_tests {
         while limiter.allow() {}
         // Hand-wind the clock rather than sleeping: one second of refill at the
         // configured rate must hand back at least one token.
-        limiter.last = std::time::Instant::now() - std::time::Duration::from_secs(1);
+        limiter.last = web_time::Instant::now() - std::time::Duration::from_secs(1);
         assert!(limiter.allow(), "tokens must refill as time passes");
     }
 }

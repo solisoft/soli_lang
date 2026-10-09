@@ -73,7 +73,7 @@ pub async fn deploy(config: DeployConfig) -> Result<Vec<DeployResult>, String> {
         return Ok(vec![]);
     }
 
-    let api_key = std::env::var("SOLI_DEPLOY_API_KEY").map_err(|_| {
+    let api_key = crate::platform::env::var("SOLI_DEPLOY_API_KEY").map_err(|_| {
         "SOLI_DEPLOY_API_KEY env var is required for the proxy deploy step. Set it before running `soli deploy`.".to_string()
     })?;
 

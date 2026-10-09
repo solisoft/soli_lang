@@ -4,7 +4,7 @@
             <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-orange-400 bg-clip-text text-transparent">Deployment</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Deploy your Soli applications to remote servers with a single command. Blue-green deployments via soli-proxy, or bundle your app into a single binary for zero-dependency deployment. A script builds into a single executable too &mdash; see <a href="#script-executables" class="text-amber-400 hover:underline">Script Executables</a>.
+            Deploy your Soli applications to remote servers with a single command. Blue-green deployments via soli-proxy, or bundle your app into a single binary for zero-dependency deployment. A script builds into a single executable too &mdash; see <a href="#script-executables" class="text-amber-400 hover:underline">Script Executables</a>. With no server at all, <code class="text-amber-400">soli edge build</code> packages an app as a Cloudflare Worker &mdash; see <a href="/docs/development-tools/edge" class="text-amber-400 hover:underline">Cloudflare Workers</a>.
         </p>
     </div>
 

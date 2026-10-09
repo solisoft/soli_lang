@@ -37,6 +37,39 @@ use crate::serve::get_tokio_handle;
 
 const BLOCKED_SCHEMES: &[&str] = &["javascript", "file", "ftp", "ssh", "telnet", "gopher"];
 
+/// `Send` natively, where an HTTP future may be handed to the runtime's
+/// threads; no bound on the edge build, whose `fetch` futures hold JS values
+/// and never leave the thread that made them.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) trait MaybeSend: Send {}
+#[cfg(not(target_arch = "wasm32"))]
+impl<T: Send> MaybeSend for T {}
+#[cfg(target_arch = "wasm32")]
+pub(crate) trait MaybeSend {}
+#[cfg(target_arch = "wasm32")]
+impl<T> MaybeSend for T {}
+
+/// Run `work` off the calling thread — on a thread of its own natively. The
+/// edge build has no threads, so it runs right here and `join` hands back what
+/// it already produced: `HTTP.parallel*` and the async variants still answer,
+/// one request after another.
+#[cfg(not(target_arch = "wasm32"))]
+fn offload<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> thread::JoinHandle<T> {
+    thread::spawn(work)
+}
+#[cfg(target_arch = "wasm32")]
+fn offload<T>(work: impl FnOnce() -> T) -> Done<T> {
+    Done(work())
+}
+#[cfg(target_arch = "wasm32")]
+struct Done<T>(T);
+#[cfg(target_arch = "wasm32")]
+impl<T> Done<T> {
+    fn join(self) -> thread::Result<T> {
+        Ok(self.0)
+    }
+}
+
 /// SEC-017: process-wide flag that allows the SSRF blocklist to permit
 /// loopback / private IPs. Previously the bypass keyed off
 /// `APP_ENV=test`, but `APP_ENV` is a normal-looking env name that
@@ -73,7 +106,7 @@ pub fn ssrf_test_mode() -> bool {
 pub(crate) fn parallel_max_items() -> usize {
     static CAP: OnceLock<usize> = OnceLock::new();
     *CAP.get_or_init(|| {
-        std::env::var("SOLI_PARALLEL_MAX_ITEMS")
+        crate::platform::env::var("SOLI_PARALLEL_MAX_ITEMS")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .filter(|n| *n > 0)
@@ -87,7 +120,7 @@ pub(crate) fn parallel_max_items() -> usize {
 pub(crate) fn parallel_max_concurrency() -> usize {
     static CAP: OnceLock<usize> = OnceLock::new();
     *CAP.get_or_init(|| {
-        std::env::var("SOLI_PARALLEL_MAX_CONCURRENCY")
+        crate::platform::env::var("SOLI_PARALLEL_MAX_CONCURRENCY")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .filter(|n| *n > 0)
@@ -111,6 +144,7 @@ pub(crate) fn parallel_max_concurrency() -> usize {
 /// Two worker threads: these only drive I/O — the futures themselves run on the
 /// calling thread via `block_on` — so this is about having *a* live reactor, not
 /// about throughput.
+#[cfg(not(target_arch = "wasm32"))]
 fn user_http_runtime() -> &'static tokio::runtime::Runtime {
     static USER_HTTP_RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
     USER_HTTP_RT.get_or_init(|| {
@@ -129,6 +163,7 @@ fn user_http_runtime() -> &'static tokio::runtime::Runtime {
 /// future then runs on *this* thread, so anything it reads from thread-locals
 /// (the dev query log, the current request) is still there. The other two arms
 /// exist only so that a call made from inside an async context cannot panic.
+#[cfg(not(target_arch = "wasm32"))]
 fn block_on_user_http<Fut, T>(future: Fut) -> Result<T, String>
 where
     Fut: std::future::Future<Output = Result<T, String>> + Send + 'static,
@@ -159,12 +194,20 @@ where
         }
     }
 }
+#[cfg(target_arch = "wasm32")]
+fn block_on_user_http<Fut, T>(future: Fut) -> Result<T, String>
+where
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    crate::platform::jspi::block_on(future)
+}
 
 /// [`block_on_user_http`] for a future that produces a Soli `Value`.
 ///
 /// `Value` holds `Rc`s, so these futures are `!Send` and can never be handed to
 /// another thread — they only ever run on the calling thread. Same two normal
 /// arms as the sendable version; the difference is the last resort.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn block_on_user_http_local<Fut, T>(future: Fut) -> Result<T, String>
 where
     Fut: std::future::Future<Output = Result<T, String>>,
@@ -192,6 +235,13 @@ where
             Err(e) => Err(format!("Failed to build tokio runtime: {}", e)),
         },
     }
+}
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn block_on_user_http_local<Fut, T>(future: Fut) -> Result<T, String>
+where
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    crate::platform::jspi::block_on(future)
 }
 
 /// Explain a `reqwest` error, cause chain included.
@@ -281,7 +331,7 @@ fn validate_url_for_ssrf_impl(url: &str, test_mode: bool) -> Result<(), String> 
         // Production/dev/staging — no matter what `APP_ENV` says —
         // stays blocked.
         // SEC-085: allow `SOLI_DEV_ALLOW_SSRF=1` for local development.
-        let dev_allowed = std::env::var("SOLI_DEV_ALLOW_SSRF")
+        let dev_allowed = crate::platform::env::var("SOLI_DEV_ALLOW_SSRF")
             .ok()
             .and_then(|v| v.parse::<i32>().ok())
             .map(|n| n != 0)
@@ -313,7 +363,7 @@ fn validate_url_for_ssrf_impl(url: &str, test_mode: bool) -> Result<(), String> 
 /// allowlisting by name and then resolving would let a DNS answer decide what
 /// is reachable, which is the rebinding attack the blocklist exists to stop.
 fn host_is_allowlisted(url: &reqwest::Url) -> bool {
-    let Ok(raw) = std::env::var("SOLI_HTTP_ALLOW_HOSTS") else {
+    let Ok(raw) = crate::platform::env::var("SOLI_HTTP_ALLOW_HOSTS") else {
         return false;
     };
     let Some(host) = url.host_str() else {
@@ -515,7 +565,9 @@ static USER_HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 #[derive(Debug)]
 struct SsrfBlockingResolver;
 
+#[cfg(not(target_arch = "wasm32"))]
 impl reqwest::dns::Resolve for SsrfBlockingResolver {
+    #[cfg(not(target_arch = "wasm32"))]
     fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
         let host = name.as_str().to_string();
         Box::pin(async move {
@@ -560,6 +612,7 @@ impl reqwest::dns::Resolve for SsrfBlockingResolver {
 /// clients — internal Model traffic doesn't expect redirects but the cap
 /// is harmless, and a misconfigured SoliDB shouldn't be allowed to follow
 /// a redirect into the cloud metadata IP either.
+#[cfg(not(target_arch = "wasm32"))]
 fn build_ssrf_redirect_policy() -> reqwest::redirect::Policy {
     reqwest::redirect::Policy::custom(|attempt| {
         if attempt.previous().len() >= 10 {
@@ -586,7 +639,7 @@ fn build_ssrf_redirect_policy() -> reqwest::redirect::Policy {
 pub fn db_pool_idle_secs() -> u64 {
     static SECS: OnceLock<u64> = OnceLock::new();
     *SECS.get_or_init(|| {
-        std::env::var("SOLI_DB_POOL_IDLE_SECS")
+        crate::platform::env::var("SOLI_DB_POOL_IDLE_SECS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(90)
@@ -605,7 +658,7 @@ pub fn db_pool_idle_secs() -> u64 {
 pub fn db_pool_max_idle() -> usize {
     static MAX_IDLE: OnceLock<usize> = OnceLock::new();
     *MAX_IDLE.get_or_init(|| {
-        std::env::var("SOLI_DB_POOL_MAX_IDLE")
+        crate::platform::env::var("SOLI_DB_POOL_MAX_IDLE")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(8)
@@ -622,7 +675,8 @@ pub fn db_pool_max_idle() -> usize {
 /// escape hatch while the new path proves itself.
 pub fn db_shared_reactor() -> bool {
     static SHARED: OnceLock<bool> = OnceLock::new();
-    *SHARED.get_or_init(|| std::env::var("SOLI_DB_SHARED_REACTOR").as_deref() == Ok("1"))
+    *SHARED
+        .get_or_init(|| crate::platform::env::var("SOLI_DB_SHARED_REACTOR").as_deref() == Ok("1"))
 }
 
 thread_local! {
@@ -664,6 +718,7 @@ thread_local! {
 /// one thread means one runtime, one client and one connection pool. See
 /// [`WORKER_DB_RT`] for why a second per-thread DB runtime would reintroduce
 /// multi-second stalls.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn block_on_db<F>(future: F) -> F::Output
 where
     F: std::future::Future,
@@ -699,6 +754,13 @@ where
         let _guard = enter_local_db_reactor();
         WORKER_DB_RT.with(|rt| rt.block_on(future))
     }
+}
+#[cfg(target_arch = "wasm32")]
+pub fn block_on_db<F>(future: F) -> F::Output
+where
+    F: std::future::Future,
+{
+    crate::platform::jspi::block_on(future)
 }
 
 /// RAII guard marking this thread as driving DB futures on its local reactor.
@@ -772,7 +834,7 @@ const LOCAL_REACTOR_POOL_IDLE_SECS: u64 = 25;
 fn local_db_pool_idle_secs() -> u64 {
     static SECS: OnceLock<u64> = OnceLock::new();
     *SECS.get_or_init(|| {
-        std::env::var("SOLI_DB_POOL_IDLE_SECS")
+        crate::platform::env::var("SOLI_DB_POOL_IDLE_SECS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(LOCAL_REACTOR_POOL_IDLE_SECS)
@@ -780,6 +842,7 @@ fn local_db_pool_idle_secs() -> u64 {
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn build_internal_client(pool_idle_secs: u64) -> Client {
     {
         Client::builder()
@@ -818,6 +881,13 @@ fn build_internal_client(pool_idle_secs: u64) -> Client {
             .expect("Failed to create internal HTTP client")
     }
 }
+#[cfg(target_arch = "wasm32")]
+fn build_internal_client(_pool_idle_secs: u64) -> Client {
+    // On wasm reqwest is `fetch`: no pool, keep-alive or TLS knobs to set.
+    Client::builder()
+        .build()
+        .expect("Failed to create internal HTTP client")
+}
 
 /// SEC-018: maximum bytes Soli will buffer from a single outbound HTTP
 /// response body. The defaults of `reqwest::Response::text()` and
@@ -828,7 +898,7 @@ fn build_internal_client(pool_idle_secs: u64) -> Client {
 fn http_max_response_bytes() -> usize {
     static CAP: OnceLock<usize> = OnceLock::new();
     *CAP.get_or_init(|| {
-        std::env::var("SOLI_HTTP_MAX_RESPONSE_BYTES")
+        crate::platform::env::var("SOLI_HTTP_MAX_RESPONSE_BYTES")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(50 * 1024 * 1024)
@@ -960,6 +1030,7 @@ pub(crate) fn guarded_get_bytes(
 /// Read a ureq response body into a `String`, aborting once the
 /// accumulated bytes exceed [`http_max_response_bytes`]. Used in place
 /// of the unbounded `Response::into_string()`.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn read_capped_text_sync(resp: ureq::Response) -> Result<String, String> {
     use std::io::Read;
     let cap = http_max_response_bytes();
@@ -983,6 +1054,7 @@ pub fn read_capped_text_sync(resp: ureq::Response) -> Result<String, String> {
 /// at connect time, closing the TOCTOU between `validate_url_for_ssrf`
 /// and the actual TCP connect. Same SEC-007 redirect policy as the
 /// internal client.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn get_user_http_client() -> &'static Client {
     USER_HTTP_CLIENT.get_or_init(|| {
         Client::builder()
@@ -1004,6 +1076,17 @@ pub fn get_user_http_client() -> &'static Client {
             .expect("Failed to create user HTTP client")
     })
 }
+#[cfg(target_arch = "wasm32")]
+/// On the edge build reqwest is `fetch`: no pool, resolver, redirect policy or
+/// TLS floor to set. `validate_url_for_ssrf` still screens every URL up front;
+/// redirects are followed by the runtime, which cannot reach private networks.
+pub fn get_user_http_client() -> &'static Client {
+    USER_HTTP_CLIENT.get_or_init(|| {
+        Client::builder()
+            .build()
+            .expect("Failed to create user HTTP client")
+    })
+}
 
 /// Shared `ureq::Agent` for the HTTP class. SEC-007: redirects are
 /// disabled (`redirects(0)`) — ureq has no per-redirect callback hook,
@@ -1019,8 +1102,10 @@ pub fn get_user_http_client() -> &'static Client {
 /// `AgentBuilder` has no `.min_tls_version` knob; if the feature flag
 /// were ever swapped to `native-tls`, the floor would need to be
 /// re-asserted via a custom `tls_connector`.
+#[cfg(not(target_arch = "wasm32"))]
 static UREQ_AGENT: OnceLock<ureq::Agent> = OnceLock::new();
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn ureq_agent() -> &'static ureq::Agent {
     UREQ_AGENT.get_or_init(|| {
         ureq::AgentBuilder::new()
@@ -1036,7 +1121,7 @@ where
     F: FnOnce() -> Result<String, String> + Send + 'static,
 {
     let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
+    offload(move || {
         let result = f();
         let _ = tx.send(result);
     });
@@ -1061,8 +1146,8 @@ where
 fn run_user_http_request<F, Fut, T>(f: F) -> Result<T, String>
 where
     F: FnOnce(reqwest::Client) -> Fut,
-    Fut: std::future::Future<Output = Result<T, String>> + Send + 'static,
-    T: Send + 'static,
+    Fut: std::future::Future<Output = Result<T, String>> + MaybeSend + 'static,
+    T: MaybeSend + 'static,
 {
     let client = get_user_http_client().clone();
     block_on_user_http(f(client))
@@ -1458,7 +1543,7 @@ async fn send_logged(
     // span_log for the flamegraph. They share the same `start` instant.
     let logging = crate::interpreter::builtins::http_log::is_enabled()
         || crate::serve::span_log::is_enabled();
-    let start = logging.then(std::time::Instant::now);
+    let start = logging.then(web_time::Instant::now);
     match builder.send().await {
         Ok(resp) => {
             if let Some(s) = start {
@@ -2874,7 +2959,7 @@ fn parse_request_config(value: &Value) -> Result<RequestConfig, String> {
 struct ParallelCallStats {
     method: String,
     url: String,
-    start: std::time::Instant,
+    start: web_time::Instant,
     duration_ms: f64,
     status: u16,
     error: Option<String>,
@@ -2916,8 +3001,8 @@ fn run_parallel_gets(urls: Vec<String>, opts: RequestOptions) -> Vec<Result<Stri
                 .into_iter()
                 .map(|url| {
                     let opts = opts.clone();
-                    thread::spawn(move || {
-                        let start = std::time::Instant::now();
+                    offload(move || {
+                        let start = web_time::Instant::now();
                         let url_for_call = url.clone();
                         // SEC-015a: route through the SSRF-aware reqwest client so
                         // the connect-time DNS lookup goes through
@@ -2973,7 +3058,7 @@ fn run_parallel_gets(urls: Vec<String>, opts: RequestOptions) -> Vec<Result<Stri
                     ParallelCallStats {
                         method: "GET".to_string(),
                         url: String::new(),
-                        start: std::time::Instant::now(),
+                        start: web_time::Instant::now(),
                         duration_ms: 0.0,
                         status: 0,
                         error: Some("Thread panicked".to_string()),
@@ -3008,8 +3093,8 @@ fn run_parallel_gets_json(urls: Vec<String>, opts: RequestOptions) -> Vec<Result
                 .into_iter()
                 .map(|url| {
                     let opts = opts.clone();
-                    thread::spawn(move || {
-                        let start = std::time::Instant::now();
+                    offload(move || {
+                        let start = web_time::Instant::now();
                         let url_for_call = url.clone();
                         // SEC-015a: SSRF-aware reqwest client.
                         let (status, body): (u16, Result<String, String>) =
@@ -3066,7 +3151,7 @@ fn run_parallel_gets_json(urls: Vec<String>, opts: RequestOptions) -> Vec<Result
                     ParallelCallStats {
                         method: "GET".to_string(),
                         url: String::new(),
-                        start: std::time::Instant::now(),
+                        start: web_time::Instant::now(),
                         duration_ms: 0.0,
                         status: 0,
                         error: Some("Thread panicked".to_string()),
@@ -3103,10 +3188,10 @@ fn run_parallel_requests(requests: Vec<RequestConfig>) -> Vec<Result<HttpRespons
         let handles: Vec<_> = chunk
             .into_iter()
             .map(|config| {
-                thread::spawn(move || {
+                offload(move || {
                     let method = config.method.clone();
                     let url = config.url.clone();
-                    let start = std::time::Instant::now();
+                    let start = web_time::Instant::now();
                     let result = execute_request(config);
                     let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
                     let (status, error) = match &result {
@@ -3132,7 +3217,7 @@ fn run_parallel_requests(requests: Vec<RequestConfig>) -> Vec<Result<HttpRespons
                     ParallelCallStats {
                         method: String::new(),
                         url: String::new(),
-                        start: std::time::Instant::now(),
+                        start: web_time::Instant::now(),
                         duration_ms: 0.0,
                         status: 0,
                         error: Some("Thread panicked".to_string()),
@@ -3726,7 +3811,7 @@ mod parallel_logging_tests {
         // The OnceLock caches the first read. We can't safely set an env
         // and then expect it to be read by the global helper, but we can
         // assert the parser logic by reading directly.
-        let from_env = std::env::var("SOLI_HTTP_MAX_RESPONSE_BYTES")
+        let from_env = crate::platform::env::var("SOLI_HTTP_MAX_RESPONSE_BYTES")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(50 * 1024 * 1024);
@@ -3928,7 +4013,7 @@ mod per_call_timeout_tests {
     fn short_timeout_aborts_slow_request() {
         let port = spawn_stalling_server();
         let url = format!("http://127.0.0.1:{}/", port);
-        let started = std::time::Instant::now();
+        let started = web_time::Instant::now();
         let results = run_parallel_gets(
             vec![url],
             RequestOptions {

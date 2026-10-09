@@ -1251,7 +1251,7 @@ pub(super) fn build_attached_config_from_args(
         }
     }
 
-    let env_service = std::env::var("SOLI_ATTACHMENTS_SERVICE")
+    let env_service = crate::platform::env::var("SOLI_ATTACHMENTS_SERVICE")
         .ok()
         .map(|s| s.to_lowercase())
         .filter(|s| matches!(s.as_str(), "solidb" | "disk" | "s3"));

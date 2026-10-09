@@ -16,7 +16,7 @@
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::thread;
-use std::time::Instant;
+use web_time::Instant;
 
 use crossbeam_channel as channel;
 
@@ -189,7 +189,9 @@ fn run_pool_worker(id: usize, rx: channel::Receiver<BackgroundJob>, config: Pool
 /// memory saving.
 fn job_view_helpers_enabled() -> bool {
     !matches!(
-        std::env::var("SOLI_JOB_VIEW_HELPERS").ok().as_deref(),
+        crate::platform::env::var("SOLI_JOB_VIEW_HELPERS")
+            .ok()
+            .as_deref(),
         Some("0") | Some("false") | Some("no")
     )
 }

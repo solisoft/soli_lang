@@ -24,6 +24,7 @@ extern "C" fn run_cleanup_extern() {
 
 /// Register a directory for removal at process exit. Installs the atexit
 /// hook on first use.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn register_cleanup_dir(path: &Path) {
     INSTALL.call_once(|| unsafe {
         libc::atexit(run_cleanup_extern);
@@ -32,3 +33,5 @@ pub fn register_cleanup_dir(path: &Path) {
         dirs.push(path.to_path_buf());
     }
 }
+#[cfg(target_arch = "wasm32")]
+pub fn register_cleanup_dir(_path: &Path) {}

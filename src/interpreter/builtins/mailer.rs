@@ -93,7 +93,7 @@ struct MailerConfig {
 
 impl MailerConfig {
     fn from_env() -> Self {
-        let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+        let env = |k: &str| crate::platform::env::var(k).ok().filter(|v| !v.is_empty());
         let delivery_method = match env("SOLI_MAIL_DELIVERY_METHOD").as_deref() {
             Some("test") => DeliveryMethod::Test,
             Some("logger") => DeliveryMethod::Logger,

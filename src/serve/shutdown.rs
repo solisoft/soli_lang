@@ -31,7 +31,7 @@ use std::time::Duration;
 // This shipped that way until it was caught in review: `[profile.release]` set
 // `panic = "abort"`, so none of those three nets existed in any released binary.
 // Failing the build is the only check that cannot itself be forgotten.
-#[cfg(panic = "abort")]
+#[cfg(all(panic = "abort", not(target_arch = "wasm32")))]
 compile_error!(
     "Soli's server requires unwinding panics: `catch_unwind` is a no-op under \
      `panic = \"abort\"`, which disables per-request panic containment and both \
@@ -85,7 +85,7 @@ pub fn in_flight() -> usize {
 /// How long to wait for in-flight connections before exiting anyway.
 /// Override with `SOLI_SHUTDOWN_GRACE_SECS`; `0` exits immediately.
 pub fn grace_period() -> Duration {
-    let secs = std::env::var("SOLI_SHUTDOWN_GRACE_SECS")
+    let secs = crate::platform::env::var("SOLI_SHUTDOWN_GRACE_SECS")
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())
         .unwrap_or(DEFAULT_GRACE_SECS);

@@ -18,7 +18,7 @@
 //! HTTP clients have their own timeouts. This bounds time spent *executing*.
 
 use std::cell::Cell;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 thread_local! {
     /// When the current unit of work must stop, if it is bounded at all.
@@ -40,7 +40,7 @@ const CHECK_INTERVAL: u32 = 4096;
 /// policy, and a legitimate slow handler (a report, a large export) must not
 /// trip it. `SOLI_HANDLER_TIMEOUT_SECS=0` disables it.
 pub fn default_budget_secs() -> u64 {
-    std::env::var("SOLI_HANDLER_TIMEOUT_SECS")
+    crate::platform::env::var("SOLI_HANDLER_TIMEOUT_SECS")
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())
         .unwrap_or(30)

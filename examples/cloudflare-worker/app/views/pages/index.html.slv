@@ -1,0 +1,40 @@
+<section class="hero">
+  <h1>Soli on Cloudflare Workers</h1>
+  <p class="lead">
+    This page was rendered by a Soli app running inside a Cloudflare Worker.
+    No server, no container: the Soli interpreter is compiled to WebAssembly
+    and boots next to your visitors, in Cloudflare's datacenter
+    <strong><%= @runtime["colo"] %></strong>.
+  </p>
+  <p><a class="button" href="/guide">Deploy your own</a> <a class="button ghost" href="/try">Try it</a></p>
+</section>
+
+<section class="grid">
+  <article>
+    <h2>The same app</h2>
+    <p>Routes, controllers, views, layouts and models are the ones <code>soli serve</code> runs.
+       <code>soli edge build</code> bundles the source into the Worker; the interpreter loads
+       it once per isolate and answers every request through the same request pipeline.</p>
+  </article>
+  <article>
+    <h2>Small enough</h2>
+    <p>The whole interpreter is about 9 MB of WebAssembly, 3 MB compressed. An isolate
+       boots the app in a few tens of milliseconds; after that a page takes a few.</p>
+  </article>
+  <article>
+    <h2>Database included</h2>
+    <p>Model queries reach SoliDB over HTTPS. Soli's interpreter is synchronous and a
+       Worker's <code>fetch</code> is not: the wasm stack suspends on each query
+       (JavaScript Promise Integration) and resumes when the answer arrives.</p>
+  </article>
+</section>
+
+<section>
+  <h2>What is on this site</h2>
+  <ul>
+    <li><a href="/guide">Guide</a> — from an app folder to a deployed Worker, step by step.</li>
+    <li><a href="/limits">Limits</a> — what the edge build runs, and what stays with <code>soli serve</code>.</li>
+    <li><a href="/try">Try it</a> — a form whose answer is computed by Soli, here, now.</li>
+    <li><a href="/api/info">/api/info</a> — the facts in the footer, as JSON.</li>
+  </ul>
+</section>

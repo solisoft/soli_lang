@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use crate::scaffold::app_generator::write_file;
 use crate::scaffold::templates::migration;

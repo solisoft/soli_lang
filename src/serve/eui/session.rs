@@ -488,8 +488,8 @@ pub fn upgrade(
                         break;
                     }
                     unanswered_pings += 1;
-                    let nonce = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
+                    let nonce = web_time::SystemTime::now()
+                        .duration_since(web_time::UNIX_EPOCH)
                         .map_or(0, |d| d.as_nanos() as u64)
                         .to_le_bytes();
                     let _ = sender.try_send(Ok(Message::Binary(Frame::Ping(nonce).encode())));

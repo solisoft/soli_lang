@@ -23,6 +23,7 @@ pub struct VersionInfo {
 /// Resolve a package version from the registry.
 ///
 /// GET {registry}/api/packages/{name}/{version}
+#[cfg(not(target_arch = "wasm32"))]
 pub fn resolve_version(
     registry_url: &str,
     name: &str,
@@ -60,6 +61,14 @@ pub fn resolve_version(
 
     Ok(VersionInfo { download_url })
 }
+#[cfg(target_arch = "wasm32")]
+pub fn resolve_version(
+    _registry_url: &str,
+    _name: &str,
+    _version: &str,
+) -> Result<VersionInfo, String> {
+    Err(crate::platform::unsupported_on_edge("resolve_version"))
+}
 
 /// Download and extract a package tarball.
 ///
@@ -74,6 +83,7 @@ pub fn resolve_version(
 /// developer's machine. `registry_url` is the operator-configured registry
 /// origin and is consulted to permit local-dev workflows where a registry
 /// running on `localhost` legitimately serves tarballs over `http`.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn download_package(registry_url: &str, url: &str, dest: &Path) -> Result<(), String> {
     use flate2::read::GzDecoder;
 
@@ -97,6 +107,10 @@ pub fn download_package(registry_url: &str, url: &str, dest: &Path) -> Result<()
 
     // Registry tarballs are flat — no top-level directory to strip.
     tar_extract::extract_archive(&mut archive, dest, false)
+}
+#[cfg(target_arch = "wasm32")]
+pub fn download_package(_registry_url: &str, _url: &str, _dest: &Path) -> Result<(), String> {
+    Err(crate::platform::unsupported_on_edge("download_package"))
 }
 
 /// Validate a registry-returned tarball URL before opening a connection.
@@ -165,6 +179,7 @@ fn host_is_private(host: &url::Host<&str>) -> bool {
 /// Publish a package to the registry.
 ///
 /// POST {registry}/api/packages with multipart form data.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn publish_package(
     registry_url: &str,
     token: &str,
@@ -200,6 +215,17 @@ pub fn publish_package(
             status, name, version, body
         ))
     }
+}
+#[cfg(target_arch = "wasm32")]
+pub fn publish_package(
+    _registry_url: &str,
+    _token: &str,
+    _name: &str,
+    _version: &str,
+    _description: &str,
+    _tarball_path: &Path,
+) -> Result<(), String> {
+    Err(crate::platform::unsupported_on_edge("publish_package"))
 }
 
 // Extraction tests live in `src/module/tar_extract.rs`; this module just

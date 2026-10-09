@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use std::time::Instant;
+use web_time::Instant;
 
 use crate::interpreter::value::{SoliStr, Value};
 use crate::serve::{vfs_exists, vfs_read_to_string};
@@ -334,7 +334,7 @@ impl TemplateCache {
             template_name,
             crate::serve::span_log::SpanKind::View,
         );
-        let view_start = crate::serve::view_log::is_enabled().then(std::time::Instant::now);
+        let view_start = crate::serve::view_log::is_enabled().then(web_time::Instant::now);
         let view_id = view_start.map(|_| crate::serve::view_log::next_id());
         if let Some(id) = view_id {
             _span.set_render_id(id);
@@ -516,7 +516,7 @@ impl TemplateCache {
 
         // Per-include span + view-log entry, matching `render` above.
         let mut _span = crate::serve::span_log::SpanGuard::start(name, span_kind);
-        let view_start = crate::serve::view_log::is_enabled().then(std::time::Instant::now);
+        let view_start = crate::serve::view_log::is_enabled().then(web_time::Instant::now);
         let view_id = view_start.map(|_| crate::serve::view_log::next_id());
         if let Some(id) = view_id {
             _span.set_render_id(id);
@@ -742,7 +742,7 @@ impl TemplateCache {
             layout_key,
             crate::serve::span_log::SpanKind::View,
         );
-        let view_start = crate::serve::view_log::is_enabled().then(std::time::Instant::now);
+        let view_start = crate::serve::view_log::is_enabled().then(web_time::Instant::now);
         let view_id = view_start.map(|_| crate::serve::view_log::next_id());
         if let Some(id) = view_id {
             _span.set_render_id(id);

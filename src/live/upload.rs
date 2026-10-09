@@ -6,7 +6,7 @@
 //! a multipart `find_uploaded_file` result.
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use base64::{engine::general_purpose, Engine as _};
 
@@ -54,7 +54,7 @@ const DEFAULT_PARTIAL_IDLE_TTL_SECS: u64 = 600;
 const PARKED_AFTER: Duration = Duration::from_secs(120);
 
 fn partial_idle_ttl() -> Duration {
-    let secs = std::env::var("SOLI_LIVE_UPLOAD_PARTIAL_TTL")
+    let secs = crate::platform::env::var("SOLI_LIVE_UPLOAD_PARTIAL_TTL")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .filter(|secs| *secs > 0)

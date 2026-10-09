@@ -17,7 +17,7 @@
 //! - [`Matched`] — what a hit hands to the rest of the pipeline.
 
 use std::collections::HashMap;
-use std::time::Instant;
+use web_time::Instant;
 
 use crate::interpreter::builtins::session::{finalize_session_cookie, set_current_session_id};
 use crate::interpreter::Value;

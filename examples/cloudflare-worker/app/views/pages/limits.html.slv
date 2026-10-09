@@ -1,0 +1,42 @@
+<h1>Limits</h1>
+<p class="lead">The edge build is the Soli interpreter and the request pipeline, without the
+server around them. What needs a socket, a thread, a subprocess or a disk stays with
+<code>soli serve</code>.</p>
+
+<div class="grid two">
+  <article>
+    <h2>Runs on the edge</h2>
+    <ul>
+      <li>Routes, controllers, <code>before_action</code>, middleware</li>
+      <li>Views, layouts, partials, components, view helpers</li>
+      <li>Query strings, URL-encoded forms, JSON bodies and responses</li>
+      <li>I18n from <code>config/locales</code></li>
+      <li>SoliDB models over HTTPS: <code>find</code>, <code>where</code>, <code>create</code>, <code>update</code>…</li>
+      <li>The <code>HTTP</code> class, over the Worker's <code>fetch</code></li>
+      <li>Static files from <code>public/</code>, served by Cloudflare</li>
+    </ul>
+  </article>
+  <article>
+    <h2>Stays with soli serve</h2>
+    <ul>
+      <li>WebSockets, LiveView, server-sent events and streamed bodies (answered with a 501)</li>
+      <li>Background jobs, cron, mailers that send</li>
+      <li>Multipart uploads and anything that writes files</li>
+      <li>PostgreSQL, MySQL, SQLite and the native SoliDB driver</li>
+      <li><code>--dev</code>: hot reload, the dev bar, the REPL</li>
+      <li>PDF, Office documents, lossy WebP encoding, subprocesses</li>
+    </ul>
+  </article>
+</div>
+
+<h2>Worth knowing</h2>
+<ul>
+  <li><strong>One request at a time per isolate.</strong> A request suspended on a query keeps
+      its isolate; Cloudflare spreads load over more isolates.</li>
+  <li><strong>A Rust panic ends the isolate</strong>, where <code>soli serve</code> would answer
+      a 500 and carry on. The next request boots a fresh one.</li>
+  <li><strong>Size.</strong> About 3 MB compressed: inside the paid plan's limit, at the edge of
+      the free one.</li>
+  <li><strong>Sessions.</strong> The in-memory store lives as long as an isolate; use the
+      <code>cookie</code> driver with <code>SOLI_SESSION_SECRET</code>.</li>
+</ul>

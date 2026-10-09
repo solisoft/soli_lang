@@ -15,7 +15,7 @@
 //! - [`Finalizer`] — what the tail needs, gathered rather than captured.
 //! - [`finish`] — the sequence.
 
-use std::time::Instant;
+use web_time::Instant;
 
 use uuid::Uuid;
 

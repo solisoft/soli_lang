@@ -4,7 +4,7 @@ use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use crate::scaffold::templates::{self, agents, app, bundled_docs};
 use crate::scaffold::ui::{ProgressDisplay, Spinner};
@@ -641,6 +641,7 @@ pub fn replace_placeholders(app_path: &Path, name: &str) -> Result<(), String> {
 }
 
 /// Create from template archive
+#[cfg(not(target_arch = "wasm32"))]
 pub fn create_from_template(name: &str, app_path: &Path, template_url: &str) -> Result<(), String> {
     use flate2::read::GzDecoder;
     use tar;
@@ -752,6 +753,14 @@ pub fn create_from_template(name: &str, app_path: &Path, template_url: &str) -> 
 
     print_success_message(name);
     Ok(())
+}
+#[cfg(target_arch = "wasm32")]
+pub fn create_from_template(
+    _name: &str,
+    _app_path: &Path,
+    _template_url: &str,
+) -> Result<(), String> {
+    Err(crate::platform::unsupported_on_edge("create_from_template"))
 }
 
 /// Print success message after creating an app

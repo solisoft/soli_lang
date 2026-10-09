@@ -329,7 +329,7 @@ pub fn handle_event(
         }
         ("metrics", "tick") => {
             // Generate simulated metrics
-            use std::time::SystemTime;
+            use web_time::SystemTime;
             let now = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap()

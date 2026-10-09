@@ -750,7 +750,7 @@ pub fn exec_async_query_with_binds(
     let log_binds = if log_enabled { bind_vars.clone() } else { None };
     // Always timed: the slow-query tracker needs the duration of every query,
     // and an `Instant` is all a fast one costs.
-    let started = std::time::Instant::now();
+    let started = web_time::Instant::now();
 
     // Native driver: one MessagePack round trip on a pooled connection instead of
     // an HTTP cursor POST. Returns None when the driver is off or unusable, and
@@ -877,7 +877,7 @@ pub fn exec_async_query_with_binds(
 /// DB-time counter.
 fn record_sdbql_observations(
     stats_key: Option<u64>,
-    started: std::time::Instant,
+    started: web_time::Instant,
     sent_body: &bytes::Bytes,
     log_query: Option<String>,
     log_binds: Option<HashMap<String, serde_json::Value>>,
@@ -973,7 +973,7 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
     } else {
         None
     };
-    let started = std::time::Instant::now();
+    let started = web_time::Instant::now();
     // `Bytes`: each attempt and the slow-query tracker share one buffer.
     let body = bytes::Bytes::from(body);
     let sent_body = body.clone();
@@ -1013,8 +1013,9 @@ pub fn exec_async_query_raw(sdbql: String) -> Value {
 /// Hardcoded query - exact same pattern as HTTP.request for comparison.
 pub fn exec_query_hardcoded(sdbql: String) -> Value {
     // Use environment variables for credentials
-    let host = std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
-    let api_key = std::env::var("SOLIDB_API_KEY").unwrap_or_else(|_| {
+    let host = crate::platform::env::var("SOLIDB_HOST")
+        .unwrap_or_else(|_| "http://localhost:6745".to_string());
+    let api_key = crate::platform::env::var("SOLIDB_API_KEY").unwrap_or_else(|_| {
         eprintln!("WARNING: SOLIDB_API_KEY not set, database queries will fail");
         String::new()
     });
@@ -1027,7 +1028,8 @@ pub fn exec_query_hardcoded(sdbql: String) -> Value {
     };
 
     let client = crate::interpreter::builtins::http_class::db_http_client();
-    let db_name = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "solipay".to_string());
+    let db_name =
+        crate::platform::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "solipay".to_string());
     let url = format!(
         "{}/_api/database/{}/cursor",
         host.trim_end_matches('/'),
@@ -1299,8 +1301,8 @@ fn try_create_collection_once(name: &str) -> Result<(), String> {
 fn solidb_scheme_host() -> &'static (String, String) {
     static BASE: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
     BASE.get_or_init(|| {
-        let raw =
-            std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+        let raw = crate::platform::env::var("SOLIDB_HOST")
+            .unwrap_or_else(|_| "http://localhost:6745".to_string());
         super::db_config::parse_solidb_host(&raw)
     })
 }
@@ -1461,7 +1463,7 @@ fn exec_values_with_auto_collection(
     if driver::query_may_handle() && !crate::db::is_sql() && get_mock_for_query(&sdbql).is_none() {
         let log_enabled = super::query_log::is_enabled();
         let log_binds = if log_enabled { bind_vars.clone() } else { None };
-        let started = std::time::Instant::now();
+        let started = web_time::Instant::now();
         if let Some(result) = driver::query_values(&sdbql, bind_vars.clone()) {
             let ms = started.elapsed().as_secs_f64() * 1000.0;
             crate::serve::query_stats::record(
@@ -1615,7 +1617,7 @@ mod driver {
 /// `exec_async_query_with_binds`). Read once — this sits in the query hot path.
 fn no_query_cache() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var("SOLI_DB_NO_QUERY_CACHE").as_deref() == Ok("1"))
+    *ON.get_or_init(|| crate::platform::env::var("SOLI_DB_NO_QUERY_CACHE").as_deref() == Ok("1"))
 }
 
 /// Build the base URL for document operations: {scheme}{host}/_api/database/{db}/document/{collection}.

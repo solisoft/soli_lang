@@ -54,12 +54,12 @@ impl AdapterConfig {
     /// Parse adapter settings from the environment. Fails on unknown
     /// `SOLI_DB_ADAPTER` values (does not silently fall back).
     pub fn from_env() -> Result<Self, DbError> {
-        let adapter = parse_adapter(std::env::var("SOLI_DB_ADAPTER").ok().as_deref())?;
-        let database_url = std::env::var("DATABASE_URL")
+        let adapter = parse_adapter(crate::platform::env::var("SOLI_DB_ADAPTER").ok().as_deref())?;
+        let database_url = crate::platform::env::var("DATABASE_URL")
             .ok()
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
-        let pool_size = std::env::var("SOLI_DB_POOL_SIZE")
+        let pool_size = crate::platform::env::var("SOLI_DB_POOL_SIZE")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .filter(|&n| n > 0);

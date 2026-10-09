@@ -27,7 +27,11 @@ use crate::serve::tenant::TenantValue;
 pub(crate) static TRUST_PROXY_ENABLED: TenantValue<bool> = TenantValue::new(trust_proxy_from_env);
 
 fn trust_proxy_from_env() -> bool {
-    parse_trust_proxy_env(std::env::var("SOLI_TRUST_PROXY").ok().as_deref())
+    parse_trust_proxy_env(
+        crate::platform::env::var("SOLI_TRUST_PROXY")
+            .ok()
+            .as_deref(),
+    )
 }
 
 thread_local! {
@@ -138,7 +142,7 @@ static TRUSTED_PROXIES: TenantValue<Vec<TrustedProxyEntry>> =
     TenantValue::new(read_trusted_proxies);
 
 fn read_trusted_proxies() -> Vec<TrustedProxyEntry> {
-    std::env::var("SOLI_TRUSTED_PROXIES")
+    crate::platform::env::var("SOLI_TRUSTED_PROXIES")
         .ok()
         .map(|raw| {
             raw.split(',')

@@ -66,7 +66,7 @@ fn load_single_env_file(path: &Path) {
                 // Remove quotes if present
                 let value = value.trim_matches('"').trim_matches('\'');
                 // Only set if not already set in environment
-                if std::env::var(key).is_err() {
+                if crate::platform::env::var(key).is_err() {
                     // TODO: Audit that the environment access only happens in single-threaded code.
                     unsafe { std::env::set_var(key, value) };
                 }
@@ -90,7 +90,7 @@ fn load_env_file(app_path: &Path) {
     }
 
     // Then load environment-specific file if APP_ENV is set
-    if let Ok(app_env) = std::env::var("APP_ENV") {
+    if let Ok(app_env) = crate::platform::env::var("APP_ENV") {
         let env_specific = app_path.join(format!(".env.{}", app_env));
         if env_specific.exists() {
             load_single_env_file(&env_specific);
@@ -128,15 +128,16 @@ impl DbConfig {
         // Load .env file first (won't override existing env vars)
         load_env_file(app_path);
 
-        let host =
-            std::env::var("SOLIDB_HOST").unwrap_or_else(|_| "http://localhost:6745".to_string());
+        let host = crate::platform::env::var("SOLIDB_HOST")
+            .unwrap_or_else(|_| "http://localhost:6745".to_string());
         // SEC-027: pass the URL through to `SoliDBClient::connect` with
         // its scheme intact. The previous strip + reconnect made TLS
         // impossible — `connect` would re-add `http://` regardless of
         // the operator's https:// configuration.
-        let database = std::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
-        let username = std::env::var("SOLIDB_USERNAME").ok();
-        let password = std::env::var("SOLIDB_PASSWORD").ok();
+        let database =
+            crate::platform::env::var("SOLIDB_DATABASE").unwrap_or_else(|_| "default".to_string());
+        let username = crate::platform::env::var("SOLIDB_USERNAME").ok();
+        let password = crate::platform::env::var("SOLIDB_PASSWORD").ok();
 
         Self {
             host,

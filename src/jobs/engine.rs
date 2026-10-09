@@ -171,7 +171,7 @@ fn ensure_queue_collections() {
 const PRUNE_EVERY: Duration = Duration::from_secs(600);
 
 fn run_poller(cfg: super::EngineConfig) {
-    let mut last_prune = std::time::Instant::now();
+    let mut last_prune = web_time::Instant::now();
     loop {
         super::wake::wait(next_sleep(&cfg));
 
@@ -197,7 +197,7 @@ fn run_poller(cfg: super::EngineConfig) {
         // counted in ticks: the loop no longer wakes on a fixed interval, so a
         // tick count says nothing about elapsed time.
         if cfg.retention_secs > 0 && last_prune.elapsed() >= PRUNE_EVERY {
-            last_prune = std::time::Instant::now();
+            last_prune = web_time::Instant::now();
             let cutoff = super::iso_from_unix(super::unix_now() - cfg.retention_secs);
             if let Err(e) = store::prune_done(&cutoff) {
                 eprintln!("[jobs] prune failed: {e}");
@@ -430,7 +430,7 @@ fn deliver_webhook(job: &JobDoc) -> Result<(), String> {
     let secret = spec
         .secret
         .clone()
-        .or_else(|| std::env::var("SOLI_WEBHOOK_SECRET").ok())
+        .or_else(|| crate::platform::env::var("SOLI_WEBHOOK_SECRET").ok())
         .filter(|s| !s.is_empty());
 
     // Webhook URLs are the archetypal user-supplied destination ("paste your

@@ -44,9 +44,13 @@ use x509_cert::name::Name;
 use x509_cert::spki::ObjectIdentifier;
 use x509_cert::Certificate;
 
+#[cfg(not(target_arch = "wasm32"))]
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+#[cfg(not(target_arch = "wasm32"))]
 use rustls::crypto::{verify_tls12_signature, verify_tls13_signature, CryptoProvider};
+#[cfg(not(target_arch = "wasm32"))]
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+#[cfg(not(target_arch = "wasm32"))]
 use rustls::{ClientConfig, ClientConnection, DigitallySignedStruct, SignatureScheme};
 
 use crate::interpreter::environment::Environment;
@@ -357,10 +361,12 @@ fn cert_info_pairs(der: &[u8], now: i64) -> Result<Vec<(String, Value)>, String>
 /// signatures: the peer must hold the key of the certificate it presents,
 /// otherwise we would be reporting a certificate it merely replayed.
 #[derive(Debug)]
+#[cfg(not(target_arch = "wasm32"))]
 struct RecordOnly {
     provider: Arc<CryptoProvider>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl ServerCertVerifier for RecordOnly {
     fn verify_server_cert(
         &self,
@@ -411,6 +417,7 @@ impl ServerCertVerifier for RecordOnly {
 /// Complete a TLS handshake with `host:port` and return the presented chain
 /// (leaf first), as DER. No application data is exchanged. `check_ssrf`
 /// is off only in unit tests, which talk to a server on loopback.
+#[cfg(not(target_arch = "wasm32"))]
 fn fetch_peer_chain(
     host: &str,
     port: u16,
@@ -486,6 +493,15 @@ fn fetch_peer_chain(
         return Err(format!("{}:{} presented no certificate", bare, port));
     }
     Ok(chain)
+}
+#[cfg(target_arch = "wasm32")]
+fn fetch_peer_chain(
+    _host: &str,
+    _port: u16,
+    _timeout: Duration,
+    _check_ssrf: bool,
+) -> Result<Vec<Vec<u8>>, String> {
+    Err(crate::platform::unsupported_on_edge("fetch_peer_chain"))
 }
 
 pub fn register_x509_builtins(env: &mut Environment) {

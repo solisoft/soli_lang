@@ -32,7 +32,7 @@ struct WorkerSlot {
     /// `None` when the worker is between files (idle / done).
     current_file: Option<String>,
     /// When the current file started running. Used for live elapsed display.
-    started_at: Option<std::time::Instant>,
+    started_at: Option<web_time::Instant>,
     files_done: usize,
     files_failed: usize,
     /// Last terminal status: '✓', '✗', or ' ' (no file finished yet).
@@ -1129,7 +1129,7 @@ pub fn run_test(
         Arc::new(Mutex::new(files))
     };
 
-    let suite_start = std::time::Instant::now();
+    let suite_start = web_time::Instant::now();
     std::thread::scope(|s| {
         let mut handles = Vec::new();
         for (worker_idx, env) in worker_envs.iter().take(num_workers).enumerate() {
@@ -1170,9 +1170,9 @@ pub fn run_test(
                     {
                         let mut slot = slots[worker_idx].lock().unwrap();
                         slot.current_file = Some(display_name);
-                        slot.started_at = Some(std::time::Instant::now());
+                        slot.started_at = Some(web_time::Instant::now());
                     }
-                    let start = std::time::Instant::now();
+                    let start = web_time::Instant::now();
                     let result = fs::read_to_string(&file).map_err(|e| e.to_string());
 
                     let (passed, error, assertions) = match result {
@@ -1736,7 +1736,7 @@ fn migrate_fresh_base_database(
     ) {
         config = config.with_auth(&user, &pass);
     }
-    let started = std::time::Instant::now();
+    let started = web_time::Instant::now();
     let runner = solilang::migration::MigrationRunner::new(config, app_dir).quiet(true);
     match runner.migrate_up() {
         Ok(result) => {
@@ -1809,7 +1809,7 @@ fn ensure_test_databases(db_names: &[String], app_dir: &Path) {
     // collections in the middle of requests and random specs blow past
     // the 10s HTTP timeouts.
     let base_database = databases[0];
-    let base_started = std::time::Instant::now();
+    let base_started = web_time::Instant::now();
     let base_outcome = prepare_test_database(&host, &auth_header, base_database, &[]);
     print_reset_outcome(base_database, base_started.elapsed(), &base_outcome);
     if matches!(&base_outcome, Ok((detail, _)) if detail == "created" || detail.starts_with("recreated"))
@@ -1839,7 +1839,7 @@ fn ensure_test_databases(db_names: &[String], app_dir: &Path) {
                     let auth_header = &auth_header;
                     let template_collections = &template_collections;
                     s.spawn(move || {
-                        let started = std::time::Instant::now();
+                        let started = web_time::Instant::now();
                         let outcome = prepare_test_database(
                             host,
                             auth_header,
@@ -1875,7 +1875,7 @@ fn ensure_test_databases(db_names: &[String], app_dir: &Path) {
             "Creating {} missing collection(s) (one-time setup for new worker DBs)...",
             total_creates
         );
-        let create_started = std::time::Instant::now();
+        let create_started = web_time::Instant::now();
         let mut created = 0usize;
         for (database, names) in &pending_creates {
             for (name, collection_type) in names {
@@ -1933,7 +1933,7 @@ fn copy_template_indexes(
         return;
     }
 
-    let started = std::time::Instant::now();
+    let started = web_time::Instant::now();
     let mut created = 0usize;
     let mut errors: Vec<String> = Vec::new();
     for worker in workers {
@@ -2243,7 +2243,7 @@ fn drop_test_databases(db_names: &[String]) {
     }
     let host = test_db_host();
     let auth_header = test_db_auth_header();
-    let started = std::time::Instant::now();
+    let started = web_time::Instant::now();
 
     let errors: Vec<String> = std::thread::scope(|s| {
         let handles: Vec<_> = databases
@@ -2356,7 +2356,7 @@ fn sweep_orphaned_worker_databases(current: &[String]) {
     if orphans.is_empty() {
         return;
     }
-    let started = std::time::Instant::now();
+    let started = web_time::Instant::now();
     let errors: Vec<String> = orphans
         .iter()
         .filter_map(|database| drop_database(&host, &auth_header, database).err())
@@ -2396,7 +2396,7 @@ fn truncate_test_databases(db_names: &[String]) {
     }
     let host = test_db_host();
     let auth_header = test_db_auth_header();
-    let started = std::time::Instant::now();
+    let started = web_time::Instant::now();
 
     let errors: Vec<String> = std::thread::scope(|s| {
         let handles: Vec<_> = databases
@@ -2680,7 +2680,7 @@ mod tests {
     fn slot_running(id: usize, file: &str, done: usize) -> WorkerSlot {
         let mut slot = WorkerSlot::new(id);
         slot.current_file = Some(file.to_string());
-        slot.started_at = Some(std::time::Instant::now());
+        slot.started_at = Some(web_time::Instant::now());
         slot.files_done = done;
         slot
     }

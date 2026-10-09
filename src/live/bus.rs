@@ -261,6 +261,16 @@ async fn run() {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+async fn subscribe_and_pump() -> Result<(), String> {
+    // The subscriber only runs beside the native server; the edge build has
+    // no long-lived socket to hold.
+    Err(crate::platform::unsupported_on_edge(
+        "the SoliDB live subscription",
+    ))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 async fn subscribe_and_pump() -> Result<(), String> {
     let Some(token) = db_config::get_jwt_token() else {
         return Err("no JWT available for the changefeed".to_string());

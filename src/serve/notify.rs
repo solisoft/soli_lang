@@ -37,7 +37,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use super::tenant::TenantId;
 use super::tenant_writer::{self, Stats, StatsSnapshot, Writers};
@@ -254,7 +254,11 @@ struct Config {
 
 impl Config {
     fn from_env() -> Config {
-        let env = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+        let env = |k: &str| {
+            crate::platform::env::var(k)
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+        };
         let list = |k: &str| -> Vec<String> {
             env(k)
                 .map(|v| {
@@ -308,9 +312,14 @@ impl Config {
     /// Whether `kind` has anywhere to go: a configured destination, or a
     /// browser subscribed to its topic (read from the database, so only asked
     /// when the configured ones are empty).
+    #[cfg(not(target_arch = "wasm32"))]
     fn has_destination_for(&self, kind: Kind) -> bool {
         self.has_destination()
             || super::operator_push::subscriber_count(super::operator_push::Topic::of(kind)) > 0
+    }
+    #[cfg(target_arch = "wasm32")]
+    fn has_destination_for(&self, _kind: Kind) -> bool {
+        false
     }
 }
 
@@ -340,6 +349,7 @@ fn destinations(config: &Config) -> Vec<String> {
 }
 
 /// The browsers subscribed to each topic, as a destination name.
+#[cfg(not(target_arch = "wasm32"))]
 fn push_destinations() -> Vec<String> {
     use super::operator_push::{subscriber_count, Topic};
     [Topic::Errors, Topic::SlowQueries]
@@ -350,6 +360,10 @@ fn push_destinations() -> Vec<String> {
             n => Some(format!("{n} browsers ({})", topic.name())),
         })
         .collect()
+}
+#[cfg(target_arch = "wasm32")]
+fn push_destinations() -> Vec<String> {
+    Vec::new()
 }
 
 /// One line for the operator pages: where notifications go, or how to turn
@@ -382,7 +396,7 @@ started (see the <code>[notify]</code> lines on stderr).</p>"
 
 /// The spike rule: `count` occurrences within `window`. `None` when off.
 pub(crate) fn spike_rule() -> Option<(u64, Duration)> {
-    let Ok(value) = std::env::var("SOLI_NOTIFY_SPIKE") else {
+    let Ok(value) = crate::platform::env::var("SOLI_NOTIFY_SPIKE") else {
         return Some(DEFAULT_SPIKE);
     };
     let value = value.trim().to_ascii_lowercase();
@@ -454,6 +468,7 @@ impl SpikeWatch {
 // --- sending -----------------------------------------------------------------
 
 /// Send `event` everywhere it should go. Returns one message per failure.
+#[cfg(not(target_arch = "wasm32"))]
 fn send(event: &Event, config: &Config) -> Vec<String> {
     let url = config
         .base_url
@@ -500,6 +515,10 @@ fn send(event: &Event, config: &Config) -> Vec<String> {
         }
     }
     failures
+}
+#[cfg(target_arch = "wasm32")]
+fn send(_event: &Event, _config: &Config) -> Vec<String> {
+    Vec::new()
 }
 
 /// The plain lines every text format shares.

@@ -17,7 +17,7 @@ use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 /// Credentials for the app's own database instance.
 ///

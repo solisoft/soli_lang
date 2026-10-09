@@ -7,7 +7,7 @@
 //! sparse percentage milestones so CI logs show a heartbeat without spam.
 
 use std::io::{IsTerminal, Write};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 const BAR_WIDTH: usize = 24;
 const MIN_REDRAW: Duration = Duration::from_millis(60);

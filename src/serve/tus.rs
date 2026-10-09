@@ -69,7 +69,7 @@ impl Default for Config {
             max_active: DEFAULT_MAX_ACTIVE,
             max_per_owner: DEFAULT_MAX_PER_OWNER,
             expires_secs: DEFAULT_EXPIRES_SECS,
-            dir: std::env::var("SOLI_TUS_DIR")
+            dir: crate::platform::env::var("SOLI_TUS_DIR")
                 .map(PathBuf::from)
                 .unwrap_or_else(|_| PathBuf::from("./storage/tus")),
             require_session: true,
@@ -105,8 +105,8 @@ struct Meta {
 }
 
 fn now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
 }

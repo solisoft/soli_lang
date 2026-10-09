@@ -121,7 +121,7 @@ fn parse_duration_str(s: &str) -> Result<i64, String> {
 }
 
 fn iso_now_plus_seconds(secs: i64) -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use web_time::{SystemTime, UNIX_EPOCH};
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)

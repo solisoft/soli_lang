@@ -43,6 +43,7 @@ use super::{
     server_constants, RequestData, ResponseBody, WorkerResponse, WorkerSender,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
 /// The `--dev` diagnostics, or the request back untouched when the path is
 /// not one of theirs (or the server is not in `--dev` at all).
 ///
@@ -269,6 +270,7 @@ fn request_trace(id: &str) -> Response<ResponseBody> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Handle REPL execution for dev mode.
 async fn handle_dev_repl(req: Request<Incoming>, peer_addr: SocketAddr) -> Response<ResponseBody> {
     if !is_authorized_dev_repl_request(req.headers(), peer_addr) {
@@ -495,6 +497,7 @@ async fn handle_dev_source(
         .unwrap()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Dev-only request replay (`POST /__solidev/replay/:id`). Re-dispatches a
 /// previously captured request through the real worker path so a bug can be
 /// reproduced server-side (fresh request id, handler re-runs). Returns the

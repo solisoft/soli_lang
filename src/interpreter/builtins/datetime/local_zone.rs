@@ -49,7 +49,7 @@ enum Zone {
 static ZONE: OnceLock<Zone> = OnceLock::new();
 
 fn zone() -> &'static Zone {
-    ZONE.get_or_init(|| match std::env::var("TZ") {
+    ZONE.get_or_init(|| match crate::platform::env::var("TZ") {
         // `$TZ` wins over the system zone, matching `chrono::Local`.
         Ok(raw) => {
             // A leading ':' is allowed by POSIX and is not part of the name.

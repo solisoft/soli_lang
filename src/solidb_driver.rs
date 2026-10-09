@@ -69,7 +69,7 @@ pub fn enabled() -> bool {
 /// `SOLI_DB_DRIVER` as written: `Some(true)` asked for the driver, `Some(false)`
 /// turned it off, `None` left the default.
 fn driver_setting() -> Option<bool> {
-    let raw = std::env::var("SOLI_DB_DRIVER").ok()?;
+    let raw = crate::platform::env::var("SOLI_DB_DRIVER").ok()?;
     match raw.trim().to_ascii_lowercase().as_str() {
         "0" | "false" | "off" | "no" => Some(false),
         "" => None,
@@ -120,14 +120,14 @@ enum DriverUnavailable {
 /// `SOLI_DB_DRIVER_QUERY=0` to keep queries on the cursor endpoint.
 fn query_enabled() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var("SOLI_DB_DRIVER_QUERY").as_deref() != Ok("0"))
+    *ON.get_or_init(|| crate::platform::env::var("SOLI_DB_DRIVER_QUERY").as_deref() != Ok("0"))
 }
 
 /// Opt out of SoliDB's read-result memoization on the driver path too.
 /// Mirrors the HTTP `payload["cache"] = false` in `crud.rs`.
 fn no_query_cache() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var("SOLI_DB_NO_QUERY_CACHE").as_deref() == Ok("1"))
+    *ON.get_or_init(|| crate::platform::env::var("SOLI_DB_NO_QUERY_CACHE").as_deref() == Ok("1"))
 }
 
 /// `host:port` for the driver, taken from the same `SOLIDB_HOST` the HTTP path
@@ -149,7 +149,7 @@ fn driver_addr() -> Result<String, DriverUnavailable> {
 /// 2. `SOLIDB_USERNAME` / `SOLIDB_PASSWORD` when either is set
 /// 3. `admin` / `admin` for the local-dev default (same as SoliDB's bootstrap)
 async fn authenticate(client: &mut SoliDBClient, database: &str) -> Result<(), String> {
-    if let Ok(api_key) = std::env::var("SOLIDB_API_KEY") {
+    if let Ok(api_key) = crate::platform::env::var("SOLIDB_API_KEY") {
         if !api_key.is_empty() {
             return client
                 .auth_with_api_key(database, &api_key)
@@ -158,8 +158,8 @@ async fn authenticate(client: &mut SoliDBClient, database: &str) -> Result<(), S
         }
     }
 
-    let username = std::env::var("SOLIDB_USERNAME").unwrap_or_else(|_| "admin".into());
-    let password = std::env::var("SOLIDB_PASSWORD").unwrap_or_else(|_| "admin".into());
+    let username = crate::platform::env::var("SOLIDB_USERNAME").unwrap_or_else(|_| "admin".into());
+    let password = crate::platform::env::var("SOLIDB_PASSWORD").unwrap_or_else(|_| "admin".into());
     client
         .auth(database, &username, &password)
         .await

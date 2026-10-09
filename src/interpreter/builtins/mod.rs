@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};

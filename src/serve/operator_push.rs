@@ -112,7 +112,11 @@ pub(crate) struct Keys {
 /// The VAPID identity: the app's own `VAPID_*`, else the stored pair, else a
 /// new pair, stored.
 pub(crate) fn keys() -> Result<Keys, String> {
-    let env = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+    let env = |k: &str| {
+        crate::platform::env::var(k)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+    };
     let subject = env("VAPID_SUBJECT").unwrap_or_else(|| "mailto:admin@localhost".to_string());
     if let (Some(public), Some(private)) = (env("VAPID_PUBLIC_KEY"), env("VAPID_PRIVATE_KEY")) {
         return Ok(Keys {

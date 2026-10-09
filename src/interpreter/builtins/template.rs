@@ -224,7 +224,7 @@ pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
     }
 
     let entries = if has_helpers {
-        std::fs::read_dir(helpers_dir)
+        crate::platform::fs::read_dir(helpers_dir)
             .map_err(|e| format!("Failed to read helpers directory: {}", e))?
             .collect::<Vec<_>>()
     } else {
@@ -311,7 +311,7 @@ fn load_component_classes(
     }
     let mut count = 0;
     let mut interpreter = crate::interpreter::Interpreter::with_environment(helper_env.clone());
-    let entries = std::fs::read_dir(&components_dir)
+    let entries = crate::platform::fs::read_dir(&components_dir)
         .map_err(|e| format!("Failed to read components directory: {}", e))?;
     for entry in entries {
         let path = entry

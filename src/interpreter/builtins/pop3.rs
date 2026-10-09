@@ -135,7 +135,7 @@ fn read_multiline<R: BufRead>(reader: &mut R) -> Result<String, String> {
     // A dot-terminated response has no declared length: the server stops when
     // it feels like it. Unbounded accumulation meant a hostile (or simply
     // broken) server could grow this string until the worker was OOM-killed.
-    let max_bytes = std::env::var("SOLI_POP3_MAX_RESPONSE_BYTES")
+    let max_bytes = crate::platform::env::var("SOLI_POP3_MAX_RESPONSE_BYTES")
         .ok()
         .and_then(|v| v.trim().parse::<usize>().ok())
         .filter(|n| *n > 0)
@@ -372,7 +372,7 @@ fn pop3_fetch_all(args: &[Value]) -> Result<Value, String> {
         .and_then(|s| s.parse::<i64>().ok())
         .unwrap_or(0);
 
-    let cap = std::env::var("SOLI_POP3_MAX_MESSAGES")
+    let cap = crate::platform::env::var("SOLI_POP3_MAX_MESSAGES")
         .ok()
         .and_then(|v| v.parse::<i64>().ok())
         .filter(|n| *n > 0)
