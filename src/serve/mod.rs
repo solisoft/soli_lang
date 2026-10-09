@@ -681,6 +681,18 @@ pub fn serve_folder_with_options_and_hooks(
     load_env_files(folder);
     boot_trace("env loaded");
 
+    // The locale files are parsed on a thread of their own while the app
+    // loads, and installed below at the point they always were. An app's YAML
+    // can be a megabyte; parsing it here held up every boot, and so every
+    // woken app's first request, by its whole length.
+    let locales_parsed = {
+        let config_dir = folder.join("config");
+        std::thread::Builder::new()
+            .name("locales".into())
+            .spawn(move || crate::interpreter::builtins::i18n::helpers::parse_locales(&config_dir))
+            .ok()
+    };
+
     if let Err(message) = server_constants::check_production_boot(dev_mode) {
         return Err(RuntimeError::General {
             message,
@@ -949,9 +961,12 @@ pub fn serve_folder_with_options_and_hooks(
     // Load translations from config/locales/*.yml so I18n.translate(...) can
     // resolve keys against the project's locale files without callers having
     // to pass a translations hash on every call.
-    crate::interpreter::builtins::i18n::helpers::load_locales_from_config_dir(
-        &folder.join("config"),
-    );
+    let locales = locales_parsed
+        .and_then(|parsing| parsing.join().ok())
+        .unwrap_or_else(|| {
+            crate::interpreter::builtins::i18n::helpers::parse_locales(&folder.join("config"))
+        });
+    crate::interpreter::builtins::i18n::helpers::install_locales(locales);
     // The locale a request starts from, and the one a lookup falls back to.
     // Process-wide, so it is set here rather than on the boot thread's
     // thread-local — that thread is reclaimed and never serves a request.

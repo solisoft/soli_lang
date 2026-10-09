@@ -131,6 +131,13 @@ pub fn set_locale(locale: &str) {
 /// Returns the number of locales loaded. A missing `locales/` dir is a no-op
 /// (returns 0). A malformed file logs a warning to stderr and is skipped.
 pub fn load_locales_from_config_dir(config_dir: &Path) -> usize {
+    install_locales(parse_locales(config_dir))
+}
+
+/// The translations under `config_dir/locales`, parsed and merged by locale,
+/// without installing them. Touches no shared state, so a server parses them on
+/// a thread of its own while it loads the application (see `serve_folder`).
+pub fn parse_locales(config_dir: &Path) -> HashMap<String, serde_yaml::Value> {
     let locales_dir = config_dir.join("locales");
     let mut store: HashMap<String, serde_yaml::Value> = HashMap::new();
 
@@ -186,6 +193,11 @@ pub fn load_locales_from_config_dir(config_dir: &Path) -> usize {
         }
     }
 
+    store
+}
+
+/// Make `store` the translations every lookup reads. Returns the locale count.
+pub fn install_locales(store: HashMap<String, serde_yaml::Value>) -> usize {
     let count = store.len();
     TRANSLATIONS.write(|g| *g = Some(store));
     count

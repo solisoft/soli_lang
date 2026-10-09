@@ -156,7 +156,7 @@ An invalid expression is rejected by `Cron.schedule` / `Cron.update` with an err
 
 ### Convention (declarative)
 
-A class can declare a `static cron`. On boot, worker 0 upserts a cron entry named after the class:
+A class can declare a `static cron`. On boot, worker 0 upserts a cron entry named after the class, from a thread of its own so the server does not wait on the writes before it listens:
 
 ```soli
 class NightlyReportJob {

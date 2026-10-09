@@ -305,6 +305,10 @@ pub(crate) fn load_jobs_in_worker(
         }
     };
 
+    // `static cron` schedules this loader upserts, written after the loop on a
+    // thread of their own (see `sync_static_crons`).
+    let mut static_crons: Vec<(String, String, String)> = Vec::new();
+
     for path in &job_files {
         let expected_class = job_class_name_from_path(path);
         if let Err(e) = execute_file(interpreter, path) {
@@ -349,18 +353,46 @@ pub(crate) fn load_jobs_in_worker(
             if let Some(expr) = crate::interpreter::builtins::jobs::read_static_cron(&class_rc) {
                 let cron_name =
                     crate::interpreter::builtins::jobs::class_name_to_snake(&expected_class);
+                static_crons.push((cron_name, expr, expected_class.clone()));
+            }
+        }
+    }
+    sync_static_crons(worker_id, static_crons);
+}
+
+/// Upsert the `static cron` schedules off the boot path.
+///
+/// Each one is a database write, made synchronously while the server booted:
+/// on an app with a few scheduled jobs, the writes and the HTTP client built
+/// for them were a third of the time before the server listened, and a woken
+/// app's first request waited on them. No request needs them — the job poller
+/// reads the schedules on its own passes, and a cron's first firing is in the
+/// future — so they are written by a thread of their own, bound to the
+/// tenant that booted.
+fn sync_static_crons(worker_id: usize, crons: Vec<(String, String, String)>) {
+    if crons.is_empty() {
+        return;
+    }
+    let tenant = crate::serve::tenant::current_id();
+    let spawned = std::thread::Builder::new()
+        .name("cron-sync".into())
+        .spawn(move || {
+            crate::serve::tenant::bind_current(tenant);
+            for (cron_name, expr, class_name) in crons {
                 if let Err(e) = crate::interpreter::builtins::jobs::register_static_cron(
                     &cron_name,
                     &expr,
-                    &expected_class,
+                    &class_name,
                 ) {
                     eprintln!(
                         "Worker {}: failed to register static cron for {}: {}",
-                        worker_id, expected_class, e
+                        worker_id, class_name, e
                     );
                 }
             }
-        }
+        });
+    if let Err(e) = spawned {
+        eprintln!("Worker {worker_id}: could not start the cron-sync thread: {e}");
     }
 }
 

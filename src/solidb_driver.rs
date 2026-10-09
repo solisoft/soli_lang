@@ -47,10 +47,14 @@ use solidb_client::{DriverError, SoliDBClient};
 use crate::interpreter::builtins::http_class::block_on_db;
 use crate::interpreter::builtins::model::db_config::{db_scheme_and_host, get_database_name};
 
-/// Connections per worker. Matches the reqwest pool the HTTP path holds, so the
-/// two transports place the same load on the server and the comparison is about
-/// protocol rather than concurrency.
-const POOL_SIZE: usize = 5;
+/// Connections per worker: one. A worker runs one request at a time and every
+/// call blocks on `block_on_db`, so it never has two commands in flight; the
+/// four others of the old pool of five (sized to match the reqwest pool for a
+/// benchmark) sat idle. Each connection is authenticated with a full password
+/// check on the server, one after the other, on the worker's first query: five
+/// of them put ~100 ms on the first request after a wake, and 80 password
+/// checks on SoliDB for 16 workers.
+const POOL_SIZE: usize = 1;
 
 thread_local! {
     /// `None` until the first use; `Some(Err)` once a connection attempt has

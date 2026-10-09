@@ -408,7 +408,7 @@ Cron.delete("maybe_gone") rescue false   # tolerate a missing entry</code></pre>
     <section id="section-static-cron" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Declarative <code class="text-amber-400">static cron</code></h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <p class="text-gray-400 mb-3">A class can declare a <code class="text-amber-400">static cron</code> field. On boot, worker 0 upserts a cron entry named after the class — the auto-derived name is the snake-case of the class (<code class="text-amber-400">nightly_report_job</code>).</p>
+            <p class="text-gray-400 mb-3">A class can declare a <code class="text-amber-400">static cron</code> field. On boot, worker 0 upserts a cron entry named after the class, from a thread of its own so the server does not wait on the writes before it listens — the auto-derived name is the snake-case of the class (<code class="text-amber-400">nightly_report_job</code>).</p>
             <pre data-filename="app/jobs/nightly_report_job.sl"><code class="language-soli text-sm">class NightlyReportJob
   static cron: String = Cron.daily_at("03:00")
 
