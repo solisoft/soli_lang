@@ -5053,6 +5053,8 @@ Stashes a translation `table` (a hash) in a per-worker-thread cache, keyed by `l
 
 The cache is thread-local and cleared automatically when view helpers hot-reload (`--dev`), so editing a translation file takes effect on the next render.
 
+Pass the cached table straight to `I18n.translate` or `I18n.plural` as their last argument: it is read in place, not copied, and whether it is a legacy flat table (every key dotted, like `"fr.greeting"`) is decided once, when it is cached. Treat it as read-only: a key added later is not reclassified.
+
 **Parameters:**
 - `locale` (String) - Cache key (a locale code).
 - `table` (Hash) - The translation table to store.

@@ -256,6 +256,27 @@ describe("I18n") do
       assert_eq(I18n.cached_table("zz4"), {"k": "new"})
     end
 
+    # The `tr(key)` helper shape: the cached table goes to every translate call.
+    # It is classified once, when cached, and read in place.
+    test("translate and plural read a cached legacy table") do
+      table = I18n.cache_table("zz5", {
+        "en.greeting": "Hello",
+        "fr.greeting": "Bonjour",
+        "en.apple_one": "1 apple",
+        "en.apple_other": "{count} apples"
+      })
+      assert_eq(I18n.translate("greeting", "fr", I18n.cached_table("zz5")), "Bonjour")
+      assert_eq(I18n.translate("greeting", "es", table), "Hello")
+      assert_eq(I18n.translate("missing", "en", table), "missing")
+      assert_eq(I18n.plural("apple", 1, "en", table), "1 apple")
+      assert_eq(I18n.plural("apple", 3, "en", table), "3 apples")
+    end
+
+    test("a cached hash whose keys are not all dotted stays values") do
+      values = I18n.cache_table("zz6", {"en.greeting": "Hello", "name": "Alice"})
+      assert_eq(I18n.translate("greeting", "en", values), "greeting")
+    end
+
     test("cached_table raises on a non-string locale") do
       assert_raises("I18n.cached_table expects a locale string, got int") do
         I18n.cached_table([123][0])

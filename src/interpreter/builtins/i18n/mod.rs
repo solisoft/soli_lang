@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value};
+use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, StrKey, Value};
 
 // Per-thread cache of fully-built translation tables, keyed by locale.
 //
@@ -33,9 +33,20 @@ use crate::interpreter::value::{Class, HashKey, HashPairs, NativeFunction, Value
 // The cache is unbounded by design: the intended caller stashes a handful of
 // locale tables, so there is no eviction. Don't drive it with unbounded
 // distinct keys.
+//
+// Each entry also records whether the table is a legacy flat one (every key
+// dotted, see `has_dotted_locale_keys`), worked out once when it is cached:
+// `tr(key)` helpers hand the cached table to `I18n.translate` on every call,
+// and scanning thousands of keys per call to classify it again cost more than
+// the lookup.
 thread_local! {
     #[allow(clippy::missing_const_for_thread_local)]
-    static TABLE_CACHE: RefCell<HashMap<String, Value>> = RefCell::new(HashMap::new());
+    static TABLE_CACHE: RefCell<HashMap<String, CachedTable>> = RefCell::new(HashMap::new());
+}
+
+struct CachedTable {
+    table: Value,
+    all_dotted: bool,
 }
 
 /// Drop the per-thread translation-table cache. Called on helper hot-reload so
@@ -123,12 +134,38 @@ fn legacy_lookup_plural(
 }
 
 fn find_string(hash: &HashPairs, key: &str) -> Option<String> {
-    hash.iter()
-        .find_map(|(k, v)| match (k, v) {
-            (HashKey::String(s), Value::String(out)) if **s == *key => Some(out.clone()),
-            _ => None,
-        })
-        .map(|s| s.to_string())
+    match hash.get(&StrKey(key)) {
+        Some(Value::String(out)) => Some(out.to_string()),
+        _ => None,
+    }
+}
+
+/// The trailing hash of `I18n.translate` / `I18n.plural`, read in place: a
+/// legacy flat translations table, or interpolation values. It used to be
+/// copied whole on every call — with an app's table of thousands of entries
+/// passed to every `tr()`, the copy and its drop were most of a page's CPU.
+enum TrailingHash {
+    Legacy(Rc<RefCell<HashPairs>>),
+    Values(Rc<RefCell<HashPairs>>),
+}
+
+fn classify_trailing_hash(hash: &Rc<RefCell<HashPairs>>) -> TrailingHash {
+    // A table from `I18n.cache_table` was classified when it was cached.
+    let cached = TABLE_CACHE.with(|cache| {
+        cache
+            .borrow()
+            .values()
+            .find_map(|entry| match &entry.table {
+                Value::Hash(table) if Rc::ptr_eq(table, hash) => Some(entry.all_dotted),
+                _ => None,
+            })
+    });
+    let all_dotted = cached.unwrap_or_else(|| has_dotted_locale_keys(&hash.borrow()));
+    if all_dotted {
+        TrailingHash::Legacy(hash.clone())
+    } else {
+        TrailingHash::Values(hash.clone())
+    }
 }
 
 /// Register the I18n class in the given environment.
@@ -212,14 +249,14 @@ pub fn register_i18n_class(env: &mut Environment) {
             };
 
             let mut locale = get_locale();
-            let mut values: Option<HashPairs> = None;
-            let mut legacy: Option<HashPairs> = None;
+            let mut values: Option<Rc<RefCell<HashPairs>>> = None;
+            let mut legacy: Option<Rc<RefCell<HashPairs>>> = None;
 
             if args.len() > 1 {
                 match &args[1] {
                     Value::String(s) => locale = s.clone().to_string(),
                     Value::Null => {}
-                    Value::Hash(h) => values = Some(h.borrow().clone()),
+                    Value::Hash(h) => values = Some(h.clone()),
                     other => {
                         return Err(format!(
                         "I18n.translate second arg must be a locale string or values hash, got {}",
@@ -231,14 +268,10 @@ pub fn register_i18n_class(env: &mut Environment) {
             if args.len() > 2 {
                 match &args[2] {
                     Value::Null => {}
-                    Value::Hash(h) => {
-                        let hp = h.borrow().clone();
-                        if has_dotted_locale_keys(&hp) {
-                            legacy = Some(hp);
-                        } else {
-                            values = Some(hp);
-                        }
-                    }
+                    Value::Hash(h) => match classify_trailing_hash(h) {
+                        TrailingHash::Legacy(table) => legacy = Some(table),
+                        TrailingHash::Values(hash) => values = Some(hash),
+                    },
                     other => {
                         return Err(format!(
                             "I18n.translate third arg must be a hash, got {}",
@@ -252,11 +285,14 @@ pub fn register_i18n_class(env: &mut Environment) {
                 .or_else(|| {
                     legacy
                         .as_ref()
-                        .and_then(|t| legacy_lookup(t, &locale, &key))
+                        .and_then(|t| legacy_lookup(&t.borrow(), &locale, &key))
                 })
                 .unwrap_or_else(|| key.clone().to_string());
 
-            let interp = values.as_ref().map(values_to_strings).unwrap_or_default();
+            let interp = values
+                .as_ref()
+                .map(|v| values_to_strings(&v.borrow()))
+                .unwrap_or_default();
             // An `_html` key is meant to be rendered raw, so anything
             // interpolated into it has to be escaped here — otherwise the
             // translation is the injection point.
@@ -292,14 +328,14 @@ pub fn register_i18n_class(env: &mut Environment) {
             };
 
             let mut locale = get_locale();
-            let mut values: Option<HashPairs> = None;
-            let mut legacy: Option<HashPairs> = None;
+            let mut values: Option<Rc<RefCell<HashPairs>>> = None;
+            let mut legacy: Option<Rc<RefCell<HashPairs>>> = None;
 
             if args.len() > 2 {
                 match &args[2] {
                     Value::String(s) => locale = s.clone().to_string(),
                     Value::Null => {}
-                    Value::Hash(h) => values = Some(h.borrow().clone()),
+                    Value::Hash(h) => values = Some(h.clone()),
                     other => {
                         return Err(format!(
                             "I18n.plural third arg must be a locale string or values hash, got {}",
@@ -311,14 +347,10 @@ pub fn register_i18n_class(env: &mut Environment) {
             if args.len() > 3 {
                 match &args[3] {
                     Value::Null => {}
-                    Value::Hash(h) => {
-                        let hp = h.borrow().clone();
-                        if has_dotted_locale_keys(&hp) {
-                            legacy = Some(hp);
-                        } else {
-                            values = Some(hp);
-                        }
-                    }
+                    Value::Hash(h) => match classify_trailing_hash(h) {
+                        TrailingHash::Legacy(table) => legacy = Some(table),
+                        TrailingHash::Values(hash) => values = Some(hash),
+                    },
                     other => {
                         return Err(format!(
                             "I18n.plural fourth arg must be a hash, got {}",
@@ -332,11 +364,14 @@ pub fn register_i18n_class(env: &mut Environment) {
                 .or_else(|| {
                     legacy
                         .as_ref()
-                        .and_then(|t| legacy_lookup_plural(t, &locale, &key, n))
+                        .and_then(|t| legacy_lookup_plural(&t.borrow(), &locale, &key, n))
                 })
                 .unwrap_or_else(|| key.clone().to_string());
 
-            let mut interp = values.as_ref().map(values_to_strings).unwrap_or_default();
+            let mut interp = values
+                .as_ref()
+                .map(|v| values_to_strings(&v.borrow()))
+                .unwrap_or_default();
             if !interp.iter().any(|(k, _)| k == "count") {
                 interp.push(("count".to_string(), n.to_string()));
             }
@@ -534,8 +569,13 @@ pub fn register_i18n_class(env: &mut Environment) {
                     ))
                 }
             };
-            TABLE_CACHE
-                .with(|cache| Ok(cache.borrow().get(&locale).cloned().unwrap_or(Value::Null)))
+            TABLE_CACHE.with(|cache| {
+                Ok(cache
+                    .borrow()
+                    .get(&locale)
+                    .map(|entry| entry.table.clone())
+                    .unwrap_or(Value::Null))
+            })
         })),
     );
 
@@ -554,15 +594,22 @@ pub fn register_i18n_class(env: &mut Environment) {
                     ))
                 }
             };
-            if !matches!(&args[1], Value::Hash(_)) {
+            let Value::Hash(hash) = &args[1] else {
                 return Err(format!(
                     "I18n.cache_table expects a hash table, got {}",
                     args[1].type_name()
                 ));
-            }
+            };
+            let all_dotted = has_dotted_locale_keys(&hash.borrow());
             let table = args[1].clone();
             TABLE_CACHE.with(|cache| {
-                cache.borrow_mut().insert(locale, table.clone());
+                cache.borrow_mut().insert(
+                    locale,
+                    CachedTable {
+                        table: table.clone(),
+                        all_dotted,
+                    },
+                );
             });
             Ok(table)
         })),

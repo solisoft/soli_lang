@@ -237,6 +237,7 @@ dt.format("%d %b %Y", "fr")      # "06 mars 2024"</code></pre>
                     <div><code class="text-amber-400">table</code> : <code class="text-orange-400">Hash</code> - The translation table to store</div>
                 </div>
                 <p class="text-gray-400 mt-3 mb-3">Returns the same table, so you can return it inline.</p>
+                <p class="text-gray-400 mb-3">Pass the cached table straight to <code class="text-amber-400">I18n.translate</code> or <code class="text-amber-400">I18n.plural</code> as their last argument: it is read in place, not copied, and whether it is a legacy flat table (every key dotted, like <code class="text-amber-400">"fr.greeting"</code>) is decided once, when it is cached. Treat it as read-only: a key added later is not reclassified.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">def locale_table(locale)
   cached = I18n.cached_table(locale)
   return cached unless cached.nil?
