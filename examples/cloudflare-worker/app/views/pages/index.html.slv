@@ -36,6 +36,7 @@
     <li><a href="/guide">Guide</a> — from an app folder to a deployed Worker, step by step.</li>
     <li><a href="/limits">Limits</a> — what the edge build runs, and what stays with <code>soli serve</code>.</li>
     <li><a href="/try">Try it</a> — a form whose answer is computed by Soli, here, now.</li>
+    <li><a href="/d1">D1</a> — check in: a model on Cloudflare D1, written and read by this Worker.</li>
     <li><a href="/api/info">/api/info</a> — the facts in the footer, as JSON.</li>
   </ul>
 </section>

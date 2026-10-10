@@ -1,0 +1,78 @@
+<h1>Check in from the edge</h1>
+<p class="lead">This page keeps its data in <strong>Cloudflare D1</strong>, the SQLite
+Cloudflare runs next to the Worker. Press the button: the Worker that answers stores the
+datacenter and the country it served you from — nothing that identifies you.</p>
+
+<form method="post" action="/d1/check-in" class="check-in">
+  <button class="button" type="submit">Check in from <%= @runtime["colo"] %></button>
+  <% if @checked_in %>
+    <span class="notice">Stored in D1 ✓</span>
+  <% end %>
+  <% if @busy %>
+    <span class="muted">Busy: 30 check-ins this minute already. Try again in a moment.</span>
+  <% end %>
+</form>
+
+<div class="stats">
+  <div><span><%= @total %></span> check-ins</div>
+  <div><span><%= @colos %></span> datacenters</div>
+  <div><span><%= @db_ms %> ms</span> in D1 for this page</div>
+</div>
+
+<div class="grid two">
+  <section>
+    <h2>By datacenter</h2>
+    <% if @by_colo.length > 0 %>
+      <ol class="ranking">
+        <% @by_colo.each do |row| %>
+          <li><code><%= row["colo"] %></code> × <%= row["n"] %></li>
+        <% end %>
+      </ol>
+    <% else %>
+      <p>Nobody yet. Be the first.</p>
+    <% end %>
+  </section>
+  <section>
+    <h2>Latest</h2>
+    <table class="list">
+      <% @latest.each do |check_in| %>
+        <tr>
+          <td><code><%= check_in.colo %></code></td>
+          <td><%= check_in.country %></td>
+          <td class="muted"><%= check_in.at %></td>
+        </tr>
+      <% end %>
+    </table>
+  </section>
+</div>
+
+<h2>The code</h2>
+<p>An ordinary model and controller. Nothing here knows it runs on the edge; the
+adapter comes from <code>wrangler.toml</code>.</p>
+<pre><code class="language-soli">class CheckIn &lt; Model
+  validates("colo", {"presence": true, "max_length": 8})
+end
+
+# GET /d1
+def index(req)
+  per_colo = CheckIn.group_by("colo").all.sort_by { |row| -row["n"] }
+  @total = per_colo.reduce(fn(sum, row) sum + row["n"], 0)
+  @by_colo = per_colo.take(12)
+  @latest = CheckIn.order("at", "desc").limit(10).all
+end
+
+# POST /d1/check-in
+def create(req)
+  CheckIn.create({"colo": req["headers"]["cf-colo"], "country": …, "at": …})
+  redirect("/d1?checked_in=1")
+end</code></pre>
+<pre><code class="language-toml">[[d1_databases]]
+binding = "DB"
+database_name = "soli-cf-demo"
+database_id = "…"
+
+[vars]
+SOLI_DB_ADAPTER = "d1"</code></pre>
+<p>Each statement is a round trip from the Worker to D1, and the interpreter's stack
+is suspended while it waits (JavaScript Promise Integration). See the
+<a href="/guide">guide</a> to set it up.</p>

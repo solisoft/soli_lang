@@ -15,7 +15,7 @@ inside the Worker that answered this request.</p>
 </div>
 
 <h2>Most frequent</h2>
-<ol class="top">
+<ol class="ranking">
   <% @stats["top"].each do |entry| %>
     <li><code><%= entry["word"] %></code> × <%= entry["count"] %></li>
   <% end %>
@@ -23,7 +23,7 @@ inside the Worker that answered this request.</p>
 <p>Longest word: <code><%= @stats["longest"] %></code></p>
 
 <h2>The code</h2>
-<pre><code>words = text.downcase.split(" ")
+<pre><code class="language-soli">words = text.downcase.split(" ")
   .map { |w| w.gsub("[^a-z0-9'-]", "") }
   .filter { |w| w.length > 0 }
 counts = {}

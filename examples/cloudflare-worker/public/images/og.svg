@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Soli at the edge: a Soli web app inside a Cloudflare Worker. The interpreter is compiled to WebAssembly, the app runs unchanged, and its models keep their data in Cloudflare D1.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b1916"/>
+      <stop offset="1" stop-color="#100f0d"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#ff7a2e"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1200" height="8" fill="#ff7a2e"/>
+
+  <text x="80" y="118" font-family="Inter, system-ui, sans-serif" font-size="34" font-weight="700" fill="#ece8df">Soli <tspan fill="#ff7a2e">at the edge</tspan></text>
+  <text x="80" y="208" font-family="Inter, system-ui, sans-serif" font-size="58" font-weight="800" fill="#ece8df">A Soli web app inside</text>
+  <text x="80" y="278" font-family="Inter, system-ui, sans-serif" font-size="58" font-weight="800" fill="#ece8df">a Cloudflare Worker</text>
+  <text x="80" y="336" font-family="Inter, system-ui, sans-serif" font-size="26" fill="#a39d91">The interpreter in WebAssembly, your app unchanged,</text>
+  <text x="80" y="372" font-family="Inter, system-ui, sans-serif" font-size="26" fill="#a39d91">its models on Cloudflare D1.</text>
+
+  <!-- the stack -->
+  <g font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="20">
+    <rect x="80" y="430" width="250" height="64" rx="12" fill="#1f1d1a" stroke="#2c2a26" stroke-width="2"/>
+    <text x="205" y="469" text-anchor="middle" fill="#ece8df">worker.js</text>
+    <line x1="332" y1="462" x2="372" y2="462" stroke="#ff7a2e" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <rect x="376" y="430" width="270" height="64" rx="12" fill="#1f1d1a" stroke="#2c2a26" stroke-width="2"/>
+    <text x="511" y="469" text-anchor="middle" fill="#ece8df">soli_edge.wasm</text>
+    <line x1="648" y1="462" x2="688" y2="462" stroke="#ff7a2e" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <rect x="692" y="430" width="200" height="64" rx="12" fill="#1f1d1a" stroke="#ff7a2e" stroke-opacity="0.6" stroke-width="2"/>
+    <text x="792" y="469" text-anchor="middle" fill="#ece8df">your app</text>
+    <line x1="894" y1="462" x2="934" y2="462" stroke="#ff7a2e" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <rect x="938" y="430" width="182" height="64" rx="12" fill="#ff7a2e"/>
+    <text x="1029" y="469" text-anchor="middle" fill="#141311" font-weight="700">D1</text>
+  </g>
+
+  <text x="80" y="566" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="24" fill="#ff7a2e">cf.solisoft.net</text>
+</svg>

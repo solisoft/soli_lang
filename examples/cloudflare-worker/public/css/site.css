@@ -44,3 +44,12 @@ pre code { background: none; padding: 0; }
 .stats span { display: block; font-size: 1.8rem; font-weight: 700; color: var(--fg); }
 footer { margin-top: 3rem; padding-top: 1rem; padding-bottom: 2rem;
          border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
+.check-in { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin: 1.25rem 0; }
+.notice { color: #16a34a; font-weight: 600; }
+.list { width: 100%; border-collapse: collapse; }
+.list td { padding: .35rem .5rem; border-bottom: 1px solid var(--line); }
+.muted { color: var(--muted); font-size: .9rem; }
+/* highlight.js colours the text; the block keeps the site's own background. */
+main pre code.hljs { background: none; padding: 0; }
+.ranking { padding-left: 1.4rem; }
+.ranking li { margin: .2rem 0; }

@@ -4,6 +4,8 @@ class PlaygroundController < Controller
   # GET /try — word statistics, computed by Soli inside the Worker
   def show(req)
     @title = "Try it"
+    @description = "Paste some text: word statistics computed by a Soli controller inside the Cloudflare Worker " +
+      "that answers the request."
     @runtime = RuntimeInfo.of(req)
     @text = params["text"].to_s.trim
     @text = PLAYGROUND_SAMPLE if @text.blank?
