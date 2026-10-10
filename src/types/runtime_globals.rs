@@ -195,6 +195,7 @@ const PRELUDE_NAMES: &[&[&str]] = &[
         "__soli_resolve_solidb_client",
     ],
     &[
+        "__soli_bucket_service",
         "attach_upload",
         "__soli_link_blob",
         "direct_upload_start",

@@ -24,6 +24,11 @@
 
     </section>
 
+    <section id="v2-21-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.21.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-10</span></h2>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">The v2.21.0 tag failed CI on one test and published no binaries. v2.21.1 is the same release with that test fixed: installing it brings everything listed under v2.21.0 below &mdash; uploads, images and video on R2, Postgres through Hyperdrive and background jobs on Cloudflare Queues in a Worker.</p>
+    </section>
+
     <section id="v2-21-0" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">v2.21.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-10</span></h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Cloudflare Workers apps get what a real app reaches for: uploads, images and video on R2, Postgres through Hyperdrive, and background jobs on Cloudflare Queues &mdash; in a smaller Worker, 2.94&nbsp;MB compressed, under the free plan&rsquo;s 3&nbsp;MB. The tour: <a href="/docs/blog/postgres-images-and-queues-on-the-edge" class="text-cyan-400 hover:underline">Postgres, images and queues on the edge</a>.</p>

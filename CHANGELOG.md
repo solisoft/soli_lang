@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [2.21.1] - 2026-10-10
+
+The v2.21.0 tag failed CI on one test and published no binaries; 2.21.1 is the same release, with that test fixed. Installing 2.21.1 brings everything listed under 2.21.0.
+
+### Fixed
+
+* **types:** `PRELUDE_NAMES` lists `__soli_bucket_service`, the uploads prelude helper added with R2 attachments, so the type checker knows the name and `prelude_names_match_the_preludes` passes again (it failed v2.21.0's CI on Linux and Windows).
+
 ## [2.21.0] - 2026-10-10
 
 Cloudflare Workers apps get what a real app reaches for: uploads, images and video on R2, Postgres through Hyperdrive, and background jobs on Cloudflare Queues — in a smaller Worker (2.94 MB compressed, under the free plan's 3 MB). Plus four fixes found on the way, one of them a MySQL transaction bug that also affected `soli serve`.
