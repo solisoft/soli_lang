@@ -381,6 +381,7 @@ User.where("active == @a", { "a": false }).update_all({ "archived": true })</cod
         collection is bounded by RAM rather than by anything you chose &mdash; and <code>.each</code> is not an
         escape hatch, because it materialises first and then iterates. <code class="text-cyan-400">find_each</code>
         walks the whole result set one record at a time, holding only one batch in memory.
+        An action or a script that calls <code>find_each</code>, <code>in_batches</code> or <code>find_in_batches</code> runs on the tree-walking interpreter: the cursor calls the block once per batch, and a block compiled for the VM cannot be called back from that walk.
     </p>
 
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">

@@ -1974,7 +1974,12 @@ user = User.find_by_email_and_active("alice@example.com", true);
 post = Post.find_by_title_and_published_and_author_id("Hello", true, 123);
 ```
 
-These methods return the first matching record or `null` if not found.
+These methods return the first matching record or `null` if not found. A
+dynamic finder is `find_by` for the fields named after `find_by_`: the same
+query, so it follows a SQL connection, an STI subclass's `type` scope, and
+`grouped()`, and a field segment that is not an identifier is refused. A
+static method of that name, when the class defines one, is what runs. The
+call stays on the VM, in an action and in a script.
 
 ## Aggregations
 
@@ -2657,6 +2662,13 @@ columnar `query` / `aggregate` surface instead.
 Both spellings work from the class and from a chain: `User.find_each(...)` and
 `User.where(...).find_each(...)` are the same code path. Both return `null`;
 they are traversals, not projections.
+
+An action or a script that calls `find_each`, `in_batches` or
+`find_in_batches` runs on the tree-walking interpreter. The cursor calls the
+block once per batch, and a block compiled for the VM cannot be called back
+from that walk. Class reflection (`send`, `class_eval`, `methods`, and
+`respond_to?` on the class) stays on the interpreter too: the VM does not
+implement it.
 
 ## Coalescing Reads (`grouped`)
 

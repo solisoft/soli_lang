@@ -1430,7 +1430,7 @@ Access in template:
 
 In production a view is compiled once per worker to bytecode and rendered on the VM, the engine that runs actions. Its text and its `<%= %>` / `<%- %>` output are written straight into the page, so a list page spends less time in its template. What it renders is the same; nothing in the view changes.
 
-A view compiles when it is made of text, output, `if` / `elsif` / `else`, `unless`, `for` loops (including `xs.each do |x|`), `<% %>` code, component blocks (named slots included) and `content_for`. `partial(...)`, `component(...)` and every other helper are ordinary calls and compile too. `yield` in a partial or component (its `content` slot, or a named slot) compiles too. A layout, or a view with a `form_with` block, renders on the tree-walking interpreter. The partials and components a view renders are compiled the same way; one rendered on its own, outside a view (a controller's `render_partial`), stays on the interpreter.
+A view compiles when it is made of text, output, `if` / `elsif` / `else`, `unless`, `for` loops (including `xs.each do |x|`), `<% %>` code, component blocks (named slots included), `content_for`, `form_with` / `fields_for` blocks and `<%= render "partial" %>` (with or without a context). `partial(...)`, `component(...)` and every other helper are ordinary calls and compile too, as are `<%- render %>` and `render(...)`. `yield` in a partial or component (its `content` slot, or a named slot) compiles too. A layout renders on the tree-walking interpreter. The partials and components a view renders are compiled the same way; one rendered on its own, outside a view (a controller's `render_partial`), stays on the interpreter.
 
 A template too small to gain from it stays on the interpreter as well: one with no loop and fewer than eight dynamic parts (outputs, `<% %>` code, conditions, slots). A render on the VM has a fixed cost that a two-line component never earns back.
 
@@ -1439,7 +1439,7 @@ The rules are the tree-walker's:
 - A name a view reads is its data first (the `render` hash and the controller's `@ivars`), then a builtin or a helper, and nil when it is neither. `@title` reads `title`.
 - A variable a view assigns (`<% heading = "Posts" %>`) is still there for its layout.
 - A `for` over a hash yields `[key, value]` pairs.
-- Helpers from `app/helpers` run on the interpreter, as they always have, so one that reads `req` sees the current request.
+- A helper from `app/helpers` whose body names nothing outside its parameters runs on the VM with the view. One that reads any other name — `req`, `params`, `session`, `cookies`, `headers`, `flash`, another helper, a builtin — or assigns a name its closure already holds, stays on the interpreter, so a helper that reads the request still sees the current request.
 
 If a compiled view fails while it renders, or writes a function by name (`<%= current_user %>`), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. What it captured with `content_for` is taken back, but not a side effect it already had, such as a session value it deleted. Under `--dev` every view renders on the tree-walker.
 

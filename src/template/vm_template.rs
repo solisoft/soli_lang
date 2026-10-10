@@ -11,8 +11,8 @@
 //! VM global (a helper, a builtin), else nil — the order the tree-walker's
 //! scope chain resolves them in, with its lenient undefined read.
 //!
-//! Anything else (partials, `yield`, `content_for`, `form_with`, components,
-//! `@ivar`) does not compile, and the template keeps the tree-walker.
+//! A `form_with` / `fields_for` block and `<%= render "partial" %>` compile
+//! too. A layout is never compiled: the tree-walker still renders it.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -59,7 +59,8 @@ impl VmTemplate {
     pub fn compile(nodes: &[TemplateNode]) -> Result<Self, String> {
         let mut assigned = std::collections::BTreeSet::new();
         let mut all_assigned = std::collections::BTreeSet::new();
-        let mut body = lower_nodes(nodes, false, &mut assigned, &mut all_assigned)?;
+        let mut saves = 0u32;
+        let mut body = lower_nodes(nodes, false, &mut assigned, &mut all_assigned, &mut saves)?;
         // A view and its layout share one interpreter on the tree-walker, so
         // `<% title = "Posts" %>` in the view is `title` in the layout. The
         // compiled function's locals die with it: it returns them instead.
@@ -221,15 +222,15 @@ fn compile_function(
         .ok_or_else(|| "compile: no function".to_string())
 }
 
-/// The statements a template's nodes stand for, or the node only the
-/// tree-walker renders. `assigned` collects the names a code block binds where
-/// the layout would see them: not inside a `for` (its body is a scope of its
-/// own on the tree-walker).
+/// The statements a template's nodes stand for. `assigned` collects the names
+/// a code block binds where the layout would see them: not inside a `for` or a
+/// `form_with` block (each is a scope of its own on the tree-walker).
 fn lower_nodes(
     nodes: &[TemplateNode],
     in_for: bool,
     assigned: &mut std::collections::BTreeSet<String>,
     all_assigned: &mut std::collections::BTreeSet<String>,
+    saves: &mut u32,
 ) -> Result<Vec<Stmt>, String> {
     let mut out = Vec::with_capacity(nodes.len());
     for node in nodes {
@@ -255,14 +256,20 @@ fn lower_nodes(
                 else_body,
                 ..
             } => {
-                let then_branch =
-                    Box::new(block(lower_nodes(body, in_for, assigned, all_assigned)?));
+                let then_branch = Box::new(block(lower_nodes(
+                    body,
+                    in_for,
+                    assigned,
+                    all_assigned,
+                    saves,
+                )?));
                 let else_branch = match else_body {
                     Some(nodes) => Some(Box::new(block(lower_nodes(
                         nodes,
                         in_for,
                         assigned,
                         all_assigned,
+                        saves,
                     )?))),
                     None => None,
                 };
@@ -295,7 +302,13 @@ fn lower_nodes(
                     variable: var.clone(),
                     index_variable: index_var.clone(),
                     iterable,
-                    body: Box::new(block(lower_nodes(body, true, assigned, all_assigned)?)),
+                    body: Box::new(block(lower_nodes(
+                        body,
+                        true,
+                        assigned,
+                        all_assigned,
+                        saves,
+                    )?)),
                 }));
             }
             // `<%- component "card", props do %> body <%- end %>`: the body is
@@ -304,7 +317,7 @@ fn lower_nodes(
             // (`c.slot("x") do … end`) is a `content_for` in the body.
             TemplateNode::Component { parts, body, .. } => {
                 out.push(call_stmt("__tpl_capture_start", vec![]));
-                out.extend(lower_nodes(body, in_for, assigned, all_assigned)?);
+                out.extend(lower_nodes(body, in_for, assigned, all_assigned, saves)?);
                 let props = parts
                     .props
                     .clone()
@@ -330,14 +343,45 @@ fn lower_nodes(
             }
             TemplateNode::ContentFor { name, body, .. } => {
                 out.push(call_stmt("__tpl_capture_start", vec![]));
-                out.extend(lower_nodes(body, in_for, assigned, all_assigned)?);
+                out.extend(lower_nodes(body, in_for, assigned, all_assigned, saves)?);
                 let name = Expr::new(ExprKind::StringLiteral(name.clone()), Span::default());
                 out.push(call_stmt(
                     "__tpl_content_for",
                     vec![name, call_expr("__tpl_capture_end", vec![])],
                 ));
             }
-            other => return Err(node_kind(other).to_string()),
+            // The tree-walker pushes a scope, binds the builder there, writes
+            // `open()` / `close()` raw, and pops. Locals here are the
+            // function's, so the previous value of the builder's name is kept
+            // and put back. The body is a child scope: a name it assigns is
+            // not handed to the layout, as a `for` body's is not. The `let`
+            // sits in its own block — at the function's top level a `let`
+            // would be a global.
+            TemplateNode::FormWith { parts, body, .. } => {
+                let saved = format!("__tpl_form_scope_{}", *saves);
+                *saves += 1;
+                all_assigned.insert(parts.var.clone());
+                let mut inner = Vec::new();
+                inner.push(let_stmt(&saved, var_expr(&parts.var)));
+                inner.push(assign_stmt(&parts.var, parts.builder_expr.clone()));
+                inner.push(write_stmt(parts.open_expr.clone(), false));
+                inner.extend(lower_nodes(body, true, assigned, all_assigned, saves)?);
+                inner.push(write_stmt(parts.close_expr.clone(), false));
+                inner.push(assign_stmt(&parts.var, var_expr(&saved)));
+                out.push(block(inner));
+            }
+            // `<%= render "name" %>` / `<%= render "name", ctx %>`. The paren
+            // form and `<%- render %>` are ordinary calls and already compile.
+            // No context means the view's own data (`locals`), and the partial
+            // is written raw: it escaped its own output.
+            TemplateNode::Partial { name, context, .. } => {
+                let name_expr = Expr::new(ExprKind::StringLiteral(name.clone()), Span::default());
+                let data_expr = match context {
+                    Some(expr) => expr.clone(),
+                    None => var_expr("locals"),
+                };
+                out.push(call_stmt("__tpl_partial", vec![name_expr, data_expr]));
+            }
         }
     }
     Ok(out)
@@ -362,8 +406,9 @@ fn call_stmt(name: &str, args: Vec<Expr>) -> Stmt {
 
 thread_local! {
     /// The `TemplateCache` rendering the view on this thread's VM, for
-    /// `Op::TemplateComponent`: the component renders through it, as the
-    /// tree-walker's partial renderer does. Set only for the render's length.
+    /// `Op::TemplateComponent` and `Op::TemplatePartial`: the include renders
+    /// through it, as the tree-walker's partial renderer does. Set only for
+    /// the render's length.
     static RENDERING_CACHE: std::cell::Cell<*const crate::template::TemplateCache> =
         const { std::cell::Cell::new(std::ptr::null()) };
 }
@@ -425,6 +470,33 @@ pub(crate) fn render_component_block(
     // render, cleared when it ends (`RenderingCache`), and read only on this
     // thread, inside that render.
     unsafe { &*rendering }.render_partial(&path, &data)
+}
+
+/// `<%= render "name" %>` (`Op::TemplatePartial`), as the renderer's
+/// `TemplateNode::Partial` arm does it: the name is resolved by
+/// `render_partial` (the `_` prefix, `components/` left clean), and `data` is
+/// whatever the tag's context evaluated to — the view's own data when the tag
+/// gave none. No helpers are injected; the `partial()` builtin does that, and
+/// this tag does not.
+pub(crate) fn render_partial_block(name: &Value, data: &Value) -> Result<String, String> {
+    let name = match name {
+        Value::String(s) => s.to_string(),
+        other => {
+            return Err(format!(
+                "partial name must evaluate to string, got {}",
+                other.type_name()
+            ))
+        }
+    };
+    let rendering = RENDERING_CACHE.with(|c| c.get());
+    if rendering.is_null() {
+        return crate::interpreter::builtins::template::get_template_cache()?
+            .render_partial(&name, data);
+    }
+    // SAFETY: set by `render_view` from a `&TemplateCache` that outlives the
+    // render, cleared when it ends (`RenderingCache`), and read only on this
+    // thread, inside that render.
+    unsafe { &*rendering }.render_partial(&name, data)
 }
 
 /// Whether a template does enough work for the VM to pay: a loop, or at least
@@ -489,15 +561,26 @@ fn bare_name_assigned(stmt: &Stmt) -> Option<String> {
     }
 }
 
-fn node_kind(node: &TemplateNode) -> &'static str {
-    match node {
-        TemplateNode::Yield(_) => "yield",
-        TemplateNode::ContentFor { .. } => "content_for",
-        TemplateNode::FormWith { .. } => "form_with",
-        TemplateNode::Component { .. } => "component",
-        TemplateNode::Partial { .. } => "partial",
-        _ => "other node",
-    }
+fn var_expr(name: &str) -> Expr {
+    Expr::new(ExprKind::Variable(name.to_string()), Span::default())
+}
+
+fn let_stmt(name: &str, value: Expr) -> Stmt {
+    stmt(StmtKind::Let {
+        name: name.to_string(),
+        type_annotation: None,
+        initializer: Some(value),
+    })
+}
+
+fn assign_stmt(name: &str, value: Expr) -> Stmt {
+    stmt(StmtKind::Expression(Expr::new(
+        ExprKind::Assign {
+            target: Box::new(var_expr(name)),
+            value: Box::new(value),
+        },
+        Span::default(),
+    )))
 }
 
 fn write_stmt(value: Expr, escaped: bool) -> Stmt {
@@ -529,9 +612,12 @@ fn stmt(kind: StmtKind) -> Stmt {
 thread_local! {
     /// This worker thread's VMs for views, and with each the names a view resolves past
     /// its data (`core_eval::template_env_bindings`: builtins, view and route
-    /// helpers). The VM's globals are the worker's (`set_worker_globals`), so
-    /// a model method a view calls resolves the classes it would on an action;
-    /// a name written in the view itself still resolves in the view's scope.
+    /// helpers). The VM's globals start as the worker's (`set_worker_globals`), so
+    /// a model method a view calls resolves the classes it would on an action.
+    /// `install_form_builder_globals` then adds the few template-only names a
+    /// `FormBuilder` method calls (`_form_safe_url`, `attr`, …): those methods
+    /// are JIT-compiled onto this VM, and the worker never held them. A name
+    /// written in the view itself still resolves in the view's scope.
     /// Boxed: a `Vm` is large, and a render takes one out of the pool and puts
     /// it back — by value that was two copies of the whole VM per partial.
     #[allow(clippy::vec_box)] // the point: a pointer moves, not the VM
@@ -698,6 +784,32 @@ struct ViewVm {
     generation: u64,
 }
 
+/// Names a JIT-compiled `FormBuilder` method calls that the worker's globals
+/// do not have. They live in the template env (`template_env_bindings`); the
+/// method runs on this VM and looks globals up here. A name the worker already
+/// defined is left alone.
+const FORM_BUILDER_GLOBALS: &[&str] = &[
+    "_form_safe_url",
+    "_safe_attr_name",
+    "FormBuilder",
+    "csrf_field",
+    "attr",
+    "h",
+];
+
+fn install_form_builder_globals(
+    globals: &mut ahash::AHashMap<String, Value>,
+    template_names: &ahash::AHashMap<String, Value>,
+) {
+    for name in FORM_BUILDER_GLOBALS {
+        if let Some(value) = template_names.get(*name) {
+            globals
+                .entry((*name).to_string())
+                .or_insert_with(|| value.clone());
+        }
+    }
+}
+
 impl ViewVm {
     /// A VM from the pool, or a new one.
     fn take() -> Box<Self> {
@@ -714,6 +826,10 @@ impl ViewVm {
         vm.globals = WORKER_GLOBALS
             .with(|g| g.borrow().clone())
             .unwrap_or_else(|| names.clone());
+        // The worker's table has no form builder. Without these, `f.open()`
+        // dies with "Undefined variable '_form_safe_url'" and every later
+        // request pays a failed VM render before the tree-walker.
+        install_form_builder_globals(&mut vm.globals, &names);
         Box::new(ViewVm {
             vm,
             names,
@@ -878,6 +994,221 @@ mod tests {
             return Err("a bare function was written instead of refused".to_string());
         };
         assert!(err.is_engine_fallback(), "{err}");
+        Ok(())
+    }
+
+    /// A VM as serve builds one for a view: the form builder is Soli, so its
+    /// functions run on the interpreter, and the template builtins are the
+    /// globals a free name resolves in.
+    fn view_vm() -> Vm {
+        let mut vm = Vm::new();
+        vm.tree_walk_functions = true;
+        vm.globals = crate::template::core_eval::template_env_bindings()
+            .into_iter()
+            .collect();
+        vm
+    }
+
+    /// Serve copies the *worker* globals onto the view VM. Those never held
+    /// the form builder, and `f.open()` looks `_form_safe_url` up there.
+    #[test]
+    fn a_form_renders_when_the_worker_globals_omit_the_builder(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let template_names: ahash::AHashMap<String, Value> =
+            crate::template::core_eval::template_env_bindings()
+                .into_iter()
+                .collect();
+        let mut worker = template_names.clone();
+        for name in super::FORM_BUILDER_GLOBALS {
+            worker.remove(*name);
+        }
+        // A name the worker already has stays the worker's.
+        worker.insert("h".to_string(), Value::Int(9));
+        let mut seeded = worker.clone();
+        super::install_form_builder_globals(&mut seeded, &template_names);
+        assert_eq!(seeded.get("h"), Some(&Value::Int(9)));
+        assert!(seeded.contains_key("_form_safe_url"));
+        assert!(seeded.contains_key("FormBuilder"));
+
+        worker.remove("h");
+        worker.insert("from_the_worker".to_string(), Value::Int(3));
+        super::set_worker_globals(&worker);
+        let mut view = super::ViewVm::take();
+        assert_eq!(view.vm.globals.get("from_the_worker"), Some(&Value::Int(3)));
+        assert!(view.vm.globals.contains_key("attr"));
+        assert!(view.vm.globals.contains_key("csrf_field"));
+
+        let source = "<%- form_with(post, {\"url\": \"/posts\"}) do |f| -%>\n<%- f.label(\"title\") -%>\n<%- f.text_field(\"title\") -%>\n<%- f.fields_for(\"author\") do |af| -%>\n<%- af.text_field(\"name\") -%>\n<%- end -%>\n<%- end -%>";
+        let post = hash(vec![
+            ("title", Value::String("Hi <there>".into())),
+            ("author", hash(vec![("name", Value::String("Ada".into()))])),
+        ]);
+        let data = hash(vec![("post", post)]);
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let nodes = parse_template(source)?;
+        let tree = render_nodes(&nodes, &data, None)?;
+        let compiled = VmTemplate::compile(&nodes)?;
+        let on_vm = compiled
+            .render(&mut view.vm, &data)
+            .unwrap_or_else(|e| panic!("{e}"))
+            .html;
+        assert_eq!(on_vm, tree);
+
+        drop(view);
+        super::WORKER_GLOBALS.with(|slot| *slot.borrow_mut() = None);
+        super::empty_pool();
+        Ok(())
+    }
+
+    fn assert_renders_same(source: &str, data: &Value) {
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let nodes = parse_template(source).unwrap_or_else(|e| panic!("{source}: {e}"));
+        let tree =
+            render_nodes(&nodes, data, None).unwrap_or_else(|e| panic!("{source}: tree: {e}"));
+        let compiled =
+            VmTemplate::compile(&nodes).unwrap_or_else(|e| panic!("{source}: compile: {e}"));
+        let mut vm = view_vm();
+        let on_vm = compiled
+            .render(&mut vm, data)
+            .unwrap_or_else(|e| panic!("{source}: vm: {e}"))
+            .html;
+        assert_eq!(on_vm, tree, "{source}");
+        assert!(
+            vm.globals
+                .keys()
+                .all(|name| !name.starts_with("__tpl_form_scope_")),
+            "a form scope leaked into the VM's globals"
+        );
+    }
+
+    /// `form_with` / `fields_for` blocks, including the builder name put back
+    /// when the block ends.
+    #[test]
+    fn a_form_block_renders_what_the_tree_walker_renders() {
+        let post = hash(vec![
+            ("title", Value::String("Hi <there>".into())),
+            ("author", hash(vec![("name", Value::String("Ada".into()))])),
+        ]);
+        let items = array(vec![Value::String("a".into()), Value::String("b".into())]);
+        let cases = [
+            (
+                "<%- form_with(post, {\"url\": \"/posts\", \"method\": \"get\"}) do -%>\n<%- f.text_field(\"title\") -%>\n<%- end -%>\n",
+                hash(vec![("post", post.clone())]),
+            ),
+            (
+                "<%- form_with(null, {\"url\": \"/search\", \"method\": \"get\"}) do |form| -%>\n<%- form.text_field(\"q\") -%>\n<%- end -%>\n[<%= form %>]",
+                hash(vec![]),
+            ),
+            (
+                "before[<%= kept %>]<%- form_with(null, {\"url\": \"/search\", \"method\": \"get\"}) do |kept| -%><%= kept.class %><%- end -%>after[<%= kept %>]",
+                hash(vec![("kept", Value::String("hello".into()))]),
+            ),
+            (
+                "<%- form_with(post, {\"url\": \"/x\"}) do |f| -%>\n<%- f.fields_for(\"author\") do |af| -%>\n<%- af.text_field(\"name\") -%>\n<%- end -%>\n<%- end -%>",
+                hash(vec![("post", post.clone())]),
+            ),
+            (
+                "<%- form_with(null, {\"url\": \"/x\", \"method\": \"get\"}) do |f| -%>[<%= f.url %>]<%- f.fields_for(\"author\") do |f| -%>[<%= f.url %>]<%- end -%>[<%= f.url %>]<%- end -%>",
+                hash(vec![]),
+            ),
+            (
+                "<% for item in items %><% form_with(null, {\"url\": \"/x\", \"method\": \"get\"}) do %><%= item %><% end %><% end %>",
+                hash(vec![("items", items)]),
+            ),
+            (
+                "<% form_with(null, {\"url\": \"/search\", \"method\": \"get\"}) do %><%= f.class %><% end %><% form_with(null, {\"url\": \"/search\", \"method\": \"get\"}) do %><%= f.class %><% end %>[<%= f %>]",
+                hash(vec![]),
+            ),
+        ];
+        for (source, data) in cases {
+            assert_renders_same(source, &data);
+        }
+    }
+
+    /// A name the form's body assigns stays out of what the layout sees. The
+    /// builder's name does too: the block puts back whatever it shadowed.
+    #[test]
+    fn a_form_block_does_not_hand_its_names_to_the_layout() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let source = "<% heading = \"Posts\" %>\
+             <% form_with(null, {\"url\": \"/search\", \"method\": \"get\"}) do %>\
+             <% inner = 1 %>\
+             <% end %>\
+             <%= heading %>";
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let nodes = parse_template(source)?;
+        let data = hash(vec![]);
+        let tree = render_nodes(&nodes, &data, None)?;
+        let compiled = VmTemplate::compile(&nodes)?;
+        let rendered = compiled.render(&mut view_vm(), &data)?;
+        let names: Vec<&str> = rendered.assigned.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(names, ["heading"]);
+        assert_eq!(rendered.html, tree);
+        Ok(())
+    }
+
+    /// A loop whose body is a form, or a `<%= render %>` tag, is worth
+    /// compiling. A form on its own is not: the size threshold is unchanged.
+    #[test]
+    fn a_loop_holding_a_form_or_a_render_tag_compiles_for_serve(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let form = parse_template(
+            "<% for item in items %><% form_with(null, {\"url\": \"/x\", \"method\": \"get\"}) do %><%= item %><% end %><% end %>",
+        )
+        ?;
+        assert!(VmTemplate::compile_for_serve(&form).is_ok());
+
+        let partial =
+            parse_template("<% for row in rows %><%= render 'things/card', row %><% end %>")?;
+        assert!(VmTemplate::compile_for_serve(&partial).is_ok());
+
+        let tiny = parse_template(
+            "<% form_with(null, {\"url\": \"/x\", \"method\": \"get\"}) do %><%= item %><% end %>",
+        )?;
+        assert!(VmTemplate::compile_for_serve(&tiny).is_err());
+        Ok(())
+    }
+
+    /// `<%= render 'name' %>` passes the view's data; a context replaces it.
+    /// The partial is written raw, the same text the tree-walker writes.
+    #[test]
+    fn a_render_tag_renders_what_the_tree_walker_renders() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        std::fs::create_dir_all(views.join("things"))?;
+        std::fs::write(views.join("things").join("_card.html.slv"), "[<%= name %>]")?;
+        let cache = crate::template::TemplateCache::new(&views);
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let cases = [
+            (
+                "Hello <%= render 'things/card' %>!",
+                hash(vec![("name", Value::String("Bea".into()))]),
+            ),
+            (
+                "<%= render 'things/card', {\"name\": \"Bea\"} %>",
+                hash(vec![]),
+            ),
+            (
+                "<% who = {\"name\": \"Bea\"} %><%= render 'things/card', who %>",
+                hash(vec![]),
+            ),
+            ("x<%= render 'things/card', missing %>y", hash(vec![])),
+        ];
+        for (source, data) in cases {
+            let nodes = parse_template(source).unwrap_or_else(|e| panic!("{source}: {e}"));
+            let render_partial = |name: &str, ctx: &Value| cache.render_partial(name, ctx);
+            let tree = render_nodes(&nodes, &data, Some(&render_partial))
+                .unwrap_or_else(|e| panic!("{source}: tree: {e}"));
+            let compiled =
+                VmTemplate::compile(&nodes).unwrap_or_else(|e| panic!("{source}: compile: {e}"));
+            let _guard = RenderingCache::set(&cache);
+            let on_vm = compiled
+                .render(&mut view_vm(), &data)
+                .unwrap_or_else(|e| panic!("{source}: vm: {e}"))
+                .html;
+            assert_eq!(on_vm, tree, "{source}");
+        }
         Ok(())
     }
 

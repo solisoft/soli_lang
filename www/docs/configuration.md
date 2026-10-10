@@ -542,7 +542,7 @@ the engine `soli serve` uses in production — unless the script needs the tree-
 That is decided from the source before the first line runs. The interpreter takes a script that
 uses class reflection (`send`, `class_eval`, `instance_eval`, `methods`, or `respond_to?`,
 `inspect`, `to_s`, `to_string` on a class name), `method_missing`, model batch iteration
-(`find_each`, `in_batches`, `find_in_batches`), a dynamic finder (`User.find_by_email`), a model
+(`find_each`, `in_batches`, `find_in_batches`), a model
 lifecycle callback (`before_save`, `after_create`, …) or a state machine (`state_machine`,
 `before_transition`, `after_transition`); one that reads a function with no required parameter
 without parentheses (`x = helper`, `print(helper)`: the interpreter calls it, the VM would hand

@@ -352,8 +352,9 @@ impl TemplateCache {
         let partial_renderer =
             |name: &str, ctx: &Value| -> Result<String, String> { self.render_partial(name, ctx) };
 
-        // Create ONE interpreter for both view and layout rendering
-        let mut interpreter = core_eval::create_template_interpreter(data);
+        // One interpreter for the view and the layout. It goes back to the
+        // pool when this render returns — the layout still reads it until then.
+        let mut interpreter = core_eval::template_interpreter(data);
 
         // Render the view: compiled to the VM in production when it can be
         // (`vm_template`), else on the tree-walker with the shared interpreter.
@@ -569,7 +570,7 @@ impl TemplateCache {
         // render: there an undefined name reads nil on both engines, while a
         // partial rendered on its own (a controller's `render_partial`) raises
         // for it on the tree-walker.
-        let mut interpreter = core_eval::create_template_interpreter(data);
+        let mut interpreter = core_eval::template_interpreter(data);
         let on_vm = if crate::interpreter::executor::template_lenient_vars_enabled() {
             let content_before = vm_template::check_enabled().then(content_store::snapshot);
             match vm_template::render_view(

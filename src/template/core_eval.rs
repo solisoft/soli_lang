@@ -6,9 +6,10 @@
 //! Optimizations:
 //! - Direct AST translation: template Expr → core ExprKind (no string round-trip)
 //! - Shared builtins: thread-local Rc<RefCell<Environment>> avoids cloning builtins
-//! - One interpreter per render: created once, reused for all expressions
+//! - One interpreter per render, drawn from a thread-local pool
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 use crate::interpreter::environment::Environment;
@@ -73,6 +74,10 @@ fn get_builtins_rc() -> Rc<RefCell<Environment>> {
 /// thread-local cache slot is cleared.
 pub fn reset_builtins_rc() {
     BUILTINS_RC.with(|cell| *cell.borrow_mut() = None);
+    // Pooled interpreters close over this env. Drop them, and refuse one that
+    // was already taken out when it comes back.
+    INTERPRETER_POOL_GEN.with(|generation| generation.set(generation.get() + 1));
+    INTERPRETER_POOL.with(|pool| pool.borrow_mut().clear());
     // The views compiled to the VM hold this env's globals.
     super::vm_template::reset_thread();
 }
@@ -87,6 +92,17 @@ pub(crate) fn template_env_bindings() -> std::collections::HashMap<String, Value
 // Interpreter lifecycle for template rendering
 // ---------------------------------------------------------------------------
 
+/// How many interpreters a thread keeps. One request holds the view's, and
+/// each nested include holds another; past this, extras are dropped.
+const INTERPRETER_POOL_LIMIT: usize = 64;
+
+thread_local! {
+    static INTERPRETER_POOL: RefCell<Vec<Interpreter>> = const { RefCell::new(Vec::new()) };
+    /// Bumped when the builtins env is rebuilt. An interpreter taken out
+    /// before then closes over the old env and is not put back.
+    static INTERPRETER_POOL_GEN: Cell<u64> = const { Cell::new(0) };
+}
+
 /// Create a template interpreter populated with data.
 /// Uses shared builtins (no clone) + data hash reference (no copy).
 /// Data variables are looked up directly in the hash via zero-alloc StrKey.
@@ -96,22 +112,128 @@ pub(crate) fn template_env_bindings() -> std::collections::HashMap<String, Value
 /// mirroring Rails' `local_assigns`. Bare-identifier access keeps working
 /// for non-reserved keys; `locals` is the escape hatch for the rest.
 pub fn create_template_interpreter(data: &Value) -> Interpreter {
+    let mut data_env = Environment::with_enclosing(get_builtins_rc());
+    bind_template_data(&mut data_env, data);
+    Interpreter::with_environment(Rc::new(RefCell::new(data_env)))
+}
+
+/// A template interpreter for one render, returned to the pool on drop.
+///
+/// A view and each partial it renders used to build one. The shell and the
+/// data scope are what a page of small includes repeated; the builtins stay
+/// shared either way. An interpreter left inside a child scope, or still
+/// referenced elsewhere, is dropped instead of reused.
+pub(crate) struct PooledInterpreter {
+    inner: Option<Interpreter>,
+    generation: u64,
+}
+
+impl Deref for PooledInterpreter {
+    type Target = Interpreter;
+
+    fn deref(&self) -> &Interpreter {
+        // `inner` is `Some` from construction until `Drop` takes it back to
+        // the pool, and nothing derefs a value being dropped: an internal
+        // invariant, out of reach of any template or request.
+        match &self.inner {
+            Some(interpreter) => interpreter,
+            None => unreachable!("pooled interpreter used after drop"),
+        }
+    }
+}
+
+impl DerefMut for PooledInterpreter {
+    fn deref_mut(&mut self) -> &mut Interpreter {
+        match &mut self.inner {
+            Some(interpreter) => interpreter,
+            None => unreachable!("pooled interpreter used after drop"),
+        }
+    }
+}
+
+impl Drop for PooledInterpreter {
+    fn drop(&mut self) {
+        let Some(interp) = self.inner.take() else {
+            return;
+        };
+        if self.generation != INTERPRETER_POOL_GEN.with(Cell::get) || !recyclable(&interp) {
+            return;
+        }
+        INTERPRETER_POOL.with(|pool| {
+            let mut pool = pool.borrow_mut();
+            if pool.len() < INTERPRETER_POOL_LIMIT {
+                pool.push(interp);
+            }
+        });
+    }
+}
+
+/// Take a pooled interpreter, or build one, bound to `data`.
+pub(crate) fn template_interpreter(data: &Value) -> PooledInterpreter {
+    let generation = INTERPRETER_POOL_GEN.with(Cell::get);
+    let interp = match INTERPRETER_POOL.with(|pool| pool.borrow_mut().pop()) {
+        Some(mut interp) => {
+            rebind_interpreter(&mut interp, data);
+            interp
+        }
+        None => create_template_interpreter(data),
+    };
+    PooledInterpreter {
+        inner: Some(interp),
+        generation,
+    }
+}
+
+fn bind_template_data(env: &mut Environment, data: &Value) {
     use crate::interpreter::value::HashPairs;
 
-    let builtins = get_builtins_rc();
-    let (mut data_env, locals_value) = if let Value::Hash(map) = data {
-        (
-            Environment::with_enclosing_and_data(builtins, map.clone()),
-            data.clone(),
-        )
+    let (data_hash, locals) = if let Value::Hash(map) = data {
+        (Some(map.clone()), data.clone())
     } else {
         (
-            Environment::with_enclosing(builtins),
+            None,
             Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
         )
     };
-    data_env.define("locals".to_string(), locals_value);
-    Interpreter::with_environment(Rc::new(RefCell::new(data_env)))
+    env.reuse_for_template(data_hash, locals);
+}
+
+fn rebind_interpreter(interp: &mut Interpreter, data: &Value) {
+    interp.call_stack.clear();
+    interp.assertion_count = 0;
+    interp.current_source_path = None;
+    interp.vm_globals = None;
+    interp.kernels = None;
+    interp.coverage_tracker = None;
+    bind_template_data(&mut interp.environment.borrow_mut(), data);
+}
+
+/// The data scope, with nothing else still pointing at it. A child scope's
+/// enclosing chain is longer, and a closure that captured this env keeps it
+/// alive: either one would make clearing the map corrupt another owner.
+fn recyclable(interp: &Interpreter) -> bool {
+    if !interp.call_stack.is_empty()
+        || interp.coverage_tracker.is_some()
+        || interp.vm_globals.is_some()
+        || interp.kernels.is_some()
+    {
+        return false;
+    }
+    if Rc::strong_count(&interp.environment) != 1 {
+        return false;
+    }
+    let Ok(env) = interp.environment.try_borrow() else {
+        return false;
+    };
+    match env.enclosing() {
+        Some(parent) => parent.borrow().enclosing().is_none(),
+        None => false,
+    }
+}
+
+#[cfg(test)]
+fn pooled_interpreters() -> usize {
+    INTERPRETER_POOL.with(|pool| pool.borrow().len())
 }
 
 /// Push a new child scope on the interpreter's environment.
@@ -227,6 +349,54 @@ mod tests {
 
         let r = eval("x", &mut interp).unwrap();
         assert_eq!(r, Value::Int(1));
+    }
+
+    #[test]
+    fn a_pooled_interpreter_does_not_keep_the_previous_render(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let before = pooled_interpreters();
+        let ada = make_hash(vec![("name", Value::String("Ada".into()))]);
+        let bea = make_hash(vec![("other", Value::String("Bea".into()))]);
+
+        let mut first = template_interpreter(&ada);
+        define_var(&mut first, "extra", Value::Int(1));
+        drop(first);
+        assert_eq!(pooled_interpreters(), before + 1);
+
+        let mut second = template_interpreter(&bea);
+        assert_eq!(pooled_interpreters(), before);
+        assert_eq!(eval("other", &mut second)?, Value::String("Bea".into()));
+        assert_eq!(eval("name", &mut second)?, Value::Null);
+        assert_eq!(eval("extra", &mut second)?, Value::Null);
+        drop(second);
+        assert_eq!(pooled_interpreters(), before + 1);
+
+        // A scope left open is not recycled: clearing it would wipe the child
+        // and leave the previous render's data hash one frame up.
+        let mut poisoned = template_interpreter(&ada);
+        assert_eq!(pooled_interpreters(), before);
+        push_scope(&mut poisoned);
+        drop(poisoned);
+        assert_eq!(pooled_interpreters(), before);
+
+        let mut third = template_interpreter(&bea);
+        assert_eq!(eval("name", &mut third)?, Value::Null);
+        assert_eq!(eval("other", &mut third)?, Value::String("Bea".into()));
+        Ok(())
+    }
+
+    #[test]
+    fn hot_reload_drops_pooled_interpreters() {
+        let data = make_hash(vec![("name", Value::String("Ada".into()))]);
+        let held = template_interpreter(&data);
+        drop(template_interpreter(&data));
+        assert!(pooled_interpreters() >= 1);
+
+        reset_builtins_rc();
+        assert_eq!(pooled_interpreters(), 0);
+        // Taken out before the reload: it still closes over the old builtins.
+        drop(held);
+        assert_eq!(pooled_interpreters(), 0);
     }
 
     #[test]

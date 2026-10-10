@@ -239,6 +239,9 @@ pub enum Op {
     /// writes `components/<name>` rendered with the props plus `content`.
     /// Pushes Null.
     TemplateComponent,
+    /// `<%= render "name" %>`: pops the context and the name, and writes that
+    /// partial raw (it escaped its own output). Pushes Null.
+    TemplatePartial,
     /// A `content_for` block: pops the captured body and the name and appends
     /// the body to that name's store. Pushes Null.
     TemplateContentFor,

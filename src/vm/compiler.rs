@@ -276,6 +276,25 @@ impl Compiler {
         Self::compile_full(program, globals, source_path, None)
     }
 
+    /// `compile_with_globals_from`, recording into `seen` every name the
+    /// program resolves as a global, nested functions included.
+    ///
+    /// A name passed in `globals` is a known global, so an assignment to it is
+    /// recorded too. A read of a name that is not a local is recorded either
+    /// way. The view VM uses that to keep a helper on the tree-walker when the
+    /// helper's closure holds something the bytecode would not see.
+    pub fn compile_with_globals_recording<I: IntoIterator<Item = String>>(
+        program: &Program,
+        globals: I,
+        source_path: Option<Arc<std::path::PathBuf>>,
+        seen: Rc<RefCell<HashSet<String>>>,
+    ) -> CompileResult<CompiledModule> {
+        let mut compiler = Compiler::new(FunctionType::Script, String::new());
+        compiler.known_globals.borrow_mut().extend(globals);
+        compiler.referenced_globals = Some(seen);
+        Self::compile_script(compiler, program, source_path, None)
+    }
+
     /// Compile a whole script whose top-level functions may carry native
     /// kernels, built by `crate::native::analyze_and_compile` from this same
     /// `program` (they are matched by declaration address).
@@ -1093,6 +1112,7 @@ fn stack_effect(op: Op) -> i32 {
         TemplateIter => 0,
         TemplateCaptureStart | TemplateCaptureEnd => 1,
         TemplateComponent => -2,
+        TemplatePartial => -1,
         TemplateContentFor => -1,
         TemplateYield | TemplateYieldNamed => 0,
         // Peephole super-instructions (not emitted during the tracked pass; values

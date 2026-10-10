@@ -363,9 +363,10 @@ fn log_engine(choice: &str) {
 /// interpreter; a script that hit one halfway would stop with an error after
 /// doing half its work. So it is decided before anything runs, from the
 /// source. The list mirrors the VM's refusals: class reflection
-/// (`vm_classes::is_class_reflection_member`), batch iteration and dynamic
-/// finders on models, `method_missing`, model callbacks given as closures and
-/// state machines.
+/// (`vm_classes::is_class_reflection_member`), batch iteration
+/// (`find_each`, `in_batches`, `find_in_batches`), `method_missing`, model
+/// callbacks given as closures and state machines. A dynamic finder
+/// (`User.find_by_email`) runs on the VM, on the same path as `find_by`.
 pub fn tree_walker_reason(program: &ast::Program) -> Option<String> {
     use ast::expr::ExprKind;
     use ast::stmt::StmtKind;
@@ -405,7 +406,7 @@ pub fn tree_walker_reason(program: &ast::Program) -> Option<String> {
             "before_save" | "after_save" | "before_create" | "after_create" | "before_update"
             | "after_update" | "before_delete" | "after_delete" | "before_validation"
             | "after_validation" => true,
-            _ => name.starts_with("find_by_") && on_a_class,
+            _ => false,
         };
         if hit {
             found = Some(format!("`{name}`"));
@@ -1685,5 +1686,145 @@ mod suite_extraction_tests {
                })"#,
         );
         assert!(extracted[0].viewport.is_none());
+    }
+}
+
+#[cfg(test)]
+mod dynamic_finder_vm_tests {
+    use super::*;
+    use crate::interpreter::value::Value;
+
+    fn program(source: &str) -> ast::Program {
+        let tokens = lexer::Scanner::new(source)
+            .scan_tokens()
+            .expect("the snippet must lex");
+        parser::Parser::new(tokens)
+            .parse()
+            .expect("the snippet must parse")
+    }
+
+    /// Run `source` on a VM seeded with the builtins, the way a script runs
+    /// under `--vm`. `Vm` has no `Debug`, so a failure is taken with `match`
+    /// rather than `expect_err`.
+    fn run_vm(source: &str) -> Result<vm::Vm, error::RuntimeError> {
+        let program = program(source);
+        let module = vm::Compiler::compile(&program).expect("the snippet must compile");
+        let interp = interpreter::Interpreter::new();
+        let mut vm = vm::Vm::new();
+        for (name, value) in interp.environment.borrow().get_all_bindings() {
+            vm.globals.insert(name, value);
+        }
+        vm.execute(&module.main)?;
+        Ok(vm)
+    }
+
+    fn run_vm_err(source: &str) -> error::RuntimeError {
+        match run_vm(source) {
+            Err(err) => err,
+            Ok(_) => panic!("expected an error, got a value"),
+        }
+    }
+
+    #[test]
+    fn a_dynamic_finder_does_not_choose_the_tree_walker() {
+        let finder = program("class User < Model\nend\nUser.find_by_email(\"a@b.c\")\n");
+        assert_eq!(tree_walker_reason(&finder), None);
+        // `find_by_sql` shares the prefix and is a real static. It stays too.
+        let sql = program("class User < Model\nend\nUser.find_by_sql(\"SELECT 1\")\n");
+        assert_eq!(tree_walker_reason(&sql), None);
+        let batch = program("class User < Model\nend\nUser.find_each(fn(row) { row })\n");
+        assert!(
+            tree_walker_reason(&batch).is_some(),
+            "find_each still has no VM path"
+        );
+        let send = program("User.send(\"find\")\n");
+        assert!(tree_walker_reason(&send).is_some());
+    }
+
+    #[test]
+    fn a_dynamic_finder_resolves_on_the_vm() {
+        let vm = run_vm(
+            r#"
+class VmFinderProbe < Model
+end
+one = VmFinderProbe.find_by_email
+two = VmFinderProbe.find_by_email_and_active
+n = 0
+for i in [1, 2, 3]
+  n = n + i
+end
+"#,
+        )
+        .expect("resolving a finder must not leave the VM");
+        match vm.globals.get("one") {
+            Some(Value::NativeFunction(native)) => {
+                assert_eq!(native.name, "find_by_email");
+                assert_eq!(native.arity, Some(1));
+            }
+            other => panic!("expected the finder, got {other:?}"),
+        }
+        match vm.globals.get("two") {
+            Some(Value::NativeFunction(native)) => assert_eq!(native.arity, Some(2)),
+            other => panic!("expected the two-field finder, got {other:?}"),
+        }
+        assert_eq!(vm.globals.get("n"), Some(&Value::Int(6)));
+    }
+
+    #[test]
+    fn a_static_of_the_same_name_wins_over_the_finder() {
+        let vm = run_vm(
+            r#"
+class VmFinderOwn < Model
+  static def find_by_email(email)
+    "static"
+  end
+end
+got = VmFinderOwn.find_by_email("a@b.c")
+"#,
+        )
+        .expect("a static finder stays on the VM");
+        assert_eq!(vm.globals.get("got"), Some(&Value::str("static")));
+    }
+
+    #[test]
+    fn method_missing_does_not_swallow_a_dynamic_finder() {
+        let vm = run_vm(
+            r#"
+class VmFinderMiss < Model
+  static def method_missing(name, args)
+    "missing"
+  end
+end
+finder = VmFinderMiss.find_by_email
+other = VmFinderMiss.not_a_finder()
+blank = VmFinderMiss.find_by_()
+"#,
+        )
+        .expect("the finder resolves before method_missing");
+        assert!(
+            matches!(vm.globals.get("finder"), Some(Value::NativeFunction(_))),
+            "find_by_email must be the finder, got {:?}",
+            vm.globals.get("finder")
+        );
+        assert_eq!(vm.globals.get("other"), Some(&Value::str("missing")));
+        assert_eq!(vm.globals.get("blank"), Some(&Value::str("missing")));
+    }
+
+    #[test]
+    fn a_bad_dynamic_finder_call_is_an_error_not_a_demotion() {
+        let err = run_vm_err("class VmFinderArity < Model\nend\nVmFinderArity.find_by_email()\n");
+        assert!(!err.is_engine_fallback(), "{err}");
+
+        let err =
+            run_vm_err("class VmFinderField < Model\nend\nVmFinderField.find_by_1email(\"a\")\n");
+        assert!(!err.is_engine_fallback(), "{err}");
+        let message = err.to_string();
+        assert!(message.contains("field name"), "{message}");
+    }
+
+    #[test]
+    fn find_by_sql_runs_on_the_vm() {
+        let err = run_vm_err("class VmFinderSql < Model\nend\nVmFinderSql.find_by_sql(1)\n");
+        assert!(!err.is_engine_fallback(), "{err}");
     }
 }

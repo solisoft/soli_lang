@@ -105,6 +105,27 @@ pub fn helper_env_loaded() -> bool {
     VIEW_HELPER_ENV.with(|cell| cell.borrow().is_some())
 }
 
+/// `closure` is the env every `app/helpers` function closes over.
+///
+/// The view VM compiles a helper only when this holds: any other function
+/// keeps the tree-walker, whose call reads that function's own closure.
+#[inline]
+pub(crate) fn is_view_helper_closure(closure: &Rc<RefCell<Environment>>) -> bool {
+    VIEW_HELPER_ENV.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .is_some_and(|env| Rc::ptr_eq(env, closure))
+    })
+}
+
+/// Point [`VIEW_HELPER_ENV`] at `env` and return what was there.
+#[cfg(test)]
+pub(crate) fn set_view_helper_env_for_test(
+    env: Option<Rc<RefCell<Environment>>>,
+) -> Option<Rc<RefCell<Environment>>> {
+    VIEW_HELPER_ENV.with(|cell| std::mem::replace(&mut *cell.borrow_mut(), env))
+}
+
 /// Bind request-scoped names onto the view helpers' shared closure env so user
 /// helpers (`app/helpers/*.sl`) can read `req`, `params`, etc. directly.
 ///
@@ -166,6 +187,10 @@ pub fn get_view_helper(name: &str) -> Option<Value> {
 /// Clear all view helpers (for hot reload).
 pub fn clear_view_helpers() {
     VIEW_HELPERS.with(|helpers| helpers.borrow_mut().clear());
+    // The view VM's "this helper compiles" cache is keyed by the body
+    // allocation. A reload frees those bodies; the next helper must not
+    // inherit a decision made for a recycled address.
+    crate::vm::vm_calls::clear_view_helper_vm_cache();
 }
 
 /// Get all registered view helpers.
@@ -201,6 +226,9 @@ pub fn view_helpers_present(helpers_dir: &Path) -> bool {
 /// classes of its sibling `app/components/`.
 /// Parses each helper file and extracts function definitions without executing in interpreter.
 pub fn load_view_helpers(helpers_dir: &Path) -> Result<usize, String> {
+    // Same reason as `clear_view_helpers`: the functions about to be
+    // registered replace the ones the view VM may have compiled.
+    crate::vm::vm_calls::clear_view_helper_vm_cache();
     if !view_helpers_present(helpers_dir) {
         return Ok(0);
     }

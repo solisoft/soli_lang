@@ -65,17 +65,88 @@ pub fn render_with_interpreter(
     partial_renderer: PartialRenderer<'_>,
     template_path: Option<&str>,
 ) -> Result<String, String> {
-    let mut output = String::with_capacity(4096);
+    // 4096 bytes even for a partial of a few dozen. Small results are copied
+    // out and the buffer returns here; a result that fills it is returned as
+    // the buffer, so a full view is not copied on the way out.
+    let mut output = RenderBuf::with_capacity(4096);
     render_walker(
         interpreter,
         nodes,
         data,
         partial_renderer,
         template_path,
-        &mut output,
+        output.buf(),
         YieldMode::View,
     )?;
-    Ok(output)
+    Ok(output.finish())
+}
+
+const RENDER_BUFFER_POOL_LIMIT: usize = 64;
+const RENDER_BUFFER_MAX_CAPACITY: usize = 256 * 1024;
+/// Below this, copying the bytes out costs less than handing back a 4096-byte
+/// buffer. A layout-sized result stays in the buffer it grew in.
+const TIGHT_COPY_BELOW: usize = 1024;
+
+thread_local! {
+    static RENDER_BUFFERS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+struct RenderBuf {
+    buf: Option<String>,
+}
+
+impl RenderBuf {
+    fn with_capacity(min_capacity: usize) -> Self {
+        let mut buf = RENDER_BUFFERS
+            .with(|pool| pool.borrow_mut().pop())
+            .unwrap_or_default();
+        buf.reserve(min_capacity);
+        Self { buf: Some(buf) }
+    }
+
+    // `buf` is `Some` from construction until `finish` (which consumes the
+    // buffer) or `Drop` takes it: neither accessor can see `None`, and neither
+    // panics if it ever did.
+    fn buf(&mut self) -> &mut String {
+        self.buf.get_or_insert_with(String::new)
+    }
+
+    fn finish(mut self) -> String {
+        let output = self.buf.take().unwrap_or_default();
+        if output.len() < TIGHT_COPY_BELOW && output.capacity() >= 4096 {
+            let tight = String::from(output.as_str());
+            recycle_render_buffer(output);
+            tight
+        } else {
+            output
+        }
+    }
+}
+
+impl Drop for RenderBuf {
+    fn drop(&mut self) {
+        if let Some(buf) = self.buf.take() {
+            recycle_render_buffer(buf);
+        }
+    }
+}
+
+fn recycle_render_buffer(mut buf: String) {
+    buf.clear();
+    if buf.capacity() > RENDER_BUFFER_MAX_CAPACITY {
+        return;
+    }
+    RENDER_BUFFERS.with(|pool| {
+        let mut pool = pool.borrow_mut();
+        if pool.len() < RENDER_BUFFER_POOL_LIMIT {
+            pool.push(buf);
+        }
+    });
+}
+
+#[cfg(test)]
+fn pooled_render_buffers() -> usize {
+    RENDER_BUFFERS.with(|pool| pool.borrow().len())
 }
 
 /// Internal render function that writes directly into the output buffer.
@@ -656,6 +727,48 @@ mod tests {
         };
         let data = make_hash(vec![("name", Value::String("ada".into()))]);
         assert_eq!(render_nodes(&nodes, &data, None), Ok("ADA".to_string()));
+    }
+
+    #[test]
+    fn a_small_include_returns_its_buffer_to_the_pool() -> Result<(), Box<dyn std::error::Error>> {
+        let Ok(nodes) = parse_template("<%= name %>") else {
+            panic!("template should parse");
+        };
+        let data = make_hash(vec![("name", Value::String("ada".into()))]);
+        let before = pooled_render_buffers();
+        let mut interp = crate::template::core_eval::create_template_interpreter(&data);
+
+        let html = render_with_interpreter(&mut interp, &nodes, &data, None, None)?;
+        assert_eq!(html, "ada");
+        assert!(
+            html.capacity() < 1024,
+            "small include kept the render buffer (capacity {})",
+            html.capacity()
+        );
+        assert_eq!(pooled_render_buffers(), before + 1);
+
+        let html = render_with_interpreter(&mut interp, &nodes, &data, None, None)?;
+        assert_eq!(html, "ada");
+        assert_eq!(pooled_render_buffers(), before + 1);
+        Ok(())
+    }
+
+    #[test]
+    fn a_full_buffer_is_the_result() -> Result<(), Box<dyn std::error::Error>> {
+        let Ok(nodes) = parse_template(&"x".repeat(1100)) else {
+            panic!("template should parse");
+        };
+        let before = pooled_render_buffers();
+        let mut interp = crate::template::core_eval::create_template_interpreter(&Value::Null);
+        let html = render_with_interpreter(&mut interp, &nodes, &Value::Null, None, None)?;
+        assert_eq!(html.len(), 1100);
+        assert!(
+            html.capacity() >= 4096,
+            "filled buffer was copied out (capacity {})",
+            html.capacity()
+        );
+        assert_eq!(pooled_render_buffers(), before);
+        Ok(())
     }
 
     #[test]

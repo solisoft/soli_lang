@@ -475,12 +475,13 @@ impl Vm {
                 // `class_member_access`. Resolving `method_missing` first sent
                 // `User.find_by_email("x")` into the class's `method_missing`
                 // on any model that defines one (the `Mailer` prelude shape),
-                // which returned a wrong value instead of the record.
-                if class.is_model_subclass() && name.starts_with("find_by_") {
-                    return Err(RuntimeError::EngineFallback(
-                        format!("dynamic finder '{}'", name),
-                        span,
-                    ));
+                // which returned a wrong value instead of the record. The
+                // finder is `find_by` for the fields in the name, so the
+                // action stays on the VM.
+                if let Some(finder) =
+                    crate::interpreter::executor::access::member::dynamic_finder_value(class, name)
+                {
+                    return Ok(finder);
                 }
                 // Class-level `method_missing` is the LAST resort — after
                 // statics, reflection and dynamic finders — exactly as the

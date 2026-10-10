@@ -113,7 +113,7 @@ impl Interpreter {
 | `cascade.rs` | Rails-style `obj.foo.bar` where missing methods might cascade |
 | method lookup | instance + class + mixins |
 
-If a call looks “magic” (`User.find_by_email`), it is either a builtin on `Class` or `method_missing`.
+A dynamic finder (`User.find_by_email`) is a native built for that name, the same lookup as `find_by`. Anything else that looks magic is a builtin on `Class` or `method_missing`.
 
 ---
 

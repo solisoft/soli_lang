@@ -103,6 +103,19 @@ impl Environment {
         self.consts.clear();
     }
 
+    /// Clear this template scope for another render. The enclosing builtins
+    /// stay; the map keeps its capacity. `locals` is bound to the new data.
+    pub(crate) fn reuse_for_template(
+        &mut self,
+        data_hash: Option<Rc<RefCell<HashPairs>>>,
+        locals: Value,
+    ) {
+        self.values.clear();
+        self.consts.clear();
+        self.data_hash = data_hash;
+        self.values.insert("locals".to_string(), locals);
+    }
+
     /// Define a new variable in the current scope.
     pub fn define(&mut self, name: String, value: Value) {
         self.values.insert(name, value);

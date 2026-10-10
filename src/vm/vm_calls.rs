@@ -51,7 +51,7 @@ pub(crate) fn jit_compile_function_with_base(
     })
 }
 
-fn jit_compile_function_by(
+fn compile_function_proto(
     func: &Function,
     compile: impl FnOnce(
         &Program,
@@ -81,7 +81,7 @@ fn jit_compile_function_by(
     let module = compile(&program, source_path).map_err(|e| e.to_string())?;
 
     // Extract the compiled FunctionProto from the module's constant pool.
-    let proto = module
+    module
         .main
         .chunk
         .constants
@@ -93,8 +93,17 @@ fn jit_compile_function_by(
                 None
             }
         })
-        .ok_or_else(|| "Failed to extract compiled function from JIT".to_string())?;
+        .ok_or_else(|| "Failed to extract compiled function from JIT".to_string())
+}
 
+fn jit_compile_function_by(
+    func: &Function,
+    compile: impl FnOnce(
+        &Program,
+        Option<Arc<std::path::PathBuf>>,
+    ) -> crate::vm::compiler::CompileResult<crate::vm::chunk::CompiledModule>,
+) -> Result<Arc<FunctionProto>, String> {
+    let proto = compile_function_proto(func, compile)?;
     *func.jit_cache.borrow_mut() = Some(proto.clone());
     Ok(proto)
 }
@@ -132,6 +141,76 @@ pub(crate) fn jit_compile_method_with_base(
     let arc = std::sync::Arc::new(proto);
     *func.jit_cache.borrow_mut() = Some(arc.clone());
     Ok(arc)
+}
+
+// Whether a view helper's body can run on the view VM. Keyed by the body
+// allocation. Only consulted for a function whose closure is the shared
+// helper env, and dropped whenever helpers are reloaded — an address the
+// allocator reused for some other function is never looked up.
+thread_local! {
+    #[allow(clippy::missing_const_for_thread_local)]
+    static VIEW_HELPER_VM: RefCell<std::collections::HashMap<usize, bool>> =
+        RefCell::new(std::collections::HashMap::new());
+}
+
+/// Drop every cached "this helper compiles" decision. Called when view
+/// helpers are cleared or loaded again.
+pub(crate) fn clear_view_helper_vm_cache() {
+    VIEW_HELPER_VM.with(|cache| cache.borrow_mut().clear());
+}
+
+/// Bytecode for a view helper this VM can run itself, or `None` when the
+/// call stays on the tree-walker.
+///
+/// A view runs with `tree_walk_functions` because a helper reads `req` and
+/// the other request bindings through its closure, which the VM's globals
+/// do not follow. A helper that names nothing outside its parameters needs
+/// none of that, so it compiles. A free name, an assignment to a name the
+/// closure already holds, a method, a function from anywhere else, or a
+/// body the compiler refuses: the tree-walker, and not an `EngineFallback`
+/// — that would demote the whole view.
+fn view_helper_proto(func: &Function) -> Option<Arc<FunctionProto>> {
+    if func.is_method
+        || !crate::interpreter::builtins::template::is_view_helper_closure(&func.closure)
+    {
+        return None;
+    }
+    // `Rc<[Stmt]>` is a fat pointer; the data address identifies the body.
+    let key = Rc::as_ptr(&func.body) as *const () as usize;
+    let cached = VIEW_HELPER_VM.with(|cache| cache.borrow().get(&key).copied());
+    if cached == Some(false) {
+        return None;
+    }
+    if cached == Some(true) {
+        if let Some(proto) = func.jit_cache.borrow().clone() {
+            return Some(proto);
+        }
+    }
+
+    // Names the closure already has, so an assignment to one resolves as a
+    // global and is recorded. The worker's globals are the wrong set: `req`
+    // is not one of them, and a helper assigning it must stay interpreted.
+    // The proto is stored only when nothing was recorded, so the known-global
+    // set never changes the bytecode that actually runs.
+    let seen = Rc::new(RefCell::new(std::collections::HashSet::new()));
+    let names = func.closure.borrow().get_all_bindings().into_keys();
+    let seen_for_compile = Rc::clone(&seen);
+    let compiled = compile_function_proto(func, move |program, source_path| {
+        Compiler::compile_with_globals_recording(program, names, source_path, seen_for_compile)
+    });
+    let accepted = match compiled {
+        Ok(proto) if seen.borrow().is_empty() => {
+            *func.jit_cache.borrow_mut() = Some(proto);
+            true
+        }
+        _ => false,
+    };
+    VIEW_HELPER_VM.with(|cache| cache.borrow_mut().insert(key, accepted));
+    if accepted {
+        func.jit_cache.borrow().clone()
+    } else {
+        None
+    }
 }
 
 /// Lay labelled arguments out in parameter order for `proto`, returning the
@@ -1452,7 +1531,15 @@ impl Vm {
         // routed through user-level `try`/`rescue`, and a handler that wrapped
         // the call would swallow the VM's internal limitation as if it were an
         // application error — returning a rescue value instead of demoting.
+        //
+        // A view sets this flag. A helper that needs nothing from its closure
+        // compiles and runs here; every other function still takes the
+        // interpreter below, and a body the compiler refuses does too — an
+        // `EngineFallback` from a view helper would demote the whole view.
         if self.tree_walk_functions {
+            if let Some(proto) = view_helper_proto(func) {
+                return self.call_compiled_function(proto, argc, span);
+            }
             let callee_idx = self.stack.len() - 1 - argc;
             let args: Vec<Value> = self.stack.drain(callee_idx + 1..).collect();
             self.stack.pop();
@@ -1467,14 +1554,19 @@ impl Vm {
         let proto = jit_compile_function(func, self.globals.keys().cloned()).map_err(|e| {
             RuntimeError::EngineFallback(format!("a function the VM cannot compile ({})", e), span)
         })?;
+        self.call_compiled_function(proto, argc, span)
+    }
 
+    fn call_compiled_function(
+        &mut self,
+        proto: Arc<FunctionProto>,
+        argc: usize,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
         let closure = Rc::new(VmClosure::new(proto, Vec::new()));
-
-        // Replace the Function value on the stack with the compiled VmClosure
+        // Replace the Function value on the stack with the compiled VmClosure.
         let callee_idx = self.stack.len() - 1 - argc;
         self.stack[callee_idx] = Value::VmClosure(closure.clone());
-
-        // Now call it as a regular closure
         self.call_closure(closure, argc, span)
     }
 
@@ -1675,11 +1767,17 @@ impl Vm {
             // when nothing else matched, so a resolved static (`User.where`)
             // costs one superclass walk rather than the five this used to do on
             // every class-receiver call.
+            // A parsed dynamic finder (`find_by_email`) is known, so
+            // `method_missing` does not take it. `find_by_` parses as nothing
+            // and stays free for `method_missing`; `find_by_sql` is a native
+            // static, matched above.
             let known = class.find_vm_static_method(name).is_some()
                 || class.find_static_method(name).is_some()
                 || class.find_native_static_method(name).is_some()
                 || crate::vm::vm_classes::is_class_reflection_member(name)
-                || (is_model && name.starts_with("find_by_"));
+                || (is_model
+                    && crate::interpreter::executor::access::member::parse_dynamic_finder(name)
+                        .is_ok());
             if !known
                 && (class.find_static_method("method_missing").is_some()
                     || class.find_vm_static_method("method_missing").is_some())
@@ -2340,5 +2438,154 @@ mod tests {
                 Ok(_) => panic!("{}: expected EngineFallback, got Ok", source),
             }
         }
+    }
+
+    /// Puts `env` in the view-helper slot for the test and puts the previous
+    /// one back, including when the test panics.
+    struct HelperEnvGuard {
+        prev: Option<Rc<RefCell<crate::interpreter::environment::Environment>>>,
+    }
+
+    impl HelperEnvGuard {
+        fn set(env: Option<Rc<RefCell<crate::interpreter::environment::Environment>>>) -> Self {
+            let prev = crate::interpreter::builtins::template::set_view_helper_env_for_test(env);
+            clear_view_helper_vm_cache();
+            Self { prev }
+        }
+    }
+
+    impl Drop for HelperEnvGuard {
+        fn drop(&mut self) {
+            crate::interpreter::builtins::template::set_view_helper_env_for_test(self.prev.take());
+            clear_view_helper_vm_cache();
+        }
+    }
+
+    fn helper_fn(
+        source: &str,
+        closure: Rc<RefCell<crate::interpreter::environment::Environment>>,
+    ) -> Rc<Function> {
+        use crate::ast::stmt::StmtKind;
+        use crate::lexer::Scanner;
+        use crate::parser::Parser;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let StmtKind::Function(decl) = &program.statements[0].kind else {
+            panic!("expected a function declaration");
+        };
+        Rc::new(Function::from_decl(decl, closure, None))
+    }
+
+    /// Run `source` (it binds `x`) on a view VM: tree-walker functions, except
+    /// a helper the VM can compile.
+    fn call_on_view_vm(func: &Rc<Function>, source: &str) -> Value {
+        use crate::lexer::Scanner;
+        use crate::parser::Parser;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.tree_walk_functions = true;
+        vm.globals
+            .insert(func.name.clone(), Value::Function(Rc::clone(func)));
+        vm.execute(&module.main)
+            .unwrap_or_else(|err| panic!("{source}: {err}"));
+        vm.globals.get("x").cloned().unwrap_or(Value::Null)
+    }
+
+    #[test]
+    fn a_helper_with_no_free_name_runs_on_the_view_vm() {
+        let env = Rc::new(RefCell::new(
+            crate::interpreter::environment::Environment::new(),
+        ));
+        let _guard = HelperEnvGuard::set(Some(Rc::clone(&env)));
+        let double = helper_fn("def double(n)\n  n * 2\nend\n", Rc::clone(&env));
+
+        assert_eq!(
+            call_on_view_vm(&double, "let x = double(21)"),
+            Value::Int(42)
+        );
+        let cached = double
+            .jit_cache
+            .borrow()
+            .clone()
+            .expect("a helper with no free name is compiled");
+
+        // The second call is the cache hit: same proto, still the VM.
+        assert_eq!(
+            call_on_view_vm(&double, "let x = double(22)"),
+            Value::Int(44)
+        );
+        assert!(std::sync::Arc::ptr_eq(
+            &cached,
+            &double.jit_cache.borrow().clone().unwrap()
+        ));
+
+        // The bench witness: a method call on the argument, no free name.
+        let label = helper_fn("def label(row)\n  row.title.upcase\nend\n", Rc::clone(&env));
+        assert_eq!(
+            call_on_view_vm(&label, "let row = {\"title\": \"hi\"}\nlet x = label(row)"),
+            Value::str("HI")
+        );
+        assert!(label.jit_cache.borrow().is_some());
+    }
+
+    #[test]
+    fn a_helper_that_reads_or_assigns_a_closure_name_stays_interpreted() {
+        let env = Rc::new(RefCell::new(
+            crate::interpreter::environment::Environment::new(),
+        ));
+        env.borrow_mut()
+            .define("req".to_string(), Value::str("Ada"));
+        let _guard = HelperEnvGuard::set(Some(Rc::clone(&env)));
+
+        let who = helper_fn("def who()\n  req\nend\n", Rc::clone(&env));
+        assert_eq!(call_on_view_vm(&who, "let x = who()"), Value::str("Ada"));
+        assert!(
+            who.jit_cache.borrow().is_none(),
+            "a helper that reads req stays on the tree-walker"
+        );
+
+        let clobber = helper_fn("def clobber()\n  req = \"no\"\nend\n", Rc::clone(&env));
+        call_on_view_vm(&clobber, "let x = clobber()");
+        assert_eq!(
+            env.borrow().get("req"),
+            Some(Value::str("no")),
+            "assigning req updates the helper closure"
+        );
+        assert!(clobber.jit_cache.borrow().is_none());
+
+        // A nested function's free name counts too. `inner` with no
+        // parentheses runs, so the value is what `req` holds.
+        env.borrow_mut()
+            .define("req".to_string(), Value::str("Ada"));
+        let outer = helper_fn(
+            "def outer()\n  def inner()\n    req\n  end\n  inner\nend\n",
+            Rc::clone(&env),
+        );
+        assert_eq!(
+            call_on_view_vm(&outer, "let x = outer()"),
+            Value::str("Ada")
+        );
+        assert!(outer.jit_cache.borrow().is_none());
+    }
+
+    #[test]
+    fn a_function_outside_the_helper_env_stays_interpreted() {
+        let closure = Rc::new(RefCell::new(
+            crate::interpreter::environment::Environment::new(),
+        ));
+        closure
+            .borrow_mut()
+            .define("req".to_string(), Value::str("Ada"));
+        // The helper slot points somewhere else, so `who` is not a view helper
+        // even though its own closure has `req`.
+        let other = Rc::new(RefCell::new(
+            crate::interpreter::environment::Environment::new(),
+        ));
+        let _guard = HelperEnvGuard::set(Some(other));
+        let who = helper_fn("def who()\n  req\nend\n", closure);
+        assert_eq!(call_on_view_vm(&who, "let x = who()"), Value::str("Ada"));
+        assert!(who.jit_cache.borrow().is_none());
     }
 }

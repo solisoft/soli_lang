@@ -25,6 +25,23 @@ use super::core::*;
 use super::crud::exec_update;
 use crate::interpreter::value::{NativeFunction, Value};
 
+fn eq_finder_arg(args: &[Value], method: &str) -> Result<(String, serde_json::Value), String> {
+    let field = match args.get(1) {
+        Some(Value::String(s) | Value::Symbol(s)) => s.to_string(),
+        _ => {
+            return Err(format!(
+                "{method}() expects a field name (string or symbol)"
+            ))
+        }
+    };
+    validate_field_name(&field, method)?;
+    let value = match args.get(2) {
+        Some(v) => super::value_to_json(v)?,
+        None => return Err(format!("{method}() requires a value")),
+    };
+    Ok((field, value))
+}
+
 pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunction>>) {
     // Model.find_by_sql(sql, binds?) — the escape hatch for a query the
     // portable surface cannot express.
@@ -80,60 +97,14 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
         })),
     );
 
-    // Model.find_by(field, value) - Find first record matching field=value
+    // Model.find_by(field, value) - Find first record matching field=value.
+    // `find_by_*` calls the same function, so a dynamic finder is this lookup.
     native_static_methods.insert(
         "find_by".to_string(),
         Rc::new(NativeFunction::new("Model.find_by", Some(3), |args| {
             let class = get_class_rc_from_args(args)?;
-            let class_name = class.name.clone();
-            let collection = class_name_to_collection(&class_name);
-            let field = match args.get(1) {
-                Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
-                _ => return Err("find_by() expects a field name (string or symbol)".to_string()),
-            };
-            validate_field_name(&field, "find_by")?;
-            let value = match args.get(2) {
-                Some(v) => super::value_to_json(v).map_err(|e| e.to_string())?,
-                None => return Err("find_by() requires a value".to_string()),
-            };
-            // SQL connections can't run the raw-SDBQL form below (and the
-            // old `_ => nil` arm would silently swallow that error) —
-            // express the lookup as a portable eq-filter query instead.
-            // A `table "…"` model on a connection that cannot serve it must fail
-            // here rather than fall through to the document path below.
-            super::column_mode::ensure_supported(&collection)?;
-            if super::crud::collection_is_sql(&collection) {
-                return super::registry::run_on_collection_connection(&collection, || {
-                    sql_find_first_by(&class, &collection, &field, value.clone(), false)
-                });
-            }
-            let sdbql = format!(
-                "FOR doc IN {} FILTER doc.{} == @val{} LIMIT 1 RETURN doc",
-                collection,
-                field,
-                sti_scope_clause(&class.name)
-            );
-            let mut binds = std::collections::HashMap::new();
-            binds.insert("val".to_string(), value);
-            if super::batch::is_active() {
-                let class2 = class.clone();
-                return Ok(super::batch::register(
-                    sdbql,
-                    binds,
-                    Box::new(move |rows| {
-                        Ok(match rows.first() {
-                            Some(doc) => super::crud::json_doc_to_instance(&class2, doc),
-                            None => Value::Null,
-                        })
-                    }),
-                ));
-            }
-            match super::crud::exec_with_auto_collection(sdbql, Some(binds), &collection) {
-                Ok(results) if !results.is_empty() => {
-                    Ok(super::crud::json_doc_to_instance(&class, &results[0]))
-                }
-                _ => Ok(Value::Null),
-            }
+            let (field, value) = eq_finder_arg(args, "find_by")?;
+            find_first_by_fields(&class, &[(field, value)], false)
         })),
     );
 
@@ -142,53 +113,8 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
         "first_by".to_string(),
         Rc::new(NativeFunction::new("Model.first_by", Some(3), |args| {
             let class = get_class_rc_from_args(args)?;
-            let class_name = class.name.clone();
-            let collection = class_name_to_collection(&class_name);
-            let field = match args.get(1) {
-                Some(Value::String(s) | Value::Symbol(s)) => s.clone(),
-                _ => return Err("first_by() expects a field name (string or symbol)".to_string()),
-            };
-            validate_field_name(&field, "first_by")?;
-            let value = match args.get(2) {
-                Some(v) => super::value_to_json(v).map_err(|e| e.to_string())?,
-                None => return Err("first_by() requires a value".to_string()),
-            };
-            // SQL connections: portable eq-filter query — see find_by.
-            // A `table "…"` model on a connection that cannot serve it must fail
-            // here rather than fall through to the document path below.
-            super::column_mode::ensure_supported(&collection)?;
-            if super::crud::collection_is_sql(&collection) {
-                return super::registry::run_on_collection_connection(&collection, || {
-                    sql_find_first_by(&class, &collection, &field, value.clone(), true)
-                });
-            }
-            let sdbql = format!(
-                "FOR doc IN {} FILTER doc.{} == @val{} SORT doc._key ASC LIMIT 1 RETURN doc",
-                collection,
-                field,
-                sti_scope_clause(&class_name)
-            );
-            let mut binds = std::collections::HashMap::new();
-            binds.insert("val".to_string(), value);
-            if super::batch::is_active() {
-                let class2 = class.clone();
-                return Ok(super::batch::register(
-                    sdbql,
-                    binds,
-                    Box::new(move |rows| {
-                        Ok(match rows.first() {
-                            Some(doc) => super::crud::json_doc_to_instance(&class2, doc),
-                            None => Value::Null,
-                        })
-                    }),
-                ));
-            }
-            match super::crud::exec_with_auto_collection(sdbql, Some(binds), &collection) {
-                Ok(results) if !results.is_empty() => {
-                    Ok(super::crud::json_doc_to_instance(&class, &results[0]))
-                }
-                _ => Ok(Value::Null),
-            }
+            let (field, value) = eq_finder_arg(args, "first_by")?;
+            find_first_by_fields(&class, &[(field, value)], true)
         })),
     );
 

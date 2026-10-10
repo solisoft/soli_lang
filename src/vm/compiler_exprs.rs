@@ -569,11 +569,13 @@ impl Compiler {
             // `__tpl_write_raw(expr)`. Only the template compiler emits them.
             // A compiled template's captures (component and content_for
             // blocks): `__tpl_capture_start()`, `__tpl_capture_end()`,
-            // `__tpl_component(name, props, body)`, `__tpl_content_for(name, body)`.
+            // `__tpl_component(name, props, body)`, `__tpl_content_for(name, body)`,
+            // `__tpl_partial(name, data)`.
             let template_op = match (name.as_str(), arguments.len()) {
                 ("__tpl_capture_start", 0) => Some(Op::TemplateCaptureStart),
                 ("__tpl_capture_end", 0) => Some(Op::TemplateCaptureEnd),
                 ("__tpl_component", 3) => Some(Op::TemplateComponent),
+                ("__tpl_partial", 2) => Some(Op::TemplatePartial),
                 ("__tpl_content_for", 2) => Some(Op::TemplateContentFor),
                 ("__tpl_yield", 1) => Some(Op::TemplateYield),
                 ("__tpl_yield_named", 1) => Some(Op::TemplateYieldNamed),

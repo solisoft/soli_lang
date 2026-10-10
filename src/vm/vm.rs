@@ -191,6 +191,8 @@ pub struct Vm {
     /// instead of compiling it here. Set on the VM views render on: a view
     /// helper resolves names such as the current `req` through its own
     /// closure, which this VM's globals (copied once) would not follow.
+    /// A helper whose body names nothing outside its parameters still
+    /// compiles — it needs nothing from that closure.
     pub tree_walk_functions: bool,
     /// The environment those functions are called from: the template
     /// interpreter's, for the render in progress. A helper that reads a name
@@ -4454,6 +4456,15 @@ impl Vm {
                         &name, &props, content,
                     )
                     .map_err(|e| RuntimeError::new(e, span))?;
+                    self.template_out.push_str(&html);
+                    self.stack.push(Value::Null);
+                }
+                Op::TemplatePartial => {
+                    let data = self.stack.pop().unwrap();
+                    let name = self.stack.pop().unwrap();
+                    let span = self.current_span();
+                    let html = crate::template::vm_template::render_partial_block(&name, &data)
+                        .map_err(|e| RuntimeError::new(e, span))?;
                     self.template_out.push_str(&html);
                     self.stack.push(Value::Null);
                 }

@@ -79,6 +79,7 @@ user = User.find_by_email_and_active("alice@example.com", true)
 post = Post.find_by_title_and_published_and_author_id("Hello", true, 123)</code></pre>
             <p class="text-gray-400 mt-4">
                 These methods return the first matching record or <code>null</code> if not found.
+                A dynamic finder is <code>find_by</code> for the fields named after <code>find_by_</code>: the same query, so it follows a SQL connection, an STI subclass's <code>type</code> scope, and <code>grouped()</code>, and a field segment that is not an identifier is refused. A static method of that name, when the class defines one, is what runs. The call stays on the VM, in an action and in a script.
             </p>
         </div>
     </div>

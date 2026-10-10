@@ -219,21 +219,102 @@ pub(crate) fn sti_scope_clause(class_name: &str) -> String {
     format!(" FILTER doc.type IN [{}]", quoted.join(", "))
 }
 
-/// `find_by` / `first_by` on a SQL connection: the raw-SDBQL form those
-/// methods build is SoliDB-only, so express the lookup as a portable
-/// eq-filter `ListQuery` instead. Errors propagate — swallowing them to nil
-/// makes an outage indistinguishable from "not found".
+/// One or more equality filters, the shared body of `find_by`, `first_by`
+/// and `find_by_*`. One field keeps the query text those two have always
+/// emitted (`@val`); several fields bind `@val0`, `@val1`, … and AND them.
+pub(crate) fn find_first_by_fields(
+    class: &Rc<Class>,
+    fields: &[(String, serde_json::Value)],
+    order_by_key: bool,
+) -> Result<Value, String> {
+    if fields.is_empty() {
+        return Err("find_by() requires a field".to_string());
+    }
+    let collection = class_name_to_collection(&class.name);
+    // A `table "…"` model on a connection that cannot serve it must fail
+    // here rather than fall through to the document path below.
+    super::column_mode::ensure_supported(&collection)?;
+    // SQL connections can't run the raw-SDBQL form (and the document arm
+    // swallows an error into nil) — express the lookup as a portable
+    // eq-filter query instead.
+    if super::crud::collection_is_sql(&collection) {
+        return super::registry::run_on_collection_connection(&collection, || {
+            sql_find_first_by(class, &collection, fields, order_by_key)
+        });
+    }
+    let sdbql = document_find_first_sdbql(&collection, &class.name, fields, order_by_key);
+    let mut binds = std::collections::HashMap::new();
+    if fields.len() == 1 {
+        binds.insert("val".to_string(), fields[0].1.clone());
+    } else {
+        for (i, (_, value)) in fields.iter().enumerate() {
+            binds.insert(format!("val{i}"), value.clone());
+        }
+    }
+    if super::batch::is_active() {
+        let class2 = class.clone();
+        return Ok(super::batch::register(
+            sdbql,
+            binds,
+            Box::new(move |rows| {
+                Ok(match rows.first() {
+                    Some(doc) => super::crud::json_doc_to_instance(&class2, doc),
+                    None => Value::Null,
+                })
+            }),
+        ));
+    }
+    match super::crud::exec_with_auto_collection(sdbql, Some(binds), &collection) {
+        Ok(results) if !results.is_empty() => {
+            Ok(super::crud::json_doc_to_instance(class, &results[0]))
+        }
+        _ => Ok(Value::Null),
+    }
+}
+
+/// The SoliDB statement `find_by` / `first_by` / `find_by_*` run. One field
+/// matches the text those methods have always built, bind name included.
+fn document_find_first_sdbql(
+    collection: &str,
+    class_name: &str,
+    fields: &[(String, serde_json::Value)],
+    order_by_key: bool,
+) -> String {
+    let sti = sti_scope_clause(class_name);
+    let filter = if fields.len() == 1 {
+        format!("doc.{} == @val", fields[0].0)
+    } else {
+        fields
+            .iter()
+            .enumerate()
+            .map(|(i, (field, _))| format!("doc.{field} == @val{i}"))
+            .collect::<Vec<_>>()
+            .join(" AND ")
+    };
+    let sort = if order_by_key {
+        " SORT doc._key ASC"
+    } else {
+        ""
+    };
+    format!("FOR doc IN {collection} FILTER {filter}{sti}{sort} LIMIT 1 RETURN doc")
+}
+
+/// `find_by` / `first_by` / `find_by_*` on a SQL connection: the raw-SDBQL
+/// form is SoliDB-only, so express the lookup as a portable eq-filter
+/// `ListQuery` instead. Errors propagate — swallowing them to nil makes an
+/// outage indistinguishable from "not found".
 pub(super) fn sql_find_first_by(
     class: &Rc<Class>,
     collection: &str,
-    field: &str,
-    value: serde_json::Value,
+    fields: &[(String, serde_json::Value)],
     order_by_key: bool,
 ) -> Result<Value, String> {
     // Column-aware models filter on a real column.
     if let Some(schema) = super::column_mode::require_schema(collection)? {
         let mut q = crate::db::sql_columns_compile::ColumnQuery::new(schema.clone());
-        q.eq_filters.insert(field.to_string(), value);
+        for (field, value) in fields {
+            q.eq_filters.insert(field.clone(), value.clone());
+        }
         if super::registry::is_sti_subclass(&class.name) {
             if !schema.has_column("type") {
                 return Err(format!(
@@ -264,7 +345,9 @@ pub(super) fn sql_find_first_by(
         });
     }
     let mut eq_filters = std::collections::BTreeMap::new();
-    eq_filters.insert(field.to_string(), value);
+    for (field, value) in fields {
+        eq_filters.insert(field.clone(), value.clone());
+    }
     let mut lq = crate::db::ListQuery {
         table: collection.to_string(),
         eq_filters,
@@ -332,6 +415,54 @@ mod tests {
     use super::*;
 
     use crate::interpreter::value::Value;
+
+    fn fields(pairs: &[(&str, serde_json::Value)]) -> Vec<(String, serde_json::Value)> {
+        pairs
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn one_field_keeps_the_find_by_query_text() {
+        let query = document_find_first_sdbql(
+            "users",
+            "User",
+            &fields(&[("email", serde_json::json!("a@b.c"))]),
+            false,
+        );
+        assert_eq!(
+            query,
+            "FOR doc IN users FILTER doc.email == @val LIMIT 1 RETURN doc"
+        );
+        let ordered = document_find_first_sdbql(
+            "users",
+            "User",
+            &fields(&[("email", serde_json::json!("a@b.c"))]),
+            true,
+        );
+        assert_eq!(
+            ordered,
+            "FOR doc IN users FILTER doc.email == @val SORT doc._key ASC LIMIT 1 RETURN doc"
+        );
+    }
+
+    #[test]
+    fn several_fields_are_anded() {
+        let query = document_find_first_sdbql(
+            "users",
+            "User",
+            &fields(&[
+                ("email", serde_json::json!("a@b.c")),
+                ("active", serde_json::json!(true)),
+            ]),
+            false,
+        );
+        assert_eq!(
+            query,
+            "FOR doc IN users FILTER doc.email == @val0 AND doc.active == @val1 LIMIT 1 RETURN doc"
+        );
+    }
 
     #[test]
     fn string_form_accepts_array_of_scalars() {
