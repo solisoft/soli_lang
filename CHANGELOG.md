@@ -2,9 +2,9 @@
 
 ## [Unreleased]
 
-## [2.21.0] - 2026-10-10
+## [2.20.1] - 2026-10-10
 
-The first release since 2.19.0 to publish binaries: the v2.19.1 and v2.20.0 tags failed CI (`edge/Cargo.lock` still named the previous version) and published none. Installing 2.21.0 also brings what they carried: Soli apps inside Cloudflare Workers, a woken app answering in half the time, `tr()` 69× faster, and the native SoliDB driver by default (see 2.20.0, 2.19.1, 2.19.0).
+The first release since 2.19.0 to publish binaries: the v2.19.1 and v2.20.0 tags failed CI (`edge/Cargo.lock` still named the previous version) and published none. Installing 2.20.1 also brings what they carried: Soli apps inside Cloudflare Workers, a woken app answering in half the time, `tr()` 69× faster, and the native SoliDB driver by default (see 2.20.0, 2.19.1, 2.19.0).
 
 ### Added
 

@@ -235,6 +235,6 @@ repository, and it walks through all of this in pages of its own. Its
 [D1 page](https://cf.solisoft.net/d1) is a model on D1 you can press: each
 check-in is written by the Worker that answers you, and the page shows how long
 its queries spent in D1. Both the
-Workers build and D1 ship in Soli 2.21. The reference is the
+Workers build and D1 ship in Soli 2.20.1. The reference is the
 [edge guide](/docs/development-tools/edge), with every option of
 `soli edge build`, the configuration and the troubleshooting table.
