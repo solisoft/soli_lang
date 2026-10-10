@@ -235,11 +235,14 @@ end
 # X, LinkedIn, Facebook and Slack don't render an SVG og:image, so a post whose
 # hero is an SVG shares a 1200x630 PNG render of it from images/blog/og/<slug>.png
 # (rsvg-convert -w 1200 <slug>.svg | magick - -gravity center -crop 1200x630+0+0).
+#
+# A raster hero (jpg/png) is shared as it is. A post with no image at all
+# shares the generic docs card, so its link preview still has a picture.
 def blog_og_image(slug)
     let post = find_blog_post(slug)
     return null if post == null
     return "https://soli.solisoft.net/images/blog/og/" + slug + ".png" if blog_og_card?(slug)
-    return null if post["image"] == null
+    return "https://soli.solisoft.net/images/og/docs.png" if blog_og_generic?(post)
     return "https://soli.solisoft.net/images/blog/" + post["image"]
 end
 
@@ -247,8 +250,17 @@ def blog_og_card?(slug)
     file_exists("public/images/blog/og/" + slug + ".png")
 end
 
+# No hero, or an SVG one with no PNG render beside it: nothing a link preview
+# can show.
+def blog_og_generic?(post)
+    image = post["image"]
+    image.nil? || image.ends_with(".svg")
+end
+
 def blog_og_image_size(slug)
     return {"width": 1200, "height": 630} if blog_og_card?(slug)
+    let post = find_blog_post(slug)
+    return {"width": 1200, "height": 630} if !post.nil? && blog_og_generic?(post)
     null
 end
 
