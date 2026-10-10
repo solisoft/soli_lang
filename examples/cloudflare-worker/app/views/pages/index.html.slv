@@ -1,42 +1,82 @@
-<section class="hero">
-  <h1>Soli on Cloudflare Workers</h1>
-  <p class="lead">
-    This page was rendered by a Soli app running inside a Cloudflare Worker.
-    No server, no container: the Soli interpreter is compiled to WebAssembly
-    and boots next to your visitors, in Cloudflare's datacenter
-    <strong><%= @runtime["colo"] %></strong>.
-  </p>
-  <p><a class="button" href="/guide">Deploy your own</a> <a class="button ghost" href="/try">Try it</a></p>
+<section class="pass" aria-labelledby="pass-title">
+  <div class="pass-main">
+    <p class="pass-kicker">Rendered in Cloudflare datacenter</p>
+    <p class="flap" aria-label="<%= @runtime["colo"] %>">
+      <% for letter, i in @runtime["colo"].upcase.chars %><span style="--i: <%= i %>" aria-hidden="true"><%= letter %></span><% end %>
+    </p>
+    <h1 id="pass-title">A Soli app, answered by the datacenter nearest you</h1>
+    <p class="lead">
+      No server, no container. The Soli interpreter, compiled to WebAssembly,
+      ran this page's route, controller and view inside a Cloudflare Worker,
+      a few milliseconds from where you are.
+    </p>
+    <p class="actions">
+      <a class="button" href="/guide">Deploy your own</a>
+      <a class="button ghost" href="/try">Try it here</a>
+    </p>
+  </div>
+  <dl class="pass-stub">
+    <div><dt>Visitor</dt><dd><%= @runtime["country"] %></dd></div>
+    <div><dt>Datacenter</dt><dd><%= @runtime["colo"] %></dd></div>
+    <div><dt>Runtime</dt><dd><%= @runtime["runtime"] %></dd></div>
+    <div><dt>Soli</dt><dd><%= @runtime["version"] %></dd></div>
+    <div><dt>Rendered (UTC)</dt><dd><%= @runtime["rendered_at"].substring(11, 19) %></dd></div>
+  </dl>
 </section>
 
-<section class="grid">
-  <article>
-    <h2>The same app</h2>
-    <p>Routes, controllers, views, layouts and models are the ones <code>soli serve</code> runs.
-       <code>soli edge build</code> bundles the source into the Worker; the interpreter loads
-       it once per isolate and answers every request through the same request pipeline.</p>
-  </article>
-  <article>
-    <h2>Small enough</h2>
-    <p>The whole interpreter is about 9 MB of WebAssembly, 3 MB compressed. An isolate
-       boots the app in a few tens of milliseconds; after that a page takes a few.</p>
-  </article>
-  <article>
-    <h2>Database included</h2>
-    <p>Models run on Cloudflare D1 — SQLite next to the Worker, no server of your
-       own — or on SoliDB over HTTPS. Soli's interpreter is synchronous and both are
-       asynchronous: the wasm stack suspends on each query (JavaScript Promise
-       Integration) and resumes when the answer arrives.</p>
-  </article>
+<section class="board-section" aria-labelledby="board-title">
+  <h2 id="board-title">What a Worker app can reach</h2>
+  <p class="muted">The same models, jobs and attachments <code>soli serve</code> runs, wired to Cloudflare's own services.</p>
+  <table class="board">
+    <thead>
+      <tr><th scope="col">Service</th><th scope="col">What your app does with it</th><th scope="col">Status</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="code">D1</td>
+        <td>Models in SQLite, next to the Worker</td>
+        <td><a class="status live" href="/d1">Live on this site</a></td>
+      </tr>
+      <tr>
+        <td class="code">R2</td>
+        <td>Uploads, and video that seeks: <code>Range</code>, <code>304</code></td>
+        <td><span class="status">Soli 2.21</span></td>
+      </tr>
+      <tr>
+        <td class="code">Images</td>
+        <td>Resize and convert on read: <code>photo.jpg?w=400&amp;fmt=webp</code></td>
+        <td><span class="status">Soli 2.21</span></td>
+      </tr>
+      <tr>
+        <td class="code">Hyperdrive</td>
+        <td>Your Postgres, transactions included</td>
+        <td><span class="status">Soli 2.21</span></td>
+      </tr>
+      <tr>
+        <td class="code">Queues</td>
+        <td><code>perform_later</code>, retried with backoff</td>
+        <td><span class="status">Soli 2.21</span></td>
+      </tr>
+    </tbody>
+  </table>
 </section>
 
-<section>
-  <h2>What is on this site</h2>
+<section class="ship" aria-labelledby="ship-title">
+  <h2 id="ship-title">From an app folder to a Worker</h2>
+  <pre><code class="language-bash">./scripts/build-edge.sh                  # once per Soli version
+soli edge build . --runtime target/edge  # your app → dist/edge
+cd dist/edge && npx wrangler dev         # on workerd, locally
+npx wrangler deploy                      # on Cloudflare</code></pre>
+  <p class="muted">Nothing in the app changes. Its configuration moves to <code>wrangler.toml</code>; the <a href="/guide">guide</a> walks through it, and <a href="/limits">limits</a> lists what stays with <code>soli serve</code>.</p>
+</section>
+
+<section class="explore" aria-labelledby="explore-title">
+  <h2 id="explore-title">On this site</h2>
   <ul>
-    <li><a href="/guide">Guide</a> — from an app folder to a deployed Worker, step by step.</li>
-    <li><a href="/limits">Limits</a> — what the edge build runs, and what stays with <code>soli serve</code>.</li>
-    <li><a href="/try">Try it</a> — a form whose answer is computed by Soli, here, now.</li>
-    <li><a href="/d1">D1</a> — check in: a model on Cloudflare D1, written and read by this Worker.</li>
-    <li><a href="/api/info">/api/info</a> — the facts in the footer, as JSON.</li>
+    <li><a href="/try">Try it</a><span>A form whose answer Soli computes here, now.</span></li>
+    <li><a href="/d1">D1</a><span>Check in: a model written and read by this Worker.</span></li>
+    <li><a href="/guide">Guide</a><span>From an app folder to a deployed Worker.</span></li>
+    <li><a href="/limits">Limits</a><span>What runs here, and what stays with <code>soli serve</code>.</span></li>
+    <li><a href="/api/info">/api/info</a><span>The boarding pass above, as JSON.</span></li>
   </ul>
 </section>
