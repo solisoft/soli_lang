@@ -15,14 +15,14 @@ use std::cell::RefCell;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// One HTTP request as the host saw it. `query` is the raw query string,
-/// without the `?`.
+/// without the `?`; `body` the raw bytes, which a file upload makes binary.
 #[derive(Debug, Default, Clone)]
 pub struct EdgeRequest {
     pub method: String,
     pub path: String,
     pub query: String,
     pub headers: Vec<(String, String)>,
-    pub body: String,
+    pub body: Vec<u8>,
 }
 
 #[derive(Debug, Clone)]
@@ -176,17 +176,41 @@ pub fn handle(request: EdgeRequest) -> EdgeResponse {
         .find(|(name, _)| name.eq_ignore_ascii_case("cf-connecting-ip"))
         .map(|(_, ip)| ip.clone())
         .unwrap_or_default();
+    let content_type = request
+        .headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+        .map(|(_, value)| value.clone());
+    let (body, multipart_form, multipart_files) = match content_type.as_deref() {
+        Some(ct) if ct.starts_with("multipart/form-data") => {
+            let (fields, files) = parse_multipart(request.body, ct);
+            (String::new(), Some(fields), Some(files))
+        }
+        _ => (
+            String::from_utf8(request.body)
+                .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()),
+            None,
+            None,
+        ),
+    };
+    // `_method=PATCH` in a form, as under `soli serve`.
+    let method = apply_form_method_override(
+        Cow::Owned(request.method),
+        &body,
+        content_type.as_deref(),
+        multipart_form.as_deref(),
+    );
     // Nobody waits on the channel: the response is the return value.
     let (response_tx, _response_rx) = oneshot::channel();
     let mut data = RequestData {
-        method: Cow::Owned(request.method),
+        method,
         path: request.path,
         query,
         headers,
-        body: request.body,
+        body,
         body_reservation: None,
-        multipart_form: None,
-        multipart_files: None,
+        multipart_form,
+        multipart_files,
         peer_ip,
         enqueued_at: None,
         replay: false,
@@ -221,6 +245,31 @@ pub fn handle(request: EdgeRequest) -> EdgeResponse {
             body: response.body.to_vec(),
         }
     })
+}
+
+/// Split a multipart body into form fields and files with the parser `soli
+/// serve` uses. The body is already whole, so the parser's future never waits
+/// on anything: it is polled to the end here rather than handed to a runtime
+/// the edge build does not have.
+fn parse_multipart(
+    body: Vec<u8>,
+    content_type: &str,
+) -> (Vec<(String, String)>, Vec<UploadedFile>) {
+    use std::future::Future;
+    use std::task::{Context, Poll, Waker};
+    let mut parse = std::pin::pin!(super::file_upload::parse_multipart_body(
+        bytes::Bytes::from(body),
+        content_type
+    ));
+    let mut cx = Context::from_waker(Waker::noop());
+    // Never pending in practice; bounded so a parser that ever did wait could
+    // not spin the isolate forever.
+    for _ in 0..1024 {
+        if let Poll::Ready(parsed) = parse.as_mut().poll(&mut cx) {
+            return parsed;
+        }
+    }
+    (Vec::new(), Vec::new())
 }
 
 /// The scripts every page loads from the binary itself (`framework_assets` on

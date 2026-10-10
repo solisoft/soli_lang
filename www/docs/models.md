@@ -1004,7 +1004,7 @@ The veto fires at the first `false` — subsequent before-callbacks in the chain
 
 ## Attachments
 
-First-class file attachments use `has_one_attached` / `has_many_attached`. They default to the **disk** service (`./storage/attachments`, or `SOLI_ATTACHMENTS_PATH`) so a Postgres/SQLite app does not need SoliDB to keep files. Set `service: "s3"` (bucket `SOLI_ATTACHMENTS_BUCKET` or `S3_BUCKET`) or `service: "solidb"` to store elsewhere. `SOLI_ATTACHMENTS_SERVICE` changes the default for every `has_*_attached` declaration.
+First-class file attachments use `has_one_attached` / `has_many_attached`. They default to the **disk** service (`./storage/attachments`, or `SOLI_ATTACHMENTS_PATH`) so a Postgres/SQLite app does not need SoliDB to keep files. Set `service: "s3"` (bucket `SOLI_ATTACHMENTS_BUCKET` or `S3_BUCKET`), `service: "r2"` (Cloudflare R2 — the bucket binding on a [Cloudflare Worker](edge.md#files-uploads-images-and-video), R2's S3 API with the `s3` configuration under `soli serve`) or `service: "solidb"` to store elsewhere. `SOLI_ATTACHMENTS_SERVICE` changes the default for every `has_*_attached` declaration.
 
 ```soli
 class User < Model
@@ -1104,7 +1104,10 @@ The client's `Range` is forwarded, so an audio player that seeks gets
 `HEAD` returns the size without the body. The blob id is the `ETag`, so a
 revalidation is a `304` with no SoliDB round trip. An image with a transform
 in the query string (`?w=`, `?fmt=`…) is still loaded and transformed. Disk and
-S3 attachments are sent whole, without `Range`. The route uses
+S3 attachments are sent whole, without `Range`. On a Cloudflare Worker, an R2
+attachment is served by the Worker from the bucket — `Range`, `304` and image
+transforms through the Images binding included (see
+[Cloudflare Workers](edge.md#files-uploads-images-and-video)). The route uses
 [`solidb.blob_response`](builtins#solidbblob_responsecollection-blob_id-req-headers),
 which your own actions can call too.
 
@@ -1175,8 +1178,8 @@ end
 | `multiple` | `false` | `true` keeps an array of blob ids (`<field>_blob_ids`); `false` keeps one (`<field>_blob_id`). |
 | `content_types` | required for `uploader`; a safe default list for `has_*_attached` | Allow-list of MIME types. Anything else is rejected before storage. The default never includes a script-executing type — see above. |
 | `max_size` | — (required) | Hard cap in bytes. Above this → `_errors` populated, no blob stored. |
-| `service` | `solidb` for `uploader`; `disk` for `has_*_attached` | `"disk"`, `"s3"`, or `"solidb"`. |
-| `collection` | `<snake>_<field>s` | SoliDB collection (solidb) or key prefix (disk/s3). |
+| `service` | `solidb` for `uploader`; `disk` for `has_*_attached` | `"disk"`, `"s3"`, `"r2"`, or `"solidb"`. |
+| `collection` | `<snake>_<field>s` | SoliDB collection (solidb) or key prefix (disk/s3/r2). |
 | `format` | — | Convert image uploads to `"jpeg"`, `"png"`, or `"webp"` **before storage**. Non-image uploads (PDF, csv, …) are never converted. |
 | `quality` | `82` | Encoder quality (1–100) for lossy formats (`jpeg`, `webp`). |
 | `max_width` / `max_height` | — | Downscale the original to fit within these pixel bounds before storage, preserving aspect ratio. Never upscales. |

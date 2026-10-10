@@ -897,7 +897,7 @@ end</code></pre>
 
     <h2 id="uploaders" class="text-2xl font-bold text-white mb-6">Attachments</h2>
     <p class="text-gray-400 mb-4">
-        First-class attachments use <code>has_one_attached("avatar")</code> / <code>has_many_attached("photos")</code>. They default to the <strong class="text-white">disk</strong> service (<code>./storage/attachments</code>, or <code>SOLI_ATTACHMENTS_PATH</code>) so a SQL app does not need SoliDB for files. Pass <code>service: "s3"</code> (<code>SOLI_ATTACHMENTS_BUCKET</code>) or <code>service: "solidb"</code>. Destroy / <code>Model.delete(id)</code> purges the blobs. The older <code>uploader(name, options)</code> form still works and still defaults to SoliDB.
+        First-class attachments use <code>has_one_attached("avatar")</code> / <code>has_many_attached("photos")</code>. They default to the <strong class="text-white">disk</strong> service (<code>./storage/attachments</code>, or <code>SOLI_ATTACHMENTS_PATH</code>) so a SQL app does not need SoliDB for files. Pass <code>service: "s3"</code> (<code>SOLI_ATTACHMENTS_BUCKET</code>), <code>service: "r2"</code> (Cloudflare R2 &mdash; the bucket binding on a <a href="/docs/development-tools/edge#files" class="text-amber-400 hover:underline">Cloudflare Worker</a>, R2&rsquo;s S3 API with the <code>s3</code> configuration under <code>soli serve</code>) or <code>service: "solidb"</code>. Destroy / <code>Model.delete(id)</code> purges the blobs. The older <code>uploader(name, options)</code> form still works and still defaults to SoliDB.
     </p>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/user.sl</label>
@@ -972,7 +972,9 @@ end</code></pre>
         end. <code>HEAD</code> returns the size without the body. The blob id is the <code>ETag</code>, so a
         revalidation is a <code>304</code> with no SoliDB round trip. An image with a transform in the query string
         (<code>?w=</code>, <code>?fmt=</code>&hellip;) is still loaded and transformed. Disk and S3 attachments are sent
-        whole, without <code>Range</code>. The route uses
+        whole, without <code>Range</code>. On a Cloudflare Worker, an R2 attachment is served by the Worker from
+        the bucket &mdash; <code>Range</code>, <code>304</code> and image transforms through the Images binding included
+        (see <a href="/docs/development-tools/edge#files" class="text-amber-400 hover:underline">Cloudflare Workers</a>). The route uses
         <a href="/docs/builtins/upload#solidb-blob-response" class="text-amber-400 hover:underline">solidb.blob_response</a>,
         which your own actions can call too.
     </p>
@@ -982,7 +984,7 @@ end</code></pre>
         <li><code>multiple</code> &mdash; <code>false</code> stores one blob in <code>&lt;name&gt;_blob_id</code>; <code>true</code> stores an array of ids in <code>&lt;name&gt;_blob_ids</code>.</li>
         <li><code>content_types</code> &mdash; allowlist checked <strong>before</strong> the blob is stored. Anything else fails fast with no SoliDB round-trip. Required by <code>uploader</code>; <code>has_*_attached</code> falls back to a curated default (common images including BMP and TIFF, PDF, plain text, Markdown, CSV, JSON, Zip, Office, audio/video) that <strong>excludes every script-executing type</strong> &mdash; no <code>text/html</code>, no <code>image/svg+xml</code>, no XML &mdash; because the blob route serves files from your own origin. Passing the option narrows that list; there is no way to allow any type. <strong class="text-white">Upgrading:</strong> this default used to be "anything", so an app storing a type outside the list must now name it in <code>content_types</code>.</li>
         <li><code>max_size</code> &mdash; hard cap in bytes. Same fast-fail.</li>
-        <li><code>service</code> &mdash; <code>disk</code>, <code>s3</code>, or <code>solidb</code>. <code>has_*_attached</code> defaults to disk; <code>uploader</code> defaults to solidb.</li>
+        <li><code>service</code> &mdash; <code>disk</code>, <code>s3</code>, <code>r2</code>, or <code>solidb</code>. <code>has_*_attached</code> defaults to disk; <code>uploader</code> defaults to solidb.</li>
         <li><code>collection</code> &mdash; SoliDB collection or disk/S3 key prefix. Optional; defaults to <code>&lt;model_snake_case&gt;_&lt;field&gt;s</code>.</li>
         <li><code>format</code> &mdash; convert image uploads to <code>"jpeg"</code>, <code>"png"</code>, or <code>"webp"</code> <strong>before storage</strong>. Non-image uploads (PDF, csv, &hellip;) are never converted.</li>
         <li><code>quality</code> &mdash; encoder quality (1&ndash;100) for lossy formats (<code>jpeg</code>, <code>webp</code>). Defaults to <code>82</code>.</li>

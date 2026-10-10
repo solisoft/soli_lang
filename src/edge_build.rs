@@ -223,6 +223,16 @@ directory = "./public"
 # binding = "DB"
 # database_name = "my-app-db"
 # database_id = "…"
+
+# Attachments on R2 (`service: "r2"`; `npx wrangler r2 bucket create my-app-files`).
+# [[r2_buckets]]
+# binding = "ATTACHMENTS"
+# bucket_name = "my-app-files"
+
+# Image transforms on R2 attachment URLs (`?w=300&fmt=webp`) — without it they
+# answer the stored bytes.
+# [images]
+# binding = "IMAGES"
 "#,
     );
     config

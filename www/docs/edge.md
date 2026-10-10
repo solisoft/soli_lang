@@ -185,17 +185,88 @@ public `https://` address. Credentials follow the usual order (JWT login with
 Not available on the edge: PostgreSQL, MySQL and SQLite (native drivers), and
 the native SoliDB driver — the edge build uses D1 or SoliDB over HTTP.
 
+## Files: uploads, images and video
+
+Files in `public/` are Cloudflare static assets: images and video served
+before the Worker runs, `Range` included.
+
+Uploads work as under `soli serve` — a multipart form reaches the action, and
+`find_uploaded_file` / `attach_<field>` take the file — and they are kept in
+[R2](https://developers.cloudflare.com/r2/), Cloudflare's object storage, with
+`service: "r2"`:
+
+```soli
+class Photo < Model
+  has_one_attached("image", {
+    "service": "r2",
+    "content_types": ["image/jpeg", "image/png", "video/mp4"],
+    "max_size": 20_000_000
+  })
+end
+```
+
+```bash
+npx wrangler r2 bucket create my-app-files
+```
+
+```toml
+[[r2_buckets]]
+binding = "ATTACHMENTS"
+bucket_name = "my-app-files"
+
+# Image transforms (optional).
+[images]
+binding = "IMAGES"
+```
+
+The Worker talks to the bucket through its binding: no keys to keep.
+`SOLI_ATTACHMENTS_R2_BINDING` names another binding than `ATTACHMENTS`. Under
+`soli serve` the same declaration uses R2's S3-compatible API, with the `s3`
+service's configuration — `S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com`,
+`S3_REGION=auto`, an R2 API token's `S3_ACCESS_KEY` / `S3_SECRET_KEY`, and
+`SOLI_ATTACHMENTS_BUCKET` — so a local app and its Worker read the same
+objects, under the same keys (`<collection>/<blob id>`).
+
+**Reading back never crosses wasm.** The blob route (`<field>_url`) checks the
+record and sets its headers, then hands the object to `worker.js`, which
+answers from the bucket. A video player that seeks gets `206 Partial Content`
+with just the bytes it asked for, a revalidation gets `304`, and memory stays
+flat whatever the file's size.
+
+**Image transforms** — `photo_url({"w": 400, "fmt": "webp"})`, `?thumb=`,
+`?square=`, `?fit=cover`, `?crop=`, `?rot=`, `?gray=1`, `?q=` — are run by the
+[Images binding](https://developers.cloudflare.com/images/transform-images/bindings/),
+WebP and AVIF output included, on Cloudflare's machines rather than in the
+Worker's CPU budget. Without an `[images]` binding they answer the stored
+bytes. Images has no hue rotation or inversion, so `hue` and `invert` are
+ignored there, and `blur`, `bright` and `contrast` are approximations of what
+`soli serve` computes. Images bills transformations beyond its free monthly
+allowance.
+
+In the Worker itself, `Image` decodes JPEG, PNG, GIF, BMP, ICO and TIFF, and encodes JPEG and PNG.
+An uploader's storage-time transform (`max_width`, `format: "jpeg"`) works
+within the Worker's CPU limit; `format: "webp"` raises, since lossy WebP needs
+libwebp, which is C — use `fmt=webp` on the URL instead.
+
+What uploads cannot do on the edge:
+
+- **Large files.** The body arrives whole, and a file is copied a few times on
+  its way into R2 (the request, wasm memory, the parsed part, its base64 form),
+  against an isolate limit of 128 MB: keep `max_size` to about 20 MB.
+- **Resumable (tus) uploads and `direct_upload`**, which need a disk or S3
+  credentials.
+
 ## What runs on the edge
 
 | Runs | Stays with `soli serve` |
 |------|-------------------------|
 | routes, controllers, `before_action`, middleware | WebSockets, LiveView |
 | views, layouts, partials, components, helpers | server-sent events, `stream`, blob streaming (answered `501`) |
-| query strings, URL-encoded forms, JSON | multipart uploads, file writes |
+| query strings, URL-encoded and multipart forms, JSON | resumable (tus) and direct uploads, file writes |
 | i18n from `config/locales` | background jobs, cron, sending mail |
 | models on D1, or on SoliDB over HTTP(S) | PostgreSQL, MySQL, SQLite, the native SoliDB driver; transactions on D1 |
 | the `HTTP` class (`fetch`); `HTTP.parallel*` run one after another | `--dev`: hot reload, dev bar, REPL |
-| static files from `public/` | PDF, Office, lossy WebP, `System.run` |
+| static files from `public/`; attachments on R2, with `Range` and image transforms | PDF, Office, lossy WebP encoding in wasm, `System.run` |
 
 A builtin that needs what a Worker lacks returns an error naming the edge
 build ("… is not available on the edge (Cloudflare Workers) build").
@@ -227,4 +298,6 @@ build ("… is not available on the edge (Cloudflare Workers) build").
 | `no edge runtime found` from `soli edge build` | pass `--runtime` or set `SOLI_EDGE_RUNTIME` to the directory `build-edge.sh` wrote |
 | a model call hangs, then the request fails | `SOLIDB_HOST` is not reachable from Cloudflare (a LAN address, `localhost`) |
 | `no D1 binding named DB` | `wrangler.toml` lacks the `[[d1_databases]]` block whose `binding` the D1 url names |
+| `no R2 binding named ATTACHMENTS` | `wrangler.toml` lacks the `[[r2_buckets]]` block an `r2` attachment needs |
+| an image URL with `?w=` answers the full-size original | no `[images]` binding in `wrangler.toml` |
 | `… is not supported on Cloudflare D1` | a transaction, a column-aware model, jobs or cron on a D1 connection |

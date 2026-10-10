@@ -42,7 +42,8 @@ pub struct UploaderConfig {
     /// `(max_width, max_height)` preserving aspect ratio; never upscaled.
     pub max_width: Option<u32>,
     pub max_height: Option<u32>,
-    /// Storage backend: `"solidb"` (default for `uploader`), `"disk"`, or `"s3"`.
+    /// Storage backend: `"solidb"` (default for `uploader`), `"disk"`, `"s3"`,
+    /// or `"r2"` (Cloudflare R2).
     /// `has_one_attached` / `has_many_attached` default to `"disk"`.
     pub service: String,
 }

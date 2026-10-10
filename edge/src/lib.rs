@@ -63,24 +63,28 @@ pub extern "C" fn soli_alloc(len: usize) -> *mut u8 {
     ptr
 }
 
-/// Handle the JSON request at `ptr` (`{method, path, query, headers, body}`,
-/// from `soli_alloc`). Returns a pointer to the JSON response
-/// (`{status, headers, body}`), `soli_response_len` bytes long and valid until
-/// the next call.
+/// Handle the request at `ptr` (from `soli_alloc`): a little-endian `u32`
+/// length, that many bytes of JSON head (`{method, path, query, headers}`),
+/// then the raw body. Returns a pointer to the response, `soli_response_len`
+/// bytes long and valid until the next call, in the same frame: a `u32`
+/// length, the JSON head (`{status, headers}`), then the raw body.
+///
+/// The bodies travel as bytes, not inside the JSON: an uploaded photo, or an
+/// image the app answers with, is not UTF-8.
 #[no_mangle]
 pub extern "C" fn soli_handle(ptr: *mut u8, len: usize) -> *const u8 {
     // SAFETY: `ptr`/`len` describe the buffer `soli_alloc(len)` returned, which
     // the host filled and hands back exactly once.
     let input = unsafe { Vec::from_raw_parts(ptr, len, len) };
-    let response = match serde_json::from_slice::<serde_json::Value>(&input) {
-        Ok(json) => {
+    let response = match split_frame(input) {
+        Ok((json, body)) => {
             let field = |key: &str| json[key].as_str().unwrap_or_default().to_string();
             edge::handle(EdgeRequest {
                 method: field("method"),
                 path: field("path"),
                 query: field("query"),
                 headers: serde_json::from_value(json["headers"].clone()).unwrap_or_default(),
-                body: field("body"),
+                body,
             })
         }
         Err(e) => edge::EdgeResponse {
@@ -89,17 +93,36 @@ pub extern "C" fn soli_handle(ptr: *mut u8, len: usize) -> *const u8 {
             body: format!("Malformed request from the host: {e}").into_bytes(),
         },
     };
-    let output = serde_json::json!({
+    let head = serde_json::json!({
         "status": response.status,
         "headers": response.headers,
-        "body": String::from_utf8_lossy(&response.body),
     })
     .to_string()
     .into_bytes();
+    let mut output = Vec::with_capacity(4 + head.len() + response.body.len());
+    output.extend_from_slice(&(head.len() as u32).to_le_bytes());
+    output.extend_from_slice(&head);
+    output.extend_from_slice(&response.body);
     RESPONSE.with(|cell| {
         *cell.borrow_mut() = output;
         cell.borrow().as_ptr()
     })
+}
+
+/// A frame's JSON head and the body after it. The body keeps the input's
+/// allocation: an upload is not copied a second time.
+fn split_frame(mut input: Vec<u8>) -> Result<(serde_json::Value, Vec<u8>), String> {
+    let head_len = input
+        .get(..4)
+        .map(|n| u32::from_le_bytes([n[0], n[1], n[2], n[3]]) as usize)
+        .ok_or("no head length")?;
+    let head_end = 4usize
+        .checked_add(head_len)
+        .filter(|end| *end <= input.len())
+        .ok_or("head longer than the frame")?;
+    let json = serde_json::from_slice(&input[4..head_end]).map_err(|e| e.to_string())?;
+    input.drain(..head_end);
+    Ok((json, input))
 }
 
 #[no_mangle]

@@ -1185,9 +1185,9 @@ pub(super) fn build_uploader_config_from_args(
                 "service" => {
                     if let Value::String(s) = v {
                         let normalized = s.to_lowercase();
-                        if !matches!(normalized.as_str(), "solidb" | "disk" | "s3") {
+                        if !matches!(normalized.as_str(), "solidb" | "disk" | "s3" | "r2") {
                             return Err(format!(
-                                "uploader(\"{}\") service must be \"solidb\", \"disk\", or \"s3\", got {:?}",
+                                "uploader(\"{}\") service must be \"solidb\", \"disk\", \"s3\", or \"r2\", got {:?}",
                                 name, s
                             ));
                         }
@@ -1367,9 +1367,9 @@ pub(super) fn build_attached_config_from_args(
                     "service" => {
                         if let Value::String(s) = v {
                             let normalized = s.to_lowercase();
-                            if !matches!(normalized.as_str(), "solidb" | "disk" | "s3") {
+                            if !matches!(normalized.as_str(), "solidb" | "disk" | "s3" | "r2") {
                                 return Err(format!(
-                                    "has_*_attached(\"{}\") service must be \"solidb\", \"disk\", or \"s3\"",
+                                    "has_*_attached(\"{}\") service must be \"solidb\", \"disk\", \"s3\", or \"r2\"",
                                     name
                                 ));
                             }
@@ -1385,7 +1385,7 @@ pub(super) fn build_attached_config_from_args(
     let env_service = crate::platform::env::var("SOLI_ATTACHMENTS_SERVICE")
         .ok()
         .map(|s| s.to_lowercase())
-        .filter(|s| matches!(s.as_str(), "solidb" | "disk" | "s3"));
+        .filter(|s| matches!(s.as_str(), "solidb" | "disk" | "s3" | "r2"));
     let service = service
         .or(env_service)
         .unwrap_or_else(|| "disk".to_string());

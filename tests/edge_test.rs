@@ -9,6 +9,27 @@ use std::path::Path;
 
 use solilang::serve::edge::{self, EdgeRequest};
 
+/// A controller the example app does not have, mounted only here: it echoes
+/// an upload back, to prove bytes cross the edge entry point intact both ways.
+const PROBE_CONTROLLER: &str = r#"
+class ProbeController < Controller
+  # POST /probe
+  def create(req)
+    file = find_uploaded_file(req, "file")
+    {
+      "status": 200,
+      "headers": {"Content-Type": file["content_type"], "X-Name": file["filename"], "X-Note": params["note"]},
+      "body_base64": file["data"]
+    }
+  end
+
+  # PATCH /probe
+  def update(req)
+    {"status": 200, "body": "patched #{params["title"]}"}
+  end
+end
+"#;
+
 fn example_files() -> Vec<(String, Vec<u8>)> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/cloudflare-worker");
     let mut files = Vec::new();
@@ -22,7 +43,31 @@ fn example_files() -> Vec<(String, Vec<u8>)> {
             }
         }
     }
+    for (path, contents) in files.iter_mut() {
+        if path == "/app/config/routes.sl" {
+            contents.extend_from_slice(
+                b"\npost(\"/probe\", \"probe#create\")\npatch(\"/probe\", \"probe#update\")\n",
+            );
+        }
+    }
+    files.push((
+        "/app/app/controllers/probe_controller.sl".to_string(),
+        PROBE_CONTROLLER.as_bytes().to_vec(),
+    ));
     files
+}
+
+fn post(content_type: &str, body: Vec<u8>) -> edge::EdgeResponse {
+    edge::handle(EdgeRequest {
+        method: "POST".to_string(),
+        path: "/probe".to_string(),
+        query: String::new(),
+        headers: vec![
+            ("host".to_string(), "cf.example.test".to_string()),
+            ("content-type".to_string(), content_type.to_string()),
+        ],
+        body,
+    })
 }
 
 fn get(path: &str, query: &str) -> (u16, String) {
@@ -35,7 +80,7 @@ fn get(path: &str, query: &str) -> (u16, String) {
             ("cf-colo".to_string(), "MRS".to_string()),
             ("cf-ipcountry".to_string(), "FR".to_string()),
         ],
-        body: String::new(),
+        body: Vec::new(),
     });
     (response.status, String::from_utf8(response.body).unwrap())
 }
@@ -76,6 +121,34 @@ fn boots_a_mounted_app_and_answers_requests() {
             assert_eq!(info["colo"], "MRS");
 
             assert_eq!(get("/no/such/page", "").0, 404);
+
+            // A multipart upload of bytes that are not UTF-8 reaches the action
+            // whole, and an action answering bytes sends them back unchanged.
+            let image: Vec<u8> = (0..=255u8).cycle().take(4096).collect();
+            let mut body = b"--XyZ\r\nContent-Disposition: form-data; name=\"note\"\r\n\r\nhello\r\n--XyZ\r\nContent-Disposition: form-data; name=\"file\"; filename=\"pixels.png\"\r\nContent-Type: image/png\r\n\r\n".to_vec();
+            body.extend_from_slice(&image);
+            body.extend_from_slice(b"\r\n--XyZ--\r\n");
+            let response = post("multipart/form-data; boundary=XyZ", body);
+            assert_eq!(response.status, 200, "{}", String::from_utf8_lossy(&response.body));
+            assert_eq!(response.body, image);
+            let header = |name: &str| {
+                response
+                    .headers
+                    .iter()
+                    .find(|(n, _)| n.eq_ignore_ascii_case(name))
+                    .map(|(_, v)| v.clone())
+            };
+            assert_eq!(header("content-type").as_deref(), Some("image/png"));
+            assert_eq!(header("x-name").as_deref(), Some("pixels.png"));
+            assert_eq!(header("x-note").as_deref(), Some("hello"));
+
+            // A form's `_method` field picks the verb, as under `soli serve`.
+            let response = post(
+                "application/x-www-form-urlencoded",
+                b"_method=PATCH&title=edge".to_vec(),
+            );
+            assert_eq!(response.status, 200);
+            assert_eq!(String::from_utf8(response.body).unwrap(), "patched edge");
 
             // The instant-navigation script every page links to.
             let (status, body) = get("/__soli/nav.js", "v=1");

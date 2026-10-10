@@ -143,6 +143,51 @@ SOLI_DB_ADAPTER = "d1"</code></pre>
         Over SoliDB's HTTP API. The Worker must be able to reach <code class="text-amber-400">SOLIDB_HOST</code>: a public <code>https://</code> address. Credentials follow the usual order (JWT login with <code>SOLIDB_USERNAME</code> / <code>SOLIDB_PASSWORD</code>, <code>SOLIDB_API_KEY</code>, then basic auth). PostgreSQL, MySQL, SQLite and the native SoliDB driver are not available on the edge: it uses D1 or SoliDB over HTTP.
     </p>
 
+    <h2 id="files" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Files: uploads, images and video</h2>
+    <p class="text-gray-400 mb-6">
+        Files in <code>public/</code> are Cloudflare static assets: images and video served before the Worker runs, <code>Range</code> included.
+    </p>
+    <p class="text-gray-400 mb-6">
+        Uploads work as under <code class="text-amber-400">soli serve</code> &mdash; a multipart form reaches the action, and <code>find_uploaded_file</code> / <code>attach_&lt;field&gt;</code> take the file &mdash; and they are kept in <a href="https://developers.cloudflare.com/r2/" class="text-amber-400 hover:underline">R2</a>, Cloudflare's object storage, with <code class="text-amber-400">service: "r2"</code>:
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-4">
+        <pre data-filename="app/models/photo.sl"><code class="language-soli text-sm">class Photo &lt; Model
+  has_one_attached("image", {
+    "service": "r2",
+    "content_types": ["image/jpeg", "image/png", "video/mp4"],
+    "max_size": 20_000_000
+  })
+end</code></pre>
+    </div>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-4">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">npx wrangler r2 bucket create my-app-files</code></pre>
+    </div>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="wrangler.toml"><code class="language-toml text-sm">[[r2_buckets]]
+binding = "ATTACHMENTS"
+bucket_name = "my-app-files"
+
+# Image transforms (optional).
+[images]
+binding = "IMAGES"</code></pre>
+    </div>
+    <p class="text-gray-400 mb-6">
+        The Worker talks to the bucket through its binding: no keys to keep. <code class="text-amber-400">SOLI_ATTACHMENTS_R2_BINDING</code> names another binding than <code>ATTACHMENTS</code>. Under <code>soli serve</code> the same declaration uses R2's S3-compatible API, with the <code>s3</code> service's configuration &mdash; <code>S3_ENDPOINT=https://&lt;account&gt;.r2.cloudflarestorage.com</code>, <code>S3_REGION=auto</code>, an R2 API token's <code>S3_ACCESS_KEY</code> / <code>S3_SECRET_KEY</code>, and <code>SOLI_ATTACHMENTS_BUCKET</code> &mdash; so a local app and its Worker read the same objects, under the same keys (<code>&lt;collection&gt;/&lt;blob id&gt;</code>).
+    </p>
+    <p class="text-gray-400 mb-6">
+        <strong class="text-white">Reading back never crosses wasm.</strong> The blob route (<code>&lt;field&gt;_url</code>) checks the record and sets its headers, then hands the object to <code>worker.js</code>, which answers from the bucket. A video player that seeks gets <code>206 Partial Content</code> with just the bytes it asked for, a revalidation gets <code>304</code>, and memory stays flat whatever the file's size.
+    </p>
+    <p class="text-gray-400 mb-6">
+        <strong class="text-white">Image transforms</strong> &mdash; <code>photo_url({"w": 400, "fmt": "webp"})</code>, <code>?thumb=</code>, <code>?square=</code>, <code>?fit=cover</code>, <code>?crop=</code>, <code>?rot=</code>, <code>?gray=1</code>, <code>?q=</code> &mdash; are run by the <a href="https://developers.cloudflare.com/images/transform-images/bindings/" class="text-amber-400 hover:underline">Images binding</a>, WebP and AVIF output included, on Cloudflare's machines rather than in the Worker's CPU budget. Without an <code>[images]</code> binding they answer the stored bytes. Images has no hue rotation or inversion, so <code>hue</code> and <code>invert</code> are ignored there, and <code>blur</code>, <code>bright</code> and <code>contrast</code> are approximations of what <code>soli serve</code> computes. Images bills transformations beyond its free monthly allowance.
+    </p>
+    <p class="text-gray-400 mb-4">
+        In the Worker itself, <code>Image</code> decodes JPEG, PNG, GIF, BMP, ICO and TIFF, and encodes JPEG and PNG. An uploader's storage-time transform (<code>max_width</code>, <code>format: "jpeg"</code>) works within the Worker's CPU limit; <code>format: "webp"</code> raises, since lossy WebP needs libwebp, which is C &mdash; use <code>fmt=webp</code> on the URL instead. What uploads cannot do on the edge:
+    </p>
+    <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-12">
+        <li><strong class="text-white">Large files.</strong> The body arrives whole, and a file is copied a few times on its way into R2 (the request, wasm memory, the parsed part, its base64 form), against an isolate limit of 128&nbsp;MB: keep <code>max_size</code> to about 20&nbsp;MB.</li>
+        <li><strong class="text-white">Resumable (tus) uploads and <code>direct_upload</code></strong>, which need a disk or S3 credentials.</li>
+    </ul>
+
     <h2 id="scope" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What runs on the edge</h2>
     <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6">
         <table class="w-full text-sm text-left">
@@ -150,11 +195,11 @@ SOLI_DB_ADAPTER = "d1"</code></pre>
             <tbody class="text-gray-400">
                 <tr class="border-b border-white/5"><td class="py-3 px-4">routes, controllers, <code>before_action</code>, middleware</td><td class="py-3 px-4">WebSockets, LiveView</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">views, layouts, partials, components, helpers</td><td class="py-3 px-4">server-sent events, <code>stream</code>, blob streaming (answered <code>501</code>)</td></tr>
-                <tr class="border-b border-white/5"><td class="py-3 px-4">query strings, URL-encoded forms, JSON</td><td class="py-3 px-4">multipart uploads, file writes</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4">query strings, URL-encoded and multipart forms, JSON</td><td class="py-3 px-4">resumable (tus) and direct uploads, file writes</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">i18n from <code>config/locales</code></td><td class="py-3 px-4">background jobs, cron, sending mail</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">models on D1, or on SoliDB over HTTP(S)</td><td class="py-3 px-4">PostgreSQL, MySQL, SQLite, the native SoliDB driver; transactions on D1</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">the <code>HTTP</code> class (<code>fetch</code>); <code>HTTP.parallel*</code> run one after another</td><td class="py-3 px-4"><code>--dev</code>: hot reload, dev bar, REPL</td></tr>
-                <tr><td class="py-3 px-4">static files from <code>public/</code></td><td class="py-3 px-4">PDF, Office, lossy WebP, <code>System.run</code></td></tr>
+                <tr><td class="py-3 px-4">static files from <code>public/</code>; attachments on R2, with <code>Range</code> and image transforms</td><td class="py-3 px-4">PDF, Office, lossy WebP encoding in wasm, <code>System.run</code></td></tr>
             </tbody>
         </table>
     </div>
@@ -180,7 +225,9 @@ SOLI_DB_ADAPTER = "d1"</code></pre>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no edge runtime found</code> from <code>soli edge build</code></td><td class="py-3 px-4">pass <code>--runtime</code> or set <code>SOLI_EDGE_RUNTIME</code> to the directory <code>build-edge.sh</code> wrote</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">a model call hangs, then the request fails</td><td class="py-3 px-4"><code>SOLIDB_HOST</code> is not reachable from Cloudflare (a LAN address, <code>localhost</code>)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no D1 binding named DB</code></td><td class="py-3 px-4"><code>wrangler.toml</code> lacks the <code>[[d1_databases]]</code> block whose <code>binding</code> the D1 url names</td></tr>
-                <tr><td class="py-3 px-4"><code>… is not supported on Cloudflare D1</code></td><td class="py-3 px-4">a transaction, a column-aware model, jobs or cron on a D1 connection</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>… is not supported on Cloudflare D1</code></td><td class="py-3 px-4">a transaction, a column-aware model, jobs or cron on a D1 connection</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no R2 binding named ATTACHMENTS</code></td><td class="py-3 px-4"><code>wrangler.toml</code> lacks the <code>[[r2_buckets]]</code> block an <code>r2</code> attachment needs</td></tr>
+                <tr><td class="py-3 px-4">an image URL with <code>?w=</code> answers the full-size original</td><td class="py-3 px-4">no <code>[images]</code> binding in <code>wrangler.toml</code></td></tr>
             </tbody>
         </table>
     </div>

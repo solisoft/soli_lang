@@ -1,8 +1,12 @@
-//! First-class file attachments: disk and S3 blob storage.
+//! First-class file attachments: disk, S3 and Cloudflare R2 blob storage.
 //!
 //! `has_one_attached` / `has_many_attached` default to the `disk` service
 //! (`SOLI_ATTACHMENTS_PATH`, default `./storage/attachments`). `s3` uses
 //! `SOLI_ATTACHMENTS_BUCKET` plus the same AWS/S3 credentials as `S3.*`.
+//! `r2` is Cloudflare R2: on the edge build through the Worker's bucket
+//! binding (`SOLI_ATTACHMENTS_R2_BINDING`, default `ATTACHMENTS`), under
+//! `soli serve` through R2's S3-compatible API with the `s3` configuration —
+//! the same bucket, the same keys, from either side.
 //! The existing `uploader(...)` DSL still defaults to SoliDB blobs.
 
 use std::fs;
@@ -25,7 +29,7 @@ use super::args::hash_str;
 const DEFAULT_DISK_ROOT: &str = "./storage/attachments";
 
 /// What a build without the `cloud` feature says when an application asks
-/// for the `s3` service.
+/// for the `s3` service (or `r2`, which natively speaks the S3 API).
 #[cfg(not(feature = "cloud"))]
 const NO_CLOUD: &str =
     "this build of soli has no S3 attachment service: it was built without the `cloud` feature";
@@ -76,13 +80,17 @@ pub fn store_bytes(
     data: Vec<u8>,
 ) -> Result<String, String> {
     match service {
+        #[cfg(target_arch = "wasm32")]
+        "r2" => r2::store(collection, filename, content_type, data),
         #[cfg(feature = "cloud")]
-        "s3" => store_s3(collection, filename, content_type, data),
+        "s3" | "r2" => store_s3(collection, filename, content_type, data),
         #[cfg(not(feature = "cloud"))]
         "s3" => Err(NO_CLOUD.to_string()),
+        #[cfg(not(any(feature = "cloud", target_arch = "wasm32")))]
+        "r2" => Err(NO_CLOUD.to_string()),
         "disk" => store_disk(collection, filename, content_type, data),
         other => Err(format!(
-            "unknown attachment service {other:?} (use disk, s3, or solidb)"
+            "unknown attachment service {other:?} (use disk, s3, r2, or solidb)"
         )),
     }
 }
@@ -101,12 +109,12 @@ fn store_from_tus(service: &str, collection: &str, tus_id: &str) -> Result<Strin
     let id = match service {
         "disk" => store_disk_from_path(collection, filename, content_type, path)?,
         #[cfg(feature = "cloud")]
-        "s3" => store_s3_from_path(collection, filename, content_type, path)?,
+        "s3" | "r2" => store_s3_from_path(collection, filename, content_type, path)?,
         #[cfg(not(feature = "cloud"))]
-        "s3" => return Err(NO_CLOUD.to_string()),
+        "s3" | "r2" => return Err(NO_CLOUD.to_string()),
         other => {
             return Err(format!(
-                "a resumable upload can be attached to a disk or s3 attachment, not {other:?}"
+                "a resumable upload can be attached to a disk, s3 or r2 attachment, not {other:?}"
             ))
         }
     };
@@ -296,7 +304,7 @@ fn s3_bucket() -> Result<String, String> {
         .map_err(|_| "SOLI_ATTACHMENTS_BUCKET (or S3_BUCKET) is required for service: s3".into())
 }
 
-#[cfg(feature = "cloud")]
+/// The object key of a blob in a bucket, S3 or R2: `<collection>/<id>`.
 fn s3_key(collection: &str, id: &str) -> String {
     format!("{}/{}", sanitize_part(collection), sanitize_part(id))
 }
@@ -338,6 +346,133 @@ fn delete_s3(collection: &str, id: &str) -> Result<(), String> {
     let key = s3_key(collection, id);
     run_s3(S3Client::from_env()?.delete_object(&bucket, &key))
         .map_err(|e| format!("attachment s3 delete: {e}"))
+}
+
+/// The name of the R2 bucket binding in `wrangler.toml`.
+fn r2_binding() -> String {
+    crate::platform::env::var("SOLI_ATTACHMENTS_R2_BINDING")
+        .ok()
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "ATTACHMENTS".to_string())
+}
+
+/// `r2` on the edge build: the Worker's R2 bucket binding, through the host's
+/// `soli_r2` import (`edge/js/jspi.js`), which the wasm stack suspends on like
+/// a `fetch`. Keys and the `original-filename` metadata match what the `s3`
+/// client writes, so `soli serve` reads the same bucket through R2's S3 API.
+#[cfg(target_arch = "wasm32")]
+mod r2 {
+    use super::{r2_binding, s3_key, BlobMeta};
+
+    #[link(wasm_import_module = "./jspi.js")]
+    extern "C" {
+        /// Takes the JSON head at `head`/`head_len` and the bytes to store at
+        /// `body`/`body_len`. Returns a buffer the host allocated with
+        /// `soli_alloc`: a little-endian `u32` head length, a `u32` body
+        /// length, the JSON head, then the body. Ownership passes back to Rust.
+        fn soli_r2(head: *const u8, head_len: usize, body: *const u8, body_len: usize) -> *mut u8;
+    }
+
+    fn call(
+        op: &str,
+        key: &str,
+        mut head: serde_json::Value,
+        body: &[u8],
+    ) -> Result<(serde_json::Value, Vec<u8>), String> {
+        head["op"] = op.into();
+        head["binding"] = r2_binding().into();
+        head["key"] = key.into();
+        let head = head.to_string();
+        // SAFETY: the host reads the two buffers, then returns one from
+        // `soli_alloc(8 + h + b)` whose first 8 bytes are `h` and `b`.
+        let (head, body) = unsafe {
+            let out = soli_r2(head.as_ptr(), head.len(), body.as_ptr(), body.len());
+            if out.is_null() {
+                return Err("the host returned no response".to_string());
+            }
+            let mut lens = [0u8; 8];
+            std::ptr::copy_nonoverlapping(out, lens.as_mut_ptr(), 8);
+            let head_len = u32::from_le_bytes([lens[0], lens[1], lens[2], lens[3]]) as usize;
+            let body_len = u32::from_le_bytes([lens[4], lens[5], lens[6], lens[7]]) as usize;
+            let total = 8 + head_len + body_len;
+            let mut buffer = Vec::from_raw_parts(out, total, total);
+            let body = buffer.split_off(8 + head_len);
+            (buffer.split_off(8), body)
+        };
+        let json: serde_json::Value = serde_json::from_slice(&head)
+            .map_err(|e| format!("malformed response from the host: {e}"))?;
+        if json["ok"].as_bool() != Some(true) {
+            return Err(json["error"]
+                .as_str()
+                .unwrap_or("unknown R2 error")
+                .to_string());
+        }
+        Ok((json, body))
+    }
+
+    fn meta(json: &serde_json::Value) -> BlobMeta {
+        BlobMeta {
+            filename: json["filename"].as_str().unwrap_or("file").to_string(),
+            content_type: json["content_type"]
+                .as_str()
+                .unwrap_or("application/octet-stream")
+                .to_string(),
+            size: json["size"].as_u64().unwrap_or(0),
+        }
+    }
+
+    pub(super) fn store(
+        collection: &str,
+        filename: &str,
+        content_type: &str,
+        data: Vec<u8>,
+    ) -> Result<String, String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let head = serde_json::json!({ "content_type": content_type, "filename": filename });
+        call("put", &s3_key(collection, &id), head, &data)
+            .map_err(|e| format!("attachment r2 put: {e}"))?;
+        Ok(id)
+    }
+
+    pub(super) fn read(collection: &str, id: &str) -> Result<(BlobMeta, Vec<u8>), String> {
+        let (json, data) = call("get", &s3_key(collection, id), serde_json::json!({}), &[])
+            .map_err(|e| format!("attachment r2 get: {e}"))?;
+        if json["found"].as_bool() != Some(true) {
+            return Err("attachment not found".to_string());
+        }
+        Ok((meta(&json), data))
+    }
+
+    pub(super) fn head(collection: &str, id: &str) -> Result<Option<BlobMeta>, String> {
+        let (json, _) = call("head", &s3_key(collection, id), serde_json::json!({}), &[])
+            .map_err(|e| format!("attachment r2 head: {e}"))?;
+        Ok((json["found"].as_bool() == Some(true)).then(|| meta(&json)))
+    }
+
+    pub(super) fn delete(collection: &str, id: &str) -> Result<(), String> {
+        call(
+            "delete",
+            &s3_key(collection, id),
+            serde_json::json!({}),
+            &[],
+        )
+        .map(|_| ())
+        .map_err(|e| format!("attachment r2 delete: {e}"))
+    }
+}
+
+fn meta_value(meta: BlobMeta) -> Value {
+    let mut pairs = HashPairs::default();
+    pairs.insert(
+        HashKey::String("filename".into()),
+        Value::String(meta.filename.into()),
+    );
+    pairs.insert(
+        HashKey::String("content_type".into()),
+        Value::String(meta.content_type.into()),
+    );
+    pairs.insert(HashKey::String("size".into()), Value::Int(meta.size as i64));
+    Value::Hash(Rc::new(RefCell::new(pairs)))
 }
 
 /// Borrow a string field instead of copying it.
@@ -509,10 +644,14 @@ pub fn register_attachment_builtins(env: &mut Environment) {
             let service = hash_str(&config, "service").unwrap_or_else(|| "disk".into());
             let collection = hash_str(&config, "collection").unwrap_or_else(|| "blobs".into());
             let (meta, data) = match service.as_str() {
+                #[cfg(target_arch = "wasm32")]
+                "r2" => r2::read(&collection, &id),
                 #[cfg(feature = "cloud")]
-                "s3" => read_s3(&collection, &id),
+                "s3" | "r2" => read_s3(&collection, &id),
                 #[cfg(not(feature = "cloud"))]
                 "s3" => Err(NO_CLOUD.to_string()),
+                #[cfg(not(any(feature = "cloud", target_arch = "wasm32")))]
+                "r2" => Err(NO_CLOUD.to_string()),
                 "disk" => read_disk(&collection, &id),
                 _ => return Ok(Value::Null),
             }?;
@@ -534,6 +673,66 @@ pub fn register_attachment_builtins(env: &mut Environment) {
         })),
     );
 
+    // __soli_edge() — whether this is the edge (Cloudflare Workers) build, where
+    // `AttachmentsController` hands R2 objects to the host to serve.
+    env.define(
+        "__soli_edge".to_string(),
+        Value::NativeFunction(NativeFunction::new("__soli_edge", Some(0), |_| {
+            Ok(Value::Bool(cfg!(target_arch = "wasm32")))
+        })),
+    );
+
+    // __soli_r2_head(config, id) — {filename, content_type, size} of an r2
+    // blob, or nil when there is none.
+    env.define(
+        "__soli_r2_head".to_string(),
+        Value::NativeFunction(NativeFunction::new("__soli_r2_head", Some(2), |args| {
+            let (Some(Value::Hash(config)), Some(Value::String(id))) = (args.first(), args.get(1))
+            else {
+                return Err("__soli_r2_head(config, id) expects a config hash and an id".into());
+            };
+            let collection =
+                hash_str(&config.borrow(), "collection").unwrap_or_else(|| "blobs".into());
+            #[cfg(target_arch = "wasm32")]
+            let head = r2::head(&collection, id)?;
+            #[cfg(all(feature = "cloud", not(target_arch = "wasm32")))]
+            let head = head_s3(&collection, id)?;
+            #[cfg(not(any(feature = "cloud", target_arch = "wasm32")))]
+            let head: Option<BlobMeta> = {
+                let _ = (&collection, id);
+                return Err(NO_CLOUD.to_string());
+            };
+            Ok(head.map(meta_value).unwrap_or(Value::Null))
+        })),
+    );
+
+    // __soli_r2_object(config, id, image) — the value of the `x-soli-r2-object`
+    // header for that blob: which binding, which key, and the Images binding
+    // options (`{transform, output}`) or nil for the stored bytes.
+    env.define(
+        "__soli_r2_object".to_string(),
+        Value::NativeFunction(NativeFunction::new("__soli_r2_object", Some(3), |args| {
+            let (Some(Value::Hash(config)), Some(Value::String(id))) = (args.first(), args.get(1))
+            else {
+                return Err(
+                    "__soli_r2_object(config, id, image) expects a config hash and an id".into(),
+                );
+            };
+            let collection =
+                hash_str(&config.borrow(), "collection").unwrap_or_else(|| "blobs".into());
+            let image = match args.get(2) {
+                Some(Value::Null) | None => serde_json::Value::Null,
+                Some(value) => crate::interpreter::value_json::value_to_json(value)?,
+            };
+            let reference = serde_json::json!({
+                "binding": r2_binding(),
+                "key": s3_key(&collection, id),
+                "image": image,
+            });
+            Ok(Value::String(reference.to_string().into()))
+        })),
+    );
+
     env.define(
         "delete_attachment".to_string(),
         Value::NativeFunction(NativeFunction::new("delete_attachment", Some(2), |args| {
@@ -548,10 +747,14 @@ pub fn register_attachment_builtins(env: &mut Environment) {
             let service = hash_str(&config, "service").unwrap_or_else(|| "disk".into());
             let collection = hash_str(&config, "collection").unwrap_or_else(|| "blobs".into());
             let ok = match service.as_str() {
+                #[cfg(target_arch = "wasm32")]
+                "r2" => r2::delete(&collection, &id).is_ok(),
                 #[cfg(feature = "cloud")]
-                "s3" => delete_s3(&collection, &id).is_ok(),
+                "s3" | "r2" => delete_s3(&collection, &id).is_ok(),
                 #[cfg(not(feature = "cloud"))]
                 "s3" => false,
+                #[cfg(not(any(feature = "cloud", target_arch = "wasm32")))]
+                "r2" => false,
                 "disk" => delete_disk(&collection, &id).is_ok(),
                 _ => false,
             };

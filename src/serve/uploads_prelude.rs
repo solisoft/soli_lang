@@ -58,6 +58,12 @@ pub(crate) const UPLOADS_HELPERS_SOURCE: &str = r##"
 # also reachable from the template-render environment used by views.
 # The remaining helpers below are pure Soli — controllers call them.
 
+# The services `store_attachment` and its siblings handle, as opposed to SoliDB
+# blobs.
+def __soli_bucket_service(service: Any) -> Bool
+    service == "disk" || service == "s3" || service == "r2"
+end
+
 def attach_upload(model: Any, field_name: String, file: Any) -> Bool
     config = model_uploader_config(model.class, field_name)
     if config.nil?
@@ -74,7 +80,7 @@ def attach_upload(model: Any, field_name: String, file: Any) -> Bool
     tus_id = file["tus_id"]
     service = config["service"] || "solidb"
     if !tus_id.nil?
-        streams = (service == "disk" || service == "s3") && config["format"].nil? && config["max_width"].nil? && config["max_height"].nil?
+        streams = __soli_bucket_service(service) && config["format"].nil? && config["max_width"].nil? && config["max_height"].nil?
         try
             file = tus_take(tus_id, !streams)
         catch error
@@ -106,7 +112,7 @@ def attach_upload(model: Any, field_name: String, file: Any) -> Bool
     file = apply_uploader_transform(file, config)
 
     blob_id = null
-    if service == "disk" || service == "s3"
+    if __soli_bucket_service(service)
         blob_id = store_attachment(config, file)
     else
         client = __soli_resolve_solidb_client()
@@ -148,7 +154,7 @@ def __soli_link_blob(model: Any, field_name: String, config: Any, service: Strin
     changes[type_field] = content_type if !content_type.nil? && __soli_model_stores_field(model, type_field)
     model.update(changes)
     if !previous.nil?
-        if service == "disk" || service == "s3"
+        if __soli_bucket_service(service)
             delete_attachment(config, previous)
         else
             client = __soli_resolve_solidb_client()
@@ -233,7 +239,7 @@ def detach_upload(model: Any, field_name: String, blob_id: Any = null) -> Bool
         return false if blob_id.nil?
         ids = model["#{field_name}_blob_ids"] ?? []
         return false if !ids.contains(blob_id)
-        if service == "disk" || service == "s3"
+        if __soli_bucket_service(service)
             delete_attachment(config, blob_id)
         else
             solidb_delete_blob(client, config["collection"], blob_id)
@@ -248,7 +254,7 @@ def detach_upload(model: Any, field_name: String, blob_id: Any = null) -> Bool
 
     current = model["#{field_name}_blob_id"]
     return false if current.nil?
-    if service == "disk" || service == "s3"
+    if __soli_bucket_service(service)
         delete_attachment(config, current)
     else
         solidb_delete_blob(client, config["collection"], current)
@@ -278,7 +284,7 @@ def read_upload(owner: Any, field_name: String, blob_id: Any = null) -> Any
     return null if config.nil?
 
     service = config["service"] || "solidb"
-    if service == "disk" || service == "s3"
+    if __soli_bucket_service(service)
         return read_attachment(config, blob_id)
     end
 
@@ -321,9 +327,13 @@ class AttachmentsController < Controller
 
         service = config["service"] || "solidb"
         query   = req["query"] ?? {}
+        # On the edge build an R2 blob never crosses wasm: the Worker serves it
+        # from the bucket, Range requests and image transforms included.
+        return this._show_r2(req, config, blob_id, query, ctx["ext"]) if service == "r2" && __soli_edge()
+
         meta = null
         b64 = null
-        if service == "disk" || service == "s3"
+        if __soli_bucket_service(service)
             stored = read_attachment(config, blob_id)
             return halt(404, "Not found") if stored.nil?
             meta = stored
@@ -379,6 +389,104 @@ class AttachmentsController < Controller
             # attachment, transient, per concurrent download.
             "body_base64": b64
         }
+    end
+
+    # The response for an R2 blob on the edge build: the headers this controller
+    # owns (type, disposition, nosniff, cache) and `x-soli-r2-object`, which
+    # tells `worker.js` which object to answer with. The Worker streams it from
+    # the bucket — honouring `Range` and `If-None-Match` — or, for an image
+    # transform, through the Images binding (`[images] binding = "IMAGES"`),
+    # falling back to the stored bytes when there is none.
+    def _show_r2(req, config, blob_id, query, ext)
+        head = __soli_r2_head(config, blob_id)
+        return halt(404, "Not found") if head.nil?
+
+        ct = head["content_type"] ?? "application/octet-stream"
+        query = this._apply_path_format(query, ct, ext)
+        return halt(404, "Not found") if query.nil?
+
+        image = nil
+        image = this._cf_image(query, ct) if ct.starts_with("image/") && this._has_image_transforms(query)
+        {
+            "status":  200,
+            "headers": {
+                "Content-Type":           ct,
+                "Content-Disposition":    this._disposition(ct),
+                "X-Content-Type-Options": "nosniff",
+                "Cache-Control":          "private, max-age=300",
+                "X-Soli-R2-Object":       __soli_r2_object(config, blob_id, image)
+            },
+            "body": ""
+        }
+    end
+
+    # The transform query (`w`, `h`, `fit`, `crop`, `fmt`…) as options for the
+    # Cloudflare Images binding: `{ "transform": {...}, "output": {...} }`.
+    # Dimensions are clamped as for `_render_transformed`. Images has no hue
+    # rotation or inversion, so `hue` and `invert` are ignored here.
+    def _cf_image(query, original_ct)
+        cap   = this._max_dimension()
+        w     = this._int_param_clamped(query, "w", cap)
+        h     = this._int_param_clamped(query, "h", cap)
+        thumb = this._int_param_clamped(query, "thumb", cap)
+        fit   = (query["fit"] ?? "").to_s
+        square = this._int_param_clamped(query, "square", cap)
+        if !square.nil?
+            w   = square if w.nil?
+            h   = square if h.nil?
+            fit = "cover" if fit == ""
+        end
+
+        transform = {}
+        crop = this._parse_crop(query)
+        transform["trim"] = { "left": crop[0], "top": crop[1], "width": crop[2], "height": crop[3] } unless crop.nil?
+
+        flip = ""
+        flip = "h" if this._truthy(query, "flipx")
+        flip = flip + "v" if this._truthy(query, "flipy")
+        transform["flip"] = flip if flip != ""
+        rot = this._int_param(query, "rot")
+        transform["rotate"] = rot if [90, 180, 270].contains(rot)
+
+        # The sizing precedence of `_render_transformed`: a thumbnail fits the
+        # image in an N×N box, `w` alone too; `w` and `h` without a fit stretch.
+        if !thumb.nil?
+            transform["width"] = thumb
+            transform["height"] = thumb
+            transform["fit"] = "scale-down"
+        elsif !w.nil? && !h.nil?
+            transform["width"] = w
+            transform["height"] = h
+            transform["fit"] = ["cover", "contain"].contains(fit) ? fit : "squeeze"
+        elsif !w.nil?
+            transform["width"] = w
+            transform["height"] = w
+            transform["fit"] = "scale-down"
+        end
+
+        blur = this._float_param(query, "blur")
+        transform["blur"] = this._clamp_f(blur * 2.0, 1.0, 250.0) unless blur.nil?
+        bright = this._int_param(query, "bright")
+        transform["brightness"] = this._clamp_f(1.0 + bright.to_f / 100.0, 0.0, 2.0) unless bright.nil?
+        contrast = this._float_param(query, "contrast")
+        transform["contrast"] = this._clamp_f(1.0 + contrast / 100.0, 0.0, 2.0) unless contrast.nil?
+        transform["saturation"] = 0 if this._truthy(query, "gray")
+
+        fmt = (query["fmt"] ?? "").to_s
+        out_ct = original_ct
+        out_ct = this._format_content_type(fmt) ?? original_ct if fmt != ""
+        # What Images can write; anything else comes out as PNG.
+        out_ct = "image/png" unless ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"].contains(out_ct)
+        output = { "format": out_ct }
+        q = this._int_param(query, "q")
+        output["quality"] = q unless q.nil?
+        { "transform": transform, "output": output }
+    end
+
+    def _clamp_f(value, low, high)
+        return low if value < low
+        return high if value > high
+        value
     end
 
     # This route serves attacker-supplied bytes from the application's own
@@ -870,6 +978,58 @@ __formats = [
         assert_eq!(
             got.map(|v| v.to_string()).as_deref(),
             Some("-|9,|-,webp|-,404,404,|-,|-,|-,-|-,image/jpeg")
+        );
+    }
+
+    /// The transform query as Cloudflare Images options, for an R2 blob on
+    /// the edge: the sizing precedence of `_render_transformed`, the same
+    /// dimension cap, and an output format Images can write.
+    #[test]
+    fn a_transform_query_becomes_images_options() {
+        let mut interpreter = Interpreter::new();
+        define_uploads_prelude(&mut interpreter).expect("prelude loads");
+        interpret_source(
+            &mut interpreter,
+            r#"
+__c = AttachmentsController.new()
+__images = [
+    __c._cf_image({"w": "300", "fmt": "webp"}, "image/jpeg"),
+    __c._cf_image({"square": "120", "gray": "1", "q": "70"}, "image/png"),
+    __c._cf_image({"w": "99999", "h": "50", "crop": "1,2,30,40", "flipx": "1", "flipy": "1", "rot": "90"}, "image/jpeg"),
+    __c._cf_image({"thumb": "64", "fmt": "bmp"}, "image/tiff")
+].map(fn(o) o.to_json).join("\n")
+"#,
+        )
+        .expect("snippet runs");
+        let got = interpreter
+            .global_env()
+            .borrow()
+            .get("__images")
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+        let options: Vec<serde_json::Value> = got
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("json"))
+            .collect();
+        assert_eq!(
+            options[0],
+            serde_json::json!({"transform": {"width": 300, "height": 300, "fit": "scale-down"}, "output": {"format": "image/webp"}})
+        );
+        assert_eq!(
+            options[1],
+            serde_json::json!({"transform": {"width": 120, "height": 120, "fit": "cover", "saturation": 0}, "output": {"format": "image/png", "quality": 70}})
+        );
+        assert_eq!(
+            options[2],
+            serde_json::json!({"transform": {
+                "trim": {"left": 1, "top": 2, "width": 30, "height": 40},
+                "flip": "hv", "rotate": 90,
+                "width": 1000, "height": 50, "fit": "squeeze"
+            }, "output": {"format": "image/jpeg"}})
+        );
+        assert_eq!(
+            options[3],
+            serde_json::json!({"transform": {"width": 64, "height": 64, "fit": "scale-down"}, "output": {"format": "image/png"}})
         );
     }
 }
