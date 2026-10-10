@@ -203,11 +203,23 @@ impl Dialect {
         }
     }
 
-    fn json_order(self, field: &str) -> String {
+    /// The ORDER BY keys for a document field, `dir` applied to each. Numbers
+    /// must sort as numbers on every adapter, as SQLite's `->>` gives them:
+    /// sorting the `->>` text put `"7"` after `"10"` on Postgres and MySQL.
+    /// Postgres compares `jsonb` values by type — numbers numerically, strings
+    /// by the default collation, as `->>` did. MySQL compares JSON strings
+    /// with a binary collation, so it keeps the text key and puts a numeric
+    /// key, set only for numbers, before it.
+    fn json_order(self, field: &str, dir: &str) -> String {
         match self {
-            Dialect::Postgres => format!("doc->>'{field}'"),
-            Dialect::Mysql => format!("JSON_UNQUOTE(JSON_EXTRACT(doc, '$.{field}'))"),
-            Dialect::Sqlite => format!("(doc ->> '$.{field}')"),
+            Dialect::Postgres => format!("doc->'{field}' {dir}"),
+            Dialect::Mysql => format!(
+                "CASE WHEN JSON_TYPE(JSON_EXTRACT(doc, '$.{field}')) \
+                 IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') \
+                 THEN CAST(JSON_EXTRACT(doc, '$.{field}') AS DOUBLE) END {dir}, \
+                 JSON_UNQUOTE(JSON_EXTRACT(doc, '$.{field}')) {dir}"
+            ),
+            Dialect::Sqlite => format!("(doc ->> '$.{field}') {dir}"),
         }
     }
 
@@ -350,7 +362,7 @@ pub fn compile_select_d(d: Dialect, q: &ListQuery) -> Result<CompiledSql, String
         if field == "_key" || field == "id" {
             sql.push_str(&format!(" ORDER BY _key {dir}"));
         } else {
-            sql.push_str(&format!(" ORDER BY {} {dir}", d.json_order(field)));
+            sql.push_str(&format!(" ORDER BY {}", d.json_order(field, dir)));
         }
     }
     append_limit_offset(d, &mut sql, &mut params, q.limit, q.offset);
@@ -1188,7 +1200,7 @@ mod tests {
         // expression `ddl::doc_index_sql` indexes — otherwise the index built
         // for `status` would never be used.
         assert!(c.sql.contains("(doc->>'status') = $1"), "{}", c.sql);
-        assert!(c.sql.contains("ORDER BY doc->>'name' ASC"));
+        assert!(c.sql.contains("ORDER BY doc->'name' ASC"));
         assert_eq!(c.params[0], SqlBind::Text("up".into()));
     }
 

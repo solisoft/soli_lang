@@ -864,6 +864,13 @@ fn query_docs(sql: &str, params: &[SqlBind]) -> Result<Vec<serde_json::Value>, S
 // ---------- schema ----------
 
 pub fn ensure_table(table: &str) -> Result<(), String> {
+    // Any CREATE TABLE commits an open MySQL transaction — `IF NOT EXISTS` on a
+    // table that exists included — so a document write inside `transaction`
+    // committed everything before it and left nothing to roll back. Inside a
+    // transaction, ask first: `information_schema` reads commit nothing.
+    if has_active_tx() && table_exists(table)? {
+        return Ok(());
+    }
     let ddl = create_table_sql_d(Dialect::Mysql, table)?;
     with_conn(|conn| {
         conn.query_drop(&ddl)
@@ -1686,6 +1693,75 @@ mod integration_tests {
             assert_eq!(patched["name"], "Ada");
             delete(table, "k1").expect("delete");
             assert!(get(table, "k1").unwrap().is_none());
+            let _ = drop_table(table);
+        });
+    }
+
+    /// A numeric document field sorts as a number, strings keep their text
+    /// order — `ORDER BY JSON_UNQUOTE(…)` used to put "10" before "9".
+    #[test]
+    fn order_sorts_numbers_as_numbers_when_mysql_available() {
+        use super::super::sql_compile::SoftDeleteMode;
+        use std::collections::BTreeMap;
+        with_mysql(|| {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("mysql pool: {e}"));
+                return;
+            }
+            let table = "soli_mysql_order_test";
+            let _ = drop_table(table);
+            for (key, n, name) in [("a", 9, "pear"), ("b", 10, "apple"), ("c", 2, "fig")] {
+                insert(table, Some(key), serde_json::json!({"n": n, "name": name})).unwrap();
+            }
+            let order = |field: &str, desc: bool| {
+                let q = ListQuery {
+                    table: table.into(),
+                    eq_filters: BTreeMap::new(),
+                    hash_filter: None,
+                    filter_sdbql: None,
+                    having: None,
+                    exists_filters: Vec::new(),
+                    soft_delete: SoftDeleteMode::Default,
+                    is_soft_delete_model: false,
+                    order_field: Some(field.into()),
+                    order_desc: desc,
+                    limit: None,
+                    offset: None,
+                };
+                select(&q)
+                    .unwrap()
+                    .iter()
+                    .map(|d| d["_key"].as_str().unwrap().to_string())
+                    .collect::<Vec<_>>()
+                    .join("")
+            };
+            assert_eq!(order("n", false), "cab");
+            assert_eq!(order("n", true), "bac");
+            assert_eq!(order("name", false), "bca");
+            let _ = drop_table(table);
+        });
+    }
+
+    /// A write inside a transaction must not commit it: MySQL commits before
+    /// any CREATE TABLE, so the table check has to come first.
+    #[test]
+    fn rollback_undoes_a_write_inside_a_transaction_when_mysql_available() {
+        with_mysql(|| {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("mysql pool: {e}"));
+                return;
+            }
+            let table = "soli_mysql_tx_test";
+            let _ = drop_table(table);
+            insert(table, Some("before"), serde_json::json!({"n": 1})).unwrap();
+            begin_transaction(None).unwrap();
+            insert(table, Some("inside"), serde_json::json!({"n": 2})).unwrap();
+            rollback_transaction().unwrap();
+            assert!(get(table, "before").unwrap().is_some());
+            assert!(
+                get(table, "inside").unwrap().is_none(),
+                "the rollback kept the row"
+            );
             let _ = drop_table(table);
         });
     }

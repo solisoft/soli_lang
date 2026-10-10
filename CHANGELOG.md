@@ -10,6 +10,14 @@
 
 * **ci:** **A Windows failure no longer blocks the Linux and macOS release.** The tag gate (`release`) no longer waits for `windows-check`, and the Windows binary moved out of the `build-binaries` matrix into its own `build-windows` job (same steps, through a YAML anchor) that needs `release` and `windows-check`. `publish-release` and the Docker image wait only on the Linux and macOS builds; the Windows tarball is uploaded to the release whenever it is ready, or not at all if Windows is red.
 
+### Fixed
+
+* **sql:** **A numeric document field sorts as a number on Postgres and MySQL.** `order("views")` compiled to `ORDER BY doc->>'views'` (Postgres) and `JSON_UNQUOTE(JSON_EXTRACT(…))` (MySQL), text in both, so `"7"` sorted after `"10"` while SQLite and D1 sorted numbers numerically. Postgres now orders by the `jsonb` value (numbers numerically, strings by the default collation as before); MySQL puts a numeric key, set only for numbers, before the unchanged text key, so strings keep their collation. Tested on Postgres 18 and MySQL 8.4 (`order_sorts_numbers_as_numbers_when_*_available`).
+
+* **models:** **`aggregate({...})` works on column-aware models.** The ungrouped multi-aggregate (`Order.aggregate({"total": ["sum", "amount"], "n": ["count"]})`) compiled document SQL against a real-column table and failed with `column "doc" does not exist`, while `.sum(field)` and the grouped form already took the column path. It now aggregates the real columns, and a field-less `["count"]` counts the rows.
+
+* **mysql:** **A document write inside `transaction` no longer commits the transaction early.** Every write inside a transaction bypasses the table memo and runs `CREATE TABLE IF NOT EXISTS` — and MySQL commits the open transaction before any `CREATE TABLE`, even one that creates nothing. A `Model.create` inside `transaction(fn() { … })` therefore committed everything written so far, and a later rollback undid nothing of it. Inside a transaction the adapter now asks `information_schema` first (a read, which commits nothing) and issues the DDL only for a table that does not exist yet. Reproduced directly on MySQL 8.4 (`START TRANSACTION; INSERT …; CREATE TABLE IF NOT EXISTS <existing>; ROLLBACK` keeps the row); covered by `rollback_undoes_a_write_inside_a_transaction_when_mysql_available`.
+
 ## [2.20.1] - 2026-10-10
 
 The first release since 2.19.0 to publish binaries: the v2.19.1 and v2.20.0 tags failed CI (`edge/Cargo.lock` still named the previous version) and published none. Installing 2.20.1 also brings what they carried: Soli apps inside Cloudflare Workers, a woken app answering in half the time, `tr()` 69× faster, and the native SoliDB driver by default (see 2.20.0, 2.19.1, 2.19.0).

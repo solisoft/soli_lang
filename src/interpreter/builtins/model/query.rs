@@ -1859,39 +1859,65 @@ fn execute_sql_group_by(qb: &QueryBuilder, collection: &str) -> Value {
 }
 
 /// Ungrouped `.aggregate({ total: ["sum","amount"], n: ["count"] })` on SQL.
+///
+/// A column-aware model aggregates its real columns, as `.sum(field)` does:
+/// the document SQL named a `doc` column such a table does not have.
 fn execute_sql_multi_aggregate_ungrouped(qb: &QueryBuilder, collection: &str) -> Value {
-    match list_query_from_qb(qb, collection) {
-        Ok(lq) => {
-            let mut map = serde_json::Map::new();
-            for spec in &qb.aggregate_specs {
-                let sql_func = match &spec.func {
-                    AggregationFunc::Sum => crate::db::SqlAgg::Sum,
-                    AggregationFunc::Avg => crate::db::SqlAgg::Avg,
-                    AggregationFunc::Min => crate::db::SqlAgg::Min,
-                    AggregationFunc::Max => crate::db::SqlAgg::Max,
-                    AggregationFunc::Count => crate::db::SqlAgg::Count,
-                    other => {
-                        return Value::String(
-                            format!(
-                                "aggregate {:?} is SoliDB-only on SQL adapters. \
-                                 See docs/sql-adapter-design.md.",
-                                other
-                            )
-                            .into(),
-                        );
-                    }
-                };
-                match crate::db::sql::aggregate(&lq, sql_func, &spec.field) {
-                    Ok(v) => {
-                        map.insert(spec.alias.clone(), v);
-                    }
-                    Err(e) => return Value::String(format!("Error: {e}").into()),
-                }
-            }
-            super::crud::json_to_value_owned(serde_json::Value::Object(map))
-        }
-        Err(e) => Value::String(format!("Error: {e}").into()),
+    enum Target {
+        Documents(crate::db::ListQuery),
+        Columns(crate::db::sql_columns_compile::ColumnQuery),
     }
+    let target = if super::column_mode::is_column_mode(collection) {
+        let query = super::column_mode::require_schema(collection).and_then(|schema| {
+            let schema =
+                schema.ok_or_else(|| super::column_mode::unsupported("this query", collection))?;
+            super::column_mode::column_query_from_qb(qb, schema, collection)
+        });
+        match query {
+            Ok(q) => Target::Columns(q),
+            Err(e) => return Value::String(format!("Error: {e}").into()),
+        }
+    } else {
+        match list_query_from_qb(qb, collection) {
+            Ok(lq) => Target::Documents(lq),
+            Err(e) => return Value::String(format!("Error: {e}").into()),
+        }
+    };
+    let mut map = serde_json::Map::new();
+    for spec in &qb.aggregate_specs {
+        let sql_func = match &spec.func {
+            AggregationFunc::Sum => crate::db::SqlAgg::Sum,
+            AggregationFunc::Avg => crate::db::SqlAgg::Avg,
+            AggregationFunc::Min => crate::db::SqlAgg::Min,
+            AggregationFunc::Max => crate::db::SqlAgg::Max,
+            AggregationFunc::Count => crate::db::SqlAgg::Count,
+            other => {
+                return Value::String(
+                    format!(
+                        "aggregate {:?} is SoliDB-only on SQL adapters. \
+                         See docs/sql-adapter-design.md.",
+                        other
+                    )
+                    .into(),
+                );
+            }
+        };
+        let value = match &target {
+            Target::Documents(lq) => crate::db::sql::aggregate(lq, sql_func, &spec.field),
+            // `["count"]` names no column: count the rows, as on documents.
+            Target::Columns(q) if spec.field.is_empty() && sql_func == crate::db::SqlAgg::Count => {
+                crate::db::columns::count(q).map(|n| serde_json::json!(n))
+            }
+            Target::Columns(q) => crate::db::columns::aggregate(q, sql_func, &spec.field),
+        };
+        match value {
+            Ok(v) => {
+                map.insert(spec.alias.clone(), v);
+            }
+            Err(e) => return Value::String(format!("Error: {e}").into()),
+        }
+    }
+    super::crud::json_to_value_owned(serde_json::Value::Object(map))
 }
 
 fn execute_sql_aggregate(

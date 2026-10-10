@@ -2287,6 +2287,48 @@ mod integration_tests {
         });
     }
 
+    /// A numeric document field sorts as a number (10 after 9), strings by the
+    /// collation — `ORDER BY doc->>'n'` used to put "10" before "9".
+    #[test]
+    fn order_sorts_numbers_as_numbers_when_pg_available() {
+        with_pg(|| {
+            if let Err(e) = ensure_connected() {
+                crate::db::skip_unless_required(&format!("postgres pool: {e}"));
+                return;
+            }
+            let table = "soli_pg_order_test";
+            let _ = drop_table(table);
+            for (key, n, name) in [("a", 9, "pear"), ("b", 10, "Apple"), ("c", 2, "fig")] {
+                insert(table, Some(key), serde_json::json!({"n": n, "name": name})).unwrap();
+            }
+            let order = |field: &str, desc: bool| {
+                let q = ListQuery {
+                    table: table.into(),
+                    eq_filters: BTreeMap::new(),
+                    hash_filter: None,
+                    filter_sdbql: None,
+                    having: None,
+                    exists_filters: Vec::new(),
+                    soft_delete: SoftDeleteMode::Default,
+                    is_soft_delete_model: false,
+                    order_field: Some(field.into()),
+                    order_desc: desc,
+                    limit: None,
+                    offset: None,
+                };
+                select(&q)
+                    .unwrap()
+                    .iter()
+                    .map(|d| d["_key"].as_str().unwrap().to_string())
+                    .collect::<Vec<_>>()
+                    .join("")
+            };
+            assert_eq!(order("n", false), "cab");
+            assert_eq!(order("n", true), "bac");
+            let _ = drop_table(table);
+        });
+    }
+
     #[test]
     fn migrations_table_roundtrip_when_pg_available() {
         with_pg(|| {
