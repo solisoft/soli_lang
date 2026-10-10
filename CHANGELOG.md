@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [2.21.0] - 2026-10-10
+
+Cloudflare Workers apps get what a real app reaches for: uploads, images and video on R2, Postgres through Hyperdrive, and background jobs on Cloudflare Queues — in a smaller Worker (2.94 MB compressed, under the free plan's 3 MB). Plus four fixes found on the way, one of them a MySQL transaction bug that also affected `soli serve`.
+
 ### Added
 
 * **edge:** **Background jobs on Cloudflare Workers, through Cloudflare Queues.** A Worker has no thread to poll `_jobs` with, so on the edge build every enqueue (`perform_later`, `perform_in`, `perform_at`, `Job.enqueue*`, `Webhook.enqueue*`) sends the job's row — the same `JobDoc` the native engine would insert — to a Cloudflare Queue through a `soli_queue_send` host import (`[[queues.producers]] binding = "JOBS"`, `SOLI_QUEUE_BINDING` to rename), delayed until its `run_at`. `worker.js` gains a `queue()` handler that runs each message through a new `soli_run_job` wasm export, in turn with the isolate's requests: the job class's `static def perform(args)` via the pool's own runner, or the webhook delivery. A failure is retried with the native engine's rule (`attempts <= max_retries`, Cloudflare's `message.attempts` standing in for the row's) and backoff, then acknowledged and logged as dead. Not on the edge: delays past Queues' 12 hours (an error), `Job.list` / `queues` / `cancel` / `retry` and cron (errors naming the edge build). `soli edge build` writes commented `[[queues.*]]` blocks into a new `wrangler.toml`. The runtime grows 8.5 KB compressed (2,930,955 → 2,939,515 bytes). Tested natively (`tests/edge_test.rs`: the message, its delay, the refusals, done / retry / dead) and on workerd with a local Queue and D1: two jobs wrote their rows from the consumer, and a failing one was redelivered after 5 s, 11 s, 23 s.
