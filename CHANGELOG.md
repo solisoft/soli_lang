@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [2.21.0] - 2026-10-10
+
+The first release since 2.19.0 to publish binaries: the v2.19.1 and v2.20.0 tags failed CI (`edge/Cargo.lock` still named the previous version) and published none. Installing 2.21.0 also brings what they carried: Soli apps inside Cloudflare Workers, a woken app answering in half the time, `tr()` 69× faster, and the native SoliDB driver by default (see 2.20.0, 2.19.1, 2.19.0).
+
 ### Added
 
 * **scaffold:** **A new app's links preview from day one: its layout carries Open Graph share tags.** `soli new` writes `og:title`, `og:description`, `og:url`, `og:image` (1200×630), a `twitter:card` and a canonical link into `layouts/application.html.slv`, from each action's `@title`, `@description` and optional `@og_image`. The URLs are absolute through `absolute_url(path)`, a helper in the generated `application_helper.sl` that prefixes `APP_URL` (new in `.env`) or the first host of `SOLI_APP_HOSTS` over https, and never reads the client-set `Host` header; `og:url` and the canonical link drop the query string. `public/images/og.png` ships as a generic "Built with Soli" card to replace. The app's `CLAUDE.md` (root and `app/views/`) now asks every layout an agent creates to carry the same tags.
