@@ -302,7 +302,8 @@ pub fn run() {
             folder,
             out,
             runtime,
-        } => commands::edge::build(folder, out.as_deref(), runtime.as_deref()),
+            sql,
+        } => commands::edge::build(folder, out.as_deref(), runtime.as_deref(), sql.as_deref()),
         Command::MobileBuild {
             platform,
             folder,

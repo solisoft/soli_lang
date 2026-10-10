@@ -218,6 +218,7 @@ where
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn encode_dynamic_image(
     img: &DynamicImage,
     quality: u8,
@@ -230,55 +231,25 @@ pub(crate) fn encode_dynamic_image(
         img.write_with_encoder(encoder)
             .map_err(|e| format!("Failed to encode JPEG: {}", e))?;
     } else if format == ImageFormat::WebP {
-        return encode_lossy_webp(img, quality);
+        // The `image` crate only encodes *lossless* WebP, which bloats photos.
+        // Use libwebp (via the `webp` crate) for quality-controlled lossy output.
+        let rgba = img.to_rgba8();
+        let (w, h) = rgba.dimensions();
+        let encoded = webp::Encoder::from_rgba(&rgba, w, h).encode(quality as f32);
+        return Ok(encoded.to_vec());
     } else {
-        encode_other(img, cursor, format)?;
+        img.write_to(cursor, format)
+            .map_err(|e| format!("Failed to encode image: {}", e))?;
     }
     Ok(buffer)
 }
-
-#[cfg(not(target_arch = "wasm32"))]
-fn encode_other(
-    img: &DynamicImage,
-    cursor: Cursor<&mut Vec<u8>>,
-    format: ImageFormat,
-) -> Result<(), String> {
-    img.write_to(cursor, format)
-        .map_err(|e| format!("Failed to encode image: {}", e))
-}
-
-/// The edge build encodes PNG besides JPEG: `write_to` would link every
-/// format's encoder into a bundle Cloudflare caps by size.
 #[cfg(target_arch = "wasm32")]
-fn encode_other(
+pub(crate) fn encode_dynamic_image(
     img: &DynamicImage,
-    cursor: Cursor<&mut Vec<u8>>,
+    quality: u8,
     format: ImageFormat,
-) -> Result<(), String> {
-    if format != ImageFormat::Png {
-        return Err(crate::platform::unsupported_on_edge(&format!(
-            "{format:?} encoding"
-        )));
-    }
-    img.write_with_encoder(image::codecs::png::PngEncoder::new(cursor))
-        .map_err(|e| format!("Failed to encode PNG: {}", e))
-}
-
-/// The `image` crate only encodes *lossless* WebP, which bloats photos. Use
-/// libwebp (via the `webp` crate) for quality-controlled lossy output.
-#[cfg(not(target_arch = "wasm32"))]
-fn encode_lossy_webp(img: &DynamicImage, quality: u8) -> Result<Vec<u8>, String> {
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let encoded = webp::Encoder::from_rgba(&rgba, w, h).encode(quality as f32);
-    Ok(encoded.to_vec())
-}
-
-/// libwebp is C, which the edge build does not compile. An `r2` attachment
-/// URL with `fmt=webp` gets WebP from the Images binding instead.
-#[cfg(target_arch = "wasm32")]
-fn encode_lossy_webp(_img: &DynamicImage, _quality: u8) -> Result<Vec<u8>, String> {
-    Err(crate::platform::unsupported_on_edge("WebP encoding"))
+) -> Result<Vec<u8>, String> {
+    Err(crate::platform::unsupported_on_edge("encode_dynamic_image"))
 }
 
 fn encode_image(data: &ImageData, format: ImageFormat) -> Result<Vec<u8>, String> {
@@ -459,9 +430,36 @@ fn extract_plan(value: &Value) -> Result<ImagePlan, String> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn register_image_class(env: &mut Environment) {
     let class = get_image_class();
     env.define("Image".to_string(), Value::Class(class));
+}
+
+/// The edge build leaves image processing to Cloudflare Images: an `Image`
+/// whose every entry point says so. Not registering the real class keeps the
+/// decoders and encoders out of the Worker — 260 KB of its compressed size.
+#[cfg(target_arch = "wasm32")]
+pub fn register_image_class(env: &mut Environment) {
+    let mut static_methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+    for name in ["new", "plan", "process_all", "from_buffer"] {
+        static_methods.insert(
+            name.to_string(),
+            Rc::new(NativeFunction::new(&format!("Image.{name}"), None, |_| {
+                Err(format!(
+                    "{}: on a Worker, transform images with Cloudflare Images — an r2 \
+                     attachment URL takes ?w=, ?thumb=, ?fmt= (see the edge docs)",
+                    crate::platform::unsupported_on_edge("Image")
+                ))
+            })),
+        );
+    }
+    let class = Class {
+        name: "Image".to_string(),
+        native_static_methods: static_methods,
+        ..Default::default()
+    };
+    env.define("Image".to_string(), Value::Class(Rc::new(class)));
 }
 
 fn build_image_class() -> Rc<Class> {

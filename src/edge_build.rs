@@ -9,8 +9,27 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// The files `scripts/build-edge.sh` produces, all required.
-pub const RUNTIME_FILES: [&str; 4] = ["soli_edge_bg.wasm", "soli_edge.js", "jspi.js", "worker.js"];
+/// The files `scripts/build-edge.sh` produces, all required. The first four are
+/// copied into every Worker, the Postgres driver's glue only when the app uses
+/// Postgres.
+pub const RUNTIME_FILES: [&str; 5] = [
+    "soli_edge_bg.wasm",
+    "soli_edge.js",
+    "jspi.js",
+    "worker.js",
+    "sql-pg.js",
+];
+
+/// The SQL dialects a Worker can carry a JavaScript driver for: the dialect's
+/// name in `src/sql.js`, its driver module, and the npm package it imports.
+/// Only Postgres: MySQL's `mysql2` weighs 410 KB compressed, more than the
+/// room left under the free plan's 3 MB.
+const SQL_DRIVERS: [(&str, &str, &str, &str); 1] = [("postgres", "sql-pg.js", "pg", "^8.13.0")];
+
+/// Why an app on MySQL cannot run on the edge build.
+const NO_MYSQL: &str = "MySQL is not available on the edge build (its driver would take the \
+                        Worker past the free plan's 3 MB): use postgres through Hyperdrive, \
+                        d1 or solidb";
 
 /// The app directories the Worker needs at boot; `public/` is served as assets.
 const SOURCE_DIRS: [&str; 3] = ["app", "config", "lib"];
@@ -20,6 +39,11 @@ pub struct Options<'a> {
     pub out_dir: &'a Path,
     /// Where the runtime lives; `None` searches the usual places.
     pub runtime_dir: Option<&'a Path>,
+    /// `--sql`: `postgres` to bundle its driver, or `none`; `None` detects it
+    /// from the app's configuration.
+    pub sql: Option<&'a str>,
+    /// Run `npm install` when a driver is missing from `node_modules`.
+    pub npm_install: bool,
 }
 
 #[derive(Debug)]
@@ -33,6 +57,12 @@ pub struct Summary {
     pub wasm_bytes: u64,
     /// Whether this run wrote `wrangler.toml` (an existing one is kept).
     pub wrote_wrangler_toml: bool,
+    /// The SQL dialects the Worker carries a driver for.
+    pub sql_drivers: Vec<&'static str>,
+    /// What `npm install` did, when it ran.
+    pub npm: Option<String>,
+    /// Things the user has to fix by hand.
+    pub warnings: Vec<String>,
 }
 
 pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
@@ -48,10 +78,33 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
     let src = out.join("src");
     fs::create_dir_all(&src).map_err(|e| format!("create {}: {e}", src.display()))?;
 
-    for name in RUNTIME_FILES {
+    let mut warnings = Vec::new();
+    let sql_drivers = match opts.sql {
+        Some(list) => parse_sql_flag(list)?,
+        None => {
+            let mut found = detect_sql(app_dir, out);
+            if found.contains(&"mysql") {
+                warnings.push(NO_MYSQL.to_string());
+                found.retain(|dialect| *dialect != "mysql");
+            }
+            found
+        }
+    };
+    let mut copied: Vec<&str> = RUNTIME_FILES[..4].to_vec();
+    for (dialect, module, _, _) in SQL_DRIVERS {
+        let stale = src.join(module);
+        if sql_drivers.contains(&dialect) {
+            copied.push(module);
+        } else if stale.exists() {
+            fs::remove_file(&stale).map_err(|e| format!("remove {}: {e}", stale.display()))?;
+        }
+    }
+    for name in copied {
         let from = runtime.join(name);
         fs::copy(&from, src.join(name)).map_err(|e| format!("copy {}: {e}", from.display()))?;
     }
+    fs::write(src.join("sql.js"), sql_module(&sql_drivers))
+        .map_err(|e| format!("write sql.js: {e}"))?;
     let wasm_bytes = fs::metadata(src.join("soli_edge_bg.wasm"))
         .map(|m| m.len())
         .unwrap_or(0);
@@ -102,8 +155,45 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
     let wrangler_toml = out.join("wrangler.toml");
     let wrote_wrangler_toml = !wrangler_toml.exists();
     if wrote_wrangler_toml {
-        let config = wrangler_config(&worker_name(app_dir), asset_files > 0);
+        let config = wrangler_config(&worker_name(app_dir), asset_files > 0, &sql_drivers);
         fs::write(&wrangler_toml, config).map_err(|e| format!("write wrangler.toml: {e}"))?;
+    } else if !sql_drivers.is_empty() {
+        let existing = fs::read_to_string(&wrangler_toml).unwrap_or_default();
+        if !existing.contains("nodejs_compat") {
+            warnings.push(
+                "the SQL driver needs Node.js compatibility: add \
+                 `compatibility_flags = [\"nodejs_compat\"]` to wrangler.toml, above its first table"
+                    .to_string(),
+            );
+        }
+    }
+
+    let mut npm = None;
+    if !sql_drivers.is_empty() {
+        write_package_json(out, &worker_name(app_dir), &sql_drivers)?;
+        let missing: Vec<&str> = SQL_DRIVERS
+            .iter()
+            .filter(|(dialect, ..)| sql_drivers.contains(dialect))
+            .map(|(_, _, package, _)| *package)
+            .filter(|package| !out.join("node_modules").join(package).is_dir())
+            .collect();
+        if !missing.is_empty() {
+            if opts.npm_install {
+                match npm_install(out) {
+                    Ok(()) => npm = Some(format!("npm install: {}", missing.join(", "))),
+                    Err(e) => warnings.push(format!(
+                        "{e}: run `npm install` in {} before `wrangler`",
+                        out.display()
+                    )),
+                }
+            } else {
+                warnings.push(format!(
+                    "run `npm install` in {} before `wrangler` ({} missing)",
+                    out.display(),
+                    missing.join(", ")
+                ));
+            }
+        }
     }
 
     Ok(Summary {
@@ -114,7 +204,122 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
         asset_files,
         wasm_bytes,
         wrote_wrangler_toml,
+        sql_drivers,
+        npm,
+        warnings,
     })
+}
+
+/// `--sql postgres` / `--sql none`.
+fn parse_sql_flag(list: &str) -> Result<Vec<&'static str>, String> {
+    let mut out = Vec::new();
+    for name in list.split(',').map(str::trim).filter(|n| !n.is_empty()) {
+        if name.eq_ignore_ascii_case("none") {
+            continue;
+        }
+        match crate::db::parse_adapter(Some(name)) {
+            Ok(crate::db::Adapter::Postgres) => out.push("postgres"),
+            Ok(crate::db::Adapter::Mysql) => return Err(NO_MYSQL.to_string()),
+            _ => return Err(format!("--sql takes postgres or none (got {name:?})")),
+        }
+    }
+    out.dedup();
+    Ok(out)
+}
+
+/// The dialects the app's configuration names: `adapter = "…"` in
+/// `config/database.toml`, `SOLI_DB_ADAPTER` in the app's `.env` or under the
+/// Worker's `[vars]`.
+fn detect_sql(app_dir: &Path, out: &Path) -> Vec<&'static str> {
+    let mut found = Vec::new();
+    for file in [
+        app_dir.join("config/database.toml"),
+        app_dir.join(".env"),
+        out.join("wrangler.toml"),
+    ] {
+        let Ok(text) = fs::read_to_string(&file) else {
+            continue;
+        };
+        for line in text.lines() {
+            let line = line.split('#').next().unwrap_or_default();
+            let Some((key, value)) = line.split_once('=') else {
+                continue;
+            };
+            let key = key.trim().trim_start_matches("export ").trim();
+            if !key.eq_ignore_ascii_case("adapter") && key != "SOLI_DB_ADAPTER" {
+                continue;
+            }
+            let value = value.trim().trim_matches(|c| c == '"' || c == '\'');
+            let dialect = match crate::db::parse_adapter(Some(value)) {
+                Ok(crate::db::Adapter::Postgres) => "postgres",
+                Ok(crate::db::Adapter::Mysql) => "mysql",
+                _ => continue,
+            };
+            if !found.contains(&dialect) {
+                found.push(dialect);
+            }
+        }
+    }
+    found
+}
+
+/// `src/sql.js`: the drivers this Worker imports, and `null` for the others.
+fn sql_module(drivers: &[&str]) -> String {
+    let mut out =
+        String::from("// Written by `soli edge build`: the SQL drivers this Worker carries.\n");
+    for (dialect, module, _, _) in SQL_DRIVERS {
+        if drivers.contains(&dialect) {
+            out.push_str(&format!(
+                "export {{ connect as {dialect} }} from \"./{module}\";\n"
+            ));
+        } else {
+            out.push_str(&format!("export const {dialect} = null;\n"));
+        }
+    }
+    out
+}
+
+/// Add the drivers to `package.json`, creating it if needed; other entries stay.
+fn write_package_json(out: &Path, name: &str, drivers: &[&str]) -> Result<(), String> {
+    let path = out.join("package.json");
+    let mut package: serde_json::Value = match fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?,
+        Err(_) => serde_json::json!({ "name": name, "private": true }),
+    };
+    let Some(object) = package.as_object_mut() else {
+        return Err(format!("{}: not a JSON object", path.display()));
+    };
+    let dependencies = object
+        .entry("dependencies")
+        .or_insert_with(|| serde_json::json!({}));
+    let Some(dependencies) = dependencies.as_object_mut() else {
+        return Err(format!("{}: dependencies is not an object", path.display()));
+    };
+    let mut changed = !path.exists();
+    for (dialect, _, package_name, version) in SQL_DRIVERS {
+        if drivers.contains(&dialect) && !dependencies.contains_key(package_name) {
+            dependencies.insert(package_name.to_string(), serde_json::json!(version));
+            changed = true;
+        }
+    }
+    if changed {
+        let text = serde_json::to_string_pretty(&package).map_err(|e| e.to_string())?;
+        fs::write(&path, text + "\n").map_err(|e| format!("write {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
+fn npm_install(out: &Path) -> Result<(), String> {
+    let status = std::process::Command::new("npm")
+        .args(["install", "--no-audit", "--no-fund"])
+        .current_dir(out)
+        .status()
+        .map_err(|e| format!("could not run npm ({e})"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("npm install failed ({status})"))
+    }
 }
 
 /// The runtime directory: the one given, else `$SOLI_EDGE_RUNTIME`, else next
@@ -185,7 +390,7 @@ fn worker_name(app_dir: &Path) -> String {
     }
 }
 
-fn wrangler_config(name: &str, assets: bool) -> String {
+fn wrangler_config(name: &str, assets: bool, sql_drivers: &[&str]) -> String {
     let today = chrono::Utc::now().format("%Y-%m-%d");
     // Top-level keys first: in TOML everything after a `[table]` header
     // belongs to that table, `routes` included.
@@ -199,6 +404,14 @@ compatibility_date = "{today}"
 # routes = [{{ pattern = "app.example.com", custom_domain = true }}]
 "#
     );
+    if !sql_drivers.is_empty() {
+        config.push_str(
+            r#"
+# The Postgres driver (pg) runs on Workers' Node.js compatibility layer.
+compatibility_flags = ["nodejs_compat"]
+"#,
+        );
+    }
     if assets {
         config.push_str(
             r#"
@@ -233,6 +446,15 @@ directory = "./public"
 # answer the stored bytes.
 # [images]
 # binding = "IMAGES"
+
+# Models on PostgreSQL through Hyperdrive
+# (`npx wrangler hyperdrive create my-db --connection-string="postgres://…"`
+# prints the id); set SOLI_DB_ADAPTER = "postgres" under [vars].
+# DATABASE_URL defaults to hyperdrive://HYPERDRIVE.
+# [[hyperdrive]]
+# binding = "HYPERDRIVE"
+# id = "…"
+# localConnectionString = "postgres://user:password@localhost:5432/my_app"
 "#,
     );
     config
@@ -279,6 +501,8 @@ mod tests {
             app_dir: &app,
             out_dir: &out,
             runtime_dir: Some(&runtime),
+            sql: None,
+            npm_install: false,
         })
         .unwrap();
 
@@ -297,7 +521,8 @@ mod tests {
             ]
         );
         assert!(out.join("public/css/site.css").is_file());
-        for name in RUNTIME_FILES {
+        // The SQL drivers' glue stays out of an app that uses no SQL.
+        for name in &RUNTIME_FILES[..4] {
             assert!(out.join("src").join(name).is_file(), "{name}");
         }
         let toml = fs::read_to_string(out.join("wrangler.toml")).unwrap();
@@ -328,6 +553,8 @@ mod tests {
             app_dir: &app,
             out_dir: &out,
             runtime_dir: Some(&runtime),
+            sql: None,
+            npm_install: false,
         })
         .unwrap();
 
@@ -347,6 +574,8 @@ mod tests {
             app_dir: tmp.path(),
             out_dir: &tmp.path().join("out"),
             runtime_dir: Some(&runtime),
+            sql: None,
+            npm_install: false,
         })
         .unwrap_err();
         assert!(err.contains("not a Soli app"), "{err}");
@@ -361,8 +590,100 @@ mod tests {
             app_dir: &app,
             out_dir: &tmp.path().join("out"),
             runtime_dir: Some(&tmp.path().join("none")),
+            sql: None,
+            npm_install: false,
         })
         .unwrap_err();
         assert!(err.contains("scripts/build-edge.sh"), "{err}");
+    }
+
+    /// An app on Postgres gets node-postgres: its glue, `src/sql.js` exporting
+    /// it, the package in `package.json`, and `nodejs_compat` in a new
+    /// `wrangler.toml`. An app on nothing SQL carries no driver.
+    #[test]
+    fn bundles_the_sql_driver_the_app_uses() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (app, runtime, out) = (
+            tmp.path().join("app"),
+            tmp.path().join("rt"),
+            tmp.path().join("out"),
+        );
+        fake_app(&app);
+        fake_runtime(&runtime);
+        let options = |sql| Options {
+            app_dir: &app,
+            out_dir: &out,
+            runtime_dir: Some(&runtime),
+            sql,
+            npm_install: false,
+        };
+
+        let summary = build(&options(None)).unwrap();
+        assert!(summary.sql_drivers.is_empty());
+        assert!(!out.join("src/sql-pg.js").exists());
+        assert!(!out.join("package.json").exists());
+        let module = fs::read_to_string(out.join("src/sql.js")).unwrap();
+        assert!(module.contains("export const postgres = null;"), "{module}");
+
+        fs::write(
+            app.join("config/database.toml"),
+            "[connections.primary]\nadapter = \"pg\" # Hyperdrive on the Worker\n",
+        )
+        .unwrap();
+        fs::remove_file(out.join("wrangler.toml")).unwrap();
+        let summary = build(&options(None)).unwrap();
+        assert_eq!(summary.sql_drivers, vec!["postgres"]);
+        assert!(out.join("src/sql-pg.js").is_file());
+        let module = fs::read_to_string(out.join("src/sql.js")).unwrap();
+        assert!(
+            module.contains("export { connect as postgres } from \"./sql-pg.js\";"),
+            "{module}"
+        );
+        let package: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("package.json")).unwrap()).unwrap();
+        assert_eq!(package["dependencies"]["pg"], "^8.13.0");
+        let toml = fs::read_to_string(out.join("wrangler.toml")).unwrap();
+        assert!(
+            toml.contains("compatibility_flags = [\"nodejs_compat\"]"),
+            "{toml}"
+        );
+        assert!(
+            toml.find("compatibility_flags").unwrap() < toml.find("[assets]").unwrap(),
+            "{toml}"
+        );
+        // npm did not run here, so the summary says what to do.
+        assert!(summary.warnings.iter().any(|w| w.contains("npm install")));
+
+        // An existing wrangler.toml without nodejs_compat earns a warning
+        // rather than an edit.
+        fs::write(out.join("wrangler.toml"), "name = \"mine\"\n").unwrap();
+        let summary = build(&options(Some("postgres"))).unwrap();
+        assert!(summary.warnings.iter().any(|w| w.contains("nodejs_compat")));
+
+        // --sql none wins over detection, and the stale driver goes.
+        let summary = build(&options(Some("none"))).unwrap();
+        assert!(summary.sql_drivers.is_empty());
+        assert!(
+            !out.join("src/sql-pg.js").exists(),
+            "a stale driver is removed"
+        );
+
+        // MySQL is refused on the edge: by name with --sql, with a warning
+        // when the configuration names it.
+        let err = build(&options(Some("mysql"))).unwrap_err();
+        assert!(err.contains("MySQL is not available"), "{err}");
+        fs::write(
+            app.join("config/database.toml"),
+            "[connections.primary]\nadapter = \"mysql\"\n",
+        )
+        .unwrap();
+        let summary = build(&options(None)).unwrap();
+        assert!(summary.sql_drivers.is_empty());
+        assert!(summary
+            .warnings
+            .iter()
+            .any(|w| w.contains("MySQL is not available")));
+
+        assert!(build(&options(Some("oracle"))).is_err());
     }
 }

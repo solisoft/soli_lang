@@ -3,11 +3,11 @@
 // The app's files ship inside the bundle (app.json); each isolate boots them
 // once and reuses them across requests. Requests enter wasm through
 // `WebAssembly.promising`, so a model query can suspend the stack on its fetch
-// (jspi.js) — a D1 query too. Files under public/ are served by Workers static assets before
+// (jspi.js) — a D1 or Postgres query too. Files under public/ are served by Workers static assets before
 // the request ever reaches this script.
 import wasmModule from "./soli_edge_bg.wasm";
 import { initSync, mount, set_env, boot } from "./soli_edge.js";
-import { setHost } from "./jspi.js";
+import { setHost, endSql } from "./jspi.js";
 import appFiles from "./app.json";
 
 let wasm = null;
@@ -129,7 +129,7 @@ async function serveObject(request, env, result, reference) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     ensureBooted(env);
     if (bootError) {
       return new Response(`Soli failed to boot: ${bootError}`, { status: 500 });
@@ -141,17 +141,20 @@ export default {
     const body = ["GET", "HEAD"].includes(request.method)
       ? new Uint8Array(0)
       : new Uint8Array(await request.arrayBuffer());
-    const job = queue.then(() =>
-      dispatch(
-        {
-          method: request.method,
-          path: url.pathname,
-          query: url.search.slice(1),
-          headers,
-        },
-        body,
-      ),
-    );
+    // The request's SQL connections close before the next request enters wasm.
+    const job = queue
+      .then(() =>
+        dispatch(
+          {
+            method: request.method,
+            path: url.pathname,
+            query: url.search.slice(1),
+            headers,
+          },
+          body,
+        ),
+      )
+      .finally(() => endSql(ctx));
     queue = job.catch(() => {});
     const result = await job;
     const object = result.headers.find(([name]) => name.toLowerCase() === R2_OBJECT);

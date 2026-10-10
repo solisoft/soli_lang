@@ -30,6 +30,12 @@ use super::Adapter;
     not(feature = "sqlite")
 ))]
 fn feature_missing(adapter: &str) -> String {
+    if cfg!(target_arch = "wasm32") {
+        return format!(
+            "the {adapter} adapter is not available on the edge (Cloudflare Workers) build: \
+             use postgres (through Hyperdrive), d1 or solidb"
+        );
+    }
     format!(
         "column-aware models need the `{adapter}` adapter, which is not compiled \
          into this soli binary. Rebuild with `--features {adapter}`."
@@ -38,7 +44,7 @@ fn feature_missing(adapter: &str) -> String {
 
 /// Dispatch to the active SQL backend, or a clear missing-feature error.
 macro_rules! route_cols {
-    ($pg:expr, $my:expr, $lite:expr, $d1:expr) => {{
+    ($pg:expr, $my:expr, $lite:expr, super::d1::$f:ident($($arg:expr),* $(,)?)) => {{
         match super::registry::active_spec()?.adapter {
             Adapter::Mysql => {
                 #[cfg(feature = "mysql")]
@@ -51,13 +57,18 @@ macro_rules! route_cols {
                 }
             }
             Adapter::Postgres => {
-                #[cfg(feature = "postgres")]
-                {
-                    $pg
-                }
-                #[cfg(not(feature = "postgres"))]
-                {
-                    Err(feature_missing("postgres"))
+                // The edge build: the Worker's `pg` driver, through Hyperdrive.
+                if super::hyperdrive::routes() {
+                    super::hyperdrive::$f($($arg),*)
+                } else {
+                    #[cfg(feature = "postgres")]
+                    {
+                        $pg
+                    }
+                    #[cfg(not(feature = "postgres"))]
+                    {
+                        Err(feature_missing("postgres"))
+                    }
                 }
             }
             Adapter::Sqlite => {
@@ -71,7 +82,7 @@ macro_rules! route_cols {
                 }
             }
             // Always compiled: no client library, the binding is the Worker's.
-            Adapter::D1 => $d1,
+            Adapter::D1 => super::d1::$f($($arg),*),
             Adapter::Solidb => Err("column-aware models require a SQL connection \
                                     (internal error; report this)"
                 .to_string()),

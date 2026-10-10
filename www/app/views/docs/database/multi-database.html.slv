@@ -59,7 +59,7 @@
                 </tr>
                 <tr>
                     <td class="py-3 px-4"><code class="text-amber-300">DATABASE_URL</code></td>
-                    <td class="py-3 px-4">Required for SQL adapters; for <code>d1</code>, the binding (<code>d1://DB</code>, the default)</td>
+                    <td class="py-3 px-4">Required for SQL adapters; for <code>d1</code>, the binding (<code>d1://DB</code>, the default); on the edge build, <code>postgres</code> defaults to <code>hyperdrive://HYPERDRIVE</code> (<a href="/docs/development-tools/edge#hyperdrive" class="text-amber-400 hover:underline">Hyperdrive</a>)</td>
                     <td class="py-3 px-4 text-gray-500">unset</td>
                 </tr>
                 <tr>

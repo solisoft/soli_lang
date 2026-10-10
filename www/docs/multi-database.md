@@ -4,7 +4,7 @@ Soli can use **one connection for the whole app** (the default) or **several nam
 
 - **Default:** SoliDB via `SOLIDB_*` (full Model surface: graph, vector, timeseries, raw SDBQL).
 - **Whole app on SQL:** `SOLI_DB_ADAPTER=postgres|mysql|sqlite` + `DATABASE_URL` (document tables).
-- **Cloudflare Workers:** `SOLI_DB_ADAPTER=d1` puts the same document tables on D1 — see [Cloudflare Workers](edge.md#cloudflare-d1).
+- **Cloudflare Workers:** `SOLI_DB_ADAPTER=d1` puts the same document tables on D1 — see [Cloudflare Workers](edge.md#cloudflare-d1). `postgres` works there too, through Hyperdrive and the `pg` driver, with `DATABASE_URL` defaulting to `hyperdrive://HYPERDRIVE` — see [PostgreSQL](edge.md#postgresql-hyperdrive). MySQL does not run on the edge.
 - **Multi-DB:** `config/database.toml` + per-model `connection "name"`.
 
 Design notes and the full capability matrix: repo `docs/sql-adapter-design.md`. Narrative: [Multiple Databases in One Soli App](/docs/blog/multi-database).
@@ -21,7 +21,7 @@ If `config/database.toml` is absent, Soli builds one connection named **`primary
 | `SOLIDB_USERNAME` / `SOLIDB_PASSWORD` | Basic auth | unset |
 | `SOLIDB_API_KEY` | API key auth | unset |
 | `SOLI_DB_ADAPTER` | `solidb` (default), `postgres`, `mysql`, `sqlite`, or `d1` (edge build) | `solidb` |
-| `DATABASE_URL` | Required for every SQL adapter; for `d1`, the binding (`d1://DB`, the default) | unset |
+| `DATABASE_URL` | Required for every SQL adapter; for `d1`, the binding (`d1://DB`, the default); on the edge build, `postgres` defaults to `hyperdrive://HYPERDRIVE` | unset |
 | `SOLI_DB_POOL_SIZE` | SQL pool size | `10` (`5` on SQLite) |
 
 ```bash

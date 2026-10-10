@@ -20,7 +20,7 @@ npx wrangler deploy                          # on Cloudflare
 
 - **The edge runtime** is the Soli library built for `wasm32-unknown-unknown`
   without its server, CLI and native-only builtins: about 9 MB of
-  WebAssembly, 3 MB compressed. `scripts/build-edge.sh` builds it from the
+  WebAssembly, 2.9 MB compressed. `scripts/build-edge.sh` builds it from the
   `edge/` crate.
 - **`soli edge build`** writes a plain Wrangler project: the runtime, a small
   JavaScript host (`src/worker.js`), your app's source as `src/app.json`, and
@@ -32,9 +32,10 @@ npx wrangler deploy                          # on Cloudflare
 - **Every request** goes through `handle_request`, the function `soli serve`'s
   workers call: middleware, CSRF, routing, the action on the VM, the view and
   its layout.
-- **Model queries** go to Cloudflare D1 through the Worker's binding, or to
-  SoliDB over HTTP(S) with `fetch`. The interpreter is synchronous and both are
-  asynchronous, so the wasm stack *suspends* on each query —
+- **Model queries** go to Cloudflare D1 through the Worker's binding, to
+  PostgreSQL through a JavaScript driver (usually via Hyperdrive), or
+  to SoliDB over HTTP(S) with `fetch`. The interpreter is synchronous and they
+  are asynchronous, so the wasm stack *suspends* on each query —
   [JavaScript Promise Integration](https://v8.dev/blog/jspi)
   (`WebAssembly.Suspending` / `WebAssembly.promising`) — and resumes when the
   answer arrives. Your code does not change.
@@ -64,7 +65,7 @@ compiles C, so no C toolchain is needed. The output, in `target/edge` (or
 ## Package an app: `soli edge build`
 
 ```bash
-soli edge build [folder] [--out DIR] [--runtime DIR]
+soli edge build [folder] [--out DIR] [--runtime DIR] [--sql postgres|none]
 ```
 
 | Option | Default | |
@@ -72,6 +73,7 @@ soli edge build [folder] [--out DIR] [--runtime DIR]
 | `folder` | `.` | the app (it must have `app/controllers`) |
 | `--out`, `-o` | `<folder>/dist/edge` | the Wrangler project to write |
 | `--runtime` | `$SOLI_EDGE_RUNTIME`, then `edge/` or `../share/soli/edge` next to the `soli` binary | where `build-edge.sh` put the runtime |
+| `--sql` | detected | `postgres` to bundle its driver, `none` for nothing (see [PostgreSQL](#postgresql-hyperdrive)) |
 
 What goes where:
 
@@ -83,6 +85,8 @@ What goes where:
 - `.env` and anything outside those directories is **not** bundled.
 - `wrangler.toml` is written on the first build only. Later builds keep it, so
   your name, routes, vars and account stay.
+- For an app on PostgreSQL, the driver: `src/sql-pg.js`, `pg` in
+  `package.json`, and `npm install`.
 
 Add `dist/` to the app's `.gitignore`.
 
@@ -137,7 +141,7 @@ account from the token; with access to several, set `account_id` in
 
 Models work as they do under `soli serve` — `find`, `where`, `create`,
 `update`, `delete`, `count`, aggregates, `update_all` / `delete_all`,
-validations, callbacks — on either of two backends.
+validations, callbacks — on D1, PostgreSQL or SoliDB.
 
 ### Cloudflare D1
 
@@ -182,8 +186,53 @@ Over SoliDB's HTTP API. The Worker must be able to reach `SOLIDB_HOST`: a
 public `https://` address. Credentials follow the usual order (JWT login with
 `SOLIDB_USERNAME` / `SOLIDB_PASSWORD`, `SOLIDB_API_KEY`, then basic auth).
 
-Not available on the edge: PostgreSQL, MySQL and SQLite (native drivers), and
-the native SoliDB driver — the edge build uses D1 or SoliDB over HTTP.
+### PostgreSQL (Hyperdrive)
+
+A Worker has no socket a Rust client could open, so the edge build does not
+carry the native `postgres` client. It sends the SQL that adapter compiles to a
+JavaScript driver in the Worker, `pg`, which connects through the Worker's TCP
+sockets. [Hyperdrive](https://developers.cloudflare.com/hyperdrive/) keeps a
+pool of connections next to the database for it, so a request does not pay a
+TLS handshake to the database.
+
+```bash
+npx wrangler hyperdrive create my-db --connection-string="postgres://user:password@db.example.com:5432/my_app"
+```
+
+```toml
+compatibility_flags = ["nodejs_compat"]   # top level, above the first table
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "…"                                  # what `hyperdrive create` printed
+localConnectionString = "postgres://user:password@localhost:5432/my_app"
+
+[vars]
+SOLI_DB_ADAPTER = "postgres"
+```
+
+`DATABASE_URL` defaults to `hyperdrive://HYPERDRIVE`; `hyperdrive://NAME`
+names another binding, and a plain `postgres://` URL is connected to directly,
+without Hyperdrive. `wrangler dev` uses `localConnectionString` (it must carry
+a password).
+
+`soli edge build` bundles the driver when the app's configuration names
+Postgres — `adapter = "postgres"` in `config/database.toml`, `SOLI_DB_ADAPTER`
+in `.env` or under `[vars]` — or when told with `--sql postgres` (`--sql none`
+bundles nothing). It copies the driver's glue, adds `pg` to `package.json`,
+runs `npm install`, and puts `nodejs_compat` in a new `wrangler.toml`; an
+existing one without it earns a warning.
+
+The models are the native adapter's: the same document tables and SQL,
+column-aware models (`table "orders"`) included, and **transactions**, since
+every statement of a request runs on one connection — opened at the request's
+first query, closed (handed back to Hyperdrive's pool) when it ends. What stays
+with `soli serve`: jobs and cron, `db:create` / `db:drop` and schema dumps.
+
+Not available on the edge: **MySQL** — its JavaScript driver alone weighs
+410 KB compressed, more than the room left under the free plan's 3 MB —
+SQLite and the native SoliDB driver. The edge build uses D1, PostgreSQL or
+SoliDB over HTTP.
 
 ## Files: uploads, images and video
 
@@ -243,10 +292,11 @@ ignored there, and `blur`, `bright` and `contrast` are approximations of what
 `soli serve` computes. Images bills transformations beyond its free monthly
 allowance.
 
-In the Worker itself, `Image` decodes JPEG, PNG, GIF, BMP, ICO and TIFF, and encodes JPEG and PNG.
-An uploader's storage-time transform (`max_width`, `format: "jpeg"`) works
-within the Worker's CPU limit; `format: "webp"` raises, since lossy WebP needs
-libwebp, which is C — use `fmt=webp` on the URL instead.
+The Worker itself carries no image codecs: they would cost 260 KB of its
+compressed size for work Cloudflare Images does better. On the edge the `Image`
+class raises, saying so, and an uploader's storage-time transform (`format`,
+`max_width`, `max_height`) is skipped: the original is stored, and URL
+transforms resize it on read.
 
 What uploads cannot do on the edge:
 
@@ -264,9 +314,9 @@ What uploads cannot do on the edge:
 | views, layouts, partials, components, helpers | server-sent events, `stream`, blob streaming (answered `501`) |
 | query strings, URL-encoded and multipart forms, JSON | resumable (tus) and direct uploads, file writes |
 | i18n from `config/locales` | background jobs, cron, sending mail |
-| models on D1, or on SoliDB over HTTP(S) | PostgreSQL, MySQL, SQLite, the native SoliDB driver; transactions on D1 |
+| models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S) | MySQL, SQLite, the native SoliDB driver; transactions on D1 |
 | the `HTTP` class (`fetch`); `HTTP.parallel*` run one after another | `--dev`: hot reload, dev bar, REPL |
-| static files from `public/`; attachments on R2, with `Range` and image transforms | PDF, Office, lossy WebP encoding in wasm, `System.run` |
+| static files from `public/`; attachments on R2, with `Range` and image transforms | PDF, Office, the `Image` class, `System.run` |
 
 A builtin that needs what a Worker lacks returns an error naming the edge
 build ("… is not available on the edge (Cloudflare Workers) build").
@@ -280,8 +330,8 @@ build ("… is not available on the edge (Cloudflare Workers) build").
 - **A Rust panic ends the isolate.** wasm is `panic = abort`: where `soli serve`
   answers a 500 and keeps the worker, the edge build loses the isolate, and the
   next request boots a fresh one.
-- **Size.** About 3 MB compressed: inside the paid plan's limit, at the edge of
-  the free plan's 3 MB.
+- **Size.** About 2.9 MB compressed: inside the free plan's 3 MB, just. The
+  Postgres driver adds about 40 KB.
 - **Sessions.** The default in-memory store lives as long as an isolate; use
   the `cookie` driver (`SOLI_SESSION_DRIVER=cookie` and a 32+ character
   `SOLI_SESSION_SECRET` secret).
@@ -298,6 +348,10 @@ build ("… is not available on the edge (Cloudflare Workers) build").
 | `no edge runtime found` from `soli edge build` | pass `--runtime` or set `SOLI_EDGE_RUNTIME` to the directory `build-edge.sh` wrote |
 | a model call hangs, then the request fails | `SOLIDB_HOST` is not reachable from Cloudflare (a LAN address, `localhost`) |
 | `no D1 binding named DB` | `wrangler.toml` lacks the `[[d1_databases]]` block whose `binding` the D1 url names |
+| `no Hyperdrive binding named HYPERDRIVE` | `wrangler.toml` lacks the `[[hyperdrive]]` block the connection's url names |
+| `this Worker carries no postgres driver` | the build did not see the dialect: `soli edge build --sql postgres` |
+| `MySQL is not available on the edge build` | the app's connection is MySQL: move it to Postgres (Hyperdrive), D1 or SoliDB |
+| `CSRF check failed: Origin … does not match` (403) | a POST whose Origin is another site — the same-origin gate of `soli serve`; list your other public hostnames in `SOLI_APP_HOSTS` |
 | `no R2 binding named ATTACHMENTS` | `wrangler.toml` lacks the `[[r2_buckets]]` block an `r2` attachment needs |
 | an image URL with `?w=` answers the full-size original | no `[images]` binding in `wrangler.toml` |
 | `… is not supported on Cloudflare D1` | a transaction, a column-aware model, jobs or cron on a D1 connection |

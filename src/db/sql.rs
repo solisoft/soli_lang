@@ -23,6 +23,12 @@ use super::Adapter;
     not(feature = "sqlite")
 ))]
 fn feature_missing(adapter: &str) -> String {
+    if cfg!(target_arch = "wasm32") {
+        return format!(
+            "the {adapter} adapter is not available on the edge (Cloudflare Workers) build: \
+             use postgres (through Hyperdrive), d1 or solidb"
+        );
+    }
     format!(
         "SQL adapter `{adapter}` is not compiled into this soli binary. \
          Rebuild with `--features {adapter}` (or `sql` for every SQL backend). \
@@ -55,7 +61,7 @@ pub fn is_sqlite() -> bool {
 
 /// Dispatch a SQL op to the active backend, or a clear missing-feature error.
 macro_rules! route_sql {
-    ($pg:expr, $my:expr, $lite:expr, $d1:expr) => {{
+    ($pg:expr, $my:expr, $lite:expr, super::d1::$f:ident($($arg:expr),* $(,)?)) => {{
         match active_adapter()? {
             Adapter::Mysql => {
                 #[cfg(feature = "mysql")]
@@ -68,13 +74,18 @@ macro_rules! route_sql {
                 }
             }
             Adapter::Postgres => {
-                #[cfg(feature = "postgres")]
-                {
-                    $pg
-                }
-                #[cfg(not(feature = "postgres"))]
-                {
-                    Err(feature_missing("postgres"))
+                // The edge build: the Worker's `pg` driver, through Hyperdrive.
+                if super::hyperdrive::routes() {
+                    super::hyperdrive::$f($($arg),*)
+                } else {
+                    #[cfg(feature = "postgres")]
+                    {
+                        $pg
+                    }
+                    #[cfg(not(feature = "postgres"))]
+                    {
+                        Err(feature_missing("postgres"))
+                    }
                 }
             }
             Adapter::Sqlite => {
@@ -88,7 +99,7 @@ macro_rules! route_sql {
                 }
             }
             // Always compiled: no client library, the binding is the Worker's.
-            Adapter::D1 => $d1,
+            Adapter::D1 => super::d1::$f($($arg),*),
             Adapter::Solidb => {
                 Err("SQL facade used on a solidb connection (internal error; report this)".into())
             }
@@ -107,6 +118,9 @@ pub fn ensure_connected() -> Result<(), String> {
 
 /// True when this thread holds an open SQL transaction (Postgres or MySQL).
 pub fn has_active_tx() -> bool {
+    if super::hyperdrive::has_active_tx() {
+        return true;
+    }
     #[cfg(feature = "postgres")]
     if super::postgres::has_active_tx() {
         return true;
@@ -135,6 +149,9 @@ pub fn commit_transaction() -> Result<(), String> {
     // Route by whichever adapter HOLDS the tx, not the active spec — the tx
     // may live on a named connection while the ambient default is something
     // else entirely (even solidb).
+    if super::hyperdrive::has_active_tx() {
+        return super::hyperdrive::commit_transaction();
+    }
     #[cfg(feature = "postgres")]
     if super::postgres::has_active_tx() {
         return super::postgres::commit_transaction();
@@ -153,6 +170,9 @@ pub fn commit_transaction() -> Result<(), String> {
 pub fn rollback_transaction() -> Result<(), String> {
     // Holder-routed like commit; no-op success when nothing is open
     // (mirrors defensive rollback paths).
+    if super::hyperdrive::has_active_tx() {
+        return super::hyperdrive::rollback_transaction();
+    }
     #[cfg(feature = "postgres")]
     if super::postgres::has_active_tx() {
         return super::postgres::rollback_transaction();
@@ -169,6 +189,7 @@ pub fn rollback_transaction() -> Result<(), String> {
 }
 
 pub fn clear_transaction() {
+    super::hyperdrive::clear_transaction();
     #[cfg(feature = "postgres")]
     super::postgres::clear_transaction();
     #[cfg(feature = "mysql")]

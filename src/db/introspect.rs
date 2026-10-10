@@ -298,6 +298,10 @@ fn introspect(connection: &str, table: &str) -> Result<TableSchema, String> {
              {connection:?} is solidb. Declare `connection \"<postgres-or-mysql>\"` \
              on the model, or drop the `table` declaration to use document storage."
         )),
+        super::Adapter::Postgres if super::hyperdrive::routes() => {
+            let raw = super::hyperdrive::introspect_table(table)?;
+            build_schema(connection, table, raw, |t, _| pg_coltype(t))
+        }
         super::Adapter::Postgres => {
             #[cfg(feature = "postgres")]
             {
@@ -346,6 +350,12 @@ fn introspect(connection: &str, table: &str) -> Result<TableSchema, String> {
     not(feature = "sqlite")
 ))]
 fn feature_missing(adapter: &str, table: &str) -> String {
+    if cfg!(target_arch = "wasm32") {
+        return format!(
+            "column-aware model for table {table:?}: the {adapter} adapter is not available \
+             on the edge (Cloudflare Workers) build; use postgres (through Hyperdrive)"
+        );
+    }
     format!(
         "column-aware model for table {table:?} needs the `{adapter}` adapter, which is \
          not compiled into this soli binary. Rebuild with `--features {adapter}`."

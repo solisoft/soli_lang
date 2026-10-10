@@ -167,6 +167,12 @@ pub fn handle(request: EdgeRequest) -> EdgeResponse {
             headers.append(name, value);
         }
     }
+    // The same-origin gate `soli serve` runs before routing (SEC-014): a
+    // cross-origin POST never reaches a controller. Cloudflare passes the
+    // visitor's Host through, so the request authority is the public one.
+    if let Err(reason) = check_csrf_origin(&headers, &request.method, &request.path) {
+        return text(403, &format!("CSRF check failed: {reason}"));
+    }
     let query = url::form_urlencoded::parse(request.query.as_bytes())
         .map(|(k, v)| (k.into_owned(), v.into_owned()))
         .collect();

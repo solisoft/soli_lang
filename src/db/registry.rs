@@ -161,9 +161,16 @@ pub fn load_registry(app: Option<&Path>) -> Result<ConnectionRegistry, DbError> 
 }
 
 /// The URL an adapter can do without: a D1 connection names the Worker's
-/// binding, and `DB` is the one `wrangler d1 create` suggests.
+/// binding, and `DB` is the one `wrangler d1 create` suggests. On the edge
+/// build, Postgres defaults to the `HYPERDRIVE` binding.
 fn default_url(adapter: Adapter) -> Option<String> {
-    (adapter == Adapter::D1).then(|| "d1://DB".to_string())
+    match adapter {
+        Adapter::D1 => Some("d1://DB".to_string()),
+        Adapter::Postgres if cfg!(target_arch = "wasm32") => {
+            Some(super::hyperdrive::DEFAULT_URL.to_string())
+        }
+        _ => None,
+    }
 }
 
 fn env_only_primary() -> Result<ConnectionRegistry, DbError> {

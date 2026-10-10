@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::process;
 
-pub fn build(folder: &str, out: Option<&str>, runtime: Option<&str>) {
+pub fn build(folder: &str, out: Option<&str>, runtime: Option<&str>, sql: Option<&str>) {
     let app_dir = Path::new(folder);
     let out_dir = out
         .map(Path::new)
@@ -13,6 +13,8 @@ pub fn build(folder: &str, out: Option<&str>, runtime: Option<&str>) {
         app_dir,
         out_dir: &out_dir,
         runtime_dir: runtime.map(Path::new),
+        sql,
+        npm_install: true,
     }) {
         Ok(summary) => summary,
         Err(e) => {
@@ -35,8 +37,17 @@ pub fn build(folder: &str, out: Option<&str>, runtime: Option<&str>) {
             skipped.display()
         );
     }
+    if !summary.sql_drivers.is_empty() {
+        println!("SQL drivers: {}", summary.sql_drivers.join(", "));
+    }
+    if let Some(npm) = &summary.npm {
+        println!("{npm}");
+    }
     if summary.wrote_wrangler_toml {
         println!("Wrote wrangler.toml (later builds keep your edits)");
+    }
+    for warning in &summary.warnings {
+        println!("Warning: {warning}");
     }
     println!();
     println!("Next:");

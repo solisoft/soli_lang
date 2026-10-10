@@ -2,6 +2,8 @@
 // in WebAssembly.Suspending: wasm calls it like a plain function, its stack is
 // parked while the promise runs, and resumes with the result.
 
+import * as sqlDrivers from "./sql.js";
+
 let host = null;
 
 // worker.js hands over the wasm exports and the Worker's env once per isolate,
@@ -132,4 +134,81 @@ function described(object) {
     size: object.size,
     filename: object.customMetadata?.["original-filename"] ?? "file",
   };
+}
+
+// The request's SQL connections, one per target, opened on first use so every
+// statement of a request — a transaction's too — runs on the same one.
+const sqlClients = new Map();
+
+// worker.js calls this when a request is done: its connections close (with
+// Hyperdrive that hands them back to the pool) and an open transaction rolls
+// back with them.
+export function endSql(ctx) {
+  for (const pending of sqlClients.values()) {
+    const closing = pending.then((client) => client.end()).catch(() => {});
+    ctx?.waitUntil?.(closing);
+  }
+  sqlClients.clear();
+}
+
+function connectionString(target) {
+  if (!target.startsWith("hyperdrive://")) return target;
+  const name = target.slice("hyperdrive://".length);
+  const binding = host.env[name];
+  if (!binding || typeof binding.connectionString !== "string") {
+    throw new Error(
+      `no Hyperdrive binding named ${name}: add [[hyperdrive]] binding = "${name}" to wrangler.toml`,
+    );
+  }
+  return binding.connectionString;
+}
+
+// One statement for Soli's postgres adapter (solilang::db::hyperdrive). Reads
+// `{target, sql, params}` as JSON at ptr/len, runs it with the `pg` driver
+// `soli edge build` bundled, and returns a buffer from soli_alloc: a
+// little-endian u32 length, then the JSON response `{ok, columns, rows,
+// changes}` or `{ok: false, error}`.
+export const soli_sql = new WebAssembly.Suspending(async (ptr, len) => {
+  const { wasm } = host;
+  let response;
+  try {
+    const request = JSON.parse(
+      new TextDecoder().decode(new Uint8Array(wasm.memory.buffer, ptr, len)),
+    );
+    const connect = sqlDrivers.postgres;
+    if (!connect) {
+      throw new Error(
+        "this Worker carries no postgres driver: rebuild with `soli edge build --sql postgres`",
+      );
+    }
+    let pending = sqlClients.get(request.target);
+    if (!pending) {
+      pending = connect(connectionString(request.target));
+      sqlClients.set(request.target, pending);
+      pending.catch(() => sqlClients.delete(request.target));
+    }
+    const client = await pending;
+    const result = await client.query(request.sql, request.params);
+    response = {
+      ok: true,
+      columns: result.columns,
+      rows: result.rows.map((row) => row.map(sqlCell)),
+      changes: result.changes,
+    };
+  } catch (error) {
+    response = { ok: false, error: String(error?.message ?? error) };
+  }
+  const bytes = new TextEncoder().encode(JSON.stringify(response));
+  const out = wasm.soli_alloc(4 + bytes.length);
+  new DataView(wasm.memory.buffer).setUint32(out, bytes.length, true);
+  new Uint8Array(wasm.memory.buffer, out + 4, bytes.length).set(bytes);
+  return out;
+});
+
+// JSON has no bigint, Date or bytes.
+function sqlCell(value) {
+  if (typeof value === "bigint") return value.toString();
+  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Uint8Array) return `<blob ${value.byteLength} bytes>`;
+  return value ?? null;
 }

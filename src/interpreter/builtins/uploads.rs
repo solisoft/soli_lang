@@ -777,6 +777,11 @@ fn transform_upload_file(
     let Ok(bytes) = STANDARD.decode(data_b64.as_bytes()) else {
         return Ok(None);
     };
+    // The edge build has no image codecs (see `register_image_class`): the
+    // original is stored, and Cloudflare Images transforms it on read.
+    if cfg!(target_arch = "wasm32") {
+        return Ok(None);
+    }
     let Ok(mut img) = image::load_from_memory(&bytes) else {
         // Not a decodable image → store the original bytes untouched.
         return Ok(None);

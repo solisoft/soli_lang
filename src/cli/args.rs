@@ -411,6 +411,7 @@ pub enum Command {
         folder: String,
         out: Option<String>,
         runtime: Option<String>,
+        sql: Option<String>,
     },
     /// `soli mobile build android|ios [folder]` — an installable, versioned
     /// APK or IPA from `clients/<platform>/`.
@@ -2551,7 +2552,8 @@ pub fn parse_args() -> Options {
             }
             "edge" => {
                 i += 1;
-                let usage = "Usage: soli edge build [folder] [--out DIR] [--runtime DIR]";
+                let usage = "Usage: soli edge build [folder] [--out DIR] [--runtime DIR] \
+                             [--sql postgres|none]";
                 if args.get(i).map(String::as_str) != Some("build") {
                     eprintln!("{usage}");
                     process::exit(64);
@@ -2560,18 +2562,19 @@ pub fn parse_args() -> Options {
                 let mut folder: Option<String> = None;
                 let mut out = None;
                 let mut runtime = None;
+                let mut sql = None;
                 while i < args.len() {
                     match args[i].as_str() {
-                        flag @ ("--out" | "-o" | "--runtime") => {
+                        flag @ ("--out" | "-o" | "--runtime" | "--sql") => {
                             i += 1;
                             let Some(value) = args.get(i).cloned() else {
                                 eprintln!("{flag} requires a value");
                                 process::exit(64);
                             };
-                            if flag == "--runtime" {
-                                runtime = Some(value);
-                            } else {
-                                out = Some(value);
+                            match flag {
+                                "--runtime" => runtime = Some(value),
+                                "--sql" => sql = Some(value),
+                                _ => out = Some(value),
                             }
                         }
                         other if other.starts_with('-') => {
@@ -2590,6 +2593,7 @@ pub fn parse_args() -> Options {
                     folder: folder.unwrap_or_else(|| ".".to_string()),
                     out,
                     runtime,
+                    sql,
                 };
                 return options;
             }

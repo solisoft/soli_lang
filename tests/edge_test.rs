@@ -142,6 +142,21 @@ fn boots_a_mounted_app_and_answers_requests() {
             assert_eq!(header("x-name").as_deref(), Some("pixels.png"));
             assert_eq!(header("x-note").as_deref(), Some("hello"));
 
+            // A cross-origin POST is refused before routing, as under `soli serve`.
+            let response = edge::handle(EdgeRequest {
+                method: "POST".to_string(),
+                path: "/probe".to_string(),
+                query: String::new(),
+                headers: vec![
+                    ("host".to_string(), "cf.example.test".to_string()),
+                    ("origin".to_string(), "https://evil.example".to_string()),
+                    ("content-type".to_string(), "application/x-www-form-urlencoded".to_string()),
+                ],
+                body: b"_method=PATCH&title=edge".to_vec(),
+            });
+            assert_eq!(response.status, 403);
+            assert!(String::from_utf8_lossy(&response.body).contains("CSRF check failed"));
+
             // A form's `_method` field picks the verb, as under `soli serve`.
             let response = post(
                 "application/x-www-form-urlencoded",

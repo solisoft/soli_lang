@@ -23,6 +23,7 @@ pub mod ddl;
 mod ensured;
 pub mod error;
 pub mod hash_filter;
+pub mod hyperdrive;
 pub mod import;
 pub mod introspect;
 pub mod merge;
@@ -108,7 +109,8 @@ pub fn parse_counter(raw: &str) -> Option<i64> {
 pub fn adapter_feature_enabled(adapter: Adapter) -> bool {
     match adapter {
         Adapter::Solidb => true,
-        Adapter::Postgres => cfg!(feature = "postgres"),
+        // The edge build reaches Postgres through the Worker's `pg` driver.
+        Adapter::Postgres => cfg!(any(feature = "postgres", target_arch = "wasm32")),
         Adapter::Mysql => cfg!(feature = "mysql"),
         Adapter::Sqlite => cfg!(feature = "sqlite"),
         // No client library: the binding belongs to the Worker (edge build).

@@ -24,11 +24,11 @@ npx wrangler deploy                          # on Cloudflare</code></pre>
 
     <h2 id="how-it-works" class="text-3xl font-bold text-white mb-4 scroll-mt-24">How it works</h2>
     <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-12">
-        <li><strong class="text-white">The edge runtime</strong> is the Soli library built for <code class="text-amber-400">wasm32-unknown-unknown</code> without its server, CLI and native-only builtins: about 9&nbsp;MB of WebAssembly, 3&nbsp;MB compressed. <code class="text-amber-400">scripts/build-edge.sh</code> builds it from the <code class="text-amber-400">edge/</code> crate.</li>
+        <li><strong class="text-white">The edge runtime</strong> is the Soli library built for <code class="text-amber-400">wasm32-unknown-unknown</code> without its server, CLI and native-only builtins: about 9&nbsp;MB of WebAssembly, 2.9&nbsp;MB compressed. <code class="text-amber-400">scripts/build-edge.sh</code> builds it from the <code class="text-amber-400">edge/</code> crate.</li>
         <li><strong class="text-white"><code class="text-amber-400">soli edge build</code></strong> writes a plain Wrangler project: the runtime, a small JavaScript host (<code class="text-amber-400">src/worker.js</code>), your app's source as <code class="text-amber-400">src/app.json</code>, and <code class="text-amber-400">public/</code> as the Worker's static assets.</li>
         <li><strong class="text-white">At the first request</strong> an isolate instantiates the runtime, mounts the app's files in memory (a Worker has no filesystem) and boots the app the way a <code class="text-amber-400">soli serve</code> worker does: a few tens of milliseconds, once per isolate. Later requests take a few milliseconds.</li>
         <li><strong class="text-white">Every request</strong> goes through <code class="text-amber-400">handle_request</code>, the function <code class="text-amber-400">soli serve</code>'s workers call: middleware, CSRF, routing, the action on the VM, the view and its layout.</li>
-        <li><strong class="text-white">Model queries</strong> go to Cloudflare D1 through the Worker's binding, or to SoliDB over HTTP(S) with <code class="text-amber-400">fetch</code>. The interpreter is synchronous and both are asynchronous, so the wasm stack <em>suspends</em> on each query &mdash; <a href="https://v8.dev/blog/jspi" class="text-amber-400 hover:underline">JavaScript Promise Integration</a> &mdash; and resumes when the answer arrives. Your code does not change.</li>
+        <li><strong class="text-white">Model queries</strong> go to Cloudflare D1 through the Worker's binding, to PostgreSQL through a JavaScript driver (usually via Hyperdrive), or to SoliDB over HTTP(S) with <code class="text-amber-400">fetch</code>. The interpreter is synchronous and they are asynchronous, so the wasm stack <em>suspends</em> on each query &mdash; <a href="https://v8.dev/blog/jspi" class="text-amber-400 hover:underline">JavaScript Promise Integration</a> &mdash; and resumes when the answer arrives. Your code does not change.</li>
     </ul>
 
     <h2 id="runtime" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Build the edge runtime</h2>
@@ -55,7 +55,7 @@ cargo install wasm-bindgen-cli --version 0.2.126 --locked
 
     <h2 id="package" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Package an app: <code>soli edge build</code></h2>
     <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
-        <pre data-filename="Terminal"><code class="language-bash text-sm">soli edge build [folder] [--out DIR] [--runtime DIR]</code></pre>
+        <pre data-filename="Terminal"><code class="language-bash text-sm">soli edge build [folder] [--out DIR] [--runtime DIR] [--sql postgres|none]</code></pre>
     </div>
     <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6">
         <table class="w-full text-sm text-left">
@@ -64,6 +64,7 @@ cargo install wasm-bindgen-cli --version 0.2.126 --locked
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-amber-400">folder</code></td><td class="py-3 px-4"><code>.</code> &mdash; the app (it must have <code>app/controllers</code>)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code class="text-amber-400">--out</code>, <code class="text-amber-400">-o</code></td><td class="py-3 px-4"><code>&lt;folder&gt;/dist/edge</code> &mdash; the Wrangler project to write</td></tr>
                 <tr><td class="py-3 px-4"><code class="text-amber-400">--runtime</code></td><td class="py-3 px-4"><code>$SOLI_EDGE_RUNTIME</code>, then <code>edge/</code> or <code>../share/soli/edge</code> next to the <code>soli</code> binary</td></tr>
+                <tr><td class="py-3 px-4"><code class="text-amber-400">--sql</code></td><td class="py-3 px-4">detected &mdash; <code>postgres</code> to bundle its driver, <code>none</code> for nothing (see <a href="#hyperdrive" class="text-amber-400 hover:underline">PostgreSQL</a>)</td></tr>
             </tbody>
         </table>
     </div>
@@ -72,6 +73,7 @@ cargo install wasm-bindgen-cli --version 0.2.126 --locked
         <li><code class="text-amber-400">public/</code> is copied fresh each build and served as <a href="https://developers.cloudflare.com/workers/static-assets/" class="text-amber-400 hover:underline">static assets</a>, before the Worker runs.</li>
         <li><code class="text-amber-400">.env</code> and anything outside those directories is <strong class="text-white">not</strong> bundled.</li>
         <li><code class="text-amber-400">wrangler.toml</code> is written on the first build only: later builds keep your name, routes, vars and account. Add <code>dist/</code> to the app's <code>.gitignore</code>.</li>
+        <li>For an app on PostgreSQL, the driver: <code>src/sql-pg.js</code>, <code>pg</code> in <code>package.json</code>, and <code>npm install</code>.</li>
     </ul>
 
     <h2 id="configure" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Configure</h2>
@@ -107,7 +109,7 @@ SOLIDB_USERNAME = "app"</code></pre>
 
     <h2 id="databases" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Databases</h2>
     <p class="text-gray-400 mb-6">
-        Models work as they do under <code class="text-amber-400">soli serve</code> &mdash; <code>find</code>, <code>where</code>, <code>create</code>, <code>update</code>, <code>delete</code>, <code>count</code>, aggregates, <code>update_all</code> / <code>delete_all</code>, validations, callbacks &mdash; on either of two backends.
+        Models work as they do under <code class="text-amber-400">soli serve</code> &mdash; <code>find</code>, <code>where</code>, <code>create</code>, <code>update</code>, <code>delete</code>, <code>count</code>, aggregates, <code>update_all</code> / <code>delete_all</code>, validations, callbacks &mdash; on D1, PostgreSQL or SoliDB.
     </p>
 
     <h3 id="d1" class="text-2xl font-semibold text-white mb-4 scroll-mt-24">Cloudflare D1</h3>
@@ -140,7 +142,38 @@ SOLI_DB_ADAPTER = "d1"</code></pre>
 
     <h3 id="solidb" class="text-2xl font-semibold text-white mb-4 scroll-mt-24">SoliDB</h3>
     <p class="text-gray-400 mb-12">
-        Over SoliDB's HTTP API. The Worker must be able to reach <code class="text-amber-400">SOLIDB_HOST</code>: a public <code>https://</code> address. Credentials follow the usual order (JWT login with <code>SOLIDB_USERNAME</code> / <code>SOLIDB_PASSWORD</code>, <code>SOLIDB_API_KEY</code>, then basic auth). PostgreSQL, MySQL, SQLite and the native SoliDB driver are not available on the edge: it uses D1 or SoliDB over HTTP.
+        Over SoliDB's HTTP API. The Worker must be able to reach <code class="text-amber-400">SOLIDB_HOST</code>: a public <code>https://</code> address. Credentials follow the usual order (JWT login with <code>SOLIDB_USERNAME</code> / <code>SOLIDB_PASSWORD</code>, <code>SOLIDB_API_KEY</code>, then basic auth).
+    </p>
+
+    <h3 id="hyperdrive" class="text-2xl font-semibold text-white mb-4 scroll-mt-24">PostgreSQL (Hyperdrive)</h3>
+    <p class="text-gray-400 mb-6">
+        A Worker has no socket a Rust client could open, so the edge build does not carry the native <code>postgres</code> client. It sends the SQL that adapter compiles to a JavaScript driver in the Worker, <code>pg</code>, which connects through the Worker's TCP sockets. <a href="https://developers.cloudflare.com/hyperdrive/" class="text-amber-400 hover:underline">Hyperdrive</a> keeps a pool of connections next to the database for it, so a request does not pay a TLS handshake to the database.
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-4">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">npx wrangler hyperdrive create my-db --connection-string="postgres://user:password@db.example.com:5432/my_app"</code></pre>
+    </div>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="wrangler.toml"><code class="language-toml text-sm">compatibility_flags = ["nodejs_compat"]   # top level, above the first table
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "…"                                  # what `hyperdrive create` printed
+localConnectionString = "postgres://user:password@localhost:5432/my_app"
+
+[vars]
+SOLI_DB_ADAPTER = "postgres"</code></pre>
+    </div>
+    <p class="text-gray-400 mb-6">
+        <code class="text-amber-400">DATABASE_URL</code> defaults to <code>hyperdrive://HYPERDRIVE</code>; <code>hyperdrive://NAME</code> names another binding, and a plain <code>postgres://</code> URL is connected to directly, without Hyperdrive. <code>wrangler dev</code> uses <code>localConnectionString</code> (it must carry a password).
+    </p>
+    <p class="text-gray-400 mb-6">
+        <code class="text-amber-400">soli edge build</code> bundles the driver when the app's configuration names Postgres &mdash; <code>adapter = "postgres"</code> in <code>config/database.toml</code>, <code>SOLI_DB_ADAPTER</code> in <code>.env</code> or under <code>[vars]</code> &mdash; or when told with <code>--sql postgres</code> (<code>--sql none</code> bundles nothing). It copies the driver's glue, adds <code>pg</code> to <code>package.json</code>, runs <code>npm install</code>, and puts <code>nodejs_compat</code> in a new <code>wrangler.toml</code>; an existing one without it earns a warning.
+    </p>
+    <p class="text-gray-400 mb-6">
+        The models are the native adapter's: the same document tables and SQL, column-aware models (<code>table "orders"</code>) included, and <strong class="text-white">transactions</strong>, since every statement of a request runs on one connection &mdash; opened at the request's first query, closed (handed back to Hyperdrive's pool) when it ends. What stays with <code>soli serve</code>: jobs and cron, <code>db:create</code> / <code>db:drop</code> and schema dumps.
+    </p>
+    <p class="text-gray-400 mb-12">
+        Not available on the edge: <strong class="text-white">MySQL</strong> &mdash; its JavaScript driver alone weighs 410&nbsp;KB compressed, more than the room left under the free plan's 3&nbsp;MB &mdash; SQLite and the native SoliDB driver. The edge build uses D1, PostgreSQL or SoliDB over HTTP.
     </p>
 
     <h2 id="files" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Files: uploads, images and video</h2>
@@ -181,7 +214,7 @@ binding = "IMAGES"</code></pre>
         <strong class="text-white">Image transforms</strong> &mdash; <code>photo_url({"w": 400, "fmt": "webp"})</code>, <code>?thumb=</code>, <code>?square=</code>, <code>?fit=cover</code>, <code>?crop=</code>, <code>?rot=</code>, <code>?gray=1</code>, <code>?q=</code> &mdash; are run by the <a href="https://developers.cloudflare.com/images/transform-images/bindings/" class="text-amber-400 hover:underline">Images binding</a>, WebP and AVIF output included, on Cloudflare's machines rather than in the Worker's CPU budget. Without an <code>[images]</code> binding they answer the stored bytes. Images has no hue rotation or inversion, so <code>hue</code> and <code>invert</code> are ignored there, and <code>blur</code>, <code>bright</code> and <code>contrast</code> are approximations of what <code>soli serve</code> computes. Images bills transformations beyond its free monthly allowance.
     </p>
     <p class="text-gray-400 mb-4">
-        In the Worker itself, <code>Image</code> decodes JPEG, PNG, GIF, BMP, ICO and TIFF, and encodes JPEG and PNG. An uploader's storage-time transform (<code>max_width</code>, <code>format: "jpeg"</code>) works within the Worker's CPU limit; <code>format: "webp"</code> raises, since lossy WebP needs libwebp, which is C &mdash; use <code>fmt=webp</code> on the URL instead. What uploads cannot do on the edge:
+        The Worker itself carries no image codecs: they would cost 260&nbsp;KB of its compressed size for work Cloudflare Images does better. On the edge the <code>Image</code> class raises, saying so, and an uploader's storage-time transform (<code>format</code>, <code>max_width</code>, <code>max_height</code>) is skipped: the original is stored, and URL transforms resize it on read. What uploads cannot do on the edge:
     </p>
     <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-12">
         <li><strong class="text-white">Large files.</strong> The body arrives whole, and a file is copied a few times on its way into R2 (the request, wasm memory, the parsed part, its base64 form), against an isolate limit of 128&nbsp;MB: keep <code>max_size</code> to about 20&nbsp;MB.</li>
@@ -197,9 +230,9 @@ binding = "IMAGES"</code></pre>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">views, layouts, partials, components, helpers</td><td class="py-3 px-4">server-sent events, <code>stream</code>, blob streaming (answered <code>501</code>)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">query strings, URL-encoded and multipart forms, JSON</td><td class="py-3 px-4">resumable (tus) and direct uploads, file writes</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">i18n from <code>config/locales</code></td><td class="py-3 px-4">background jobs, cron, sending mail</td></tr>
-                <tr class="border-b border-white/5"><td class="py-3 px-4">models on D1, or on SoliDB over HTTP(S)</td><td class="py-3 px-4">PostgreSQL, MySQL, SQLite, the native SoliDB driver; transactions on D1</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4">models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S)</td><td class="py-3 px-4">MySQL, SQLite, the native SoliDB driver; transactions on D1</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">the <code>HTTP</code> class (<code>fetch</code>); <code>HTTP.parallel*</code> run one after another</td><td class="py-3 px-4"><code>--dev</code>: hot reload, dev bar, REPL</td></tr>
-                <tr><td class="py-3 px-4">static files from <code>public/</code>; attachments on R2, with <code>Range</code> and image transforms</td><td class="py-3 px-4">PDF, Office, lossy WebP encoding in wasm, <code>System.run</code></td></tr>
+                <tr><td class="py-3 px-4">static files from <code>public/</code>; attachments on R2, with <code>Range</code> and image transforms</td><td class="py-3 px-4">PDF, Office, the <code>Image</code> class, <code>System.run</code></td></tr>
             </tbody>
         </table>
     </div>
@@ -209,7 +242,7 @@ binding = "IMAGES"</code></pre>
     <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-12">
         <li><strong class="text-white">One request at a time per isolate.</strong> A request suspended on a query keeps its isolate's wasm stack; <code>worker.js</code> queues the next one behind it. Cloudflare spreads load across isolates, but a slow query delays the requests queued in the same isolate.</li>
         <li><strong class="text-white">A Rust panic ends the isolate.</strong> wasm is <code>panic = abort</code>: where <code>soli serve</code> answers a 500 and keeps the worker, the edge build loses the isolate, and the next request boots a fresh one.</li>
-        <li><strong class="text-white">Size.</strong> About 3&nbsp;MB compressed: inside the paid plan's limit, at the edge of the free plan's 3&nbsp;MB.</li>
+        <li><strong class="text-white">Size.</strong> About 2.9&nbsp;MB compressed: inside the free plan's 3&nbsp;MB, just. The Postgres driver adds about 40&nbsp;KB.</li>
         <li><strong class="text-white">Sessions.</strong> The default in-memory store lives as long as an isolate; use the <code>cookie</code> driver (<code>SOLI_SESSION_DRIVER=cookie</code> and a 32+ character <code>SOLI_SESSION_SECRET</code> secret).</li>
         <li><strong class="text-white">Redirects</strong> of the <code>HTTP</code> class are followed by <code>fetch</code>; the SSRF check still screens every URL you pass it.</li>
     </ul>
@@ -226,6 +259,10 @@ binding = "IMAGES"</code></pre>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">a model call hangs, then the request fails</td><td class="py-3 px-4"><code>SOLIDB_HOST</code> is not reachable from Cloudflare (a LAN address, <code>localhost</code>)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no D1 binding named DB</code></td><td class="py-3 px-4"><code>wrangler.toml</code> lacks the <code>[[d1_databases]]</code> block whose <code>binding</code> the D1 url names</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>… is not supported on Cloudflare D1</code></td><td class="py-3 px-4">a transaction, a column-aware model, jobs or cron on a D1 connection</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no Hyperdrive binding named HYPERDRIVE</code></td><td class="py-3 px-4"><code>wrangler.toml</code> lacks the <code>[[hyperdrive]]</code> block the connection's url names</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>this Worker carries no postgres driver</code></td><td class="py-3 px-4">the build did not see the dialect: <code>soli edge build --sql postgres</code></td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>MySQL is not available on the edge build</code></td><td class="py-3 px-4">the app's connection is MySQL: move it to Postgres (Hyperdrive), D1 or SoliDB</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>CSRF check failed: Origin … does not match</code> (403)</td><td class="py-3 px-4">a POST whose Origin is another site &mdash; the same-origin gate of <code>soli serve</code>; list your other public hostnames in <code>SOLI_APP_HOSTS</code></td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no R2 binding named ATTACHMENTS</code></td><td class="py-3 px-4"><code>wrangler.toml</code> lacks the <code>[[r2_buckets]]</code> block an <code>r2</code> attachment needs</td></tr>
                 <tr><td class="py-3 px-4">an image URL with <code>?w=</code> answers the full-size original</td><td class="py-3 px-4">no <code>[images]</code> binding in <code>wrangler.toml</code></td></tr>
             </tbody>
