@@ -525,10 +525,12 @@ jobs:
 
   release:
     # Tag releases wait for the full gate, not just test/clippy/fmt.
-    # windows-check, audit, engine-parity, browser, and verapdf each
-    # cover a failure mode the Linux suite cannot see; a red job here
-    # must stop the draft release and the binary/docker publish.
-    needs: [test, clippy, fmt, windows-check, audit, engine-parity, browser, verapdf]
+    # audit, engine-parity, browser, and verapdf each cover a failure mode the
+    # Linux suite cannot see; a red job here must stop the draft release and
+    # the binary/docker publish. windows-check is not in this list: Windows
+    # gates only the Windows binary (build-windows), never the Linux and macOS
+    # release.
+    needs: [test, clippy, fmt, audit, engine-parity, browser, verapdf]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -572,19 +574,11 @@ jobs:
             os: macos-latest
             artifact: soli-darwin-amd64
             pdf_artifact: render-pdf-darwin-amd64
-          # Keep the .tar.gz + .sha256 convention on Windows too: the standalone
-          # builder downloads and verifies that shape, and a .zip would mean a
-          # second code path plus a zip dependency for cosmetics. Windows 10
-          # 1803+ ships bsdtar as tar.exe, so the packaging step is unchanged
-          # apart from the binary name.
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            artifact: soli-windows-amd64
-            pdf_artifact: render-pdf-windows-amd64
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
-    steps:
+    # Shared with build-windows through the anchor.
+    steps: &build-steps
       - uses: actions/checkout@v5
 
       - name: Install Rust
@@ -675,6 +669,29 @@ jobs:
           gh release upload --clobber ${{ github.ref_name }} ${{ matrix.artifact }}.tar.gz.sha256
           gh release upload --clobber ${{ github.ref_name }} ${{ matrix.pdf_artifact }}.tar.gz
           gh release upload --clobber ${{ github.ref_name }} ${{ matrix.pdf_artifact }}.tar.gz.sha256
+
+  # Windows on its own: a red windows-check or a failed Windows build costs the
+  # Windows binary only. The Linux and macOS release publishes without waiting;
+  # this job uploads to the release whenever it finishes (`gh release upload`
+  # takes a published release too).
+  build-windows:
+    needs: [release, windows-check]
+    strategy:
+      matrix:
+        include:
+          # Keep the .tar.gz + .sha256 convention on Windows too: the standalone
+          # builder downloads and verifies that shape, and a .zip would mean a
+          # second code path plus a zip dependency for cosmetics. Windows 10
+          # 1803+ ships bsdtar as tar.exe, so the packaging step is unchanged
+          # apart from the binary name.
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact: soli-windows-amd64
+            pdf_artifact: render-pdf-windows-amd64
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps: *build-steps
 
   publish-release:
     needs: [build-binaries]

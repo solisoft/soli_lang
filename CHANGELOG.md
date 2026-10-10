@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+* **ci:** **A Windows failure no longer blocks the Linux and macOS release.** The tag gate (`release`) no longer waits for `windows-check`, and the Windows binary moved out of the `build-binaries` matrix into its own `build-windows` job (same steps, through a YAML anchor) that needs `release` and `windows-check`. `publish-release` and the Docker image wait only on the Linux and macOS builds; the Windows tarball is uploaded to the release whenever it is ready, or not at all if Windows is red.
+
 ## [2.20.1] - 2026-10-10
 
 The first release since 2.19.0 to publish binaries: the v2.19.1 and v2.20.0 tags failed CI (`edge/Cargo.lock` still named the previous version) and published none. Installing 2.20.1 also brings what they carried: Soli apps inside Cloudflare Workers, a woken app answering in half the time, `tr()` 69× faster, and the native SoliDB driver by default (see 2.20.0, 2.19.1, 2.19.0).
