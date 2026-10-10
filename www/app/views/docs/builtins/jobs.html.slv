@@ -603,6 +603,14 @@ end</code></pre>
         </div>
     </section>
 
+    <!-- Cloudflare Workers -->
+    <section id="section-edge" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">On Cloudflare Workers (Queues)</h2>
+        <p class="text-gray-300 mb-4">
+            On the <a href="/docs/development-tools/edge#queues" class="text-amber-400 hover:underline">edge build</a> there is no job table and no poller: every enqueue (<code class="text-amber-400">perform_later</code>, <code class="text-amber-400">perform_in</code>, <code class="text-amber-400">perform_at</code>, <code class="text-amber-400">Job.enqueue*</code>, <code class="text-amber-400">Webhook.enqueue*</code>) becomes a message on a Cloudflare Queue (<code class="text-amber-400">[[queues.producers]] binding = "JOBS"</code>), and the Worker's <code class="text-amber-400">queue()</code> handler runs it with the same job classes. Retries follow the same rule and backoff. Delays stop at Cloudflare's 12 hours; <code class="text-amber-400">Job.list</code>, <code class="text-amber-400">Job.queues</code>, <code class="text-amber-400">Job.cancel</code>, <code class="text-amber-400">Job.retry</code> and cron are not available there.
+        </p>
+    </section>
+
     <!-- Notes -->
     <section id="section-notes" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Notes</h2>

@@ -4,7 +4,8 @@
 // once and reuses them across requests. Requests enter wasm through
 // `WebAssembly.promising`, so a model query can suspend the stack on its fetch
 // (jspi.js) — a D1 or Postgres query too. Files under public/ are served by Workers static assets before
-// the request ever reaches this script.
+// the request ever reaches this script. Jobs enqueued on the edge come back
+// through `queue()` as Cloudflare Queue messages.
 import wasmModule from "./soli_edge_bg.wasm";
 import { initSync, mount, set_env, boot } from "./soli_edge.js";
 import { setHost, endSql } from "./jspi.js";
@@ -12,6 +13,7 @@ import appFiles from "./app.json";
 
 let wasm = null;
 let handleRequest = null;
+let runJob = null;
 let bootError = null;
 // One request inside wasm at a time: a suspended stack still owns its part of
 // the shadow stack in linear memory, which a second request would overwrite.
@@ -29,6 +31,7 @@ function ensureBooted(env) {
   try {
     wasm = initSync({ module: wasmModule });
     handleRequest = WebAssembly.promising(wasm.soli_handle);
+    runJob = WebAssembly.promising(wasm.soli_run_job);
     // The D1 and R2 imports read and write wasm memory and look bindings up in env.
     setHost(wasm, env);
     set_env(JSON.stringify(Object.entries(env).filter(([, value]) => typeof value === "string")));
@@ -58,6 +61,19 @@ async function dispatch(head, body) {
   // A copy: the response buffer is reused by the next request.
   result.body = new Uint8Array(wasm.memory.buffer, out + 4 + headLength, total - 4 - headLength).slice();
   return result;
+}
+
+// One queued job through wasm: the report says what to do with its message.
+async function dispatchJob(message) {
+  const input = encoder.encode(
+    JSON.stringify({ message: JSON.stringify(message.body), attempts: message.attempts }),
+  );
+  const ptr = wasm.soli_alloc(input.length);
+  new Uint8Array(wasm.memory.buffer, ptr, input.length).set(input);
+  const out = await runJob(ptr, input.length);
+  return JSON.parse(
+    decoder.decode(new Uint8Array(wasm.memory.buffer, out, wasm.soli_response_len())),
+  );
 }
 
 // Statuses whose Response must not have a body, even an empty one.
@@ -165,5 +181,38 @@ export default {
       status: result.status,
       headers: result.headers,
     });
+  },
+
+  // Jobs enqueued on the edge (`perform_later`, `Job.enqueue*`) arrive here as
+  // Cloudflare Queue messages. Each runs in turn, behind any request inside
+  // wasm, and is acknowledged, retried after the job's backoff, or — its
+  // retry budget spent — acknowledged and logged as dead.
+  async queue(batch, env, ctx) {
+    ensureBooted(env);
+    if (bootError) {
+      console.error(`Soli failed to boot: ${bootError}`);
+      batch.retryAll();
+      return;
+    }
+    for (const message of batch.messages) {
+      const job = queue.then(() => dispatchJob(message)).finally(() => endSql(ctx));
+      queue = job.catch(() => {});
+      let report;
+      try {
+        report = await job;
+      } catch (error) {
+        report = { status: "retry", delay: 30, error: String(error) };
+      }
+      const name = report.job ? `${report.job.handler} ${report.job.id}` : "job";
+      if (report.status === "done") {
+        message.ack();
+      } else if (report.status === "retry") {
+        console.error(`${name} failed (attempt ${message.attempts}), retrying in ${report.delay}s: ${report.error}`);
+        message.retry({ delaySeconds: report.delay });
+      } else {
+        console.error(`${name} is dead after ${message.attempts} attempts: ${report.error}`);
+        message.ack();
+      }
+    }
   },
 };

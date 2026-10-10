@@ -136,6 +136,8 @@ pub fn boot(folder: &Path) -> Result<(), RuntimeError> {
         &controllers_dir,
         &jobs_dir,
     );
+    // What a Cloudflare Queue message runs (`run_job`): the pool's runner.
+    define_job_runner(&mut interpreter)?;
     let mut vm = crate::vm::Vm::new();
     for (name, value) in interpreter.environment.borrow().get_all_bindings() {
         vm.globals.insert(name, value);
@@ -251,6 +253,79 @@ pub fn handle(request: EdgeRequest) -> EdgeResponse {
             body: response.body.to_vec(),
         }
     })
+}
+
+/// Define `__soli_run_job_bg(name, args)`, the runner the native job pool
+/// calls: `null` on success, the error as a string otherwise.
+fn define_job_runner(interpreter: &mut Interpreter) -> Result<(), RuntimeError> {
+    let tokens = crate::lexer::Scanner::new(background_jobs::JOBS_BACKGROUND_RUNNER)
+        .scan_tokens()
+        .map_err(|e| general(format!("job runner: {e}")))?;
+    let program = crate::parser::Parser::new(tokens)
+        .parse()
+        .map_err(|e| general(format!("job runner: {e}")))?;
+    interpreter.interpret(&program)
+}
+
+/// Run the job one Cloudflare Queue message carries — a [`crate::jobs::JobDoc`]
+/// sent by an enqueue on the edge — and say what the Worker's `queue()` handler
+/// does with the message: `{status: "done"}`, `{status: "retry", delay}` or
+/// `{status: "dead"}`, by the native engine's rule
+/// ([`crate::jobs::queues::outcome`]). `attempts` is Cloudflare's count,
+/// 1 on the first delivery.
+pub fn run_job(message: &str, attempts: u32) -> serde_json::Value {
+    let doc: crate::jobs::JobDoc = match serde_json::from_str(message) {
+        Ok(doc) => doc,
+        Err(e) => {
+            return serde_json::json!({
+                "status": "dead",
+                "error": format!("not a Soli job message: {e}"),
+            })
+        }
+    };
+    let error = APP.with(|app| {
+        let mut app = app.borrow_mut();
+        let Some(app) = app.as_mut() else {
+            return Some("the Soli app has not booted".to_string());
+        };
+        let _handler_budget = crate::interpreter::deadline::enter_default();
+        if doc.handler == crate::jobs::WEBHOOK_HANDLER {
+            return crate::jobs::engine::deliver_webhook(&doc).err();
+        }
+        let Some(runner) = app
+            .interpreter
+            .environment
+            .borrow()
+            .get("__soli_run_job_bg")
+        else {
+            return Some("the job runner is not defined".to_string());
+        };
+        let args = match crate::interpreter::value::parse_json(&doc.args.to_string()) {
+            Ok(args) => args,
+            Err(e) => return Some(format!("invalid args JSON: {e}")),
+        };
+        let name = Value::String(doc.handler.clone().into());
+        match app
+            .interpreter
+            .call_value(runner, vec![name, args], Span::default())
+        {
+            Ok(Value::String(error)) => Some(error.to_string()),
+            Ok(_) => None,
+            Err(e) => Some(e.to_string()),
+        }
+    });
+    let mut report = match crate::jobs::queues::outcome(&doc, attempts, error.clone()) {
+        crate::jobs::queues::Outcome::Done => serde_json::json!({ "status": "done" }),
+        crate::jobs::queues::Outcome::Retry(delay) => {
+            serde_json::json!({ "status": "retry", "delay": delay })
+        }
+        crate::jobs::queues::Outcome::Dead(_) => serde_json::json!({ "status": "dead" }),
+    };
+    report["job"] = serde_json::json!({ "id": doc.key, "handler": doc.handler });
+    if let Some(error) = error {
+        report["error"] = error.into();
+    }
+    report
 }
 
 /// Split a multipart body into form fields and files with the parser `soli

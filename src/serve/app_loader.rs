@@ -373,6 +373,17 @@ fn sync_static_crons(worker_id: usize, crons: Vec<(String, String, String)>) {
     if crons.is_empty() {
         return;
     }
+    // A Worker fires no cron from the job table (and has no thread to write
+    // them from): say so instead of failing to spawn.
+    if crate::jobs::queues::routes() {
+        let names: Vec<&str> = crons.iter().map(|(_, _, class)| class.as_str()).collect();
+        eprintln!(
+            "static cron on {} is not run on the edge (Cloudflare Workers) build: \
+             use a Cron Trigger",
+            names.join(", ")
+        );
+        return;
+    }
     let tenant = crate::serve::tenant::current_id();
     let spawned = std::thread::Builder::new()
         .name("cron-sync".into())

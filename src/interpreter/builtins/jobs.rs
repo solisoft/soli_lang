@@ -315,12 +315,30 @@ pub(crate) fn enqueue(args: &[Value]) -> Result<Value, String> {
     job_enqueue(args)
 }
 
-/// Write a job row and log the enqueue for the dev bar.
+/// Write a job row and log the enqueue for the dev bar. On the edge build the
+/// row is a message to the Worker's Cloudflare Queue instead.
 fn enqueue_doc(mut doc: JobDoc, opts: &serde_json::Value, what: &str) -> Result<Value, String> {
     doc.apply_opts(opts);
     super::job_log::record(&doc);
-    let id = store::enqueue(&doc).map_err(|e| format!("{what} failed: {e}"))?;
+    let id = if crate::jobs::queues::routes() {
+        crate::jobs::queues::enqueue(&doc)
+    } else {
+        store::enqueue(&doc)
+    }
+    .map_err(|e| format!("{what} failed: {e}"))?;
     Ok(Value::String(id.into()))
+}
+
+/// The job-table operations a Cloudflare Queue has no equivalent for: it does
+/// not hand messages back to list, cancel or retry, and fires no cron.
+fn refused_on_queues(what: &str, instead: &str) -> Result<(), String> {
+    if crate::jobs::queues::routes() {
+        return Err(format!(
+            "{} — {instead}",
+            crate::platform::unsupported_on_edge(what)
+        ));
+    }
+    Ok(())
 }
 
 fn job_enqueue(args: &[Value]) -> Result<Value, String> {
@@ -388,18 +406,21 @@ fn normalize_datetime(value: &str) -> Result<String, String> {
 }
 
 fn job_cancel(args: &[Value]) -> Result<Value, String> {
+    refused_on_queues("Job.cancel", "Cloudflare Queues keeps the messages")?;
     let id = arg_string(args, 0, "Job.cancel")?;
     let cancelled = store::cancel(&id).map_err(|e| format!("Job.cancel failed: {e}"))?;
     Ok(Value::Bool(cancelled))
 }
 
 fn job_retry(args: &[Value]) -> Result<Value, String> {
+    refused_on_queues("Job.retry", "a failed job is redelivered by the queue")?;
     let id = arg_string(args, 0, "Job.retry")?;
     let retried = store::retry(&id).map_err(|e| format!("Job.retry failed: {e}"))?;
     Ok(Value::Bool(retried))
 }
 
 fn job_list(args: &[Value]) -> Result<Value, String> {
+    refused_on_queues("Job.list", "see the queue in the Cloudflare dashboard")?;
     // No argument lists every queue; a string narrows to one.
     let queue = match args.first() {
         Some(Value::String(s)) => Some(s.to_string()),
@@ -410,6 +431,7 @@ fn job_list(args: &[Value]) -> Result<Value, String> {
 }
 
 fn job_queues(_args: &[Value]) -> Result<Value, String> {
+    refused_on_queues("Job.queues", "see the queue in the Cloudflare dashboard")?;
     let queues = store::queues().map_err(|e| format!("Job.queues failed: {e}"))?;
     Ok(json_to_value_or_null(serde_json::Value::Array(queues)))
 }
@@ -541,6 +563,7 @@ fn webhook_enqueue_at(args: &[Value]) -> Result<Value, String> {
 // ===== Cron class methods =====
 
 fn cron_schedule(args: &[Value]) -> Result<Value, String> {
+    refused_on_queues("Cron.schedule", "use a Cron Trigger")?;
     if args.len() < 3 {
         return Err(
             "Cron.schedule(name, expr, handler, args?) requires at least 3 arguments".to_string(),
@@ -558,11 +581,13 @@ fn cron_schedule(args: &[Value]) -> Result<Value, String> {
 }
 
 fn cron_list(_args: &[Value]) -> Result<Value, String> {
+    refused_on_queues("Cron.list", "use a Cron Trigger")?;
     let crons = store::list_crons().map_err(|e| format!("Cron.list failed: {e}"))?;
     Ok(json_to_value_or_null(serde_json::Value::Array(crons)))
 }
 
 fn cron_update_method(args: &[Value]) -> Result<Value, String> {
+    refused_on_queues("Cron updates", "use a Cron Trigger")?;
     if args.len() < 2 {
         return Err("Cron.update(name, fields_hash) requires 2 arguments".to_string());
     }
@@ -591,6 +616,7 @@ fn cron_update_method(args: &[Value]) -> Result<Value, String> {
 }
 
 fn cron_delete(args: &[Value]) -> Result<Value, String> {
+    refused_on_queues("Cron.delete", "use a Cron Trigger")?;
     let name = arg_string(args, 0, "Cron.delete")?;
     store::delete_cron(&name).map_err(|e| format!("Cron.delete failed: {e}"))?;
     Ok(Value::Bool(true))

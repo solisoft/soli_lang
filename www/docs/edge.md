@@ -178,7 +178,8 @@ What D1 does not offer:
   `Model.transaction` raises.
 - **Column-aware models** (a model that declares its columns) raise: store
   them as documents.
-- **Jobs and cron**, which have no worker on the edge anyway.
+- **The job table and cron**: on the edge, jobs go through
+  [Cloudflare Queues](#background-jobs-cloudflare-queues) instead.
 
 ### SoliDB
 
@@ -227,7 +228,8 @@ The models are the native adapter's: the same document tables and SQL,
 column-aware models (`table "orders"`) included, and **transactions**, since
 every statement of a request runs on one connection — opened at the request's
 first query, closed (handed back to Hyperdrive's pool) when it ends. What stays
-with `soli serve`: jobs and cron, `db:create` / `db:drop` and schema dumps.
+with `soli serve`: cron, `db:create` / `db:drop` and schema dumps (jobs run
+through [Cloudflare Queues](#background-jobs-cloudflare-queues)).
 
 Not available on the edge: **MySQL** — its JavaScript driver alone weighs
 410 KB compressed, more than the room left under the free plan's 3 MB —
@@ -306,6 +308,46 @@ What uploads cannot do on the edge:
 - **Resumable (tus) uploads and `direct_upload`**, which need a disk or S3
   credentials.
 
+## Background jobs: Cloudflare Queues
+
+A Worker has no thread to poll a job table with, but Cloudflare runs a Worker's
+`queue()` handler for each batch of messages a
+[Queue](https://developers.cloudflare.com/queues/) receives. So on the edge,
+`perform_later`, `perform_in`, `perform_at`, `Job.enqueue*` and
+`Webhook.enqueue*` send the job — the row the native engine would insert — as a
+message, and the Worker runs it: the same job classes from `app/jobs/`, the
+same `static def perform(args)`, no code change.
+
+```bash
+npx wrangler queues create my-app-jobs
+```
+
+```toml
+[[queues.producers]]
+binding = "JOBS"
+queue = "my-app-jobs"
+
+[[queues.consumers]]
+queue = "my-app-jobs"
+max_retries = 100        # Soli decides retries with each job's max_retries
+```
+
+A failed job is redelivered after the native engine's backoff (5 s, 10 s,
+20 s… capped at an hour) until its `max_retries` is spent, then acknowledged
+and logged as dead (`npx wrangler tail` shows it). Delivery is at least once, as
+with the job table: keep `perform` idempotent. All Soli queue names travel in
+one Cloudflare Queue; `SOLI_QUEUE_BINDING` names another producer binding than
+`JOBS`. A job runs in turn with the requests of its isolate, under the same CPU
+limit.
+
+What the edge cannot do with them:
+
+- **Delays past 12 hours**, Cloudflare's limit: `perform_in("1 day", …)` raises.
+- **Row operations** — `Job.list`, `Job.queues`, `Job.cancel`, `Job.retry` —
+  raise: Cloudflare does not hand messages back. Its dashboard shows the queue.
+- **Cron** (`Cron.*`, `static cron`): use a
+  [Cron Trigger](https://developers.cloudflare.com/workers/configuration/cron-triggers/).
+
 ## What runs on the edge
 
 | Runs | Stays with `soli serve` |
@@ -313,7 +355,7 @@ What uploads cannot do on the edge:
 | routes, controllers, `before_action`, middleware | WebSockets, LiveView |
 | views, layouts, partials, components, helpers | server-sent events, `stream`, blob streaming (answered `501`) |
 | query strings, URL-encoded and multipart forms, JSON | resumable (tus) and direct uploads, file writes |
-| i18n from `config/locales` | background jobs, cron, sending mail |
+| i18n from `config/locales`; background jobs through Cloudflare Queues | cron, sending mail |
 | models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S) | MySQL, SQLite, the native SoliDB driver; transactions on D1 |
 | the `HTTP` class (`fetch`); `HTTP.parallel*` run one after another | `--dev`: hot reload, dev bar, REPL |
 | static files from `public/`; attachments on R2, with `Range` and image transforms | PDF, Office, the `Image` class, `System.run` |
@@ -350,8 +392,9 @@ build ("… is not available on the edge (Cloudflare Workers) build").
 | `no D1 binding named DB` | `wrangler.toml` lacks the `[[d1_databases]]` block whose `binding` the D1 url names |
 | `no Hyperdrive binding named HYPERDRIVE` | `wrangler.toml` lacks the `[[hyperdrive]]` block the connection's url names |
 | `this Worker carries no postgres driver` | the build did not see the dialect: `soli edge build --sql postgres` |
+| `no Queue binding named JOBS` | `wrangler.toml` lacks the `[[queues.producers]]` block for the job queue |
 | `MySQL is not available on the edge build` | the app's connection is MySQL: move it to Postgres (Hyperdrive), D1 or SoliDB |
 | `CSRF check failed: Origin … does not match` (403) | a POST whose Origin is another site — the same-origin gate of `soli serve`; list your other public hostnames in `SOLI_APP_HOSTS` |
 | `no R2 binding named ATTACHMENTS` | `wrangler.toml` lacks the `[[r2_buckets]]` block an `r2` attachment needs |
 | an image URL with `?w=` answers the full-size original | no `[images]` binding in `wrangler.toml` |
-| `… is not supported on Cloudflare D1` | a transaction, a column-aware model, jobs or cron on a D1 connection |
+| `… is not supported on Cloudflare D1` | a transaction, a column-aware model, or the job table / cron on a D1 connection |

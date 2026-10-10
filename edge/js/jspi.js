@@ -212,3 +212,33 @@ function sqlCell(value) {
   if (value instanceof Uint8Array) return `<blob ${value.byteLength} bytes>`;
   return value ?? null;
 }
+
+// Send one job to a Cloudflare Queue (solilang::jobs::queues). Reads
+// `{binding, body, delay_seconds}` as JSON at ptr/len and returns a buffer
+// from soli_alloc: a little-endian u32 length, then `{ok}` or `{ok: false,
+// error}`.
+export const soli_queue_send = new WebAssembly.Suspending(async (ptr, len) => {
+  const { wasm, env } = host;
+  let response;
+  try {
+    const request = JSON.parse(
+      new TextDecoder().decode(new Uint8Array(wasm.memory.buffer, ptr, len)),
+    );
+    const queue = env[request.binding];
+    if (!queue || typeof queue.send !== "function") {
+      throw new Error(
+        `no Queue binding named ${request.binding}: add [[queues.producers]] binding = "${request.binding}" to wrangler.toml`,
+      );
+    }
+    const options = request.delay_seconds > 0 ? { delaySeconds: request.delay_seconds } : {};
+    await queue.send(request.body, options);
+    response = { ok: true };
+  } catch (error) {
+    response = { ok: false, error: String(error?.message ?? error) };
+  }
+  const bytes = new TextEncoder().encode(JSON.stringify(response));
+  const out = wasm.soli_alloc(4 + bytes.length);
+  new DataView(wasm.memory.buffer).setUint32(out, bytes.length, true);
+  new Uint8Array(wasm.memory.buffer, out + 4, bytes.length).set(bytes);
+  return out;
+});

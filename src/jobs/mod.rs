@@ -11,10 +11,13 @@
 //!   queue safely.
 //! - [`scheduler`] — cron evaluation and single-winner firing.
 //! - [`engine`] — the poller thread, retry/backoff, and the native webhook job.
+//! - [`queues`] — the edge build's Cloudflare Queues: enqueue as a message,
+//!   and the done / retry / dead rule the Worker's `queue()` handler applies.
 
 pub mod claim;
 pub mod engine;
 pub mod push;
+pub mod queues;
 pub mod scheduler;
 pub mod store;
 pub mod wake;

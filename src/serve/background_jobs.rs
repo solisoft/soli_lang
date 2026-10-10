@@ -73,7 +73,7 @@ pub struct PoolConfig {
 /// can complete or retry the queue row. A missing class is an error too — the
 /// job must not be marked done when nothing ran (that happens during a deploy
 /// where a handler was renamed; the retry gives the new code a chance).
-const JOBS_BACKGROUND_RUNNER: &str = r#"
+pub(crate) const JOBS_BACKGROUND_RUNNER: &str = r#"
 fn __soli_run_job_bg(name, args) {
     let cls = __soli_get_class(name);
     if cls == null {

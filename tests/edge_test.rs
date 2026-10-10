@@ -11,7 +11,7 @@ use solilang::serve::edge::{self, EdgeRequest};
 
 /// A controller the example app does not have, mounted only here: it echoes
 /// an upload back, to prove bytes cross the edge entry point intact both ways.
-const PROBE_CONTROLLER: &str = r#"
+const PROBE_CONTROLLER: &str = r##"
 class ProbeController < Controller
   # POST /probe
   def create(req)
@@ -27,8 +27,41 @@ class ProbeController < Controller
   def update(req)
     {"status": 200, "body": "patched #{params["title"]}"}
   end
+
+  # GET /probe/jobs
+  def jobs(req)
+    ProbeJob.perform_later({"n": params["n"].to_i})
+    ProbeJob.perform_in("1 hour", {"n": 1})
+    late = ProbeJob.perform_in("13 hours", {"n": 2}) rescue "refused"
+    listed = Job.list() rescue "refused"
+    {"status": 200, "body": "#{late} #{listed}"}
+  end
+end
+"##;
+
+/// A job the probe enqueues; it fails on 13, so a failure is visible too.
+const PROBE_JOB: &str = r#"
+class ProbeJob
+  static def perform(args)
+    throw "unlucky" if args["n"] == 13
+    args["n"]
+  end
 end
 "#;
+
+/// What `soli_queue_send` would have handed to Cloudflare.
+#[derive(Default)]
+struct SentMessages(std::sync::Mutex<Vec<(String, serde_json::Value, u32)>>);
+
+impl solilang::jobs::queues::QueueSender for SentMessages {
+    fn send(&self, binding: &str, body: &serde_json::Value, delay: u32) -> Result<(), String> {
+        self.0
+            .lock()
+            .unwrap()
+            .push((binding.to_string(), body.clone(), delay));
+        Ok(())
+    }
+}
 
 fn example_files() -> Vec<(String, Vec<u8>)> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/cloudflare-worker");
@@ -46,13 +79,17 @@ fn example_files() -> Vec<(String, Vec<u8>)> {
     for (path, contents) in files.iter_mut() {
         if path == "/app/config/routes.sl" {
             contents.extend_from_slice(
-                b"\npost(\"/probe\", \"probe#create\")\npatch(\"/probe\", \"probe#update\")\n",
+                b"\npost(\"/probe\", \"probe#create\")\npatch(\"/probe\", \"probe#update\")\nget(\"/probe/jobs\", \"probe#jobs\")\n",
             );
         }
     }
     files.push((
         "/app/app/controllers/probe_controller.sl".to_string(),
         PROBE_CONTROLLER.as_bytes().to_vec(),
+    ));
+    files.push((
+        "/app/app/jobs/probe_job.sl".to_string(),
+        PROBE_JOB.as_bytes().to_vec(),
     ));
     files
 }
@@ -164,6 +201,37 @@ fn boots_a_mounted_app_and_answers_requests() {
             );
             assert_eq!(response.status, 200);
             assert_eq!(String::from_utf8(response.body).unwrap(), "patched edge");
+
+            // An enqueue on the edge becomes a Cloudflare Queue message — the
+            // job row, delayed until its run_at — and the row operations a
+            // queue has no equivalent for are refused.
+            let sent = std::sync::Arc::new(SentMessages::default());
+            solilang::jobs::queues::set_sender(sent.clone());
+            let (status, body) = get("/probe/jobs", "n=7");
+            assert_eq!(status, 200, "{body}");
+            assert_eq!(body, "refused refused");
+            let messages = sent.0.lock().unwrap().clone();
+            assert_eq!(messages.len(), 2, "{messages:?}");
+            let (binding, job, delay) = &messages[0];
+            assert_eq!(binding, "JOBS");
+            assert_eq!(job["handler"], "ProbeJob");
+            assert_eq!(job["args"]["n"], 7);
+            assert_eq!(*delay, 0);
+            assert!((3590..=3600).contains(&messages[1].2), "{messages:?}");
+
+            // The Worker's queue() handler runs each message's job: done, or
+            // retried after the backoff until max_retries, then dead.
+            let report = edge::run_job(&job.to_string(), 1);
+            assert_eq!(report["status"], "done", "{report}");
+            let mut unlucky = job.clone();
+            unlucky["args"]["n"] = 13.into();
+            let report = edge::run_job(&unlucky.to_string(), 1);
+            assert_eq!(report["status"], "retry", "{report}");
+            assert!(report["delay"].as_u64().unwrap() >= 5, "{report}");
+            assert!(report["error"].as_str().unwrap().contains("unlucky"), "{report}");
+            let retries = unlucky["max_retries"].as_u64().unwrap() as u32;
+            let report = edge::run_job(&unlucky.to_string(), retries + 1);
+            assert_eq!(report["status"], "dead", "{report}");
 
             // The instant-navigation script every page links to.
             let (status, body) = get("/__soli/nav.js", "v=1");

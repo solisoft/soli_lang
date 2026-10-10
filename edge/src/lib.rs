@@ -1,6 +1,7 @@
 //! The wasm side of a Soli Worker. The JS host (`js/worker.js`) mounts the
 //! app's files and environment, boots once per isolate, then hands every
-//! request to `soli_handle`.
+//! request to `soli_handle`, and every Cloudflare Queue message to
+//! `soli_run_job`.
 //!
 //! `soli_handle` is a raw export rather than a wasm-bindgen one: the host enters
 //! it through `WebAssembly.promising`, so that a model query inside the action
@@ -105,6 +106,32 @@ pub extern "C" fn soli_handle(ptr: *mut u8, len: usize) -> *const u8 {
     output.extend_from_slice(&response.body);
     RESPONSE.with(|cell| {
         *cell.borrow_mut() = output;
+        cell.borrow().as_ptr()
+    })
+}
+
+/// Run the job of one Cloudflare Queue message: the JSON at `ptr` (from
+/// `soli_alloc`) is `{message, attempts}`, `message` the job's JSON. Returns a
+/// pointer to the JSON report (`{status: "done" | "retry" | "dead", delay?,
+/// error?, job}`), `soli_response_len` bytes long and valid until the next call.
+/// Entered through `WebAssembly.promising`, like `soli_handle`: the job's
+/// queries suspend the stack.
+#[no_mangle]
+pub extern "C" fn soli_run_job(ptr: *mut u8, len: usize) -> *const u8 {
+    // SAFETY: as in `soli_handle`.
+    let input = unsafe { Vec::from_raw_parts(ptr, len, len) };
+    let report = match serde_json::from_slice::<serde_json::Value>(&input) {
+        Ok(json) => edge::run_job(
+            json["message"].as_str().unwrap_or_default(),
+            json["attempts"].as_u64().unwrap_or(1) as u32,
+        ),
+        Err(e) => serde_json::json!({
+            "status": "dead",
+            "error": format!("Malformed job from the host: {e}"),
+        }),
+    };
+    RESPONSE.with(|cell| {
+        *cell.borrow_mut() = report.to_string().into_bytes();
         cell.borrow().as_ptr()
     })
 }

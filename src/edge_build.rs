@@ -447,6 +447,16 @@ directory = "./public"
 # [images]
 # binding = "IMAGES"
 
+# Background jobs (`perform_later`, `Job.enqueue`) through Cloudflare Queues
+# (`npx wrangler queues create my-app-jobs`). Soli decides retries with each
+# job's max_retries, so let Cloudflare redeliver as often as it asks.
+# [[queues.producers]]
+# binding = "JOBS"
+# queue = "my-app-jobs"
+# [[queues.consumers]]
+# queue = "my-app-jobs"
+# max_retries = 100
+
 # Models on PostgreSQL through Hyperdrive
 # (`npx wrangler hyperdrive create my-db --connection-string="postgres://…"`
 # prints the id); set SOLI_DB_ADAPTER = "postgres" under [vars].

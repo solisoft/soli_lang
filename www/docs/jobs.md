@@ -273,6 +273,16 @@ Nothing special is required: every job already runs on the worker pool, off the 
 
 `static background: Bool = true` is still accepted for compatibility but has no effect — it described the old opt-out from running jobs on a web worker, which is now the default for every job. It can be removed from your job classes.
 
+## On Cloudflare Workers (Queues)
+
+On the [edge build](edge.md#background-jobs-cloudflare-queues) there is no job
+table and no poller: every enqueue (`perform_later`, `perform_in`,
+`perform_at`, `Job.enqueue*`, `Webhook.enqueue*`) becomes a message on a
+Cloudflare Queue (`[[queues.producers]] binding = "JOBS"`), and the Worker's
+`queue()` handler runs it with the same job classes. Retries follow the same
+rule and backoff. Delays stop at Cloudflare's 12 hours; `Job.list`,
+`Job.queues`, `Job.cancel`, `Job.retry` and cron are not available there.
+
 ## Testing Jobs
 
 `perform_now` runs a handler inline with no queue and no database, which is the simplest way to test job logic:

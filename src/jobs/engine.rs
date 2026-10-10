@@ -422,7 +422,7 @@ fn tick_cron() -> Result<(), String> {
 /// POST a webhook job's payload to its URL, signing the body with HMAC-SHA256
 /// when a secret is configured. Mirrors the headers SolidB used to send, so
 /// existing receivers keep verifying successfully.
-fn deliver_webhook(job: &JobDoc) -> Result<(), String> {
+pub(crate) fn deliver_webhook(job: &JobDoc) -> Result<(), String> {
     let Some(spec) = job.webhook.as_ref() else {
         return Err("webhook job has no webhook spec".to_string());
     };

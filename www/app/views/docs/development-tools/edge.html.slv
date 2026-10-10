@@ -137,7 +137,7 @@ SOLI_DB_ADAPTER = "d1"</code></pre>
     <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-10">
         <li><strong class="text-white">Transactions.</strong> D1 runs batches, not interactive transactions: <code>Model.transaction</code> raises.</li>
         <li><strong class="text-white">Column-aware models</strong> (a model that declares its columns) raise: store them as documents.</li>
-        <li><strong class="text-white">Jobs and cron</strong>, which have no worker on the edge anyway.</li>
+        <li><strong class="text-white">The job table and cron</strong>: on the edge, jobs go through <a href="#queues" class="text-amber-400 hover:underline">Cloudflare Queues</a> instead.</li>
     </ul>
 
     <h3 id="solidb" class="text-2xl font-semibold text-white mb-4 scroll-mt-24">SoliDB</h3>
@@ -170,7 +170,7 @@ SOLI_DB_ADAPTER = "postgres"</code></pre>
         <code class="text-amber-400">soli edge build</code> bundles the driver when the app's configuration names Postgres &mdash; <code>adapter = "postgres"</code> in <code>config/database.toml</code>, <code>SOLI_DB_ADAPTER</code> in <code>.env</code> or under <code>[vars]</code> &mdash; or when told with <code>--sql postgres</code> (<code>--sql none</code> bundles nothing). It copies the driver's glue, adds <code>pg</code> to <code>package.json</code>, runs <code>npm install</code>, and puts <code>nodejs_compat</code> in a new <code>wrangler.toml</code>; an existing one without it earns a warning.
     </p>
     <p class="text-gray-400 mb-6">
-        The models are the native adapter's: the same document tables and SQL, column-aware models (<code>table "orders"</code>) included, and <strong class="text-white">transactions</strong>, since every statement of a request runs on one connection &mdash; opened at the request's first query, closed (handed back to Hyperdrive's pool) when it ends. What stays with <code>soli serve</code>: jobs and cron, <code>db:create</code> / <code>db:drop</code> and schema dumps.
+        The models are the native adapter's: the same document tables and SQL, column-aware models (<code>table "orders"</code>) included, and <strong class="text-white">transactions</strong>, since every statement of a request runs on one connection &mdash; opened at the request's first query, closed (handed back to Hyperdrive's pool) when it ends. What stays with <code>soli serve</code>: cron, <code>db:create</code> / <code>db:drop</code> and schema dumps (jobs run through <a href="#queues" class="text-amber-400 hover:underline">Cloudflare Queues</a>).
     </p>
     <p class="text-gray-400 mb-12">
         Not available on the edge: <strong class="text-white">MySQL</strong> &mdash; its JavaScript driver alone weighs 410&nbsp;KB compressed, more than the room left under the free plan's 3&nbsp;MB &mdash; SQLite and the native SoliDB driver. The edge build uses D1, PostgreSQL or SoliDB over HTTP.
@@ -221,6 +221,31 @@ binding = "IMAGES"</code></pre>
         <li><strong class="text-white">Resumable (tus) uploads and <code>direct_upload</code></strong>, which need a disk or S3 credentials.</li>
     </ul>
 
+    <h2 id="queues" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Background jobs: Cloudflare Queues</h2>
+    <p class="text-gray-400 mb-6">
+        A Worker has no thread to poll a job table with, but Cloudflare runs a Worker's <code>queue()</code> handler for each batch of messages a <a href="https://developers.cloudflare.com/queues/" class="text-amber-400 hover:underline">Queue</a> receives. So on the edge, <code class="text-amber-400">perform_later</code>, <code>perform_in</code>, <code>perform_at</code>, <code>Job.enqueue*</code> and <code>Webhook.enqueue*</code> send the job &mdash; the row the native engine would insert &mdash; as a message, and the Worker runs it: the same job classes from <code>app/jobs/</code>, the same <code>static def perform(args)</code>, no code change.
+    </p>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-4">
+        <pre data-filename="Terminal"><code class="language-bash text-sm">npx wrangler queues create my-app-jobs</code></pre>
+    </div>
+    <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl mb-6">
+        <pre data-filename="wrangler.toml"><code class="language-toml text-sm">[[queues.producers]]
+binding = "JOBS"
+queue = "my-app-jobs"
+
+[[queues.consumers]]
+queue = "my-app-jobs"
+max_retries = 100        # Soli decides retries with each job's max_retries</code></pre>
+    </div>
+    <p class="text-gray-400 mb-4">
+        A failed job is redelivered after the native engine's backoff (5&nbsp;s, 10&nbsp;s, 20&nbsp;s&hellip; capped at an hour) until its <code>max_retries</code> is spent, then acknowledged and logged as dead (<code>npx wrangler tail</code> shows it). Delivery is at least once, as with the job table: keep <code>perform</code> idempotent. All Soli queue names travel in one Cloudflare Queue; <code class="text-amber-400">SOLI_QUEUE_BINDING</code> names another producer binding than <code>JOBS</code>. A job runs in turn with the requests of its isolate, under the same CPU limit. What the edge cannot do with them:
+    </p>
+    <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-12">
+        <li><strong class="text-white">Delays past 12 hours</strong>, Cloudflare's limit: <code>perform_in("1 day", …)</code> raises.</li>
+        <li><strong class="text-white">Row operations</strong> &mdash; <code>Job.list</code>, <code>Job.queues</code>, <code>Job.cancel</code>, <code>Job.retry</code> &mdash; raise: Cloudflare does not hand messages back. Its dashboard shows the queue.</li>
+        <li><strong class="text-white">Cron</strong> (<code>Cron.*</code>, <code>static cron</code>): use a <a href="https://developers.cloudflare.com/workers/configuration/cron-triggers/" class="text-amber-400 hover:underline">Cron Trigger</a>.</li>
+    </ul>
+
     <h2 id="scope" class="text-3xl font-bold text-white mb-4 scroll-mt-24">What runs on the edge</h2>
     <div class="overflow-x-auto rounded-xl border border-white/10 bg-white/5 mb-6">
         <table class="w-full text-sm text-left">
@@ -229,7 +254,7 @@ binding = "IMAGES"</code></pre>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">routes, controllers, <code>before_action</code>, middleware</td><td class="py-3 px-4">WebSockets, LiveView</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">views, layouts, partials, components, helpers</td><td class="py-3 px-4">server-sent events, <code>stream</code>, blob streaming (answered <code>501</code>)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">query strings, URL-encoded and multipart forms, JSON</td><td class="py-3 px-4">resumable (tus) and direct uploads, file writes</td></tr>
-                <tr class="border-b border-white/5"><td class="py-3 px-4">i18n from <code>config/locales</code></td><td class="py-3 px-4">background jobs, cron, sending mail</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4">i18n from <code>config/locales</code>; background jobs through Cloudflare Queues</td><td class="py-3 px-4">cron, sending mail</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S)</td><td class="py-3 px-4">MySQL, SQLite, the native SoliDB driver; transactions on D1</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">the <code>HTTP</code> class (<code>fetch</code>); <code>HTTP.parallel*</code> run one after another</td><td class="py-3 px-4"><code>--dev</code>: hot reload, dev bar, REPL</td></tr>
                 <tr><td class="py-3 px-4">static files from <code>public/</code>; attachments on R2, with <code>Range</code> and image transforms</td><td class="py-3 px-4">PDF, Office, the <code>Image</code> class, <code>System.run</code></td></tr>
@@ -258,9 +283,10 @@ binding = "IMAGES"</code></pre>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no edge runtime found</code> from <code>soli edge build</code></td><td class="py-3 px-4">pass <code>--runtime</code> or set <code>SOLI_EDGE_RUNTIME</code> to the directory <code>build-edge.sh</code> wrote</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">a model call hangs, then the request fails</td><td class="py-3 px-4"><code>SOLIDB_HOST</code> is not reachable from Cloudflare (a LAN address, <code>localhost</code>)</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no D1 binding named DB</code></td><td class="py-3 px-4"><code>wrangler.toml</code> lacks the <code>[[d1_databases]]</code> block whose <code>binding</code> the D1 url names</td></tr>
-                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>… is not supported on Cloudflare D1</code></td><td class="py-3 px-4">a transaction, a column-aware model, jobs or cron on a D1 connection</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>… is not supported on Cloudflare D1</code></td><td class="py-3 px-4">a transaction, a column-aware model, or the job table / cron on a D1 connection</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no Hyperdrive binding named HYPERDRIVE</code></td><td class="py-3 px-4"><code>wrangler.toml</code> lacks the <code>[[hyperdrive]]</code> block the connection's url names</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>this Worker carries no postgres driver</code></td><td class="py-3 px-4">the build did not see the dialect: <code>soli edge build --sql postgres</code></td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no Queue binding named JOBS</code></td><td class="py-3 px-4"><code>wrangler.toml</code> lacks the <code>[[queues.producers]]</code> block for the job queue</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>MySQL is not available on the edge build</code></td><td class="py-3 px-4">the app's connection is MySQL: move it to Postgres (Hyperdrive), D1 or SoliDB</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>CSRF check failed: Origin … does not match</code> (403)</td><td class="py-3 px-4">a POST whose Origin is another site &mdash; the same-origin gate of <code>soli serve</code>; list your other public hostnames in <code>SOLI_APP_HOSTS</code></td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4"><code>no R2 binding named ATTACHMENTS</code></td><td class="py-3 px-4"><code>wrangler.toml</code> lacks the <code>[[r2_buckets]]</code> block an <code>r2</code> attachment needs</td></tr>
