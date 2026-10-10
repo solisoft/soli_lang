@@ -20,7 +20,12 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.21.0.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.21.1.</p>
+
+        <h3 id="unreleased-deployment" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Deployment</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">An app&rsquo;s own <code class="text-cyan-400">wrangler.toml</code> is its deploy config.</strong> When the app folder has a <code class="text-cyan-400">wrangler.toml</code> next to <code class="text-cyan-400">app/</code>, <code class="text-cyan-400">soli edge build</code> copies it into the Worker folder on every build, so the Worker&rsquo;s name, account, routes and bindings can be committed with the app instead of living in a build directory. <a href="/docs/development-tools/edge#package" class="text-cyan-400 hover:underline">soli edge build</a></li>
+        </ul>
 
     </section>
 

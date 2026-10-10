@@ -57,6 +57,8 @@ pub struct Summary {
     pub wasm_bytes: u64,
     /// Whether this run wrote `wrangler.toml` (an existing one is kept).
     pub wrote_wrangler_toml: bool,
+    /// Whether `wrangler.toml` came from the app's own folder.
+    pub wrangler_toml_from_app: bool,
     /// The SQL dialects the Worker carries a driver for.
     pub sql_drivers: Vec<&'static str>,
     /// What `npm install` did, when it ran.
@@ -152,8 +154,17 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
         }
     }
 
+    // An app that keeps its own wrangler.toml — committed beside app/, so the
+    // deploy config lives with the code — has it copied in on every build.
+    // Otherwise the Worker's copy is written once and then belongs to the user.
     let wrangler_toml = out.join("wrangler.toml");
-    let wrote_wrangler_toml = !wrangler_toml.exists();
+    let app_wrangler_toml = app_dir.join("wrangler.toml");
+    let wrangler_toml_from_app = app_wrangler_toml.is_file();
+    if wrangler_toml_from_app {
+        fs::copy(&app_wrangler_toml, &wrangler_toml)
+            .map_err(|e| format!("copy {}: {e}", app_wrangler_toml.display()))?;
+    }
+    let wrote_wrangler_toml = !wrangler_toml_from_app && !wrangler_toml.exists();
     if wrote_wrangler_toml {
         let config = wrangler_config(&worker_name(app_dir), asset_files > 0, &sql_drivers);
         fs::write(&wrangler_toml, config).map_err(|e| format!("write wrangler.toml: {e}"))?;
@@ -204,6 +215,7 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
         asset_files,
         wasm_bytes,
         wrote_wrangler_toml,
+        wrangler_toml_from_app,
         sql_drivers,
         npm,
         warnings,
@@ -235,6 +247,7 @@ fn detect_sql(app_dir: &Path, out: &Path) -> Vec<&'static str> {
     for file in [
         app_dir.join("config/database.toml"),
         app_dir.join(".env"),
+        app_dir.join("wrangler.toml"),
         out.join("wrangler.toml"),
     ] {
         let Ok(text) = fs::read_to_string(&file) else {
@@ -544,6 +557,49 @@ mod tests {
         assert!(!fs::read_to_string(out.join("src/app.json"))
             .unwrap()
             .contains("SECRET"));
+    }
+
+    /// The app's own wrangler.toml is the deploy config: copied in on every
+    /// build, over whatever the Worker folder held.
+    #[test]
+    fn copies_the_apps_own_wrangler_toml() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (app, runtime, out) = (
+            tmp.path().join("app"),
+            tmp.path().join("rt"),
+            tmp.path().join("out"),
+        );
+        fake_app(&app);
+        fake_runtime(&runtime);
+        fs::create_dir_all(&out).unwrap();
+        fs::write(out.join("wrangler.toml"), "name = \"stale\"\n").unwrap();
+        fs::write(app.join("wrangler.toml"), "name = \"mine\"\n").unwrap();
+        let options = Options {
+            app_dir: &app,
+            out_dir: &out,
+            runtime_dir: Some(&runtime),
+            sql: None,
+            npm_install: false,
+        };
+
+        let summary = build(&options).unwrap();
+        assert!(summary.wrangler_toml_from_app);
+        assert!(!summary.wrote_wrangler_toml);
+        assert_eq!(
+            fs::read_to_string(out.join("wrangler.toml")).unwrap(),
+            "name = \"mine\"\n"
+        );
+        // Not bundled into the Worker's source.
+        assert!(!fs::read_to_string(out.join("src/app.json"))
+            .unwrap()
+            .contains("mine"));
+
+        fs::write(app.join("wrangler.toml"), "name = \"renamed\"\n").unwrap();
+        build(&options).unwrap();
+        assert_eq!(
+            fs::read_to_string(out.join("wrangler.toml")).unwrap(),
+            "name = \"renamed\"\n"
+        );
     }
 
     #[test]

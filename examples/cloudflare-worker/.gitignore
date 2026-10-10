@@ -1,2 +1,4 @@
 dist/
 db/
+.wrangler/
+node_modules/

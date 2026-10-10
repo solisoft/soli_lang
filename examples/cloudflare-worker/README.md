@@ -11,7 +11,22 @@ cd dist/edge && npx wrangler dev               # on workerd, locally
 ```
 
 `../../target/edge` is what `scripts/build-edge.sh` produces in the Soli
-source tree. The guide is the app itself (`/guide`), and the full reference is
+source tree.
+
+## Deploying cf.solisoft.net
+
+`wrangler.toml` here is the site's deploy config — the Worker's name, the
+account that owns solisoft.net, the custom domain, the D1 database, the
+observability settings. `soli edge build` copies it into `dist/edge` on every
+build, so a clone deploys the site as it is:
+
+```bash
+soli edge build . --runtime ../../target/edge
+cd dist/edge && npx wrangler deploy   # after `npx wrangler login`, or with CLOUDFLARE_API_TOKEN
+```
+
+To run your own copy, change `name`, `account_id`, `routes` and the D1
+`database_id` first. The guide is the app itself (`/guide`), and the full reference is
 `www/docs/edge.md`.
 
 ## The D1 page

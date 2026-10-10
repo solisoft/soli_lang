@@ -84,7 +84,10 @@ What goes where:
   before the Worker runs. The copy is fresh each build.
 - `.env` and anything outside those directories is **not** bundled.
 - `wrangler.toml` is written on the first build only. Later builds keep it, so
-  your name, routes, vars and account stay.
+  your name, routes, vars and account stay. An app that keeps its **own**
+  `wrangler.toml` next to `app/` has it copied in on every build instead:
+  commit it, and the deploy config lives with the code (nothing in it is a
+  secret; tokens come from `wrangler login` or `CLOUDFLARE_API_TOKEN`).
 - For an app on PostgreSQL, the driver: `src/sql-pg.js`, `pg` in
   `package.json`, and `npm install`.
 

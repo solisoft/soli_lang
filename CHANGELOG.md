@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+* **edge:** **An app's own `wrangler.toml` is its deploy config.** When the app folder has a `wrangler.toml` next to `app/`, `soli edge build` copies it into the Worker folder on every build (over the copy there), instead of writing a template once and leaving it in a build directory nobody commits. The deploy config — name, account, routes, bindings — can now live in the app's repository. `examples/cloudflare-worker` does this: cf.solisoft.net's config, which lived only in a local build folder, is committed beside the app.
+
+### Changed
+
+* **examples:** **cf.solisoft.net gets a boarding-pass landing page.** The code of the datacenter that rendered the page on split-flap tiles, a stub with the request's real facts, and a departures board of what a Worker app reaches (D1, R2, Images, Hyperdrive, Queues).
+
 ## [2.21.1] - 2026-10-10
 
 The v2.21.0 tag failed CI on one test and published no binaries; 2.21.1 is the same release, with that test fixed. Installing 2.21.1 brings everything listed under 2.21.0.

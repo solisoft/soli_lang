@@ -43,7 +43,9 @@ pub fn build(folder: &str, out: Option<&str>, runtime: Option<&str>, sql: Option
     if let Some(npm) = &summary.npm {
         println!("{npm}");
     }
-    if summary.wrote_wrangler_toml {
+    if summary.wrangler_toml_from_app {
+        println!("Used the app's wrangler.toml");
+    } else if summary.wrote_wrangler_toml {
         println!("Wrote wrangler.toml (later builds keep your edits)");
     }
     for warning in &summary.warnings {

@@ -1,0 +1,38 @@
+# The Worker that serves https://cf.solisoft.net (and soli-cf.solisoft.workers.dev).
+# `soli edge build` copies this file into the Worker folder on every build:
+#
+#   soli edge build examples/cloudflare-worker --out dist/edge --runtime target/edge
+#   cd dist/edge && npx wrangler deploy
+#
+# account_id pins the deploy to the account that owns the solisoft.net zone;
+# an API token that reaches other accounts must never deploy this elsewhere.
+# Nothing here is a secret: the token comes from `wrangler login` or
+# CLOUDFLARE_API_TOKEN, never from this file.
+name = "soli-cf"
+account_id = "25eae110152414e597d0507d069d142b"
+main = "src/worker.js"
+compatibility_date = "2026-10-09"
+workers_dev = true
+routes = [{ pattern = "cf.solisoft.net", custom_domain = true }]
+
+# public/ is served before the Worker runs.
+[assets]
+directory = "./public"
+
+# Observability as set in the dashboard (kept here so a deploy does not undo
+# it): request and console logs with invocation logs, traces off.
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+
+# Models on Cloudflare D1 (the /d1 page): binding DB, Soli's default `d1://DB`.
+[[d1_databases]]
+binding = "DB"
+database_name = "soli-cf-demo"
+database_id = "3640133c-3d97-4dfb-a178-aeb4fc09d988"
+
+[vars]
+SOLI_DB_ADAPTER = "d1"

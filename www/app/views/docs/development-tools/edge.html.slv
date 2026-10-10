@@ -72,7 +72,7 @@ cargo install wasm-bindgen-cli --version 0.2.126 --locked
         <li><code class="text-amber-400">app/</code>, <code class="text-amber-400">config/</code> and <code class="text-amber-400">lib/</code> go into <code>src/app.json</code>, mounted at <code>/app</code> in the Worker. Only UTF-8 text files: a binary file is skipped with a line saying so (binary files belong in <code>public/</code>).</li>
         <li><code class="text-amber-400">public/</code> is copied fresh each build and served as <a href="https://developers.cloudflare.com/workers/static-assets/" class="text-amber-400 hover:underline">static assets</a>, before the Worker runs.</li>
         <li><code class="text-amber-400">.env</code> and anything outside those directories is <strong class="text-white">not</strong> bundled.</li>
-        <li><code class="text-amber-400">wrangler.toml</code> is written on the first build only: later builds keep your name, routes, vars and account. Add <code>dist/</code> to the app's <code>.gitignore</code>.</li>
+        <li><code class="text-amber-400">wrangler.toml</code> is written on the first build only: later builds keep your name, routes, vars and account. An app that keeps its <strong class="text-white">own</strong> <code>wrangler.toml</code> next to <code>app/</code> has it copied in on every build instead: commit it, and the deploy config lives with the code (nothing in it is a secret; tokens come from <code>wrangler login</code> or <code>CLOUDFLARE_API_TOKEN</code>). Add <code>dist/</code> to the app's <code>.gitignore</code>.</li>
         <li>For an app on PostgreSQL, the driver: <code>src/sql-pg.js</code>, <code>pg</code> in <code>package.json</code>, and <code>npm install</code>.</li>
     </ul>
 
