@@ -650,7 +650,7 @@ println(admin["name"])  # "Test User" (from factory)</code></pre>
                     <p class="text-gray-400 text-sm mt-1">Did the response render a view? (<code>render_template?()</code> is an alias)</p>
                 </section>
             </div>
-            <p class="text-gray-500 text-xs mt-4">Very large locals (&approx;48&nbsp;KB+) degrade to a keys-only <code>assigns()</code>: keys present, values <code>null</code>.</p>
+            <p class="text-gray-500 text-xs mt-4">Locals are capped at &approx;48&nbsp;KB of JSON: over the cap, <code>assigns()</code> keeps the values that fit, smallest first, and sets the others to <code>null</code> &mdash; every key stays present.</p>
 
             <h3 class="text-lg font-semibold text-white mb-3 mt-8">Query Assertions (E2E)</h3>
             <p class="text-gray-400 text-sm mb-4">Every response records the AQL queries the request ran (from the same log behind the dev bar's N+1 badge). Assert against it to catch a query issued in a loop, or to hold an endpoint to a query budget. See the <a href="/docs/testing" class="text-amber-400 hover:text-amber-300">testing guide</a>.</p>

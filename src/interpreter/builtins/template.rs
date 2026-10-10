@@ -2132,39 +2132,66 @@ fn paginate_html(pag_data: &Value, opts: &Value) -> Result<String, String> {
 // ===== end pagination helper =====
 
 /// Maximum size of the serialized locals shipped to the e2e test client via
-/// the `x-soli-test-assigns` response header. Beyond this we fall back to a
-/// keys-only payload so a single huge collection can't blow the header limit.
+/// the `x-soli-test-assigns` response header. Beyond this the largest values
+/// are dropped (see [`capture_assigns_json`]) so a single huge collection can't
+/// blow the header limit.
 const MAX_CAPTURED_ASSIGNS_BYTES: usize = 48 * 1024;
 
 /// Serialize render() locals to JSON for the e2e test client's `assigns()`
 /// helper. Returns `(json, partial)`. Each top-level value is serialized
 /// independently (a non-serializable value degrades to `null` rather than
-/// nuking the whole payload). When the full payload exceeds
-/// `MAX_CAPTURED_ASSIGNS_BYTES` it degrades to a keys-only object
-/// (`{"posts": null, ...}`) with `partial = true`, so `has_key`-style
-/// assertions still work on large collections.
+/// nuking the whole payload).
+///
+/// When the full payload exceeds `MAX_CAPTURED_ASSIGNS_BYTES`, values are kept
+/// smallest first while they fit and the rest become `null`, with
+/// `partial = true`. Every key stays, so `has_key`-style assertions still work.
+/// Dropping only what overflows matters: a page whose size depends on shared
+/// rows (other spec files' records in the worker's database) used to null
+/// EVERY value — small counters included — once it crossed the cap, and a spec
+/// on such a counter passed alone and failed in a parallel run.
 pub(crate) fn capture_assigns_json(data: &Value) -> (String, bool) {
     let Value::Hash(hash) = data else {
         return ("{}".to_string(), false);
     };
-    let mut obj = serde_json::Map::new();
+    let mut entries: Vec<(String, serde_json::Value)> = Vec::new();
     for (key, value) in hash.borrow().iter() {
         if let HashKey::String(name) = key {
             let json = value_to_json(value).unwrap_or(serde_json::Value::Null);
-            obj.insert(name.to_string(), json);
+            entries.push((name.to_string(), json));
         }
     }
-    let full = serde_json::Value::Object(obj).to_string();
+    let full: serde_json::Map<String, serde_json::Value> = entries.iter().cloned().collect();
+    let full = serde_json::Value::Object(full).to_string();
     if full.len() <= MAX_CAPTURED_ASSIGNS_BYTES {
         return (full, false);
     }
-    let mut keys_only = serde_json::Map::new();
-    for (key, _) in hash.borrow().iter() {
-        if let HashKey::String(name) = key {
-            keys_only.insert(name.to_string(), serde_json::Value::Null);
+
+    // Start from the keys-only object and spend what is left of the budget on
+    // values, smallest first. A kept value replaces its `null` (4 bytes).
+    let keys_only: serde_json::Map<String, serde_json::Value> = entries
+        .iter()
+        .map(|(name, _)| (name.clone(), serde_json::Value::Null))
+        .collect();
+    let mut size = serde_json::Value::Object(keys_only.clone())
+        .to_string()
+        .len();
+    let mut by_size: Vec<(usize, usize)> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, (_, json))| (json.to_string().len(), i))
+        .collect();
+    by_size.sort();
+    let mut kept = keys_only;
+    for (len, i) in by_size {
+        let extra = len.saturating_sub("null".len());
+        if size + extra > MAX_CAPTURED_ASSIGNS_BYTES {
+            break;
         }
+        size += extra;
+        let (name, json) = &entries[i];
+        kept.insert(name.clone(), json.clone());
     }
-    (serde_json::Value::Object(keys_only).to_string(), true)
+    (serde_json::Value::Object(kept).to_string(), true)
 }
 
 /// The view path reported to the e2e `view_path()` helper: the rendered
@@ -2207,18 +2234,47 @@ mod assigns_capture_tests {
     }
 
     #[test]
-    fn oversized_locals_degrade_to_keys_only() {
+    fn oversized_locals_drop_only_what_overflows() {
         let big = "x".repeat(MAX_CAPTURED_ASSIGNS_BYTES + 10);
         let data = hash(vec![
             ("blob", Value::String(big.into())),
             ("title", Value::String("Hi".into())),
+            ("count", Value::Int(3)),
         ]);
         let (json, partial) = capture_assigns_json(&data);
         assert!(partial);
-        // Keys preserved, values nulled — so has_key assertions still work.
+        // The oversized value is nulled, its key kept — so has_key assertions
+        // still work — and the small values travel in full.
         assert!(json.contains("\"blob\":null"), "json was {json}");
-        assert!(json.contains("\"title\":null"), "json was {json}");
+        assert!(json.contains("\"title\":\"Hi\""), "json was {json}");
+        assert!(json.contains("\"count\":3"), "json was {json}");
         assert!(json.len() < 1024);
+    }
+
+    #[test]
+    fn oversized_locals_keep_the_smallest_values_that_fit() {
+        // Three values of ~20 KB: together they overflow, two of them fit.
+        let chunk = |c: &str| Value::String(c.repeat(20 * 1024).into());
+        let data = hash(vec![
+            ("a", chunk("a")),
+            ("b", chunk("b")),
+            ("c", chunk("c")),
+        ]);
+        let (json, partial) = capture_assigns_json(&data);
+        assert!(partial);
+        assert!(
+            json.len() <= MAX_CAPTURED_ASSIGNS_BYTES,
+            "payload is {} bytes",
+            json.len()
+        );
+        assert_eq!(
+            json.matches(":null").count(),
+            1,
+            "exactly one value should be dropped"
+        );
+        for key in ["\"a\"", "\"b\"", "\"c\""] {
+            assert!(json.contains(key), "key {key} missing");
+        }
     }
 
     #[test]

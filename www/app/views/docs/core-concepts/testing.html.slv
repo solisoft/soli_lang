@@ -599,7 +599,7 @@ assert_eq(res_status(response), 200)</code></pre>
 
         <div class="mb-12 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
             <p class="text-yellow-300 text-sm">
-                <strong>Large locals.</strong> View locals ride back from the test server in a response header. When they are very large (&approx;48&nbsp;KB+ of serialized JSON), <code>assigns()</code> degrades to a keys-only view &mdash; every top-level key is present (so <code>assert_hash_has_key</code> still works) but its value is <code>null</code>.
+                <strong>Large locals.</strong> View locals ride back from the test server in a response header, capped at &approx;48&nbsp;KB of serialized JSON. Over the cap, <code>assigns()</code> keeps the values that fit &mdash; smallest first &mdash; and sets the others to <code>null</code>: every top-level key is still present (so <code>assert_hash_has_key</code> keeps working), a counter or a title still arrives, and only the big collections are dropped. Assert on a dropped collection through the rendered page (<code>res_body</code>) instead.
             </p>
         </div>
 

@@ -451,11 +451,12 @@ assert_not(render_template());
 ```
 
 > **Large locals.** The view locals are shipped from the test server to the
-> test process as a response header. When they are very large (≈48 KB+ of
-> serialized JSON — e.g. a big collection), `assigns()` degrades to a
-> keys-only view: every top-level key is still present (so `assert_hash_has_key`
-> keeps working) but its value is `null`. Assert on the keys, or render a
-> smaller slice, in that case.
+> test process as a response header, capped at ≈48 KB of serialized JSON.
+> Over the cap, `assigns()` keeps the values that fit — smallest first — and
+> sets the others to `null`: every top-level key is still present (so
+> `assert_hash_has_key` keeps working), a counter or a title still arrives,
+> and only the big collections are dropped. Assert on a dropped collection
+> through the rendered page (`res_body`) instead.
 
 ## Complete Examples
 

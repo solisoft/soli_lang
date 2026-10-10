@@ -12,6 +12,10 @@ The first release since 2.19.0 to publish binaries: the v2.19.1 and v2.20.0 tags
 
 * **edge:** **Models on Cloudflare D1: `SOLI_DB_ADAPTER=d1`.** A Worker app can keep its data in D1, Cloudflare's SQLite, with no database server of its own. The new `d1` adapter is the SQLite document model (a `_key` + JSON `doc` table per model, created on first write) and the SQLite adapter's compiled SQL, sent to the Worker's binding (`env.DB.prepare(sql).bind(...).all()`) through a `soli_d1` host import the wasm stack suspends on, as for `fetch`. `DATABASE_URL` names the binding (`d1://DB`, the default); `config/database.toml` takes `adapter = "d1"`. Writes return the row with `RETURNING doc` (one round trip, not two); multi-row inserts and key lists are chunked under D1's 100-parameter limit. Not on D1: transactions (D1 has none, `Model.transaction` raises), column-aware models, jobs and cron. Tested natively against a real SQLite standing in for the binding (`tests/d1_test.rs`), and on workerd with a local D1 database. `config/database.toml` is now read through `platform::fs`, so it works on the edge too.
 
+### Fixed
+
+* **test:** **`assigns()` no longer nulls every value of a large render — only the ones that do not fit.** The test server ships a render's locals in a response header capped at 48 KB. Over the cap it used to send the keys alone, all `null`, so a spec checking a small counter on a page that also carried a big collection lost the counter too. The values are now kept smallest first while they fit; only what overflows becomes `null`, and every key stays. The failure it removes was a flaky one: a page whose size depended on rows other spec files had written to the worker's database crossed the cap only after some of them had run, so the spec passed alone and failed in a parallel suite (seen in grc's dashboard specs).
+
 ## [2.20.0] - 2026-10-09
 
 v2.19.1 was tagged as a patch release, but it carries a new capability (Soli apps inside Cloudflare Workers); v2.20.0 is the same code under a minor version, and the release notes are here.
