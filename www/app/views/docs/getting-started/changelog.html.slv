@@ -27,6 +27,11 @@
             <li><strong class="text-white">Models on Cloudflare D1: <code class="text-cyan-400">SOLI_DB_ADAPTER=d1</code>.</strong> A Worker app can keep its data in D1, Cloudflare&rsquo;s SQLite, with no database server of its own: add a <code class="text-cyan-400">[[d1_databases]]</code> binding to <code class="text-cyan-400">wrangler.toml</code> and set <code class="text-cyan-400">SOLI_DB_ADAPTER = "d1"</code>. Models keep the SQLite adapter&rsquo;s document tables and SQL &mdash; <code class="text-cyan-400">find</code>, <code class="text-cyan-400">where</code>, <code class="text-cyan-400">create</code>, <code class="text-cyan-400">create_many</code>, aggregates, validations, callbacks &mdash; and each write is one round trip (<code class="text-cyan-400">RETURNING</code>). D1 has no transactions, so <code class="text-cyan-400">Model.transaction</code> raises there; column-aware models are not supported yet. <a href="/docs/development-tools/edge#d1" class="text-cyan-400 hover:underline">Cloudflare D1</a></li>
         </ul>
 
+        <h3 id="unreleased-web" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Web</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A new app&rsquo;s links preview from day one.</strong> <code class="text-cyan-400">soli new</code> puts Open Graph and Twitter share tags and a canonical link in the layout, from each action&rsquo;s <code class="text-cyan-400">@title</code>, <code class="text-cyan-400">@description</code> and optional <code class="text-cyan-400">@og_image</code>, with a generic 1200&times;630 image to replace. URLs are absolute through an <code class="text-cyan-400">absolute_url</code> helper that reads <code class="text-cyan-400">APP_URL</code> or <code class="text-cyan-400">SOLI_APP_HOSTS</code>, never the client&rsquo;s <code class="text-cyan-400">Host</code> header. The app&rsquo;s <code class="text-cyan-400">CLAUDE.md</code> asks every new layout to carry them. <a href="/docs/core-concepts/views#share-tags" class="text-cyan-400 hover:underline">Share tags</a></li>
+        </ul>
+
     </section>
 
     <section id="v2-20-0" class="mb-16 scroll-mt-24">

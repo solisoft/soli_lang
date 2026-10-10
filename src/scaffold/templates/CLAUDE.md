@@ -299,6 +299,10 @@ Terse, idiomatic Soli. These rules hold across the app, specs included.
   `render("new")`, or `render("posts/new", {}, {"status": 422})`. Avoid
   `@method` / `@view` (framework-ish names).
   Specs: `assigns()` sees the `@fields` with or without an explicit `render`.
+- **Every layout carries share tags** (Open Graph + Twitter card + canonical,
+  absolute URLs via `absolute_url`), and every page action sets `@title` and
+  `@description`. Copy the block from `layouts/application.html.slv`; details
+  in `app/views/CLAUDE.md` → "Share tags".
 - **Every public controller action documents its route** in a comment right
   above the `def`: `# GET /posts/:id`, one line per route that reaches it,
   optionally `— what it does`. Helpers are not actions: prefix them with `_`

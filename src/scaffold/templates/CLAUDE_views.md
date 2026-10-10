@@ -418,6 +418,50 @@ where the view's content gets inserted.
 </html>
 ```
 
+## Share tags: every layout carries Open Graph data
+
+A link to any page — pasted in Slack, X, LinkedIn, an email — is previewed
+from the page's Open Graph and Twitter tags. **Every layout you create or
+edit carries them**, in its `<head>`, the way the generated
+`layouts/application.html.slv` does:
+
+```erb
+<% share_description = description ?? "What this app does, in one sentence." %>
+<% share_url = absolute_url(req ? req["path"] : "/") %>
+<meta name="description" content="<%= share_description %>">
+<link rel="canonical" href="<%= share_url %>">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="MyApp">
+<meta property="og:title" content="<%= title %> - MyApp">
+<meta property="og:description" content="<%= share_description %>">
+<meta property="og:url" content="<%= share_url %>">
+<meta property="og:image" content="<%= absolute_url(og_image ?? "/images/og.png") %>">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+```
+
+- **Each action sets `@title` and `@description`** (one plain sentence about
+  that page, under ~160 characters). A page with something better to show —
+  a product photo, a post's cover — sets `@og_image` to its path.
+- **URLs are absolute**: `absolute_url(path)` (in
+  `app/helpers/application_helper.sl`) prefixes `APP_URL` from `.env`, else
+  the first host of `SOLI_APP_HOSTS` over https. Never build them from
+  `req["headers"]["host"]`: the client sets it.
+- **The image is a PNG or JPEG, 1200×630.** Platforms ignore SVG here.
+  `public/images/og.png` ships as a generic "Built with Soli" card: replace it
+  with one for this app (draw an SVG, then
+  `rsvg-convert -w 1200 -h 630 og.svg -o public/images/og.png`).
+- **`og:url` and the canonical link drop the query string** (`req["path"]`
+  has none), so `/posts?page=2` shares as `/posts`.
+- **`req` can be `nil`**: a layout rendered outside a request (a job, a PDF)
+  has none, and `nil["path"]` raises — hence `req ? req["path"] : "/"`.
+- A layout for pages that must not be shared or indexed (an admin area, an
+  account page) says so instead: `<meta name="robots" content="noindex">`,
+  and no share tags.
+
+Check them: `curl -s localhost:<port>/ | grep -E 'og:|twitter:'`.
+
 ## File layout
 
 ```

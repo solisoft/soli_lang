@@ -235,6 +235,13 @@ pub fn create_layout(app_path: &Path) -> Result<(), String> {
     )
 }
 
+/// Write the default share image the layout's Open Graph tags point at.
+pub fn create_og_image(app_path: &Path) -> Result<(), String> {
+    let path = app_path.join("public/images/og.png");
+    fs::write(&path, app::OG_IMAGE)
+        .map_err(|e| format!("Failed to write to '{}': {}", path.display(), e))
+}
+
 /// Create the home index view
 pub fn create_index_view(app_path: &Path) -> Result<(), String> {
     write_file(
@@ -856,6 +863,7 @@ pub fn create_app(name: &str, template: Option<&str>, eui: bool) -> Result<(), S
     progress.step("Creating MVC components...");
     create_home_controller(app_path)?;
     create_layout(app_path)?;
+    create_og_image(app_path)?;
     create_index_view(app_path)?;
     create_application_helper(app_path)?;
     create_sample_middleware(app_path)?;
@@ -955,6 +963,46 @@ mod tests {
         create_directories(dir.path()).unwrap();
         assert!(dir.path().join("app/models/concerns").is_dir());
         assert!(dir.path().join("app/jobs").is_dir());
+    }
+
+    /// A new app's links preview from day one: the layout carries the share
+    /// tags, with absolute URLs from the helper, and the image they name is
+    /// a 1200×630 PNG.
+    #[test]
+    fn a_new_app_ships_share_tags_and_their_image() {
+        let dir = tempfile::tempdir().unwrap();
+        create_directories(dir.path()).unwrap();
+        create_layout(dir.path()).unwrap();
+        create_og_image(dir.path()).unwrap();
+        create_application_helper(dir.path()).unwrap();
+
+        let layout =
+            std::fs::read_to_string(dir.path().join("app/views/layouts/application.html.slv"))
+                .unwrap();
+        for tag in [
+            "og:title",
+            "og:description",
+            "og:url",
+            "og:image",
+            "twitter:card",
+        ] {
+            assert!(layout.contains(tag), "layout lacks {tag}");
+        }
+        assert!(layout.contains("absolute_url(og_image ?? \"/images/og.png\")"));
+        assert!(
+            !layout.contains("req[\"headers\"][\"host\"]"),
+            "built from the Host header"
+        );
+
+        let png = std::fs::read(dir.path().join("public/images/og.png")).unwrap();
+        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+        let width = u32::from_be_bytes([png[16], png[17], png[18], png[19]]);
+        let height = u32::from_be_bytes([png[20], png[21], png[22], png[23]]);
+        assert_eq!((width, height), (1200, 630));
+
+        let helper =
+            std::fs::read_to_string(dir.path().join("app/helpers/application_helper.sl")).unwrap();
+        assert!(helper.contains("def absolute_url(path)"));
     }
 
     /// Every bundled doc must be reachable from the generated root CLAUDE.md,

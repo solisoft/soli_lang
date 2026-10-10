@@ -931,6 +931,31 @@ SOLI_NAV=morph soli serve .</code></pre>
         </div>
     </div>
 
+    <h3 id="share-tags" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Share Tags (Open Graph)</h3>
+    <p class="text-gray-400 mb-6">A link to a page is previewed &mdash; in Slack, X, LinkedIn, an email &mdash; from the page&rsquo;s Open Graph and Twitter tags. <code>soli new</code> writes them into <code>layouts/application.html.slv</code>, and the app&rsquo;s <code>CLAUDE.md</code> asks every layout added later to carry them:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+            <pre><code class="language-erb">&lt;% share_description = description ?? "A web app built with Soli." %&gt;
+&lt;% share_url = absolute_url(req ? req["path"] : "/") %&gt;
+&lt;meta name="description" content="&lt;%= share_description %&gt;"&gt;
+&lt;link rel="canonical" href="&lt;%= share_url %&gt;"&gt;
+&lt;meta property="og:type" content="website"&gt;
+&lt;meta property="og:title" content="&lt;%= title %&gt; - Soli App"&gt;
+&lt;meta property="og:description" content="&lt;%= share_description %&gt;"&gt;
+&lt;meta property="og:url" content="&lt;%= share_url %&gt;"&gt;
+&lt;meta property="og:image" content="&lt;%= absolute_url(og_image ?? "/images/og.png") %&gt;"&gt;
+&lt;meta property="og:image:width" content="1200"&gt;
+&lt;meta property="og:image:height" content="630"&gt;
+&lt;meta name="twitter:card" content="summary_large_image"&gt;</code></pre>
+        </div>
+    </div>
+    <ul class="list-disc pl-6 space-y-2 text-gray-400 mb-12">
+        <li>An action sets <code>@title</code> and <code>@description</code>; <code>@og_image</code> replaces the image for one page.</li>
+        <li><code>absolute_url(path)</code> is a helper in the generated <code>app/helpers/application_helper.sl</code>. It prefixes <code>APP_URL</code> from <code>.env</code> (<code>https://myapp.example.com</code>), else the first host of <code>SOLI_APP_HOSTS</code> over https, and leaves the path relative when neither is set. It never reads the request&rsquo;s <code>Host</code> header, which the client controls.</li>
+        <li>The image is <code>public/images/og.png</code>, a generic 1200&times;630 &ldquo;Built with Soli&rdquo; card: replace it with the app&rsquo;s own. Platforms ignore SVG images here.</li>
+        <li><code>req["path"]</code> has no query string, so <code>/posts?page=2</code> is shared as <code>/posts</code>.</li>
+    </ul>
+
     <h2 class="text-2xl font-bold text-white mb-6">Named Content with <code>content_for</code></h2>
     <p class="text-gray-400 mb-6">
         A plain <code>&lt;%= yield %&gt;</code> gives the layout one insertion point. When a page needs to inject content <em>elsewhere</em> in the layout — a page-specific <code>&lt;script&gt;</code> in the <code>&lt;head&gt;</code>, a sidebar, extra meta tags — capture it in the view with <code>content_for</code> and read it back in the layout with a named <code>yield</code>.

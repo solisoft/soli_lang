@@ -4,6 +4,7 @@ class HomeController < Controller
   # GET /
   def index
     @title = "Welcome"
+    @description = "A web app built with Soli."
   end
 
   # GET /health

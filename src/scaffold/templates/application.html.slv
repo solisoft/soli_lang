@@ -5,6 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><%= title %> - Soli App</title>
 
+    <%# Share tags (Open Graph, Twitter card, canonical): every layout carries
+        them. Actions set @title and @description; @og_image overrides the
+        default image. See app/views/CLAUDE.md. %>
+    <% share_description = description ?? "A web app built with Soli." %>
+    <% share_url = absolute_url(req ? req["path"] : "/") %>
+    <meta name="description" content="<%= share_description %>">
+    <link rel="canonical" href="<%= share_url %>">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Soli App">
+    <meta property="og:title" content="<%= title %> - Soli App">
+    <meta property="og:description" content="<%= share_description %>">
+    <meta property="og:url" content="<%= share_url %>">
+    <meta property="og:image" content="<%= absolute_url(og_image ?? "/images/og.png") %>">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+
     <!-- Tailwind CSS (compiled) -->
     <link rel="stylesheet" href="<%= public_path("css/application.css") %>">
 

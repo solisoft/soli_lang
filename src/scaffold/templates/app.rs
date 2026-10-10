@@ -14,6 +14,9 @@ pub const HOME_CONTROLLER_TEMPLATE: &str = include_str!("home_controller.sl");
 
 /// Application layout template
 pub const LAYOUT_TEMPLATE: &str = include_str!("application.html.slv");
+/// The default share image (`public/images/og.png`, 1200×630) the layout's
+/// Open Graph tags point at until the app replaces it with its own.
+pub const OG_IMAGE: &[u8] = include_bytes!("og.png");
 
 /// Home index view template
 pub const INDEX_VIEW_TEMPLATE: &str = include_str!("index.html.slv");

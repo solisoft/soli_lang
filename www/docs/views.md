@@ -933,6 +933,39 @@ def index
 end
 ```
 
+### Share Tags (Open Graph)
+
+A link to a page is previewed — in Slack, X, LinkedIn, an email — from the
+page's Open Graph and Twitter tags. `soli new` writes them into
+`layouts/application.html.slv`, and the app's `CLAUDE.md` asks every layout
+added later to carry them:
+
+```erb
+<% share_description = description ?? "A web app built with Soli." %>
+<% share_url = absolute_url(req ? req["path"] : "/") %>
+<meta name="description" content="<%= share_description %>">
+<link rel="canonical" href="<%= share_url %>">
+<meta property="og:type" content="website">
+<meta property="og:title" content="<%= title %> - Soli App">
+<meta property="og:description" content="<%= share_description %>">
+<meta property="og:url" content="<%= share_url %>">
+<meta property="og:image" content="<%= absolute_url(og_image ?? "/images/og.png") %>">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+```
+
+- An action sets `@title` and `@description`; `@og_image` replaces the image
+  for one page.
+- `absolute_url(path)` is a helper in the generated
+  `app/helpers/application_helper.sl`. It prefixes `APP_URL` from `.env`
+  (`https://myapp.example.com`), else the first host of `SOLI_APP_HOSTS` over
+  https, and leaves the path relative when neither is set. It never reads the
+  request's `Host` header, which the client controls.
+- The image is `public/images/og.png`, a generic 1200×630 "Built with Soli"
+  card: replace it with the app's own. Platforms ignore SVG images here.
+- `req["path"]` has no query string, so `/posts?page=2` is shared as `/posts`.
+
 ## Named Content with `content_for`
 
 A plain `<%= yield %>` gives the layout exactly one insertion point. When a
