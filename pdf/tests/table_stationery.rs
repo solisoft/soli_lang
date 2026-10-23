@@ -157,7 +157,7 @@ fn stationery_draws_letterhead_beneath_every_page() {
     let pages: Vec<_> = doc.page_iter().collect();
     assert_eq!(pages.len(), 2, "stationery does not change the page count");
     for (i, page_id) in pages.iter().enumerate() {
-        let content = doc.get_page_content(*page_id).expect("content");
+        let content = doc.get_page_content(*page_id);
         let text = String::from_utf8_lossy(&content);
         assert!(
             text.contains("/SoliLH0 Do"),

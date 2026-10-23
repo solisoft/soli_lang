@@ -36,27 +36,15 @@ text: <https://openfontlicense.org/>.
   Guidelines to Enable Data Capture for the Initiation of a SEPA Credit Transfer"
   specification (European Payments Council). No code from that spec is bundled.
 
-## Vendored crates
+## PDF dependencies and bundled licenses
 
-- **printpdf** (`vendor/printpdf/`, MIT) — a byte-for-byte copy of printpdf
-  0.9.1 from crates.io © Felix Schütt, Julien Schminke, with two local changes:
-  1. `vendor/printpdf/Cargo.toml`: its internal `lopdf` pin is bumped from
-     `0.39.0` to `0.43` to fix **RUSTSEC-2026-0187** (a stack overflow when
-     parsing deeply-nested PDFs). Upstream 0.9.1 — the only published release,
-     and current `master` — pins `lopdf ^0.39`, so a crates.io dependency cannot
-     be patched across the caret; vendoring is the only way to ship the fixed lopdf.
-  2. `vendor/printpdf/src/serialize.rs`: re-enabled the `doc.compress()` call that
-     upstream left commented out under the (default-on) `optimize` save option, so
-     page-content and embedded-font streams are Flate-compressed instead of written
-     raw. `lopdf`'s `Stream::compress` skips streams that already carry a `/Filter`
-     (the image XObjects we compress via `image_optimization`), so nothing is
-     double-encoded, and it keeps the smaller of the two — this only shrinks output.
-  Delete the vendor directory and restore the crates.io dependency once upstream
-  printpdf publishes a release built on `lopdf >= 0.42` (re-applying change 2).
-  Its bundled assets keep their own licenses: the default PDF base-14 font
-  subsets (`vendor/printpdf/defaultfonts/`) and the `CoatedFOGRA39.icc` profile
-  (`vendor/printpdf/src/res/`, see the adjacent `.icc.LICENSE.txt`).
+- **printpdf** (crates.io `printpdf` 0.12.8, MIT), © Felix Schütt,
+  Julien Schminke — PDF serialization.
   <https://github.com/fschutt/printpdf>
+- The source files under `vendor/printpdf/` carry the adjacent MIT `LICENSE`.
+  The base-14 font subsets in `vendor/printpdf/defaultfonts/` and the
+  `CoatedFOGRA39.icc` profile in `vendor/printpdf/src/res/` retain their own
+  licenses (see the adjacent `.icc.LICENSE.txt`).
 
 ## ICC color profile (CC0 / public domain)
 

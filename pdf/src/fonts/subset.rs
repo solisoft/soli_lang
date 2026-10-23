@@ -28,17 +28,17 @@ pub(crate) fn subset_face(original: &[u8], index: u32, gids: &[u16]) -> Vec<u8> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ttf_parser::Face;
+    use skrifa::{FontRef, MetadataProvider};
 
     static TITILLIUM: &[u8] = include_bytes!("../../fonts/TitilliumWeb-Regular.ttf");
 
     /// GIDs for the glyphs covering the given chars, plus .notdef.
     fn gids_for(font: &[u8], chars: &str) -> Vec<u16> {
-        let face = Face::parse(font, 0).unwrap();
+        let face = FontRef::from_index(font, 0).unwrap();
         let mut gids: std::collections::BTreeSet<u16> = std::collections::BTreeSet::from([0]);
         for ch in chars.chars() {
-            if let Some(g) = face.glyph_index(ch) {
-                gids.insert(g.0);
+            if let Some(g) = face.charmap().map(ch) {
+                gids.insert(u16::try_from(g.to_u32()).unwrap());
             }
         }
         gids.into_iter().collect()
@@ -58,15 +58,15 @@ mod tests {
         );
 
         // Still a valid face, and glyph ids are retained (cmap intact).
-        let orig = Face::parse(TITILLIUM, 0).unwrap();
-        let face = Face::parse(&sub, 0).expect("subset font re-parses");
+        let orig = FontRef::from_index(TITILLIUM, 0).unwrap();
+        let face = FontRef::from_index(&sub, 0).expect("subset font re-parses");
         for ch in "Invoice".chars() {
             assert_eq!(
-                face.glyph_index(ch),
-                orig.glyph_index(ch),
+                face.charmap().map(ch),
+                orig.charmap().map(ch),
                 "glyph id for {ch:?} changed after subsetting"
             );
-            assert!(face.glyph_index(ch).is_some());
+            assert!(face.charmap().map(ch).is_some());
         }
     }
 

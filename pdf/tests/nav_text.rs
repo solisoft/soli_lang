@@ -134,6 +134,49 @@ fn bookmark_dest_targets_the_right_page() {
     assert_eq!(target, pages[1], "bookmark jumps to page 2");
 }
 
+#[test]
+fn nested_outline_counts_and_unicode_titles() {
+    let tmpl = r#"{ "fonts": ["titillium"], "content": [
+        { "type": "paragraph", "value": "Part", "options": { "bookmark": "Résumé" } },
+        { "type": "paragraph", "value": "Chapter", "options": { "bookmark": "Chapter", "bookmarkLevel": 2 } },
+        { "type": "paragraph", "value": "Section", "options": { "bookmark": "Section", "bookmarkLevel": 3 } },
+        { "type": "paragraph", "value": "Next", "options": { "bookmark": "Next" } }
+    ] }"#;
+    let pdf = render_to_bytes(tmpl.as_bytes(), b"{}", &opts()).unwrap();
+    let doc = lopdf::Document::load_mem(&pdf).unwrap();
+    let outline = doc
+        .get_dictionary(
+            doc.catalog()
+                .unwrap()
+                .get(b"Outlines")
+                .unwrap()
+                .as_reference()
+                .unwrap(),
+        )
+        .unwrap();
+    assert_eq!(outline.get(b"Count").unwrap().as_i64().unwrap(), 4);
+    let first_id = outline.get(b"First").unwrap().as_reference().unwrap();
+    let first = doc.get_dictionary(first_id).unwrap();
+    assert_eq!(first.get(b"Count").unwrap().as_i64().unwrap(), 2);
+    let mut title = vec![0xfe, 0xff];
+    title.extend("Résumé".encode_utf16().flat_map(u16::to_be_bytes));
+    assert_eq!(first.get(b"Title").unwrap().as_str().unwrap(), title);
+    let child_id = first.get(b"First").unwrap().as_reference().unwrap();
+    let child = doc.get_dictionary(child_id).unwrap();
+    assert_eq!(child.get(b"Count").unwrap().as_i64().unwrap(), 1);
+    assert_eq!(
+        child.get(b"Parent").unwrap().as_reference().unwrap(),
+        first_id
+    );
+    let next_id = first.get(b"Next").unwrap().as_reference().unwrap();
+    let next = doc.get_dictionary(next_id).unwrap();
+    assert_eq!(next.get(b"Prev").unwrap().as_reference().unwrap(), first_id);
+    assert_eq!(
+        outline.get(b"Last").unwrap().as_reference().unwrap(),
+        next_id
+    );
+}
+
 // --- keep-together -------------------------------------------------------------------
 
 #[test]

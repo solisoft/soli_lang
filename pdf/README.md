@@ -323,7 +323,7 @@ tables) only shrinks modestly and a CJK invoice is still several MB.
 |---|---|---|
 | `parse_template` | ~44 µs | — |
 | `parse_data` | ~4.4 µs | — |
-| `font_registry_new` | ~0.8 µs | — (ttf-parser is zero-copy/lazy) |
+| `font_registry_new` | ~0.8 µs | cached font registry |
 | `render_to_bytes_latin` (Latin-only) | **~1.4 ms** | **~134 KB** |
 | `render_to_bytes_cjk` (sample, with CJK) | ~145 ms | ~5.9 MB |
 | `embed_facturx` | ~1.2 ms | — |

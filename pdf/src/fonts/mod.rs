@@ -10,7 +10,7 @@
 //!
 //! Text is split into runs by which face covers each character (the requested
 //! styled face → fallback faces, in load order). Advance widths come from
-//! `ttf-parser`; printpdf does the actual glyph encoding + embedding.
+//! `skrifa`; printpdf does the actual glyph encoding + embedding.
 
 mod subset;
 
@@ -19,7 +19,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use ttf_parser::Face;
+use skrifa::{
+    instance::{LocationRef, Size},
+    raw::{tables::os2::SelectionFlags, TableProvider},
+    FontRef, MetadataProvider,
+};
 
 use crate::error::{PdfError, RenderWarning, Result};
 use crate::template::FontWeight;
@@ -63,7 +67,7 @@ impl FontSlot {
 
 /// One loaded face. Advance widths and coverage are precomputed once at load
 /// into `advances` (char → advance in em fractions), so metric lookups during
-/// layout are a hashmap hit rather than a fresh `Face::parse` + cmap/hmtx walk
+/// layout are a hashmap hit rather than a fresh font parse + cmap/hmtx walk
 /// per character — layout used to re-parse the sfnt table directory ~900×/render
 /// (see `benches/render.rs`). The raw `bytes` are kept for subsetting/embedding.
 #[derive(Clone)]
@@ -93,44 +97,52 @@ impl LoadedFace {
         let (ascent, descent, cap_height, is_bold, is_italic, is_mono);
         let mut advances: HashMap<char, f32> = HashMap::new();
         {
-            let face = Face::parse(&bytes, 0)
-                .map_err(|e| PdfError::Font(format!("ttf-parser failed for {key}: {e}")))?;
-            let u = face.units_per_em() as f32;
-            ascent = face.ascender() as f32 / u;
-            descent = face.descender() as f32 / u;
+            let font_error = |e| PdfError::Font(format!("skrifa failed for {key}: {e}"));
+            let face = FontRef::from_index(&bytes, 0).map_err(font_error)?;
+            // FontRef validates the directory lazily. Require the core metric
+            // tables before accepting a face for layout.
+            let head = face.head().map_err(font_error)?;
+            face.hhea().map_err(font_error)?;
+            face.maxp().map_err(font_error)?;
+            let u = head.units_per_em() as f32;
+            if u == 0.0 {
+                return Err(PdfError::Font(format!("zero units per em for {key}")));
+            }
+            let metrics = face.metrics(Size::unscaled(), LocationRef::default());
+            ascent = metrics.ascent / u;
+            descent = metrics.descent / u;
             // Cap height is what makes uppercase/digits look optically centered.
             // Many fonts (e.g. Titillium) have an ascender far taller than the
             // caps, so falling back to the ascent would re-introduce the bias we
             // correct for; use a typical 0.7em instead when the font omits it.
-            cap_height = face
-                .capital_height()
-                .filter(|c| *c > 0)
-                .map(|c| c as f32 / u)
+            cap_height = metrics
+                .cap_height
+                .filter(|c| *c > 0.0)
+                .map(|c| c / u)
                 .unwrap_or(0.7);
             // Style detection: trust the font's OS/2 / post flags, but fall back
             // to the filename (e.g. "...-BoldItalic", "JetBrainsMono-...") since
             // not every face sets the flags reliably.
-            is_bold = face.is_bold() || key.contains("bold");
-            is_italic = face.is_italic() || key.contains("italic") || key.contains("oblique");
-            is_mono = face.is_monospaced() || key.contains("mono");
+            let flags = face.os2().ok().map(|os2| os2.fs_selection());
+            is_bold =
+                flags.is_some_and(|f| f.contains(SelectionFlags::BOLD)) || key.contains("bold");
+            is_italic = flags.is_some_and(|f| f.contains(SelectionFlags::ITALIC))
+                || metrics.italic_angle != 0.0
+                || key.contains("italic")
+                || key.contains("oblique");
+            is_mono = metrics.is_monospace || key.contains("mono");
 
             // Precompute the advance for every char the (Unicode) cmap maps to a
-            // glyph. This mirrors the old per-char path exactly: coverage =
-            // "glyph_index present", advance = `glyph_hor_advance / upem`.
-            if let Some(cmap) = face.tables().cmap {
-                for subtable in cmap.subtables {
-                    if !subtable.is_unicode() {
-                        continue;
+            // glyph. A .notdef mapping does not count as coverage.
+            let glyph_metrics = face.glyph_metrics(Size::unscaled(), LocationRef::default());
+            for (cp, gid) in face.charmap().mappings() {
+                if gid.to_u32() == 0 {
+                    continue;
+                }
+                if let Some(ch) = char::from_u32(cp) {
+                    if let Some(adv) = glyph_metrics.advance_width(gid) {
+                        advances.insert(ch, adv / u);
                     }
-                    subtable.codepoints(|cp| {
-                        if let Some(ch) = char::from_u32(cp) {
-                            if let Some(gid) = face.glyph_index(ch) {
-                                if let Some(adv) = face.glyph_hor_advance(gid) {
-                                    advances.entry(ch).or_insert(adv as f32 / u);
-                                }
-                            }
-                        }
-                    });
                 }
             }
         }
@@ -155,8 +167,8 @@ impl LoadedFace {
         })
     }
 
-    fn parse(&self) -> Face<'_> {
-        Face::parse(&self.bytes, 0).expect("face was validated at load")
+    fn parse(&self) -> FontRef<'_> {
+        FontRef::from_index(&self.bytes, 0).expect("face was validated at load")
     }
 
     fn matches_family(&self, family: &str) -> bool {
@@ -369,12 +381,15 @@ impl FontRegistry {
     pub fn subset_bytes(&self, slot: FontSlot, used_chars: &BTreeSet<char>) -> Vec<u8> {
         let lf = self.face_of(slot);
         let face = lf.parse();
+        let charmap = face.charmap();
         // Always keep .notdef (the subsetter retains it regardless; explicit here
         // for clarity). Whitespace chars without a glyph are simply not drawn.
         let mut gids: BTreeSet<u16> = BTreeSet::from([0]);
         for &ch in used_chars {
-            if let Some(g) = face.glyph_index(ch) {
-                gids.insert(g.0);
+            if let Some(g) = charmap.map(ch) {
+                if let Ok(gid) = u16::try_from(g.to_u32()) {
+                    gids.insert(gid);
+                }
             }
         }
         let gids: Vec<u16> = gids.into_iter().collect();
@@ -663,5 +678,39 @@ mod tests {
         let r = pdf_fonts();
         let w = r.measure("Hello", FontWeight::Normal, 12.0);
         assert!(w > 0.0 && w < 100.0);
+    }
+
+    #[test]
+    fn malformed_faces_are_rejected() {
+        assert!(LoadedFace::load(b"not a font".to_vec(), "invalid".into()).is_err());
+        let truncated = include_bytes!("../../fonts/TitilliumWeb-Regular.ttf")[..64].to_vec();
+        assert!(LoadedFace::load(truncated, "truncated".into()).is_err());
+    }
+
+    #[test]
+    fn style_flags_work_without_filename_hints() {
+        let bold = LoadedFace::load(
+            include_bytes!("../../fonts/TitilliumWeb-Bold.ttf").to_vec(),
+            "neutral".into(),
+        )
+        .unwrap();
+        let italic = LoadedFace::load(
+            include_bytes!("../../fonts/TitilliumWeb-Italic.ttf").to_vec(),
+            "neutral".into(),
+        )
+        .unwrap();
+        let mono = LoadedFace::load(
+            include_bytes!("../../fonts/JetBrainsMono-Regular.ttf").to_vec(),
+            "neutral".into(),
+        )
+        .unwrap();
+        assert!(bold.is_bold);
+        assert!(!bold.is_italic);
+        assert!(italic.is_italic);
+        assert!(mono.is_mono);
+        assert!(mono.covers('A'));
+        assert!(!mono.covers('\u{10ffff}'));
+        assert!(mono.ascent.is_finite() && mono.ascent > 0.0);
+        assert!(mono.descent.is_finite() && mono.descent < 0.0);
     }
 }

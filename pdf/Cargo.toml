@@ -13,15 +13,9 @@ anyhow = "1"
 thiserror = "2"
 # text_layout gives real font parsing/embedding; images enables image XObject
 # serialization. html pulls heavy deps we don't need, so it stays off.
-#
-# Vendored (vendor/printpdf): a byte-for-byte copy of printpdf 0.9.1 with its
-# internal lopdf pin bumped 0.39 -> 0.43 to fix RUSTSEC-2026-0187. Upstream
-# 0.9.1 (and master) pin lopdf ^0.39, so a crates.io dep can't be patched
-# across the caret. Drop the vendor dir and restore `version = "0.9"` once
-# upstream printpdf ships a release on lopdf >= 0.42. See vendor/printpdf/Cargo.toml.
-printpdf = { path = "vendor/printpdf", default-features = false, features = ["text_layout", "images"] }
-lopdf = "0.43"
-ttf-parser = "0.25"
+printpdf = { version = "0.12.8", default-features = false, features = ["text_layout", "images"] }
+lopdf = "0.44"
+skrifa = "0.49"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 # rustls-tls (no openssl) to match the solilang host and avoid a native-tls pull.
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }

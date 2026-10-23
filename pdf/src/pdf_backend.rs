@@ -26,6 +26,8 @@ use printpdf::{
     XObjectTransform,
 };
 
+mod outlines;
+
 use crate::color::Rgb;
 use crate::draw::{
     DrawOp, ImageData, LaidOutDoc, PixelFormat, PolyPoint, StyledPiece, TextDraw, TextPiece,
@@ -116,7 +118,7 @@ fn subset_and_parse(
 fn push_dash(out: &mut Vec<Op>, dash: &Option<Vec<i64>>) {
     if let Some(d) = dash {
         out.push(Op::SetLineDashPattern {
-            dash: LineDashPattern::from_array(d, 0),
+            dash: LineDashPattern::new(0.0, &d.iter().map(|n| *n as f32).collect::<Vec<_>>()),
         });
     }
 }
@@ -125,15 +127,7 @@ fn push_dash(out: &mut Vec<Op>, dash: &Option<Vec<i64>>) {
 fn clear_dash(out: &mut Vec<Op>, dash: &Option<Vec<i64>>) {
     if dash.is_some() {
         out.push(Op::SetLineDashPattern {
-            dash: LineDashPattern {
-                offset: 0,
-                dash_1: None,
-                gap_1: None,
-                dash_2: None,
-                gap_2: None,
-                dash_3: None,
-                gap_3: None,
-            },
+            dash: LineDashPattern::solid(),
         });
     }
 }
@@ -182,7 +176,12 @@ pub fn emit(
         if let Some(svg_pdf) = &img.vector {
             image_ids.push(pdf.add_xobject(&svg_pdf_to_xobject(svg_pdf, img.opacity)?));
         } else {
-            image_ids.push(pdf.add_image_owned(raw_image(img)));
+            let id = XObjectId::new();
+            pdf.resources
+                .xobjects
+                .map
+                .insert(id.clone(), printpdf::XObject::Image(raw_image(img)));
+            image_ids.push(id);
         }
     }
 
@@ -235,19 +234,6 @@ pub fn emit(
         ));
     }
 
-    // Document outline. Bookmark page indices are 0-based in the IR; printpdf
-    // wants them 1-based (its serializer does `saturating_sub(1)`) — passing
-    // them raw sent every bookmark past page 1 one page short. `bookmarkLevel`
-    // nests entries under the last shallower one, like heading levels.
-    let mut outline_stack: Vec<printpdf::PageAnnotId> = Vec::new();
-    for (label, page_idx, level) in &doc.bookmarks {
-        let level = (*level).max(1) as usize;
-        outline_stack.truncate(level - 1);
-        let parent = outline_stack.last().cloned();
-        let id = pdf.add_bookmark_child(label, *page_idx + 1, parent);
-        outline_stack.push(id);
-    }
-
     let mut warnings = Vec::new();
     // Flate-compress the embedded image XObjects (logos, QR, barcode). Without
     // this, printpdf stores the raw RGB(A) samples uncompressed — a single
@@ -266,7 +252,15 @@ pub fn emit(
         }),
         ..PdfSaveOptions::default()
     };
-    let bytes = pdf.save(&save_opts, &mut warnings);
+    let mut output = pdf.to_lopdf_document(&save_opts, &mut warnings);
+    outlines::append(&mut output, &doc.bookmarks)?;
+    if save_opts.optimize {
+        output.compress();
+    }
+    let mut bytes = Vec::new();
+    output
+        .save_to(&mut bytes)
+        .map_err(|e| PdfError::Backend(format!("PDF save: {e}")))?;
     Ok(bytes)
 }
 
@@ -290,7 +284,7 @@ fn svg_pdf_to_xobject(pdf_bytes: &[u8], opacity: f32) -> Result<ExternalXObject>
         .ok_or_else(|| PdfError::Backend("SVG Form: no page".into()))?;
 
     let mut content = src
-        .get_page_content(page_id)
+        .get_page_content_with_limit(page_id, 64 * 1024 * 1024)
         .map_err(|e| PdfError::Backend(format!("SVG Form: could not read content: {e}")))?;
     let bbox = page_media_box(&src, page_id).unwrap_or([0.0, 0.0, 1.0, 1.0]);
     let width = (bbox[2] - bbox[0]).abs().max(1.0);
@@ -656,6 +650,7 @@ fn emit_op(
                         scale_x: Some(scale_x),
                         scale_y: Some(scale_y),
                         dpi: Some(72.0),
+                        no_auto_scale: false,
                     },
                 });
             }

@@ -19,7 +19,7 @@
 //! * **Stationery** — a letterhead is composited onto emitted PDF bytes by a
 //!   lopdf post-pass, which this path never produces. See
 //!   [`unsupported_warnings`].
-//! * **Colour/bitmap glyphs** — `ttf_parser::outline_glyph` returns nothing for
+//! * **Colour/bitmap glyphs** — the outline reader returns nothing for
 //!   CBDT/sbix/COLR faces, so they are invisible here while the PDF embeds
 //!   them.
 //! * **Hairlines** — below one device pixel, tiny-skia draws a coverage-scaled
@@ -33,6 +33,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
+use skrifa::{instance::Size, raw::TableProvider, FontRef, MetadataProvider};
 use tiny_skia::{
     FillRule, FilterQuality, IntSize, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke,
     StrokeDash, Transform,
@@ -351,10 +352,10 @@ fn stroke_dash(dash: &Option<Vec<i64>>) -> Option<StrokeDash> {
     StrokeDash::new(dash_array(dash)?, 0.0)
 }
 
-/// Adapts `ttf_parser`'s outline callbacks to a tiny-skia path.
+/// Adapts skrifa's outline callbacks to a tiny-skia path.
 struct Outline(PathBuilder);
 
-impl ttf_parser::OutlineBuilder for Outline {
+impl skrifa::outline::OutlinePen for Outline {
     fn move_to(&mut self, x: f32, y: f32) {
         self.0.move_to(x, y);
     }
@@ -402,8 +403,8 @@ struct Painter<'a> {
     pdf_to_device: Transform,
     /// One parsed face per *distinct* face, keyed by content digest because
     /// several slots degrade to the same file. Cannot be process-wide: a
-    /// `Face<'a>` borrows the registry's bytes.
-    faces: HashMap<[u8; 16], ttf_parser::Face<'a>>,
+    /// `FontRef<'a>` borrows the registry's bytes.
+    faces: HashMap<[u8; 16], FontRef<'a>>,
     /// (face digest, glyph id) → outline in font units, untransformed, so one
     /// entry serves every size and position on the page.
     glyphs: HashMap<([u8; 16], u16), Option<tiny_skia::Path>>,
@@ -430,10 +431,10 @@ impl<'a> Painter<'a> {
         let digest = self.fonts.face_digest(slot);
         if !self.faces.contains_key(&digest) {
             let bytes = self.fonts.bytes(slot);
-            let face = ttf_parser::Face::parse(bytes, 0).ok()?;
+            let face = FontRef::from_index(bytes, 0).ok()?;
             self.faces.insert(digest, face);
         }
-        let upem = self.faces.get(&digest)?.units_per_em() as f32;
+        let upem = self.faces.get(&digest)?.head().ok()?.units_per_em() as f32;
         Some((digest, upem))
     }
 
@@ -441,8 +442,8 @@ impl<'a> Painter<'a> {
     /// drawable outline for it (a space, or a colour/bitmap glyph).
     fn glyph(&mut self, digest: [u8; 16], ch: char) -> Option<tiny_skia::Path> {
         let face = self.faces.get(&digest)?;
-        let gid = face.glyph_index(ch)?;
-        let key = (digest, gid.0);
+        let gid = face.charmap().map(ch)?;
+        let key = (digest, u16::try_from(gid.to_u32()).ok()?);
         if let Some(cached) = self.glyphs.get(&key) {
             return cached.clone();
         }
@@ -450,7 +451,8 @@ impl<'a> Painter<'a> {
         let path = self
             .faces
             .get(&digest)
-            .and_then(|f| f.outline_glyph(gid, &mut outline))
+            .and_then(|f| f.outline_glyphs().get(gid))
+            .and_then(|glyph| glyph.draw(Size::unscaled(), &mut outline).ok())
             .and_then(|_| outline.0.finish());
         self.glyphs.insert(key, path.clone());
         path

@@ -13,6 +13,9 @@ libfuzzer-sys = "0.4"
 [dependencies.solilang]
 path = ".."
 
+[patch.crates-io]
+calamine = { path = "../vendor/calamine" }
+
 # Keep debuginfo for crash triage; optimization low so runs stay fast.
 [profile.fuzz]
 inherits = "dev"

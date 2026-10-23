@@ -89,11 +89,13 @@ fn import_page_as_form(
     page_id: ObjectId,
     map: &mut HashMap<ObjectId, ObjectId>,
 ) -> Result<(ObjectId, [f32; 4])> {
-    let content = src.get_page_content(page_id).map_err(|e| {
-        PdfError::Backend(format!(
-            "stationery: could not read letterhead content: {e}"
-        ))
-    })?;
+    let content = src
+        .get_page_content_with_limit(page_id, 64 * 1024 * 1024)
+        .map_err(|e| {
+            PdfError::Backend(format!(
+                "stationery: could not read letterhead content: {e}"
+            ))
+        })?;
     let bbox = inherited_media_box(src, page_id).unwrap_or([0.0, 0.0, 595.0, 842.0]);
 
     // Resources: the page's own dict if inline, else the inherited chain's
