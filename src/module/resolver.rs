@@ -101,6 +101,12 @@ pub struct ModuleResolver {
 impl ModuleResolver {
     /// Create a new module resolver.
     pub fn new(base_dir: &Path) -> Self {
+        // `soli test tests/colis/x_spec.sl` hands over a relative folder. Walking
+        // up from it, `Package::find` returns a bare `soli.toml` whose parent is
+        // the empty path: the project root became "", which canonicalizes to
+        // nothing, and every relative import failed with an empty
+        // "Module not found: ". Anchor the folder on the working directory first.
+        let base_dir = &std::path::absolute(base_dir).unwrap_or_else(|_| base_dir.to_path_buf());
         // Try to find and load package file
         let (package, lock, package_dir) = match Package::find(base_dir) {
             Some(pkg_path) => {
