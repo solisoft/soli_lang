@@ -52,6 +52,15 @@
   `accepts_relative_import_to_a_sibling_folder_of_the_project`,
   `path_dependency_is_relative_to_soli_toml_not_to_the_base_dir`,
   `rejects_relative_import_escaping_the_project_of_a_nested_base_dir`.
+- …and that also holds for a spec given as a relative path, the way the CLI
+  and CI run it (`soli test tests/colis/a_spec.sl` from the project root).
+  Walking up from the relative folder `tests/colis`, `Package::find` returned
+  a bare `soli.toml`, whose parent — taken as the project root — is the empty
+  path: it canonicalizes to nothing, and every `../support/…` import of a
+  nested spec failed with an empty `Module not found: `. The resolver now
+  anchors its base directory on the working directory before looking for
+  `soli.toml`. `tests/relative_spec_imports_test.rs` (a test binary of its
+  own: it changes the working directory).
 
 ## [2.28.11] - 2026-10-29
 
