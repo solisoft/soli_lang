@@ -428,6 +428,10 @@ pub fn run_stream_block(
     spec: &StreamSpec,
     id: usize,
 ) {
+    // A stream block holds its worker by design, and writes with
+    // `blocking_send`: it does not suspend (`serve::coroutine`).
+    #[cfg(not(target_arch = "wasm32"))]
+    let _no_yield = crate::serve::coroutine::NoYield::enter();
     let func = match &spec.block {
         Value::Function(f) => f.clone(),
         _ => return,

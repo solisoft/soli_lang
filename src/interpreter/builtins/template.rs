@@ -133,6 +133,11 @@ pub(crate) fn set_view_helper_env_for_test(
 /// controllers and `call_handler` for function-based handlers) so the bindings
 /// reflect any mutations already applied by middleware (e.g. `req["current_user"]`).
 /// Safe to call before helpers are loaded — it's a no-op until then.
+/// The view helpers' closure environment, once helpers are loaded.
+pub(crate) fn helper_env() -> Option<Rc<RefCell<Environment>>> {
+    VIEW_HELPER_ENV.with(|cell| cell.borrow().clone())
+}
+
 pub fn set_helper_request_context(
     req: &Value,
     params: &Value,

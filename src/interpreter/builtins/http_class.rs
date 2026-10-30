@@ -170,6 +170,10 @@ where
     T: Send + 'static,
 {
     let rt = user_http_runtime();
+    // A request on a coroutine hands its worker over while this waits.
+    if crate::serve::coroutine::can_yield() {
+        return crate::serve::coroutine::drive(rt.handle(), future);
+    }
     let Ok(current) = tokio::runtime::Handle::try_current() else {
         return rt.block_on(future);
     };
@@ -213,6 +217,10 @@ where
     Fut: std::future::Future<Output = Result<T, String>>,
 {
     let rt = user_http_runtime();
+    // Polled here either way, so a future holding `Value`s can suspend too.
+    if crate::serve::coroutine::can_yield() {
+        return crate::serve::coroutine::drive(rt.handle(), future);
+    }
     let Ok(current) = tokio::runtime::Handle::try_current() else {
         return rt.block_on(future);
     };

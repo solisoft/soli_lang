@@ -2,10 +2,26 @@
 
 ## [Unreleased]
 
+### Added
+
+- `SOLI_COROUTINES=1` (experimental): each request runs on a stackful
+  coroutine (`corosensei`) of its worker, and a request waiting on an
+  outbound HTTP call (`HTTP.get`/`post`/…, `get_json`, `request`,
+  `HTTP.stream`) hands the worker over to other requests instead of holding
+  it. Soli code is unchanged. On 2 production workers, an action calling a
+  500 ms API went from 3.7 req/s to 116 (2,000 requests, 200 concurrent,
+  every response checked to carry its own `params`, session, cookie and the
+  global `params` read after the switch); a CPU-only JSON route stays within
+  ~2 %. The call blocks as before inside a transaction, a `grouped` block, a
+  render, a `stream` block or a value's formatting; database queries still
+  block; ignored under `--dev`. `SOLI_WORKER_CONCURRENCY` (32) caps the
+  requests one worker runs at once. Design in `docs/internals/serve.md`
+  (`serve::coroutine`: `Scheduler`, `drive`, `can_yield`, `NoYield`).
+
 ### Internal
 
 - Request state is declared with `crate::request_local!` (`src/request_local.rs`)
-  instead of `thread_local!`: 95 variables in 58 files (session id, response
+  instead of `thread_local!`: 95 variables in 59 files (session id, response
   cookies, flash, taint marks, the open transaction and `grouped` batch, the
   dev logs, the deadline, the locale, the database tenant, render stacks, …).
   Reads and writes are unchanged; each variable also registers itself on the

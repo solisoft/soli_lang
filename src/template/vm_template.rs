@@ -661,6 +661,9 @@ pub fn render_view(
     cache: &crate::template::TemplateCache,
     path: &std::path::Path,
 ) -> Option<Rendered> {
+    // A render does not suspend its request (`serve::coroutine`).
+    #[cfg(not(target_arch = "wasm32"))]
+    let _no_yield = crate::serve::coroutine::NoYield::enter();
     if !enabled() {
         check_log("[vm-views] off");
         return None;

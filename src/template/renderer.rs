@@ -65,6 +65,9 @@ pub fn render_with_interpreter(
     partial_renderer: PartialRenderer<'_>,
     template_path: Option<&str>,
 ) -> Result<String, String> {
+    // A render does not suspend its request (`serve::coroutine`).
+    #[cfg(not(target_arch = "wasm32"))]
+    let _no_yield = crate::serve::coroutine::NoYield::enter();
     // 4096 bytes even for a partial of a few dozen. Small results are copied
     // out and the buffer returns here; a result that fills it is returned as
     // the buffer, so a full view is not copied on the way out.

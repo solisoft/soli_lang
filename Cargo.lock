@@ -1517,6 +1517,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "corosensei"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6886a0c0f263965933c438626e7179139a62b978a33aa18281cbf0cd5a975f34"
+dependencies = [
+ "autocfg",
+ "cfg-if",
+ "libc",
+ "scopeguard",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "cosmic-text"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7436,6 +7449,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "cms",
+ "corosensei",
  "cranelift-codegen",
  "cranelift-frontend",
  "cranelift-jit",

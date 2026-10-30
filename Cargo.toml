@@ -429,6 +429,8 @@ cron = "0.15"
 # exactly the feature set it had before the split.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 mimalloc = { version = "0.1", default-features = false, features = ["no_thp"] }
+# Stackful coroutines: several requests on one worker (`SOLI_COROUTINES`).
+corosensei = "0.3"
 crossterm = "0.28"
 gag = "1.0"
 reqwest = { version = "0.12", features = ["rustls-tls", "blocking", "cookies", "http2"], default-features = false }

@@ -14,6 +14,8 @@ pub(crate) mod blob_stream;
 mod builtin_endpoints;
 pub mod camera;
 mod compression;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod coroutine;
 pub mod cors;
 mod coverage;
 mod csrf;
@@ -1893,6 +1895,11 @@ fn worker_loop(
         None
     };
 
+    // `SOLI_COROUTINES=1`: each request on a coroutine of its own, so one
+    // waiting on the network hands the worker over (`coroutine`).
+    let mut scheduler = (http_enabled && coroutine::enabled(dev_mode))
+        .then(|| coroutine::Scheduler::new(interpreter.global_env().clone()));
+
     // Loading the app freed its scratch on this thread; a worker that waits
     // for its first request allocates nothing, and would keep those pages.
     crate::platform::release_freed_memory();
@@ -2167,12 +2174,23 @@ fn worker_loop(
         // Batch process HTTP requests using try_recv for non-blocking drain
         // (HTTP workers only; realtime workers never touch the request queue).
         if http_enabled {
+            if let Some(scheduler) = scheduler.as_mut() {
+                scheduler.resume_ready(&mut vm);
+            }
             for _ in 0..server_constants::BATCH_SIZE {
+                if scheduler.as_ref().is_some_and(|s| !s.has_room()) {
+                    break;
+                }
                 match work_rx.try_recv() {
                     Ok(data) => {
                         // A slot just freed: wake a request waiting for one.
                         pipeline::queue_slot_freed();
-                        dispatch_http_request(interpreter, &mut vm, data, dev_mode);
+                        match scheduler.as_mut() {
+                            Some(scheduler) => {
+                                scheduler.start(interpreter, &mut vm, data, dev_mode)
+                            }
+                            None => dispatch_http_request(interpreter, &mut vm, data, dev_mode),
+                        }
                     }
                     Err(channel::TryRecvError::Empty) => {
                         break;
@@ -2189,7 +2207,15 @@ fn worker_loop(
         // on any channel (or timeout fires for dev-mode hot reload checks).
         {
             let mut sel = channel::Select::new();
-            let work_idx = http_enabled.then(|| sel.recv(&work_rx));
+            // At its concurrency cap a worker takes no new request; the
+            // suspended ones still wake it.
+            let has_room = scheduler.as_ref().is_none_or(|s| s.has_room());
+            let work_idx = (http_enabled && has_room).then(|| sel.recv(&work_rx));
+            let ready_rx = scheduler
+                .as_ref()
+                .filter(|s| s.running() > 0)
+                .map(|s| s.ready().clone());
+            let ready_idx = ready_rx.as_ref().map(|rx| sel.recv(rx));
             let ws_idx = ws_event_rx_inner
                 .as_ref()
                 .filter(|_| ws_registry_inner.is_some())
@@ -2228,7 +2254,18 @@ fn worker_loop(
                                 crate::template::response_cache::clear_cache();
                             }
                         }
-                        dispatch_http_request(interpreter, &mut vm, data, dev_mode);
+                        match scheduler.as_mut() {
+                            Some(scheduler) => {
+                                scheduler.start(interpreter, &mut vm, data, dev_mode)
+                            }
+                            None => dispatch_http_request(interpreter, &mut vm, data, dev_mode),
+                        }
+                    }
+                } else if Some(idx) == ready_idx {
+                    if let (Some(rx), Some(scheduler)) = (ready_rx.as_ref(), scheduler.as_mut()) {
+                        if let Ok(id) = oper.recv(rx) {
+                            scheduler.resume(id, &mut vm);
+                        }
                     }
                 } else if Some(idx) == ws_idx {
                     if let Some(ref rx) = ws_event_rx_inner {

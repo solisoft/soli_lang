@@ -140,6 +140,14 @@ src/interpreter/events.rs SUBSCRIBERS
 src/interpreter/executor/calls/user_methods.rs USER_METHOD_TABLES
 src/interpreter/executor/statements.rs NESTED_CLASS_ENVS
 src/serve/middleware.rs MIDDLEWARE
+# The coroutine scheduler's own bookkeeping (serve::coroutine): the running
+# coroutine (cleared while it is suspended), the worker's wake channel and
+# global environment, and the no-yield depth, which is 0 at every switch.
+src/serve/coroutine.rs CURRENT
+src/serve/coroutine.rs READY_TX
+src/serve/coroutine.rs GLOBAL_ENV
+src/serve/coroutine.rs NO_YIELD
+
 # The request_local! machinery itself: its registry, and the key its macro
 # declares for each variable.
 src/request_local.rs REGISTRY

@@ -233,6 +233,45 @@ rather than a stage of the pipeline.
 | `finalize.rs` | Everything after the handler returns: session and response cookies, security headers, trace headers, test-runner headers, the dev bar, the OTLP export, the access line — in that order, because each reads what the last wrote |
 | `error_response.rs` | The 403/404/500 responses the request path builds by hand, in one place |
 
+## Coroutines (`SOLI_COROUTINES`)
+
+`serve/coroutine.rs`. With `SOLI_COROUTINES=1` (never under `--dev`) an HTTP
+worker runs each request on a stackful coroutine (`corosensei`) instead of
+calling `dispatch_http_request` directly. The pieces:
+
+- **`Scheduler`**, one per worker: the coroutines started and not finished,
+  a pool of stacks (each `SOLI_WORKER_STACK_MB`, reserved not committed) and of
+  VMs (a pooled VM keeps the worker's globals; a new one copies them). The
+  worker loop stops taking requests at `SOLI_WORKER_CONCURRENCY` and selects on
+  the wakers' channel as well as the request queue.
+- **`drive`**, the yield point, called by `block_on_user_http(_local)` when
+  `can_yield()`. It polls the call's future *from the coroutine*, on the worker
+  thread, with the user HTTP runtime entered only for the poll — so a future
+  holding `Value`s still works, and `send_logged` writes this request's dev
+  log. While the future is pending it takes the request state out
+  (`RequestState::capture`, see `request_local.rs`), saves `req`/`params`/
+  `cookies` from the global and view-helper environments, suspends, and puts
+  both back on resume. A `WakeFlag` waker sends the coroutine's id to the
+  worker once per wait.
+- **`can_yield`** is false outside a coroutine, inside a `NoYield` section
+  (`render_view`, `render_with_interpreter`, `run_stream_block`), in a
+  transaction, in a `grouped` block, and while a value is being formatted,
+  compared or serialized. The call then blocks as before.
+
+Each request gets an `Interpreter::coroutine_shell` (the worker's environment,
+its own call stack), so the VM → tree-walker fallback runs inside the
+coroutine; handlers the VM failed on are merged back into the worker's VM.
+WebSocket, LiveView and EUI events still run on the worker's own interpreter,
+between switches.
+
+A suspended coroutine is never dropped: dropping one unwinds its stack with a
+panic that the request's `catch_unwind` would swallow, which aborts. The
+scheduler forgets them when the worker exits.
+
+Not covered yet: `block_on_db` (SoliDB) still blocks, because its futures run
+on a per-thread current-thread runtime nothing would drive while the worker
+does other work; the SQL adapters are synchronous crates.
+
 ## File mode
 
 `src/serve/files/` — `soli serve ./notes` when the folder is not an MVC app.

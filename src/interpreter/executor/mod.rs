@@ -199,6 +199,21 @@ impl Interpreter {
 
     /// Create an interpreter with a pre-built environment (skips register_builtins).
     /// Used by the template engine with a cached builtins environment.
+    /// An interpreter for one request of a worker that interleaves several
+    /// (`serve::coroutine`): the worker's environment, kernels and coverage,
+    /// a call stack of its own.
+    pub(crate) fn coroutine_shell(&self) -> Self {
+        Self {
+            environment: self.environment.clone(),
+            coverage_tracker: self.coverage_tracker.clone(),
+            kernels: self.kernels.clone(),
+            current_source_path: self.current_source_path.clone(),
+            call_stack: Vec::new(),
+            assertion_count: 0,
+            vm_globals: self.vm_globals.clone(),
+        }
+    }
+
     pub fn with_environment(environment: Rc<RefCell<Environment>>) -> Self {
         Self {
             environment,

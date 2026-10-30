@@ -1141,6 +1141,14 @@ const MAX_EQ_DEPTH: usize = 256;
 /// Run `body` one level deeper, or return `on_overflow` at the limit.
 /// Restores the counter on every path so one guarded call cannot leave the
 /// depth raised for the next.
+/// Is a value being formatted, compared or serialized on this thread? A
+/// request does not suspend in the middle of one (`serve::coroutine`).
+pub(crate) fn formatting_in_progress() -> bool {
+    DISPLAY_DEPTH.with(|d| d.get() > 0)
+        || EQ_DEPTH.with(|d| d.get() > 0)
+        || SERIALIZE_DEPTH.with(|d| d.get() > 0)
+}
+
 fn with_depth<T>(
     counter: &'static std::thread::LocalKey<std::cell::Cell<usize>>,
     limit: usize,
