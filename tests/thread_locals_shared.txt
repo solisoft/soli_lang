@@ -148,6 +148,8 @@ src/serve/coroutine.rs CURRENT
 src/serve/coroutine.rs READY_TX
 src/serve/coroutine.rs GLOBAL_ENV
 src/serve/coroutine.rs NO_YIELD
+src/serve/coroutine.rs DIRECT
+src/serve/coroutine.rs WOULD_WAIT
 
 # The request_local! machinery itself: its registry, and the key its macro
 # declares for each variable.

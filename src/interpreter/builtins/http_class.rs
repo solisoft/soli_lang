@@ -174,6 +174,7 @@ where
     if crate::serve::coroutine::can_yield() {
         return crate::serve::coroutine::drive(rt.handle(), future);
     }
+    crate::serve::coroutine::note_blocking_wait();
     let Ok(current) = tokio::runtime::Handle::try_current() else {
         return rt.block_on(future);
     };
@@ -221,6 +222,7 @@ where
     if crate::serve::coroutine::can_yield() {
         return crate::serve::coroutine::drive(rt.handle(), future);
     }
+    crate::serve::coroutine::note_blocking_wait();
     let Ok(current) = tokio::runtime::Handle::try_current() else {
         return rt.block_on(future);
     };
@@ -752,6 +754,7 @@ where
             return crate::serve::coroutine::drive(&handle, future);
         }
     }
+    crate::serve::coroutine::note_blocking_wait();
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
         // Already on a Tokio thread (typically a `tokio-rt-worker` from the
         // server runtime, or a job/session warmup that entered that handle).

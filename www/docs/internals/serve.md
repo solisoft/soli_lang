@@ -258,6 +258,17 @@ calling `dispatch_http_request` directly. The pieces:
   transaction, in a `grouped` block, and while a value is being formatted,
   compared or serialized. The call then blocks as before.
 
+A coroutine costs about 100 ns a request (a pooled stack, two switches, the
+bookkeeping), 5 % of a 1.8 µs JSON route. So `Scheduler::start` only uses one
+for a route that has waited before: it keeps a set of `route_key`s (method +
+path, segments with a digit or longer than 24 bytes masked) and runs every
+other request directly on the worker, as without coroutines. In that direct
+run, `note_blocking_wait()` (called where a wait blocks because it could not
+suspend) records that the request reached a wait it could have suspended at
+— `suspendable_here()` — and the route joins the set: that one wait blocked,
+the route's later requests run on coroutines. Past 4,096 routes the set is
+cleared and learnt again.
+
 Each request gets an `Interpreter::coroutine_shell` (the worker's environment,
 its own call stack), so the VM → tree-walker fallback runs inside the
 coroutine; handlers the VM failed on are merged back into the worker's VM.

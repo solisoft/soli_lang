@@ -47,7 +47,7 @@ pub(crate) mod coroutine {
         }
         pub(crate) fn start(
             &mut self,
-            _interpreter: &Interpreter,
+            _interpreter: &mut Interpreter,
             _worker_vm: &mut Option<crate::vm::Vm>,
             _data: super::RequestData,
             _dev_mode: bool,

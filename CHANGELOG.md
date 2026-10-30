@@ -11,8 +11,12 @@
   instead of holding it. Soli code is unchanged. On 2 production workers, an action calling a
   500 ms API went from 3.7 req/s to 116 (2,000 requests, 200 concurrent,
   every response checked to carry its own `params`, session, cookie and the
-  global `params` read after the switch); a CPU-only JSON route stays within
-  ~2 %. A route writing then counting SoliDB rows went from ~1,440 to
+  global `params` read after the switch). A route runs on a coroutine only
+  once it has waited (routes grouped by method and path, ids masked): until
+  then its requests run directly on the worker, so routes that only compute
+  pay nothing — a JSON route at 566k req/s lost 5.4 % on coroutines and now
+  measures 585k. Rerunning the benchmarks page's Soli read rows (16 workers,
+  dist builds) shows no change beyond run-to-run noise. A route writing then counting SoliDB rows went from ~1,440 to
   ~3,720 req/s, three reads of one document stayed at ~6,400. The worker's
   SoliDB I/O moves to the shared runtime (as `SOLI_DB_SHARED_REACTOR=1`),
   and the native driver keeps up to 32 idle clients per worker instead of
