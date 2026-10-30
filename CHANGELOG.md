@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.29.0] - 2026-10-30
+
 ### Added
 
 - `SOLI_COROUTINES=1` (experimental): each request runs on a stackful

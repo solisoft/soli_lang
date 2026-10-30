@@ -20,18 +20,28 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.28.11.</p>
-        <h3 id="unreleased-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.29.0.</p>
+    </section>
+
+    <section id="v2-29-0" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.29.0 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-30</span></h2>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Requests that wait on an API or SoliDB no longer hold their worker (experimental), AI answers streamed without a thread, and imports bounded by the project.</p>
+        <h3 id="v2-29-0-performance" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Performance</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">A request waiting on an API no longer holds its worker (experimental).</strong> With <code class="text-cyan-400">SOLI_COROUTINES=1</code>, each request runs on a coroutine of its own, and while it waits on an outbound HTTP call (<code class="text-cyan-400">HTTP.get</code>, <code class="text-cyan-400">get_json</code>, <code class="text-cyan-400">request</code>, <code class="text-cyan-400">HTTP.stream</code>, &hellip;) or a SoliDB query its worker serves other requests. Your code does not change. On the default two production workers, an action calling a 500&nbsp;ms API went from about 4 to about 115 requests per second, each request keeping its own session, cookies and <code class="text-cyan-400">params</code>; a route writing then counting SoliDB rows went from about 1,400 to about 3,700; a route runs on a coroutine only once it has waited, so routes that only compute pay nothing. Inside a transaction, a <code class="text-cyan-400">grouped</code> block, a render or a <code class="text-cyan-400">stream</code> block the call still blocks, and so do the SQL adapters (Postgres, MySQL, SQLite). <code class="text-cyan-400">SOLI_WORKER_CONCURRENCY</code> (32) caps the requests per worker. See <a href="/docs/getting-started/configuration" class="text-amber-400 hover:underline">Configuration</a>.</li>
         </ul>
-        <h3 id="unreleased-ai" class="text-xl font-semibold text-white mb-4 scroll-mt-24">AI</h3>
+        <h3 id="v2-29-0-ai" class="text-xl font-semibold text-white mb-4 scroll-mt-24">AI</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">A model&rsquo;s streamed answer no longer holds a thread.</strong> <a href="/docs/builtins/http#def-http-stream-to" class="text-amber-400 hover:underline"><code class="text-cyan-400">HTTP.stream_to(method, url, options?, body?, to)</code></a> returns an id at once and lets the HTTP runtime read the answer. It takes the text out of Anthropic or OpenAI events (or raw SSE data, or lines), broadcasts each new piece to an <code class="text-cyan-400">sse_subscribe</code> topic as a <code class="text-cyan-400">delta</code> event, and at the end runs your job with the whole text, <code class="text-cyan-400">stop_reason</code> and <code class="text-cyan-400">usage</code>, failures included. With <code class="text-cyan-400">HTTP.stream</code>, a job streaming a ten-minute answer kept a job worker for ten minutes; now one worker serves every other job meanwhile. <code class="text-cyan-400">HTTP.stream_status(id)</code> and <code class="text-cyan-400">HTTP.stream_cancel(id)</code> follow and stop a stream. A stream lives in the process that started it and is not resumed after a restart.</li>
         </ul>
-        <h3 id="unreleased-modules" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Modules</h3>
+        <h3 id="v2-29-0-modules" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Modules</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Specs can live in subfolders and still share helpers.</strong> Imports are bounded by the project &mdash; the directory of <code class="text-cyan-400">soli.toml</code> &mdash; instead of the directory of the file being run. <code class="text-cyan-400">soli test</code> runs each spec from its own folder, so a spec in <code class="text-cyan-400">tests/billing/</code> could not import <code class="text-cyan-400">../support/db.sl</code> (&ldquo;resolves outside its allowed root&rdquo;). Path dependencies are read from <code class="text-cyan-400">soli.toml</code>&rsquo;s directory too. An import that leaves the project is still refused, symlinks included.</li>
+        </ul>
+        <h3 id="v2-29-0-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white"><code class="text-cyan-400">defined()</code> inside a callback.</strong> A builtin that runs Soli code which calls another builtin no longer leaves the first with no scope, and a builtin that fails no longer keeps its scope alive.</li>
+            <li><strong class="text-white">Windows: <code class="text-cyan-400">../../</code> imports.</strong> A relative import climbing two folders is found again on Windows.</li>
         </ul>
     </section>
 
