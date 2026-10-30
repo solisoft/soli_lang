@@ -70,7 +70,7 @@ use crate::interpreter::value::Value;
 /// be a backstop against a pathological shape.
 const MAX_MARK_DEPTH: usize = 64;
 
-thread_local! {
+crate::request_local! {
     /// Container allocations that arrived with the current request, keyed by
     /// pointer and cleared between requests.
     ///

@@ -1,0 +1,146 @@
+# Thread-locals shared by everything that runs on a thread: not request
+# state, so a worker running several requests (coroutines) keeps one copy.
+# Request state is declared with `crate::request_local!` instead.
+# tests/request_local_audit.rs fails on a `thread_local!` static missing here.
+# One line per static: <file> <NAME>.
+
+# Decided shared for the coroutine scheduler (see the plan): the worker's tenant binding, the DB reactor and client (replaced when SoliDB yields), declaration-time stacks, the view-helper env (rebound per request by the scheduler), stats slots
+src/db/hash_filter.rs BIND_GENERATION
+src/db/sqlite.rs WAITING_SINCE
+src/db/tenancy.rs RESOLVED
+src/interpreter/builtins/http_class.rs WORKER_DB_CLIENT
+src/interpreter/builtins/http_class.rs WORKER_DB_RT
+src/interpreter/builtins/http_class.rs DRIVING_LOCAL_DB_REACTOR
+src/interpreter/builtins/mailer.rs DELIVERIES
+src/interpreter/builtins/model/callbacks.rs DECLARING
+src/interpreter/builtins/model/engine_context.rs ENGINE_CONTEXT
+src/interpreter/builtins/model/state_machine.rs SM_BUILDER_STACK
+src/interpreter/builtins/template.rs VIEW_HELPER_ENV
+src/interpreter/executor/statements.rs NAMESPACE
+src/serve/query_stats.rs LOCAL
+src/serve/slow_queries.rs SUPPRESSED
+src/serve/tenant.rs CURRENT
+src/solidb_driver.rs CLIENT
+
+# Recursion guards of formatting, equality and serialization: back to 0
+# after every synchronous call; the scheduler does not yield while one is
+# above 0. Read on every `#{}` and `==`, where a lazy request_local costs.
+src/interpreter/value.rs DISPLAY_DEPTH
+src/interpreter/value.rs EQ_DEPTH
+src/interpreter/value.rs SERIALIZE_DEPTH
+
+# Test harness and the test runner
+src/coverage/tracker.rs CURRENT_COVERAGE
+src/interpreter/builtins/assertions.rs ASSERTION_COUNT
+src/interpreter/builtins/assertions.rs ASSERTION_FAILED
+src/interpreter/builtins/browser.rs BROWSER
+src/interpreter/builtins/browser.rs ACTIVE_VIEWPORT
+src/interpreter/builtins/factories.rs FACTORY_REGISTRY
+src/interpreter/builtins/jobs.rs CALLS
+src/interpreter/builtins/mock.rs MOCK_CLASS
+src/interpreter/builtins/mock.rs STUBS
+src/interpreter/builtins/mock.rs BYPASS
+src/interpreter/builtins/mod.rs STDOUT_CAPTURE
+src/interpreter/builtins/model/crud.rs QUERY_MOCKS
+src/interpreter/builtins/model/db_config.rs DB_OVERRIDE
+src/interpreter/builtins/session_helpers.rs TEST_USER
+src/interpreter/builtins/test_dsl.rs TEST_SUITES
+src/interpreter/builtins/test_dsl.rs EXPECTATION_CLASS
+src/interpreter/builtins/test_dsl.rs NOT_RUN
+src/interpreter/builtins/test_helpers.rs SOLIDB_PROBE
+src/interpreter/builtins/test_helpers.rs SOLIKV_PROBE
+src/interpreter/builtins/test_server.rs THREAD_TEST_SERVER_PORT
+src/interpreter/executor/calls/cascade.rs TEST_CASCADE_CHILDREN
+src/interpreter/executor/calls/cascade.rs TEST_LOADED_INSTANCES
+src/serve/compression.rs TEST_SETTINGS
+src/serve/repl_session.rs REPL_STORE
+
+# Boot-time flags
+src/serve/app_loader.rs LOAD_STATS
+src/serve/span_log.rs ENABLED
+src/serve/template_warnings.rs ENABLED
+src/serve/view_log.rs ENABLED
+src/template/parser.rs BLOCK_DEPTH
+
+# Pools, runtimes and scratch buffers
+src/db/mysql.rs LAST_POOL
+src/db/postgres.rs LAST_POOL
+src/db/sqlite.rs LAST_POOL
+src/interpreter/builtins/controller/registry.rs HANDLER_PROGRAM_CACHE
+src/interpreter/builtins/s3_client.rs FALLBACK
+src/interpreter/value_stringify.rs SCRATCH
+src/serve/edge.rs APP
+src/serve/eui/tree.rs SCRATCH
+src/serve/mod.rs TOKIO_HANDLE
+src/serve/mod.rs HANDLER_KEY_BUF
+src/template/core_eval.rs BUILTINS_RC
+src/template/core_eval.rs INTERPRETER_POOL
+src/template/core_eval.rs INTERPRETER_POOL_GEN
+src/template/renderer.rs RENDER_BUFFERS
+src/template/vm_template.rs VIEW_VMS
+src/template/vm_template.rs POOL_GENERATION
+src/template/vm_template.rs WORKER_GLOBALS
+
+# Caches and memos
+src/interpreter/builtins/i18n/mod.rs TABLE_CACHE
+src/interpreter/builtins/security_headers.rs CACHED_SECURITY_HEADERS
+src/interpreter/builtins/template.rs FILE_MTIME_CACHE
+src/regex_cache.rs LOCAL_CACHE
+src/serve/eui/tree.rs MEMOS
+src/serve/eui/tree.rs SWEEP
+src/serve/middleware.rs DEMOTED_MIDDLEWARE
+src/serve/middleware.rs TREE_WALKER_ONLY
+src/serve/mod.rs CONTROLLERS_WITH_HOOKS
+src/serve/mod.rs PASCAL_CASE_CACHE
+src/serve/static_files.rs STATIC_MISSES
+src/serve/static_files.rs CANONICAL
+src/serve/static_files.rs MISSING
+src/serve/tenant.rs TENANT_VALUE_SLOTS
+src/template/mod.rs INCLUDES
+src/template/response_cache.rs RESPONSE_CACHE
+src/template/response_cache.rs UNCACHEABLE
+src/template/vm_template.rs COMPILED
+src/vm/vm_calls.rs VIEW_HELPER_VM
+
+# Registries and interned classes
+src/interpreter/builtins/controller/registry.rs HOOK_FUNCTIONS
+src/interpreter/builtins/datetime_class.rs DATETIME_INSTANCE_CLASS
+src/interpreter/builtins/datetime_class.rs DATETIME_METHODS
+src/interpreter/builtins/datetime_class.rs DURATION_INSTANCE_CLASS
+src/interpreter/builtins/http_class.rs STREAM_CLASS
+src/interpreter/builtins/image.rs CLASS
+src/interpreter/builtins/image.rs CLASS
+src/interpreter/builtins/jobs.rs JOB_CLASSES
+src/interpreter/builtins/model/registry.rs MODEL_CLASSES
+src/interpreter/builtins/model/registry.rs ENUM_FIELDS
+src/interpreter/builtins/model/registry.rs VALUE_FIELDS
+src/interpreter/builtins/model/registry.rs PART_OF
+src/interpreter/builtins/model/registry.rs TRANSACTION_ROOTS
+src/interpreter/builtins/model/registry.rs STI_PARENTS
+src/interpreter/builtins/model/scopes.rs SCOPES
+src/interpreter/builtins/model/state_machine.rs SM_GUARDS
+src/interpreter/builtins/model/state_machine.rs SM_BEFORE
+src/interpreter/builtins/model/state_machine.rs SM_AFTER
+src/interpreter/builtins/model/validation.rs RULE_CONDITIONS
+src/interpreter/builtins/named_routes.rs NAMED_ROUTES
+src/interpreter/builtins/retry.rs RETRY_CLASS
+src/interpreter/builtins/router.rs CONTROLLERS
+src/interpreter/builtins/router.rs ROUTER_CONTEXT
+src/interpreter/builtins/router.rs OPENAPI_SCOPE
+src/interpreter/builtins/server.rs ROUTES
+src/interpreter/builtins/server.rs ROUTE_INDEX
+src/interpreter/builtins/spreadsheet.rs CLASS
+src/interpreter/builtins/streaming.rs OUT_CLASS
+src/interpreter/builtins/template.rs VIEW_HELPERS
+src/interpreter/builtins/template.rs FORM_BUILDER_DEFS
+src/interpreter/domain.rs ERROR_CLASSES
+src/interpreter/domain.rs CLASSES
+src/interpreter/domain.rs PRIVATE_CLASSES
+src/interpreter/events.rs SUBSCRIBERS
+src/interpreter/executor/calls/user_methods.rs USER_METHOD_TABLES
+src/interpreter/executor/statements.rs NESTED_CLASS_ENVS
+src/serve/middleware.rs MIDDLEWARE
+# The request_local! machinery itself: its registry, and the key its macro
+# declares for each variable.
+src/request_local.rs REGISTRY
+src/request_local.rs KEY

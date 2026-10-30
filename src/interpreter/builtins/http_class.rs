@@ -3351,11 +3351,15 @@ struct OpenStream {
 
 #[cfg(not(target_arch = "wasm32"))]
 thread_local! {
+    /// The HTTPStream class, built when the HTTP class is registered.
+    static STREAM_CLASS: RefCell<Option<Rc<Class>>> = const { RefCell::new(None) };
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+crate::request_local! {
     /// The open streams of this thread, by the id their object carries.
     static OPEN_STREAMS: RefCell<HashMap<i64, OpenStream>> = RefCell::new(HashMap::new());
     static NEXT_STREAM: std::cell::Cell<i64> = const { std::cell::Cell::new(1) };
-    /// The HTTPStream class, built when the HTTP class is registered.
-    static STREAM_CLASS: RefCell<Option<Rc<Class>>> = const { RefCell::new(None) };
 }
 
 /// The next line of `pending` (its `\n` and a `\r` before it taken off), and

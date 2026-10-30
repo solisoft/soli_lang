@@ -373,7 +373,7 @@ pub fn expand_env(input: &str) -> String {
 
 // ---------- active connection (thread-local) ----------
 
-thread_local! {
+crate::request_local! {
     static ACTIVE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
 }
 

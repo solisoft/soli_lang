@@ -60,6 +60,9 @@ struct Subscription {
 
 thread_local! {
     static SUBSCRIBERS: RefCell<Vec<Subscription>> = const { RefCell::new(Vec::new()) };
+}
+
+crate::request_local! {
     /// Events whose block handlers wait for the outermost commit.
     static PENDING_EVENTS: RefCell<Vec<Value>> = const { RefCell::new(Vec::new()) };
     /// `after_commit` blocks waiting for the outermost commit.

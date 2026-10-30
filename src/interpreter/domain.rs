@@ -39,11 +39,6 @@ thread_local! {
     /// code can raise them. Set when the builtins are registered.
     static ERROR_CLASSES: RefCell<Option<(Rc<Class>, Rc<Class>)>> = const { RefCell::new(None) };
 
-    /// Value objects being constructed on this thread — writable until their
-    /// constructor returns. Nested constructions (a value object built inside
-    /// another's constructor) stack.
-    static CONSTRUCTING: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
-
     /// Value-object classes by name, for `value_field` reads.
     static CLASSES: RefCell<HashMap<String, Rc<Class>>> = RefCell::new(HashMap::new());
 
@@ -51,6 +46,14 @@ thread_local! {
     /// a relation can be refused without resolving the module it sits in.
     static PRIVATE_CLASSES: RefCell<std::collections::HashSet<String>> =
         RefCell::new(std::collections::HashSet::new());
+}
+
+crate::request_local! {
+
+    /// Value objects being constructed on this thread — writable until their
+    /// constructor returns. Nested constructions (a value object built inside
+    /// another's constructor) stack.
+    static CONSTRUCTING: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
 }
 
 /// `name`, nested in `parent`, was declared `private class` (both engines).

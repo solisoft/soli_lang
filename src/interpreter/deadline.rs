@@ -20,7 +20,7 @@
 use std::cell::Cell;
 use web_time::{Duration, Instant};
 
-thread_local! {
+crate::request_local! {
     /// When the current unit of work must stop, if it is bounded at all.
     static DEADLINE: Cell<Option<Instant>> = const { Cell::new(None) };
     /// Countdown to the next real clock read.

@@ -28,7 +28,7 @@ pub static CONTROLLER_REGISTRY: TenantValue<ControllerRegistry> =
     TenantValue::new(ControllerRegistry::new);
 
 // Thread-local controller instances for current request.
-thread_local! {
+crate::request_local! {
     static CURRENT_CONTROLLER: RefCell<Option<Value>> = const { RefCell::new(None) };
     /// The view directory of the running action's controller (`posts` for
     /// `posts#create`), so `render("new")` can mean `posts/new`.

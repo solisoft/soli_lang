@@ -4333,7 +4333,7 @@ fn record_vm_demotion(handler: &str, err: &RuntimeError) {
     }
 }
 
-thread_local! {
+crate::request_local! {
     /// The VM's error for the handler being re-run on the tree-walker, until
     /// the re-run's outcome is known (`settle_engine_divergence`).
     static PENDING_DIVERGENCE: RefCell<Option<(String, String)>> = const { RefCell::new(None) };

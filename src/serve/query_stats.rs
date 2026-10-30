@@ -87,6 +87,9 @@ static HASHER: ahash::RandomState = ahash::RandomState::with_seeds(
 
 thread_local! {
     static LOCAL: OnceCell<Arc<Slot>> = const { OnceCell::new() };
+}
+
+crate::request_local! {
     /// Inside a request or a job: only then do calls count towards the
     /// per-request peak, so a WebSocket or LiveView worker's stream of events
     /// is never read as one request running a query a thousand times.

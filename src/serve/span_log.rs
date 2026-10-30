@@ -87,6 +87,9 @@ pub struct SpanRecord {
 // other tests on other threads.
 thread_local! {
     static ENABLED: Cell<bool> = const { Cell::new(false) };
+}
+
+crate::request_local! {
     static LOG: RefCell<Vec<SpanRecord>> = const { RefCell::new(Vec::new()) };
     static STACK: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
     static REQ_START: Cell<Option<Instant>> = const { Cell::new(None) };
@@ -288,7 +291,7 @@ pub fn record(name: &str, kind: SpanKind, start: Instant, dur_us: u64, meta: Opt
 // Cheaper than SpanGuard because the call sites already guarantee
 // matched push/pop, so no Drop guard is needed.
 
-thread_local! {
+crate::request_local! {
     static FN_STACK: RefCell<Vec<OpenFn>> = const { RefCell::new(Vec::new()) };
 }
 

@@ -70,7 +70,7 @@ fn format_query_http_failure(status: reqwest::StatusCode, body: &str) -> String 
     }
 }
 
-thread_local! {
+crate::request_local! {
     /// Per-query override for the internal client's request timeout, in force
     /// for the duration of one DB call.
     ///
@@ -179,7 +179,7 @@ where
 }
 
 // Thread-local transaction state for managing database transactions.
-thread_local! {
+crate::request_local! {
     static CURRENT_TX: RefCell<Option<TransactionState>> = const { RefCell::new(None) };
 }
 
@@ -262,7 +262,7 @@ pub fn has_active_tx() -> bool {
     CURRENT_TX.with(|tx| tx.borrow().is_some()) || crate::db::sql::has_active_tx()
 }
 
-thread_local! {
+crate::request_local! {
     /// Set whenever a transaction commits on this thread; never cleared by the
     /// commit path itself.
     ///

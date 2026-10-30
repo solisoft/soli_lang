@@ -204,7 +204,7 @@ impl Coalescing {
     }
 }
 
-thread_local! {
+crate::request_local! {
     static COALESCING: std::cell::RefCell<Coalescing> = const { std::cell::RefCell::new(Coalescing::Off) };
 }
 

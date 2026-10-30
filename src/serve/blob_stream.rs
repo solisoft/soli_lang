@@ -71,7 +71,7 @@ pub(crate) struct BlobStreamSpec {
     pub(crate) head: bool,
 }
 
-thread_local! {
+crate::request_local! {
     static PENDING: RefCell<Option<BlobStreamSpec>> = const { RefCell::new(None) };
 }
 

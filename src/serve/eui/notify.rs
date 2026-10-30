@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use eui_proto::limits::{MAX_NOTIFY_BODY, MAX_NOTIFY_TAG, MAX_NOTIFY_TITLE};
 use eui_proto::Op;
 
-thread_local! {
+crate::request_local! {
     /// What this pass has asked to say, in the order it asked.
     static QUEUED: RefCell<Vec<Op>> = const { RefCell::new(Vec::new()) };
 }

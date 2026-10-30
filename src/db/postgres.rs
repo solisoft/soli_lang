@@ -164,7 +164,7 @@ struct TxState {
     name: String,
 }
 
-thread_local! {
+crate::request_local! {
     static TX: RefCell<Option<TxState>> = const { RefCell::new(None) };
     /// Fast flag so `has_active_tx` never needs to borrow `TX` (avoids RefCell
     /// conflicts while `with_conn` temporarily takes the connection).

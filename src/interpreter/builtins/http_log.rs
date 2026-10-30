@@ -18,7 +18,7 @@ pub struct LoggedHttpRequest {
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 
-thread_local! {
+crate::request_local! {
     static LOG: RefCell<Vec<LoggedHttpRequest>> = const { RefCell::new(Vec::new()) };
     static DROPPED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }

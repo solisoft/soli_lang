@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 
-thread_local! {
+crate::request_local! {
     static LOG: RefCell<Vec<(String, u64)>> = const { RefCell::new(Vec::new()) };
 }
 

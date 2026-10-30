@@ -28,7 +28,7 @@ use std::collections::HashMap;
 
 type Entries = HashMap<(usize, String), Option<Box<dyn Any>>>;
 
-thread_local! {
+crate::request_local! {
     /// `None` outside a request: the memo is off.
     static CACHE: RefCell<Option<Entries>> = const { RefCell::new(None) };
 }

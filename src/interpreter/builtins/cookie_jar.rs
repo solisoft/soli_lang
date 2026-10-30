@@ -274,7 +274,7 @@ fn jar_for_secret(secret: &str) -> Result<CookieJar, String> {
 // The raw Cookie header of the request being handled on this worker thread.
 // Stored as the unparsed string (one clone per request); parsed lazily only
 // when `read_cookie` is actually called.
-thread_local! {
+crate::request_local! {
     static REQUEST_COOKIE_HEADER: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 

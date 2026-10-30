@@ -25,7 +25,7 @@ fn fail_on_n1_enabled() -> bool {
     FAIL_ON_N1.load(Ordering::Relaxed)
 }
 
-thread_local! {
+crate::request_local! {
     #[allow(clippy::missing_const_for_thread_local)]
     static REQUEST_HEADERS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
     #[allow(clippy::missing_const_for_thread_local)]

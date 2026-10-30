@@ -187,9 +187,12 @@ pub struct StreamSpec {
 }
 
 thread_local! {
-    static PENDING: RefCell<Option<StreamSpec>> = const { RefCell::new(None) };
     // The StreamOut class for this worker, built at builtin registration.
     static OUT_CLASS: RefCell<Option<Rc<Class>>> = const { RefCell::new(None) };
+}
+
+crate::request_local! {
+    static PENDING: RefCell<Option<StreamSpec>> = const { RefCell::new(None) };
 }
 
 /// Take (and clear) the pending stream set by `sse`/`stream` during this

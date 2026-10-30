@@ -95,7 +95,7 @@ pub fn register_spam_builtins(env: &mut Environment) {
     register_spam_filter_class(env);
 }
 
-thread_local! {
+crate::request_local! {
     /// Numbers the honeypots a page renders, so each form's has an id of its
     /// own (a page renders on one thread). Restarted with every request, so
     /// the same page renders the same ids.

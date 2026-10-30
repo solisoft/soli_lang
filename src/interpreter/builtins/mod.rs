@@ -9,7 +9,7 @@ use web_time::{SystemTime, UNIX_EPOCH};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{NativeFunction, Value};
 
-thread_local! {
+crate::request_local! {
     /// The controller action name ("index", "update", ...) for the request the
     /// current worker thread is handling. Set by the server in `call_handler`
     /// from the "controller#action" handler string and read by the

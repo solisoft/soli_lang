@@ -17,7 +17,7 @@ use web_time::Instant;
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 
-thread_local! {
+crate::request_local! {
     static LOG: RefCell<HashMap<&'static str, u64>> = RefCell::new(HashMap::new());
 }
 

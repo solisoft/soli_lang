@@ -87,12 +87,14 @@ pub fn validate_key(key: &str) -> Result<(), String> {
 }
 
 thread_local! {
-    static CURRENT: RefCell<Option<Tenant>> = const { RefCell::new(None) };
-
     /// The spec the last template resolution produced on this thread, with
     /// what it was built from: a request makes many queries against one
     /// tenant, and each would otherwise clone and fill the template again.
     static RESOLVED: RefCell<Option<Resolved>> = const { RefCell::new(None) };
+}
+
+crate::request_local! {
+    static CURRENT: RefCell<Option<Tenant>> = const { RefCell::new(None) };
 }
 
 struct Resolved {

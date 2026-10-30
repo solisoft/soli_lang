@@ -7,7 +7,7 @@ use std::cell::RefCell;
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 
-thread_local! {
+crate::request_local! {
     static FROZEN_NOW: RefCell<Option<i64>> = const { RefCell::new(None) };
 }
 

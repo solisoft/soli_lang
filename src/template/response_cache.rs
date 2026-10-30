@@ -99,12 +99,15 @@ thread_local! {
     static RESPONSE_CACHE: RefCell<LruCache<CacheKey, CachedResponse>> =
         RefCell::new(LruCache::new(MAX_CACHE_SIZE));
 
-    static DATA_DIRTY: RefCell<bool> = const { RefCell::new(false) };
-    static RESPONSE_DIRTY: RefCell<bool> = const { RefCell::new(false) };
-
     /// `(template, layout)` pairs observed to be uncacheable — see
     /// [`is_known_uncacheable`].
     static UNCACHEABLE: RefCell<HashSet<PairKey>> = RefCell::new(HashSet::new());
+}
+
+crate::request_local! {
+
+    static DATA_DIRTY: RefCell<bool> = const { RefCell::new(false) };
+    static RESPONSE_DIRTY: RefCell<bool> = const { RefCell::new(false) };
 }
 
 /// A `(template, layout)` pair, without the data signature. Identifies a

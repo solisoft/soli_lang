@@ -11,14 +11,14 @@ use crate::span::Span;
 
 use super::{Interpreter, RuntimeResult};
 
-thread_local! {
+crate::request_local! {
     /// When true, undefined variable lookups return Null instead of raising.
     /// Set by the template renderer while walking template ASTs so that
     /// optional locals (e.g. `flash`) don't crash the whole response.
     static TEMPLATE_LENIENT_VARS: Cell<bool> = const { Cell::new(false) };
 }
 
-thread_local! {
+crate::request_local! {
     /// Holds the current Environment during function call execution.
     /// Used by the `defined()` builtin to check if a variable exists.
     static CURRENT_ENV: RefCell<Option<Rc<RefCell<Environment>>>> = const { RefCell::new(None) };

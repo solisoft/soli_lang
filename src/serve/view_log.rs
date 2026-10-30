@@ -41,6 +41,9 @@ thread_local! {
     // unit tests that flip the flag on their test thread don't leak the
     // setting into parallel tests running on other threads.
     static ENABLED: Cell<bool> = const { Cell::new(false) };
+}
+
+crate::request_local! {
     static LOG: RefCell<Vec<ViewEntry>> = const { RefCell::new(Vec::new()) };
     static NEXT_ID: Cell<u32> = const { Cell::new(0) };
     // Open-render stack — pushed by `next_id`, popped by `record`. Used

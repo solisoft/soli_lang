@@ -32,7 +32,7 @@ static ENABLED: AtomicBool = AtomicBool::new(false);
 /// in `dropped()` instead of stored.
 pub const MAX_LOGGED_PER_REQUEST: usize = 10_000;
 
-thread_local! {
+crate::request_local! {
     static LOG: RefCell<Vec<LoggedQuery>> = const { RefCell::new(Vec::new()) };
     static DROPPED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }

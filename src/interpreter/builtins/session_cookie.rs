@@ -102,7 +102,7 @@ struct CookieSessionState {
     replaced: bool,
 }
 
-thread_local! {
+crate::request_local! {
     static STATE: RefCell<Option<CookieSessionState>> = const { RefCell::new(None) };
 }
 

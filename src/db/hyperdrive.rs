@@ -244,7 +244,7 @@ struct TxState {
     nest: u32,
 }
 
-thread_local! {
+crate::request_local! {
     static TX: RefCell<Option<TxState>> = const { RefCell::new(None) };
 }
 

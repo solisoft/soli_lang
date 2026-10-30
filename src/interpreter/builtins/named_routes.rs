@@ -23,6 +23,9 @@ pub struct NamedRouteEntry {
 
 thread_local! {
     static NAMED_ROUTES: RefCell<HashMap<String, NamedRouteEntry>> = RefCell::new(HashMap::new());
+}
+
+crate::request_local! {
     static CURRENT_REQUEST_HOST: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
 }
 

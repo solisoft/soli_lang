@@ -51,7 +51,7 @@ const MAX_MATCHERS: usize = 16;
 static SUBSCRIPTIONS: TenantValue<HashMap<String, HashMap<String, Sub>>> =
     TenantValue::new(HashMap::new);
 
-thread_local! {
+crate::request_local! {
     /// The LiveView currently rendering on this worker thread, as
     /// `(liveview_id, component)`. Set by [`set_current`] around a handler call
     /// so `live_where` knows who to subscribe; `None` in a plain controller.

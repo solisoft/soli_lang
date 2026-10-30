@@ -156,7 +156,7 @@ pub fn render_component(component_name: &str, state: &JsonValue) -> Result<Strin
     rendered
 }
 
-thread_local! {
+crate::request_local! {
     static LIVE_PARENT: std::cell::RefCell<Vec<JsonValue>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }

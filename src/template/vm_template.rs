@@ -404,7 +404,7 @@ fn call_stmt(name: &str, args: Vec<Expr>) -> Stmt {
     stmt(StmtKind::Expression(call_expr(name, args)))
 }
 
-thread_local! {
+crate::request_local! {
     /// The `TemplateCache` rendering the view on this thread's VM, for
     /// `Op::TemplateComponent` and `Op::TemplatePartial`: the include renders
     /// through it, as the tree-walker's partial renderer does. Set only for

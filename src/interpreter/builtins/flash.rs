@@ -40,7 +40,7 @@ use crate::interpreter::value_json::{json_ref_to_value_or_null as json_to_value,
 /// The session key the queue lives under.
 const SESSION_KEY: &str = "_flashes";
 
-thread_local! {
+crate::request_local! {
     /// The messages this request took from the session — `None` until
     /// `flashes()` first runs, so a request that never reads leaves the queue
     /// for the next one.

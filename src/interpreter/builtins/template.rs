@@ -31,7 +31,7 @@ use crate::template::{html_response, TemplateCache};
 static TEMPLATE_CACHE: TenantCell<Arc<TemplateCache>> = TenantCell::new();
 
 // Thread-local view context for debugging (stores the data passed to render())
-thread_local! {
+crate::request_local! {
     static VIEW_DEBUG_CONTEXT: RefCell<Option<Value>> = const { RefCell::new(None) };
 }
 
@@ -82,7 +82,7 @@ thread_local! {
 }
 
 // Thread-local current request context for views
-thread_local! {
+crate::request_local! {
     #[allow(clippy::missing_const_for_thread_local)]
     static CURRENT_REQUEST: RefCell<Option<Value>> = const { RefCell::new(None) };
 }
@@ -637,7 +637,7 @@ pub fn inject_request_context(data: &Value) {
     }
 }
 
-thread_local! {
+crate::request_local! {
     /// The headers of the request this thread is answering, for a builtin
     /// that needs one without having it passed down. A controller already
     /// gets them as a field; this is for `eui?` and `eui_render`, which are

@@ -14,7 +14,7 @@ use super::args::expect_string as extract_string;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{empty_hash, HashKey, NativeFunction, Value};
 
-thread_local! {
+crate::request_local! {
     static LAST_ASSIGNS_JSON: RefCell<Option<String>> = const { RefCell::new(None) };
     static LAST_VIEW_PATH: RefCell<Option<String>> = const { RefCell::new(None) };
     static LAST_RENDERED: RefCell<bool> = const { RefCell::new(false) };

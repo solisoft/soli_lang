@@ -21,7 +21,7 @@ pub struct PendingUpdate {
     pub assigns: JsonValue,
 }
 
-thread_local! {
+crate::request_local! {
     static PENDING: RefCell<Vec<PendingUpdate>> = const { RefCell::new(Vec::new()) };
 }
 

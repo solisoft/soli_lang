@@ -26,7 +26,6 @@ use crate::span::Span;
 // "collection/key". Membership breaks `dependent:` cycles: re-entering an
 // in-flight document is a no-op success instead of infinite recursion.
 thread_local! {
-    static CASCADE_IN_FLIGHT: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
     /// Test-only: owner `_key` → child instances for `dependent: "delete"`,
     /// skipping the database load so VM unit tests can gate without SoliDB.
     ///
@@ -41,6 +40,10 @@ thread_local! {
     #[cfg(test)]
     static TEST_LOADED_INSTANCES: RefCell<HashMap<String, Value>> =
         RefCell::new(HashMap::new());
+}
+
+crate::request_local! {
+    static CASCADE_IN_FLIGHT: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 
 /// Install children that `dependent: "delete"` should cascade to for `owner_key`.

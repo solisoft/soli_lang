@@ -11,7 +11,7 @@ use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, StrKey, Valu
 use std::cell::RefCell;
 use std::rc::Rc;
 
-thread_local! {
+crate::request_local! {
     /// Per-worker stack of registration vecs. Pushed on `respond_to` entry,
     /// popped on exit so nested calls don't clobber each other.
     pub static RESPOND_TO_BUILDER: RefCell<Vec<Vec<(String, Value)>>> = const { RefCell::new(Vec::new()) };

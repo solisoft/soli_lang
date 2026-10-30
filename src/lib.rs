@@ -50,6 +50,7 @@ pub mod regex_cache;
 pub mod repl_common;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod repl_tui;
+pub mod request_local;
 pub mod scaffold;
 pub mod serve;
 #[cfg(feature = "solidb-driver")]

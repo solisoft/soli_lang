@@ -17,7 +17,7 @@ use std::path::Path;
 // request and restores it after (`serve::LocaleGuard`); before that existed,
 // a controller that never called `set_locale` rendered in whatever language
 // the previous visitor on that worker had asked for.
-thread_local! {
+crate::request_local! {
     #[allow(clippy::missing_const_for_thread_local)]
     pub(crate) static CURRENT_LOCALE: RefCell<String> = RefCell::new(String::new());
 }

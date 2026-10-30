@@ -43,7 +43,7 @@ pub struct Stats {
 /// another app's numbers would be a small but real leak of its traffic.
 static STATS: TenantValue<HashMap<String, Stats>> = TenantValue::new(HashMap::new);
 
-thread_local! {
+crate::request_local! {
     /// Which session this thread is rendering, so `eui_stats()` called from
     /// inside a view knows whose numbers to hand back.
     static CURRENT: RefCell<Option<String>> = const { RefCell::new(None) };

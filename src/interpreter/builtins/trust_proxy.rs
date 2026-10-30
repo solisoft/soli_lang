@@ -34,7 +34,7 @@ fn trust_proxy_from_env() -> bool {
     )
 }
 
-thread_local! {
+crate::request_local! {
     /// Peer address of the request this worker thread is handling, set by the
     /// serve layer before dispatch. Only consulted when `SOLI_TRUSTED_PROXIES`
     /// is configured.

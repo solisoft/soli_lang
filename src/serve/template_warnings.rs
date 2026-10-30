@@ -7,6 +7,9 @@ use std::cell::{Cell, RefCell};
 
 thread_local! {
     static ENABLED: Cell<bool> = const { Cell::new(false) };
+}
+
+crate::request_local! {
     static WARNINGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 

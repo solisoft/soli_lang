@@ -35,6 +35,9 @@ thread_local! {
     /// global `TEST_SERVER_PORT` atomic. Set by the parallel test runner
     /// so each worker hits its own subprocess on its own port.
     static THREAD_TEST_SERVER_PORT: Cell<Option<u16>> = const { Cell::new(None) };
+}
+
+crate::request_local! {
 
     /// The most recent render() captured during the current request (server
     /// side, test-runner only). Reset at request start, taken at response

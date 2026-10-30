@@ -67,13 +67,15 @@ const TEMPLATE_CACHE_MAX_SIZE: usize = 500;
 const MAX_INCLUDE_DEPTH: usize = 64;
 
 thread_local! {
-    static INCLUDE_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-
     /// This thread's resolved includes, by cache, kind and the name as written
     /// (`"card"`, `"posts/row"`). A page of fifty components asked for the same
     /// name fifty times, and each time formatted the on-disk name, took two
     /// locks, hashed a path and re-tested its extension.
     static INCLUDES: RefCell<IncludeCache> = RefCell::new(IncludeCache::default());
+}
+
+crate::request_local! {
+    static INCLUDE_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// Bumped by [`TemplateCache::clear`]: every thread drops its [`INCLUDES`] on
@@ -1191,7 +1193,7 @@ fn is_markdown_template(path: &Path) -> bool {
     s.ends_with(".md")
 }
 
-thread_local! {
+crate::request_local! {
     /// Whether dev-bar marker comments are suppressed for the current render.
     /// See [`without_dev_markers`].
     static SUPPRESS_DEV_MARKERS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };

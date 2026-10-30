@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Internal
+
+- Request state is declared with `crate::request_local!` (`src/request_local.rs`)
+  instead of `thread_local!`: 95 variables in 58 files (session id, response
+  cookies, flash, taint marks, the open transaction and `grouped` batch, the
+  dev logs, the deadline, the locale, the database tenant, render stacks, …).
+  Reads and writes are unchanged; each variable also registers itself on the
+  thread, so `RequestState::capture` / `restore` can take one request's
+  state out and put another's in — the groundwork for running several
+  requests on one worker. `tests/request_local_audit.rs` fails on any new
+  `thread_local!` not listed as shared in `tests/thread_locals_shared.txt`.
+  No behaviour change; measured on 2 production workers (JSON, template,
+  compute routes) within noise of the previous build. The formatting,
+  equality and serialization recursion guards stay plain thread-locals: as
+  request locals they cost 14–20 % on interpolation-heavy routes.
+
 ### Added
 
 - `HTTP.stream_to(method, url, options?, body?, to)`: a streamed answer read

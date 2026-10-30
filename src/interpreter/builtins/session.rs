@@ -917,7 +917,7 @@ impl SessionStore for InMemorySessionStore {
 }
 
 // Thread-local current session ID (set per-request from cookie).
-thread_local! {
+crate::request_local! {
     static CURRENT_SESSION_ID: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
@@ -936,7 +936,7 @@ pub fn get_current_session_id() -> Option<String> {
 // Response cookies accumulated during request handling via set_cookie().
 // Tuple: (name, value, attribute suffix like "; Path=/; HttpOnly") — the
 // attributes are validated and rendered at set time, emitted verbatim.
-thread_local! {
+crate::request_local! {
     static RESPONSE_COOKIES: RefCell<Vec<(String, String, String)>> =
         const { RefCell::new(Vec::new()) };
 }

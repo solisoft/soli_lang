@@ -29,7 +29,7 @@ pub struct LoggedJobCall {
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 
-thread_local! {
+crate::request_local! {
     static LOG: RefCell<Vec<LoggedJobCall>> = const { RefCell::new(Vec::new()) };
 }
 

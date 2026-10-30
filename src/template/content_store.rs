@@ -13,7 +13,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-thread_local! {
+crate::request_local! {
     static CONTENT_FOR: RefCell<Option<HashMap<String, String>>> = const { RefCell::new(None) };
 }
 

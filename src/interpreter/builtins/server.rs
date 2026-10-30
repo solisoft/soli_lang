@@ -1131,7 +1131,7 @@ pub struct FastPathResponse {
     pub body: String,
 }
 
-thread_local! {
+crate::request_local! {
     static FAST_PATH_RESPONSE: RefCell<Option<FastPathResponse>> = const { RefCell::new(None) };
 }
 

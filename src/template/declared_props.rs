@@ -12,7 +12,7 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 
-thread_local! {
+crate::request_local! {
     static DECLARED_PROPS: RefCell<Vec<HashSet<String>>> = const { RefCell::new(Vec::new()) };
 }
 

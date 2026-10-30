@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 
-thread_local! {
+crate::request_local! {
     static ROUTE: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 

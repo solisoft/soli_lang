@@ -80,13 +80,16 @@ static THRESHOLD_MS: AtomicU64 = AtomicU64::new(u64::MAX);
 static WRITERS: Writers<SlowQuery> = Writers::new("slow-queries", QUEUE_CAP);
 
 thread_local! {
+    /// Set on the writer threads: their own reads and writes are not
+    /// application queries.
+    static SUPPRESSED: Cell<bool> = const { Cell::new(false) };
+}
+
+crate::request_local! {
     /// What this worker is running: `GET /orders → orders#index`, or
     /// `job ReportJob`. Set per request and per job, into a reused buffer so
     /// setting it allocates nothing once warm.
     static CONTEXT: RefCell<String> = const { RefCell::new(String::new()) };
-    /// Set on the writer threads: their own reads and writes are not
-    /// application queries.
-    static SUPPRESSED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Queries at or above this many milliseconds are slow.

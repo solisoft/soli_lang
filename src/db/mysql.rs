@@ -49,7 +49,7 @@ struct TxState {
     name: String,
 }
 
-thread_local! {
+crate::request_local! {
     static TX: RefCell<Option<TxState>> = const { RefCell::new(None) };
     static TX_ACTIVE: Cell<bool> = const { Cell::new(false) };
     /// Re-entrancy for `with_conn`: the live connection plus the connection

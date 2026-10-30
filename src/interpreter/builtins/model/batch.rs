@@ -60,7 +60,7 @@ struct BatchState {
     d1_reads: Vec<PendingD1Read>,
 }
 
-thread_local! {
+crate::request_local! {
     static BATCH: RefCell<Option<BatchState>> = const { RefCell::new(None) };
 
     /// Nesting depth of `grouped(fn() { ... })` blocks executing on this thread.
