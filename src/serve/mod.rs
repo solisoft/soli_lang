@@ -16,6 +16,52 @@ pub mod camera;
 mod compression;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod coroutine;
+/// The edge build serves one request per invocation and has no threads to
+/// interleave on: no coroutines, and a `Scheduler` that cannot exist.
+#[cfg(target_arch = "wasm32")]
+pub(crate) mod coroutine {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use crate::interpreter::environment::Environment;
+    use crate::interpreter::Interpreter;
+
+    pub(crate) enum Scheduler {}
+
+    pub(crate) fn enabled(_dev_mode: bool) -> bool {
+        false
+    }
+
+    impl Scheduler {
+        pub(crate) fn new(_global_env: Rc<RefCell<Environment>>) -> Self {
+            unreachable!("coroutines are never enabled on wasm32")
+        }
+        pub(crate) fn has_room(&self) -> bool {
+            match *self {}
+        }
+        pub(crate) fn running(&self) -> usize {
+            match *self {}
+        }
+        pub(crate) fn ready(&self) -> &crossbeam_channel::Receiver<u64> {
+            match *self {}
+        }
+        pub(crate) fn start(
+            &mut self,
+            _interpreter: &Interpreter,
+            _worker_vm: &mut Option<crate::vm::Vm>,
+            _data: super::RequestData,
+            _dev_mode: bool,
+        ) {
+            match *self {}
+        }
+        pub(crate) fn resume(&mut self, _id: u64, _worker_vm: &mut Option<crate::vm::Vm>) {
+            match *self {}
+        }
+        pub(crate) fn resume_ready(&mut self, _worker_vm: &mut Option<crate::vm::Vm>) {
+            match *self {}
+        }
+    }
+}
 pub mod cors;
 mod coverage;
 mod csrf;
