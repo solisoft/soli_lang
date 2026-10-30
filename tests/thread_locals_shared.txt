@@ -11,6 +11,7 @@ src/db/tenancy.rs RESOLVED
 src/interpreter/builtins/http_class.rs WORKER_DB_CLIENT
 src/interpreter/builtins/http_class.rs WORKER_DB_RT
 src/interpreter/builtins/http_class.rs DRIVING_LOCAL_DB_REACTOR
+src/interpreter/builtins/http_class.rs DB_SHARED_HERE
 src/interpreter/builtins/mailer.rs DELIVERIES
 src/interpreter/builtins/model/callbacks.rs DECLARING
 src/interpreter/builtins/model/engine_context.rs ENGINE_CONTEXT

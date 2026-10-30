@@ -56,11 +56,17 @@ use crate::interpreter::builtins::model::db_config::{db_scheme_and_host, get_dat
 /// checks on SoliDB for 16 workers.
 const POOL_SIZE: usize = 1;
 
+/// Clients a worker keeps between calls. One is enough for a worker serving
+/// one request at a time; a worker interleaving requests (`SOLI_COROUTINES`)
+/// has one call in flight per waiting request, and each new client costs a
+/// password check on the server, so the ones it opened are kept for the next.
+const MAX_IDLE_CLIENTS: usize = 32;
+
 thread_local! {
-    /// `None` until the first use; `Some(Err)` once a connection attempt has
-    /// failed, so a broken driver setup degrades to HTTP instead of retrying a
-    /// dead endpoint on every query.
-    static CLIENT: RefCell<Option<Result<SoliDBClient, String>>> = const { RefCell::new(None) };
+    /// `None` until the first use: the idle clients, or `Err` once a
+    /// connection attempt has failed, so a broken driver setup degrades to
+    /// HTTP instead of retrying a dead endpoint on every query.
+    static CLIENT: RefCell<Option<Result<Vec<SoliDBClient>, String>>> = const { RefCell::new(None) };
 }
 
 /// Is the native driver transport switched on? It is unless `SOLI_DB_DRIVER`
@@ -280,20 +286,14 @@ fn with_client<T>(
     if !enabled() {
         return None;
     }
-    // The client is taken out of its slot for the call and put back after:
-    // holding the slot's `borrow_mut` across `f`, which blocks on the DB,
-    // would panic on any other use of the slot from this thread meanwhile.
-    let taken = CLIENT.with(|cell| {
-        let mut slot = cell.borrow_mut();
-        match slot.take() {
-            Some(Ok(client)) => Some(Some(client)),
-            // Connection failed earlier: stay on HTTP for this worker's lifetime.
-            Some(Err(e)) => {
-                *slot = Some(Err(e));
-                None
-            }
-            None => Some(None),
-        }
+    // A client is taken out of the slot for the call and put back after:
+    // holding the slot's `borrow_mut` across `f`, which blocks on the DB (or
+    // suspends the request), would panic on any other use of it meanwhile.
+    let taken = CLIENT.with(|cell| match cell.borrow_mut().as_mut() {
+        Some(Ok(idle)) => Some(idle.pop()),
+        // Connection failed earlier: stay on HTTP for this worker's lifetime.
+        Some(Err(_)) => None,
+        None => Some(None),
     })?;
     let mut client = match taken {
         Some(client) => client,
@@ -327,13 +327,14 @@ fn with_client<T>(
     };
     let outcome = f(&mut client);
     // A call whose connection failed drops the client: the next one connects
-    // afresh. Otherwise it goes back, unless another call filled the slot
-    // while this one ran.
+    // afresh. Otherwise it goes back with the idle ones.
     if !matches!(outcome, Err(DriverFailure::Connection(_))) {
         CLIENT.with(|cell| {
             let mut slot = cell.borrow_mut();
-            if slot.is_none() {
-                *slot = Some(Ok(client));
+            match slot.as_mut() {
+                Some(Ok(idle)) if idle.len() < MAX_IDLE_CLIENTS => idle.push(client),
+                Some(_) => {}
+                None => *slot = Some(Ok(vec![client])),
             }
         });
     }

@@ -685,6 +685,17 @@ pub fn db_shared_reactor() -> bool {
     static SHARED: OnceLock<bool> = OnceLock::new();
     *SHARED
         .get_or_init(|| crate::platform::env::var("SOLI_DB_SHARED_REACTOR").as_deref() == Ok("1"))
+        || DB_SHARED_HERE.with(|s| s.get())
+}
+
+/// Puts this thread's DB I/O on the server's shared runtime for good. A
+/// worker running requests on coroutines needs it: a query waited on by a
+/// suspended request must be driven while the worker serves others, which
+/// the thread-local reactor (only driven inside `block_on_db`) cannot do.
+/// Set before the worker's first query, so no connection of the local
+/// client or reactor is ever mixed in.
+pub(crate) fn use_shared_db_reactor_on_this_thread() {
+    DB_SHARED_HERE.with(|s| s.set(true));
 }
 
 thread_local! {
@@ -717,6 +728,9 @@ thread_local! {
     /// even though `Handle::try_current()` reports an (ambient,
     /// current-thread) runtime.
     static DRIVING_LOCAL_DB_REACTOR: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+
+    /// Set by [`use_shared_db_reactor_on_this_thread`].
+    static DB_SHARED_HERE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Drive a DB future to completion from synchronous code.
@@ -731,6 +745,13 @@ pub fn block_on_db<F>(future: F) -> F::Output
 where
     F: std::future::Future,
 {
+    // A request on a coroutine hands its worker over while the query runs,
+    // on the shared runtime this worker uses for all its DB I/O.
+    if crate::serve::coroutine::can_yield() {
+        if let Some(handle) = get_tokio_handle() {
+            return crate::serve::coroutine::drive(&handle, future);
+        }
+    }
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
         // Already on a Tokio thread (typically a `tokio-rt-worker` from the
         // server runtime, or a job/session warmup that entered that handle).

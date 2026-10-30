@@ -244,8 +244,8 @@ calling `dispatch_http_request` directly. The pieces:
   VMs (a pooled VM keeps the worker's globals; a new one copies them). The
   worker loop stops taking requests at `SOLI_WORKER_CONCURRENCY` and selects on
   the wakers' channel as well as the request queue.
-- **`drive`**, the yield point, called by `block_on_user_http(_local)` when
-  `can_yield()`. It polls the call's future *from the coroutine*, on the worker
+- **`drive`**, the yield point, called by `block_on_user_http(_local)` and
+  `block_on_db` when `can_yield()`. It polls the call's future *from the coroutine*, on the worker
   thread, with the user HTTP runtime entered only for the poll — so a future
   holding `Value`s still works, and `send_logged` writes this request's dev
   log. While the future is pending it takes the request state out
@@ -268,9 +268,18 @@ A suspended coroutine is never dropped: dropping one unwinds its stack with a
 panic that the request's `catch_unwind` would swallow, which aborts. The
 scheduler forgets them when the worker exits.
 
-Not covered yet: `block_on_db` (SoliDB) still blocks, because its futures run
-on a per-thread current-thread runtime nothing would drive while the worker
-does other work; the SQL adapters are synchronous crates.
+SoliDB queries go through `block_on_db`, whose default reactor is the
+worker's own current-thread runtime — driven only inside a blocking
+`block_on`, so nothing would progress a suspended request's query while the
+worker serves another. `Scheduler::new` therefore calls
+`use_shared_db_reactor_on_this_thread()` before the worker's first query:
+every DB future of that worker (yielding or not) runs on the server's shared
+runtime with the shared client, as `SOLI_DB_SHARED_REACTOR=1` does process-
+wide — never mixing a connection of the local reactor in. The driver keeps
+up to 32 idle clients per worker (`solidb_driver::MAX_IDLE_CLIENTS`) instead
+of one, since a client costs a password check and each waiting request holds
+one. The SQL adapters (`postgres`, `mysql`, `rusqlite`) are synchronous
+crates and still block.
 
 ## File mode
 

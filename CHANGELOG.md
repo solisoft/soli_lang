@@ -7,13 +7,17 @@
 - `SOLI_COROUTINES=1` (experimental): each request runs on a stackful
   coroutine (`corosensei`) of its worker, and a request waiting on an
   outbound HTTP call (`HTTP.get`/`post`/…, `get_json`, `request`,
-  `HTTP.stream`) hands the worker over to other requests instead of holding
-  it. Soli code is unchanged. On 2 production workers, an action calling a
+  `HTTP.stream`) or a SoliDB query hands the worker over to other requests
+  instead of holding it. Soli code is unchanged. On 2 production workers, an action calling a
   500 ms API went from 3.7 req/s to 116 (2,000 requests, 200 concurrent,
   every response checked to carry its own `params`, session, cookie and the
   global `params` read after the switch); a CPU-only JSON route stays within
-  ~2 %. The call blocks as before inside a transaction, a `grouped` block, a
-  render, a `stream` block or a value's formatting; database queries still
+  ~2 %. A route writing then counting SoliDB rows went from ~1,440 to
+  ~3,720 req/s, three reads of one document stayed at ~6,400. The worker's
+  SoliDB I/O moves to the shared runtime (as `SOLI_DB_SHARED_REACTOR=1`),
+  and the native driver keeps up to 32 idle clients per worker instead of
+  one. The call blocks as before inside a transaction, a `grouped` block, a
+  render, a `stream` block or a value's formatting; the SQL adapters still
   block; ignored under `--dev`. `SOLI_WORKER_CONCURRENCY` (32) caps the
   requests one worker runs at once. Design in `docs/internals/serve.md`
   (`serve::coroutine`: `Scheduler`, `drive`, `can_yield`, `NoYield`).

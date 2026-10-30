@@ -228,6 +228,9 @@ impl Scheduler {
     pub(crate) fn new(global_env: Rc<RefCell<Environment>>) -> Self {
         let (ready_tx, ready_rx) = channel::unbounded();
         READY_TX.with(|t| *t.borrow_mut() = Some(ready_tx));
+        // Queries of a suspended request must progress while the worker
+        // serves others: this worker's DB I/O goes to the shared runtime.
+        crate::interpreter::builtins::http_class::use_shared_db_reactor_on_this_thread();
         GLOBAL_ENV.with(|g| *g.borrow_mut() = Some(global_env));
         Self {
             max: concurrency(),
