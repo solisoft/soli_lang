@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- `openapi(name, {"servers": …}, -> { … })`: the document's top-level OpenAPI
+  `servers` array. Accepts a URL string, a list of URLs, or a list of
+  `{"url": …, "description": …}` hashes, normalised to
+  `[{"url": …, "description"?: …}]`; blank URLs are skipped, and the key is
+  left out when the option is absent. `/openapi.json` takes the servers of the
+  first document that declares some. A malformed entry or an unknown server key
+  stops the routes file with an error.
+
 ## [2.29.0] - 2026-10-30
 
 ### Added

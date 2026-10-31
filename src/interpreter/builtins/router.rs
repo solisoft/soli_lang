@@ -135,10 +135,81 @@ fn new_openapi_doc(
         version: "1.0.0".to_string(),
         description: None,
         public: false,
+        servers: Vec::new(),
     })
 }
 
-/// Apply `{"title": …, "version": …, "description": …, "public": …}`.
+/// `"servers"`: a URL, a list of URLs, or a list of
+/// `{"url": …, "description": …}` hashes (a single hash is accepted too).
+/// Blank URLs are skipped.
+fn parse_openapi_servers(
+    value: &Value,
+) -> Result<Vec<crate::interpreter::builtins::server::OpenApiServer>, String> {
+    use crate::interpreter::builtins::server::OpenApiServer;
+    fn one(item: &Value) -> Result<Option<OpenApiServer>, String> {
+        match item {
+            Value::String(url) => {
+                let url = url.trim();
+                Ok((!url.is_empty()).then(|| OpenApiServer {
+                    url: url.to_string(),
+                    description: None,
+                }))
+            }
+            Value::Hash(hash) => {
+                let mut url = None;
+                let mut description = None;
+                for (key, value) in hash.borrow().iter() {
+                    let key = match key {
+                        crate::interpreter::value::HashKey::String(s) => s.to_string(),
+                        other => format!("{other:?}"),
+                    };
+                    match (key.as_str(), value) {
+                        ("url", Value::String(s)) => url = Some(s.trim().to_string()),
+                        ("description", Value::String(s)) => {
+                            let s = s.trim();
+                            if !s.is_empty() {
+                                description = Some(s.to_string());
+                            }
+                        }
+                        ("description", Value::Null) => {}
+                        ("url" | "description", other) => {
+                            return Err(format!(
+                                "openapi: a server's \"{key}\" must be a string, got {}",
+                                other.type_name()
+                            ))
+                        }
+                        (other, _) => {
+                            return Err(format!(
+                                "openapi: unknown server key \"{other}\" (known: url, description)"
+                            ))
+                        }
+                    }
+                }
+                Ok(url
+                    .filter(|u| !u.is_empty())
+                    .map(|url| OpenApiServer { url, description }))
+            }
+            Value::Null => Ok(None),
+            other => Err(format!(
+                "openapi: \"servers\" entries must be URL strings or \
+                 {{\"url\": …, \"description\": …}} hashes, got {}",
+                other.type_name()
+            )),
+        }
+    }
+    match value {
+        Value::Array(items) => {
+            let mut servers = Vec::new();
+            for item in items.borrow().iter() {
+                servers.extend(one(item)?);
+            }
+            Ok(servers)
+        }
+        other => Ok(one(other)?.into_iter().collect()),
+    }
+}
+
+/// Apply `{"title": …, "version": …, "description": …, "public": …, "servers": …}`.
 fn apply_openapi_options(
     doc: &mut crate::interpreter::builtins::server::OpenApiDoc,
     options: &Value,
@@ -159,6 +230,7 @@ fn apply_openapi_options(
             ("version", Value::String(s)) => doc.version = s.to_string(),
             ("description", Value::String(s)) => doc.description = Some(s.to_string()),
             ("public", Value::Bool(b)) => doc.public = *b,
+            ("servers", value) => doc.servers = parse_openapi_servers(value)?,
             ("title" | "version" | "description", other) => {
                 return Err(format!(
                     "openapi: \"{key}\" must be a string, got {}",
@@ -173,7 +245,7 @@ fn apply_openapi_options(
             }
             (other, _) => {
                 return Err(format!(
-                "openapi: unknown option \"{other}\" (known: title, version, description, public)"
+                "openapi: unknown option \"{other}\" (known: title, version, description, public, servers)"
             ))
             }
         }

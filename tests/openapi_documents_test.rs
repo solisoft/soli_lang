@@ -224,3 +224,63 @@ fn an_unknown_option_or_a_bad_name_is_refused() {
     let err = routes_error("openapi(\"api v1\", -> {\n  get(\"/x\", \"home#index\")\n})\n");
     assert!(err.contains("is not a document name"), "{err}");
 }
+
+#[test]
+fn servers_accept_a_url_a_list_of_urls_or_hashes() {
+    let dir = tempfile::tempdir().unwrap();
+    write_app(
+        dir.path(),
+        r#"
+openapi("one", {"servers": "https://api.example.com"}, -> {
+  get("/a", "home#index")
+})
+openapi("many", {"servers": ["https://api.example.com", "  ", "https://staging.example.com"]}, -> {
+  get("/b", "home#index")
+})
+openapi("hashes", {"servers": [{"url": "https://api.example.com", "description": "Production"}, {"url": ""}]}, -> {
+  get("/c", "home#index")
+})
+openapi("none", -> {
+  get("/d", "home#index")
+})
+"#,
+    );
+    let server = Server::start(dir.path(), Some("1"));
+
+    assert_eq!(
+        server.json("/openapi/one.json")["servers"],
+        serde_json::json!([{ "url": "https://api.example.com" }])
+    );
+    assert_eq!(
+        server.json("/openapi/many.json")["servers"],
+        serde_json::json!([
+            { "url": "https://api.example.com" },
+            { "url": "https://staging.example.com" }
+        ]),
+        "a blank URL is skipped"
+    );
+    assert_eq!(
+        server.json("/openapi/hashes.json")["servers"],
+        serde_json::json!([{ "url": "https://api.example.com", "description": "Production" }])
+    );
+    assert!(
+        server.json("/openapi/none.json").get("servers").is_none(),
+        "no servers option, no servers key"
+    );
+}
+
+#[test]
+fn a_malformed_server_is_refused() {
+    let err = routes_error(
+        "openapi(\"v1\", {\"servers\": [42]}, -> {\n  get(\"/x\", \"home#index\")\n})\n",
+    );
+    assert!(
+        err.contains("\"servers\" entries must be URL strings"),
+        "{err}"
+    );
+
+    let err = routes_error(
+        "openapi(\"v1\", {\"servers\": [{\"uri\": \"https://x\"}]}, -> {\n  get(\"/x\", \"home#index\")\n})\n",
+    );
+    assert!(err.contains("unknown server key \"uri\""), "{err}");
+}

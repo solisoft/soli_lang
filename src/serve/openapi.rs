@@ -138,7 +138,15 @@ pub fn generate_spec() -> serde_json::Value {
         .iter()
         .filter(|r| !documented || r.openapi.is_some())
         .collect();
-    build_spec(&selected, &spec_title(), "1.0.0", None)
+    let mut spec = build_spec(&selected, &spec_title(), "1.0.0", None);
+    // The merged spec takes the servers of the first document that has some.
+    if let Some(doc) = documents_of(&routes)
+        .into_iter()
+        .find(|d| !d.servers.is_empty())
+    {
+        set_servers(&mut spec, &doc.servers);
+    }
+    spec
 }
 
 /// The OpenAPI document named `name` (`openapi("v1", …)` in the routes), or
@@ -150,12 +158,36 @@ pub fn generate_document(name: &str) -> Option<serde_json::Value> {
         .iter()
         .filter(|r| r.openapi.as_ref().is_some_and(|d| d.name == name))
         .collect();
-    Some(build_spec(
+    let mut spec = build_spec(
         &selected,
         &doc.title,
         &doc.version,
         doc.description.as_deref(),
-    ))
+    );
+    set_servers(&mut spec, &doc.servers);
+    Some(spec)
+}
+
+/// The top-level `servers` array. Nothing is
+/// written when the document declares no server.
+fn set_servers(
+    spec: &mut serde_json::Value,
+    servers: &[crate::interpreter::builtins::server::OpenApiServer],
+) {
+    if servers.is_empty() {
+        return;
+    }
+    let list: Vec<serde_json::Value> = servers
+        .iter()
+        .map(|s| {
+            let mut entry = serde_json::json!({ "url": s.url });
+            if let Some(description) = &s.description {
+                entry["description"] = serde_json::json!(description);
+            }
+            entry
+        })
+        .collect();
+    spec["servers"] = serde_json::Value::Array(list);
 }
 
 fn build_spec(

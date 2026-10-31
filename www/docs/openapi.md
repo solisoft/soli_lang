@@ -82,6 +82,19 @@ that declares none keeps the single spec of every route.
 | `"version"` | `"1.0.0"` | `info.version` |
 | `"description"` | none | `info.description`, shown at the top of the reference |
 | `"public"` | `false` | served in production without `SOLI_OPENAPI` |
+| `"servers"` | none | the top-level `servers` array: the base URLs the reference sends "Try it" requests to |
+
+`"servers"` takes a URL, a list of URLs, or a list of
+`{"url": …, "description": …}` hashes, and is written as
+`[{"url": …, "description": …}]`. A blank URL is skipped; without the option the
+document has no `servers` key, and clients fall back to the host that served it.
+`/openapi.json` takes the servers of the first document that declares some.
+
+```soli
+openapi("v1", {"public": true, "servers": "https://api.example.com"}, -> { … })
+openapi("v1", {"servers": ["https://api.example.com", "https://staging.example.com"]}, -> { … })
+openapi("v1", {"servers": [{"url": "https://api.example.com", "description": "Production"}]}, -> { … })
+```
 
 `openapi("v1", -> { … })` takes no options. The block holds anything a routes file
 does (`namespace`, `resources`, `middleware`, plain `get`/`post`), and

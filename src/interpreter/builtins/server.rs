@@ -37,6 +37,16 @@ pub struct OpenApiDoc {
     pub description: Option<String>,
     /// Served in production without `SOLI_OPENAPI` (`{"public": true}`).
     pub public: bool,
+    /// The top-level `servers` array (`{"servers": …}`); empty leaves the
+    /// key out of the document.
+    pub servers: Vec<OpenApiServer>,
+}
+
+/// One entry of an OpenAPI document's `servers` array.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenApiServer {
+    pub url: String,
+    pub description: Option<String>,
 }
 
 /// A registered route with its handler.
