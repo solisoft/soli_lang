@@ -20,12 +20,17 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.29.0.</p>
-        <h3 id="unreleased-api" class="text-xl font-semibold text-white mb-4 scroll-mt-24">API</h3>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.29.1.</p>
+    </section>
+
+    <section id="v2-29-1" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.29.1 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-10-31</span></h2>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">OpenAPI documents name the servers their API answers on, and only versioned asset URLs are cached for a year.</p>
+        <h3 id="v2-29-1-api" class="text-xl font-semibold text-white mb-4 scroll-mt-24">API</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">OpenAPI documents name their servers.</strong> <a href="/docs/development-tools/openapi#section-documents" class="text-amber-400 hover:underline"><code class="text-cyan-400">openapi("v1", {"servers": …}, -&gt; { … })</code></a> writes the top-level <code class="text-cyan-400">servers</code> array, so the reference sends &ldquo;Try it&rdquo; requests to the API&rsquo;s base URL rather than the host that served the page. It takes a URL, a list of URLs, or <code class="text-cyan-400">{"url": …, "description": …}</code> hashes; blank URLs are skipped, and without the option the document is unchanged.</li>
         </ul>
-        <h3 id="unreleased-serving" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Serving</h3>
+        <h3 id="v2-29-1-serving" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Serving</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Only a versioned URL under <code class="text-cyan-400">public/</code> is cached for a year.</strong> A file asked for with the <code class="text-cyan-400">?v=</code> that <code class="text-cyan-400">public_path()</code> stamps keeps <code class="text-cyan-400">Cache-Control: public, max-age=31536000, immutable</code>; under its bare URL (<code class="text-cyan-400">/sw.js</code>, <code class="text-cyan-400">/manifest.webmanifest</code>, an icon linked by hand) it is now <code class="text-cyan-400">public, max-age=300</code> with its <code class="text-cyan-400">ETag</code>. A bare URL is the same before and after a deploy, and a year of <code class="text-cyan-400">immutable</code> on it let a CDN keep serving an old service worker for months.</li>
         </ul>

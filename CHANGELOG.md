@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.29.1] - 2026-10-31
+
 ### Added
 
 - `openapi(name, {"servers": …}, -> { … })`: the document's top-level OpenAPI
