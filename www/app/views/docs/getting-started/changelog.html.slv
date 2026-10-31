@@ -21,6 +21,10 @@
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
         <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.29.0.</p>
+        <h3 id="unreleased-serving" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Serving</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">Only a versioned URL under <code class="text-cyan-400">public/</code> is cached for a year.</strong> A file asked for with the <code class="text-cyan-400">?v=</code> that <code class="text-cyan-400">public_path()</code> stamps keeps <code class="text-cyan-400">Cache-Control: public, max-age=31536000, immutable</code>; under its bare URL (<code class="text-cyan-400">/sw.js</code>, <code class="text-cyan-400">/manifest.webmanifest</code>, an icon linked by hand) it is now <code class="text-cyan-400">public, max-age=300</code> with its <code class="text-cyan-400">ETag</code>. A bare URL is the same before and after a deploy, and a year of <code class="text-cyan-400">immutable</code> on it let a CDN keep serving an old service worker for months.</li>
+        </ul>
     </section>
 
     <section id="v2-29-0" class="mb-16 scroll-mt-24">

@@ -184,7 +184,7 @@ soli serve . --dev</code></pre>
     </p>
     <ul class="list-disc list-inside text-gray-400 mb-6 space-y-2">
         <li><strong class="text-white">Live reload is disabled.</strong> No WebSocket, no file watcher, no auto-refresh.</li>
-        <li><strong class="text-white">CSS and JS files are snapshotted into memory at startup.</strong> The server walks <code class="text-amber-400">public/</code> once and serves the bytes it loaded, with content-hash <code>ETag</code> and <code>Cache-Control: public, max-age=31536000, immutable</code>.</li>
+        <li><strong class="text-white">CSS and JS files are snapshotted into memory at startup.</strong> The server walks <code class="text-amber-400">public/</code> once and serves the bytes it loaded, with a content-hash <code>ETag</code>. A URL that <code class="text-amber-400">public_path()</code> versioned (<code>?v=&lt;mtime&gt;</code>) gets <code>Cache-Control: public, max-age=31536000, immutable</code>; the bare URL of the same file gets <code>public, max-age=300</code>, since it serves the next deploy's bytes too.</li>
     </ul>
     <p class="text-gray-400 mb-6">
         The in-memory snapshot exists to prevent a deploy-time race. If you overwrite <code class="text-amber-400">public/css/app.css</code> on disk before restarting the binary, the running process keeps serving the <strong>old</strong> bytes. Browsers that already loaded HTML referencing a specific asset version don't suddenly fetch mismatched new bytes against the cached page. The next binary restart reloads from disk.

@@ -43,6 +43,7 @@ impl Source<'_> {
 /// A file under `public/`, or `None` to fall through to route matching.
 pub(super) fn handle(
     path: &str,
+    query: Option<&str>,
     method: &str,
     public_dir: &Path,
     asset_cache: &AssetCache,
@@ -64,6 +65,7 @@ pub(super) fn handle(
     // the `canonicalize` inside the jail check). No `public/` at all: nothing
     // to serve.
     let canonical_public = canonical_public_dir(public_dir, false, dev_mode)?;
+    let cache_control = cache_control_for(query);
 
     // Production fast path, before any filesystem call: the startup asset
     // cache is keyed by canonical path, and for a traversal-free URL path that
@@ -79,6 +81,7 @@ pub(super) fn handle(
                     Source::Memory(asset.bytes.clone()),
                     asset.content_type,
                     Some(&asset.etag),
+                    cache_control,
                     headers,
                 ));
             }
@@ -137,6 +140,7 @@ pub(super) fn handle(
                 Source::Memory(asset.bytes.clone()),
                 asset.content_type,
                 Some(&asset.etag),
+                cache_control,
                 headers,
             ));
         }
@@ -164,6 +168,7 @@ pub(super) fn handle(
         },
         mime_type,
         etag.as_deref(),
+        cache_control,
         headers,
     ))
 }
@@ -233,19 +238,27 @@ pub(super) fn serve_disk_file(
     content_type: &str,
     headers: &HeaderMap,
 ) -> Response<ResponseBody> {
-    respond(Source::Disk { path, size }, content_type, None, headers)
+    respond(
+        Source::Disk { path, size },
+        content_type,
+        None,
+        server_constants::STATIC_CACHE_REVALIDATE,
+        headers,
+    )
 }
 
 /// Conditional GET, `Range`, or the whole thing.
 ///
 /// `etag` is `Some` exactly when the bytes are versioned — the cache computes
 /// one at startup, a disk read derives one from the mtime, and dev mode has
-/// none. It gates both the 304 and the long `Cache-Control`, which is why the
-/// no-ETag path is also the uncached one.
+/// none. It gates both the 304 and the `Cache-Control`, which is why the
+/// no-ETag path is also the uncached one. `cache_control` is what goes out
+/// with the ETag — see [`cache_control_for`].
 fn respond(
     source: Source<'_>,
     content_type: &str,
     etag: Option<&str>,
+    cache_control: &str,
     headers: &HeaderMap,
 ) -> Response<ResponseBody> {
     let total_size = source.size();
@@ -259,7 +272,7 @@ fn respond(
                     Response::builder()
                         .status(StatusCode::NOT_MODIFIED)
                         .header("ETag", etag)
-                        .header("Cache-Control", server_constants::STATIC_CACHE_MAX_AGE),
+                        .header("Cache-Control", cache_control),
                     Bytes::new(),
                 );
             }
@@ -287,6 +300,7 @@ fn respond(
                 .header("Content-Length", length.to_string())
                 .header("Accept-Ranges", "bytes"),
             etag,
+            cache_control,
         );
         let slice = match &source {
             // `parse_range_header` only ever returns an in-bounds span.
@@ -314,6 +328,7 @@ fn respond(
                 .header("Content-Length", length.to_string())
                 .header("Accept-Ranges", "bytes"),
             etag,
+            cache_control,
         )
     };
     let body = match source {
@@ -341,17 +356,37 @@ fn finish_streamed(
     builder.body(body).unwrap_or_else(|_| read_error())
 }
 
-/// `ETag` and the long `Cache-Control` travel together: bytes we cannot name
-/// are bytes a cache must not keep.
+/// `ETag` and `Cache-Control` travel together: bytes we cannot name are bytes
+/// a cache must not keep.
 fn with_validators(
     builder: hyper::http::response::Builder,
     etag: Option<&str>,
+    cache_control: &str,
 ) -> hyper::http::response::Builder {
     match etag {
         Some(etag) => builder
             .header("ETag", etag)
-            .header("Cache-Control", server_constants::STATIC_CACHE_MAX_AGE),
+            .header("Cache-Control", cache_control),
         None => builder,
+    }
+}
+
+/// A year and `immutable` only for a URL that names one version of the file:
+/// `public_path()` stamps `?v=<mtime>` (or `&v=`), so the next deploy's bytes
+/// arrive under another URL. A bare `/sw.js` or `/icon-512.png` is the same
+/// URL before and after a deploy; held for a year, a browser or a CDN in front
+/// keeps serving the old file and no reload can reach the new one.
+fn cache_control_for(query: Option<&str>) -> &'static str {
+    let versioned = query.is_some_and(|query| {
+        query.split('&').any(|pair| {
+            pair.strip_prefix("v=")
+                .is_some_and(|value| !value.is_empty())
+        })
+    });
+    if versioned {
+        server_constants::STATIC_CACHE_MAX_AGE
+    } else {
+        server_constants::STATIC_CACHE_REVALIDATE
     }
 }
 
@@ -559,6 +594,7 @@ mod tests {
                 Source::Memory(Bytes::from_static(b"body{}")),
                 "text/css",
                 Some("\"abc\""),
+                server_constants::STATIC_CACHE_MAX_AGE,
                 &headers(&[("if-none-match", client_etag)]),
             );
             assert_eq!(response.status(), StatusCode::NOT_MODIFIED, "{client_etag}");
@@ -576,6 +612,7 @@ mod tests {
             Source::Memory(Bytes::from_static(b"body{}")),
             "text/css",
             Some("\"abc\""),
+            server_constants::STATIC_CACHE_MAX_AGE,
             &headers(&[("if-none-match", "\"stale\"")]),
         );
         assert_eq!(response.status(), StatusCode::OK);
@@ -588,6 +625,7 @@ mod tests {
             Source::Memory(Bytes::from_static(b"0123456789")),
             "text/plain",
             Some("\"v1\""),
+            server_constants::STATIC_CACHE_MAX_AGE,
             &headers(&[("range", "bytes=2-5")]),
         );
         assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
@@ -615,6 +653,7 @@ mod tests {
             },
             "text/plain",
             Some("\"v1\""),
+            server_constants::STATIC_CACHE_MAX_AGE,
             &headers(&[("range", "bytes=-3")]),
         );
         assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
@@ -633,6 +672,7 @@ mod tests {
             Source::Memory(Bytes::from_static(b"0123456789")),
             "text/plain",
             None,
+            server_constants::STATIC_CACHE_MAX_AGE,
             &headers(&[("range", "bytes=8-")]),
         );
         assert_eq!(
@@ -648,6 +688,7 @@ mod tests {
             Source::Memory(Bytes::from_static(b"0123456789")),
             "text/plain",
             Some("\"v1\""),
+            server_constants::STATIC_CACHE_MAX_AGE,
             &headers(&[("range", "bytes=99-200")]),
         );
         assert_eq!(response.status(), StatusCode::RANGE_NOT_SATISFIABLE);
@@ -671,6 +712,7 @@ mod tests {
                 Source::Memory(Bytes::from_static(b"0123456789")),
                 "text/plain",
                 None,
+                server_constants::STATIC_CACHE_MAX_AGE,
                 &request_headers,
             );
             assert!(header_of(&response, "etag").is_none(), "{range:?}");
@@ -686,6 +728,7 @@ mod tests {
             Source::Memory(Bytes::from_static(b"0123456789")),
             "text/plain",
             None,
+            server_constants::STATIC_CACHE_MAX_AGE,
             &headers(&[("if-none-match", "\"anything\"")]),
         );
         assert_eq!(response.status(), StatusCode::OK);
@@ -701,6 +744,7 @@ mod tests {
             },
             "text/plain",
             Some("\"v1\""),
+            server_constants::STATIC_CACHE_MAX_AGE,
             &HeaderMap::new(),
         );
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
@@ -723,6 +767,7 @@ mod tests {
             },
             "application/octet-stream",
             Some("\"v1\""),
+            server_constants::STATIC_CACHE_MAX_AGE,
             &HeaderMap::new(),
         );
         assert_eq!(response.status(), StatusCode::OK);
@@ -742,6 +787,7 @@ mod tests {
             },
             "application/octet-stream",
             Some("\"v1\""),
+            server_constants::STATIC_CACHE_MAX_AGE,
             &headers(&[("range", range.as_str())]),
         );
         assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
@@ -773,6 +819,7 @@ mod tests {
 
         let response = handle(
             "/css/app.css",
+            None,
             "GET",
             &public,
             &cache,
@@ -789,6 +836,7 @@ mod tests {
 
         assert!(handle(
             "/css/../css/app.css",
+            None,
             "GET",
             &public,
             &cache,
@@ -797,8 +845,115 @@ mod tests {
         )
         .is_none());
         // Directories and `/` never touch the disk and fall through.
-        assert!(handle("/", "GET", &public, &cache, false, &HeaderMap::new()).is_none());
-        assert!(handle("/css/", "GET", &public, &cache, false, &HeaderMap::new()).is_none());
+        assert!(handle("/", None, "GET", &public, &cache, false, &HeaderMap::new()).is_none());
+        assert!(handle(
+            "/css/",
+            None,
+            "GET",
+            &public,
+            &cache,
+            false,
+            &HeaderMap::new()
+        )
+        .is_none());
+    }
+
+    /// Only a URL `public_path()` versioned is held for a year: a bare one is
+    /// the same URL after the next deploy, and a year of `immutable` on it
+    /// kept a service worker pinned in a CDN for months.
+    #[test]
+    fn only_a_versioned_url_is_immutable() {
+        for query in [
+            Some("v=1730000000"),
+            Some("theme=dark&v=17"),
+            Some("lang=fr&v=3"),
+        ] {
+            assert_eq!(
+                cache_control_for(query),
+                server_constants::STATIC_CACHE_MAX_AGE,
+                "{query:?}"
+            );
+        }
+        for query in [
+            None,
+            Some(""),
+            Some("v="),
+            Some("version=2"),
+            Some("x=v=2"),
+            Some("theme=dark"),
+        ] {
+            assert_eq!(
+                cache_control_for(query),
+                server_constants::STATIC_CACHE_REVALIDATE,
+                "{query:?}"
+            );
+        }
+    }
+
+    /// The same file answers with the short lifetime under its bare URL and the
+    /// year under a versioned one — on the full body and on a 304 alike.
+    #[test]
+    fn a_served_file_carries_the_lifetime_of_its_url() {
+        if files::files_root().is_some() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let public = dir.path().join("public");
+        fs::create_dir_all(&public).unwrap();
+        fs::write(
+            public.join("sw.js"),
+            "self.addEventListener('fetch', () => {})",
+        )
+        .unwrap();
+        let cache: AssetCache = std::sync::Arc::new(std::collections::HashMap::new());
+
+        let bare = handle(
+            "/sw.js",
+            None,
+            "GET",
+            &public,
+            &cache,
+            false,
+            &HeaderMap::new(),
+        )
+        .expect("served");
+        assert_eq!(bare.status(), StatusCode::OK);
+        assert_eq!(
+            header_of(&bare, "cache-control").as_deref(),
+            Some(server_constants::STATIC_CACHE_REVALIDATE)
+        );
+        let etag = header_of(&bare, "etag").expect("an ETag to revalidate on");
+
+        let revalidated = handle(
+            "/sw.js",
+            None,
+            "GET",
+            &public,
+            &cache,
+            false,
+            &headers(&[("if-none-match", etag.as_str())]),
+        )
+        .expect("served");
+        assert_eq!(revalidated.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(
+            header_of(&revalidated, "cache-control").as_deref(),
+            Some(server_constants::STATIC_CACHE_REVALIDATE)
+        );
+
+        let versioned = handle(
+            "/sw.js",
+            Some("v=4"),
+            "GET",
+            &public,
+            &cache,
+            false,
+            &HeaderMap::new(),
+        )
+        .expect("served");
+        assert_eq!(
+            header_of(&versioned, "cache-control").as_deref(),
+            Some(server_constants::STATIC_CACHE_MAX_AGE)
+        );
     }
 
     #[test]

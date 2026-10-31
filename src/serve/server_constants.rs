@@ -333,8 +333,16 @@ fn env_usize(name: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
-/// Static file cache control max-age for production (1 year in seconds)
+/// Static file cache control for a versioned URL — one `public_path()` stamped
+/// with `?v=<mtime>` — in production: a year, immutable. The URL changes when
+/// the file does, so nothing can hold stale bytes under it.
 pub const STATIC_CACHE_MAX_AGE: &str = "public, max-age=31536000, immutable";
+
+/// Static file cache control for a bare URL (`/sw.js`, `/manifest.webmanifest`,
+/// an icon linked by hand): the same URL serves the next deploy's bytes, so a
+/// browser or a CDN may keep it only briefly and then revalidates on the ETag.
+/// A year here pinned a service worker in Cloudflare for months.
+pub const STATIC_CACHE_REVALIDATE: &str = "public, max-age=300";
 
 /// MIME types for static file serving
 pub const MIME_TYPES: &[(&str, &str)] = &[

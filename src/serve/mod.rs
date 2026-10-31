@@ -2557,6 +2557,7 @@ async fn handle_hyper_request(
     // and the conditional-GET / `Range` / full-body reply. See `static_files`.
     if let Some(response) = static_files::handle(
         &path,
+        raw_query.as_deref(),
         &method,
         public_dir,
         asset_cache,
