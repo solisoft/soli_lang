@@ -184,7 +184,7 @@ def blog_scheduled_slug?(slug)
 end
 
 def blog_visible?(info)
-    blog_scheduled_on(info).nil? or blog_preview?
+    blog_scheduled_on(info).nil? or blog_preview?()
 end
 
 def extract_title(markdown)
