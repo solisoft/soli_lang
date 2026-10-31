@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [2.29.2] - 2026-10-31
+
+### Changed
+
+- The score engraver (`eui-score`) moves to eui 291b705: a slur written `^(`
+  or `_(` (and a phrasing slur `^\(` / `_\(`) goes over or under the notes,
+  over any `\slurUp` setting; dynamics and hairpins under the staff keep
+  under a slur drawn below the notes instead of crossing it. `paths_words`
+  also answers each chord diagram's grid, by the word it is (b64978c).
+
 ## [2.29.1] - 2026-10-31
 
 ### Added
