@@ -423,7 +423,6 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::GetAndNullLocal(slot) => out.push_str(&format!("GET_AND_NULL_LOCAL {:>2}", slot)),
         Op::IsZeroLocal(slot) => out.push_str(&format!("IS_ZERO_LOCAL  {:>3}", slot)),
         Op::NotZeroLocal(slot) => out.push_str(&format!("NOT_ZERO_LOCAL {:>3}", slot)),
-        Op::SwapSetLocal(slot) => out.push_str(&format!("SWAP_SET_LOCAL   {:>3}", slot)),
         Op::GetGlobalNullCheck(idx) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("GET_GLOBAL_NULL  {:>5} ({})", idx, name))

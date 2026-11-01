@@ -1186,11 +1186,11 @@ impl Compiler {
                 // path: `h.set("k", v)` already compiled to one dispatch while
                 // `h["k"] = v` — the far more common spelling — took two.
                 //
-                // Safe to swap because both sequences leave exactly one value:
-                // the generic form pops receiver+value and pushes Null, the
-                // fused form pops value and pushes Null. Only a plain variable
-                // receiver is fused, so skipping its evaluation cannot lose a
-                // side effect.
+                // Safe to swap because both sequences leave exactly one value,
+                // the assigned one: the generic form pops receiver+value and
+                // pushes the value, the fused form pops the value and pushes it
+                // back. Only a plain variable receiver is fused, so skipping
+                // its evaluation cannot lose a side effect.
                 if let ExprKind::StringLiteral(key) = &index.kind {
                     let key_idx = self.add_string_constant(key);
                     let fused = match &object.kind {

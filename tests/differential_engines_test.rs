@@ -138,6 +138,56 @@ const CASES: &[(&str, &str)] = &[
         "or_assign_default",
         "fn f(v) { let x = v\n  x ||= 99\n  return x }\nprint(f(0))\nprint(f(7))",
     ),
+    (
+        // A self-assignment leaves every local as it was. The VM fused
+        // `GetLocal(s), SetLocal(s)` into `SwapSetLocal`, which popped a value
+        // the pair never pushed: two locals were swapped, and reading the last
+        // one indexed past the stack (a panic).
+        "self_assignment_keeps_every_local",
+        r##"def keep
+  a = 1
+  b = 2
+  a = a
+  [a, b]
+end
+
+def keep_last
+  a = 1
+  b = 2
+  a = a
+  [b, a]
+end
+
+def keep_param(p, q)
+  p = p
+  [p, q]
+end
+
+def value_of
+  x = 5
+  y = (x = x)
+  [x, y]
+end
+
+def in_loop(n)
+  x = 0
+  i = 0
+  while i < n
+    i += 1
+    x = i
+    x = x
+  end
+  x
+end
+
+def relet
+  let a = 1
+  let b = 2
+  let a = a
+  [a, b]
+end
+print(keep(), keep_last(), keep_param(3, 4), value_of(), in_loop(3), relet())"##,
+    ),
     // --- recursion (reentrant locals) ---
     (
         "recursion_let",
@@ -198,6 +248,28 @@ const CASES: &[(&str, &str)] = &[
         // Comprehension as a call argument — wrapped in a clean-frame lambda.
         "comprehension_call_arg",
         "fn total(a) { let t = 0\n  for v in a { t = t + v }\n  return t }\nprint(total([x * 2 for x in [1, 2, 3]]))",
+    ),
+    (
+        // `h["k"] = v` / `h.set("k", v)` leaves `v` on the stack, so a
+        // comprehension or binding `match` later in the expression must take
+        // the clean-frame lambda. The VM counted the constant-key set opcodes
+        // at -1, saw a clean stack, and built the result in `v`'s slot.
+        "index_assignment_before_a_comprehension_or_match",
+        r##"h = {}
+
+def run
+  g = {}
+  xs = [1, 2]
+  a = [g["k"] = 9, [x * 10 for x in xs]]
+  b = [g.set("j", 8), [x + 1 for x in xs if x > 1]]
+  c = [h["k"] = 7, {x: x * 2 for x in xs}]
+  d = [g["m"] = 1, match xs { [p, q] => p + q, _ => 0 }]
+  e = [h.set("n", 6), [x for x in xs]]
+  [a, b, c, d, e, g, h]
+end
+print(run())
+r = [h["t"] = 5, [x * 2 for x in [3, 4]]]
+print(r)"##,
     ),
     (
         // Backticks used to refuse compiled mode. They lower to System.shell;

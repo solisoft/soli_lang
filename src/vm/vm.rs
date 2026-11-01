@@ -1291,12 +1291,6 @@ impl Vm {
                         std::mem::replace(&mut self.stack[base + slot as usize], Value::Null);
                     self.stack.push(value);
                 }
-                Op::SwapSetLocal(slot) => {
-                    let new_value = self.pop();
-                    let old_value =
-                        std::mem::replace(&mut self.stack[base + slot as usize], new_value);
-                    self.stack.push(old_value);
-                }
                 _ => break Some(op),
             }
         };
@@ -4284,13 +4278,6 @@ impl Vm {
                         _ => true,
                     };
                     self.stack.push(Value::Bool(result));
-                }
-                Op::SwapSetLocal(slot) => {
-                    let new_val = self.pop();
-                    let base = self.frames.last().unwrap().stack_base;
-                    let old_val = self.stack[base + slot as usize].clone();
-                    self.stack[base + slot as usize] = new_val;
-                    self.stack.push(old_val);
                 }
                 Op::GetGlobalNullCheck(idx) => {
                     let val = {

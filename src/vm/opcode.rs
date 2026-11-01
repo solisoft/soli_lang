@@ -443,8 +443,6 @@ pub enum Op {
     IsZeroLocal(u16),
     /// Check if local != 0, push bool
     NotZeroLocal(u16),
-    /// Set local to value from stack and push old value
-    SwapSetLocal(u16),
     /// Get global and check if null/undefined in one op
     GetGlobalNullCheck(u16),
     /// Get global, call if exists (optimized fast path)

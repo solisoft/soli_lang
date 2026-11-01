@@ -75,8 +75,11 @@ Helpers you will call if you add a statement:
 3. Arm in `Vm::run_dispatch` (the big `match`)
 4. Disassembler string
 5. If it is hot and simple, an arm in `Vm::run_fast` too (see below)
+6. Its net stack effect in `stack_effect` (`compiler.rs`), and a case in `stack_effect_matches_what_each_handler_does`, which runs the handler on a VM and compares stack heights. The compiler reads that table to tell whether the stack holds only locals before it gives a comprehension or a binding `match` a slot. If a value is more negative than the handler's real effect, the gate sees a clean stack that is not clean.
 
 `vm.rs::run_dispatch` is a large match by design (dispatch). Don’t split it for style.
+
+A peephole fusion (`peephole_optimize_chunk`) must leave the stack exactly as the sequence it replaces does: same net effect, same value on top. `SetLocal` peeks instead of popping, so a sequence ending in it still holds its value. When the fused op pushes nothing, the statement's trailing `Pop` must be part of the pattern, as it is for `IncrLocal` and `AddNestedIndex`. A shape the fusion cannot keep exact is left unfused. `x = x` is one: fusing it into `SwapSetLocal` lost a slot, swapped two locals and panicked on the next read.
 
 ### The fast tier (`run_fast`)
 

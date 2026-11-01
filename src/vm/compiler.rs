@@ -1029,16 +1029,6 @@ fn peephole_optimize_proto(proto: &mut FunctionProto) {
     peephole_optimize_chunk(&mut proto.chunk);
 }
 
-/// Net value-stack effect (pushes − pops) of an opcode, used by the compiler's
-/// `stack_height` tracking for the comprehension clean-position gate.
-///
-/// Only opcodes the compiler emits during compilation need to be exact; the
-/// peephole super-instructions run after compilation (mutating the chunk
-/// directly, not via `emit`) so their values here are for completeness only.
-/// `ForIter`/`ForIterRange` use the continue-path effect (+1); loops resync the
-/// height explicitly so the exit-path mismatch never matters. The gate tolerates
-/// over-counting (an extra, safe fallback) but must never under-count, so when
-/// in doubt an op's effect should not be more negative than reality.
 /// Bitmask of which parameters declare a default value (bit `i` = parameter
 /// `i`). Parameters past bit 63 are reported as defaulted — see
 /// [`FunctionProto::defaults_mask`].
@@ -1056,6 +1046,19 @@ fn defaults_mask(params: &[Parameter]) -> u64 {
     mask
 }
 
+/// Net value-stack effect (pushes − pops) of an opcode, used by the compiler's
+/// `stack_height` tracking for the comprehension clean-position gate.
+///
+/// Only opcodes the compiler emits during compilation reach the gate; the
+/// peephole super-instructions run after compilation (mutating the chunk
+/// directly, not via `emit`). Every value is held to its handler all the same:
+/// `stack_effect_matches_what_each_handler_does` runs each opcode it can set
+/// up on a real VM and compares the stack heights, so add a case there with a
+/// new opcode. `ForIter`/`ForIterRange` use the continue-path effect (+1);
+/// loops resync the height explicitly so the exit-path mismatch never matters.
+/// The gate tolerates over-counting (an extra, safe fallback) but must never
+/// under-count, so when in doubt an op's effect should not be more negative
+/// than reality.
 fn stack_effect(op: Op) -> i32 {
     use Op::*;
     match op {
@@ -1064,7 +1067,9 @@ fn stack_effect(op: Op) -> i32 {
         Dup => 1,
         Pop => -1,
         // Reads push; stores leave the value in place (net 0).
-        GetLocal(_) | GetGlobal(_) | GetUpvalue(_) | GetThis | GetSuper(_) => 1,
+        GetLocal(_) | GetGlobal(_) | GetUpvalue(_) | GetThis => 1,
+        // Pops `this` and pushes nil: a stub nothing emits.
+        GetSuper(_) => 0,
         SetLocal(_) | SetGlobal(_) | SetUpvalue(_) => 0,
         DefineGlobal(_) | CloseUpvalue => -1,
         // Binary arithmetic / comparison: pop 2, push 1. Unary: pop 1, push 1.
@@ -1126,9 +1131,11 @@ fn stack_effect(op: Op) -> i32 {
         TemplatePartial => -1,
         TemplateContentFor => -1,
         TemplateYield | TemplateYieldNamed => 0,
-        // Peephole super-instructions (not emitted during the tracked pass; values
-        // for completeness). Hash*Const directly-emitted variants are exact.
+        // Peephole super-instructions, and the `Hash*Const` family, which the
+        // compiler emits itself (`h["k"]`, `h["k"] = v`, `h.get("k")`,
+        // `h.set("k", v)`) so the gate reads those values.
         HashGetConst(_) | HashHasKeyConst(_) | HashDeleteConst(_) | HashGetConst2(_, _) => 0,
+        // Pops the receiver and the value, pushes the value back.
         HashSetConst(_) => -1,
         HashGetLocalConst(_, _)
         | HashHasKeyLocalConst(_, _)
@@ -1138,14 +1145,19 @@ fn stack_effect(op: Op) -> i32 {
         // Pops the variable's value and the RHS, pushes the updated variable.
         AppendLocal(_) | AppendGlobal(_) | AppendUpvalue(_) => -1,
         AddAssignLocal(_) | AddAssignUpvalue(_) | AddAssignGlobal(_) => -1,
-        HashSetLocalConst(_, _) => -1,
+        // Pops the value and pushes it back: it is the assignment's value. At
+        // -1, `h["k"] = v` in the middle of an expression left the gate
+        // seeing a clean stack, and a comprehension or binding `match` later
+        // in the expression took an occupied slot.
+        HashSetLocalConst(_, _) => 0,
         HashGetGlobalConst(_, _)
         | HashHasKeyGlobalConst(_, _)
         | HashDeleteGlobalConst(_, _)
         | HashGetGlobalConst2(_, _, _) => 1,
-        HashSetGlobalConst(_, _) => -1,
-        IncrLocal(_) | DecrLocal(_) | IncrLocalFast(_) | SwapSetLocal(_) | IsNull | NotNull
-        | PopNull | Nop | CoverLine(_) => 0,
+        HashSetGlobalConst(_, _) => 0,
+        IncrLocal(_) | DecrLocal(_) | IncrLocalFast(_) | PopNull | Nop | CoverLine(_) => 0,
+        // Peek the value and push a bool.
+        IsNull | NotNull => 1,
         AddLocalLocal(_, _)
         | SubLocalLocal(_, _)
         | MulLocalLocal(_, _)
@@ -2081,17 +2093,14 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
-        // Pattern: GetLocal(slot), SetLocal(slot) → SwapSetLocal (swap old and new)
-        if i + 1 < len {
-            if let (Op::GetLocal(slot_a), Op::SetLocal(slot_b)) = (code[i], code[i + 1]) {
-                if slot_a == slot_b && !any_jump_target(&is_jump_target, i + 1, 2) {
-                    code[i] = Op::SwapSetLocal(slot_a);
-                    code[i + 1] = NOP;
-                    i += 2;
-                    continue;
-                }
-            }
-        }
+        // NB: `GetLocal(s), SetLocal(s)` (`x = x`, a same-scope `let x = x`,
+        // `@x = @x` in a view) is deliberately NOT fused. It used to become
+        // `SwapSetLocal(s)`, which popped a value the pair never pushed: the
+        // store took whatever sat on top of the stack, usually the last local,
+        // and the statement's `Pop` then dropped one slot too many. Two locals
+        // were swapped and the next read of the last one indexed past the stack
+        // and panicked. The pair already leaves the slot as it was, so a fusion
+        // would only save a dispatch on code nobody writes.
 
         i += 1;
     }
@@ -2608,6 +2617,429 @@ mod inplace_peephole_tests {
                 .any(|o| matches!(o, Op::SetNestedIndex(_, _, _, _))),
             "expected SetNestedIndex, got: {:?}",
             ops
+        );
+    }
+
+    /// Run `program` on the VM and show its global `result` as `print` would.
+    fn vm_result(program: &str) -> String {
+        let tokens = Scanner::new(program).scan_tokens().expect("lex");
+        let parsed = Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&parsed).expect("compile");
+        let mut vm = crate::vm::Vm::new();
+        if let Err(err) = vm.execute(&module.main) {
+            panic!("{program}\nraised: {err}");
+        }
+        match vm.globals.get("result") {
+            Some(value) => value.to_string(),
+            None => panic!("{program}\nset no `result`"),
+        }
+    }
+
+    /// A self-assignment stays the `GetLocal`/`SetLocal` pair the compiler
+    /// emits. It used to be fused into `SwapSetLocal`, which popped a value
+    /// the pair never pushed (see the note in `peephole_optimize_chunk`).
+    #[test]
+    fn self_assignment_is_left_as_compiled() {
+        let ops = fn_ops("a = 1\nb = 2\na = a\nreturn [a, b]");
+        assert!(
+            ops.windows(2).any(
+                |pair| matches!(pair, [Op::GetLocal(read), Op::SetLocal(write)] if read == write)
+            ),
+            "expected `a = a` to stay GetLocal + SetLocal, got: {ops:?}"
+        );
+    }
+
+    /// `x = x` in each of its spellings leaves `x` and every other local as
+    /// they were. Fused, the store took the last local's value, the
+    /// statement's `Pop` dropped one slot too many, and the next read of the
+    /// last local indexed past the stack: a panic.
+    #[test]
+    fn self_assignment_keeps_every_local() {
+        let cases = [
+            (
+                "def f()\n  a = 1\n  b = 2\n  a = a\n  [a, b]\nend\nlet result = f()",
+                "[1, 2]",
+            ),
+            (
+                "def f()\n  a = 1\n  b = 2\n  a = a\n  [b, a]\nend\nlet result = f()",
+                "[2, 1]",
+            ),
+            (
+                "def f(p, q)\n  p = p\n  [p, q]\nend\nlet result = f(3, 4)",
+                "[3, 4]",
+            ),
+            (
+                "def f()\n  x = 5\n  y = (x = x)\n  [x, y]\nend\nlet result = f()",
+                "[5, 5]",
+            ),
+            (
+                "def f(n)\n  x = 0\n  i = 0\n  while i < n\n    i += 1\n    x = i\n    x = x\n  end\n  x\nend\nlet result = f(3)",
+                "3",
+            ),
+            // A `let` of a name already in the scope assigns it.
+            (
+                "def f()\n  let a = 1\n  let b = 2\n  let a = a\n  [a, b]\nend\nlet result = f()",
+                "[1, 2]",
+            ),
+        ];
+        for (program, expected) in cases {
+            assert_eq!(vm_result(program), expected, "{program}");
+        }
+    }
+
+    /// `h["k"] = v` and `h.set("k", v)` leave `v` on the stack, so a
+    /// comprehension or a binding `match` later in the same expression is not
+    /// at the locals baseline and must take the clean-frame lambda. The
+    /// constant-key set opcodes were counted at -1, the gate saw a clean
+    /// stack, and the comprehension built its result in the slot holding `v`.
+    #[test]
+    fn index_assignment_mid_expression_keeps_the_next_slot() {
+        let cases = [
+            (
+                "def f()\n  h = {}\n  xs = [1, 2]\n  [h[\"k\"] = 9, [x * 10 for x in xs]]\nend\nlet result = f()",
+                "[9, [10, 20]]",
+            ),
+            (
+                "def f()\n  h = {}\n  xs = [1, 2]\n  [h.set(\"k\", 8), [x + 1 for x in xs]]\nend\nlet result = f()",
+                "[8, [2, 3]]",
+            ),
+            (
+                "def f()\n  h = {}\n  xs = [1, 2]\n  [h[\"k\"] = 7, {x: x * 2 for x in xs}]\nend\nlet result = f()",
+                "[7, {x => 4}]",
+            ),
+            (
+                "def f()\n  h = {}\n  xs = [1, 2]\n  [h[\"k\"] = 1, match xs { [p, q] => p + q, _ => 0 }]\nend\nlet result = f()",
+                "[1, 3]",
+            ),
+            // A global hash (`HashSetGlobalConst`), in a function and at the
+            // top level.
+            (
+                "let g = {}\ndef f()\n  xs = [1, 2]\n  [g[\"k\"] = 6, [x * 3 for x in xs]]\nend\nlet result = f()",
+                "[6, [3, 6]]",
+            ),
+            (
+                "let g = {}\nlet result = [g[\"t\"] = 5, [x * 2 for x in [3, 4]]]",
+                "[5, [6, 8]]",
+            ),
+        ];
+        for (program, expected) in cases {
+            assert_eq!(vm_result(program), expected, "{program}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod stack_effect_tests {
+    use super::*;
+    use crate::interpreter::value::{HashKey, HashPairs, NativeFunction, Value};
+
+    // The constant pool every case shares (`constants`).
+    const INT: u16 = 0; // 7
+    const ZERO: u16 = 1; // 0
+    const STR: u16 = 2; // "s"
+    const KEY: u16 = 3; // "k"
+    const HASH_GLOBAL: u16 = 4; // "g": the global {"k": {"k": 7}}
+    const STR_GLOBAL: u16 = 5; // "t": the global "s"
+    const FN_GLOBAL: u16 = 6; // "f": a global native function
+    const LENGTH: u16 = 7; // "length"
+    const FUNCTION: u16 = 8; // a function that captures nothing
+    const KEY_LIST: u16 = 9; // the keys ["k"]
+    const JSON: u16 = 10; // "[1]"
+
+    fn constants() -> Vec<Constant> {
+        vec![
+            Constant::Int(7),
+            Constant::Int(0),
+            Constant::String("s".into()),
+            Constant::String("k".into()),
+            Constant::String("g".into()),
+            Constant::String("t".into()),
+            Constant::String("f".into()),
+            Constant::String("length".into()),
+            Constant::Function(Arc::new(FunctionProto::new("inner".to_string()))),
+            Constant::HashKeys(Arc::new(vec![HashKey::String("k".into())])),
+            Constant::String("[1]".into()),
+        ]
+    }
+
+    // The locals `PRELUDE` leaves, by slot (slot 0 is the running closure).
+    const FLAT: u16 = 1; // {"k": 7}
+    const N: u16 = 2; // 7
+    const KEYS: u16 = 3; // ["k"]
+    const IDX: u16 = 4; // 0
+    const TEXT: u16 = 5; // "s"
+    const NESTED: u16 = 6; // {"k": {"k": 7}}
+
+    const PRELUDE: &[Op] = &[
+        Op::Constant(KEY),
+        Op::Constant(INT),
+        Op::Hash(1),
+        Op::Constant(INT),
+        Op::Constant(KEY),
+        Op::Array(1),
+        Op::Constant(ZERO),
+        Op::Constant(STR),
+        Op::Constant(KEY),
+        Op::Constant(KEY),
+        Op::Constant(INT),
+        Op::Hash(1),
+        Op::Hash(1),
+    ];
+
+    fn hash_of(key: &str, value: Value) -> Value {
+        let mut map = HashPairs::default();
+        map.insert(HashKey::String(key.into()), value);
+        Value::Hash(Rc::new(RefCell::new(map)))
+    }
+
+    /// The stack height once `code` has run on a fresh VM. A chunk with no
+    /// `Return` stops where its code ends and leaves the stack as it is.
+    fn height_after(code: &[Op]) -> usize {
+        let mut proto = FunctionProto::new(String::new());
+        proto.chunk.constants = constants();
+        for op in code {
+            proto.chunk.emit(*op, 1);
+        }
+        let mut vm = crate::vm::Vm::new();
+        vm.globals
+            .insert("g".to_string(), hash_of("k", hash_of("k", Value::Int(7))));
+        vm.globals
+            .insert("t".to_string(), Value::String("s".into()));
+        vm.globals.insert(
+            "f".to_string(),
+            Value::NativeFunction(NativeFunction::new("f", None, |_| Ok(Value::Null))),
+        );
+        if let Err(err) = vm.execute(&Arc::new(proto)) {
+            panic!("{code:?} raised: {err}");
+        }
+        vm.stack.len()
+    }
+
+    /// `stack_effect` is the compiler's model of each handler, and the
+    /// comprehension / binding-`match` gate trusts it never to under-count.
+    /// This measures the handlers instead of restating them: each case runs
+    /// `PRELUDE` + its setup with and without the opcode, and the difference
+    /// in stack height is what the opcode really does. Branches take their
+    /// fall-through path (offset 0), `ForIter` its continue path.
+    ///
+    /// `HashSetLocalConst` and `HashSetGlobalConst` were listed at -1, though
+    /// both push the value back: after `h["k"] = v` mid-expression the gate
+    /// saw a clean stack and a comprehension took an occupied slot.
+    ///
+    /// Not covered, because they need a callee frame, upvalues, class or
+    /// module machinery or a thrown exception, set process-wide flags, or end
+    /// the frame: `Return`, `Loop`, `Throw`, `Rethrow`, `GetUpvalue`,
+    /// `SetUpvalue`, `AppendUpvalue`, `AddAssignUpvalue`, `New`, `NewNamed`,
+    /// `CallNamed`, `CallMethodById`, `CallSuperInit`, `CallSuperMethod`,
+    /// `Module`, `Inherit`, `Include`, `Extend`, `Method`, `StaticMethod`,
+    /// `Field`, `StaticField`, `ConstField`, `StaticConstField`, `MarkPrivate`,
+    /// `MarkProtected`, `EnumPayload`, `TemplateComponent`, `TemplatePartial`,
+    /// `TemplateYield`, `TemplateYieldNamed` and `TemplateContentFor`.
+    #[test]
+    fn stack_effect_matches_what_each_handler_does() {
+        use Op::*;
+        let two_ints: &[Op] = &[Constant(INT), Constant(INT)];
+        let cases: &[(&[Op], Op)] = &[
+            // Literals and the stack.
+            (&[], Constant(INT)),
+            // The fast tier declines a string constant; the general arm runs.
+            (&[], Constant(STR)),
+            (&[], Null),
+            (&[], True),
+            (&[], False),
+            (&[], Symbol(KEY)),
+            (&[Constant(INT)], Pop),
+            (&[Constant(INT)], Dup),
+            (&[Constant(INT)], DupN(2)),
+            (&[Constant(INT)], PopNull),
+            (&[], Nop),
+            (&[], CoverLine(1)),
+            (&[], Import(KEY)),
+            // Locals and globals.
+            (&[], GetLocal(N)),
+            (&[], GetLocal2(N, IDX)),
+            (&[Constant(INT)], SetLocal(N)),
+            (&[Constant(INT)], SetLocalPop(N)),
+            (&[], GetAndNullLocal(N)),
+            (&[], GetThis),
+            (&[], GetGlobal(HASH_GLOBAL)),
+            (&[], GetGlobalNullCheck(HASH_GLOBAL)),
+            (&[Constant(INT)], SetGlobal(STR_GLOBAL)),
+            (&[Constant(INT)], DefineGlobal(STR_GLOBAL)),
+            (&[Null], SelfOrGlobal(HASH_GLOBAL)),
+            (&[Null], SelfOrGlobalCallee(HASH_GLOBAL)),
+            (&[Null], GetSuper(KEY)),
+            (&[Constant(INT)], CloseUpvalue),
+            // Arithmetic and comparison.
+            (two_ints, Add),
+            (&[Constant(STR), Constant(STR)], Add),
+            (two_ints, Subtract),
+            (two_ints, Multiply),
+            (two_ints, Divide),
+            (two_ints, Modulo),
+            (two_ints, Equal),
+            (&[Constant(STR), Constant(STR)], Equal),
+            (two_ints, NotEqual),
+            (two_ints, Less),
+            (two_ints, LessEqual),
+            (two_ints, Greater),
+            (two_ints, GreaterEqual),
+            (&[Constant(INT)], Negate),
+            (&[Constant(INT)], Not),
+            (&[Null], IsNull),
+            (&[Null], NotNull),
+            // Branches.
+            (&[], Jump(0)),
+            (&[True], JumpIfFalse(0)),
+            (&[True], JumpIfFalseNoPop(0)),
+            (&[True], JumpIfTrueNoPop(0)),
+            (&[Null], NullishJump(0)),
+            (&[Null], JumpIfNull(0)),
+            (&[Null], JumpIfNotNull(0)),
+            (&[], JumpIfParamSupplied(0, 0)),
+            (two_ints, TestLessJump(0)),
+            (two_ints, TestLessEqualJump(0)),
+            (two_ints, TestGreaterJump(0)),
+            (two_ints, TestGreaterEqualJump(0)),
+            (two_ints, TestNotEqualJump(0)),
+            (&[], RescueJump(0)),
+            (&[Constant(INT)], CatchMatch(KEY, 0)),
+            (&[Constant(INT)], MatchType(KEY, 0)),
+            // Fused reads of locals: each pushes its result.
+            (&[], AddLocalLocal(N, N)),
+            (&[], SubLocalLocal(N, N)),
+            (&[], MulLocalLocal(N, N)),
+            (&[], DivLocalLocal(N, N)),
+            (&[], ModLocalLocal(N, N)),
+            (&[], LessLocalLocal(N, N)),
+            (&[], LessEqualLocalLocal(N, N)),
+            (&[], GreaterLocalLocal(N, N)),
+            (&[], EqualLocalLocal(N, N)),
+            (&[], NotEqualLocalLocal(N, N)),
+            (&[], LessLocalConst(N, INT)),
+            (&[], LessEqualLocalConst(N, INT)),
+            (&[], GreaterLocalConst(N, INT)),
+            (&[], GreaterEqualLocalConst(N, INT)),
+            (&[], EqualLocalConst(N, INT)),
+            (&[], NotEqualLocalConst(N, INT)),
+            (&[], AddLocalConst(N, INT)),
+            (&[], SubLocalConst(N, INT)),
+            (&[], MulLocalConst(N, INT)),
+            (&[], DivLocalConst(N, INT)),
+            (&[], AddLocalInt(N, 1)),
+            (&[], IsTruthyLocal(N)),
+            (&[], IsFalsyLocal(N)),
+            (&[], IsZeroLocal(N)),
+            (&[], NotZeroLocal(N)),
+            (&[], NotLocal(N)),
+            (&[], NegateLocal(N)),
+            (&[], GetLocalProperty(FLAT, KEY)),
+            (&[], GetLocalIndex(KEYS, IDX)),
+            (&[], GetNestedIndex(FLAT, KEYS, IDX)),
+            // In place: no stack traffic.
+            (&[], IncrLocal(N)),
+            (&[], DecrLocal(N)),
+            (&[], IncrLocalFast(N)),
+            (&[], AddLocalsInPlace(N, N)),
+            (&[], AppendLocalConst(TEXT, STR)),
+            (&[], AppendGlobalConst(STR_GLOBAL, STR)),
+            (&[], AddNestedIndex(N, FLAT, KEYS, IDX)),
+            (&[], SetNestedIndex(FLAT, KEYS, IDX, N)),
+            // `<<` and `+=`, with the variable's value and the operand pushed.
+            (&[GetLocal(TEXT), Constant(STR)], AppendLocal(TEXT)),
+            (
+                &[GetGlobal(STR_GLOBAL), Constant(STR)],
+                AppendGlobal(STR_GLOBAL),
+            ),
+            (&[GetLocal(N), Constant(INT)], AddAssignLocal(N)),
+            (
+                &[GetGlobal(STR_GLOBAL), Constant(STR)],
+                AddAssignGlobal(STR_GLOBAL),
+            ),
+            // Constant-key hash ops.
+            (&[GetLocal(FLAT)], HashGetConst(KEY)),
+            (&[GetLocal(FLAT)], HashHasKeyConst(KEY)),
+            (&[GetLocal(FLAT)], HashDeleteConst(KEY)),
+            (&[GetLocal(NESTED)], HashGetConst2(KEY, KEY)),
+            (&[GetLocal(FLAT), Constant(INT)], HashSetConst(KEY)),
+            (&[], HashGetLocalConst(FLAT, KEY)),
+            (&[], HashHasKeyLocalConst(FLAT, KEY)),
+            (&[], HashDeleteLocalConst(FLAT, KEY)),
+            (&[], HashGetLocalConst2(NESTED, KEY, KEY)),
+            (&[Constant(INT)], HashSetLocalConst(FLAT, KEY)),
+            (&[], HashGetGlobalConst(HASH_GLOBAL, KEY)),
+            (&[], HashHasKeyGlobalConst(HASH_GLOBAL, KEY)),
+            (&[], HashDeleteGlobalConst(HASH_GLOBAL, KEY)),
+            (&[], HashGetGlobalConst2(HASH_GLOBAL, KEY, KEY)),
+            (&[Constant(INT)], HashSetGlobalConst(HASH_GLOBAL, KEY)),
+            // Collections, indexing and properties.
+            (&[], Array(0)),
+            (two_ints, Array(2)),
+            (&[Constant(KEY), Constant(INT)], Hash(1)),
+            (&[Constant(INT)], HashWithKeys(KEY_LIST, 1)),
+            (&[GetLocal(KEYS), Constant(INT)], ArrayPush),
+            (&[Array(0), GetLocal(KEYS)], Spread),
+            (&[Constant(ZERO), Constant(INT)], Range),
+            (&[GetLocal(KEYS), Constant(ZERO)], GetIndex),
+            (&[GetLocal(KEYS), Constant(ZERO), Constant(INT)], SetIndex),
+            (&[Constant(STR), Constant(INT)], BuildString(2)),
+            (&[Constant(STR)], BuildString(1)),
+            (&[GetLocal(FLAT)], GetProperty(KEY)),
+            (&[GetLocal(FLAT)], GetPropertyOrNull(KEY)),
+            (&[GetLocal(FLAT), Constant(INT)], SetProperty(KEY)),
+            // Iterators (the iterator itself lives on `iter_stack`).
+            (&[GetLocal(KEYS)], GetIter),
+            (&[Constant(ZERO), Constant(INT)], GetIterRange),
+            (&[GetLocal(KEYS), GetIter], ForIter(0)),
+            (
+                &[Constant(ZERO), Constant(INT), GetIterRange],
+                ForIterRange(0),
+            ),
+            (&[GetLocal(KEYS), GetIter], PopIter),
+            // Exception handlers live on their own stack too.
+            (&[], TryBegin(0, 0)),
+            (&[TryBegin(0, 0)], TryEnd),
+            (&[TryBegin(0, 0)], PopHandler),
+            (&[Constant(INT)], ForceFuture),
+            // Calls (through a native function), objects and output.
+            (&[GetGlobal(FN_GLOBAL), Constant(INT)], Call(1)),
+            (&[Constant(INT)], CallGlobal(FN_GLOBAL, 1)),
+            (&[], GetGlobalCall(FN_GLOBAL, 0)),
+            (&[GetLocal(KEYS)], CallMethod(LENGTH, 0)),
+            (
+                &[Null, SelfOrGlobalCallee(FN_GLOBAL), Constant(INT)],
+                CallSelfOrGlobal(FN_GLOBAL, 1),
+            ),
+            (&[], Closure(FUNCTION)),
+            (&[], Class(KEY)),
+            (&[Constant(INT)], Print(1)),
+            (&[Constant(JSON)], JsonParse),
+            (&[Constant(INT)], JsonStringify),
+            (&[], TemplateWriteConst(STR)),
+            (&[Constant(INT)], TemplateWrite(true)),
+            (&[GetLocal(KEYS)], TemplateIter),
+            (&[], TemplateCaptureStart),
+            (&[TemplateCaptureStart, Pop], TemplateCaptureEnd),
+        ];
+
+        let mut wrong = Vec::new();
+        for (setup, op) in cases {
+            let mut before = PRELUDE.to_vec();
+            before.extend_from_slice(setup);
+            let mut after = before.clone();
+            after.push(*op);
+            let measured = height_after(&after) as i32 - height_after(&before) as i32;
+            if measured != stack_effect(*op) {
+                wrong.push(format!(
+                    "  {op:?}: stack_effect says {}, the handler does {measured}",
+                    stack_effect(*op)
+                ));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "stack_effect disagrees with the VM:\n{}",
+            wrong.join("\n")
         );
     }
 }

@@ -964,6 +964,33 @@ mod tests {
         }
     }
 
+    /// `<% @count = @count %>` stores the local `count` into itself (in a
+    /// view `@count` is that local), and every other local must come through
+    /// it. The peephole used to fuse the pair into `SwapSetLocal`, which
+    /// popped a value the pair never pushed: `count` took the last local's
+    /// value and the next read of that local indexed past the stack.
+    #[test]
+    fn a_self_assignment_in_a_view_keeps_the_other_locals() {
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let data = data();
+        let render_on_vm = |source: &str| {
+            let nodes = parse_template(source).unwrap_or_else(|e| panic!("{source}: {e}"));
+            let compiled = VmTemplate::compile(&nodes)
+                .unwrap_or_else(|e| panic!("{source}: does not compile: {e}"));
+            compiled
+                .render(&mut Vm::new(), &data)
+                .unwrap_or_else(|e| panic!("{source}: {e}"))
+                .html
+        };
+        let bare = "<% count = count %><%= count %>|<%= ratio %>|<%= flag %>";
+        let nodes = parse_template(bare).unwrap_or_else(|e| panic!("{bare}: {e}"));
+        let tree = render_nodes(&nodes, &data, None).unwrap_or_else(|e| panic!("{bare}: {e}"));
+        assert_eq!(tree, "3|2.5|true");
+        assert_eq!(render_on_vm(bare), tree, "{bare}");
+        let ivar = "<% @count = @count %><%= @count %>|<%= ratio %>|<%= flag %>";
+        assert_eq!(render_on_vm(ivar), tree, "{ivar}");
+    }
+
     /// What a view assigns where its layout sees it on the tree-walker comes
     /// back with the page; a `for` body's assignments do not.
     #[test]
