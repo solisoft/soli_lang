@@ -15,6 +15,12 @@
   row's fields that would touch — a centred `instrument` and the composer
   set flush right, say — take a line each, the centre first; a wide page
   keeps them on one line.
+- The score engraver moves on to eui e50f836: a score refuses, as it is read,
+  music that writes out past 20,000 notes (markings, keys and the bars of
+  long rests counted) or 40,000 characters of words, nests deeper than 64
+  levels, or reaches past the keys of any instrument; and drawing stops past
+  400,000 shapes or 6,000,000 points of outline. Small sources can no longer
+  expand into huge layouts, PDFs or a stack overflow.
 
 ## [2.29.2] - 2026-10-31
 
