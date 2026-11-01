@@ -1322,6 +1322,13 @@ cached, and a cache-backend outage falls back to a normal render:
 <%- component("footer", { "cache": "site-footer", "cache_ttl": 3600 }) %>
 ```
 
+A derived key follows the values in the data, and a record (any object) by its class and
+its fields: edit the plan and its table gets a new key. What the record's methods read is
+not part of the key: a relation (`plan.features`) queries the database, and the cached
+table keeps the features it was rendered with until `cache_ttl` runs out. Pass the related
+data in the hash when it should count. Data the key cannot be derived from, such as a
+query not run yet (`Plan.where(...)`), renders the component uncached.
+
 ### Component catalog (dev)
 
 With `soli serve --dev`, browse every component at **`/__soli/components`** — a

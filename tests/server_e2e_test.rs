@@ -1045,6 +1045,23 @@ fn accept_language_never_negotiates_to_a_locale_we_lack() {
     );
 }
 
+/// A page rendered from objects is rendered again for each request. The
+/// response cache keyed a render on a signature that hashed an object by the
+/// length of its class name, so `@cards = [Card.draw]` (a new card each time,
+/// as `Post.all` is after an edit) got the first request's page back (2.29.3).
+/// One worker, so both requests meet the same cache.
+#[test]
+fn a_page_rendered_from_objects_is_not_answered_from_the_cache() {
+    let server = ServerProcess::start_single_worker("en");
+    let first = body_string(ureq::get(&server.url("/cards")).call().unwrap());
+    let second = body_string(ureq::get(&server.url("/cards")).call().unwrap());
+    assert!(first.contains("<p>card 1</p>"), "first page: {first}");
+    assert!(
+        second.contains("<p>card 2</p>"),
+        "the second request got the first page back: {second}"
+    );
+}
+
 /// Round-trip arbitrary binary through a multipart upload and back out.
 ///
 /// This covers both halves of the upload-memory work:

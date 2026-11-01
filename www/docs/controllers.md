@@ -524,6 +524,35 @@ Resolution rules:
 Edits to these declarations are picked up on the next request in `--dev` mode —
 no server restart required.
 
+### The response cache
+
+Each worker keeps the page a `render(...)` produced and gives it back, without
+rendering, to the next render of the same view, layout and locale with the same data.
+The action still runs; only the render is skipped. The data is the hash you pass, plus
+the `@fields` and the request (`req`, `params`, `cookies`), so a page is kept once per
+path, query, set of headers and client address. A worker holds 64 entries, and a hot
+reload in `--dev` empties them.
+
+A render is never kept, or answered from the cache, when:
+
+- the request has a session, because the layout may show who is signed in;
+- the action or the view sets a cookie, writes the session or the flash, puts a CSRF token
+  on the page (`csrf_meta_tag()`, a form), or calls `clock` or `Math.random`. A page that
+  did so once is not kept again until the next restart or hot reload;
+- the data holds an **object**: a model record (`Post.all`, `Post.find(id)`) or any class
+  instance. A view calls an object's methods, and they can read what the data does not
+  hold. A relation (`post.author`, `post.comments.count`) queries the database at render
+  time. The same goes for a query not run yet (`Post.where(...)` iterated by the view) and
+  for a pending future.
+
+Plain values are compared by what they hold: strings, numbers, `Decimal`, `DateTime`,
+arrays and hashes. `Post.pluck(:id, :title).all` returns hashes, so a page rendered from
+plucked rows is answered from the cache until the rows change.
+
+A view should take what it shows from its data. The cache does not see a view that reads
+the database, a file or the time itself (`<%= Post.count %>`, `DateTime.now`), and keeps
+the page as it was first rendered. Assign the value to an `@field` in the action instead.
+
 ### Redirect
 
 ```soli

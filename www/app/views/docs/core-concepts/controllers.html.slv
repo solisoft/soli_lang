@@ -527,6 +527,23 @@ end</code></pre>
         </section>
     </div>
 
+    <h2 id="response-cache" class="text-2xl font-bold text-white mb-6 scroll-mt-24">The Response Cache</h2>
+    <p class="text-gray-400 mb-4">
+        Each worker keeps the page a <code>render(...)</code> produced and gives it back, without rendering, to the next render of the same view, layout and locale with the same data. The action still runs; only the render is skipped. The data is the hash you pass, plus the <code>@fields</code> and the request (<code>req</code>, <code>params</code>, <code>cookies</code>), so a page is kept once per path, query, set of headers and client address. A worker holds 64 entries, and a hot reload in <code>--dev</code> empties them.
+    </p>
+    <p class="text-gray-400 mb-2">A render is never kept, or answered from the cache, when:</p>
+    <ul class="list-disc pl-6 text-gray-400 space-y-2 mb-6">
+        <li>the request has a session, because the layout may show who is signed in;</li>
+        <li>the action or the view sets a cookie, writes the session or the flash, puts a CSRF token on the page (<code>csrf_meta_tag()</code>, a form), or calls <code>clock</code> or <code>Math.random</code>. A page that did so once is not kept again until the next restart or hot reload;</li>
+        <li>the data holds an <strong>object</strong>: a model record (<code>Post.all</code>, <code>Post.find(id)</code>) or any class instance. A view calls an object's methods, and they can read what the data does not hold. A relation (<code>post.author</code>, <code>post.comments.count</code>) queries the database at render time. The same goes for a query not run yet (<code>Post.where(...)</code> iterated by the view) and for a pending future.</li>
+    </ul>
+    <p class="text-gray-400 mb-4">
+        Plain values are compared by what they hold: strings, numbers, <code>Decimal</code>, <code>DateTime</code>, arrays and hashes. <code>Post.pluck(:id, :title).all</code> returns hashes, so a page rendered from plucked rows is answered from the cache until the rows change.
+    </p>
+    <p class="text-gray-400 mb-12">
+        A view should take what it shows from its data. The cache does not see a view that reads the database, a file or the time itself (<code>&lt;%= Post.count %&gt;</code>, <code>DateTime.now</code>), and keeps the page as it was first rendered. Assign the value to an <code>@field</code> in the action instead.
+    </p>
+
     <h2 class="text-2xl font-bold text-white mb-6">Request-Context Helpers in Views</h2>
     <p class="text-gray-400 mb-4">
         These helpers read the current request directly &mdash; no need to plumb <code>current_path</code> or <code>current_method</code> through the data hash. They're available in every template (views, layouts, partials).

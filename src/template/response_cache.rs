@@ -8,9 +8,10 @@
 //! data_signature)`.
 //!
 //! The data signature is a 64-bit FNV-1a hash of the data `Value`
-//! passed to `render()`. The signature is computed recursively, so
-//! deeply-nested hashes / arrays with mutable content (e.g. `Post.all()`)
-//! naturally miss the cache — only truly static input hits.
+//! passed to `render()`, computed recursively over its plain values. Data
+//! the signature cannot stand for — an object such as a model record from
+//! `Post.all`, a query not yet run — has no signature, and the render is
+//! not cached: see [`data_signature`]. Only truly static input hits.
 //!
 //! Safety / correctness:
 //! * Builtins that mutate request-visible state (`set_cookie`,
@@ -32,6 +33,11 @@
 //!   ([`request_has_session`]): a layout that reads the session
 //!   (`current_user`, `signed_in?`) renders per person, and the data
 //!   signature cannot see that.
+//! * Data holding an object never touches it either ([`data_signature`]):
+//!   the view calls the object's methods, and a model's relations read the
+//!   database. Hashed by the length of its class name, a record made the
+//!   page of `Post.all` outlive an edit, and a mailer view send one user's
+//!   mail to the next.
 //! * The cache is per-thread, sized at 64 entries, LRU-evicted. It
 //!   never spans workers, so the same request could be served a
 //!   freshly-cached body or re-rendered on first hit depending on
@@ -41,11 +47,12 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::num::NonZero;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use lru::LruCache;
 
-use crate::interpreter::value::SoliStr;
+use crate::interpreter::value::{HashKey, SoliStr, Value};
 
 const MAX_CACHE_SIZE: NonZero<usize> = NonZero::new(64).unwrap();
 
@@ -256,146 +263,276 @@ pub fn put(
 const FNV_OFFSET: u64 = 0xcbf29ce484222325;
 const FNV_PRIME: u64 = 0x100000001b3;
 
-/// Compute a stable 64-bit signature for a `Value` so the response
-/// cache can key off the data alone. Walks the structure
-/// recursively; cheap (O(n) over the data) and always-deterministic
-/// so two workers with the same data produce the same sig.
-pub fn data_signature(value: &crate::interpreter::value::Value) -> u64 {
-    let mut h = FNV_OFFSET;
-    fnv_value(&mut h, value);
-    h
+/// Containers nested deeper than this are not hashed, and the render is not
+/// cached. Far deeper than a page's data goes; it bounds the walk on data
+/// built deep on purpose.
+const MAX_DEPTH: usize = 128;
+
+/// The response cache's signature for the data passed to `render()`, or
+/// `None` when the data cannot stand for the page and the render must not be
+/// cached.
+///
+/// Values are hashed by what they hold — scalars, `Decimal` (its digits and
+/// its precision), `DateTime` (the instant and the zone it is shown in),
+/// strings, arrays and hashes, recursively — so the same data gives the same
+/// signature on every worker. Code (a function, a class) is hashed by its
+/// name: the cache trusts it as it trusts the helpers a view calls.
+///
+/// `None` for anything else:
+///
+/// * an object: a model record from `Post.all`, any class instance. A view
+///   calls its methods, and they read what the signature cannot see — a
+///   relation (`post.author`) queries the database. Hashed by the length of
+///   its class name until 2.29.3, a list of records kept the first request's
+///   page after a record changed, and a mailer view sent one user's mail to
+///   the next.
+/// * a query not yet run (`Post.where(...)`, iterated by the view), a future
+///   or a grouped read still pending, an image.
+/// * data nested deeper than `MAX_DEPTH` (128) containers, or that contains
+///   itself.
+///
+/// The walk stops at the first such value. The refusal is not remembered
+/// for the render site: the next request's data may differ (a lookup that
+/// found nothing), and its depth is the client's to choose.
+pub fn data_signature(value: &Value) -> Option<u64> {
+    Walk::new(Objects::Refuse).signature(value)
 }
 
-fn fnv_value(h: &mut u64, v: &crate::interpreter::value::Value) {
-    use crate::interpreter::value::Value;
-    match v {
-        Value::Null => {
-            *h ^= b'N' as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
+/// [`data_signature`], except that an object is hashed by its class and its
+/// fields, in whatever order the fields come. For the key of a cache the
+/// application asked for — a component's `"cache": true` — whose HTML may be
+/// kept as long as the data it was rendered from is unchanged, whatever the
+/// object's methods would read now.
+pub fn content_signature(value: &Value) -> Option<u64> {
+    Walk::new(Objects::ByFields).signature(value)
+}
+
+/// What the walk does when it meets an object.
+#[derive(Clone, Copy)]
+enum Objects {
+    Refuse,
+    ByFields,
+}
+
+struct Walk {
+    objects: Objects,
+    /// The containers between the root and the value being hashed, by
+    /// address: meeting one of them again means the data contains itself.
+    path: [usize; MAX_DEPTH],
+    depth: usize,
+}
+
+impl Walk {
+    fn new(objects: Objects) -> Self {
+        Walk {
+            objects,
+            path: [0; MAX_DEPTH],
+            depth: 0,
         }
-        Value::Bool(b) => {
-            *h ^= b'B' as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            *h ^= *b as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
+    }
+
+    fn signature(mut self, value: &Value) -> Option<u64> {
+        let mut h = FNV_OFFSET;
+        self.value(&mut h, value)?;
+        Some(h)
+    }
+
+    /// Step into `container`, unless it is already on the path or the path is
+    /// as deep as it may go. A refusal ends the whole walk, so nothing has to
+    /// step back out after one.
+    fn enter<T>(&mut self, container: &Rc<T>) -> Option<()> {
+        let address = Rc::as_ptr(container) as usize;
+        if self.depth == MAX_DEPTH || self.path[..self.depth].contains(&address) {
+            return None;
         }
-        Value::Int(n) => {
-            *h ^= b'I' as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            *h ^= *n as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-        }
-        Value::Float(f) => {
-            *h ^= b'F' as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            *h ^= f.to_bits();
-            *h = h.wrapping_mul(FNV_PRIME);
-        }
-        Value::String(s) => {
-            *h ^= b'S' as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            for &b in s.as_bytes() {
-                *h ^= b as u64;
-                *h = h.wrapping_mul(FNV_PRIME);
+        self.path[self.depth] = address;
+        self.depth += 1;
+        Some(())
+    }
+
+    fn leave(&mut self) {
+        self.depth -= 1;
+    }
+
+    fn value(&mut self, h: &mut u64, v: &Value) -> Option<()> {
+        match v {
+            Value::Null => mix(h, b'N' as u64),
+            Value::Bool(b) => {
+                mix(h, b'B' as u64);
+                mix(h, *b as u64);
             }
-        }
-        Value::Symbol(s) => {
-            *h ^= b'Y' as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            for &b in s.as_bytes() {
-                *h ^= b as u64;
-                *h = h.wrapping_mul(FNV_PRIME);
+            Value::Int(n) => {
+                mix(h, b'I' as u64);
+                mix(h, *n as u64);
             }
-        }
-        Value::Array(arr) => {
-            *h ^= b'A' as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            let borrowed = arr.borrow();
-            *h ^= borrowed.len() as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            for elem in borrowed.iter() {
-                fnv_value(h, elem);
+            Value::Float(f) => {
+                mix(h, b'F' as u64);
+                mix(h, f.to_bits());
             }
-        }
-        Value::Hash(map) => {
-            *h ^= b'H' as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            let borrowed = map.borrow();
-            *h ^= borrowed.len() as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            for (k, v) in borrowed.iter() {
-                fnv_hash_key(h, k);
-                fnv_value(h, v);
+            Value::Decimal(d) => {
+                // The precision too: `1.50D` and `1.5D` are equal and print
+                // differently.
+                mix(h, b'M' as u64);
+                mix_bytes(h, &d.0.serialize());
+                mix(h, d.1 as u64);
             }
+            Value::String(s) => {
+                mix(h, b'S' as u64);
+                mix_str(h, s.as_bytes());
+            }
+            Value::Symbol(s) => {
+                mix(h, b'Y' as u64);
+                mix_str(h, s.as_bytes());
+            }
+            Value::DateTime(nanos, utc) => {
+                mix(h, b'D' as u64);
+                mix(h, *nanos as u64);
+                mix(h, *utc as u64);
+            }
+            Value::Array(arr) => {
+                self.enter(arr)?;
+                let items = arr.try_borrow().ok()?;
+                mix(h, b'A' as u64);
+                mix(h, items.len() as u64);
+                for item in items.iter() {
+                    self.value(h, item)?;
+                }
+                self.leave();
+            }
+            Value::Hash(map) => {
+                self.enter(map)?;
+                let pairs = map.try_borrow().ok()?;
+                mix(h, b'H' as u64);
+                mix(h, pairs.len() as u64);
+                for (k, v) in pairs.iter() {
+                    fnv_hash_key(h, k);
+                    self.value(h, v)?;
+                }
+                self.leave();
+            }
+            Value::Instance(_) if matches!(self.objects, Objects::Refuse) => return None,
+            Value::Instance(object) => {
+                self.enter(object)?;
+                let object = object.try_borrow().ok()?;
+                mix(h, b'O' as u64);
+                mix_str(h, object.class.name.as_bytes());
+                mix(h, object.fields.len() as u64);
+                // A field map has no order of its own, so each field is hashed
+                // apart and the results are summed: the same fields give the
+                // same key in every process.
+                let mut fields = 0u64;
+                for (name, field) in object.fields.iter() {
+                    let mut fh = FNV_OFFSET;
+                    mix_str(&mut fh, name.as_bytes());
+                    self.value(&mut fh, field)?;
+                    fields = fields.wrapping_add(avalanche(fh));
+                }
+                mix(h, fields);
+                self.leave();
+            }
+            // A grouped read once its batch has run is its result. Read
+            // without forcing the batch: a pending one refuses.
+            Value::Deferred(cell) => {
+                self.enter(cell)?;
+                let cell = cell.try_borrow().ok()?;
+                self.value(h, cell.resolved.as_ref()?)?;
+                self.leave();
+            }
+            Value::Function(f) => {
+                mix(h, b'f' as u64);
+                mix_str(h, f.name.as_bytes());
+            }
+            Value::NativeFunction(f) => {
+                mix(h, b'n' as u64);
+                mix_str(h, f.name.as_bytes());
+            }
+            Value::VmClosure(c) => {
+                mix(h, b'v' as u64);
+                mix_str(h, c.proto.name.as_bytes());
+            }
+            Value::Class(c) => {
+                mix(h, b'C' as u64);
+                mix_str(h, c.name.as_bytes());
+            }
+            Value::Method(m) => {
+                self.enter(m)?;
+                mix(h, b'm' as u64);
+                mix_str(h, m.method_name.as_bytes());
+                self.value(h, &m.receiver)?;
+                self.leave();
+            }
+            Value::QueryBuilder(_)
+            | Value::Future(_)
+            | Value::Image(_)
+            | Value::ImagePlan(_)
+            | Value::Super(_)
+            | Value::Breakpoint
+            | Value::Continue => return None,
         }
-        // Other variants (Function, Class, Instance, NativeFunction,
-        // Method, QueryBuilder, Future, Super, VmClosure, Image, ...)
-        // are not seen in render data — but hash them defensively by
-        // a type tag so a future change that passes one through
-        // doesn't accidentally collide with a primitive.
-        _ => {
-            *h ^= b'?' as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            *h ^= v.type_name().len() as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-        }
+        Some(())
     }
 }
 
-fn fnv_hash_key(h: &mut u64, k: &crate::interpreter::value::HashKey) {
-    use crate::interpreter::value::HashKey;
+fn mix(h: &mut u64, word: u64) {
+    *h ^= word;
+    *h = h.wrapping_mul(FNV_PRIME);
+}
+
+fn mix_bytes(h: &mut u64, bytes: &[u8]) {
+    for &b in bytes {
+        mix(h, b as u64);
+    }
+}
+
+/// A string with its length first, so that where one string ends and the
+/// next value starts is part of the hash: without it `{"aS": ""}` and
+/// `{"a": "S"}`, or the query strings `?qS=x` and `?q=Sx`, hashed the same.
+fn mix_str(h: &mut u64, bytes: &[u8]) {
+    mix(h, bytes.len() as u64);
+    mix_bytes(h, bytes);
+}
+
+/// murmur3's 64-bit finalizer: spreads every input bit over the output, so
+/// that summing the hashes of an object's fields does not cancel out.
+fn avalanche(mut x: u64) -> u64 {
+    x ^= x >> 33;
+    x = x.wrapping_mul(0xff51afd7ed558ccd);
+    x ^= x >> 33;
+    x = x.wrapping_mul(0xc4ceb9fe1a85ec53);
+    x ^= x >> 33;
+    x
+}
+
+fn fnv_hash_key(h: &mut u64, k: &HashKey) {
     // Match the per-variant tag bytes used by `HashKey::hash` so the
     // signature agrees with std's Hash impl on the same key.
     match k {
         HashKey::Int(n) => {
-            *h ^= 0u8 as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            *h ^= *n as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
+            mix(h, 0);
+            mix(h, *n as u64);
         }
         HashKey::Decimal(d) => {
-            *h ^= 1u8 as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            // Best-effort: hash the bytes. Decimals stringify
-            // deterministically across processes so this is safe.
-            for &b in d.to_string().as_bytes() {
-                *h ^= b as u64;
-                *h = h.wrapping_mul(FNV_PRIME);
-            }
+            mix(h, 1);
+            // Decimals stringify deterministically across processes.
+            mix_str(h, d.to_string().as_bytes());
         }
         HashKey::String(s) => {
-            *h ^= 2u8 as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            for &b in s.as_bytes() {
-                *h ^= b as u64;
-                *h = h.wrapping_mul(FNV_PRIME);
-            }
+            mix(h, 2);
+            mix_str(h, s.as_bytes());
         }
         HashKey::Bool(b) => {
-            *h ^= 3u8 as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            *h ^= *b as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
+            mix(h, 3);
+            mix(h, *b as u64);
         }
-        HashKey::Null => {
-            *h ^= 4u8 as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-        }
+        HashKey::Null => mix(h, 4),
         HashKey::Symbol(s) => {
-            *h ^= 5u8 as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            for &b in s.as_bytes() {
-                *h ^= b as u64;
-                *h = h.wrapping_mul(FNV_PRIME);
-            }
+            mix(h, 5);
+            mix_str(h, s.as_bytes());
         }
         HashKey::ValueObject(key) => {
-            *h ^= 6u8 as u64;
-            *h = h.wrapping_mul(FNV_PRIME);
-            for &b in key.class.as_bytes().iter().chain(key.fields.as_bytes()) {
-                *h ^= b as u64;
-                *h = h.wrapping_mul(FNV_PRIME);
-            }
+            mix(h, 6);
+            mix_str(h, key.class.as_bytes());
+            mix_str(h, key.fields.as_bytes());
         }
     }
 }
@@ -581,5 +718,287 @@ mod tests {
             get(path, Some("docs"), 99, false).map(|c| c.body),
             Some(SoliStr::from("rendered"))
         );
+    }
+
+    // -- data signatures ------------------------------------------------------
+
+    use crate::interpreter::value::{
+        Class, DecimalValue, DeferredCell, HashPairs, Instance, NativeFunction,
+    };
+
+    fn string(s: &str) -> Value {
+        Value::String(s.into())
+    }
+
+    fn array(items: Vec<Value>) -> Value {
+        Value::Array(Rc::new(RefCell::new(items)))
+    }
+
+    fn hash(pairs: Vec<(&str, Value)>) -> Value {
+        let mut map = HashPairs::default();
+        for (key, value) in pairs {
+            map.insert(HashKey::String(key.into()), value);
+        }
+        Value::Hash(Rc::new(RefCell::new(map)))
+    }
+
+    fn object(class: &str, fields: Vec<(&str, Value)>) -> Value {
+        let class = Rc::new(Class {
+            name: class.to_string(),
+            ..Default::default()
+        });
+        let mut instance = Instance::new(class);
+        for (name, value) in fields {
+            instance.set(name, value);
+        }
+        Value::Instance(Rc::new(RefCell::new(instance)))
+    }
+
+    fn decimal(text: &str) -> Value {
+        let precision = text
+            .split('.')
+            .nth(1)
+            .map_or(0, |digits| digits.len() as u32);
+        Value::Decimal(DecimalValue(text.parse().unwrap(), precision))
+    }
+
+    /// A record from `Post.all` (any object) has no signature, so its page is
+    /// rendered and never answered from the cache. Two cards with different
+    /// titles used to hash the same, by the length of their class name.
+    #[test]
+    fn an_object_in_the_data_makes_the_render_uncacheable() {
+        let card = |title: &str| object("Card", vec![("title", string(title))]);
+        assert_eq!(data_signature(&card("first")), None);
+        assert_eq!(
+            data_signature(&hash(vec![("cards", array(vec![card("first")]))])),
+            None
+        );
+        assert_eq!(
+            data_signature(&array(vec![string("x"), card("first"), string("y")])),
+            None
+        );
+
+        // The same page from plain values keeps a signature that follows them.
+        let plain = |title: &str| {
+            hash(vec![(
+                "cards",
+                array(vec![hash(vec![("title", string(title))])]),
+            )])
+        };
+        assert!(data_signature(&plain("first")).is_some());
+        assert_eq!(
+            data_signature(&plain("first")),
+            data_signature(&plain("first"))
+        );
+        assert_ne!(
+            data_signature(&plain("first")),
+            data_signature(&plain("second"))
+        );
+    }
+
+    /// `Decimal` and `DateTime` are values. They fell into the catch-all arm
+    /// with the objects, so `@amount = 6.25D` was answered with the page of
+    /// `3.25D`.
+    #[test]
+    fn decimals_and_datetimes_are_hashed_by_value() {
+        let sig = |value: Value| data_signature(&hash(vec![("v", value)])).unwrap();
+        assert_ne!(sig(decimal("3.25")), sig(decimal("6.25")));
+        assert_eq!(sig(decimal("3.25")), sig(decimal("3.25")));
+        // Equal, but printed differently.
+        assert_ne!(sig(decimal("1.5")), sig(decimal("1.50")));
+
+        let day = 86_400_000_000_000i64;
+        assert_ne!(
+            sig(Value::DateTime(3 * day, true)),
+            sig(Value::DateTime(6 * day, true))
+        );
+        assert_eq!(
+            sig(Value::DateTime(3 * day, true)),
+            sig(Value::DateTime(3 * day, true))
+        );
+        // One instant, shown in UTC or in the local zone.
+        assert_ne!(
+            sig(Value::DateTime(3 * day, true)),
+            sig(Value::DateTime(3 * day, false))
+        );
+    }
+
+    /// A query the view will run and a grouped read still pending are not data
+    /// yet. A grouped read whose batch has run is its result, read without
+    /// forcing the batch (the old arm's `type_name()` flushed it).
+    #[test]
+    fn a_query_not_yet_run_or_a_pending_read_has_no_signature() {
+        use crate::interpreter::builtins::model::QueryBuilder;
+
+        let query = QueryBuilder::new("Post".to_string(), "posts".to_string());
+        let query = Value::QueryBuilder(Rc::new(RefCell::new(query)));
+        assert_eq!(data_signature(&hash(vec![("posts", query)])), None);
+
+        let pending = Value::Deferred(Rc::new(RefCell::new(DeferredCell::default())));
+        assert_eq!(data_signature(&hash(vec![("count", pending)])), None);
+
+        let resolved = |n: i64| {
+            Value::Deferred(Rc::new(RefCell::new(DeferredCell {
+                resolved: Some(Value::Int(n)),
+            })))
+        };
+        let sig = |value: Value| data_signature(&hash(vec![("count", value)]));
+        assert!(sig(resolved(5)).is_some());
+        assert_eq!(sig(resolved(5)), sig(Value::Int(5)));
+        assert_ne!(sig(resolved(5)), sig(resolved(6)));
+    }
+
+    /// Code is hashed by name, and a page whose data holds it stays cacheable:
+    /// the dev-mode and auto-render paths put every view helper in the data.
+    #[test]
+    fn code_is_hashed_by_name_and_stays_cacheable() {
+        let helper = |name: &str| {
+            Value::NativeFunction(NativeFunction::new(name, Some(0), |_| Ok(Value::Null)))
+        };
+        let class = |name: &str| {
+            Value::Class(Rc::new(Class {
+                name: name.to_string(),
+                ..Default::default()
+            }))
+        };
+        let sig = |value: Value| data_signature(&hash(vec![("code", value)]));
+        assert!(sig(helper("link_to")).is_some());
+        assert_eq!(sig(helper("link_to")), sig(helper("link_to")));
+        assert_ne!(sig(helper("link_to")), sig(helper("pluralize")));
+        assert!(sig(class("Post")).is_some());
+        assert_ne!(sig(class("Post")), sig(class("User")));
+    }
+
+    /// Strings are hashed with their length. Without it, where a key ended and
+    /// its value began was lost: `{"aS": ""}` and `{"a": "S"}`, or the query
+    /// strings `?qS=x` and `?q=Sx`, shared a signature, so one request could be
+    /// answered with the page rendered for the other.
+    #[test]
+    fn where_a_string_ends_is_part_of_the_signature() {
+        let pair = |key: &str, value: &str| data_signature(&hash(vec![(key, string(value))]));
+        assert_ne!(pair("aS", ""), pair("a", "S"));
+        assert_ne!(pair("qS", "x"), pair("q", "Sx"));
+
+        let symbol_key = |key: &str, value: &str| {
+            let mut map = HashPairs::default();
+            map.insert(HashKey::Symbol(key.into()), string(value));
+            data_signature(&Value::Hash(Rc::new(RefCell::new(map))))
+        };
+        assert_ne!(symbol_key("aS", ""), symbol_key("a", "S"));
+    }
+
+    /// Data that contains itself is refused right away. Before, it recursed
+    /// until the stack overflowed and the process aborted, and with two ways
+    /// back at every level a depth limit alone would take 2^128 steps.
+    #[test]
+    fn data_that_contains_itself_is_refused_not_walked_forever() {
+        let list = array(vec![]);
+        if let Value::Array(items) = &list {
+            items.borrow_mut().push(list.clone());
+        }
+        assert_eq!(data_signature(&list), None);
+
+        let node = hash(vec![]);
+        if let Value::Hash(map) = &node {
+            let mut map = map.borrow_mut();
+            map.insert(HashKey::String("left".into()), node.clone());
+            map.insert(HashKey::String("right".into()), node.clone());
+        }
+        assert_eq!(data_signature(&node), None);
+        assert_eq!(content_signature(&node), None);
+
+        // Met twice, but never inside itself: that is not a cycle.
+        let shared = array(vec![Value::Int(1)]);
+        assert!(data_signature(&hash(vec![("a", shared.clone()), ("b", shared)])).is_some());
+
+        // Rc cycles outlive the test unless broken.
+        if let Value::Array(items) = &list {
+            items.borrow_mut().clear();
+        }
+        if let Value::Hash(map) = &node {
+            map.borrow_mut().clear();
+        }
+    }
+
+    #[test]
+    fn nesting_past_the_limit_is_refused() {
+        let mut deep = Value::Int(1);
+        for _ in 0..MAX_DEPTH {
+            deep = array(vec![deep]);
+        }
+        assert!(
+            data_signature(&deep).is_some(),
+            "{MAX_DEPTH} nested containers still hash"
+        );
+        assert_eq!(data_signature(&array(vec![deep])), None);
+    }
+
+    /// The key of a component cached with `"cache": true` hashes an object by
+    /// its class and its fields, whatever order its field map iterates in. The
+    /// KV store is shared by every worker and process, so the key has to be the
+    /// same everywhere.
+    #[test]
+    fn a_content_signature_hashes_an_object_by_class_and_fields() {
+        let card = |title: &str| {
+            object(
+                "Card",
+                vec![("title", string(title)), ("views", Value::Int(3))],
+            )
+        };
+        let sig = |value: &Value| content_signature(value).expect("an object has one");
+        assert_eq!(sig(&card("alpha")), sig(&card("alpha")));
+        assert_ne!(sig(&card("alpha")), sig(&card("beta")));
+
+        // Each instance's field map has its own random iteration order: with
+        // eight fields, an order-dependent hash would differ almost always.
+        let names = ["a", "b", "c", "d", "e", "f", "g", "h"];
+        let forward = names.iter().map(|name| (*name, string(name))).collect();
+        let backward = names
+            .iter()
+            .rev()
+            .map(|name| (*name, string(name)))
+            .collect();
+        assert_eq!(
+            sig(&object("Card", forward)),
+            sig(&object("Card", backward))
+        );
+
+        // Another class renders through other methods; a field under another
+        // name is another record.
+        let badge = object(
+            "Badge",
+            vec![("title", string("alpha")), ("views", Value::Int(3))],
+        );
+        assert_ne!(sig(&card("alpha")), sig(&badge));
+        let renamed = object(
+            "Card",
+            vec![("name", string("alpha")), ("views", Value::Int(3))],
+        );
+        assert_ne!(sig(&card("alpha")), sig(&renamed));
+
+        // A nested record counts by its fields as well.
+        let post = |author: &str| {
+            object(
+                "Post",
+                vec![("author", object("User", vec![("name", string(author))]))],
+            )
+        };
+        assert_ne!(sig(&post("Ana")), sig(&post("Bo")));
+
+        // A parent and child pointing at each other are refused, not walked.
+        let parent = object("Node", vec![]);
+        let child = object("Node", vec![("parent", parent.clone())]);
+        if let Value::Instance(instance) = &parent {
+            instance
+                .borrow_mut()
+                .set("children", array(vec![child.clone(), child]));
+        }
+        assert_eq!(content_signature(&parent), None);
+        if let Value::Instance(instance) = &parent {
+            instance.borrow_mut().fields.clear();
+        }
+
+        // The response cache still refuses every one of them.
+        assert_eq!(data_signature(&card("alpha")), None);
     }
 }

@@ -1783,15 +1783,7 @@ pub fn register_static_template_helpers(env: &mut Environment) {
             } else {
                 data
             };
-            let cache_key = match &cache_opt {
-                None => None,
-                Some(Value::String(k)) => Some(format!("component:{}:{}", name, k)),
-                Some(_) => Some(format!(
-                    "component:{}:{}",
-                    name,
-                    crate::template::response_cache::data_signature(&data)
-                )),
-            };
+            let cache_key = component_cache_key(&name, cache_opt.as_ref(), &data);
             if let Some(key) = &cache_key {
                 if let Ok(Value::String(html)) =
                     crate::interpreter::builtins::cache::cache_get_impl(key)
@@ -2011,6 +2003,21 @@ fn build_pagination_url(base: &str, page: i64, param_name: &str) -> String {
         path_part.to_string()
     } else {
         format!("{}?{}", path_part, kept.join("&"))
+    }
+}
+
+/// The KV key of a cached component, or `None` when it is not cached:
+/// `"cache": "key"` names it, any other `"cache"` value derives it from the
+/// data (without its control keys). A derived key hashes a record by its
+/// class and fields, so two records never share one — they did, until 2.29.3,
+/// and every card showed the first card's HTML for as long as it was kept.
+/// Data it cannot hash (a query not yet run, a structure that contains
+/// itself) renders uncached.
+fn component_cache_key(name: &str, cache_opt: Option<&Value>, data: &Value) -> Option<String> {
+    match cache_opt? {
+        Value::String(key) => Some(format!("component:{name}:{key}")),
+        _ => crate::template::response_cache::content_signature(data)
+            .map(|signature| format!("component:{name}:{signature}")),
     }
 }
 
@@ -3509,5 +3516,42 @@ mod tests {
         assert!(html.contains("page=1"));
         assert!(html.contains("page=3"));
         assert!(html.contains(r#"class="page current""#));
+    }
+
+    /// `component(name, {..., "cache": true})` keys its KV entry on the data, a
+    /// record by its class and fields. Two cards used to share one key (an
+    /// object hashed by the length of its class name), and every card showed
+    /// the first card's HTML for as long as the entry lived.
+    #[test]
+    fn a_derived_component_key_tells_records_apart() {
+        let data = |card: Value| {
+            let mut pairs = HashPairs::default();
+            pairs.insert(HashKey::String("card".into()), card);
+            Value::Hash(Rc::new(RefCell::new(pairs)))
+        };
+        let card = |title: &str| make_instance(&[("title", Value::String(title.into()))]);
+        let derived = Value::Bool(true);
+        let key = |data: &Value| component_cache_key("card", Some(&derived), data);
+
+        let alpha = key(&data(card("alpha"))).expect("a record gets a key");
+        assert!(alpha.starts_with("component:card:"), "{alpha}");
+        assert_eq!(key(&data(card("alpha"))), Some(alpha.clone()));
+        assert_ne!(key(&data(card("beta"))), Some(alpha));
+
+        // A query the component would run is not data yet: no key, no cache.
+        let query = crate::interpreter::builtins::model::QueryBuilder::new(
+            "Post".to_string(),
+            "posts".to_string(),
+        );
+        let query = Value::QueryBuilder(Rc::new(RefCell::new(query)));
+        assert_eq!(key(&data(query)), None);
+
+        // An explicit key is taken as given; no option, no cache.
+        let named = Value::String("site-footer".into());
+        assert_eq!(
+            component_cache_key("footer", Some(&named), &data(card("x"))),
+            Some("component:footer:site-footer".to_string())
+        );
+        assert_eq!(component_cache_key("card", None, &data(card("x"))), None);
     }
 }

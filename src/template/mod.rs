@@ -296,7 +296,9 @@ impl TemplateCache {
     /// `response_cache::is_known_uncacheable`. A request with a session skips
     /// it too: the layout can read the session (`current_user`, `signed_in?`),
     /// which the data signature cannot see, so one person's page would be
-    /// served to the next.
+    /// served to the next. And so does data the signature cannot stand for —
+    /// a model record, a query not yet run: see
+    /// `response_cache::data_signature`.
     fn cache_signature(
         template_path: &Arc<PathBuf>,
         layout_name: Option<&str>,
@@ -307,7 +309,7 @@ impl TemplateCache {
         {
             return None;
         }
-        Some(response_cache::data_signature(data))
+        response_cache::data_signature(data)
     }
 
     /// Internal: do the actual template render. Wrapped by `render`
@@ -2725,5 +2727,88 @@ mod tests {
 
         assert_eq!(etag_of(&a), etag_of(&b), "same body must produce same ETag");
         assert_ne!(etag_of(&a), etag_of(&c), "different body must change ETag");
+    }
+
+    /// A page rendered from an object is rendered again for the next object.
+    /// The response cache keyed it on a signature that hashed an object by the
+    /// length of its class name, so `Post.all` after an edit (here, the next
+    /// card) got the first page back. This held on both cached paths: `render`
+    /// (dev mode, auto-render, mailers) and `render_html_response`
+    /// (production `render()`).
+    #[test]
+    fn render_data_holding_an_object_is_rendered_every_time() {
+        use crate::interpreter::value::{Class, Instance};
+
+        response_cache::reset_for_new_request();
+        response_cache::clear_cache();
+        let dir = tempfile::tempdir().unwrap();
+        let views = dir.path().join("views");
+        fs::create_dir_all(views.join("cards")).unwrap();
+        fs::write(
+            views.join("cards/show.html.slv"),
+            "<p><%= card.title %></p>",
+        )
+        .unwrap();
+        let cache = TemplateCache::new(&views);
+
+        let data = |card: Value| {
+            let mut pairs = HashPairs::default();
+            pairs.insert(HashKey::String("card".into()), card);
+            Value::Hash(Rc::new(RefCell::new(pairs)))
+        };
+        let class = Rc::new(Class {
+            name: "Card".to_string(),
+            ..Default::default()
+        });
+        let card = |title: &str| {
+            let mut instance = Instance::new(class.clone());
+            instance.set("title", Value::String(title.into()));
+            data(Value::Instance(Rc::new(RefCell::new(instance))))
+        };
+
+        let render = |data: &Value| cache.render("cards/show", data, Some(None)).unwrap();
+        assert!(render(&card("first")).contains("first"));
+        let second = render(&card("second"));
+        assert!(
+            second.contains("second"),
+            "render() answered with the first card's page: {second}"
+        );
+
+        let response_body = |data: &Value| {
+            let response = cache
+                .render_html_response("cards/show", data, Some(None), 200, || {})
+                .unwrap();
+            let Value::Hash(map) = &response else {
+                panic!("a response is a hash, got {response:?}");
+            };
+            let body = map.borrow().get(&HashKey::String("body".into())).cloned();
+            match body {
+                Some(Value::String(body)) => body.to_string(),
+                other => panic!("the response has no body: {other:?}"),
+            }
+        };
+        assert!(response_body(&card("third")).contains("third"));
+        let fourth = response_body(&card("fourth"));
+        assert!(
+            fourth.contains("fourth"),
+            "render_html_response answered with the third card's page: {fourth}"
+        );
+
+        // The refusal belongs to those renders, not to the site: the same view
+        // rendered from plain values is still kept and found.
+        let path = cache.resolve_template_path("cards/show").unwrap();
+        assert!(!response_cache::is_known_uncacheable(&path, None));
+        let mut fields = HashPairs::default();
+        fields.insert(
+            HashKey::String("title".into()),
+            Value::String("plain".into()),
+        );
+        let plain = data(Value::Hash(Rc::new(RefCell::new(fields))));
+        let signature = response_cache::data_signature(&plain).expect("plain data has one");
+        assert!(render(&plain).contains("plain"));
+        assert!(
+            response_cache::get(path, None, signature, false).is_some(),
+            "a page rendered from plain values must still be cached"
+        );
     }
 }
