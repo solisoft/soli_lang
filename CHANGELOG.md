@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [2.29.3] - 2026-11-01
+
+### Changed
+
+- The score engraver (`eui-score`) moves to eui 2dee226: `eui_score_pdf`
+  sets a score that does not choose its staff size a little smaller, down
+  to 17 pt (85 %) by half points, when that fits it on a page fewer — a
+  line or two alone on a last page come back to the one before. A
+  `set-global-staff-size` is kept; screen layouts do not change.
+
 ## [2.29.2] - 2026-10-31
 
 ### Changed

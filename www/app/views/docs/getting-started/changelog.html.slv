@@ -20,7 +20,16 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.29.2.</p>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.29.3.</p>
+    </section>
+
+    <section id="v2-29-3" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.29.3 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-01</span></h2>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">A score's PDF saves its last page when a slightly smaller staff fits it.</p>
+        <h3 id="v2-29-3-scores" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Scores</h3>
+        <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
+            <li><strong class="text-white">A page fewer when a little smaller fits.</strong> <code class="text-cyan-400">eui_score_pdf</code> sets a score that does not choose its staff size at the largest size, from 19.5 pt down to 17 pt (85&nbsp;%), that fits it on a page fewer: a line or two alone on a last page come back to the one before. A <code class="text-cyan-400">#(set-global-staff-size …)</code> is kept, and screen layouts are unchanged.</li>
+        </ul>
     </section>
 
     <section id="v2-29-2" class="mb-16 scroll-mt-24">
