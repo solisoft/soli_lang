@@ -183,17 +183,42 @@ fn sanitize_builder() -> &'static ammonia::Builder<'static> {
             "span",
             "div",
         ]));
-        // Generic attributes mirror the prior `safe_attrs` list. Note
-        // `style` is allowed for visual parity but ammonia strips
-        // dangerous CSS values (expression(), url(javascript:), etc.).
-        b.generic_attributes(HashSet::from([
-            "href", "title", "alt", "class", "id", "style",
-        ]));
+        // No `style`: ammonia does not look inside CSS, so a user could lay a
+        // fixed, full-page box over the app (a fake sign-in form). `class`
+        // gets through only as the `language-*` names Markdown puts on code
+        // blocks: on a page with a utility CSS framework, `class="fixed
+        // inset-0 z-50"` draws the same overlay.
+        b.generic_attributes(HashSet::from(["href", "title", "alt", "class", "id"]));
+        b.attribute_filter(|_element, attribute, value| {
+            if attribute != "class" {
+                return Some(value.into());
+            }
+            let kept: Vec<&str> = value
+                .split_whitespace()
+                .filter(|name| is_code_language_class(name))
+                .collect();
+            if kept.is_empty() {
+                None
+            } else {
+                Some(kept.join(" ").into())
+            }
+        });
         // Restrict `href` to network-safe schemes — refuses `javascript:`,
         // `data:`, `vbscript:`, etc. ammonia's own URL parser does the
         // entity-decoding so `java&#115;cript:` is also caught.
         b.url_schemes(HashSet::from(["http", "https", "mailto"]));
         b
+    })
+}
+
+/// `language-rust`, `language-c++`: the class Markdown gives a fenced code
+/// block, so highlighters can find it.
+fn is_code_language_class(name: &str) -> bool {
+    name.strip_prefix("language-").is_some_and(|lang| {
+        !lang.is_empty()
+            && lang
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '+' | '#' | '.'))
     })
 }
 
@@ -316,6 +341,27 @@ mod tests {
                 output
             );
         }
+    }
+
+    /// Neither inline CSS nor layout classes survive: either could cover the
+    /// page with an attacker's box. Markdown's code-block class does.
+    #[test]
+    fn sanitize_html_drops_style_and_layout_classes() {
+        let out = sanitize_html(
+            r#"<p style="position:fixed;inset:0;z-index:9999" class="fixed inset-0 z-50">fake</p>"#,
+        );
+        assert!(!out.contains("style"), "{out}");
+        assert!(!out.contains("class"), "{out}");
+        assert!(out.contains("fake"), "{out}");
+
+        let code =
+            sanitize_html(r#"<pre><code class="language-rust fixed">fn x() {}</code></pre>"#);
+        assert!(code.contains(r#"class="language-rust""#), "{code}");
+        assert!(!code.contains("fixed"), "{code}");
+
+        assert!(is_code_language_class("language-c++"));
+        assert!(!is_code_language_class("language-"));
+        assert!(!is_code_language_class("language-x\"onclick"));
     }
 
     /// SEC-024 negative side: legitimate safe HTML must still survive.
