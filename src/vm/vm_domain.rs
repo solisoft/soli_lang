@@ -87,10 +87,11 @@ impl Vm {
                     })?;
                     bind_to_fields(&instance, positional, named, span)?;
                 }
-                None => match class.find_constructor() {
+                None => match class.find_constructor_with_class() {
                     // A constructor the tree-walker defined (a class loaded
-                    // from app files): compiled on the fly.
-                    Some(ctor) => {
+                    // from app files): compiled on the fly, and run as the
+                    // class that declares it, for the `super(...)` in it.
+                    Some((ctor, defining)) => {
                         let positional = if named.is_empty() {
                             positional
                         } else {
@@ -101,7 +102,7 @@ impl Vm {
                         for value in positional {
                             self.push(value);
                         }
-                        self.run_jit_method_to_completion(&ctor, argc, span)?;
+                        self.run_jit_method_to_completion(&ctor, argc, span, defining)?;
                     }
                     None => bind_to_fields(&instance, positional, named, span)?,
                 },
@@ -218,9 +219,12 @@ impl Vm {
                 self.run_to_completion(|vm| {
                     vm.call_closure_in_class(method, 0, span, Some(defining))
                 })?
-            } else if let Some(method) = class.find_method(&invariant.method) {
+            } else if let Some((method, defining)) = class.find_method_with_class(&invariant.method)
+            {
+                // An invariant is a private method of the class that declares
+                // it; it runs as that class's.
                 self.push(Value::Instance(instance.clone()));
-                self.run_jit_method_to_completion(&method, 0, span)?
+                self.run_jit_method_to_completion(&method, 0, span, defining)?
             } else {
                 continue;
             };

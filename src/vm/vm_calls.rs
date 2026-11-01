@@ -975,13 +975,15 @@ impl Vm {
                 }
                 continue;
             }
-            if let Some(method) = class.find_method(cb_name) {
+            if let Some((method, declaring)) = class.find_method_with_class(cb_name) {
                 // Compiled as a method with the instance in the callee slot, so
                 // `this` inside the callback is the record — see `callback_proto`.
+                // A callback inherited from a parent model runs as that
+                // parent's: a `super` in it goes past the parent, not back to it.
                 let proto = self.callback_proto(&method, span)?;
                 let closure = Rc::new(VmClosure::new(proto, Vec::new()));
                 let result =
-                    self.invoke_zero_arg_instance_method(instance, closure, class.clone(), span)?;
+                    self.invoke_zero_arg_instance_method(instance, closure, declaring, span)?;
                 if matches!(result, Value::Bool(false)) {
                     return Ok(false);
                 }
@@ -1716,10 +1718,12 @@ impl Vm {
             return self.call_closure_in_class(ctor, argc, span, Some(defining_class));
         }
 
-        // Tree-walking constructor (classes copied from interpreter globals,
-        // e.g. native classes in serve mode): JIT-compile as a method, run
-        // it to completion, discard its return value, and yield the instance.
-        if let Some(ctor) = class.find_constructor() {
+        // Tree-walking constructor (classes copied from interpreter globals:
+        // every class of an app under `soli serve`): JIT-compile as a
+        // method, run it to completion, discard its return value, and yield
+        // the instance. Its frame records the class that declares it, so the
+        // `super(...)` inside reaches that class's superclass.
+        if let Some((ctor, defining_class)) = class.find_constructor_with_class() {
             let proto = jit_compile_method(&ctor, self.globals.keys().cloned()).map_err(|e| {
                 RuntimeError::EngineFallback(
                     format!("a function the VM cannot compile ({})", e),
@@ -1732,7 +1736,7 @@ impl Vm {
             let frames_before = self.frames.len();
             self.return_depth = frames_before;
             let outcome = (|| -> Result<(), RuntimeError> {
-                self.call_closure(closure, argc, span)?;
+                self.call_closure_in_class(closure, argc, span, Some(defining_class))?;
                 if self.frames.len() != frames_before {
                     self.run()?; // discard the constructor's return value
                 }
@@ -1777,11 +1781,13 @@ impl Vm {
         // "init" returns `this`.
         if let Some((init, defining_class)) = class.find_vm_method_with_class("init") {
             self.call_closure_in_class(init, argc, span, Some(defining_class))?;
-        } else if let Some(ctor) = class.find_constructor() {
+        } else if let Some((ctor, defining_class)) = class.find_constructor_with_class() {
             // Tree-walking constructor: JIT-compile, run to completion,
-            // evaluate to `this`.
+            // evaluate to `this`. It may be inherited (`class K2 < K1` with no
+            // `new` of its own): it runs as K1's, so a `super(...)` in it
+            // reaches K1's superclass, not K1 again.
             let this_val = self.stack[receiver_idx].clone();
-            self.run_jit_method_to_completion(&ctor, argc, span)?;
+            self.run_jit_method_to_completion(&ctor, argc, span, defining_class)?;
             self.push(this_val);
         } else if let Some(init) = class.find_native_method(NATIVE_CONSTRUCTOR) {
             // A native constructor — `super(message)` in an `Error`
@@ -1893,11 +1899,17 @@ impl Vm {
     /// JIT-compile a tree-walking method and run it to completion with the
     /// receiver already in the callee slot (`[this, args…]`). Returns the
     /// method's return value; the stack is left at the callee slot.
+    ///
+    /// `class` is the class that declares the method. It goes on the frame,
+    /// so a `super` inside the method resolves against that class's
+    /// superclass, one level further up a chain each time — as the
+    /// tree-walker resolves it from the class the method was written in.
     pub(crate) fn run_jit_method_to_completion(
         &mut self,
         method: &Rc<Function>,
         argc: usize,
         span: Span,
+        class: Rc<Class>,
     ) -> Result<Value, RuntimeError> {
         let proto = jit_compile_method(method, self.globals.keys().cloned()).map_err(|e| {
             RuntimeError::EngineFallback(format!("a function the VM cannot compile ({})", e), span)
@@ -1907,7 +1919,7 @@ impl Vm {
         let frames_before = self.frames.len();
         self.return_depth = frames_before;
         let result = (|| -> Result<Value, RuntimeError> {
-            self.call_closure(closure, argc, span)?;
+            self.call_closure_in_class(closure, argc, span, Some(class))?;
             if self.frames.len() == frames_before {
                 Ok(self.pop())
             } else {
@@ -2430,6 +2442,11 @@ impl Vm {
     /// `load_controllers_in_worker`, so the `RefCell` cache is per-worker and
     /// has no cross-thread aliasing.) `warm_vm_handlers` pre-fills the cache at
     /// boot so the first request to a method is a cache hit, not a compile.
+    ///
+    /// The frame records the class that declares the action — the routed
+    /// controller, or the ancestor it inherits the action from — so a
+    /// `super.show(req)` in it resolves against that class's superclass, as
+    /// on the tree-walker.
     pub fn call_method_bound(
         &mut self,
         method: &Function,
@@ -2437,17 +2454,36 @@ impl Vm {
         arg: Option<Value>,
         span: Span,
     ) -> Result<Value, RuntimeError> {
-        self.call_method_bound_args(method, instance, arg.as_slice(), span)
+        let declaring = match &instance {
+            Value::Instance(inst) => inst.borrow().class.declaring_class_of(method),
+            _ => None,
+        };
+        self.call_method_bound_in(method, instance, arg.as_slice(), span, declaring)
     }
 
     /// `call_method_bound` with any number of arguments (a controller's
-    /// after-action hook takes the request and the response).
+    /// after-action hook takes the request and the response). A hook is a
+    /// lambda no class declares, and a bare static's receiver is the class
+    /// itself: neither frame gets a class.
     pub fn call_method_bound_args(
         &mut self,
         method: &Function,
         instance: Value,
         args: &[Value],
         span: Span,
+    ) -> Result<Value, RuntimeError> {
+        self.call_method_bound_in(method, instance, args, span, None)
+    }
+
+    /// `call_method_bound_args`, with `class` — the class declaring `method`,
+    /// when known — on the frame.
+    fn call_method_bound_in(
+        &mut self,
+        method: &Function,
+        instance: Value,
+        args: &[Value],
+        span: Span,
+        class: Option<Rc<Class>>,
     ) -> Result<Value, RuntimeError> {
         // The `let cached = ...borrow().clone()` line scopes the
         // `RefCell` borrow to the let statement so it's released before
@@ -2485,7 +2521,7 @@ impl Vm {
         for arg in args {
             self.push(arg.clone());
         }
-        self.call_closure(closure, args.len(), span)?;
+        self.call_closure_in_class(closure, args.len(), span, class)?;
         self.run()
     }
 
@@ -2684,6 +2720,138 @@ mod tests {
             inst.borrow().get("touched"),
             Some(Value::Int(1)),
             "the callback must write to the record, not to its own callee slot"
+        );
+    }
+
+    /// The classes `source` declares, defined by the tree-walker as the app
+    /// loader defines an application's, and a VM seeded with its globals.
+    fn vm_with_app_classes(source: &str) -> Vm {
+        use crate::lexer::Scanner;
+        use crate::parser::Parser;
+
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let mut interpreter = crate::interpreter::Interpreter::new();
+        interpreter.interpret(&program).expect("the classes load");
+        let mut vm = Vm::new();
+        for (name, value) in interpreter.global_env().borrow().get_all_bindings() {
+            vm.globals.insert(name, value);
+        }
+        vm
+    }
+
+    /// A callback the record's class inherits runs as the class that declares
+    /// it. It ran as the record's class, so the `super.stamp()` in it resolved
+    /// against the declaring class itself: the callback ran a second time
+    /// before the grandparent's was reached.
+    #[test]
+    fn an_inherited_callback_runs_as_the_class_that_declares_it() {
+        let mut vm = vm_with_app_classes(
+            r#"
+class Root
+  def stamp
+    @log = "root;"
+  end
+end
+
+class Base < Root
+  def stamp
+    super.stamp()
+    @log = @log + "base;"
+  end
+end
+
+class Rec < Base
+end
+"#,
+        );
+        let Some(Value::Class(rec)) = vm.globals.get("Rec").cloned() else {
+            panic!("Rec is a class");
+        };
+        let inst = Rc::new(RefCell::new(Instance::new(rec.clone())));
+        let kept = vm
+            .run_model_callbacks_vm(&rec, &inst, &["stamp".to_string()], Span::default())
+            .expect("the callback runs on the VM");
+        assert!(kept, "the callback did not veto");
+        assert_eq!(inst.borrow().get("log"), Some(Value::str("root;base;")));
+    }
+
+    /// `name` of a fresh `class_name` instance on the VM, entered as a served
+    /// action is.
+    fn call_on_vm(vm: &mut Vm, class_name: &str, name: &str) -> Value {
+        let Some(Value::Class(class)) = vm.globals.get(class_name).cloned() else {
+            panic!("{class_name} is a class");
+        };
+        let method = class.find_method(name).expect("the method exists");
+        let instance = Value::Instance(Rc::new(RefCell::new(Instance::new(class))));
+        let result = vm
+            .call_method_bound(&method, instance, None, Span::default())
+            .unwrap_or_else(|err| panic!("{class_name}#{name}: {err}"));
+        vm.reset();
+        result
+    }
+
+    /// A tree-walker constructor runs with the class that declares it on its
+    /// frame, inherited or not, and so does a method reached through
+    /// `super.m()`: each `super` goes one level up, past a class that only
+    /// inherits. With no class there, the first `super` raised "super used
+    /// outside of a subclass method"; with the class it was looked up from
+    /// instead, K1's would have called itself.
+    #[test]
+    fn super_in_tree_walker_constructors_and_methods_climbs_the_chain() {
+        let mut vm = vm_with_app_classes(
+            r##"
+class K0
+  def tag
+    "k0"
+  end
+
+  new(a)
+    @k0 = a
+  end
+end
+
+class K1 < K0
+  def tag
+    "k1>" + super.tag()
+  end
+
+  new(a)
+    super(a + 1)
+    @k1 = a
+  end
+end
+
+class K2 < K1
+end
+
+class K3 < K2
+  def tag
+    "k3>" + super.tag()
+  end
+
+  new(a)
+    super(a * 2)
+    @k3 = a
+  end
+end
+
+class Probe
+  def built
+    k = K3.new(3)
+    "#{k.k0} #{k.k1} #{k.k3}"
+  end
+
+  def tagged
+    K3.new(1).tag()
+  end
+end
+"##,
+        );
+        assert_eq!(call_on_vm(&mut vm, "Probe", "built"), Value::str("7 6 3"));
+        assert_eq!(
+            call_on_vm(&mut vm, "Probe", "tagged"),
+            Value::str("k3>k1>k0")
         );
     }
 

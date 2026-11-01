@@ -777,6 +777,75 @@ end"##,
         "class A { t: String\n  new(t) { this.t = t }\n  fn d() { return \"A(\" + this.t + \")\" } }\nclass B extends A { new(t) { super(t + \"b\") }\n  fn d() { return \"B[\" + super.d() + \"]\" } }\nclass C extends B { new(t) { super(t + \"c\") }\n  fn d() { return \"C{\" + super.d() + \"}\" } }\nprint(C(\"x\").d())",
     ),
     (
+        // `super(...)` reaching a constructor K2 inherits from K1: it runs as
+        // K1's, so its own `super(...)` goes on to K0 rather than back to K1.
+        // The served form of the same program is in APP_CASES.
+        "super_into_an_inherited_constructor",
+        r##"class K0
+  k0: Int
+  new(a)
+    @k0 = a
+  end
+end
+class K1 < K0
+  k1: Int
+  new(a)
+    super(a + 1)
+    @k1 = a
+  end
+end
+class K2 < K1
+end
+class K3 < K2
+  k3: Int
+  new(a)
+    super(a * 2)
+    @k3 = a
+  end
+end
+k = K3.new(3)
+print(k.k0, k.k1, k.k3, K2.new(10).k0)"##,
+    ),
+    (
+        // The documented custom-error shape: a constructor passing its
+        // message and details up to `Error`'s, thrown, caught and rescued.
+        "error_subclass_constructor_passes_its_message_up",
+        r##"class AppError < Error
+end
+class Overdrawn < AppError
+  amount: Int
+  new(amount: Int)
+    super("overdrawn by #{amount}", {"amount": amount})
+    @amount = amount
+  end
+end
+try
+  throw Overdrawn.new(7)
+catch err
+  print(err.class, err.message, err.details["amount"], err.amount)
+end
+e = Overdrawn.new(9) rescue "rescued"
+print(e.class)"##,
+    ),
+    (
+        // `super` in a block inside a method. The tree-walker resolves it
+        // from the class the block was written in; the VM reads the class off
+        // the running frame, and a block's frame has none ("super used
+        // outside of a subclass method"). Tracked in KNOWN_DIVERGENT.
+        "super_in_a_block_of_a_method",
+        r##"class A
+  def m(x)
+    x * 2
+  end
+end
+class B < A
+  def m(x)
+    [x].map { |y| super.m(y) }
+  end
+end
+print(B.new().m(3))"##,
+    ),
+    (
         // Field initializers apply in both instantiation forms.
         "field_initializer_defaults",
         "class S { theme: String = \"dark\"\n  size: Int = 25 }\nlet s = S()\nprint(s.theme)\nprint(s.size)",
@@ -1856,8 +1925,12 @@ print(Util.shout("a"))"##,
 /// sync with reality: when a fix lands, the corresponding case starts matching
 /// and the test will tell you to remove it from here.
 const KNOWN_DIVERGENT: &[&str] = &[
-    // Empty: sub-expression comprehensions and binding `match` as a call
-    // argument now compile via a clean-frame lambda (`Compiler::wrap_in_lambda`).
+    // A block's frame carries no class, so `super` in a block of a method
+    // has nothing to resolve against on the VM. Needs the compiler to hand
+    // the block the class it was written in.
+    "super_in_a_block_of_a_method",
+    // Sub-expression comprehensions and binding `match` as a call argument
+    // now compile via a clean-frame lambda (`Compiler::wrap_in_lambda`).
     // Binding patterns at a statement position already compiled — see
     // `match_binding_*`.
     //
@@ -1935,6 +2008,417 @@ fn tree_walker_and_vm_agree() {
         msg.push_str(&format!(
             "{} known-divergent case(s) now AGREE — remove them from KNOWN_DIVERGENT \
              to lock in the fix: {:?}\n",
+            fixed.len(),
+            fixed
+        ));
+    }
+    assert!(msg.is_empty(), "\n{msg}");
+}
+
+// --- Classes loaded the way a server loads them -----------------------------
+//
+// `soli serve` defines every class of an application on the tree-walker (the
+// app loader), copies the interpreter's globals into each worker's VM, and
+// runs the action there through `Vm::call_method_bound`. The VM compiles such
+// a class's constructor and methods from the tree-walker's AST when it first
+// reaches them. A script's classes are compiled by the VM itself, so CASES
+// never meets one: a constructor calling `super(...)` agreed there and failed
+// in a served app ("super used outside of a subclass method"), which demoted
+// the handler to the interpreter — or, inside a `try`, answered with the VM's
+// own error.
+
+/// (name, source). Each source declares `class Probe` with a zero-argument
+/// `run` that returns a string, and runs cleanly on the tree-walker.
+const APP_CASES: &[(&str, &str)] = &[
+    (
+        "app_constructor_calls_super",
+        r##"class Point
+  x: Int
+  y: Int
+
+  new(x, y)
+    @x = x
+    @y = y
+  end
+end
+
+class Diagonal < Point
+  new(n)
+    super(n, n)
+  end
+end
+
+class Probe
+  def run
+    a = Diagonal.new(4)
+    b = new Diagonal(5)
+    "#{a.x},#{a.y} #{b.x},#{b.y}"
+  end
+end"##,
+    ),
+    (
+        // The middle constructor is reached through `super(...)`: its own
+        // `super(...)` must go one level further up.
+        "app_three_constructors_call_super",
+        r##"class G1
+  a: Int
+
+  new(a)
+    @a = a
+  end
+end
+
+class G2 < G1
+  b: Int
+
+  new(a)
+    super(a)
+    @b = a * 10
+  end
+end
+
+class G3 < G2
+  c: Int
+
+  new(a)
+    super(a)
+    @c = a * 100
+  end
+end
+
+class Probe
+  def run
+    g = G3.new(1)
+    "#{g.a} #{g.b} #{g.c}"
+  end
+end"##,
+    ),
+    (
+        // K2 inherits K1's constructor: reached from K3's `super(...)`, it
+        // runs as K1's, so its `super(...)` reaches K0. Run as K2's, it would
+        // call itself until the stack ran out.
+        "app_super_reaches_an_inherited_constructor",
+        r##"class K0
+  k0: Int
+
+  new(a)
+    @k0 = a
+  end
+end
+
+class K1 < K0
+  k1: Int
+
+  new(a)
+    super(a + 1)
+    @k1 = a
+  end
+end
+
+class K2 < K1
+end
+
+class K3 < K2
+  k3: Int
+
+  new(a)
+    super(a * 2)
+    @k3 = a
+  end
+end
+
+class Probe
+  def run
+    k = K3.new(3)
+    plain = K2.new(10)
+    "#{k.k0} #{k.k1} #{k.k3} #{plain.k0} #{plain.k1}"
+  end
+end"##,
+    ),
+    (
+        // The documented custom errors, built, thrown and rescued. Inside the
+        // `try`, the VM used to catch its own "super used outside of a
+        // subclass method" and answer with it, with no demotion.
+        "app_error_subclasses_pass_their_message_up",
+        r##"class AppError < Error
+end
+
+class Overdrawn < AppError
+  amount: Int
+
+  new(amount: Int)
+    super("overdrawn by #{amount}", {"amount": amount})
+    @amount = amount
+  end
+end
+
+class Refused < DomainError
+  new(why: String)
+    super("refused: #{why}")
+  end
+end
+
+class Probe
+  def run
+    built = Overdrawn.new(5)
+    caught = "none"
+    try
+      throw Overdrawn.new(7)
+    catch err
+      caught = "#{err.class} #{err.message} #{err.details["amount"]}"
+    end
+    typed = "none"
+    try
+      throw Refused.new("closed")
+    catch DomainError err
+      typed = err.to_s
+    end
+    rescued = Overdrawn.new(9) rescue "rescued"
+    "#{built.message} #{built.amount} | #{caught} | #{typed} | #{rescued.class}"
+  end
+end"##,
+    ),
+    (
+        // The error-handling guide's hierarchy, with a typed catch.
+        "app_documented_error_hierarchy",
+        r##"class AppError
+  message: String
+
+  new(msg: String)
+    this.message = msg
+  end
+end
+
+class NotFoundError < AppError
+  new(msg: String)
+    super(msg)
+  end
+end
+
+class Probe
+  def run
+    seen = "none"
+    try
+      throw NotFoundError.new("missing")
+    catch AppError e
+      seen = "App error: " + e.message
+    end
+    seen
+  end
+end"##,
+    ),
+    (
+        // `super.m()` into a parent method that calls `super.m()` itself.
+        "app_three_level_super_method_chain",
+        r##"class LA
+  def m
+    1
+  end
+end
+
+class LB < LA
+  def m
+    super.m() + 10
+  end
+end
+
+class LC < LB
+  def m
+    super.m() + 100
+  end
+end
+
+class Probe
+  def run
+    "#{new LC().m()} #{LB.new().m()}"
+  end
+end"##,
+    ),
+    (
+        // `super.run()` in the action itself, as `super.show(req)` in a
+        // controller that extends another.
+        "app_action_calls_super",
+        r##"class BaseProbe
+  def run
+    "base"
+  end
+end
+
+class Probe < BaseProbe
+  def run
+    "probe+" + super.run()
+  end
+end"##,
+    ),
+    (
+        // An inherited action runs as the class that declares it: its
+        // `super.run()` reaches Root. Run as Probe's, it would call itself.
+        "app_inherited_action_calls_super",
+        r##"class Root
+  def run
+    "root"
+  end
+end
+
+class Mid < Root
+  def run
+    "mid+" + super.run()
+  end
+end
+
+class Probe < Mid
+end"##,
+    ),
+    (
+        // A value object whose constructor hands its argument to the parent's,
+        // with the parent's invariants checked on the VM.
+        "app_value_object_constructor_calls_super",
+        r##"class Email < ValueObject
+  address: String
+
+  new(address: String)
+    @address = address.trim.downcase
+  end
+
+  invariant("must contain @") { @address.includes?("@") }
+  invariant("must not contain spaces") { !@address.includes?(" ") }
+end
+
+class WorkEmail < Email
+  new(user: String)
+    super(user + "@Work.Example")
+  end
+end
+
+class Probe
+  def run
+    work = WorkEmail.new("  Ada")
+    refused = "none"
+    try
+      WorkEmail.new("Ada Lovelace")
+      refused = "built"
+    catch InvariantViolation err
+      refused = err.message
+    end
+    "#{work.address} #{work.class} #{refused}"
+  end
+end"##,
+    ),
+    (
+        // Tracked in KNOWN_APP_DIVERGENT.
+        "app_a_compiled_parent_method_hides_the_override",
+        r##"class Pa
+  def m
+    "Pa"
+  end
+end
+
+class Ca < Pa
+  def m
+    "Ca"
+  end
+end
+
+class Probe
+  def run
+    first = Pa.new().m()
+    second = Ca.new().m()
+    "#{first} #{second}"
+  end
+end"##,
+    ),
+];
+
+/// APP_CASES that still diverge, with KNOWN_DIVERGENT's contract.
+const KNOWN_APP_DIVERGENT: &[&str] = &[
+    // The VM looks a method up in the compiled tables of the whole chain
+    // (`find_vm_method_with_class`) before it compiles a tree-walker one
+    // (`compile_tree_walking_method`): once a parent's method has been
+    // compiled, a subclass's own definition is no longer reached.
+    "app_a_compiled_parent_method_hides_the_override",
+];
+
+fn parse(source: &str) -> solilang::ast::Program {
+    let tokens = solilang::lexer::Scanner::new(source)
+        .scan_tokens()
+        .expect("the case must lex");
+    solilang::parser::Parser::new(tokens)
+        .parse()
+        .expect("the case must parse")
+}
+
+/// `Probe.new().run()` on the tree-walker.
+fn run_app_on_tree_walker(source: &str) -> Result<String, String> {
+    let program = parse(&format!("{source}\nprobe_result = Probe.new().run()\n"));
+    let mut interpreter = solilang::interpreter::Interpreter::new();
+    interpreter.interpret(&program).map_err(|e| e.to_string())?;
+    let result = interpreter.global_env().borrow().get("probe_result");
+    result
+        .map(|value| value.to_string())
+        .ok_or_else(|| "no probe_result".to_string())
+}
+
+/// `Probe#run` as a served request runs an action: the classes defined by the
+/// tree-walker, the action on a VM seeded with the interpreter's globals.
+fn run_app_on_served_vm(source: &str) -> Result<String, String> {
+    use solilang::interpreter::value::{Instance, Value};
+    let program = parse(source);
+    let mut interpreter = solilang::interpreter::Interpreter::new();
+    interpreter.interpret(&program).map_err(|e| e.to_string())?;
+    let mut vm = solilang::vm::Vm::new();
+    for (name, value) in interpreter.global_env().borrow().get_all_bindings() {
+        vm.globals.insert(name, value);
+    }
+    let Some(Value::Class(probe)) = vm.globals.get("Probe").cloned() else {
+        return Err("no class Probe".to_string());
+    };
+    let run = probe
+        .find_method("run")
+        .ok_or_else(|| "no Probe#run".to_string())?;
+    let instance = Value::Instance(std::rc::Rc::new(std::cell::RefCell::new(Instance::new(
+        probe,
+    ))));
+    vm.call_method_bound(&run, instance, None, solilang::span::Span::default())
+        .map(|value| value.to_string())
+        .map_err(|e| e.to_string())
+}
+
+#[test]
+fn app_loaded_classes_agree_on_both_engines() {
+    let known: std::collections::HashSet<&str> = KNOWN_APP_DIVERGENT.iter().copied().collect();
+
+    let mut new_divergences: Vec<String> = Vec::new();
+    let mut fixed: Vec<&str> = Vec::new();
+
+    for (name, source) in APP_CASES {
+        let tw = run_app_on_tree_walker(source);
+        assert!(
+            tw.is_ok(),
+            "{name} must run on the tree-walker, the reference: {tw:?}"
+        );
+        let vm = run_app_on_served_vm(source);
+        match (tw != vm, known.contains(name)) {
+            (true, false) => new_divergences.push(format!(
+                "  [NEW DIVERGENCE] {name}\n    tree-walker: {tw:?}\n    served vm:   {vm:?}"
+            )),
+            (false, true) => fixed.push(name),
+            _ => {}
+        }
+    }
+
+    let mut msg = String::new();
+    if !new_divergences.is_empty() {
+        msg.push_str(&format!(
+            "{} app-loaded program(s) give a different result on the VM a server runs \
+             them on than on the tree-walker:\n{}\n",
+            new_divergences.len(),
+            new_divergences.join("\n")
+        ));
+    }
+    if !fixed.is_empty() {
+        msg.push_str(&format!(
+            "{} known-divergent app case(s) now AGREE — remove them from \
+             KNOWN_APP_DIVERGENT to lock in the fix: {:?}\n",
             fixed.len(),
             fixed
         ));

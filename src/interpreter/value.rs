@@ -1970,6 +1970,61 @@ impl Class {
         None
     }
 
+    /// [`Self::find_constructor`], with the class that declares the
+    /// constructor. The VM runs a tree-walker constructor with that class on
+    /// its frame, so the `super(...)` inside it reaches *that* class's
+    /// superclass — the one the tree-walker binds as `__defining_superclass__`
+    /// where the class is declared — and not the instance's, or the
+    /// subclass's the search started from.
+    pub fn find_constructor_with_class(self: &Rc<Self>) -> Option<(Rc<Function>, Rc<Class>)> {
+        let mut current = self.clone();
+        loop {
+            if let Some(ctor) = current.constructor.clone() {
+                return Some((ctor, current));
+            }
+            let next = current.superclass.clone()?;
+            current = next;
+        }
+    }
+
+    /// The nearest tree-walker method `name` up the chain, with the class that
+    /// declares it: [`Self::find_vm_method_with_class`] for a method the VM
+    /// has not compiled. The VM records that class on the method's frame, so
+    /// a `super` inside the method resolves against its superclass.
+    pub fn find_method_with_class(
+        self: &Rc<Self>,
+        name: &str,
+    ) -> Option<(Rc<Function>, Rc<Class>)> {
+        let mut current = self.clone();
+        loop {
+            let found = current.methods.borrow().get(name).cloned();
+            if let Some(method) = found {
+                return Some((method, current));
+            }
+            let next = current.superclass.clone()?;
+            current = next;
+        }
+    }
+
+    /// The class in this one's chain that declares `method` — the same
+    /// function, not one of the same name — or `None` when none of them does,
+    /// as for a controller hook's lambda.
+    pub fn declaring_class_of(self: &Rc<Self>, method: &Function) -> Option<Rc<Class>> {
+        let mut current = self.clone();
+        loop {
+            let declares = current
+                .methods
+                .borrow()
+                .get(method.name.as_str())
+                .is_some_and(|own| std::ptr::eq(Rc::as_ptr(own), method));
+            if declares {
+                return Some(current);
+            }
+            let next = current.superclass.clone()?;
+            current = next;
+        }
+    }
+
     /// Build the flattened method cache if not already built.
     fn ensure_methods_cached(&self) {
         // Fast path: check if already cached without borrowing mutably

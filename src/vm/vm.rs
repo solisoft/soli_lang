@@ -3287,10 +3287,15 @@ impl Vm {
                         superclass.find_vm_method_with_class(&name)
                     {
                         self.call_closure_in_class(closure, argc, span, Some(defining_class))?;
-                    } else if let Some(method) = superclass.find_method(&name) {
+                    } else if let Some((method, defining_class)) =
+                        superclass.find_method_with_class(&name)
+                    {
                         // Tree-walking method (e.g. a class copied from
-                        // interpreter globals): JIT and run re-entrantly.
-                        let result = self.run_jit_method_to_completion(&method, argc, span)?;
+                        // interpreter globals): JIT and run re-entrantly, as
+                        // the class that declares it — a `super` inside it
+                        // then goes one level further up the chain.
+                        let result =
+                            self.run_jit_method_to_completion(&method, argc, span, defining_class)?;
                         self.push(result);
                     } else if let Some(native) = superclass.find_native_method(&name) {
                         let receiver = self.stack[receiver_idx].clone();
