@@ -1437,13 +1437,23 @@ A template too small to gain from it stays on the interpreter as well: one with 
 The rules are the tree-walker's:
 
 - A name a view reads is its data first (the `render` hash and the controller's `@ivars`), then a builtin or a helper, and nil when it is neither. `@title` reads `title`.
+- A bare `clock` is the time, as `clock()` is: `<%= ((clock - @started) * 1000).round(2) %>` stays on the VM. A render whose data has a `clock` of its own (a controller's `@clock`), or an app that defines `clock` itself (a helper or a top-level function), is rendered on the tree-walker instead, which resolves `clock` as it always has.
 - A variable a view assigns (`<% heading = "Posts" %>`) is still there for its layout.
 - A `for` over a hash yields `[key, value]` pairs.
 - A helper from `app/helpers` whose body names nothing outside its parameters runs on the VM with the view. One that reads any other name — `req`, `params`, `session`, `cookies`, `headers`, `flash`, another helper, a builtin — or assigns a name its closure already holds, stays on the interpreter, so a helper that reads the request still sees the current request.
 
-If a compiled view fails while it renders, or writes a function by name (`<%= current_user %>`), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. What it captured with `content_for` is taken back, but not a side effect it already had, such as a session value it deleted. Under `--dev` every view renders on the tree-walker.
+If a compiled view fails while it renders, or writes a function by name (`<%= current_user %>`), nothing it wrote is sent: the view is rendered again on the tree-walker, which reports any error with its file and line. What it captured with `content_for` is taken back, but not a side effect it already had, such as a session value it deleted. A view that wrote a function by name, or that the tree-walker then rendered without an error, renders on the tree-walker from then on, in that worker: the two engines disagree about it, and trying the VM again would render the page twice on every request. An error both engines raise is the view's or its data's, and the view stays compiled. Under `--dev` every view renders on the tree-walker.
 
 `SOLI_VM_VIEWS=0` renders every view on the tree-walker. `SOLI_VM_VIEWS_CHECK=<file>` renders each compiled view on both engines, serves the tree-walker's output and appends to `<file>` every view whose two renders differ. It is a diagnostic: it doubles the cost of a render.
+
+`SOLI_ENGINE_LOG=1` says on stderr, once each, which views, partials, components and layouts the interpreter renders in production, and which view helpers it runs, with the reason:
+
+```text
+[soli engine] view 'posts/_post.html.slv' renders on the interpreter: too small to gain from the VM
+[soli engine] layout 'layouts/application.html.slv' renders on the interpreter: layouts are not compiled
+[soli engine] view helper 'link_to' runs on the interpreter: it names `_safe_link_url`, `html_escape`
+[soli engine] view 'posts/index.html.slv' failed on the VM and rendered on the interpreter, which renders it from now on: …
+```
 
 ## View Best Practices
 

@@ -29,6 +29,7 @@ use crate::serve::{vfs_exists, vfs_read_to_string};
 use parser::parse_template;
 use renderer::render_with_interpreter;
 use std::rc::Rc;
+use vm_template::ViewRender;
 
 /// A cached template's parsed AST. Hot reload clears the cache; nothing
 /// re-checks a file's mtime.
@@ -370,7 +371,7 @@ impl TemplateCache {
             self,
             template_path,
         ) {
-            Some(rendered) if vm_template::check_enabled() => {
+            ViewRender::Rendered(rendered) if vm_template::check_enabled() => {
                 // The tree-walker renders the view again: its `content_for`
                 // blocks must not be captured a second time.
                 content_store::restore(content_before.flatten());
@@ -390,19 +391,26 @@ impl TemplateCache {
                 );
                 tree
             }
-            Some(rendered) => {
+            ViewRender::Rendered(rendered) => {
                 for (name, value) in rendered.assigned {
                     core_eval::define_var(&mut interpreter, &name, value);
                 }
                 rendered.html
             }
-            None => render_with_interpreter(
-                &mut interpreter,
-                &nodes,
-                data,
-                Some(&partial_renderer),
-                Some(&template_path.to_string_lossy()),
-            )?,
+            ViewRender::TreeWalker(vm_failure) => {
+                let html = render_with_interpreter(
+                    &mut interpreter,
+                    &nodes,
+                    data,
+                    Some(&partial_renderer),
+                    Some(&template_path.to_string_lossy()),
+                )?;
+                // It rendered where the VM failed: it keeps the tree-walker.
+                if let Some(vm_failure) = vm_failure {
+                    vm_failure.tree_walker_rendered();
+                }
+                html
+            }
         };
 
         // If the template is a markdown file, convert to HTML. Use the
@@ -573,6 +581,7 @@ impl TemplateCache {
         // partial rendered on its own (a controller's `render_partial`) raises
         // for it on the tree-walker.
         let mut interpreter = core_eval::template_interpreter(data);
+        let mut vm_failure = None;
         let on_vm = if crate::interpreter::executor::template_lenient_vars_enabled() {
             let content_before = vm_template::check_enabled().then(content_store::snapshot);
             match vm_template::render_view(
@@ -582,7 +591,7 @@ impl TemplateCache {
                 self,
                 template_path,
             ) {
-                Some(rendered) if vm_template::check_enabled() => {
+                ViewRender::Rendered(rendered) if vm_template::check_enabled() => {
                     content_store::restore(content_before.flatten());
                     let tree = render_with_interpreter(
                         &mut interpreter,
@@ -594,21 +603,32 @@ impl TemplateCache {
                     vm_template::report_difference(&entry.path_str, &rendered.html, &tree);
                     Some(tree)
                 }
-                Some(rendered) => Some(rendered.html),
-                None => None,
+                ViewRender::Rendered(rendered) => Some(rendered.html),
+                ViewRender::TreeWalker(failure) => {
+                    vm_failure = failure;
+                    None
+                }
             }
         } else {
+            vm_template::note_interpreted("view", template_path, self, "rendered outside a view");
             None
         };
         let content = match on_vm {
             Some(html) => html,
-            None => render_with_interpreter(
-                &mut interpreter,
-                nodes,
-                data,
-                Some(&partial_renderer),
-                Some(&entry.path_str),
-            )?,
+            None => {
+                let html = render_with_interpreter(
+                    &mut interpreter,
+                    nodes,
+                    data,
+                    Some(&partial_renderer),
+                    Some(&entry.path_str),
+                )?;
+                // It rendered where the VM failed: it keeps the tree-walker.
+                if let Some(vm_failure) = vm_failure {
+                    vm_failure.tree_walker_rendered();
+                }
+                html
+            }
         };
 
         // Diff declared props against the data the component received; a declared
@@ -754,6 +774,12 @@ impl TemplateCache {
         let result = match self.resolve_template_path(layout_key) {
             Ok(layout_path) => {
                 let layout_nodes = self.get_or_load_template(&layout_path)?;
+                vm_template::note_interpreted(
+                    "layout",
+                    &layout_path,
+                    self,
+                    "layouts are not compiled",
+                );
                 let layout_path_str = layout_path.to_string_lossy();
                 layout::render_layout_with_interpreter(
                     interpreter,

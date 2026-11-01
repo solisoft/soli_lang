@@ -1335,3 +1335,96 @@ fn metrics_endpoint_serves_prometheus_text_to_loopback() {
         .unwrap_or_else(|| panic!("no soli_http_requests_total sample in: {body}"));
     assert!(requests >= 1, "the /ping above was not counted: {body}");
 }
+
+/// A page whose footer reads `clock` bare renders on the VM in production,
+/// and `SOLI_ENGINE_LOG=1` names, once, each template the interpreter renders
+/// and why. In a compiled view the bare `clock` used to be the function
+/// itself: `clock - started` raised, every request rendered the page a second
+/// time on the tree-walker, and the log said nothing about any of it.
+#[test]
+fn a_bare_clock_view_renders_on_the_vm_and_the_engine_log_names_the_rest() {
+    let app = tempfile::tempdir().expect("temp app dir");
+    let root = app.path();
+    let write = |path: &str, body: &str| {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent dir")).expect("mkdir");
+        std::fs::write(path, body).expect("write app file");
+    };
+    write(
+        "config/routes.sl",
+        "get(\"/ping\", \"home#ping\")\nget(\"/timing\", \"home#timing\")\n",
+    );
+    write(
+        "app/controllers/home_controller.sl",
+        "class HomeController < Controller\n  \
+           # GET /ping\n  \
+           def ping(req)\n    {\"status\": 200, \"body\": \"pong\"}\n  end\n\n  \
+           # GET /timing\n  \
+           def timing(req)\n    @rows = [1, 2, 3]\n    @started = clock()\n    render(\"home/timing\")\n  end\n\
+         end\n",
+    );
+    write(
+        "app/views/layouts/application.html.slv",
+        "<main><%= yield %></main>",
+    );
+    write(
+        "app/views/home/timing.html.slv",
+        "<% for row in rows %><%= render \"home/row\", {\"row\": row} %><% end %>|<%= (clock - started) >= 0 %>",
+    );
+    write("app/views/home/_row.html.slv", "[<%= row %>]");
+    let check_path = root.join("vm_views_check.log");
+    let stderr_path = root.join("stderr.log");
+
+    let port = pick_port();
+    let child = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_soli")))
+        .arg("serve")
+        .arg(root)
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--workers")
+        .arg("1")
+        .env("SOLI_ENGINE_LOG", "1")
+        // Each compiled render is checked against the tree-walker's.
+        .env("SOLI_VM_VIEWS_CHECK", &check_path)
+        .stdout(Stdio::null())
+        .stderr(std::fs::File::create(&stderr_path).expect("stderr file"))
+        .spawn()
+        .expect("spawn soli serve");
+    let server = ServerProcess { child, port };
+    server.wait_ready();
+    for _ in 0..2 {
+        let body = body_string(
+            ureq::get(&server.url("/timing"))
+                .call()
+                .expect("GET /timing"),
+        );
+        assert!(body.contains("<main>[1][2][3]|true</main>"), "{body}");
+    }
+    drop(server);
+
+    let check = std::fs::read_to_string(&check_path).unwrap_or_default();
+    assert!(check.contains("home/timing.html.slv: same"), "{check}");
+    assert!(!check.contains("render failed"), "{check}");
+    let log = std::fs::read_to_string(&stderr_path).expect("server stderr");
+    assert!(
+        log.contains(
+            "[soli engine] view 'home/_row.html.slv' renders on the interpreter: \
+             too small to gain from the VM"
+        ),
+        "{log}"
+    );
+    assert!(
+        log.contains(
+            "[soli engine] layout 'layouts/application.html.slv' renders on the interpreter: \
+             layouts are not compiled"
+        ),
+        "{log}"
+    );
+    // Once, for two requests; and nothing about the view the VM renders.
+    assert_eq!(
+        log.matches("layouts/application.html.slv").count(),
+        1,
+        "{log}"
+    );
+    assert!(!log.contains("home/timing.html.slv"), "{log}");
+}

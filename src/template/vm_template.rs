@@ -9,7 +9,9 @@
 //! The template's free names (`rows`, `title`, `h`) become the function's
 //! parameters. At render time each gets the data value of that name, else the
 //! VM global (a helper, a builtin), else nil — the order the tree-walker's
-//! scope chain resolves them in, with its lenient undefined read.
+//! scope chain resolves them in, with its lenient undefined read. A bare-call
+//! builtin (`clock`) stays a global, which the bytecode calls where it is
+//! read bare, as in an action.
 //!
 //! A `form_with` / `fields_for` block and `<%= render "partial" %>` compile
 //! too. A layout is never compiled: the tree-walker still renders it.
@@ -33,6 +35,10 @@ use crate::vm::{Compiler, Vm, VmClosure};
 pub struct VmTemplate {
     closure: Value,
     params: Vec<String>,
+    /// The bare-call builtins (`clock`) the template reads. They are not
+    /// parameters: the bytecode reads each as a global and calls it where it
+    /// is read bare (see [`VmTemplate::bare_call_unresolved`]).
+    bare_calls: Vec<String>,
     /// Whether the function returns the variables the view assigned (see
     /// [`VmTemplate::render`]).
     exports: bool,
@@ -81,13 +87,24 @@ impl VmTemplate {
             ))));
         }
         // First pass: learn the free names, which the compiler resolves as
-        // globals. The second compiles them as parameters.
+        // globals. The second compiles them as parameters, all but the
+        // bare-call builtins.
         let seen = Rc::new(RefCell::new(HashSet::new()));
         compile_function(&body, &[], Some(seen.clone()))?;
+        // A bare-call builtin the view does not assign stays a global: the
+        // compiler calls it where it is read bare, as it does in an action, so
+        // `clock - start` is the time here as on the tree-walker. As a
+        // parameter it held the function itself, `clock - start` raised, and
+        // every render was done again on the tree-walker.
+        let (mut bare_calls, mut params): (Vec<String>, Vec<String>) =
+            seen.borrow().iter().cloned().partition(|name| {
+                crate::interpreter::builtins::is_bare_call_builtin(name)
+                    && !all_assigned.contains(name)
+            });
+        bare_calls.sort();
         // A name the view assigns is a parameter too: `<% errors = @errors ?? {} %>`
         // reads the data's `errors` before replacing it, as the tree-walker
         // does. As a plain local it would read nil.
-        let mut params: Vec<String> = seen.borrow().iter().cloned().collect();
         params.extend(all_assigned);
         params.sort();
         params.dedup();
@@ -95,6 +112,7 @@ impl VmTemplate {
         Ok(Self {
             closure: Value::VmClosure(Rc::new(VmClosure::new(proto, Vec::new()))),
             params,
+            bare_calls,
             exports,
         })
     }
@@ -108,10 +126,35 @@ impl VmTemplate {
     /// globals. An error leaves the VM reset and nothing written: the caller
     /// renders on the tree-walker instead.
     pub fn render(&self, vm: &mut Vm, data: &Value) -> Result<Rendered, RuntimeError> {
+        if let Some(name) = self.bare_call_unresolved(data, &vm.globals, &vm.globals) {
+            return Err(RuntimeError::EngineFallback(
+                format!("a bare `{name}` that is not the builtin"),
+                Span::default(),
+            ));
+        }
         let names = std::mem::take(&mut vm.globals);
         let args = self.bind(data, &names);
         vm.globals = names;
         self.run(vm, args)
+    }
+
+    /// The first bare-call builtin the template reads (`clock`) that is not,
+    /// for this render, the builtin its bytecode calls: the data binds the
+    /// name (a controller's `@clock`, even to nil), or a helper or an app
+    /// function took it where the tree-walker looks (`names`) or where the
+    /// bytecode reads it (`globals`). Such a render goes to the tree-walker,
+    /// which resolves the name as it always has.
+    fn bare_call_unresolved(
+        &self,
+        data: &Value,
+        names: &ahash::AHashMap<String, Value>,
+        globals: &ahash::AHashMap<String, Value>,
+    ) -> Option<&str> {
+        self.bare_calls.iter().map(String::as_str).find(|&name| {
+            data_binds(data, name)
+                || !is_builtin(names.get(name), name)
+                || !is_builtin(globals.get(name), name)
+        })
     }
 
     /// The template's arguments: each free name's data value, else its value
@@ -184,6 +227,20 @@ fn data_value(data: &Value, name: &str) -> Option<Value> {
         Value::Deferred(_) => value.force_deferred(),
         other => other,
     })
+}
+
+/// Whether the data has a key `name`, whatever its value: the tree-walker
+/// then reads that value, not a builtin of the same name.
+fn data_binds(data: &Value, name: &str) -> bool {
+    match data {
+        Value::Hash(map) => hash_get_value(&map.borrow(), &Value::String(name.into())).is_some(),
+        _ => false,
+    }
+}
+
+/// Whether `value` is the builtin function `name` itself.
+fn is_builtin(value: Option<&Value>, name: &str) -> bool {
+    matches!(value, Some(Value::NativeFunction(native)) if native.name == name)
 }
 
 fn compile_function(
@@ -649,38 +706,179 @@ pub fn enabled() -> bool {
         })
 }
 
-/// Render a view on this thread's VM, or `None` when the tree-walker must:
-/// views off, a view that does not compile, a view rendered from inside
-/// another (the VM is in use), or a render the VM refused or failed. A failed
-/// render wrote nothing; the caller renders the view again on the tree-walker,
-/// which raises the error with its file and line.
+/// How [`render_view`] rendered a view.
+pub enum ViewRender {
+    /// On the VM.
+    Rendered(Rendered),
+    /// Not on the VM: the caller renders the view on the tree-walker. With a
+    /// [`VmFailure`] when the VM tried and failed, which the caller settles
+    /// once the tree-walker has rendered the view.
+    TreeWalker(Option<VmFailure>),
+}
+
+/// A render the VM failed with an error other than a refusal. Nothing it
+/// wrote is sent: the caller renders the view again on the tree-walker. When
+/// that render succeeds, the two engines disagree about the view, and
+/// [`VmFailure::tree_walker_rendered`] keeps it on the tree-walker from then
+/// on (on this thread) instead of failing on the VM on every request.
+/// Dropped without it — the tree-walker raised too — the error is the view's
+/// or its data's, and the view stays compiled.
+pub struct VmFailure {
+    /// The view's nodes: their address keys `COMPILED`, and holding them
+    /// keeps it from being reused.
+    nodes: Arc<Vec<TemplateNode>>,
+    error: RuntimeError,
+    /// The view's name for `SOLI_ENGINE_LOG`, kept only when it is on.
+    name: Option<String>,
+}
+
+impl VmFailure {
+    /// The tree-walker rendered the view the VM failed.
+    pub fn tree_walker_rendered(self) {
+        keep_on_tree_walker(&self.nodes);
+        if let Some(name) = self.name {
+            let error = self.error;
+            engine_log(|| {
+                format!(
+                    "view '{name}' failed on the VM and rendered on the interpreter, \
+                     which renders it from now on: {error}"
+                )
+            });
+        }
+    }
+}
+
+/// `nodes` render on the tree-walker from now on, on this thread.
+fn keep_on_tree_walker(nodes: &Arc<Vec<TemplateNode>>) {
+    let key = Arc::as_ptr(nodes) as usize;
+    COMPILED.with(|compiled| {
+        if let Ok(mut compiled) = compiled.try_borrow_mut() {
+            if let Some(entry) = compiled.get_mut(&key) {
+                entry.1 = None;
+            }
+        }
+    });
+}
+
+/// A template's name in `SOLI_ENGINE_LOG` lines: its path under the views
+/// directory, or the whole path when it lives elsewhere (an engine's views).
+fn view_name(path: &std::path::Path, cache: &crate::template::TemplateCache) -> String {
+    path.strip_prefix(cache.views_dir())
+        .unwrap_or(path)
+        .display()
+        .to_string()
+}
+
+/// `SOLI_ENGINE_LOG=1`: say on stderr which templates render on the
+/// interpreter, and why.
+fn engine_log_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| {
+        crate::platform::env::var("SOLI_ENGINE_LOG")
+            .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+    })
+}
+
+/// Print `line` under `SOLI_ENGINE_LOG`, once per process: every worker
+/// thread decides about a template on its own, and they decide alike.
+pub(crate) fn engine_log(line: impl FnOnce() -> String) {
+    if !engine_log_enabled() {
+        return;
+    }
+    static PRINTED: std::sync::OnceLock<std::sync::Mutex<HashSet<String>>> =
+        std::sync::OnceLock::new();
+    let line = line();
+    let first = PRINTED
+        .get_or_init(Default::default)
+        .lock()
+        .map(|mut printed| printed.insert(line.clone()))
+        .unwrap_or(true);
+    if first {
+        eprintln!("[soli engine] {line}");
+    }
+}
+
+/// `SOLI_ENGINE_LOG=1`: a template the VM never tries — a layout, or a
+/// partial rendered outside a view — says once that the tree-walker renders
+/// it, and `why`, as a view that does not compile does. `kind` is how the
+/// line names it ("layout", "view").
+pub fn note_interpreted(
+    kind: &str,
+    path: &std::path::Path,
+    cache: &crate::template::TemplateCache,
+    why: &str,
+) {
+    if engine_log_enabled() && enabled() {
+        engine_log(|| {
+            format!(
+                "{kind} '{}' renders on the interpreter: {why}",
+                view_name(path, cache)
+            )
+        });
+    }
+}
+
+/// Render a view on this thread's VM, or say that the tree-walker must:
+/// views off, a view that does not compile, a render whose bare `clock` the
+/// data or a helper rebinds, a view the VM refused or failed before, or a
+/// render the VM refused or failed now. A failed render wrote nothing; the
+/// caller renders the view again on the tree-walker, which raises the error
+/// with its file and line — and when it raises none, hands back the
+/// [`VmFailure`].
 pub fn render_view(
     nodes: &Arc<Vec<TemplateNode>>,
     data: &Value,
     env: &Rc<RefCell<crate::interpreter::environment::Environment>>,
     cache: &crate::template::TemplateCache,
     path: &std::path::Path,
-) -> Option<Rendered> {
+) -> ViewRender {
     // A render does not suspend its request (`serve::coroutine`).
     #[cfg(not(target_arch = "wasm32"))]
     let _no_yield = crate::serve::coroutine::NoYield::enter();
     if !enabled() {
         check_log("[vm-views] off");
-        return None;
+        return ViewRender::TreeWalker(None);
     }
     let key = Arc::as_ptr(nodes) as usize;
-    let compiled = COMPILED.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        if let Some((_, compiled)) = cache.get(&key) {
+    let compiled = COMPILED.with(|compiled_views| {
+        let mut compiled_views = compiled_views.borrow_mut();
+        if let Some((_, compiled)) = compiled_views.get(&key) {
             return compiled.clone();
         }
-        let compiled = VmTemplate::compile_for_serve(nodes).ok().map(Rc::new);
-        cache.insert(key, (nodes.clone(), compiled.clone()));
+        let compiled = match VmTemplate::compile_for_serve(nodes) {
+            Ok(template) => Some(Rc::new(template)),
+            Err(reason) => {
+                engine_log(|| {
+                    format!(
+                        "view '{}' renders on the interpreter: {reason}",
+                        view_name(path, cache)
+                    )
+                });
+                None
+            }
+        };
+        compiled_views.insert(key, (nodes.clone(), compiled.clone()));
         compiled
-    })?;
+    });
+    let Some(compiled) = compiled else {
+        return ViewRender::TreeWalker(None);
+    };
     // A VM from this thread's pool, held by this render alone: a component
     // or partial rendered from inside it takes another.
     let mut view_vm = ViewVm::take();
+    // About this render's data (`@clock`) or the app's helpers, not about the
+    // view: the tree-walker renders this once, and the view stays compiled.
+    if let Some(name) = compiled.bare_call_unresolved(data, &view_vm.names, &view_vm.vm.globals) {
+        view_vm.put_back();
+        engine_log(|| {
+            format!(
+                "view '{}' renders on the interpreter while `{name}` is not the builtin \
+                 (the data, a helper or the app binds it)",
+                view_name(path, cache)
+            )
+        });
+        return ViewRender::TreeWalker(None);
+    }
     let args = compiled.bind(data, &view_vm.names);
     view_vm.vm.tree_walk_env = Some(env.clone());
     view_vm.vm.template_content_before = None;
@@ -698,23 +896,33 @@ pub fn render_view(
     }
     view_vm.put_back();
     match outcome {
-        Ok(rendered) => Some(rendered),
+        Ok(rendered) => ViewRender::Rendered(rendered),
         Err(err) => {
-            check_log(&format!(
-                "[vm-views] {}: render failed, tree-walker used: {err}",
-                path.display()
-            ));
-            // A refusal is about the view (a function written bare), so it
-            // keeps the tree-walker from now on; any other error may be about
-            // this request's data, and the view stays compiled.
-            if err.is_engine_fallback() {
-                COMPILED.with(|cache| {
-                    if let Some(entry) = cache.borrow_mut().get_mut(&key) {
-                        entry.1 = None;
-                    }
-                });
+            if check_enabled() {
+                check_log(&format!(
+                    "[vm-views] {}: render failed, tree-walker used: {err}",
+                    path.display()
+                ));
             }
-            None
+            // A refusal is about the view (a function written bare), so it
+            // keeps the tree-walker from now on.
+            if err.is_engine_fallback() {
+                keep_on_tree_walker(nodes);
+                engine_log(|| {
+                    format!(
+                        "view '{}' renders on the interpreter from now on: {err}",
+                        view_name(path, cache)
+                    )
+                });
+                return ViewRender::TreeWalker(None);
+            }
+            // Any other error may be about this request's data. The
+            // tree-walker's render of the same view and data tells.
+            ViewRender::TreeWalker(Some(VmFailure {
+                nodes: nodes.clone(),
+                error: err,
+                name: engine_log_enabled().then(|| view_name(path, cache)),
+            }))
         }
     }
 }
@@ -1218,6 +1426,165 @@ mod tests {
                 .html;
             assert_eq!(on_vm, tree, "{source}");
         }
+        Ok(())
+    }
+
+    /// A bare `clock` is the time in a compiled view, as on the tree-walker
+    /// and in an action. It used to be a parameter holding the function: its
+    /// value was the function, `clock - started` raised, and serve rendered
+    /// every such page twice, the second time on the tree-walker.
+    #[test]
+    fn a_bare_clock_is_the_time_in_a_compiled_view() -> Result<(), Box<dyn std::error::Error>> {
+        let data = hash(vec![("started", Value::Float(1.0))]);
+        let cases = [
+            "<%= (clock - started) > 0 %>",
+            "<% start = clock %><%= ((clock - start) * 1000).round(2) >= 0 %>",
+            "<%= type(clock) %>|<%= type(clock()) %>|<%= clock.round > 0 %>",
+            "<%= \"#{clock > started}\" %>",
+            "<%= [1, 2].map { |i| clock > started }.join(\",\") %>",
+            "<% for i in [1] %><%= (clock + i) > started %><% end %>",
+            // A `clock` the view binds itself is that binding, on both.
+            "<%= [3].map { |clock| clock + 1 }.join(\",\") %>",
+            "<% for clock in [7] %><%= clock %><% end %>",
+        ];
+        for source in cases {
+            assert_renders_same(source, &data);
+        }
+        // Read as the global the bytecode calls, not bound as a parameter.
+        let nodes = parse_template("<%= clock - started %>")?;
+        assert_eq!(VmTemplate::compile(&nodes)?.params(), ["started"]);
+        // One the view assigns stays a parameter, holding what it assigned.
+        let nodes = parse_template("<% clock = 5 %><%= clock + 1 %>")?;
+        let compiled = VmTemplate::compile(&nodes)?;
+        assert_eq!(compiled.params(), ["clock"]);
+        assert_eq!(compiled.render(&mut view_vm(), &data)?.html, "6");
+        Ok(())
+    }
+
+    /// The tree-walker reads a `clock` the data binds (a controller's
+    /// `@clock`, even nil), or a helper or an app function named `clock`,
+    /// where the bytecode would call the builtin: the VM refuses that render,
+    /// rather than write the time in its place.
+    #[test]
+    fn a_clock_the_data_or_the_app_binds_is_left_to_the_tree_walker(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let nodes = parse_template("<%= clock + 1 %>")?;
+        let compiled = VmTemplate::compile(&nodes)?;
+        let five = hash(vec![("clock", Value::Int(5))]);
+        assert_eq!(render_nodes(&nodes, &five, None)?, "6");
+        for data in [five, hash(vec![("clock", Value::Null)])] {
+            let Err(err) = compiled.render(&mut view_vm(), &data) else {
+                return Err("a data-bound `clock` was called as the builtin".into());
+            };
+            assert!(err.is_engine_fallback(), "{err}");
+        }
+        let mut vm = view_vm();
+        vm.globals.insert("clock".to_string(), Value::Int(1));
+        let Err(err) = compiled.render(&mut vm, &hash(vec![])) else {
+            return Err("an app's own `clock` was called as the builtin".into());
+        };
+        assert!(err.is_engine_fallback(), "{err}");
+        Ok(())
+    }
+
+    /// How many times a probe ran on one engine.
+    type Calls = Rc<std::cell::Cell<usize>>;
+
+    /// `probe()` for a view, with the calls it got on the VM and on the
+    /// tree-walker: the VM's render sets `RENDERING_CACHE`, the tree-walker's
+    /// does not. It fails on the engines it is told to.
+    fn counting_probe(fails_on_vm: bool, fails_on_tree_walker: bool) -> (Value, Calls, Calls) {
+        let on_vm = Calls::default();
+        let on_tree_walker = Calls::default();
+        let (vm_calls, tree_walker_calls) = (on_vm.clone(), on_tree_walker.clone());
+        let native = crate::interpreter::value::NativeFunction::new("probe", Some(0), move |_| {
+            let vm = RENDERING_CACHE.with(|c| !c.get().is_null());
+            let calls = if vm { &vm_calls } else { &tree_walker_calls };
+            calls.set(calls.get() + 1);
+            if (vm && fails_on_vm) || (!vm && fails_on_tree_walker) {
+                return Err("probe failed".to_string());
+            }
+            Ok(Value::String("p".into()))
+        });
+        (Value::NativeFunction(native), on_vm, on_tree_walker)
+    }
+
+    /// Views at `views/page` and `views/things/_row` that call `probe()`
+    /// twice, in a loop (worth compiling), then write `n`.
+    fn probe_views() -> Result<(tempfile::TempDir, crate::template::TemplateCache), std::io::Error>
+    {
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        std::fs::create_dir_all(views.join("things"))?;
+        let source = "<% for i in [1, 2] %><%= probe() %><% end %>|<%= n %>";
+        std::fs::write(views.join("page.html.slv"), source)?;
+        std::fs::write(views.join("things").join("_row.html.slv"), source)?;
+        let cache = crate::template::TemplateCache::new(&views);
+        Ok((dir, cache))
+    }
+
+    /// A view the VM fails on and the tree-walker renders: the two engines
+    /// disagree about it, so it stays on the tree-walker. Every request used
+    /// to run it on the VM, throw that away and render it again. A partial
+    /// rendered inside a view goes the same way.
+    #[test]
+    fn a_view_only_the_vm_fails_stays_on_the_tree_walker() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let (_dir, cache) = probe_views()?;
+        let (probe, on_vm, on_tree_walker) = counting_probe(true, false);
+        // A different `n` each time: the response cache never answers.
+        for n in 1..=3 {
+            let data = hash(vec![("probe", probe.clone()), ("n", Value::Int(n))]);
+            assert_eq!(cache.render("page", &data, None)?, format!("pp|{n}"));
+        }
+        assert_eq!((on_vm.get(), on_tree_walker.get()), (1, 6));
+
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let (probe, on_vm, on_tree_walker) = counting_probe(true, false);
+        for n in 1..=3 {
+            let data = hash(vec![("probe", probe.clone()), ("n", Value::Int(n))]);
+            assert_eq!(
+                cache.render_partial("things/row", &data)?,
+                format!("pp|{n}")
+            );
+        }
+        assert_eq!((on_vm.get(), on_tree_walker.get()), (1, 6));
+        Ok(())
+    }
+
+    /// An error both engines raise is the view's or its data's, not the VM's:
+    /// the view stays compiled, and the next request tries the VM again.
+    #[test]
+    fn an_error_both_engines_raise_keeps_the_view_compiled(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (_dir, cache) = probe_views()?;
+        let (probe, on_vm, on_tree_walker) = counting_probe(true, true);
+        for n in 1..=2 {
+            let data = hash(vec![("probe", probe.clone()), ("n", Value::Int(n))]);
+            assert!(cache.render("page", &data, None).is_err());
+        }
+        assert_eq!((on_vm.get(), on_tree_walker.get()), (2, 2));
+        Ok(())
+    }
+
+    /// Through serve's render path: a page whose footer reads `clock` bare
+    /// is rendered by the VM alone.
+    #[test]
+    fn a_page_reading_clock_bare_renders_on_the_vm_alone() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        std::fs::create_dir_all(&views)?;
+        std::fs::write(
+            views.join("page.html.slv"),
+            "<% for i in [1, 2] %><%= probe() %><% end %>|<%= (clock - started) > 0 %>",
+        )?;
+        let cache = crate::template::TemplateCache::new(&views);
+        let (probe, on_vm, on_tree_walker) = counting_probe(false, false);
+        let data = hash(vec![("probe", probe), ("started", Value::Float(1.0))]);
+        assert_eq!(cache.render("page", &data, None)?, "pp|true");
+        assert_eq!((on_vm.get(), on_tree_walker.get()), (2, 0));
         Ok(())
     }
 

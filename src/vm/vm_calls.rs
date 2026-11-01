@@ -186,7 +186,8 @@ pub(crate) fn clear_view_helper_vm_cache() {
 /// none of that, so it compiles. A free name, an assignment to a name the
 /// closure already holds, a method, a function from anywhere else, or a
 /// body the compiler refuses: the tree-walker, and not an `EngineFallback`
-/// — that would demote the whole view.
+/// — that would demote the whole view. `SOLI_ENGINE_LOG=1` names a view
+/// helper kept there and what kept it.
 fn view_helper_proto(func: &Function) -> Option<Arc<FunctionProto>> {
     if func.is_method
         || !crate::interpreter::builtins::template::is_view_helper_closure(&func.closure)
@@ -221,13 +222,40 @@ fn view_helper_proto(func: &Function) -> Option<Arc<FunctionProto>> {
             *func.jit_cache.borrow_mut() = Some(proto);
             true
         }
-        _ => false,
+        rejected => {
+            crate::template::vm_template::engine_log(|| {
+                let why = match rejected {
+                    Err(e) => format!("the compiler refused it: {e}"),
+                    Ok(_) => format!("it names {}", quoted_names(&seen.borrow())),
+                };
+                format!("view helper '{}' runs on the interpreter: {why}", func.name)
+            });
+            false
+        }
     };
     VIEW_HELPER_VM.with(|cache| cache.borrow_mut().insert(key, accepted));
     if accepted {
         func.jit_cache.borrow().clone()
     } else {
         None
+    }
+}
+
+/// `` `a`, `b`, `c` ``, sorted, the first eight of them: the names that keep
+/// a view helper on the tree-walker, for `SOLI_ENGINE_LOG`.
+fn quoted_names(names: &std::collections::HashSet<String>) -> String {
+    const SHOWN: usize = 8;
+    let mut sorted: Vec<&str> = names.iter().map(String::as_str).collect();
+    sorted.sort_unstable();
+    let shown = sorted
+        .iter()
+        .take(SHOWN)
+        .map(|name| format!("`{name}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    match sorted.len().saturating_sub(SHOWN) {
+        0 => shown,
+        more => format!("{shown} and {more} more"),
     }
 }
 
@@ -2942,5 +2970,24 @@ mod tests {
         let who = helper_fn("def who()\n  req\nend\n", closure);
         assert_eq!(call_on_view_vm(&who, "let x = who()"), Value::str("Ada"));
         assert!(who.jit_cache.borrow().is_none());
+    }
+
+    /// What `SOLI_ENGINE_LOG` says kept a view helper on the tree-walker:
+    /// the names, sorted and quoted, the first eight of them.
+    #[test]
+    fn the_names_that_keep_a_helper_interpreted_read_sorted_and_capped() {
+        fn names(list: &[&str]) -> std::collections::HashSet<String> {
+            list.iter().map(|name| name.to_string()).collect()
+        }
+        assert_eq!(
+            quoted_names(&names(&["html_escape", "_safe_link_url"])),
+            "`_safe_link_url`, `html_escape`"
+        );
+        let many: Vec<String> = (0..10).map(|i| format!("n{i}")).collect();
+        let many: Vec<&str> = many.iter().map(String::as_str).collect();
+        assert_eq!(
+            quoted_names(&names(&many)),
+            "`n0`, `n1`, `n2`, `n3`, `n4`, `n5`, `n6`, `n7` and 2 more"
+        );
     }
 }
