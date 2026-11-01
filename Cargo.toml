@@ -389,7 +389,7 @@ eui-proto = { git = "https://github.com/solisoft/eui", rev = "f137388", optional
 eui-client = { git = "https://github.com/solisoft/eui", rev = "f137388", optional = true }
 # The catalogue's score engraver, native (`serve::eui::score`), pinned with
 # the two above.
-eui-score = { git = "https://github.com/solisoft/eui", rev = "2dee226", optional = true }
+eui-score = { git = "https://github.com/solisoft/eui", rev = "f6de6d2", optional = true }
 # The blocking binary-protocol client of es, pinned like eui. To work on it
 # locally, patch it in the untracked .cargo/config.toml rather than here:
 #   [patch."https://github.com/solisoft/event_stream"]

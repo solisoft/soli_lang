@@ -11,6 +11,10 @@
   to 17 pt (85 %) by half points, when that fits it on a page fewer — a
   line or two alone on a last page come back to the one before. A
   `set-global-staff-size` is kept; screen layouts do not change.
+- The score engraver moves on to eui f6de6d2: on a narrow page, a title
+  row's fields that would touch — a centred `instrument` and the composer
+  set flush right, say — take a line each, the centre first; a wide page
+  keeps them on one line.
 
 ## [2.29.2] - 2026-10-31
 
