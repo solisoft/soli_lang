@@ -8,6 +8,9 @@ pub enum Op {
     Constant(u16),
     /// Push null.
     Null,
+    /// Push `n` nulls in one dispatch: the slots of the bare-assigned locals
+    /// a function declares at entry (`Compiler::hoist_locals`).
+    PushNulls(u16),
     /// Push true.
     True,
     /// Push false.

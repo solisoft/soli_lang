@@ -54,6 +54,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             out.push_str(&format!("SYMBOL       {:>5} (:{})", idx, name));
         }
         Op::Null => out.push_str("NULL"),
+        Op::PushNulls(count) => out.push_str(&format!("PUSH_NULLS       {count:>3}")),
         Op::True => out.push_str("TRUE"),
         Op::False => out.push_str("FALSE"),
         Op::Pop => out.push_str("POP"),
@@ -680,6 +681,13 @@ mod tests {
         // 5-wide column, but we check substring-ish).
         assert!(body.contains("3"));
         assert!(body.contains("7"));
+    }
+
+    #[test]
+    fn push_nulls_renders_its_count() {
+        let body = body_for(vec![(Op::PushNulls(6), 1)]);
+        assert!(body.contains("PUSH_NULLS"), "got: {body}");
+        assert!(body.trim_end().ends_with('6'), "got: {body}");
     }
 
     #[test]

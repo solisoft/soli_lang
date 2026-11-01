@@ -154,6 +154,11 @@ pub struct Compiler {
     /// Source column of the expression or statement being compiled, recorded
     /// with each instruction for error spans.
     pub column: u32,
+    /// Top-level `name = value` statements of the function being compiled
+    /// that declare `name` where they stand instead of assigning a slot
+    /// hoisted to function entry (`hoist_locals`). Each is taken when its
+    /// statement is compiled (`take_in_place_decl`).
+    pub in_place_decls: Vec<super::compiler_hoist::InPlaceDecl>,
 }
 
 /// One enclosing `try`, as the compiler sees it at the current emit point.
@@ -237,6 +242,7 @@ impl Compiler {
             template_mode: false,
             kernels: None,
             column: 0,
+            in_place_decls: Vec::new(),
         };
 
         // Reserve slot 0 for `this` in methods, or an empty slot otherwise
@@ -564,12 +570,6 @@ impl Compiler {
         });
     }
 
-    /// Declare, at the start of a function body, the locals introduced by bare
-    /// assignment (Soli's optional-`let`). Must be called inside the body scope
-    /// after parameters have been added. A candidate is skipped when it is
-    /// already a parameter/local, is captured from an enclosing scope (so it
-    /// stays an upvalue), or is a known global (so the assignment targets the
-    /// existing global) — matching the tree-walking interpreter.
     /// Whether `name` is a global this compiler knows of: declared so far, or
     /// in the shared base set it was handed.
     pub(crate) fn is_known_global(&self, name: &str) -> bool {
@@ -580,22 +580,66 @@ impl Compiler {
                 .is_some_and(|base| base.contains(name))
     }
 
+    /// Declare the locals introduced by bare assignment (Soli's optional-`let`)
+    /// in `body`, a function body about to be compiled. Must be called inside
+    /// the body scope after parameters have been added. A candidate is skipped
+    /// when it is already a parameter/local, is captured from an enclosing
+    /// scope (so it stays an upvalue), or is a known global (so the assignment
+    /// targets the existing global) — matching the tree-walking interpreter.
+    ///
+    /// A candidate whose first mention is a top-level `name = value` is
+    /// declared by that statement, the way `let name = value` declares it
+    /// (`in_place_declarations` says when that cannot be told apart): its
+    /// statement is recorded in `in_place_decls` for `compile_stmt` to find.
+    /// The rest are declared here, as nils pushed at function entry.
     pub fn hoist_locals(&mut self, body: &[Stmt], line: usize) {
         if !optional_let_enabled() {
             return;
         }
-        for name in super::compiler_hoist::collect_hoisted_locals(body) {
-            if self.resolve_local(&name).is_some() {
-                continue;
-            }
-            if self.is_known_global(&name) {
-                continue;
-            }
-            if self.enclosing_has_local(&name) {
-                continue;
-            }
-            self.emit(Op::Null, line);
+        let candidates: Vec<String> = super::compiler_hoist::collect_hoisted_locals(body)
+            .into_iter()
+            .filter(|name| {
+                self.resolve_local(name).is_none()
+                    && !self.is_known_global(name)
+                    && !self.enclosing_has_local(name)
+            })
+            .collect();
+        let in_place =
+            super::compiler_hoist::in_place_declarations(body, &candidates, self.template_mode);
+        for &(index, name) in &in_place {
+            self.in_place_decls
+                .push(super::compiler_hoist::InPlaceDecl {
+                    stmt: &body[index],
+                    name: name.to_string(),
+                    resolved_early: false,
+                });
+        }
+        let hoisted: Vec<String> = candidates
+            .into_iter()
+            .filter(|name| {
+                !in_place
+                    .iter()
+                    .any(|&(_, declared)| declared == name.as_str())
+            })
+            .collect();
+        self.emit_nulls(hoisted.len(), line);
+        for name in hoisted {
             self.add_local(name, false);
+        }
+    }
+
+    /// Push `count` nils: a plain `Null` for one, one `PushNulls` for more.
+    fn emit_nulls(&mut self, count: usize, line: usize) {
+        let mut left = count;
+        while left > 0 {
+            let chunk = left.min(u16::MAX as usize);
+            let op = if chunk == 1 {
+                Op::Null
+            } else {
+                Op::PushNulls(chunk as u16)
+            };
+            self.emit(op, line);
+            left -= chunk;
         }
     }
 
@@ -693,6 +737,7 @@ impl Compiler {
         } else if let Some(idx) = self.resolve_upvalue(name) {
             VariableAccess::Upvalue(idx)
         } else {
+            self.note_global_resolution(name);
             if let Some(seen) = &self.referenced_globals {
                 seen.borrow_mut().insert(name.to_string());
             }
@@ -1061,6 +1106,7 @@ fn stack_effect(op: Op) -> i32 {
     match op {
         // Constants / literals push one value.
         Constant(_) | Null | True | False | Symbol(_) => 1,
+        PushNulls(n) => n as i32,
         Dup => 1,
         Pop => -1,
         // Reads push; stores leave the value in place (net 0).

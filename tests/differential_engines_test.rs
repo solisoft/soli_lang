@@ -228,6 +228,26 @@ const CASES: &[(&str, &str)] = &[
         "in_fn_assign_global",
         "g = 1\nfn f() { g = 99 }\nf()\nprint(g)",
     ),
+    // A bare local whose first mention is its own top-level assignment is
+    // declared there, as `let` is, instead of hoisted to function entry. The
+    // later reads and writes — in branches, loops, blocks, closures — must
+    // reach the same binding.
+    (
+        "bare_locals_declared_in_place_captured_by_a_block",
+        "def summarize(items)\n  count = items.length\n  total = 0\n  items.each do |item|\n    total += item\n  end\n  average = total / count\n  label = \"avg\"\n  \"#{label}=#{average} n=#{count}\"\nend\nprint(summarize([2, 4, 6]))",
+    ),
+    (
+        "bare_locals_declared_in_place_reassigned_in_branches_and_loops",
+        "def classify(n)\n  label = \"small\"\n  if n > 10\n    label = \"big\"\n  end\n  i = 0\n  while i < n\n    i += 1\n  end\n  steps = i\n  \"#{label}:#{steps}\"\nend\nprint(classify(3))\nprint(classify(12))",
+    ),
+    (
+        "bare_locals_declared_in_place_in_methods_constructors_and_blocks",
+        "class Invoice\n  total: Int\n  new(amount)\n    tax = amount / 10\n    @total = amount + tax\n  end\n  def summary(rate)\n    base = @total\n    extra = base * rate\n    discounted = base + extra - 1\n    \"#{base}/#{extra}/#{discounted}\"\n  end\nend\ninv = new Invoice(100)\nprint(inv.summary(2))\nresult = [1, 2, 3].map do |x|\n  doubled = x * 2\n  doubled + 1\nend\nprint(result)",
+    ),
+    (
+        "bare_locals_declared_in_place_tail_chained_and_closed_over",
+        "def tail(v)\n  y = v * 3\nend\nprint(tail(4))\ndef shadow\n  sq = fn(x) { x * x }\n  x = 3\n  sq(x)\nend\nprint(shadow())\ndef counter\n  count = 0\n  bump = fn() { count = count + 1 }\n  bump()\n  bump()\n  count\nend\nprint(counter())\ndef chained(v)\n  a = b = v + 1\n  a + b\nend\nprint(chained(1))",
+    ),
     // --- try / catch / finally ---
     // --- value objects and domain errors ---
     // Construction, freeze, value equality, invariants, `with`, `to_h`, and
@@ -1872,13 +1892,35 @@ const KNOWN_DIVERGENT: &[&str] = &[
     //        receiver in the callee slot as `this`
 ];
 
+/// Programs the type checker refuses but both engines run. It rejects a read
+/// that comes before the variable's assignment in the source, even inside a
+/// closure that is only called afterwards — the shapes where the VM must keep
+/// hoisting a bare local rather than declare it at its first assignment. Run
+/// with `--no-type-check`, the engines must still agree.
+const UNCHECKED_CASES: &[(&str, &str)] = &[
+    (
+        "bare_local_read_by_a_closure_made_before_its_assignment",
+        "def later\n  get = fn() { x }\n  x = 5\n  get()\nend\nprint(later())",
+    ),
+    (
+        "bare_local_read_by_a_nested_def_made_before_its_assignment",
+        "def outer\n  def inner\n    x + 1\n  end\n  x = 41\n  inner()\nend\nprint(outer())",
+    ),
+];
+
 /// Run `source` through the soli binary; `vm` selects the bytecode VM with
 /// optional-`let` enabled. Returns the observable outcome: stdout on success,
 /// or a sentinel on any non-success (error/panic) so error *text* differences
 /// don't count as behavioral divergence.
 fn run(source: &str, idx: usize, vm: bool) -> String {
+    run_as(source, &idx.to_string(), vm, true)
+}
+
+/// `run`, with the temp file named after `tag` (tests run in parallel, so
+/// each needs its own names) and `--no-type-check` unless `type_check`.
+fn run_as(source: &str, tag: &str, vm: bool, type_check: bool) -> String {
     let mut path = std::env::temp_dir();
-    path.push(format!("soli_diff_{}_{}.sl", std::process::id(), idx));
+    path.push(format!("soli_diff_{}_{}.sl", std::process::id(), tag));
     std::fs::write(&path, source).expect("write temp source");
 
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_soli"));
@@ -1889,6 +1931,9 @@ fn run(source: &str, idx: usize, vm: bool) -> String {
         // Scripts run on the VM by default now; the reference is the
         // tree-walker, by name.
         cmd.arg("--tree");
+    }
+    if !type_check {
+        cmd.arg("--no-type-check");
     }
     let output = cmd.output().expect("run soli");
     let _ = std::fs::remove_file(&path);
@@ -1940,4 +1985,15 @@ fn tree_walker_and_vm_agree() {
         ));
     }
     assert!(msg.is_empty(), "\n{msg}");
+}
+
+#[test]
+fn tree_walker_and_vm_agree_without_the_type_checker() {
+    for (idx, (name, source)) in UNCHECKED_CASES.iter().enumerate() {
+        let tag = format!("unchecked_{idx}");
+        let tw = run_as(source, &tag, false, false);
+        let vm = run_as(source, &tag, true, false);
+        assert_ne!(tw, "<non-success>", "{name}: the tree-walker must run it");
+        assert_eq!(tw, vm, "{name}: the tree-walker and the VM disagree");
+    }
 }

@@ -686,6 +686,10 @@ impl Vm {
                     self.stack.push(value);
                 }
                 Op::Null => self.stack.push(Value::Null),
+                // The nils of the locals hoisted to function entry, in one
+                // dispatch. Built in place: `resize` would call `Value::clone`
+                // for each slot.
+                Op::PushNulls(count) => self.stack.extend((0..count).map(|_| Value::Null)),
                 Op::True => self.stack.push(Value::Bool(true)),
                 Op::False => self.stack.push(Value::Bool(false)),
                 Op::Nop => {}
@@ -1339,6 +1343,7 @@ impl Vm {
                     }
                 }
                 Op::Null => self.stack.push(Value::Null),
+                Op::PushNulls(count) => self.stack.extend((0..count).map(|_| Value::Null)),
                 Op::True => self.stack.push(Value::Bool(true)),
                 Op::False => self.stack.push(Value::Bool(false)),
 

@@ -1159,12 +1159,26 @@ impl Compiler {
                     VariableAccess::Global(name) => {
                         // A bare assignment to a name that is neither a local nor
                         // an upvalue. New in-function locals are hoisted to
-                        // function entry by `hoist_function_locals` before the
-                        // body is compiled, so by the time we get here the name
-                        // is either a real global (top level, or one we know
-                        // exists) — define-or-update it. `SetGlobal` upserts.
-                        // At top level it is the program's own binding, as a
-                        // `let` would be: `clock = 7` shadows the builtin.
+                        // function entry by `hoist_locals` before the body is
+                        // compiled, or declared by their first assignment, so by
+                        // the time we get here the name is either a real global
+                        // (top level, or one we know exists) — define-or-update
+                        // it. `SetGlobal` upserts. At top level it is the
+                        // program's own binding, as a `let` would be: `clock = 7`
+                        // shadows the builtin.
+                        //
+                        // A name still waiting for its in-place declaration is
+                        // not a global: storing to one here means that statement
+                        // was compiled some other way, and the function is
+                        // refused rather than leak the local into the globals.
+                        if self.in_place_pending(&name) {
+                            return Err(CompileError::new(
+                                format!(
+                                    "`{name}` is assigned before the statement that declares it"
+                                ),
+                                target.span,
+                            ));
+                        }
                         if self.scope_depth == 0 {
                             self.known_globals.borrow_mut().insert(name.clone());
                             self.program_globals.borrow_mut().insert(name.clone());

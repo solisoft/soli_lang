@@ -31,6 +31,14 @@ impl Compiler {
         self.cover_line(line);
         match &stmt.kind {
             StmtKind::Expression(expr) => {
+                // A bare `name = value` that `hoist_locals` chose to declare
+                // `name` here: as for `let`, the value stays on the stack as
+                // the new local's slot, with no store and no `Pop`.
+                if let Some((name, value)) = self.take_in_place_decl(stmt)? {
+                    self.compile_expr(value)?;
+                    self.add_local(name.to_string(), false);
+                    return Ok(());
+                }
                 // `next` is a zero-argument builtin returning a sentinel the
                 // tree-walker recognises in this exact position. Compile it as
                 // the jump it means, in either of the two spellings the parser
@@ -651,7 +659,15 @@ impl Compiler {
         self.cover_line(line);
         match &stmt.kind {
             StmtKind::Expression(expr) => {
-                self.compile_expr(expr)?;
+                match self.take_in_place_decl(stmt)? {
+                    // Declared in place (see `compile_stmt_at`): the value is
+                    // both the new local and what the function returns.
+                    Some((name, value)) => {
+                        self.compile_expr(value)?;
+                        self.add_local(name.to_string(), false);
+                    }
+                    None => self.compile_expr(expr)?,
+                }
                 self.emit(Op::Return, line);
             }
             StmtKind::Block(stmts) => {

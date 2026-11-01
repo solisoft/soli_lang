@@ -19,6 +19,16 @@ pub fn walk_program(
     walker.stmts(&program.statements);
 }
 
+/// [`walk_program`] over one statement and everything inside it.
+pub fn walk_stmt(stmt: &Stmt, on_stmt: &mut dyn FnMut(&Stmt), on_expr: &mut dyn FnMut(&Expr)) {
+    Walker { on_stmt, on_expr }.stmt(stmt);
+}
+
+/// [`walk_program`] over one expression and everything inside it.
+pub fn walk_expr(expr: &Expr, on_stmt: &mut dyn FnMut(&Stmt), on_expr: &mut dyn FnMut(&Expr)) {
+    Walker { on_stmt, on_expr }.expr(expr);
+}
+
 struct Walker<'a> {
     on_stmt: &'a mut dyn FnMut(&Stmt),
     on_expr: &'a mut dyn FnMut(&Expr),
