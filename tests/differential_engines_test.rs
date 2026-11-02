@@ -2341,6 +2341,74 @@ while i > 0
 end
 print(evens, i)"##,
     ),
+    (
+        // Defaulted parameters, short positional calls and named arguments
+        // bind alike: the VM runs the default prologue and short calls in its
+        // fast tier and binds labels in place on the stack. The positional
+        // value wins over a label for the same parameter; an explicit nil is
+        // supplied. (A duplicate label and `f()` are refused by both engines,
+        // with a different column and expected count: only the refusal is
+        // compared.)
+        "defaults_short_calls_and_named_arguments_bind_alike",
+        r##"def f(a, b = 2, c = 10 + 1)
+  "#{a}/#{b}/#{c}"
+end
+def g(x, y)
+  x - y
+end
+print(f(1), f(1, 5), f(1, 5, 6), f(1, nil))
+print(f(1, c: 7), f(b: 3, a: 4), f(c: 0, a: 9), f(1, a: 99), g(y: 1, x: 10))
+i = 0
+total = 0
+while i < 3
+  total += g(f(i).length, 1)
+  i += 1
+end
+print(total)
+try
+  f(b: 1)
+catch e
+  print("missing: #{e}")
+end
+try
+  f(1, zz: 1)
+catch e
+  print("unknown: #{e}")
+end
+try
+  f(1, 2, 3, 4)
+catch e
+  print("arity: #{e}")
+end
+try
+  f(1, 2, 3, d: 4)
+catch e
+  print("unknown after positional: #{e}")
+end
+try
+  f(a: 1, a: 2)
+catch e
+  print("duplicate refused")
+end
+try
+  f()
+catch e
+  print("none refused")
+end
+class Pt
+  x: Int
+  y: Int
+  new(x: Int, y: Int = 5)
+    @x = x
+    @y = y
+  end
+end
+print(Pt.new(y: 1, x: 2).x, Pt(x: 3).y)
+def many(a, b = 1, c = 2, d = 3, e = 4, f = 5, g = 6, h = 7, i = 8, j = 9, k = 10, l = 11, m = 12, n = 13, o = 14, p = 15, q = 16, r = 17, s = 18)
+  [a, b, s, r, j]
+end
+print(many(0, s: 100, r: 99, q: 1, p: 1, o: 1, n: 1, m: 1, l: 1, k: 1, i: 1, h: 1, g: 1, f: 1, e: 1, d: 1, c: 1, b: 7))"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

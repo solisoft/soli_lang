@@ -64,6 +64,14 @@ pub struct CallFrame {
     pub drives_loop: bool,
 }
 
+/// Whether a positional call of `argc` arguments binds `proto` without an
+/// arity error: every required parameter given, none too many. The omitted
+/// tail is left to the callee's default-value prologue.
+#[inline(always)]
+fn accepts_positional(proto: &FunctionProto, argc: usize) -> bool {
+    proto.arity as usize <= argc && argc <= proto.param_names.len()
+}
+
 /// Build the supplied-parameter mask for a plain positional call of `argc`
 /// arguments: the low `argc` bits set, saturating at 64 parameters.
 #[inline]
@@ -591,14 +599,19 @@ impl Vm {
         }
         let (mut code, mut code_len, mut constants, mut base, mut ip) = load_frame!();
 
-        /// Enter a compiled closure whose callee and exactly `argc` arguments
-        /// are on top of the stack — the case the general `Call` arm handles
-        /// with no default to fill and no error to raise — and switch the
-        /// cached state to it.
+        /// Enter a compiled closure whose callee and `argc` arguments are on
+        /// top of the stack, `arity <= argc <= params` — the range in which
+        /// the general `Call` arm raises nothing — and switch the cached state
+        /// to it. As there, each omitted parameter gets a null slot that the
+        /// callee's default-value prologue fills, and the supplied mask
+        /// covers only the `argc` given.
         macro_rules! enter_closure {
-            ($closure:expr, $argc:expr) => {{
+            ($closure:expr, $argc:expr, $params:expr) => {{
                 self.frames.last_mut().unwrap().ip = ip;
-                let stack_base = self.stack.len() - $argc - 1;
+                for _ in $argc..$params {
+                    self.stack.push(Value::Null);
+                }
+                let stack_base = self.stack.len() - $params - 1;
                 self.frames.push(CallFrame::new(
                     $closure,
                     stack_base,
@@ -738,6 +751,15 @@ impl Vm {
                     self.stack.push(Value::Symbol(name.clone()));
                 }
                 Op::Jump(offset) => ip += offset as usize,
+                Op::JumpIfParamSupplied(param_index, offset) => {
+                    // The default-value prologue, as the general arm runs it:
+                    // skip the default when the caller supplied the parameter
+                    // (past bit 63 the mask saturates: read as supplied).
+                    let supplied = self.frames.last().unwrap().supplied;
+                    if param_index >= 64 || supplied & (1u64 << param_index) != 0 {
+                        ip += offset as usize;
+                    }
+                }
                 Op::JumpIfFalse(offset) => {
                     let value = self.stack.pop().unwrap();
                     if !value.is_truthy() {
@@ -1086,7 +1108,7 @@ impl Vm {
                     let argc = argc as usize;
                     let closure = match &self.stack[self.stack.len() - 1 - argc] {
                         Value::VmClosure(closure)
-                            if closure.proto.param_names.len() == argc
+                            if accepts_positional(&closure.proto, argc)
                                 && self.frames.len() < MAX_CALL_DEPTH
                                 && closure.proto.kernel.is_none() =>
                         {
@@ -1094,7 +1116,8 @@ impl Vm {
                         }
                         _ => break Some(op),
                     };
-                    enter_closure!(closure, argc);
+                    let params = closure.proto.param_names.len();
+                    enter_closure!(closure, argc, params);
                 }
                 Op::CallGlobal(name_idx, argc) => {
                     let argc = argc as usize;
@@ -1105,7 +1128,7 @@ impl Vm {
                     };
                     let closure = match self.globals.get(name) {
                         Some(Value::VmClosure(closure))
-                            if closure.proto.param_names.len() == argc
+                            if accepts_positional(&closure.proto, argc)
                                 && self.frames.len() < MAX_CALL_DEPTH
                                 && closure.proto.kernel.is_none() =>
                         {
@@ -1117,7 +1140,8 @@ impl Vm {
                     let insert_at = self.stack.len() - argc;
                     self.stack
                         .insert(insert_at, Value::VmClosure(closure.clone()));
-                    enter_closure!(closure, argc);
+                    let params = closure.proto.param_names.len();
+                    enter_closure!(closure, argc, params);
                 }
                 Op::Return => {
                     let depth_after = self.frames.len() - 1;
@@ -9317,22 +9341,207 @@ let x = Mailer.welcome()
         locals: &[Value],
         code: &[Op],
     ) -> (Option<Op>, Vec<Value>) {
+        run_fast_tier_with(constants, locals, code, 0, &[])
+    }
+
+    /// [`run_fast_tier`] in a frame whose caller supplied the parameters in
+    /// the `supplied` mask, with `globals` defined.
+    fn run_fast_tier_with(
+        constants: Vec<Constant>,
+        locals: &[Value],
+        code: &[Op],
+        supplied: u64,
+        globals: &[(&str, Value)],
+    ) -> (Option<Op>, Vec<Value>) {
         let mut proto = FunctionProto::new(String::new());
         proto.chunk.constants = constants;
         for op in code {
             proto.chunk.emit(*op, 1);
         }
         let mut vm = Vm::new();
+        for (name, value) in globals {
+            vm.globals.insert(name.to_string(), value.clone());
+        }
         let closure = Rc::new(VmClosure::new(Arc::new(proto), Vec::new()));
         vm.push(Value::VmClosure(closure.clone()));
         for local in locals {
             vm.push(local.clone());
         }
-        vm.frames
-            .push(CallFrame::new(closure, 0, vm.iter_stack.len(), None, 0));
+        vm.frames.push(CallFrame::new(
+            closure,
+            0,
+            vm.iter_stack.len(),
+            None,
+            supplied,
+        ));
         let declined = vm.run_fast().expect("the fast tier raised");
         let above_locals = vm.stack.split_off(1 + locals.len());
         (declined, above_locals)
+    }
+
+    /// `def f(a, b = 7) b`, built by hand: the prologue runs `b`'s default
+    /// only when the caller left `b` out.
+    fn defaulted_callee() -> Value {
+        let mut proto = FunctionProto::new("f".to_string());
+        proto.param_names = vec!["a".to_string(), "b".to_string()];
+        proto.arity = 1;
+        proto.defaults = 1;
+        proto.defaults_mask = 0b10;
+        proto.chunk.constants = vec![Constant::Int(7)];
+        for op in [
+            Op::JumpIfParamSupplied(1, 2),
+            Op::Constant(0),
+            Op::SetLocalPop(2),
+            Op::GetLocal(2),
+            Op::Return,
+        ] {
+            proto.chunk.emit(op, 1);
+        }
+        Value::VmClosure(Rc::new(VmClosure::new(Arc::new(proto), Vec::new())))
+    }
+
+    /// A parameter-default prologue and a call that leaves defaulted
+    /// parameters out stay in the fast tier. `JumpIfParamSupplied` had no
+    /// fast arm, so every defaulted parameter cost a tier exit per call, even
+    /// a supplied one; and the fast `Call`/`CallGlobal` took only calls that
+    /// supplied every parameter.
+    #[test]
+    fn defaulted_parameters_and_short_calls_stay_in_the_fast_tier() {
+        const FIVE: u16 = 0;
+        const F: u16 = 1;
+        let constants = || vec![Constant::Int(5), Constant::String("f".into())];
+        let five = || Value::Int(5);
+        let seven = || Value::Int(7);
+
+        // The prologue alone: a supplied parameter skips its default, an
+        // omitted one runs it, and past bit 63 the mask reads as supplied.
+        let prologue: Vec<(Op, u64, Vec<Value>)> = vec![
+            (Op::JumpIfParamSupplied(0, 1), 0b1, vec![]),
+            (Op::JumpIfParamSupplied(0, 1), 0b10, vec![five()]),
+            (Op::JumpIfParamSupplied(1, 1), 0b10, vec![]),
+            (Op::JumpIfParamSupplied(63, 1), 1 << 63, vec![]),
+            (Op::JumpIfParamSupplied(64, 1), 0, vec![]),
+        ];
+        for (jump, supplied, expected) in prologue {
+            let code = [jump, Op::Constant(FIVE)];
+            let (declined, stack) = run_fast_tier_with(constants(), &[], &code, supplied, &[]);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            assert_eq!(stack, expected, "{code:?} with {supplied:#b}");
+        }
+
+        // A call from the fast tier into `f`, whose prologue and return run
+        // there too: `b` defaults to 7 when left out.
+        let callee = [defaulted_callee()];
+        let globals = [("f", defaulted_callee())];
+        let calls: Vec<(&[Op], Vec<Value>)> = vec![
+            (
+                &[Op::GetLocal(1), Op::Constant(FIVE), Op::Call(1)],
+                vec![seven()],
+            ),
+            (
+                &[
+                    Op::GetLocal(1),
+                    Op::Constant(FIVE),
+                    Op::Constant(FIVE),
+                    Op::Call(2),
+                ],
+                vec![five()],
+            ),
+            (&[Op::Constant(FIVE), Op::CallGlobal(F, 1)], vec![seven()]),
+            (
+                &[Op::Constant(FIVE), Op::Constant(FIVE), Op::CallGlobal(F, 2)],
+                vec![five()],
+            ),
+        ];
+        for (code, expected) in calls {
+            let (declined, stack) = run_fast_tier_with(constants(), &callee, code, 0, &globals);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            assert_eq!(stack, expected, "{code:?}");
+        }
+
+        // Too few or too many arguments: the general arm raises the error.
+        let declined: Vec<&[Op]> = vec![
+            &[Op::GetLocal(1), Op::Call(0)],
+            &[
+                Op::GetLocal(1),
+                Op::Constant(FIVE),
+                Op::Constant(FIVE),
+                Op::Constant(FIVE),
+                Op::Call(3),
+            ],
+            &[Op::CallGlobal(F, 0)],
+        ];
+        for code in declined {
+            let (handed_back, _) = run_fast_tier_with(constants(), &callee, code, 0, &globals);
+            assert_eq!(handed_back, code.last().copied(), "{code:?}");
+        }
+    }
+
+    /// Named arguments to a compiled function bind in place on the stack, by
+    /// the tree-walker's rules: the positional value wins over a label for
+    /// the same parameter, an unknown label is an undefined variable, a
+    /// missing required parameter is an arity error, and a call with more
+    /// labels than fit inline binds the same way. A refused call leaves a
+    /// stack the next statement can use.
+    #[test]
+    fn named_arguments_bind_in_place_by_the_tree_walkers_rules() {
+        let f = "def f(a, b = 2, c = 3) { return [a, b, c] }\n";
+        let cases = [
+            ("f(1, a: 9)", "[1, 2, 3]"),
+            ("f(c: 30, a: 10)", "[10, 2, 30]"),
+            ("f(1, c: nil)", "[1, 2, null]"),
+            ("f(b: 20, c: 30, a: 10)", "[10, 20, 30]"),
+            ("f(1, 2, c: 3)", "[1, 2, 3]"),
+        ];
+        for (call, expected) in cases {
+            let source = format!("{f}let x = {call}.to_s();");
+            assert_eq!(
+                compile_and_get_global(&source, "x"),
+                Value::String(expected.into()),
+                "{call}"
+            );
+        }
+
+        let errors = [
+            ("f(1, zz: 1)", "Undefined variable 'zz'"),
+            ("f(b: 1)", "expected 1, got 0"),
+            ("f(a: 1, a: 2)", "duplicate named argument 'a'"),
+            ("f(1, 2, 3, 4, c: 1)", "expected 3, got 5"),
+        ];
+        for (call, message) in errors {
+            let err = compile_and_run(&format!("{f}{call}")).expect_err(call);
+            assert!(err.to_string().contains(message), "{call}: {err}");
+        }
+
+        // Caught, the refusal leaves a stack the following calls run on.
+        assert_eq!(
+            compile_and_get_global(
+                &format!(
+                    "{f}let e = nil\ntry {{ f(1, zz: 2) }} catch err {{ e = err }}\nlet x = f(c: 5, a: 4).to_s();"
+                ),
+                "x"
+            ),
+            Value::String("[4, 2, 5]".into())
+        );
+
+        // Twenty labels, past the inline plan, in reverse order.
+        let params: Vec<String> = (0..20).map(|i| format!("p{i} = 0")).collect();
+        let labels: Vec<String> = (0..20).rev().map(|i| format!("p{i}: {i}")).collect();
+        let source = format!(
+            "def g({}) {{ return p0 + p7 * 100 + p19 * 10000 }}\nlet x = g({});",
+            params.join(", "),
+            labels.join(", ")
+        );
+        assert_eq!(compile_and_get_global(&source, "x"), Value::Int(190_700));
+
+        // A constructor binds the same way, with the instance as `this`.
+        assert_eq!(
+            compile_and_get_global(
+                "class P { x: Int; y: Int; new(x, y = 5) { this.x = x; this.y = y } }\nlet x = P(y: 1, x: 2).x * 10 + P(x: 3).y;",
+                "x"
+            ),
+            Value::Int(25)
+        );
     }
 
     /// String literals, symbols and `==`/`!=` between primitives stay in the
