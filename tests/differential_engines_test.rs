@@ -2257,6 +2257,90 @@ s = "x"
 y = "#{s}" == "x"
 print(y, "lit" == "lit", :a == :a, "a" == :a)"##,
     ),
+    (
+        // The fast tier answers `k -= 1`, Int `/` and `%` (and `k % 7`'s new
+        // ModLocalConst), `??`, `h["k"]` and `xs[i]` in range; each declines
+        // where the general arm raises or converts. Results, errors and their
+        // spans must stay the tree-walker's.
+        "fast_tier_division_nullish_and_index_reads",
+        r##"def f(k, c, z, m, h, arr, v)
+  print(k % 7, k / 7, k % c, k / c, -k % 7, -k / 7, k % -3, (k + 1) % 4)
+  print(7.5 / 2.0, 7.5 % 2.0, k / 2.0, 7.0 / k, k % 2.5)
+  try
+    print(k / z)
+  catch e
+    print("div: #{e}")
+  end
+  try
+    print(k % z)
+  catch e
+    print("mod: #{e}")
+  end
+  try
+    print(k % 0)
+  catch e
+    print("modc: #{e}")
+  end
+  try
+    print(m / -1)
+  catch e
+    print("ovf: #{e}")
+  end
+  try
+    print(m % -1)
+  catch e
+    print("ovfm: #{e}")
+  end
+  try
+    print(1.0 / 0.0)
+  catch e
+    print("fz: #{e}")
+  end
+  try
+    print(k % "x")
+  catch e
+    print("mods: #{e}")
+  end
+  print(h["a"], h["zz"], arr[1], arr[-1], arr[c - 2], v ?? 3, nil ?? 4, false ?? 5)
+  try
+    print(arr[k])
+  catch e
+    print("oob: #{e}")
+  end
+  try
+    print(arr[-9])
+  catch e
+    print("oobn: #{e}")
+  end
+  n = 3
+  n -= 1
+  n -= 1
+  d = 2.5
+  d -= 1
+  x = nil
+  x ??= 8
+  x ??= 9
+  low = m
+  try
+    low -= 1
+  catch e
+    print("decr: #{e}")
+  end
+  s = "abc"
+  g = {"q": 1}
+  print(n, d, x, s[1], g["q"] ?? 0, g["r"] ?? 0)
+end
+f(10, 4, 0, -9223372036854775807 - 1, {"a": 1}, [1, 2, 3], nil)
+top = {"a": 1, "b": nil}
+print(top["a"], top["b"] ?? "dflt", top["c"])
+i = 10
+evens = 0
+while i > 0
+  evens += 1 if i % 2 == 0
+  i -= 1
+end
+print(evens, i)"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

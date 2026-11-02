@@ -394,6 +394,9 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::DivLocalConst(slot, cidx) => {
             out.push_str(&format!("DIV_LC       {:>3},{:>3}", slot, cidx))
         }
+        Op::ModLocalConst(slot, cidx) => {
+            out.push_str(&format!("MOD_LC       {:>3},{:>3}", slot, cidx))
+        }
         Op::GetLocal2(a, b) => out.push_str(&format!("GET_LOCAL_2  {:>3},{:>3}", a, b)),
         Op::LessLocalLocal(a, b) => out.push_str(&format!("LESS_LL      {:>3},{:>3}", a, b)),
         Op::GreaterLocalLocal(a, b) => out.push_str(&format!("GREATER_LL   {:>3},{:>3}", a, b)),

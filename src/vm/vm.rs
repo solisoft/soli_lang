@@ -847,6 +847,67 @@ impl Vm {
                         None => break Some(op),
                     }
                 }
+                // `h["k"]` with `h` a local or a global hash: the hit's value,
+                // or nil on a miss, as the general arms answer. Any other
+                // receiver (an array, a string, a model) is theirs.
+                Op::HashGetLocalConst(slot, key_idx) => {
+                    // SAFETY: as for `Op::Constant` above.
+                    let key = unsafe { &*constants.add(key_idx as usize) };
+                    let Constant::String(key) = key else {
+                        break Some(op);
+                    };
+                    let Value::Hash(hash) = &self.stack[base + slot as usize] else {
+                        break Some(op);
+                    };
+                    let value = hash
+                        .borrow()
+                        .get(&StrKey(key.as_ref()))
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                    self.stack.push(value);
+                }
+                Op::HashGetGlobalConst(global_idx, key_idx) => {
+                    // SAFETY: as for `Op::Constant` above.
+                    let (global, key) = unsafe {
+                        (
+                            &*constants.add(global_idx as usize),
+                            &*constants.add(key_idx as usize),
+                        )
+                    };
+                    let (Constant::String(global), Constant::String(key)) = (global, key) else {
+                        break Some(op);
+                    };
+                    let Some(Value::Hash(hash)) = self.globals.get(global.as_ref()) else {
+                        break Some(op);
+                    };
+                    let value = hash
+                        .borrow()
+                        .get(&StrKey(key.as_ref()))
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                    self.stack.push(value);
+                }
+                // `xs[i]` in range and `h[k]`: the general arms' own first
+                // step (`try_get_index_hit`). An index out of range, a string
+                // receiver, a model go to the general arm.
+                Op::GetIndex => {
+                    let (_, object, index) = peek_two!();
+                    let Some(value) = Self::try_get_index_hit(object, index) else {
+                        break Some(op);
+                    };
+                    discard(self.stack.pop().unwrap());
+                    discard(self.stack.pop().unwrap());
+                    self.stack.push(value);
+                }
+                Op::GetLocalIndex(slot, idx_slot) => {
+                    let Some(value) = Self::try_get_index_hit(
+                        &self.stack[base + slot as usize],
+                        &self.stack[base + idx_slot as usize],
+                    ) else {
+                        break Some(op);
+                    };
+                    self.stack.push(value);
+                }
                 Op::TemplateWriteConst(idx) => {
                     // SAFETY: as for `Op::Constant` above.
                     if let Constant::String(text) = unsafe { &*constants.add(idx as usize) } {
@@ -959,6 +1020,50 @@ impl Vm {
                         Value::Int(n) if n != i64::MAX => self.stack[idx] = Value::Int(n + 1),
                         _ => break Some(op),
                     }
+                }
+                Op::DecrLocal(slot) => {
+                    let idx = base + slot as usize;
+                    match self.stack[idx] {
+                        Value::Int(n) if n != i64::MIN => self.stack[idx] = Value::Int(n - 1),
+                        _ => break Some(op),
+                    }
+                }
+                // `/` and `%` on two Ints, and `/` on two Floats. A zero
+                // divisor, `i64::MIN / -1`, a Float `%` and any mix go to the
+                // general arm, which raises or converts.
+                Op::Divide | Op::Modulo => {
+                    let (len, a, b) = peek_two!();
+                    let Some(result) = fast_quotient(a, b, matches!(op, Op::Divide)) else {
+                        break Some(op);
+                    };
+                    replace_top_two!(len, result);
+                }
+                Op::DivLocalLocal(slot_a, slot_b) | Op::ModLocalLocal(slot_a, slot_b) => {
+                    let Some(result) = fast_quotient(
+                        &self.stack[base + slot_a as usize],
+                        &self.stack[base + slot_b as usize],
+                        matches!(op, Op::DivLocalLocal(..)),
+                    ) else {
+                        break Some(op);
+                    };
+                    self.stack.push(result);
+                }
+                Op::DivLocalConst(slot, const_idx) | Op::ModLocalConst(slot, const_idx) => {
+                    // SAFETY: as for `Op::Constant`.
+                    let constant = unsafe { &*constants.add(const_idx as usize) };
+                    let divisor = match constant {
+                        Constant::Int(n) => Value::Int(*n),
+                        Constant::Float(f) => Value::Float(*f),
+                        _ => break Some(op),
+                    };
+                    let Some(result) = fast_quotient(
+                        &self.stack[base + slot as usize],
+                        &divisor,
+                        matches!(op, Op::DivLocalConst(..)),
+                    ) else {
+                        break Some(op);
+                    };
+                    self.stack.push(result);
                 }
                 Op::AddLocalConst(slot, const_idx) => {
                     // SAFETY: as for `Op::Constant`.
@@ -1314,7 +1419,9 @@ impl Vm {
                         ip += offset as usize;
                     }
                 }
-                Op::JumpIfNotNull(offset) => {
+                // `a ?? b` and `x ??= v`: the general arms of the two ops are
+                // the same test.
+                Op::JumpIfNotNull(offset) | Op::NullishJump(offset) => {
                     if !matches!(self.stack.last().unwrap(), Value::Null) {
                         ip += offset as usize;
                     }
@@ -4118,6 +4225,38 @@ impl Vm {
                     };
                     self.stack.push(result);
                 }
+                Op::ModLocalConst(slot, const_idx) => {
+                    let base = self.frames.last().unwrap().stack_base;
+                    let local = &self.stack[base + slot as usize];
+                    let frame = self.frames.last().unwrap();
+                    let constant = &frame.closure.proto.chunk.constants[const_idx as usize];
+                    // `Modulo`'s rules, with the operands read in place.
+                    let result = match (local, constant) {
+                        (Value::Int(x), Constant::Int(y)) => {
+                            if *y == 0 {
+                                return Err(RuntimeError::division_by_zero(self.current_span()));
+                            }
+                            match x.checked_rem(*y) {
+                                Some(result) => Value::Int(result),
+                                None => {
+                                    let span = self.current_span();
+                                    return Err(
+                                        crate::interpreter::executor::operators::int_overflow(
+                                            *x, "%", *y, span,
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                        _ => {
+                            let a = local.clone();
+                            let b = constant_to_value(constant);
+                            let span = self.current_span();
+                            self.op_modulo(a, b, span)?
+                        }
+                    };
+                    self.stack.push(result);
+                }
                 Op::GetLocal2(slot_a, slot_b) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let a = self.stack[base + slot_a as usize].clone();
@@ -5530,6 +5669,25 @@ fn is_primitive(value: &Value) -> bool {
             | Value::String(_)
             | Value::Symbol(_)
     )
+}
+
+/// `a / b` (`divide`) or `a % b` where the fast tier may answer it: two Ints
+/// with a quotient or remainder that fits (not a zero divisor, not
+/// `i64::MIN / -1`), or `/` on two Floats with a non-zero divisor. `None`
+/// for everything the general arms raise on or convert (a Float `%`, an
+/// Int/Float mix, a Decimal).
+#[inline(always)]
+fn fast_quotient(a: &Value, b: &Value, divide: bool) -> Option<Value> {
+    match (a, b) {
+        (Value::Int(x), Value::Int(y)) => if divide {
+            x.checked_div(*y)
+        } else {
+            x.checked_rem(*y)
+        }
+        .map(Value::Int),
+        (Value::Float(x), Value::Float(y)) if divide && *y != 0.0 => Some(Value::Float(x / y)),
+        _ => None,
+    }
 }
 
 /// Whether dropping `value` is a no-op: the scalars `replace_top_two!`
@@ -9320,6 +9478,170 @@ let x = Mailer.welcome()
                 &enum_locals,
                 Op::EqualLocalConst(1, ADMIN),
             ),
+        ];
+        for (code, locals, op) in declined {
+            let (handed_back, _) = run_fast_tier(constants(), locals, code);
+            assert_eq!(handed_back, Some(op), "{code:?}");
+        }
+    }
+
+    /// `k -= 1`, `/` and `%` on Ints (`/` on Floats), `??`, `h["k"]` on a
+    /// local hash and `xs[i]` in range stay in the fast tier, each in its
+    /// stack and fused forms; every one used to cost a round trip through
+    /// `run_dispatch`. What the general arms raise on or convert declines,
+    /// untouched, so the error text stays theirs.
+    #[test]
+    fn decrement_division_nullish_and_index_reads_stay_in_the_fast_tier() {
+        const SEVEN: u16 = 0;
+        const ZERO: u16 = 1;
+        const HALF: u16 = 2;
+        const KEY_A: u16 = 3;
+        const KEY_B: u16 = 4;
+        const ONE: u16 = 5;
+        const BIG: u16 = 6;
+        let constants = || {
+            vec![
+                Constant::Int(7),
+                Constant::Int(0),
+                Constant::Float(0.5),
+                Constant::String("a".into()),
+                Constant::String("b".into()),
+                Constant::Int(1),
+                Constant::Int(9),
+            ]
+        };
+        let mut pairs = HashPairs::default();
+        pairs.insert(HashKey::String("a".into()), Value::Int(1));
+        let hash = Value::Hash(Rc::new(RefCell::new(pairs)));
+        let array = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(10),
+            Value::Int(20),
+            Value::Int(30),
+        ])));
+        // Slots: 1 k=23, 2 c=-4, 3 hash, 4 array, 5 nil, 6 i=-1, 7 x=3.0.
+        let locals = [
+            Value::Int(23),
+            Value::Int(-4),
+            hash,
+            array,
+            Value::Null,
+            Value::Int(-1),
+            Value::Float(3.0),
+        ];
+        let int = Value::Int;
+        let cases: Vec<(&[Op], Vec<Value>)> = vec![
+            (&[Op::DecrLocal(1), Op::GetLocal(1)], vec![int(22)]),
+            (
+                &[Op::GetLocal(1), Op::Constant(SEVEN), Op::Divide],
+                vec![int(3)],
+            ),
+            (
+                &[Op::GetLocal(1), Op::Constant(SEVEN), Op::Modulo],
+                vec![int(2)],
+            ),
+            (
+                &[Op::GetLocal(2), Op::Constant(SEVEN), Op::Modulo],
+                vec![int(-4)],
+            ),
+            (
+                &[Op::GetLocal(7), Op::GetLocal(7), Op::Divide],
+                vec![Value::Float(1.0)],
+            ),
+            (&[Op::DivLocalLocal(1, 2)], vec![int(-5)]),
+            (&[Op::ModLocalLocal(1, 2)], vec![int(3)]),
+            (&[Op::DivLocalConst(1, SEVEN)], vec![int(3)]),
+            (&[Op::ModLocalConst(1, SEVEN)], vec![int(2)]),
+            (&[Op::DivLocalConst(7, HALF)], vec![Value::Float(6.0)]),
+            // `nil ?? 7` evaluates the default; `23 ?? 7` jumps over it.
+            (
+                &[
+                    Op::GetLocal(5),
+                    Op::NullishJump(2),
+                    Op::Pop,
+                    Op::Constant(SEVEN),
+                ],
+                vec![int(7)],
+            ),
+            (
+                &[
+                    Op::GetLocal(1),
+                    Op::NullishJump(2),
+                    Op::Pop,
+                    Op::Constant(SEVEN),
+                ],
+                vec![int(23)],
+            ),
+            (&[Op::HashGetLocalConst(3, KEY_A)], vec![int(1)]),
+            (&[Op::HashGetLocalConst(3, KEY_B)], vec![Value::Null]),
+            (
+                &[Op::GetLocal(4), Op::Constant(ONE), Op::GetIndex],
+                vec![int(20)],
+            ),
+            (
+                &[Op::GetLocal(4), Op::GetLocal(6), Op::GetIndex],
+                vec![int(30)],
+            ),
+            (
+                &[Op::GetLocal(3), Op::Constant(KEY_B), Op::GetIndex],
+                vec![Value::Null],
+            ),
+            (&[Op::GetLocalIndex(4, 6)], vec![int(30)]),
+        ];
+        for (code, expected) in cases {
+            let (declined, stack) = run_fast_tier(constants(), &locals, code);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            assert_eq!(stack, expected, "{code:?}");
+        }
+
+        let min = [Value::Int(i64::MIN), Value::Int(-1), Value::Float(2.0)];
+        let declined: Vec<(&[Op], &[Value], Op)> = vec![
+            (&[Op::DecrLocal(1)], &min, Op::DecrLocal(1)),
+            (&[Op::DecrLocal(3)], &min, Op::DecrLocal(3)),
+            (&[Op::DivLocalLocal(1, 2)], &min, Op::DivLocalLocal(1, 2)),
+            (&[Op::ModLocalLocal(1, 2)], &min, Op::ModLocalLocal(1, 2)),
+            (
+                &[Op::DivLocalConst(1, ZERO)],
+                &locals,
+                Op::DivLocalConst(1, ZERO),
+            ),
+            (
+                &[Op::ModLocalConst(1, ZERO)],
+                &locals,
+                Op::ModLocalConst(1, ZERO),
+            ),
+            // A Float `%` and an Int/Float mix are converted by the general arm.
+            (
+                &[Op::ModLocalConst(7, HALF)],
+                &locals,
+                Op::ModLocalConst(7, HALF),
+            ),
+            (
+                &[Op::DivLocalConst(1, HALF)],
+                &locals,
+                Op::DivLocalConst(1, HALF),
+            ),
+            (
+                &[Op::GetLocal(1), Op::Constant(ZERO), Op::Divide],
+                &locals,
+                Op::Divide,
+            ),
+            (
+                &[Op::GetLocal(3), Op::GetLocal(3), Op::Modulo],
+                &min,
+                Op::Modulo,
+            ),
+            // An array or a string receiver of `x["k"]` has its own rules.
+            (
+                &[Op::HashGetLocalConst(4, KEY_A)],
+                &locals,
+                Op::HashGetLocalConst(4, KEY_A),
+            ),
+            (
+                &[Op::GetLocal(4), Op::Constant(BIG), Op::GetIndex],
+                &locals,
+                Op::GetIndex,
+            ),
+            (&[Op::GetLocalIndex(4, 1)], &locals, Op::GetLocalIndex(4, 1)),
         ];
         for (code, locals, op) in declined {
             let (handed_back, _) = run_fast_tier(constants(), locals, code);

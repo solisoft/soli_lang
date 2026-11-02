@@ -1176,6 +1176,7 @@ fn stack_effect(op: Op) -> i32 {
         | SubLocalConst(_, _)
         | MulLocalConst(_, _)
         | DivLocalConst(_, _)
+        | ModLocalConst(_, _)
         | AddLocalInt(_, _)
         | EqualLocalConst(_, _)
         | NotEqualLocalConst(_, _)
@@ -1932,6 +1933,26 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
                         constants.get(cidx as usize)
                     {
                         code[i] = Op::DivLocalConst(slot, cidx);
+                        code[i + 1] = NOP;
+                        code[i + 2] = NOP;
+                        i += 3;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Pattern: GetLocal(slot), Constant(c), Modulo → ModLocalConst(slot, c)
+        // (`i % 2 == 0`, `y = k % 7`): one op, answered in the fast tier.
+        if i + 2 < len {
+            if let (Op::GetLocal(slot), Op::Constant(cidx), Op::Modulo) =
+                (code[i], code[i + 1], code[i + 2])
+            {
+                if !any_jump_target(&is_jump_target, i + 1, 3) {
+                    if let Some(Constant::Int(_)) | Some(Constant::Float(_)) =
+                        constants.get(cidx as usize)
+                    {
+                        code[i] = Op::ModLocalConst(slot, cidx);
                         code[i + 1] = NOP;
                         code[i + 2] = NOP;
                         i += 3;
@@ -2710,6 +2731,35 @@ mod inplace_peephole_tests {
         );
     }
 
+    /// `k % 7` reads the local and the constant in one op, as `k / 7` does:
+    /// it was `GetLocal, Constant, Modulo`, three dispatches with the last
+    /// one outside the fast tier. A string or `nil` constant keeps the plain
+    /// `Modulo`, whose general arm owns those rules.
+    #[test]
+    fn modulo_by_a_constant_is_one_op() {
+        // `k` is hoisted into slot 1; slot 0 is the callee.
+        let ops = fn_ops("k = 23\ny = k % 7\nz = k % 2.5\n[y, z]");
+        assert_eq!(
+            ops.iter()
+                .filter(|op| matches!(op, Op::ModLocalConst(1, _)))
+                .count(),
+            2,
+            "{ops:?}"
+        );
+        assert!(!ops.contains(&Op::Modulo), "{ops:?}");
+        assert!(
+            ops.windows(2)
+                .any(|pair| matches!(pair, [Op::ModLocalConst(1, _), Op::SetLocalPop(_)])),
+            "{ops:?}"
+        );
+        let string = fn_ops("k = 23\ny = k % \"x\"\ny");
+        assert!(string.contains(&Op::Modulo), "{string:?}");
+        assert_eq!(
+            vm_result("def f\n  k = 23\n  [k % 7, -k % 7, k % 2.5]\nend\nlet result = f()"),
+            "[2, -2, 0.5]"
+        );
+    }
+
     /// `==` and `!=` against a constant or between two locals compile to one
     /// fused op, as `<` does: `role == "admin"` was `GetLocal, Constant,
     /// Equal`, and its fused form, which compares a string in place, was
@@ -3145,6 +3195,7 @@ mod stack_effect_tests {
             (&[], SubLocalConst(N, INT)),
             (&[], MulLocalConst(N, INT)),
             (&[], DivLocalConst(N, INT)),
+            (&[], ModLocalConst(N, INT)),
             (&[], AddLocalInt(N, 1)),
             (&[], IsTruthyLocal(N)),
             (&[], IsFalsyLocal(N)),

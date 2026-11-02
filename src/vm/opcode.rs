@@ -404,6 +404,8 @@ pub enum Op {
     MulLocalConst(u16, u16),
     /// Divide local by constant: push(local[slot] / constant)
     DivLocalConst(u16, u16),
+    /// Local modulo constant: push(local[slot] % constant)
+    ModLocalConst(u16, u16),
     /// Push two locals onto stack (reduces GetLocal dispatch overhead)
     GetLocal2(u16, u16),
     /// Combined Greater + JumpIfFalse: pop two, compare >, jump if false.
