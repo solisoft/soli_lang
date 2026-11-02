@@ -723,6 +723,12 @@ impl Compiler {
                 .iter()
                 .all(|a| matches!(a, Argument::Positional(_) | Argument::Block(_)));
             if all_positional && arguments.len() <= 255 {
+                // `["up", "late"].includes?(status)`: the argument tested
+                // against a constant list, with no array built
+                // (`compiler_literal_arrays.rs`).
+                if self.try_compile_literal_membership(object, name, arguments, line)? {
+                    return Ok(());
+                }
                 if let Some(op) =
                     self.try_compile_hash_const_string_call(object, name, arguments, line)?
                 {
@@ -993,6 +999,11 @@ impl Compiler {
     }
 
     fn compile_array(&mut self, elements: &[Expr], line: usize) -> CompileResult<()> {
+        // `["draft", "sent"]`: one op builds it from a constant list
+        // (`compiler_literal_arrays.rs`).
+        if self.try_compile_literal_array(elements, line) {
+            return Ok(());
+        }
         // `[a, ...xs, b]`: the elements before the first spread build the
         // array, then each later one is pushed onto it — or, spread, has its
         // elements appended (`Op::Spread`), as the tree-walker does.

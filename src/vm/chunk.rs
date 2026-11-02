@@ -28,6 +28,10 @@ pub enum Constant {
     /// block) argument. `CallNamed` reads it to split the evaluated arguments
     /// back into positional and named groups before binding them to the callee.
     ArgNames(Arc<Vec<Option<crate::interpreter::value::SoliStr>>>),
+    /// The elements of an array literal made only of literals (`["draft",
+    /// "sent"]`), read by `Op::LiteralArray` and `Op::LiteralListIncludes`
+    /// and never loaded as a value itself.
+    LiteralList(Arc<super::literal_list::LiteralList>),
 }
 
 /// A compiled function (or top-level script).

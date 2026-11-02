@@ -116,6 +116,22 @@ pub enum Op {
     /// and N values on the stack. Used for hash literals with all-literal keys —
     /// avoids pushing/converting keys at runtime.
     HashWithKeys(u16, u16),
+    /// Push a fresh array of the elements of the `Constant::LiteralList` at
+    /// the operand: an array literal made only of literals (`["draft",
+    /// "sent"]`), built in one dispatch instead of a `Constant` per element
+    /// and an `Array`. A new array on every evaluation, as before.
+    LiteralArray(u16),
+    /// `[<literals>].includes?(x)` — or `include?`, `contains`, `contains?`
+    /// — with `x` on top of the stack: `x` is replaced by whether the
+    /// `Constant::LiteralList` at the first operand holds it, compared with
+    /// `==` as `Array#includes?` compares, and no array is built.
+    ///
+    /// The second operand is the method's name constant when the call would
+    /// have compiled to `CallMethod`, whose gate lets a user-defined Array
+    /// method of that name take the call (the op then builds the array and
+    /// calls it); [`NO_USER_METHOD`] when it would have been `CallMethodById`,
+    /// which has no such gate.
+    LiteralListIncludes(u16, u16),
     /// Build a range from two values on the stack.
     Range,
     /// Get element at index: stack has [obj, index].
@@ -501,6 +517,10 @@ pub enum Op {
     /// the next loop to run resumes on it. Same leak `return` and `throw` had.
     PopIter,
 }
+
+/// [`Op::LiteralListIncludes`]'s second operand when no user-defined Array
+/// method can take the call.
+pub const NO_USER_METHOD: u16 = u16::MAX;
 
 /// Every opcode that advances `ip` by one of its operands.
 ///

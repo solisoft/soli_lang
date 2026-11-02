@@ -1925,6 +1925,74 @@ print(Util.shout("a"))"##,
         "literal_arithmetic_folds_as_it_runs",
         "print(60 * 60 * 24)\nprint(-7 / 2)\nprint(-7 % 3)\nprint(7.5 / 2.5)\nprint(1 + 2.5)\nprint(0.1 + 0.2)\nprint(\"ab\" + \"cd\")\nprint(-5, -2.5, 2 * -3)\nprint((1 + 2) * 3)\nbig = (9223372036854775807 + 1) rescue \"overflow\"\nprint(big)\nzero = (1 / 0) rescue \"div0\"\nprint(zero)\ndef day_seconds()\n  60 * 60 * 24\nend\nprint(day_seconds())",
     ),
+    // --- array literals made of literals (`compiler_literal_arrays.rs`) ---
+    (
+        // `[<literals>].includes?(x)` is one op against a constant list on
+        // the VM: the four spellings, each kind of literal, the guard shapes
+        // the style guide uses, a method reading `@status`, a literal over
+        // several lines.
+        "literal_list_membership",
+        r##"class Ticket
+  status: String
+
+  new(status: String)
+    @status = status
+  end
+
+  def open?
+    ["up", "late", "overdue"].includes?(@status)
+  end
+end
+
+def label(s)
+  return "open" if ["up", "late"].includes?(s)
+  return "symbol" if [:up, :late].include?(s)
+  return "small" if [1, 2, 3].contains(s)
+  return "flag" if [true, nil].contains?(s)
+
+  "other"
+end
+
+print(label("up"), label("closed"), label(:late), label(2), label(nil), label(false), label(9))
+print(Ticket.new("late").open?, Ticket.new("closed").open?)
+print(%w[draft sent].includes?("sent"), [].includes?("x"), [-1, 60 * 60].includes?(3600))
+allowed = [
+  "inline",
+  "inline-block",
+  "table"
+].includes?("table")
+print(allowed)
+kept = "kept"
+kept = "dropped" unless ["b", "c"].includes?("a")
+print(kept)"##,
+    ),
+    (
+        // An array literal of literals is one op on the VM, and still a new
+        // array on every evaluation: changing one leaves the next alone.
+        "literal_array_is_new_on_each_evaluation",
+        r##"def make()
+  ["a", :b, 1, 2.5, true, nil]
+end
+
+first = make()
+first.push("x")
+first[0] = "changed"
+print(first, make())
+rows = []
+for i in [0, 1, 2]
+  row = [0, 0]
+  row[1] = i
+  rows.push(row)
+end
+print(rows)
+grid = [[1, 2], [3]]
+grid[0].push(9)
+print(grid, [[1, 2], [3]])
+print(["px-4", "py-2"].join(" "), [3, 1, 2].sort(), ["b", "a"].map { |s| s.upcase })
+h = {"tags": ["a", "b"]}
+h["tags"].push("c")
+print(h, {"tags": ["a", "b"]})"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
@@ -1970,6 +2038,18 @@ const UNCHECKED_CASES: &[(&str, &str)] = &[
     (
         "toplevel_let_redeclared",
         "let a = 1\nlet a = a + 100\nprint(a)",
+    ),
+    // Membership in a list of literals across types, which the type checker
+    // refuses: `==` as `Array#includes?` has it — `Int` and `Float` by value,
+    // a class equal to the string of its name, arrays by value.
+    (
+        "literal_list_membership_across_types",
+        r##"class Account
+end
+print([1, 2, 3].includes?(2.0), [1.5, 2.0].includes?(2), [1, "1"].includes?("1"))
+print(["1"].includes?(1), [nil].includes?(false), [true].includes?(1), [0].includes?(false))
+print(["up"].includes?(:up), [:up].includes?("up"), ["Account", "User"].includes?(Account))
+print([1, 2].includes?([1]), [[1], 2].includes?([1]), [{"a": 1}].includes?({"a": 1}))"##,
     ),
 ];
 

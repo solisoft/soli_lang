@@ -129,6 +129,12 @@ Correct code that reads better with a builtin.
 | `idiom/prefer-to-s` | `record.title ?? ""` | `record.title.to_s` |
 | `idiom/manual-find-guard` | a nil-check after `Model.find` | nothing — `find` raises |
 
+`idiom/prefer-includes` costs nothing at run time. Where code runs on the
+bytecode VM (production `soli serve`, scripts), the list of literals in
+`["up", "late"].includes?(status)` is built once, when the code is compiled:
+each evaluation only compares `status` with its elements, which makes the
+rewrite faster than the `==` chain it replaces.
+
 `idiom/prefer-to-s` is about honesty as much as brevity. Coalescing to an empty
 string means "render this, and render nothing when it is nil", which `.to_s`
 says in one call. It also fixes a type that changes with the data: `count ?? ""`
