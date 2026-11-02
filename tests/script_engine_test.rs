@@ -131,6 +131,35 @@ fn a_declared_return_type_is_checked_on_the_vm_too() {
 }
 
 #[test]
+fn a_non_primitive_return_type_is_checked_on_the_vm_too() {
+    // `-> Hash` and a class name took the allocating path; they now check
+    // against the type lowered at compile time, with the same error.
+    for (source, message) in [
+        (
+            "class Pt\nend\ndef f -> Pt\n  \"x\"\nend\nprint(f())\n",
+            "function 'f' expected to return Pt, got string at 3:1",
+        ),
+        (
+            "def f -> Hash\n  [1]\nend\nprint(f())\n",
+            "function 'f' expected to return Hash, got array at 1:1",
+        ),
+        (
+            "def f -> Function\n  return fn(x) { x }\nend\nprint(f()(7))\n",
+            "",
+        ),
+    ] {
+        assert_same(source);
+        let dir = script(source);
+        let run = soli(dir.path(), &["s.sl"], false);
+        if message.is_empty() {
+            assert_eq!(run.stdout, "7\n", "{}", run.stderr);
+        } else {
+            assert!(run.stderr.contains(message), "{}", run.stderr);
+        }
+    }
+}
+
+#[test]
 fn the_depth_limit_reads_the_same() {
     assert_same("def down(n)\n  return 0 if n == 0\n\n  down(n - 1)\nend\nprint(down(100000))\n");
 }

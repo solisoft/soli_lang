@@ -595,7 +595,7 @@ impl Compiler {
         self.end_scope(line);
 
         let mut proto = self.finish_function(line);
-        proto.return_type = decl.return_type.clone();
+        proto.set_return_type(decl.return_type.clone());
         proto.decl_span = decl.span;
         if self.scope_depth == 0 {
             proto.kernel = self.kernels.as_ref().and_then(|k| k.for_decl(decl));

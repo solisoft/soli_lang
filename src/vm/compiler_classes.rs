@@ -306,7 +306,7 @@ impl Compiler {
         self.end_scope(line);
 
         let mut proto = self.finish_function(line);
-        proto.return_type = method.return_type.clone();
+        proto.set_return_type(method.return_type.clone());
         proto.decl_span = method.span;
         let fn_idx = self.add_constant(Constant::Function(Arc::new(proto)));
         self.emit(Op::Closure(fn_idx), line);

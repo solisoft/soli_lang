@@ -405,9 +405,9 @@ impl Vm {
         let (Some(frame), Some(value)) = (self.frames.last(), self.stack.last()) else {
             return true;
         };
-        match &frame.closure.proto.return_type {
+        match &frame.closure.proto.return_check {
             None => true,
-            Some(expected) => value_admitted_by(value, expected),
+            Some(check) => check.admits(value),
         }
     }
 
@@ -418,10 +418,10 @@ impl Vm {
             return Ok(());
         };
         let proto = &frame.closure.proto;
-        let Some(expected) = &proto.return_type else {
+        let (Some(check), Some(expected)) = (&proto.return_check, &proto.return_type) else {
             return Ok(());
         };
-        if value_admitted_by(result, expected) {
+        if check.admits(result) {
             return Ok(());
         }
         Err(RuntimeError::General {
@@ -5460,32 +5460,6 @@ fn scalar_ordering(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
         (Value::Float(x), Value::Float(y)) => x.partial_cmp(y),
         _ => None,
     }
-}
-
-/// `value_matches_type`, without its allocation for the common primitive
-/// names: it lowercases the annotation on every call, and a typed function
-/// returns on every call.
-#[inline]
-fn value_admitted_by(value: &Value, expected: &crate::ast::TypeAnnotation) -> bool {
-    if let crate::ast::TypeKind::Named(name) = &expected.kind {
-        let is = |n: &str| name.eq_ignore_ascii_case(n);
-        if is("int") {
-            return matches!(value, Value::Int(_));
-        }
-        if is("float") {
-            return matches!(value, Value::Float(_));
-        }
-        if is("bool") {
-            return matches!(value, Value::Bool(_));
-        }
-        if is("string") {
-            return matches!(value, Value::String(_));
-        }
-        if is("any") {
-            return true;
-        }
-    }
-    crate::interpreter::value::value_matches_type(value, expected)
 }
 
 /// Drop a value the fast tier has finished with. `Value`'s drop glue is an

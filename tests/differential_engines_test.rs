@@ -607,6 +607,79 @@ end
 print(M::F.build.class)"##,
     ),
     (
+        // Every kind of declared return type admits what the tree-walker
+        // admits, in any case, and refuses what it refuses. The VM checks
+        // against the annotation lowered once at compile time; it refused
+        // its own closures for `-> Function` and `-> (Int) -> Int`.
+        "return_types_admit_every_kind",
+        r##"class Pt
+end
+class Pt3 < Pt
+end
+def ri -> Int
+  1
+end
+def rf -> float
+  1.5
+end
+def rd -> decimal
+  1.5D
+end
+def rs -> STRING
+  "s"
+end
+def rb -> Bool
+  true
+end
+def ra -> Array
+  [1]
+end
+def rh -> Hash
+  {"a": 1}
+end
+def rv -> Void
+  nil
+end
+def rn -> Int?
+  nil
+end
+def rany -> Any
+  "x"
+end
+def rp -> Pt
+  Pt3.new()
+end
+def rfn -> Function
+  return fn(x) { x * 2 }
+end
+def rft -> (Int) -> Int
+  return fn(x) { x + 1 }
+end
+def rint_arr -> Int[]
+  [1, 2]
+end
+print([ri(), rf(), rd(), rs(), rb(), ra(), rh(), rv(), rn(), rany(), rp().class])
+print(rfn()(4))
+print(rft()(4))
+print(rint_arr())
+def bad_hash -> Hash
+  [1]
+end
+def bad_class -> Pt
+  "nope"
+end
+def bad_void -> Void
+  3
+end
+def bad_nullable -> Pt?
+  4
+end
+print(bad_hash() rescue "refused hash")
+print(bad_class() rescue "refused class")
+print(bad_void() rescue "refused void")
+print(bad_nullable() rescue "refused nullable")"##,
+    ),
+    (
         // A value object keys a hash by value.
         "value_objects_as_hash_keys",
         r##"class Amount < ValueObject

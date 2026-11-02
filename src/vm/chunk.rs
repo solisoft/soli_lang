@@ -65,7 +65,11 @@ pub struct FunctionProto {
     pub kernel: Option<crate::native::KernelRef>,
     /// The declared return type, checked on return when the VM runs a script
     /// (`Vm::check_return_types`), as the tree-walker checks it.
+    /// Set with [`FunctionProto::set_return_type`], which lowers it into
+    /// `return_check`.
     pub return_type: Option<crate::ast::TypeAnnotation>,
+    /// `return_type` lowered once, so a checked return reads no type name.
+    pub return_check: Option<crate::interpreter::value::TypeCheck>,
     /// Where the function is declared: the span of a return-type error.
     pub decl_span: crate::span::Span,
     /// The qualified class its code is written in (`Billing::PayInvoice`), so
@@ -91,10 +95,20 @@ impl FunctionProto {
             source_path: None,
             kernel: None,
             return_type: None,
+            return_check: None,
             decl_span: crate::span::Span::default(),
             namespace: None,
             defaults_only: false,
         }
+    }
+
+    /// Declare the return type, and the check each return runs against it
+    /// when the VM checks return types.
+    pub fn set_return_type(&mut self, return_type: Option<crate::ast::TypeAnnotation>) {
+        self.return_check = return_type
+            .as_ref()
+            .map(crate::interpreter::value::TypeCheck::lower);
+        self.return_type = return_type;
     }
 }
 

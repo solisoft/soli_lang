@@ -3137,37 +3137,117 @@ fn class_answers_to(class: &Class, name: &str) -> bool {
 
 pub fn value_matches_type(value: &Value, expected: &TypeAnnotation) -> bool {
     match &expected.kind {
-        TypeKind::Named(name) => {
-            let name_lower = name.to_lowercase();
-            match name_lower.as_str() {
-                "any" => true,
-                "int" => matches!(value, Value::Int(_)),
-                "float" => matches!(value, Value::Float(_)),
-                "decimal" => matches!(value, Value::Decimal(_)),
-                "string" => matches!(value, Value::String(_)),
-                "bool" => matches!(value, Value::Bool(_)),
-                "array" => matches!(value, Value::Array(_)),
-                "hash" => matches!(value, Value::Hash(_)),
-                "function" => matches!(value, Value::Function(_) | Value::NativeFunction(_)),
-                "void" | "null" => matches!(value, Value::Null),
-                // Class instance check
-                // Class instance check: the class or an ancestor, named in
-                // full or — written inside its context — by its short name
-                // (`-> Invoice` for a `Billing::Invoice`).
-                _ => match value {
-                    Value::Instance(inst) => class_answers_to(&inst.borrow().class, name),
-                    _ => false,
-                },
-            }
-        }
+        TypeKind::Named(name) => match TypeCheck::builtin(name) {
+            Some(check) => check.admits(value),
+            None => instance_answers_to(value, name),
+        },
         TypeKind::Void => matches!(value, Value::Null),
         TypeKind::Nullable(inner) => {
             matches!(value, Value::Null) || value_matches_type(value, inner)
         }
         TypeKind::Array(_) => matches!(value, Value::Array(_)),
         TypeKind::Hash { .. } => matches!(value, Value::Hash(_)),
-        TypeKind::Function { .. } => {
-            matches!(value, Value::Function(_) | Value::NativeFunction(_))
+        TypeKind::Function { .. } => is_function_value(value),
+    }
+}
+
+/// A function on either engine: the tree-walker's, a builtin, or a VM
+/// closure (all of which `type_name` reports as `Function`).
+#[inline]
+fn is_function_value(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Function(_) | Value::NativeFunction(_) | Value::VmClosure(_)
+    )
+}
+
+/// An instance of the class `name` names, or of a subclass of it: the
+/// class named in full or, written inside its context, by its short name
+/// (`-> Invoice` for a `Billing::Invoice`).
+#[inline]
+fn instance_answers_to(value: &Value, name: &str) -> bool {
+    match value {
+        Value::Instance(inst) => class_answers_to(&inst.borrow().class, name),
+        _ => false,
+    }
+}
+
+/// A type annotation lowered once, so a check against it reads no name.
+/// It decides exactly what [`value_matches_type`] decides for the same
+/// annotation; the VM lowers a function's return type when it compiles
+/// the function and checks each return against this.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeCheck {
+    Any,
+    Int,
+    Float,
+    Decimal,
+    String,
+    Bool,
+    Array,
+    Hash,
+    Function,
+    /// `Void`, or the name `Null`.
+    Null,
+    /// A class name, matched case-sensitively against the class and its
+    /// ancestors, in full or by short name.
+    Class(Box<str>),
+    /// `T?`: null, or what the inner check admits.
+    Nullable(Box<TypeCheck>),
+}
+
+impl TypeCheck {
+    /// The check for an annotation.
+    pub fn lower(expected: &TypeAnnotation) -> Self {
+        match &expected.kind {
+            TypeKind::Named(name) => {
+                Self::builtin(name).unwrap_or_else(|| Self::Class(name.as_str().into()))
+            }
+            TypeKind::Void => Self::Null,
+            TypeKind::Nullable(inner) => Self::Nullable(Box::new(Self::lower(inner))),
+            TypeKind::Array(_) => Self::Array,
+            TypeKind::Hash { .. } => Self::Hash,
+            TypeKind::Function { .. } => Self::Function,
+        }
+    }
+
+    /// The built-in type a name spells, in any ASCII case (`int`, `Int`,
+    /// `INT`), or `None` for a class name. Dispatches on the length first,
+    /// so a name is compared against at most three candidates.
+    fn builtin(name: &str) -> Option<Self> {
+        let is = |candidate: &str| name.eq_ignore_ascii_case(candidate);
+        let check = match name.len() {
+            3 if is("int") => Self::Int,
+            3 if is("any") => Self::Any,
+            4 if is("hash") => Self::Hash,
+            4 if is("bool") => Self::Bool,
+            4 if is("void") || is("null") => Self::Null,
+            5 if is("array") => Self::Array,
+            5 if is("float") => Self::Float,
+            6 if is("string") => Self::String,
+            7 if is("decimal") => Self::Decimal,
+            8 if is("function") => Self::Function,
+            _ => return None,
+        };
+        Some(check)
+    }
+
+    /// Whether `value` is of this type.
+    #[inline]
+    pub fn admits(&self, value: &Value) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Int => matches!(value, Value::Int(_)),
+            Self::Float => matches!(value, Value::Float(_)),
+            Self::Decimal => matches!(value, Value::Decimal(_)),
+            Self::String => matches!(value, Value::String(_)),
+            Self::Bool => matches!(value, Value::Bool(_)),
+            Self::Array => matches!(value, Value::Array(_)),
+            Self::Hash => matches!(value, Value::Hash(_)),
+            Self::Function => is_function_value(value),
+            Self::Null => matches!(value, Value::Null),
+            Self::Class(name) => instance_answers_to(value, name),
+            Self::Nullable(inner) => matches!(value, Value::Null) || inner.admits(value),
         }
     }
 }
@@ -3604,6 +3684,72 @@ mod return_type_tests {
         assert!(value_matches_type(&value, &ty_lower));
         assert!(value_matches_type(&value, &ty_upper));
         assert!(value_matches_type(&value, &ty_mixed));
+    }
+
+    fn annotations() -> Vec<TypeAnnotation> {
+        let named = |n: &str| make_type(TypeKind::Named(n.to_string()));
+        let mut types: Vec<TypeAnnotation> = [
+            "Int", "int", "INT", "Float", "Decimal", "decimal", "String", "Bool", "Array", "Hash",
+            "hash", "Function", "Void", "Null", "Any", "Pt", "pt", "Int2", "Strin",
+        ]
+        .iter()
+        .map(|n| named(n))
+        .collect();
+        types.push(make_type(TypeKind::Void));
+        types.push(make_type(TypeKind::Nullable(Box::new(named("Int")))));
+        types.push(make_type(TypeKind::Nullable(Box::new(named("Pt")))));
+        types.push(make_type(TypeKind::Array(Box::new(named("Int")))));
+        types.push(make_type(TypeKind::Hash {
+            key_type: Box::new(named("String")),
+            value_type: Box::new(named("Int")),
+        }));
+        types.push(make_type(TypeKind::Function {
+            params: vec![named("Int")],
+            return_type: Box::new(named("Int")),
+        }));
+        types
+    }
+
+    fn values() -> Vec<Value> {
+        vec![
+            Value::Int(1),
+            Value::Float(1.5),
+            Value::Decimal(DecimalValue(rust_decimal::Decimal::new(15, 1), 1)),
+            Value::String("s".into()),
+            Value::Bool(true),
+            Value::Null,
+            Value::Array(Rc::new(RefCell::new(vec![]))),
+            Value::Hash(Rc::new(RefCell::new(HashPairs::default()))),
+        ]
+    }
+
+    #[test]
+    fn a_lowered_check_decides_what_value_matches_type_decides() {
+        for ty in annotations() {
+            let check = TypeCheck::lower(&ty);
+            for value in values() {
+                assert_eq!(
+                    check.admits(&value),
+                    value_matches_type(&value, &ty),
+                    "{ty} against {}",
+                    value.type_name()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn names_lower_case_insensitively_and_others_are_classes() {
+        let named = |n: &str| TypeCheck::lower(&make_type(TypeKind::Named(n.to_string())));
+        assert_eq!(named("HASH"), TypeCheck::Hash);
+        assert_eq!(named("void"), TypeCheck::Null);
+        assert_eq!(named("Null"), TypeCheck::Null);
+        assert_eq!(named("function"), TypeCheck::Function);
+        assert_eq!(named("Strings"), TypeCheck::Class("Strings".into()));
+        assert_eq!(
+            named("Billing::Invoice"),
+            TypeCheck::Class("Billing::Invoice".into())
+        );
     }
 }
 
