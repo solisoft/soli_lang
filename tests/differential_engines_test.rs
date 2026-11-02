@@ -2003,7 +2003,7 @@ print([{"size": 3}, {"size": 4}].map(&:size))"##,
         // VM used to push the native function itself: `clock - start` raised
         // "Cannot subtract float from Function".
         "bare_clock_is_the_time",
-        "start = clock()\nprint(type(clock))\nprint(clock >= start)\nprint(type(clock - start))\ndef elapsed(from)\n  clock - from\nend\nprint(elapsed(start) >= 0)\nclass Timer\n  def now\n    clock\n  end\nend\nprint(type(Timer.new.now))\n[1].each do |i|\n  print(type(clock + i))\nend\nprint(type(clock.round))",
+        "start = clock()\nprint(type(clock))\nprint(clock >= start)\nprint(type(clock - start))\ndef elapsed(from)\n  clock - from\nend\nprint(elapsed(start) >= 0)\nclass Timer\n  def now\n    clock\n  end\nend\nprint(type(Timer.new().now))\n[1].each do |i|\n  print(type(clock + i))\nend\nprint(type(clock.round))",
     ),
     (
         // A program's own `clock` keeps what it is.

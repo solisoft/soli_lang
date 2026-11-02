@@ -48,7 +48,7 @@
   end
 end
 
-person = Person.new
+person = Person.new()
 person.send("greet")                    # => "Hello!"
 person.send("greet_with", "World")     # => "Hello, World!"</code></pre>
         </div>
@@ -124,7 +124,7 @@ copy_fields(draft, post, ["title", "body"])</code></pre>
   end
 end
 
-person = Person.new
+person = Person.new()
 person.find_by_name("Alice")   # => "Finding person by name"
 person.find_by_email("a@b.c")  # => "Finding person by email"
 person.any_undefined_method     # => "Method 'any_undefined_method' was called"</code></pre>
@@ -167,7 +167,7 @@ person.any_undefined_method     # => "Method 'any_undefined_method' was called"<
   end
 end
 
-person = Person.new
+person = Person.new()
 person.respond_to?("greet")        # => true
 person.respond_to?("find_by_name") # => false
 person.respond_to?("send")          # => true
@@ -509,7 +509,7 @@ class User
   include Serializable
 end
 
-User.new.to_json</code></pre>
+User.new().to_json</code></pre>
         </div>
 
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
@@ -608,7 +608,7 @@ User.new.to_json</code></pre>
   end
 end
 
-user = User.new
+user = User.new()
 user.instance_variables   # => ["@name", "@email"]
 user.methods             # => ["greet", "to_s", ...]
 user.respond_to?("greet") # => true</code></pre>
