@@ -12,7 +12,7 @@ use crate::interpreter::value::{
     build_interpolated, hash_get_value, hash_set_value, same_string, Class, HashKey, HashPairs,
     StrKey, Value,
 };
-use crate::metrics::VmTimingGuard;
+use crate::metrics::{metrics_enabled, Metrics};
 use crate::span::Span;
 
 use super::chunk::{Constant, FunctionProto};
@@ -219,6 +219,42 @@ pub struct Vm {
     /// what the tree-walker raises. On for scripts; off under `soli serve`,
     /// where applications have always run without the check.
     pub check_return_types: bool,
+    /// `SOLI_METRICS` is on: time this VM's outermost `run` for
+    /// `soli_vm_execution_seconds`. Read once, when the VM is made.
+    pub(crate) time_runs: bool,
+    /// An outermost `run` is being timed. The `run`s it re-enters — a block
+    /// called by `reduce` or `each_with_index`, a paren-less method call, a
+    /// constructor — see it set and are not timed again: their time is
+    /// already inside the outer one.
+    pub(crate) timed_run_open: bool,
+}
+
+/// Times one outermost `Vm::run` while `SOLI_METRICS` is on, and records it
+/// when dropped — on an early return and on a panic unwinding through the
+/// run too, so `timed_run_open` can never stay set and switch the timing off
+/// for the rest of the VM's life.
+struct TimedRun<'a> {
+    vm: &'a mut Vm,
+    start: web_time::Instant,
+}
+
+impl<'a> TimedRun<'a> {
+    #[inline]
+    fn open(vm: &'a mut Vm) -> Self {
+        vm.timed_run_open = true;
+        Self {
+            vm,
+            start: web_time::Instant::now(),
+        }
+    }
+}
+
+impl Drop for TimedRun<'_> {
+    #[inline]
+    fn drop(&mut self) {
+        self.vm.timed_run_open = false;
+        Metrics::global().record_vm_execution(self.start.elapsed());
+    }
 }
 
 /// `stack[ia] = stack[ia] + stack[ib]` when both are strings.
@@ -374,6 +410,8 @@ impl Vm {
             failed_handlers: ahash::AHashSet::new(),
             return_depth: 0,
             check_return_types: false,
+            time_runs: metrics_enabled(),
+            timed_run_open: false,
         }
     }
 
@@ -537,7 +575,22 @@ impl Vm {
     /// handler — matching the tree-walker, where `catch (e)` binds the
     /// error text. Without an active handler the error propagates (which
     /// is what serve-mode's interpreter fallback relies on).
+    ///
+    /// With `SOLI_METRICS` on, only the outermost activation is timed: one
+    /// clock pair and one pair of atomic adds per handler, view or script,
+    /// however many times a block or a paren-less call re-enters `run`.
+    #[inline]
     pub fn run(&mut self) -> Result<Value, RuntimeError> {
+        if !self.time_runs || self.timed_run_open {
+            return self.run_catching();
+        }
+        let timed = TimedRun::open(self);
+        timed.vm.run_catching()
+    }
+
+    /// `run`'s body: dispatch, and resume at the innermost handler when an
+    /// error is catchable. A resumed `catch` stays in the same activation.
+    fn run_catching(&mut self) -> Result<Value, RuntimeError> {
         loop {
             let err = match self.run_dispatch() {
                 Ok(value) => return Ok(value),
@@ -1362,7 +1415,6 @@ impl Vm {
     }
 
     fn run_dispatch(&mut self) -> Result<Value, RuntimeError> {
-        let _guard = VmTimingGuard::new();
         loop {
             // Run the simple ops in `run_fast`, which keeps the frame's state
             // in registers; it returns the first op it does not handle, with
@@ -8746,5 +8798,80 @@ let x = Mailer.welcome()
             compile_and_get_global("let x = [1, 2, 3, 4, 5].filter(fn(n) n > 2).first();", "x"),
             Value::Int(3)
         );
+    }
+
+    /// With metrics on, a VM times only its outermost `run`: the runs that
+    /// paren-less method calls, a `reduce` block and a resumed `catch`
+    /// re-enter are inside it, and timing them again cost a clock pair and
+    /// two shared atomic adds each, and counted their time twice.
+    #[test]
+    fn metrics_time_only_the_outermost_run() {
+        use std::sync::atomic::Ordering;
+        let source = r##"
+class Widget
+  def one
+    1
+  end
+
+  def boom
+    throw "nope"
+  end
+end
+
+widget = Widget.new()
+x = 0
+i = 0
+while i < 10
+  x = x + widget.one
+  i = i + 1
+end
+caught = ""
+try
+  widget.boom
+catch error
+  caught = "#{error}"
+end
+total = [1, 2, 3].reduce(fn(acc, v) acc + v + widget.one, 0)
+
+def explode
+  widget.boom
+end
+"##;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let metrics = Metrics::global();
+
+        let mut vm = Vm::new();
+        vm.time_runs = true;
+        let before = metrics.vm_execution_count.load(Ordering::Relaxed);
+        vm.execute(&module.main).expect("script runs");
+        let after = metrics.vm_execution_count.load(Ordering::Relaxed);
+        assert_eq!(after - before, 1, "one outermost run, one record");
+        assert!(!vm.timed_run_open);
+        assert!(matches!(vm.globals.get("x"), Some(Value::Int(10))));
+        assert!(matches!(vm.globals.get("total"), Some(Value::Int(9))));
+        match vm.globals.get("caught") {
+            Some(Value::String(s)) => assert_eq!(s.as_str(), "nope"),
+            other => panic!("caught = {other:?}"),
+        }
+
+        // A call into the VM from outside is an outermost run of its own,
+        // and an error escaping it still closes the timing.
+        let explode = vm.globals.get("explode").cloned().expect("explode");
+        let before = metrics.vm_execution_count.load(Ordering::Relaxed);
+        let err = vm.call_value_direct(explode, &[], Span::default());
+        assert!(err.is_err(), "an uncaught throw escapes");
+        let after = metrics.vm_execution_count.load(Ordering::Relaxed);
+        assert_eq!(after - before, 1);
+        assert!(!vm.timed_run_open, "an escaping error closes the timing");
+
+        // Metrics off: nothing is recorded.
+        let mut quiet = Vm::new();
+        quiet.time_runs = false;
+        let before = metrics.vm_execution_count.load(Ordering::Relaxed);
+        quiet.execute(&module.main).expect("script runs");
+        let after = metrics.vm_execution_count.load(Ordering::Relaxed);
+        assert_eq!(after, before);
     }
 }

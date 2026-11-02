@@ -142,7 +142,7 @@ curl -s localhost:5011/_metrics</code></pre>
                 <tr><td class="py-3 px-4"><code>soli_http_requests_total</code></td><td class="py-3 px-4">Requests handled</td></tr>
                 <tr><td class="py-3 px-4"><code>soli_lexing_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Time in the lexer</td></tr>
                 <tr><td class="py-3 px-4"><code>soli_parsing_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Time in the parser</td></tr>
-                <tr><td class="py-3 px-4"><code>soli_vm_execution_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Bytecode VM wall time</td></tr>
+                <tr><td class="py-3 px-4"><code>soli_vm_execution_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Bytecode VM wall time, one sample per entry into the VM (a handler, a middleware, a view, a script). Blocks, paren-less method calls and constructors run inside that entry are part of its time, not samples of their own</td></tr>
                 <tr><td class="py-3 px-4"><code>soli_template_render_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Views, layouts, partials</td></tr>
                 <tr><td class="py-3 px-4"><code>soli_middleware_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">Middleware totals</td></tr>
                 <tr><td class="py-3 px-4"><code>soli_db_query_duration_seconds</code> / <code>_count</code></td><td class="py-3 px-4">SoliDB / SolidB query time</td></tr>

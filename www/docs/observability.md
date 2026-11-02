@@ -63,7 +63,7 @@ Representative series (all Prometheus text format):
 | `soli_http_requests_total` | Requests handled |
 | `soli_lexing_duration_seconds` / `_count` | Time in the lexer |
 | `soli_parsing_duration_seconds` / `_count` | Time in the parser |
-| `soli_vm_execution_seconds` / `_count` | Bytecode VM wall time |
+| `soli_vm_execution_seconds` / `_count` | Bytecode VM wall time, one sample per entry into the VM (a handler, a middleware, a view, a script). Blocks, paren-less method calls and constructors run inside that entry are part of its time, not samples of their own |
 | `soli_template_render_duration_seconds` / `_count` | Views, layouts, partials |
 | `soli_middleware_duration_seconds` / `_count` | Middleware totals |
 | `soli_db_query_duration_seconds` / `_count` | SoliDB / SolidB query time |
