@@ -26,7 +26,7 @@ File: `src/serve/mod.rs`. Read it top-to-bottom once; it is the map.
 | `--dev` | Tree-walk `Interpreter` (hot reload) |
 | production | Bytecode `Vm` after `warm_vm_handlers` |
 
-`src/serve/engine_loader.rs` copies builtin globals into the VM. A handler the compiler refuses is demoted to the interpreter (`SOLI_ENGINE_LOG=1` logs it).
+`src/serve/engine_loader.rs` copies builtin globals into the VM. A handler the compiler refuses is demoted to the interpreter (`SOLI_ENGINE_LOG=1` logs it). Any other VM error re-runs the request on the interpreter, unless the handler wrote first. The handler is demoted only if that re-run succeeds (an engine divergence) or if it wrote first; an error both engines raise leaves it on the VM.
 
 ## Builtins: one registry per consumer, on purpose
 
@@ -271,7 +271,7 @@ cleared and learnt again.
 
 Each request gets an `Interpreter::coroutine_shell` (the worker's environment,
 its own call stack), so the VM → tree-walker fallback runs inside the
-coroutine; handlers the VM failed on are merged back into the worker's VM.
+coroutine; handlers it moved off the VM are merged back into the worker's VM.
 WebSocket, LiveView and EUI events still run on the worker's own interpreter,
 between switches.
 

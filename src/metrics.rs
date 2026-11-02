@@ -36,7 +36,9 @@ pub struct Metrics {
     pub db_query_duration_ns_total: AtomicU64,
     pub db_query_count: AtomicU64,
     /// Number of handlers demoted from the VM to the tree-walking interpreter
-    /// (per worker, first failing request only — the demotion is then cached).
+    /// (per worker, once — the demotion is then cached): the VM refused them,
+    /// failed where the tree-walker's re-run succeeded, or failed after a
+    /// durable write. An error both engines raise demotes nothing.
     /// A non-zero value means some production handlers run on the slower
     /// engine; set `SOLI_ENGINE_LOG=1` to log which handler and why.
     pub vm_handler_demotions_total: AtomicU64,

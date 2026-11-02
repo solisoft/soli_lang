@@ -358,6 +358,263 @@ fn model_scopes_resolve_in_a_vm_action() {
     );
 }
 
+/// An app written into `root` and served in production with one worker and
+/// `env`; its stderr goes to `root/stderr.log`. The app answers `GET /ping`.
+fn serve_app_in(
+    root: &std::path::Path,
+    files: &[(&str, &str)],
+    env: &[(&str, &str)],
+) -> ServerProcess {
+    for (path, body) in files {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent dir")).expect("mkdir");
+        std::fs::write(path, body).expect("write app file");
+    }
+    let port = pick_port();
+    let mut command = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_soli")));
+    command
+        .arg("serve")
+        .arg(root)
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--workers")
+        .arg("1")
+        // `/_metrics` answers loopback without a token; the engine flags are
+        // the test's to set.
+        .env_remove("SOLI_METRICS_TOKEN")
+        .env_remove("SOLI_FAIL_ON_VM_DEMOTION")
+        .env_remove("SOLI_ENGINE_LOG")
+        .stdout(Stdio::null())
+        .stderr(std::fs::File::create(root.join("stderr.log")).expect("stderr file"));
+    for (name, value) in env {
+        command.env(name, value);
+    }
+    let server = ServerProcess {
+        child: command.spawn().expect("spawn soli serve"),
+        port,
+    };
+    server.wait_ready();
+    server
+}
+
+/// The status of `GET path`, with one optional request header.
+fn status_of(server: &ServerProcess, path: &str, header: Option<(&str, &str)>) -> u16 {
+    let mut request = ureq::get(&server.url(path)).timeout(Duration::from_secs(10));
+    if let Some((name, value)) = header {
+        request = request.set(name, value);
+    }
+    match request.call() {
+        Ok(resp) => resp.status(),
+        Err(ureq::Error::Status(status, _)) => status,
+        Err(e) => panic!("GET {path}: {e}"),
+    }
+}
+
+/// One counter from `/_metrics`.
+fn metric(server: &ServerProcess, name: &str) -> u64 {
+    let body = body_string(
+        ureq::get(&server.url("/_metrics"))
+            .timeout(Duration::from_secs(3))
+            .call()
+            .expect("metrics request"),
+    );
+    body.lines()
+        .find_map(|line| line.strip_prefix(&format!("{name} ")))
+        .and_then(|count| count.trim().parse().ok())
+        .unwrap_or_else(|| panic!("no {name} sample in: {body}"))
+}
+
+const HOME_CONTROLLER_WITH_PING: &str = "class HomeController < Controller
+  # GET /ping
+  def ping(req)
+    {\"status\": 200, \"body\": \"pong\"}
+  end
+
+  # GET /work
+  def work(req)
+    throw \"bad input\" if params[\"fail\"] == \"1\"
+
+    {\"status\": 200, \"body\": \"work ok\"}
+  end
+
+  # GET /nilerr
+  def nilerr(req)
+    {\"status\": 200, \"body\": \"#{params[\"q\"].length}\"}
+  end
+end
+";
+
+/// An error both engines raise is the app's own — a `throw`, a nil read from
+/// a missing parameter — and leaves the handler on the VM. One such request
+/// used to move the action, hook or middleware to the tree-walker for the rest
+/// of the worker's life (242 → 767 µs a request on a compute-heavy action), and
+/// any client could send it. Strict engines: a refusal or a divergence would
+/// stop this server.
+#[test]
+fn app_errors_leave_handlers_on_the_vm() {
+    let app = tempfile::tempdir().expect("temp app dir");
+    let root = app.path();
+    let server = serve_app_in(
+        root,
+        &[
+            (
+                "config/routes.sl",
+                "get(\"/ping\", \"home#ping\")
+get(\"/work\", \"home#work\")
+get(\"/nilerr\", \"home#nilerr\")
+get(\"/hooked\", \"hooked#index\")
+get(\"/fnwork\", \"fnstyle#work\")
+middleware(\"check\", -> {
+  get(\"/guarded\", \"home#ping\")
+})
+",
+            ),
+            (
+                "app/controllers/home_controller.sl",
+                HOME_CONTROLLER_WITH_PING,
+            ),
+            (
+                "app/controllers/hooked_controller.sl",
+                "class HookedController < Controller
+  static {
+    this.before_action = fn(req) {
+      throw \"hook refused\" if params[\"fail\"] == \"1\"
+      req
+    }
+  }
+
+  # GET /hooked
+  def index(req)
+    {\"status\": 200, \"body\": \"hooked\"}
+  end
+end
+",
+            ),
+            (
+                "app/controllers/fnstyle_controller.sl",
+                "# GET /fnwork
+def work(req)
+  throw \"bad input\" if params[\"fail\"] == \"1\"
+
+  {\"status\": 200, \"body\": \"fn ok\"}
+end
+",
+            ),
+            (
+                "app/middleware/check.sl",
+                "# order: 50
+# scope_only: true
+def check(req)
+  throw \"refused\" if req[\"headers\"][\"x-fail\"] == \"1\"
+
+  req
+end
+",
+            ),
+        ],
+        &[("SOLI_FAIL_ON_VM_DEMOTION", "1"), ("SOLI_ENGINE_LOG", "1")],
+    );
+
+    // Each fails on both engines, then passes; twice for the action.
+    for _ in 0..2 {
+        assert_eq!(status_of(&server, "/work?fail=1", None), 500);
+    }
+    assert_eq!(status_of(&server, "/work", None), 200);
+    assert_eq!(status_of(&server, "/nilerr", None), 500);
+    assert_eq!(status_of(&server, "/nilerr?q=abc", None), 200);
+    assert_eq!(status_of(&server, "/hooked?fail=1", None), 500);
+    assert_eq!(status_of(&server, "/hooked", None), 200);
+    assert_eq!(status_of(&server, "/guarded", Some(("x-fail", "1"))), 500);
+    assert_eq!(status_of(&server, "/guarded", None), 200);
+    assert_eq!(status_of(&server, "/fnwork?fail=1", None), 500);
+    assert_eq!(status_of(&server, "/fnwork", None), 200);
+
+    assert_eq!(metric(&server, "soli_vm_handler_demotions_total"), 0);
+    assert_eq!(metric(&server, "soli_vm_engine_divergences_total"), 0);
+    drop(server);
+    let log = std::fs::read_to_string(root.join("stderr.log")).expect("server stderr");
+    assert!(!log.contains("demoted to the interpreter"), "{log}");
+}
+
+/// A failure the tree-walker does not reproduce is the VM's — a gap, or a
+/// transient error the re-run did not hit — and still moves the handler off
+/// the VM. Here an action and its `before_action` fail on their first run
+/// only (both engines share the hash that counts the runs): the re-run answers,
+/// each is demoted once, and the next request runs on the tree-walker alone.
+#[test]
+fn a_handler_only_the_vm_fails_is_demoted_once() {
+    let app = tempfile::tempdir().expect("temp app dir");
+    let root = app.path();
+    let server = serve_app_in(
+        root,
+        &[
+            (
+                "config/routes.sl",
+                "get(\"/ping\", \"home#ping\")\nget(\"/flaky\", \"flaky#show\")\n",
+            ),
+            (
+                "app/controllers/home_controller.sl",
+                HOME_CONTROLLER_WITH_PING,
+            ),
+            (
+                "app/controllers/flaky_controller.sl",
+                "flaky_runs = {\"action\": 0, \"hook\": 0}
+
+class FlakyController < Controller
+  static {
+    this.before_action = fn(req) {
+      flaky_runs[\"hook\"] = flaky_runs[\"hook\"] + 1
+      throw \"the hook's first run fails\" if flaky_runs[\"hook\"] == 1
+      req
+    }
+  }
+
+  # GET /flaky
+  def show(req)
+    flaky_runs[\"action\"] = flaky_runs[\"action\"] + 1
+    throw \"the action's first run fails\" if flaky_runs[\"action\"] == 1
+
+    {\"status\": 200, \"body\": \"runs #{flaky_runs[\"action\"]}\"}
+  end
+end
+",
+            ),
+        ],
+        &[("SOLI_ENGINE_LOG", "1")],
+    );
+
+    let get = |path: &str| {
+        body_string(
+            ureq::get(&server.url(path))
+                .timeout(Duration::from_secs(10))
+                .call()
+                .expect("the re-run answers"),
+        )
+    };
+    // The VM's run fails; the re-run is the action's second.
+    assert_eq!(get("/flaky"), "runs 2");
+    // On the tree-walker alone now: one run.
+    assert_eq!(get("/flaky"), "runs 3");
+    assert_eq!(metric(&server, "soli_vm_handler_demotions_total"), 2);
+    assert_eq!(metric(&server, "soli_vm_engine_divergences_total"), 2);
+    drop(server);
+    let log = std::fs::read_to_string(root.join("stderr.log")).expect("server stderr");
+    for handler in ["FlakyController#before_action", "FlakyController#show"] {
+        assert_eq!(
+            log.matches(&format!("handler '{handler}' demoted to the interpreter"))
+                .count(),
+            1,
+            "{log}"
+        );
+        assert!(
+            log.contains(&format!(
+                "handler '{handler}' failed on the VM and succeeded on the interpreter"
+            )),
+            "{log}"
+        );
+    }
+}
+
 /// Lines run on the VM are counted. The VM had no line coverage: once every
 /// action ran there (2.6.2), `soli test --coverage` stopped seeing any code an
 /// action executed — an app suite covering 97% reported 63%. A coverage

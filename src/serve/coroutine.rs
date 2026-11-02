@@ -400,9 +400,9 @@ impl Scheduler {
                 let task = self.tasks.remove(&id).expect("task present");
                 self.stacks.push(task.into_stack());
                 if let Some(mut vm) = done.vm {
-                    // A handler the VM failed on stays on the tree-walker for
-                    // the requests after this one, as it does without
-                    // coroutines.
+                    // A handler moved off the VM on this request stays on the
+                    // tree-walker for the requests after this one, as it does
+                    // without coroutines.
                     if let Some(worker) = worker_vm.as_mut() {
                         if vm.failed_handlers.len() != worker.failed_handlers.len() {
                             worker

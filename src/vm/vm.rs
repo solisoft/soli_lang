@@ -198,7 +198,10 @@ pub struct Vm {
     /// interpreter's, for the render in progress. A helper that reads a name
     /// its closure lacks finds it there, as when the tree-walker renders.
     pub tree_walk_env: Option<Rc<RefCell<crate::interpreter::environment::Environment>>>,
-    /// Handlers that failed VM execution — skip VM for these and use interpreter directly.
+    /// Handlers moved off the VM on this worker — skip VM for these and use
+    /// interpreter directly. The VM refused them, failed where the
+    /// tree-walker's re-run then succeeded, or failed after a durable write
+    /// (`serve::demote_on_vm_failure`); an error both engines raise is not one.
     pub failed_handlers: ahash::AHashSet<String>,
     /// Frame depth at which `run()` should stop. Bumped by native methods that
     /// need to synchronously invoke a user closure (e.g. array.map); `Op::Return`

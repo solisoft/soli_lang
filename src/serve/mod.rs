@@ -4365,40 +4365,56 @@ fn render_and_send_patch(
     Ok(())
 }
 
-/// Record a VM→interpreter handler demotion: bump the metrics counter
-/// (`soli_vm_handler_demotions_total` on `/_metrics`) and, when
-/// `SOLI_ENGINE_LOG=1`, log which handler was demoted and why. Demotions are
-/// cached in `vm.failed_handlers`, so this fires once per handler per worker.
+/// What a VM failure does to the handler that failed — an action, a
+/// controller hook or a middleware — once it is known not to be the request's
+/// answer (a raised 404/403/halt/`DomainError`, which the caller maps first).
+/// Returns `true` when the handler leaves the VM for the rest of the worker's
+/// life now:
+///
+/// * the VM refused it ([`RuntimeError::EngineFallback`]): the code is the
+///   reason, and the next request would be refused again;
+/// * it failed after a durable write. It is not re-run then
+///   (`no_retry_after_commit`), so nothing can tell a VM gap from the app's
+///   own error, and a VM gap must cost one 500 per worker, not one per request.
+///
+/// Any other error is noted for the re-run to settle: the handler leaves the
+/// VM only if the tree-walker then succeeds where the VM failed
+/// ([`settle_engine_divergence`]). An error both engines raise — a `throw`, a
+/// nil read from a missing parameter, a `JSON.parse` of a bad body — belongs
+/// to the app or its data, and the handler stays on the VM, as a view does
+/// (`template::vm_template`). It used to demote too, so one bad request moved
+/// a handler to the slower engine for good (3.2x on a compute-heavy action).
+fn demote_on_vm_failure(handler: &str, err: &RuntimeError) -> bool {
+    if err.is_engine_fallback() || crate::interpreter::builtins::model::crud::had_durable_commit() {
+        record_vm_demotion(handler, err);
+        return true;
+    }
+    note_possible_divergence(handler, err);
+    false
+}
+
+/// Record a VM→interpreter handler demotion ([`count_vm_demotion`]) and, under
+/// `SOLI_FAIL_ON_VM_DEMOTION=1`, stop on a refusal.
 ///
 /// There is deliberately no `--dev` branch: the worker only builds a VM when
 /// `!dev_mode` (see the `Option<Vm>` in `worker_loop`), so nothing here is
-/// reachable under `--dev` — including `soli test`, which serves with it.
+/// reachable under `--dev`, nor in a `soli test` run with
+/// `SOLI_TEST_SERVER_DEV=1` (an ordinary `soli test` serves in production).
 ///
 /// `SOLI_FAIL_ON_VM_DEMOTION=1` turns a *refusal* into a hard stop so CI cannot
 /// ship one silently. Two details matter for that to work:
 ///
 /// * It fires only on [`RuntimeError::EngineFallback`] — the VM saying "I can't
-///   compile/run this". Every other error is the handler's own (`throw`, a
-///   `RecordNotFound` on a 404 route, a bad arity); those demote too, but they
-///   are the app behaving as written, not a coverage regression.
+///   compile/run this". A failure after a durable write also demotes, but it is
+///   the handler's own error as often as not; a failure the tree-walker does
+///   not reproduce stops the run in [`settle_engine_divergence`] instead.
 /// * It exits the process rather than panicking. A panic here is swallowed by
 ///   the per-request `catch_unwind` in `run_caught` into a 500, so the run
 ///   would look like a flaky request instead of a failure — and it would unwind
 ///   past the `failed_handlers` insert, making *every* later request to the
 ///   handler 500 as well.
 fn record_vm_demotion(handler: &str, err: &RuntimeError) {
-    crate::metrics::Metrics::global()
-        .vm_handler_demotions_total
-        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    static ENGINE_LOG: OnceLock<bool> = OnceLock::new();
-    let log = *ENGINE_LOG.get_or_init(|| {
-        crate::platform::env::var("SOLI_ENGINE_LOG")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false)
-    });
-    if log {
-        eprintln!("[soli engine] handler '{handler}' demoted to the interpreter: {err}");
-    }
+    count_vm_demotion(handler, err);
     if !matches!(err, RuntimeError::EngineFallback(..)) {
         return;
     }
@@ -4414,6 +4430,25 @@ fn record_vm_demotion(handler: &str, err: &RuntimeError) {
         );
         let _ = std::io::Write::flush(&mut std::io::stderr());
         std::process::exit(70);
+    }
+}
+
+/// Count a VM→interpreter handler demotion (`soli_vm_handler_demotions_total`
+/// on `/_metrics`) and, when `SOLI_ENGINE_LOG=1`, log which handler was
+/// demoted and why. A demoted handler is not offered to the VM again on this
+/// worker, so this fires once per handler per worker.
+fn count_vm_demotion(handler: &str, reason: &dyn std::fmt::Display) {
+    crate::metrics::Metrics::global()
+        .vm_handler_demotions_total
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    static ENGINE_LOG: OnceLock<bool> = OnceLock::new();
+    let log = *ENGINE_LOG.get_or_init(|| {
+        crate::platform::env::var("SOLI_ENGINE_LOG")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    });
+    if log {
+        eprintln!("[soli engine] handler '{handler}' demoted to the interpreter: {reason}");
     }
 }
 
@@ -4455,23 +4490,31 @@ fn note_possible_divergence(handler: &str, err: &RuntimeError) {
     PENDING_DIVERGENCE.with(|p| *p.borrow_mut() = Some((handler.to_string(), err.to_string())));
 }
 
-/// The tree-walker's re-run is done. If it succeeded where the VM failed, the
-/// two engines disagree on the same code: that is a VM bug, whatever the error
-/// said. The fallback used to hide exactly this — a model scope the VM could
-/// not resolve (`Measure.t`) was re-run silently until an action wrote first,
-/// and then answered 500 in production (2.6.3). Logged under
-/// `SOLI_ENGINE_LOG=1`, counted on `/_metrics`, and a hard stop under
-/// `SOLI_FAIL_ON_VM_DEMOTION=1` so a test suite cannot pass over it.
-fn settle_engine_divergence(tree_walker_succeeded: bool) {
+/// The tree-walker's re-run is done. Returns `true` when the handler must
+/// leave the VM: a failure was noted for it (`note_possible_divergence`) and
+/// the re-run succeeded. The caller then demotes it, each kind of handler in
+/// its own set. When the re-run fails too, the error is the app's own and the
+/// handler stays on the VM.
+///
+/// Success where the VM failed means the two engines disagree on the same
+/// code: a VM bug, whatever the error said — or a transient error the re-run
+/// did not hit. The fallback used to hide exactly this — a model scope the VM
+/// could not resolve (`Measure.t`) was re-run silently until an action wrote
+/// first, and then answered 500 in production (2.6.3). Logged under
+/// `SOLI_ENGINE_LOG=1`, counted on `/_metrics` (as a divergence and as a
+/// demotion), and a hard stop under `SOLI_FAIL_ON_VM_DEMOTION=1` so a test
+/// suite cannot pass over it.
+fn settle_engine_divergence(tree_walker_succeeded: bool) -> bool {
     let Some((handler, vm_error)) = PENDING_DIVERGENCE.with(|p| p.borrow_mut().take()) else {
-        return;
+        return false;
     };
     if !tree_walker_succeeded {
-        return;
+        return false;
     }
     crate::metrics::Metrics::global()
         .vm_engine_divergences_total
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    count_vm_demotion(&handler, &vm_error);
     let message = format!(
         "handler '{handler}' failed on the VM and succeeded on the interpreter — engine divergence: {vm_error}"
     );
@@ -4483,9 +4526,13 @@ fn settle_engine_divergence(tree_walker_succeeded: bool) {
         let _ = std::io::Write::flush(&mut std::io::stderr());
         std::process::exit(70);
     }
+    true
 }
 
-/// The handler is not re-run (it committed before failing): drop the note.
+/// Drop a failure noted for a re-run that never settled: a panic in the
+/// re-run ends the request with the note still set, and the next request's
+/// re-run would read it as its own divergence. Run at the start of each
+/// request (`request_scope::forget_unfinished_request`).
 fn forget_possible_divergence() {
     PENDING_DIVERGENCE.with(|p| p.borrow_mut().take());
 }
@@ -4928,13 +4975,12 @@ fn call_handler(
                             vm.reset();
                             return resp;
                         }
-                        record_vm_demotion(handler_name, &err);
-                        note_possible_divergence(handler_name, &err);
-                        vm.failed_handlers.insert(handler_name.to_string());
+                        if demote_on_vm_failure(handler_name, &err) {
+                            vm.failed_handlers.insert(handler_name.to_string());
+                        }
                         vm.reset();
                         if let Some(resp) = no_retry_after_commit(handler_name, &err, request_data)
                         {
-                            forget_possible_divergence();
                             return resp;
                         }
                     }
@@ -4954,7 +5000,13 @@ fn call_handler(
                 Vec::new()
             };
             let outcome = interpreter.call_value(handler_value, args, Span::default());
-            settle_engine_divergence(outcome.is_ok());
+            // The VM failed where the tree-walker succeeds: the VM's gap, so
+            // the handler leaves it. A failure both engines share does not.
+            if settle_engine_divergence(outcome.is_ok()) {
+                if let Some(vm) = vm {
+                    vm.failed_handlers.insert(handler_name.to_string());
+                }
+            }
             match outcome {
                 Ok(result) => {
                     interpreter.pop_frame();
@@ -5282,7 +5334,7 @@ thread_local! {
 /// Call a method on a class instance.
 fn call_class_method(
     interpreter: &mut Interpreter,
-    vm: Option<&mut crate::vm::Vm>,
+    mut vm: Option<&mut crate::vm::Vm>,
     class: &Rc<crate::interpreter::value::Class>,
     instance: &Value,
     method_name: &str,
@@ -5295,7 +5347,7 @@ fn call_class_method(
             .unwrap_or_else(|| crate::span::Span::new(0, 0, 1, 1));
 
         // Try VM execution in production mode
-        if let Some(vm) = vm {
+        if let Some(vm) = vm.as_deref_mut() {
             // Probe the demotion set without allocating the "Class#method"
             // key on every request: the set is empty on a healthy worker, and
             // otherwise the key is built into a reused per-thread buffer.
@@ -5334,17 +5386,17 @@ fn call_class_method(
                             vm.reset();
                             return Err(err);
                         }
+                        // Demoted now only when the VM refused the action or
+                        // it wrote first; otherwise the re-run below decides.
                         let handler_key = format!("{}#{}", class.name, method_name);
-                        record_vm_demotion(&handler_key, &err);
-                        note_possible_divergence(&handler_key, &err);
-                        vm.failed_handlers.insert(handler_key);
+                        if demote_on_vm_failure(&handler_key, &err) {
+                            vm.failed_handlers.insert(handler_key);
+                        }
                         vm.reset();
                         // Committed already — re-running the action on the
                         // tree-walker would repeat the committed writes. See
                         // `no_retry_after_commit`.
                         if crate::interpreter::builtins::model::crud::had_durable_commit() {
-                            // No re-run, so nothing to compare against.
-                            forget_possible_divergence();
                             return Err(err);
                         }
                     }
@@ -5397,7 +5449,14 @@ fn call_class_method(
         };
         let result =
             interpreter.call_value(Value::Function(bound_method), action_args, method_span);
-        settle_engine_divergence(result.is_ok());
+        // The VM failed where the tree-walker succeeds: the VM's gap, so the
+        // action leaves it. A failure both engines share leaves it there.
+        if settle_engine_divergence(result.is_ok()) {
+            if let Some(vm) = vm {
+                vm.failed_handlers
+                    .insert(format!("{}#{}", class.name, method_name));
+            }
+        }
 
         // Capture environment BEFORE popping frame so we preserve local variables for debugging
         let result = match result {
@@ -5455,8 +5514,9 @@ fn get_hash_field(hash: &Value, field: &str) -> Option<Value> {
 /// the way an action is. `None` leaves the hook to the interpreter: there is no
 /// VM (dev mode), the VM does not have the hook (its source is not one lambda,
 /// or it was demoted on this worker), or it failed on the VM before writing
-/// anything — it is then demoted, and the interpreter re-runs it from a clean
-/// slate, as `call_class_method` does for an action.
+/// anything — the interpreter then re-runs it from a clean slate, as
+/// `call_class_method` does for an action, and the hook is demoted if the VM
+/// refused it or the re-run succeeds (`demote_on_vm_failure`).
 fn run_hook_on_vm(
     vm: Option<&mut crate::vm::Vm>,
     class_name: &str,
@@ -5482,12 +5542,11 @@ fn run_hook_on_vm(
         return Some(Err(err));
     }
     let handler = format!("{class_name}#{kind}");
-    record_vm_demotion(&handler, &err);
-    note_possible_divergence(&handler, &err);
-    registry::demote_hook_function(source, source_line);
+    if demote_on_vm_failure(&handler, &err) {
+        registry::demote_hook_function(source, source_line);
+    }
     if crud::had_durable_commit() {
         // Re-running would repeat the committed writes (see `no_retry_after_commit`).
-        forget_possible_divergence();
         return Some(Err(err));
     }
     None
@@ -5550,7 +5609,12 @@ fn execute_before_actions(
             interpreter,
             req.clone(),
         );
-        settle_engine_divergence(result.is_ok());
+        if settle_engine_divergence(result.is_ok()) {
+            crate::interpreter::builtins::controller::registry::demote_hook_function(
+                &before_action.handler_source,
+                before_action.source_line,
+            );
+        }
         match result {
             Ok(result) => {
                 // Check if the handler returned a response (short-circuit)
@@ -5649,7 +5713,12 @@ fn execute_after_actions(
                         req.clone(),
                         response_value.clone(),
                     );
-                settle_engine_divergence(result.is_ok());
+                if settle_engine_divergence(result.is_ok()) {
+                    crate::interpreter::builtins::controller::registry::demote_hook_function(
+                        &after_action.handler_source,
+                        after_action.source_line,
+                    );
+                }
                 result
             }
         };
@@ -6880,6 +6949,194 @@ mod tests {
         .expect("call_class_method should succeed when this is bound (VM)");
 
         assert_eq!(result, Value::Int(99));
+    }
+
+    /// `class_name` from `source`, an instance of it, and a production
+    /// worker's VM: the natives in `globals` are defined first, then every
+    /// global of the interpreter is copied into the VM, as `worker_loop` does.
+    fn served_class(
+        source: &str,
+        class_name: &str,
+        globals: Vec<(&str, Value)>,
+    ) -> (
+        Interpreter,
+        Rc<crate::interpreter::value::Class>,
+        Value,
+        crate::vm::Vm,
+    ) {
+        use crate::interpreter::value::Instance;
+        let mut interpreter = Interpreter::new();
+        for (name, value) in globals {
+            interpreter
+                .environment
+                .borrow_mut()
+                .define(name.to_string(), value);
+        }
+        let tokens = crate::lexer::Scanner::new(source).scan_tokens().unwrap();
+        let program = crate::parser::Parser::new(tokens).parse().unwrap();
+        interpreter.interpret(&program).unwrap();
+        let Some(Value::Class(class_rc)) = interpreter.environment.borrow().get(class_name) else {
+            panic!("{class_name} did not resolve to a class");
+        };
+        let mut vm = crate::vm::Vm::new();
+        for (name, value) in interpreter.environment.borrow().get_all_bindings() {
+            vm.globals.insert(name, value);
+        }
+        let instance = Value::Instance(Rc::new(RefCell::new(Instance::new(class_rc.clone()))));
+        (interpreter, class_rc, instance, vm)
+    }
+
+    /// A native that fails on its first call and answers 7 after, and how
+    /// many times it was called.
+    fn fails_once() -> (Value, Rc<std::cell::Cell<u32>>) {
+        let calls = Rc::new(std::cell::Cell::new(0));
+        let counter = calls.clone();
+        let native = crate::interpreter::value::NativeFunction::new("flaky", Some(0), move |_| {
+            counter.set(counter.get() + 1);
+            if counter.get() == 1 {
+                Err("the first call fails".to_string())
+            } else {
+                Ok(Value::Int(7))
+            }
+        });
+        (Value::NativeFunction(native), calls)
+    }
+
+    fn empty_request() -> Value {
+        Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
+    }
+
+    /// An error both engines raise is the app's own: a `throw`, a nil read
+    /// from a missing parameter. It used to demote the action for the rest of
+    /// the worker's life, so one bad request moved it to the slower engine for
+    /// good (3.2x on a compute-heavy action). The re-run still answers the
+    /// request; the action stays on the VM.
+    #[test]
+    fn an_error_both_engines_raise_keeps_the_action_on_the_vm() {
+        for (body, message) in [
+            ("throw \"bad input\"", "bad input"),
+            ("let q = null\n        return q.length", "length"),
+        ] {
+            let source =
+                format!("class Boom {{\n    fn action(req) {{\n        {body}\n    }}\n}}");
+            let (mut interpreter, class_rc, instance, mut vm) =
+                served_class(&source, "Boom", Vec::new());
+            let err = call_class_method(
+                &mut interpreter,
+                Some(&mut vm),
+                &class_rc,
+                &instance,
+                "action",
+                &empty_request(),
+            )
+            .expect_err("the action fails on both engines");
+            assert!(err.to_string().contains(message), "{body}: {err}");
+            assert!(
+                !vm.failed_handlers.contains("Boom#action"),
+                "{body}: an app error must not move the action off the VM"
+            );
+        }
+    }
+
+    /// A failure the tree-walker does not reproduce is the VM's own — a gap,
+    /// or a transient error the re-run did not hit. The re-run answers the
+    /// request, and the action leaves the VM, as before.
+    #[test]
+    fn a_failure_only_the_vm_hits_demotes_the_action() {
+        // A divergence is a hard stop under the strict flag: it would end
+        // this test binary.
+        if engine_flag("SOLI_FAIL_ON_VM_DEMOTION") {
+            return;
+        }
+        let (flaky, calls) = fails_once();
+        let source = "class Flaky {\n    fn action(req) {\n        return flaky()\n    }\n}";
+        let (mut interpreter, class_rc, instance, mut vm) =
+            served_class(source, "Flaky", vec![("flaky", flaky)]);
+        let result = call_class_method(
+            &mut interpreter,
+            Some(&mut vm),
+            &class_rc,
+            &instance,
+            "action",
+            &empty_request(),
+        )
+        .expect("the tree-walker's re-run answers");
+        assert_eq!(result, Value::Int(7));
+        assert_eq!(calls.get(), 2, "once on the VM, once on the re-run");
+        assert!(vm.failed_handlers.contains("Flaky#action"));
+    }
+
+    /// An action that wrote before failing is not re-run (the write would
+    /// happen twice), so nothing tells a VM gap from the app's error. It is
+    /// demoted, as before: a VM gap after a write costs one 500 per worker,
+    /// not one per request.
+    #[test]
+    fn an_action_that_wrote_before_failing_is_demoted_without_a_rerun() {
+        let writes = Rc::new(std::cell::Cell::new(0));
+        let counter = writes.clone();
+        let write = crate::interpreter::value::NativeFunction::new("record", Some(0), move |_| {
+            counter.set(counter.get() + 1);
+            crate::interpreter::builtins::model::crud::mark_durable_write();
+            Ok(Value::Null)
+        });
+        let source =
+            "class Writer {\n    fn action(req) {\n        record()\n        throw \"after the write\"\n    }\n}";
+        let (mut interpreter, class_rc, instance, mut vm) = served_class(
+            source,
+            "Writer",
+            vec![("record", Value::NativeFunction(write))],
+        );
+        let err = call_class_method(
+            &mut interpreter,
+            Some(&mut vm),
+            &class_rc,
+            &instance,
+            "action",
+            &empty_request(),
+        )
+        .expect_err("the VM's error is the answer");
+        assert!(err.to_string().contains("after the write"), "{err}");
+        assert_eq!(writes.get(), 1, "a re-run would have repeated the write");
+        assert!(vm.failed_handlers.contains("Writer#action"));
+    }
+
+    /// The rule itself, without a construct the compiler still has to refuse:
+    /// a refusal demotes at once; any other error is noted and demotes only
+    /// when the re-run succeeds; a note is settled once.
+    #[test]
+    fn a_refusal_demotes_at_once_and_other_errors_wait_for_the_rerun() {
+        // A refusal and a divergence are both hard stops under the strict
+        // flag: they would end this test binary.
+        if engine_flag("SOLI_FAIL_ON_VM_DEMOTION") {
+            return;
+        }
+        crate::interpreter::builtins::model::crud::clear_durable_commit();
+        let refusal = RuntimeError::EngineFallback(
+            "a construct the VM cannot run".to_string(),
+            Span::default(),
+        );
+        assert!(demote_on_vm_failure("Probe#refused", &refusal));
+        assert!(
+            !settle_engine_divergence(true),
+            "a refusal leaves nothing for the re-run to settle"
+        );
+
+        let thrown = RuntimeError::Thrown {
+            value: Value::String("bad input".into()),
+            span: Span::default(),
+        };
+        assert!(!demote_on_vm_failure("Probe#thrown", &thrown));
+        assert!(
+            !settle_engine_divergence(false),
+            "the re-run failed too: the app's own error"
+        );
+        assert!(!settle_engine_divergence(true), "a note is settled once");
+
+        assert!(!demote_on_vm_failure("Probe#flaky", &thrown));
+        assert!(
+            settle_engine_divergence(true),
+            "the re-run succeeded where the VM failed"
+        );
     }
 
     // SEC-014 — `check_csrf_origin` regression coverage.
