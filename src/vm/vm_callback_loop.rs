@@ -143,8 +143,15 @@ pub struct CallbackLoop {
     /// appended by a callback are not visited, and the walk stops early if
     /// the collection shrinks.
     len: usize,
-    /// The entry passed to the running callback, for the kinds that keep it.
+    /// The hash entry passed to the running callback, for the hash kinds
+    /// that keep it.
     current: Option<(HashKey, Value)>,
+    /// The array element passed to the running callback, for `filter` /
+    /// `reject`, `find` and `sort_by`: `Null` otherwise. A bare `Value`
+    /// rather than `current`'s `Option` pair, so that writing the next
+    /// element over it drops a scalar inline (see `keep_item`) instead of
+    /// running the pair's drop glue on every element.
+    item: Value,
     out_hash: HashPairs,
     out_array: Vec<Value>,
     /// The `any?` / `all?` / `none?` answer so far, or for `one?` whether
@@ -367,7 +374,7 @@ fn record(state: &mut CallbackLoop, result: Value) -> Option<&'static str> {
         }
         LoopKind::ArrayFilter { keep_when_truthy } => {
             if truthy_fast(&result) == keep_when_truthy {
-                let (_, item) = state.current.take().expect("filter keeps its item");
+                let item = std::mem::replace(&mut state.item, Value::Null);
                 state.out_array.push(item);
             }
             super::vm::discard(result);
@@ -375,8 +382,8 @@ fn record(state: &mut CallbackLoop, result: Value) -> Option<&'static str> {
         }
         LoopKind::ArrayFind => {
             if truthy_fast(&result) {
-                let (_, item) = state.current.take().expect("find keeps its item");
-                state.value = item;
+                let item = std::mem::replace(&mut state.item, Value::Null);
+                super::vm::discard(std::mem::replace(&mut state.value, item));
                 state.index = state.len; // found: stop here
             }
             super::vm::discard(result);
@@ -407,7 +414,7 @@ fn record(state: &mut CallbackLoop, result: Value) -> Option<&'static str> {
             None
         }
         LoopKind::ArraySortBy => {
-            let (_, item) = state.current.take().expect("sort_by keeps its item");
+            let item = std::mem::replace(&mut state.item, Value::Null);
             state.keyed.push((item, result));
             None
         }
@@ -432,6 +439,17 @@ fn keeps_entry(state: &CallbackLoop) -> bool {
     )
 }
 
+/// Keep `item`, the array element about to be passed to the callback, in
+/// `slot` (`CallbackLoop::item`) for `record`. The previous one, still there when `filter` rejected it, is
+/// dropped inline when it is a scalar. The element itself must be kept, not
+/// re-read from the receiver once the callback returns: the callback may
+/// have replaced it (`xs[i] = …`), and the method returns what it was
+/// handed, as the native driver does.
+#[inline(always)]
+fn keep_item(slot: &mut Value, item: &Value) {
+    super::vm::discard(std::mem::replace(slot, clone_scalar_fast(item)));
+}
+
 /// Write the next element's arguments straight into the kept frame's
 /// slots from `first_slot`, advancing the loop. The same element reading as
 /// `next_callback_args`, without building the arguments first and moving
@@ -451,7 +469,7 @@ fn refill(state: &mut CallbackLoop, stack: &mut [Value], first_slot: usize) -> R
                 return Refill::Done;
             };
             if keeps_entry {
-                state.current = Some((HashKey::Null, item.clone()));
+                keep_item(&mut state.item, item);
             }
             match state.args {
                 ArgMode::Value => replace_slot(stack, first_slot, clone_scalar_fast(item)),
@@ -1352,6 +1370,7 @@ impl Vm {
                 spare.index = index;
                 spare.len = len;
                 spare.current = None;
+                spare.item = Value::Null;
                 spare.out_hash = out_hash;
                 spare.out_array = out_array;
                 spare.answer = answer;
@@ -1371,6 +1390,7 @@ impl Vm {
                 index,
                 len,
                 current: None,
+                item: Value::Null,
                 out_hash,
                 out_array,
                 answer,
@@ -1425,7 +1445,7 @@ impl Vm {
                     return Ok(None);
                 };
                 if keeps_entry {
-                    state.current = Some((HashKey::Null, item.clone()));
+                    keep_item(&mut state.item, &item);
                 }
                 match state.args {
                     ArgMode::Value => CallbackArgs::One(item),
@@ -1694,6 +1714,7 @@ impl Vm {
             self.recycle_closure(closure);
         }
         state.current = None;
+        super::vm::discard(std::mem::replace(&mut state.item, Value::Null));
         self.spare_callback_loop = Some(state);
         self.stack.push(result);
         Ok(())
@@ -2030,6 +2051,59 @@ mod tests {
             ),
             ("let x = \"#{[[1, 2], [3, 4]].reduce(fn(acc, row) { acc + row.find { |v| v > 1 } }, 0)}\"", "5"),
         ]);
+    }
+
+    /// `filter` / `reject`, `find` and `sort_by` return the element they
+    /// handed the block, kept before it ran: not what the receiver holds at
+    /// that index afterwards, and not what the block reassigned its
+    /// parameter to. Heap elements and scalars alike, on the frame path.
+    #[test]
+    fn kept_elements_are_the_ones_handed_to_the_block() {
+        assert_looped(&[
+            (
+                "let fs = [1, 2, 3]\nlet r = fs.filter do |v|\n  fs[0] = 9 if v == 1\n  v = 100\n  true\nend\nlet x = \"#{r} #{fs}\"",
+                "[1, 2, 3] [9, 2, 3]",
+            ),
+            (
+                "let hs = [{\"v\": 1}, {\"v\": 2}, {\"v\": 3}]\nlet r = hs.select do |h|\n  hs[1] = {\"v\": 0} if h[\"v\"] == 2\n  h[\"v\"] > 1\nend\nlet x = \"#{r} #{hs}\"",
+                "[{v => 2}, {v => 3}] [{v => 1}, {v => 0}, {v => 3}]",
+            ),
+            (
+                "let ss = [\"a\", \"bb\", \"ccc\"]\nlet r = ss.reject do |s|\n  ss[2] = \"z\" if s == \"ccc\"\n  s = \"\"\n  false\nend\nlet x = \"#{r} #{ss}\"",
+                "[a, bb, ccc] [a, bb, z]",
+            ),
+            (
+                "let ds = [5, 6, 7]\nlet r = ds.find do |d|\n  ds[1] = 60 if d == 6\n  d > 5\nend\nlet x = \"#{r} #{ds}\"",
+                "6 [5, 60, 7]",
+            ),
+            (
+                "let ks = [3, 1, 2]\nlet r = ks.sort_by do |k|\n  ks[0] = 30 if k == 3\n  k\nend\nlet x = \"#{r} #{ks}\"",
+                "[1, 2, 3] [30, 1, 2]",
+            ),
+        ]);
+    }
+
+    /// A finished loop keeps no element alive in its spare state, even when
+    /// `filter` rejected the last one and so never took it back.
+    #[test]
+    fn a_finished_loop_keeps_no_element() {
+        for source in [
+            // A side effect in each body keeps them off the template path.
+            "let seen = []\nlet r = [{\"a\": 1}, {\"a\": 2}].filter do |h|\n  seen.push(1)\n  h[\"a\"] == 1\nend\nlet x = \"#{r}\"",
+            "let seen = []\nlet r = [[1], [2]].find do |a|\n  seen.push(1)\n  false\nend\nlet x = \"#{r}\"",
+        ] {
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            let module = Compiler::compile(&program).expect("compile error");
+            let mut vm = Vm::new();
+            vm.execute(&module.main).expect("runs");
+            let spare = vm
+                .spare_callback_loop
+                .as_ref()
+                .expect("took the in-VM loop");
+            assert!(matches!(spare.item, Value::Null), "{source}");
+            assert!(spare.current.is_none(), "{source}");
+        }
     }
 
     /// A `throw` out of a block abandons its loop, the enclosing `catch`

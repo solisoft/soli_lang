@@ -2360,6 +2360,44 @@ catch e
   print("top level: #{e}")
 end
 print("after", capturing_map({"b": 2}, []), [1, 2].map { |n| n * 2 })"##,
+    ),    (
+        // `filter` / `select` / `reject`, `find` and `sort_by` return the
+        // element they handed the block — not what the receiver holds at
+        // that index once the block has replaced it, nor what the block
+        // reassigned its parameter to. The VM's loop keeps that element in
+        // a slot of its own.
+        "array_block_kept_element_is_the_one_handed_in",
+        r##"fs = [1, 2, 3, 4]
+r1 = fs.filter do |v|
+  fs[0] = 9 if v == 1
+  v = 100
+  true
+end
+print("#{r1} #{fs}")
+hs = [{"v": 1}, {"v": 2}, {"v": 3}]
+r2 = hs.select do |h|
+  hs[1] = {"v": 0} if h["v"] == 2
+  h["v"] > 1
+end
+print("#{r2} #{hs}")
+ss = ["a", "bb", "ccc"]
+r3 = ss.reject do |s|
+  ss[2] = "z" if s == "ccc"
+  s.length == 2
+end
+print("#{r3} #{ss}")
+ds = [5, 6, 7]
+r4 = ds.find do |d|
+  ds[1] = 60 if d == 6
+  d > 5
+end
+print("#{r4} #{ds}")
+ks = [3, 1, 2]
+r5 = ks.sort_by do |k|
+  ks[0] = 30 if k == 3
+  k
+end
+print("#{r5} #{ks}")"##,
     ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
