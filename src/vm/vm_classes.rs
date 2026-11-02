@@ -160,10 +160,7 @@ impl Vm {
             return false;
         };
         crate::interpreter::symbol::symbol_string(qb.borrow().class_name).is_some_and(
-            |class_name| {
-                crate::interpreter::builtins::model::scopes::lookup_scope(class_name, name)
-                    .is_some()
-            },
+            |class_name| crate::interpreter::builtins::model::scopes::has_scope(class_name, name),
         )
     }
 
@@ -177,8 +174,7 @@ impl Vm {
         name: &str,
     ) -> bool {
         class.is_model_subclass()
-            && crate::interpreter::builtins::model::scopes::lookup_scope(&class.name, name)
-                .is_some()
+            && crate::interpreter::builtins::model::scopes::has_scope(&class.name, name)
     }
 
     /// A model scope bound to a fresh builder for the class, resolved by the

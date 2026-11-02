@@ -3213,8 +3213,7 @@ fn class_universal_constant(name: &str) -> Option<Value> {
 fn class_member_unclaimed(class: &crate::interpreter::value::Class, name: &str) -> bool {
     !crate::interpreter::builtins::mock::stubs_active()
         && !(class.is_model_subclass()
-            && crate::interpreter::builtins::model::scopes::lookup_scope(&class.name, name)
-                .is_some())
+            && crate::interpreter::builtins::model::scopes::has_scope(&class.name, name))
         && class.find_static_method(name).is_none()
         && class.find_vm_static_method(name).is_none()
         && class.find_native_static_method(name).is_none()
