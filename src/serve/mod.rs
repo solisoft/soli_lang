@@ -5885,10 +5885,10 @@ fn try_render_template(
             None
         };
 
-    // Inject req context, controller vars, helpers (same as render() builtin)
+    // Inject req context and controller vars (same as render() builtin). The
+    // app's helpers resolve in the template env, so they are not copied in.
     crate::interpreter::builtins::template::inject_request_context(&data);
     crate::interpreter::builtins::template::inject_controller_instance_vars(&data);
-    crate::interpreter::builtins::template::inject_template_helpers(&data);
 
     // Resolve the controller's registered layout for the in-flight action
     // (`static { this.layout = ... }`, including per-action rules and those

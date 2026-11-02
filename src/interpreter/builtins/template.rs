@@ -769,16 +769,35 @@ pub fn inject_controller_instance_vars(data: &Value) {
     };
     let Value::Instance(inst) = ctrl else { return };
 
-    let inst_ref = inst.borrow();
-    let mut h = hash.borrow_mut();
-    for (name, value) in &inst_ref.fields {
-        if matches!(name.as_str(), "req" | "params" | "session" | "headers") {
+    inherit_controller_fields(&mut hash.borrow_mut(), &inst.borrow());
+}
+
+/// Add `controller`'s fields to `pairs` as view locals, keys already there
+/// winning: the fields [`crate::interpreter::environment::inherited_field`]
+/// lets a view read, `req` / `params` / `session` / `headers` left out.
+pub(crate) fn inherit_controller_fields(
+    pairs: &mut HashPairs,
+    controller: &crate::interpreter::value::Instance,
+) {
+    for (name, value) in &controller.fields {
+        if !crate::interpreter::environment::is_inherited_field(name) {
             continue;
         }
         let key = HashKey::String(name.clone());
-        if !h.contains_key(&key) {
-            h.insert(key, value.clone());
+        if !pairs.contains_key(&key) {
+            pairs.insert(key, value.clone());
         }
+    }
+}
+
+/// The controller of the action in flight, whose `@ivars` a partial or
+/// component reads past its own locals. `None` outside a class controller's
+/// request (a function handler, a job, a test).
+pub(crate) fn current_controller_instance(
+) -> Option<Rc<RefCell<crate::interpreter::value::Instance>>> {
+    match crate::interpreter::builtins::controller::registry::get_current_controller()? {
+        Value::Instance(instance) => Some(instance),
+        _ => None,
     }
 }
 
@@ -839,7 +858,7 @@ pub fn register_form_builder(env: &Rc<RefCell<Environment>>) -> Result<(), Strin
     Ok(())
 }
 
-fn form_builder_definitions() -> Result<Vec<(String, Value)>, String> {
+pub(crate) fn form_builder_definitions() -> Result<Vec<(String, Value)>, String> {
     if let Some(definitions) = FORM_BUILDER_DEFS.with(|slot| slot.borrow().clone()) {
         return Ok(definitions);
     }
@@ -1585,10 +1604,10 @@ pub fn register_static_template_helpers(env: &mut Environment) {
             Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
         };
         let data = resolve_futures_in_value(data);
-        let cache = get_template_cache()?;
-        inject_template_helpers(&data);
-        cache
-            .render_partial(&partial_name, &data)
+        // The app's helpers resolve in the template env, and the controller's
+        // `@ivars` through the include's scope: nothing is copied into
+        // `data`, which is the caller's own hash.
+        crate::template::with_rendering_cache(|cache| cache.render_partial(&partial_name, &data))
             .map(|s| Value::String(s.into()))
     });
     env.define(
@@ -1714,114 +1733,121 @@ pub fn register_static_template_helpers(env: &mut Environment) {
                 Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
             };
             let data = resolve_futures_in_value(data);
-            let cache = get_template_cache()?;
-
-            // Collection form: component("card", { "collection": items, "as": "post", ...rest })
-            // renders the component once per element. Item locals: <as> (default =
-            // the component's base name), <as>_index (0-based), <as>_counter
-            // (1-based). Other keys pass through to every item.
-            if let Some(Value::Array(items)) = opt_value(&data, "collection") {
-                let name_str: &str = &name;
-                let base = name_str.rsplit('/').next().unwrap_or(name_str);
-                let base = base.split('.').next().unwrap_or(base);
-                let as_name = opt_str(&data, "as").unwrap_or_else(|| base.to_string());
-                let mut out = String::new();
-                for (i, item) in items.borrow().iter().enumerate() {
-                    let mut item_map: HashPairs = HashPairs::default();
-                    if let Value::Hash(h) = &data {
-                        for (k, v) in h.borrow().iter() {
-                            let skip = matches!(k, HashKey::String(s)
-                                if s.as_ref() == "collection" || s.as_ref() == "as");
-                            if !skip {
-                                item_map.insert(k.clone(), v.clone());
-                            }
-                        }
-                    }
-                    item_map.insert(HashKey::String(as_name.clone().into()), item.clone());
-                    item_map.insert(
-                        HashKey::String(format!("{}_index", as_name).into()),
-                        Value::Int(i as i64),
-                    );
-                    item_map.insert(
-                        HashKey::String(format!("{}_counter", as_name).into()),
-                        Value::Int(i as i64 + 1),
-                    );
-                    let item_data = Value::Hash(Rc::new(RefCell::new(item_map)));
-                    inject_template_helpers(&item_data);
-                    match cache.render_component(&name, &item_data) {
-                        Ok(s) => out.push_str(&s),
-                        Err(e) => return Err(format!("component('{}') failed: {}", name, e)),
-                    }
-                }
-                return Ok(Value::String(out.into()));
-            }
-
-            // Fragment caching (scalar form): a "cache" option memoizes the
-            // rendered HTML in the KV cache. `"cache": "key"` uses an explicit
-            // key; `"cache": true` derives one from the data. `"cache_ttl"` sets
-            // the TTL. Best-effort — any cache error falls through to a normal
-            // render, and only side-effect-free renders are stored.
-            let cache_opt = opt_value(&data, "cache");
-            let cache_ttl = opt_int(&data, "cache_ttl").map(|n| n as u64);
-            // Strip the control keys so they neither leak into the component as
-            // locals nor perturb the auto cache key.
-            let data = if cache_opt.is_some() {
-                match &data {
-                    Value::Hash(h) => {
-                        let mut m: HashPairs = HashPairs::default();
-                        for (k, v) in h.borrow().iter() {
-                            let ctrl = matches!(k, HashKey::String(s)
-                                if s.as_ref() == "cache" || s.as_ref() == "cache_ttl");
-                            if !ctrl {
-                                m.insert(k.clone(), v.clone());
-                            }
-                        }
-                        Value::Hash(Rc::new(RefCell::new(m)))
-                    }
-                    other => other.clone(),
-                }
-            } else {
-                data
-            };
-            let cache_key = match &cache_opt {
-                None => None,
-                Some(Value::String(k)) => Some(format!("component:{}:{}", name, k)),
-                Some(_) => Some(format!(
-                    "component:{}:{}",
-                    name,
-                    crate::template::response_cache::data_signature(&data)
-                )),
-            };
-            if let Some(key) = &cache_key {
-                if let Ok(Value::String(html)) =
-                    crate::interpreter::builtins::cache::cache_get_impl(key)
-                {
-                    return Ok(Value::String(html));
-                }
-            }
-
-            inject_template_helpers(&data);
-            match cache.render_component(&name, &data) {
-                Ok(s) => {
-                    // Store only clean renders — a component that pulled clock/
-                    // random or set a cookie/session must not be memoized.
-                    if let Some(key) = &cache_key {
-                        if !crate::template::response_cache::is_data_dirty()
-                            && !crate::template::response_cache::is_response_dirty()
-                        {
-                            let _ = crate::interpreter::builtins::cache::cache_set_impl(
-                                key,
-                                &Value::String(s.clone().into()),
-                                cache_ttl,
-                            );
-                        }
-                    }
-                    Ok(Value::String(s.into()))
-                }
-                Err(e) => Err(format!("component('{}') failed: {}", name, e)),
-            }
+            crate::template::with_rendering_cache(|cache| render_component_call(cache, &name, data))
         })),
     );
+}
+
+/// `component(name, data)` once its name and data are read: the collection
+/// form renders `name` once per item, the scalar form once, through the
+/// fragment cache when `data` asks for it. The app's helpers resolve in the
+/// template env and the controller's `@ivars` through the include's scope,
+/// so nothing is copied into a component's data.
+fn render_component_call(
+    cache: &crate::template::TemplateCache,
+    name: &crate::interpreter::value::SoliStr,
+    data: Value,
+) -> Result<Value, String> {
+    // Collection form: component("card", { "collection": items, "as": "post", ...rest })
+    // renders the component once per element. Item locals: <as> (default =
+    // the component's base name), <as>_index (0-based), <as>_counter
+    // (1-based). Other keys pass through to every item.
+    if let Some(Value::Array(items)) = opt_value(&data, "collection") {
+        let name_str: &str = name;
+        let base = name_str.rsplit('/').next().unwrap_or(name_str);
+        let base = base.split('.').next().unwrap_or(base);
+        let as_name = opt_str(&data, "as").unwrap_or_else(|| base.to_string());
+        let mut out = String::new();
+        for (i, item) in items.borrow().iter().enumerate() {
+            let mut item_map: HashPairs = HashPairs::default();
+            if let Value::Hash(h) = &data {
+                for (k, v) in h.borrow().iter() {
+                    let skip = matches!(k, HashKey::String(s)
+                        if s.as_ref() == "collection" || s.as_ref() == "as");
+                    if !skip {
+                        item_map.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+            item_map.insert(HashKey::String(as_name.clone().into()), item.clone());
+            item_map.insert(
+                HashKey::String(format!("{}_index", as_name).into()),
+                Value::Int(i as i64),
+            );
+            item_map.insert(
+                HashKey::String(format!("{}_counter", as_name).into()),
+                Value::Int(i as i64 + 1),
+            );
+            let item_data = Value::Hash(Rc::new(RefCell::new(item_map)));
+            match cache.render_component(name, &item_data) {
+                Ok(s) => out.push_str(&s),
+                Err(e) => return Err(format!("component('{}') failed: {}", name, e)),
+            }
+        }
+        return Ok(Value::String(out.into()));
+    }
+
+    // Fragment caching (scalar form): a "cache" option memoizes the
+    // rendered HTML in the KV cache. `"cache": "key"` uses an explicit
+    // key; `"cache": true` derives one from the data. `"cache_ttl"` sets
+    // the TTL. Best-effort — any cache error falls through to a normal
+    // render, and only side-effect-free renders are stored.
+    let cache_opt = opt_value(&data, "cache");
+    let cache_ttl = opt_int(&data, "cache_ttl").map(|n| n as u64);
+    // Strip the control keys so they neither leak into the component as
+    // locals nor perturb the auto cache key.
+    let data = if cache_opt.is_some() {
+        match &data {
+            Value::Hash(h) => {
+                let mut m: HashPairs = HashPairs::default();
+                for (k, v) in h.borrow().iter() {
+                    let ctrl = matches!(k, HashKey::String(s)
+                        if s.as_ref() == "cache" || s.as_ref() == "cache_ttl");
+                    if !ctrl {
+                        m.insert(k.clone(), v.clone());
+                    }
+                }
+                Value::Hash(Rc::new(RefCell::new(m)))
+            }
+            other => other.clone(),
+        }
+    } else {
+        data
+    };
+    let cache_key = match &cache_opt {
+        None => None,
+        Some(Value::String(k)) => Some(format!("component:{}:{}", name, k)),
+        Some(_) => Some(format!(
+            "component:{}:{}",
+            name,
+            crate::template::response_cache::data_signature(&data)
+        )),
+    };
+    if let Some(key) = &cache_key {
+        if let Ok(Value::String(html)) = crate::interpreter::builtins::cache::cache_get_impl(key) {
+            return Ok(Value::String(html));
+        }
+    }
+
+    match cache.render_component(name, &data) {
+        Ok(s) => {
+            // Store only clean renders — a component that pulled clock/
+            // random or set a cookie/session must not be memoized.
+            if let Some(key) = &cache_key {
+                if !crate::template::response_cache::is_data_dirty()
+                    && !crate::template::response_cache::is_response_dirty()
+                {
+                    let _ = crate::interpreter::builtins::cache::cache_set_impl(
+                        key,
+                        &Value::String(s.clone().into()),
+                        cache_ttl,
+                    );
+                }
+            }
+            Ok(Value::String(s.into()))
+        }
+        Err(e) => Err(format!("component('{}') failed: {}", name, e)),
+    }
 }
 
 fn redirect_response(location: String) -> Value {
@@ -2506,9 +2532,9 @@ pub fn register_template_builtins(env: &mut Environment) {
 
             // Production caches the finished response; dev keeps the plain
             // render, so its view timing and hot reload are exactly as before.
+            // The app's helpers resolve in the template env (the last names
+            // defined there), so they are no longer copied into `data`.
             let result = if is_dev_mode() {
-                // Inject template helper functions into data context (in-place, no clone)
-                inject_template_helpers(&data);
                 let rendered = {
                     let _phase = crate::serve::phase_log::PhaseTimer::start("view");
                     cache.render(&template_name, &data, layout_arg)
@@ -2516,12 +2542,7 @@ pub fn register_template_builtins(env: &mut Environment) {
                 rendered.map(|body| html_response(body, status))
             } else {
                 let _phase = crate::serve::phase_log::PhaseTimer::start("view");
-                // The helpers are injected only when the page is actually
-                // rendered: they never change in production, so a cached
-                // response does not depend on them and skips copying them.
-                cache.render_html_response(&template_name, &data, layout_arg, status, || {
-                    inject_template_helpers(&data)
-                })
+                cache.render_html_response(&template_name, &data, layout_arg, status)
             };
 
             match result {
@@ -2587,18 +2608,16 @@ pub fn register_template_builtins(env: &mut Environment) {
         // Resolve any futures in the data before rendering
         let data = resolve_futures_in_value(data);
 
-        // Get template cache and render
-        let cache = get_template_cache()?;
-
         // Inject req and params from current request context into data
         inject_request_context(&data);
 
-        // Inject template helper functions into data context (in-place)
-        inject_template_helpers(&data);
-
+        // The app's helpers resolve in the template env: not copied. Inside
+        // a render (a helper calling `partial`), the cache rendering it.
         let rendered = {
             let _phase = crate::serve::phase_log::PhaseTimer::start("view");
-            cache.render_partial(&partial_name, &data)?
+            crate::template::with_rendering_cache(|cache| {
+                cache.render_partial(&partial_name, &data)
+            })?
         };
 
         // Return just the string for partials (they're typically embedded)

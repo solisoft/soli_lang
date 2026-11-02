@@ -893,6 +893,13 @@ def mail_to(email, text = null)
 end
 ```
 
+A helper you define wins over a framework function of the same name — a
+route helper (`posts_path`), the form builder's `form_with`, `button_to` or
+`csrf_field`, `Retry`, a builtin — in every view, partial and component,
+`<%= render "x" %>` partials included. A local, or a controller `@ivar`, of
+the same name wins over the helper. Helpers are looked up where the view
+looks names up; nothing copies them into a partial's data.
+
 ---
 
 ## Layouts
@@ -1066,8 +1073,12 @@ variables, just like the main view — so a partial can read `@current_user` or
 <%= partial("shared/avatar") %>   <%# the partial reads @current_user directly %>
 ```
 
-An explicit local always wins over an inherited ivar of the same name, and
-framework internals (`req`, `params`, `session`, `headers`) are never injected.
+A partial reads them as names in its scope, after its own locals: nothing is
+copied into the hash you pass, and `partial()` / `component()` leave that hash
+as it was. An explicit local always wins over an inherited ivar of the same
+name, an inherited ivar wins over a helper of the same name (as it does in the
+view), and the framework internals (`req`, `params`, `session`, `headers`) are
+not inherited.
 
 ### The `locals` hash
 
@@ -1109,6 +1120,10 @@ guards:
 `locals` is always defined, even when the partial is rendered without a
 data hash — in that case it's an empty hash, so `locals[anything]` is safe
 and returns `null`.
+
+Besides the keys you passed, `locals` holds the controller's inherited
+`@ivars` (your keys win over them), so `locals["current_user_id"]` reads an
+`@current_user_id` the caller did not pass. View helpers are not in it.
 
 ## Components
 
@@ -1436,7 +1451,7 @@ A template too small to gain from it stays on the interpreter as well: one with 
 
 The rules are the tree-walker's:
 
-- A name a view reads is its data first (the `render` hash and the controller's `@ivars`), then a builtin or a helper, and nil when it is neither. `@title` reads `title`.
+- A name a view reads is its data first (the `render` hash and the controller's `@ivars`), then a helper or a builtin (a helper wins over a builtin of the same name), and nil when it is neither. In a partial or component it is the locals passed, then the controller's `@ivars`, then a helper or a builtin. `@title` reads `title`.
 - A bare `clock` is the time, as `clock()` is: `<%= ((clock - @started) * 1000).round(2) %>` stays on the VM. A render whose data has a `clock` of its own (a controller's `@clock`), or an app that defines `clock` itself (a helper or a top-level function), is rendered on the tree-walker instead, which resolves `clock` as it always has.
 - A variable a view assigns (`<% heading = "Posts" %>`) is still there for its layout.
 - A `for` over a hash yields `[key, value]` pairs.

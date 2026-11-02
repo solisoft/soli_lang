@@ -15,8 +15,21 @@ pub fn walk_program(
     on_stmt: &mut dyn FnMut(&Stmt),
     on_expr: &mut dyn FnMut(&Expr),
 ) {
+    walk_stmts(&program.statements, on_stmt, on_expr);
+}
+
+/// [`walk_program`] over statements that are not a whole program: a
+/// template's code blocks.
+pub fn walk_stmts(stmts: &[Stmt], on_stmt: &mut dyn FnMut(&Stmt), on_expr: &mut dyn FnMut(&Expr)) {
     let mut walker = Walker { on_stmt, on_expr };
-    walker.stmts(&program.statements);
+    walker.stmts(stmts);
+}
+
+/// [`walk_program`] over one expression and everything inside it: a
+/// template's output tag.
+pub fn walk_expr(expr: &Expr, on_stmt: &mut dyn FnMut(&Stmt), on_expr: &mut dyn FnMut(&Expr)) {
+    let mut walker = Walker { on_stmt, on_expr };
+    walker.expr(expr);
 }
 
 struct Walker<'a> {

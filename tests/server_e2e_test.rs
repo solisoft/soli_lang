@@ -1428,3 +1428,111 @@ fn a_bare_clock_view_renders_on_the_vm_and_the_engine_log_names_the_rest() {
     );
     assert!(!log.contains("home/timing.html.slv"), "{log}");
 }
+
+/// A list page whose rows are includes, served in production. Each include
+/// reads the controller's `@ivars` and the app's helpers — one named like the
+/// form builder's `button_to`, as once-campfire's is — on the interpreter and
+/// on the VM alike (`SOLI_VM_VIEWS_CHECK` renders every compiled view and
+/// partial on both and compares), and the hash a view passes is left as it
+/// was. `partial()` used to copy every helper and every controller field into
+/// that hash, and the render tag called the framework's `button_to`.
+#[test]
+fn includes_read_ivars_and_helpers_through_their_scope_on_both_engines() {
+    let app = tempfile::tempdir().expect("temp app dir");
+    let root = app.path();
+    let write = |path: &str, body: &str| {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent dir")).expect("mkdir");
+        std::fs::write(path, body).expect("write app file");
+    };
+    write(
+        "config/routes.sl",
+        "get(\"/ping\", \"rows#ping\")\nget(\"/list\", \"rows#list\")\n",
+    );
+    write(
+        "app/controllers/rows_controller.sl",
+        "class RowsController < Controller\n  \
+           # GET /ping\n  \
+           def ping(req)\n    {\"status\": 200, \"body\": \"pong\"}\n  end\n\n  \
+           # GET /list\n  \
+           def list(req)\n    \
+             @rows = [{\"id\": 1, \"title\": \"a\"}, {\"id\": 2, \"title\": \"b\"}]\n    \
+             @heading = \"Rows\"\n    \
+             @nonce = clock()\n    \
+             render(\"rows/list\")\n  \
+           end\n\
+         end\n",
+    );
+    write(
+        "app/helpers/rows_helper.sl",
+        "def button_to(url, options, inner_html)\n  \"USER-button_to\"\nend\n\n\
+         def shout(text)\n  text.upcase + \"!\"\nend\n",
+    );
+    write(
+        "app/views/layouts/application.html.slv",
+        "<main><%= yield %></main>",
+    );
+    write(
+        "app/views/rows/list.html.slv",
+        "<% opts = {\"x\": 1} %>\
+         <% for row in rows %>\
+         <%- partial(\"rows/row\", {\"row\": row}) %>\
+         <%= render \"rows/row\", {\"row\": row} %>\
+         <%- component(\"badge\", {\"label\": row.title}) %>\
+         <% end %>|<%- partial(\"rows/wide\", opts) %>|<%- partial(\"rows/whole\", opts) %>\
+         |<%= opts.length %>",
+    );
+    // Small: the interpreter renders it.
+    write(
+        "app/views/rows/_row.html.slv",
+        "[<%= row.id %> <%= @heading %> <%= shout(row.title) %> <%= button_to(\"/r\", {}, \"r\") %>]",
+    );
+    // A loop: compiled, so the VM binds the `@ivar` and the helpers.
+    write(
+        "app/views/rows/_wide.html.slv",
+        "<% for i in [1] %>(<%= @heading %> <%= x %> <%= shout(\"w\") %> \
+         <%= button_to(\"/w\", {}, \"w\") %>)<% end %>",
+    );
+    // Reads its data whole: the `@ivars` are among `locals`, the helpers not.
+    write(
+        "app/views/rows/_whole.html.slv",
+        "{<%= locals[\"heading\"] %> <%= locals[\"shout\"].nil? %> <%= locals.has_key(\"rows\") %>}",
+    );
+    write(
+        "app/views/components/badge.html.slv",
+        "(<%= label %>:<%= @heading %>)",
+    );
+    let check_path = root.join("vm_views_check.log");
+
+    let port = pick_port();
+    let child = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_soli")))
+        .arg("serve")
+        .arg(root)
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--workers")
+        .arg("1")
+        // Each compiled render is checked against the tree-walker's.
+        .env("SOLI_VM_VIEWS_CHECK", &check_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn soli serve");
+    let server = ServerProcess { child, port };
+    server.wait_ready();
+    let expected = "<main>\
+        [1 Rows A! USER-button_to][1 Rows A! USER-button_to](a:Rows)\
+        [2 Rows B! USER-button_to][2 Rows B! USER-button_to](b:Rows)\
+        |(Rows 1 W! USER-button_to)|{Rows true true}|1</main>";
+    for _ in 0..2 {
+        let body = body_string(ureq::get(&server.url("/list")).call().expect("GET /list"));
+        assert!(body.contains(expected), "{body}");
+    }
+    drop(server);
+
+    let check = std::fs::read_to_string(&check_path).unwrap_or_default();
+    assert!(check.contains("rows/list.html.slv: same"), "{check}");
+    assert!(check.contains("rows/_wide.html.slv: same"), "{check}");
+    assert!(!check.contains("differs"), "{check}");
+    assert!(!check.contains("render failed"), "{check}");
+}

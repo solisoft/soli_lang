@@ -107,6 +107,114 @@ struct IncludeEntry {
     nodes: Arc<Vec<parser::TemplateNode>>,
     is_component: bool,
     markdown: bool,
+    /// The template reads its data hash whole ([`reads_its_data`]), so the
+    /// controller's `@ivars` must be entries of it, not only names in scope.
+    reads_data: bool,
+}
+
+/// Whether a template reads its data hash as a whole rather than name by
+/// name: `locals` (or `@locals`), or a default `<%= yield %>`, which writes
+/// the data's `content`. An include whose template does gets the
+/// controller's `@ivars` as entries of a copy of its data, as every include
+/// used to; any other reads them through its scope, with nothing copied.
+fn reads_its_data(nodes: &[parser::TemplateNode]) -> bool {
+    use crate::ast::expr::{Expr, ExprKind};
+    use parser::TemplateNode;
+
+    fn expr_reads(expr: &Expr) -> bool {
+        let mut found = false;
+        crate::ast::walk::walk_expr(expr, &mut |_| {}, &mut |e| found |= names_locals(e));
+        found
+    }
+    fn names_locals(expr: &Expr) -> bool {
+        match &expr.kind {
+            ExprKind::Variable(name) => name == "locals",
+            ExprKind::Member { object, name } | ExprKind::SafeMember { object, name } => {
+                name == "locals" && matches!(object.kind, ExprKind::This)
+            }
+            _ => false,
+        }
+    }
+    nodes.iter().any(|node| match node {
+        TemplateNode::Literal(_) | TemplateNode::Yield(Some(_)) => false,
+        TemplateNode::Yield(None) => true,
+        TemplateNode::If {
+            condition,
+            body,
+            else_body,
+            ..
+        } => {
+            expr_reads(condition)
+                || reads_its_data(body)
+                || else_body.as_deref().is_some_and(reads_its_data)
+        }
+        TemplateNode::For { iterable, body, .. } => expr_reads(iterable) || reads_its_data(body),
+        TemplateNode::ContentFor { body, .. } => reads_its_data(body),
+        TemplateNode::FormWith { parts, body, .. } => {
+            expr_reads(&parts.builder_expr)
+                || expr_reads(&parts.open_expr)
+                || expr_reads(&parts.close_expr)
+                || reads_its_data(body)
+        }
+        TemplateNode::Component { parts, body, .. } => {
+            expr_reads(&parts.name)
+                || parts.props.as_ref().is_some_and(expr_reads)
+                || reads_its_data(body)
+        }
+        // Without a context the tag passes the data on, and the partial it
+        // renders inherits the `@ivars` itself.
+        TemplateNode::Partial { context, .. } => context.as_ref().is_some_and(expr_reads),
+        TemplateNode::CoreCodeBlock { stmts, .. } => {
+            let mut found = false;
+            crate::ast::walk::walk_stmts(stmts, &mut |_| {}, &mut |e| found |= names_locals(e));
+            found
+        }
+        TemplateNode::CoreOutput { expr, .. } => expr_reads(expr),
+    })
+}
+
+crate::request_local! {
+    /// The `TemplateCache` whose render (a view with its layout, a partial or
+    /// a component, on either engine) is running on this thread. `partial()`
+    /// and `component()` render through it: the tenant's cache cell behind
+    /// `get_template_cache` takes a process-wide lock and bumps a shared
+    /// refcount on every call, which under concurrent requests cost ~0.6 µs
+    /// per include.
+    static CURRENT_CACHE: std::cell::Cell<*const TemplateCache> =
+        const { std::cell::Cell::new(std::ptr::null()) };
+}
+
+/// Sets [`CURRENT_CACHE`] for a render and puts back, on drop, the value it
+/// replaced: an include rendered inside a view ends before the view does.
+struct CurrentCache(*const TemplateCache);
+
+impl CurrentCache {
+    fn set(cache: &TemplateCache) -> Self {
+        CurrentCache(CURRENT_CACHE.with(|current| current.replace(cache as *const _)))
+    }
+}
+
+impl Drop for CurrentCache {
+    fn drop(&mut self) {
+        CURRENT_CACHE.with(|current| current.set(self.0));
+    }
+}
+
+/// Run `render` with the cache rendering on this thread, or with the
+/// tenant's when nothing is rendering (a controller's `render_partial`).
+pub(crate) fn with_rendering_cache<T>(
+    render: impl FnOnce(&TemplateCache) -> Result<T, String>,
+) -> Result<T, String> {
+    let current = CURRENT_CACHE.with(|current| current.get());
+    if current.is_null() {
+        let cache = crate::interpreter::builtins::template::get_template_cache()?;
+        return render(cache.as_ref());
+    }
+    // SAFETY: set by `CurrentCache::set` from a `&TemplateCache` that outlives
+    // the render it is set for, put back when that render returns, and read
+    // only on this thread: a call made after the render ended reads the value
+    // from before it, null or an enclosing render's.
+    render(unsafe { &*current })
 }
 
 /// Template cache that stores parsed templates and tracks file changes.
@@ -241,17 +349,12 @@ impl TemplateCache {
     /// ETag computed — is what gets cached, so a hit neither re-renders nor
     /// re-scans or re-hashes the page, and hands out the body without copying
     /// it. The `render` builtin keeps dev mode on `render` + `html_response`.
-    ///
-    /// `before_render` runs only when the page is actually rendered, never on
-    /// a hit, so it may add to `data` whatever the signature can ignore —
-    /// values that are the same for every request of the process.
     pub fn render_html_response(
         &self,
         template_name: &str,
         data: &Value,
         layout: Option<Option<&str>>,
         status: i64,
-        before_render: impl FnOnce(),
     ) -> Result<Value, String> {
         let layout_name: Option<&str> = match layout {
             Some(Some(name)) => Some(name),
@@ -260,7 +363,6 @@ impl TemplateCache {
         let template_path = self.resolve_template_path(template_name)?;
 
         let Some(data_sig) = Self::cache_signature(&template_path, layout_name, data) else {
-            before_render();
             let body =
                 self.render_uncached(template_name, data, layout, &template_path, layout_name)?;
             return Ok(html_response(body, status));
@@ -270,7 +372,6 @@ impl TemplateCache {
         {
             return Ok(html_response_parts(cached.body, cached.etag, status));
         }
-        before_render();
         let body =
             self.render_uncached(template_name, data, layout, &template_path, layout_name)?;
         let (body, etag) = finish_html(body);
@@ -331,6 +432,9 @@ impl TemplateCache {
         // captures never leak into the next request on this worker thread.
         let _content_frame = content_store::ensure_frame();
 
+        // The cache a `partial()` or `component()` inside renders through.
+        let _current_cache = CurrentCache::set(self);
+
         // Per-template span for the dev-bar flamegraph + flat per-template
         // duration log. Both early-out when --dev is off.
         let mut _span = crate::serve::span_log::SpanGuard::start(
@@ -357,7 +461,8 @@ impl TemplateCache {
 
         // One interpreter for the view and the layout. It goes back to the
         // pool when this render returns — the layout still reads it until then.
-        let mut interpreter = core_eval::template_interpreter(data);
+        // A view has the controller's `@ivars` in its data already.
+        let mut interpreter = core_eval::template_interpreter(data, None);
 
         // Render the view: compiled to the VM in production when it can be
         // (`vm_template`), else on the tree-walker with the shared interpreter.
@@ -367,6 +472,7 @@ impl TemplateCache {
         let content = match vm_template::render_view(
             &nodes,
             data,
+            None,
             &interpreter.environment,
             self,
             template_path,
@@ -541,6 +647,9 @@ impl TemplateCache {
         // progress) owns a throwaway frame instead — captures are dropped.
         let _content_frame = content_store::ensure_frame();
 
+        // The cache a `partial()` or `component()` inside renders through.
+        let _current_cache = CurrentCache::set(self);
+
         let template_path = &*entry.path;
         let nodes = &entry.nodes;
 
@@ -559,13 +668,38 @@ impl TemplateCache {
             None => data,
         };
 
-        // Propagate the current controller's `@instance` variables into this
-        // include's locals (Rails-style), mirroring how the main view receives
-        // them via `inject_controller_instance_vars`. Explicit locals passed to
-        // partial()/component() win (the helper never clobbers existing keys),
-        // framework fields (req/params/session/headers) are skipped, and it is a
-        // no-op outside a class-controller request (function handlers, tests).
-        crate::interpreter::builtins::template::inject_controller_instance_vars(data);
+        // The current controller's `@ivars` reach the include (Rails-style),
+        // as they reach the view: explicit locals win, framework fields
+        // (req/params/session/headers) stay out, and outside a class
+        // controller's request (function handlers, tests) there are none. They
+        // used to be copied into the include's data, which was the caller's own
+        // hash, at ~55 ns a field per include; now a name the data lacks reads
+        // the controller's field, on both engines. A template that reads its
+        // data whole (`locals`, a default `yield`) still gets them as entries,
+        // of a copy.
+        let with_fields;
+        let mut inherited = None;
+        let data = match data {
+            Value::Hash(locals) => {
+                match crate::interpreter::builtins::template::current_controller_instance() {
+                    Some(controller) if entry.reads_data => {
+                        let mut pairs = locals.borrow().clone();
+                        crate::interpreter::builtins::template::inherit_controller_fields(
+                            &mut pairs,
+                            &controller.borrow(),
+                        );
+                        with_fields = Value::Hash(Rc::new(RefCell::new(pairs)));
+                        &with_fields
+                    }
+                    controller => {
+                        inherited = controller;
+                        data
+                    }
+                }
+            }
+            // Nothing was ever copied into a context that is not a hash.
+            _ => data,
+        };
 
         // In --dev, record the props a component declares (`props(...)`) so we can
         // warn about any it wasn't given. Component includes only; a stack frame
@@ -580,13 +714,14 @@ impl TemplateCache {
         // render: there an undefined name reads nil on both engines, while a
         // partial rendered on its own (a controller's `render_partial`) raises
         // for it on the tree-walker.
-        let mut interpreter = core_eval::template_interpreter(data);
+        let mut interpreter = core_eval::template_interpreter(data, inherited.clone());
         let mut vm_failure = None;
         let on_vm = if crate::interpreter::executor::template_lenient_vars_enabled() {
             let content_before = vm_template::check_enabled().then(content_store::snapshot);
             match vm_template::render_view(
                 nodes,
                 data,
+                inherited.as_ref(),
                 &interpreter.environment,
                 self,
                 template_path,
@@ -636,7 +771,7 @@ impl TemplateCache {
         if props_frame.is_some() {
             let declared = crate::template::declared_props::current();
             if !declared.is_empty() {
-                let present: std::collections::HashSet<String> = match data {
+                let mut present: std::collections::HashSet<String> = match data {
                     Value::Hash(h) => h
                         .borrow()
                         .iter()
@@ -647,6 +782,18 @@ impl TemplateCache {
                         .collect(),
                     _ => std::collections::HashSet::new(),
                 };
+                if let Some(controller) = &inherited {
+                    present.extend(
+                        controller
+                            .borrow()
+                            .fields
+                            .keys()
+                            .filter(|name| {
+                                crate::interpreter::environment::is_inherited_field(name)
+                            })
+                            .map(|name| name.to_string()),
+                    );
+                }
                 let mut missing: Vec<&String> = declared.difference(&present).collect();
                 missing.sort();
                 for prop in missing {
@@ -714,6 +861,7 @@ impl TemplateCache {
         let entry = Rc::new(IncludeEntry {
             markdown: is_markdown_template(&path),
             path_str: path.to_string_lossy().into_owned(),
+            reads_data: reads_its_data(&nodes),
             resolved_name,
             path,
             nodes,
@@ -2634,6 +2782,179 @@ mod tests {
         clear_current_controller();
         clear_view_helpers();
         crate::template::core_eval::reset_builtins_rc();
+    }
+
+    /// The controller of a test's request: `fields` as its `@ivars`, until
+    /// the guard drops.
+    struct CurrentController;
+
+    impl CurrentController {
+        fn set(fields: &[(&str, Value)]) -> Self {
+            use crate::interpreter::value::{Class, Instance};
+            let class = Rc::new(Class {
+                name: "RowsController".to_string(),
+                ..Default::default()
+            });
+            let mut instance = Instance::new(class);
+            for (name, value) in fields {
+                instance.fields.insert((*name).into(), value.clone());
+            }
+            crate::interpreter::builtins::controller::registry::set_current_controller(
+                Value::Instance(Rc::new(RefCell::new(instance))),
+            );
+            CurrentController
+        }
+    }
+
+    impl Drop for CurrentController {
+        fn drop(&mut self) {
+            crate::interpreter::builtins::controller::registry::clear_current_controller();
+        }
+    }
+
+    fn string(text: &str) -> Value {
+        Value::String(text.into())
+    }
+
+    fn hash_of(pairs: &[(&str, Value)]) -> Value {
+        let mut map = HashPairs::default();
+        for (key, value) in pairs {
+            map.insert(HashKey::String((*key).into()), value.clone());
+        }
+        Value::Hash(Rc::new(RefCell::new(map)))
+    }
+
+    /// A view helper `shout(x)`: `X!`.
+    fn register_shout_helper() {
+        use crate::interpreter::builtins::template::register_view_helper;
+        use crate::interpreter::value::NativeFunction;
+        register_view_helper(
+            "shout".to_string(),
+            Value::NativeFunction(NativeFunction::new("shout", Some(1), |args| {
+                Ok(Value::String(format!("{}!", args[0]).to_uppercase().into()))
+            })),
+        );
+    }
+
+    /// A partial or component reads the controller's `@ivars`, after its own
+    /// locals and before the helpers, on the tree-walker and on the VM, and
+    /// nothing is written into the hash the caller passed. `partial()` used to
+    /// copy every view helper and every controller field into that hash, at
+    /// ~60 ns each per include; a page printed `opts.length` as 4 here.
+    #[test]
+    fn an_include_reads_the_controller_ivars_without_copying_them(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use crate::interpreter::builtins::template::clear_view_helpers;
+        clear_view_helpers();
+        register_shout_helper();
+        crate::template::core_eval::reset_builtins_rc();
+        let _controller = CurrentController::set(&[
+            ("title", string("Posts")),
+            ("post", string("from @post")),
+            ("params", string("the request's")),
+            ("_note", string("private")),
+            ("content", string("from @content")),
+        ]);
+
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        fs::create_dir_all(views.join("rows"))?;
+        fs::create_dir_all(views.join("components"))?;
+        let row = "[<%= post %>|<%= @title %>|<%= title %>|<%= shout(\"x\") %>|<%= params.nil? %>|<%= _note %>]";
+        fs::write(views.join("rows").join("_row.html.slv"), row)?;
+        // The same row in a loop: worth compiling, so it renders on the VM.
+        fs::write(
+            views.join("rows").join("_looped.html.slv"),
+            format!("<% for i in [1] %>{row}<% end %>"),
+        )?;
+        // Reads its data whole: the `@ivars` are entries of a copy of it.
+        fs::write(
+            views.join("rows").join("_whole.html.slv"),
+            "{<%= locals[\"title\"] %>|<%= locals[\"shout\"].nil? %>|<%= locals.length %>}",
+        )?;
+        fs::write(
+            views.join("components").join("badge.html.slv"),
+            "(<%= label %> <%= @title %>)",
+        )?;
+        fs::write(
+            views.join("components").join("panel.html.slv"),
+            "<p><%= yield %></p>",
+        )?;
+        fs::write(
+            views.join("page.html.slv"),
+            "<% for i in [1] %>\
+             <%- partial(\"rows/row\", opts) %>\
+             <%- partial(\"rows/looped\", opts) %>\
+             <%= render \"rows/row\", opts %>\
+             <%- partial(\"rows/whole\", opts) %>\
+             <%- component(\"badge\", {\"label\": \"b\"}) %>\
+             <%- component(\"panel\", {}) %>\
+             <% end %>|<%= opts.length %>",
+        )?;
+
+        let cache = TemplateCache::new(&views);
+        let row_out = "[passed|Posts|Posts|X!|true|private]";
+        let expected =
+            format!("{row_out}{row_out}{row_out}{{Posts|true|4}}(b Posts)<p>from @content</p>|1");
+        // A different `n` each time: the response cache never answers.
+        for n in 0..2 {
+            let data = hash_of(&[
+                ("opts", hash_of(&[("post", string("passed"))])),
+                ("n", Value::Int(n)),
+            ]);
+            assert_eq!(cache.render("page", &data, Some(None))?, expected);
+        }
+
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+        Ok(())
+    }
+
+    /// An app helper named like a framework function (once-campfire defines
+    /// `button_to`) is the app's in a view, in `partial()` and in a
+    /// `<%= render %>` partial, compiled or not. The render tag used to call
+    /// the form builder's, a 500 for a helper taking other arguments.
+    #[test]
+    fn a_helper_named_like_a_framework_function_is_the_apps_everywhere(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use crate::interpreter::builtins::template::{clear_view_helpers, register_view_helper};
+        use crate::interpreter::value::NativeFunction;
+        clear_view_helpers();
+        register_view_helper(
+            "button_to".to_string(),
+            Value::NativeFunction(NativeFunction::new("button_to", None, |_| {
+                Ok(Value::String("USER-button_to".into()))
+            })),
+        );
+        crate::template::core_eval::reset_builtins_rc();
+
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        fs::create_dir_all(&views)?;
+        fs::write(
+            views.join("_btn.html.slv"),
+            "<i><%= button_to(\"/x\", {}, \"y\") %></i>",
+        )?;
+        let body = "view=<%= button_to(\"/x\", {}, \"y\") %>|\
+                    partial=<%- partial(\"btn\", {}) %>|\
+                    tag=<%= render \"btn\", {\"a\": 1} %>";
+        fs::write(views.join("plain.html.slv"), body)?;
+        fs::write(
+            views.join("looped.html.slv"),
+            format!("<% for i in [1] %>{body}<% end %>"),
+        )?;
+
+        let cache = TemplateCache::new(&views);
+        let expected =
+            "view=USER-button_to|partial=<i>USER-button_to</i>|tag=<i>USER-button_to</i>";
+        for (page, n) in [("plain", 1), ("looped", 2)] {
+            let data = hash_of(&[("n", Value::Int(n))]);
+            assert_eq!(cache.render(page, &data, Some(None))?, expected, "{page}");
+        }
+
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+        Ok(())
     }
 
     #[test]

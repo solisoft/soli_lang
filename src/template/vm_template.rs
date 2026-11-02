@@ -7,11 +7,12 @@
 //! written into `Vm::template_out`, with no string built and no native call.
 //!
 //! The template's free names (`rows`, `title`, `h`) become the function's
-//! parameters. At render time each gets the data value of that name, else the
-//! VM global (a helper, a builtin), else nil — the order the tree-walker's
-//! scope chain resolves them in, with its lenient undefined read. A bare-call
-//! builtin (`clock`) stays a global, which the bytecode calls where it is
-//! read bare, as in an action.
+//! parameters. At render time each gets the data value of that name, else (in
+//! a partial or component) the controller's `@ivar` of that name, else the
+//! template env's (a helper, a builtin), else nil — the order the
+//! tree-walker's scope chain resolves them in, with its lenient undefined
+//! read. A bare-call builtin (`clock`) stays a global, which the bytecode
+//! calls where it is read bare, as in an action.
 //!
 //! A `form_with` / `fields_for` block and `<%= render "partial" %>` compile
 //! too. A layout is never compiled: the tree-walker still renders it.
@@ -25,7 +26,8 @@ use crate::ast::expr::{Argument, Expr, ExprKind};
 use crate::ast::stmt::{FunctionDecl, Parameter, Program, Stmt, StmtKind};
 use crate::ast::types::{TypeAnnotation, TypeKind};
 use crate::error::RuntimeError;
-use crate::interpreter::value::{hash_get_value, Value};
+use crate::interpreter::environment::inherited_field;
+use crate::interpreter::value::{hash_get_value, Instance, Value};
 use crate::span::Span;
 use crate::template::parser::TemplateNode;
 use crate::vm::chunk::{Constant, FunctionProto};
@@ -126,44 +128,66 @@ impl VmTemplate {
     /// globals. An error leaves the VM reset and nothing written: the caller
     /// renders on the tree-walker instead.
     pub fn render(&self, vm: &mut Vm, data: &Value) -> Result<Rendered, RuntimeError> {
-        if let Some(name) = self.bare_call_unresolved(data, &vm.globals, &vm.globals) {
+        self.render_inheriting(vm, data, None)
+    }
+
+    /// [`VmTemplate::render`] for an include: a name the data lacks reads
+    /// `inherited`'s `@ivar` before `vm`'s globals.
+    pub(crate) fn render_inheriting(
+        &self,
+        vm: &mut Vm,
+        data: &Value,
+        inherited: Option<&Rc<RefCell<Instance>>>,
+    ) -> Result<Rendered, RuntimeError> {
+        if let Some(name) = self.bare_call_unresolved(data, inherited, &vm.globals, &vm.globals) {
             return Err(RuntimeError::EngineFallback(
                 format!("a bare `{name}` that is not the builtin"),
                 Span::default(),
             ));
         }
         let names = std::mem::take(&mut vm.globals);
-        let args = self.bind(data, &names);
+        let args = self.bind(data, inherited, &names);
         vm.globals = names;
         self.run(vm, args)
     }
 
     /// The first bare-call builtin the template reads (`clock`) that is not,
-    /// for this render, the builtin its bytecode calls: the data binds the
-    /// name (a controller's `@clock`, even to nil), or a helper or an app
-    /// function took it where the tree-walker looks (`names`) or where the
-    /// bytecode reads it (`globals`). Such a render goes to the tree-walker,
-    /// which resolves the name as it always has.
+    /// for this render, the builtin its bytecode calls: the data or the
+    /// inherited controller binds the name (a controller's `@clock`, even to
+    /// nil), or a helper or an app function took it where the tree-walker
+    /// looks (`names`) or where the bytecode reads it (`globals`). Such a
+    /// render goes to the tree-walker, which resolves the name as it always
+    /// has.
     fn bare_call_unresolved(
         &self,
         data: &Value,
+        inherited: Option<&Rc<RefCell<Instance>>>,
         names: &ahash::AHashMap<String, Value>,
         globals: &ahash::AHashMap<String, Value>,
     ) -> Option<&str> {
         self.bare_calls.iter().map(String::as_str).find(|&name| {
             data_binds(data, name)
+                || inherited
+                    .is_some_and(|controller| inherited_field(&controller.borrow(), name).is_some())
                 || !is_builtin(names.get(name), name)
                 || !is_builtin(globals.get(name), name)
         })
     }
 
-    /// The template's arguments: each free name's data value, else its value
-    /// in `names` (the view's scope past its data), else nil.
-    fn bind(&self, data: &Value, names: &ahash::AHashMap<String, Value>) -> Vec<Value> {
+    /// The template's arguments: each free name's data value, else the
+    /// inherited controller's `@ivar` of that name, else its value in `names`
+    /// (the view's scope past its data), else nil.
+    fn bind(
+        &self,
+        data: &Value,
+        inherited: Option<&Rc<RefCell<Instance>>>,
+        names: &ahash::AHashMap<String, Value>,
+    ) -> Vec<Value> {
         self.params
             .iter()
             .map(|name| {
                 data_value(data, name)
+                    .or_else(|| inherited.and_then(|controller| inherited_value(controller, name)))
                     .or_else(|| names.get(name).cloned())
                     .unwrap_or(Value::Null)
             })
@@ -223,6 +247,16 @@ fn data_value(data: &Value, name: &str) -> Option<Value> {
     let value = hash_get_value(&map.borrow(), &Value::String(name.into())).cloned()?;
     // A controller `@ivar` set inside `grouped(fn() { ... })` arrives as a
     // placeholder; the tree-walker resolves it on read, as this does on bind.
+    Some(match value {
+        Value::Deferred(_) => value.force_deferred(),
+        other => other,
+    })
+}
+
+/// The controller's `@ivar` an include reads for `name` past its data, a
+/// `grouped {}` placeholder forced as [`data_value`] forces one.
+fn inherited_value(controller: &Rc<RefCell<Instance>>, name: &str) -> Option<Value> {
+    let value = inherited_field(&controller.borrow(), name)?;
     Some(match value {
         Value::Deferred(_) => value.force_deferred(),
         other => other,
@@ -533,8 +567,9 @@ pub(crate) fn render_component_block(
 /// `TemplateNode::Partial` arm does it: the name is resolved by
 /// `render_partial` (the `_` prefix, `components/` left clean), and `data` is
 /// whatever the tag's context evaluated to — the view's own data when the tag
-/// gave none. No helpers are injected; the `partial()` builtin does that, and
-/// this tag does not.
+/// gave none. Nothing is added to it, as `partial()` adds nothing: the helpers
+/// resolve in the template env and the controller's `@ivars` in the include's
+/// scope.
 pub(crate) fn render_partial_block(name: &Value, data: &Value) -> Result<String, String> {
     let name = match name {
         Value::String(s) => s.to_string(),
@@ -824,10 +859,12 @@ pub fn note_interpreted(
 /// render the VM refused or failed now. A failed render wrote nothing; the
 /// caller renders the view again on the tree-walker, which raises the error
 /// with its file and line — and when it raises none, hands back the
-/// [`VmFailure`].
+/// [`VmFailure`]. `inherited` is a partial's or component's controller, whose
+/// `@ivars` a name its data lacks reads, as `env` does on the tree-walker.
 pub fn render_view(
     nodes: &Arc<Vec<TemplateNode>>,
     data: &Value,
+    inherited: Option<&Rc<RefCell<Instance>>>,
     env: &Rc<RefCell<crate::interpreter::environment::Environment>>,
     cache: &crate::template::TemplateCache,
     path: &std::path::Path,
@@ -868,7 +905,9 @@ pub fn render_view(
     let mut view_vm = ViewVm::take();
     // About this render's data (`@clock`) or the app's helpers, not about the
     // view: the tree-walker renders this once, and the view stays compiled.
-    if let Some(name) = compiled.bare_call_unresolved(data, &view_vm.names, &view_vm.vm.globals) {
+    if let Some(name) =
+        compiled.bare_call_unresolved(data, inherited, &view_vm.names, &view_vm.vm.globals)
+    {
         view_vm.put_back();
         engine_log(|| {
             format!(
@@ -879,7 +918,7 @@ pub fn render_view(
         });
         return ViewRender::TreeWalker(None);
     }
-    let args = compiled.bind(data, &view_vm.names);
+    let args = compiled.bind(data, inherited, &view_vm.names);
     view_vm.vm.tree_walk_env = Some(env.clone());
     view_vm.vm.template_content_before = None;
     let outcome = {
@@ -1008,12 +1047,23 @@ const FORM_BUILDER_GLOBALS: &[&str] = &[
     "h",
 ];
 
+/// A name the form builder defines itself is its own definition: on the
+/// tree-walker its methods close over the builder's environment, so a view
+/// helper of the same name (`csrf_field`) is not what `f.open()` calls, and
+/// it must not be on the VM either. The template env holds the app's helpers
+/// last, so it would hand over the helper.
 fn install_form_builder_globals(
     globals: &mut ahash::AHashMap<String, Value>,
     template_names: &ahash::AHashMap<String, Value>,
 ) {
+    let builder =
+        crate::interpreter::builtins::template::form_builder_definitions().unwrap_or_default();
     for name in FORM_BUILDER_GLOBALS {
-        if let Some(value) = template_names.get(*name) {
+        let own = builder
+            .iter()
+            .find(|(defined, _)| defined == name)
+            .map(|(_, value)| value);
+        if let Some(value) = own.or_else(|| template_names.get(*name)) {
             globals
                 .entry((*name).to_string())
                 .or_insert_with(|| value.clone());
@@ -1152,6 +1202,10 @@ mod tests {
             "<% title = @title.upcase %><%= title %>|<% count = count + 1 %><%= count %>",
             "<% settings = @settings ?? {} %><%= settings.keys().length %>",
             "<%= locals[\"count\"] %>|<%= locals[\"absent\"].to_s %>|",
+            // A string read from the data, appended to: the tree-walker's
+            // in-place append panicked on its own borrow here.
+            "<% title = title + \"!\" %><%= title %>|<% title += \"?\" %><%= title %>",
+            "<% title += \"?\" %><%= title %>",
         ];
         // What serve's renderer enters: an undefined name, and an `@ivar`
         // with no instance, read as nil / the bare local.
@@ -1271,6 +1325,129 @@ mod tests {
         drop(view);
         super::WORKER_GLOBALS.with(|slot| *slot.borrow_mut() = None);
         super::empty_pool();
+        Ok(())
+    }
+
+    /// A view helper named like a function the form builder defines
+    /// (`csrf_field`) is not what a JIT-compiled `FormBuilder` method calls:
+    /// on the tree-walker the builder's methods close over its own
+    /// environment. The template env holds the app's helpers last, so it
+    /// would have handed over the helper.
+    #[test]
+    fn the_form_builder_calls_its_own_functions_on_the_vm() -> Result<(), String> {
+        let mut template_names: ahash::AHashMap<String, Value> =
+            crate::template::core_eval::template_env_bindings()
+                .into_iter()
+                .collect();
+        template_names.insert("csrf_field".to_string(), Value::Int(1));
+        let mut globals = ahash::AHashMap::new();
+        super::install_form_builder_globals(&mut globals, &template_names);
+
+        let builder = crate::interpreter::builtins::template::form_builder_definitions()?;
+        let own = builder.iter().find_map(|(name, value)| match value {
+            Value::Function(func) if name == "csrf_field" => Some(func.clone()),
+            _ => None,
+        });
+        match (globals.get("csrf_field"), own) {
+            (Some(Value::Function(installed)), Some(own)) => {
+                assert!(Rc::ptr_eq(installed, &own), "not the builder's csrf_field")
+            }
+            (installed, _) => return Err(format!("csrf_field installed as {installed:?}")),
+        }
+        // `attr` the builder does not define: the template env's.
+        assert!(globals.contains_key("attr"));
+        Ok(())
+    }
+
+    /// A controller whose `@ivars` are `fields`.
+    fn controller(fields: Vec<(&str, Value)>) -> Rc<RefCell<Instance>> {
+        let class = Rc::new(crate::interpreter::value::Class {
+            name: "PostsController".to_string(),
+            ..Default::default()
+        });
+        let mut instance = Instance::new(class);
+        for (name, value) in fields {
+            instance.fields.insert(name.into(), value);
+        }
+        Rc::new(RefCell::new(instance))
+    }
+
+    /// `source` on the tree-walker as an include with `inherited`'s `@ivars`
+    /// renders it, and on the VM.
+    fn render_include_on_both(
+        source: &str,
+        data: &Value,
+        inherited: &Rc<RefCell<Instance>>,
+    ) -> Result<(String, Result<Rendered, RuntimeError>), Box<dyn std::error::Error>> {
+        let nodes = parse_template(source)?;
+        let mut interpreter =
+            crate::template::core_eval::template_interpreter(data, Some(inherited.clone()));
+        let tree = crate::template::renderer::render_with_interpreter(
+            &mut interpreter,
+            &nodes,
+            data,
+            None,
+            None,
+        )?;
+        drop(interpreter);
+        let on_vm =
+            VmTemplate::compile(&nodes)?.render_inheriting(&mut view_vm(), data, Some(inherited));
+        Ok((tree, on_vm))
+    }
+
+    /// A partial's free names bind the controller's `@ivars` past its data
+    /// and before the template env, the order the tree-walker's scope reads
+    /// them in. They used to be copied into the partial's data.
+    #[test]
+    fn an_include_binds_the_controller_ivars_as_the_tree_walker_reads_them(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let inherited = controller(vec![
+            ("title", Value::String("Posts".into())),
+            ("post", Value::String("from @post".into())),
+            ("params", Value::String("the request's".into())),
+            ("count", Value::Int(2)),
+        ]);
+        let data = hash(vec![("post", Value::String("passed".into()))]);
+        let cases = [
+            (
+                "<%= post %>|<%= @title %>|<%= title.upcase %>|<%= params.nil? %>|<%= absent.nil? %>",
+                "passed|Posts|POSTS|true|true",
+            ),
+            (
+                "<% for i in [1, 2] %><%= i %>:<%= @title %>;<% end %>",
+                "1:Posts;2:Posts;",
+            ),
+            (
+                "<% title = title + \"!\" %><%= title %>|<%= count + 1 %>",
+                "Posts!|3",
+            ),
+            (
+                "<%= [1].map { |x| title + post }.join(\",\") %>",
+                "Postspassed",
+            ),
+            ("<%= h(@title) %>|<%= locals.length %>", "Posts|1"),
+        ];
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        for (source, expected) in cases {
+            let (tree, on_vm) = render_include_on_both(source, &data, &inherited)?;
+            assert_eq!(tree, expected, "{source}");
+            assert_eq!(on_vm?.html, tree, "{source}");
+        }
+        Ok(())
+    }
+
+    /// A controller's `@clock` is what an include's bare `clock` reads on the
+    /// tree-walker: the VM refuses that render rather than call the builtin.
+    #[test]
+    fn an_inherited_clock_is_left_to_the_tree_walker() -> Result<(), Box<dyn std::error::Error>> {
+        let inherited = controller(vec![("clock", Value::Int(5))]);
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let (tree, on_vm) = render_include_on_both("<%= clock + 1 %>", &hash(vec![]), &inherited)?;
+        assert_eq!(tree, "6");
+        match on_vm {
+            Err(err) => assert!(err.is_engine_fallback(), "{err}"),
+            Ok(rendered) => return Err(format!("the builtin was called: {}", rendered.html).into()),
+        }
         Ok(())
     }
 

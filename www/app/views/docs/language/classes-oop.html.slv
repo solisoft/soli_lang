@@ -421,7 +421,7 @@ end</code></pre>
 end</code></pre>
 
         <p class="text-gray-400 mb-3">
-            Explicit <code class="text-amber-400">render("view", {...})</code> data always wins over auto-exposed fields. Framework fields (<code>req</code>, <code>params</code>, <code>session</code>, <code>headers</code>) are never re-exposed this way. Auto-exposure is scoped to the action currently running.
+            Explicit <code class="text-amber-400">render("view", {...})</code> data always wins over auto-exposed fields. Framework fields (<code>req</code>, <code>params</code>, <code>session</code>, <code>headers</code>) are never re-exposed this way. Auto-exposure is scoped to the action currently running. Partials and components the view renders see the fields too, after the locals passed to them, which win.
         </p>
     </section>
 
