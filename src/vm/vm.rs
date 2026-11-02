@@ -2272,7 +2272,7 @@ impl Vm {
                     if argc == 0 {
                         let result = match &self.stack[receiver_idx] {
                             Value::String(s) => {
-                                super::method_table::string_method_zero_arg(s.as_ref(), method_id)
+                                super::method_table::string_method_zero_arg(s, method_id)
                             }
                             Value::Array(a) => {
                                 super::method_table::array_method_zero_arg(a, method_id)
@@ -4917,7 +4917,8 @@ impl Vm {
                 // Iterate by byte offset instead of pre-collecting a Vec<char>.
                 if let Some(ch) = s[*byte_offset..].chars().next() {
                     *byte_offset += ch.len_utf8();
-                    Some(Value::String(ch.to_string().into()))
+                    // Stack-buffer encode: no heap String per character.
+                    Some(crate::interpreter::executor::calls::string_methods::char_to_value(ch))
                 } else {
                     None
                 }
@@ -5184,6 +5185,10 @@ impl Vm {
                 };
                 arr.get(idx).cloned()
             }
+            // `s[i]` — a miss falls through to op_get_index for the error.
+            (Value::String(s), Value::Int(i)) => {
+                crate::interpreter::executor::calls::string_methods::string_char_at(s, *i)
+            }
             _ => None,
         }
     }
@@ -5315,18 +5320,11 @@ impl Vm {
                 }
             }
             (Value::String(s), Value::Int(i)) => {
-                let chars: Vec<char> = s.chars().collect();
-                let idx = if *i < 0 {
-                    (chars.len() as i64 + i) as usize
-                } else {
-                    *i as usize
-                };
-                chars
-                    .get(idx)
-                    .map(|c| crate::interpreter::executor::calls::string_methods::char_to_value(*c))
-                    .ok_or(RuntimeError::IndexOutOfBounds {
+                crate::interpreter::executor::calls::string_methods::string_char_at(s, *i)
+                    .ok_or_else(|| RuntimeError::IndexOutOfBounds {
                         index: *i,
-                        length: chars.len(),
+                        // Counted only on a miss: the hit path never needs it.
+                        length: s.chars().count(),
                         span,
                     })
             }

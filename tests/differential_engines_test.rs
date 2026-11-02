@@ -2408,6 +2408,56 @@ r5 = ks.sort_by do |k|
 end
 print("#{r5} #{ks}")"##,
     ),
+    (
+        // `s[i]` reads one character without decoding the whole string
+        // (an ASCII byte read, else a `chars().nth` walk), on GetIndex,
+        // GetLocalIndex and GetNestedIndex. The paren-form zero-arg string
+        // methods share the receiver when nothing changes, split/lines
+        // build their pieces directly, and a pad that adds nothing returns
+        // the receiver. Negative indexes stay on ASCII here: on multi-byte
+        // text the tree-walker still counts from the byte length (N5).
+        "string_index_and_shared_string_results",
+        r##"def at(s, i)
+  s[i]
+end
+def scan(s)
+  out = []
+  i = 0
+  while i < 5
+    out.push(s[i])
+    i += 1
+  end
+  out
+end
+a = "hello"
+m = "héllo wörld😀"
+print(at(a, 0), at(a, 4), at(a, -1), at(a, -5))
+print(at(m, 0), at(m, 1), at(m, 2), at(m, 7), at(m, 11))
+print(scan(m))
+print(m[1] + m[11])
+counts = {"h": 0}
+counts[a[0]] = counts[a[0]] + 1
+print(counts)
+try
+  at(a, 5)
+catch e
+  print("oob")
+end
+try
+  at(m, 11)
+  print("ok11")
+  at(m, 12)
+catch e
+  print("oob2")
+end
+long = "  " + "x" * 40 + "  "
+print(long.trim().length, long.lstrip().length, long.rstrip().length, long.to_s() == long)
+print("ABC".upcase(), "abc".upcase(), "ÉcOLE".downcase(), "école".upcase(), "MiXeD".downcase())
+print("line\n".chomp(), "line".chomp(), "a\r\n".chomp().length, "abc".join())
+print("a,b,,c".split(","), "a b".split(), "abc".split(""), "x".split(","))
+print("one\ntwo\n".lines(), "ab".ljust(1), "ab".ljust(5, "*"), "ab".rjust(4), "ab".center(6, "-"))
+print("ab".lpad(1), "ab".lpad(4, "0"), "ab".rpad(4, "."), "é".ljust(4, "é"))"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

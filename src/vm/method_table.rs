@@ -108,21 +108,31 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::RuntimeError;
-use crate::interpreter::value::{hash_get_value, HashKey, HashPairs, StrKey, SymKey, Value};
+use crate::interpreter::executor::calls::string_methods::{
+    downcase_string, identity_string, reuse_or_slice, split_to_values, upcase_string,
+};
+use crate::interpreter::value::{
+    hash_get_value, HashKey, HashPairs, SoliStr, StrKey, SymKey, Value,
+};
 use crate::span::Span;
 
 /// Dispatch a zero-arg string method by integer ID. Returns None if not handled.
+///
+/// Takes the `SoliStr` itself, not a `&str`, so methods whose result is the
+/// receiver or a slice of it (`to_s`, `trim`, `chomp`, an already-cased
+/// `upcase`…) share it with a refcount bump, the way the by-name path does,
+/// instead of copying it twice through a `String`.
 #[inline(always)]
-pub fn string_method_zero_arg(s: &str, mid: MethodId) -> Option<Value> {
+pub fn string_method_zero_arg(s: &SoliStr, mid: MethodId) -> Option<Value> {
     match mid {
         0 | 1 => Some(Value::Int(s.len() as i64)), // len, length
         2 => Some(Value::Bool(s.is_empty())),      // empty?
         3 => Some(Value::Int(s.len() as i64)),     // bytesize
-        4 | 5 => Some(Value::String(s.to_uppercase().into())), // upcase, uppercase
-        6 | 7 => Some(Value::String(s.to_lowercase().into())), // downcase, lowercase
-        8 => Some(Value::String(s.trim().to_string().into())), // trim
-        9 => Some(Value::String(s.trim_start().to_string().into())), // lstrip
-        10 => Some(Value::String(s.trim_end().to_string().into())), // rstrip
+        4 | 5 => Some(upcase_string(s)),           // upcase, uppercase
+        6 | 7 => Some(downcase_string(s)),         // downcase, lowercase
+        8 => Some(reuse_or_slice(s, s.trim())),    // trim
+        9 => Some(reuse_or_slice(s, s.trim_start())), // lstrip
+        10 => Some(reuse_or_slice(s, s.trim_end())), // rstrip
         11 => {
             // capitalize
             let mut chars = s.chars();
@@ -145,8 +155,8 @@ pub fn string_method_zero_arg(s: &str, mid: MethodId) -> Option<Value> {
                 .strip_suffix('\n')
                 .or_else(|| s.strip_suffix("\r\n"))
                 .or_else(|| s.strip_suffix('\r'))
-                .unwrap_or(s);
-            Some(Value::String(r.to_string().into()))
+                .unwrap_or(s.as_str());
+            Some(reuse_or_slice(s, r))
         }
         14 => {
             // reverse
@@ -167,15 +177,12 @@ pub fn string_method_zero_arg(s: &str, mid: MethodId) -> Option<Value> {
         }
         17 => {
             // lines
-            let v: Vec<Value> = s
-                .lines()
-                .map(|l| Value::String(l.to_string().into()))
-                .collect();
+            let v: Vec<Value> = s.lines().map(|l| Value::String(SoliStr::from(l))).collect();
             Some(Value::Array(Rc::new(RefCell::new(v))))
         }
         18 => i64::from_str_radix(s, 16).ok().map(Value::Int), // hex
         19 => i64::from_str_radix(s, 8).ok().map(Value::Int),  // oct
-        38 | 59 => Some(Value::String(s.to_string().into())),  // to_s, to_string
+        38 | 59 => Some(identity_string(s)),                   // to_s, to_string
         41 => Some(Value::String("string".into())),            // class
         42 => Some(Value::Bool(false)),                        // nil?
         43 => Some(Value::Bool(s.trim().is_empty())),          // blank?
@@ -194,7 +201,7 @@ pub fn string_method_zero_arg(s: &str, mid: MethodId) -> Option<Value> {
             Some(Value::String(result.into()))
         }
         57 => s.chars().next().map(|c| Value::Int(c as i64)), // ord
-        37 => Some(Value::String(s.to_string().into())),      // join (string.join = itself)
+        37 => Some(identity_string(s)),                       // join (string.join = itself)
         _ => None,
     }
 }
@@ -242,15 +249,9 @@ pub fn string_method_one_arg(
                     span,
                 )));
             };
-            let mut parts = Vec::with_capacity(if delim.is_empty() {
-                s.len() + 1
-            } else {
-                s.matches(delim.as_ref()).count() + 1
-            });
-            for part in s.split(delim.as_ref()) {
-                parts.push(Value::String(part.to_string().into()));
-            }
-            Some(Ok(Value::Array(Rc::new(RefCell::new(parts)))))
+            Some(Ok(Value::Array(Rc::new(RefCell::new(split_to_values(
+                s, delim,
+            ))))))
         }
         _ => None,
     }
@@ -465,5 +466,120 @@ pub fn hash_method_two_arg(
             Some(Ok(Value::Null))
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_method_id, string_method_zero_arg};
+    use crate::interpreter::value::{SoliStr, Value};
+    use crate::lexer::Scanner;
+    use crate::parser::Parser;
+    use crate::vm::compiler::Compiler;
+    use crate::vm::vm::Vm;
+
+    fn zero_arg(s: &SoliStr, name: &str) -> Value {
+        string_method_zero_arg(s, resolve_method_id(name))
+            .unwrap_or_else(|| panic!("{name} is not in the zero-arg table"))
+    }
+
+    /// The paren form (`s.to_s()`, `s.trim()`…) goes through this table.
+    /// When the result is the receiver it must share its buffer, as the
+    /// by-name path does, instead of copying it twice through a `String`.
+    #[test]
+    fn identity_results_share_the_receiver() {
+        let plain = SoliStr::from("a string long enough to be stored on the heap");
+        let upper = SoliStr::from("A STRING LONG ENOUGH TO BE STORED ON THE HEAP");
+        let cases: &[(&SoliStr, &str)] = &[
+            (&plain, "to_s"),
+            (&plain, "to_string"),
+            (&plain, "join"),
+            (&plain, "trim"),
+            (&plain, "strip"),
+            (&plain, "lstrip"),
+            (&plain, "rstrip"),
+            (&plain, "chomp"),
+            (&plain, "downcase"),
+            (&plain, "lowercase"),
+            (&upper, "upcase"),
+            (&upper, "uppercase"),
+        ];
+        for (s, name) in cases {
+            match zero_arg(s, name) {
+                Value::String(out) => {
+                    assert_eq!(out.as_str(), s.as_str(), "{name}");
+                    assert_eq!(out.as_ptr(), s.as_ptr(), "{name} copied the receiver");
+                }
+                other => panic!("{name}: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn changed_results_are_still_correct() {
+        let text = |s: &str, name: &str| match zero_arg(&SoliStr::from(s), name) {
+            Value::String(out) => out.to_string(),
+            other => panic!("{name}: {other:?}"),
+        };
+        assert_eq!(text("  pad me  ", "trim"), "pad me");
+        assert_eq!(text("  pad me  ", "lstrip"), "pad me  ");
+        assert_eq!(text("  pad me  ", "rstrip"), "  pad me");
+        assert_eq!(text("line\r", "chomp"), "line");
+        assert_eq!(text("line\n", "chomp"), "line");
+        assert_eq!(text("Mixed Case", "upcase"), "MIXED CASE");
+        assert_eq!(text("Mixed Case", "downcase"), "mixed case");
+        assert_eq!(text("école", "upcase"), "ÉCOLE");
+        assert_eq!(text("ÉCOLE", "downcase"), "école");
+    }
+
+    /// Run `source` on a fresh VM and return the global `x` as text.
+    fn run_vm(source: &str) -> String {
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.execute(&module.main)
+            .unwrap_or_else(|e| panic!("{source}\n=> {e}"));
+        match vm.globals.get("x") {
+            Some(Value::String(s)) => s.to_string(),
+            other => format!("{other:?}"),
+        }
+    }
+
+    /// `s[i]` through GetIndex, GetLocalIndex (a local indexed by a local)
+    /// and GetNestedIndex (`h[s[i]]`), by character on ASCII and non-ASCII
+    /// text, with negative indexes counted in characters; and `for ch in s`
+    /// yields one character per step. The tree-walker cannot iterate a
+    /// string at all, so this one is pinned on the VM alone.
+    #[test]
+    fn string_index_and_iteration_on_the_vm() {
+        let cases: &[(&str, &str)] = &[
+            ("let s = \"héllo😀\"\nlet x = \"#{s[0]}#{s[1]}#{s[5]}#{s[-1]}#{s[-5]}\"", "hé😀😀é"),
+            (
+                "def f(s)\n  out = []\n  i = 0\n  while i < 6\n    out.push(s[i])\n    i += 1\n  end\n  out\nend\nlet x = \"#{f(\"aé😀bcd\")}\"",
+                "[a, é, 😀, b, c, d]",
+            ),
+            (
+                "def f(h, s, i)\n  h[s[i]]\nend\nlet x = \"#{f({\"é\": 7}, \"aé\", 1)}\"",
+                "7",
+            ),
+            (
+                "def f(s)\n  out = []\n  for ch in s\n    out.push(ch)\n  end\n  out\nend\nlet x = \"#{f(\"aé😀b\")}\"",
+                "[a, é, 😀, b]",
+            ),
+            (
+                "let s = \"héllo\"\nlet x = \"\"\ntry\n  s[5]\ncatch e\n  x = \"#{e}\"\nend",
+                "",
+            ),
+        ];
+        for (source, expected) in cases {
+            let x = run_vm(source);
+            if expected.is_empty() {
+                // Out of range: the error names the length in characters.
+                assert!(x.contains("length 5"), "{source}\n=> {x}");
+            } else {
+                assert_eq!(x, *expected, "{source}");
+            }
+        }
     }
 }

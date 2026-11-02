@@ -166,7 +166,7 @@ impl Vm {
                 check_arity(0, args.len(), span)?;
                 let mut lines = Vec::with_capacity(s.bytes().filter(|b| *b == b'\n').count() + 1);
                 for line in s.lines() {
-                    lines.push(Value::String(line.to_string().into()));
+                    lines.push(Value::String(SoliStr::from(line)));
                 }
                 Ok(Value::Array(Rc::new(RefCell::new(lines))))
             }
@@ -274,16 +274,9 @@ impl Vm {
                 } else {
                     expect_string(&args[0], "split", span)?
                 };
-                let capacity = if delim.is_empty() {
-                    s.len() + 1
-                } else {
-                    s.matches(delim).count() + 1
-                };
-                let mut parts = Vec::with_capacity(capacity);
-                for part in s.split(delim) {
-                    parts.push(Value::String(part.to_string().into()));
-                }
-                Ok(Value::Array(Rc::new(RefCell::new(parts))))
+                Ok(Value::Array(Rc::new(RefCell::new(
+                    crate::interpreter::executor::calls::string_methods::split_to_values(s, delim),
+                ))))
             }
             "index_of" => {
                 check_arity(1, args.len(), span)?;
@@ -520,12 +513,12 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string().into()))
+                    Ok(identity_string(s))
                 } else {
                     let total_pad = width - s.len();
                     let left_pad = total_pad / 2;
                     let right_pad = total_pad - left_pad;
-                    let mut result = String::with_capacity(width);
+                    let mut result = SoliStr::with_capacity(width);
                     for _ in 0..left_pad {
                         result.push(pad_char);
                     }
@@ -533,7 +526,7 @@ impl Vm {
                     for _ in 0..right_pad {
                         result.push(pad_char);
                     }
-                    Ok(Value::String(result.into()))
+                    Ok(Value::String(result))
                 }
             }
             "ljust" => {
@@ -554,14 +547,14 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string().into()))
+                    Ok(identity_string(s))
                 } else {
-                    let mut result = String::with_capacity(width);
+                    let mut result = SoliStr::with_capacity(width);
                     result.push_str(s);
                     for _ in 0..(width - s.len()) {
                         result.push(pad_char);
                     }
-                    Ok(Value::String(result.into()))
+                    Ok(Value::String(result))
                 }
             }
             "rjust" => {
@@ -582,14 +575,14 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string().into()))
+                    Ok(identity_string(s))
                 } else {
-                    let mut result = String::with_capacity(width);
+                    let mut result = SoliStr::with_capacity(width);
                     for _ in 0..(width - s.len()) {
                         result.push(pad_char);
                     }
                     result.push_str(s);
-                    Ok(Value::String(result.into()))
+                    Ok(Value::String(result))
                 }
             }
             "lpad" => {
@@ -618,15 +611,15 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string().into()))
+                    Ok(identity_string(s))
                 } else {
                     let padding = width - s.len();
-                    let mut result = String::with_capacity(width);
+                    let mut result = SoliStr::with_capacity(width);
                     for _ in 0..padding {
                         result.push(pad_char);
                     }
                     result.push_str(s);
-                    Ok(Value::String(result.into()))
+                    Ok(Value::String(result))
                 }
             }
             "rpad" => {
@@ -655,15 +648,15 @@ impl Vm {
                     })
                     .unwrap_or(' ');
                 if s.len() >= width {
-                    Ok(Value::String(s.to_string().into()))
+                    Ok(identity_string(s))
                 } else {
                     let padding = width - s.len();
-                    let mut result = String::with_capacity(width);
+                    let mut result = SoliStr::with_capacity(width);
                     result.push_str(s);
                     for _ in 0..padding {
                         result.push(pad_char);
                     }
-                    Ok(Value::String(result.into()))
+                    Ok(Value::String(result))
                 }
             }
             "truncate" => {
