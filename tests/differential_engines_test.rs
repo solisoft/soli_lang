@@ -2144,6 +2144,37 @@ print(p.walk(1))
 print(poke(p, 1))
 print(p.label, p.area)"##,
     ),
+    (
+        // Paren-less zero-argument builtins: the VM's fast tier answers them
+        // by method id (`method_table::bare_zero_arg`) instead of by name, and
+        // `Int#to_s` / `Float#round` skip a throwaway method value. Every
+        // read must still match the tree-walker's, bare and with `()`, from a
+        // local and from a global, including a mutating `a.pop` and the
+        // `h.len` that stays a method on a hash.
+        "bare_zero_arg_builtins_match_parens",
+        r##"def reads(h, s, a, n, f, d, nothing)
+  print([h.length, h.size, h.empty?, h.keys, h.values, h.present?, h.blank?, h.nil?, h.class])
+  print([s.length, s.upcase, s.downcase, s.trim, s.blank?, s.present?, s.to_s, s.reverse, s.chars, s.empty?])
+  print([a.length, a.first, a.last, a.empty?, a.sum, a.present?, a.blank?, a.class])
+  print([n.to_s, n.to_i, n.to_f, n.nil?, n.class, n.abs, f.to_s, f.to_i, f.round, f.floor, d.to_s, d.round])
+  print([nothing.to_s, nothing.nil?, nothing.blank?, nothing.to_i, nothing.class, true.to_s, false.blank?])
+  print([h.length(), s.upcase(), a.first(), n.to_s(), f.round(), d.round(), nothing.to_s()])
+  print(h.len)
+  print([a.pop, a, [].first, {}.empty?, "".blank?, (-7).to_s, 255.to_s(16), 2.567.round(2)])
+end
+
+reads({"a": 1, "b": [2]}, "  Hi There ", [3, 1, 2], 42, 2.5, 1.25D, nil)
+h = {"x": nil}
+s = ""
+total = 0
+i = 0
+while i < 50
+  total = total + i.to_s.length + s.length + h.length
+  i = i + 1
+end
+print(total)
+print([h.x, h.keys, s.present?, s.class])"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

@@ -842,21 +842,31 @@ impl Vm {
                 // could outrank it, and `post.title` on an instance that has
                 // the field (`Vm::fast_field_read`): the general arm's fast
                 // paths, here so a field read does not leave this tier.
-                // Anything else (a miss, a method, a deferred or refused
-                // field) goes to the general arm.
-                Op::GetProperty(idx) => {
+                // A paren-less zero-argument builtin (`h.length` after the key
+                // misses, `s.blank?`, `a.first`, `n.to_s`) is answered by id
+                // from the tables `CallMethodById` uses for `h.length()`
+                // (`method_table::bare_zero_arg`). Anything else (a miss, a
+                // method, a deferred or refused field) goes to the general
+                // arm.
+                Op::GetProperty(idx, mid, mask) => {
                     let hit = match self.stack.last() {
-                        Some(Value::Hash(hash))
+                        Some(receiver @ Value::Hash(hash))
                             if !crate::interpreter::executor::calls::user_methods::has_user_methods(
                                 crate::interpreter::executor::calls::user_methods::PrimType::Hash,
                             ) =>
                         {
                             // SAFETY: as for `Op::Constant` above.
-                            match unsafe { &*constants.add(idx as usize) } {
+                            let key = match unsafe { &*constants.add(idx as usize) } {
                                 Constant::String(name) => {
                                     hash.borrow().get(&StrKey(name.as_ref())).cloned()
                                 }
                                 _ => None,
+                            };
+                            match key {
+                                None if mask != 0 => {
+                                    super::method_table::bare_zero_arg(receiver, mid, mask)
+                                }
+                                key => key,
                             }
                         }
                         Some(receiver @ Value::Instance(_)) => {
@@ -867,6 +877,9 @@ impl Vm {
                                 }
                                 _ => None,
                             }
+                        }
+                        Some(receiver) if mask != 0 => {
+                            super::method_table::bare_zero_arg(receiver, mid, mask)
                         }
                         _ => None,
                     };
@@ -879,20 +892,27 @@ impl Vm {
                 }
                 // `row.title` with `row` a local hash that has the key, and
                 // `@title` or `post.title` with the receiver a local instance
-                // that has the field — the fused form of the arm above.
-                Op::GetLocalProperty(slot, idx) => {
+                // that has the field — the fused form of the arm above, which
+                // also answers a paren-less zero-argument builtin by id.
+                Op::GetLocalProperty(slot, idx, mid, mask) => {
                     let hit = match &self.stack[base + slot as usize] {
-                        Value::Hash(hash)
+                        receiver @ Value::Hash(hash)
                             if !crate::interpreter::executor::calls::user_methods::has_user_methods(
                                 crate::interpreter::executor::calls::user_methods::PrimType::Hash,
                             ) =>
                         {
                             // SAFETY: as for `Op::Constant` above.
-                            match unsafe { &*constants.add(idx as usize) } {
+                            let key = match unsafe { &*constants.add(idx as usize) } {
                                 Constant::String(name) => {
                                     hash.borrow().get(&StrKey(name.as_ref())).cloned()
                                 }
                                 _ => None,
+                            };
+                            match key {
+                                None if mask != 0 => {
+                                    super::method_table::bare_zero_arg(receiver, mid, mask)
+                                }
+                                key => key,
                             }
                         }
                         receiver @ Value::Instance(_) => {
@@ -903,6 +923,9 @@ impl Vm {
                                 }
                                 _ => None,
                             }
+                        }
+                        receiver if mask != 0 => {
+                            super::method_table::bare_zero_arg(receiver, mid, mask)
                         }
                         _ => None,
                     };
@@ -3156,7 +3179,7 @@ impl Vm {
                 }
 
                 // --- Properties ---
-                Op::GetProperty(idx) => {
+                Op::GetProperty(idx, _, _) => {
                     let object = self.stack.pop().unwrap();
                     #[cfg(test)]
                     tally_general_field_op(&object);
@@ -4520,7 +4543,7 @@ impl Vm {
                         self.stack.push(self.stack[len - 1].clone());
                     }
                 }
-                Op::GetLocalProperty(slot, idx) => {
+                Op::GetLocalProperty(slot, idx, _, _) => {
                     let base = self.frames.last().unwrap().stack_base;
                     #[cfg(test)]
                     tally_general_field_op(&self.stack[base + slot as usize]);
@@ -5664,13 +5687,30 @@ thread_local! {
     static GENERAL_FIELD_OPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// Test-only: count a property op the general arm runs on `receiver`, when
-/// that is an instance.
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the `GetProperty`, `GetLocalProperty` and `SetProperty` ops
+    /// this thread's general arms ran on anything but an instance — a
+    /// paren-less `h.length` or `s.blank?` the fast tier handed back.
+    static GENERAL_MEMBER_OPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Test-only: count a property op the general arm runs on `receiver`: as a
+/// field op when that is an instance, as a member op otherwise.
 #[cfg(test)]
 fn tally_general_field_op(receiver: &Value) {
     if matches!(receiver, Value::Instance(_)) {
         GENERAL_FIELD_OPS.with(|ops| ops.set(ops.get() + 1));
+    } else {
+        GENERAL_MEMBER_OPS.with(|ops| ops.set(ops.get() + 1));
     }
+}
+
+/// Test-only: how many non-instance property ops the general arms have run
+/// on this thread.
+#[cfg(test)]
+pub(crate) fn general_member_ops() -> usize {
+    GENERAL_MEMBER_OPS.with(std::cell::Cell::get)
 }
 
 /// Test-only: how many instance field ops the general arms have run on this
@@ -9004,5 +9044,113 @@ result = [amount.cents, frozen, email.address]
             ])))
         );
         assert_eq!(general, 1);
+    }
+}
+
+#[cfg(test)]
+mod bare_builtin_fast_tier_tests {
+    //! A paren-less zero-argument builtin (`h.length`, `s.blank?`, `a.first`,
+    //! `n.to_s`) is answered in the fast tier by method id, as its `()` form
+    //! is by `CallMethodById`, instead of leaving the tier for the general
+    //! arm's by-name path. The value is the one the general arm gives; the
+    //! precedences it keeps (a hash key first, `h.len` a method) stay.
+    use super::general_member_ops;
+    use crate::interpreter::value::Value;
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+
+    /// Run `src`; return its `result` global and the non-instance property
+    /// ops the general arms ran.
+    fn run(src: &str) -> (Value, usize) {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        let start = general_member_ops();
+        vm.execute(&module.main).expect("vm");
+        let general = general_member_ops() - start;
+        (vm.globals.get("result").cloned().expect("result"), general)
+    }
+
+    fn shown(value: &Value) -> String {
+        format!("{}", value)
+    }
+
+    /// The bare reads, from a local (`GetLocalProperty`) and from a global
+    /// (`GetProperty`), give what the `()` forms give and never reach the
+    /// general arm. Bools are left out: another test in this binary sets the
+    /// process-wide "user method on Bool" flag, which rightly sends them
+    /// there.
+    #[test]
+    fn bare_builtins_stay_in_the_fast_tier() {
+        const READS: &[&str] = &[
+            "h.length",
+            "h.size",
+            "h.empty?",
+            "h.keys",
+            "h.values",
+            "h.present?",
+            "h.blank?",
+            "h.nil?",
+            "h.class",
+            "s.length",
+            "s.upcase",
+            "s.trim",
+            "s.blank?",
+            "s.present?",
+            "s.nil?",
+            "s.to_s",
+            "s.reverse",
+            "s.empty?",
+            "a.length",
+            "a.first",
+            "a.last",
+            "a.empty?",
+            "a.sum",
+            "a.present?",
+            "n.to_s",
+            "n.to_i",
+            "n.to_f",
+            "n.nil?",
+            "n.class",
+            "f.to_s",
+            "f.to_i",
+            "d.to_s",
+            "d.to_i",
+            "nothing.to_s",
+            "nothing.nil?",
+            "nothing.blank?",
+            "nothing.to_i",
+        ];
+        let setup = "h = {\"a\": 1, \"b\": 2}\ns = \"  Hello \"\na = [3, 1, 2]\nn = 42\n\
+                     f = 2.5\nd = 1.25D\nnothing = nil\n";
+        let bare = READS.join(", ");
+        let paren = READS
+            .iter()
+            .map(|read| format!("{read}()"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        // Locals of a function: the fused `GetLocalProperty`.
+        let local = format!("def go\n{setup}[{bare}]\nend\nresult = go()\n");
+        // Globals: `GetGlobal` + `GetProperty`.
+        let global = format!("{setup}result = [{bare}]\n");
+        let (expected, _) = run(&format!("{setup}result = [{paren}]\n"));
+        for src in [local, global] {
+            let (value, general) = run(&src);
+            assert_eq!(shown(&value), shown(&expected), "{src}");
+            assert_eq!(general, 0, "a bare builtin left the fast tier:\n{src}");
+        }
+    }
+
+    /// What the general arm answered before still holds: a hash key outranks
+    /// the builtin on the VM, `h.len` reads as the method, and a name no
+    /// table answers by id (`f.round`, `i.abs`) still goes by name.
+    #[test]
+    fn bare_reads_keep_their_precedence() {
+        let (value, _) = run(
+            "h = {\"length\": 99, \"keys\": \"k\"}\n\
+             result = [h.length, h.keys, h.size, {\"a\": 1}.len, 2.5.round, (-3).abs, \"zz\".length]\n",
+        );
+        assert_eq!(shown(&value), "[99, k, 2, <method hash.len>, 3, 3, 2]");
     }
 }

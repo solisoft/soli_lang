@@ -126,8 +126,17 @@ pub enum Op {
     Spread,
 
     // --- Objects ---
-    /// Get a property by name constant index.
-    GetProperty(u16),
+    /// Get a property: `(name constant, method id, zero-arg mask)`.
+    ///
+    /// The last two are for a paren-less call of a zero-argument builtin,
+    /// `h.length` or `s.blank?`: the name's `resolve_method_id`, and the
+    /// receiver types it is a zero-argument builtin of
+    /// (`method_registry::zero_arg_receiver_mask`; 0 when the id is unknown).
+    /// With them the fast tier answers the call by id, as `CallMethodById`
+    /// answers `h.length()`, instead of handing it to the general arm to
+    /// resolve by name (`method_table::bare_zero_arg`). Emit through
+    /// `Compiler::get_property_op`, which computes them.
+    GetProperty(u16, u16, u16),
     /// `GetProperty` for the read half of `obj.x ||= v` / `&&=` / `??=`: an
     /// instance that has no such property pushes Null instead of raising, so
     /// `@items ||= []` can initialise a field nothing has set yet.
@@ -461,8 +470,10 @@ pub enum Op {
     PopNull,
     /// Duplicate top of stack N times
     DupN(u8),
-    /// Get local by index, then get property (common in loops)
-    GetLocalProperty(u16, u16),
+    /// Get local by index, then get property (common in loops):
+    /// `(slot, name constant, method id, zero-arg mask)`, the last three as
+    /// in `GetProperty`.
+    GetLocalProperty(u16, u16, u16, u16),
     /// Get local, get index, push result
     GetLocalIndex(u16, u16),
     /// `obj[arr[idx]]` with all three in locals. The `h[keys[i]]` shape of

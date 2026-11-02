@@ -502,6 +502,30 @@ const ZERO_ARG_TYPES: [&str; 10] = [
     "query_builder",
 ];
 
+// Bits of `zero_arg_receiver_mask`: `1 << slot`, the receiver type's index in
+// `ZERO_ARG_TYPES`.
+pub const ZERO_ARG_INT: u16 = 1 << 0;
+pub const ZERO_ARG_FLOAT: u16 = 1 << 1;
+pub const ZERO_ARG_DECIMAL: u16 = 1 << 2;
+pub const ZERO_ARG_BOOL: u16 = 1 << 3;
+pub const ZERO_ARG_NULL: u16 = 1 << 4;
+pub const ZERO_ARG_STRING: u16 = 1 << 5;
+pub const ZERO_ARG_ARRAY: u16 = 1 << 7;
+pub const ZERO_ARG_HASH: u16 = 1 << 8;
+
+/// The receiver types `name` is a zero-argument builtin of, the ones on which
+/// a paren-less `x.name` calls the method rather than reading it, as
+/// `ZERO_ARG_*` bits. This is the registry half of [`is_zero_arg_method`]; the
+/// other half, a user method defined on the type, is only known at run time.
+///
+/// The VM compiler stores it on `GetProperty`, so the fast tier answers
+/// `h.length` or `s.blank?` without looking the name up.
+pub fn zero_arg_receiver_mask(name: &str) -> u16 {
+    (0..ZERO_ARG_TYPES.len())
+        .filter(|&slot| zero_arg_names(slot).contains(name))
+        .fold(0, |mask, slot| mask | 1 << slot)
+}
+
 /// The zero-arg method names of one receiver type, as a set built once.
 ///
 /// `is_zero_arg_method` runs on every paren-free member access
@@ -546,6 +570,59 @@ pub fn method_return_type(type_name: &str, method_name: &str) -> Option<&'static
         .iter()
         .find(|m| m.name == method_name)
         .map(|m| if m.ret.is_empty() { static_type } else { m.ret })
+}
+
+#[cfg(test)]
+mod zero_arg_mask_tests {
+    use super::*;
+    use crate::interpreter::value::{hash_from_pairs, DecimalValue};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// Each `ZERO_ARG_*` bit is the slot `is_zero_arg_method` uses for its
+    /// receiver type, so the mask the compiler stores and the check the
+    /// general path runs agree on every registered name, for every type the
+    /// VM answers by id.
+    #[test]
+    fn the_mask_agrees_with_is_zero_arg_method() {
+        let receivers = [
+            (ZERO_ARG_INT, Value::Int(7)),
+            (ZERO_ARG_FLOAT, Value::Float(2.5)),
+            (
+                ZERO_ARG_DECIMAL,
+                Value::Decimal(DecimalValue::from_str("1.5", 1).unwrap()),
+            ),
+            (ZERO_ARG_BOOL, Value::Bool(true)),
+            (ZERO_ARG_NULL, Value::Null),
+            (ZERO_ARG_STRING, Value::String("abc".into())),
+            (
+                ZERO_ARG_ARRAY,
+                Value::Array(Rc::new(RefCell::new(vec![Value::Int(1)]))),
+            ),
+            (ZERO_ARG_HASH, hash_from_pairs([("a", Value::Int(1))])),
+        ];
+        for type_name in ZERO_ARG_TYPES {
+            for def in known_methods(type_name) {
+                let mask = zero_arg_receiver_mask(def.name);
+                for (bit, receiver) in &receivers {
+                    assert_eq!(
+                        mask & bit != 0,
+                        is_zero_arg_method(def.name, receiver),
+                        "{}.{}",
+                        receiver.type_name(),
+                        def.name
+                    );
+                }
+            }
+        }
+        // `len` is a zero-argument builtin of strings and arrays but not of
+        // hashes, where a paren-less `h.len` reads as the method.
+        assert_eq!(
+            zero_arg_receiver_mask("len"),
+            ZERO_ARG_STRING | ZERO_ARG_ARRAY | 1 << 9
+        );
+        assert_eq!(zero_arg_receiver_mask("no_such_method"), 0);
+    }
 }
 
 #[cfg(test)]

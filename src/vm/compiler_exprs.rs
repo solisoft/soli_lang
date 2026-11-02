@@ -96,8 +96,8 @@ impl Compiler {
             }
             ExprKind::Member { object, name } => {
                 self.compile_expr(object)?;
-                let idx = self.add_string_constant(name);
-                self.emit(Op::GetProperty(idx), line);
+                let op = self.get_property_op(name);
+                self.emit(op, line);
             }
             ExprKind::SafeMember { object, name } => {
                 // `a&.b` — null receiver yields null, otherwise an ordinary
@@ -110,14 +110,14 @@ impl Compiler {
                 // `&.`). Refusing was safe but demoted the whole handler.
                 self.compile_expr(object)?;
                 let skip = self.emit_jump(Op::JumpIfNull(0), line);
-                let idx = self.add_string_constant(name);
-                self.emit(Op::GetProperty(idx), line);
+                let op = self.get_property_op(name);
+                self.emit(op, line);
                 self.patch_jump(skip);
             }
             ExprKind::QualifiedName { qualifier, name } => {
                 self.compile_expr(qualifier)?;
-                let idx = self.add_string_constant(name);
-                self.emit(Op::GetProperty(idx), line);
+                let op = self.get_property_op(name);
+                self.emit(op, line);
             }
             ExprKind::Index { object, index } => {
                 // `req["params"]["id"]` — two literal keys on a variable.

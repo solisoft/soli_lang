@@ -517,6 +517,20 @@ impl Compiler {
             .add_constant(Constant::String(s.to_string().into()))
     }
 
+    /// `GetProperty` of `name`, with the method id and zero-arg mask that let
+    /// the fast tier answer a paren-less `h.length`, `s.blank?` or `n.to_s`
+    /// by id (see `Op::GetProperty`).
+    pub fn get_property_op(&mut self, name: &str) -> Op {
+        let idx = self.add_string_constant(name);
+        let mid = super::method_table::resolve_method_id(name);
+        let mask = if mid == super::method_table::METHOD_UNKNOWN {
+            0
+        } else {
+            crate::interpreter::executor::calls::method_registry::zero_arg_receiver_mask(name)
+        };
+        Op::GetProperty(idx, mid, mask)
+    }
+
     // --- Scope management ---
 
     pub fn begin_scope(&mut self) {
@@ -1099,7 +1113,7 @@ fn stack_effect(op: Op) -> i32 {
         Range | GetIndex => -1,
         SetIndex => -2,
         // Objects.
-        GetProperty(_) | GetPropertyOrNull(_) => 0,
+        GetProperty(_, _, _) | GetPropertyOrNull(_) => 0,
         SetProperty(_) => -1,
         // Classes (class value stays on the stack; method/field defs pop one).
         Class(_) | Module(_) => 1,
@@ -1183,7 +1197,7 @@ fn stack_effect(op: Op) -> i32 {
         | TestGreaterJump(_)
         | TestGreaterEqualJump(_)
         | TestNotEqualJump(_) => -2,
-        GetLocalProperty(_, _) | GetLocalIndex(_, _) | GetNestedIndex(_, _, _) => 1,
+        GetLocalProperty(_, _, _, _) | GetLocalIndex(_, _) | GetNestedIndex(_, _, _) => 1,
         AddNestedIndex(_, _, _, _) | SetNestedIndex(_, _, _, _) => 0,
         // Touches `iter_stack`, not the value stack.
         PopIter => 0,
@@ -1621,7 +1635,7 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
-        // Pattern: GetLocal(s), GetProperty(c) → GetLocalProperty(s, c)
+        // Pattern: GetLocal(s), GetProperty(c, m, z) → GetLocalProperty(s, c, m, z)
         //
         // `this.field` and `obj.field` are the most common shape in Soli's OO
         // code — every model attribute read, every controller `this.` — and the
@@ -1629,9 +1643,9 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
         // The fused opcode already existed and was already implemented; nothing
         // ever emitted it.
         if i + 1 < len {
-            if let (Op::GetLocal(slot), Op::GetProperty(cidx)) = (code[i], code[i + 1]) {
+            if let (Op::GetLocal(slot), Op::GetProperty(cidx, mid, mask)) = (code[i], code[i + 1]) {
                 if !any_jump_target(&is_jump_target, i + 1, 2) {
-                    code[i] = Op::GetLocalProperty(slot, cidx);
+                    code[i] = Op::GetLocalProperty(slot, cidx, mid, mask);
                     code[i + 1] = NOP;
                     i += 2;
                     continue;

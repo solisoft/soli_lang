@@ -386,6 +386,117 @@ pub fn hash_method_zero_arg(hash: &Rc<RefCell<HashPairs>>, mid: MethodId) -> Opt
     }
 }
 
+/// Dispatch a zero-arg Int, Float, Decimal, Bool or Null method by integer ID:
+/// the conversions (`to_s`, `to_i`, `to_f` and their long spellings) and the
+/// universal members. Returns None if not handled.
+///
+/// The definition is what a paren-less read answers: the `*_member_access`
+/// tables in `access/member.rs`, and `call_int_method_impl` for `Int#to_s`,
+/// which its table hands back as a method value.
+/// `bare_zero_arg_agrees_with_the_general_path` holds the two together.
+#[inline]
+pub fn primitive_method_zero_arg(receiver: &Value, mid: MethodId) -> Option<Value> {
+    use crate::interpreter::executor::calls::int_methods::int_to_s_value;
+    use rust_decimal::prelude::ToPrimitive;
+    match receiver {
+        Value::Int(n) => match mid {
+            38 | 59 | 45 => Some(int_to_s_value(*n)), // to_s, to_string, inspect
+            39 | 60 => Some(Value::Int(*n)),          // to_i, to_int
+            40 | 61 => Some(Value::Float(*n as f64)), // to_f, to_float
+            41 => Some(Value::String("int".into())),
+            42 | 43 => Some(Value::Bool(false)), // nil?, blank?
+            44 => Some(Value::Bool(true)),       // present?
+            _ => None,
+        },
+        Value::Float(n) => match mid {
+            38 | 59 | 45 => Some(Value::String(format!("{}", n).into())),
+            39 | 60 => Some(Value::Int(*n as i64)),
+            40 | 61 => Some(Value::Float(*n)),
+            41 => Some(Value::String("float".into())),
+            42 | 43 => Some(Value::Bool(false)),
+            44 => Some(Value::Bool(true)),
+            _ => None,
+        },
+        Value::Decimal(d) => match mid {
+            38 | 59 => Some(Value::String(d.0.to_string().into())),
+            39 | 60 => Some(Value::Int(d.0.to_i64().unwrap_or(0))),
+            40 | 61 => Some(Value::Float(d.to_f64())),
+            41 => Some(Value::String("decimal".into())),
+            42 | 43 => Some(Value::Bool(false)),
+            44 => Some(Value::Bool(true)),
+            45 => Some(Value::String(format!("Decimal({})", d.0).into())),
+            _ => None,
+        },
+        // No `to_f`: a bool has none.
+        Value::Bool(b) => match mid {
+            38 | 59 | 45 => {
+                let text = if *b { "true" } else { "false" };
+                Some(Value::String(text.into()))
+            }
+            39 | 60 => Some(Value::Int(i64::from(*b))),
+            41 => Some(Value::String("bool".into())),
+            42 => Some(Value::Bool(false)),
+            43 => Some(Value::Bool(!*b)),
+            44 => Some(Value::Bool(*b)),
+            _ => None,
+        },
+        Value::Null => match mid {
+            38 | 59 => Some(Value::String("".into())),
+            39 | 60 => Some(Value::Int(0)),
+            40 | 61 => Some(Value::Float(0.0)),
+            41 => Some(Value::String("null".into())),
+            42 | 43 => Some(Value::Bool(true)),
+            44 => Some(Value::Bool(false)),
+            45 => Some(Value::String("null".into())),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// What a paren-less `receiver.<name>` reads when `name`, whose method id is
+/// `mid`, is a zero-argument builtin of the receiver's type: the method's
+/// result, from the same id tables `CallMethodById` uses for `name()`. `mask`
+/// holds the receiver types `name` is a zero-argument builtin of
+/// (`method_registry::zero_arg_receiver_mask`), so `h.len`, which a hash
+/// reads as the method, is not called, while `a.len` is.
+///
+/// None when the read is someone else's to answer: a type the mask leaves
+/// out, a user method on the type (it outranks the builtin, and may take
+/// arguments), an id the table has no entry for, or a value the table
+/// declines (`"zz".hex`, which raises). A hash's key comes first; the caller
+/// probes it before asking. The fast tier's `GetProperty` and
+/// `GetLocalProperty` call this and hand the op to the general arm on None,
+/// which answers by name as it always has.
+#[inline]
+pub fn bare_zero_arg(receiver: &Value, mid: MethodId, mask: u16) -> Option<Value> {
+    use crate::interpreter::executor::calls::method_registry::{
+        ZERO_ARG_ARRAY, ZERO_ARG_BOOL, ZERO_ARG_DECIMAL, ZERO_ARG_FLOAT, ZERO_ARG_HASH,
+        ZERO_ARG_INT, ZERO_ARG_NULL, ZERO_ARG_STRING,
+    };
+    use crate::interpreter::executor::calls::user_methods::{has_user_methods, PrimType};
+    let (bit, prim) = match receiver {
+        Value::String(_) => (ZERO_ARG_STRING, PrimType::String),
+        Value::Array(_) => (ZERO_ARG_ARRAY, PrimType::Array),
+        Value::Hash(_) => (ZERO_ARG_HASH, PrimType::Hash),
+        Value::Int(_) => (ZERO_ARG_INT, PrimType::Int),
+        Value::Float(_) => (ZERO_ARG_FLOAT, PrimType::Float),
+        Value::Decimal(_) => (ZERO_ARG_DECIMAL, PrimType::Decimal),
+        Value::Bool(_) => (ZERO_ARG_BOOL, PrimType::Bool),
+        Value::Null => (ZERO_ARG_NULL, PrimType::Null),
+        _ => return None,
+    };
+    if mask & bit == 0 || has_user_methods(prim) {
+        return None;
+    }
+    match receiver {
+        Value::String(s) => string_method_zero_arg(s, mid),
+        Value::Array(arr) => array_method_zero_arg(arr, mid),
+        Value::Hash(hash) => hash_method_zero_arg(hash, mid),
+        _ => primitive_method_zero_arg(receiver, mid),
+    }
+}
+
 /// Dispatch a one-arg hash method by integer ID. Returns None if not handled.
 #[inline(always)]
 pub fn hash_method_one_arg(
@@ -465,5 +576,186 @@ pub fn hash_method_two_arg(
             Some(Ok(Value::Null))
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod bare_zero_arg_tests {
+    //! `bare_zero_arg` is the fast tier's answer to a paren-less `x.name`;
+    //! `Vm::op_get_property_member` is the general arm's. Wherever the first
+    //! answers, the two must agree, value for value, on every name the
+    //! registry calls a zero-argument builtin.
+    use super::*;
+    use crate::interpreter::executor::calls::method_registry::{
+        known_methods, zero_arg_receiver_mask,
+    };
+    use crate::interpreter::value::{hash_from_pairs, DecimalValue};
+    use crate::vm::Vm;
+
+    fn array(items: Vec<Value>) -> Value {
+        Value::Array(Rc::new(RefCell::new(items)))
+    }
+
+    /// Receivers of every type `bare_zero_arg` answers for, built afresh on
+    /// each call: `a.pop` and `a.clear` mutate theirs.
+    fn receivers() -> Vec<Value> {
+        let decimal = |text: &str, scale: u32| {
+            Value::Decimal(DecimalValue::from_str(text, scale).expect("decimal"))
+        };
+        vec![
+            Value::Int(0),
+            Value::Int(7),
+            Value::Int(-12),
+            Value::Int(i64::MIN),
+            Value::Int(1_234_567_890_123_456_789),
+            Value::Float(2.5),
+            Value::Float(2.0),
+            Value::Float(-0.0),
+            Value::Float(1e21),
+            Value::Float(f64::INFINITY),
+            decimal("1.50", 2),
+            decimal("-3", 0),
+            decimal("12345.678", 3),
+            Value::Bool(true),
+            Value::Bool(false),
+            Value::Null,
+            Value::String("".into()),
+            Value::String("  ".into()),
+            Value::String("abc".into()),
+            Value::String("Hello World\n".into()),
+            Value::String("ff".into()),
+            Value::String("17".into()),
+            Value::String("a\"b\\c".into()),
+            Value::String("ünïcødé ß".into()),
+            Value::String("x".repeat(100).into()),
+            array(vec![]),
+            array(vec![Value::Int(3), Value::Int(1), Value::Int(2)]),
+            array(vec![Value::Float(1.5), Value::Int(2)]),
+            array(vec![Value::String("a".into()), Value::Null]),
+            hash_from_pairs(Vec::<(&str, Value)>::new()),
+            hash_from_pairs([("a", Value::Int(1)), ("b", Value::String("x".into()))]),
+        ]
+    }
+
+    /// Every registered zero-argument name with a method id.
+    fn names() -> Vec<&'static str> {
+        let mut names: Vec<&'static str> = [
+            "int", "float", "decimal", "bool", "null", "string", "array", "hash",
+        ]
+        .iter()
+        .flat_map(|t| known_methods(t).iter())
+        .filter(|def| def.zero_arg && resolve_method_id(def.name) != METHOD_UNKNOWN)
+        .map(|def| def.name)
+        .collect();
+        names.sort_unstable();
+        names.dedup();
+        names
+    }
+
+    /// Debug output, so `Int(2)` and `Float(2.0)` do not compare equal.
+    fn shown(value: &Value) -> String {
+        format!("{:?}", value)
+    }
+
+    #[test]
+    fn bare_zero_arg_agrees_with_the_general_path() {
+        let mut vm = Vm::new();
+        let span = Span::default();
+        let mut answered = 0;
+        for name in names() {
+            let mid = resolve_method_id(name);
+            let mask = zero_arg_receiver_mask(name);
+            for (i, receiver) in receivers().into_iter().enumerate() {
+                let Some(fast) = bare_zero_arg(&receiver, mid, mask) else {
+                    continue;
+                };
+                answered += 1;
+                let general_receiver = receivers().swap_remove(i);
+                let general = vm
+                    .op_get_property_member(&general_receiver, name, span)
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "{:?}.{} answered {:?} by id, raised {}",
+                            receiver, name, fast, e
+                        )
+                    });
+                assert_eq!(
+                    shown(&fast),
+                    shown(&general),
+                    "{:?}.{}: by id vs by name",
+                    receivers()[i],
+                    name
+                );
+                // A mutating builtin (`a.pop`) leaves both receivers alike.
+                assert_eq!(
+                    shown(&receiver),
+                    shown(&general_receiver),
+                    "{}.{} left the receivers apart",
+                    receiver.type_name(),
+                    name
+                );
+            }
+        }
+        // The tables do answer: this is no vacuous pass.
+        assert!(answered > 200, "only {answered} reads answered by id");
+    }
+
+    /// The reads the fast tier must leave to the general arm.
+    #[test]
+    fn bare_zero_arg_declines_what_is_not_its_to_answer() {
+        let hash = hash_from_pairs([("a", Value::Int(1))]);
+        // `len` is no zero-argument builtin of a hash: `h.len` reads as the
+        // method, while `a.len` and `s.len` are called.
+        let len = resolve_method_id("len");
+        let len_mask = zero_arg_receiver_mask("len");
+        assert_eq!(bare_zero_arg(&hash, len, len_mask), None);
+        assert_eq!(
+            bare_zero_arg(&array(vec![Value::Int(1)]), len, len_mask),
+            Some(Value::Int(1))
+        );
+        assert_eq!(
+            bare_zero_arg(&Value::String("ab".into()), len, len_mask),
+            Some(Value::Int(2))
+        );
+        // A name with no mask (a field, a user method name) is never answered.
+        assert_eq!(bare_zero_arg(&hash, 1, 0), None);
+        // A value the table declines raises on the general path.
+        let hex = resolve_method_id("hex");
+        assert_eq!(
+            bare_zero_arg(
+                &Value::String("zz".into()),
+                hex,
+                zero_arg_receiver_mask("hex")
+            ),
+            None
+        );
+        // Types it does not handle: a symbol, a function.
+        let to_s = resolve_method_id("to_s");
+        let to_s_mask = zero_arg_receiver_mask("to_s");
+        assert_eq!(
+            bare_zero_arg(&Value::Symbol("s".into()), to_s, to_s_mask),
+            None
+        );
+        // `Float#round` has no id, so a paren-less `f.round` keeps the general
+        // path (which now calls it without building a method value).
+        assert_eq!(resolve_method_id("round"), METHOD_UNKNOWN);
+    }
+
+    /// A user method on the type outranks the builtin, so the fast tier must
+    /// hand the read back. The flag is process-wide and the method lives in
+    /// this test's thread only: other tests see the flag, miss the lookup and
+    /// take the general path, which answers the builtin as before.
+    #[test]
+    fn a_user_method_on_the_type_outranks_the_id_table() {
+        use crate::interpreter::executor::calls::user_methods::{register_user_method, PrimType};
+        use crate::interpreter::value::Function;
+        let to_s = resolve_method_id("to_s");
+        let mask = zero_arg_receiver_mask("to_s");
+        let body = Function {
+            name: "to_s".to_string(),
+            ..Function::default()
+        };
+        register_user_method(PrimType::Bool, "to_s".to_string(), Rc::new(body));
+        assert_eq!(bare_zero_arg(&Value::Bool(true), to_s, mask), None);
     }
 }

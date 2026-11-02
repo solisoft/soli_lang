@@ -261,8 +261,8 @@ impl Compiler {
                 // Without `...rest` the length must match exactly; with it the
                 // named elements are a prefix. Same rule as the tree-walker.
                 self.emit(Op::GetLocal(slot), line);
-                let len_idx = self.add_string_constant("length");
-                self.emit(Op::GetProperty(len_idx), line);
+                let length = self.get_property_op("length");
+                self.emit(length, line);
                 self.emit_constant(Constant::Int(elements.len() as i64), line);
                 self.emit(
                     if rest.is_some() {
@@ -369,9 +369,9 @@ impl Compiler {
                 fails.push((f, live + 1));
                 self.emit(Op::Pop, line);
 
-                let tag = self.add_string_constant("__variant");
+                let tag = self.get_property_op("__variant");
                 self.emit(Op::GetLocal(slot), line);
-                self.emit(Op::GetProperty(tag), line);
+                self.emit(tag, line);
                 let want = self.add_string_constant(variant_name);
                 self.emit(Op::Constant(want), line);
                 self.emit(Op::Equal, line);
