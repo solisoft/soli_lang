@@ -2438,6 +2438,52 @@ catch e
   print("bad respond_to? argument")
 end"##,
     ),
+    (
+        // The one-argument array calls the VM answers by method id
+        // (`array_method_one_arg`), the `includes?`/`contains?` spellings
+        // that now have ids, and the errors a declined argument still raises
+        // by name: each must be what the interpreter says, message included.
+        "array_and_string_one_arg_calls_by_id",
+        r##"def dyn(v)
+  v
+end
+xs = [1, 2, 3, "a", nil, 2.0]
+print(xs.includes?(2))
+print(xs.includes?(9))
+print(xs.contains?(nil))
+print(xs.include?("a"))
+print(xs.contains(2.0))
+print(xs.index_of(3))
+print(xs.index_of(42))
+print(xs.get(1))
+print(xs.get(-1))
+print(xs.get(-99))
+print(xs.get(99))
+print(xs.take(2))
+print(xs.take(0))
+print(xs.take(99))
+print(xs.drop(4))
+print(xs.drop(99))
+print([1, "b", nil, 2.5].join("-"))
+print([].join(","))
+s = "hello world"
+print(s.includes?("wor"))
+print(s.contains?("xyz"))
+print(s.include?("o w"))
+print(s.contains("h"))
+try { xs.get(dyn("1")) } catch e { print(e) }
+try { xs.take(dyn(-1)) } catch e { print(e) }
+try { xs.drop(dyn("x")) } catch e { print(e) }
+try { xs.join(dyn(1)) } catch e { print(e) }
+try { s.includes?(dyn(1)) } catch e { print(e) }
+try { s.include?(dyn(1)) } catch e { print(e) }
+try { s.contains?(dyn(1)) } catch e { print(e) }
+try { s.contains(dyn(1)) } catch e { print(e) }
+h = {"a": 1}
+try { print(h.includes?("a")) } catch e { print(e) }
+try { print(h.contains("a")) } catch e { print(e) }
+try { print(5.includes?(1)) } catch e { print(e) }"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

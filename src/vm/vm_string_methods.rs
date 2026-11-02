@@ -241,22 +241,22 @@ impl Vm {
             // --- One-arg methods ---
             "contains" | "contains?" => {
                 check_arity(1, args.len(), span)?;
-                let sub = expect_string(&args[0], "contains", span)?;
+                let sub = expect_string(&args[0], name, span)?;
                 Ok(Value::Bool(s.contains(sub)))
             }
             "starts_with" | "starts_with?" => {
                 check_arity(1, args.len(), span)?;
-                let prefix = expect_string(&args[0], "starts_with", span)?;
+                let prefix = expect_string(&args[0], "starts_with?", span)?;
                 Ok(Value::Bool(s.starts_with(prefix)))
             }
             "ends_with" | "ends_with?" => {
                 check_arity(1, args.len(), span)?;
-                let suffix = expect_string(&args[0], "ends_with", span)?;
+                let suffix = expect_string(&args[0], "ends_with?", span)?;
                 Ok(Value::Bool(s.ends_with(suffix)))
             }
             "include?" | "includes?" => {
                 check_arity(1, args.len(), span)?;
-                let sub = expect_string(&args[0], "include?", span)?;
+                let sub = expect_string(&args[0], name, span)?;
                 Ok(Value::Bool(s.contains(sub)))
             }
             "slugify" => {

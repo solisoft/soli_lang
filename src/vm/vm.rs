@@ -2259,53 +2259,23 @@ impl Vm {
 
                     // Fast path: dispatch on receiver type without cloning
                     match &self.stack[receiver_idx] {
+                        // No inline name matches here: every name that had one
+                        // (`len`, `upcase`, `first`, `blank?`, …) has a method
+                        // id, so the compiler emits `CallMethodById` for it and
+                        // this arm only ever sees names without one.
                         Value::String(_) => {
-                            // Ultra-fast path: inline common zero-arg string methods
-                            let result = if argc == 0 {
-                                let s: &str = match &self.stack[receiver_idx] {
-                                    Value::String(s) => s.as_ref(),
+                            // Borrow string and args from the stack
+                            let result = {
+                                let s = match &self.stack[receiver_idx] {
+                                    Value::String(s) => s,
                                     _ => unreachable!(),
                                 };
-                                match name {
-                                    "len" | "length" => Some(Value::Int(s.len() as i64)),
-                                    "empty?" => Some(Value::Bool(s.is_empty())),
-                                    "bytesize" => Some(Value::Int(s.len() as i64)),
-                                    "upcase" | "uppercase" => {
-                                        Some(Value::String(s.to_uppercase().into()))
-                                    }
-                                    "downcase" | "lowercase" => {
-                                        Some(Value::String(s.to_lowercase().into()))
-                                    }
-                                    "trim" => Some(Value::String(s.trim().to_string().into())),
-                                    "reverse" => {
-                                        let out: String = crate::interpreter::executor::calls::string_methods::reverse_string(s);
-                                        Some(Value::String(out.into()))
-                                    }
-                                    "nil?" => Some(Value::Bool(false)),
-                                    "class" => Some(Value::String("string".into())),
-                                    _ => None,
-                                }
-                            } else {
-                                None
+                                let args = &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
+                                let span = self.current_span();
+                                self.vm_call_string_method(s, name, args, span)?
                             };
-                            if let Some(result) = result {
-                                self.stack.truncate(receiver_idx);
-                                self.stack.push(result);
-                            } else {
-                                // General path: borrow string and args from stack
-                                let result = {
-                                    let s = match &self.stack[receiver_idx] {
-                                        Value::String(s) => s,
-                                        _ => unreachable!(),
-                                    };
-                                    let args =
-                                        &self.stack[receiver_idx + 1..receiver_idx + 1 + argc];
-                                    let span = self.current_span();
-                                    self.vm_call_string_method(s, name, args, span)?
-                                };
-                                self.stack.truncate(receiver_idx);
-                                self.stack.push(result);
-                            }
+                            self.stack.truncate(receiver_idx);
+                            self.stack.push(result);
                         }
                         Value::Instance(_) | Value::Class(_) | Value::VmClosure(_) => {
                             if crate::interpreter::value::restricted_methods_declared() {
@@ -2323,45 +2293,16 @@ impl Vm {
                             {
                                 continue;
                             }
-                            // Fast path for common zero-arg array methods
-                            let result = if argc == 0 {
-                                let arr = match &self.stack[receiver_idx] {
-                                    Value::Array(a) => a,
-                                    _ => unreachable!(),
-                                };
-                                match name {
-                                    "length" | "len" => Some(Value::Int(arr.borrow().len() as i64)),
-                                    "empty?" => Some(Value::Bool(arr.borrow().is_empty())),
-                                    "first" => {
-                                        Some(arr.borrow().first().cloned().unwrap_or(Value::Null))
-                                    }
-                                    "last" => {
-                                        Some(arr.borrow().last().cloned().unwrap_or(Value::Null))
-                                    }
-                                    "nil?" => Some(Value::Bool(false)),
-                                    "class" => Some(Value::String("array".into())),
-                                    "blank?" => Some(Value::Bool(arr.borrow().is_empty())),
-                                    "present?" => Some(Value::Bool(!arr.borrow().is_empty())),
-                                    _ => None,
-                                }
-                            } else {
-                                None
+                            let arr = match &self.stack[receiver_idx] {
+                                Value::Array(a) => a.clone(),
+                                _ => unreachable!(),
                             };
-                            if let Some(result) = result {
-                                self.stack.truncate(receiver_idx);
-                                self.stack.push(result);
-                            } else {
-                                let arr = match &self.stack[receiver_idx] {
-                                    Value::Array(a) => a.clone(),
-                                    _ => unreachable!(),
-                                };
-                                let args: Vec<Value> =
-                                    self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
-                                let span = self.current_span();
-                                self.stack.truncate(receiver_idx);
-                                let result = self.vm_call_array_method(&arr, name, &args, span)?;
-                                self.stack.push(result);
-                            }
+                            let args: Vec<Value> =
+                                self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
+                            let span = self.current_span();
+                            self.stack.truncate(receiver_idx);
+                            let result = self.vm_call_array_method(&arr, name, &args, span)?;
+                            self.stack.push(result);
                         }
                         Value::Hash(_) => {
                             // An iterator method with a compiled callback runs
@@ -2373,31 +2314,9 @@ impl Vm {
                             {
                                 continue;
                             }
-                            // Fast path for common zero-arg hash methods
-                            let result = if argc == 0 {
-                                let hash = match &self.stack[receiver_idx] {
-                                    Value::Hash(h) => h,
-                                    _ => unreachable!(),
-                                };
-                                match name {
-                                    "length" | "len" => {
-                                        Some(Value::Int(hash.borrow().len() as i64))
-                                    }
-                                    "empty?" => Some(Value::Bool(hash.borrow().is_empty())),
-                                    "nil?" => Some(Value::Bool(false)),
-                                    "class" => Some(Value::String("hash".into())),
-                                    "blank?" => Some(Value::Bool(hash.borrow().is_empty())),
-                                    "present?" => Some(Value::Bool(!hash.borrow().is_empty())),
-                                    _ => None,
-                                }
-                            } else {
-                                None
-                            };
-                            let result = match result {
-                                Some(result) => Some(Ok(result)),
-                                None => self.hash_method_on_stack(receiver_idx, argc, name),
-                            };
-                            if let Some(result) = result {
+                            if let Some(result) =
+                                self.hash_method_on_stack(receiver_idx, argc, name)
+                            {
                                 let result = result?;
                                 self.stack.truncate(receiver_idx);
                                 self.stack.push(result);
@@ -2410,7 +2329,9 @@ impl Vm {
                                     self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
                                 let span = self.current_span();
                                 self.stack.truncate(receiver_idx);
-                                let result = self.vm_call_hash_method(&hash, name, &args, span)?;
+                                // `hash_method_on_stack` just tried the borrowed tier.
+                                let result = self
+                                    .vm_call_hash_method_past_borrowed(&hash, name, &args, span)?;
                                 self.stack.push(result);
                             }
                         }
@@ -2479,6 +2400,12 @@ impl Vm {
                                 &self.stack[receiver_idx + 1],
                                 self.current_span(),
                             ),
+                            Value::Array(a) => super::method_table::array_method_one_arg(
+                                a,
+                                method_id,
+                                &self.stack[receiver_idx + 1],
+                            )
+                            .map(Ok),
                             _ => None,
                         };
                         if let Some(result) = result {
@@ -2568,7 +2495,9 @@ impl Vm {
                                 self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
                             let span = self.current_span();
                             self.stack.truncate(receiver_idx);
-                            let result = self.vm_call_hash_method(&hash, name, &args, span)?;
+                            // `hash_method_on_stack` just tried the borrowed tier.
+                            let result =
+                                self.vm_call_hash_method_past_borrowed(&hash, name, &args, span)?;
                             self.stack.push(result);
                         }
                         Value::Int(_)

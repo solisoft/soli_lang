@@ -33,10 +33,13 @@ pub fn resolve_method_id(name: &str) -> MethodId {
         "lines" => 17,
         "hex" => 18,
         "oct" => 19,
-        "contains" => 20,
+        // `contains?` and `includes?` are the same builtins under the
+        // spellings the style guide asks for; every dispatcher already
+        // treats them as synonyms.
+        "contains" | "contains?" => 20,
         "starts_with" => 21,
         "ends_with" => 22,
-        "include?" => 23,
+        "include?" | "includes?" => 23,
         "split" => 24,
         "index_of" => 25,
         "count" => 26,
@@ -208,19 +211,19 @@ pub fn string_method_one_arg(
     span: Span,
 ) -> Option<Result<Value, RuntimeError>> {
     match mid {
+        // contains, contains?, include?, includes?. A non-string argument
+        // goes to the by-name dispatcher, whose message names the spelling
+        // the caller wrote, as the interpreter's does.
         20 | 23 => {
             let Value::String(sub) = arg else {
-                return Some(Err(RuntimeError::type_error(
-                    "expected string argument",
-                    span,
-                )));
+                return None;
             };
             Some(Ok(Value::Bool(s.contains(&**(sub)))))
         }
         21 | 62 => {
             let Value::String(prefix) = arg else {
                 return Some(Err(RuntimeError::type_error(
-                    "expected string argument",
+                    "starts_with? expects a string argument",
                     span,
                 )));
             };
@@ -229,7 +232,7 @@ pub fn string_method_one_arg(
         22 | 63 => {
             let Value::String(suffix) = arg else {
                 return Some(Err(RuntimeError::type_error(
-                    "expected string argument",
+                    "ends_with? expects a string argument",
                     span,
                 )));
             };
@@ -357,6 +360,73 @@ pub fn array_method_zero_arg(arr: &Rc<RefCell<Vec<Value>>>, mid: MethodId) -> Op
             // clear
             arr.borrow_mut().clear();
             Some(Value::Null)
+        }
+        _ => None,
+    }
+}
+
+/// Dispatch a one-arg array method by integer ID, reading the argument where
+/// it lies on the stack: no receiver clone, no argument `Vec`. Returns None
+/// for an id it has no entry for and for any argument it does not answer
+/// itself (a non-integer index, a negative count, a non-string separator), so
+/// the by-name dispatcher raises the error it always has. Every answer must be
+/// `vm_call_array_method`'s; `array_method_one_arg_agrees_with_the_general_path`
+/// holds the two together.
+#[inline(always)]
+pub fn array_method_one_arg(
+    arr: &Rc<RefCell<Vec<Value>>>,
+    mid: MethodId,
+    arg: &Value,
+) -> Option<Value> {
+    match mid {
+        // contains, contains?, include?, includes?
+        20 | 23 => Some(Value::Bool(arr.borrow().iter().any(|v| v == arg))),
+        // index_of
+        25 => Some(Value::Int(
+            arr.borrow()
+                .iter()
+                .position(|v| v == arg)
+                .map_or(-1, |i| i as i64),
+        )),
+        // join
+        37 => {
+            let Value::String(sep) = arg else {
+                return None;
+            };
+            Some(Value::String(
+                crate::interpreter::executor::calls::array_ops::join_values(&arr.borrow(), sep)
+                    .into(),
+            ))
+        }
+        // get: a negative index counts from the end; out of range is null.
+        76 => {
+            let Value::Int(idx) = arg else {
+                return None;
+            };
+            let items = arr.borrow();
+            let index = if *idx < 0 {
+                (items.len() as i64 + idx) as usize
+            } else {
+                *idx as usize
+            };
+            Some(items.get(index).cloned().unwrap_or(Value::Null))
+        }
+        // take, drop
+        77 | 78 => {
+            let Value::Int(n) = arg else {
+                return None;
+            };
+            if *n < 0 {
+                return None;
+            }
+            let n = *n as usize;
+            let items = arr.borrow();
+            let result: Vec<Value> = if mid == 77 {
+                items.iter().take(n).cloned().collect()
+            } else {
+                items.iter().skip(n).cloned().collect()
+            };
+            Some(Value::Array(Rc::new(RefCell::new(result))))
         }
         _ => None,
     }
@@ -757,5 +827,186 @@ mod bare_zero_arg_tests {
         };
         register_user_method(PrimType::Bool, "to_s".to_string(), Rc::new(body));
         assert_eq!(bare_zero_arg(&Value::Bool(true), to_s, mask), None);
+    }
+}
+
+#[cfg(test)]
+mod one_arg_tests {
+    //! `array_method_one_arg` answers `xs.get(1)`, `xs.includes?(v)`,
+    //! `tags.join(", ")` … by id, with the argument read off the stack;
+    //! `Vm::vm_call_array_method` is the by-name dispatcher it stands in front
+    //! of. Wherever the table answers, the two must agree, and it may decline
+    //! only what the dispatcher raises on.
+    use super::*;
+    use crate::interpreter::value::hash_from_pairs;
+    use crate::vm::compiler::Compiler;
+    use crate::vm::opcode::Op;
+    use crate::vm::Vm;
+
+    fn array(items: Vec<Value>) -> Rc<RefCell<Vec<Value>>> {
+        Rc::new(RefCell::new(items))
+    }
+
+    fn receivers() -> Vec<Rc<RefCell<Vec<Value>>>> {
+        vec![
+            array(vec![]),
+            array(vec![Value::Int(3), Value::Int(1), Value::Int(2)]),
+            array(vec![
+                Value::Int(1),
+                Value::Float(1.0),
+                Value::String("a".into()),
+                Value::Null,
+                Value::Bool(true),
+                array_value(vec![Value::Int(1)]),
+                hash_from_pairs([("k", Value::Int(1))]),
+            ]),
+        ]
+    }
+
+    fn array_value(items: Vec<Value>) -> Value {
+        Value::Array(array(items))
+    }
+
+    fn arguments() -> Vec<Value> {
+        vec![
+            Value::Int(0),
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(7),
+            Value::Int(-1),
+            Value::Int(-3),
+            Value::Int(-99),
+            Value::Float(1.0),
+            Value::String("".into()),
+            Value::String(", ".into()),
+            Value::String("a".into()),
+            Value::Null,
+            Value::Bool(true),
+            array_value(vec![Value::Int(1)]),
+            hash_from_pairs([("k", Value::Int(1))]),
+        ]
+    }
+
+    const NAMES: &[&str] = &[
+        "include?",
+        "includes?",
+        "contains",
+        "contains?",
+        "index_of",
+        "join",
+        "get",
+        "take",
+        "drop",
+    ];
+
+    fn shown(value: &Value) -> String {
+        format!("{:?}", value)
+    }
+
+    #[test]
+    fn array_method_one_arg_agrees_with_the_general_path() {
+        let mut vm = Vm::new();
+        let span = Span::default();
+        let mut answered = 0;
+        for name in NAMES {
+            let mid = resolve_method_id(name);
+            assert_ne!(mid, METHOD_UNKNOWN, "{name} has no id");
+            for arr in receivers() {
+                for arg in arguments() {
+                    let general =
+                        vm.vm_call_array_method(&arr, name, std::slice::from_ref(&arg), span);
+                    match array_method_one_arg(&arr, mid, &arg) {
+                        Some(fast) => {
+                            answered += 1;
+                            let general = general.unwrap_or_else(|e| {
+                                panic!("{:?}.{name}({:?}): {:?} by id, raised {e}", arr, arg, fast)
+                            });
+                            assert_eq!(
+                                shown(&fast),
+                                shown(&general),
+                                "{:?}.{name}({:?}): by id vs by name",
+                                arr.borrow(),
+                                arg
+                            );
+                        }
+                        None => assert!(
+                            general.is_err(),
+                            "{:?}.{name}({:?}) declined by id but answers {:?} by name",
+                            arr.borrow(),
+                            arg,
+                            general
+                        ),
+                    }
+                }
+            }
+        }
+        assert!(answered > 200, "only {answered} calls answered by id");
+    }
+
+    /// `"s".includes?(x)` and `"s".contains?(x)` take the ids of their
+    /// synonyms and agree with the by-name dispatcher, error included: a
+    /// non-string argument is declined so the message names the spelling used.
+    #[test]
+    fn string_membership_spellings_share_an_id() {
+        assert_eq!(
+            resolve_method_id("includes?"),
+            resolve_method_id("include?")
+        );
+        assert_eq!(
+            resolve_method_id("contains?"),
+            resolve_method_id("contains")
+        );
+        let vm = Vm::new();
+        let span = Span::default();
+        let text: crate::interpreter::value::SoliStr = "hello world".into();
+        for name in ["include?", "includes?", "contains", "contains?"] {
+            let mid = resolve_method_id(name);
+            for arg in [
+                Value::String("wor".into()),
+                Value::String("xyz".into()),
+                Value::String("".into()),
+            ] {
+                let fast = string_method_one_arg(&text, mid, &arg, span)
+                    .expect("a string argument is answered by id")
+                    .expect("no error");
+                let general = vm
+                    .vm_call_string_method(&text, name, std::slice::from_ref(&arg), span)
+                    .expect("no error");
+                assert_eq!(shown(&fast), shown(&general), "{name}({:?})", arg);
+            }
+            assert!(string_method_one_arg(&text, mid, &Value::Int(1), span).is_none());
+            let err = vm
+                .vm_call_string_method(&text, name, &[Value::Int(1)], span)
+                .expect_err("a non-string argument raises");
+            assert!(
+                err.to_string()
+                    .contains(&format!("{name} expects a string argument")),
+                "{name}: {err}"
+            );
+        }
+    }
+
+    /// The compiler emits `CallMethodById` for the style guide's spellings,
+    /// which used to compile to the by-name `CallMethod`.
+    #[test]
+    fn includes_and_contains_compile_to_call_method_by_id() {
+        for name in ["includes?", "contains?"] {
+            let src = format!("xs = [1, 2]\nprint(xs.{name}(1))\n");
+            let tokens = crate::lexer::Scanner::new(&src).scan_tokens().expect("lex");
+            let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+            let module = Compiler::compile(&program).expect("compile");
+            let code = &module.main.chunk.code;
+            assert!(
+                code.iter()
+                    .any(|op| matches!(op, Op::CallMethodById(_, 1, _))),
+                "{name}: {:?}",
+                code
+            );
+            assert!(
+                !code.iter().any(|op| matches!(op, Op::CallMethod(_, _))),
+                "{name} still compiles to CallMethod: {:?}",
+                code
+            );
+        }
     }
 }
