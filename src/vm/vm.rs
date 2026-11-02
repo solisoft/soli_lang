@@ -1099,6 +1099,34 @@ impl Vm {
                         None => break Some(op),
                     }
                 }
+                // `k += 2`, `k -= 2`, `k *= 2` on two Ints or two Floats, in
+                // place. An Int overflow and any mix go to the general arm,
+                // which raises or converts.
+                Op::AddLocalConstInPlace(slot, const_idx)
+                | Op::SubLocalConstInPlace(slot, const_idx)
+                | Op::MulLocalConstInPlace(slot, const_idx) => {
+                    // SAFETY: as for `Op::Constant`.
+                    let constant = unsafe { &*constants.add(const_idx as usize) };
+                    let idx = base + slot as usize;
+                    let result = match (&self.stack[idx], constant) {
+                        (Value::Int(x), Constant::Int(y)) => match op {
+                            Op::AddLocalConstInPlace(..) => x.checked_add(*y),
+                            Op::SubLocalConstInPlace(..) => x.checked_sub(*y),
+                            _ => x.checked_mul(*y),
+                        }
+                        .map(Value::Int),
+                        (Value::Float(x), Constant::Float(y)) => Some(Value::Float(match op {
+                            Op::AddLocalConstInPlace(..) => x + y,
+                            Op::SubLocalConstInPlace(..) => x - y,
+                            _ => x * y,
+                        })),
+                        _ => None,
+                    };
+                    match result {
+                        Some(value) => self.stack[idx] = value,
+                        None => break Some(op),
+                    }
+                }
                 // Calls and returns stay in the tier for the common shape;
                 // anything else — a native or a class callee, an arity
                 // error, the depth limit, open upvalues, a return that
@@ -4267,6 +4295,53 @@ impl Vm {
                     };
                     self.stack.push(result);
                 }
+                // `MulLocalConst`'s and its siblings' rules, with the result
+                // stored back into the local instead of pushed. On an error the
+                // local keeps its value, as `GetLocal … SetLocal` left it.
+                Op::AddLocalConstInPlace(slot, const_idx)
+                | Op::SubLocalConstInPlace(slot, const_idx)
+                | Op::MulLocalConstInPlace(slot, const_idx) => {
+                    let frame = self.frames.last().unwrap();
+                    let idx = frame.stack_base + slot as usize;
+                    let constant = &frame.closure.proto.chunk.constants[const_idx as usize];
+                    let local = &self.stack[idx];
+                    let result = match (local, constant) {
+                        (Value::Int(x), Constant::Int(y)) => {
+                            let (symbol, checked) = match op {
+                                Op::AddLocalConstInPlace(..) => ("+", x.checked_add(*y)),
+                                Op::SubLocalConstInPlace(..) => ("-", x.checked_sub(*y)),
+                                _ => ("*", x.checked_mul(*y)),
+                            };
+                            match checked {
+                                Some(result) => Value::Int(result),
+                                None => {
+                                    let span = self.current_span();
+                                    return Err(
+                                        crate::interpreter::executor::operators::int_overflow(
+                                            *x, symbol, *y, span,
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                        (Value::Float(x), Constant::Float(y)) => Value::Float(match op {
+                            Op::AddLocalConstInPlace(..) => x + y,
+                            Op::SubLocalConstInPlace(..) => x - y,
+                            _ => x * y,
+                        }),
+                        _ => {
+                            let a = local.clone();
+                            let b = constant_to_value(constant);
+                            let span = self.current_span();
+                            match op {
+                                Op::AddLocalConstInPlace(..) => self.op_add(a, b, span)?,
+                                Op::SubLocalConstInPlace(..) => self.op_subtract(a, b, span)?,
+                                _ => self.op_multiply(a, b, span)?,
+                            }
+                        }
+                    };
+                    self.stack[idx] = result;
+                }
                 Op::DivLocalConst(slot, const_idx) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let local = &self.stack[base + slot as usize];
@@ -6235,6 +6310,30 @@ mod tests {
             (smallest, "i -= 1", Op::DecrLocal(0), min_minus_one),
             (smallest, "i = i - 1", Op::DecrLocal(0), min_minus_one),
             (smallest, "i--", Op::DecrLocal(0), min_minus_one),
+            (
+                largest,
+                "i += 2",
+                Op::AddLocalConstInPlace(0, 0),
+                "integer overflow: 9223372036854775807 + 2 does not fit in an Int",
+            ),
+            (
+                largest,
+                "i = i + 2",
+                Op::AddLocalConstInPlace(0, 0),
+                "integer overflow: 9223372036854775807 + 2 does not fit in an Int",
+            ),
+            (
+                smallest,
+                "i -= 2",
+                Op::SubLocalConstInPlace(0, 0),
+                "integer overflow: -9223372036854775808 - 2 does not fit in an Int",
+            ),
+            (
+                largest,
+                "i *= 2",
+                Op::MulLocalConstInPlace(0, 0),
+                "integer overflow: 9223372036854775807 * 2 does not fit in an Int",
+            ),
             (
                 with_local,
                 "i += one",
@@ -10094,6 +10193,52 @@ let x = Mailer.welcome()
         for (code, locals, op) in declined {
             let (handed_back, _) = run_fast_tier(constants(), locals, code);
             assert_eq!(handed_back, Some(op), "{code:?}");
+        }
+    }
+
+    /// `k += c`, `k -= c` and `k *= c` with an Int or Float constant run in
+    /// the fast tier and store into the slot, pushing nothing. An overflow, a
+    /// mix of Int and Float, and any other type are handed to the general
+    /// arm, which raises or converts.
+    #[test]
+    fn local_const_in_place_ops_run_in_the_fast_tier() {
+        const SEVEN: u16 = 0;
+        const HALF: u16 = 1;
+        let constants = || vec![Constant::Int(7), Constant::Float(0.5)];
+        // Slots: 1 k=23, 2 x=3.0, 3 s="ab", 4 the smallest Int.
+        let locals = [
+            Value::Int(23),
+            Value::Float(3.0),
+            Value::String("ab".into()),
+            Value::Int(i64::MIN),
+        ];
+        let cases: Vec<(Op, u16, Value)> = vec![
+            (Op::AddLocalConstInPlace(1, SEVEN), 1, Value::Int(30)),
+            (Op::SubLocalConstInPlace(1, SEVEN), 1, Value::Int(16)),
+            (Op::MulLocalConstInPlace(1, SEVEN), 1, Value::Int(161)),
+            (Op::AddLocalConstInPlace(2, HALF), 2, Value::Float(3.5)),
+            (Op::SubLocalConstInPlace(2, HALF), 2, Value::Float(2.5)),
+            (Op::MulLocalConstInPlace(2, HALF), 2, Value::Float(1.5)),
+        ];
+        for (op, slot, expected) in cases {
+            let (declined, stack) = run_fast_tier(constants(), &locals, &[op, Op::GetLocal(slot)]);
+            assert_eq!(declined, None, "{op:?} left the fast tier");
+            assert_eq!(stack, vec![expected], "{op:?}");
+        }
+
+        for op in [
+            // Overflow.
+            Op::SubLocalConstInPlace(4, SEVEN),
+            Op::MulLocalConstInPlace(4, SEVEN),
+            // Int with Float, Float with Int.
+            Op::AddLocalConstInPlace(1, HALF),
+            Op::MulLocalConstInPlace(2, SEVEN),
+            // A string.
+            Op::MulLocalConstInPlace(3, SEVEN),
+        ] {
+            let (handed_back, stack) = run_fast_tier(constants(), &locals, &[op]);
+            assert_eq!(handed_back, Some(op));
+            assert!(stack.is_empty(), "{op:?} pushed {stack:?}");
         }
     }
 

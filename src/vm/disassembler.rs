@@ -240,6 +240,15 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::AppendLocalConst(slot, cidx) => {
             out.push_str(&format!("APPEND_LC    {:>3},{:>3}", slot, cidx))
         }
+        Op::AddLocalConstInPlace(slot, cidx) => {
+            out.push_str(&format!("ADD_LC_IP    {:>3},{:>3}", slot, cidx))
+        }
+        Op::SubLocalConstInPlace(slot, cidx) => {
+            out.push_str(&format!("SUB_LC_IP    {:>3},{:>3}", slot, cidx))
+        }
+        Op::MulLocalConstInPlace(slot, cidx) => {
+            out.push_str(&format!("MUL_LC_IP    {:>3},{:>3}", slot, cidx))
+        }
         Op::AppendLocal(slot) => out.push_str(&format!("APPEND_LOCAL {:>4}", slot)),
         Op::AppendGlobal(idx) => out.push_str(&format!("APPEND_GLOBAL {:>3}", idx)),
         Op::AppendUpvalue(idx) => out.push_str(&format!("APPEND_UPVAL {:>4}", idx)),

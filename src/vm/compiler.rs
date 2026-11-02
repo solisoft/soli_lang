@@ -1143,7 +1143,12 @@ fn stack_effect(op: Op) -> i32 {
         | HashHasKeyLocalConst(_, _)
         | HashDeleteLocalConst(_, _)
         | HashGetLocalConst2(_, _, _) => 1,
-        AddLocalsInPlace(_, _) | AppendLocalConst(_, _) | AppendGlobalConst(_, _) => 0,
+        AddLocalsInPlace(_, _)
+        | AppendLocalConst(_, _)
+        | AppendGlobalConst(_, _)
+        | AddLocalConstInPlace(_, _)
+        | SubLocalConstInPlace(_, _)
+        | MulLocalConstInPlace(_, _) => 0,
         // Pops the variable's value and the RHS, pushes the updated variable.
         AppendLocal(_) | AppendGlobal(_) | AppendUpvalue(_) => -1,
         AddAssignLocal(_) | AddAssignUpvalue(_) | AddAssignGlobal(_) => -1,
@@ -1482,7 +1487,8 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
-        // Pattern: GetLocal(s), Constant(c=1), Add, SetLocal(s), Pop → IncrLocal(s)
+        // Pattern: GetLocal(s), Constant(c=1), Add, SetLocal(s), Pop → IncrLocal(s);
+        // any other Int or Float `c` → AddLocalConstInPlace(s, c).
         if let (Op::GetLocal(slot1), Op::Constant(cidx), Op::Add, Op::SetLocal(slot2), Op::Pop) =
             (code[i], code[i + 1], code[i + 2], code[i + 3], code[i + 4])
         {
@@ -1500,6 +1506,19 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
                 // a new string on every iteration.
                 if let Some(Constant::String(_)) = constants.get(cidx as usize) {
                     code[i] = Op::AppendLocalConst(slot1, cidx);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    code[i + 4] = NOP;
+                    i += 5;
+                    continue;
+                }
+                // `k += 2`, `total += 0.5`: in place, where the three-op rule
+                // below would leave `AddLocalConst, SetLocalPop`.
+                if let Some(Constant::Int(_)) | Some(Constant::Float(_)) =
+                    constants.get(cidx as usize)
+                {
+                    code[i] = Op::AddLocalConstInPlace(slot1, cidx);
                     code[i + 1] = NOP;
                     code[i + 2] = NOP;
                     code[i + 3] = NOP;
@@ -1532,7 +1551,8 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
-        // Pattern: GetLocal(s), Constant(c=1), Subtract, SetLocal(s), Pop → DecrLocal(s)
+        // Pattern: GetLocal(s), Constant(c=1), Subtract, SetLocal(s), Pop → DecrLocal(s);
+        // any other Int or Float `c` → SubLocalConstInPlace(s, c).
         if let (
             Op::GetLocal(slot1),
             Op::Constant(cidx),
@@ -1544,6 +1564,42 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             if slot1 == slot2 && !any_jump_target(&is_jump_target, i + 1, 5) {
                 if let Some(Constant::Int(1)) = constants.get(cidx as usize) {
                     code[i] = Op::DecrLocal(slot1);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    code[i + 4] = NOP;
+                    i += 5;
+                    continue;
+                }
+                if let Some(Constant::Int(_)) | Some(Constant::Float(_)) =
+                    constants.get(cidx as usize)
+                {
+                    code[i] = Op::SubLocalConstInPlace(slot1, cidx);
+                    code[i + 1] = NOP;
+                    code[i + 2] = NOP;
+                    code[i + 3] = NOP;
+                    code[i + 4] = NOP;
+                    i += 5;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal(s), Constant(c), Multiply, SetLocal(s), Pop
+        // → MulLocalConstInPlace(s, c), for an Int or Float `c`.
+        if let (
+            Op::GetLocal(slot1),
+            Op::Constant(cidx),
+            Op::Multiply,
+            Op::SetLocal(slot2),
+            Op::Pop,
+        ) = (code[i], code[i + 1], code[i + 2], code[i + 3], code[i + 4])
+        {
+            if slot1 == slot2 && !any_jump_target(&is_jump_target, i + 1, 5) {
+                if let Some(Constant::Int(_)) | Some(Constant::Float(_)) =
+                    constants.get(cidx as usize)
+                {
+                    code[i] = Op::MulLocalConstInPlace(slot1, cidx);
                     code[i + 1] = NOP;
                     code[i + 2] = NOP;
                     code[i + 3] = NOP;
@@ -2059,7 +2115,7 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
 /// It runs after the main scan, so `IncrLocal`, `AddLocalsInPlace`,
 /// `AppendLocalConst`, `AddNestedIndex` and the other patterns that end in the
 /// pair have already taken theirs. What is left is a plain store, often after a
-/// fused read: `k += 2` is `AddLocalConst, SetLocal, Pop`.
+/// fused read: `y = k + 2` is `AddLocalConst, SetLocal, Pop`.
 ///
 /// Being a pass of its own, it also takes a store whose `SetLocal` a branch
 /// lands on, which the main scan skips as a head. `x = a || b`,
@@ -2734,7 +2790,7 @@ mod inplace_peephole_tests {
     /// An assignment statement stores with `SetLocalPop`: the value moves
     /// into the slot, where `SetLocal, Pop` copied it there and then dropped
     /// the copy. So does every other `SetLocal, Pop` that no longer pattern
-    /// covers: a store after a fused read (`k += 2`), a re-`let`, and each
+    /// covers: a store after a fused read (`y = k + 2`), a re-`let`, and each
     /// `match` arm moving its value into the subject's slot. A function's
     /// last statement has no `Pop` (its value is the return value), so its
     /// `SetLocal` stays.
@@ -2742,7 +2798,7 @@ mod inplace_peephole_tests {
     fn assignment_statements_store_with_set_local_pop() {
         let cases = [
             "s = \"on the heap\"\ny = s\ny",
-            "k = 1\nk += 2\nk",
+            "k = 1\ny = k + 2\ny",
             "n = [1, 2].length\nn",
             "let a = 1\nlet a = 2\na",
             "v = 2\nmatch v {\n  1 => \"one\",\n  _ => \"other\"\n}\nv",
@@ -2796,6 +2852,90 @@ mod inplace_peephole_tests {
             vm_result(
                 "def f\n  a = 12\n  b = 3\n  a = a - b\n  a = a * b\n  a = a / b\n  a\nend\nlet result = f()"
             ),
+            "9"
+        );
+    }
+
+    /// `k += 2`, `k -= 2` and `k *= 2` with an Int or Float constant are one
+    /// in-place op, as `k += 1` is `IncrLocal`: they were
+    /// `AddLocalConst, SetLocalPop`, a push and a pop the slot did not need.
+    /// `+= 1` and `-= 1` keep their own ops, a string constant keeps
+    /// `AppendLocalConst`, a store into another local keeps the fused read,
+    /// and a function's last statement, which has no `Pop`, is left alone.
+    #[test]
+    fn self_arithmetic_with_a_constant_is_one_in_place_op() {
+        // `k` is hoisted into slot 1; slot 0 is the callee.
+        let in_place = |op: &Op| match op {
+            Op::AddLocalConstInPlace(slot, _) => Some(("+", *slot)),
+            Op::SubLocalConstInPlace(slot, _) => Some(("-", *slot)),
+            Op::MulLocalConstInPlace(slot, _) => Some(("*", *slot)),
+            _ => None,
+        };
+        let pushes_a_read = |op: &Op| {
+            matches!(
+                op,
+                Op::AddLocalConst(..) | Op::SubLocalConst(..) | Op::MulLocalConst(..)
+            )
+        };
+        for (setup, statement, operator) in [
+            ("k = 7", "k += 2", "+"),
+            ("k = 7", "k = k + 2", "+"),
+            ("k = 7.5", "k += 0.5", "+"),
+            ("k = 7", "k -= 3", "-"),
+            ("k = 7", "k = k - 3", "-"),
+            ("k = 7.5", "k -= 1.5", "-"),
+            ("k = 7", "k *= 2", "*"),
+            ("k = 7", "k = k * 2", "*"),
+            ("k = 7", "k *= 1", "*"),
+            ("k = 7.5", "k *= 0.5", "*"),
+        ] {
+            let body = format!("{setup}\n{statement}\nk");
+            let ops = fn_ops(&body);
+            let fused: Vec<_> = ops.iter().filter_map(in_place).collect();
+            assert_eq!(fused, [(operator, 1)], "{body}\n{ops:?}");
+            assert!(!ops.iter().any(pushes_a_read), "{body}\n{ops:?}");
+        }
+
+        for (body, kept) in [
+            ("k = 7\nk += 1\nk", Op::IncrLocal(1)),
+            ("k = 7\nk -= 1\nk", Op::DecrLocal(1)),
+        ] {
+            let ops = fn_ops(body);
+            assert!(ops.contains(&kept), "{body}\n{ops:?}");
+            assert!(
+                !ops.iter().any(|op| in_place(op).is_some()),
+                "{body}\n{ops:?}"
+            );
+        }
+        for body in [
+            // A string constant appends in place.
+            "s = \"a\"\ns += \"b\"\ns",
+            // Another local: the read is fused, the store is `SetLocalPop`.
+            "k = 7\ny = k + 2\ny",
+            // The last statement's value is the return value: no `Pop`.
+            "k = 7\nk += 2",
+        ] {
+            let ops = fn_ops(body);
+            assert!(
+                !ops.iter().any(|op| in_place(op).is_some()),
+                "{body}\n{ops:?}"
+            );
+        }
+        assert!(fn_ops("s = \"a\"\ns += \"b\"\ns")
+            .iter()
+            .any(|op| matches!(op, Op::AppendLocalConst(1, _))));
+
+        // The general arm's conversions: an Int local with a Float constant,
+        // a Float local with an Int one, a string repeated, and a last
+        // statement that returns what it stored.
+        assert_eq!(
+            vm_result(
+                "def f\n  k = 7\n  k += 2\n  k -= 3\n  k *= 4\n  x = 1.5\n  x += 0.25\n  x *= 2.0\n  x -= 0.25\n  y = 2\n  y += 0.5\n  z = 0.5\n  z *= 3\n  s = \"ab\"\n  s *= 2\n  [k, x, y, z, s]\nend\nlet result = f()"
+            ),
+            "[24, 3.25, 2.5, 1.5, abab]"
+        );
+        assert_eq!(
+            vm_result("def f\n  k = 7\n  k += 2\nend\nlet result = f()"),
             "9"
         );
     }
@@ -3283,6 +3423,9 @@ mod stack_effect_tests {
             (&[], IncrLocalFast(N)),
             (&[], AddLocalsInPlace(N, N)),
             (&[], AppendLocalConst(TEXT, STR)),
+            (&[], AddLocalConstInPlace(N, INT)),
+            (&[], SubLocalConstInPlace(N, INT)),
+            (&[], MulLocalConstInPlace(N, INT)),
             (&[], AppendGlobalConst(STR_GLOBAL, STR)),
             (&[], AddNestedIndex(N, FLAT, KEYS, IDX)),
             (&[], SetNestedIndex(FLAT, KEYS, IDX, N)),

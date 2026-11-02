@@ -1304,6 +1304,103 @@ end
 print(incr(), decr(), accumulate(1), keyed_sum())"##,
     ),
     (
+        // `k += c`, `k -= c` and `k *= c` with an Int or Float constant other
+        // than `+= 1`/`-= 1` are one in-place op on the VM
+        // (`AddLocalConstInPlace` and its siblings). Its fast arm takes two
+        // Ints or two Floats; an overflow, a mix, a string and `nil` go to the
+        // general arm, which must raise or convert as the tree-walker does,
+        // leaving the variable as it was on an error.
+        "self_arithmetic_with_a_constant_in_place",
+        r##"const INT_MAX = 9223372036854775807
+const INT_MIN = -9223372036854775807 - 1
+
+def ints
+  k = 10
+  k += 2
+  k -= 5
+  k *= 3
+  k = k + 4
+  k = k - 6
+  k = k * 2
+  k += -3
+  k *= 0
+  k += 7
+  k
+end
+
+def floats
+  x = 1.5
+  x += 0.25
+  x -= 0.5
+  x *= 4.0
+  y = 2
+  y += 0.5
+  z = 3.0
+  z *= 2
+  z -= 1
+  [x, y, z]
+end
+
+def strings
+  s = "ab"
+  s *= 3
+  t = "n"
+  t += 2
+  [s, t]
+end
+
+def overflow
+  i = INT_MAX - 2
+  i += 2
+  try
+    i += 2
+  catch e
+    print(e)
+  end
+  j = INT_MIN + 3
+  j -= 3
+  try
+    j -= 3
+  catch e
+    print(e)
+  end
+  m = INT_MAX / 2 + 1
+  try
+    m *= 2
+  catch e
+    print(e)
+  end
+  [i, j, m]
+end
+
+def bad_type
+  h = nil
+  try
+    h += 2
+  catch e
+    print("caught")
+  end
+  try
+    h *= 2
+  catch e
+    print("caught")
+  end
+  h
+end
+
+def loop_sum(n)
+  total = 0
+  i = 0
+  while i < n
+    total += 10
+    i += 1
+  end
+  total
+end
+
+print(ints(), floats(), strings(), overflow(), bad_type(), loop_sum(5))"##,
+    ),
+    (
         // `hash.key` dot access: a hit, and a miss falling back to a method.
         "hash_dot_access",
         "let h = {\"name\": \"x\", \"n\": null}\nprint(h.name)\nprint(h.n)\nprint(h.length)",

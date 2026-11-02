@@ -292,6 +292,19 @@ pub enum Op {
     /// [`Op::AddLocalsInPlace`] for strings. Other types of local fall back
     /// to a normal add against that constant.
     AppendLocalConst(u16, u16),
+    /// `local[slot] += constant` for an Int or Float constant other than an
+    /// Int 1 (that is [`Op::IncrLocal`]), in place: no push, no pop.
+    ///
+    /// Replaces `GetLocal(slot), Constant(c), Add, SetLocal(slot), Pop`, which
+    /// was otherwise `AddLocalConst, SetLocalPop`. An Int overflow raises and
+    /// leaves the local as it was; any other pair of types goes through the
+    /// general `+`.
+    AddLocalConstInPlace(u16, u16),
+    /// `local[slot] -= constant`, in place, as [`Op::AddLocalConstInPlace`]
+    /// (an Int 1 is [`Op::DecrLocal`]).
+    SubLocalConstInPlace(u16, u16),
+    /// `local[slot] *= constant`, in place, as [`Op::AddLocalConstInPlace`].
+    MulLocalConstInPlace(u16, u16),
     /// `local[slot] << value`. Pops the value and, below it, the local as it
     /// was read before the value ran. An array is pushed into; a string local
     /// appends a string. The resulting local is pushed, matching `<<`
