@@ -767,6 +767,13 @@ impl Vm {
                     }
                     discard(value);
                 }
+                Op::JumpIfTrue(offset) => {
+                    let value = self.stack.pop().unwrap();
+                    if value.is_truthy() {
+                        ip += offset as usize;
+                    }
+                    discard(value);
+                }
                 Op::Loop(offset) => {
                     if crate::interpreter::deadline::expired() {
                         self.frames.last_mut().unwrap().ip = ip;
@@ -1983,6 +1990,12 @@ impl Vm {
                 Op::JumpIfFalse(offset) => {
                     let val = self.stack.pop().unwrap();
                     if !val.is_truthy() {
+                        self.frames.last_mut().unwrap().ip += offset as usize;
+                    }
+                }
+                Op::JumpIfTrue(offset) => {
+                    let val = self.stack.pop().unwrap();
+                    if val.is_truthy() {
                         self.frames.last_mut().unwrap().ip += offset as usize;
                     }
                 }

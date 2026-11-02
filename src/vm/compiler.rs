@@ -1087,7 +1087,7 @@ fn stack_effect(op: Op) -> i32 {
         | JumpIfParamSupplied(_, _)
         | JumpIfLocalFalsy(_, _)
         | JumpIfLocalTruthy(_, _) => 0,
-        JumpIfFalse(_) => -1,
+        JumpIfFalse(_) | JumpIfTrue(_) => -1,
         // Calls: pop callee/receiver + argc args, push the result.
         Call(argc) | CallMethod(_, argc) | CallMethodById(_, argc, _) => -(argc as i32),
         // Same shape as Call/New: the callee plus argc slots collapse to one result.
@@ -1249,6 +1249,7 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             // target rather than a shorter list here.
             Op::Jump(offset)
             | Op::JumpIfFalse(offset)
+            | Op::JumpIfTrue(offset)
             | Op::JumpIfFalseNoPop(offset)
             | Op::JumpIfTrueNoPop(offset)
             | Op::JumpIfNull(offset)
@@ -2035,7 +2036,8 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
         // Pattern: GetLocal, Not, JumpIfFalse(offset)
         //        → JumpIfLocalTruthy(slot, offset + 2)
         //
-        // `unless flag` and `if !flag`: the branch is taken when the local is
+        // A `!flag` the compiler did not fold into a `JumpIfTrue` (see
+        // `compile_condition_jump`): the branch is taken when the local is
         // truthy. The fused op sits two instructions before the old jump, so
         // its offset grows by two to reach the same target (`compact_nops`
         // then drops the NOPs and remaps it). This used to be
@@ -2063,6 +2065,21 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             if let (Op::GetLocal(slot), Op::JumpIfFalse(offset)) = (code[i], code[i + 1]) {
                 if !any_jump_target(&is_jump_target, i + 1, 2) {
                     code[i] = Op::JumpIfLocalFalsy(slot, offset + 1);
+                    code[i + 1] = NOP;
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // Pattern: GetLocal, JumpIfTrue(offset) → JumpIfLocalTruthy(slot, offset + 1)
+        //
+        // `unless flag`, `x = 1 unless flag`, `if !flag`: the compiler folds
+        // the `!` into a `JumpIfTrue`, and this reads the slot in place.
+        if i + 1 < len {
+            if let (Op::GetLocal(slot), Op::JumpIfTrue(offset)) = (code[i], code[i + 1]) {
+                if !any_jump_target(&is_jump_target, i + 1, 2) {
+                    code[i] = Op::JumpIfLocalTruthy(slot, offset + 1);
                     code[i + 1] = NOP;
                     i += 2;
                     continue;
@@ -2218,6 +2235,7 @@ fn compact_nops(chunk: &mut Chunk) {
             }
             Op::Jump(d) => Op::Jump(fwd(&old_to_new, old, d, here)),
             Op::JumpIfFalse(d) => Op::JumpIfFalse(fwd(&old_to_new, old, d, here)),
+            Op::JumpIfTrue(d) => Op::JumpIfTrue(fwd(&old_to_new, old, d, here)),
             Op::JumpIfFalseNoPop(d) => Op::JumpIfFalseNoPop(fwd(&old_to_new, old, d, here)),
             Op::JumpIfTrueNoPop(d) => Op::JumpIfTrueNoPop(fwd(&old_to_new, old, d, here)),
             Op::JumpIfNull(d) => Op::JumpIfNull(fwd(&old_to_new, old, d, here)),
@@ -2341,6 +2359,7 @@ mod inplace_peephole_tests {
         match op {
             Op::Jump(_) => Op::Jump(d),
             Op::JumpIfFalse(_) => Op::JumpIfFalse(d),
+            Op::JumpIfTrue(_) => Op::JumpIfTrue(d),
             Op::JumpIfFalseNoPop(_) => Op::JumpIfFalseNoPop(d),
             Op::JumpIfTrueNoPop(_) => Op::JumpIfTrueNoPop(d),
             Op::JumpIfNull(_) => Op::JumpIfNull(d),
@@ -2369,6 +2388,7 @@ mod inplace_peephole_tests {
         Some(match *op {
             Op::Jump(d)
             | Op::JumpIfFalse(d)
+            | Op::JumpIfTrue(d)
             | Op::JumpIfFalseNoPop(d)
             | Op::JumpIfTrueNoPop(d)
             | Op::JumpIfNull(d)
@@ -2706,7 +2726,11 @@ mod inplace_peephole_tests {
             assert!(
                 !ops.iter().any(|op| matches!(
                     op,
-                    Op::IsTruthyLocal(_) | Op::IsFalsyLocal(_) | Op::Not | Op::JumpIfFalse(_)
+                    Op::IsTruthyLocal(_)
+                        | Op::IsFalsyLocal(_)
+                        | Op::Not
+                        | Op::JumpIfFalse(_)
+                        | Op::JumpIfTrue(_)
                 )),
                 "{body}\n{ops:?}"
             );
@@ -2723,6 +2747,97 @@ mod inplace_peephole_tests {
         assert_eq!(
             vm_result(program),
             "[TFFFTTTFTFTFTTT, TFFFTTTFTFTFTTT, TFFFTTTFTFTFTTT]"
+        );
+    }
+
+    /// `unless <expr>`, `x unless <expr>`, `return x unless <expr>` and
+    /// `if !<expr>` branch with one `JumpIfTrue` on the expression's value:
+    /// the `!` is folded into the jump instead of compiled as `Not`. They
+    /// were `<expr>, Not, JumpIfFalse`. `if !!<expr>` and `unless !<expr>`
+    /// fold back to a plain `JumpIfFalse`.
+    #[test]
+    fn negated_condition_folds_into_jump_if_true() {
+        let inverted = [
+            "i = 3\nn = 0\nunless i < 0 { n = 1 }\nn",
+            "i = 3\nn = 0\nn = 1 unless i < 0\nn",
+            "i = 3\nn = 0\nif !(i < 0) { n = 1 }\nn",
+            "i = 3\nn = 0\nif !(i % 2 == 0) { n = 1 }\nn",
+            "i = 3\nreturn 1 unless i < 0\n2",
+            "i = 0\nwhile !(i >= 3) { i += 1 }\ni",
+            "i = 3\nn = !(i < 0) ? 1 : 2\nn",
+            "i = 3\nn = 0\nunless !!(i < 0) { n = 1 }\nn",
+        ];
+        for body in inverted {
+            let ops = fn_ops(body);
+            assert!(
+                ops.iter().any(|op| matches!(op, Op::JumpIfTrue(_))),
+                "{body}\n{ops:?}"
+            );
+            assert!(
+                !ops.iter().any(|op| matches!(op, Op::Not)),
+                "{body}\n{ops:?}"
+            );
+        }
+        for body in [
+            "i = 3\nn = 0\nif !!(i < 0) { n = 1 }\nn",
+            "i = 3\nn = 0\nunless !(i < 0) { n = 1 }\nn",
+        ] {
+            let ops = fn_ops(body);
+            assert!(
+                !ops.iter()
+                    .any(|op| matches!(op, Op::Not | Op::JumpIfTrue(_))),
+                "{body}\n{ops:?}"
+            );
+        }
+
+        // Every truthiness class through a non-local condition, each form
+        // agreeing with `if` on the same value; the `else` target and the
+        // postfix-guard return are remapped past the peephole's NOPs.
+        let program = r#"def id(v)
+  v
+end
+def unless_block(v)
+  r = ""
+  unless id(v)
+    r = "F"
+  else
+    r = "T"
+  end
+  r
+end
+def bang_block(v)
+  if !id(v)
+    "F"
+  else
+    "T"
+  end
+end
+def guard(v)
+  return "F" unless id(v)
+
+  "T"
+end
+def postfix(v)
+  r = "T"
+  r = "F" unless id(v)
+  r
+end
+def double_bang(v)
+  if !!id(v)
+    "T"
+  else
+    "F"
+  end
+end
+def ternary(v)
+  !id(v) ? "F" : "T"
+end
+vals = [true, false, nil, 0, 1, -1, 0.0, "", "a", [], [0], {}, {"a": 1}, :s, fn(x) { x }]
+let result = [unless_block, bang_block, guard, postfix, double_bang, ternary].map { |form| vals.map { |v| form(v) }.join("") }"#;
+        let row = "TFFFTTTFTFTFTTT";
+        assert_eq!(
+            vm_result(program),
+            format!("[{row}, {row}, {row}, {row}, {row}, {row}]")
         );
     }
 
@@ -3367,6 +3482,7 @@ mod stack_effect_tests {
             // Branches.
             (&[], Jump(0)),
             (&[True], JumpIfFalse(0)),
+            (&[False], JumpIfTrue(0)),
             (&[True], JumpIfFalseNoPop(0)),
             (&[True], JumpIfTrueNoPop(0)),
             (&[Null], NullishJump(0)),

@@ -2589,6 +2589,70 @@ end
   print(branches(v))
 end"##,
     ),
+    (
+        // `unless <expr>`, the postfix `unless` forms and `if !<expr>` fold
+        // the `!` into one `JumpIfTrue` on the expression's value (`!!` and
+        // `unless !` back into `JumpIfFalse`), in statements, tail position,
+        // `while`, the ternary, comprehension filters and `match` guards.
+        // Every truthiness class must branch as the tree-walker's `!` does.
+        "negated_condition_jump_if_true",
+        r##"class Box
+  v: Int
+  new(v: Int)
+    @v = v
+  end
+end
+def id(v)
+  v
+end
+def guard(v)
+  return "g" unless id(v)
+
+  "G"
+end
+def tail(v)
+  unless id(v) == nil
+    "t"
+  else
+    "T"
+  end
+end
+def forms(v)
+  out = []
+  out.push(1) unless id(v)
+  unless [v][0]
+    out.push(2)
+  else
+    out.push(3)
+  end
+  out.push(4) if !id(v)
+  out.push(5) if !!id(v)
+  out.push(6) unless !id(v)
+  out.push(!(id(v)) ? 7 : 8)
+  n = 0
+  while !(n >= 2 || id(v))
+    n += 1
+  end
+  out.push(n)
+  out.push([1, 2].filter { |x| !id(v) }.length)
+  out.push(match 1 { x if !id(v) => "m", _ => "M" })
+  out.push(guard(v))
+  out.push(tail(v))
+  out
+end
+[true, false, nil, 0, 1, -7, 0.0, 2.5, "", "x", [], [nil], {}, {"k": 0}, :sym, Box.new(0), fn(x) { x }].each do |v|
+  print(forms(v))
+end
+i = 5
+until_like = 0
+while !(i < 0)
+  i -= 1
+  until_like += 1 unless i % 2 == 0
+end
+print(until_like)
+print([1, 2, 3, 4].map { |x| x unless x > 2 })
+print((0..6).filter { |x| !(x % 3 == 0) })"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

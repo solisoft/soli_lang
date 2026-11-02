@@ -130,8 +130,7 @@ impl Compiler {
 
             // The guard sees the bindings, which is the point of `n if n > 0`.
             let guard_fail = if let Some(ref guard) = arm.guard {
-                self.compile_expr(guard)?;
-                Some(self.emit_jump(Op::JumpIfFalse(0), line))
+                Some(self.compile_condition_jump(guard, false, line)?)
             } else {
                 None
             };
@@ -518,8 +517,7 @@ impl Compiler {
 
             // Check guard if present
             let guard_jump = if let Some(ref guard) = arm.guard {
-                self.compile_expr(guard)?;
-                Some(self.emit_jump(Op::JumpIfFalse(0), line))
+                Some(self.compile_condition_jump(guard, false, line)?)
             } else {
                 None
             };

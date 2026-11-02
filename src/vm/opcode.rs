@@ -66,6 +66,10 @@ pub enum Op {
     Jump(u16),
     /// Jump forward if top of stack is falsy (pops the value).
     JumpIfFalse(u16),
+    /// Jump forward if top of stack is truthy (pops the value): the branch
+    /// of `unless cond`, `x unless cond` and `if !cond`, which used to be
+    /// `Not, JumpIfFalse` — a Bool pushed only to be popped.
+    JumpIfTrue(u16),
     /// Jump backward by offset (for loops).
     Loop(u16),
     /// Jump forward if falsy, don't pop (for &&).
@@ -559,6 +563,7 @@ pub enum Op {
 pub const FORWARD_BRANCH_OPS: &[Op] = &[
     Op::Jump(0),
     Op::JumpIfFalse(0),
+    Op::JumpIfTrue(0),
     Op::JumpIfFalseNoPop(0),
     Op::JumpIfTrueNoPop(0),
     Op::JumpIfNull(0),

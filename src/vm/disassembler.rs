@@ -90,6 +90,7 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
         Op::Not => out.push_str("NOT"),
         Op::Jump(offset) => out.push_str(&format!("JUMP         {:>5}", offset)),
         Op::JumpIfFalse(offset) => out.push_str(&format!("JUMP_IF_FALSE {:>4}", offset)),
+        Op::JumpIfTrue(offset) => out.push_str(&format!("JUMP_IF_TRUE {:>5}", offset)),
         Op::Loop(offset) => out.push_str(&format!("LOOP         {:>5}", offset)),
         Op::JumpIfFalseNoPop(offset) => {
             out.push_str(&format!("JUMP_FALSE_NP {:>4}", offset));
@@ -705,6 +706,7 @@ mod tests {
         let body = body_for(vec![
             (Op::Jump(10), 1),
             (Op::JumpIfFalse(20), 1),
+            (Op::JumpIfTrue(21), 1),
             (Op::Loop(5), 1),
             (Op::JumpIfFalseNoPop(2), 1),
             (Op::JumpIfTrueNoPop(3), 1),
@@ -712,6 +714,7 @@ mod tests {
         ]);
         assert!(body.contains("JUMP "));
         assert!(body.contains("JUMP_IF_FALSE"));
+        assert!(body.contains("JUMP_IF_TRUE"));
         assert!(body.contains("LOOP"));
         assert!(body.contains("JUMP_FALSE_NP"));
         assert!(body.contains("JUMP_TRUE_NP"));

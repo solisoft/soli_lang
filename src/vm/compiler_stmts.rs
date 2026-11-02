@@ -220,6 +220,48 @@ impl Compiler {
         Ok(())
     }
 
+    /// Compile a branch condition and the forward jump that skips the code
+    /// guarded by it, returning that jump for `patch_jump`. The jump is taken
+    /// when the condition is falsy — or truthy, with `invert` (`unless`).
+    ///
+    /// A leading `!` (parentheses included) is folded into the jump's sense
+    /// instead of compiled: `unless a < b`, `x unless a < b` and `if !(a < b)`
+    /// (the parser spells both postfix `unless` forms that way) become
+    /// `<a < b>, JumpIfTrue`, where they were `<a < b>, Not, JumpIfFalse` —
+    /// one dispatch and a pushed Bool fewer. Exact, because `!v` is
+    /// `Bool(!v.is_truthy())` on both engines and the jump tests nothing but
+    /// truthiness: `!!v` branches as `v` does.
+    pub(super) fn compile_condition_jump(
+        &mut self,
+        condition: &crate::ast::Expr,
+        invert: bool,
+        line: usize,
+    ) -> CompileResult<usize> {
+        use crate::ast::expr::{ExprKind, UnaryOp};
+        let mut condition = condition;
+        let mut invert = invert;
+        loop {
+            match &condition.kind {
+                ExprKind::Unary {
+                    operator: UnaryOp::Not,
+                    operand,
+                } => {
+                    invert = !invert;
+                    condition = operand;
+                }
+                ExprKind::Grouping(inner) => condition = inner,
+                _ => break,
+            }
+        }
+        self.compile_expr(condition)?;
+        let jump = if invert {
+            Op::JumpIfTrue(0)
+        } else {
+            Op::JumpIfFalse(0)
+        };
+        Ok(self.emit_jump(jump, line))
+    }
+
     fn compile_if_stmt(
         &mut self,
         condition: &crate::ast::Expr,
@@ -228,11 +270,7 @@ impl Compiler {
         invert: bool,
         line: usize,
     ) -> CompileResult<()> {
-        self.compile_expr(condition)?;
-        if invert {
-            self.emit(Op::Not, line);
-        }
-        let then_jump = self.emit_jump(Op::JumpIfFalse(0), line);
+        let then_jump = self.compile_condition_jump(condition, invert, line)?;
 
         self.compile_stmt(then_branch)?;
 
@@ -257,8 +295,7 @@ impl Compiler {
         // `while` parks no iterator.
         self.begin_loop(loop_start, false);
 
-        self.compile_expr(condition)?;
-        let exit_jump = self.emit_jump(Op::JumpIfFalse(0), line);
+        let exit_jump = self.compile_condition_jump(condition, false, line)?;
 
         self.set_continue_target();
         self.compile_stmt(body)?;
@@ -692,11 +729,7 @@ impl Compiler {
         invert: bool,
         line: usize,
     ) -> CompileResult<()> {
-        self.compile_expr(condition)?;
-        if invert {
-            self.emit(Op::Not, line);
-        }
-        let then_jump = self.emit_jump(Op::JumpIfFalse(0), line);
+        let then_jump = self.compile_condition_jump(condition, invert, line)?;
         self.compile_tail_stmt(then_branch)?;
         if let Some(else_stmt) = else_branch {
             let else_jump = self.emit_jump(Op::Jump(0), line);
