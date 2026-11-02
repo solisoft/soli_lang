@@ -1676,3 +1676,82 @@ fn views_and_actions_leave_the_callers_hash_alone_across_requests() {
     assert!(!check.contains("differs"), "{check}");
     assert!(!check.contains("render failed"), "{check}");
 }
+
+#[test]
+fn render_json_and_render_text_skip_the_actions_default_view() {
+    // `render_json` / `render_text` answer through the fast-path slot and
+    // return nil, which the controller took for "render the default view": a
+    // JSON action whose name matched a view rendered that view for nothing,
+    // and answered 500 when it raised. An action that returns nothing still
+    // gets its view.
+    let app = tempfile::tempdir().expect("temp app dir");
+    let root = app.path();
+    let write = |path: &str, body: &str| {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent dir")).expect("mkdir");
+        std::fs::write(path, body).expect("write app file");
+    };
+    write(
+        "config/routes.sl",
+        "get(\"/ping\", \"api#ping\")\nget(\"/json\", \"api#json\")\n\
+         get(\"/text\", \"api#text\")\nget(\"/page\", \"api#page\")\n",
+    );
+    write(
+        "app/controllers/api_controller.sl",
+        "class ApiController < Controller\n  \
+           # GET /ping\n  \
+           def ping(req)\n    render_text(\"pong\")\n  end\n\n  \
+           # GET /json\n  \
+           def json(req)\n    @who = \"json\"\n    render_json({\"ok\": true}, 201)\n  end\n\n  \
+           # GET /text\n  \
+           def text(req)\n    render_text(\"plain\")\n  end\n\n  \
+           # GET /page\n  \
+           def page(req)\n    @who = \"view\"\n  end\n\
+         end\n",
+    );
+    write(
+        "app/views/layouts/application.html.slv",
+        "<main><%= yield %></main>",
+    );
+    write("app/views/api/json.html.slv", "<%= 3 / 0 %>");
+    write("app/views/api/text.html.slv", "<%= 3 / 0 %>");
+    write("app/views/api/page.html.slv", "hello <%= who %>");
+
+    let port = pick_port();
+    let child = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_soli")))
+        .arg("serve")
+        .arg(root)
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--workers")
+        .arg("1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn soli serve");
+    let server = ServerProcess { child, port };
+    server.wait_ready();
+    let get = |path: &str| match ureq::get(&server.url(path)).call() {
+        Ok(resp) => resp,
+        Err(ureq::Error::Status(_, resp)) => resp,
+        Err(e) => panic!("GET {path}: {e}"),
+    };
+
+    let json = get("/json");
+    assert_eq!(json.status(), 201, "/json answered with its view");
+    assert!(
+        json.content_type().starts_with("application/json"),
+        "{}",
+        json.content_type()
+    );
+    assert_eq!(body_string(json), "{\"ok\":true}");
+
+    let text = get("/text");
+    assert_eq!(text.status(), 200, "/text answered with its view");
+    assert!(text.content_type().starts_with("text/plain"));
+    assert_eq!(body_string(text), "plain");
+
+    let page = get("/page");
+    assert_eq!(page.status(), 200);
+    assert!(body_string(page).contains("<main>hello view</main>"));
+}

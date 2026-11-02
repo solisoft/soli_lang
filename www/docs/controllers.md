@@ -574,6 +574,8 @@ def api_users
 end
 ```
 
+The call is the response: an action that ends with `render_json`, `render_text` or `render_jsonp` never auto-renders a view of the same name, even when `app/views/<controller>/<action>.html.slv` exists.
+
 > **Security — instance serialisation.** `render_json(instance)` (and any code path that JSON-stringifies a `Value::Instance`, including `to_json` on a Model record) **omits sensitive fields by default**. Names matching `password*`, `*_token`, `*_digest`, `*_secret`, or `*_hash` are dropped, as are `_`-prefixed framework internals (`_errors`, `_text`, `_pending_translations`, …). The standard Model metadata (`_key`, `_id`, `_rev`, `_created_at`, `_updated_at`) is still included. If you need to expose a field whose name matches one of the patterns, build the response shape explicitly: `render_json({ "id": user._key, "email": user.email, "auth_token_count": user.auth_token_count })` instead of `render_json(user)`.
 
 For a reusable model-side shape, define an `as_json` method on the Model subclass:

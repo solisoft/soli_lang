@@ -361,6 +361,7 @@ render("home/index")   # @fields reach the view; bare `render` is implicit anywa
                 <p class="text-gray-400 text-sm mb-3">Render a JSON response with automatic <code class="text-amber-400">Content-Type: application/json</code> header. Data is automatically serialized to JSON.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">render_json({ "users": users })
 render_json({ "error": "Not found" }, 404)</code></pre>
+                <p class="text-gray-400 text-sm mb-3">The call is the response: an action that ends with <code class="text-amber-400">render_json</code>, <code class="text-amber-400">render_text</code> or <code class="text-amber-400">render_jsonp</code> never auto-renders a view of the same name, even when <code class="text-amber-400">app/views/&lt;controller&gt;/&lt;action&gt;.html.slv</code> exists.</p>
                 <div class="my-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20">
                     <p class="text-rose-200/80 text-sm">
                         <strong>Security — instance serialisation.</strong>
