@@ -374,8 +374,10 @@ impl Vm {
     /// arm's instance-field write — an existing field overwritten in place, a
     /// new one inserted — when it completes with no error. The receiver is an
     /// instance, the privacy check lets the write through and the instance
-    /// is no constructed value object. `false` touches nothing and hands the
-    /// op to the general arm, which raises the refusal.
+    /// is no constructed value object. A hash's `h.key = v` always sets the
+    /// key (no method precedence, no privacy, nothing frozen), so it is done
+    /// here too, keyed by the pool's own `SoliStr`. `false` touches nothing
+    /// and hands the op to the general arm, which raises the refusal.
     #[inline]
     fn fast_field_write(
         &self,
@@ -383,8 +385,13 @@ impl Vm {
         name: &crate::interpreter::value::SoliStr,
         value: &Value,
     ) -> bool {
-        let Value::Instance(inst) = receiver else {
-            return false;
+        let inst = match receiver {
+            Value::Instance(inst) => inst,
+            Value::Hash(hash) => {
+                hash.borrow_mut().set_str(name, clone_scalar_fast(value));
+                return true;
+            }
+            _ => return false,
         };
         if crate::interpreter::value::restricted_methods_declared()
             && self.check_private_value(receiver, name).is_err()
@@ -580,6 +587,21 @@ impl Vm {
         match &frame.closure.proto.chunk.constants[idx as usize] {
             Constant::String(s) => s.to_string(),
             _ => String::new(),
+        }
+    }
+
+    /// A string constant as the pool's own `SoliStr` (an empty one for any
+    /// other constant): a hash write keyed by it appends the key as a
+    /// refcount clone instead of copying its bytes. A raw pointer, like the
+    /// arms' `*const str` keys, so the arm can go on using `self`; the
+    /// constant lives as long as the frame's prototype.
+    #[inline(always)]
+    fn string_constant_key(&self, idx: u16) -> *const crate::interpreter::value::SoliStr {
+        static EMPTY: crate::interpreter::value::SoliStr =
+            crate::interpreter::value::SoliStr::new();
+        match &self.frames.last().unwrap().closure.proto.chunk.constants[idx as usize] {
+            Constant::String(s) => s as *const _,
+            _ => &EMPTY as *const _,
         }
     }
 
@@ -934,11 +956,12 @@ impl Vm {
                         None => break Some(op),
                     }
                 }
-                // `@title = t` or `post.title = t` on an instance: the general
-                // arm's in-place write, here when it completes with no error
-                // (`Vm::fast_field_write`). The value takes the receiver's
-                // place on the stack, as the assignment's result. A hash, a
-                // class, a refused or frozen write goes to the general arm.
+                // `@title = t` or `post.title = t` on an instance, `h.key = v`
+                // on a hash: the general arm's in-place write, here when it
+                // completes with no error (`Vm::fast_field_write`). The value
+                // takes the receiver's place on the stack, as the assignment's
+                // result. A class, a refused or frozen write goes to the
+                // general arm.
                 Op::SetProperty(idx) => {
                     let len = self.stack.len();
                     // SAFETY: as for `Op::Constant` above.
@@ -2554,24 +2577,14 @@ impl Vm {
                 Op::HashSetConst(key_idx) => {
                     let value = self.pop();
                     let receiver = self.pop();
-                    let key: *const str = {
-                        let frame = self.frames.last().unwrap();
-                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_ref() as *const str,
-                            _ => "" as *const str,
-                        }
-                    };
-                    let key: &str = unsafe { &*key };
+                    // SAFETY: the constant outlives the arm (see `string_constant_key`).
+                    let key_str: &crate::interpreter::value::SoliStr =
+                        unsafe { &*self.string_constant_key(key_idx) };
+                    let key: &str = key_str.as_str();
                     match receiver {
                         Value::Hash(hash) => {
-                            let mut hash_ref = hash.borrow_mut();
-                            if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
-                                *existing = value.clone();
-                            } else {
-                                hash_ref
-                                    .insert(HashKey::String(key.to_string().into()), value.clone());
-                            }
-                            drop(hash_ref);
+                            // A miss appends the pool's key, not a copy of it.
+                            hash.borrow_mut().set_str(key_str, value.clone());
                             // Same rule as `Op::SetIndex`: the expression's value
                             // is the assigned value, not null.
                             self.push(value);
@@ -2727,23 +2740,14 @@ impl Vm {
                 Op::HashSetLocalConst(slot, key_idx) => {
                     let value = self.pop();
                     let base = self.frames.last().unwrap().stack_base;
-                    let key: *const str = {
-                        let frame = self.frames.last().unwrap();
-                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_ref() as *const str,
-                            _ => "" as *const str,
-                        }
-                    };
-                    let key: &str = unsafe { &*key };
+                    // SAFETY: the constant outlives the arm (see `string_constant_key`).
+                    let key_str: &crate::interpreter::value::SoliStr =
+                        unsafe { &*self.string_constant_key(key_idx) };
+                    let key: &str = key_str.as_str();
                     match &self.stack[base + slot as usize] {
                         Value::Hash(hash) => {
-                            let mut hash_ref = hash.borrow_mut();
-                            if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
-                                *existing = value.clone();
-                            } else {
-                                hash_ref
-                                    .insert(HashKey::String(key.to_string().into()), value.clone());
-                            }
+                            // A miss appends the pool's key, not a copy of it.
+                            hash.borrow_mut().set_str(key_str, value.clone());
                         }
                         other => {
                             let other = other.clone();
@@ -2910,24 +2914,15 @@ impl Vm {
                             _ => "" as *const str,
                         }
                     };
-                    let key: *const str = {
-                        let frame = self.frames.last().unwrap();
-                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_ref() as *const str,
-                            _ => "" as *const str,
-                        }
-                    };
+                    // SAFETY: the constant outlives the arm (see `string_constant_key`).
+                    let key_str: &crate::interpreter::value::SoliStr =
+                        unsafe { &*self.string_constant_key(key_idx) };
                     let global_name: &str = unsafe { &*global_name };
-                    let key: &str = unsafe { &*key };
+                    let key: &str = key_str.as_str();
                     match self.globals.get(global_name) {
                         Some(Value::Hash(hash)) => {
-                            let mut hash_ref = hash.borrow_mut();
-                            if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
-                                *existing = value.clone();
-                            } else {
-                                hash_ref
-                                    .insert(HashKey::String(key.to_string().into()), value.clone());
-                            }
+                            // A miss appends the pool's key, not a copy of it.
+                            hash.borrow_mut().set_str(key_str, value.clone());
                         }
                         Some(other) => {
                             let other = other.clone();
@@ -3290,7 +3285,15 @@ impl Vm {
                     // the owned name for the insert anyway.
                     let updated = {
                         let object = self.stack.last().unwrap();
-                        if let Value::Instance(inst) = object {
+                        if let Value::Hash(hash) = object {
+                            // `h.key = v` always sets the key: one borrowed
+                            // probe, and a miss appends the pool's key — no
+                            // owned name, receiver clone or span.
+                            // SAFETY: the constant outlives the arm.
+                            let name = unsafe { &*self.string_constant_key(idx) };
+                            hash.borrow_mut().set_str(name, value.clone());
+                            true
+                        } else if let Value::Instance(inst) = object {
                             let frame = self.frames.last().unwrap();
                             match &frame.closure.proto.chunk.constants[idx as usize] {
                                 Constant::String(name) => {
@@ -9152,5 +9155,129 @@ mod bare_builtin_fast_tier_tests {
              result = [h.length, h.keys, h.size, {\"a\": 1}.len, 2.5.round, (-3).abs, \"zz\".length]\n",
         );
         assert_eq!(shown(&value), "[99, k, 2, <method hash.len>, 3, 3, 2]");
+    }
+}
+
+#[cfg(test)]
+mod hash_write_tests {
+    //! `h.key = v` on a hash completes in the fast tier, and every constant-key
+    //! hash write (`h.key = v`, `h["key"] = v` on a local, a global or any
+    //! other receiver) appends a new key as a refcount clone of the constant
+    //! pool's `SoliStr`, never as a copy of its bytes.
+    use super::general_member_ops;
+    use crate::interpreter::value::{HashKey, Value};
+    use crate::vm::chunk::{Constant, FunctionProto};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+
+    /// Run `src`; return its `result` global, the non-instance property ops
+    /// the general arms ran, and the address of every heap-held string
+    /// constant of the program (functions included).
+    fn run(src: &str) -> (Value, usize, Vec<*const u8>) {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut pool = Vec::new();
+        collect_strings(&module.main, &mut pool);
+        let mut vm = Vm::new();
+        let start = general_member_ops();
+        vm.execute(&module.main).expect("vm");
+        let general = general_member_ops() - start;
+        let result = vm.globals.get("result").cloned().expect("result");
+        (result, general, pool)
+    }
+
+    fn collect_strings(proto: &FunctionProto, pool: &mut Vec<*const u8>) {
+        for constant in &proto.chunk.constants {
+            match constant {
+                Constant::String(s) => pool.push(s.as_str().as_ptr()),
+                Constant::Function(inner) => collect_strings(inner, pool),
+                _ => {}
+            }
+        }
+    }
+
+    const BUILD: &str = r#"
+h = {"a": 1}
+h.a = 2
+h.b = 3
+h.a_key_longer_than_fifteen = 4
+def build(n)
+  out = {}
+  out.first = n
+  out.first = out.first + 10
+  [1, 2].each { |k| out.from_block_key_long_name = k }
+  i = 0
+  while i < 10
+    out["k#{i}"] = i
+    i = i + 1
+  end
+  out.after_promotion = true
+  out.first = 0
+  out
+end
+o = {"inner": {"x": 1}}
+o.inner.y = 2
+result = [h, build(5), o]
+"#;
+
+    /// Dot writes on a hash — a global, a function's local, a block's
+    /// upvalue, a nested hash, before and after the promotion past
+    /// `SMALL_MAX` keys — give the general arm's result (overwrites keep
+    /// their position, new keys append) and none of them leaves the tier.
+    #[test]
+    fn hash_dot_writes_stay_in_the_fast_tier() {
+        let (value, general, _) = run(BUILD);
+        assert_eq!(
+            format!("{value}"),
+            "[{a => 2, b => 3, a_key_longer_than_fifteen => 4}, \
+             {first => 0, from_block_key_long_name => 2, k0 => 0, k1 => 1, k2 => 2, \
+             k3 => 3, k4 => 4, k5 => 5, k6 => 6, k7 => 7, k8 => 8, k9 => 9, \
+             after_promotion => true}, {inner => {x => 1, y => 2}}]"
+        );
+        assert_eq!(general, 0, "a hash dot write left the fast tier");
+    }
+
+    /// Each long constant key the writes added is the pool's own buffer:
+    /// `SetProperty`, `HashSetGlobalConst`, `HashSetLocalConst` and
+    /// `HashSetConst` append a refcount clone. Before, each copied the key
+    /// into a `String` and then into a fresh `SoliStr`.
+    #[test]
+    fn constant_hash_keys_share_the_pool_buffer() {
+        let src = r#"
+g = {}
+g.dot_key_longer_than_fifteen = 1
+g["index_key_longer_than_fifteen"] = 2
+def local_writes
+  l = {}
+  l.local_dot_key_longer_than_15 = 3
+  l["local_index_key_longer_than_15"] = 4
+  l
+end
+o = {"inner": {}}
+o["inner"]["nested_index_key_longer_than_15"] = 5
+result = [g, local_writes(), o["inner"]]
+"#;
+        let (value, _, pool) = run(src);
+        let Value::Array(hashes) = value else {
+            panic!("expected an array, got {value:?}");
+        };
+        let mut seen = 0;
+        for hash in hashes.borrow().iter() {
+            let Value::Hash(hash) = hash else {
+                panic!("expected a hash, got {hash:?}");
+            };
+            for (key, _) in hash.borrow().iter() {
+                let HashKey::String(key) = key else {
+                    panic!("expected a string key, got {key:?}");
+                };
+                assert!(
+                    pool.contains(&key.as_str().as_ptr()),
+                    "key {key} was copied out of the constant pool"
+                );
+                seen += 1;
+            }
+        }
+        assert_eq!(seen, 5);
     }
 }

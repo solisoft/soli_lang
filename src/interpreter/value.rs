@@ -372,18 +372,14 @@ pub fn hash_contains_value(hash: &HashPairs, key: &Value) -> bool {
 pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
     match key {
         Value::String(s) => {
-            if let Some((_, _, existing)) = hash.get_full_mut(&StrKey(s)) {
-                *existing = value;
-            } else {
-                hash.insert(HashKey::String(s.clone()), value);
-            }
+            hash.set_str(s, value);
             true
         }
         Value::Symbol(s) => {
             if let Some((_, _, existing)) = hash.get_full_mut(&SymKey(s)) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Symbol(s.clone()), value);
+                hash.insert_absent(HashKey::Symbol(s.clone()), value);
             }
             true
         }
@@ -391,7 +387,7 @@ pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
             if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Int(*n)) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Int(*n), value);
+                hash.insert_absent(HashKey::Int(*n), value);
             }
             true
         }
@@ -399,7 +395,7 @@ pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
             if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Bool(*b)) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Bool(*b), value);
+                hash.insert_absent(HashKey::Bool(*b), value);
             }
             true
         }
@@ -407,7 +403,7 @@ pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
             if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Null) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Null, value);
+                hash.insert_absent(HashKey::Null, value);
             }
             true
         }
@@ -415,7 +411,7 @@ pub fn hash_set_value(hash: &mut HashPairs, key: &Value, value: Value) -> bool {
             if let Some((_, _, existing)) = hash.get_full_mut(&HashKey::Decimal(d.clone())) {
                 *existing = value;
             } else {
-                hash.insert(HashKey::Decimal(d.clone()), value);
+                hash.insert_absent(HashKey::Decimal(d.clone()), value);
             }
             true
         }

@@ -991,7 +991,7 @@ impl Vm {
             }
             Value::Hash(hash) => {
                 hash.borrow_mut()
-                    .insert(HashKey::String(name.to_string().into()), value);
+                    .insert(HashKey::String(name.into()), value);
                 Ok(())
             }
             _ => Err(RuntimeError::type_error(

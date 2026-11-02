@@ -590,10 +590,7 @@ impl Vm {
                 let hash = {
                     let mut pairs = crate::interpreter::value::HashPairs::default();
                     for (name, value) in named {
-                        pairs.insert(
-                            crate::interpreter::value::HashKey::String(name.to_string().into()),
-                            value,
-                        );
+                        pairs.insert(crate::interpreter::value::HashKey::String(name), value);
                     }
                     Value::Hash(Rc::new(RefCell::new(pairs)))
                 };

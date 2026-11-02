@@ -733,6 +733,44 @@ end"##,
         "let h = {\"n\": 1}\nh[\"n\"] = h[\"n\"] + 10\nprint(h)",
     ),
     (
+        // `h.key = v` and constant-key `h["key"] = v` writes: overwrites keep
+        // their position, new keys (short, and longer than an inline
+        // `SoliStr`) append, on a global, a local, a block's upvalue and a
+        // nested hash, across the promotion past eight keys. The VM's hash
+        // dot write moved into the fast tier, keyed by the pool's `SoliStr`.
+        "hash_constant_key_writes",
+        r##"h = {"a": 1}
+h.a = 2
+h.b = 3
+h.a_key_longer_than_fifteen = 4
+h["c"] = 5
+h["a"] = 6
+h["another_key_longer_than_15"] = 7
+print(h)
+def build(n)
+  out = {}
+  out.first = n
+  out["second"] = n + 1
+  out.first = out.first + 10
+  [1, 2].each { |k| out.from_block_key_long_name = k }
+  i = 0
+  while i < 10
+    out["k#{i}"] = i
+    i = i + 1
+  end
+  out.after_promotion = true
+  out.first = 0
+  out
+end
+print(build(5))
+o = {"inner": {"x": 1}}
+o.inner.y = 2
+o["inner"]["z"] = 3
+o["inner"]["x"] = 9
+print(o)
+"##,
+    ),
+    (
         "early_return_in_loop",
         "fn first_even(a) { for v in a { if v % 2 == 0 { return v } }\n  return -1 }\nprint(first_even([1, 3, 4, 7]))",
     ),
