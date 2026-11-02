@@ -10,7 +10,7 @@ use crate::error::RuntimeError;
 use crate::interpreter::executor::MAX_CALL_DEPTH;
 use crate::interpreter::value::{
     build_interpolated, hash_get_value, hash_set_value, same_string, Class, HashKey, HashPairs,
-    StrKey, Value,
+    SoliStr, StrKey, Value,
 };
 use crate::metrics::VmTimingGuard;
 use crate::span::Span;
@@ -512,6 +512,21 @@ impl Vm {
         match &frame.closure.proto.chunk.constants[idx as usize] {
             Constant::String(s) => s.clone(),
             _ => crate::interpreter::value::SoliStr::default(),
+        }
+    }
+
+    /// A string constant by address, for the ops that keep it borrowed while
+    /// they mutate the VM (the hash-set ops). The constant pool lives in the
+    /// running frame's `Arc<FunctionProto>`, which outlives the op, so the
+    /// pointer stays valid for the op's duration. A non-string constant reads
+    /// as the empty string, like `read_string_constant`.
+    #[inline]
+    fn string_constant_ptr(&self, idx: u16) -> *const SoliStr {
+        static EMPTY: SoliStr = SoliStr::new();
+        let frame = self.frames.last().unwrap();
+        match &frame.closure.proto.chunk.constants[idx as usize] {
+            Constant::String(s) => s as *const SoliStr,
+            _ => &EMPTY as *const SoliStr,
         }
     }
 
@@ -2690,22 +2705,18 @@ impl Vm {
                 Op::HashSetConst(key_idx) => {
                     let value = self.pop();
                     let receiver = self.pop();
-                    let key: *const str = {
-                        let frame = self.frames.last().unwrap();
-                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_ref() as *const str,
-                            _ => "" as *const str,
-                        }
-                    };
-                    let key: &str = unsafe { &*key };
+                    // The constant itself, not its `&str`: a new key is
+                    // inserted as a clone of it (an inline copy or a refcount
+                    // bump), not as a fresh `String` converted a second time.
+                    let key_str: &SoliStr = unsafe { &*self.string_constant_ptr(key_idx) };
+                    let key: &str = key_str.as_str();
                     match receiver {
                         Value::Hash(hash) => {
                             let mut hash_ref = hash.borrow_mut();
                             if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
                                 *existing = value.clone();
                             } else {
-                                hash_ref
-                                    .insert(HashKey::String(key.to_string().into()), value.clone());
+                                hash_ref.insert(HashKey::String(key_str.clone()), value.clone());
                             }
                             drop(hash_ref);
                             // Same rule as `Op::SetIndex`: the expression's value
@@ -2863,22 +2874,18 @@ impl Vm {
                 Op::HashSetLocalConst(slot, key_idx) => {
                     let value = self.pop();
                     let base = self.frames.last().unwrap().stack_base;
-                    let key: *const str = {
-                        let frame = self.frames.last().unwrap();
-                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_ref() as *const str,
-                            _ => "" as *const str,
-                        }
-                    };
-                    let key: &str = unsafe { &*key };
+                    // The constant itself, not its `&str`: a new key is
+                    // inserted as a clone of it (an inline copy or a refcount
+                    // bump), not as a fresh `String` converted a second time.
+                    let key_str: &SoliStr = unsafe { &*self.string_constant_ptr(key_idx) };
+                    let key: &str = key_str.as_str();
                     match &self.stack[base + slot as usize] {
                         Value::Hash(hash) => {
                             let mut hash_ref = hash.borrow_mut();
                             if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
                                 *existing = value.clone();
                             } else {
-                                hash_ref
-                                    .insert(HashKey::String(key.to_string().into()), value.clone());
+                                hash_ref.insert(HashKey::String(key_str.clone()), value.clone());
                             }
                         }
                         other => {
@@ -3046,23 +3053,17 @@ impl Vm {
                             _ => "" as *const str,
                         }
                     };
-                    let key: *const str = {
-                        let frame = self.frames.last().unwrap();
-                        match &frame.closure.proto.chunk.constants[key_idx as usize] {
-                            Constant::String(s) => s.as_ref() as *const str,
-                            _ => "" as *const str,
-                        }
-                    };
+                    // Shared like `HashSetConst`'s key.
+                    let key_str: &SoliStr = unsafe { &*self.string_constant_ptr(key_idx) };
                     let global_name: &str = unsafe { &*global_name };
-                    let key: &str = unsafe { &*key };
+                    let key: &str = key_str.as_str();
                     match self.globals.get(global_name) {
                         Some(Value::Hash(hash)) => {
                             let mut hash_ref = hash.borrow_mut();
                             if let Some((_, _, existing)) = hash_ref.get_full_mut(&StrKey(key)) {
                                 *existing = value.clone();
                             } else {
-                                hash_ref
-                                    .insert(HashKey::String(key.to_string().into()), value.clone());
+                                hash_ref.insert(HashKey::String(key_str.clone()), value.clone());
                             }
                         }
                         Some(other) => {
@@ -5335,7 +5336,11 @@ impl Vm {
                 // Iterate by byte offset instead of pre-collecting a Vec<char>.
                 if let Some(ch) = s[*byte_offset..].chars().next() {
                     *byte_offset += ch.len_utf8();
-                    Some(Value::String(ch.to_string().into()))
+                    // A char is at most 4 bytes, so it is stored inline: no
+                    // heap `String` per character.
+                    Some(Value::String(SoliStr::from(
+                        &*ch.encode_utf8(&mut [0u8; 4]),
+                    )))
                 } else {
                     None
                 }
@@ -6422,6 +6427,100 @@ mod tests {
             run_bytecode(constants(), &to_max).expect("MAX - 1 + 1 is in range"),
             Value::Int(i64::MAX)
         );
+    }
+
+    /// `h["k"] = v` on a hash without `"k"` inserts a clone of the key
+    /// constant, so a key longer than `EcoString`'s 15 inline bytes shares the
+    /// constant's buffer. The three ops inserted `key.to_string().into()`: a
+    /// heap `String`, then a second copy into a new `EcoString`.
+    #[test]
+    fn hash_set_const_ops_share_the_key_constant() {
+        const KEY: u16 = 0;
+        const ONE: u16 = 1;
+        const GLOBAL: u16 = 2;
+        let key: SoliStr = "content_type_header_value".into();
+        assert!(key.len() > 15, "the key must not fit inline");
+        let constants = || {
+            vec![
+                Constant::String(key.clone()),
+                Constant::Int(1),
+                Constant::String("h".into()),
+            ]
+        };
+        let shapes: Vec<(&str, Vec<Op>)> = vec![
+            (
+                "HashSetConst",
+                vec![
+                    Op::Hash(0),
+                    Op::GetLocal(1),
+                    Op::Constant(ONE),
+                    Op::HashSetConst(KEY),
+                    Op::Pop,
+                    Op::GetLocal(1),
+                    Op::Return,
+                ],
+            ),
+            (
+                "HashSetLocalConst",
+                vec![
+                    Op::Hash(0),
+                    Op::Constant(ONE),
+                    Op::HashSetLocalConst(1, KEY),
+                    Op::Pop,
+                    Op::GetLocal(1),
+                    Op::Return,
+                ],
+            ),
+            (
+                "HashSetGlobalConst",
+                vec![
+                    Op::Constant(ONE),
+                    Op::HashSetGlobalConst(GLOBAL, KEY),
+                    Op::Pop,
+                    Op::GetGlobal(GLOBAL),
+                    Op::Return,
+                ],
+            ),
+        ];
+        for (name, code) in &shapes {
+            let globals = [("h", crate::interpreter::value::empty_hash())];
+            let value = run_bytecode_with_globals(constants(), code, &globals)
+                .unwrap_or_else(|err| panic!("{name} raised: {err}"));
+            let Value::Hash(hash) = value else {
+                panic!("{name} did not return the hash: {value:?}");
+            };
+            let hash = hash.borrow();
+            assert_eq!(hash.len(), 1, "{name}");
+            let (stored_key, stored_value) = hash.get_index(0).unwrap();
+            let HashKey::String(stored) = stored_key else {
+                panic!("{name} stored a non-string key: {stored_key:?}");
+            };
+            assert_eq!(stored.as_str(), key.as_str(), "{name}");
+            assert_eq!(
+                stored.as_ptr(),
+                key.as_ptr(),
+                "{name} copied the key instead of sharing the constant"
+            );
+            assert_eq!(stored_value, &Value::Int(1), "{name}");
+            // A shared key still hashes and compares like a borrowed one.
+            assert_eq!(
+                hash.get(&StrKey(key.as_str())),
+                Some(&Value::Int(1)),
+                "{name}"
+            );
+        }
+    }
+
+    /// `for ch in str` yields one-character strings, multi-byte ones included;
+    /// each is built inline from the char's UTF-8 bytes.
+    #[test]
+    fn string_iteration_yields_each_character() {
+        let source = "let out = []\nfor ch in \"a\u{e9}\u{1F600}z\"\n  out.push(ch)\nend\nlet joined = out.join(\"|\")\nlet n = out.length";
+        assert_eq!(
+            compile_and_get_global(source, "joined"),
+            Value::String("a|\u{e9}|\u{1F600}|z".into())
+        );
+        assert_eq!(compile_and_get_global(source, "n"), Value::Int(4));
     }
 
     /// The source shapes the peephole turns into those ops: each must really
