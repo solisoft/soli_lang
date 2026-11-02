@@ -407,55 +407,16 @@ impl Interpreter {
         span: Span,
     ) -> RuntimeResult<Value> {
         use crate::interpreter::executor::access::member::{
-            parse_uploader_method_name, UploaderMethod,
+            uploader_call, uploader_helper_args, uploader_helper_missing,
         };
 
-        let (kind, field) = parse_uploader_method_name(method_name).ok_or_else(|| {
-            RuntimeError::type_error(
-                format!("'{}' is not a recognized uploader method", method_name),
-                span,
-            )
-        })?;
-
-        let helper_name = match kind {
-            UploaderMethod::Attach => "attach_upload",
-            UploaderMethod::Detach => "detach_upload",
-            UploaderMethod::Url | UploaderMethod::Urls => "upload_url",
-        };
-
-        let helper = self.environment.borrow().get(helper_name).ok_or_else(|| {
-            RuntimeError::type_error(
-                format!(
-                    "uploader method '{}' requires the '{}' helper to be defined \
-                     (see app/controllers/support.sl)",
-                    method_name, helper_name
-                ),
-                span,
-            )
-        })?;
-
-        let mut forwarded: Vec<Value> = Vec::with_capacity(arguments.len() + 2);
-        forwarded.push(Value::Instance(inst));
-        forwarded.push(Value::String(field.to_string().into()));
-        match kind {
-            UploaderMethod::Attach => {
-                if arguments.len() != 1 {
-                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
-                }
-                forwarded.extend(arguments);
-            }
-            UploaderMethod::Detach | UploaderMethod::Url | UploaderMethod::Urls => {
-                if arguments.len() > 1 {
-                    return Err(RuntimeError::wrong_arity(1, arguments.len(), span));
-                }
-                if let Some(arg) = arguments.into_iter().next() {
-                    forwarded.push(arg);
-                } else {
-                    forwarded.push(Value::Null);
-                }
-            }
-        }
-
+        let (kind, field, helper_name) = uploader_call(method_name, span)?;
+        let helper = self
+            .environment
+            .borrow()
+            .get(helper_name)
+            .ok_or_else(|| uploader_helper_missing(method_name, helper_name, span))?;
+        let forwarded = uploader_helper_args(kind, field, Value::Instance(inst), arguments, span)?;
         self.call_value(helper, forwarded, span)
     }
 

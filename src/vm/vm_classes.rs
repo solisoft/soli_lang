@@ -101,6 +101,14 @@ fn vm_alias_method(class: Rc<Class>) -> Value {
     ))
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Class-member reads the VM handed to the tree-walker's
+    /// `class_member_access` on this thread: tests pin the members the VM
+    /// answers itself.
+    pub(crate) static CLASS_MEMBER_HANDOFFS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 pub(crate) fn is_class_reflection_member(name: &str) -> bool {
     matches!(
         name,
@@ -493,6 +501,28 @@ impl Vm {
                     .map_err(|e| RuntimeError::type_error(e, span))?;
                     return Ok(Value::Class(nested.clone()));
                 }
+                // A model's bare `new` and the universal members (`klass.nil?`,
+                // `Post.class`), answered here as `class_member_access` answers
+                // them. Asking the tree-walker cost an interpreter seeded with a
+                // copy of every global, ~35 µs plus ~90 ns a global — on every
+                // `authorize(record)` of the auth scaffold, whose `policy_for`
+                // tests `policy_class.nil?`.
+                if name == "new"
+                    && crate::interpreter::executor::access::member::model_attribute_new(class)
+                {
+                    return Ok(
+                        crate::interpreter::executor::access::member::attribute_new_function(
+                            object,
+                        ),
+                    );
+                }
+                if let Some(value) =
+                    crate::interpreter::executor::access::member::class_universal_member(
+                        class, name,
+                    )
+                {
+                    return Ok(value);
+                }
                 // Class reflection (`define_method`, `class_eval`, `send`, …) is
                 // implemented only in the tree-walker's member access, which owns
                 // the primitive-overlay and method-cache bookkeeping. The VM used
@@ -552,7 +582,15 @@ impl Vm {
                 // after a write was a 500 in production (2.6.2). The
                 // interpreter answers the same NoSuchProperty for a member
                 // neither engine knows.
-                let mut interp = Interpreter::for_vm_fragment(&self.globals);
+                //
+                // `class_member_access` reads the class, the model registries
+                // and the test stubs, never a program global, so the
+                // interpreter needs no copy of the VM's globals — seeding one
+                // (`for_vm_fragment`) cost ~35 µs a read, as it did for scopes
+                // (`model_class_scope`).
+                #[cfg(test)]
+                CLASS_MEMBER_HANDOFFS.with(|count| count.set(count.get() + 1));
+                let mut interp = Interpreter::for_bound_body();
                 interp.evaluate_member_on_value(object.clone(), name, span)
             }
             // The tree-walker's rule, by the same function

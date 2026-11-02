@@ -2347,6 +2347,57 @@ built = [1, 2, 3].map { |x| Pair.new(x) }
 print(built.map { |p| p.a + p.b })
 print(Pair.new(1, 2).b, new Pair(3).b, Pair(4).b)"##,
     ),
+    (
+        // C571: the VM answers `Model.new(...)`, a bare `Model.new` and a
+        // class value's universal members itself, as `class_member_access`
+        // does — attribute form, `_` keys skipped, literal defaults, the same
+        // argument errors — instead of asking a tree-walker seeded with every
+        // global (~35 µs a call). A model's own static `new` still wins.
+        "model_new_and_class_universal_members",
+        r##"class Note < Model
+  views: Int = 3
+end
+class Plain
+end
+class Own < Model
+  static def new(x)
+    "own #{x}"
+  end
+end
+n = Note.new({"title": "x", "_k": 1})
+print(n.title, n._k, n.views)
+print(Note.new(nil).views, Note.new().views)
+k = Note
+print(k.nil?, Note.blank?, Note.present?, Note.class)
+print(Plain.nil?, Plain.class, Plain.present?)
+print(Note.new)
+print(Own.new(1))
+try
+  Note.new(5)
+catch e
+  print("hash: #{e}")
+end
+try
+  Note.new({}, {})
+catch e
+  print("count: #{e}")
+end"##,
+    ),
+    (
+        // C571: a model's uploader method calls the app helper from the VM's
+        // globals, not through a tree-walker seeded with all of them.
+        "model_uploader_method_calls_the_app_helper",
+        r##"class Snap < Model
+end
+Snap.has_one_attached("pic")
+Snap.has_many_attached("shots")
+def upload_url(record, field, blob_id)
+  "url:#{field}:#{blob_id}"
+end
+s = Snap.new()
+print(s.pic_url(), s.pic_url("b1"), s.shots_urls())
+print(s.pic_url(1, 2) rescue "refused")"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

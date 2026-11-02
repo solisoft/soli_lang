@@ -2089,6 +2089,25 @@ impl Vm {
                         return Ok(());
                     }
                 }
+                // `Post.new()` / `Post.new(attrs)`: the attribute form, built
+                // here as `class_member_access`'s `new` builds it — no
+                // constructor runs for a model's `new`. Reaching it through
+                // `op_get_property` cost a native per call, and before that an
+                // interpreter seeded with every global (~35 µs).
+                if name == "new"
+                    && crate::interpreter::executor::access::member::model_attribute_new(&class)
+                {
+                    let span = self.current_span();
+                    let instance =
+                        crate::interpreter::executor::access::member::new_with_attributes(
+                            &class,
+                            &self.stack[receiver_idx + 1..receiver_idx + 1 + argc],
+                        )
+                        .map_err(|e| RuntimeError::new(e, span))?;
+                    self.stack.truncate(receiver_idx);
+                    self.push(instance);
+                    return Ok(());
+                }
             }
             // Class-level `method_missing` is the LAST resort, matching
             // `class_member_access`: statics, then the reflection surface
@@ -2454,18 +2473,10 @@ impl Vm {
                 self.call_query_builder_method(receiver, method_name, args, span)?
             }
             // A model helper resolved by the tree-walker's instance access —
-            // uploader (`attach_file`), HABTM (`add_tag`) — comes back as a
-            // bound method; it runs where it was resolved.
+            // uploader (`attach_photo`, `photo_url`), HABTM (`add_tag`) —
+            // comes back as a bound method.
             Value::Instance(ref inst) if inst.borrow().class.is_model_subclass() => {
-                let method = Rc::new(crate::interpreter::value::ValueMethod {
-                    receiver: Box::new(receiver.clone()),
-                    method_name: method_name.to_string(),
-                });
-                // Seeded with the VM's globals: an uploader method calls the
-                // app's `attach_upload` helper.
-                let mut interp =
-                    crate::interpreter::executor::Interpreter::for_vm_fragment(&self.globals);
-                interp.call_method(method, args, span)?
+                self.call_model_helper_method(inst, method_name, args, span)?
             }
             _ => {
                 return Err(RuntimeError::NoSuchProperty {
@@ -2477,6 +2488,46 @@ impl Vm {
         };
         self.push(result);
         Ok(())
+    }
+
+    /// A model instance's HABTM (`add_tag`, `remove_tag`) or uploader
+    /// method (`attach_photo`, `detach_photo`, `photo_url`, `photo_urls`),
+    /// run as the tree-walker's `call_method` runs it: a HABTM join write, or
+    /// a call to the app helper the uploader method forwards to, looked up in
+    /// the VM's globals and called here. Running it in a tree-walker meant one
+    /// seeded with a copy of every global on each call (~40 µs for a
+    /// `photo_url()` in a view row), and a VM-compiled helper then cost a
+    /// second VM.
+    fn call_model_helper_method(
+        &mut self,
+        inst: &Rc<RefCell<Instance>>,
+        method_name: &str,
+        args: Vec<Value>,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        use crate::interpreter::builtins::model::habtm::{
+            habtm_add, habtm_remove, match_habtm_method, HabtmAction,
+        };
+        use crate::interpreter::executor::access::member::{
+            uploader_call, uploader_helper_args, uploader_helper_missing,
+        };
+        let class_name = inst.borrow().class.name.clone();
+        if let Some(matched) = match_habtm_method(&class_name, method_name) {
+            let result = match matched.action {
+                HabtmAction::Add => habtm_add(inst, &matched.relation, &args),
+                HabtmAction::Remove => habtm_remove(inst, &matched.relation, &args),
+            };
+            return result.map_err(|e| RuntimeError::new(e, span));
+        }
+        let (kind, field, helper_name) = uploader_call(method_name, span)?;
+        let helper = self
+            .globals
+            .get(helper_name)
+            .cloned()
+            .ok_or_else(|| uploader_helper_missing(method_name, helper_name, span))?;
+        let forwarded =
+            uploader_helper_args(kind, field, Value::Instance(inst.clone()), args, span)?;
+        self.invoke_callable(helper, &forwarded, span)
     }
 
     /// Call an arbitrary Value with arguments (used by server integration).
