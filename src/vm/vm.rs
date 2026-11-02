@@ -582,6 +582,18 @@ impl Vm {
     /// general arm to execute — so the two tiers cannot disagree on a
     /// result or an error. `frame.ip` is written back before returning;
     /// `Ok(None)` means the frame's code ran out.
+    ///
+    /// The operand stack's top is read and popped unchecked (`pop`, `pop2`,
+    /// `peek`, `peek_mut`, `peek_two!`), as the general tier already does: an
+    /// op is only emitted after the pushes it consumes, `stack_effect` states
+    /// that per op and a test measures it against every handler, and the
+    /// frame's callee sits at `stack_base` beneath its operands, so a checked
+    /// `pop().unwrap()` could only ever catch a stack already corrupt below
+    /// the frame. Local slots (`self.stack[base + slot]`) stay bounds-checked,
+    /// and so do `ip < code_len` and `Vec::push`: dropping those needs a
+    /// bytecode verifier (slot and jump ranges, a per-proto max depth), and
+    /// without one a compiler bug would turn from a panic into memory
+    /// corruption.
     #[inline(always)]
     fn run_fast(&mut self) -> Result<Option<Op>, RuntimeError> {
         /// Load the top frame's state into the cached locals.
@@ -639,10 +651,23 @@ impl Vm {
         }
 
         /// Peek at the two operands; `None` hands the op to the general arm.
+        /// Unchecked like `pop2`: an op that peeks two operands is only
+        /// emitted after the two pushes it consumes (`stack_effect`, pinned
+        /// by `stack_effect_matches_what_each_handler_does`), and every frame
+        /// keeps its callee at `stack_base` besides.
         macro_rules! peek_two {
             () => {{
                 let len = self.stack.len();
-                (len, &self.stack[len - 2], &self.stack[len - 1])
+                debug_assert!(len >= 2, "VM stack underflow in peek_two!");
+                // SAFETY: `len >= 2`, as above. Indexing the field, not
+                // calling `self.peek`, borrows only `self.stack`.
+                unsafe {
+                    (
+                        len,
+                        self.stack.get_unchecked(len - 2),
+                        self.stack.get_unchecked(len - 1),
+                    )
+                }
             }};
         }
 
@@ -664,8 +689,9 @@ impl Vm {
                 if $scalars {
                     drop_top_two!($len);
                 } else {
-                    discard(self.stack.pop().unwrap());
-                    discard(self.stack.pop().unwrap());
+                    let (a, b) = self.pop2();
+                    discard(b);
+                    discard(a);
                 }
             }};
             ($len:expr, $scalars:expr, $result:expr) => {{
@@ -699,7 +725,7 @@ impl Vm {
                     self.stack.push(b);
                 }
                 Op::SetLocal(slot) => {
-                    let value = clone_scalar_fast(self.stack.last().unwrap());
+                    let value = clone_scalar_fast(self.peek(0));
                     discard(std::mem::replace(
                         &mut self.stack[base + slot as usize],
                         value,
@@ -718,7 +744,7 @@ impl Vm {
                     self.stack.push(Value::Null);
                 }
                 Op::Dup => {
-                    let value = clone_scalar_fast(self.stack.last().unwrap());
+                    let value = clone_scalar_fast(self.peek(0));
                     self.stack.push(value);
                 }
                 Op::Null => self.stack.push(Value::Null),
@@ -761,14 +787,14 @@ impl Vm {
                     }
                 }
                 Op::JumpIfFalse(offset) => {
-                    let value = self.stack.pop().unwrap();
+                    let value = self.pop();
                     if !value.is_truthy() {
                         ip += offset as usize;
                     }
                     discard(value);
                 }
                 Op::JumpIfTrue(offset) => {
-                    let value = self.stack.pop().unwrap();
+                    let value = self.pop();
                     if value.is_truthy() {
                         ip += offset as usize;
                     }
@@ -924,8 +950,9 @@ impl Vm {
                     let Some(value) = Self::try_get_index_hit(object, index) else {
                         break Some(op);
                     };
-                    discard(self.stack.pop().unwrap());
-                    discard(self.stack.pop().unwrap());
+                    let (a, b) = self.pop2();
+                    discard(b);
+                    discard(a);
                     self.stack.push(value);
                 }
                 Op::GetLocalIndex(slot, idx_slot) => {
@@ -1268,7 +1295,7 @@ impl Vm {
                     self.stack.push(value);
                 }
                 Op::SetUpvalue(idx) => {
-                    let value = self.stack.last().unwrap().clone();
+                    let value = self.peek(0).clone();
                     let upvalue =
                         self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
                     let mut cell = upvalue.borrow_mut();
@@ -1485,33 +1512,34 @@ impl Vm {
                     self.stack.push(Value::Bool(zero == want_zero));
                 }
                 Op::Not => {
-                    let truthy = self.stack.last().unwrap().is_truthy();
-                    *self.stack.last_mut().unwrap() = Value::Bool(!truthy);
+                    let top = self.peek_mut(0);
+                    let truthy = top.is_truthy();
+                    discard(std::mem::replace(top, Value::Bool(!truthy)));
                 }
                 Op::JumpIfFalseNoPop(offset) => {
-                    if !self.stack.last().unwrap().is_truthy() {
+                    if !self.peek(0).is_truthy() {
                         ip += offset as usize;
                     }
                 }
                 Op::JumpIfTrueNoPop(offset) => {
-                    if self.stack.last().unwrap().is_truthy() {
+                    if self.peek(0).is_truthy() {
                         ip += offset as usize;
                     }
                 }
                 Op::IsNull | Op::NotNull => {
-                    let null = matches!(self.stack.last().unwrap(), Value::Null);
+                    let null = matches!(self.peek(0), Value::Null);
                     self.stack
                         .push(Value::Bool(null == matches!(op, Op::IsNull)));
                 }
                 Op::JumpIfNull(offset) => {
-                    if matches!(self.stack.last().unwrap(), Value::Null) {
+                    if matches!(self.peek(0), Value::Null) {
                         ip += offset as usize;
                     }
                 }
                 // `a ?? b` and `x ??= v`: the general arms of the two ops are
                 // the same test.
                 Op::JumpIfNotNull(offset) | Op::NullishJump(offset) => {
-                    if !matches!(self.stack.last().unwrap(), Value::Null) {
+                    if !matches!(self.peek(0), Value::Null) {
                         ip += offset as usize;
                     }
                 }
@@ -5045,6 +5073,19 @@ impl Vm {
             "VM stack underflow in peek({distance})"
         );
         unsafe { self.stack.get_unchecked(self.stack.len() - 1 - distance) }
+    }
+
+    /// `peek`, for writing the slot in place.
+    #[inline(always)]
+    pub(crate) fn peek_mut(&mut self, distance: usize) -> &mut Value {
+        debug_assert!(
+            self.stack.len() > distance,
+            "VM stack underflow in peek_mut({distance})"
+        );
+        let index = self.stack.len() - 1 - distance;
+        // SAFETY: as for `peek`: the VM's stack invariants keep `index` in
+        // range, and the debug_assert checks it in debug builds.
+        unsafe { self.stack.get_unchecked_mut(index) }
     }
 
     /// Pop two values from the stack (b first, then a).
@@ -10252,6 +10293,100 @@ let x = Mailer.welcome()
             let (handed_back, stack) = run_fast_tier(constants(), &locals, &[op]);
             assert_eq!(handed_back, Some(op));
             assert!(stack.is_empty(), "{op:?} pushed {stack:?}");
+        }
+    }
+
+    /// The fast tier reads and pops the operand stack's top unchecked
+    /// (`pop`, `pop2`, `peek`, `peek_mut`, `peek_two!`). Each op that does so
+    /// still runs there, leaves what the general arm would, and releases a
+    /// heap operand exactly once: the array's reference count after each
+    /// sequence is the slot's own plus one per copy left on the stack.
+    #[test]
+    fn unchecked_operand_reads_keep_values_and_reference_counts() {
+        const NAME: u16 = 0;
+        let constants = || vec![Constant::String("a name longer than inline".into())];
+        let items = Rc::new(RefCell::new(vec![Value::Int(10), Value::Int(20)]));
+        let array = Value::Array(items.clone());
+        // Slots: 1 the array, 2 i=1, 3 nil.
+        let locals = [array.clone(), Value::Int(1), Value::Null];
+        let cases: Vec<(&[Op], Vec<Value>, usize)> = vec![
+            // Truthy: no jump, `True` runs.
+            (
+                &[Op::GetLocal(1), Op::JumpIfFalse(1), Op::True],
+                vec![Value::Bool(true)],
+                0,
+            ),
+            (&[Op::GetLocal(1), Op::JumpIfTrue(1), Op::True], vec![], 0),
+            (&[Op::GetLocal(1), Op::Not], vec![Value::Bool(false)], 0),
+            (
+                &[Op::GetLocal(1), Op::Dup],
+                vec![array.clone(), array.clone()],
+                2,
+            ),
+            (
+                &[Op::GetLocal(1), Op::JumpIfFalseNoPop(1), Op::True],
+                vec![array.clone(), Value::Bool(true)],
+                1,
+            ),
+            (
+                &[Op::GetLocal(1), Op::JumpIfTrueNoPop(1), Op::True],
+                vec![array.clone()],
+                1,
+            ),
+            (
+                &[Op::GetLocal(1), Op::IsNull],
+                vec![array.clone(), Value::Bool(false)],
+                1,
+            ),
+            (
+                &[Op::GetLocal(1), Op::JumpIfNotNull(1), Op::True],
+                vec![array.clone()],
+                1,
+            ),
+            (
+                &[Op::GetLocal(3), Op::JumpIfNull(1), Op::True],
+                vec![Value::Null],
+                0,
+            ),
+            // `SetLocal` copies the top into slot 3 and leaves it there.
+            (
+                &[Op::GetLocal(1), Op::SetLocal(3), Op::Pop, Op::GetLocal(3)],
+                vec![array.clone()],
+                2,
+            ),
+            (
+                &[Op::GetLocal(1), Op::GetLocal(2), Op::GetIndex],
+                vec![Value::Int(20)],
+                0,
+            ),
+            // Two strings: `primitive_equal` answers, `pop2` drops both.
+            (
+                &[Op::Constant(NAME), Op::Constant(NAME), Op::Equal],
+                vec![Value::Bool(true)],
+                0,
+            ),
+            (
+                &[Op::Constant(NAME), Op::Constant(NAME), Op::NotEqual],
+                vec![Value::Bool(false)],
+                0,
+            ),
+        ];
+        for (code, expected, extra) in cases {
+            let before = Rc::strong_count(&items);
+            let (declined, mut vm) = run_fast_tier_vm(constants(), &locals, code, 0, &[]);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            // The VM's copy in slot 1, plus `extra` left on the stack or in
+            // slot 3.
+            assert_eq!(
+                Rc::strong_count(&items),
+                before + 1 + extra,
+                "{code:?}: reference count"
+            );
+            let stack = vm.stack.split_off(1 + locals.len());
+            assert_eq!(stack, expected, "{code:?}");
+            drop(stack);
+            drop(vm);
+            assert_eq!(Rc::strong_count(&items), before, "{code:?}: released");
         }
     }
 
