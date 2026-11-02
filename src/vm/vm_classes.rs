@@ -1418,6 +1418,17 @@ mod privacy_check_tests {
         }
     }
 
+    /// A field read refused from outside the class costs two checks of a
+    /// lookup, a walk and a frame scan that finds no `this`: the fast tier
+    /// runs one and hands the read to the general arm, which runs its own
+    /// and raises. Only a refusal pays twice; a read the check lets through
+    /// completes in the fast tier after one.
+    const REFUSED_FIELD_READ: Cost = Cost {
+        lookups: 2,
+        walks: 2,
+        scans: 2,
+    };
+
     /// Run `src` with each `__NAME__` replaced by its value; return its
     /// `result` and `refused` globals, and what the run cost the check.
     fn run(src: &str, values: &[(&str, i64)]) -> (Value, Option<Value>, Cost) {
@@ -1475,8 +1486,8 @@ refused = ledger.total rescue "refused"
     /// `@x`, `@x = v`, `this.x`, `@m()` and a bare call in a method's own
     /// body never reach the class and never scan the frames, however many
     /// times the loop runs. The whole cost is the two accesses from outside:
-    /// `ledger.run` (a lookup) and the refused `ledger.total` (a lookup, a
-    /// walk and the scan that finds no `this`).
+    /// `ledger.run` (a lookup) and the refused `ledger.total`, which is
+    /// checked twice (`REFUSED_FIELD_READ`).
     #[test]
     fn members_of_self_skip_the_lookup() {
         let (short, refused_read, short_cost) = run(LEDGER, &[("N", 3)]);
@@ -1484,8 +1495,13 @@ refused = ledger.total rescue "refused"
         assert_eq!(short, Value::Int(9));
         assert_eq!(long, Value::Int(495));
         assert_eq!(refused_read, refused());
-        assert_eq!(short_cost, cost(2, 1, 1));
-        assert_eq!(long_cost, cost(2, 1, 1));
+        let expected = cost(
+            1 + REFUSED_FIELD_READ.lookups,
+            REFUSED_FIELD_READ.walks,
+            REFUSED_FIELD_READ.scans,
+        );
+        assert_eq!(short_cost, expected);
+        assert_eq!(long_cost, expected);
     }
 
     const TALLY: &str = r#"
@@ -1526,7 +1542,8 @@ refused = tally.secret rescue "refused"
     /// The restricted `@secret` read and write and the `@_one()` call walk the
     /// chain and scan down to the method's frame, where they find `this` and
     /// pass. That is three lookups, three walks and three scans per
-    /// iteration, which is what they cost before.
+    /// iteration, which is what they cost before. Outside the loop:
+    /// `tally.run` (a lookup) and the refused `tally.secret`.
     #[test]
     fn a_block_scans_for_this_only_for_a_restricted_name() {
         let (short, refused_read, short_cost) = run(TALLY, &[("N", 3)]);
@@ -1535,7 +1552,11 @@ refused = tally.secret rescue "refused"
         assert_eq!(long, Value::Int(3030));
         assert_eq!(refused_read, refused());
         let per_iteration = cost(2 + 3, 3, 3);
-        let outside = cost(2, 1, 1);
+        let outside = cost(
+            1 + REFUSED_FIELD_READ.lookups,
+            REFUSED_FIELD_READ.walks,
+            REFUSED_FIELD_READ.scans,
+        );
         for (n, spent) in [(3, short_cost), (30, long_cost)] {
             assert_eq!(
                 spent,

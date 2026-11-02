@@ -2017,6 +2017,133 @@ print(reveal_of(o))
 print(reveal_of(b))
 print(new Later().ping)"##,
     ),
+    (
+        // Instance field reads and writes complete in the VM's fast tier
+        // when the general arm's field hit would: on self (`@x`, `this.y`),
+        // a local, a block's upvalue, a global and a call's result; a field
+        // added after construction, one holding nil or a closure, one
+        // shadowing a method. A miss (`p.area`, the method), a frozen value
+        // object and a refused private field are handed back and answered
+        // as before, the refusals at the same line and column. `Vault` comes
+        // last, so the same reads run before and after a class declares a
+        // private member.
+        "instance_fields_in_and_out_of_the_fast_tier",
+        r##"class Point
+  x: Int
+  y: Int
+  label: String
+
+  new(x: Int, y: Int)
+    @x = x
+    @y = y
+    @label = "field"
+  end
+
+  def label
+    "method"
+  end
+
+  def area
+    @x * @y
+  end
+
+  def walk(n)
+    i = 0
+    while i < n
+      @x = @x + 1
+      this.y = this.y + @x
+      i = i + 1
+    end
+    [1, 2].map { |k| @x * k + this.y }
+  end
+end
+
+class Amount < ValueObject
+  cents: Int
+end
+
+class Email < ValueObject
+  address: String
+
+  new(address: String)
+    @address = address.trim.downcase
+  end
+end
+
+def make
+  new Point(7, 8)
+end
+
+def poke(point, n)
+  i = 0
+  while i < n
+    point.x = point.x + point.y
+    [1].each { |k| point.y = point.y + k }
+    i = i + 1
+  end
+  point.x
+end
+
+p = new Point(1, 2)
+print(p.walk(3))
+print(poke(p, 2))
+print(p.x, p.y, make().x)
+print(p.label)
+print(p.area)
+y = (p.x = 5)
+print(y)
+print(p.x = 9)
+p.extra = "dyn"
+print(p.extra)
+p.extra = nil
+print(p.extra)
+print(p.extra.nil?)
+p.cb = fn(v) { v * 2 }
+f = p.cb
+print(f(21))
+a = Amount.new(5)
+try
+  a.cents = 6
+catch error
+  print("frozen: #{error}")
+end
+print(a.cents)
+print(Email.new("  Ada@Example.COM ").address)
+
+class Vault
+  private code: Int
+
+  new(code: Int)
+    @code = code
+  end
+
+  def turn
+    [1, 2].each { |k| @code = @code + k }
+    @code
+  end
+end
+
+def forge(vault)
+  try
+    vault.code = 7
+    return "written"
+  catch error
+    return "refused: #{error}"
+  end
+end
+
+def peek(vault)
+  vault.code rescue "refused"
+end
+
+v = new Vault(1)
+print(v.turn)
+print(forge(v))
+print(peek(v))
+print(p.walk(1))
+print(poke(p, 1))
+print(p.label, p.area)"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

@@ -340,6 +340,73 @@ impl Vm {
         Ok(val)
     }
 
+    /// `receiver.name` for the fast tier's `GetProperty` and
+    /// `GetLocalProperty`: the value the general arms' instance-field hit
+    /// pushes, when that hit completes with no error and no side effect.
+    /// The receiver is an instance holding the field (a field shadows a
+    /// method, so a present key decides the read), the value is no
+    /// `grouped {}` placeholder still to force, and the privacy check lets
+    /// the read through. `None` hands the op to the general arm, which
+    /// raises a refused read after checking it again.
+    ///
+    /// `slot_zero`: the receiver is the running frame's slot 0. In a method
+    /// frame that is `this`, whose members the check never refuses, so `@x`
+    /// skips the call, as in the general `GetLocalProperty` arm.
+    #[inline]
+    fn fast_field_read(&self, receiver: &Value, name: &str, slot_zero: bool) -> Option<Value> {
+        let Value::Instance(inst) = receiver else {
+            return None;
+        };
+        let value = match inst.borrow().fields.get(name) {
+            None | Some(Value::Deferred(_)) => return None,
+            Some(value) => clone_scalar_fast(value),
+        };
+        if crate::interpreter::value::restricted_methods_declared()
+            && !(slot_zero && self.slot_zero_is_this())
+            && self.check_private_value(receiver, name).is_err()
+        {
+            return None;
+        }
+        Some(value)
+    }
+
+    /// `receiver.name = value` for the fast tier's `SetProperty`: the general
+    /// arm's instance-field write — an existing field overwritten in place, a
+    /// new one inserted — when it completes with no error. The receiver is an
+    /// instance, the privacy check lets the write through and the instance
+    /// is no constructed value object. `false` touches nothing and hands the
+    /// op to the general arm, which raises the refusal.
+    #[inline]
+    fn fast_field_write(
+        &self,
+        receiver: &Value,
+        name: &crate::interpreter::value::SoliStr,
+        value: &Value,
+    ) -> bool {
+        let Value::Instance(inst) = receiver else {
+            return false;
+        };
+        if crate::interpreter::value::restricted_methods_declared()
+            && self.check_private_value(receiver, name).is_err()
+        {
+            return false;
+        }
+        if crate::interpreter::domain::value_objects_declared()
+            && crate::interpreter::domain::is_frozen(inst, &inst.borrow().class)
+        {
+            return false;
+        }
+        let value = clone_scalar_fast(value);
+        let mut instance = inst.borrow_mut();
+        match instance.fields.get_mut(name.as_str()) {
+            Some(field) => *field = value,
+            None => {
+                instance.fields.insert(name.clone(), value);
+            }
+        }
+        true
+    }
+
     pub fn new() -> Self {
         Self {
             stack: Vec::with_capacity(256),
@@ -772,9 +839,11 @@ impl Vm {
                     }
                 }
                 // `hash.key` that finds the key, when no user method on Hash
-                // could outrank it: the general arm's first fast path, here
-                // so a `row.title` does not leave this tier. Anything else
-                // (a miss, an instance, a method) goes to the general arm.
+                // could outrank it, and `post.title` on an instance that has
+                // the field (`Vm::fast_field_read`): the general arm's fast
+                // paths, here so a field read does not leave this tier.
+                // Anything else (a miss, a method, a deferred or refused
+                // field) goes to the general arm.
                 Op::GetProperty(idx) => {
                     let hit = match self.stack.last() {
                         Some(Value::Hash(hash))
@@ -790,6 +859,15 @@ impl Vm {
                                 _ => None,
                             }
                         }
+                        Some(receiver @ Value::Instance(_)) => {
+                            // SAFETY: as for `Op::Constant` above.
+                            match unsafe { &*constants.add(idx as usize) } {
+                                Constant::String(name) => {
+                                    self.fast_field_read(receiver, name, false)
+                                }
+                                _ => None,
+                            }
+                        }
                         _ => None,
                     };
                     match hit {
@@ -799,8 +877,9 @@ impl Vm {
                         None => break Some(op),
                     }
                 }
-                // `row.title` with `row` a local hash that has the key — the
-                // fused form of the arm above.
+                // `row.title` with `row` a local hash that has the key, and
+                // `@title` or `post.title` with the receiver a local instance
+                // that has the field — the fused form of the arm above.
                 Op::GetLocalProperty(slot, idx) => {
                     let hit = match &self.stack[base + slot as usize] {
                         Value::Hash(hash)
@@ -816,12 +895,41 @@ impl Vm {
                                 _ => None,
                             }
                         }
+                        receiver @ Value::Instance(_) => {
+                            // SAFETY: as for `Op::Constant` above.
+                            match unsafe { &*constants.add(idx as usize) } {
+                                Constant::String(name) => {
+                                    self.fast_field_read(receiver, name, slot == 0)
+                                }
+                                _ => None,
+                            }
+                        }
                         _ => None,
                     };
                     match hit {
                         Some(value) => self.stack.push(value),
                         None => break Some(op),
                     }
+                }
+                // `@title = t` or `post.title = t` on an instance: the general
+                // arm's in-place write, here when it completes with no error
+                // (`Vm::fast_field_write`). The value takes the receiver's
+                // place on the stack, as the assignment's result. A hash, a
+                // class, a refused or frozen write goes to the general arm.
+                Op::SetProperty(idx) => {
+                    let len = self.stack.len();
+                    // SAFETY: as for `Op::Constant` above.
+                    let written = match unsafe { &*constants.add(idx as usize) } {
+                        Constant::String(name) => {
+                            self.fast_field_write(&self.stack[len - 2], name, &self.stack[len - 1])
+                        }
+                        _ => false,
+                    };
+                    if !written {
+                        break Some(op);
+                    }
+                    let value = self.pop();
+                    discard(std::mem::replace(self.stack.last_mut().unwrap(), value));
                 }
                 Op::TemplateWriteConst(idx) => {
                     // SAFETY: as for `Op::Constant` above.
@@ -3050,6 +3158,8 @@ impl Vm {
                 // --- Properties ---
                 Op::GetProperty(idx) => {
                     let object = self.stack.pop().unwrap();
+                    #[cfg(test)]
+                    tally_general_field_op(&object);
                     // Fast path: instance-field hit. Fields shadow methods
                     // (op_get_property's documented order), so a present key
                     // fully decides the access — no name copy, no span, and
@@ -3120,6 +3230,8 @@ impl Vm {
                 }
                 Op::SetProperty(idx) => {
                     let value = self.stack.pop().unwrap();
+                    #[cfg(test)]
+                    tally_general_field_op(self.stack.last().unwrap());
                     // A private/protected field written from outside: refused
                     // like the read. One relaxed load while no class declares
                     // a restricted member; only an instance holds one, so a
@@ -4410,6 +4522,8 @@ impl Vm {
                 }
                 Op::GetLocalProperty(slot, idx) => {
                     let base = self.frames.last().unwrap().stack_base;
+                    #[cfg(test)]
+                    tally_general_field_op(&self.stack[base + slot as usize]);
                     // Fast path, mirroring Op::GetProperty: fields shadow
                     // methods, so a present key fully decides the access — no
                     // owned name, no span, one ahash probe. Without this the
@@ -5540,6 +5654,31 @@ pub(crate) fn discard(value: Value) {
     } else {
         drop(value);
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the instance `GetProperty`, `GetLocalProperty` and
+    /// `SetProperty` ops this thread's general arms ran — the ones the fast
+    /// tier handed back.
+    static GENERAL_FIELD_OPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Test-only: count a property op the general arm runs on `receiver`, when
+/// that is an instance.
+#[cfg(test)]
+fn tally_general_field_op(receiver: &Value) {
+    if matches!(receiver, Value::Instance(_)) {
+        GENERAL_FIELD_OPS.with(|ops| ops.set(ops.get() + 1));
+    }
+}
+
+/// Test-only: how many instance field ops the general arms have run on this
+/// thread, for a test to tell the fast tier's field reads and writes from
+/// the general arm's.
+#[cfg(test)]
+pub(crate) fn general_field_ops() -> usize {
+    GENERAL_FIELD_OPS.with(std::cell::Cell::get)
 }
 
 #[cfg(test)]
@@ -8569,5 +8708,301 @@ let x = Mailer.welcome()
             compile_and_get_global("let x = [1, 2, 3, 4, 5].filter(fn(n) n > 2).first();", "x"),
             Value::Int(3)
         );
+    }
+}
+
+#[cfg(test)]
+mod field_fast_tier_tests {
+    //! Instance field reads and writes (`@x`, `this.x`, `post.title`,
+    //! `@x = v`, `post.title = t`) complete in the fast tier whenever the
+    //! general arm's field hit would complete without an error: the field is
+    //! present (a write may also add it), the value is no `grouped {}`
+    //! placeholder and the privacy check lets the access through. Everything
+    //! else — a miss, a method, a deferred field, a refused or frozen access
+    //! — still reaches the general arm, which answers as before.
+    use super::general_field_ops;
+    use crate::interpreter::value::{Class, DeferredCell, Instance, Value};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// Run `src` with `__N__` replaced by `n` and `globals` bound; return its
+    /// `result` global and the instance field ops the general arms ran.
+    fn run(src: &str, n: usize, globals: Vec<(&str, Value)>) -> (Value, usize) {
+        let src = src.replace("__N__", &n.to_string());
+        let tokens = crate::lexer::Scanner::new(&src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        for (name, value) in globals {
+            vm.globals.insert(name.to_string(), value);
+        }
+        let start = general_field_ops();
+        vm.execute(&module.main).expect("vm");
+        let general = general_field_ops() - start;
+        (vm.globals.get("result").cloned().expect("result"), general)
+    }
+
+    fn ints(values: &[i64]) -> Value {
+        Value::Array(Rc::new(RefCell::new(
+            values.iter().map(|n| Value::Int(*n)).collect(),
+        )))
+    }
+
+    const POINT: &str = r#"
+class Point
+  x: Int
+  y: Int
+
+  new(x: Int, y: Int)
+    @x = x
+    @y = y
+  end
+
+  def walk(n)
+    i = 0
+    while i < n
+      @x = @x + 1
+      this.y = this.y + @x
+      i = i + 1
+    end
+    @x * 1000 + @y
+  end
+end
+
+def make
+  new Point(7, 8)
+end
+
+def poke(point, n)
+  i = 0
+  while i < n
+    point.x = point.x + point.y
+    [1].each { |k| point.y = point.y + k }
+    i = i + 1
+  end
+  point.x
+end
+
+point = new Point(1, 2)
+walked = point.walk(__N__)
+poked = poke(point, __N__)
+point.extra = 5
+point.extra = point.extra + make().x
+result = [walked, poked, point.x, point.y, point.extra]
+"#;
+
+    /// Every field read and write of `POINT` — in a constructor, on `self`
+    /// in a method (`@x`, `this.y`), on a local, a block's upvalue, a global
+    /// and a call's result, the first write of a field no class declares —
+    /// completes in the fast tier: the general arms run none of them, at
+    /// any loop length. Before, each one left the tier.
+    #[test]
+    fn field_reads_and_writes_stay_in_the_fast_tier() {
+        let (short, short_general) = run(POINT, 3, Vec::new());
+        let (long, long_general) = run(POINT, 30, Vec::new());
+        // walk(3): x 1 -> 4, y 2 + 2 + 3 + 4 = 11; poke(3) then adds y into
+        // x and bumps y each round: x 15, 27, 40 and y 12, 13, 14.
+        assert_eq!(short, ints(&[4011, 40, 40, 14, 12]));
+        let Value::Array(long) = long else {
+            panic!("expected an array, got {long:?}");
+        };
+        assert_eq!(long.borrow()[2], long.borrow()[1]);
+        assert_eq!(short_general, 0);
+        assert_eq!(long_general, 0);
+    }
+
+    const VAULT: &str = r#"
+class Vault
+  private code: Int
+  protected rank: Int
+  label: String
+
+  new(code: Int)
+    @code = code
+    @rank = 1
+    @label = "vault"
+  end
+
+  def turn(n)
+    i = 0
+    while i < n
+      @code = @code + 1
+      [1].each { |k| @code = @code + k }
+      i = i + 1
+    end
+    @code
+  end
+end
+
+def relabel(vault, n)
+  i = 0
+  while i < n
+    vault.label = vault.label + "!"
+    i = i + 1
+  end
+  vault.label
+end
+
+def peek(vault)
+  vault.code rescue "refused"
+end
+
+def forge(vault)
+  try
+    vault.code = 7
+    return "written"
+  catch error
+    return "refused"
+  end
+end
+
+def rank_of(vault)
+  vault.rank rescue "refused"
+end
+
+vault = new Vault(0)
+turned = vault.turn(__N__)
+label = relabel(vault, __N__)
+result = [turned, label, peek(vault), forge(vault), rank_of(vault), vault.turn(0)]
+"#;
+
+    /// A class with a private and a protected field: a field no class of
+    /// the chain restricts, read and written from a plain function, and the
+    /// private one read and written by the class's own method and the block
+    /// it runs, pass the check and stay in the fast tier. Only the three
+    /// refused accesses from outside — the private read and write and the
+    /// protected read — reach the general arm, which raises them.
+    #[test]
+    fn a_private_member_keeps_the_other_accesses_in_the_fast_tier() {
+        let (short, short_general) = run(VAULT, 3, Vec::new());
+        let (long, long_general) = run(VAULT, 30, Vec::new());
+        let expected = |turned: i64, bangs: usize| {
+            Value::Array(Rc::new(RefCell::new(vec![
+                Value::Int(turned),
+                Value::String(format!("vault{}", "!".repeat(bangs)).into()),
+                Value::String("refused".into()),
+                Value::String("refused".into()),
+                Value::String("refused".into()),
+                Value::Int(turned),
+            ])))
+        };
+        assert_eq!(short, expected(6, 3));
+        assert_eq!(long, expected(60, 30));
+        assert_eq!(short_general, 3);
+        assert_eq!(long_general, 3);
+    }
+
+    fn deferred_posts() -> Value {
+        Value::Deferred(Rc::new(RefCell::new(DeferredCell {
+            resolved: Some(Value::Array(Rc::new(RefCell::new(vec![
+                Value::String("a".into()),
+                Value::String("b".into()),
+            ])))),
+        })))
+    }
+
+    fn record() -> Value {
+        let class = Rc::new(Class {
+            name: "Rec".to_string(),
+            ..Default::default()
+        });
+        let mut instance = Instance::new(class);
+        instance.fields.insert("posts".into(), deferred_posts());
+        instance
+            .fields
+            .insert("title".into(), Value::String("t".into()));
+        Value::Instance(Rc::new(RefCell::new(instance)))
+    }
+
+    const DECLINED: &str = r#"
+class Box
+  w: Int
+
+  new(w: Int)
+    @w = w
+  end
+
+  def area
+    @w * @w
+  end
+end
+
+def sizes(rec)
+  [rec.posts.length, rec.title]
+end
+
+box = new Box(3)
+result = [box.area, box.w, sizes(rec), rec.posts.length, rec.title]
+"#;
+
+    /// What the fast tier hands back still gets the general arm's answer: a
+    /// name with no field (`box.area`, the method, auto-invoked) and a field
+    /// holding a `grouped {}` placeholder, from a local (`GetLocalProperty`)
+    /// and from a global (`GetProperty`), which the general arm forces. The
+    /// field hits beside them (`box.w`, `rec.title`) do not leave the tier.
+    #[test]
+    fn a_miss_and_a_deferred_field_go_to_the_general_arm() {
+        let (result, general) = run(DECLINED, 0, vec![("rec", record())]);
+        let pair = Value::Array(Rc::new(RefCell::new(vec![
+            Value::Int(2),
+            Value::String("t".into()),
+        ])));
+        assert_eq!(
+            result,
+            Value::Array(Rc::new(RefCell::new(vec![
+                Value::Int(9),
+                Value::Int(3),
+                pair,
+                Value::Int(2),
+                Value::String("t".into()),
+            ])))
+        );
+        assert_eq!(general, 3);
+    }
+
+    const AMOUNT: &str = r#"
+class Amount < ValueObject
+  cents: Int
+end
+
+class Email < ValueObject
+  address: String
+
+  new(address: String)
+    @address = address.trim
+  end
+end
+
+amount = Amount.new(5)
+frozen = "written"
+try
+  amount.cents = 6
+catch error
+  frozen = "refused"
+end
+email = Email.new(" a@b.c ")
+result = [amount.cents, frozen, email.address]
+"#;
+
+    /// A value object is written by its own constructor in the fast tier;
+    /// a write once it is built is the general arm's to refuse.
+    #[test]
+    fn a_frozen_value_object_write_goes_to_the_general_arm() {
+        let value_object = Value::Class(Rc::new(Class {
+            name: "ValueObject".to_string(),
+            ..Default::default()
+        }));
+        let (result, general) = run(AMOUNT, 0, vec![("ValueObject", value_object)]);
+        assert_eq!(
+            result,
+            Value::Array(Rc::new(RefCell::new(vec![
+                Value::Int(5),
+                Value::String("refused".into()),
+                Value::String("a@b.c".into()),
+            ])))
+        );
+        assert_eq!(general, 1);
     }
 }

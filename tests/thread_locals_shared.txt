@@ -56,6 +56,7 @@ src/interpreter/executor/calls/cascade.rs TEST_LOADED_INSTANCES
 src/interpreter/value.rs RESTRICTED_LOOKUPS
 src/serve/compression.rs TEST_SETTINGS
 src/serve/repl_session.rs REPL_STORE
+src/vm/vm.rs GENERAL_FIELD_OPS
 src/vm/vm_classes.rs THIS_SCANS
 
 # Boot-time flags
