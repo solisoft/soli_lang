@@ -1669,6 +1669,15 @@ labels = ["a", "b"].each_with_index.map { |letter, i| "#{i}:#{letter}" }  # ["0:
 # A block with two or more parameters destructures an array element, as in Ruby
 [["Ann", 31], ["Bob", 42]].map { |name, age| "#{name} (#{age})" }  # ["Ann (31)", "Bob (42)"]
 
+# A block may declare fewer parameters than the iterator passes and gets only those.
+# This holds for every iterator (times/upto/downto, the array and hash methods).
+3.times { print("hi") }                                # no index
+["a", "b"].each_with_index { |letter| print(letter) }  # the element, without its index
+numbers.each { print("tick") }                         # once per element
+# One exception: a one-parameter `reduce` callback gets the [acc, x] pair, just as
+# a one-parameter hash block gets [key, value]. A direct call still checks arity:
+# `f = fn() { 1 }` and then `f(5)` raises "expected 0, got 1".
+
 # reduce - accumulate to single value
 sum = numbers.reduce(fn(acc, x) acc + x, 0);  # 55
 product = numbers.reduce(fn(acc, x) acc * x, 1);  # 3628800

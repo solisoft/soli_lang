@@ -6030,6 +6030,228 @@ mod tests {
         assert!(r.is_ok());
     }
 
+    /// A block that declares no parameter ignores the element, as on the
+    /// tree-walker: `3.times do … end`, `xs.each { log("x") }`. The VM passed
+    /// the element anyway, and the block's frame refused it ("Wrong number of
+    /// arguments: expected 0, got 1"). A script stopped there, and a `serve`
+    /// handler was demoted after its side effects had already run.
+    #[test]
+    fn test_vm_block_with_no_parameters_ignores_the_element() {
+        // Int iterators drop the index. `times` still returns its receiver.
+        assert_eq!(
+            compile_and_get_global(
+                r##"
+let n = 0
+let r = 3.times do
+  n = n + 1
+end
+1.upto(3) { n = n + 10 }
+3.downto(1) { n = n + 100 }
+let x = "#{n} #{r}"
+"##,
+                "x"
+            ),
+            Value::String("333 3".into())
+        );
+        // Array iterators, through the in-VM loop (each, map, filter, select)
+        // and through the native drivers (the rest).
+        assert_eq!(
+            compile_and_get_global(
+                r##"
+let xs = [3, 1, 2]
+let n = 0
+let back = xs.each { n = n + 1 }
+let mapped = xs.map { 5 }
+let kept = xs.filter { true }
+let dropped = xs.select { false }
+let rejected = xs.reject { false }
+let found = xs.find { true }
+let counted = xs.count { true }
+let any_true = xs.any? { true }
+let all_false = xs.all? { false }
+let none_false = xs.none? { false }
+let one_true = xs.one? { true }
+let sorted = xs.sort_by { 1 }
+let x = "#{n} #{back} #{mapped} #{kept} #{dropped} #{rejected} #{found} #{counted} #{any_true} #{all_false} #{none_false} #{one_true} #{sorted}"
+"##,
+                "x"
+            ),
+            Value::String(
+                "3 [3, 1, 2] [5, 5, 5] [3, 1, 2] [] [3, 1, 2] 3 3 true false true false [3, 1, 2]"
+                    .into()
+            )
+        );
+        // Hash iterators get no `[key, value]` pair, and no key or value.
+        assert_eq!(
+            compile_and_get_global(
+                r##"
+let h = {"a": 1, "b": 2}
+let n = 0
+let back = h.each { n = n + 1 }
+h.each_key { n = n + 10 }
+h.each_value { n = n + 100 }
+let mapped = h.map { ["k", 9] }
+let kept = h.filter { true }
+let dropped = h.select { false }
+let rejected = h.reject { true }
+let kept_if = h.keep_if { true }
+let deleted_if = h.delete_if { false }
+let any_true = h.any? { true }
+let all_false = h.all? { false }
+let revalued = h.transform_values { 0 }
+let renamed = h.transform_keys { "z" }
+let x = "#{n} #{back} #{mapped} #{kept} #{dropped} #{rejected} #{kept_if} #{deleted_if} #{any_true} #{all_false} #{revalued} #{renamed}"
+"##,
+                "x"
+            ),
+            Value::String(
+                "222 {a => 1, b => 2} {k => 9} {a => 1, b => 2} {} {} {a => 1, b => 2} \
+                 {a => 1, b => 2} true false {a => 0, b => 0} {z => 2}"
+                    .into()
+            )
+        );
+    }
+
+    /// The in-VM callback loop takes a block with no parameter instead of
+    /// handing it to the native driver. Its frame gets no argument slot, and
+    /// refilling it writes none. Only a loop that ran in the dispatch loop
+    /// leaves `spare_callback_loop` behind.
+    #[test]
+    fn test_vm_zero_parameter_block_takes_the_in_vm_loop() {
+        let run = |source: &str| {
+            let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            let module = Compiler::compile(&program).expect("compile error");
+            let mut vm = Vm::new();
+            vm.execute(&module.main).expect("vm error");
+            let x = vm.globals.get("x").cloned().unwrap_or(Value::Null);
+            (x, vm.spare_callback_loop.is_some())
+        };
+        // One frame per element, rerun in place.
+        assert_eq!(
+            run("let n = 0\n[1, 2, 3].each { n = n + 1 }\nlet x = n"),
+            (Value::Int(3), true)
+        );
+        assert_eq!(
+            run("let x = [1, 2, 3].map { 5 }.join(\",\")"),
+            (Value::String("5,5,5".into()), true)
+        );
+        // `filter` keeps the element it did not pass.
+        assert_eq!(
+            run("let x = [1, 2, 3].filter { true }.join(\",\")"),
+            (Value::String("1,2,3".into()), true)
+        );
+        // Hash loops: no pair is built and no slot is written.
+        assert_eq!(
+            run("let n = 0\nlet h = {\"a\": 1, \"b\": 2}\nh.each { n = n + 1 }\nlet x = n"),
+            (Value::Int(2), true)
+        );
+        assert_eq!(
+            run("let t = {\"a\": 1, \"b\": 2}.transform_values { 0 }\nlet x = \"#{t}\""),
+            (Value::String("{a => 0, b => 0}".into()), true)
+        );
+        assert_eq!(
+            run("let t = {\"a\": 1, \"b\": 2}.reject { false }\nlet x = \"#{t}\""),
+            (Value::String("{a => 1, b => 2}".into()), true)
+        );
+        // `{ count += 1 }` on a captured local is the accumulator template:
+        // no frame at all.
+        assert_eq!(
+            run(r##"
+def tally(xs)
+  let count = 0
+  xs.each { count += 1 }
+  count
+end
+let x = tally([1, 2, 3])
+"##),
+            (Value::Int(3), true)
+        );
+        // A block whose local is captured returns through the general
+        // `Return`, and the next element's frame is opened afresh.
+        assert_eq!(
+            run(r##"
+def keep(xs)
+  let fns = []
+  xs.each do
+    let y = 7
+    fns.push(fn() { y })
+  end
+  fns[0]() + fns[1]()
+end
+let x = keep([1, 2])
+"##),
+            (Value::Int(14), true)
+        );
+    }
+
+    /// A block takes as many of two arguments as it declares:
+    /// `each_with_index { |x| }` gets the element alone, and `{ }` gets
+    /// neither. A one-parameter `reduce` callback gets the `[acc, item]`
+    /// pair, as on the tree-walker. All of these raised "Wrong number of
+    /// arguments" on the VM.
+    #[test]
+    fn test_vm_block_takes_a_prefix_of_two_arguments() {
+        assert_eq!(
+            compile_and_get_global(
+                r##"
+let seen = []
+[10, 20].each_with_index { |x| seen.push(x) }
+[10, 20].each_with_index { seen.push(0) }
+let sum = [1, 2, 3].reduce(fn(pair) { pair[0] + pair[1] }, 0)
+let product = [1, 2, 3].reduce(fn(pair) { pair[0] * pair[1] })
+let constant = [1, 2, 3].reduce(fn() { 7 }, 0)
+let both = [1, 2, 3].reduce(fn(acc, x) { acc + x }, 0)
+let x = "#{seen} #{sum} #{product} #{constant} #{both}"
+"##,
+                "x"
+            ),
+            Value::String("[10, 20, 0, 0] 6 6 7 6".into())
+        );
+    }
+
+    /// A destructuring callback with more defaulted than required parameters
+    /// computed `arity - defaults`, but `arity` counts only the required
+    /// parameters. That underflowed, and the VM panicked with "capacity
+    /// overflow". Now a defaulted parameter takes its part of the element when
+    /// the element has one and keeps its default otherwise. A missing required
+    /// part reads as nil.
+    #[test]
+    fn test_vm_destructuring_callback_with_defaults_does_not_underflow() {
+        assert_eq!(
+            compile_and_get_global(
+                r##"
+def tri(a, b, c = 1, d = 2, e = 3)
+  [a, b, c, d, e]
+end
+let x = "#{[[1, 2], [1, 2, 3], [1, 2, 3, 4, 5, 6], [1]].map(tri)}"
+"##,
+                "x"
+            ),
+            Value::String(
+                "[[1, 2, 1, 2, 3], [1, 2, 3, 2, 3], [1, 2, 3, 4, 5], [1, null, 1, 2, 3]]".into()
+            )
+        );
+    }
+
+    /// Blocks bind loosely, but direct calls stay strict, as on the
+    /// tree-walker.
+    #[test]
+    fn test_vm_direct_calls_stay_strict() {
+        let err = compile_and_run("let f = fn() { 1 }\nf(5)")
+            .expect_err("a direct call checks its arity");
+        assert!(
+            err.to_string().contains("Wrong number of arguments"),
+            "{err}"
+        );
+        let err = compile_and_run("let h = {\"f\": fn() { 1 }}\nh.f(5)")
+            .expect_err("a call through a hash entry checks its arity");
+        assert!(
+            err.to_string().contains("Wrong number of arguments"),
+            "{err}"
+        );
+    }
+
     #[test]
     fn test_vm_array_index_of() {
         assert_eq!(

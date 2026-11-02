@@ -124,6 +124,12 @@ impl Vm {
                 }
                 expect_callback(&args[0], name, span)?;
                 let cb = args[0].clone();
+                // A one-parameter callback gets the `[acc, item]` pair, which
+                // is what the tree-walker's `array_reduce` binds it. A
+                // one-parameter hash block gets its `[key, value]` pair the
+                // same way. With no parameter it gets nothing, and with two
+                // it gets both values.
+                let pair_arg = super::vm_calls::block_argc(&cb, 2) == 1;
                 let len = arr.borrow().len();
                 let seeded = args.len() == 2;
                 let mut acc = if seeded {
@@ -146,7 +152,12 @@ impl Vm {
                         }
                         let item = b[i].clone();
                         drop(b);
-                        acc = self.invoke_in_batch_two(&batch, &cb, acc.clone(), item, span)?;
+                        acc = if pair_arg {
+                            let pair = Value::Array(Rc::new(RefCell::new(vec![acc.clone(), item])));
+                            self.invoke_in_batch_one(&batch, &cb, pair, span)?
+                        } else {
+                            self.invoke_in_batch_two(&batch, &cb, acc.clone(), item, span)?
+                        };
                     }
                     Ok(())
                 })();

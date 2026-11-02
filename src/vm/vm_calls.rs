@@ -312,6 +312,27 @@ pub(crate) fn bind_named_arguments(
     Ok((slots, supplied))
 }
 
+/// How many of the `passed` arguments an iterator hands its block.
+///
+/// A block binds only the parameters it declares, and the iterator's other
+/// arguments are dropped. That is what the tree-walker's iterators do: they
+/// bind `func.params` and nothing else. So `3.times { … }` and
+/// `xs.each { print("tick") }` run, and `xs.each_with_index { |x| … }` gets
+/// the element without its index. A callee whose parameters are not known
+/// here (a native function, a bound method, a class) gets every argument and
+/// checks its own arity, as before.
+///
+/// Only iterator drivers ask this. A direct call (`f(5)` on `fn() { … }`, or
+/// `h.f(5)` on a hash entry) stays strict on both engines.
+#[inline]
+pub(crate) fn block_argc(callee: &Value, passed: usize) -> usize {
+    match callee {
+        Value::VmClosure(closure) => closure.proto.param_names.len().min(passed),
+        Value::Function(func) => func.params.len().min(passed),
+        _ => passed,
+    }
+}
+
 impl Vm {
     /// Refuse calls past [`MAX_CALL_DEPTH`]. The bytecode loop itself is
     /// iterative (deep recursion grows `frames` on the heap), but builtins
@@ -2547,6 +2568,10 @@ impl Vm {
 
     /// Single-arg invoke that assumes `return_depth` is already set up by
     /// `enter_callable_batch`. Saves the per-iteration save/restore writes.
+    ///
+    /// Only for an iterator's block. The block binds as many arguments as it
+    /// declares (see `block_argc`), so a block with no parameter runs
+    /// without the element.
     #[inline]
     pub fn invoke_in_batch_one(
         &mut self,
@@ -2559,14 +2584,16 @@ impl Vm {
         // element, as a Ruby block does: `pairs.map { |x, i| … }`. Every
         // array iteration method reaches its block through here.
         if let (Value::VmClosure(closure), Value::Array(parts)) = (callee, &arg) {
+            // `arity` counts the required parameters only.
             let arity = closure.proto.arity as usize;
             if arity >= 2 {
-                // Missing required positions read as nil; a defaulted one
-                // left unfilled keeps its default.
-                let required = arity - closure.proto.defaults as usize;
+                // Missing required positions read as nil. A defaulted one
+                // takes its part when the element has one, and otherwise
+                // keeps its default.
+                let declared = closure.proto.param_names.len();
                 let parts: Vec<Value> = {
                     let parts = parts.borrow();
-                    let count = parts.len().min(arity).max(required);
+                    let count = parts.len().min(declared).max(arity);
                     (0..count)
                         .map(|index| parts.get(index).cloned().unwrap_or(Value::Null))
                         .collect()
@@ -2575,14 +2602,23 @@ impl Vm {
             }
         }
         self.push(callee.clone());
-        self.push(arg);
-        self.call_value(1, span)?;
+        // A block that declares no parameter ignores the element:
+        // `3.times { … }`, `xs.each { print("tick") }`.
+        let argc = block_argc(callee, 1);
+        if argc == 1 {
+            self.push(arg);
+        }
+        self.call_value(argc, span)?;
         if self.frames.len() == batch.frames_before {
             return Ok(self.pop());
         }
         self.run()
     }
 
+    /// Two-argument form of [`Self::invoke_in_batch_one`]. The block takes as
+    /// many of `a`, `b` as it declares (see `block_argc`):
+    /// `each_with_index { |x| … }` gets the element alone, and `{ … }` gets
+    /// neither.
     #[inline]
     pub fn invoke_in_batch_two(
         &mut self,
@@ -2593,9 +2629,14 @@ impl Vm {
         span: Span,
     ) -> Result<Value, RuntimeError> {
         self.push(callee.clone());
-        self.push(a);
-        self.push(b);
-        self.call_value(2, span)?;
+        let argc = block_argc(callee, 2);
+        if argc >= 1 {
+            self.push(a);
+        }
+        if argc == 2 {
+            self.push(b);
+        }
+        self.call_value(argc, span)?;
         if self.frames.len() == batch.frames_before {
             return Ok(self.pop());
         }
@@ -2607,6 +2648,9 @@ impl Vm {
     /// entry, say. The batch is what bounds the nested `run()`; calling
     /// `call_value_direct` from inside a dispatch handler instead lets `run()`
     /// unwind past the bottom frame and panic.
+    ///
+    /// Strict, unlike the block forms. Every argument is passed, so `h.f(5)`
+    /// on `fn() { … }` raises here as it does on the tree-walker.
     pub fn invoke_in_batch(
         &mut self,
         batch: &CallableBatch,

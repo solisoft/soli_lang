@@ -1851,6 +1851,105 @@ module Util
 end
 print(Util.shout("a"))"##,
     ),
+    // A block may declare fewer parameters than its iterator passes, and it
+    // binds only those. The VM passed every argument, so each of these raised
+    // "Wrong number of arguments: expected 0, got 1" (or "expected 1, got 2"),
+    // a script stopped, and a `serve` handler was demoted after its side
+    // effects had run.
+    (
+        "int_iterators_with_blocks_that_ignore_the_index",
+        r##"def tally()
+  count = 0
+  3.times do
+    count = count + 1
+  end
+  1.upto(3) { count = count + 10 }
+  3.downto(1) { count = count + 100 }
+  count
+end
+print(tally())
+print(2.times { print("t") })
+print(1.upto(2) { print("u") })
+print(2.downto(1) { print("d") })"##,
+    ),
+    (
+        "array_iterators_with_blocks_that_ignore_the_element",
+        r##"xs = [3, 1, 2]
+print(xs.each { print("e") })
+print(xs.map { 5 })
+print(xs.filter { true })
+print(xs.select { false })
+print(xs.reject { false })
+print(xs.find { true })
+print(xs.count { true })
+print(xs.any? { true }, xs.all? { false }, xs.none? { false }, xs.one? { true })
+print(xs.sort_by { 1 })
+print((1..3).map { 0 })
+def visits(list)
+  seen = 0
+  list.each { seen = seen + 1 }
+  list.map { seen = seen + 1 }
+  list.filter { seen = seen + 1 }
+  seen
+end
+print(visits([7, 8]))"##,
+    ),
+    (
+        "hash_iterators_with_blocks_that_ignore_the_entry",
+        r##"h = {"a": 1, "b": 2}
+print(h.each { print("h") })
+h.each_key { print("k") }
+h.each_value { print("v") }
+print(h.map { ["k", 9] })
+print(h.filter { true }, h.select { false }, h.reject { true })
+print(h.keep_if { true }, h.delete_if { false })
+print(h.any? { true }, h.all? { false })
+print(h.transform_values { 0 }, h.transform_keys { "z" })"##,
+    ),
+    (
+        // `each_with_index { |x| }` gets the element alone and `{ }` gets
+        // nothing. A one-parameter `reduce` callback gets the `[acc, item]`
+        // pair, seeded or not.
+        "blocks_take_a_prefix_of_two_arguments",
+        r##"[10, 20].each_with_index { |x| print(x) }
+[10, 20].each_with_index { print("i") }
+print([[1, 2], [3, 4]].each_with_index { |pair| print(pair) })
+print([1, 2, 3].reduce(fn(pair) { pair[0] + pair[1] }, 0))
+print([1, 2, 3].reduce(fn(pair) { pair[0] * pair[1] }))
+print([1, 2, 3].reduce(fn() { 7 }, 0))
+print([1, 2, 3].reduce(fn(acc, x) { acc + x }, 0))"##,
+    ),
+    (
+        // Blocks bind loosely, but a direct call still checks its arity on
+        // both engines. Destructuring is unchanged.
+        "direct_calls_stay_strict_while_blocks_bind_loosely",
+        r##"def call_with(fun, args)
+  return fun(args[0]) if args.length == 1
+
+  fun(args[0], args[1])
+end
+try
+  call_with(fn() { 1 }, [5])
+  print("not strict")
+catch e
+  print("a direct call stays strict")
+end
+try
+  call_with(fn(a) { a }, [1, 2])
+  print("not strict")
+catch e
+  print("too many stays strict")
+end
+table = {"f": fn() { 1 }}
+try
+  table.f(5)
+  print("not strict")
+catch e
+  print("a hash entry call stays strict")
+end
+print([1, 2].map { |x| x * 2 })
+print([[1, 2], [3, 4]].map { |a, b| a + b })"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

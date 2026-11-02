@@ -18,9 +18,10 @@
 //! The loop state sits on `iter_stack` for a reason: `Return` truncates that
 //! stack to the returning frame's base and exception unwinding to the
 //! handler's depth, so a loop abandoned by a `throw` disappears without any
-//! code here. Only the common shape is taken — a compiled closure taking
-//! exactly the arguments the method passes; everything else keeps the
-//! native driver in `vm_hash_methods.rs` / `vm_array_methods.rs`, whose
+//! code here. Only the common shape is taken: a compiled closure that takes
+//! exactly the arguments the method passes, or none at all (a block that
+//! ignores its element, `xs.each { print("tick") }`). Everything else keeps
+//! the native driver in `vm_hash_methods.rs` / `vm_array_methods.rs`, whose
 //! semantics this mirrors element for element.
 
 use std::cell::RefCell;
@@ -66,6 +67,10 @@ enum HashArgs {
     Pair,
     Key,
     Value,
+    /// Nothing: a callback that declares no parameter, for a hash or an
+    /// array. Its frame has no argument slot, as the tree-walker binds such
+    /// a block nothing.
+    Nothing,
 }
 
 #[derive(Clone)]
@@ -137,6 +142,8 @@ const ARRAY_POOL_MAX: usize = 16;
 
 /// The arguments of one callback call.
 enum CallbackArgs {
+    /// A callback with no parameter ([`HashArgs::Nothing`]).
+    Zero,
     One(Value),
     Two(Value, Value),
 }
@@ -146,6 +153,7 @@ impl CallbackArgs {
     #[inline]
     fn push_onto(self, stack: &mut Vec<Value>) -> usize {
         match self {
+            CallbackArgs::Zero => 0,
             CallbackArgs::One(a) => {
                 stack.push(a);
                 1
@@ -297,7 +305,9 @@ fn keeps_entry(state: &CallbackLoop) -> bool {
 /// Write the next element's arguments straight into the kept frame's
 /// slots from `first_slot`, advancing the loop; `false` when it is done.
 /// The same element reading as `next_callback_args`, without building the
-/// arguments first and moving them into place.
+/// arguments first and moving them into place. A callback with no
+/// parameter ([`HashArgs::Nothing`]) has no slot to write: the element is
+/// still read, kept and counted.
 #[inline(always)]
 fn refill(state: &mut CallbackLoop, stack: &mut [Value], first_slot: usize) -> bool {
     if state.index >= state.len {
@@ -314,7 +324,9 @@ fn refill(state: &mut CallbackLoop, stack: &mut [Value], first_slot: usize) -> b
             if keeps_entry {
                 state.current = Some((HashKey::Null, item.clone()));
             }
-            replace_slot(stack, first_slot, clone_scalar_fast(item));
+            if state.args != HashArgs::Nothing {
+                replace_slot(stack, first_slot, clone_scalar_fast(item));
+            }
         }
         Source::Empty => unreachable!("a running loop has a source"),
         Source::Hash(hash) => {
@@ -374,6 +386,7 @@ fn refill(state: &mut CallbackLoop, stack: &mut [Value], first_slot: usize) -> b
                 }
                 HashArgs::Key => replace_slot(stack, first_slot, key_value_fast(key)),
                 HashArgs::Value => replace_slot(stack, first_slot, clone_scalar_fast(value)),
+                HashArgs::Nothing => {}
             }
         }
     }
@@ -883,10 +896,15 @@ impl Vm {
         };
         let passed = if args == HashArgs::KeyValue { 2 } else { 1 };
         // Exactly the declared parameters: no default to fill, no arity error
-        // to raise — those stay with the native driver.
-        if params != passed {
-            return Ok(false);
-        }
+        // to raise — those stay with the native driver. Or no parameter at
+        // all: a block that ignores its element (`xs.each { print("tick") }`,
+        // `h.each { … }`) gets no argument slot, as the tree-walker binds
+        // it nothing.
+        let args = match params {
+            0 => HashArgs::Nothing,
+            _ if params == passed => args,
+            _ => return Ok(false),
+        };
         // Checks done: move the callback and the receiver off the stack into
         // the loop — no reference-count round trip for either. The method's
         // result is pushed where the receiver was when the loop ends.
@@ -1015,7 +1033,11 @@ impl Vm {
                 if keeps_entry {
                     state.current = Some((HashKey::Null, item.clone()));
                 }
-                CallbackArgs::One(item)
+                if state.args == HashArgs::Nothing {
+                    CallbackArgs::Zero
+                } else {
+                    CallbackArgs::One(item)
+                }
             }
             Source::Empty => unreachable!("a running loop has a source"),
             Source::Hash(hash) => {
@@ -1045,6 +1067,7 @@ impl Vm {
                     ])))),
                     HashArgs::Key => CallbackArgs::One(key_value_fast(key)),
                     HashArgs::Value => CallbackArgs::One(value.clone()),
+                    HashArgs::Nothing => CallbackArgs::Zero,
                 }
             }
         };
