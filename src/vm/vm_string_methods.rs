@@ -678,12 +678,17 @@ impl Vm {
                         _ => None,
                     })
                     .unwrap_or("...");
-                if s.len() <= length {
-                    Ok(Value::String(s.to_string().into()))
-                } else {
-                    let result = &s[..length.saturating_sub(suffix.len())];
-                    Ok(Value::String(format!("{}{}", result, suffix).into()))
-                }
+                // Character-based, and shared with the interpreter: the byte
+                // slice this replaced panicked inside a multi-byte character.
+                // A string that fits is handed back without copying it.
+                Ok(Value::String(
+                    match crate::interpreter::executor::calls::string_methods::truncate_chars(
+                        text, length, suffix,
+                    ) {
+                        Some(cut) => cut.into(),
+                        None => s.clone(),
+                    },
+                ))
             }
             "match" => {
                 check_arity(1, args.len(), span)?;

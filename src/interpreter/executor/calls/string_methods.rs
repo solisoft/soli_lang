@@ -244,6 +244,40 @@ pub(crate) fn substring_chars(s: &str, start: i64, end: i64) -> String {
     chars[start..end].iter().collect()
 }
 
+/// `truncate(length, suffix)` — counted in **characters**, suffix included.
+///
+/// Returns `None` when the string already fits, so the caller can hand back the
+/// receiver unchanged. Both engines used to slice at the byte index
+/// `length - suffix.len()`, which panicked the process (a 500 under `soli
+/// serve`) whenever the cut fell inside a multi-byte character —
+/// `"ééééé".truncate(3, "")` — and measured accented text by its UTF-8 bytes, so
+/// `"héllo world".truncate(8)` kept one character fewer than its ASCII twin.
+pub(crate) fn truncate_chars(s: &str, length: usize, suffix: &str) -> Option<String> {
+    // A string never has more characters than bytes: this answers short strings
+    // and `truncate(9223372036854775807)` without walking anything.
+    if s.len() <= length {
+        return None;
+    }
+    let keep = length.saturating_sub(suffix.chars().count());
+    let cut = if s.is_ascii() {
+        // More bytes than `length` is more characters than `length`.
+        keep
+    } else {
+        let mut offsets = s.char_indices().map(|(byte, _)| byte);
+        // Byte offset of character `keep`: where the string is cut.
+        let cut = offsets.nth(keep)?;
+        // Character `length` must exist too, or the string already fits.
+        if length > keep {
+            offsets.nth(length - keep - 1)?;
+        }
+        cut
+    };
+    let mut out = String::with_capacity(cut + suffix.len());
+    out.push_str(&s[..cut]);
+    out.push_str(suffix);
+    Some(out)
+}
+
 /// Largest width the padding helpers will build.
 ///
 /// `"x".ljust(9223372036854775807)` asked the allocator for nine exabytes and
@@ -1340,12 +1374,11 @@ impl Interpreter {
             })
             .unwrap_or("...");
 
-        if s.len() <= length {
-            Ok(Value::String(s.to_string().into()))
-        } else {
-            let result = &s[..length.saturating_sub(suffix.len())];
-            Ok(Value::String((result.to_string() + suffix).into()))
-        }
+        Ok(Value::String(
+            truncate_chars(s, length, suffix)
+                .unwrap_or_else(|| s.to_string())
+                .into(),
+        ))
     }
 
     fn string_length(&self, s: &str, arguments: Vec<Value>, span: Span) -> RuntimeResult<Value> {
@@ -1631,7 +1664,9 @@ pub(crate) fn string_succ(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{camelize_string, parse_to_int, reverse_string, slugify_string, string_succ};
+    use super::{
+        camelize_string, parse_to_int, reverse_string, slugify_string, string_succ, truncate_chars,
+    };
 
     #[test]
     fn camelize_snake_case_lower() {
@@ -1816,5 +1851,56 @@ mod tests {
     fn succ_no_alnum() {
         assert_eq!(string_succ("!!!"), "!!!");
         assert_eq!(string_succ(""), "");
+    }
+
+    #[test]
+    fn truncate_cuts_multibyte_text_at_a_character_boundary() {
+        // Used to panic: byte 3 is inside the second 'é'.
+        assert_eq!(truncate_chars("ééééé", 3, "").as_deref(), Some("ééé"));
+        assert_eq!(truncate_chars("ééééé", 4, "...").as_deref(), Some("é..."));
+        assert_eq!(
+            truncate_chars("日本語テキスト", 4, "…").as_deref(),
+            Some("日本語…")
+        );
+        assert_eq!(truncate_chars("😀😀😀", 2, "").as_deref(), Some("😀😀"));
+    }
+
+    #[test]
+    fn truncate_counts_characters_not_bytes() {
+        // Five characters, ten bytes: it fits.
+        assert_eq!(truncate_chars("ééééé", 5, "..."), None);
+        assert_eq!(truncate_chars("ééééé", 9, "..."), None);
+        assert_eq!(
+            truncate_chars("héllo world", 8, "...").as_deref(),
+            Some("héllo...")
+        );
+        // Each 'é' boundary around `length` and `keep`.
+        assert_eq!(truncate_chars("abcé", 3, "").as_deref(), Some("abc"));
+        assert_eq!(truncate_chars("abcé", 4, ""), None);
+        assert_eq!(truncate_chars("éabc", 3, "").as_deref(), Some("éab"));
+    }
+
+    #[test]
+    fn truncate_keeps_the_ascii_behaviour() {
+        assert_eq!(
+            truncate_chars("hello world", 8, "...").as_deref(),
+            Some("hello...")
+        );
+        assert_eq!(truncate_chars("hello!", 5, "...").as_deref(), Some("he..."));
+        assert_eq!(truncate_chars("hello", 5, "..."), None);
+        assert_eq!(
+            truncate_chars("hello world", 8, "~").as_deref(),
+            Some("hello w~")
+        );
+        // A suffix longer than the limit is all that is left, as before.
+        assert_eq!(
+            truncate_chars("hello world", 2, "...").as_deref(),
+            Some("...")
+        );
+        assert_eq!(
+            truncate_chars("héllo wörld", 2, "...").as_deref(),
+            Some("...")
+        );
+        assert_eq!(truncate_chars("abc", usize::MAX, "..."), None);
     }
 }

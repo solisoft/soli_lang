@@ -1194,6 +1194,10 @@ print(before(early, late), before(late, early))"##,
         "let caught = false\ntry { \"x\".ljust(9223372036854775807) } catch e { caught = true }\nprint(caught)\nprint(\"x\".ljust(5))",
     ),
     (
+        "truncate_counts_characters_and_cuts_on_a_boundary",
+        "print(\"ééééé\".truncate(3, \"\"))\nprint(\"ééééé\".truncate(5))\nprint(\"héllo world\".truncate(8))\nprint(\"日本語テキスト\".truncate(4, \"…\"))\nprint(\"😀😀😀\".truncate(2, \"\"))\nprint(\"héllo\".truncate(2))",
+    ),
+    (
         "truncate_is_not_capped_like_padding_is",
         "print(\"abcdef\".truncate(9223372036854775807))\nprint(\"abcdef\".truncate(3))",
     ),

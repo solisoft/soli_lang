@@ -431,6 +431,14 @@ camel_upper = "hello_world".camelize(true);  # "HelloWorld" (PascalCase)
 slug = "Café & Restaurant".slugify;    # "cafe-restaurant" (lowercases, folds accents, hyphenates)
 entities = "été·".html_entities();     # "&#233;t&#233;&#183;" (non-ASCII -> numeric HTML entities, ASCII untouched)
 
+# Truncation counts characters, suffix included (default "..."), and never cuts
+# a character in half
+"hello world".truncate(8)         # "hello..."
+"hello world".truncate(8, "~")    # "hello w~"
+"héllo wörld".truncate(8)         # "héllo..."
+"日本語テキスト".truncate(4, "…")  # "日本語…"
+"hi".truncate(10)                 # "hi" (already fits: unchanged)
+
 # Numeric conversion. `to_i` takes an optional radix from 2 to 36; the
 # conventional 0x / 0o / 0b prefixes are accepted.
 print("ff".to_i(16));      # 255

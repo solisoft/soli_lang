@@ -650,14 +650,17 @@ print(text)  # "HELLO"</code></pre>
             <section id="method-truncate" class="scroll-mt-20 mb-6">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#method-truncate" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-amber-400">.truncate(length)</code>
+                        <code class="text-lg font-mono text-amber-400">.truncate(length, suffix?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 mb-3">Truncates the string to the specified length.</p>
-<pre data-filename="Example"><code class="language-soli text-sm">"hello world".truncate(5)  # "hello"
-"hi".truncate(10)          # "hi"</code></pre>
+                    <p class="text-gray-400 mb-3">Shortens the string to at most <code class="text-amber-400">length</code> characters, the suffix (default <code class="text-amber-400">"..."</code>) included. Length is counted in characters, not bytes, and the cut never falls inside a character, so accented text, CJK and emoji truncate like ASCII. A string that already fits comes back unchanged.</p>
+<pre data-filename="Example"><code class="language-soli text-sm">"hello world".truncate(8)         # "hello..."
+"hello world".truncate(8, "~")    # "hello w~"
+"héllo wörld".truncate(8)         # "héllo..."
+"日本語テキスト".truncate(4, "…")  # "日本語…"
+"hi".truncate(10)                 # "hi"</code></pre>
                 </div>
             </section>
 
