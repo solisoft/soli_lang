@@ -2416,18 +2416,37 @@ pub use crate::interpreter::value_json::{json_to_value, json_to_value_ref, value
 /// This is the default; SEC-013a will add an explicit `to_json`
 /// override hook so apps can customise their serialisation shape
 /// without working around the filter.
+///
+/// Runs once per field of every serialised instance, so it allocates nothing:
+/// the `_` test comes first (one byte), and only `_` names are compared with
+/// the metadata list.
 pub(crate) fn is_safe_serialised_field(name: &str) -> bool {
-    // Always-exposed Model metadata.
-    const PUBLIC_META: &[&str] = &["_key", "_id", "_rev", "_created_at", "_updated_at"];
-    if PUBLIC_META.contains(&name) {
-        return true;
-    }
-    // All other `_`-prefixed fields are framework internals
-    // (`_errors`, `_text`, `_pending_translations`, …).
-    if name.starts_with('_') {
-        return false;
+    if let Some(rest) = name.strip_prefix('_') {
+        // Always-exposed Model metadata; every other `_`-prefixed field is a
+        // framework internal (`_errors`, `_text`, `_pending_translations`, …).
+        return matches!(rest, "key" | "id" | "rev" | "created_at" | "updated_at");
     }
     !is_sensitive_field_name(name)
+}
+
+/// The fields of a plain instance that its JSON carries (see
+/// [`is_safe_serialised_field`]), sorted by name.
+///
+/// `Instance::fields` is a hash map with a random seed per instance, so its
+/// iteration order differs from one object to the next and from one request
+/// to the next. Sorting gives every writer one stable order: the one
+/// `value_to_json` already produced through `serde_json::Map` (a `BTreeMap`,
+/// byte order), so `render_json`, `JSON.stringify`, serde and `value_to_json`
+/// agree byte for byte, and identical data gives identical bytes (ETags,
+/// cache keys, snapshot tests).
+pub(crate) fn serialised_instance_fields(instance: &Instance) -> Vec<(&SoliStr, &Value)> {
+    let mut fields: Vec<(&SoliStr, &Value)> = instance
+        .fields
+        .iter()
+        .filter(|(name, _)| is_safe_serialised_field(name))
+        .collect();
+    fields.sort_unstable_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
+    fields
 }
 
 /// Does this *model field* name look like it holds a secret?
@@ -2447,20 +2466,29 @@ pub(crate) fn is_safe_serialised_field(name: &str) -> bool {
 /// So a field called `author` is serialised normally and still redacted in an
 /// error log. That asymmetry is the point.
 ///
-/// Case-insensitive on the prefix/suffix, matched in lowercase so `PasswordHash`
-/// is caught as well as `password_hash`.
+/// ASCII-case-insensitive on the prefix/suffix, so `PasswordHash` is caught
+/// as well as `password_hash`. The bytes are compared in place with
+/// `eq_ignore_ascii_case` rather than through a lowercased copy: this runs for
+/// every field of every serialised instance, and the copy was a heap
+/// allocation per field. Non-ASCII bytes compare unchanged either way.
 pub(crate) fn is_sensitive_field_name(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
+    let bytes = name.as_bytes();
+    let starts_with = |prefix: &[u8]| {
+        bytes
+            .get(..prefix.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+    };
+    let ends_with = |suffix: &[u8]| {
+        bytes.len() >= suffix.len()
+            && bytes[bytes.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
+    };
     // Catches `password`, `password_digest`, `password_hash`,
-    // `password_reset_token`, `passwordHash` (lowercased to
-    // `passwordhash`), etc.
-    if lower.starts_with("password") {
-        return true;
-    }
-    lower.ends_with("_token")
-        || lower.ends_with("_digest")
-        || lower.ends_with("_secret")
-        || lower.ends_with("_hash")
+    // `password_reset_token`, `passwordHash`, etc.
+    starts_with(b"password")
+        || ends_with(b"_token")
+        || ends_with(b"_digest")
+        || ends_with(b"_secret")
+        || ends_with(b"_hash")
 }
 
 thread_local! {
@@ -2577,11 +2605,10 @@ impl Value {
                 // names match common-sensitive patterns and most
                 // `_`-prefixed framework internals; apps that need the
                 // raw shape can serialise explicitly via a Hash literal.
-                let mut map = serializer.serialize_map(None)?;
-                for (k, v) in borrow.fields.iter() {
-                    if is_safe_serialised_field(k) {
-                        map.serialize_entry(k, v)?;
-                    }
+                let fields = serialised_instance_fields(&borrow);
+                let mut map = serializer.serialize_map(Some(fields.len()))?;
+                for (k, v) in fields {
+                    map.serialize_entry(k, v)?;
                 }
                 map.end()
             }
@@ -3866,6 +3893,21 @@ mod value_misc_tests {
     }
 
     #[test]
+    fn safe_serialised_field_matches_metadata_names_exactly() {
+        // Only the exact metadata names pass: no prefix match, no case folding.
+        for f in &[
+            "_", "_keys", "_Key", "_ID", "__key", "_id_x", "_created", "_rev_",
+        ] {
+            assert!(
+                !super::is_safe_serialised_field(f),
+                "{} should be filtered",
+                f
+            );
+        }
+        assert!(super::is_safe_serialised_field(""));
+    }
+
+    #[test]
     fn safe_serialised_field_keeps_innocent_lookalikes() {
         // `token_count` doesn't end in `_token`; `digest_format` doesn't end in `_digest`.
         // The suffix match is anchored, so legitimate fields aren't false-positives.
@@ -3983,6 +4025,53 @@ mod sensitive_name_tests {
             assert!(
                 is_sensitive_field_name(name),
                 "{name} should be treated as sensitive"
+            );
+        }
+    }
+
+    /// The allocation-free matcher must answer exactly what the old
+    /// lowercase-then-compare one did, ASCII case folding and non-ASCII names
+    /// included.
+    #[test]
+    fn matches_the_lowercasing_reference() {
+        fn reference(name: &str) -> bool {
+            let lower = name.to_ascii_lowercase();
+            lower.starts_with("password")
+                || lower.ends_with("_token")
+                || lower.ends_with("_digest")
+                || lower.ends_with("_secret")
+                || lower.ends_with("_hash")
+        }
+        for name in [
+            "",
+            "p",
+            "passwor",
+            "password",
+            "PASSWORD",
+            "pAsSwOrD_x",
+            "passwordHash",
+            "my_password",
+            "_token",
+            "token",
+            "x_TOKEN",
+            "x_Digest",
+            "a_secreT",
+            "a_hasH",
+            "_hash",
+            "hash",
+            "content_hashes",
+            "tokens",
+            "mot_de_passe",
+            "pässword",
+            "clé_token",
+            "ünïcode_HASH",
+            "token_ß",
+            "\u{0}_token",
+        ] {
+            assert_eq!(
+                is_sensitive_field_name(name),
+                reference(name),
+                "disagreement on {name:?}"
             );
         }
     }

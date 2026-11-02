@@ -10,7 +10,7 @@
 //! enum tags, and the sensitive-field filter on instances.
 
 use crate::interpreter::value::{
-    enum_variant_tag, is_safe_serialised_field, HashKey, HashPairs, Value,
+    enum_variant_tag, serialised_instance_fields, HashKey, HashPairs, Value,
 };
 
 /// Maximum container nesting, as in `Value`'s `Serialize` impl.
@@ -136,15 +136,14 @@ fn write_value(out: &mut Vec<u8>, value: &Value, depth: usize) -> Result<(), Str
                 close(out, open_at, b'}');
                 return Ok(());
             }
-            // SEC-013: skip sensitive and framework-internal fields.
+            // SEC-013: skip sensitive and framework-internal fields; the
+            // rest in name order, so identical data writes identical bytes.
             let open_at = out.len();
             out.push(b'{');
-            for (key, item) in instance.fields.iter() {
-                if is_safe_serialised_field(key) {
-                    write_key(out, key);
-                    write_value(out, item, depth)?;
-                    out.push(b',');
-                }
+            for (key, item) in serialised_instance_fields(&instance) {
+                write_key(out, key);
+                write_value(out, item, depth)?;
+                out.push(b',');
             }
             close(out, open_at, b'}');
         }
@@ -423,6 +422,51 @@ mod tests {
         let ours = stringify_to_string(value)?;
         let theirs = serde_json::to_string(value).map_err(|e| e.to_string())?;
         assert_eq!(ours, theirs);
+        Ok(())
+    }
+
+    fn post_instance() -> Value {
+        use crate::interpreter::value::{Class, Instance};
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let class = Rc::new(Class {
+            name: "Post".into(),
+            ..Class::default()
+        });
+        let mut instance = Instance::new(class);
+        for (name, value) in [
+            ("title", Value::String("t".into())),
+            ("views", Value::Int(3)),
+            ("body", Value::String("b".into())),
+            ("category", Value::String("c".into())),
+            ("created_at", Value::String("x".into())),
+            ("Zed", Value::Int(1)),
+            ("_key", Value::String("k1".into())),
+            ("_errors", Value::Array(Rc::new(RefCell::new(Vec::new())))),
+            ("password_digest", Value::String("secret".into())),
+            ("api_token", Value::String("secret".into())),
+        ] {
+            instance.set(name, value);
+        }
+        Value::Instance(Rc::new(RefCell::new(instance)))
+    }
+
+    /// An instance's JSON is its SEC-013-filtered fields sorted by name, the
+    /// same bytes from every writer and for every instance holding the same
+    /// data: `Instance::fields` iterates in a per-instance random order, which
+    /// used to leak into the output.
+    #[test]
+    fn instance_fields_are_written_sorted_by_name() -> Result<(), String> {
+        let expected = r#"{"Zed":1,"_key":"k1","body":"b","category":"c","created_at":"x","title":"t","views":3}"#;
+        for _ in 0..16 {
+            let post = post_instance();
+            assert_eq!(stringify_to_string(&post)?, expected);
+            same_as_serde_json(&post)?;
+            let via_value_to_json =
+                serde_json::to_string(&crate::interpreter::value::value_to_json(&post)?)
+                    .map_err(|e| e.to_string())?;
+            assert_eq!(via_value_to_json, expected);
+        }
         Ok(())
     }
 

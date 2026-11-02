@@ -3169,6 +3169,11 @@ arr = JSON.stringify([1, 2, 3])
 println(arr)  # [1,2,3]
 ```
 
+A Hash is written in insertion order. A class instance or model record is written
+with its sensitive and `_`-internal fields left out (see
+[Controllers](controllers.md), "instance serialisation") and the rest **sorted by
+name**, so the same data always gives the same bytes.
+
 ### JSON.parse_jsonp(string)
 
 Unwraps a JSONP string — `callback({...});`, `callback([...])`, optionally with a
