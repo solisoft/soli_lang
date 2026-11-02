@@ -15,7 +15,8 @@ src/vm/
   vm.rs               # Vm, CallFrame, run() dispatch loop
   vm_calls.rs / vm_classes.rs / vm_exceptions.rs
   vm_*_methods.rs     # String/Array/Hash/Int/primitive methods
-  upvalue.rs          # closures
+  upvalue.rs          # VmClosure, Upvalue cells
+  vm_upvalues.rs      # closures: making, capturing, closing, reusing
   method_table.rs
   disassembler.rs
 ```
@@ -80,7 +81,7 @@ Helpers you will call if you add a statement:
 
 ### The fast tier (`run_fast`)
 
-Before the big `match`, `run_dispatch` calls `run_fast`, which runs the simple ops with the current frame's `ip`, code, constants and stack base held in locals — `&mut self` otherwise forces a reload of all of them through `self.frames` on every op. It covers locals, upvalues, global reads, constants, jumps, integer/float arithmetic and comparisons, the fused local super-instructions, and the common shape of `Call`/`CallGlobal`/`Return` (a compiled closure given exactly its arguments; a return that closes no upvalue and stays in this `run`), switching its cached state to the new frame.
+Before the big `match`, `run_dispatch` calls `run_fast`, which runs the simple ops with the current frame's `ip`, code, constants and stack base held in locals — `&mut self` otherwise forces a reload of all of them through `self.frames` on every op. It covers locals, upvalues (reads, writes, and `+=` on numbers), global reads, constants, jumps, integer/float arithmetic and comparisons, the fused local super-instructions, making a closure and closing a scope's captured locals, and the common shape of `Call`/`CallGlobal`/`Return` (a compiled closure given exactly its arguments; a return that stays in this `run`, which closes its frame's captured locals on the way out), switching its cached state to the new frame.
 
 The rule that keeps the two tiers from disagreeing: **a fast arm either completes its op or hands it back untouched.** Type and overflow checks peek before anything is popped; anything else — a string `+`, an overflow, a native callee, an error to raise — `break`s out with the op, `ip` is written back, and the general arm runs it exactly as if the fast tier did not exist. So a new op needs only a general arm to be correct; a fast arm is an optimisation, and must never produce an error or a result the general arm would not. `tests/differential_engines_test.rs` (`fast_tier_hands_off_to_the_general_arm`) exercises the hand-offs.
 
@@ -92,11 +93,11 @@ These methods do not loop in Rust when their callback is a compiled closure:
 - array `each`, `each_with_index`, `map`, `filter`/`select`, `reject`, `find`, `any?`/`all?`/`none?`/`one?`, `count`, `reduce`/`fold` (seeded or not) and `sort_by`;
 - `Int#times`, `upto` and `downto`.
 
-`CallMethod` hands them to `try_start_callback_loop`, and so does `CallMethodById` for `count`, the only one of them with a method id. That leaves a `CallbackLoop` on `iter_stack` and opens the first element's frame flagged `drives_loop`. When that frame returns, `Return` gives the result to the loop, which records it and refills the **same frame's** argument slots for the next element (`rerun_loop_callback`), or pops itself and pushes the method's result. Living on `iter_stack` is what makes a `throw` out of a callback safe: `Return` and exception unwinding already truncate that stack. The loop state holds what the method needs: `reduce`'s accumulator (moved into the callback's argument slot while it runs), `find`'s element, `count`'s tally, and `sort_by`'s `(element, key)` pairs, sorted at the end with the native driver's comparator.
+`CallMethod` hands them to `try_start_callback_loop`, and so does `CallMethodById` for `count`, the only one of them with a method id. That leaves a `CallbackLoop` on `iter_stack` and opens the first element's frame flagged `drives_loop`. When that frame returns, `Return` gives the result to the loop, which records it and refills the **same frame's** argument slots for the next element (`rerun_loop_callback`), or pops itself and pushes the method's result. That holds for a block that captured its own parameters or locals too (`groups.map { |g| g.items.map { |i| [g.name, i] } }`): the return closes those cells first, so a closure made in one pass keeps that pass's values and the next pass gets new cells. Living on `iter_stack` is what makes a `throw` out of a callback safe: `Return` and exception unwinding already truncate that stack. The loop state holds what the method needs: `reduce`'s accumulator (moved into the callback's argument slot while it runs), `find`'s element, `count`'s tally, and `sort_by`'s `(element, key)` pairs, sorted at the end with the native driver's comparator.
 
 The callback's arguments follow the native drivers' binding rules (`ArgMode`). It receives exactly what the method passes, the first of two (`each_with_index { |x| }`; a one-parameter `reduce` gets the `[acc, item]` pair), or nothing. A block of two or more required parameters over an array element gets one part per parameter instead (`pairs.map { |a, b| … }`, with nil for a missing part). An element that is not an array then fails the way the native call does: the same arity error, at the method's call site.
 
-A callback whose body is a **template** (`Kernel`) is not called at all: a parameter, `x + - * c`, `x < <= > >= c`, `[a, b + c]`, `[a, b]`, or `acc = acc + x` into a captured variable. The loop evaluates it per element in Rust. The same rule as the fast tier applies — a template computes only what its opcode's general arm answers inline (int with overflow checked, float with float); any other operand hands *that element* to the frame path, which runs the real opcodes. Templates are recognised from the exact bytecode shape (`Kernel::of`), so a peephole change that alters a callback's opcodes can make it stop matching: that is safe (it runs on the frame path), only slower. Only the one-value shapes get one. An `(item, index)` pair, `reduce`'s accumulator, an element's parts and a `[key, value]` pair argument always run the frame path.
+A callback whose body is a **template** (`Kernel`) is not called at all: a parameter, `x + - * c`, `x < <= > >= c`, `[a, b + c]`, `[a, b]`, or `acc += x` / `acc = acc + x` into a captured variable (`GET_UPVALUE; …; ADD_ASSIGN_U`). The loop evaluates it per element in Rust. The same rule as the fast tier applies — a template computes only what its opcode's general arm answers inline (int with overflow checked, float with float); any other operand hands *that element* to the frame path, which runs the real opcodes. Templates are recognised from the exact bytecode shape (`Kernel::of`), so a peephole change that alters a callback's opcodes can make it stop matching: that is safe (it runs on the frame path), only slower. Only the one-value shapes get one. An `(item, index)` pair, `reduce`'s accumulator, an element's parts and a `[key, value]` pair argument always run the frame path.
 
 Everything else keeps the native drivers in `vm_hash_methods.rs` / `vm_array_methods.rs` / `vm_int_methods.rs`, whose semantics the loop mirrors element for element: live iteration with the length fixed at the start, the early exits of `find`/`any?`/`all?`/`none?`/`one?`, and the same error messages. That covers:
 
@@ -129,7 +130,17 @@ impl Vm {
 
 Stack slots are `Value`. Locals are slots relative to `CallFrame.stack_base`.
 
-Closures: captured locals become `upvalue`s (`upvalue.rs`, `VmClosure`). `close_upvalues` is the Crafting Interpreters “move to heap when the stack slot dies” step.
+Closures (`vm_upvalues.rs`; the types are in `upvalue.rs`): a captured local becomes a cell, `Rc<RefCell<Upvalue>>`, shared by every closure over that variable. It is *open* on the variable's stack slot while the variable lives and *closed*, holding the value, once it goes out of scope — the Crafting Interpreters “move to heap when the stack slot dies” step. `open_upvalues` lists the open cells with their slots, sorted by slot, so `close_upvalues(from)` pops a tail, and `open_upvalue_top` tells a return in one comparison whether its frame has any. Variables go out of scope at a frame's `Return`, at a scope's `CloseUpvalue` (a captured loop variable, a block's `let`), and when an exception unwinds: everything above the handler's stack depth is closed, the `try` body's own locals included.
+
+Evaluating a `fn` expression allocates nothing once warm:
+
+- a closure that captures nothing is one shared instance per expression (`closure_cache`);
+- a capturing block that an iterator loop held the last reference to when it finished is kept with its upvalues emptied, and the next evaluation of the same expression refills it (`closure_spares`, `recycle_closure`);
+- a cell nothing else references when its variable goes out of scope is not given the value: it goes back to `upvalue_pool` for the next capture.
+
+Each reuse needs the only reference (`Rc::get_mut`, or a strong count of 1 and no weak one), so no live closure can tell. Both caches are direct-mapped by the prototype's address, all of its bits mixed (`closure_slot`): prototypes share one allocator size class, and `(address >> 4) % 64` reached only 16 of the 64 slots.
+
+`total += x` and `total = total + x` into a captured variable compile to one `AddAssignUpvalue`, a variable or literal `x` included: a local leaves those to its peepholes (`IncrLocal`, `AddLocalsInPlace`, …), and a captured variable has none. The exception is `acc = acc + h[keys[k]]` over variables, which stays `Add` and `SetUpvalue` whatever `acc` is, because over locals it is the `AddNestedIndex` peephole's. The fast tier runs `AddAssignUpvalue` on numbers; a string grows in place in the general arm.
 
 Errors carry the same `line:column` as the tree-walker's: `Chunk` keeps a `columns` vector parallel to `code` (`emit_at` records the column of the expression or statement being compiled, 0 where unknown). The call-depth error names the function and points at its declaration, worded as the tree-walker words it (`call stack too deep (256 frames) in "down" — unbounded recursion?`).
 

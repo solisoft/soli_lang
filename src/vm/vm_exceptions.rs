@@ -20,10 +20,19 @@ impl Vm {
             let handler = self.exception_handlers.pop().unwrap();
 
             // Unwind call frames
+            let mut close_from = handler.stack_depth;
             while self.frames.len() > handler.frame_depth {
                 let frame = self.frames.pop().unwrap();
-                self.close_upvalues(frame.stack_base);
+                close_from = close_from.min(frame.stack_base);
             }
+
+            // Close the cells of every variable the unwinding drops — the
+            // popped frames', and the `try` body's own locals above the
+            // handler's depth — while their slots still hold them. Only the
+            // frames' used to be closed: a closure made in the `try` body
+            // kept a cell open on a slot the truncation below gave back, and
+            // read whatever the catch block or the code after it put there.
+            self.close_upvalues(close_from);
 
             // Unwind the stack
             self.stack.truncate(handler.stack_depth);

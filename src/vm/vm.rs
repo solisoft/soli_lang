@@ -144,8 +144,8 @@ pub enum IterState {
     Callback(Box<super::vm_callback_loop::CallbackLoop>),
 }
 
-/// Slots in `Vm::closure_cache`.
-const CLOSURE_CACHE_SLOTS: usize = 64;
+/// Slots in `Vm::closure_cache` and `Vm::closure_spares`.
+pub(crate) const CLOSURE_CACHE_SLOTS: usize = 64;
 
 /// The bytecode VM.
 pub struct Vm {
@@ -155,8 +155,10 @@ pub struct Vm {
     pub frames: Vec<CallFrame>,
     /// Global variables.
     pub globals: HashMap<String, Value>,
-    /// Open upvalues (pointing to stack slots that are still live).
-    pub open_upvalues: Vec<Rc<RefCell<Upvalue>>>,
+    /// Open upvalues — cells pointing at stack slots that are still live —
+    /// each with the slot it points at, sorted by slot. A returning frame's
+    /// cells are then the tail (see `vm_upvalues.rs`).
+    pub open_upvalues: Vec<(usize, Rc<RefCell<Upvalue>>)>,
     /// One past the highest stack slot an open upvalue points at (0 when
     /// none is open), so a return can tell in one comparison whether its
     /// frame has anything to close. Kept by `capture_upvalue`,
@@ -168,7 +170,16 @@ pub struct Vm {
     /// Closures that capture nothing, one per `fn` expression, shared by
     /// every evaluation of it — see `Op::Closure`. Direct-mapped by the
     /// prototype's address; each entry keeps its prototype alive.
-    closure_cache: Box<[Option<Rc<VmClosure>>; CLOSURE_CACHE_SLOTS]>,
+    pub(crate) closure_cache: Box<[Option<Rc<VmClosure>>; CLOSURE_CACHE_SLOTS]>,
+    /// Closures that capture, each kept by the iterator loop that held the
+    /// last reference to it, with its upvalues emptied: the next evaluation
+    /// of the same `fn` expression refills it instead of allocating.
+    /// Mapped like `closure_cache`; each holds only its prototype.
+    pub(crate) closure_spares: Box<[Option<Rc<VmClosure>>; CLOSURE_CACHE_SLOTS]>,
+    /// Upvalue cells nothing referenced any more when their variable went
+    /// out of scope, kept for `capture_upvalue` to reuse. They hold no
+    /// value. Bounded.
+    pub(crate) upvalue_pool: Vec<Rc<RefCell<Upvalue>>>,
     /// Emptied arrays nothing else references, handed back by an iterator
     /// loop (a `map` callback's `[key, value]` pair once its entry is taken
     /// out) for `Op::Array` to fill instead of allocating. Bounded.
@@ -349,6 +360,8 @@ impl Vm {
             open_upvalue_top: 0,
             spare_callback_loop: None,
             closure_cache: Box::new([const { None }; CLOSURE_CACHE_SLOTS]),
+            closure_spares: Box::new([const { None }; CLOSURE_CACHE_SLOTS]),
+            upvalue_pool: Vec::new(),
             array_pool: Vec::new(),
             exception_handlers: Vec::new(),
             iter_stack: Vec::new(),
@@ -982,15 +995,18 @@ impl Vm {
                 }
                 Op::Return => {
                     let depth_after = self.frames.len() - 1;
-                    // Only upvalues still open on *this* frame's slots need
-                    // closing (the general arm's job); captures of an outer
-                    // frame's locals — a callback inside a closure over the
-                    // caller's variables — do not stop the fast return.
                     if depth_after <= self.return_depth
-                        || self.has_open_upvalues_from(base)
                         || (self.check_return_types && !self.return_value_admitted())
                     {
                         break Some(op);
+                    }
+                    // The frame's own variables go out of scope: close the
+                    // cells that closures made here hold on them, while the
+                    // slots still have their values — what the general arm
+                    // does. Cells on an outer frame's locals (a callback's
+                    // captures of its caller's variables) stay open.
+                    if self.has_open_upvalues_from(base) {
+                        self.close_upvalues(base);
                     }
                     let (drives_loop, params, iter_base) = {
                         let frame = self.frames.last().unwrap();
@@ -1006,8 +1022,9 @@ impl Vm {
                         // would — the callback's temporaries and locals above
                         // its arguments, its `for` loops, its `try` handlers —
                         // then let the loop record the result and refill the
-                        // argument slots. (No upvalue is open on this frame:
-                        // checked above.)
+                        // argument slots. Its cells were closed above: what a
+                        // closure made in this pass captured keeps this pass's
+                        // values, and the next pass's closures get new cells.
                         let result = self.pop();
                         self.stack.truncate(base + 1 + params);
                         self.iter_stack.truncate(iter_base);
@@ -1054,13 +1071,53 @@ impl Vm {
                 }
                 Op::SetUpvalue(idx) => {
                     let value = self.stack.last().unwrap().clone();
-                    let upvalue =
-                        self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
-                    let mut cell = upvalue.borrow_mut();
-                    match &mut *cell {
+                    // `frames` and `stack` are borrowed apart, so the cell is
+                    // reached without a reference-count round trip.
+                    let frame = self.frames.last().unwrap();
+                    match &mut *frame.closure.upvalues[idx as usize].borrow_mut() {
                         Upvalue::Open(slot) => self.stack[*slot] = value,
                         Upvalue::Closed(closed) => *closed = value,
                     }
+                }
+                // `captured = captured + value` (and `captured += value`) on
+                // numbers, as `AddAssignLocal` here: a string, anything else
+                // and an overflowing add are the general arm's.
+                Op::AddAssignUpvalue(idx) => {
+                    let (len, a, b) = peek_two!();
+                    let sum = match (a, b) {
+                        (Value::Int(x), Value::Int(y)) => match x.checked_add(*y) {
+                            Some(n) => Value::Int(n),
+                            None => break Some(op),
+                        },
+                        (Value::Float(x), Value::Float(y)) => Value::Float(x + y),
+                        (Value::Int(x), Value::Float(y)) => Value::Float(*x as f64 + y),
+                        (Value::Float(x), Value::Int(y)) => Value::Float(x + *y as f64),
+                        _ => break Some(op),
+                    };
+                    let frame = self.frames.last().unwrap();
+                    match &mut *frame.closure.upvalues[idx as usize].borrow_mut() {
+                        Upvalue::Open(slot) => self.stack[*slot] = sum.clone(),
+                        Upvalue::Closed(value) => *value = sum.clone(),
+                    }
+                    replace_top_two!(len, sum);
+                }
+                Op::Closure(idx) => {
+                    // SAFETY: as for `Op::Constant`. `make_closure` pushes and
+                    // pops no frame, so the chunk holding the prototype stays
+                    // alive while it runs.
+                    let proto = match unsafe { &*constants.add(idx as usize) } {
+                        Constant::Function(proto) => proto,
+                        _ => break Some(op),
+                    };
+                    let closure = self.make_closure(proto);
+                    self.stack.push(Value::VmClosure(closure));
+                }
+                // A captured block-scoped local goes out of scope (a loop
+                // variable at the end of its pass, a block's `let`).
+                Op::CloseUpvalue => {
+                    let slot = self.stack.len() - 1;
+                    self.close_upvalues(slot);
+                    discard(self.pop());
                 }
                 Op::GetGlobal(idx) => {
                     // SAFETY: as for `Op::Constant`.
@@ -1456,16 +1513,10 @@ impl Vm {
                 }
                 Op::SetUpvalue(idx) => {
                     let val = self.stack.last().unwrap().clone();
-                    let upvalue =
-                        self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
-                    let mut uv = upvalue.borrow_mut();
-                    match &mut *uv {
-                        Upvalue::Open(slot) => {
-                            self.stack[*slot] = val;
-                        }
-                        Upvalue::Closed(v) => {
-                            *v = val;
-                        }
+                    let frame = self.frames.last().unwrap();
+                    match &mut *frame.closure.upvalues[idx as usize].borrow_mut() {
+                        Upvalue::Open(slot) => self.stack[*slot] = val,
+                        Upvalue::Closed(v) => *v = val,
                     }
                 }
                 Op::CloseUpvalue => {
@@ -2818,48 +2869,15 @@ impl Vm {
                     // tree-walker and the other three hash-set opcodes.
                     self.push(value);
                 }
+                // `run_fast` makes closures; this is the same, for a frame
+                // that reaches it here. See `vm_upvalues.rs`.
                 Op::Closure(idx) => {
                     let frame = self.frames.last().unwrap();
                     let constant = &frame.closure.proto.chunk.constants[idx as usize];
                     if let Constant::Function(proto) = constant {
-                        // A closure that captures nothing is immutable, and a
-                        // closure's identity is never observable (two closures
-                        // are never `==`), so one instance per `fn` expression
-                        // serves every evaluation: a callback literal inside a
-                        // loop — `h.each(fn(k, v) …)` — no longer allocates on
-                        // each pass.
-                        if proto.upvalue_descriptors.is_empty() {
-                            let slot = (Arc::as_ptr(proto) as usize >> 4) % CLOSURE_CACHE_SLOTS;
-                            let closure = match &self.closure_cache[slot] {
-                                Some(cached) if Arc::ptr_eq(&cached.proto, proto) => cached.clone(),
-                                _ => {
-                                    let fresh = Rc::new(VmClosure::new(proto.clone(), Vec::new()));
-                                    self.closure_cache[slot] = Some(fresh.clone());
-                                    fresh
-                                }
-                            };
-                            self.stack.push(Value::VmClosure(closure));
-                            continue;
-                        }
                         let proto = proto.clone();
-                        let mut upvalues = Vec::with_capacity(proto.upvalue_descriptors.len());
-
-                        for desc in &proto.upvalue_descriptors {
-                            if desc.is_local {
-                                let base = self.frames.last().unwrap().stack_base;
-                                let slot = base + desc.index as usize;
-                                let upvalue = self.capture_upvalue(slot);
-                                upvalues.push(upvalue);
-                            } else {
-                                let upvalue = self.frames.last().unwrap().closure.upvalues
-                                    [desc.index as usize]
-                                    .clone();
-                                upvalues.push(upvalue);
-                            }
-                        }
-
-                        let closure = VmClosure::new(proto, upvalues);
-                        self.stack.push(Value::VmClosure(Rc::new(closure)));
+                        let closure = self.make_closure(&proto);
+                        self.stack.push(Value::VmClosure(closure));
                     }
                 }
                 Op::Return => {
@@ -2869,8 +2887,9 @@ impl Vm {
                     }
                     let frame = self.frames.pop().unwrap();
 
-                    // Close upvalues only if there are any open ones in this frame's range
-                    if !self.open_upvalues.is_empty() {
+                    // Close the cells on this frame's slots — one comparison
+                    // when none is open there, however many are open below.
+                    if self.has_open_upvalues_from(frame.stack_base) {
                         self.close_upvalues(frame.stack_base);
                     }
 
@@ -3802,11 +3821,11 @@ impl Vm {
                 Op::AddAssignUpvalue(idx) => {
                     let rhs = self.pop();
                     let before = self.pop();
-                    let upvalue =
-                        self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
+                    // `frames` and `stack` are borrowed apart: no reference
+                    // count moves to reach the cell.
                     let appended = {
-                        let mut cell = upvalue.borrow_mut();
-                        match &mut *cell {
+                        let frame = self.frames.last().unwrap();
+                        match &mut *frame.closure.upvalues[idx as usize].borrow_mut() {
                             Upvalue::Open(slot) => {
                                 add_strings_into(&mut self.stack[*slot], before, rhs)
                             }
@@ -3817,7 +3836,8 @@ impl Vm {
                         Ok(updated) => updated,
                         Err((before, rhs)) => {
                             let sum = self.add_values(before, rhs)?;
-                            match &mut *upvalue.borrow_mut() {
+                            let frame = self.frames.last().unwrap();
+                            match &mut *frame.closure.upvalues[idx as usize].borrow_mut() {
                                 Upvalue::Open(slot) => self.stack[*slot] = sum.clone(),
                                 Upvalue::Closed(value) => *value = sum.clone(),
                             }
@@ -3847,11 +3867,9 @@ impl Vm {
                 Op::AppendUpvalue(idx) => {
                     let rhs = self.pop();
                     let before = self.pop();
-                    let upvalue =
-                        self.frames.last().unwrap().closure.upvalues[idx as usize].clone();
                     let outcome = {
-                        let mut cell = upvalue.borrow_mut();
-                        match &mut *cell {
+                        let frame = self.frames.last().unwrap();
+                        match &mut *frame.closure.upvalues[idx as usize].borrow_mut() {
                             Upvalue::Open(slot) => shovel_into(&mut self.stack[*slot], before, rhs),
                             Upvalue::Closed(value) => shovel_into(value, before, rhs),
                         }
@@ -4736,22 +4754,6 @@ impl Vm {
         }
     }
 
-    fn capture_upvalue(&mut self, slot: usize) -> Rc<RefCell<Upvalue>> {
-        // Check if we already have an open upvalue for this slot
-        for uv in &self.open_upvalues {
-            if let Upvalue::Open(s) = &*uv.borrow() {
-                if *s == slot {
-                    return uv.clone();
-                }
-            }
-        }
-        // Create a new open upvalue
-        let upvalue = Rc::new(RefCell::new(Upvalue::Open(slot)));
-        self.open_upvalues.push(upvalue.clone());
-        self.open_upvalue_top = self.open_upvalue_top.max(slot + 1);
-        upvalue
-    }
-
     /// Build an array of the top `n` stack values, in order — taking an
     /// emptied array from `array_pool` when there is one.
     #[inline]
@@ -4817,52 +4819,6 @@ impl Vm {
             Op::GreaterLocalConst(..) => self.op_compare_less(b, a, span).map_err(source_order),
             _ => self.op_compare_less_equal(b, a, span).map_err(source_order),
         }
-    }
-
-    /// Whether any upvalue is still open on a stack slot at or above
-    /// `from_slot` — what `close_upvalues(from_slot)` would close.
-    #[inline]
-    pub(crate) fn has_open_upvalues_from(&self, from_slot: usize) -> bool {
-        self.open_upvalue_top > from_slot
-    }
-
-    pub fn close_upvalues(&mut self, from_slot: usize) {
-        let mut i = 0;
-        while i < self.open_upvalues.len() {
-            let should_close = {
-                let uv = self.open_upvalues[i].borrow();
-                if let Upvalue::Open(slot) = &*uv {
-                    *slot >= from_slot
-                } else {
-                    false
-                }
-            };
-
-            if should_close {
-                let upvalue = self.open_upvalues.remove(i);
-                let value = {
-                    let uv = upvalue.borrow();
-                    if let Upvalue::Open(slot) = &*uv {
-                        self.stack[*slot].clone()
-                    } else {
-                        Value::Null
-                    }
-                };
-                *upvalue.borrow_mut() = Upvalue::Closed(value);
-            } else {
-                i += 1;
-            }
-        }
-        // Everything still open points below `from_slot`.
-        self.open_upvalue_top = self
-            .open_upvalues
-            .iter()
-            .filter_map(|upvalue| match *upvalue.borrow() {
-                Upvalue::Open(slot) => Some(slot + 1),
-                Upvalue::Closed(_) => None,
-            })
-            .max()
-            .unwrap_or(0);
     }
 
     /// Advance the current iterator, returning the next value or None if exhausted.

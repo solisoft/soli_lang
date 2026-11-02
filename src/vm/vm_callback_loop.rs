@@ -606,11 +606,11 @@ enum Kernel {
     PairParamArith(u16, ArithOp, u16, KConst),
     /// `GET_LOCAL a; GET_LOCAL b; ARRAY 2` — `fn(k, v) [v, k]`
     PairParams(u16, u16),
-    /// `GET_UPVALUE u; CONSTANT c | GET_LOCAL p; ADD; SET_UPVALUE u` —
+    /// `GET_UPVALUE u; CONSTANT c | GET_LOCAL p; ADD_ASSIGN_U u` —
     /// `fn(k, v) { total = total + v }`, `{ count += 1 }`: the accumulator a
     /// loop body most often is. Its one effect, the write to the captured
     /// variable, happens only once the sum is known to be exactly what
-    /// `ADD` would produce.
+    /// `ADD_ASSIGN_U` would produce.
     Accumulate(u16, Operand),
 }
 
@@ -746,12 +746,12 @@ impl Kernel {
             [Op::GetLocal(a), Op::GetLocal(b), Op::Array(2), Op::Return, ..] => {
                 Some(Kernel::PairParams(param(*a)?, param(*b)?))
             }
-            [Op::GetUpvalue(u), Op::Constant(c), Op::Add, Op::SetUpvalue(w), Op::Return, ..]
+            [Op::GetUpvalue(u), Op::Constant(c), Op::AddAssignUpvalue(w), Op::Return, ..]
                 if u == w =>
             {
                 Some(Kernel::Accumulate(*u, Operand::Const(constant(*c)?)))
             }
-            [Op::GetUpvalue(u), Op::GetLocal(p), Op::Add, Op::SetUpvalue(w), Op::Return, ..]
+            [Op::GetUpvalue(u), Op::GetLocal(p), Op::AddAssignUpvalue(w), Op::Return, ..]
                 if u == w =>
             {
                 Some(Kernel::Accumulate(*u, Operand::Param(param(*p)?)))
@@ -796,9 +796,10 @@ impl Kernel {
 }
 
 /// Run an `Accumulate` template: `upvalue = upvalue + operand`, returning
-/// the new value as `SET_UPVALUE` leaves it. `None`, having written nothing,
-/// unless both operands are ints (overflow checked) or both floats — the
-/// cases `ADD` answers inline; the frame path does the rest.
+/// the new value as `ADD_ASSIGN_U` leaves it. `None`, having written
+/// nothing, unless both operands are ints (overflow checked) or both floats;
+/// the frame path runs the opcode for the rest (a string, a mixed pair, an
+/// overflow).
 #[inline(always)]
 fn accumulate<'a>(
     closure: &VmClosure,
@@ -1555,6 +1556,22 @@ impl Vm {
         RuntimeError::wrong_arity(declared, 1, self.current_span())
     }
 
+    /// End a loop whose callback, still the top frame, returned a result
+    /// that fails the method (`message`: a `map` pair's key or a transformed
+    /// key that cannot be a hash key). The frame goes first, as on the
+    /// general path, whose `Return` pops it before `callback_returned`: the
+    /// error then points at the method's call site, as natively and on the
+    /// tree-walker, and not at whatever op the callback last wrote its
+    /// instruction pointer back for. Its cells, iterators and handlers are
+    /// already gone (`run_fast`'s `Return`).
+    #[cold]
+    fn rerun_loop_failed(&mut self, message: &'static str, stack_base: usize) -> RuntimeError {
+        self.frames.pop();
+        self.stack.truncate(stack_base);
+        self.iter_stack.pop();
+        RuntimeError::type_error(message, self.current_span())
+    }
+
     /// The loop callback on top of the frame stack returned `result`, and
     /// its locals above the arguments are already gone: record the result
     /// and run the same frame again for the next element — its argument
@@ -1601,8 +1618,7 @@ impl Vm {
             (_, result) => record(state, result),
         };
         if let Some(message) = recorded {
-            self.iter_stack.pop();
-            return Err(RuntimeError::type_error(message, self.current_span()));
+            return Err(self.rerun_loop_failed(message, stack_base));
         }
         if let Some(pair) = pooled {
             if self.array_pool.len() < ARRAY_POOL_MAX {
@@ -1618,10 +1634,7 @@ impl Vm {
                     return Ok(false);
                 }
                 Ok(KernelRun::Fallback) => {}
-                Err(message) => {
-                    self.iter_stack.pop();
-                    return Err(RuntimeError::type_error(message, self.current_span()));
-                }
+                Err(message) => return Err(self.rerun_loop_failed(message, stack_base)),
             }
         }
         let refilled = refill(state, &mut self.stack, stack_base + 1);
@@ -1674,8 +1687,12 @@ impl Vm {
                 Value::Array(Rc::new(RefCell::new(sorted)))
             }
         };
-        // Keep the state for the next loop, holding nothing alive.
-        state.closure = None;
+        // Keep the state for the next loop, holding nothing alive. The block
+        // goes back to its `fn` expression when this was its last reference
+        // (`Vm::recycle_closure`).
+        if let Some(closure) = state.closure.take() {
+            self.recycle_closure(closure);
+        }
         state.current = None;
         self.spare_callback_loop = Some(state);
         self.stack.push(result);
@@ -1901,11 +1918,11 @@ mod tests {
         ]);
     }
 
-    /// A block that captures its own parameters returns through the general
-    /// `Return`, which closes them; the next element then gets a fresh frame
-    /// with its arguments built in full. Each capture keeps its own value.
+    /// A block that captures its own parameters closes their cells when it
+    /// returns and runs again in the same frame, its argument slots
+    /// overwritten: each capture keeps the value of its own pass.
     #[test]
-    fn capturing_blocks_reopen_their_frame_for_each_element() {
+    fn blocks_that_capture_their_parameters_keep_each_pass_values() {
         assert_looped(&[
             (
                 "let fns = []\nlet r = [1, 2, 3].find do |v|\n  fns.push(fn() { v })\n  v > 1\nend\nlet x = \"#{r} #{fns.length} #{fns[0]()}\"",
@@ -1931,6 +1948,72 @@ mod tests {
             (
                 "let fns = []\nlet r = [3, 1, 2].sort_by do |v|\n  fns.push(fn() { v })\n  v\nend\nlet x = \"#{r} #{fns[0]()}\"",
                 "[1, 2, 3] 3",
+            ),
+        ]);
+    }
+
+    /// The first function compiled inside the first function of `source`.
+    fn inner_proto(source: &str) -> std::sync::Arc<crate::vm::chunk::FunctionProto> {
+        use crate::vm::chunk::Constant;
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let first = |constants: &[Constant]| {
+            constants.iter().find_map(|constant| match constant {
+                Constant::Function(proto) => Some(proto.clone()),
+                _ => None,
+            })
+        };
+        let outer = first(module.main.chunk.constants.as_slice()).expect("a function");
+        first(outer.chunk.constants.as_slice()).expect("a function inside it")
+    }
+
+    /// `total += x`, `total = total + x` and `count += 1` in a block compile
+    /// to `AddAssignUpvalue`, and the accumulator template is read from that
+    /// op: such a body still runs with no frame. What the template does not
+    /// compute (a mixed pair, strings) runs the opcode on the frame path.
+    #[test]
+    fn captured_accumulators_are_templates() {
+        use super::{Kernel, Operand};
+        for (body, params, param) in [
+            ("n.times { |i| total += i }", 1, Some(1)),
+            ("n.times { |i| total = total + i }", 1, Some(1)),
+            ("n.times { total += 1 }", 0, None),
+            ("n.times { |i| total += 2.5 }", 1, None),
+            (
+                "h = {\"a\": n}\n  h.each { |k, v| total = total + v }",
+                2,
+                Some(2),
+            ),
+        ] {
+            let block = inner_proto(&format!(
+                "def tally(n)\n  total = 0\n  {body}\n  total\nend"
+            ));
+            let recognised = match (Kernel::of(&block, params), param) {
+                (Some(Kernel::Accumulate(_, Operand::Param(slot))), Some(expected)) => {
+                    slot == expected
+                }
+                (Some(Kernel::Accumulate(_, Operand::Const(_))), None) => true,
+                _ => false,
+            };
+            assert!(recognised, "{body}: {:?}", block.chunk.code);
+        }
+        assert_looped(&[
+            (
+                "def tally(n)\n  total = 0\n  n.times { total += 1 }\n  total\nend\nlet x = \"#{tally(4)}\"",
+                "4",
+            ),
+            (
+                "def tally(n)\n  total = 0.5\n  n.times { |i| total += 2.5 }\n  total\nend\nlet x = \"#{tally(2)}\"",
+                "5.5",
+            ),
+            (
+                "def tally(n)\n  total = 1\n  n.times { |i| total += 0.5 }\n  total\nend\nlet x = \"#{tally(3)}\"",
+                "2.5",
+            ),
+            (
+                "def glue(xs)\n  out = \"\"\n  xs.each { |s| out = out + s }\n  out\nend\nlet x = glue([\"a\", \"b\", \"c\"])",
+                "abc",
             ),
         ]);
     }

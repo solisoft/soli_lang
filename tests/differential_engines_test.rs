@@ -2119,6 +2119,248 @@ sorted = ss.sort_by do |s|
 end
 print(sorted, ss)"##,
     ),
+    // Closures over a `try` body's locals, after a throw caught in the same
+    // function. The VM closed only the cells of the frames it unwound, so
+    // these stayed open on slots the unwinding gave back: they read, and
+    // wrote, whatever came to live there next (`y` became 101).
+    (
+        "closures_over_try_body_locals_survive_the_unwind",
+        r##"def caught_here(fns)
+  try
+    let x = 5
+    fns.push(fn() { x })
+    fns.push(fn() { x = x + 1
+      x })
+    throw "e"
+  catch e
+    print("caught #{e}")
+  end
+  let y = 99
+  let z = 100
+  print(fns[1](), fns[1](), y, z)
+  fns[0]()
+end
+print(caught_here([]))
+def boom
+  throw "b"
+end
+def caught_below(fns)
+  try
+    let x = 6
+    fns.push(fn() { x })
+    boom()
+  catch e
+    print("caught #{e}")
+  end
+  let y = 98
+  [fns[0](), y]
+end
+print(caught_below([]))
+def rescued(fns)
+  value = (fn() {
+    let w = 7
+    fns.push(fn() { w })
+    boom()
+  })() rescue 1
+  let q = 77
+  [value, fns[0](), q]
+end
+print(rescued([]))"##,
+    ),
+    // `total += x`, `count += 1`, `text = text + s` into variables a block
+    // captures: one `AddAssignUpvalue` each, numbers in the fast tier,
+    // strings appended in place, mixed int/float, `<<`. An overflow raises
+    // the same error at the same place as the tree-walker — the assignment,
+    // which `big = big + one` reported at its `+` before.
+    (
+        "captured_accumulators_add_like_the_tree_walker",
+        r##"def sums(xs)
+  total = 0
+  count = 0
+  ratio = 0.5
+  mixed = 1
+  text = ""
+  parts = []
+  xs.each do |x|
+    total += x
+    count += 1
+    ratio = ratio + x * 0.25
+    mixed += 0.5
+    text = text + "#{x},"
+    text += "|"
+    parts << x
+  end
+  [total, count, ratio, mixed, text, parts]
+end
+print(sums([1, 2, 3]))
+def overflow
+  big = 9223372036854775807
+  one = 1
+  [1].each do |v|
+    try
+      big = big + one
+    catch e
+      print(e)
+    end
+    try
+      big += 1
+    catch e
+      print(e)
+    end
+    try
+      big = big + one * 2
+    catch e
+      print(e)
+    end
+  end
+  big
+end
+print(overflow())
+def shared
+  n = 0
+  bump = fn() { n += 1 }
+  [1, 2, 3].each { |x| n = n + x }
+  bump()
+  bump()
+  n
+end
+print(shared())
+def strings(words)
+  out = ""
+  words.each { |w| out = out + w }
+  copy = out
+  words.each { |w| out += "-" }
+  [out, copy]
+end
+print(strings(["a", "b"]))"##,
+    ),
+    // Inner blocks over an outer block's parameter or local (the outer
+    // frame is rerun with its cells closed), a block reused across calls of
+    // its method while closures over the method's variables escape, and
+    // recursion through a capturing block.
+    (
+        "nested_and_reused_capturing_blocks",
+        r##"def grid(rows)
+  out = []
+  rows.each do |row|
+    k = row.length
+    row.each { |c| out.push(c * 10 + k) }
+  end
+  out
+end
+print(grid([[1, 2], [3], [4, 5, 6]]))
+def pairs(xs)
+  xs.map { |a| xs.map { |b| a * b } }
+end
+print(pairs([1, 2, 3]))
+kept = []
+def scale(xs, k, kept)
+  xs.map do |x|
+    kept.push(fn() { k }) if x > 2
+    x * k
+  end
+end
+print(scale([1, 2], 10, kept))
+print(scale([3, 4], 100, kept))
+print(scale([5], 1000, kept))
+print(kept.map { |f| f() })
+def walk(node, depth, seen)
+  node["kids"].each { |kid| walk(kid, depth + 1, seen) }
+  seen.push("#{node["name"]}@#{depth}")
+  seen
+end
+tree = {"name": "a", "kids": [{"name": "b", "kids": [{"name": "c", "kids": []}]}, {"name": "d", "kids": []}]}
+print(walk(tree, 0, []))
+def tally_by(words)
+  counts = {}
+  words.each do |w|
+    counts[w] = (counts[w] || 0) + 1
+  end
+  total = 0
+  counts.each { |k, v| total += v }
+  [counts, total]
+end
+print(tally_by(["x", "y", "x"]))
+def deep_capture(xs, m)
+  xs.map { |x| [x].map { |y| [y].map { |z| x + y + z + m } } }
+end
+print(deep_capture([1, 2], 100))"##,
+    ),
+    // A block result that fails the method — a `map` pair or a transformed
+    // key that cannot be a hash key — is reported at the method's call, as
+    // the native driver does: with or without a capture, from a pass that
+    // reruns the block's frame, from the template that runs after one, at
+    // the top level. The VM reported the op the block last left the fast
+    // tier for (`3:21`, `53:24`); once capturing blocks reran their frame,
+    // those diverged too.
+    (
+        "loop_block_result_errors_point_at_the_call",
+        r##"def plain_map(h)
+  try
+    h.map { |k, v| [{"z": 1}, v] }
+  catch e
+    print("plain map: #{e}")
+  end
+end
+plain_map({"a": 1})
+def capturing_map(h, fns)
+  try
+    h.map do |k, v|
+      fns.push(fn() { k })
+      [{"z": 1}, v]
+    end
+  catch e
+    print("capturing map: #{e}")
+  end
+end
+capturing_map({"a": 1}, [])
+def capturing_local_map(h, fns)
+  try
+    h.map do |k, v|
+      x = v + 1
+      fns.push(fn() { x })
+      [{"z": x}, v]
+    end
+  catch e
+    print("capturing local map: #{e}")
+  end
+end
+capturing_local_map({"a": 1}, [])
+def plain_keys(h)
+  try
+    h.transform_keys { |k| [1.5] }
+  catch e
+    print("plain keys: #{e}")
+  end
+end
+plain_keys({"a": 1})
+def capturing_keys(h, fns)
+  try
+    h.transform_keys do |k|
+      fns.push(fn() { k })
+      [1.5]
+    end
+  catch e
+    print("capturing keys: #{e}")
+  end
+end
+capturing_keys({"a": 1}, [])
+def template_after_a_pass(h)
+  try
+    h.map { |k, v| [v, k * 2] }
+  catch e
+    print("template: #{e}")
+  end
+end
+template_after_a_pass({"a": 1, 2: [1]})
+top = {"a": 1}
+try
+  top.map { |k, v| [{"z": 1}, v] }
+catch e
+  print("top level: #{e}")
+end
+print("after", capturing_map({"b": 2}, []), [1, 2].map { |n| n * 2 })"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
