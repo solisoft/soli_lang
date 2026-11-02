@@ -1009,6 +1009,103 @@ end"##,
         "fn f() {\n  let big = 9223372036854775807\n  try { print(big + 1) } catch e { print(\"overflow\") }\n  let s = \"\"\n  let i = 0\n  while i < 3 { s = s + \"ab\"\n    i = i + 1 }\n  print(s)\n  let x = 1.5\n  let y = 2\n  print(x + y)\n  print(y * x - 1)\n  print(y < x)\n  print(x <= 1.5)\n  print(x + x)\n  x += 1\n  print(x)\n  let name = \"soli\"\n  print(name == \"soli\")\n  print(name != \"ruby\")\n  let n = null\n  print(n == null)\n  let t = 0\n  for k in 0..10 { if k > 4 && k != 7 { t = t + k } }\n  print(t)\n}\nf()",
     ),
     (
+        // The fused local ops (`IncrLocal`, `DecrLocal`, `AddLocalsInPlace`,
+        // `AddNestedIndex`) raise where an Int leaves the range, and leave the
+        // variable as it was. Their general arms wrapped instead — `i += 1` on
+        // the largest Int gave the smallest — while the tree-walker raised.
+        "int_overflow_in_fused_local_ops_raises",
+        r##"const INT_MAX = 9223372036854775807
+const INT_MIN = -9223372036854775807 - 1
+
+# `x = x + …` is located at the `=` by the tree-walker and at the `+` by the
+# VM, so those three shapes compare the message alone.
+def without_location(error)
+  error.split(" at ")[0]
+end
+
+def incr
+  i = INT_MAX - 1
+  i += 1
+  try
+    i += 1
+  catch e
+    print(e)
+  end
+  try
+    i++
+  catch e
+    print(e)
+  end
+  try
+    i = i + 1
+  catch e
+    print(without_location(e))
+  end
+  i
+end
+
+def decr
+  i = INT_MIN + 1
+  i -= 1
+  try
+    i -= 1
+  catch e
+    print(e)
+  end
+  try
+    i--
+  catch e
+    print(e)
+  end
+  try
+    i = i - 1
+  catch e
+    print(e)
+  end
+  i
+end
+
+def accumulate(step)
+  total = INT_MAX - step
+  total += step
+  try
+    total += step
+  catch e
+    print(e)
+  end
+  try
+    total = total + step
+  catch e
+    print(without_location(e))
+  end
+  total
+end
+
+def keyed_sum
+  h = {"a": INT_MAX - 1, "b": 1}
+  names = ["a", "b", "b"]
+  acc = 0
+  k = 0
+  while k < 2
+    acc = acc + h[names[k]]
+    k += 1
+  end
+  try
+    acc += h[names[k]]
+  catch e
+    print(e)
+  end
+  try
+    acc = acc + h[names[k]]
+  catch e
+    print(without_location(e))
+  end
+  acc
+end
+
+print(incr(), decr(), accumulate(1), keyed_sum())"##,
+    ),
+    (
         // `hash.key` dot access: a hit, and a miss falling back to a method.
         "hash_dot_access",
         "let h = {\"name\": \"x\", \"n\": null}\nprint(h.name)\nprint(h.n)\nprint(h.length)",

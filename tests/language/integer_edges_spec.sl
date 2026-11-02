@@ -68,6 +68,43 @@ describe("Integer overflow") do
     end
   end
 
+  # The bytecode VM fuses these into in-place ops, which wrapped round to the
+  # other end of the range through 2.29.3. Specs run on the tree-walker;
+  # tests/differential_engines_test.rs holds the VM to the same answers.
+  test("the in-place forms raise as the operators do") do
+    assert_raises("integer overflow: 9223372036854775807 + 1") do
+      count = INT_LARGEST
+      count += 1
+    end
+    assert_raises("integer overflow: 9223372036854775807 + 1") do
+      count = INT_LARGEST
+      count++
+    end
+    assert_raises("integer overflow: -9223372036854775808 - 1") do
+      count = INT_SMALLEST
+      count -= 1
+    end
+    assert_raises("integer overflow: -9223372036854775808 - 1") do
+      count = INT_SMALLEST
+      count--
+    end
+    assert_raises("integer overflow: 9223372036854775807 + 1") do
+      total = INT_LARGEST
+      step = 1
+      total = total + step
+    end
+  end
+
+  test("a failed in-place add leaves the variable as it was") do
+    count = INT_LARGEST
+    try
+      count += 1
+    catch error
+      assert_contains(error, "integer overflow")
+    end
+    assert_eq(count, INT_LARGEST)
+  end
+
   test("the message names the Int range") do
     message = assert_raises() do
       INT_LARGEST + 1

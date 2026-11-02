@@ -3585,11 +3585,25 @@ impl Vm {
                 }
 
                 // --- Super-instructions ---
-                Op::IncrLocal(slot) => {
+                //
+                // Every Int one of these computes is checked: past the Int
+                // range it raises `Op::Add`'s overflow error and leaves the
+                // local as it was. A bare `n + 1` wrapped instead (release
+                // builds have no overflow checks), so `i += 1` on the largest
+                // Int gave the smallest. `run_fast` hands its overflows here.
+                Op::IncrLocal(slot) | Op::IncrLocalFast(slot) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let idx = base + slot as usize;
                     if let Value::Int(n) = self.stack[idx] {
-                        self.stack[idx] = Value::Int(n + 1);
+                        match n.checked_add(1) {
+                            Some(next) => self.stack[idx] = Value::Int(next),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    n, "+", 1, span,
+                                ));
+                            }
+                        }
                     } else {
                         // Fallback: treat as GetLocal + Constant(1) + Add + SetLocal + Pop
                         let val = self.stack[idx].clone();
@@ -3607,7 +3621,15 @@ impl Vm {
                     let base = self.frames.last().unwrap().stack_base;
                     let idx = base + slot as usize;
                     if let Value::Int(n) = self.stack[idx] {
-                        self.stack[idx] = Value::Int(n - 1);
+                        match n.checked_sub(1) {
+                            Some(next) => self.stack[idx] = Value::Int(next),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    n, "-", 1, span,
+                                ));
+                            }
+                        }
                     } else {
                         let val = self.stack[idx].clone();
                         let result = match val {
@@ -3662,9 +3684,10 @@ impl Vm {
                 //
                 // The fast arms mutate the slot directly. `Value` is 24 bytes with
                 // drop glue, so avoiding the push/pop pair matters more here than
-                // the saved dispatches. The slow arms fall back to the generic
-                // operators, which preserve overflow/coercion/error behaviour
-                // exactly — these opcodes are a peephole, not new semantics.
+                // the saved dispatches. The slow arms keep `Op::Add`'s overflow,
+                // coercion and error behaviour exactly — an Int sum is checked,
+                // anything else goes to the generic operator — so these opcodes
+                // are a peephole, not new semantics.
                 Op::AddLocalsInPlace(a, b) => {
                     let base = self.frames.last().unwrap().stack_base;
                     let (ia, ib) = (base + a as usize, base + b as usize);
@@ -3681,9 +3704,15 @@ impl Vm {
                         _ => Pair::Other,
                     };
                     match pair {
-                        Pair::Int(x, y) => {
-                            self.stack[ia] = Value::Int(x.wrapping_add(y));
-                        }
+                        Pair::Int(x, y) => match x.checked_add(y) {
+                            Some(sum) => self.stack[ia] = Value::Int(sum),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    x, "+", y, span,
+                                ));
+                            }
+                        },
                         Pair::Float(x, y) => {
                             self.stack[ia] = Value::Float(x + y);
                         }
@@ -4226,7 +4255,15 @@ impl Vm {
                     let base = self.frames.last().unwrap().stack_base;
                     let local = &self.stack[base + slot as usize];
                     let result = match local {
-                        Value::Int(x) => Value::Int(x + n as i64),
+                        Value::Int(x) => match x.checked_add(n as i64) {
+                            Some(sum) => Value::Int(sum),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    *x, "+", n as i64, span,
+                                ));
+                            }
+                        },
                         Value::Float(x) => Value::Float(*x + n as f64),
                         _ => {
                             let a = local.clone();
@@ -4235,23 +4272,6 @@ impl Vm {
                         }
                     };
                     self.stack.push(result);
-                }
-                Op::IncrLocalFast(slot) => {
-                    let base = self.frames.last().unwrap().stack_base;
-                    let idx = base + slot as usize;
-                    if let Value::Int(n) = self.stack[idx] {
-                        self.stack[idx] = Value::Int(n + 1);
-                    } else {
-                        let val = self.stack[idx].clone();
-                        let result = match val {
-                            Value::Float(n) => Value::Float(n + 1.0),
-                            _ => {
-                                let span = self.current_span();
-                                self.op_add(val, Value::Int(1), span)?
-                            }
-                        };
-                        self.stack[idx] = result;
-                    }
                 }
                 Op::GetAndNullLocal(slot) => {
                     let base = self.frames.last().unwrap().stack_base;
@@ -4457,9 +4477,15 @@ impl Vm {
                     let addend = self.nested_index_get(base, obj_slot, arr_slot, idx_slot)?;
                     let acc_i = base + acc_slot as usize;
                     match (&self.stack[acc_i], &addend) {
-                        (Value::Int(a), Value::Int(b)) => {
-                            self.stack[acc_i] = Value::Int(a + b);
-                        }
+                        (&Value::Int(a), &Value::Int(b)) => match a.checked_add(b) {
+                            Some(sum) => self.stack[acc_i] = Value::Int(sum),
+                            None => {
+                                let span = self.current_span();
+                                return Err(crate::interpreter::executor::operators::int_overflow(
+                                    a, "+", b, span,
+                                ));
+                            }
+                        },
                         _ => {
                             let acc = self.stack[acc_i].clone();
                             self.stack[acc_i] = match (&acc, &addend) {
@@ -5712,6 +5738,186 @@ mod tests {
     fn test_vm_arithmetic() {
         let result = compile_and_get_global("let x = 2 + 3 * 4;", "x");
         assert_eq!(result, Value::Int(14));
+    }
+
+    /// Run hand-built bytecode as a script. Slot 0 holds the running closure,
+    /// so the first value `code` pushes is local 1, the next local 2, and so on.
+    fn run_bytecode(
+        constants: Vec<Constant>,
+        code: &[Op],
+    ) -> Result<Value, crate::error::RuntimeError> {
+        let mut proto = FunctionProto::new(String::new());
+        proto.chunk.constants = constants;
+        for op in code {
+            proto.chunk.emit(*op, 1);
+        }
+        Vm::new().execute(&Arc::new(proto))
+    }
+
+    /// The fused local ops raise `Op::Add`'s overflow error where an Int
+    /// result leaves the range. Their general arms used an unchecked `+`/`-`
+    /// (`wrapping_add` in `AddLocalsInPlace`), and release builds do not check
+    /// overflow, so the result wrapped: `i += 1` on the largest Int gave the
+    /// smallest. Built by hand so that `IncrLocalFast` and `AddLocalInt`, which
+    /// the compiler does not emit, are covered too.
+    #[test]
+    fn fused_int_ops_raise_on_overflow_instead_of_wrapping() {
+        const MAX: u16 = 0;
+        const MIN: u16 = 1;
+        const ONE: u16 = 2;
+        const ZERO: u16 = 3;
+        const KEY: u16 = 4;
+        let constants = || {
+            vec![
+                Constant::Int(i64::MAX),
+                Constant::Int(i64::MIN),
+                Constant::Int(1),
+                Constant::Int(0),
+                Constant::String("k".into()),
+            ]
+        };
+        // Locals 2-4 are {"k": 1}, ["k"] and 0, so `AddNestedIndex(1, 2, 3, 4)`
+        // adds {"k": 1}[["k"][0]] — that is 1 — to local 1.
+        let add_one_nested = [
+            Op::Constant(KEY),
+            Op::Constant(ONE),
+            Op::Hash(1),
+            Op::Constant(KEY),
+            Op::Array(1),
+            Op::Constant(ZERO),
+            Op::AddNestedIndex(1, 2, 3, 4),
+        ];
+        let max_plus_one = "integer overflow: 9223372036854775807 + 1 does not fit in an Int";
+        let cases: Vec<(Vec<Op>, &str)> = vec![
+            (vec![Op::Constant(MAX), Op::IncrLocal(1)], max_plus_one),
+            (vec![Op::Constant(MAX), Op::IncrLocalFast(1)], max_plus_one),
+            (
+                vec![Op::Constant(MIN), Op::DecrLocal(1)],
+                "integer overflow: -9223372036854775808 - 1 does not fit in an Int",
+            ),
+            (vec![Op::Constant(MAX), Op::AddLocalInt(1, 1)], max_plus_one),
+            (
+                vec![Op::Constant(MIN), Op::AddLocalInt(1, -1)],
+                "integer overflow: -9223372036854775808 + -1 does not fit in an Int",
+            ),
+            (
+                vec![
+                    Op::Constant(MAX),
+                    Op::Constant(ONE),
+                    Op::AddLocalsInPlace(1, 2),
+                ],
+                max_plus_one,
+            ),
+            (
+                [&[Op::Constant(MAX)][..], &add_one_nested[..]].concat(),
+                max_plus_one,
+            ),
+        ];
+        for (code, expected) in &cases {
+            let err = match run_bytecode(constants(), code) {
+                Ok(value) => panic!("{code:?} must raise an overflow, got {value:?}"),
+                Err(err) => err,
+            };
+            assert!(err.to_string().contains(expected), "{code:?}: {err}");
+        }
+
+        // Up to the edge they still compute. `DecrLocal` and `AddNestedIndex`
+        // have no fast arm, so every execution of them runs this code.
+        let to_min = [
+            Op::Constant(MIN),
+            Op::IncrLocal(1),
+            Op::DecrLocal(1),
+            Op::GetLocal(1),
+            Op::Return,
+        ];
+        assert_eq!(
+            run_bytecode(constants(), &to_min).expect("MIN + 1 - 1 is in range"),
+            Value::Int(i64::MIN)
+        );
+        let to_max = [
+            &[Op::Constant(MAX), Op::DecrLocal(1)][..],
+            &add_one_nested[..],
+            &[Op::GetLocal(1), Op::Return][..],
+        ]
+        .concat();
+        assert_eq!(
+            run_bytecode(constants(), &to_max).expect("MAX - 1 + 1 is in range"),
+            Value::Int(i64::MAX)
+        );
+    }
+
+    /// The source shapes the peephole turns into those ops: each must really
+    /// compile to the fused op, and raise the overflow the tree-walker raises.
+    #[test]
+    fn fused_local_arithmetic_raises_on_overflow() {
+        let largest = "i = 9223372036854775807";
+        let smallest = "i = -9223372036854775807 - 1";
+        let with_local = "i = 9223372036854775807\n  one = 1";
+        let with_keys = "i = 9223372036854775807\n  h = {\"k\": 1}\n  names = [\"k\"]\n  k = 0";
+        let max_plus_one = "integer overflow: 9223372036854775807 + 1 does not fit in an Int";
+        let min_minus_one = "integer overflow: -9223372036854775808 - 1 does not fit in an Int";
+        let cases = [
+            (largest, "i += 1", Op::IncrLocal(0), max_plus_one),
+            (largest, "i = i + 1", Op::IncrLocal(0), max_plus_one),
+            (largest, "i++", Op::IncrLocal(0), max_plus_one),
+            (smallest, "i -= 1", Op::DecrLocal(0), min_minus_one),
+            (smallest, "i = i - 1", Op::DecrLocal(0), min_minus_one),
+            (smallest, "i--", Op::DecrLocal(0), min_minus_one),
+            (
+                with_local,
+                "i += one",
+                Op::AddLocalsInPlace(0, 0),
+                max_plus_one,
+            ),
+            (
+                with_local,
+                "i = i + one",
+                Op::AddLocalsInPlace(0, 0),
+                max_plus_one,
+            ),
+            (
+                with_keys,
+                "i += h[names[k]]",
+                Op::AddNestedIndex(0, 0, 0, 0),
+                max_plus_one,
+            ),
+            (
+                with_keys,
+                "i = i + h[names[k]]",
+                Op::AddNestedIndex(0, 0, 0, 0),
+                max_plus_one,
+            ),
+        ];
+        for (setup, statement, fused, expected) in cases {
+            // `i` is read afterwards, so the statement carries the `Pop` the
+            // fusions need.
+            let source = format!("def f()\n  {setup}\n  {statement}\n  i\nend\nf()\n");
+            let tokens = Scanner::new(&source).scan_tokens().expect("lexer error");
+            let program = Parser::new(tokens).parse().expect("parser error");
+            let module = Compiler::compile(&program).expect("compile error");
+            let code = module
+                .main
+                .chunk
+                .constants
+                .iter()
+                .find_map(|constant| match constant {
+                    Constant::Function(proto) if proto.name == "f" => {
+                        Some(proto.chunk.code.clone())
+                    }
+                    _ => None,
+                })
+                .expect("the function f");
+            assert!(
+                code.iter()
+                    .any(|op| std::mem::discriminant(op) == std::mem::discriminant(&fused)),
+                "`{statement}` should compile to {fused:?}: {code:?}"
+            );
+            let err = match Vm::new().execute(&module.main) {
+                Ok(value) => panic!("`{statement}` must raise an overflow, got {value:?}"),
+                Err(err) => err,
+            };
+            assert!(err.to_string().contains(expected), "`{statement}`: {err}");
+        }
     }
 
     // Regression: `@sdbql{ ... #{var} ... }` must lower to a resolvable
