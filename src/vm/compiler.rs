@@ -399,6 +399,21 @@ impl Compiler {
         Self::compile_method_with(compiler, func)
     }
 
+    /// Compile a tree-walking constructor (a class the app loader defined) as
+    /// the `init` of a class the VM compiles is compiled: slot 0 is `this`,
+    /// the body runs as statements, and the frame returns `this` — when it
+    /// ends, `return`s early, or leaves through a loopless `break`/`next`.
+    /// The VM enters it as an ordinary frame, so a construction is one frame
+    /// push, not a nested run that throws the constructor's value away.
+    pub fn compile_constructor_standalone<I: IntoIterator<Item = String>>(
+        func: &crate::interpreter::value::Function,
+        globals: I,
+    ) -> CompileResult<FunctionProto> {
+        let compiler = Compiler::new(FunctionType::Constructor, func.name.clone());
+        compiler.known_globals.borrow_mut().extend(globals);
+        Self::compile_method_with(compiler, func)
+    }
+
     fn compile_method_with(
         mut compiler: Compiler,
         func: &crate::interpreter::value::Function,
@@ -429,12 +444,23 @@ impl Compiler {
         compiler.proto.defaults_mask = defaults_mask(&func.params);
 
         let line = func.span.map(|s| s.line as usize).unwrap_or(0);
+        let constructor = compiler.function_type == FunctionType::Constructor;
         compiler.begin_scope();
         compiler.emit_param_defaults(&func.params)?;
-        compiler.compile_function_body(&func.body)?;
+        if constructor {
+            // Statements only, as `compile_constructor` compiles them: a
+            // constructor's last expression is not its value.
+            compiler.hoist_locals(&func.body, line);
+            for stmt in func.body.iter() {
+                compiler.compile_stmt(stmt)?;
+            }
+        } else {
+            compiler.compile_function_body(&func.body)?;
+        }
         compiler.end_scope(line);
 
-        compiler.emit(Op::Null, line);
+        // `nil`, or a constructor's instance.
+        compiler.emit_default_return_value(line);
         compiler.emit(Op::Return, line);
 
         let mut proto = compiler.proto;
@@ -911,14 +937,26 @@ impl Compiler {
     /// distinction that makes this correct rather than a fallback.
     ///
     /// At script top level there is no frame to return from, and the
-    /// tree-walker's top-level loop ignores both, so this emits nothing.
+    /// tree-walker's top-level loop ignores both, so this emits nothing. A
+    /// constructor ends with its instance, as on any other way out.
     fn emit_loopless_exit(&mut self, line: usize) -> bool {
         if self.function_type == FunctionType::Script {
             return true;
         }
-        self.emit(Op::Null, line);
+        self.emit_default_return_value(line);
         self.emit(Op::Return, line);
         true
+    }
+
+    /// The value of a `return` that gives none: `nil`, but in a constructor
+    /// its instance (`this`, slot 0). The tree-walker discards whatever a
+    /// constructor returns, and `new` always evaluates to the instance.
+    pub(crate) fn emit_default_return_value(&mut self, line: usize) {
+        if self.function_type == FunctionType::Constructor {
+            self.emit(Op::GetLocal(0), line);
+        } else {
+            self.emit(Op::Null, line);
+        }
     }
 
     /// Leave every `try` the loop encloses, innermost first.

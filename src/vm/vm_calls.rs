@@ -20,6 +20,21 @@ use super::compiler::Compiler;
 use super::upvalue::VmClosure;
 use super::vm::{CallFrame, Vm};
 
+/// The constructor a construction runs, as the VM runs it
+/// ([`Vm::resolve_constructor`]).
+pub(crate) enum Constructor {
+    /// A compiled constructor and the class that declares it: the bytecode
+    /// `init` of a class the VM compiled, or a tree-walker constructor
+    /// compiled in constructor mode ([`Vm::compiled_constructor`]). It runs
+    /// as an ordinary frame with `this` in the callee slot, and returns it.
+    Compiled(Rc<VmClosure>, Rc<Class>),
+    /// A native one (`__construct__`, e.g. `Error`'s message): it fills the
+    /// instance it is handed.
+    Native(Rc<NativeFunction>),
+    /// No class of the chain has one.
+    Absent,
+}
+
 /// JIT-compile a tree-walking [`Function`] to a bytecode [`FunctionProto`] and
 /// cache it in `func.jit_cache`. Returns the cached proto on a hit, otherwise
 /// compiles, stores, and returns it. Pure compilation — no execution, no side
@@ -1708,63 +1723,87 @@ impl Vm {
         self.init_fields(class, &instance, span)?;
         let instance_val = Value::Instance(instance);
 
-        // Bytecode constructor (classes compiled in the VM): registered as
-        // "init" by compile_constructor and returns `this`, so the frame's
-        // return value is already the instance. The instance takes the
-        // callee slot → it becomes slot 0 (`this`) under the method calling
-        // convention.
-        if let Some((ctor, defining_class)) = class.find_vm_method_with_class("init") {
-            self.stack[callee_idx] = instance_val;
-            return self.call_closure_in_class(ctor, argc, span, Some(defining_class));
+        match self.resolve_constructor(class, span)? {
+            // A compiled constructor — the class's bytecode `init`, or a
+            // tree-walker one compiled once in constructor mode — returns
+            // `this`. The instance takes the callee slot, so it becomes slot
+            // 0 (`this`) under the method calling convention, and the frame
+            // records the class that declares the constructor, so the
+            // `super(...)` inside reaches that class's superclass.
+            Constructor::Compiled(ctor, defining_class) => {
+                self.stack[callee_idx] = instance_val;
+                self.call_closure_in_class(ctor, argc, span, Some(defining_class))
+            }
+            // Native constructor (a Rust-defined class such as RateLimiter):
+            // it receives the instance and the arguments and fills the fields.
+            Constructor::Native(init) => {
+                let mut init_args = Vec::with_capacity(argc + 1);
+                init_args.push(instance_val.clone());
+                init_args.extend(self.stack[callee_idx + 1..].iter().cloned());
+                self.stack.truncate(callee_idx);
+                (init.func)(&init_args).map_err(|e| RuntimeError::new(e, span))?;
+                self.push(instance_val);
+                Ok(())
+            }
+            // No constructor: drop any args (tree-walker parity) and yield the
+            // instance.
+            Constructor::Absent => {
+                self.stack.truncate(callee_idx);
+                self.push(instance_val);
+                Ok(())
+            }
         }
+    }
 
-        // Tree-walking constructor (classes copied from interpreter globals:
-        // every class of an app under `soli serve`): JIT-compile as a
-        // method, run it to completion, discard its return value, and yield
-        // the instance. Its frame records the class that declares it, so the
-        // `super(...)` inside reaches that class's superclass.
+    /// The constructor a construction of `class` runs, in the order
+    /// `call_class` has always looked: a bytecode `init` up the chain, then a
+    /// tree-walker constructor, then a native one.
+    pub(crate) fn resolve_constructor(
+        &self,
+        class: &Rc<Class>,
+        span: Span,
+    ) -> Result<Constructor, RuntimeError> {
+        if let Some((init, defining_class)) = class.find_vm_method_with_class("init") {
+            return Ok(Constructor::Compiled(init, defining_class));
+        }
         if let Some((ctor, defining_class)) = class.find_constructor_with_class() {
-            let proto = jit_compile_method(&ctor, self.globals.keys().cloned()).map_err(|e| {
+            let closure = self.compiled_constructor(&ctor, &defining_class, span)?;
+            return Ok(Constructor::Compiled(closure, defining_class));
+        }
+        Ok(match class.find_native_method(NATIVE_CONSTRUCTOR) {
+            Some(init) => Constructor::Native(init),
+            None => Constructor::Absent,
+        })
+    }
+
+    /// `ctor`, the tree-walker constructor `declaring` declares (every class
+    /// of an app under `soli serve` has its constructor as AST), compiled in
+    /// constructor mode: the frame returns `this` however the body ends, so
+    /// it runs as one ordinary frame, like the `init` of a class the VM
+    /// compiled. Compiled the first time it runs and kept on the class
+    /// (`Class::vm_constructor`); it was compiled as a method, wrapped in a
+    /// new closure and run to completion in a nested `run()` on every `new`.
+    pub(crate) fn compiled_constructor(
+        &self,
+        ctor: &Rc<Function>,
+        declaring: &Class,
+        span: Span,
+    ) -> Result<Rc<VmClosure>, RuntimeError> {
+        if let Some((compiled_from, closure)) = declaring.vm_constructor.borrow().as_ref() {
+            if Rc::ptr_eq(compiled_from, ctor) {
+                return Ok(closure.clone());
+            }
+        }
+        let proto = Compiler::compile_constructor_standalone(ctor, self.globals.keys().cloned())
+            .map_err(|e| {
                 RuntimeError::EngineFallback(
                     format!("a function the VM cannot compile ({})", e),
                     span,
                 )
             })?;
-            let closure = Rc::new(VmClosure::new(proto, Vec::new()));
-            self.stack[callee_idx] = instance_val.clone();
-            let saved_depth = self.return_depth;
-            let frames_before = self.frames.len();
-            self.return_depth = frames_before;
-            let outcome = (|| -> Result<(), RuntimeError> {
-                self.call_closure_in_class(closure, argc, span, Some(defining_class))?;
-                if self.frames.len() != frames_before {
-                    self.run()?; // discard the constructor's return value
-                }
-                Ok(())
-            })();
-            self.return_depth = saved_depth;
-            outcome?;
-            self.push(instance_val);
-            return Ok(());
-        }
-
-        // Native constructor (a Rust-defined class such as RateLimiter): it
-        // receives the instance and the arguments and fills the fields.
-        if let Some(init) = class.find_native_method(NATIVE_CONSTRUCTOR) {
-            let mut init_args = Vec::with_capacity(argc + 1);
-            init_args.push(instance_val.clone());
-            init_args.extend(self.stack[callee_idx + 1..].iter().cloned());
-            self.stack.truncate(callee_idx);
-            (init.func)(&init_args).map_err(|e| RuntimeError::new(e, span))?;
-            self.push(instance_val);
-            return Ok(());
-        }
-
-        // No constructor: drop any args (tree-walker parity) and yield the
-        // instance.
-        self.stack.truncate(callee_idx);
-        self.push(instance_val);
-        Ok(())
+        let closure = Rc::new(VmClosure::new(Arc::new(proto), Vec::new()));
+        *declaring.vm_constructor.borrow_mut() = Some((ctor.clone(), closure.clone()));
+        Ok(closure)
     }
 
     /// Run `class`'s constructor on the instance in the callee slot
@@ -1778,29 +1817,25 @@ impl Vm {
         span: Span,
     ) -> Result<(), RuntimeError> {
         let receiver_idx = self.stack.len() - 1 - argc;
-        // Compiled constructor — `this` is already in the callee slot;
-        // "init" returns `this`.
-        if let Some((init, defining_class)) = class.find_vm_method_with_class("init") {
-            self.call_closure_in_class(init, argc, span, Some(defining_class))?;
-        } else if let Some((ctor, defining_class)) = class.find_constructor_with_class() {
-            // Tree-walking constructor: JIT-compile, run to completion,
-            // evaluate to `this`. It may be inherited (`class K2 < K1` with no
-            // `new` of its own): it runs as K1's, so a `super(...)` in it
-            // reaches K1's superclass, not K1 again.
-            let this_val = self.stack[receiver_idx].clone();
-            self.run_jit_method_to_completion(&ctor, argc, span, defining_class)?;
-            self.push(this_val);
-        } else if let Some(init) = class.find_native_method(NATIVE_CONSTRUCTOR) {
+        match self.resolve_constructor(class, span)? {
+            // A compiled constructor — `this` is already in the callee slot,
+            // and the frame returns it. A tree-walker one may be inherited
+            // (`class K2 < K1` with no `new` of its own): it runs as K1's, so
+            // a `super(...)` in it reaches K1's superclass, not K1 again.
+            Constructor::Compiled(ctor, defining_class) => {
+                self.call_closure_in_class(ctor, argc, span, Some(defining_class))?;
+            }
             // A native constructor — `super(message)` in an `Error`
             // subclass. It takes `this` first, then the arguments; the
             // expression evaluates to `this`.
-            let call_args: Vec<Value> = self.stack[receiver_idx..].to_vec();
-            self.stack.truncate(receiver_idx + 1);
-            (init.func)(&call_args).map_err(|e| RuntimeError::new(e, span))?;
-        } else {
+            Constructor::Native(init) => {
+                let call_args: Vec<Value> = self.stack[receiver_idx..].to_vec();
+                self.stack.truncate(receiver_idx + 1);
+                (init.func)(&call_args).map_err(|e| RuntimeError::new(e, span))?;
+            }
             // No constructor: drop args, evaluate to `this` (matching
             // tree-walker behavior).
-            self.stack.truncate(receiver_idx + 1);
+            Constructor::Absent => self.stack.truncate(receiver_idx + 1),
         }
         Ok(())
     }
@@ -2959,6 +2994,151 @@ end
         );
         let again = ticket.field_init.borrow().clone().expect("kept");
         assert!(Rc::ptr_eq(&init, &again), "built once per class");
+    }
+
+    /// `class` built from `args` the way `new Klass(args)` builds it:
+    /// `call_class` must leave the constructor as one more frame of this
+    /// dispatch loop (not run it to completion itself), and the loop then
+    /// returns the instance.
+    fn construct_as_a_frame(vm: &mut Vm, class: &Rc<Class>, args: &[Value]) -> Value {
+        vm.push(Value::Class(class.clone()));
+        for arg in args {
+            vm.push(arg.clone());
+        }
+        let frames = vm.frames.len();
+        vm.call_class(class, args.len(), Span::default())
+            .expect("the constructor starts");
+        assert_eq!(
+            vm.frames.len(),
+            frames + 1,
+            "{}'s constructor is a frame of the running loop, not a nested run",
+            class.name
+        );
+        vm.run().expect("the constructor runs")
+    }
+
+    fn field_of(value: &Value, name: &str) -> Option<Value> {
+        match value {
+            Value::Instance(instance) => instance.borrow().get(name),
+            other => panic!("expected an instance, got {}", other.type_name()),
+        }
+    }
+
+    /// A served class's tree-walker constructor is compiled once, in
+    /// constructor mode, kept on the class that declares it, and entered as
+    /// an ordinary frame by every construction and by a subclass's
+    /// `super(...)`. It was compiled into a fresh closure and run in a nested
+    /// `run()` on every `new`, which threw its value away.
+    #[test]
+    fn a_served_constructor_runs_as_a_frame_of_one_cached_closure() {
+        let mut vm = vm_with_app_classes(
+            r##"
+class Pt
+  x: Int
+  y: Int
+
+  new(x, y)
+    @x = x
+    @y = y
+  end
+end
+
+class Diagonal < Pt
+  new(n)
+    super(n, n)
+  end
+end
+"##,
+        );
+        let Some(Value::Class(pt)) = vm.globals.get("Pt").cloned() else {
+            panic!("Pt is a class");
+        };
+        let Some(Value::Class(diagonal)) = vm.globals.get("Diagonal").cloned() else {
+            panic!("Diagonal is a class");
+        };
+        assert!(
+            pt.vm_constructor.borrow().is_none(),
+            "compiled on first use"
+        );
+
+        let first = construct_as_a_frame(&mut vm, &pt, &[Value::Int(1), Value::Int(2)]);
+        assert_eq!(field_of(&first, "x"), Some(Value::Int(1)));
+        assert_eq!(field_of(&first, "y"), Some(Value::Int(2)));
+        let (compiled_from, closure) = pt
+            .vm_constructor
+            .borrow()
+            .clone()
+            .expect("kept on the class");
+        let declared = pt.constructor.clone().expect("Pt declares one");
+        assert!(
+            Rc::ptr_eq(&compiled_from, &declared),
+            "compiled from Pt's own constructor"
+        );
+
+        let second = construct_as_a_frame(&mut vm, &pt, &[Value::Int(3), Value::Int(4)]);
+        assert_eq!(field_of(&second, "x"), Some(Value::Int(3)));
+        let diagonal_built = construct_as_a_frame(&mut vm, &diagonal, &[Value::Int(5)]);
+        assert_eq!(field_of(&diagonal_built, "x"), Some(Value::Int(5)));
+        assert_eq!(field_of(&diagonal_built, "y"), Some(Value::Int(5)));
+
+        let (_, kept) = pt.vm_constructor.borrow().clone().expect("still kept");
+        assert!(
+            Rc::ptr_eq(&closure, &kept),
+            "the next `new` and the subclass's `super(...)` reuse Pt's closure"
+        );
+        assert!(
+            diagonal.vm_constructor.borrow().is_some(),
+            "Diagonal keeps its own constructor"
+        );
+    }
+
+    /// The frame a served constructor runs in returns its instance however
+    /// the body ends — a guard's early `return`, a `return` inside
+    /// `try`/`finally` — by every spelling. Run to completion, its value was
+    /// thrown away; as a frame, constructor mode is what keeps `new` from
+    /// evaluating to what the body returned.
+    #[test]
+    fn a_served_constructor_returning_early_yields_the_instance() {
+        let mut vm = vm_with_app_classes(
+            r##"
+class Guarded
+  x: Int
+
+  new(a)
+    @x = a
+    return if a > 1
+
+    @x = 0
+  end
+end
+
+class Finally
+  log: String
+
+  new
+    @log = ""
+    try
+      @log = @log + "t"
+      return
+    finally
+      @log = @log + "f"
+    end
+  end
+end
+
+class Probe
+  def run
+    "#{Guarded.new(5).x} #{new Guarded(0).x} #{Guarded(9).x} #{Finally.new().log}"
+  end
+end
+"##,
+        );
+        assert_eq!(call_on_vm(&mut vm, "Probe", "run"), Value::str("5 0 9 tf"));
+        let Some(Value::Class(guarded)) = vm.globals.get("Guarded").cloned() else {
+            panic!("Guarded is a class");
+        };
+        let early = construct_as_a_frame(&mut vm, &guarded, &[Value::Int(7)]);
+        assert_eq!(field_of(&early, "x"), Some(Value::Int(7)));
     }
 
     #[test]

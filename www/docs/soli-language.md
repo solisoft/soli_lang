@@ -2162,6 +2162,8 @@ Counter.new().count   # 0 — the constructor ran
   arguments: `Bag.new({"a": 1})`, `Bag.new(a: 1)`. The fields it is not given
   keep their defaults.
 - A module is not instantiated: `Greetable.new()` raises.
+- `return` ends a constructor early (a guard such as `return if amount.nil?`).
+  `new` still gives the instance, never what the constructor returns.
 
 #### Fields start with their defaults
 

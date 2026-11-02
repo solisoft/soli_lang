@@ -3277,19 +3277,9 @@ pub fn has_constructor(class: &crate::interpreter::value::Class) -> bool {
 
 /// Whether `Klass.new(...)` on `class` is answered by the engines' call
 /// interceptors: not a model (its `new` is the ORM's), not a class with its
-/// own static `new`.
+/// own static `new`. Memoized per class ([`Class::intercepts_new`]).
+///
+/// [`Class::intercepts_new`]: crate::interpreter::value::Class::intercepts_new
 pub fn intercepts_new(class: &crate::interpreter::value::Class) -> bool {
-    !class.is_model_subclass()
-        && !class.is_module
-        && class.find_static_method("new").is_none()
-        && class.find_vm_static_method("new").is_none()
-        && !has_native_static_new(class)
-}
-
-fn has_native_static_new(class: &crate::interpreter::value::Class) -> bool {
-    class.native_static_methods.contains_key("new")
-        || class
-            .superclass
-            .as_ref()
-            .is_some_and(|superclass| has_native_static_new(superclass))
+    class.intercepts_new()
 }

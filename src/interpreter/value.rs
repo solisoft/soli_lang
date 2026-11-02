@@ -1762,6 +1762,16 @@ pub struct Class {
     /// it builds an instance of a class the tree-walker defined. `None` until
     /// then, and for a class that declares no instance field.
     pub field_init: RefCell<Option<Rc<FieldInit>>>,
+    /// The VM's compiled form of [`Class::constructor`] (a tree-walker
+    /// constructor: every class of a served app), with the function it was
+    /// compiled from. Compiled once, in constructor mode, the first time the
+    /// VM runs it (`Vm::compiled_constructor`); every construction then
+    /// enters it as one frame. A copy of the class given another
+    /// constructor compiles its own: the function is compared by pointer.
+    pub vm_constructor: RefCell<Option<(Rc<Function>, Rc<VmClosure>)>>,
+    /// Memo for [`Class::intercepts_new`]: always `Default::default()`
+    /// outside this module.
+    pub intercepts_new_memo: InterceptsNewMemo,
     /// The instance fields this class declares (`cents: Int`), in order. A
     /// value object's implicit constructor binds positional arguments to
     /// them, and `to_h` lists them in this order. Inherited ones live on the
@@ -1835,6 +1845,36 @@ impl MethodAccess {
     }
 }
 
+/// [`Class::intercepts_new`]'s last answer for one class, with the
+/// `STATIC_METHODS_EPOCH` it was computed in (0: never, which no epoch
+/// equals).
+#[derive(Debug, Default)]
+pub struct InterceptsNewMemo(Cell<(u64, bool)>);
+
+/// A copy starts empty: a cloned [`Class`] can be given another superclass
+/// or other static methods before it is first asked.
+impl Clone for InterceptsNewMemo {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+/// Bumped whenever a static method joins a class that already exists — an
+/// `include` or `extend`, a `static def` the VM registers on the class it is
+/// compiling, a module's `class_methods` — so every
+/// [`Class::intercepts_new`] memo is computed again: a subclass's answer
+/// depends on its ancestors' tables too. Starts at 1, so a fresh memo is
+/// never current. The VM's caches of tree-walker statics
+/// (`compile_tree_walking_static`) do not bump it: they only hold statics
+/// `find_static_method` already finds, so they cannot change an answer.
+static STATIC_METHODS_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// A static method joined an existing class: stale every
+/// [`Class::intercepts_new`] memo.
+pub fn note_static_methods_changed() {
+    STATIC_METHODS_EPOCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Set once any class declares a private or protected instance method (see
 /// [`Class::restricted_method`]).
 static RESTRICTED_METHODS_DECLARED: std::sync::atomic::AtomicBool =
@@ -1871,6 +1911,8 @@ impl Default for Class {
             model_subclass_memo: Cell::new(None),
             value_object_memo: Cell::new(None),
             field_init: RefCell::new(None),
+            vm_constructor: RefCell::new(None),
+            intercepts_new_memo: InterceptsNewMemo::default(),
             declared_fields: Rc::new(RefCell::new(Vec::new())),
             is_module: false,
             included_modules: Rc::new(RefCell::new(Vec::new())),
@@ -1921,6 +1963,8 @@ impl Class {
             model_subclass_memo: Cell::new(None),
             value_object_memo: Cell::new(None),
             field_init: RefCell::new(None),
+            vm_constructor: RefCell::new(None),
+            intercepts_new_memo: InterceptsNewMemo::default(),
             declared_fields: Rc::new(RefCell::new(Vec::new())),
             is_module: false,
             included_modules: Rc::new(RefCell::new(Vec::new())),
@@ -2266,6 +2310,8 @@ impl Class {
         }
         self.included_modules.borrow_mut().push(module.clone());
         self.invalidate_method_cache();
+        // Its `class_methods`, if any, joined this class's statics.
+        note_static_methods_changed();
         Ok(true)
     }
 
@@ -2318,6 +2364,7 @@ impl Class {
                 mine.entry(name.clone()).or_insert_with(|| method.clone());
             }
         }
+        note_static_methods_changed();
         Ok(())
     }
 
@@ -2367,6 +2414,49 @@ impl Class {
         result
     }
 
+    /// Whether `Klass.new(...)` on this class is answered by the engines'
+    /// call interceptors: not a model (its `new` is the ORM's), not a module,
+    /// and no class of the chain has a static `new` of its own — written in
+    /// Soli, compiled by the VM, or native. Memoized per class until a static
+    /// method joins any class ([`note_static_methods_changed`]): it was three
+    /// walks of the chain on every `Klass.new`, two SipHash probes a level.
+    pub fn intercepts_new(&self) -> bool {
+        let epoch = STATIC_METHODS_EPOCH.load(std::sync::atomic::Ordering::Relaxed);
+        let (computed_in, answer) = self.intercepts_new_memo.0.get();
+        if computed_in == epoch {
+            return answer;
+        }
+        let answer = !self.is_model_subclass()
+            && !self.is_module
+            && self.find_static_method("new").is_none()
+            && self.find_vm_static_method("new").is_none()
+            && !self.has_native_static_new();
+        self.intercepts_new_memo.0.set((epoch, answer));
+        answer
+    }
+
+    fn has_native_static_new(&self) -> bool {
+        self.native_static_methods.contains_key("new")
+            || self
+                .superclass
+                .as_ref()
+                .is_some_and(|superclass| superclass.has_native_static_new())
+    }
+
+    /// How many instance fields a new instance starts with, at least: the
+    /// ones this class and its ancestors declare, which both engines set
+    /// before any constructor runs. A class the tree-walker defined lists its
+    /// own in `fields` (and `declared_fields`), one the VM compiled in
+    /// `declared_fields` only. [`Instance::new`] sizes its field map with it,
+    /// so starting them never regrows the map.
+    pub fn declared_field_count(&self) -> usize {
+        let own = self.fields.len().max(self.declared_fields.borrow().len());
+        own + self
+            .superclass
+            .as_deref()
+            .map_or(0, Class::declared_field_count)
+    }
+
     /// Every declared instance field, inherited ones first.
     pub fn all_declared_fields(&self) -> Vec<String> {
         let mut out = match &self.superclass {
@@ -2401,12 +2491,20 @@ pub struct Instance {
 
 impl Instance {
     pub fn new(class: Rc<Class>) -> Self {
-        // Size the map for the fields the class declares, so a constructor
-        // filling them in does not rehash partway through. Declared-field
-        // count is the right hint even for classes that add fields
-        // dynamically: it covers the common case exactly and merely
-        // under-reserves for the rare one.
-        let capacity = class.fields.len();
+        Self::with_capacity(class, 0)
+    }
+
+    /// An instance whose field map has room for `fields` entries, and at
+    /// least for every field its class and their ancestors declare
+    /// ([`Class::declared_field_count`]) — all of which a construction sets
+    /// before any constructor runs — so filling them in does not rehash
+    /// partway through. A model row passes its column count. A field a
+    /// constructor adds without declaring it can still grow the map, the rare
+    /// case. Sized from the class's own tree-walker `fields` alone, a class
+    /// the VM compiled started at 0 and regrew at its 4th and 8th field, and
+    /// inherited fields were never counted.
+    pub fn with_capacity(class: Rc<Class>, fields: usize) -> Self {
+        let capacity = fields.max(class.declared_field_count());
         Self {
             class,
             fields: HashMap::with_capacity_and_hasher(capacity, Default::default()),
@@ -4212,6 +4310,96 @@ mod interpolation_format_tests {
         assert_eq!(
             build_interpolated(&long).as_str(),
             format!("{}{}", "x".repeat(40), 1e20)
+        );
+    }
+}
+
+#[cfg(test)]
+mod construction_tests {
+    //! What a construction asks of its class on every `new`, answered once.
+    use super::*;
+
+    fn class(name: &str, superclass: Option<&Rc<Class>>) -> Rc<Class> {
+        Rc::new(Class {
+            name: name.to_string(),
+            superclass: superclass.cloned(),
+            ..Default::default()
+        })
+    }
+
+    /// `Klass.new` asks `intercepts_new` on every call. The answer is kept
+    /// per class until a static method joins some class, and is then
+    /// computed again: a static `new` an ancestor gains (`extend`) is the
+    /// subclass's too, so the subclass's answer flips with it.
+    #[test]
+    fn intercepts_new_is_memoized_until_a_static_joins_the_chain() {
+        let base = class("Base", None);
+        let child = class("Child", Some(&base));
+        let other = class("Other", None);
+        assert!(child.intercepts_new());
+        assert!(child.intercepts_new(), "the memo gives the same answer");
+        assert!(
+            child.intercepts_new_memo.0.get().1,
+            "the answer is kept on the class"
+        );
+
+        let factory = Rc::new(Class {
+            name: "Factory".to_string(),
+            is_module: true,
+            ..Default::default()
+        });
+        factory.methods.borrow_mut().insert(
+            "new".to_string(),
+            Rc::new(Function {
+                name: "new".to_string(),
+                ..Function::default()
+            }),
+        );
+        base.extend_module(&factory)
+            .expect("a module extends a class");
+        assert!(!base.intercepts_new(), "Base.new is Factory's now");
+        assert!(
+            !child.intercepts_new(),
+            "an ancestor's static `new` is the subclass's too"
+        );
+        assert!(
+            other.intercepts_new(),
+            "an unrelated class keeps its answer"
+        );
+
+        let model = class("Model", None);
+        let post = class("Post", Some(&model));
+        assert!(!post.intercepts_new(), "a model's `new` is the ORM's");
+    }
+
+    /// A new instance has room for every field its class and their
+    /// ancestors declare: a construction sets all of them before any
+    /// constructor runs. A class the VM compiled lists its own in
+    /// `declared_fields` only; a model row passes its column count.
+    #[test]
+    fn a_new_instance_has_room_for_every_declared_field() {
+        let parent = Rc::new(Class {
+            name: "Parent".to_string(),
+            fields: ["a", "b", "c"]
+                .iter()
+                .map(|name| (name.to_string(), None))
+                .collect(),
+            ..Default::default()
+        });
+        *parent.declared_fields.borrow_mut() = vec!["a".into(), "b".into(), "c".into()];
+        let kid = class("Kid", Some(&parent));
+        *kid.declared_fields.borrow_mut() = (1..=6).map(|i| format!("k{i}")).collect();
+
+        assert_eq!(kid.declared_field_count(), 9);
+        assert!(
+            Instance::new(kid.clone()).fields.capacity() >= 9,
+            "the six own fields of a VM class and the three inherited ones"
+        );
+        assert!(Instance::with_capacity(kid.clone(), 20).fields.capacity() >= 20);
+        assert_eq!(
+            Instance::new(class("Plain", None)).fields.capacity(),
+            0,
+            "no declared field, no allocation"
         );
     }
 }

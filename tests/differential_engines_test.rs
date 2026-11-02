@@ -2201,6 +2201,152 @@ module Util
 end
 print(Util.shout("a"))"##,
     ),
+    (
+        // A `return` ends a constructor; `new` is still the instance. The VM
+        // compiled the `return` as returning nil, so `new Guarded(5)` was
+        // nil and the next read of it raised — and so did a `next` outside a
+        // loop, which ends the body too. A block's own `return` ends only
+        // the block.
+        "a_constructor_that_returns_early_is_still_the_instance",
+        r##"class Guarded
+  x: Int
+
+  new(a)
+    @x = a
+    return if a > 1
+
+    @x = 0
+  end
+end
+
+class Skipping
+  v: Int
+
+  new(a)
+    @v = a
+    next if a > 1
+
+    @v = 0
+  end
+end
+
+class Branchy
+  label: String
+
+  new(a)
+    if a > 0
+      @label = "pos"
+      return
+    else
+      @label = "neg"
+    end
+    @label = @label + "!"
+  end
+end
+
+class Looping
+  n: Int
+
+  new(limit)
+    @n = 0
+    while true
+      @n = @n + 1
+      return if @n >= limit
+    end
+  end
+end
+
+class Finally
+  log: String
+
+  new
+    @log = ""
+    try
+      @log = @log + "t"
+      return
+    finally
+      @log = @log + "f"
+    end
+  end
+end
+
+class Each
+  seen: Array
+
+  new(xs)
+    @seen = []
+    xs.each do |x|
+      return if x == 2
+
+      @seen.push(x)
+    end
+    @seen.push(99)
+  end
+end
+
+g = new Guarded(5)
+print(g.x, Guarded.new(0).x, Guarded(9).x)
+print(new Skipping(4).v, Skipping.new(1).v)
+print(Branchy.new(1).label, new Branchy(-1).label)
+print(new Looping(3).n)
+print(Finally.new().log)
+print(new Each([1, 2, 3]).seen)"##,
+    ),
+    (
+        // Constructors that build their own class, raise through a helper,
+        // take defaults and run inside a block callback: all three spellings
+        // enter the same compiled constructor.
+        "constructors_recurse_raise_and_run_in_callbacks",
+        r##"class Node
+  value: Int
+  next_node: Any
+
+  new(n)
+    @value = n
+    @next_node = n > 0 ? Node.new(n - 1) : nil
+  end
+
+  def depth
+    @next_node.nil? ? 1 : 1 + @next_node.depth
+  end
+end
+
+class Picky
+  v: Int
+
+  new(v)
+    @v = Picky.check(v)
+  end
+
+  static def check(v)
+    throw "bad #{v}" if v < 0
+
+    v
+  end
+end
+
+class Pair
+  a: Int
+  b: Int
+
+  new(a, b = 10)
+    @a = a
+    @b = b
+  end
+end
+
+print(Node.new(4).depth)
+caught = "none"
+try
+  Picky.new(-1)
+catch err
+  caught = "caught #{err}"
+end
+print(caught, Picky.new(3).v)
+built = [1, 2, 3].map { |x| Pair.new(x) }
+print(built.map { |p| p.a + p.b })
+print(Pair.new(1, 2).b, new Pair(3).b, Pair(4).b)"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
@@ -2710,6 +2856,117 @@ class Probe
     end
     currencies = "#{v1.currency} #{v2.currency} #{v3.currency} #{v4.currency} #{v5.currency}"
     "#{currencies} #{v5.cents} #{shown} #{v1 == Amount.new(500, "EUR")}"
+  end
+end"##,
+    ),
+    (
+        // A served class's constructor is compiled once, in constructor mode,
+        // and entered as an ordinary frame. Every way out of it — the end, an
+        // early `return`, one inside `try`/`finally` — still gives the
+        // instance, by every spelling; an inherited constructor, `super`, a
+        // raise from a helper, recursion, a block callback and the attribute
+        // form behave as on the tree-walker.
+        "app_constructors_run_as_frames",
+        r##"class Guarded
+  x: Int
+
+  new(a)
+    @x = a
+    return if a > 1
+
+    @x = 0
+  end
+end
+
+class Finally
+  log: String
+
+  new
+    @log = ""
+    try
+      @log = @log + "t"
+      return
+    finally
+      @log = @log + "f"
+    end
+  end
+end
+
+class Node
+  value: Int
+  next_node: Any
+
+  new(n)
+    @value = n
+    @next_node = n > 0 ? Node.new(n - 1) : nil
+  end
+
+  def depth
+    @next_node.nil? ? 1 : 1 + @next_node.depth
+  end
+end
+
+class Picky
+  v: Int
+
+  new(v)
+    @v = Picky.check(v)
+  end
+
+  static def check(v)
+    throw "bad #{v}" if v < 0
+
+    v
+  end
+end
+
+class Pair
+  a: Int
+  b: Int
+
+  new(a, b = 10)
+    @a = a
+    @b = b
+  end
+end
+
+class K1
+  log: String
+
+  new(a)
+    @log = "k1:#{a}"
+  end
+end
+
+class K2 < K1
+end
+
+class K3 < K2
+  new(a)
+    super(a + 1)
+    @log = @log + ";k3"
+  end
+end
+
+class Bare
+  note: String
+  count: Int = 3
+end
+
+class Probe
+  def run
+    early = "#{Guarded.new(5).x} #{new Guarded(0).x} #{Guarded(7).x} #{Finally.new().log}"
+    caught = "none"
+    try
+      Picky.new(-1)
+    catch err
+      caught = "caught #{err}"
+    end
+    pairs = [1, 2].map { |x| Pair.new(x) }.map { |p| p.a + p.b }
+    chain = "#{K3.new(1).log} #{K2.new(5).log}"
+    bare = Bare.new({"note": "n"})
+    nodes = Node.new(3).depth
+    "#{early} | #{nodes} #{caught} #{Picky.new(2).v} | #{pairs} #{Pair.new(1, 2).b} | #{chain} | #{bare.note} #{bare.count} #{Bare.new().count}"
   end
 end"##,
     ),

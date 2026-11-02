@@ -5828,6 +5828,81 @@ end
         );
     }
 
+    /// A `return` ends a constructor, and `new` is still the instance — what
+    /// the tree-walker gives, which discards a constructor's value. The
+    /// compiler compiled the `return` as `Null; Return`, so a guard made
+    /// `new Guarded(5)` itself nil, and the next read of it raised.
+    #[test]
+    fn test_vm_constructor_return_yields_this() {
+        let source = r##"
+class Guarded
+  x: Int
+
+  new(a)
+    @x = a
+    return if a > 1
+
+    @x = 0
+  end
+end
+class Looping
+  n: Int
+
+  new(limit)
+    @n = 0
+    while true
+      @n = @n + 1
+      return if @n >= limit
+    end
+  end
+end
+let g = new Guarded(5)
+let h = Guarded(0)
+let l = new Looping(3)
+let result = "#{g.x} #{h.x} #{l.n}"
+"##;
+        assert_eq!(
+            compile_and_get_global(source, "result"),
+            Value::String("5 0 3".into())
+        );
+
+        // Every way out of the compiled `init` returns `this` (slot 0).
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.execute(&module.main).expect("vm error");
+        for name in ["Guarded", "Looping"] {
+            let Some(Value::Class(class)) = vm.globals.get(name).cloned() else {
+                panic!("{name} is a class");
+            };
+            let ctor = class
+                .vm_methods
+                .borrow()
+                .get("init")
+                .cloned()
+                .expect("the constructor");
+            let code: Vec<Op> = ctor
+                .proto
+                .chunk
+                .code
+                .iter()
+                .copied()
+                .filter(|op| !matches!(op, Op::Nop))
+                .collect();
+            let returns: Vec<Op> = code
+                .windows(2)
+                .filter(|pair| matches!(pair[1], Op::Return))
+                .map(|pair| pair[0])
+                .collect();
+            assert_eq!(
+                returns,
+                [Op::GetLocal(0), Op::GetLocal(0)],
+                "{name}: the early return and the end both return `this`"
+            );
+        }
+    }
+
     fn compile_and_get_global(source: &str, name: &str) -> Value {
         let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
         let program = Parser::new(tokens).parse().expect("parser error");

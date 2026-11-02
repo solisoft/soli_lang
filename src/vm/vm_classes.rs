@@ -1032,6 +1032,7 @@ impl Vm {
                                 .vm_static_methods
                                 .borrow_mut()
                                 .insert(name.to_string(), closure);
+                            crate::interpreter::value::note_static_methods_changed();
                         } else {
                             current
                                 .vm_methods
@@ -1043,6 +1044,7 @@ impl Vm {
                                     .vm_static_methods
                                     .borrow_mut()
                                     .insert(name.to_string(), closure);
+                                crate::interpreter::value::note_static_methods_changed();
                             }
                         }
                         return Ok(());
@@ -1050,6 +1052,7 @@ impl Vm {
                     Value::Function(func) => {
                         if is_static {
                             static_methods.insert(name.to_string(), func);
+                            crate::interpreter::value::note_static_methods_changed();
                         } else {
                             current.methods.borrow_mut().insert(name.to_string(), func);
                         }

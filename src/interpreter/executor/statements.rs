@@ -851,6 +851,7 @@ impl Interpreter {
                 stored.insert(method_decl.name.clone(), func.clone());
                 on_module.insert(method_decl.name.clone(), func);
             }
+            crate::interpreter::value::note_static_methods_changed();
         }
         self.environment
             .borrow_mut()
