@@ -100,11 +100,9 @@ struct RenderBuf {
 
 impl RenderBuf {
     fn with_capacity(min_capacity: usize) -> Self {
-        let mut buf = RENDER_BUFFERS
-            .with(|pool| pool.borrow_mut().pop())
-            .unwrap_or_default();
-        buf.reserve(min_capacity);
-        Self { buf: Some(buf) }
+        Self {
+            buf: Some(take_render_buffer(min_capacity)),
+        }
     }
 
     // `buf` is `Some` from construction until `finish` (which consumes the
@@ -115,15 +113,51 @@ impl RenderBuf {
     }
 
     fn finish(mut self) -> String {
-        let output = self.buf.take().unwrap_or_default();
-        if output.len() < TIGHT_COPY_BELOW && output.capacity() >= 4096 {
-            let tight = String::from(output.as_str());
-            recycle_render_buffer(output);
-            tight
-        } else {
-            output
-        }
+        finish_render_buffer(self.buf.take().unwrap_or_default())
     }
+}
+
+/// An empty page buffer of at least `min_capacity` bytes from this thread's
+/// pool: the tree-walker's renders and the views' VM (`vm_template`) share
+/// it, so a partial rendered per row reuses one buffer instead of allocating
+/// 4096 bytes and freeing them again.
+pub(crate) fn take_render_buffer(min_capacity: usize) -> String {
+    let mut buf = RENDER_BUFFERS
+        .with(|pool| pool.borrow_mut().pop())
+        .unwrap_or_default();
+    buf.reserve(min_capacity);
+    buf
+}
+
+/// What a render hands back from the page buffer `output` it wrote: a small
+/// result as a tight copy, the buffer going back to the pool; a larger one as
+/// the buffer itself, so a full view is not copied on the way out.
+pub(crate) fn finish_render_buffer(output: String) -> String {
+    if output.len() < TIGHT_COPY_BELOW && output.capacity() >= 4096 {
+        let tight = String::from(output.as_str());
+        recycle_render_buffer(output);
+        tight
+    } else {
+        output
+    }
+}
+
+/// An include's rendered page once its caller has copied it into its own
+/// page: back to the pool when it is a page buffer (a result too large for
+/// [`finish_render_buffer`] to copy out), dropped when it is a tight copy.
+pub(crate) fn recycle_include_page(page: String) {
+    if page.capacity() >= 4096 {
+        recycle_render_buffer(page);
+    }
+}
+
+/// An include's rendered page as a value (`partial()`, `component()`). The
+/// string is copied either way (`EcoString` has its own layout), so the page
+/// buffer goes back to the pool rather than to the allocator.
+pub(crate) fn page_into_value(page: String) -> Value {
+    let value = Value::String(page.as_str().into());
+    recycle_include_page(page);
+    value
 }
 
 impl Drop for RenderBuf {
@@ -148,7 +182,7 @@ fn recycle_render_buffer(mut buf: String) {
 }
 
 #[cfg(test)]
-fn pooled_render_buffers() -> usize {
+pub(crate) fn pooled_render_buffers() -> usize {
     RENDER_BUFFERS.with(|pool| pool.borrow().len())
 }
 
@@ -425,7 +459,9 @@ pub(crate) fn render_walker(
                         format!("components/{}", comp_name)
                     };
                     if let Some(r) = partial_renderer {
-                        output.push_str(&r(&comp_path, &comp_data)?);
+                        let html = r(&comp_path, &comp_data)?;
+                        output.push_str(&html);
+                        recycle_include_page(html);
                     } else {
                         return Err(format!(
                             "Component rendering not available for '{}'",
@@ -454,7 +490,9 @@ pub(crate) fn render_walker(
                         } else {
                             data.clone()
                         };
-                        output.push_str(&renderer(name, &partial_data)?);
+                        let html = renderer(name, &partial_data)?;
+                        output.push_str(&html);
+                        recycle_include_page(html);
                     } else {
                         return Err(format!("Partial rendering not available for '{}'", name));
                     }
@@ -802,6 +840,26 @@ mod tests {
         assert_eq!(html, "ada");
         assert_eq!(pooled_render_buffers(), before + 1);
         Ok(())
+    }
+
+    /// An include's page goes back to the pool once its caller copied it,
+    /// when it is a page buffer; a tight copy is just dropped.
+    #[test]
+    fn an_included_page_buffer_returns_to_the_pool() {
+        let before = pooled_render_buffers();
+        recycle_include_page(String::from("tight"));
+        assert_eq!(pooled_render_buffers(), before);
+
+        let mut page = take_render_buffer(4096);
+        let taken = pooled_render_buffers();
+        page.push_str(&"x".repeat(2000));
+        let Value::String(value) = page_into_value(page) else {
+            panic!("a page is a string value");
+        };
+        assert_eq!(value.as_str(), "x".repeat(2000));
+        assert_eq!(pooled_render_buffers(), taken + 1);
+        let reused = take_render_buffer(4096);
+        assert!(reused.is_empty() && reused.capacity() >= 4096);
     }
 
     #[test]

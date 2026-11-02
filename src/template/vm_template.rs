@@ -198,10 +198,11 @@ impl VmTemplate {
         vm.template_out.clear();
         vm.template_captures.clear();
         // The page leaves with the result (`mem::take` below), so each render
-        // starts from an empty buffer: size it as the tree-walker's renderer
-        // does instead of growing it a few times over.
+        // starts from an empty buffer: one of the tree-walker's pooled page
+        // buffers, of its size. A VM-compiled partial rendered per row used to
+        // allocate 4096 bytes and free them again each time.
         if vm.template_out.capacity() == 0 {
-            vm.template_out.reserve(4096);
+            vm.template_out = crate::template::renderer::take_render_buffer(4096);
         }
         match vm.call_value_direct(self.closure.clone(), &args, Span::default()) {
             Ok(result) => {
@@ -213,8 +214,12 @@ impl VmTemplate {
                         .collect(),
                     _ => Vec::new(),
                 };
+                // A small page leaves as a tight copy and its buffer goes back
+                // to the pool, as the tree-walker's does.
                 Ok(Rendered {
-                    html: std::mem::take(&mut vm.template_out),
+                    html: crate::template::renderer::finish_render_buffer(std::mem::take(
+                        &mut vm.template_out,
+                    )),
                     assigned,
                 })
             }
@@ -530,8 +535,8 @@ pub(crate) fn render_component_block(
     content: Value,
 ) -> Result<String, String> {
     use crate::interpreter::value::{HashKey, HashPairs};
-    let name = match name {
-        Value::String(s) => s.to_string(),
+    let name: &str = match name {
+        Value::String(s) => s,
         other => {
             return Err(format!(
                 "component name must evaluate to string, got {}",
@@ -547,10 +552,10 @@ pub(crate) fn render_component_block(
     }
     map.insert(HashKey::String("content".into()), content);
     let data = Value::Hash(Rc::new(RefCell::new(map)));
-    let path = if name.contains('/') || name.contains('.') {
-        name
+    let path: std::borrow::Cow<str> = if name.contains('/') || name.contains('.') {
+        name.into()
     } else {
-        format!("components/{name}")
+        format!("components/{name}").into()
     };
     let rendering = RENDERING_CACHE.with(|c| c.get());
     if rendering.is_null() {
@@ -571,8 +576,9 @@ pub(crate) fn render_component_block(
 /// resolve in the template env and the controller's `@ivars` in the include's
 /// scope.
 pub(crate) fn render_partial_block(name: &Value, data: &Value) -> Result<String, String> {
-    let name = match name {
-        Value::String(s) => s.to_string(),
+    // Borrowed: formatting it into a new `String` cost 2% of an include.
+    let name: &str = match name {
+        Value::String(s) => s,
         other => {
             return Err(format!(
                 "partial name must evaluate to string, got {}",
@@ -583,12 +589,12 @@ pub(crate) fn render_partial_block(name: &Value, data: &Value) -> Result<String,
     let rendering = RENDERING_CACHE.with(|c| c.get());
     if rendering.is_null() {
         return crate::interpreter::builtins::template::get_template_cache()?
-            .render_partial(&name, data);
+            .render_partial(name, data);
     }
     // SAFETY: set by `render_view` from a `&TemplateCache` that outlives the
     // render, cleared when it ends (`RenderingCache`), and read only on this
     // thread, inside that render.
-    unsafe { &*rendering }.render_partial(&name, data)
+    unsafe { &*rendering }.render_partial(name, data)
 }
 
 /// Whether a template does enough work for the VM to pay: a loop, or at least
@@ -1246,6 +1252,50 @@ mod tests {
         let names: Vec<&str> = rendered.assigned.iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(names, ["heading", "note"]);
         assert_eq!(rendered.html, "Posts");
+        Ok(())
+    }
+
+    /// A render takes its page buffer from the tree-walker's pool and gives
+    /// it back when the page is small, handing out a tight copy: a partial
+    /// rendered per row no longer allocates and frees 4096 bytes each time.
+    /// A page-sized result leaves as the buffer itself, not copied.
+    #[test]
+    fn a_render_borrows_its_page_buffer_from_the_pool() -> Result<(), String> {
+        use crate::template::renderer::{pooled_render_buffers, take_render_buffer};
+        let nodes = parse_template("<p><%= title %></p>")?;
+        let compiled = VmTemplate::compile(&nodes)?;
+        let mut vm = Vm::new();
+        let data = hash(vec![("title", Value::String("Posts".into()))]);
+        // One buffer in the pool for the render to take.
+        let seeded = take_render_buffer(4096);
+        crate::template::renderer::recycle_include_page(seeded);
+        let before = pooled_render_buffers();
+        assert!(before > 0);
+        for _ in 0..3 {
+            let html = compiled
+                .render(&mut vm, &data)
+                .map_err(|e| e.to_string())?
+                .html;
+            assert_eq!(html, "<p>Posts</p>");
+            assert!(
+                html.capacity() < 1024,
+                "a small page kept the 4096-byte buffer (capacity {})",
+                html.capacity()
+            );
+            assert_eq!(pooled_render_buffers(), before, "the buffer went back");
+        }
+
+        let big = parse_template(&format!("<%= title %>{}", "x".repeat(1100)))?;
+        let html = VmTemplate::compile(&big)?
+            .render(&mut vm, &data)
+            .map_err(|e| e.to_string())?
+            .html;
+        assert_eq!(html.len(), "Posts".len() + 1100);
+        assert!(
+            html.capacity() >= 4096,
+            "a page-sized result was copied out"
+        );
+        assert_eq!(pooled_render_buffers(), before - 1);
         Ok(())
     }
 

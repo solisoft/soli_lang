@@ -1628,7 +1628,7 @@ pub fn register_static_template_helpers(env: &mut Environment) {
         // `@ivars` through the include's scope: nothing is copied into
         // `data`, which is the caller's own hash.
         crate::template::with_rendering_cache(|cache| cache.render_partial(&partial_name, &data))
-            .map(|s| Value::String(s.into()))
+            .map(crate::template::renderer::page_into_value)
     });
     env.define(
         "render_partial".to_string(),
@@ -1800,7 +1800,10 @@ fn render_component_call(
             );
             let item_data = Value::Hash(Rc::new(RefCell::new(item_map)));
             match cache.render_component(name, &item_data) {
-                Ok(s) => out.push_str(&s),
+                Ok(s) => {
+                    out.push_str(&s);
+                    crate::template::renderer::recycle_include_page(s);
+                }
                 Err(e) => return Err(format!("component('{}') failed: {}", name, e)),
             }
         }
@@ -1859,12 +1862,12 @@ fn render_component_call(
                 {
                     let _ = crate::interpreter::builtins::cache::cache_set_impl(
                         key,
-                        &Value::String(s.clone().into()),
+                        &Value::String(s.as_str().into()),
                         cache_ttl,
                     );
                 }
             }
-            Ok(Value::String(s.into()))
+            Ok(crate::template::renderer::page_into_value(s))
         }
         Err(e) => Err(format!("component('{}') failed: {}", name, e)),
     }
@@ -2648,7 +2651,7 @@ pub fn register_template_builtins(env: &mut Environment) {
         };
 
         // Return just the string for partials (they're typically embedded)
-        Ok(Value::String(rendered.into()))
+        Ok(crate::template::renderer::page_into_value(rendered))
     });
     env.define(
         "render_partial".to_string(),

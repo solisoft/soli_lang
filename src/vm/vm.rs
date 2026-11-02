@@ -4508,6 +4508,7 @@ impl Vm {
                     )
                     .map_err(|e| RuntimeError::new(e, span))?;
                     self.template_out.push_str(&html);
+                    crate::template::renderer::recycle_include_page(html);
                     self.stack.push(Value::Null);
                 }
                 Op::TemplatePartial => {
@@ -4517,6 +4518,9 @@ impl Vm {
                     let html = crate::template::vm_template::render_partial_block(&name, &data)
                         .map_err(|e| RuntimeError::new(e, span))?;
                     self.template_out.push_str(&html);
+                    // A page-sized include's buffer goes back to the pool for
+                    // the next one.
+                    crate::template::renderer::recycle_include_page(html);
                     self.stack.push(Value::Null);
                 }
                 // The renderer's `YieldMode::View`: a compiled template is never
