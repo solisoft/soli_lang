@@ -513,6 +513,62 @@ impl Vm {
         }
     }
 
+    /// Call the method `define_method` gave the receiver's primitive type
+    /// (`Array.define_method("includes?", …)`), when it outranks the builtin
+    /// for this call; returns false, touching nothing, when the builtin runs.
+    ///
+    /// The precedence is the tree-walker's, through the one predicate both
+    /// engines share: a block-less call on a Hash, Array or String whose name
+    /// is in that type's direct-dispatch list runs the builtin; every other
+    /// call — with a block, on another primitive, or a name off the list —
+    /// runs the user method. `CallMethod` used to consult user methods first
+    /// for every name and `CallMethodById` never did, so which one ran
+    /// depended on whether the name happened to have a method id.
+    ///
+    /// Only reached once a user method exists somewhere (the caller tests
+    /// `USER_METHOD_FLAGS`).
+    #[cold]
+    fn call_primitive_user_method(
+        &mut self,
+        receiver_idx: usize,
+        argc: usize,
+        name: &str,
+        block: bool,
+    ) -> Result<bool, RuntimeError> {
+        use crate::interpreter::executor::calls::user_methods::{lookup_user_method, PrimType};
+        let receiver = &self.stack[receiver_idx];
+        let prim = match receiver {
+            Value::Int(_) => PrimType::Int,
+            Value::Float(_) => PrimType::Float,
+            Value::Bool(_) => PrimType::Bool,
+            Value::Null => PrimType::Null,
+            Value::Decimal(_) => PrimType::Decimal,
+            Value::String(_) => PrimType::String,
+            Value::Array(_) => PrimType::Array,
+            Value::Hash(_) => PrimType::Hash,
+            Value::Symbol(_) => PrimType::Symbol,
+            _ => return Ok(false),
+        };
+        if !block
+            && crate::interpreter::executor::calls::function::builtin_outranks_user_method(
+                receiver, name,
+            )
+        {
+            return Ok(false);
+        }
+        let Some(method) = lookup_user_method(prim, name) else {
+            return Ok(false);
+        };
+        let span = self.current_span();
+        let object = self.stack[receiver_idx].clone();
+        self.stack[receiver_idx] =
+            crate::interpreter::executor::access::member::bind_user_method_to_receiver(
+                object, method,
+            );
+        self.call_value(argc, span)?;
+        Ok(true)
+    }
+
     /// Run the dispatch loop.
     /// Execute until the program completes or an error escapes.
     ///
@@ -1908,7 +1964,7 @@ impl Vm {
                         self.call_method_slow_path(receiver_idx, argc, &name)?;
                     }
                 }
-                Op::CallMethod(name_idx, argc) => {
+                Op::CallMethod(name_idx, argc, block) => {
                     let argc = argc as usize;
                     let receiver_idx = self.stack.len() - 1 - argc;
                     if matches!(
@@ -1932,42 +1988,14 @@ impl Vm {
                     // the entire execution of this frame. We never mutate constants.
                     let name: &str = unsafe { &*name };
 
-                    // User-method fast-path guard: gate on the per-type bit in
-                    // USER_METHOD_FLAGS. Zero overhead when no user methods exist.
-                    use crate::interpreter::executor::calls::user_methods::{
-                        lookup_user_method as _lookup_um, PrimType,
-                    };
-                    // One load of the whole mask: nine per-type loads (all false,
-                    // so none short-circuited) on every method call before.
-                    let user_prim =
-                        if crate::interpreter::executor::calls::user_methods::USER_METHOD_FLAGS
-                            .load(std::sync::atomic::Ordering::Relaxed)
-                            != 0
-                        {
-                            match &self.stack[receiver_idx] {
-                                Value::Int(_) => Some(PrimType::Int),
-                                Value::Float(_) => Some(PrimType::Float),
-                                Value::Bool(_) => Some(PrimType::Bool),
-                                Value::Null => Some(PrimType::Null),
-                                Value::Decimal(_) => Some(PrimType::Decimal),
-                                Value::String(_) => Some(PrimType::String),
-                                Value::Array(_) => Some(PrimType::Array),
-                                Value::Hash(_) => Some(PrimType::Hash),
-                                Value::Symbol(_) => Some(PrimType::Symbol),
-                                _ => None,
-                            }
-                        } else {
-                            None
-                        };
-                    if let Some(t) = user_prim {
-                        if let Some(f) = _lookup_um(t, name) {
-                            let span = self.current_span();
-                            let object = self.stack[receiver_idx].clone();
-                            let bound = crate::interpreter::executor::access::member::bind_user_method_to_receiver(object, f);
-                            self.stack[receiver_idx] = bound;
-                            self.call_value(argc, span)?;
-                            continue;
-                        }
+                    // A method `define_method` gave a primitive type. One load
+                    // of the whole mask when none exist (the common case).
+                    if crate::interpreter::executor::calls::user_methods::USER_METHOD_FLAGS
+                        .load(std::sync::atomic::Ordering::Relaxed)
+                        != 0
+                        && self.call_primitive_user_method(receiver_idx, argc, name, block)?
+                    {
+                        continue;
                     }
 
                     // Fast path: dispatch on receiver type without cloning
@@ -2145,7 +2173,7 @@ impl Vm {
                         }
                     }
                 }
-                Op::CallMethodById(name_idx, argc, method_id) => {
+                Op::CallMethodById(name_idx, argc, method_id, block) => {
                     let argc = argc as usize;
                     let receiver_idx = self.stack.len() - 1 - argc;
                     if matches!(
@@ -2155,6 +2183,27 @@ impl Vm {
                         let span = self.current_span();
                         let resolved = Self::force_lazy_receiver(&self.stack[receiver_idx], span)?;
                         self.stack[receiver_idx] = resolved;
+                    }
+                    // The id tables below are builtins only; a primitive user
+                    // method has to be looked for first, under the same rule
+                    // as `CallMethod`. Skipped in one load when none exist.
+                    if crate::interpreter::executor::calls::user_methods::USER_METHOD_FLAGS
+                        .load(std::sync::atomic::Ordering::Relaxed)
+                        != 0
+                    {
+                        let name: *const str = {
+                            let frame = self.frames.last().unwrap();
+                            match &frame.closure.proto.chunk.constants[name_idx as usize] {
+                                Constant::String(s) => s.as_ref() as *const str,
+                                _ => "" as *const str,
+                            }
+                        };
+                        // SAFETY: as in `CallMethod` — the constant pool outlives
+                        // this frame's execution and is never mutated.
+                        let name: &str = unsafe { &*name };
+                        if self.call_primitive_user_method(receiver_idx, argc, name, block)? {
+                            continue;
+                        }
                     }
                     // Fast path: zero-arg methods on primitives — pure integer dispatch
                     if argc == 0 {
@@ -5487,6 +5536,80 @@ mod tests {
             Value::NativeFunction(NativeFunction::new("puts", None, |_| Ok(Value::Null))),
         );
         vm.execute(&module.main)
+    }
+
+    /// A method `define_method` gave a primitive type runs, or not, on the
+    /// same calls in both engines.
+    ///
+    /// The tree-walker runs the builtin for a block-less paren call on a Hash,
+    /// Array or String whose name is in that type's direct-dispatch list, and
+    /// the user method for every other call. The VM used to decide by whether
+    /// the name had a method id instead: `CallMethod` (no id) put the user
+    /// method first for every name, so `xs.includes?(1)` ran an override the
+    /// tree-walker ignores, and `CallMethodById` never looked, so
+    /// `xs.count { … }`, `"ab".capitalize()` and `5.to_s()` ignored overrides
+    /// the tree-walker runs.
+    ///
+    /// The CLI's VM cannot register a primitive method itself (a compiled
+    /// closure is refused), so the tree-walker registers them here, as a serve
+    /// app's tree-walked code would, and both engines then run the probe. Its
+    /// own thread: the overlay tables are thread-local and die with it.
+    #[test]
+    fn test_vm_primitive_user_method_precedence_matches_tree_walker() {
+        const SETUP: &str = r#"
+Array.define_method("includes?", fn(v) { "user includes?" })
+Array.define_method("select", fn(f) { "user select" })
+Array.define_method("sum", fn() { "user sum" })
+Array.define_method("count", fn(f) { "user count" })
+String.define_method("contains?", fn(v) { "user contains?" })
+String.define_method("capitalize", fn() { "user capitalize" })
+Hash.define_method("map", fn(f) { "user map" })
+Hash.define_method("select", fn(f) { "user select" })
+Int.define_method("to_s", fn() { "user to_s" })
+"#;
+        const PROBE: &str = r#"
+xs = [1, 2]
+h = {"a": 1}
+print(xs.includes?(1))
+print(xs&.includes?(1))
+print(xs.select(fn(x) { x > 1 }))
+print(xs.select { |x| x > 1 })
+print(xs.sum())
+print(xs.sum)
+print(xs.count { |x| x > 1 })
+print("ab".contains?("a"))
+print("ab".capitalize())
+print("ab".upcase())
+print(h.map(fn(k, v) { [k, v * 2] }))
+print(h.select { |k, v| true })
+print(5.to_s())
+print(5.abs())
+"#;
+        const EXPECTED: &str = "true\ntrue\n[2]\nuser select\n3\nuser sum\nuser count\n\
+true\nuser capitalize\nAB\n{a => 2}\nuser select\nuser to_s\n5\n";
+
+        fn parse(src: &str) -> crate::ast::Program {
+            let tokens = Scanner::new(src).scan_tokens().expect("lexer error");
+            Parser::new(tokens).parse().expect("parser error")
+        }
+
+        std::thread::spawn(|| {
+            let capture = crate::interpreter::builtins::StdoutCaptureGuard::start();
+            crate::interpreter::Interpreter::new()
+                .interpret(&parse(&format!("{SETUP}{PROBE}")))
+                .expect("tree-walker run");
+            let tree = String::from_utf8(capture.finish()).expect("utf-8");
+
+            let module = Compiler::compile(&parse(PROBE)).expect("compile error");
+            let capture = crate::interpreter::builtins::StdoutCaptureGuard::start();
+            Vm::new().execute(&module.main).expect("vm run");
+            let vm = String::from_utf8(capture.finish()).expect("utf-8");
+
+            assert_eq!(tree, EXPECTED, "tree-walker");
+            assert_eq!(vm, EXPECTED, "VM");
+        })
+        .join()
+        .expect("probe thread");
     }
 
     /// `print`/`puts`/`println` compile to `Op::Print`, which must write

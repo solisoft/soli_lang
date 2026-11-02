@@ -45,7 +45,7 @@ end
 
 ## Extending primitive types
 
-The same machinery works on built-in primitive types: `Int`, `Float`, `Bool`, `Decimal`, `String`, `Array`, `Hash`, `Symbol`, `Null`. User-defined methods are stored in a per-type overlay and are checked **before** built-in methods, so you can add new methods or shadow existing ones.
+The same machinery works on built-in primitive types: `Int`, `Float`, `Bool`, `Decimal`, `String`, `Array`, `Hash`, `Symbol`, `Null`. User-defined methods are stored in a per-type overlay and are checked **before** built-in methods, so you can add new methods or shadow existing ones (with one exception, see [Precedence](#precedence)).
 
 ```soli
 Int.define_method("doubled", fn() { this * 2 })
@@ -79,6 +79,19 @@ Lookup order on a primitive value:
 3. Built-in methods (`length`, `upcase`, `map`, `times`, etc.).
 
 So a user method on `Hash` shadows the key, and the key shadows a built-in of the same name, the way an instance field shadows a method. A call with parentheses always means the method: `{"size": 2048}.size()` is `1`, the number of entries. This matches Ruby's monkey-patching semantics, and both engines (`soli serve` and `soli test`) follow it.
+
+One exception: a call **with parentheses and no block** on a `String`, `Array` or `Hash`, to one of the built-ins those types dispatch directly (`includes?`, `contains?`, `map`, `select`, `filter`, `each`, `sum`, `first`, `count`, `upcase`, `split`, `keys`, `merge`, …), runs the built-in even when you have shadowed it:
+
+```soli
+Array.define_method("sum", fn() { "mine" })
+
+[1, 2].sum                  # => "mine"   (no parentheses: your method)
+[1, 2].sum()                # => 3        (parentheses: the built-in)
+[1, 2].count { |x| x > 1 }  # => your `count`, if you defined one (a block)
+5.to_s()                    # => your `to_s`, if you defined one (not a String/Array/Hash)
+```
+
+Both engines draw this line in the same place. To change what a built-in does on these three types, give your method a new name rather than shadowing the built-in.
 
 ### Performance
 

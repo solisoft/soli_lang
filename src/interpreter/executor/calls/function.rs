@@ -253,9 +253,9 @@ fn is_direct_string_method(name: &str) -> bool {
 
 /// Array method names eligible for the direct `arr.method(args)` dispatch —
 /// the union of the mutating set, the borrowed tier, and everything
-/// `call_array_method` handles. A name missing here is not a bug, just
-/// slower: it takes the member-access route (ValueMethod boxing) and still
-/// dispatches correctly.
+/// `call_array_method` handles. A name missing here takes the member-access
+/// route (ValueMethod boxing) and still dispatches correctly, but the list is
+/// not only a speed matter: see [`builtin_outranks_user_method`].
 fn is_direct_array_method(name: &str) -> bool {
     matches!(
         name,
@@ -327,6 +327,26 @@ fn is_direct_array_method(name: &str) -> bool {
             | "order"
             | "is_a?"
     )
+}
+
+/// Whether `receiver.name(args)` — parentheses, positional arguments only,
+/// no block — runs the builtin even when `define_method` gave the receiver's
+/// primitive type a method of the same name.
+///
+/// That is what `evaluate_call`'s direct dispatch does: a Hash, Array or
+/// String receiver with a name in its direct list goes straight to the
+/// builtin, before member access (where user methods are consulted first) is
+/// ever reached. Every other paren call — another receiver type, a name off
+/// the list, a block or a named argument — resolves through member access, so
+/// the user method wins. The VM's `CallMethod`/`CallMethodById` ask this same
+/// question, so the two engines cannot disagree about which one runs.
+pub(crate) fn builtin_outranks_user_method(receiver: &Value, name: &str) -> bool {
+    match receiver {
+        Value::Hash(_) => is_direct_hash_method(name),
+        Value::Array(_) => is_direct_array_method(name),
+        Value::String(_) => is_direct_string_method(name),
+        _ => false,
+    }
 }
 
 impl Interpreter {

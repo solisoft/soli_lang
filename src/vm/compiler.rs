@@ -1082,7 +1082,7 @@ fn stack_effect(op: Op) -> i32 {
         | JumpIfParamSupplied(_, _) => 0,
         JumpIfFalse(_) => -1,
         // Calls: pop callee/receiver + argc args, push the result.
-        Call(argc) | CallMethod(_, argc) | CallMethodById(_, argc, _) => -(argc as i32),
+        Call(argc) | CallMethod(_, argc, _) | CallMethodById(_, argc, _, _) => -(argc as i32),
         // Same shape as Call/New: the callee plus argc slots collapse to one result.
         CallNamed(argc, _) | NewNamed(argc, _) => -(argc as i32),
         // [this, args…] collapse to the result: net -argc.

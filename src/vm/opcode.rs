@@ -343,10 +343,15 @@ pub enum Op {
     CoverLine(u32),
     /// Combined property access + call: receiver is below args, method name from constant.
     /// Avoids allocating Value::Method intermediary.
-    CallMethod(u16, u8),
+    /// Fields: (name_constant_idx, argc, block). `block` is true when the
+    /// last argument was written as a block (`xs.map { |x| … }`): such a call
+    /// always lets a primitive user method (`Array.define_method`) outrank the
+    /// builtin, where a block-less one may not — see
+    /// `builtin_outranks_user_method`.
+    CallMethod(u16, u8, bool),
     /// Like CallMethod but with a resolved method ID for direct dispatch (no string matching).
-    /// Fields: (name_constant_idx, argc, method_id). Falls back to string dispatch for classes.
-    CallMethodById(u16, u8, u16),
+    /// Fields: (name_constant_idx, argc, method_id, block). Falls back to string dispatch for classes.
+    CallMethodById(u16, u8, u16, bool),
     /// Specialized hash get with a compile-time constant string key.
     HashGetConst(u16),
     /// Specialized hash has_key? with a compile-time constant string key.

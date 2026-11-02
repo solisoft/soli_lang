@@ -57,7 +57,7 @@ impl Compiler {
                 self.emit(Op::GetGlobal(sys), line);
                 self.emit_constant(Constant::String(cmd.clone().into()), line);
                 let shell = self.add_string_constant("shell");
-                self.emit(Op::CallMethod(shell, 1), line);
+                self.emit(Op::CallMethod(shell, 1, false), line);
             }
             ExprKind::BoolLiteral(b) => {
                 self.emit(if *b { Op::True } else { Op::False }, line);
@@ -705,9 +705,9 @@ impl Compiler {
                 let name_idx = self.add_string_constant(name);
                 let method_id = super::method_table::resolve_method_id(name);
                 if method_id != super::method_table::METHOD_UNKNOWN {
-                    self.emit(Op::CallMethodById(name_idx, argc, method_id), line);
+                    self.emit(Op::CallMethodById(name_idx, argc, method_id, false), line);
                 } else {
-                    self.emit(Op::CallMethod(name_idx, argc), line);
+                    self.emit(Op::CallMethod(name_idx, argc, false), line);
                 }
                 self.patch_jump(skip);
                 return Ok(());
@@ -747,12 +747,16 @@ impl Compiler {
                         Argument::Named(_) => unreachable!(),
                     }
                 }
+                // A block argument is the one thing the opcode cannot see on
+                // the stack (it is a closure like any `fn(x) { … }`), yet it
+                // decides whether a primitive user method outranks the builtin.
+                let block = arguments.iter().any(|a| matches!(a, Argument::Block(_)));
                 let name_idx = self.add_string_constant(name);
                 let method_id = super::method_table::resolve_method_id(name);
                 if method_id != super::method_table::METHOD_UNKNOWN {
-                    self.emit(Op::CallMethodById(name_idx, argc, method_id), line);
+                    self.emit(Op::CallMethodById(name_idx, argc, method_id, block), line);
                 } else {
-                    self.emit(Op::CallMethod(name_idx, argc), line);
+                    self.emit(Op::CallMethod(name_idx, argc, block), line);
                 }
                 return Ok(());
             }
@@ -1744,6 +1748,65 @@ mod subexpr_compile_tests {
         );
         vm.execute(&module.main).expect("vm");
         assert_eq!(vm.globals.get("out"), Some(&Value::String("hello".into())));
+    }
+}
+
+#[cfg(test)]
+mod block_call_flag_tests {
+    //! `CallMethod`/`CallMethodById` carry whether the call's last argument
+    //! was written as a block. The VM cannot tell a block from a `fn(x) { … }`
+    //! argument on the stack, yet the tree-walker lets a primitive user method
+    //! outrank the builtin only for the block form, so the bit has to be
+    //! compiled in.
+    use crate::vm::compiler::Compiler;
+    use crate::vm::opcode::Op;
+
+    /// The (block, has-id) shape of the first method call in `src`.
+    fn first_method_call(src: &str) -> (bool, bool) {
+        let tokens = crate::lexer::Scanner::new(src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        module
+            .main
+            .chunk
+            .code
+            .iter()
+            .find_map(|op| match op {
+                Op::CallMethod(_, _, block) => Some((*block, false)),
+                Op::CallMethodById(_, _, _, block) => Some((*block, true)),
+                _ => None,
+            })
+            .expect("a method call")
+    }
+
+    #[test]
+    fn a_block_argument_sets_the_flag() {
+        assert_eq!(
+            first_method_call("xs = [1]\nxs.select { |x| x }"),
+            (true, false)
+        );
+        assert_eq!(
+            first_method_call("xs = [1]\nxs.count { |x| x }"),
+            (true, true)
+        );
+        assert_eq!(
+            first_method_call("xs = [1]\nxs.each do |x|\n  x\nend"),
+            (true, false)
+        );
+    }
+
+    #[test]
+    fn a_lambda_argument_does_not() {
+        assert_eq!(
+            first_method_call("xs = [1]\nxs.select(fn(x) { x })"),
+            (false, false)
+        );
+        assert_eq!(
+            first_method_call("xs = [1]\nxs.includes?(1)"),
+            (false, false)
+        );
+        assert_eq!(first_method_call("xs = [1]\nxs.sum()"), (false, true));
+        assert_eq!(first_method_call("xs = [1]\nxs&.first()"), (false, true));
     }
 }
 

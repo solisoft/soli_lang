@@ -291,9 +291,9 @@ impl Compiler {
                     let name_idx = self.add_string_constant("slice");
                     let mid = super::method_table::resolve_method_id("slice");
                     if mid != super::method_table::METHOD_UNKNOWN {
-                        self.emit(Op::CallMethodById(name_idx, 1, mid), line);
+                        self.emit(Op::CallMethodById(name_idx, 1, mid, false), line);
                     } else {
-                        self.emit(Op::CallMethod(name_idx, 1), line);
+                        self.emit(Op::CallMethod(name_idx, 1, false), line);
                     }
                     self.add_local(rest_name.clone(), false);
                     live += 1;
@@ -337,9 +337,9 @@ impl Compiler {
                     let name_idx = self.add_string_constant("except");
                     let mid = super::method_table::resolve_method_id("except");
                     if mid != super::method_table::METHOD_UNKNOWN {
-                        self.emit(Op::CallMethodById(name_idx, 1, mid), line);
+                        self.emit(Op::CallMethodById(name_idx, 1, mid, false), line);
                     } else {
-                        self.emit(Op::CallMethod(name_idx, 1), line);
+                        self.emit(Op::CallMethod(name_idx, 1, false), line);
                     }
                     self.add_local(rest_name.clone(), false);
                     live += 1;

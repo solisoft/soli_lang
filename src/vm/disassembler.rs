@@ -285,9 +285,12 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             out.push_str(&format!("ENUM_PAYLOAD {:>4} {:>4} {:>3}", sl, v, i))
         }
         Op::MatchType(n, off) => out.push_str(&format!("MATCH_TYPE {:>5} {:>5}", n, off)),
-        Op::CallMethod(idx, argc) => {
+        Op::CallMethod(idx, argc, block) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("CALL_METHOD  {:>5} ({}) argc={}", idx, name, argc));
+            if *block {
+                out.push_str(" block");
+            }
         }
         Op::CallSuperInit(argc) => {
             out.push_str(&format!("CALL_SUPER_INIT    argc={}", argc));
@@ -299,12 +302,15 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
                 idx, name, argc
             ));
         }
-        Op::CallMethodById(idx, argc, mid) => {
+        Op::CallMethodById(idx, argc, mid, block) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!(
                 "CALL_MID     {:>5} ({}) argc={} mid={}",
                 idx, name, argc, mid
             ));
+            if *block {
+                out.push_str(" block");
+            }
         }
         Op::HashGetConst(idx) => {
             let name = constant_string(chunk, *idx);
