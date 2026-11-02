@@ -285,6 +285,26 @@ fn disassemble_op(op: &Op, chunk: &Chunk, out: &mut String) {
             out.push_str(&format!("ENUM_PAYLOAD {:>4} {:>4} {:>3}", sl, v, i))
         }
         Op::MatchType(n, off) => out.push_str(&format!("MATCH_TYPE {:>5} {:>5}", n, off)),
+        Op::CallMethodNamed(idx, argc, names_idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!(
+                "CALL_METHOD_NAMED {:>3} ({}) argc={} {}",
+                idx,
+                name,
+                argc,
+                format_constant(chunk.constants.get(*names_idx as usize))
+            ));
+        }
+        Op::CallSelfOrGlobalNamed(idx, argc, names_idx) => {
+            let name = constant_string(chunk, *idx);
+            out.push_str(&format!(
+                "CALL_SELF_OR_GLOBAL_NAMED {:>3} ({}) argc={} {}",
+                idx,
+                name,
+                argc,
+                format_constant(chunk.constants.get(*names_idx as usize))
+            ));
+        }
         Op::CallMethod(idx, argc) => {
             let name = constant_string(chunk, *idx);
             out.push_str(&format!("CALL_METHOD  {:>5} ({}) argc={}", idx, name, argc));

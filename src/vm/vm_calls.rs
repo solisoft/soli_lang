@@ -357,6 +357,94 @@ pub(crate) fn bind_named_arguments(
     Ok((slots, supplied))
 }
 
+/// [`bind_named_arguments`] for a method call that may carry a block
+/// (`obj.m(k: v) do … end`), as the tree-walker's `call_value_with_named`
+/// binds it. With no `&block` parameter the block is dropped and the rest binds
+/// as for a function. With one, the block (or `nil`) goes to that parameter,
+/// which takes no positional or labelled argument and does not count in the
+/// arity an error reports.
+pub(crate) fn bind_method_arguments(
+    proto: &FunctionProto,
+    positional: Vec<Value>,
+    named: Vec<(crate::interpreter::value::SoliStr, Value)>,
+    block: Option<Value>,
+    span: Span,
+) -> Result<(Vec<Value>, u64), RuntimeError> {
+    let total_params = proto.param_names.len();
+    let block_param = match proto.block_param {
+        Some(index) if (index as usize) < total_params && total_params <= 64 => index as usize,
+        _ => return bind_named_arguments(proto, positional, named, span),
+    };
+    let regular = total_params - 1;
+    if positional.len() > regular {
+        return Err(RuntimeError::wrong_arity(
+            regular,
+            positional.len() + named.len(),
+            span,
+        ));
+    }
+
+    let mut slots = vec![Value::Null; total_params];
+    let mut supplied = 0u64;
+    for (i, value) in positional.into_iter().enumerate() {
+        let index = if i < block_param { i } else { i + 1 };
+        slots[index] = value;
+        supplied |= 1u64 << index;
+    }
+    for (name, value) in named {
+        let Some(index) = proto
+            .param_names
+            .iter()
+            .enumerate()
+            .position(|(i, p)| i != block_param && p.as_str() == name.as_ref())
+        else {
+            return Err(RuntimeError::undefined_variable(name.to_string(), span));
+        };
+        // A label naming a parameter already filled by position is dropped,
+        // as in `bind_named_arguments`.
+        if supplied & (1u64 << index) != 0 {
+            continue;
+        }
+        slots[index] = value;
+        supplied |= 1u64 << index;
+    }
+
+    let required = (0..total_params)
+        .filter(|&i| i != block_param && proto.defaults_mask & (1u64 << i) == 0)
+        .count();
+    for index in 0..total_params {
+        if index == block_param {
+            continue;
+        }
+        let filled = supplied & (1u64 << index) != 0;
+        let has_default = proto.defaults_mask & (1u64 << index) != 0;
+        if !filled && !has_default {
+            let bound_before = (0..index)
+                .filter(|&i| i != block_param && supplied & (1u64 << i) != 0)
+                .count();
+            return Err(RuntimeError::wrong_arity(required, bound_before, span));
+        }
+    }
+
+    // The block, or `nil` without one — never the parameter's default.
+    slots[block_param] = block.unwrap_or(Value::Null);
+    supplied |= 1u64 << block_param;
+    Ok((slots, supplied))
+}
+
+/// `labels` as `CallNamed` carries them: a block's slot is positional.
+pub(crate) fn without_block_label(
+    labels: &[Option<crate::interpreter::value::SoliStr>],
+) -> Vec<Option<crate::interpreter::value::SoliStr>> {
+    labels
+        .iter()
+        .map(|label| match label {
+            Some(name) if name.as_str() == super::chunk::BLOCK_LABEL => None,
+            other => other.clone(),
+        })
+        .collect()
+}
+
 impl Vm {
     /// Refuse calls past [`MAX_CALL_DEPTH`]. The bytecode loop itself is
     /// iterative (deep recursion grows `frames` on the heap), but builtins
@@ -679,6 +767,148 @@ impl Vm {
                 span,
             )),
         }
+    }
+
+    /// Take the `labels.len()` arguments of a labelled method call off the
+    /// stack, split into positional ones, labelled ones (a duplicate label is
+    /// an error, as on the tree-walker) and the block.
+    #[allow(clippy::type_complexity)]
+    fn take_labelled_arguments(
+        &mut self,
+        labels: &[Option<crate::interpreter::value::SoliStr>],
+        span: Span,
+    ) -> Result<
+        (
+            Vec<Value>,
+            Vec<(crate::interpreter::value::SoliStr, Value)>,
+            Option<Value>,
+        ),
+        RuntimeError,
+    > {
+        let values = self.stack.split_off(self.stack.len() - labels.len());
+        let mut positional = Vec::new();
+        let mut named: Vec<(crate::interpreter::value::SoliStr, Value)> =
+            Vec::with_capacity(labels.len());
+        let mut block = None;
+        for (label, value) in labels.iter().zip(values) {
+            match label {
+                Some(name) if name.as_str() == super::chunk::BLOCK_LABEL => block = Some(value),
+                Some(name) => {
+                    if named.iter().any(|(existing, _)| existing == name) {
+                        return Err(RuntimeError::type_error(
+                            format!("duplicate named argument '{}'", name),
+                            span,
+                        ));
+                    }
+                    named.push((name.clone(), value));
+                }
+                None => positional.push(value),
+            }
+        }
+        Ok((positional, named, block))
+    }
+
+    /// A method call with labelled arguments (`Op::CallMethodNamed`,
+    /// `Op::CallSelfOrGlobalNamed`): the receiver at `receiver_idx`, one
+    /// argument slot per entry of `labels` above it.
+    ///
+    /// The method resolves as [`Self::call_method_slow_path`] resolves it: on
+    /// an instance its compiled method, else its tree-walker method compiled as
+    /// a method (unless a field of that name shadows it); on a class its
+    /// static. The labels bind by name ([`bind_method_arguments`]) and the
+    /// frame opens with the receiver still in the callee slot, so it is
+    /// `this`. Nothing is called by a property read first.
+    ///
+    /// Otherwise, on an instance with no field of that name (a native method,
+    /// `with`, `method_missing`), the labels become one trailing options hash
+    /// and the block follows — the tree-walker's native convention — and the
+    /// call takes the positional path. Any other receiver or member (a field,
+    /// `Klass.new`, a model scope, a native value's method) is read and called
+    /// as `CallNamed` calls it.
+    pub(crate) fn call_method_named(
+        &mut self,
+        receiver_idx: usize,
+        labels: &[Option<crate::interpreter::value::SoliStr>],
+        name: &str,
+        check_privacy: bool,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        if matches!(
+            &self.stack[receiver_idx],
+            Value::Future(_) | Value::Deferred(_)
+        ) {
+            let resolved = Self::force_lazy_receiver(&self.stack[receiver_idx], span)?;
+            self.stack[receiver_idx] = resolved;
+        }
+        if check_privacy {
+            self.check_private_receiver(receiver_idx, name)?;
+        }
+
+        let target: Option<MethodWithClass> = match &self.stack[receiver_idx] {
+            Value::Instance(inst) => {
+                let class = inst.borrow().class.clone();
+                match class.find_vm_method_with_class(name) {
+                    Some(found) => Some(found),
+                    None if inst.borrow().fields.contains_key(name) => None,
+                    None => self.compile_tree_walking_method(&class, name)?,
+                }
+            }
+            Value::Class(class) => {
+                let class = class.clone();
+                if name == "new"
+                    || (class.is_model_subclass() && Self::is_model_class_scope(&class, name))
+                {
+                    None
+                } else {
+                    match class.find_vm_static_method(name) {
+                        Some(closure) => Some((closure, class.clone())),
+                        None => self.compile_tree_walking_static(&class, name)?,
+                    }
+                }
+            }
+            _ => None,
+        };
+
+        if let Some((closure, defining_class)) = target {
+            let (positional, named, block) = self.take_labelled_arguments(labels, span)?;
+            let (slots, supplied) =
+                bind_method_arguments(&closure.proto, positional, named, block, span)?;
+            return self.call_closure_with_slots(closure, slots, supplied, Some(defining_class));
+        }
+
+        let instance_without_field = matches!(
+            &self.stack[receiver_idx],
+            Value::Instance(inst) if !inst.borrow().fields.contains_key(name)
+        );
+        if instance_without_field {
+            let (positional, named, block) = self.take_labelled_arguments(labels, span)?;
+            let mut argc = positional.len();
+            for value in positional {
+                self.push(value);
+            }
+            if !named.is_empty() {
+                let mut pairs = crate::interpreter::value::HashPairs::default();
+                for (name, value) in named {
+                    pairs.insert(
+                        crate::interpreter::value::HashKey::String(name.to_string().into()),
+                        value,
+                    );
+                }
+                self.push(Value::Hash(Rc::new(RefCell::new(pairs))));
+                argc += 1;
+            }
+            if let Some(block) = block {
+                self.push(block);
+                argc += 1;
+            }
+            return self.call_method_slow_path(receiver_idx, argc, name);
+        }
+
+        let object = self.stack[receiver_idx].clone();
+        let callee = self.op_get_property_member(&object, name, span)?;
+        self.stack[receiver_idx] = callee;
+        let labels = without_block_label(labels);
+        self.call_value_named(labels.len(), &labels, span)
     }
 
     fn call_native(
@@ -3591,5 +3821,102 @@ end
         let who = helper_fn("def who()\n  req\nend\n", closure);
         assert_eq!(call_on_view_vm(&who, "let x = who()"), Value::str("Ada"));
         assert!(who.jit_cache.borrow().is_none());
+    }
+}
+
+#[cfg(test)]
+mod bind_method_arguments_tests {
+    //! C583: a labelled method call binds its block to the `&block` parameter
+    //! (as the tree-walker's `call_value_with_named` does), or drops it.
+    use super::{bind_method_arguments, FunctionProto};
+    use crate::interpreter::value::Value;
+    use crate::span::Span;
+
+    /// `def m(a, b = 2, &blk)`.
+    fn proto_with_block() -> FunctionProto {
+        let mut proto = FunctionProto::new("m".to_string());
+        proto.param_names = vec!["a".into(), "b".into(), "blk".into()];
+        proto.arity = 2;
+        proto.defaults = 1;
+        proto.defaults_mask = 0b010;
+        proto.block_param = Some(2);
+        proto
+    }
+
+    #[test]
+    fn a_labelled_call_binds_its_block_to_the_block_parameter() {
+        let proto = proto_with_block();
+        let (slots, supplied) = bind_method_arguments(
+            &proto,
+            vec![],
+            vec![("a".into(), Value::Int(4))],
+            Some(Value::Int(99)),
+            Span::default(),
+        )
+        .expect("binds");
+        assert_eq!(slots, vec![Value::Int(4), Value::Null, Value::Int(99)]);
+        // `b` is left to its default; the block slot is never defaulted.
+        assert_eq!(supplied, 0b101);
+
+        let (slots, _) = bind_method_arguments(
+            &proto,
+            vec![Value::Int(1)],
+            vec![("b".into(), Value::Int(3))],
+            None,
+            Span::default(),
+        )
+        .expect("binds");
+        assert_eq!(slots, vec![Value::Int(1), Value::Int(3), Value::Null]);
+    }
+
+    #[test]
+    fn the_block_parameter_takes_no_argument_and_no_label() {
+        let proto = proto_with_block();
+        // A third positional argument has no regular parameter to go to.
+        assert!(bind_method_arguments(
+            &proto,
+            vec![Value::Int(1), Value::Int(2), Value::Int(3)],
+            vec![],
+            None,
+            Span::default(),
+        )
+        .is_err());
+        // Nor may a label name the block parameter.
+        assert!(bind_method_arguments(
+            &proto,
+            vec![Value::Int(1)],
+            vec![("blk".into(), Value::Int(3))],
+            None,
+            Span::default(),
+        )
+        .is_err());
+        // `a` is required.
+        assert!(bind_method_arguments(
+            &proto,
+            vec![],
+            vec![("b".into(), Value::Int(3))],
+            None,
+            Span::default(),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn without_a_block_parameter_the_block_is_dropped() {
+        let mut proto = FunctionProto::new("n".to_string());
+        proto.param_names = vec!["a".into(), "f".into()];
+        proto.arity = 1;
+        proto.defaults = 1;
+        proto.defaults_mask = 0b10;
+        let (slots, supplied) = bind_method_arguments(
+            &proto,
+            vec![],
+            vec![("a".into(), Value::Int(1))],
+            Some(Value::Int(7)),
+            Span::default(),
+        )
+        .expect("binds");
+        assert_eq!(slots, vec![Value::Int(1), Value::Null]);
+        assert_eq!(supplied, 0b01);
     }
 }

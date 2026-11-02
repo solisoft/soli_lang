@@ -81,6 +81,12 @@ Helpers you will call if you add a statement:
 
 `vm.rs::run_dispatch` is a large match by design (dispatch). Don’t split it for style.
 
+### Labelled calls
+
+`f(k: v)` compiles to `CallNamed` / `NewNamed`: the callee, then every argument in source order, with a `Constant::ArgNames` labelling each slot. `call_value_named` binds them once the callee is known — by name into a compiled function's parameter slots (`bind_named_arguments`), or as one trailing options hash for a native.
+
+A labelled call on a **member** keeps its receiver: `obj.m(k: v)`, `this.m(k: v)`, `@m(k: v)` and `obj&.m(k: v)` compile to the receiver, the arguments, then `CallMethodNamed(name, argc, names)`; the bare helper `m(k: v)` in a method to `SelfOrGlobalCallee` + `CallSelfOrGlobalNamed`. `Vm::call_method_named` resolves the method as `call_method_slow_path` does (an instance's compiled or tree-walker method, a class's static), binds with `bind_method_arguments` and opens the frame with the receiver in the callee slot. A block's slot is labelled `chunk::BLOCK_LABEL` (`&`): it goes to the `&block` parameter that `FunctionProto::block_param` records, or is dropped, as on the tree-walker. Anything else — a native instance method, `with`, `method_missing` — takes the positional path with the labels as one options hash; a field, `Klass.new` or a model scope is read and called as `CallNamed` calls it. Up to 2.29.3 every labelled member call was a property read plus `CallNamed`, which lost the receiver: a VM class failed ("Cannot access property 'm'"), a served class ran the method with the function itself as `this`, and a method of arity 0 ran once on the read.
+
 ### The fast tier (`run_fast`)
 
 Before the big `match`, `run_dispatch` calls `run_fast`, which runs the simple ops with the current frame's `ip`, code, constants and stack base held in locals — `&mut self` otherwise forces a reload of all of them through `self.frames` on every op. It covers locals, upvalues, global reads, constants, jumps, integer/float arithmetic and comparisons, the fused local super-instructions, and the common shape of `Call`/`CallGlobal`/`Return` (a compiled closure given exactly its arguments; a return that closes no upvalue and stays in this `run`), switching its cached state to the new frame.

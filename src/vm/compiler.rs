@@ -441,6 +441,7 @@ impl Compiler {
             .filter(|p| p.default_value.is_some())
             .count() as u8;
         compiler.proto.param_names = func.params.iter().map(|p| p.name.clone()).collect();
+        compiler.proto.block_param = block_param_index(&func.params);
         compiler.proto.defaults_mask = defaults_mask(&func.params);
 
         let line = func.span.map(|s| s.line as usize).unwrap_or(0);
@@ -758,6 +759,7 @@ impl Compiler {
         new_compiler.proto.defaults =
             params.iter().filter(|p| p.default_value.is_some()).count() as u8;
         new_compiler.proto.param_names = params.iter().map(|p| p.name.clone()).collect();
+        new_compiler.proto.block_param = block_param_index(params);
         new_compiler.proto.defaults_mask = defaults_mask(params);
 
         // Swap self with the new compiler, storing self as enclosing
@@ -1094,6 +1096,14 @@ fn defaults_mask(params: &[Parameter]) -> u64 {
     mask
 }
 
+/// The index of the `&block` parameter, when `params` declares one.
+fn block_param_index(params: &[Parameter]) -> Option<u16> {
+    params
+        .iter()
+        .position(|p| p.is_block_param)
+        .and_then(|i| u16::try_from(i).ok())
+}
+
 fn stack_effect(op: Op) -> i32 {
     use Op::*;
     match op {
@@ -1128,6 +1138,8 @@ fn stack_effect(op: Op) -> i32 {
         CallGlobal(_, argc) | GetGlobalCall(_, argc) => 1 - argc as i32,
         SelfOrGlobal(_) | SelfOrGlobalCallee(_) | MarkPrivate(_) | MarkProtected(_) => 0,
         CallSelfOrGlobal(_, argc) => -(argc as i32),
+        // [receiver, args…] collapse to the result, as for CallMethod.
+        CallMethodNamed(_, argc, _) | CallSelfOrGlobalNamed(_, argc, _) => -(argc as i32),
         Closure(_) => 1,
         Return => 0,
         // Collections.

@@ -1404,6 +1404,52 @@ configure("example.com", port: 443);     # Mixed: positional then named
 configure(host: "api.example.com", port: 443, debug: true);  # All named
 ```
 
+#### On Methods
+
+Labels work the same on a method call, and the receiver stays `this`: an
+instance method, `@helper(k: v)`, the bare private helper, a `static def`, and
+safe navigation (a nil receiver evaluates no argument):
+
+```soli
+class Invoice
+  total: Int
+
+  new(total: Int)
+    @total = total
+  end
+
+  def with_fee(fee: Int = 5, times: Int = 1) -> Int
+    @total + fee * times
+  end
+
+  def summary -> String
+    "#{@with_fee(times: 3)} with fees, #{_due(days: 30)}"
+  end
+
+  static def zero(note: String = "")
+    this.new(total: 0)
+  end
+
+  private
+
+  def _due(days: Int) -> String
+    "due in #{days} days"
+  end
+end
+
+invoice = Invoice.new(total: 100)
+print(invoice.with_fee(fee: 10))       # 110
+print(invoice.summary)                 # 115 with fees, due in 30 days
+print(Invoice.zero(note: "draft").total)  # 0
+missing = nil
+print(missing&.with_fee(fee: 10))      # null
+```
+
+A block passed along with labels (`list.add(item: x) do … end`) reaches the
+method's `&block` parameter; a method without one ignores it. A builtin method
+receives the labels as one trailing options hash, and `method_missing` gets
+them as a hash after the positional arguments.
+
 #### Ruby-Style Calls Without Parentheses
 
 You can also call methods on objects without parentheses, using Ruby-style syntax:

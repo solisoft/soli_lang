@@ -507,6 +507,18 @@ impl Vm {
         }
     }
 
+    /// The `Constant::ArgNames` labels at `idx` (an `Arc` clone).
+    fn read_arg_names(
+        &self,
+        idx: u16,
+    ) -> std::sync::Arc<Vec<Option<crate::interpreter::value::SoliStr>>> {
+        let frame = self.frames.last().unwrap();
+        match &frame.closure.proto.chunk.constants[idx as usize] {
+            Constant::ArgNames(names) => names.clone(),
+            _ => unreachable!("a labelled call must reference an ArgNames constant"),
+        }
+    }
+
     fn read_string_constant_owned(&self, idx: u16) -> String {
         let frame = self.frames.last().unwrap();
         match &frame.closure.proto.chunk.constants[idx as usize] {
@@ -3286,6 +3298,29 @@ impl Vm {
                     };
                     let span = self.current_span();
                     self.call_value_named(argc as usize, &labels, span)?;
+                }
+                Op::CallMethodNamed(name_idx, argc, names_idx) => {
+                    let name = self.read_string_constant(name_idx);
+                    let labels = self.read_arg_names(names_idx);
+                    let receiver_idx = self.stack.len() - 1 - argc as usize;
+                    let span = self.current_span();
+                    self.call_method_named(receiver_idx, &labels, &name, true, span)?;
+                }
+                Op::CallSelfOrGlobalNamed(name_idx, argc, names_idx) => {
+                    let name = self.read_string_constant(name_idx);
+                    let labels = self.read_arg_names(names_idx);
+                    let span = self.current_span();
+                    if self.globals.contains_key(name.as_str()) {
+                        // A global of that name: `SelfOrGlobalCallee` put it in
+                        // the callee slot, and it binds as `CallNamed` binds.
+                        let labels = crate::vm::vm_calls::without_block_label(&labels);
+                        self.call_value_named(argc as usize, &labels, span)?;
+                    } else {
+                        // `this` stayed as the receiver: a call on self, so a
+                        // private method is allowed, as for `CallSelfOrGlobal`.
+                        let receiver_idx = self.stack.len() - 1 - argc as usize;
+                        self.call_method_named(receiver_idx, &labels, &name, false, span)?;
+                    }
                 }
                 Op::GetThis => {
                     let base = self.frames.last().unwrap().stack_base;

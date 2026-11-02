@@ -30,6 +30,11 @@ pub enum Constant {
     ArgNames(Arc<Vec<Option<crate::interpreter::value::SoliStr>>>),
 }
 
+/// The `Constant::ArgNames` label of a block argument in a labelled method
+/// call (`obj.m(k: v) do … end`). No identifier can be spelled `&`, so it never
+/// collides with a parameter name.
+pub const BLOCK_LABEL: &str = "&";
+
 /// A compiled function (or top-level script).
 #[derive(Debug, Clone)]
 pub struct FunctionProto {
@@ -70,6 +75,10 @@ pub struct FunctionProto {
     /// The qualified class its code is written in (`Billing::PayInvoice`), so
     /// a name it reads unqualified can be its namespace's (`Billing::Invoice`).
     pub namespace: Option<std::sync::Arc<str>>,
+    /// The index of a `&block` parameter, when the function declares one. A
+    /// labelled method call binds its block there and no argument to it,
+    /// as the tree-walker's `call_value_with_named` does.
+    pub block_param: Option<u16>,
 }
 
 impl FunctionProto {
@@ -88,6 +97,7 @@ impl FunctionProto {
             return_type: None,
             decl_span: crate::span::Span::default(),
             namespace: None,
+            block_param: None,
         }
     }
 }

@@ -2398,6 +2398,178 @@ s = Snap.new()
 print(s.pic_url(), s.pic_url("b1"), s.shots_urls())
 print(s.pic_url(1, 2) rescue "refused")"##,
     ),
+    (
+        // C583: labelled arguments on an instance method keep the receiver — by `obj.`, `this.`, `@` and the bare private helper; a method of arity 0 runs once; unknown, duplicate and missing labels raise.
+        "named_args_on_an_instance_method",
+        r##"class Calc
+  base: Int
+  calls: Int
+
+  new()
+    @base = 10
+    @calls = 0
+  end
+
+  def plus(a, b = 5)
+    a + b + @base
+  end
+
+  def opt(a = 1, b = 2)
+    @calls = @calls + 1
+    a * 100 + b
+  end
+
+  def me(flag)
+    this
+  end
+
+  def twice
+    "#{this.plus(a: 1)} #{@plus(b: 2, a: 3)} #{_half(n: 8)} #{@_half(n: 4)}"
+  end
+
+  private
+
+  def _half(n)
+    n / 2
+  end
+end
+
+c = Calc.new()
+print(c.plus(a: 1, b: 2), c.plus(1, b: 3), c.plus(a: 4))
+print(c.opt(b: 7), c.calls)
+print(c.me(flag: true) == c, c.twice)
+r = "none"
+try
+  c.plus(a: 1, zz: 2)
+catch e
+  r = "caught"
+end
+d = "none"
+try
+  c.plus(a: 1, a: 2)
+catch e
+  d = "caught"
+end
+m = "none"
+try
+  c.plus(b: 1)
+catch e
+  m = "caught"
+end
+print(r, d, m)"##,
+    ),
+    (
+        // C583: a static called with labels keeps its class as `this`.
+        "named_args_on_a_static_that_reads_this",
+        r##"class Base
+  static def helper(n)
+    n + 1
+  end
+
+  static def twice(n, k = 2)
+    this.helper(n) * k
+  end
+
+  static def build(v = 0)
+    this.new()
+  end
+
+  def hello
+    "hi"
+  end
+end
+
+class Sub < Base
+end
+
+print(Base.twice(2, 3), Base.twice(n: 2), Sub.twice(n: 2, k: 5))
+print(Sub.build(v: 1).class, Base.build(v: 2).hello)"##,
+    ),
+    (
+        // C583: `nil&.m(k: side())` evaluates no argument.
+        "named_args_under_safe_navigation",
+        r##"class P
+  def m(a, b = 1)
+    a + b
+  end
+end
+
+log = []
+
+def side()
+  log.push(1)
+  2
+end
+
+none = nil
+q = P.new()
+print(none&.m(a: side()), log.length)
+print(q&.m(a: side(), b: 5), log.length)"##,
+    ),
+    (
+        // C583: a field holding a lambda binds the labels by name; `method_missing` gets them as one hash after the positional arguments.
+        "named_args_reach_fields_and_method_missing",
+        r##"class Box
+  f: Any
+
+  new()
+    @f = fn(x) { x * 3 }
+  end
+
+  def method_missing(name, args)
+    "mm #{name} #{args}"
+  end
+end
+
+b = Box.new()
+print(b.f(x: 2), b.nope(z: 1), b.nope(1, z: 2))"##,
+    ),
+    (
+        // C583: a block passed with labels goes to the `&block` parameter, or is dropped when the method declares none.
+        "named_args_with_a_block",
+        r##"class C
+  def amp(a, &blk)
+    blk(a)
+  end
+
+  def n(a, b = 2, f = nil)
+    "#{a} #{b} #{f.nil?}"
+  end
+end
+
+c = C.new()
+r1 = c.amp(a: 4) do |x|
+  x + 40
+end
+r2 = c.n(1, b: 3) do |x|
+  x
+end
+doubler = fn(x) { x * 2 }
+r3 = c.amp(a: 5, &doubler)
+print(r1, r2, r3)"##,
+    ),
+    (
+        // C583: a bare labelled call naming a builtin inside a method still reaches the builtin (agreed before the fix; guards the global branch).
+        "named_args_to_a_global_from_a_method",
+        r##"class K
+  def run
+    "#{type(x: 1)} #{len(a: 1, b: 2)}"
+  end
+end
+
+print(K.new().run)"##,
+    ),
+    (
+        // C583: a module function called with labels (agreed before the fix).
+        "named_args_on_a_module_function",
+        r##"module Util
+  def shout(s, bang = "!")
+    s.upcase + bang
+  end
+end
+
+print(Util.shout("a"), Util.shout(s: "b"), Util.shout("c", bang: "?"))"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching
@@ -3041,6 +3213,106 @@ class Probe
     first = Pa.new().m()
     second = Ca.new().m()
     "#{first} #{second}"
+  end
+end"##,
+    ),
+    (
+        // C583: on served (tree-walker) classes a labelled method call ran with the method itself as `this`: `ident` returned the Function, `@_scale(factor: 2)` failed on `@count` and demoted the action.
+        "app_named_args_keep_the_receiver",
+        r##"class Pt
+  x: Int
+  calls: Int
+
+  new(x)
+    @x = x
+    @calls = 0
+  end
+
+  def ident(flag)
+    this
+  end
+
+  def opt(a = 1, b = 2)
+    @calls = @calls + 1
+    a * 100 + b
+  end
+
+  def greet(name)
+    "hi #{name}"
+  end
+end
+
+class Probe
+  count: Int
+
+  def run
+    @count = 3
+    p = Pt.new(1)
+    r = p.ident(flag: true)
+    o = p.opt(b: 7)
+    first = "#{type(r)} #{r == p} #{o} #{p.calls} #{p.greet(name: "bob")}"
+    "#{first} #{@_scale(factor: 2)} #{_scale(factor: 4)} #{this._scale(factor: 1)}"
+  end
+
+  private
+
+  def _scale(factor)
+    factor * @count
+  end
+end"##,
+    ),
+    (
+        // C583: a served `static def` reading `this`, called with labels.
+        "app_named_args_on_a_static_that_reads_this",
+        r##"class Base
+  static def helper(n)
+    n + 1
+  end
+
+  static def twice(n, k = 2)
+    this.helper(n) * k
+  end
+
+  static def label(prefix = "<")
+    "#{prefix}#{this.helper(9)}"
+  end
+end
+
+class Sub < Base
+end
+
+class Probe
+  def run
+    "#{Base.twice(n: 2)} #{Sub.twice(n: 2, k: 5)} #{Sub.label(prefix: "+")}"
+  end
+end"##,
+    ),
+    (
+        // C583: a block to a `&block` parameter, a lambda field and `method_missing`, with labels, on served classes.
+        "app_named_args_with_a_block_a_field_and_method_missing",
+        r##"class Box
+  f: Any
+
+  new()
+    @f = fn(x) { x * 3 }
+  end
+
+  def amp(a, &blk)
+    blk(a)
+  end
+
+  def method_missing(name, args)
+    "mm #{name} #{args}"
+  end
+end
+
+class Probe
+  def run
+    b = Box.new()
+    r = b.amp(a: 4) do |x|
+      x + 40
+    end
+    "#{b.f(x: 2)} #{r} #{b.nope(z: 1)}"
   end
 end"##,
     ),
