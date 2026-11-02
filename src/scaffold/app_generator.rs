@@ -1071,6 +1071,84 @@ mod tests {
         assert!(helper.contains("def absolute_url(path)"));
     }
 
+    /// Every starter helper renders in a view, on the tree-walker and on the
+    /// view VM, from the environment `soli serve` loads helpers into.
+    /// `truncate_text` and `capitalize` called `substring(...)`, a function
+    /// only a view has, and `upcase(...)`, which exists nowhere: a helper sees
+    /// neither, so every page that truncated or capitalized answered 500.
+    #[test]
+    fn the_starter_helpers_render_in_a_view() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::interpreter::builtins::template::{
+            clear_view_helpers, load_view_helpers, set_view_helper_env_for_test,
+        };
+        use crate::interpreter::value::{HashKey, HashPairs, Value};
+        use crate::template::core_eval::{reset_builtins_rc, template_env_bindings};
+        use crate::template::parser::parse_template;
+        use crate::template::renderer::render_nodes;
+        use crate::template::vm_template::VmTemplate;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let dir = tempfile::tempdir()?;
+        create_directories(dir.path())?;
+        create_application_helper(dir.path())?;
+        load_view_helpers(&dir.path().join("app/helpers"))?;
+        // A thread builds the views' scope once: rebuild it with these helpers.
+        reset_builtins_rc();
+
+        let mut data = HashPairs::default();
+        data.insert(
+            HashKey::String("long".into()),
+            Value::String("x".repeat(200).into()),
+        );
+        data.insert(
+            HashKey::String("titles".into()),
+            Value::Array(Rc::new(RefCell::new(vec![
+                Value::String("hello WORLD".into()),
+                Value::String("élan".into()),
+                Value::String(String::new().into()),
+            ]))),
+        );
+        let data = Value::Hash(Rc::new(RefCell::new(data)));
+
+        // The loop makes it a view serve compiles for the VM.
+        let source = concat!(
+            "<%= truncate_text(long, 10, \"...\") %>|",
+            "<%= truncate_text(\"short\", 10, \"...\") %>|",
+            "<%= truncate_text(\"héllo wörld\", 8, \"…\") %>|",
+            "<%= truncate_text(\"hello world\", 2, \"...\") %>|",
+            "<% for title in titles %>[<%= capitalize(title) %>]<% end %>|",
+            "<%= pluralize(2, \"post\", \"posts\") %>|",
+            "<%= pluralize_simple(1, \"post\") %>|",
+            "<%- link_to(\"Home\", \"/\") %>|",
+            "<%- link_to_class(\"A\", \"javascript:alert(1)\", \"btn\") %>|",
+            "<%= absolute_url(\"/og.png\").ends_with?(\"/og.png\") %>",
+        );
+        let expected = concat!(
+            "xxxxxxx...|short|héllo w…|...|",
+            "[Hello WORLD][Élan][]|",
+            "2 posts|1 post|",
+            "<a href=\"/\">Home</a>|<a href=\"#\" class=\"btn\">A</a>|",
+            "true",
+        );
+
+        // What serve's renderer enters: a name nothing defines reads as nil.
+        let _lenient = crate::interpreter::executor::enter_template_lenient_vars();
+        let nodes = parse_template(source)?;
+        assert_eq!(render_nodes(&nodes, &data, None)?, expected);
+
+        let compiled = VmTemplate::compile_for_serve(&nodes)?;
+        let mut vm = crate::vm::Vm::new();
+        vm.tree_walk_functions = true;
+        vm.globals = template_env_bindings().into_iter().collect();
+        assert_eq!(compiled.render(&mut vm, &data)?.html, expected);
+
+        clear_view_helpers();
+        set_view_helper_env_for_test(None);
+        reset_builtins_rc();
+        Ok(())
+    }
+
     /// Every bundled doc must be reachable from the generated root CLAUDE.md,
     /// or an agent in a new app never learns the feature exists (TOTP was
     /// documented in `docs/builtins.md` and still reimplemented by hand).

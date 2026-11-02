@@ -429,6 +429,7 @@
 &lt;%= substring(post["content"], 0, 100) %&gt;...</code></pre>
         </div>
     </div>
+    <p class="text-gray-400 mb-8"><code>substring(...)</code> exists in templates only: a helper in <code>app/helpers</code> calls the string method, <code>text.substring(0, 100)</code>.</p>
 
     <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-8">
         <p class="text-sm text-amber-200"><strong>Pick the helper that matches the output context.</strong> <code>h()</code> is for element bodies, <code>attr()</code> for attribute values, <code>j()</code> for JS string literals, <code>url()</code> for URL query/path parts. Using the wrong one &mdash; e.g. <code>h()</code> inside a <code>&lt;script&gt;</code> &mdash; leaves XSS gaps.</p>
@@ -705,20 +706,31 @@ SOLI_NAV=morph soli serve .</code></pre>
     <h2 class="text-2xl font-bold text-white mb-6">Application Helpers</h2>
     <p class="text-gray-400 mb-6">When you create a new app with <code>soli new</code>, a starter helper file is generated at <code>app/helpers/application_helper.sl</code>. These helpers are automatically available in all templates.</p>
 
+    <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-8">
+        <p class="text-sm text-amber-200"><strong>A helper runs in the helpers&rsquo; own scope, not the view&rsquo;s.</strong> It sees the builtins a script sees (<code>len</code>, <code>html_escape</code>, <code>h</code>, <code>time_ago</code>, <code>partial</code>, &hellip;), the other helpers and the request (<code>req</code>, <code>params</code>, <code>session</code>, <code>cookies</code>, <code>headers</code>). It does not see the functions only a view has: <code>substring(...)</code>, <code>t(...)</code>, <code>l(...)</code>, <code>datetime_format(...)</code>, <code>public_path(...)</code>, <code>number_with_delimiter(...)</code>, <code>paginate(...)</code>, <code>component(...)</code>, the form builder and the route helpers. A helper called from a view reads such a name as nil, so calling it fails with &ldquo;Cannot call non-function value&rdquo; and the page answers 500. Call the string methods instead (<code>text.substring(0, 3)</code>, <code>text.upcase</code>), or compute the value in the view and pass it to the helper.</p>
+    </div>
+
     <h3 class="text-xl font-semibold text-white mb-4">Text Helpers</h3>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-8">
         <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">Text helpers</label>
         <div class="p-4 overflow-x-auto">
-<pre><code class="language-erb text-sm">&lt;!-- Truncate text with ellipsis --&gt
-&lt;%= truncate(post["content"], 100) %&gt
+<pre><code class="language-erb text-sm">&lt;!-- Cut text to at most 100 characters, the "..." included --&gt
+&lt;%= truncate_text(post["content"], 100, "...") %&gt
 &lt;!-- "This is a very long article that..." --&gt
 
-&lt;%= truncate(title, 50, " [more]") %&gt
+&lt;%= truncate_text(title, 50, " [more]") %&gt
 &lt;!-- "This is a long title that gets cut [more]" --&gt
 
-&lt;!-- Capitalize first letter --&gt
+&lt;!-- Characters, not bytes --&gt
+&lt;%= truncate_text("héllo wörld", 8, "…") %&gt
+&lt;!-- "héllo w…" --&gt
+
+&lt;!-- Capitalize the first letter, leave the rest as it is --&gt
 &lt;%= capitalize("hello world") %&gt
 &lt;!-- "Hello world" --&gt
+
+&lt;%= capitalize("hello WORLD") %&gt
+&lt;!-- "Hello WORLD" ("hello WORLD".capitalize gives "Hello world") --&gt
 
 &lt;%= capitalize(user["status"]) %&gt
 &lt;!-- "Active" (if status was "active") --&gt
@@ -825,12 +837,12 @@ SOLI_NAV=morph soli serve .</code></pre>
             </thead>
             <tbody class="text-gray-400">
                 <tr class="border-b border-white/5">
-                    <td class="py-3 px-4 font-mono text-amber-400">truncate(text, length, suffix?)</td>
-                    <td class="py-3 px-4">Truncate text to length with suffix (default: "...")</td>
+                    <td class="py-3 px-4 font-mono text-amber-400">truncate_text(text, length, suffix)</td>
+                    <td class="py-3 px-4">Cut text to at most <code>length</code> characters, the suffix included (a suffix longer than <code>length</code> comes back alone)</td>
                 </tr>
                 <tr class="border-b border-white/5">
                     <td class="py-3 px-4 font-mono text-amber-400">capitalize(text)</td>
-                    <td class="py-3 px-4">Capitalize first letter of string</td>
+                    <td class="py-3 px-4">Capitalize the first letter, leave the rest as it is</td>
                 </tr>
                 <tr class="border-b border-white/5">
                     <td class="py-3 px-4 font-mono text-amber-400">pluralize(count, singular, plural?)</td>
@@ -889,7 +901,7 @@ SOLI_NAV=morph soli serve .</code></pre>
   &lt;% end %&gt
 
   &lt;div class="content"&gt
-    &lt;%= truncate(post["content"], 500) %&gt
+    &lt;%= truncate_text(post["content"], 500, "...") %&gt
   &lt;/div&gt
 
   &lt;div class="stats"&gt

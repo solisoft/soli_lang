@@ -233,6 +233,9 @@ Extracts a portion of a string (useful for truncating content).
 <%= substring(post["content"], 0, 100) %>...
 ```
 
+`substring(...)` exists in templates only: a helper in `app/helpers` calls the
+string method, `text.substring(0, 100)`.
+
 ### Request-Context Functions
 
 Read fields off the current request directly — no need to plumb them through the view data hash. Available in every template (views, layouts, partials). They return `null` when called outside an active request (e.g. from a unit test).
@@ -661,21 +664,29 @@ Localizes a date/time according to the current locale.
 
 When you create a new application with `soli new`, a starter helper file is generated at `app/helpers/application_helper.sl`. These helpers complement the built-in functions and are automatically available in all templates.
 
-### truncate(text, length, suffix)
+### truncate_text(text, length, suffix)
 
-Truncates text to a maximum length, appending a suffix (default: "...").
+Shortens text longer than `length` characters to `length` characters, the
+suffix included: it keeps the first `length - len(suffix)` characters and
+appends the suffix. Text that already fits comes back unchanged, and a suffix
+longer than `length` comes back alone. It counts characters, not bytes, so
+accented text is cut where you expect.
 
 **Parameters:**
 - `text` (String) - The text to truncate
-- `length` (Int) - Maximum length before truncation
-- `suffix` (String, optional) - Suffix to append (default: "...")
+- `length` (Int) - The most characters the result may have, suffix included
+  (a suffix longer than `length` comes back alone)
+- `suffix` (String) - What marks the cut: `"..."`, `"…"`, `" [more]"`
 
 ```erb
-<p><%= truncate(post["content"], 100) %></p>
+<p><%= truncate_text(post["content"], 100, "...") %></p>
 <!-- "This is a very long article that continues..." -->
 
-<p><%= truncate(title, 50, " [more]") %></p>
+<p><%= truncate_text(title, 50, " [more]") %></p>
 <!-- "This is a long title that gets cut [more]" -->
+
+<p><%= truncate_text("héllo wörld", 8, "…") %></p>
+<!-- "héllo w…" -->
 ```
 
 ### number_with_delimiter(number, delimiter)
@@ -753,7 +764,9 @@ Returns a pluralized string based on count.
 
 ### capitalize(text)
 
-Capitalizes the first letter of a string.
+Upper-cases the first letter of a string and leaves the rest as it is. The
+`capitalize` string method lowercases the rest: `"hello WORLD".capitalize` gives
+`"Hello world"`.
 
 **Parameters:**
 - `text` (String) - The text to capitalize
@@ -761,6 +774,9 @@ Capitalizes the first letter of a string.
 ```erb
 <p><%= capitalize("hello world") %></p>
 <!-- "Hello world" -->
+
+<p><%= capitalize("hello WORLD") %></p>
+<!-- "Hello WORLD" -->
 
 <p><%= capitalize(user["status"]) %></p>
 <!-- "Active" (if status was "active") -->
@@ -846,7 +862,7 @@ See the full [Components](#components) section for the dedicated `component()` h
   <h2><%= capitalize(product["name"]) %></h2>
 
   <p class="description">
-    <%= truncate(product["description"], 150) %>
+    <%= truncate_text(product["description"], 150, "...") %>
   </p>
 
   <div class="pricing">
@@ -875,23 +891,30 @@ You can add your own helpers by editing `app/helpers/application_helper.sl`:
 
 # ... existing helpers ...
 
-# Custom helper: Format a phone number
+# Custom helper: format a 10-digit phone number as (555) 123-4567
 def format_phone(number)
-  digits = replace(number, "[^0-9]", "")
-  if len(digits) == 10
-    return "(" + substring(digits, 0, 3) + ") " + substring(digits, 3, 6) + "-" + substring(digits, 6, 10)
-  end
-  number
+  digits = Regex.replace_all("[^0-9]", number, "")
+  return number unless len(digits) == 10
+
+  "(" + digits.substring(0, 3) + ") " + digits.substring(3, 6) + "-" + digits.substring(6, 10)
 end
 
-# Custom helper: Generate a mailto link
-def mail_to(email, text = null)
-  if text == null
-    text = email
-  end
+# Custom helper: a mailto link; output it raw, <%- mail_to(user.email, "Write to us") %>
+def mail_to(email, text)
   "<a href=\"mailto:" + html_escape(email) + "\">" + html_escape(text) + "</a>"
 end
 ```
+
+A helper runs in the helpers' own scope, not the view's. It sees the builtins a
+script sees (`len`, `html_escape`, `h`, `time_ago`, `partial`, …), the other
+helpers and the request (`req`, `params`, `session`, `cookies`, `headers`). It
+does not see the functions only a view has: `substring(...)`, `t(...)`,
+`l(...)`, `datetime_format(...)`, `public_path(...)`,
+`number_with_delimiter(...)`, `paginate(...)`, `component(...)`, the form
+builder and the route helpers. A helper called from a view reads such a name
+as nil, so calling it fails with "Cannot call non-function value" and the page
+answers 500. Call the string methods instead (`text.substring(0, 3)`,
+`text.upcase`), or compute the value in the view and pass it to the helper.
 
 ---
 
