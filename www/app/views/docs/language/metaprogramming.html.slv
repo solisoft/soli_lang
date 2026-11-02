@@ -278,7 +278,7 @@ String.alias_method("shout", "yell")</code></pre>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
             <h3 class="text-lg font-semibold text-white mb-3">Precedence and performance</h3>
             <p class="text-gray-400 text-sm mb-3">
-                Lookup order on a primitive value: user methods → built-in methods → (for Hash) literal hash-key fallback. A user method on Hash shadows the literal-key access, matching Ruby's monkey-patching semantics.
+                Lookup order on a primitive value: user methods → (for a Hash read without parentheses) the key → built-in methods. A user method on Hash shadows the key, and the key shadows a built-in of the same name, the way an instance field shadows a method: <code class="text-orange-400">{"size": 2048}.size</code> is <code class="text-orange-400">2048</code>. A call with parentheses always means the method: <code class="text-orange-400">{"size": 2048}.size()</code> is <code class="text-orange-400">1</code>, the number of entries. This matches Ruby's monkey-patching semantics, and both engines (<code class="text-orange-400">soli serve</code> and <code class="text-orange-400">soli test</code>) follow it.
             </p>
             <p class="text-gray-400 text-sm">
                 Dispatch is gated by a single Relaxed atomic load. When no user methods have been registered for any primitive type, every call short-circuits in one cycle — no measurable overhead on the hot path. Storage is <code class="text-orange-400">thread_local!</code>; each worker thread registers its own copy when models load.

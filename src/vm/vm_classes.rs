@@ -119,7 +119,9 @@ pub(crate) fn is_class_reflection_member(name: &str) -> bool {
 impl Vm {
     /// Resolve a `Future` or `grouped` `Deferred` the way the tree-walker does
     /// on member access, so `` `echo hi`.stdout `` and a deferred query's
-    /// fields work under the VM.
+    /// fields work under the VM. The tree-walker's `evaluate_call` forces a
+    /// method call's receiver with this too, so `body.size()` on a JSON body
+    /// is the method on both engines.
     pub(crate) fn force_lazy_receiver(object: &Value, span: Span) -> Result<Value, RuntimeError> {
         match object {
             Value::Future(future) => Value::Future(future.clone())
@@ -556,13 +558,16 @@ impl Vm {
                 interp.evaluate_member_on_value(object.clone(), name, span)
             }
             // The tree-walker's rule, by the same function
-            // (`Interpreter::hash_member_value`): user methods, the universal
-            // members (`nil?`, `blank?`, `present?`…), then a builtin method
-            // name reads as the method and anything else as the key's value —
-            // `null` when the key is absent. The VM used to answer a method for
-            // every absent key, so `if rec._errors` was true on a hash without
-            // `_errors` (2.6.2); then it skipped the universal members, so
-            // `h.present?` was `null` (2.6.4).
+            // (`Interpreter::hash_member_value`): user methods, then the key —
+            // even one named like a method, which is what GetProperty's fast
+            // paths answer before reaching here — then the universal members
+            // (`nil?`, `blank?`, `present?`…), then a builtin method name as
+            // the method, and `null` for anything else. The VM used to answer
+            // a method for every absent key, so `if rec._errors` was true on a
+            // hash without `_errors` (2.6.2); then it skipped the universal
+            // members, so `h.present?` was `null` (2.6.4); then this path put
+            // the builtin names before the key while the fast paths did not,
+            // so `row.size ||= 0` wrote the entry count over a `size` field.
             Value::Hash(hash) => Ok(Interpreter::hash_member_value(hash, name, object.clone())),
             Value::Array(_) => {
                 // Array methods like .length, .map, .filter, etc.

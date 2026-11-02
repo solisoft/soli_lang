@@ -765,8 +765,11 @@ impl Vm {
                 }
                 // `hash.key` that finds the key, when no user method on Hash
                 // could outrank it: the general arm's first fast path, here
-                // so a `row.title` does not leave this tier. Anything else
-                // (a miss, an instance, a method) goes to the general arm.
+                // so a `row.title` does not leave this tier. A key named like
+                // a builtin (`row.size`) is the key too, as
+                // `Interpreter::hash_member_value` reads it; only a miss may
+                // answer a method. Anything else (a miss, an instance, a
+                // method) goes to the general arm.
                 Op::GetProperty(idx) => {
                     let hit = match self.stack.last() {
                         Some(Value::Hash(hash))
@@ -8523,6 +8526,64 @@ let x = Mailer.welcome()
         assert_eq!(
             compile_and_get_global("let x = [1, 2, 3, 4, 5].filter(fn(n) n > 2).first();", "x"),
             Value::Int(3)
+        );
+    }
+
+    /// A key named like a hash method is the key's value on every VM path, as
+    /// on the tree-walker. The key fast paths (`GetProperty`, the fused
+    /// `GetLocalProperty`) always answered it, but `op_get_property` — where a
+    /// read lands once a Hash user method exists, and the read of `x.name ||=`
+    /// (`GetPropertyOrNull`) — answered the builtin method: `row.size ||= 0`
+    /// wrote the entry count over the field, `{"size": nil}.size ||= 7` stored
+    /// 1. A call still means the method, and so does a read without the key.
+    #[test]
+    fn test_vm_hash_key_named_like_a_method_reads_the_key() {
+        let row = "let row = {\"size\": 2048, \"key\": \"abc\", \"map\": null}\n";
+        let global = |body: &str| compile_and_get_global(&format!("{row}{body}"), "x");
+        assert_eq!(global("let x = row.size"), Value::Int(2048));
+        assert_eq!(
+            global("fn read(r) { return r.key }\nlet x = read(row)"),
+            Value::String("abc".into())
+        );
+        // `||=` and `??=` read through GetPropertyOrNull and always write back.
+        assert_eq!(
+            global("row.size ||= 0\nlet x = row[\"size\"]"),
+            Value::Int(2048)
+        );
+        assert_eq!(
+            global("row.map ??= \"set\"\nlet x = row[\"map\"]"),
+            Value::String("set".into())
+        );
+        assert_eq!(
+            compile_and_get_global(
+                "let counts = {\"size\": null}\ncounts.size ||= 7\nlet x = counts[\"size\"]",
+                "x"
+            ),
+            Value::Int(7)
+        );
+        // Parentheses call the method; so does a bare read without the key.
+        assert_eq!(global("let x = row.size()"), Value::Int(3));
+        assert_eq!(
+            global("let x = row.key(\"abc\")"),
+            Value::String("key".into())
+        );
+        assert_eq!(
+            compile_and_get_global("let x = {\"a\": 1, \"b\": 2}.size", "x"),
+            Value::Int(2)
+        );
+        // The slow path itself, where a registered Hash user method sends
+        // every read (registering one here would leak into other tests).
+        let mut pairs = crate::interpreter::value::HashPairs::default();
+        pairs.insert(
+            crate::interpreter::value::HashKey::String("size".into()),
+            Value::Int(2048),
+        );
+        let hash = Value::Hash(Rc::new(RefCell::new(pairs)));
+        assert_eq!(
+            Vm::new()
+                .op_get_property(&hash, "size", Span::default())
+                .unwrap(),
+            Value::Int(2048)
         );
     }
 }

@@ -127,6 +127,39 @@ describe("Dot notation") do
     data = {"items": [1, 2, 3]}
     assert_eq(data.items.length, 3)
   end
+
+  test("a key named like a hash method reads the key") do
+    row = {"size": 2048, "key": "abc", "values": [1, 2], "length": 99, "class": "btn"}
+    assert_eq(row.size, 2048)
+    assert_eq(row.key, "abc")
+    assert_eq(row.values, [1, 2])
+    assert_eq(row.length, 99)
+    assert_eq(row.class, "btn")
+    assert_eq([{"size": 3}, {"size": 4}].map(&:size), [3, 4])
+  end
+
+  test("parentheses call the method even when the key exists") do
+    row = {"size": 2048, "key": "abc"}
+    assert_eq(row.size(), 2)
+    assert_eq(row.key("abc"), "key")
+    assert_eq(row.class(), "hash")
+  end
+
+  test("a hash without that key still answers the method") do
+    assert_eq({"a": 1, "b": 2}.size, 2)
+    assert_eq({"a": 1}.keys, ["a"])
+    assert_eq({"a": 1}.class, "hash")
+  end
+
+  test("a compound assignment reads and writes the key") do
+    row = {"size": 2048, "length": 1}
+    row.size ||= 0
+    row.length += 1
+    assert_eq(row, {"size": 2048, "length": 2})
+    unset = {"size": nil}
+    unset.size ||= 7
+    assert_eq(unset, {"size": 7})
+  end
 end
 
 describe("Safe navigation") do

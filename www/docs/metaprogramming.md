@@ -63,10 +63,10 @@ String.alias_method("shout", "yell")
 Lookup order on a primitive value:
 
 1. User-defined methods (registered via `define_method` / `class_eval`).
-2. Built-in methods (`length`, `upcase`, `map`, `times`, etc.).
-3. For `Hash`: literal hash-key fallback (`h.foo` returns the value at key `"foo"`).
+2. For `Hash`, read without parentheses: the key (`h.foo` returns the value at key `"foo"` when the hash has it — even a key named like a built-in, so `{"size": 2048}.size` is `2048`).
+3. Built-in methods (`length`, `upcase`, `map`, `times`, etc.).
 
-So a user method on `Hash` will shadow the literal-key fallback. This matches Ruby's monkey-patching semantics.
+So a user method on `Hash` shadows the key, and the key shadows a built-in of the same name, the way an instance field shadows a method. A call with parentheses always means the method: `{"size": 2048}.size()` is `1`, the number of entries. This matches Ruby's monkey-patching semantics, and both engines (`soli serve` and `soli test`) follow it.
 
 ### Performance
 

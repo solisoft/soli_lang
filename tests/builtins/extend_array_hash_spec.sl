@@ -35,11 +35,22 @@ describe("Hash.define_method") do
     assert_eq({}.spec_size_label, "n=0")
   end
 
-  # `hash.key` reads a key when no method has that name; a user method wins.
+  # `hash.key` reads the key, even one named like a builtin method; only a
+  # user method outranks it.
   test("a user method wins over the dot-access key fallback") do
     Hash.define_method("spec_marker", fn() { "method-wins" })
     values = {"spec_marker": "key-value"}
     assert_eq(values.spec_marker, "method-wins")
     assert_eq(values["spec_marker"], "key-value")
+  end
+
+  # With a Hash user method registered, the VM sends every dot read to the
+  # shared rule; a key named like a builtin must still read as the key there.
+  test("a key named like a builtin still reads the key") do
+    Hash.define_method("spec_other", fn() { "other" })
+    row = {"size": 2048}
+    assert_eq(row.size, 2048)
+    assert_eq(row.size(), 1)
+    assert_eq({"a": 1, "b": 2}.size, 2)
   end
 end

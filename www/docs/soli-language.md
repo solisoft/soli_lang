@@ -1917,6 +1917,18 @@ print(deleted);  # Paris
 print(person);   # {name: Alice, age: 31, country: France}
 ```
 
+Dot notation reads a key too: `person.name` is `person["name"]`, and a missing key is `nil`. A key named like a hash method is still the key, so `{"size": 2048}.size` is `2048`. The method answers only when the hash has no such key: `{"a": 1}.size` is `1`. Parentheses always call the method:
+
+```soli
+row = {"size": 2048, "key": "abc"}
+row.size          # 2048  — the key
+row.size()        # 2     — Hash#size, the number of entries
+row.key("abc")    # "key" — Hash#key, the first key holding "abc"
+{"a": 1}.size     # 1     — no "size" key, so the method
+```
+
+Both engines follow this rule, so `soli test` and `soli serve` read a row the same way. Some code handles hashes it did not build, such as `params` or a decoded JSON body. There, call the methods with parentheses (`h.keys()`, `h.length()`), or read the keys with brackets, so that a key named like a method cannot answer in the method's place.
+
 #### Hash Methods
 
 Hash methods support two function signatures for iteration:

@@ -1876,6 +1876,34 @@ print(before(early, late), before(late, early))"##,
         "hash_universal_members_read_bare",
         "def probe(h)\n  return [h.present?, h.blank?, h.nil?, h.class, h.empty?, h.present?()]\nend\nprint(probe({\"status\": 302}))\nprint(probe({}))\nbounce = {\"status\": 302}\nif bounce.present?\n  print(\"bounced\")\nend",
     ),
+    // A key named like a hash method reads as the key, on both engines: the
+    // VM's key fast paths answered `row.size` with the field while the
+    // tree-walker answered the method, so a spec of `row.size` disagreed with
+    // production. The VM's own slow read (`x.name ||=`, or any read once a
+    // Hash user method exists) answered the method too, and `row.size ||= 0`
+    // wrote the entry count back over the field. Without the key a bare read
+    // is still the method, and parentheses always call it.
+    (
+        "hash_key_named_like_a_method_reads_the_key",
+        r##"row = {"size": 2048, "key": "abc", "values": [1, 2], "select": "x", "length": 99, "class": "btn", "map": nil}
+print(row.size, row.key, row.values, row.select, row.length, row.class, row.map)
+def read(r)
+  [r.size, r.key, r.values, r.length, "#{r.size}"]
+end
+print(read(row))
+print(row&.size, {"rows": row}.rows.size)
+plain = {"a": 1, "b": 2}
+print(plain.size, plain.keys, plain.class, plain.length, plain.select)
+print(row.size(), row.key("abc"), row.values().length, row.class())
+row.size ||= 0
+row.length += 1
+row.map ??= "set"
+print(row.size, row.length, row.map)
+counts = {"size": nil}
+counts.size ||= 7
+print(counts)
+print([{"size": 3}, {"size": 4}].map(&:size))"##,
+    ),
     // `defined` / `const_get` on a loaded class, from inside a method. They
     // read the tree-walker's `CURRENT_ENV`, which the VM never set: an app
     // testing `defined("ShopChannel")` took its "absent" branch (2.6.4).

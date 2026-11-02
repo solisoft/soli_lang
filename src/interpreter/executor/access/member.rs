@@ -26,8 +26,10 @@ use crate::span::Span;
 /// The wrapper builds a fresh environment parented to the function's closure,
 /// binds `this` and `self` to the receiver, binds positional args to params,
 /// then runs the body via a default `Interpreter`.
-/// The names `hash.name` reads as a builtin method rather than a key. Anything
-/// else is the key's value, or `null` when the key is absent. The ONE list,
+/// The names a bare `hash.name` reads as a builtin method when the hash has no
+/// such key (a key always wins: `{"size": 2048}.size` is 2048). Any other
+/// absent name is `null`. A call `hash.name(…)` resolves these names to the
+/// method even when the key exists (`hash_callee_value`). The ONE list,
 /// shared by the tree-walker (`hash_member_access`) and the VM
 /// (`op_get_property`): the VM used to answer a method for every absent key,
 /// so `if record._errors` was true on a hash with no `_errors` and a
@@ -2454,25 +2456,67 @@ impl Interpreter {
     }
 
     /// What `hash.name` reads, on both engines: the tree-walker above and the
-    /// VM's `op_get_property`. The VM took only the last two steps (method
-    /// list, then key), so `h.present?`, `h.blank?` and `h.nil?` read as the
-    /// absent keys — `null` — and `if bounce.present? return bounce end` let
-    /// a non-manager through a guard (2.6.4).
+    /// VM's `op_get_property`, whose key fast paths answer a hit before it by
+    /// the same rule. In order: a user-defined Hash method; the key `"name"`
+    /// when the hash has it — `{"size": 2048}.size` is 2048, as
+    /// `hash["size"]` is, the way an instance field shadows a method; the
+    /// universal members (`class`, `nil?`, `blank?`…); a builtin method name,
+    /// as the method (`{"a": 1}.size` is 1); otherwise `null`.
+    ///
+    /// The tree-walker used to answer the universal members and the builtin
+    /// names before the key, so a row with a `size`, `key` or `values` field
+    /// read the field under `soli serve` (the VM's fast paths) and the method
+    /// under `soli test` — and on the VM too once any Hash user method turned
+    /// the fast paths off, or in `row.size ||= 0`, which wrote the entry count
+    /// back over the field. Before that the VM skipped the universal members,
+    /// so `h.present?` read as an absent key — `null` — and
+    /// `if bounce.present? return bounce end` let a non-manager through a
+    /// guard (2.6.4).
     pub(crate) fn hash_member_value(
         hash: &Rc<RefCell<crate::interpreter::value::HashPairs>>,
         name: &str,
         obj_val: Value,
     ) -> Value {
+        Self::hash_member(hash, name, obj_val, true)
+    }
+
+    /// The callee of a call `hash.name(…)` on the tree-walker. A call names
+    /// the method, so a builtin method or a universal member is resolved as
+    /// one even when the hash has that key — `{"key": "abc"}.key("abc")` calls
+    /// `Hash#key`, as the VM's `CallMethod` does — and any other name is the
+    /// key's value (a function stored there is then called) or `null`.
+    pub(crate) fn hash_callee_value(
+        hash: &Rc<RefCell<crate::interpreter::value::HashPairs>>,
+        name: &str,
+        obj_val: Value,
+    ) -> Value {
+        Self::hash_member(hash, name, obj_val, false)
+    }
+
+    /// `hash_member_value` (`key_first`) and `hash_callee_value` (not): the
+    /// same steps, the key probed before or after the method names.
+    fn hash_member(
+        hash: &Rc<RefCell<crate::interpreter::value::HashPairs>>,
+        name: &str,
+        obj_val: Value,
+        key_first: bool,
+    ) -> Value {
         use crate::interpreter::executor::calls::user_methods::{
             has_user_methods, lookup_user_method, PrimType,
         };
-        // User-defined methods on Hash win over both builtins and the
-        // hash-key fallback (i.e. `h.foo` first checks user methods, then
-        // builtin methods, then the literal key "foo"). This matches Ruby's
-        // monkey-patching precedence.
+        // User-defined methods on Hash win over the key and the builtins
+        // alike. This matches Ruby's monkey-patching precedence.
         if has_user_methods(PrimType::Hash) {
             if let Some(f) = lookup_user_method(PrimType::Hash, name) {
                 return bind_user_method_to_receiver(obj_val, f);
+            }
+        }
+        // StrKey: a zero-allocation lookup (hashes as HashKey::String does).
+        let key = crate::interpreter::value::StrKey(name);
+        if key_first {
+            let hit = hash.borrow().get(&key).cloned();
+            if let Some(value) = hit {
+                return value;
             }
         }
         // Universal methods
@@ -2486,19 +2530,17 @@ impl Interpreter {
             "present?" => return Value::Bool(!hash.borrow().is_empty()),
             _ => {}
         }
-        // First check if it's a known method
         if is_hash_method_name(name) {
             return Value::method(ValueMethod {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             });
         }
-        // Try to access as a hash key (dot notation for hash access)
-        // Use StrKey for zero-allocation lookup (hashes identically to HashKey::String)
-        hash.borrow()
-            .get(&crate::interpreter::value::StrKey(name))
-            .cloned()
-            .unwrap_or(Value::Null)
+        if key_first {
+            // Probed above: the hash has no such key.
+            return Value::Null;
+        }
+        hash.borrow().get(&key).cloned().unwrap_or(Value::Null)
     }
 
     pub(crate) fn query_builder_member_access(
@@ -3256,4 +3298,99 @@ fn has_native_static_new(class: &crate::interpreter::value::Class) -> bool {
             .superclass
             .as_ref()
             .is_some_and(|superclass| has_native_static_new(superclass))
+}
+
+#[cfg(test)]
+mod hash_member_tests {
+    use super::*;
+    use crate::interpreter::value::{HashKey, HashPairs};
+
+    /// A row whose keys are named like a builtin method and a universal member.
+    fn row() -> (Rc<RefCell<HashPairs>>, Value) {
+        let mut pairs = HashPairs::default();
+        pairs.insert(HashKey::String("size".into()), Value::Int(2048));
+        pairs.insert(HashKey::String("key".into()), Value::String("abc".into()));
+        pairs.insert(HashKey::String("class".into()), Value::String("btn".into()));
+        pairs.insert(HashKey::String("values".into()), Value::Null);
+        pairs.insert(HashKey::String("title".into()), Value::String("x".into()));
+        let hash = Rc::new(RefCell::new(pairs));
+        (hash.clone(), Value::Hash(hash))
+    }
+
+    fn method_name(value: &Value) -> Option<&str> {
+        match value {
+            Value::Method(method) => Some(method.method_name.as_str()),
+            _ => None,
+        }
+    }
+
+    /// A bare `row.size` is the key, as production's VM fast paths always
+    /// answered; the tree-walker answered the method (`soli test` read 5).
+    #[test]
+    fn a_bare_read_answers_a_key_named_like_a_method() {
+        let (hash, row) = row();
+        let read = |name: &str| Interpreter::hash_member_value(&hash, name, row.clone());
+        assert_eq!(read("size"), Value::Int(2048));
+        assert_eq!(read("key"), Value::String("abc".into()));
+        assert_eq!(read("class"), Value::String("btn".into()));
+        // A key holding nil is nil, not the method of that name.
+        assert_eq!(read("values"), Value::Null);
+        assert_eq!(read("title"), Value::String("x".into()));
+        // Without the key: the builtin method, the universal answer, or nil.
+        assert_eq!(method_name(&read("keys")), Some("keys"));
+        assert_eq!(method_name(&read("length")), Some("length"));
+        assert_eq!(read("nil?"), Value::Bool(false));
+        assert_eq!(read("present?"), Value::Bool(true));
+        assert_eq!(read("missing"), Value::Null);
+    }
+
+    /// `row.key("abc")` calls `Hash#key` even on a row with a `key` field, as
+    /// the VM's CallMethod does; a name that is no method is still the key.
+    #[test]
+    fn a_call_resolves_a_method_name_to_the_method() {
+        let (hash, row) = row();
+        let callee = |name: &str| Interpreter::hash_callee_value(&hash, name, row.clone());
+        assert_eq!(method_name(&callee("size")), Some("size"));
+        assert_eq!(method_name(&callee("key")), Some("key"));
+        assert_eq!(method_name(&callee("values")), Some("values"));
+        assert_eq!(callee("class"), Value::String("hash".into()));
+        assert_eq!(callee("title"), Value::String("x".into()));
+        assert_eq!(callee("missing"), Value::Null);
+    }
+
+    /// The same rules end to end on the tree-walker: a bare read is the key,
+    /// parentheses (with arguments, a block, or none) are the method, and a
+    /// compound assignment reads — and writes back — the key.
+    #[test]
+    fn the_tree_walker_reads_the_key_and_calls_the_method() {
+        let source = r#"
+row = {"size": 2048, "key": "abc", "update": 5}
+counts = {"size": nil}
+counts.size ||= 7
+row.size ||= 0
+result = [row.size, row.key, row.size(), row.key("abc"), row.update({"z": 1}).length, row.key { |v| v }, counts.size, {"a": 1}.size]
+"#;
+        let tokens = crate::lexer::Scanner::new(source).scan_tokens().unwrap();
+        let program = crate::parser::Parser::new(tokens).parse().unwrap();
+        let mut interpreter = Interpreter::new();
+        interpreter.interpret(&program).unwrap();
+        let result = interpreter.environment.borrow().get("result");
+        let items = match result {
+            Some(Value::Array(items)) => items,
+            other => panic!("expected an array, got {other:?}"),
+        };
+        assert_eq!(
+            *items.borrow(),
+            vec![
+                Value::Int(2048),
+                Value::String("abc".into()),
+                Value::Int(3),
+                Value::String("key".into()),
+                Value::Int(4),
+                Value::Null,
+                Value::Int(7),
+                Value::Int(1),
+            ]
+        );
+    }
 }
