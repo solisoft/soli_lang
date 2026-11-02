@@ -1455,6 +1455,31 @@ impl Vm {
                         std::mem::replace(&mut self.stack[base + slot as usize], Value::Null);
                     self.stack.push(value);
                 }
+                // `try` and `expr rescue x` on the path that does not throw.
+                // None of these pushes a frame, so the cached state stays
+                // valid; the throw side (`throw_exception`, the catch-resume
+                // in `run`) reads only the handler, never the tier it was
+                // pushed from. Each records what the general arm records:
+                // `ip` is already past the op, as `frame.ip` is there.
+                Op::TryBegin(catch_offset, finally_offset) => {
+                    self.exception_handlers.push(ExceptionHandler {
+                        catch_ip: ip + catch_offset as usize,
+                        finally_ip: ip + finally_offset as usize,
+                        stack_depth: self.stack.len(),
+                        frame_depth: self.frames.len(),
+                        iter_depth: self.iter_stack.len(),
+                    });
+                }
+                Op::TryEnd | Op::PopHandler => {
+                    self.exception_handlers.pop();
+                }
+                // Only a Future has anything to settle; that stays general.
+                Op::ForceFuture => {
+                    if self.stack.last().is_some_and(Value::is_future) {
+                        break Some(op);
+                    }
+                }
+                Op::RescueJump(offset) => ip += offset as usize,
                 _ => break Some(op),
             }
         };
@@ -9353,6 +9378,20 @@ let x = Mailer.welcome()
         supplied: u64,
         globals: &[(&str, Value)],
     ) -> (Option<Op>, Vec<Value>) {
+        let (declined, mut vm) = run_fast_tier_vm(constants, locals, code, supplied, globals);
+        let above_locals = vm.stack.split_off(1 + locals.len());
+        (declined, above_locals)
+    }
+
+    /// [`run_fast_tier_with`], handing back the whole VM so a test can read
+    /// the state the fast tier left beside the stack (handlers, frames).
+    fn run_fast_tier_vm(
+        constants: Vec<Constant>,
+        locals: &[Value],
+        code: &[Op],
+        supplied: u64,
+        globals: &[(&str, Value)],
+    ) -> (Option<Op>, Vm) {
         let mut proto = FunctionProto::new(String::new());
         proto.chunk.constants = constants;
         for op in code {
@@ -9375,8 +9414,90 @@ let x = Mailer.welcome()
             supplied,
         ));
         let declined = vm.run_fast().expect("the fast tier raised");
-        let above_locals = vm.stack.split_off(1 + locals.len());
-        (declined, above_locals)
+        (declined, vm)
+    }
+
+    /// A `try` or `expr rescue x` that does not throw stays in the fast
+    /// tier: `TryBegin`, `TryEnd`, `PopHandler`, `RescueJump` and a
+    /// `ForceFuture` on anything but a Future had no fast arm, so each cost a
+    /// tier exit. The handler the fast arm pushes must be the one the general
+    /// arm pushed, since the throw side reads nothing else.
+    #[test]
+    fn try_and_rescue_that_do_not_throw_stay_in_the_fast_tier() {
+        const SEVEN: u16 = 0;
+        const ZERO: u16 = 1;
+        let constants = || vec![Constant::Int(7), Constant::Int(0)];
+        let locals = [Value::Int(5)];
+
+        // `TryBegin` records the targets relative to the next op, and the
+        // stack (closure + one local), frame and iterator depths.
+        let (declined, vm) = run_fast_tier_vm(constants(), &locals, &[Op::TryBegin(2, 3)], 0, &[]);
+        assert_eq!(declined, None, "TryBegin left the fast tier");
+        assert_eq!(vm.exception_handlers.len(), 1);
+        let handler = &vm.exception_handlers[0];
+        assert_eq!(
+            (
+                handler.catch_ip,
+                handler.finally_ip,
+                handler.stack_depth,
+                handler.frame_depth,
+                handler.iter_depth,
+            ),
+            (3, 4, 2, 1, 0)
+        );
+
+        // The non-throwing paths, each leaving no handler behind.
+        let cases: Vec<(&[Op], Vec<Value>)> = vec![
+            // try { 7 } … : the handler is pushed and popped.
+            (
+                &[Op::TryBegin(0, 0), Op::Constant(SEVEN), Op::TryEnd],
+                vec![Value::Int(7)],
+            ),
+            // The outer handler of a try/finally, dropped on the normal path.
+            (&[Op::TryBegin(0, 0), Op::PopHandler], vec![]),
+            (&[Op::Constant(SEVEN), Op::ForceFuture], vec![Value::Int(7)]),
+            (
+                &[Op::RescueJump(1), Op::Constant(SEVEN), Op::Null],
+                vec![Value::Null],
+            ),
+            // `7 rescue 0`, as the compiler lays it out: the Jump skips the
+            // catch target's Pop and the fallback.
+            (
+                &[
+                    Op::TryBegin(4, 0),
+                    Op::Constant(SEVEN),
+                    Op::ForceFuture,
+                    Op::TryEnd,
+                    Op::Jump(2),
+                    Op::Pop,
+                    Op::Constant(ZERO),
+                ],
+                vec![Value::Int(7)],
+            ),
+        ];
+        for (code, expected) in cases {
+            let (declined, mut vm) = run_fast_tier_vm(constants(), &locals, code, 0, &[]);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            assert!(vm.exception_handlers.is_empty(), "{code:?} left a handler");
+            assert_eq!(vm.stack.split_off(2), expected, "{code:?}");
+        }
+
+        // A Future still has to be settled, which the general arm does: the
+        // op is handed back with the Future untouched under the handler.
+        let future = Value::Future(Arc::new(std::sync::Mutex::new(
+            crate::interpreter::value::FutureState::Resolved(Value::Int(7)),
+        )));
+        crate::interpreter::value::note_future_created();
+        let (declined, vm) = run_fast_tier_vm(
+            constants(),
+            &[future],
+            &[Op::TryBegin(0, 0), Op::GetLocal(1), Op::ForceFuture],
+            0,
+            &[],
+        );
+        assert_eq!(declined, Some(Op::ForceFuture));
+        assert_eq!(vm.exception_handlers.len(), 1);
+        assert!(vm.stack.last().unwrap().is_future());
     }
 
     /// `def f(a, b = 7) b`, built by hand: the prologue runs `b`'s default

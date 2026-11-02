@@ -944,6 +944,49 @@ end"##,
         "try_catch_native_error",
         "try { print(\"zz\".hex) } catch (e) { print(\"caught\") }",
     ),
+    (
+        // `TryBegin`/`TryEnd`/`RescueJump` run in the VM's fast tier: the
+        // handler it pushes must unwind the stack, a `for` iterator and a
+        // callee frame exactly as the general arm's did, on iterations that
+        // throw and on those that do not.
+        "try_rescue_in_loops_fast_tier",
+        r##"def risky(i)
+  throw "odd #{i}" if i % 2 == 1
+  i * 10
+end
+
+def run_loops
+  total = 0
+  log = []
+  i = 0
+  while i < 6
+    try
+      total += risky(i)
+    catch e
+      log.push(e)
+    finally
+      total += 1
+    end
+    i += 1
+  end
+  arr = [1, 2, 3]
+  for x in [0, 1, 5, 2]
+    total += arr[x] rescue 100
+    for y in [1, 2]
+      total += risky(y) rescue y
+    end
+  end
+  print(total)
+  print(log)
+  try
+    total = 0
+  catch e
+    total = -1
+  end
+  total
+end
+print(run_loops())"##,
+    ),
     // --- enums (VM-native: declaration, construction, methods, equality) ---
     // Enum-variant *match patterns* and named construction deliberately bail to
     // the tree-walker (binding-pattern / named-arg VM gaps), so they aren't
