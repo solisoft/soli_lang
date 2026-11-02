@@ -2589,16 +2589,24 @@ impl Vm {
             if arity >= 2 {
                 // Missing required positions read as nil. A defaulted one
                 // takes its part when the element has one, and otherwise
-                // keeps its default.
+                // keeps its default. The parts go straight onto the stack,
+                // with no argument vector built and then copied there.
                 let declared = closure.proto.param_names.len();
-                let parts: Vec<Value> = {
+                self.push(callee.clone());
+                let count = {
                     let parts = parts.borrow();
                     let count = parts.len().min(declared).max(arity);
-                    (0..count)
-                        .map(|index| parts.get(index).cloned().unwrap_or(Value::Null))
-                        .collect()
+                    for index in 0..count {
+                        self.stack
+                            .push(parts.get(index).cloned().unwrap_or(Value::Null));
+                    }
+                    count
                 };
-                return self.invoke_in_batch(batch, callee, &parts, span);
+                self.call_value(count, span)?;
+                if self.frames.len() == batch.frames_before {
+                    return Ok(self.pop());
+                }
+                return self.run();
             }
         }
         self.push(callee.clone());

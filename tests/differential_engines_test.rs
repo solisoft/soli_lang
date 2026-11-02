@@ -1950,6 +1950,175 @@ end
 print([1, 2].map { |x| x * 2 })
 print([[1, 2], [3, 4]].map { |a, b| a + b })"##,
     ),
+    // The block iterators that run their callback inside the VM's dispatch
+    // loop instead of a nested `run()` per element: each_with_index, reject,
+    // find, any?/all?/none?/one?, count, sort_by, reduce/fold, Int#times/
+    // upto/downto, and blocks that destructure array elements. Templates
+    // (`x > 4`), the frame path (`x % 2 == 0`) and a template handing a
+    // float to the frame path (`v > 1` on 2.5) must all agree.
+    (
+        "array_block_methods_in_the_dispatch_loop",
+        r##"xs = [5, 3, 8, 1]
+print(xs.each_with_index { |x, i| print("#{i}:#{x}") })
+print(xs.reject { |x| x > 4 }, xs.reject { |x| x % 2 == 0 })
+print(xs.find { |x| x > 4 }, xs.find { |x| x > 100 }, xs.find { |x| x % 4 == 0 })
+print(xs.any? { |x| x > 7 }, xs.all? { |x| x > 0 }, xs.none? { |x| x > 7 }, xs.one? { |x| x > 7 })
+print(xs.any? { |x| x > 70 }, xs.all? { |x| x > 1 }, xs.none? { |x| x > 70 }, xs.one? { |x| x > 2 })
+print(xs.count { |x| x > 2 }, xs.count { |x| x % 2 == 1 })
+print(xs.sort_by { |x| x }, xs.sort_by { |x| x * -1 }, ["bb", "a", "ccc"].sort_by { |s| s.length })
+print([[2, "b"], [1, "a"], [2, "a"], [1, "b"]].sort_by { |p| p[0] })
+print([1, 2.5, 3].count { |v| v > 1 }, [1, 2.5, 3].find { |v| v > 2 }, [0.5, 1, 2].any? { |v| v > 1 })
+print([3, 1.5, 2].sort_by { |v| v * 2 }, [1, 2.5, 3].reject { |v| v > 2 })
+def probe(list)
+  calls = 0
+  found = list.find do |x|
+    calls = calls + 1
+    x > 2
+  end
+  any = list.any? do |x|
+    calls = calls + 1
+    x > 1
+  end
+  none = list.none? do |x|
+    calls = calls + 1
+    x > 2
+  end
+  one = list.one? do |x|
+    calls = calls + 1
+    x > 1
+  end
+  all = list.all? do |x|
+    calls = calls + 1
+    x < 2
+  end
+  "#{found} #{any} #{none} #{one} #{all} #{calls}"
+end
+print(probe([1, 2, 3, 4]))"##,
+    ),
+    (
+        "reduce_in_the_dispatch_loop",
+        r##"print([1, 2, 3].reduce(fn(acc, x) { acc + x }, 10))
+print([1, 2, 3].reduce(fn(acc, x) { acc * x }))
+print([7].reduce(fn(acc, x) { acc + x }), [].reduce(fn(acc, x) { acc + x }, 5))
+print([1, 2].fold(fn(acc, x) { acc - x }, 0))
+print(["a", "b"].reduce(fn(acc, s) { acc + s }, ""))
+print([[1, 2], [3, 4]].reduce(fn(acc, row) { acc + row.find { |v| v > 1 } }, 0))
+try
+  [].reduce(fn(acc, x) { acc + x })
+  print("no error")
+catch e
+  print("reduce of an empty array raises")
+end
+vs = [1, 2, 3]
+total = vs.reduce(fn(acc, v) {
+  vs.push(v) if acc < 3
+  acc + v
+}, 0)
+print(total, vs)"##,
+    ),
+    (
+        "int_iterators_in_the_dispatch_loop",
+        r##"def tally(n)
+  total = 0
+  n.times { |i| total += i }
+  total
+end
+print(tally(5))
+print(3.times { |i| print("t#{i}") })
+print(2.upto(4) { |i| print("u#{i}") })
+print(4.downto(2) { |i| print("d#{i}") })
+print(0.times { |i| print("never") }, (0 - 3).times { |i| print("never") })
+print(5.upto(3) { |i| print("never") }, 1.downto(3) { |i| print("never") })
+seen = []
+3.times { |i| 2.times { |j| seen.push(i * 10 + j) } }
+print(seen)
+print([1, 2, 3].count { |v| [2, 3, 4].any? { |w| w == v } })
+fns = []
+3.times do |i|
+  fns.push(fn() { i })
+end
+print(fns[0](), fns[2]())"##,
+    ),
+    (
+        "destructuring_blocks_in_the_dispatch_loop",
+        r##"pairs = [[1, 2], [3, 4], [5]]
+print(pairs.map { |a, b| [b, a] })
+print(pairs.filter { |a, b| b.nil? }, pairs.reject { |a, b| a > 2 })
+print(pairs.find { |a, b| a > 2 }, pairs.count { |a, b| a > 2 }, pairs.any? { |a, b| b.nil? })
+print(pairs.sort_by { |a, b| a * -1 })
+pairs.each { |a, b| print("#{a}-#{b}") }
+print([[1, 2, 3]].map { |a, b| a + b }, [[1, 2, 3], [4, 5, 6]].map { |a, b, c| a + b + c })
+print([5, 6].each_with_index.map { |v, i| v * i })
+print({"a": 1, "b": 2}.entries.map { |k, v| "#{k}=#{v}" })
+ps = [[1, 2], [3, 4], [5, 6]]
+sums = ps.map do |a, b|
+  ps.pop()
+  a + b
+end
+print(sums, ps.length)"##,
+    ),
+    (
+        // A throw out of each kind of loop reaches the caller's catch with its
+        // value, and the next loop starts clean. A block that changes the
+        // array it walks sees the live array, up to the length it started
+        // with.
+        "block_loops_throw_and_see_their_receiver_change",
+        r##"try
+  [1, 2].find { |v| throw "f#{v}" }
+catch e
+  print(e)
+end
+try
+  3.times { |i| throw "t#{i}" if i == 1 }
+catch e
+  print(e)
+end
+try
+  [[1, 2]].map { |a, b| throw "p#{a}#{b}" }
+catch e
+  print(e)
+end
+try
+  [1, 2].reduce(fn(a, v) { throw "r#{v}" }, 0)
+catch e
+  print(e)
+end
+try
+  [7, 8].each_with_index { |v, i| throw "e#{v}#{i}" if i == 1 }
+catch e
+  print(e)
+end
+try
+  [1, 2].sort_by { |v| throw "s#{v}" }
+catch e
+  print(e)
+end
+try
+  [1, 2].count { |v| throw "c#{v}" }
+catch e
+  print(e)
+end
+print([1, 2].map { |v| v * 2 })
+ys = [1, 2, 3, 4]
+seen = []
+ys.each_with_index do |y, i|
+  seen.push(y)
+  ys.pop() if i == 0
+end
+print(seen, ys)
+zs = [1, 2, 3]
+found = zs.find do |z|
+  zs.push(z + 10)
+  z > 5
+end
+print(found, zs)
+ss = [3, 1, 2, 4]
+sorted = ss.sort_by do |s|
+  ss.pop()
+  s
+end
+print(sorted, ss)"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

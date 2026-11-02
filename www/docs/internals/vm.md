@@ -86,11 +86,28 @@ The rule that keeps the two tiers from disagreeing: **a fast arm either complete
 
 ### Iterator callbacks (`vm_callback_loop.rs`)
 
-`h.each(fn …)`, `map`, `filter`/`reject`, `any?`/`all?`, `transform_values`/`transform_keys`, `each_value`/`each_key` and array `each`/`map`/`filter` — when the callback is a compiled closure taking exactly the arguments the method passes — do not loop in Rust. `CallMethod` hands them to `try_start_callback_loop`, which leaves a `CallbackLoop` on `iter_stack` and opens the first element's frame flagged `drives_loop`. When that frame returns, `Return` gives the result to the loop, which records it and refills the **same frame's** argument slots for the next element (`rerun_loop_callback`), or pops itself and pushes the method's result. Living on `iter_stack` is what makes a `throw` out of a callback safe: `Return` and exception unwinding already truncate that stack.
+These methods do not loop in Rust when their callback is a compiled closure:
 
-A callback whose body is a **template** (`Kernel`) is not called at all: a parameter, `x + - * c`, `x < <= > >= c`, `[a, b + c]`, `[a, b]`, or `acc = acc + x` into a captured variable. The loop evaluates it per element in Rust. The same rule as the fast tier applies — a template computes only what its opcode's general arm answers inline (int with overflow checked, float with float); any other operand hands *that element* to the frame path, which runs the real opcodes. Templates are recognised from the exact bytecode shape (`Kernel::of`), so a peephole change that alters a callback's opcodes can make it stop matching: that is safe (it runs on the frame path), only slower.
+- hash `each`/`each_key`/`each_value`, `map`, `filter`/`select`/`keep_if`, `reject`/`delete_if`, `any?`/`all?`, `transform_values`/`transform_keys`;
+- array `each`, `each_with_index`, `map`, `filter`/`select`, `reject`, `find`, `any?`/`all?`/`none?`/`one?`, `count`, `reduce`/`fold` (seeded or not) and `sort_by`;
+- `Int#times`, `upto` and `downto`.
 
-Everything else — a native or bound callee, a default parameter, a `[key, value]` pair argument to a template — keeps the native drivers in `vm_hash_methods.rs` / `vm_array_methods.rs`, whose semantics the loop mirrors element for element (live iteration, length fixed at the start, `any?` short-circuit, the same error messages). `tests/differential_engines_test.rs` holds a case for each path.
+`CallMethod` hands them to `try_start_callback_loop`, and so does `CallMethodById` for `count`, the only one of them with a method id. That leaves a `CallbackLoop` on `iter_stack` and opens the first element's frame flagged `drives_loop`. When that frame returns, `Return` gives the result to the loop, which records it and refills the **same frame's** argument slots for the next element (`rerun_loop_callback`), or pops itself and pushes the method's result. Living on `iter_stack` is what makes a `throw` out of a callback safe: `Return` and exception unwinding already truncate that stack. The loop state holds what the method needs: `reduce`'s accumulator (moved into the callback's argument slot while it runs), `find`'s element, `count`'s tally, and `sort_by`'s `(element, key)` pairs, sorted at the end with the native driver's comparator.
+
+The callback's arguments follow the native drivers' binding rules (`ArgMode`). It receives exactly what the method passes, the first of two (`each_with_index { |x| }`; a one-parameter `reduce` gets the `[acc, item]` pair), or nothing. A block of two or more required parameters over an array element gets one part per parameter instead (`pairs.map { |a, b| … }`, with nil for a missing part). An element that is not an array then fails the way the native call does: the same arity error, at the method's call site.
+
+A callback whose body is a **template** (`Kernel`) is not called at all: a parameter, `x + - * c`, `x < <= > >= c`, `[a, b + c]`, `[a, b]`, or `acc = acc + x` into a captured variable. The loop evaluates it per element in Rust. The same rule as the fast tier applies — a template computes only what its opcode's general arm answers inline (int with overflow checked, float with float); any other operand hands *that element* to the frame path, which runs the real opcodes. Templates are recognised from the exact bytecode shape (`Kernel::of`), so a peephole change that alters a callback's opcodes can make it stop matching: that is safe (it runs on the frame path), only slower. Only the one-value shapes get one. An `(item, index)` pair, `reduce`'s accumulator, an element's parts and a `[key, value]` pair argument always run the frame path.
+
+Everything else keeps the native drivers in `vm_hash_methods.rs` / `vm_array_methods.rs` / `vm_int_methods.rs`, whose semantics the loop mirrors element for element: live iteration with the length fixed at the start, the early exits of `find`/`any?`/`all?`/`none?`/`one?`, and the same error messages. That covers:
+
+- a native or bound callee;
+- a parameter the call would leave to its default;
+- an arity the call would refuse;
+- an unseeded `reduce` on an empty array;
+- `sort` with a comparator;
+- a function compiled to machine code (`crate::native`) whose body is not a template. The native driver calls that machine code for each element, where the loop's frame would run its bytecode.
+
+`tests/differential_engines_test.rs` holds a case for each path. `tests/fixtures/_native/iterators.sl` covers callees compiled to machine code.
 
 ## `Vm`
 

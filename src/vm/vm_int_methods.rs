@@ -6,7 +6,10 @@
 //! `call_int_method_impl`, shared with the tree-walker, so both engines
 //! behave identically by construction. Only the closure-taking methods
 //! (`times`, `upto`, `downto`) have a VM-specific implementation, using the
-//! same callable-batch pattern as `vm_array_methods`.
+//! same callable-batch pattern as `vm_array_methods`. A compiled block
+//! usually runs in the dispatch loop instead (`vm_callback_loop.rs`); these
+//! drivers serve the other callees and shapes, and the two must agree
+//! element for element.
 
 use crate::error::RuntimeError;
 use crate::interpreter::executor::calls::int_methods::call_int_method_impl;

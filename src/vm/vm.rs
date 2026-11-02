@@ -2025,8 +2025,9 @@ impl Vm {
                         Value::Array(_) => {
                             // An iterator method with a compiled callback runs
                             // its loop in this dispatch loop; checked first so
-                            // it skips the name matching below.
-                            if argc == 1
+                            // it skips the name matching below. The callback
+                            // comes first: `reduce`'s seed follows it.
+                            if (argc == 1 || argc == 2)
                                 && matches!(self.stack[receiver_idx + 1], Value::VmClosure(_))
                                 && self.try_start_callback_loop(receiver_idx, argc, name)?
                             {
@@ -2129,6 +2130,16 @@ impl Vm {
                         | Value::Null
                         | Value::Decimal(_)
                         | Value::DateTime(_, _) => {
+                            // `n.times { … }`, `n.upto(m) { … }`: a compiled
+                            // callback, the last argument, runs its loop in
+                            // this dispatch loop too.
+                            if matches!(self.stack[receiver_idx], Value::Int(_))
+                                && (argc == 1 || argc == 2)
+                                && matches!(self.stack[receiver_idx + argc], Value::VmClosure(_))
+                                && self.try_start_callback_loop(receiver_idx, argc, name)?
+                            {
+                                continue;
+                            }
                             let receiver = self.stack[receiver_idx].clone();
                             let args: Vec<Value> =
                                 self.stack[receiver_idx + 1..receiver_idx + 1 + argc].to_vec();
@@ -2249,6 +2260,14 @@ impl Vm {
                             self.stack.push(result);
                         }
                         Value::Array(_) => {
+                            // `xs.count { … }`, the block method with an id,
+                            // takes the in-VM loop as `CallMethod` does.
+                            if argc == 1
+                                && matches!(self.stack[receiver_idx + 1], Value::VmClosure(_))
+                                && self.try_start_callback_loop(receiver_idx, argc, name)?
+                            {
+                                continue;
+                            }
                             let arr = match &self.stack[receiver_idx] {
                                 Value::Array(a) => a.clone(),
                                 _ => unreachable!(),

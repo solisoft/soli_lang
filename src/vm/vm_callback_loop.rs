@@ -15,14 +15,26 @@
 //! frame — or, after the last, pops the loop and pushes the method's result
 //! where the call left its receiver. No Rust recursion per element.
 //!
+//! The methods: on a hash `each` / `each_key` / `each_value`, `map`,
+//! `filter` / `select` / `keep_if`, `reject` / `delete_if`, `any?` / `all?`,
+//! `transform_values` / `transform_keys`; on an array `each`,
+//! `each_with_index`, `map`, `filter` / `select`, `reject`, `find`, `any?` /
+//! `all?` / `none?` / `one?`, `count`, `reduce` / `fold` and `sort_by`; on an
+//! integer `times`, `upto` and `downto`.
+//!
 //! The loop state sits on `iter_stack` for a reason: `Return` truncates that
 //! stack to the returning frame's base and exception unwinding to the
 //! handler's depth, so a loop abandoned by a `throw` disappears without any
 //! code here. Only the common shape is taken: a compiled closure that takes
-//! exactly the arguments the method passes, or none at all (a block that
-//! ignores its element, `xs.each { print("tick") }`). Everything else keeps
-//! the native driver in `vm_hash_methods.rs` / `vm_array_methods.rs`, whose
-//! semantics this mirrors element for element.
+//! exactly the arguments the method passes, the first of two
+//! (`each_with_index { |x| … }`), none at all (a block that ignores its
+//! element, `xs.each { print("tick") }`), or one parameter per part of an
+//! array element (`pairs.map { |a, b| … }`). Everything else keeps the native
+//! driver in `vm_hash_methods.rs` / `vm_array_methods.rs` /
+//! `vm_int_methods.rs`, whose semantics this mirrors element for element: a
+//! native function or a bound method, a parameter the call would leave to
+//! its default, an arity the call would refuse, a function compiled to
+//! machine code, and `sort` with a comparator.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -37,46 +49,82 @@ use super::vm::{clone_scalar_fast, positional_supplied_mask, CallFrame, IterStat
 /// What the method does with each callback result.
 #[derive(Clone, Copy)]
 pub(crate) enum LoopKind {
-    /// `each` / `each_value` / `each_key`: result ignored, returns the receiver.
-    HashEach,
+    /// `each` on a hash or an array, `each_value` / `each_key`,
+    /// `each_with_index`, and `Int#times` / `upto` / `downto`: the result is
+    /// ignored and the method returns its receiver.
+    Each,
     /// `map`: a `[key, value]` result becomes an entry of the new hash.
     HashMap,
     /// `filter` / `select` / `keep_if` (keep when truthy) and `reject` /
     /// `delete_if` (keep when falsy): a new hash of the kept entries.
     HashFilter { keep_when_truthy: bool },
-    /// `any?` (stop at the first truthy) / `all?` (stop at the first falsy).
-    HashAnyAll { want_any: bool },
+    /// `any?`, `all?` and (arrays only) `none?`: the walk stops at the first
+    /// result whose truthiness is `stop_on`, and the method answers
+    /// `answer_on_stop`; without a stop it answers the opposite. `any?` stops
+    /// on a truthy result with `true`, `all?` on a falsy one with `false`,
+    /// `none?` on a truthy one with `false`.
+    AnyAll { stop_on: bool, answer_on_stop: bool },
     /// `transform_values`: same keys, callback results as values.
     HashTransformValues,
     /// `transform_keys`: callback results as keys, same values.
     HashTransformKeys,
-    /// Array `each`: result ignored, returns the receiver.
-    ArrayEach,
     /// Array `map`.
     ArrayMap,
-    /// Array `filter` / `select`.
-    ArrayFilter,
+    /// Array `filter` / `select` (keep when truthy) and `reject` (keep when
+    /// falsy).
+    ArrayFilter { keep_when_truthy: bool },
+    /// `find`: the first element whose result is truthy, or nil. Stops there.
+    ArrayFind,
+    /// `one?`: whether exactly one result is truthy. Stops at a second one.
+    ArrayOne,
+    /// `count` with a block: how many results are truthy.
+    ArrayCount,
+    /// `reduce` / `fold`: each result becomes the accumulator, which the
+    /// method returns.
+    ArrayReduce,
+    /// `sort_by` with a block: the results are the elements' sort keys.
+    ArraySortBy,
 }
 
-/// What the callback receives for each hash entry.
+/// What the callback receives for each element.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum HashArgs {
-    /// `(key, value)` — a callback declaring two or more parameters.
+enum ArgMode {
+    /// `(key, value)` — a hash callback declaring two or more parameters.
     KeyValue,
-    /// `[key, value]` — a callback declaring fewer.
+    /// `[key, value]` — a hash callback declaring fewer.
     Pair,
+    /// The entry's key: `each_key`, `transform_keys`.
     Key,
+    /// One value: an entry's value, an array element, an integer.
     Value,
-    /// Nothing: a callback that declares no parameter, for a hash or an
-    /// array. Its frame has no argument slot, as the tree-walker binds such
-    /// a block nothing.
+    /// Nothing: a callback that declares no parameter. Its frame has no
+    /// argument slot, as the tree-walker binds such a block nothing.
     Nothing,
+    /// `(item, index)`: `each_with_index` with two parameters.
+    ItemIndex,
+    /// `(acc, item)`: `reduce` with two parameters.
+    AccItem,
+    /// `[acc, item]`: `reduce` with one parameter, the pair the tree-walker
+    /// binds it.
+    AccPair,
+    /// One argument per part of an array element: a callback with `n >= 2`
+    /// required parameters destructures it, as a Ruby block does
+    /// (`pairs.map { |a, b| … }`). A missing part reads as nil. An element
+    /// that is not an array fails as the native driver's call does.
+    Parts(usize),
 }
 
 #[derive(Clone)]
 enum Source {
     Hash(Rc<RefCell<HashPairs>>),
     Array(Rc<RefCell<Vec<Value>>>),
+    /// `Int#times` / `upto` / `downto`: element `i` is `start + i * step`
+    /// (see [`int_at`]), and the method returns `receiver`.
+    Ints {
+        start: i64,
+        step: i64,
+        receiver: i64,
+    },
     /// A spare state between loops: holds nothing alive.
     Empty,
 }
@@ -85,7 +133,7 @@ enum Source {
 #[derive(Clone)]
 pub struct CallbackLoop {
     kind: LoopKind,
-    args: HashArgs,
+    args: ArgMode,
     source: Source,
     /// `None` only in a spare state between loops.
     closure: Option<Rc<VmClosure>>,
@@ -99,8 +147,17 @@ pub struct CallbackLoop {
     current: Option<(HashKey, Value)>,
     out_hash: HashPairs,
     out_array: Vec<Value>,
-    /// `any?` / `all?` answer so far.
+    /// The `any?` / `all?` / `none?` answer so far, or for `one?` whether
+    /// exactly one result has been truthy.
     answer: bool,
+    /// The one value the method returns, for the kinds that return one:
+    /// `reduce`'s accumulator (moved into the callback's argument slot while
+    /// the callback runs, and replaced by its result) and `find`'s element.
+    value: Value,
+    /// `count`'s tally.
+    count: i64,
+    /// `sort_by`'s `(element, key)` pairs, sorted when the walk ends.
+    keyed: Vec<(Value, Value)>,
     /// `transform_values` builds its result on a copy of the receiver and
     /// overwrites each value in place — no hashing, no key clone per element
     /// — while every visited key is still at its position in the receiver.
@@ -142,10 +199,12 @@ const ARRAY_POOL_MAX: usize = 16;
 
 /// The arguments of one callback call.
 enum CallbackArgs {
-    /// A callback with no parameter ([`HashArgs::Nothing`]).
+    /// A callback with no parameter ([`ArgMode::Nothing`]).
     Zero,
     One(Value),
     Two(Value, Value),
+    /// The first `count` parts of an array element ([`ArgMode::Parts`]).
+    Parts(Rc<RefCell<Vec<Value>>>, usize),
 }
 
 impl CallbackArgs {
@@ -163,20 +222,44 @@ impl CallbackArgs {
                 stack.push(b);
                 2
             }
+            CallbackArgs::Parts(parts, count) => {
+                let parts = parts.borrow();
+                for offset in 0..count {
+                    stack.push(parts.get(offset).cloned().unwrap_or(Value::Null));
+                }
+                count
+            }
         }
     }
 }
 
-/// Declared parameter count and arity of a compiled closure, or `None` for
-/// any other callee — which keeps the native driver.
-fn closure_params(callee: &Value) -> Option<(usize, usize)> {
-    match callee {
-        Value::VmClosure(closure) => Some((
-            closure.proto.param_names.len(),
-            closure.proto.arity as usize,
-        )),
-        _ => None,
+/// An [`ArgMode::Parts`] callback met an element that is not an array.
+struct NotAnArray;
+
+/// How [`refill`] left the loop.
+enum Refill {
+    /// The next element's arguments are in its slots: run the frame again.
+    Ready,
+    /// No element is left.
+    Done,
+    /// See [`NotAnArray`].
+    NotAnArray,
+}
+
+/// Element `index` of a [`Source::Ints`] walk. Exact for every index the
+/// walk reaches, since the true value lies between the receiver and the
+/// limit and so fits an `i64`.
+#[inline(always)]
+fn int_at(start: i64, step: i64, index: usize) -> i64 {
+    start.wrapping_add((index as i64).wrapping_mul(step))
+}
+
+/// How many integers `low..=high` holds, saturated to `usize`.
+fn inclusive_count(low: i64, high: i64) -> usize {
+    if high < low {
+        return 0;
     }
+    usize::try_from(i128::from(high) - i128::from(low) + 1).unwrap_or(usize::MAX)
 }
 
 /// `HashKey::to_value` with the string case inline (it is an out-of-line
@@ -216,7 +299,7 @@ fn record(state: &mut CallbackLoop, result: Value) -> Option<&'static str> {
     // Only the kinds that keep the running entry take it: dropping the
     // (usually empty) `Option` is an out-of-line call on every element.
     match state.kind {
-        LoopKind::HashEach | LoopKind::ArrayEach => {
+        LoopKind::Each => {
             super::vm::discard(result);
             None
         }
@@ -241,9 +324,12 @@ fn record(state: &mut CallbackLoop, result: Value) -> Option<&'static str> {
             super::vm::discard(result);
             None
         }
-        LoopKind::HashAnyAll { want_any } => {
-            if truthy_fast(&result) == want_any {
-                state.answer = want_any;
+        LoopKind::AnyAll {
+            stop_on,
+            answer_on_stop,
+        } => {
+            if truthy_fast(&result) == stop_on {
+                state.answer = answer_on_stop;
                 state.index = state.len; // decided: stop here
             }
             super::vm::discard(result);
@@ -279,39 +365,82 @@ fn record(state: &mut CallbackLoop, result: Value) -> Option<&'static str> {
             state.out_array.push(result);
             None
         }
-        LoopKind::ArrayFilter => {
-            if truthy_fast(&result) {
+        LoopKind::ArrayFilter { keep_when_truthy } => {
+            if truthy_fast(&result) == keep_when_truthy {
                 let (_, item) = state.current.take().expect("filter keeps its item");
                 state.out_array.push(item);
             }
             super::vm::discard(result);
             None
         }
+        LoopKind::ArrayFind => {
+            if truthy_fast(&result) {
+                let (_, item) = state.current.take().expect("find keeps its item");
+                state.value = item;
+                state.index = state.len; // found: stop here
+            }
+            super::vm::discard(result);
+            None
+        }
+        LoopKind::ArrayOne => {
+            if truthy_fast(&result) {
+                if state.answer {
+                    // A second one: the answer is no, and final.
+                    state.answer = false;
+                    state.index = state.len;
+                } else {
+                    state.answer = true;
+                }
+            }
+            super::vm::discard(result);
+            None
+        }
+        LoopKind::ArrayCount => {
+            if truthy_fast(&result) {
+                state.count += 1;
+            }
+            super::vm::discard(result);
+            None
+        }
+        LoopKind::ArrayReduce => {
+            super::vm::discard(std::mem::replace(&mut state.value, result));
+            None
+        }
+        LoopKind::ArraySortBy => {
+            let (_, item) = state.current.take().expect("sort_by keeps its item");
+            state.keyed.push((item, result));
+            None
+        }
     }
 }
 
 /// Whether the running callback's entry must be kept for its result:
-/// `filter` keeps it if the callback says so, `transform_keys` keeps the
-/// value. `transform_values` keeps it only once it has left the mirrored
-/// mode (see `CallbackLoop::mirror`), decided per element.
+/// `filter` / `reject` keep it if the callback says so, `find` keeps the
+/// element it finds, `sort_by` pairs every element with its key, and
+/// `transform_keys` keeps the value. `transform_values` keeps it only once it
+/// has left the mirrored mode (see `CallbackLoop::mirror`), decided per
+/// element.
 #[inline(always)]
 fn keeps_entry(state: &CallbackLoop) -> bool {
     matches!(
         state.kind,
-        LoopKind::HashFilter { .. } | LoopKind::HashTransformKeys | LoopKind::ArrayFilter
+        LoopKind::HashFilter { .. }
+            | LoopKind::HashTransformKeys
+            | LoopKind::ArrayFilter { .. }
+            | LoopKind::ArrayFind
+            | LoopKind::ArraySortBy
     )
 }
 
 /// Write the next element's arguments straight into the kept frame's
-/// slots from `first_slot`, advancing the loop; `false` when it is done.
-/// The same element reading as `next_callback_args`, without building the
-/// arguments first and moving them into place. A callback with no
-/// parameter ([`HashArgs::Nothing`]) has no slot to write: the element is
-/// still read, kept and counted.
+/// slots from `first_slot`, advancing the loop. The same element reading as
+/// `next_callback_args`, without building the arguments first and moving
+/// them into place. A callback with no parameter ([`ArgMode::Nothing`]) has
+/// no slot to write: the element is still read, kept and counted.
 #[inline(always)]
-fn refill(state: &mut CallbackLoop, stack: &mut [Value], first_slot: usize) -> bool {
+fn refill(state: &mut CallbackLoop, stack: &mut [Value], first_slot: usize) -> Refill {
     if state.index >= state.len {
-        return false;
+        return Refill::Done;
     }
     state.touched = true;
     let keeps_entry = keeps_entry(state);
@@ -319,13 +448,47 @@ fn refill(state: &mut CallbackLoop, stack: &mut [Value], first_slot: usize) -> b
         Source::Array(array) => {
             let array = array.borrow();
             let Some(item) = array.get(state.index) else {
-                return false;
+                return Refill::Done;
             };
             if keeps_entry {
                 state.current = Some((HashKey::Null, item.clone()));
             }
-            if state.args != HashArgs::Nothing {
-                replace_slot(stack, first_slot, clone_scalar_fast(item));
+            match state.args {
+                ArgMode::Value => replace_slot(stack, first_slot, clone_scalar_fast(item)),
+                ArgMode::Nothing => {}
+                ArgMode::ItemIndex => {
+                    replace_slot(stack, first_slot, clone_scalar_fast(item));
+                    replace_slot(stack, first_slot + 1, Value::Int(state.index as i64));
+                }
+                ArgMode::AccItem => {
+                    let acc = std::mem::replace(&mut state.value, Value::Null);
+                    replace_slot(stack, first_slot, acc);
+                    replace_slot(stack, first_slot + 1, clone_scalar_fast(item));
+                }
+                ArgMode::AccPair => {
+                    let acc = std::mem::replace(&mut state.value, Value::Null);
+                    let pair = vec![acc, clone_scalar_fast(item)];
+                    replace_slot(stack, first_slot, Value::Array(Rc::new(RefCell::new(pair))));
+                }
+                ArgMode::Parts(count) => {
+                    let Value::Array(parts) = item else {
+                        return Refill::NotAnArray;
+                    };
+                    let parts = parts.borrow();
+                    for offset in 0..count {
+                        let part = parts.get(offset).map_or(Value::Null, clone_scalar_fast);
+                        replace_slot(stack, first_slot + offset, part);
+                    }
+                }
+                ArgMode::KeyValue | ArgMode::Pair | ArgMode::Key => {
+                    unreachable!("a hash argument mode on an array loop")
+                }
+            }
+        }
+        Source::Ints { start, step, .. } => {
+            if state.args != ArgMode::Nothing {
+                let n = int_at(*start, *step, state.index);
+                replace_slot(stack, first_slot, Value::Int(n));
             }
         }
         Source::Empty => unreachable!("a running loop has a source"),
@@ -336,7 +499,7 @@ fn refill(state: &mut CallbackLoop, stack: &mut [Value], first_slot: usize) -> b
                     // The receiver shrank: only the visited entries count.
                     state.out_hash.truncate(state.index);
                 }
-                return false;
+                return Refill::Done;
             };
             if state.mirror && state.out_hash.get_index(state.index).map(|(k, _)| k) != Some(key) {
                 // A callback added or removed keys: keep what was visited and
@@ -349,11 +512,11 @@ fn refill(state: &mut CallbackLoop, stack: &mut [Value], first_slot: usize) -> b
                 state.current = Some((clone_key_fast(key), clone_scalar_fast(value)));
             }
             match state.args {
-                HashArgs::KeyValue => {
+                ArgMode::KeyValue => {
                     replace_slot(stack, first_slot, key_value_fast(key));
                     replace_slot(stack, first_slot + 1, clone_scalar_fast(value));
                 }
-                HashArgs::Pair => {
+                ArgMode::Pair => {
                     // The previous element's `[key, value]` pair, if the
                     // callback kept no reference to it, is refilled in place:
                     // nothing else can see it, and the element saves two
@@ -384,14 +547,17 @@ fn refill(state: &mut CallbackLoop, stack: &mut [Value], first_slot: usize) -> b
                         );
                     }
                 }
-                HashArgs::Key => replace_slot(stack, first_slot, key_value_fast(key)),
-                HashArgs::Value => replace_slot(stack, first_slot, clone_scalar_fast(value)),
-                HashArgs::Nothing => {}
+                ArgMode::Key => replace_slot(stack, first_slot, key_value_fast(key)),
+                ArgMode::Value => replace_slot(stack, first_slot, clone_scalar_fast(value)),
+                ArgMode::Nothing => {}
+                ArgMode::ItemIndex | ArgMode::AccItem | ArgMode::AccPair | ArgMode::Parts(_) => {
+                    unreachable!("an array argument mode on a hash loop")
+                }
             }
         }
     }
     state.index += 1;
-    true
+    Refill::Ready
 }
 
 // ---------------------------------------------------------------------------
@@ -688,6 +854,9 @@ fn run_kernel(
         out_hash,
         out_array,
         answer,
+        value: found,
+        count,
+        keyed,
         mirror,
         touched,
         ..
@@ -729,16 +898,68 @@ fn run_kernel(
                     return Ok(KernelRun::Fallback);
                 };
                 *index += 1;
-                match kind {
-                    LoopKind::ArrayEach => super::vm::discard(out),
+                // As `record` folds a frame's result, with the element read
+                // in place: nothing can have changed it.
+                match *kind {
+                    LoopKind::Each => super::vm::discard(out),
                     LoopKind::ArrayMap => out_array.push(out),
-                    LoopKind::ArrayFilter => {
-                        if truthy_fast(&out) {
+                    LoopKind::ArrayFilter { keep_when_truthy } => {
+                        if truthy_fast(&out) == keep_when_truthy {
                             out_array.push(clone_scalar_fast(item));
                         }
                         super::vm::discard(out);
                     }
-                    _ => unreachable!("an array loop"),
+                    LoopKind::ArrayFind => {
+                        if truthy_fast(&out) {
+                            *found = clone_scalar_fast(item);
+                            *index = *len;
+                        }
+                        super::vm::discard(out);
+                    }
+                    LoopKind::AnyAll {
+                        stop_on,
+                        answer_on_stop,
+                    } => {
+                        if truthy_fast(&out) == stop_on {
+                            *answer = answer_on_stop;
+                            *index = *len;
+                        }
+                        super::vm::discard(out);
+                    }
+                    LoopKind::ArrayOne => {
+                        if truthy_fast(&out) {
+                            if *answer {
+                                *answer = false;
+                                *index = *len;
+                            } else {
+                                *answer = true;
+                            }
+                        }
+                        super::vm::discard(out);
+                    }
+                    LoopKind::ArrayCount => {
+                        if truthy_fast(&out) {
+                            *count += 1;
+                        }
+                        super::vm::discard(out);
+                    }
+                    LoopKind::ArraySortBy => keyed.push((clone_scalar_fast(item), out)),
+                    _ => unreachable!("an array loop with a template"),
+                }
+            }
+            Ok(KernelRun::Done)
+        }
+        Source::Ints { start, step, .. } => {
+            let (start, step) = (*start, *step);
+            while *index < *len {
+                let n = Value::Int(int_at(start, step, *index));
+                let Some(out) = evaluate_value!(|_| ArgRef::Val(&n)) else {
+                    return Ok(KernelRun::Fallback);
+                };
+                *index += 1;
+                match *kind {
+                    LoopKind::Each => super::vm::discard(out),
+                    _ => unreachable!("an integer loop is an `each`"),
                 }
             }
             Ok(KernelRun::Done)
@@ -760,7 +981,7 @@ fn run_kernel(
                     *mirror = false;
                 }
                 let arg = |slot: u16| match (*args, slot) {
-                    (HashArgs::KeyValue, 1) | (HashArgs::Key, _) => ArgRef::Key(key),
+                    (ArgMode::KeyValue, 1) | (ArgMode::Key, _) => ArgRef::Key(key),
                     _ => ArgRef::Val(value),
                 };
                 if let LoopKind::HashMap = *kind {
@@ -795,16 +1016,19 @@ fn run_kernel(
                 };
                 *index += 1;
                 match *kind {
-                    LoopKind::HashEach => super::vm::discard(out),
+                    LoopKind::Each => super::vm::discard(out),
                     LoopKind::HashFilter { keep_when_truthy } => {
                         if truthy_fast(&out) == keep_when_truthy {
                             out_hash.insert(clone_key_fast(key), clone_scalar_fast(value));
                         }
                         super::vm::discard(out);
                     }
-                    LoopKind::HashAnyAll { want_any } => {
-                        if truthy_fast(&out) == want_any {
-                            *answer = want_any;
+                    LoopKind::AnyAll {
+                        stop_on,
+                        answer_on_stop,
+                    } => {
+                        if truthy_fast(&out) == stop_on {
+                            *answer = answer_on_stop;
                             *index = *len;
                         }
                         super::vm::discard(out);
@@ -832,100 +1056,260 @@ fn run_kernel(
     }
 }
 
+/// The loop that runs `receiver.name(…)`, from the receiver and its
+/// arguments (`operands`) and the callback's declared (`params`) and
+/// required (`arity`) parameter counts; `None` keeps the native driver.
+///
+/// The argument rules are the native drivers': a block takes as many of the
+/// arguments as it declares (`vm_calls::block_argc`), and a block of two or
+/// more required parameters destructures an array element
+/// (`Vm::invoke_in_batch_one`). Whatever the native call would fill with a
+/// default, or refuse with an arity error, stays with the native driver,
+/// which owns those rules and their messages.
+fn loop_shape(
+    operands: &[Value],
+    name: &str,
+    params: usize,
+    arity: usize,
+) -> Option<(LoopKind, ArgMode)> {
+    let argc = operands.len() - 1;
+    match &operands[0] {
+        Value::Hash(_) => {
+            if argc != 1 {
+                return None;
+            }
+            // Mirrors `callback_wants_two_args` for a compiled closure.
+            let kv = if arity >= 2 {
+                ArgMode::KeyValue
+            } else {
+                ArgMode::Pair
+            };
+            let (kind, args) = match name {
+                "each" => (LoopKind::Each, kv),
+                "each_value" => (LoopKind::Each, ArgMode::Value),
+                "each_key" => (LoopKind::Each, ArgMode::Key),
+                "map" => (LoopKind::HashMap, kv),
+                "filter" | "select" | "keep_if" => (
+                    LoopKind::HashFilter {
+                        keep_when_truthy: true,
+                    },
+                    kv,
+                ),
+                "reject" | "delete_if" => (
+                    LoopKind::HashFilter {
+                        keep_when_truthy: false,
+                    },
+                    kv,
+                ),
+                "any?" => (
+                    LoopKind::AnyAll {
+                        stop_on: true,
+                        answer_on_stop: true,
+                    },
+                    kv,
+                ),
+                "all?" => (
+                    LoopKind::AnyAll {
+                        stop_on: false,
+                        answer_on_stop: false,
+                    },
+                    kv,
+                ),
+                "transform_values" => (LoopKind::HashTransformValues, ArgMode::Value),
+                "transform_keys" => (LoopKind::HashTransformKeys, ArgMode::Key),
+                _ => return None,
+            };
+            let passed = if args == ArgMode::KeyValue { 2 } else { 1 };
+            // Exactly the declared parameters, or none at all (`h.each { … }`
+            // gets no argument slot, as the tree-walker binds it nothing).
+            match params {
+                0 => Some((kind, ArgMode::Nothing)),
+                _ if params == passed => Some((kind, args)),
+                _ => None,
+            }
+        }
+        Value::Array(array) => {
+            let kind = match name {
+                "each" | "each_with_index" => LoopKind::Each,
+                "map" => LoopKind::ArrayMap,
+                "filter" | "select" => LoopKind::ArrayFilter {
+                    keep_when_truthy: true,
+                },
+                "reject" => LoopKind::ArrayFilter {
+                    keep_when_truthy: false,
+                },
+                "find" => LoopKind::ArrayFind,
+                "any?" => LoopKind::AnyAll {
+                    stop_on: true,
+                    answer_on_stop: true,
+                },
+                "all?" => LoopKind::AnyAll {
+                    stop_on: false,
+                    answer_on_stop: false,
+                },
+                "none?" => LoopKind::AnyAll {
+                    stop_on: true,
+                    answer_on_stop: false,
+                },
+                "one?" => LoopKind::ArrayOne,
+                "count" => LoopKind::ArrayCount,
+                "reduce" | "fold" => LoopKind::ArrayReduce,
+                "sort_by" => LoopKind::ArraySortBy,
+                _ => return None,
+            };
+            let args = match kind {
+                LoopKind::ArrayReduce => {
+                    // A seed may follow the callback. Without one the first
+                    // element seeds, and an empty array raises (natively).
+                    if argc > 2 || (argc == 1 && array.borrow().is_empty()) {
+                        return None;
+                    }
+                    match params {
+                        0 => ArgMode::Nothing,
+                        1 => ArgMode::AccPair,
+                        2 => ArgMode::AccItem,
+                        _ => return None,
+                    }
+                }
+                _ if argc != 1 => return None,
+                // Two arguments: the element, then its index.
+                _ if name == "each_with_index" => match params {
+                    0 => ArgMode::Nothing,
+                    1 => ArgMode::Value,
+                    2 => ArgMode::ItemIndex,
+                    _ => return None,
+                },
+                _ => match params {
+                    0 => ArgMode::Nothing,
+                    1 => ArgMode::Value,
+                    _ if arity == params => ArgMode::Parts(params),
+                    _ => return None,
+                },
+            };
+            Some((kind, args))
+        }
+        Value::Int(_) => {
+            match (name, argc) {
+                ("times", 1) => {}
+                ("upto" | "downto", 2) if matches!(operands[1], Value::Int(_)) => {}
+                _ => return None,
+            }
+            let args = match params {
+                0 => ArgMode::Nothing,
+                1 => ArgMode::Value,
+                _ => return None,
+            };
+            Some((LoopKind::Each, args))
+        }
+        _ => None,
+    }
+}
+
 impl Vm {
-    /// Start `receiver.name(callback)` as an in-VM loop when it has the
-    /// common shape. The receiver is at `receiver_idx` with `argc` arguments
-    /// above it. Returns `false`, having changed nothing, when the call
-    /// should take the native driver.
+    /// Start `receiver.name(…)` as an in-VM loop when it has the common
+    /// shape. The receiver is at `receiver_idx` with `argc` arguments above
+    /// it: the callback, except that `reduce`'s seed may follow it and
+    /// `upto` / `downto` take their limit before it. Returns `false`, having
+    /// changed nothing, when the call should take the native driver.
     pub(crate) fn try_start_callback_loop(
         &mut self,
         receiver_idx: usize,
         argc: usize,
         name: &str,
     ) -> Result<bool, RuntimeError> {
-        if argc != 1 || self.frames.len() >= MAX_CALL_DEPTH {
+        if self.frames.len() >= MAX_CALL_DEPTH {
             return Ok(false);
         }
-        let Some((params, arity)) = closure_params(&self.stack[receiver_idx + 1]) else {
+        let callback_idx = match (&self.stack[receiver_idx], argc) {
+            (Value::Int(_), 2) => receiver_idx + 2,
+            (_, 1 | 2) => receiver_idx + 1,
+            _ => return Ok(false),
+        };
+        // Only a compiled closure: any other callee keeps the native driver.
+        let Value::VmClosure(callback) = &self.stack[callback_idx] else {
             return Ok(false);
         };
-        // Mirrors `callback_wants_two_args` for a compiled closure.
-        let wants_two = arity >= 2;
-        let (kind, args, is_hash) = match &self.stack[receiver_idx] {
-            Value::Hash(_) => {
-                let kv = if wants_two {
-                    HashArgs::KeyValue
-                } else {
-                    HashArgs::Pair
-                };
-                let (kind, args) = match name {
-                    "each" => (LoopKind::HashEach, kv),
-                    "each_value" => (LoopKind::HashEach, HashArgs::Value),
-                    "each_key" => (LoopKind::HashEach, HashArgs::Key),
-                    "map" => (LoopKind::HashMap, kv),
-                    "filter" | "select" | "keep_if" => (
-                        LoopKind::HashFilter {
-                            keep_when_truthy: true,
-                        },
-                        kv,
-                    ),
-                    "reject" | "delete_if" => (
-                        LoopKind::HashFilter {
-                            keep_when_truthy: false,
-                        },
-                        kv,
-                    ),
-                    "any?" => (LoopKind::HashAnyAll { want_any: true }, kv),
-                    "all?" => (LoopKind::HashAnyAll { want_any: false }, kv),
-                    "transform_values" => (LoopKind::HashTransformValues, HashArgs::Value),
-                    "transform_keys" => (LoopKind::HashTransformKeys, HashArgs::Key),
-                    _ => return Ok(false),
-                };
-                (kind, args, true)
-            }
-            Value::Array(_) => {
-                let kind = match name {
-                    "each" => LoopKind::ArrayEach,
-                    "map" => LoopKind::ArrayMap,
-                    "filter" | "select" => LoopKind::ArrayFilter,
-                    _ => return Ok(false),
-                };
-                (kind, HashArgs::Value, false)
-            }
-            _ => return Ok(false),
+        let params = callback.proto.param_names.len();
+        let arity = callback.proto.arity as usize;
+        let Some((kind, args)) = loop_shape(&self.stack[receiver_idx..], name, params, arity)
+        else {
+            return Ok(false);
         };
-        let passed = if args == HashArgs::KeyValue { 2 } else { 1 };
-        // Exactly the declared parameters: no default to fill, no arity error
-        // to raise — those stay with the native driver. Or no parameter at
-        // all: a block that ignores its element (`xs.each { print("tick") }`,
-        // `h.each { … }`) gets no argument slot, as the tree-walker binds
-        // it nothing.
-        let args = match params {
-            0 => HashArgs::Nothing,
-            _ if params == passed => args,
-            _ => return Ok(false),
+        // A template reads each parameter as one value of the element. A
+        // `[key, value]` pair is an array the body may keep or change, and
+        // the index, the accumulator and an element's parts are not the
+        // element: those shapes run every element on the frame path.
+        let kernel = match args {
+            ArgMode::KeyValue | ArgMode::Key | ArgMode::Value | ArgMode::Nothing
+                if !matches!(kind, LoopKind::ArrayReduce) =>
+            {
+                Kernel::of(&callback.proto, params)
+            }
+            _ => None,
         };
-        // Checks done: move the callback and the receiver off the stack into
-        // the loop — no reference-count round trip for either. The method's
-        // result is pushed where the receiver was when the loop ends.
-        let Some(Value::VmClosure(closure)) = self.stack.pop() else {
+        // A function compiled to machine code (`crate::native`) keeps the
+        // native driver, which calls that code for each element with no
+        // frame, where the loop's frame would run its bytecode instead
+        // (`xs.map(score)` for a typed `def score(n: Int) -> Int` with a loop
+        // in it: about 20 times slower). Unless its body is a template, which
+        // costs less than either.
+        if callback.proto.kernel.is_some() && kernel.is_none() {
+            return Ok(false);
+        }
+        // Checks done: move the callback, the receiver and the method's other
+        // argument off the stack into the loop — no reference-count round
+        // trip for any of them. The method's result is pushed where the
+        // receiver was when the loop ends.
+        let mut operands = self.stack.drain(receiver_idx..);
+        let receiver = operands.next().expect("the receiver");
+        let first = operands.next().expect("the callback or the limit");
+        let second = operands.next();
+        drop(operands);
+        let (callback, other) = if callback_idx == receiver_idx + 1 {
+            (first, second)
+        } else {
+            (second.expect("the callback after the limit"), Some(first))
+        };
+        let Value::VmClosure(closure) = callback else {
             unreachable!("checked as a compiled closure above");
         };
-        let receiver = self
-            .stack
-            .pop()
-            .expect("the receiver is below its argument");
-        debug_assert_eq!(self.stack.len(), receiver_idx);
-        let (source, len) = match receiver {
-            Value::Hash(hash) if is_hash => {
+        // Where the walk starts, and `reduce`'s accumulator: the seed, or
+        // the first element (already checked to exist) with the walk from
+        // the second.
+        let (source, len, index, value) = match receiver {
+            Value::Hash(hash) => {
                 let len = hash.borrow().len();
-                (Source::Hash(hash), len)
+                (Source::Hash(hash), len, 0, Value::Null)
             }
             Value::Array(array) => {
                 let len = array.borrow().len();
-                (Source::Array(array), len)
+                let (index, value) = match (kind, other) {
+                    (LoopKind::ArrayReduce, Some(seed)) => (0, seed),
+                    (LoopKind::ArrayReduce, None) => (1, array.borrow()[0].clone()),
+                    _ => (0, Value::Null),
+                };
+                (Source::Array(array), len, index, value)
             }
-            _ => unreachable!("checked as a hash or an array above"),
+            Value::Int(n) => {
+                let limit = match other {
+                    Some(Value::Int(limit)) => limit,
+                    _ => 0,
+                };
+                // `times` counts 0..n, `upto` n..=limit, `downto` n down to
+                // limit: as many elements as the native driver's loop.
+                let (start, step, len) = match name {
+                    "times" => (0, 1, usize::try_from(n.max(0)).unwrap_or(usize::MAX)),
+                    "upto" => (n, 1, inclusive_count(n, limit)),
+                    _ => (n, -1, inclusive_count(limit, n)),
+                };
+                let source = Source::Ints {
+                    start,
+                    step,
+                    receiver: n,
+                };
+                (source, len, 0, Value::Null)
+            }
+            _ => unreachable!("checked as a hash, an array or an int above"),
         };
         let presized = matches!(
             kind,
@@ -942,18 +1326,19 @@ impl Vm {
             _ if presized => HashPairs::with_capacity(len),
             _ => HashPairs::default(),
         };
-        let out_array = if matches!(kind, LoopKind::ArrayMap | LoopKind::ArrayFilter) {
+        let out_array = if matches!(kind, LoopKind::ArrayMap | LoopKind::ArrayFilter { .. }) {
             Vec::with_capacity(len)
         } else {
             Vec::new()
         };
-        let answer = matches!(kind, LoopKind::HashAnyAll { want_any: false });
-        // A `[key, value]` pair argument is an array the body may keep or
-        // change, so only the per-part shapes get a template.
-        let kernel = if args == HashArgs::Pair {
-            None
+        let keyed = if matches!(kind, LoopKind::ArraySortBy) {
+            Vec::with_capacity(len)
         } else {
-            Kernel::of(&closure.proto, params)
+            Vec::new()
+        };
+        let answer = match kind {
+            LoopKind::AnyAll { answer_on_stop, .. } => !answer_on_stop,
+            _ => false,
         };
         // Refill the spare state when there is one: no allocation, no move of
         // the whole struct into a fresh box.
@@ -963,12 +1348,15 @@ impl Vm {
                 spare.args = args;
                 spare.source = source;
                 spare.closure = Some(closure);
-                spare.index = 0;
+                spare.index = index;
                 spare.len = len;
                 spare.current = None;
                 spare.out_hash = out_hash;
                 spare.out_array = out_array;
                 spare.answer = answer;
+                spare.value = value;
+                spare.count = 0;
+                spare.keyed = keyed;
                 spare.mirror = mirror;
                 spare.kernel = kernel;
                 spare.touched = false;
@@ -979,12 +1367,15 @@ impl Vm {
                 args,
                 source,
                 closure: Some(closure),
-                index: 0,
+                index,
                 len,
                 current: None,
                 out_hash,
                 out_array,
                 answer,
+                value,
+                count: 0,
+                keyed,
                 mirror,
                 kernel,
                 touched: false,
@@ -1019,26 +1410,46 @@ impl Vm {
     /// The next element's callback arguments, advancing the loop, or `None`
     /// when it is done. Read afresh each time: a callback may have changed
     /// the collection, exactly as the native drivers allow.
-    fn next_callback_args(&mut self) -> Option<CallbackArgs> {
+    fn next_callback_args(&mut self) -> Result<Option<CallbackArgs>, NotAnArray> {
         let Some(IterState::Callback(state)) = self.iter_stack.last_mut() else {
             unreachable!("no loop on the iterator stack");
         };
         if state.index >= state.len {
-            return None;
+            return Ok(None);
         }
         let keeps_entry = keeps_entry(state);
         let args = match &state.source {
             Source::Array(array) => {
-                let item = array.borrow().get(state.index)?.clone();
+                let Some(item) = array.borrow().get(state.index).cloned() else {
+                    return Ok(None);
+                };
                 if keeps_entry {
                     state.current = Some((HashKey::Null, item.clone()));
                 }
-                if state.args == HashArgs::Nothing {
-                    CallbackArgs::Zero
-                } else {
-                    CallbackArgs::One(item)
+                match state.args {
+                    ArgMode::Value => CallbackArgs::One(item),
+                    ArgMode::Nothing => CallbackArgs::Zero,
+                    ArgMode::ItemIndex => CallbackArgs::Two(item, Value::Int(state.index as i64)),
+                    ArgMode::AccItem => {
+                        CallbackArgs::Two(std::mem::replace(&mut state.value, Value::Null), item)
+                    }
+                    ArgMode::AccPair => {
+                        let acc = std::mem::replace(&mut state.value, Value::Null);
+                        CallbackArgs::One(Value::Array(Rc::new(RefCell::new(vec![acc, item]))))
+                    }
+                    ArgMode::Parts(count) => match item {
+                        Value::Array(parts) => CallbackArgs::Parts(parts, count),
+                        _ => return Err(NotAnArray),
+                    },
+                    ArgMode::KeyValue | ArgMode::Pair | ArgMode::Key => {
+                        unreachable!("a hash argument mode on an array loop")
+                    }
                 }
             }
+            Source::Ints { start, step, .. } => match state.args {
+                ArgMode::Nothing => CallbackArgs::Zero,
+                _ => CallbackArgs::One(Value::Int(int_at(*start, *step, state.index))),
+            },
             Source::Empty => unreachable!("a running loop has a source"),
             Source::Hash(hash) => {
                 let hash = hash.borrow();
@@ -1046,7 +1457,7 @@ impl Vm {
                     if state.mirror {
                         state.out_hash.truncate(state.index);
                     }
-                    return None;
+                    return Ok(None);
                 };
                 if state.mirror
                     && state.out_hash.get_index(state.index).map(|(k, _)| k) != Some(key)
@@ -1060,19 +1471,25 @@ impl Vm {
                     state.current = Some((clone_key_fast(key), clone_scalar_fast(value)));
                 }
                 match state.args {
-                    HashArgs::KeyValue => CallbackArgs::Two(key_value_fast(key), value.clone()),
-                    HashArgs::Pair => CallbackArgs::One(Value::Array(Rc::new(RefCell::new(vec![
+                    ArgMode::KeyValue => CallbackArgs::Two(key_value_fast(key), value.clone()),
+                    ArgMode::Pair => CallbackArgs::One(Value::Array(Rc::new(RefCell::new(vec![
                         key_value_fast(key),
                         value.clone(),
                     ])))),
-                    HashArgs::Key => CallbackArgs::One(key_value_fast(key)),
-                    HashArgs::Value => CallbackArgs::One(value.clone()),
-                    HashArgs::Nothing => CallbackArgs::Zero,
+                    ArgMode::Key => CallbackArgs::One(key_value_fast(key)),
+                    ArgMode::Value => CallbackArgs::One(value.clone()),
+                    ArgMode::Nothing => CallbackArgs::Zero,
+                    ArgMode::ItemIndex
+                    | ArgMode::AccItem
+                    | ArgMode::AccPair
+                    | ArgMode::Parts(_) => {
+                        unreachable!("an array argument mode on a hash loop")
+                    }
                 }
             }
         };
         state.index += 1;
-        Some(args)
+        Ok(Some(args))
     }
 
     /// Open the frame for the next element, or end the loop and push the
@@ -1092,8 +1509,10 @@ impl Vm {
                 }
             }
         }
-        let Some(args) = self.next_callback_args() else {
-            return self.finish_callback_loop();
+        let args = match self.next_callback_args() {
+            Ok(Some(args)) => args,
+            Ok(None) => return self.finish_callback_loop(),
+            Err(NotAnArray) => return Err(self.parts_of_a_non_array()),
         };
         if let Some(IterState::Callback(state)) = self.iter_stack.last_mut() {
             state.touched = true;
@@ -1118,6 +1537,22 @@ impl Vm {
         frame.drives_loop = true;
         self.frames.push(frame);
         Ok(())
+    }
+
+    /// End a loop whose [`ArgMode::Parts`] callback met an element that is
+    /// not an array, with the native driver's error. It calls such a
+    /// callback with the element alone, and the call fails its arity check
+    /// at the method's call site. The callback's frame must already be gone,
+    /// so that the error points at the call, as natively.
+    #[cold]
+    fn parts_of_a_non_array(&mut self) -> RuntimeError {
+        let Some(IterState::Callback(state)) = self.iter_stack.pop() else {
+            unreachable!("no loop on the iterator stack");
+        };
+        let ArgMode::Parts(declared) = state.args else {
+            unreachable!("only a destructuring callback reads an element's parts");
+        };
+        RuntimeError::wrong_arity(declared, 1, self.current_span())
     }
 
     /// The loop callback on top of the frame stack returned `result`, and
@@ -1189,11 +1624,15 @@ impl Vm {
                 }
             }
         }
-        if refill(state, &mut self.stack, stack_base + 1) {
+        let refilled = refill(state, &mut self.stack, stack_base + 1);
+        if let Refill::Ready = refilled {
             return Ok(true);
         }
         self.frames.pop();
         self.stack.truncate(stack_base);
+        if let Refill::NotAnArray = refilled {
+            return Err(self.parts_of_a_non_array());
+        }
         self.finish_callback_loop()?;
         Ok(false)
     }
@@ -1205,20 +1644,34 @@ impl Vm {
         };
         let source = std::mem::replace(&mut state.source, Source::Empty);
         let result = match state.kind {
-            LoopKind::HashEach | LoopKind::ArrayEach => match source {
+            LoopKind::Each => match source {
                 Source::Hash(hash) => Value::Hash(hash),
                 Source::Array(array) => Value::Array(array),
+                Source::Ints { receiver, .. } => Value::Int(receiver),
                 Source::Empty => unreachable!("a running loop has a source"),
             },
-            LoopKind::HashAnyAll { .. } => Value::Bool(state.answer),
+            LoopKind::AnyAll { .. } | LoopKind::ArrayOne => Value::Bool(state.answer),
             LoopKind::HashMap
             | LoopKind::HashFilter { .. }
             | LoopKind::HashTransformValues
             | LoopKind::HashTransformKeys => {
                 Value::Hash(Rc::new(RefCell::new(std::mem::take(&mut state.out_hash))))
             }
-            LoopKind::ArrayMap | LoopKind::ArrayFilter => {
+            LoopKind::ArrayMap | LoopKind::ArrayFilter { .. } => {
                 Value::Array(Rc::new(RefCell::new(std::mem::take(&mut state.out_array))))
+            }
+            LoopKind::ArrayFind | LoopKind::ArrayReduce => {
+                std::mem::replace(&mut state.value, Value::Null)
+            }
+            LoopKind::ArrayCount => Value::Int(state.count),
+            LoopKind::ArraySortBy => {
+                // The native driver's sort, on the same pairs: the same order.
+                let mut keyed = std::mem::take(&mut state.keyed);
+                keyed.sort_by(|a, b| {
+                    crate::interpreter::executor::calls::array_ops::compare_sort_values(&a.1, &b.1)
+                });
+                let sorted: Vec<Value> = keyed.into_iter().map(|(item, _)| item).collect();
+                Value::Array(Rc::new(RefCell::new(sorted)))
             }
         };
         // Keep the state for the next loop, holding nothing alive.
@@ -1227,5 +1680,408 @@ impl Vm {
         self.spare_callback_loop = Some(state);
         self.stack.push(result);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::interpreter::value::Value;
+    use crate::lexer::Scanner;
+    use crate::parser::Parser;
+    use crate::vm::compiler::Compiler;
+    use crate::vm::vm::Vm;
+
+    /// Run `source` on a fresh VM. Returns the global `x` as text, and
+    /// whether an in-VM loop ran to its end: a finished loop leaves its
+    /// state behind as the spare, and nothing else does.
+    fn run(source: &str) -> Result<(String, bool), String> {
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let module = Compiler::compile(&program).expect("compile error");
+        let mut vm = Vm::new();
+        vm.execute(&module.main).map_err(|e| e.to_string())?;
+        let x = match vm.globals.get("x") {
+            Some(Value::String(s)) => s.to_string(),
+            other => format!("{other:?}"),
+        };
+        Ok((x, vm.spare_callback_loop.is_some()))
+    }
+
+    /// Each source holds one iterator call, which must run on the in-VM loop
+    /// and leave `x` as given. The expected values are what the native
+    /// drivers return for the same calls.
+    fn assert_looped(cases: &[(&str, &str)]) {
+        for (source, expected) in cases {
+            let (x, looped) = run(source).unwrap_or_else(|e| panic!("{source}\n=> {e}"));
+            assert_eq!(x, *expected, "{source}");
+            assert!(looped, "did not take the in-VM loop: {source}");
+        }
+    }
+
+    /// The array block methods that used to re-enter `run()` for every
+    /// element now run in the dispatch loop: on the frame path, and through
+    /// a template when the body is one (`v > 2`).
+    #[test]
+    fn array_block_methods_take_the_in_vm_loop() {
+        assert_looped(&[
+            // `each_with_index` passes (item, index), the item alone, or
+            // nothing, and returns its receiver.
+            (
+                "let seen = []\nlet back = [5, 6].each_with_index { |v, i| seen.push(v * 10 + i) }\nlet x = \"#{seen} #{back}\"",
+                "[50, 61] [5, 6]",
+            ),
+            ("let seen = []\n[5, 6].each_with_index { |v| seen.push(v) }\nlet x = \"#{seen}\"", "[5, 6]"),
+            ("let n = 0\n[5, 6].each_with_index { n = n + 1 }\nlet x = \"#{n}\"", "2"),
+            ("let x = \"#{[1, 2, 3, 4].reject { |v| v % 2 == 0 }}\"", "[1, 3]"),
+            ("let x = \"#{[1, 2, 3, 4].reject { |v| v > 2 }}\"", "[1, 2]"),
+            ("let x = \"#{[1, 2, 3, 4].find { |v| v > 2 }}\"", "3"),
+            ("let x = \"#{[1, 2, 3, 4].find { |v| v % 3 == 0 }}\"", "3"),
+            ("let x = \"#{[1, 2].find { |v| v > 5 }}\"", "null"),
+            ("let x = \"#{[1, 2].any? { |v| v > 1 }}\"", "true"),
+            ("let x = \"#{[1, 2].any? { |v| v > 5 }}\"", "false"),
+            ("let x = \"#{[1, 2].all? { |v| v > 0 }}\"", "true"),
+            ("let x = \"#{[1, 2].all? { |v| v > 1 }}\"", "false"),
+            ("let x = \"#{[1, 2].none? { |v| v > 5 }}\"", "true"),
+            ("let x = \"#{[1, 2].none? { |v| v > 1 }}\"", "false"),
+            ("let x = \"#{[1, 2, 3].one? { |v| v > 2 }}\"", "true"),
+            ("let x = \"#{[1, 2, 3].one? { |v| v > 1 }}\"", "false"),
+            ("let x = \"#{[1, 2, 3].one? { |v| v > 5 }}\"", "false"),
+            // `count` has a method id: `CallMethodById` takes the loop too.
+            ("let x = \"#{[1, 2, 3].count { |v| v > 1 }}\"", "2"),
+            ("let x = \"#{[1, 2, 3, 4].count { |v| v % 2 == 0 }}\"", "2"),
+            ("let x = \"#{[3, 1, 2].sort_by { |v| v }}\"", "[1, 2, 3]"),
+            ("let x = \"#{[3, 1, 2].sort_by { |v| v * -1 }}\"", "[3, 2, 1]"),
+            ("let x = \"#{[\"bb\", \"a\", \"ccc\"].sort_by { |s| s.length }}\"", "[a, bb, ccc]"),
+            // Stable, as the native sort is: ties keep their order.
+            (
+                "let x = \"#{[[2, \"b\"], [1, \"a\"], [2, \"a\"], [1, \"b\"]].sort_by { |p| p[0] }}\"",
+                "[[1, a], [1, b], [2, b], [2, a]]",
+            ),
+            // A template hands an element it cannot compute (a float against
+            // an int constant) to the frame path, which runs the real opcode.
+            ("let x = \"#{[1, 2.5, 3].count { |v| v > 1 }}\"", "2"),
+            ("let x = \"#{[1, 2.5, 3].find { |v| v > 2 }}\"", "2.5"),
+            ("let x = \"#{[0.5, 1, 2].any? { |v| v > 1 }}\"", "true"),
+            ("let x = \"#{[3, 1.5, 2].sort_by { |v| v * 2 }}\"", "[1.5, 2, 3]"),
+        ]);
+    }
+
+    /// `reduce` / `fold` keep the accumulator in the loop: seeded or not,
+    /// with `(acc, item)`, the `[acc, item]` pair, or nothing.
+    #[test]
+    fn reduce_takes_the_in_vm_loop() {
+        assert_looped(&[
+            (
+                "let x = \"#{[1, 2, 3].reduce(fn(acc, v) { acc + v }, 10)}\"",
+                "16",
+            ),
+            (
+                "let x = \"#{[1, 2, 3].reduce(fn(acc, v) { acc * v })}\"",
+                "6",
+            ),
+            ("let x = \"#{[7].reduce(fn(acc, v) { acc + v })}\"", "7"),
+            ("let x = \"#{[].reduce(fn(acc, v) { acc + v }, 5)}\"", "5"),
+            (
+                "let x = \"#{[1, 2].fold(fn(acc, v) { acc - v }, 0)}\"",
+                "-3",
+            ),
+            (
+                "let x = \"#{[\"a\", \"b\"].reduce(fn(acc, s) { acc + s }, \"\")}\"",
+                "ab",
+            ),
+            (
+                "let x = \"#{[1, 2, 3].reduce(fn(pair) { pair[0] + pair[1] }, 0)}\"",
+                "6",
+            ),
+            (
+                "let x = \"#{[1, 2, 3].reduce(fn(pair) { pair[0] * pair[1] })}\"",
+                "6",
+            ),
+            ("let x = \"#{[1, 2, 3].reduce(fn() { 7 }, 0)}\"", "7"),
+        ]);
+    }
+
+    /// `Int#times` / `upto` / `downto` walk their integers in the loop and
+    /// return the receiver; an empty range runs nothing.
+    #[test]
+    fn int_iterators_take_the_in_vm_loop() {
+        assert_looped(&[
+            ("let seen = []\nlet r = 3.times { |i| seen.push(i) }\nlet x = \"#{seen} #{r}\"", "[0, 1, 2] 3"),
+            ("let seen = []\nlet r = 2.upto(4) { |i| seen.push(i) }\nlet x = \"#{seen} #{r}\"", "[2, 3, 4] 2"),
+            ("let seen = []\nlet r = 4.downto(2) { |i| seen.push(i) }\nlet x = \"#{seen} #{r}\"", "[4, 3, 2] 4"),
+            ("let seen = []\nlet r = 0.times { |i| seen.push(i) }\nlet x = \"#{seen} #{r}\"", "[] 0"),
+            ("let seen = []\nlet r = (0 - 3).times { |i| seen.push(i) }\nlet x = \"#{seen} #{r}\"", "[] -3"),
+            ("let seen = []\nlet r = 5.upto(3) { |i| seen.push(i) }\nlet x = \"#{seen} #{r}\"", "[] 5"),
+            ("let seen = []\nlet r = 1.downto(3) { |i| seen.push(i) }\nlet x = \"#{seen} #{r}\"", "[] 1"),
+            ("let n = 0\n3.times { n = n + 1 }\nlet x = \"#{n}\"", "3"),
+            // `total += i` is the accumulator template: no frame at all.
+            (
+                "def tally(n)\n  let total = 0\n  n.times { |i| total += i }\n  total\nend\nlet x = \"#{tally(5)}\"",
+                "10",
+            ),
+            (
+                "let seen = []\n9223372036854775807.upto(9223372036854775807) { |i| seen.push(i) }\nlet x = \"#{seen}\"",
+                "[9223372036854775807]",
+            ),
+            (
+                "let seen = []\n(0 - 9223372036854775807).downto(0 - 9223372036854775807) { |i| seen.push(i) }\nlet x = \"#{seen}\"",
+                "[-9223372036854775807]",
+            ),
+        ]);
+    }
+
+    /// A block of two or more parameters over an array of arrays binds one
+    /// part to each, in the loop: missing parts read as nil, extra ones are
+    /// dropped, as `invoke_in_batch_one` destructures them.
+    #[test]
+    fn destructuring_blocks_take_the_in_vm_loop() {
+        assert_looped(&[
+            ("let x = \"#{[[1, 2], [3, 4]].map { |a, b| a + b }}\"", "[3, 7]"),
+            ("let x = \"#{[[1, 2], [3]].map { |a, b| b }}\"", "[2, null]"),
+            ("let x = \"#{[[1, 2, 3]].map { |a, b| a + b }}\"", "[3]"),
+            ("let x = \"#{[[1, 2, 3], [4, 5, 6]].map { |a, b, c| a + b + c }}\"", "[6, 15]"),
+            ("let x = \"#{[[1, 2], [3, 4]].filter { |a, b| b > 2 }}\"", "[[3, 4]]"),
+            ("let x = \"#{[[1, 2], [3, 4]].reject { |a, b| a == 1 }}\"", "[[3, 4]]"),
+            ("let x = \"#{[[1, 2], [3, 4]].find { |a, b| a > 2 }}\"", "[3, 4]"),
+            ("let x = \"#{[[1, 2], [3, 4]].any? { |a, b| b == 4 }}\"", "true"),
+            ("let x = \"#{[[1, 2], [3, 4]].count { |a, b| a + b > 3 }}\"", "1"),
+            ("let x = \"#{[[\"b\", 2], [\"a\", 1]].sort_by { |k, v| v }}\"", "[[a, 1], [b, 2]]"),
+            ("let total = 0\n[[1, 2], [3, 4]].each { |a, b| total = total + a * b }\nlet x = \"#{total}\"", "14"),
+            // The block-less `each_with_index` builds the pairs natively; the
+            // `map` over them destructures in the loop.
+            ("let x = \"#{[5, 6].each_with_index.map { |v, i| v * i }}\"", "[0, 6]"),
+        ]);
+    }
+
+    /// The early-exit methods stop where the native drivers stop: the block
+    /// runs exactly as many times.
+    #[test]
+    fn early_exits_stop_at_the_same_element() {
+        assert_looped(&[
+            ("let n = 0\nlet r = [1, 2, 3, 4].any? do |v|\n  n = n + 1\n  v > 1\nend\nlet x = \"#{r} #{n}\"", "true 2"),
+            ("let n = 0\nlet r = [1, 2, 3, 4].all? do |v|\n  n = n + 1\n  v < 2\nend\nlet x = \"#{r} #{n}\"", "false 2"),
+            ("let n = 0\nlet r = [1, 2, 3, 4].none? do |v|\n  n = n + 1\n  v > 2\nend\nlet x = \"#{r} #{n}\"", "false 3"),
+            ("let n = 0\nlet r = [1, 2, 3, 4].one? do |v|\n  n = n + 1\n  v > 1\nend\nlet x = \"#{r} #{n}\"", "false 3"),
+            ("let n = 0\nlet r = [1, 2, 3, 4].find do |v|\n  n = n + 1\n  v > 2\nend\nlet x = \"#{r} #{n}\"", "3 3"),
+            ("let n = 0\nlet r = [1, 2, 3, 4].count do |v|\n  n = n + 1\n  v > 2\nend\nlet x = \"#{r} #{n}\"", "2 4"),
+        ]);
+    }
+
+    /// A block that changes the array it walks sees what the native drivers
+    /// see: the live array, never past the length it had at the start, and
+    /// no further than it has shrunk to.
+    #[test]
+    fn changes_to_the_receiver_are_seen_as_natively() {
+        assert_looped(&[
+            (
+                "let ys = [1, 2, 3, 4]\nlet seen = []\nys.each_with_index do |y, i|\n  seen.push(y)\n  ys.pop() if i == 0\nend\nlet x = \"#{seen} #{ys}\"",
+                "[1, 2, 3] [1, 2, 3]",
+            ),
+            (
+                "let zs = [1, 2, 3]\nlet r = zs.find do |z|\n  zs.push(z + 10)\n  z > 5\nend\nlet x = \"#{r} #{zs}\"",
+                "null [1, 2, 3, 11, 12, 13]",
+            ),
+            ("let ws = [1, 2, 3, 4]\nlet c = ws.count do |w|\n  ws.pop()\n  true\nend\nlet x = \"#{c} #{ws}\"", "2 [1, 2]"),
+            (
+                "let rs = [1, 2, 3, 4]\nlet r = rs.reject do |v|\n  rs.pop()\n  false\nend\nlet x = \"#{r} #{rs}\"",
+                "[1, 2] [1, 2]",
+            ),
+            (
+                "let ss = [3, 1, 2, 4]\nlet r = ss.sort_by do |s|\n  ss.pop()\n  s\nend\nlet x = \"#{r} #{ss}\"",
+                "[1, 3] [3, 1]",
+            ),
+            (
+                "let vs = [1, 2, 3]\nlet r = vs.reduce(fn(acc, v) {\n  vs.push(v) if acc < 3\n  acc + v\n}, 0)\nlet x = \"#{r} #{vs}\"",
+                "6 [1, 2, 3, 1, 2]",
+            ),
+            (
+                "let ps = [[1, 2], [3, 4], [5, 6]]\nlet r = ps.map do |a, b|\n  ps.pop()\n  a + b\nend\nlet x = \"#{r} #{ps.length}\"",
+                "[3, 7] 1",
+            ),
+        ]);
+    }
+
+    /// A block that captures its own parameters returns through the general
+    /// `Return`, which closes them; the next element then gets a fresh frame
+    /// with its arguments built in full. Each capture keeps its own value.
+    #[test]
+    fn capturing_blocks_reopen_their_frame_for_each_element() {
+        assert_looped(&[
+            (
+                "let fns = []\nlet r = [1, 2, 3].find do |v|\n  fns.push(fn() { v })\n  v > 1\nend\nlet x = \"#{r} #{fns.length} #{fns[0]()}\"",
+                "2 2 1",
+            ),
+            (
+                "let fns = []\nlet r = [1, 2, 3].reduce(fn(acc, v) {\n  fns.push(fn() { acc })\n  acc + v\n}, 0)\nlet x = \"#{r} #{fns[2]()}\"",
+                "6 3",
+            ),
+            (
+                "let fns = []\nlet r = [1, 2, 3].reduce(fn(pair) {\n  fns.push(fn() { pair })\n  pair[0] + pair[1]\n}, 0)\nlet x = \"#{r} #{fns[2]()}\"",
+                "6 [3, 3]",
+            ),
+            (
+                "let fns = []\n[5, 6].each_with_index do |v, i|\n  fns.push(fn() { v * 10 + i })\nend\nlet x = \"#{fns[0]()} #{fns[1]()}\"",
+                "50 61",
+            ),
+            (
+                "let fns = []\nlet r = [[1, 2], [3, 4]].map do |a, b|\n  fns.push(fn() { a + b })\n  a\nend\nlet x = \"#{r} #{fns[1]()}\"",
+                "[1, 3] 7",
+            ),
+            ("let fns = []\n3.times do |i|\n  fns.push(fn() { i })\nend\nlet x = \"#{fns[2]()}\"", "2"),
+            (
+                "let fns = []\nlet r = [3, 1, 2].sort_by do |v|\n  fns.push(fn() { v })\n  v\nend\nlet x = \"#{r} #{fns[0]()}\"",
+                "[1, 2, 3] 3",
+            ),
+        ]);
+    }
+
+    /// A loop inside another loop's block keeps its own state on top of the
+    /// iterator stack, and hands the outer block its result.
+    #[test]
+    fn nested_loops_keep_their_own_state() {
+        assert_looped(&[
+            ("let x = \"#{[1, 2, 3].count { |v| [2, 3, 4].any? { |w| w == v } }}\"", "2"),
+            (
+                "let seen = []\n3.times { |i| 2.times { |j| seen.push(i * 10 + j) } }\nlet x = \"#{seen}\"",
+                "[0, 1, 10, 11, 20, 21]",
+            ),
+            ("let x = \"#{[[1, 2], [3, 4]].reduce(fn(acc, row) { acc + row.find { |v| v > 1 } }, 0)}\"", "5"),
+        ]);
+    }
+
+    /// A `throw` out of a block abandons its loop, the enclosing `catch`
+    /// gets the thrown value, and the next loop starts clean.
+    #[test]
+    fn a_throw_abandons_the_loop() {
+        for (source, expected) in [
+            ("[1, 2].find { |v| throw \"f#{v}\" }", "f1"),
+            ("3.times { |i| throw \"t#{i}\" if i == 1 }", "t1"),
+            ("[1, 2].reduce(fn(a, v) { throw \"r#{v}\" }, 0)", "r1"),
+            ("[1, 2].sort_by { |v| throw \"s#{v}\" }", "s1"),
+            ("[[1, 2]].map { |a, b| throw \"p#{a}#{b}\" }", "p12"),
+            (
+                "[7, 8].each_with_index { |v, i| throw \"e#{v}#{i}\" if i == 1 }",
+                "e81",
+            ),
+            ("[1, 2].count { |v| throw \"c#{v}\" }", "c1"),
+        ] {
+            let program = format!(
+                "let x = \"\"\ntry\n  {source}\ncatch e\n  x = e\nend\nx = \"#{{x}} #{{[1, 2].map {{ |v| v * 2 }}}}\""
+            );
+            let (x, looped) = run(&program).unwrap_or_else(|e| panic!("{program}\n=> {e}"));
+            assert_eq!(x, format!("{expected} [2, 4]"), "{program}");
+            assert!(looped, "{program}");
+        }
+    }
+
+    /// A destructuring block meets an element that is not an array: the
+    /// native driver calls it with that element alone, which fails its arity
+    /// check. The loop raises the same error at the same place, the method's
+    /// call site, whether the element comes first, later, or after a frame
+    /// that captured its parameters.
+    #[test]
+    fn a_destructuring_block_over_a_non_array_fails_as_natively() {
+        for (source, expected) in [
+            (
+                "let x = \"\"\ntry\n  [3, [1, 2]].map { |a, b| a }\ncatch e\n  x = \"#{e}\"\nend",
+                "Wrong number of arguments: expected 2, got 1 at 3:3",
+            ),
+            (
+                "let x = \"\"\ntry\n  [[1, 2], 3].map { |a, b| a }\ncatch e\n  x = \"#{e}\"\nend",
+                "Wrong number of arguments: expected 2, got 1 at 3:3",
+            ),
+            (
+                "let fns = []\nlet x = \"\"\ntry\n  [[1, 2], 3].map do |a, b|\n    fns.push(fn() { a })\n    a\n  end\ncatch e\n  x = \"#{e}\"\nend",
+                "Wrong number of arguments: expected 2, got 1 at 4:3",
+            ),
+            (
+                "def pairs_sum(rows)\n  rows.map { |a, b| a + b }\nend\nlet x = \"\"\ntry\n  pairs_sum([[1, 2], 3])\ncatch e\n  x = \"#{e}\"\nend",
+                "Wrong number of arguments: expected 2, got 1 at 2:3",
+            ),
+            (
+                "def pairs_sum(rows)\n  rows.map { |a, b| a + b }\nend\nlet x = \"\"\ntry\n  pairs_sum([3])\ncatch e\n  x = \"#{e}\"\nend",
+                "Wrong number of arguments: expected 2, got 1 at 2:3",
+            ),
+            // The VM is left in order: the next loop runs.
+            (
+                "let x = \"\"\ntry\n  [[1, 2], 3].count { |a, b| a }\ncatch e\n  x = \"#{e}\"\nend\nx = \"#{x} | #{[1, 2].map { |v| v + 1 }}\"",
+                "Wrong number of arguments: expected 2, got 1 at 3:3 | [2, 3]",
+            ),
+        ] {
+            let (x, _) = run(source).unwrap_or_else(|e| panic!("{source}\n=> {e}"));
+            assert_eq!(x, expected, "{source}");
+        }
+    }
+
+    /// What the loop does not take keeps the native driver and its errors:
+    /// a non-closure argument, a default the call would fill, an arity the
+    /// call refuses, a missing seed on an empty array, a bad limit.
+    #[test]
+    fn other_shapes_keep_the_native_driver() {
+        for (source, expected) in [
+            ("let x = \"#{[1, 2, 2].count(2)}\"", "2"),
+            ("let x = \"#{[1, 2, 3].count()}\"", "3"),
+            ("def f(a, b = 7)\n  a + b\nend\nlet x = \"#{[1, 2].map(f)}\"", "[8, 9]"),
+            (
+                "let x = \"\"\ntry\n  1.upto(\"x\") { |i| i }\ncatch e\n  x = \"#{e}\"\nend",
+                "Type error: upto expects an integer limit at 3:3",
+            ),
+            (
+                "let x = \"\"\ntry\n  3.times { |a, b| a }\ncatch e\n  x = \"#{e}\"\nend",
+                "Wrong number of arguments: expected 2, got 1 at 3:3",
+            ),
+            (
+                "let x = \"\"\ntry\n  [].reduce(fn(a, v) { a + v })\ncatch e\n  x = \"#{e}\"\nend",
+                "Type error: reduce on empty array requires initial value at 3:3",
+            ),
+            (
+                "let x = \"\"\ntry\n  [1, 2].each_with_index { |a, b, c| a }\ncatch e\n  x = \"#{e}\"\nend",
+                "Wrong number of arguments: expected 3, got 2 at 3:3",
+            ),
+            (
+                "let x = \"\"\ntry\n  [1, 2].reduce(fn(a, b, c) { a }, 0)\ncatch e\n  x = \"#{e}\"\nend",
+                "Wrong number of arguments: expected 3, got 2 at 3:3",
+            ),
+            (
+                "let x = \"\"\ntry\n  [1, 2].map(fn(v) { v }, 3)\ncatch e\n  x = \"#{e}\"\nend",
+                "Wrong number of arguments: expected 1, got 2 at 3:3",
+            ),
+            (
+                "let x = \"\"\ntry\n  [1, 2].reduce(fn(a, v) { a }, 0, 1)\ncatch e\n  x = \"#{e}\"\nend",
+                "Wrong number of arguments: expected 2, got 3 at 3:3",
+            ),
+            (
+                "let x = \"\"\ntry\n  3.times(fn(i) { i }, 1)\ncatch e\n  x = \"#{e}\"\nend",
+                "Wrong number of arguments: expected 1, got 2 at 3:3",
+            ),
+        ] {
+            let (x, looped) = run(source).unwrap_or_else(|e| panic!("{source}\n=> {e}"));
+            assert_eq!(x, expected, "{source}");
+            assert!(!looped, "took the in-VM loop: {source}");
+        }
+    }
+
+    /// A function compiled to machine code keeps the native driver, which
+    /// runs that code per element; a loop frame would run its bytecode. Its
+    /// result is the same either way.
+    #[cfg(feature = "native")]
+    #[test]
+    fn a_function_compiled_to_machine_code_keeps_the_native_driver() {
+        let source = "def score(n: Int) -> Int\n  total = 0\n  i = 0\n  while i < 5\n    total = total + (n * i) % 7\n    i = i + 1\n  end\n  total\nend\nlet x = \"#{[3, 9, 4].map(score)}\"";
+        let tokens = Scanner::new(source).scan_tokens().expect("lexer error");
+        let program = Parser::new(tokens).parse().expect("parser error");
+        let kernels = crate::native::analyze_and_compile(&program, &|_| false)
+            .expect("kernels compile (unless SOLI_NATIVE=0)");
+        let module = Compiler::compile_with_kernels(&program, Some(kernels)).expect("compile");
+        let mut vm = Vm::new();
+        vm.execute(&module.main).expect("vm error");
+        assert_eq!(
+            vm.globals.get("x"),
+            Some(&Value::String("[16, 13, 12]".into()))
+        );
+        assert!(
+            vm.spare_callback_loop.is_none(),
+            "a kernel's callee ran on the loop's frame"
+        );
     }
 }

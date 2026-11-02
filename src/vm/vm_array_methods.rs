@@ -57,6 +57,10 @@ impl Vm {
             // RefCell borrow check per element. Iteration uses the live array,
             // matching Ruby's semantics; if the closure shrinks it past `i`,
             // we stop early.
+            //
+            // A compiled block usually runs these in the dispatch loop instead
+            // (`vm_callback_loop.rs`, which mirrors them element for element);
+            // the drivers here serve the other callees and shapes.
             "map" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::wrong_arity(1, args.len(), span));
