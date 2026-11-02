@@ -443,6 +443,7 @@ pub fn register_expectation_class(env: &mut Environment) {
         concern_method_names: Rc::new(RefCell::new(Vec::new())),
         private_members: Rc::new(RefCell::new(HashSet::new())),
         protected_members: Rc::new(RefCell::new(HashSet::new())),
+        restricted_names_memo: Default::default(),
     };
 
     let expectation_class_rc = Rc::new(expectation_class);

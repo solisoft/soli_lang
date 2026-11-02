@@ -92,6 +92,19 @@ A callback whose body is a **template** (`Kernel`) is not called at all: a param
 
 Everything else — a native or bound callee, a default parameter, a `[key, value]` pair argument to a template — keeps the native drivers in `vm_hash_methods.rs` / `vm_array_methods.rs`, whose semantics the loop mirrors element for element (live iteration, length fixed at the start, `any?` short-circuit, the same error messages). `tests/differential_engines_test.rs` holds a case for each path.
 
+### Privacy checks
+
+`private` and `protected` members are enforced at run time by `Vm::check_private_value` (`vm_classes.rs`), which the property, call and index ops call. It costs one relaxed load (`restricted_methods_declared()`) until some class in the process declares a restricted member. After that it still has to be cheap, because every scaffolded controller declares one. So it tries the cheap answers first, and each one is the answer the full rule would give:
+
+1. **The receiver is the running method's `this`.** A member of `self` is never refused. When the running frame is a method frame, its slot 0 *is* the `this` the rule compares with, so `@x = v` or `@helper()` in a method's own body passes on one pointer comparison. `GetLocalProperty(0, …)` in a method frame, which is what `@x` compiles to, does not call the check at all.
+2. **No class of the receiver's chain restricts the name.** `Class::restricted_method` first asks the class's `restricted_names_memo`: the set of names that some class of the chain declares private or protected. A name outside that set cannot be restricted, so the check returns without walking the chain and without looking at the call frames. This covers every field of a class with no restricted member, from any call depth, and `@x` inside a block when `x` is not restricted.
+3. **The name is restricted.** Only now does the check look for `this` past the blocks a method runs. `current_this()` scans the frame stack down to the nearest method frame, so from a plain function it visits every frame. A member of that `this` passes, which is how a block reaches its method's private members.
+4. **Otherwise** a protected member passes when the caller's class is or inherits the defining class. Anything else is refused with the usual message and span.
+
+`restricted_method` decides by walking the chain until a class defines the name, so the nearest definition wins: a subclass that redefines a private method without a modifier makes it public again.
+
+The memo is valid for one `RESTRICTED_MEMBERS_EPOCH`. **Code that adds a name to a class's `private_members` or `protected_members` after the class exists must call `note_restricted_methods_declared()`.** Where the flag must not change (a nested `private class`), call `note_restricted_members_changed()` instead. Skip both and every class below keeps a stale memo and stops refusing that name. A cloned `Class` starts with an empty memo. `restricted_member_tests` (`value.rs`) and `privacy_check_tests` (`vm_classes.rs`) count lookups, walks and frame scans, so a lost shortcut shows up as a test failure. The `privacy_*` differential cases pin the verdicts.
+
 ## `Vm`
 
 ```rust

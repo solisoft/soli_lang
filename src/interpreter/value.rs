@@ -1734,7 +1734,35 @@ pub struct Class {
     /// Instance methods and fields declared `protected` on this class:
     /// reachable from code running in an instance of the declaring class or a
     /// subclass, on that instance or another one. `Rc` as above.
+    ///
+    /// A name added to either set after the class exists must be followed by
+    /// [`note_restricted_methods_declared`] (or
+    /// [`note_restricted_members_changed`]), which stales
+    /// `restricted_names_memo` on every class.
     pub protected_members: Rc<RefCell<HashSet<String>>>,
+    /// Memo for [`Class::restricted_method`]: always `Default::default()`
+    /// outside this module.
+    pub restricted_names_memo: RefCell<RestrictedNames>,
+}
+
+/// The names the classes of one chain declare private or protected, as
+/// [`Class::restricted_method`] last collected them.
+#[derive(Debug, Default)]
+pub struct RestrictedNames {
+    /// The `RESTRICTED_MEMBERS_EPOCH` they were collected in; 0 before the
+    /// first collection, which no epoch equals.
+    epoch: u64,
+    /// `None` when no class of the chain declares one.
+    names: Option<HashSet<String, AHasher>>,
+}
+
+/// A copy starts uncollected. A cloned [`Class`] can be given another
+/// superclass or other private sets before its first lookup, and must not
+/// answer from the original's chain. The cost is one collection per clone.
+impl Clone for RestrictedNames {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
 }
 
 /// How far a restricted instance method reaches (see [`Class::restricted_method`]).
@@ -1785,12 +1813,52 @@ impl MethodAccess {
 static RESTRICTED_METHODS_DECLARED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+/// Bumped whenever a name joins some class's `private_members` or
+/// `protected_members`: a [`RestrictedNames`] memo collected in an earlier
+/// epoch is collected again. Starts at 1, so a fresh memo is never current.
+static RESTRICTED_MEMBERS_EPOCH: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1);
+
 pub fn note_restricted_methods_declared() {
     RESTRICTED_METHODS_DECLARED.store(true, std::sync::atomic::Ordering::Relaxed);
+    note_restricted_members_changed();
+}
+
+/// A name joined a class's private or protected set where the flag stays as
+/// it is (a `private class` nested in a class): stale every
+/// [`RestrictedNames`] memo. [`note_restricted_methods_declared`] does it too.
+pub fn note_restricted_members_changed() {
+    RESTRICTED_MEMBERS_EPOCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 
 pub fn restricted_methods_declared() -> bool {
     RESTRICTED_METHODS_DECLARED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the [`Class::restricted_method`] calls this thread made past
+    /// the flag, and how many of them walked the chain.
+    static RESTRICTED_LOOKUPS: Cell<(usize, usize)> = const { Cell::new((0, 0)) };
+}
+
+#[cfg(test)]
+fn tally_restricted_lookup(walked: bool) {
+    RESTRICTED_LOOKUPS.with(|tally| {
+        let (lookups, walks) = tally.get();
+        tally.set(if walked {
+            (lookups, walks + 1)
+        } else {
+            (lookups + 1, walks)
+        });
+    });
+}
+
+/// Test-only: `(lookups past the flag, chain walks)` made on this thread so
+/// far, for a test to tell a skipped privacy check from one that ran.
+#[cfg(test)]
+pub(crate) fn restricted_lookups() -> (usize, usize) {
+    RESTRICTED_LOOKUPS.with(Cell::get)
 }
 
 impl Default for Class {
@@ -1826,6 +1894,7 @@ impl Default for Class {
             concern_method_names: Rc::new(RefCell::new(Vec::new())),
             private_members: Rc::new(RefCell::new(HashSet::new())),
             protected_members: Rc::new(RefCell::new(HashSet::new())),
+            restricted_names_memo: RefCell::default(),
         }
     }
 }
@@ -1876,6 +1945,7 @@ impl Class {
             concern_method_names: Rc::new(RefCell::new(Vec::new())),
             private_members: Rc::new(RefCell::new(HashSet::new())),
             protected_members: Rc::new(RefCell::new(HashSet::new())),
+            restricted_names_memo: RefCell::default(),
         }
     }
 
@@ -1889,23 +1959,32 @@ impl Class {
             .and_then(|superclass| superclass.find_vm_method(name))
     }
 
-    /// The restriction on instance method `name`, and the class that defines
-    /// it: `None` for a public method. The nearest class in the chain that
-    /// defines the method decides, so a subclass that redefines it without a
-    /// modifier makes it public again. Answers `None` without a lookup until
-    /// some class declares a private or protected method, so an application
-    /// with none pays one relaxed load.
-    pub fn restricted_method(&self, name: &str) -> Option<(MethodAccess, String)> {
+    /// The restriction on instance member `name`, and the name of the class
+    /// that defines it: `None` for a public one. The nearest class in the
+    /// chain that defines the member decides, so a subclass that redefines it
+    /// without a modifier makes it public again. Answers `None` without a
+    /// lookup until some class declares a private or protected member, so an
+    /// application with none pays one relaxed load; after that, a name no
+    /// class of the chain restricts — a field read, or any member of a class
+    /// with no restricted ancestor — costs one probe of the chain's memo.
+    pub fn restricted_method(&self, name: &str) -> Option<(MethodAccess, &str)> {
         if !restricted_methods_declared() {
             return None;
         }
+        #[cfg(test)]
+        tally_restricted_lookup(false);
+        if !self.chain_restricts(name) {
+            return None;
+        }
+        #[cfg(test)]
+        tally_restricted_lookup(true);
         let mut cursor: Option<&Class> = Some(self);
         while let Some(class) = cursor {
             if class.private_members.borrow().contains(name) {
-                return Some((MethodAccess::Private, class.name.clone()));
+                return Some((MethodAccess::Private, class.name.as_str()));
             }
             if class.protected_members.borrow().contains(name) {
-                return Some((MethodAccess::Protected, class.name.clone()));
+                return Some((MethodAccess::Protected, class.name.as_str()));
             }
             if class.methods.borrow().contains_key(name)
                 || class.vm_methods.borrow().contains_key(name)
@@ -1916,6 +1995,41 @@ impl Class {
             cursor = class.superclass.as_deref();
         }
         None
+    }
+
+    /// Does some class of this chain declare `name` private or protected?
+    /// Only then can [`Self::restricted_method`]'s walk find a restriction,
+    /// so every other name skips it. Which members a class *defines* — what
+    /// `include` and `define_method` change — is left to the walk: the memo
+    /// holds only the declared names, collected once per
+    /// `RESTRICTED_MEMBERS_EPOCH`. The chain itself is fixed per `Class`.
+    fn chain_restricts(&self, name: &str) -> bool {
+        let epoch = RESTRICTED_MEMBERS_EPOCH.load(std::sync::atomic::Ordering::Relaxed);
+        {
+            let memo = self.restricted_names_memo.borrow();
+            if memo.epoch == epoch {
+                return memo
+                    .names
+                    .as_ref()
+                    .is_some_and(|names| names.contains(name));
+            }
+        }
+        let mut names: Option<HashSet<String, AHasher>> = None;
+        let mut cursor: Option<&Class> = Some(self);
+        while let Some(class) = cursor {
+            for declared in [&class.private_members, &class.protected_members] {
+                let declared = declared.borrow();
+                if !declared.is_empty() {
+                    names
+                        .get_or_insert_with(HashSet::default)
+                        .extend(declared.iter().cloned());
+                }
+            }
+            cursor = class.superclass.as_deref();
+        }
+        let restricts = names.as_ref().is_some_and(|names| names.contains(name));
+        *self.restricted_names_memo.borrow_mut() = RestrictedNames { epoch, names };
+        restricts
     }
 
     /// Is this class `name`, or does it inherit from it?
@@ -4126,5 +4240,123 @@ mod interpolation_format_tests {
             build_interpolated(&long).as_str(),
             format!("{}{}", "x".repeat(40), 1e20)
         );
+    }
+}
+
+#[cfg(test)]
+mod restricted_member_tests {
+    //! `Class::restricted_method` answers a name no class of the chain
+    //! declares private or protected from a memo, without its walk — and every
+    //! answer it gives is still the walk's.
+    use super::*;
+
+    fn class(name: &str, superclass: Option<&Rc<Class>>) -> Rc<Class> {
+        Rc::new(Class {
+            name: name.to_string(),
+            superclass: superclass.cloned(),
+            ..Default::default()
+        })
+    }
+
+    fn declare_private(class: &Class, name: &str) {
+        class.private_members.borrow_mut().insert(name.to_string());
+        note_restricted_methods_declared();
+    }
+
+    fn walks() -> usize {
+        restricted_lookups().1
+    }
+
+    #[test]
+    fn a_name_no_class_of_the_chain_restricts_skips_the_walk() {
+        let base = class("Base", None);
+        declare_private(&base, "token");
+        let child = class("Child", Some(&base));
+        let plain = class("Plain", None);
+
+        let (lookups, walked) = restricted_lookups();
+        for _ in 0..3 {
+            assert_eq!(child.restricted_method("title"), None);
+            assert_eq!(plain.restricted_method("title"), None);
+        }
+        assert_eq!(restricted_lookups(), (lookups + 6, walked));
+
+        assert_eq!(
+            child.restricted_method("token"),
+            Some((MethodAccess::Private, "Base"))
+        );
+        assert_eq!(walks(), walked + 1);
+    }
+
+    #[test]
+    fn the_nearest_definition_still_decides() {
+        let base = class("Base", None);
+        declare_private(&base, "reveal");
+        base.protected_members
+            .borrow_mut()
+            .insert("rank".to_string());
+        note_restricted_methods_declared();
+        let open = class("Open", Some(&base));
+        open.methods
+            .borrow_mut()
+            .insert("reveal".to_string(), Rc::new(Function::default()));
+        let below = class("Below", Some(&open));
+
+        assert_eq!(
+            base.restricted_method("reveal"),
+            Some((MethodAccess::Private, "Base"))
+        );
+        assert_eq!(open.restricted_method("reveal"), None);
+        assert_eq!(below.restricted_method("reveal"), None);
+        assert_eq!(
+            below.restricted_method("rank"),
+            Some((MethodAccess::Protected, "Base"))
+        );
+    }
+
+    /// A member restricted after a subclass's memo was collected — a
+    /// `private` reaching a class again, a `private class` nested in it — is
+    /// seen: each addition moves the epoch.
+    #[test]
+    fn a_member_restricted_after_the_memo_is_seen() {
+        let base = class("Base", None);
+        let child = class("Child", Some(&base));
+        declare_private(&base, "first");
+        assert_eq!(child.restricted_method("late"), None);
+        assert_eq!(child.restricted_method("Ledger"), None);
+
+        declare_private(&base, "late");
+        assert_eq!(
+            child.restricted_method("late"),
+            Some((MethodAccess::Private, "Base"))
+        );
+
+        base.private_members
+            .borrow_mut()
+            .insert("Ledger".to_string());
+        note_restricted_members_changed();
+        assert_eq!(
+            child.restricted_method("Ledger"),
+            Some((MethodAccess::Private, "Base"))
+        );
+    }
+
+    /// A clone of a class whose memo is collected, given a superclass that
+    /// restricts a name: the clone answers for its own chain. A copied memo
+    /// would still say that no class of the chain restricts anything.
+    #[test]
+    fn a_cloned_class_collects_its_own_memo() {
+        let guarded = class("Guarded", None);
+        declare_private(&guarded, "token");
+        let plain = class("Plain", None);
+        assert_eq!(plain.restricted_method("token"), None);
+
+        let mut reparented = (*plain).clone();
+        reparented.superclass = Some(guarded);
+        assert_eq!(
+            reparented.restricted_method("token"),
+            Some((MethodAccess::Private, "Guarded"))
+        );
+        assert_eq!(plain.restricted_method("token"), None);
     }
 }

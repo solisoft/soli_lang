@@ -1172,6 +1172,10 @@ impl Interpreter {
                         .private_members
                         .borrow_mut()
                         .insert(nested_decl.name.clone());
+                    // The set grew on a class that already exists. The flag
+                    // stays as it was: a private class is checked by name
+                    // (`check_nested_access`), not per member access.
+                    crate::interpreter::value::note_restricted_members_changed();
                     crate::interpreter::domain::note_private_class(
                         &parent_class,
                         &nested_decl.name,

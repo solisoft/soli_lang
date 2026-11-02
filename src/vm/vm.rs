@@ -516,6 +516,16 @@ impl Vm {
         }
     }
 
+    /// A string constant, borrowed: for a name that is only looked at, like
+    /// the one a privacy check reads (`""` for any other constant).
+    #[inline]
+    fn string_constant(&self, idx: u16) -> &str {
+        match &self.frames.last().unwrap().closure.proto.chunk.constants[idx as usize] {
+            Constant::String(s) => s.as_str(),
+            _ => "",
+        }
+    }
+
     /// Run the dispatch loop.
     /// Execute until the program completes or an error escapes.
     ///
@@ -2019,7 +2029,9 @@ impl Vm {
                             }
                         }
                         Value::Instance(_) | Value::Class(_) | Value::VmClosure(_) => {
-                            self.check_private_receiver(receiver_idx, name)?;
+                            if crate::interpreter::value::restricted_methods_declared() {
+                                self.check_private_receiver(receiver_idx, name)?;
+                            }
                             self.call_method_slow_path(receiver_idx, argc, name)?;
                         }
                         Value::Array(_) => {
@@ -2297,7 +2309,9 @@ impl Vm {
                         }
                         _ => {
                             // Class instances, closures: fall back to property dispatch
-                            self.check_private_receiver(receiver_idx, name)?;
+                            if crate::interpreter::value::restricted_methods_declared() {
+                                self.check_private_receiver(receiver_idx, name)?;
+                            }
                             self.call_method_slow_path(receiver_idx, argc, name)?;
                         }
                     }
@@ -3053,8 +3067,7 @@ impl Vm {
                         };
                         if let Some(val) = hit {
                             if crate::interpreter::value::restricted_methods_declared() {
-                                let name = self.read_string_constant_owned(idx);
-                                self.check_private_value(&object, &name)?;
+                                self.check_private_value(&object, self.string_constant(idx))?;
                             }
                             let val = self.force_field_hit(val)?;
                             self.stack.push(val);
@@ -3109,11 +3122,12 @@ impl Vm {
                     let value = self.stack.pop().unwrap();
                     // A private/protected field written from outside: refused
                     // like the read. One relaxed load while no class declares
-                    // a restricted member.
+                    // a restricted member; only an instance holds one, so a
+                    // hash write goes on without the check.
                     if crate::interpreter::value::restricted_methods_declared() {
-                        let name = self.read_string_constant_owned(idx);
-                        let object = self.stack.last().unwrap().clone();
-                        self.check_private_value(&object, &name)?;
+                        if let Some(object @ Value::Instance(_)) = self.stack.last() {
+                            self.check_private_value(object, self.string_constant(idx))?;
+                        }
                     }
                     // A constructed value object is frozen. One relaxed load
                     // while no value-object class exists.
@@ -4429,10 +4443,16 @@ impl Vm {
                         continue;
                     }
                     if let Some(val) = hit {
-                        if crate::interpreter::value::restricted_methods_declared() {
-                            let object = self.stack[base + slot as usize].clone();
-                            let name = self.read_string_constant(idx);
-                            self.check_private_value(&object, &name)?;
+                        // `@x` in a method: slot 0 of its frame is the `this`
+                        // the check would compare the receiver with, and a
+                        // member of self is never refused.
+                        if crate::interpreter::value::restricted_methods_declared()
+                            && (slot != 0 || !self.slot_zero_is_this())
+                        {
+                            self.check_private_value(
+                                &self.stack[base + slot as usize],
+                                self.string_constant(idx),
+                            )?;
                         }
                         let val = self.force_field_hit(val)?;
                         self.stack.push(val);

@@ -1851,6 +1851,172 @@ module Util
 end
 print(Util.shout("a"))"##,
     ),
+    (
+        // Once a class declares a private member, the VM lets a member of
+        // `self` through before any class lookup and answers an unrestricted
+        // name from a per-class memo. Every verdict stays the walk's: on self
+        // (`@x`, `this.x`, `@x = v`, `@m()`, in a block), off self (a field
+        // read, written and indexed, a private call, a protected read from a
+        // subclass and from outside), a hash dot-write.
+        "privacy_verdicts_on_and_off_self",
+        r##"class Base
+  private token: String
+  protected rank: Int
+  label: String
+
+  new(token: String, rank: Int)
+    @token = token
+    @rank = rank
+    @label = "base"
+  end
+
+  def name
+    "base-name"
+  end
+
+  def describe
+    "#{@label}:#{@token}:#{@rank}:#{@_secret()}:#{this._secret()}"
+  end
+
+  def bump
+    @rank = @rank + 1
+    @token = @token + "!"
+    this.label = "bumped"
+    [1, 2].map { |n| "#{@token}#{n}#{_secret()}" }
+  end
+
+  def outranks?(other)
+    @rank > other.rank
+  end
+
+  private
+
+  def _secret
+    "s"
+  end
+end
+
+class Child < Base
+  def name
+    "child-name"
+  end
+
+  def rank_of(other)
+    other.rank
+  end
+end
+
+class Plain
+  title: String
+
+  new(title: String)
+    @title = title
+  end
+end
+
+def read_token(x)
+  x.token rescue "refused"
+end
+
+def read_rank(x)
+  x.rank rescue "refused"
+end
+
+def call_secret(x)
+  x._secret() rescue "refused"
+end
+
+def write_token(x)
+  try
+    x.token = "forged"
+    return "written"
+  catch error
+    return "refused"
+  end
+end
+
+b = new Base("t", 1)
+c = new Child("u", 5)
+p = new Plain("hello")
+print(b.describe)
+print(b.bump)
+print(b.describe)
+print(b.label)
+b.label = "outside"
+print(b.label)
+print(read_token(b))
+print(read_token(c))
+print(read_rank(c))
+print(call_secret(c))
+print(write_token(c))
+print(c.rank_of(b))
+print(b.outranks?(c))
+print(c.name)
+print(b.name)
+print(p.title)
+p.title = "changed"
+print(p.title)
+h = {"k": 1}
+h.k = 2
+print(h.k)
+print(c["label"])
+print(c["token"] rescue "index refused")"##,
+    ),
+    (
+        // The memo only says which names a chain declares; which class
+        // *defines* a name nearest still decides, so a subclass that redefines
+        // a private method without `private` makes it public again. A block
+        // calling a peer's private method is refused like the method itself.
+        "privacy_nearest_definition_and_blocks",
+        r##"class Base
+  def shout
+    "#{@_whisper}!"
+  end
+
+  def peer_whisper(other)
+    other._whisper() rescue "refused"
+  end
+
+  def peers_in_block(others)
+    others.map { |o| o._whisper() rescue "refused" }
+  end
+
+  private
+
+  def _whisper
+    "psst"
+  end
+
+  def reveal
+    "hidden"
+  end
+end
+
+class Open < Base
+  def reveal
+    "open"
+  end
+end
+
+class Later
+  def ping
+    "pong"
+  end
+end
+
+def reveal_of(x)
+  x.reveal rescue "refused"
+end
+
+b = new Base()
+o = new Open()
+print(b.shout)
+print(b.peer_whisper(new Base()))
+print(b.peers_in_block([new Base(), new Open()]))
+print(reveal_of(o))
+print(reveal_of(b))
+print(new Later().ping)"##,
+    ),
 ];
 /// Cases that currently diverge because of an unfixed VM bug. Keep this list in
 /// sync with reality: when a fix lands, the corresponding case starts matching

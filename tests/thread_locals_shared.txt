@@ -53,8 +53,10 @@ src/interpreter/builtins/test_helpers.rs SOLIKV_PROBE
 src/interpreter/builtins/test_server.rs THREAD_TEST_SERVER_PORT
 src/interpreter/executor/calls/cascade.rs TEST_CASCADE_CHILDREN
 src/interpreter/executor/calls/cascade.rs TEST_LOADED_INSTANCES
+src/interpreter/value.rs RESTRICTED_LOOKUPS
 src/serve/compression.rs TEST_SETTINGS
 src/serve/repl_session.rs REPL_STORE
+src/vm/vm_classes.rs THIS_SCANS
 
 # Boot-time flags
 src/serve/app_loader.rs LOAD_STATS

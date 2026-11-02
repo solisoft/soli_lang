@@ -8,7 +8,27 @@ use crate::interpreter::executor::Interpreter;
 use crate::interpreter::value::{Class, HashKey, Instance, NativeFunction, Value, ValueMethod};
 use crate::span::Span;
 
-use super::vm::Vm;
+use super::vm::{CallFrame, Vm};
+
+/// A frame whose slot 0 holds `this`: a method dispatched with its class, or
+/// one compiled as a method (see `Vm::current_this`).
+fn is_method_frame(frame: &CallFrame) -> bool {
+    frame.class.is_some() || frame.closure.proto.is_method
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the frame scans [`Vm::current_this`] ran on this thread.
+    static THIS_SCANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Test-only: how many frame scans [`Vm::current_this`] has run on this
+/// thread, for a test to tell a privacy check that scanned from one that did
+/// not.
+#[cfg(test)]
+fn this_scans() -> usize {
+    THIS_SCANS.with(std::cell::Cell::get)
+}
 
 /// Members the tree-walker implements on a class value itself, rather than
 /// looking them up in the class's own method tables.
@@ -664,41 +684,92 @@ impl Vm {
     /// The `this` of the method running now: the receiver slot of the nearest
     /// method frame — dispatched with its class, or compiled as a method (a
     /// served action enters through `call_method_bound`, with no class) —
-    /// looking past the blocks it runs.
+    /// looking past the blocks it runs. From a plain function that scans the
+    /// whole frame stack, so the privacy check asks only for a restricted name.
     fn current_this(&self) -> Option<&Value> {
+        #[cfg(test)]
+        THIS_SCANS.with(|scans| scans.set(scans.get() + 1));
         self.frames
             .iter()
             .rev()
-            .find(|frame| frame.class.is_some() || frame.closure.proto.is_method)
+            .find(|frame| is_method_frame(frame))
             .and_then(|frame| self.stack.get(frame.stack_base))
     }
 
-    /// Refuse `receiver.name` for a restricted method the running code may not
+    /// Is the running frame the one [`Self::current_this`] answers from? Then
+    /// its slot 0 *is* `this`, and a member read on it is a member of self.
+    #[inline]
+    pub(crate) fn slot_zero_is_this(&self) -> bool {
+        self.frames.last().is_some_and(is_method_frame)
+    }
+
+    /// Is `inst` the `this` of the running frame, that frame being a method
+    /// frame? There [`Self::current_this`] would answer with its slot 0, so
+    /// this is its answer without the scan. `false` from a block or a plain
+    /// function: only the scan knows their `this`.
+    #[inline]
+    fn is_running_method_this(&self, inst: &Rc<RefCell<Instance>>) -> bool {
+        match self.frames.last() {
+            Some(frame) if is_method_frame(frame) => matches!(
+                self.stack.get(frame.stack_base),
+                Some(Value::Instance(this)) if Rc::ptr_eq(this, inst)
+            ),
+            _ => false,
+        }
+    }
+
+    /// Refuse `receiver.name` for a restricted member the running code may not
     /// reach: a private one off `self`, a protected one from outside the
-    /// declaring class and its subclasses. Free until some class declares one.
+    /// declaring class and its subclasses. One relaxed load until some class
+    /// declares one. After that the cheap answers come first, each the one
+    /// the full rule gives:
+    ///
+    /// 1. A member of the running method's `this` (`@x = v`, `@helper()` in
+    ///    the method's own body) passes on the running frame's slot 0, since
+    ///    no restriction refuses `self` (`MethodAccess::allows`).
+    /// 2. A name no class of the receiver's chain restricts passes on the
+    ///    chain's memo (`Class::restricted_method`): no walk and no frame
+    ///    scan, whatever the call depth.
+    /// 3. Only for a restricted name does [`Self::current_this`] scan the
+    ///    frames, which finds the `this` of a method past the blocks it runs.
+    ///    A member of that `this` passes.
+    /// 4. Otherwise the caller's class decides a protected member, and the
+    ///    rest is refused.
     pub(crate) fn check_private_value(
         &self,
         receiver: &Value,
         name: &str,
     ) -> Result<(), RuntimeError> {
+        if !crate::interpreter::value::restricted_methods_declared() {
+            return Ok(());
+        }
         let Value::Instance(inst) = receiver else {
             return Ok(());
         };
-        let Some((access, defining)) = inst.borrow().class.restricted_method(name) else {
-            return Ok(());
-        };
-        let (on_self, caller) = match self.current_this() {
-            Some(Value::Instance(this)) => {
-                (Rc::ptr_eq(this, inst), Some(this.borrow().class.clone()))
-            }
-            _ => (false, None),
-        };
-        if access.allows(&defining, on_self, caller.as_deref()) {
+        if self.is_running_method_this(inst) {
             return Ok(());
         }
-        let inst = inst.borrow();
+        let instance = inst.borrow();
+        let Some((access, defining)) = instance.class.restricted_method(name) else {
+            return Ok(());
+        };
+        let this = match self.current_this() {
+            Some(Value::Instance(this)) => Some(this),
+            _ => None,
+        };
+        if this.is_some_and(|this| Rc::ptr_eq(this, inst)) {
+            return Ok(());
+        }
+        let caller = this.map(|this| this.borrow().class.clone());
+        if access.allows(defining, false, caller.as_deref()) {
+            return Ok(());
+        }
         Err(RuntimeError::General {
-            message: access.refusal(name, &inst.class.name, inst.fields.contains_key(name)),
+            message: access.refusal(
+                name,
+                &instance.class.name,
+                instance.fields.contains_key(name),
+            ),
             span: self.current_span(),
         })
     }
@@ -1294,5 +1365,285 @@ mod deferred_force_tests {
             ("rec", instance_holding("posts", two_posts())),
         );
         assert_eq!(out, Value::String("ab".into()));
+    }
+}
+
+#[cfg(test)]
+mod privacy_check_tests {
+    //! Once a class declares a private member, the privacy check answers the
+    //! common accesses without the class-chain walk or a frame scan: a member
+    //! of the running method's `this` on that frame's slot 0, a name no class
+    //! of the receiver's chain restricts on the chain's memo. Only a
+    //! restricted name walks the chain and scans the frames for `this`, which
+    //! is what every `@x` read, write and call used to pay. Refusals stay.
+    use super::this_scans;
+    use crate::interpreter::value::{restricted_lookups, Value};
+    use crate::vm::compiler::Compiler;
+    use crate::vm::Vm;
+
+    /// What a run cost the check: `Class::restricted_method` calls past the
+    /// flag, how many of them walked the chain, and `Vm::current_this` frame
+    /// scans.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct Cost {
+        lookups: usize,
+        walks: usize,
+        scans: usize,
+    }
+
+    impl Cost {
+        fn so_far() -> Self {
+            let (lookups, walks) = restricted_lookups();
+            Cost {
+                lookups,
+                walks,
+                scans: this_scans(),
+            }
+        }
+
+        fn since(self, start: Cost) -> Cost {
+            Cost {
+                lookups: self.lookups - start.lookups,
+                walks: self.walks - start.walks,
+                scans: self.scans - start.scans,
+            }
+        }
+    }
+
+    fn cost(lookups: usize, walks: usize, scans: usize) -> Cost {
+        Cost {
+            lookups,
+            walks,
+            scans,
+        }
+    }
+
+    /// Run `src` with each `__NAME__` replaced by its value; return its
+    /// `result` and `refused` globals, and what the run cost the check.
+    fn run(src: &str, values: &[(&str, i64)]) -> (Value, Option<Value>, Cost) {
+        let src = values.iter().fold(src.to_string(), |src, (name, value)| {
+            src.replace(&format!("__{name}__"), &value.to_string())
+        });
+        let tokens = crate::lexer::Scanner::new(&src).scan_tokens().expect("lex");
+        let program = crate::parser::Parser::new(tokens).parse().expect("parse");
+        let module = Compiler::compile(&program).expect("compile");
+        let mut vm = Vm::new();
+        let start = Cost::so_far();
+        vm.execute(&module.main).expect("vm");
+        let spent = Cost::so_far().since(start);
+        (
+            vm.globals.get("result").cloned().expect("result"),
+            vm.globals.get("refused").cloned(),
+            spent,
+        )
+    }
+
+    fn refused() -> Option<Value> {
+        Some(Value::String("refused".into()))
+    }
+
+    const LEDGER: &str = r#"
+class Ledger
+  private total: Int
+
+  new()
+    @total = 0
+  end
+
+  def run(n)
+    i = 0
+    while i < n
+      @total = @total + @_step(i) + _step(1)
+      this.total = this.total + 1
+      i = i + 1
+    end
+    @total
+  end
+
+  private
+
+  def _step(i)
+    i
+  end
+end
+
+ledger = new Ledger()
+result = ledger.run(__N__)
+refused = ledger.total rescue "refused"
+"#;
+
+    /// `@x`, `@x = v`, `this.x`, `@m()` and a bare call in a method's own
+    /// body never reach the class and never scan the frames, however many
+    /// times the loop runs. The whole cost is the two accesses from outside:
+    /// `ledger.run` (a lookup) and the refused `ledger.total` (a lookup, a
+    /// walk and the scan that finds no `this`).
+    #[test]
+    fn members_of_self_skip_the_lookup() {
+        let (short, refused_read, short_cost) = run(LEDGER, &[("N", 3)]);
+        let (long, _, long_cost) = run(LEDGER, &[("N", 30)]);
+        assert_eq!(short, Value::Int(9));
+        assert_eq!(long, Value::Int(495));
+        assert_eq!(refused_read, refused());
+        assert_eq!(short_cost, cost(2, 1, 1));
+        assert_eq!(long_cost, cost(2, 1, 1));
+    }
+
+    const TALLY: &str = r#"
+class Tally
+  private secret: Int
+  count: Int
+
+  new()
+    @secret = 0
+    @count = 0
+  end
+
+  def run(n)
+    i = 0
+    while i < n
+      [1].each { |x| @count = @count + x }
+      [1].each { |x| @secret = @secret + @_one() }
+      i = i + 1
+    end
+    @count * 100 + @secret
+  end
+
+  private
+
+  def _one
+    1
+  end
+end
+
+tally = new Tally()
+result = tally.run(__N__)
+refused = tally.secret rescue "refused"
+"#;
+
+    /// A block's frame is no method frame, so its `@x` asks the class. For
+    /// `count`, which no class of the chain restricts, that is the memo
+    /// alone: a lookup for the read and one for the write, no walk, no scan.
+    /// The restricted `@secret` read and write and the `@_one()` call walk the
+    /// chain and scan down to the method's frame, where they find `this` and
+    /// pass. That is three lookups, three walks and three scans per
+    /// iteration, which is what they cost before.
+    #[test]
+    fn a_block_scans_for_this_only_for_a_restricted_name() {
+        let (short, refused_read, short_cost) = run(TALLY, &[("N", 3)]);
+        let (long, _, long_cost) = run(TALLY, &[("N", 30)]);
+        assert_eq!(short, Value::Int(303));
+        assert_eq!(long, Value::Int(3030));
+        assert_eq!(refused_read, refused());
+        let per_iteration = cost(2 + 3, 3, 3);
+        let outside = cost(2, 1, 1);
+        for (n, spent) in [(3, short_cost), (30, long_cost)] {
+            assert_eq!(
+                spent,
+                cost(
+                    outside.lookups + n * per_iteration.lookups,
+                    outside.walks + n * per_iteration.walks,
+                    outside.scans + n * per_iteration.scans,
+                ),
+                "n = {n}"
+            );
+        }
+    }
+
+    const POSTS: &str = r##"
+class Post
+  title: String
+
+  new(title: String)
+    @title = title
+  end
+
+  private
+
+  def _slug
+    "slug"
+  end
+end
+
+def retitle(post, n)
+  i = 0
+  while i < n
+    post.title = "#{post.title}."
+    i = i + 1
+  end
+  post.title
+end
+
+post = new Post("a")
+result = retitle(post, __N__)
+refused = post._slug() rescue "refused"
+"##;
+
+    /// A field of a class that has private members, read and written from
+    /// outside: each access asks the class, which answers from its memo,
+    /// with no walk and no frame scan. Two accesses per iteration and the
+    /// final read, plus the refused `_slug` call, which alone walks the chain
+    /// and scans.
+    #[test]
+    fn an_unrestricted_name_skips_the_walk() {
+        let (short, refused_call, short_cost) = run(POSTS, &[("N", 3)]);
+        let (long, _, long_cost) = run(POSTS, &[("N", 30)]);
+        assert_eq!(short, Value::String("a...".into()));
+        assert_eq!(long, Value::String(format!("a{}", ".".repeat(30)).into()));
+        assert_eq!(refused_call, refused());
+        assert_eq!(short_cost, cost(2 * 3 + 2, 1, 1));
+        assert_eq!(long_cost, cost(2 * 30 + 2, 1, 1));
+    }
+
+    const NODES: &str = r#"
+class Node
+  v: Int
+
+  new(v: Int)
+    @v = v
+  end
+
+  private
+
+  def _hidden
+    0
+  end
+end
+
+def reads(node, n)
+  total = 0
+  i = 0
+  while i < n
+    total = total + node.v
+    [1].each { |x| node.v = node.v * x }
+    i = i + 1
+  end
+  total
+end
+
+def at_depth(node, depth, n)
+  return reads(node, n) if depth == 0
+
+  at_depth(node, depth - 1, n)
+end
+
+node = new Node(1)
+result = at_depth(node, __DEPTH__, __N__)
+refused = node._hidden() rescue "refused"
+"#;
+
+    /// `node.v` read from a plain function at the bottom of a recursion, and
+    /// read and written from a block it runs: no frame on the stack is a
+    /// method frame, so a scan for `this` would walk every one of them. An
+    /// unrestricted name never asks for it, so the scans stay at the one the
+    /// refused `_hidden` call makes, whatever the depth and the loop length.
+    #[test]
+    fn an_unrestricted_name_scans_no_frames_at_any_depth() {
+        let (shallow, refused_call, shallow_cost) = run(NODES, &[("DEPTH", 0), ("N", 3)]);
+        let (deep, _, deep_cost) = run(NODES, &[("DEPTH", 40), ("N", 30)]);
+        assert_eq!(shallow, Value::Int(3));
+        assert_eq!(deep, Value::Int(30));
+        assert_eq!(refused_call, refused());
+        assert_eq!(shallow_cost, cost(3 * 3 + 1, 1, 1));
+        assert_eq!(deep_cost, cost(3 * 30 + 1, 1, 1));
     }
 }
