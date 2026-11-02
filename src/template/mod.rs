@@ -2957,6 +2957,162 @@ mod tests {
         Ok(())
     }
 
+    /// The other framework names a helper can take: a route helper
+    /// (`about_path`, from a named route) and a form-builder function other
+    /// than `button_to` (`csrf_field`). Each is the app's in a view, in
+    /// `partial()` and in a `<%= render %>` partial, tree-walked or compiled.
+    /// The render tag used to call the framework's, with no error: the page
+    /// showed `/about` and a CSRF input where the app's helper should have run.
+    #[test]
+    fn a_helper_named_like_a_route_helper_is_the_apps_everywhere(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use crate::interpreter::builtins::named_routes::rebuild_named_routes;
+        use crate::interpreter::builtins::server::{clear_routes, restore_routes, Route};
+        use crate::interpreter::builtins::template::{clear_view_helpers, load_view_helpers};
+
+        // `get("/about", "pages#about", name: "about")`, on this thread.
+        let routes = vec![Route {
+            method: "GET".to_string(),
+            path_pattern: "/about".to_string(),
+            handler_name: "pages#about".to_string(),
+            name: Some("about".to_string()),
+            middleware: vec![],
+            middleware_names: vec![],
+            openapi: None,
+        }];
+        rebuild_named_routes(&routes);
+        restore_routes(routes);
+
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        let helpers = dir.path().join("helpers");
+        fs::create_dir_all(&views)?;
+        fs::create_dir_all(&helpers)?;
+        fs::write(
+            helpers.join("collide_helper.sl"),
+            "def about_path\n  \"USER-about_path\"\nend\n\n\
+             def csrf_field\n  \"USER-csrf_field\"\nend\n",
+        )?;
+        let calls = "<%= about_path() %>,<%- csrf_field() %>";
+        fs::write(views.join("_rc.html.slv"), format!("<i>{calls}</i>"))?;
+        fs::write(
+            views.join("_rc_looped.html.slv"),
+            format!("<% for j in [1] %><b>{calls}</b><% end %>"),
+        )?;
+        let body = format!(
+            "view={calls}|\
+             partial=<%- partial(\"rc\", {{}}) %><%- partial(\"rc_looped\", {{}}) %>|\
+             tag=<%= render \"rc\", {{\"a\": 1}} %><%= render \"rc_looped\", {{\"a\": 1}} %>"
+        );
+        fs::write(views.join("plain.html.slv"), &body)?;
+        fs::write(
+            views.join("looped.html.slv"),
+            format!("<% for i in [1] %>{body}<% end %>"),
+        )?;
+        fs::write(views.join("framework.html.slv"), calls)?;
+        let cache = TemplateCache::new(&views);
+
+        // Without the app's helpers both names are the framework's.
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+        let framework = cache.render("framework", &hash_of(&[]), Some(None))?;
+        assert!(
+            framework.starts_with("/about,<input type=\"hidden\" name=\"_csrf_token\""),
+            "{framework}"
+        );
+
+        load_view_helpers(&helpers)?;
+        crate::template::core_eval::reset_builtins_rc();
+        let own = "USER-about_path,USER-csrf_field";
+        let expected =
+            format!("view={own}|partial=<i>{own}</i><b>{own}</b>|tag=<i>{own}</i><b>{own}</b>");
+        for (page, n) in [("plain", 1), ("looped", 2)] {
+            let data = hash_of(&[("n", Value::Int(n))]);
+            assert_eq!(cache.render(page, &data, Some(None))?, expected, "{page}");
+        }
+
+        clear_view_helpers();
+        clear_routes();
+        rebuild_named_routes(&[]);
+        crate::template::core_eval::reset_builtins_rc();
+        Ok(())
+    }
+
+    /// `html` with each form's signed render time (`_soli_ts`) cut out: two
+    /// renders a second apart differ there.
+    fn without_render_time(html: &str) -> String {
+        const MARK: &str = "name=\"_soli_ts\" value=\"";
+        let mut kept = String::with_capacity(html.len());
+        let mut rest = html;
+        while let Some(at) = rest.find(MARK) {
+            let value = at + MARK.len();
+            kept.push_str(&rest[..value]);
+            rest = &rest[value..];
+            rest = &rest[rest.find('"').unwrap_or(rest.len())..];
+        }
+        kept.push_str(rest);
+        kept
+    }
+
+    /// A form's `f.open()` calls the builder's own `csrf_field` past an app
+    /// helper of that name, on both engines, while the page's own
+    /// `csrf_field()` is the app's. This thread has no worker globals, as a
+    /// background job rendering a mailer view has none: the view VM's globals
+    /// are then the template env's names, with the app's helpers last, and
+    /// the `f.open()` JIT-compiled there called the helper.
+    #[test]
+    fn a_form_calls_the_builders_csrf_field_past_a_helper_of_that_name(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use crate::interpreter::builtins::template::{clear_view_helpers, load_view_helpers};
+
+        let dir = tempfile::tempdir()?;
+        let views = dir.path().join("views");
+        let helpers = dir.path().join("helpers");
+        fs::create_dir_all(&views)?;
+        fs::create_dir_all(&helpers)?;
+        fs::write(
+            helpers.join("csrf_helper.sl"),
+            "def csrf_field\n  \"USER-csrf_field\"\nend\n",
+        )?;
+        let body = "[<%- csrf_field() %>]\
+                    <%- form_with(nil, {\"url\": \"/x\"}) do |f| -%><%- f.label(\"title\") %><%- end -%>";
+        let looped = format!("<% for i in [1] %>{body}<% end %>");
+        // Compiled: its `f.open()` runs on the VM. The plain page does not.
+        let compiles = |source: &str| -> Result<bool, String> {
+            Ok(
+                vm_template::VmTemplate::compile_for_serve(&parser::parse_template(source)?)
+                    .is_ok(),
+            )
+        };
+        assert!(compiles(&looped)? && !compiles(body)?);
+        fs::write(views.join("plain.html.slv"), body)?;
+        fs::write(views.join("looped.html.slv"), looped)?;
+
+        clear_view_helpers();
+        load_view_helpers(&helpers)?;
+        crate::template::core_eval::reset_builtins_rc();
+
+        let cache = TemplateCache::new(&views);
+        let mut pages = Vec::new();
+        for (page, n) in [("plain", 1), ("looped", 2)] {
+            // Each render as its own request: the honeypot ids restart.
+            crate::interpreter::builtins::spam::reset_honeypot_ids();
+            let html = cache.render(page, &hash_of(&[("n", Value::Int(n))]), Some(None))?;
+            assert!(
+                html.starts_with("[USER-csrf_field]<form "),
+                "{page}: {html}"
+            );
+            assert_eq!(html.matches("USER-csrf_field").count(), 1, "{page}: {html}");
+            assert!(html.contains("name=\"_csrf_token\""), "{page}: {html}");
+            pages.push(without_render_time(&html));
+        }
+        assert_eq!(pages[0], pages[1]);
+
+        clear_view_helpers();
+        crate::template::core_eval::reset_builtins_rc();
+        Ok(())
+    }
+
     /// An app helper calls the global `partial()`, which gives the partial
     /// `req`, `params` and `cookies` in a copy of the hash: the view's own
     /// `opts` keeps its keys, on the interpreter and on the VM. It used to

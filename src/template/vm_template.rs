@@ -1037,7 +1037,7 @@ struct ViewVm {
 /// Names a JIT-compiled `FormBuilder` method calls that the worker's globals
 /// do not have. They live in the template env (`template_env_bindings`); the
 /// method runs on this VM and looks globals up here. A name the worker already
-/// defined is left alone.
+/// defined is left alone, unless the builder defines it itself.
 const FORM_BUILDER_GLOBALS: &[&str] = &[
     "_form_safe_url",
     "_safe_attr_name",
@@ -1051,7 +1051,10 @@ const FORM_BUILDER_GLOBALS: &[&str] = &[
 /// tree-walker its methods close over the builder's environment, so a view
 /// helper of the same name (`csrf_field`) is not what `f.open()` calls, and
 /// it must not be on the VM either. The template env holds the app's helpers
-/// last, so it would hand over the helper.
+/// last, so it would hand over the helper. It replaces what `globals` already
+/// holds: a view VM with no worker globals (a background job's mailer view)
+/// starts from the template env's names, the helper among them, and a worker
+/// whose app defines the name holds the app's.
 fn install_form_builder_globals(
     globals: &mut ahash::AHashMap<String, Value>,
     template_names: &ahash::AHashMap<String, Value>,
@@ -1063,7 +1066,9 @@ fn install_form_builder_globals(
             .iter()
             .find(|(defined, _)| defined == name)
             .map(|(_, value)| value);
-        if let Some(value) = own.or_else(|| template_names.get(*name)) {
+        if let Some(value) = own {
+            globals.insert((*name).to_string(), value.clone());
+        } else if let Some(value) = template_names.get(*name) {
             globals
                 .entry((*name).to_string())
                 .or_insert_with(|| value.clone());
@@ -1340,19 +1345,25 @@ mod tests {
                 .into_iter()
                 .collect();
         template_names.insert("csrf_field".to_string(), Value::Int(1));
+        // Empty, as a worker's table without the builder, and already holding
+        // the helper, as a view VM with no worker globals starts.
         let mut globals = ahash::AHashMap::new();
         super::install_form_builder_globals(&mut globals, &template_names);
+        let mut seeded = template_names.clone();
+        super::install_form_builder_globals(&mut seeded, &template_names);
 
         let builder = crate::interpreter::builtins::template::form_builder_definitions()?;
         let own = builder.iter().find_map(|(name, value)| match value {
             Value::Function(func) if name == "csrf_field" => Some(func.clone()),
             _ => None,
         });
-        match (globals.get("csrf_field"), own) {
-            (Some(Value::Function(installed)), Some(own)) => {
-                assert!(Rc::ptr_eq(installed, &own), "not the builder's csrf_field")
+        for table in [&globals, &seeded] {
+            match (table.get("csrf_field"), &own) {
+                (Some(Value::Function(installed)), Some(own)) => {
+                    assert!(Rc::ptr_eq(installed, own), "not the builder's csrf_field")
+                }
+                (installed, _) => return Err(format!("csrf_field installed as {installed:?}")),
             }
-            (installed, _) => return Err(format!("csrf_field installed as {installed:?}")),
         }
         // `attr` the builder does not define: the template env's.
         assert!(globals.contains_key("attr"));

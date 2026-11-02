@@ -898,7 +898,9 @@ route helper (`posts_path`), the form builder's `form_with`, `button_to` or
 `csrf_field`, `Retry`, a builtin — in every view, partial and component,
 `<%= render "x" %>` partials included. A local, or a controller `@ivar`, of
 the same name wins over the helper. Helpers are looked up where the view
-looks names up; nothing copies them into a partial's data.
+looks names up; nothing copies them into a partial's data. The framework's
+own code keeps its own: a `csrf_field` helper of yours changes what
+`<%- csrf_field() %>` prints, not the token `form_with` and `button_to` embed.
 
 ---
 
