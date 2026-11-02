@@ -81,6 +81,22 @@ fn errors_point_where_the_tree_walker_points() {
 }
 
 #[test]
+fn decimal_and_array_difference_scripts_stay_on_the_vm() {
+    // Decimal arithmetic, a Money amount and an array difference raised a
+    // type error on the VM, which auto mode picks for these scripts: the
+    // script stopped halfway with exit 70.
+    let source = "price = 19.99D\ntotal = price * 3\nprint(total, total > 50, [1, 2, 3] - [2])\n\
+                  print(Money.new(19.99, \"EUR\")[\"amount\"] * 3)\n";
+    let dir = script(source);
+    let run = soli(dir.path(), &["s.sl"], true);
+    assert_eq!(run.stdout, "59.97 true [1, 3]\n59.97\n", "{}", run.stderr);
+    assert!(run.stderr.contains("engine: vm"), "{}", run.stderr);
+    assert_same(source);
+    // A zero Decimal divisor said "Cannot divide decimal by decimal".
+    assert_same("def split(total, parts)\n  total / parts\nend\nprint(split(10.00D, 0.00D))\n");
+}
+
+#[test]
 fn a_declared_return_type_is_checked_on_the_vm_too() {
     let source = "def f(n: Int) -> Int\n  if n > 0\n    n\n  end\nend\nprint(f(1))\nprint(f(-1))\n";
     assert_same(source);

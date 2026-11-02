@@ -3881,7 +3881,8 @@ dt.beginning_of_month().format("%Y-%m-%d %H:%M:%S")   # 2026-11-01 00:00:00
 Two `DateTime` instances can be compared with the standard operators (`<`,
 `<=`, `>`, `>=`, `==`, `!=`). Comparison is by absolute instant — equality
 holds when both refer to the same moment, regardless of which `DateTime`
-object you're holding.
+object you're holding. It is exact to the nanosecond on both engines: two
+instants 10 ns apart are ordered, not equal.
 
 ```soli
 let a = DateTime.from_unix(1700000000)

@@ -693,6 +693,7 @@ dt.beginning_of_month().format("%Y-%m-%d %H:%M:%S")   # 2026-11-01 00:00:00</cod
                 <code class="text-amber-400">==</code>, <code class="text-amber-400">!=</code>).
                 Comparison is by absolute instant &mdash; equality holds when both refer to the same moment,
                 regardless of which <code class="text-orange-400">DateTime</code> object you're holding.
+                It is exact to the nanosecond on both engines: two instants 10&nbsp;ns apart are ordered, not equal.
             </p>
             <pre data-filename="Comparison"><code class="language-soli text-sm">let a = DateTime.from_unix(1700000000)
 let b = DateTime.from_unix(1700000000)

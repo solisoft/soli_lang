@@ -4928,118 +4928,41 @@ impl Vm {
     }
 
     // --- Arithmetic operations ---
+    //
+    // The slow arm of every arithmetic and ordering op. The dispatch loop
+    // computes the Int and Float cases (and string `+`) inline and hands
+    // everything else here, where the rules are the tree-walker's own
+    // definitions (`interpreter/executor/operators.rs`), called rather than
+    // copied: a Decimal on either side of an Int or a Float, `Array - Array`,
+    // string repetition, the overflow and division-by-zero errors. The copies
+    // these replaced had drifted: no Decimal arm, no array difference, and a
+    // zero divisor raised before the left operand was even looked at.
 
     fn op_add(&self, a: Value, b: Value, span: Span) -> Result<Value, RuntimeError> {
-        match (&a, &b) {
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
-            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + *b as f64)),
-            (Value::String(a), Value::String(b)) => {
-                Ok(Value::String(ecow::eco_format!("{}{}", a, b)))
-            }
-            (Value::String(a), b) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
-            (a, Value::String(b)) => Ok(Value::String(ecow::eco_format!("{}{}", a, b))),
-            (Value::Array(a), Value::Array(b)) => {
-                let mut result = a.borrow().clone();
-                result.extend(b.borrow().iter().cloned());
-                Ok(Value::Array(Rc::new(RefCell::new(result))))
-            }
-            _ => Err(RuntimeError::type_error(
-                format!("Cannot add {} and {}", a.type_name(), b.type_name()),
-                span,
-            )),
-        }
+        crate::interpreter::Interpreter::eval_add(&a, &b, span)
     }
 
     fn op_subtract(&self, a: Value, b: Value, span: Span) -> Result<Value, RuntimeError> {
-        match (&a, &b) {
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
-            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a - *b as f64)),
-            _ => Err(RuntimeError::type_error(
-                format!("Cannot subtract {} from {}", b.type_name(), a.type_name()),
-                span,
-            )),
-        }
+        crate::interpreter::Interpreter::eval_subtract(&a, &b, span)
     }
 
     fn op_multiply(&self, a: Value, b: Value, span: Span) -> Result<Value, RuntimeError> {
-        match (&a, &b) {
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a * b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
-            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a * *b as f64)),
-            (Value::String(s), Value::Int(n)) | (Value::Int(n), Value::String(s)) => {
-                let repeated = crate::interpreter::limits::repeat_string(s, *n, "string * count")
-                    .map_err(|message| RuntimeError::General { message, span })?;
-                Ok(Value::String(repeated.into()))
-            }
-            _ => Err(RuntimeError::type_error(
-                format!("Cannot multiply {} and {}", a.type_name(), b.type_name()),
-                span,
-            )),
-        }
+        crate::interpreter::Interpreter::eval_multiply(&a, &b, span)
     }
 
     fn op_divide(&self, a: Value, b: Value, span: Span) -> Result<Value, RuntimeError> {
-        match (&a, &b) {
-            (_, Value::Int(0)) => Err(RuntimeError::division_by_zero(span)),
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a / b)),
-            (Value::Float(a), Value::Float(b)) => {
-                if *b == 0.0 {
-                    Err(RuntimeError::division_by_zero(span))
-                } else {
-                    Ok(Value::Float(a / b))
-                }
-            }
-            (Value::Int(a), Value::Float(b)) => {
-                if *b == 0.0 {
-                    Err(RuntimeError::division_by_zero(span))
-                } else {
-                    Ok(Value::Float(*a as f64 / b))
-                }
-            }
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a / *b as f64)),
-            _ => Err(RuntimeError::type_error(
-                format!("Cannot divide {} by {}", a.type_name(), b.type_name()),
-                span,
-            )),
-        }
+        crate::interpreter::Interpreter::eval_divide(&a, &b, span)
     }
 
     fn op_modulo(&self, a: Value, b: Value, span: Span) -> Result<Value, RuntimeError> {
-        match (&a, &b) {
-            (_, Value::Int(0)) => Err(RuntimeError::division_by_zero(span)),
-            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a % b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a % b)),
-            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 % b)),
-            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a % *b as f64)),
-            _ => Err(RuntimeError::type_error(
-                format!("Cannot modulo {} by {}", a.type_name(), b.type_name()),
-                span,
-            )),
-        }
+        crate::interpreter::Interpreter::eval_modulo(&a, &b, span)
     }
 
+    /// `a < b`. The callers evaluate `a > b` as `b < a` (and `>=` as `<=`
+    /// swapped), then word an error in source order.
     fn op_compare_less(&self, a: &Value, b: &Value, span: Span) -> Result<bool, RuntimeError> {
-        match (a, b) {
-            (Value::Int(a), Value::Int(b)) => Ok(a < b),
-            (Value::Float(a), Value::Float(b)) => Ok(a < b),
-            (Value::Int(a), Value::Float(b)) => Ok((*a as f64) < *b),
-            (Value::Float(a), Value::Int(b)) => Ok(*a < (*b as f64)),
-            (Value::String(a), Value::String(b)) => Ok(a < b),
-            _ => {
-                if let (Some(ts_a), Some(ts_b)) = (a.datetime_ts(), b.datetime_ts()) {
-                    return Ok(ts_a < ts_b);
-                }
-                Err(RuntimeError::type_error(
-                    format!("Cannot compare {} and {}", a.type_name(), b.type_name()),
-                    span,
-                ))
-            }
-        }
+        use crate::interpreter::executor::operators::OrdOp;
+        crate::interpreter::Interpreter::compare_ordered(a, OrdOp::Less, b, span)
     }
 
     fn op_compare_less_equal(
@@ -5048,22 +4971,8 @@ impl Vm {
         b: &Value,
         span: Span,
     ) -> Result<bool, RuntimeError> {
-        match (a, b) {
-            (Value::Int(a), Value::Int(b)) => Ok(a <= b),
-            (Value::Float(a), Value::Float(b)) => Ok(a <= b),
-            (Value::Int(a), Value::Float(b)) => Ok((*a as f64) <= *b),
-            (Value::Float(a), Value::Int(b)) => Ok(*a <= (*b as f64)),
-            (Value::String(a), Value::String(b)) => Ok(a <= b),
-            _ => {
-                if let (Some(ts_a), Some(ts_b)) = (a.datetime_ts(), b.datetime_ts()) {
-                    return Ok(ts_a <= ts_b);
-                }
-                Err(RuntimeError::type_error(
-                    format!("Cannot compare {} and {}", a.type_name(), b.type_name()),
-                    span,
-                ))
-            }
-        }
+        use crate::interpreter::executor::operators::OrdOp;
+        crate::interpreter::Interpreter::compare_ordered(a, OrdOp::LessEqual, b, span)
     }
 
     #[inline]

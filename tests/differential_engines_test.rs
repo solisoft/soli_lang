@@ -937,6 +937,167 @@ end"##,
         "fn f() {\n  let big = 9223372036854775807\n  try { print(big + 1) } catch e { print(\"overflow\") }\n  let s = \"\"\n  let i = 0\n  while i < 3 { s = s + \"ab\"\n    i = i + 1 }\n  print(s)\n  let x = 1.5\n  let y = 2\n  print(x + y)\n  print(y * x - 1)\n  print(y < x)\n  print(x <= 1.5)\n  print(x + x)\n  x += 1\n  print(x)\n  let name = \"soli\"\n  print(name == \"soli\")\n  print(name != \"ruby\")\n  let n = null\n  print(n == null)\n  let t = 0\n  for k in 0..10 { if k > 4 && k != 7 { t = t + k } }\n  print(t)\n}\nf()",
     ),
     (
+        // Decimal with a Decimal, an Int or a Float on either side, for every
+        // arithmetic and ordering operator, through the fused local ops, an
+        // upvalue `+=`, globals and block callbacks. The VM had no Decimal arm
+        // at all: each of these raised "Cannot add decimal and decimal" and
+        // the like, and a zero Decimal divisor named the wrong error.
+        "decimal_arithmetic_and_comparison",
+        r##"def money(a, b, n, f)
+  print(a + b, a - b, a * b, a / b, a % b)
+  print(a + n, n + a, a - n, n - a, a * n, n * a, a / n, n / a)
+  print(a + f, f + a, a - f, f - a, a * f, f * a)
+  print(a + 1, a - 1, a * 3, a / 2, 100 - a, 3 * a)
+  print(type(a * n), type(n - a), type(a + f), type(a * b), type(a / n))
+  print(a > b, a < b, a >= b, a <= b, b < a, b <= a, a < a, a <= a)
+  print(a > n, a < 20, n <= a, a >= f, f < a, a > 12.5, a < 12)
+  if a > b
+    print("ordered")
+  end
+  total = 0.00D
+  [a, b].each do |x|
+    total += x
+  end
+  total -= 1
+  total *= 2
+  print(total)
+  step = a
+  step = step + 1
+  step = step - 1
+  step += b
+  print(step)
+  try
+    print(a / 0)
+  catch error
+    print(error)
+  end
+  try
+    print(a / 0.00D)
+  catch error
+    print(error)
+  end
+  try
+    print(7 / 0.00D)
+  catch error
+    print(error)
+  end
+  try
+    print(a % 0.00D)
+  catch error
+    print(error)
+  end
+end
+money(12.50D, 1.25D, 2, 1.5)
+print(0.10D + 0.20D, 19.99D * 3, 10.00D / 3, 19.99D - 20.00D, 1.25D * 2)
+price = 19.99D
+qty = 3
+subtotal = price * qty
+shipping = 4.50D
+print(subtotal, subtotal + shipping, subtotal > shipping, shipping <= 4.5, -price + 1)
+big = 79228162514264337593543950.335D
+try
+  print(big * 10000)
+catch error
+  print(error)
+end
+try
+  print(big + big * 1000)
+catch error
+  print(error)
+end
+prices = [3.00D, 1.5D, 2.25D]
+print(prices.filter { |p| p > 2 }, prices.map { |p| p * 2 }, prices.reduce(fn(acc, p) acc + p, 0.00D))
+print(prices.sort { |x, y| x < y ? -1 : 1 })"##,
+    ),
+    (
+        // `Array - Array` keeps what is not `==` to an element of the right
+        // side (instances by identity). The VM raised "Cannot subtract array
+        // from array".
+        "array_difference",
+        r##"class Member
+  name: String
+
+  new(name: String)
+    @name = name
+  end
+end
+
+def without(items, removed)
+  items - removed
+end
+print([1, 2, 3] - [2])
+print([1, 2, 1, 3, 1] - [1], [1, 2] - [], [] - [1], [1, 2] - [3])
+print(["apple", "banana", "cherry"] - ["banana"])
+print([1, 2.0, 3] - [2], [[1], [2]] - [[1]], [{"a": 1}, {"a": 2}] - [{"a": 1}])
+print([1.50D, 2.00D, nil] - [2.00D, nil])
+ann = new Member("Ann")
+bo = new Member("Bo")
+print(without([ann, bo], [new Member("Ann")]).length, without([ann, bo], [ann]).length)
+tags = ["a", "b", "c"]
+tags = tags - ["b"]
+tags -= ["c"]
+print(tags, without(tags, tags))
+same = [1, 2]
+print(same - same, same)"##,
+    ),
+    (
+        // A Money amount is a Decimal, so money code met the same gap.
+        "money_amount_arithmetic",
+        r##"line = Money.new(19.99, "EUR")
+amount = line["amount"]
+print(amount * 3, amount + 0.01D, amount > 10, amount - 20 < 0)
+def line_total(money, qty)
+  money["amount"] * qty
+end
+print(line_total(line, 4), Money.format(Money.new(line_total(line, 2), "EUR")))"##,
+    ),
+    (
+        // A zero divisor raises only between numbers, and a Float remainder by
+        // zero is NaN, as the native kernels compute it. The VM checked the
+        // divisor first: `1.5 % 0` raised, and Decimal, String and nil left
+        // operands said "Division by zero" instead of their type error.
+        "zero_divisor_follows_the_left_operand",
+        r##"def remainder(a, b)
+  a % b
+end
+
+def quotient(a, b)
+  a / b
+end
+
+def attempt(label, thunk)
+  try
+    print(label, thunk())
+  catch error
+    print(label, error)
+  end
+end
+attempt("float % 0", fn() { remainder(1.5, 0) })
+attempt("float % 0.0", fn() { remainder(1.5, 0.0) })
+attempt("int % 0.0", fn() { remainder(3, 0.0) })
+attempt("decimal % 0", fn() { remainder(2.50D, 0) })
+attempt("string / 0", fn() { quotient("s", 0) })
+attempt("nil % 0", fn() { remainder(nil, 0) })
+attempt("float / 0", fn() { quotient(1.5, 0) })
+attempt("decimal / 0", fn() { quotient(2.50D, 0) })
+attempt("decimal / float", fn() { quotient(2.50D, 0.5) })"##,
+    ),
+    (
+        // Two instants 10 ns apart. The tree-walker compared DateTimes as f64
+        // nanoseconds, which round to 256 ns here, so `early < late` was false
+        // and `early >= late` true; the VM compared the i64. Both engines now
+        // share one comparator.
+        "datetime_ordering_is_exact",
+        r##"early = DateTime.parse("2026-01-01T00:00:00.000000100Z")
+late = DateTime.parse("2026-01-01T00:00:00.000000110Z")
+print(early == late, early < late, early <= late, early > late, early >= late)
+print(late > early, late >= early, late < early, late <= early)
+def before(a, b)
+  a < b
+end
+print(before(early, late), before(late, early))"##,
+    ),
+    (
         // `hash.key` dot access: a hit, and a miss falling back to a method.
         "hash_dot_access",
         "let h = {\"name\": \"x\", \"n\": null}\nprint(h.name)\nprint(h.n)\nprint(h.length)",
