@@ -465,23 +465,31 @@ impl Vm {
     /// and the caller opens the frame as usual.
     #[inline]
     pub(crate) fn try_kernel(&mut self, closure: &VmClosure, argc: usize) -> bool {
-        let Some(kernel) = &closure.proto.kernel else {
-            return false;
-        };
-        let base = self.stack.len() - argc;
-        let globals = &self.globals;
-        let bound = |name: &str| match globals.get(name) {
-            Some(Value::VmClosure(c)) => c.proto.kernel.as_ref().map(|k| k.id()),
-            _ => None,
-        };
-        match kernel.try_call(&self.stack[base..], self.frames.len(), bound) {
+        match self.kernel_value(closure, argc) {
             Some(value) => {
+                let base = self.stack.len() - argc;
                 self.stack.truncate(base - 1);
                 self.stack.push(value);
                 true
             }
             None => false,
         }
+    }
+
+    /// What `closure`'s native kernel returns for the `argc` arguments at the
+    /// top of the stack, touching nothing: `None` when it has no kernel or
+    /// the kernel declined. The fast tier's `Call`/`CallGlobal` use it while
+    /// still borrowing the callee, then settle the stack themselves.
+    #[inline]
+    pub(crate) fn kernel_value(&self, closure: &VmClosure, argc: usize) -> Option<Value> {
+        let kernel = closure.proto.kernel.as_ref()?;
+        let base = self.stack.len() - argc;
+        let globals = &self.globals;
+        let bound = |name: &str| match globals.get(name) {
+            Some(Value::VmClosure(c)) => c.proto.kernel.as_ref().map(|k| k.id()),
+            _ => None,
+        };
+        kernel.try_call(&self.stack[base..], self.frames.len(), bound)
     }
 
     /// Push `slots` (already in parameter order) and open a frame with an

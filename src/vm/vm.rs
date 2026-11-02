@@ -1100,18 +1100,28 @@ impl Vm {
                     }
                 }
                 // Calls and returns stay in the tier for the common shape;
-                // anything else — a native or a class callee, omitted
-                // parameters, the depth limit, open upvalues, a return that
+                // anything else — a native or a class callee, an arity
+                // error, the depth limit, open upvalues, a return that
                 // leaves this `run` — goes to the general arms, which own
-                // every one of those rules and their errors.
+                // every one of those rules and their errors. A function
+                // with a native kernel is tried here as the general arm
+                // tries it: the value replaces callee and arguments, and a
+                // decline runs the bytecode, still in the tier.
                 Op::Call(argc) => {
                     let argc = argc as usize;
-                    let closure = match &self.stack[self.stack.len() - 1 - argc] {
+                    let callee = self.stack.len() - 1 - argc;
+                    let closure = match &self.stack[callee] {
                         Value::VmClosure(closure)
                             if accepts_positional(&closure.proto, argc)
-                                && self.frames.len() < MAX_CALL_DEPTH
-                                && closure.proto.kernel.is_none() =>
+                                && self.frames.len() < MAX_CALL_DEPTH =>
                         {
+                            if closure.proto.kernel.is_some() {
+                                if let Some(value) = self.kernel_value(closure, argc) {
+                                    self.stack.truncate(callee);
+                                    self.stack.push(value);
+                                    continue;
+                                }
+                            }
                             closure.clone()
                         }
                         _ => break Some(op),
@@ -1129,9 +1139,16 @@ impl Vm {
                     let closure = match self.globals.get(name) {
                         Some(Value::VmClosure(closure))
                             if accepts_positional(&closure.proto, argc)
-                                && self.frames.len() < MAX_CALL_DEPTH
-                                && closure.proto.kernel.is_none() =>
+                                && self.frames.len() < MAX_CALL_DEPTH =>
                         {
+                            if closure.proto.kernel.is_some() {
+                                if let Some(value) = self.kernel_value(closure, argc) {
+                                    let args = self.stack.len() - argc;
+                                    self.stack.truncate(args);
+                                    self.stack.push(value);
+                                    continue;
+                                }
+                            }
                             closure.clone()
                         }
                         _ => break Some(op),
@@ -9616,6 +9633,87 @@ let x = Mailer.welcome()
             let (handed_back, _) = run_fast_tier_with(constants(), &callee, code, 0, &globals);
             assert_eq!(handed_back, code.last().copied(), "{code:?}");
         }
+    }
+
+    /// A call to a function with a native kernel stays in the fast tier. The
+    /// fast `Call`/`CallGlobal` required `kernel.is_none()`, so every such
+    /// call left the tier for the general arm to try the kernel, and a
+    /// kernel that declined (an argument of another type, a rebound name)
+    /// cost that tier exit on every call before its bytecode ran.
+    ///
+    /// The callee carries the kernel of `addf(a: Float, b: Float) -> Float`
+    /// but a body of one op the fast tier hands back (`Print`): a call that
+    /// finishes in the tier was answered by the kernel, and one that hands
+    /// `Print` back from a second frame was declined and ran the bytecode.
+    #[cfg(feature = "native")]
+    #[test]
+    fn calls_to_a_native_kernel_stay_in_the_fast_tier() {
+        let source = "def addf(a: Float, b: Float) -> Float\n  a + b\nend\n";
+        let program = Parser::new(Scanner::new(source).scan_tokens().unwrap())
+            .parse()
+            .unwrap();
+        let set =
+            crate::native::analyze_and_compile(&program, &|_| false).expect("kernels compile");
+        let crate::ast::StmtKind::Function(decl) = &program.statements[0].kind else {
+            unreachable!()
+        };
+        let mut proto = FunctionProto::new("addf".to_string());
+        proto.param_names = vec!["a".to_string(), "b".to_string()];
+        proto.arity = 2;
+        proto.kernel = Some(set.for_decl(decl).expect("addf is a kernel"));
+        proto.chunk.emit(Op::Print(0), 1);
+        let addf = Value::VmClosure(Rc::new(VmClosure::new(Arc::new(proto), Vec::new())));
+
+        const A: u16 = 0;
+        const B: u16 = 1;
+        const INT: u16 = 2;
+        const ADDF: u16 = 3;
+        let constants = || {
+            vec![
+                Constant::Float(1.5),
+                Constant::Float(2.0),
+                Constant::Int(2),
+                Constant::String("addf".into()),
+            ]
+        };
+        let callee = [addf.clone()];
+        let bound = [("addf", addf.clone())];
+        let by_value: &[Op] = &[
+            Op::GetLocal(1),
+            Op::Constant(A),
+            Op::Constant(B),
+            Op::Call(2),
+        ];
+        let by_name: &[Op] = &[Op::Constant(A), Op::Constant(B), Op::CallGlobal(ADDF, 2)];
+
+        // The kernel answers: no frame, the value where the callee was.
+        for code in [by_value, by_name] {
+            let (declined, mut vm) = run_fast_tier_vm(constants(), &callee, code, 0, &bound);
+            assert_eq!(declined, None, "{code:?} left the fast tier");
+            assert_eq!(vm.frames.len(), 1, "{code:?} opened a frame");
+            assert_eq!(vm.stack.split_off(2), vec![Value::Float(3.5)], "{code:?}");
+        }
+
+        // An Int argument: declined, and the bytecode runs in the tier.
+        let int_arg: Vec<&[Op]> = vec![
+            &[
+                Op::GetLocal(1),
+                Op::Constant(A),
+                Op::Constant(INT),
+                Op::Call(2),
+            ],
+            &[Op::Constant(A), Op::Constant(INT), Op::CallGlobal(ADDF, 2)],
+        ];
+        for code in int_arg {
+            let (declined, vm) = run_fast_tier_vm(constants(), &callee, code, 0, &bound);
+            assert_eq!(declined, Some(Op::Print(0)), "{code:?}");
+            assert_eq!(vm.frames.len(), 2, "{code:?} did not enter addf");
+        }
+
+        // `addf` no longer bound to its kernel: declined (Rebound) likewise.
+        let (declined, vm) = run_fast_tier_vm(constants(), &callee, by_value, 0, &[]);
+        assert_eq!(declined, Some(Op::Print(0)));
+        assert_eq!(vm.frames.len(), 2);
     }
 
     /// Named arguments to a compiled function bind in place on the stack, by
