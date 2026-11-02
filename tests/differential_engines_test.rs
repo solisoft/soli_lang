@@ -188,6 +188,84 @@ def relet
 end
 print(keep(), keep_last(), keep_param(3, 4), value_of(), in_loop(3), relet())"##,
     ),
+    (
+        // An assignment statement's `SetLocal, Pop` runs as one `SetLocalPop`
+        // on the VM, which moves the value into the slot instead of copying
+        // it there and dropping the copy. Each store shape: a heap value
+        // shared with another local, `a = a op b`, `+=`, a re-`let`, a value a
+        // branch merges into (`||`, `&&`, `??`, a ternary, a `match`,
+        // `rescue`, `||=`), a chained store, a local a closure reads, and a
+        // store whose `Pop` a short-circuit jumps to, which keeps the `Pop`.
+        "assignment_statements_move_the_value_into_the_slot",
+        r##"def boom
+  throw "boom"
+end
+
+def stores(a, b, c, v)
+  s = "heap"
+  t = s
+  t += "!"
+  arr = [1]
+  same = arr
+  same.push(2)
+  h = {"k": 1}
+  g = h
+  g["j"] = 2
+  k = 7
+  z = 2
+  k = k - z
+  k = k * 3
+  k = k / 5
+  k += 2
+  w = k - z
+  let r = 1
+  let r = r + 1
+  x = a || b
+  y = a && b
+  q = a ?? 3
+  tern = c ? "yes" : "no"
+  m = match v {
+    1 => "one",
+    n => "n=#{n}"
+  }
+  res = boom() rescue "rescued"
+  n0 = 0
+  n0 ||= 5
+  p = q = 4
+  [s, t, arr, same, h, g, k, w, r, x, y, q, tern, m, res, n0, p]
+end
+print(stores(nil, 2, true, 1))
+print(stores(4, 2, false, 7))
+
+def short(ok)
+  x = 0
+  ok && (x = 1)
+  ok || (x = x + 10)
+  ok ? (x = x * 2) : (x = x - 1)
+  let y = 5
+  [x, y]
+end
+print(short(false), short(true))
+
+def captured
+  x = 1
+  read = fn() { x }
+  x = 2
+  read()
+end
+print(captured())
+
+def loop_store(n)
+  last = nil
+  i = 0
+  while i < n
+    i += 1
+    last = i * 10
+  end
+  last
+end
+print(loop_store(3))"##,
+    ),
     // --- recursion (reentrant locals) ---
     (
         "recursion_let",

@@ -1547,10 +1547,13 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
-        // Pattern: GetLocal(a), GetLocal(b), Add, SetLocal(a), Pop → AddLocalLocal(a, b) + SetLocalPop(a)
         // Pattern: a = a + b  (GetLocal, GetLocal, Add, SetLocal, Pop) → in place.
-        // Must precede the 3-op `AddLocalConst` rule below, which would otherwise
-        // consume the prefix and leave the SetLocal/Pop behind.
+        // Must precede any 3-op rule on the same prefix, which would otherwise
+        // consume it and leave the SetLocal/Pop behind.
+        //
+        // A second rule used to follow with the same pattern and guard, turning
+        // the five ops into `AddLocalLocal(a, b), SetLocalPop(a)`. This one
+        // always matched first, so that rule never fired; it is gone.
         if i + 4 < len {
             if let (
                 Op::GetLocal(slot_a),
@@ -1563,28 +1566,6 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
                 if slot_a == slot_target && !any_jump_target(&is_jump_target, i + 1, 5) {
                     code[i] = Op::AddLocalsInPlace(slot_a, slot_b);
                     code[i + 1] = NOP;
-                    code[i + 2] = NOP;
-                    code[i + 3] = NOP;
-                    code[i + 4] = NOP;
-                    i += 5;
-                    continue;
-                }
-            }
-        }
-
-        // This is: a = a + b  → becomes two ops instead of five
-        if i + 4 < len {
-            if let (
-                Op::GetLocal(slot_a),
-                Op::GetLocal(slot_b),
-                Op::Add,
-                Op::SetLocal(slot_target),
-                Op::Pop,
-            ) = (code[i], code[i + 1], code[i + 2], code[i + 3], code[i + 4])
-            {
-                if slot_a == slot_target && !any_jump_target(&is_jump_target, i + 1, 5) {
-                    code[i] = Op::AddLocalLocal(slot_a, slot_b);
-                    code[i + 1] = Op::SetLocalPop(slot_a);
                     code[i + 2] = NOP;
                     code[i + 3] = NOP;
                     code[i + 4] = NOP;
@@ -1708,6 +1689,12 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
         }
 
         // Pattern: GetLocal(a), GetLocal(b), Subtract → SubLocalLocal(a, b)
+        //
+        // `a = a - b` as a statement (and `* b`, `/ b` below) becomes
+        // `SubLocalLocal(a, b), SetLocalPop(a)`: this rule takes the first three
+        // ops and `fuse_set_local_pop` the `SetLocal, Pop` left after them.
+        // Five-op rules for the same result used to sit further down. This rule
+        // always matched first at their head, so they never fired; they are gone.
         if i + 2 < len {
             if let (Op::GetLocal(slot_a), Op::GetLocal(slot_b), Op::Subtract) =
                 (code[i], code[i + 1], code[i + 2])
@@ -1822,73 +1809,14 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
             }
         }
 
-        // Pattern: a = a - b  (GetLocal, GetLocal, Subtract, SetLocal, Pop)
-        if i + 4 < len {
-            if let (
-                Op::GetLocal(slot_a),
-                Op::GetLocal(slot_b),
-                Op::Subtract,
-                Op::SetLocal(slot_target),
-                Op::Pop,
-            ) = (code[i], code[i + 1], code[i + 2], code[i + 3], code[i + 4])
-            {
-                if slot_a == slot_target && !any_jump_target(&is_jump_target, i + 1, 5) {
-                    code[i] = Op::SubLocalLocal(slot_a, slot_b);
-                    code[i + 1] = Op::SetLocalPop(slot_a);
-                    code[i + 2] = NOP;
-                    code[i + 3] = NOP;
-                    code[i + 4] = NOP;
-                    i += 5;
-                    continue;
-                }
-            }
-        }
-
-        // Pattern: a = a * b  (GetLocal, GetLocal, Multiply, SetLocal, Pop)
-        if i + 4 < len {
-            if let (
-                Op::GetLocal(slot_a),
-                Op::GetLocal(slot_b),
-                Op::Multiply,
-                Op::SetLocal(slot_target),
-                Op::Pop,
-            ) = (code[i], code[i + 1], code[i + 2], code[i + 3], code[i + 4])
-            {
-                if slot_a == slot_target && !any_jump_target(&is_jump_target, i + 1, 5) {
-                    code[i] = Op::MulLocalLocal(slot_a, slot_b);
-                    code[i + 1] = Op::SetLocalPop(slot_a);
-                    code[i + 2] = NOP;
-                    code[i + 3] = NOP;
-                    code[i + 4] = NOP;
-                    i += 5;
-                    continue;
-                }
-            }
-        }
-
-        // Pattern: a = a / b  (GetLocal, GetLocal, Divide, SetLocal, Pop)
-        if i + 4 < len {
-            if let (
-                Op::GetLocal(slot_a),
-                Op::GetLocal(slot_b),
-                Op::Divide,
-                Op::SetLocal(slot_target),
-                Op::Pop,
-            ) = (code[i], code[i + 1], code[i + 2], code[i + 3], code[i + 4])
-            {
-                if slot_a == slot_target && !any_jump_target(&is_jump_target, i + 1, 5) {
-                    code[i] = Op::DivLocalLocal(slot_a, slot_b);
-                    code[i + 1] = Op::SetLocalPop(slot_a);
-                    code[i + 2] = NOP;
-                    code[i + 3] = NOP;
-                    code[i + 4] = NOP;
-                    i += 5;
-                    continue;
-                }
-            }
-        }
-
         // Pattern: GetLocal(slot), Constant(c), Add → AddLocalConst(slot, c)
+        //
+        // This takes every Int constant too. Two rules that turned
+        // `GetLocal, Constant(Int), Add` into `AddLocalInt(slot, n)` sat further
+        // down with the same guard, so they never fired; they are gone, and
+        // nothing emits `AddLocalInt`. `AddLocalConst` is the form to keep: the
+        // callback kernels (`Kernel::of`) read it, and `AddLocalInt` would hide
+        // a `x + 1` block from them.
         if i + 2 < len {
             if let (Op::GetLocal(slot), Op::Constant(cidx), Op::Add) =
                 (code[i], code[i + 1], code[i + 2])
@@ -1970,52 +1898,6 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
         // reads `x`, the two GetLocals are adjacent but the second reads a slot
         // the first only just established. GetLocal2 reads both slots up front,
         // so it would index past the stack top (panic) or read a stale value.
-
-        // Pattern: GetLocal, Constant(1), Add → AddLocalInt(slot, 1)
-        if i + 2 < len {
-            if let (Op::GetLocal(slot), Op::Constant(cidx), Op::Add) =
-                (code[i], code[i + 1], code[i + 2])
-            {
-                if !any_jump_target(&is_jump_target, i + 1, 3) {
-                    if let Some(Constant::Int(n)) = constants.get(cidx as usize) {
-                        if *n == 1 {
-                            code[i] = Op::AddLocalInt(slot, 1);
-                            code[i + 1] = NOP;
-                            code[i + 2] = NOP;
-                            i += 3;
-                            continue;
-                        }
-                        // For small negative numbers
-                        if *n > -32768 && *n < 32767 {
-                            code[i] = Op::AddLocalInt(slot, *n as i32);
-                            code[i + 1] = NOP;
-                            code[i + 2] = NOP;
-                            i += 3;
-                            continue;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Pattern: GetLocal, Constant(-1), Add → AddLocalInt(slot, -1)
-        if i + 2 < len {
-            if let (Op::GetLocal(slot), Op::Constant(cidx), Op::Add) =
-                (code[i], code[i + 1], code[i + 2])
-            {
-                if !any_jump_target(&is_jump_target, i + 1, 3) {
-                    if let Some(Constant::Int(n)) = constants.get(cidx as usize) {
-                        if *n == -1 {
-                            code[i] = Op::AddLocalInt(slot, -1);
-                            code[i + 1] = NOP;
-                            code[i + 2] = NOP;
-                            i += 3;
-                            continue;
-                        }
-                    }
-                }
-            }
-        }
 
         // Pattern: Null, JumpIfFalse → JumpIfNull (but we don't have JumpIfFalse directly, it's an operand)
         // This needs special handling since JumpIfFalse has an operand
@@ -2105,8 +1987,51 @@ fn peephole_optimize_chunk(chunk: &mut Chunk) {
         i += 1;
     }
 
+    // Last, once every longer pattern that ends in `SetLocal, Pop` has had its
+    // pick: the plain store left behind.
+    fuse_set_local_pop(code, &is_jump_target);
+
     // Remove NOPs (compact the bytecode) - adjust jump offsets accordingly
     compact_nops(chunk);
+}
+
+/// `SetLocal(s), Pop` → `SetLocalPop(s)`.
+///
+/// An assignment statement compiles to its value, `SetLocal(x)` and the
+/// statement's `Pop`. So do a re-`let` of a name in the same scope and the end
+/// of each `match` arm, which moves the arm's value into the subject's slot.
+/// `SetLocal` copies the value into the slot and leaves it on the stack for the
+/// `Pop` to drop. `SetLocalPop` moves it in instead, which saves a dispatch and,
+/// for a string, array, hash or instance, a reference-count increment and
+/// decrement. The VM audit measured `y = x` 3.4 ns faster with an Int and
+/// 6.8 ns faster with a String this way.
+///
+/// It runs after the main scan, so `IncrLocal`, `AddLocalsInPlace`,
+/// `AppendLocalConst`, `AddNestedIndex` and the other patterns that end in the
+/// pair have already taken theirs. What is left is a plain store, often after a
+/// fused read: `k += 2` is `AddLocalConst, SetLocal, Pop`.
+///
+/// Being a pass of its own, it also takes a store whose `SetLocal` a branch
+/// lands on, which the main scan skips as a head. `x = a || b`,
+/// `x = c ? a : b`, `x = match …`, `x = f() rescue nil` and `x ||= y` all
+/// merge on the `SetLocal`. The fused op takes the `SetLocal`'s index,
+/// `compact_nops` maps the branch onto it, and it does what the pair did. A
+/// branch must not land on the `Pop`, though: `ok && (x = 1)` as a statement
+/// short-circuits straight to it with `ok` on the stack, and that path needs
+/// the `Pop` on its own.
+fn fuse_set_local_pop(code: &mut [Op], is_jump_target: &[bool]) {
+    let mut i = 0;
+    while i + 1 < code.len() {
+        if let (Op::SetLocal(slot), Op::Pop) = (code[i], code[i + 1]) {
+            if !any_jump_target(is_jump_target, i + 1, 2) {
+                code[i] = Op::SetLocalPop(slot);
+                code[i + 1] = NOP;
+                i += 2;
+                continue;
+            }
+        }
+        i += 1;
+    }
 }
 
 /// Whether a branch lands inside a `count`-instruction pattern whose tail
@@ -2635,17 +2560,19 @@ mod inplace_peephole_tests {
         }
     }
 
-    /// A self-assignment stays the `GetLocal`/`SetLocal` pair the compiler
-    /// emits. It used to be fused into `SwapSetLocal`, which popped a value
-    /// the pair never pushed (see the note in `peephole_optimize_chunk`).
+    /// A self-assignment stays a plain read and store: `GetLocal(a)`, then
+    /// the statement's `SetLocal(a), Pop` as one `SetLocalPop(a)`, which pops
+    /// the value the `GetLocal` pushed. It used to be fused into
+    /// `SwapSetLocal`, which popped a value the pair never pushed (see the
+    /// note in `peephole_optimize_chunk`).
     #[test]
     fn self_assignment_is_left_as_compiled() {
         let ops = fn_ops("a = 1\nb = 2\na = a\nreturn [a, b]");
         assert!(
             ops.windows(2).any(
-                |pair| matches!(pair, [Op::GetLocal(read), Op::SetLocal(write)] if read == write)
+                |pair| matches!(pair, [Op::GetLocal(read), Op::SetLocalPop(write)] if read == write)
             ),
-            "expected `a = a` to stay GetLocal + SetLocal, got: {ops:?}"
+            "expected `a = a` to be GetLocal + SetLocalPop, got: {ops:?}"
         );
     }
 
@@ -2685,6 +2612,204 @@ mod inplace_peephole_tests {
         for (program, expected) in cases {
             assert_eq!(vm_result(program), expected, "{program}");
         }
+    }
+
+    /// How many `SetLocal, Pop` pairs are left in `ops`.
+    fn set_local_pops(ops: &[Op]) -> usize {
+        ops.windows(2)
+            .filter(|pair| matches!(pair, [Op::SetLocal(_), Op::Pop]))
+            .count()
+    }
+
+    /// An assignment statement stores with `SetLocalPop`: the value moves
+    /// into the slot, where `SetLocal, Pop` copied it there and then dropped
+    /// the copy. So does every other `SetLocal, Pop` that no longer pattern
+    /// covers: a store after a fused read (`k += 2`), a re-`let`, and each
+    /// `match` arm moving its value into the subject's slot. A function's
+    /// last statement has no `Pop` (its value is the return value), so its
+    /// `SetLocal` stays.
+    #[test]
+    fn assignment_statements_store_with_set_local_pop() {
+        let cases = [
+            "s = \"on the heap\"\ny = s\ny",
+            "k = 1\nk += 2\nk",
+            "n = [1, 2].length\nn",
+            "let a = 1\nlet a = 2\na",
+            "v = 2\nmatch v {\n  1 => \"one\",\n  _ => \"other\"\n}\nv",
+        ];
+        for body in cases {
+            let ops = fn_ops(body);
+            assert_eq!(
+                set_local_pops(&ops),
+                0,
+                "{body}\na SetLocal, Pop is left: {ops:?}"
+            );
+            assert!(
+                ops.iter().any(|op| matches!(op, Op::SetLocalPop(_))),
+                "{body}\nno SetLocalPop: {ops:?}"
+            );
+        }
+
+        let tail = fn_ops("y = 1\nx = y");
+        assert!(
+            tail.windows(2)
+                .any(|pair| matches!(pair, [Op::SetLocal(_), Op::Return])),
+            "the last statement keeps its SetLocal: {tail:?}"
+        );
+        assert_eq!(
+            vm_result("def f\n  y = 1\n  x = y + 4\nend\nlet result = f()"),
+            "5"
+        );
+    }
+
+    /// `a = a - b`, `* b` and `/ b` as statements are two ops: the three-op
+    /// read takes the head and the store is `SetLocalPop`. Five-op rules that
+    /// aimed at the same two ops never fired, because the three-op rules
+    /// match first at the same head; this is what those rules were for.
+    #[test]
+    fn self_arithmetic_statements_are_two_ops() {
+        // `a` and `b` are hoisted into slots 1 and 2; slot 0 is the callee.
+        for (operator, fused) in [
+            ("-", Op::SubLocalLocal(1, 2)),
+            ("*", Op::MulLocalLocal(1, 2)),
+            ("/", Op::DivLocalLocal(1, 2)),
+        ] {
+            let body = format!("a = 12\nb = 3\na = a {operator} b\na");
+            let ops = fn_ops(&body);
+            assert!(
+                ops.windows(2)
+                    .any(|pair| pair == [fused, Op::SetLocalPop(1)]),
+                "{body}\nexpected {fused:?}, SetLocalPop(1): {ops:?}"
+            );
+        }
+        assert_eq!(
+            vm_result(
+                "def f\n  a = 12\n  b = 3\n  a = a - b\n  a = a * b\n  a = a / b\n  a\nend\nlet result = f()"
+            ),
+            "9"
+        );
+    }
+
+    /// A value that branches merges on the `SetLocal`: `||`, `&&`, `??`, a
+    /// ternary, a `match`, `rescue` and `||=` all jump to the instruction
+    /// after the value. The main scan skips a head that a branch lands on,
+    /// but the store is still fused, because the fused op keeps the
+    /// `SetLocal`'s index and the branch lands on it.
+    #[test]
+    fn a_store_a_branch_lands_on_still_fuses() {
+        let cases = [
+            "a = nil\nb = 2\nx = a || b\nx",
+            "a = 1\nb = 2\nx = a && b\nx",
+            "a = nil\nx = a ?? 3\nx",
+            "c = true\nx = c ? 1 : 2\nx",
+            "v = 2\nx = match v {\n  1 => 10,\n  n => n * 100\n}\nx",
+            "x = boom() rescue 0\nx",
+            "x = 0\nx ||= 5\nx",
+        ];
+        for body in cases {
+            let ops = fn_ops(body);
+            assert_eq!(
+                set_local_pops(&ops),
+                0,
+                "{body}\na SetLocal, Pop is left: {ops:?}"
+            );
+        }
+
+        let program = "def boom\n  throw \"boom\"\nend\n\ndef f(a, b, c, v)\n  x = a || b\n  y = a && b\n  z = a ?? 3\n  t = c ? 1 : 2\n  m = match v {\n    1 => 10,\n    n => n * 100\n  }\n  r = boom() rescue 30\n  n0 = 0\n  n0 ||= 5\n  [x, y, z, t, m, r, n0]\nend\nlet result = [f(nil, 2, true, 1), f(4, 2, false, 7)]";
+        assert_eq!(
+            vm_result(program),
+            "[[2, null, 3, 1, 10, 30, 5], [4, 2, 4, 2, 700, 30, 5]]"
+        );
+    }
+
+    /// `ok && (x = 1)` as a statement: the short-circuit jumps straight to the
+    /// statement's `Pop` with `ok` on the stack, so the `x = 1` store keeps
+    /// that `Pop` as an op of its own. Fused, the jump would land past it and
+    /// leave `ok` behind, and the `let` after it would read `ok` as `y`. The
+    /// same holds for `||` and for a ternary with a store in each branch.
+    #[test]
+    fn a_store_whose_pop_a_branch_lands_on_keeps_it() {
+        for body in [
+            "ok = false\nx = 0\nok && (x = 1)\nlet y = 5\n[x, y]",
+            "ok = true\nx = 0\nok || (x = 2)\nlet y = 5\n[x, y]",
+            "c = true\nx = 0\nc ? (x = 1) : (x = 2)\nlet y = 5\n[x, y]",
+        ] {
+            let ops = fn_ops(body);
+            assert_eq!(
+                set_local_pops(&ops),
+                1,
+                "{body}\nthe store before the branch target keeps its Pop: {ops:?}"
+            );
+        }
+
+        let cases = [
+            (
+                "def f(ok)\n  x = 0\n  ok && (x = 1)\n  let y = 5\n  [x, y]\nend\nlet result = [f(false), f(true)]",
+                "[[0, 5], [1, 5]]",
+            ),
+            (
+                "def f(ok)\n  x = 0\n  ok || (x = 2)\n  let y = 5\n  [x, y]\nend\nlet result = [f(false), f(true)]",
+                "[[2, 5], [0, 5]]",
+            ),
+            (
+                "def f(c)\n  x = 0\n  c ? (x = 1) : (x = 2)\n  let y = 5\n  [x, y]\nend\nlet result = [f(true), f(false)]",
+                "[[1, 5], [2, 5]]",
+            ),
+        ];
+        for (program, expected) in cases {
+            assert_eq!(vm_result(program), expected, "{program}");
+        }
+    }
+
+    /// The rule on two hand-built chunks that differ only in where one branch
+    /// lands. On the `SetLocal` the pair is fused, and the branch is remapped
+    /// onto the `SetLocalPop`; on the `Pop` both ops stay.
+    #[test]
+    fn a_branch_may_land_on_the_store_but_not_on_its_pop() {
+        let optimized = |offset: u16| {
+            let mut chunk = Chunk::default();
+            // The branch at 2 lands on 3 + offset: 4 is the `SetLocal`, 5 the `Pop`.
+            for op in [
+                Op::Null,
+                Op::True,
+                Op::JumpIfFalse(offset),
+                Op::Null,
+                Op::SetLocal(1),
+                Op::Pop,
+                Op::Null,
+                Op::Return,
+            ] {
+                chunk.emit(op, 1);
+            }
+            peephole_optimize_chunk(&mut chunk);
+            chunk.code
+        };
+
+        assert_eq!(
+            optimized(1),
+            [
+                Op::Null,
+                Op::True,
+                Op::JumpIfFalse(1),
+                Op::Null,
+                Op::SetLocalPop(1),
+                Op::Null,
+                Op::Return,
+            ]
+        );
+        assert_eq!(
+            optimized(2),
+            [
+                Op::Null,
+                Op::True,
+                Op::JumpIfFalse(2),
+                Op::Null,
+                Op::SetLocal(1),
+                Op::Pop,
+                Op::Null,
+                Op::Return,
+            ]
+        );
     }
 
     /// `h["k"] = v` and `h.set("k", v)` leave `v` on the stack, so a

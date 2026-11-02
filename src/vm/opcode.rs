@@ -262,12 +262,20 @@ pub enum Op {
     /// Decrement a local integer by 1: local[slot] -= 1
     DecrLocal(u16),
     /// Add two locals and push result: push(local[a] + local[b])
+    ///
+    /// Nothing emits it at the moment. `a = a + b` becomes `AddLocalsInPlace`,
+    /// and no rule fuses `GetLocal, GetLocal, Add` on its own (the `Sub`,
+    /// `Mul` and `Div` forms have one).
     AddLocalLocal(u16, u16),
     /// Compare two locals with <=: push(local[a] <= local[b])
     LessEqualLocalLocal(u16, u16),
     /// Get local and add int constant: push(local[slot] + constant_int)
     AddLocalConst(u16, u16),
     /// Assign top of stack to local (without extra pop): local[slot] = pop()
+    ///
+    /// Replaces `SetLocal(slot), Pop`, which is what an assignment statement
+    /// compiles to (`fuse_set_local_pop`). The parameter-default prologue
+    /// emits it directly.
     SetLocalPop(u16),
     /// `local[a] += local[b]` entirely in place: no push, no pop, one dispatch.
     ///
@@ -434,6 +442,9 @@ pub enum Op {
     /// Check if local is falsy (null, false, 0, ""), push bool
     IsFalsyLocal(u16),
     /// Get local and add int (optimized for small ints)
+    ///
+    /// Nothing emits it at the moment: `AddLocalConst` takes
+    /// `GetLocal, Constant(Int), Add`, which the callback kernels read.
     AddLocalInt(u16, i32),
     /// Increment local by 1 (already have IncrLocal, add this as variant)
     IncrLocalFast(u16),
