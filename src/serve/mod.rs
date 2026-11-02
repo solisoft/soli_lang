@@ -1843,6 +1843,11 @@ fn worker_loop(
     // Initialize routes in this worker thread
     set_worker_routes(routes);
 
+    // The environment is final by now (`.env` loads before workers start, and
+    // Soli code cannot change it), so `getenv` answers from a per-worker cache
+    // instead of taking the process environment lock on every call.
+    crate::interpreter::builtins::env::cache_reads_on_this_thread();
+
     // Initialize template engine in this worker
     if views_dir.exists() {
         crate::interpreter::builtins::template::init_templates(views_dir.clone());

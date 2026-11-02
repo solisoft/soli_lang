@@ -14,19 +14,29 @@
 //! The caps below are deliberately generous — far past any legitimate use — and
 //! configurable, because the point is to turn an abort into an ordinary
 //! catchable error, not to police application design.
+//!
+//! Each ceiling is read from the environment once, on first use, and kept: they
+//! are consulted on every range, string repetition and page, and `std::env::var`
+//! takes the process environment lock and allocates. The environment does not
+//! change after boot — `.env` is loaded before the first worker starts, and
+//! `setenv` was removed from the language (SEC-033).
+
+use std::sync::OnceLock;
 
 /// Maximum number of elements a single `range(...)` / `a..b` may materialise.
 ///
 /// 16 million `Value::Int`s is roughly 384 MB — already unreasonable, and still
 /// an error rather than a dead process. `SOLI_MAX_RANGE_LEN` overrides it.
 pub fn max_range_len() -> u64 {
-    env_u64("SOLI_MAX_RANGE_LEN", 16_777_216)
+    static LIMIT: OnceLock<u64> = OnceLock::new();
+    *LIMIT.get_or_init(|| env_u64("SOLI_MAX_RANGE_LEN", 16_777_216))
 }
 
 /// Maximum length in bytes of a string built by `"x" * n`.
 /// `SOLI_MAX_STRING_ALLOC_BYTES` overrides it.
 pub fn max_string_alloc_bytes() -> u64 {
-    env_u64("SOLI_MAX_STRING_ALLOC_BYTES", 64 * 1024 * 1024)
+    static LIMIT: OnceLock<u64> = OnceLock::new();
+    *LIMIT.get_or_init(|| env_u64("SOLI_MAX_STRING_ALLOC_BYTES", 64 * 1024 * 1024))
 }
 
 fn env_u64(name: &str, default: u64) -> u64 {
@@ -44,11 +54,14 @@ fn env_u64(name: &str, default: u64) -> u64 {
 /// request, one worker, the entire table in memory. 1000 rows is already more
 /// than any page a person reads. `SOLI_MAX_PAGE_SIZE` overrides it.
 pub fn max_page_size() -> usize {
-    crate::platform::env::var("SOLI_MAX_PAGE_SIZE")
-        .ok()
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .filter(|n| *n > 0)
-        .unwrap_or(1000)
+    static LIMIT: OnceLock<usize> = OnceLock::new();
+    *LIMIT.get_or_init(|| {
+        crate::platform::env::var("SOLI_MAX_PAGE_SIZE")
+            .ok()
+            .and_then(|v| v.trim().parse::<usize>().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(1000)
+    })
 }
 
 /// Clamp a requested page size to [`max_page_size`].
@@ -206,6 +219,36 @@ mod tests {
             repeat_string("ab", 3, "string * count").as_deref(),
             Ok("ababab")
         );
+    }
+
+    /// The ceilings sit on every range and repetition, so they are read from
+    /// the environment once and kept: a later change to the variable is not
+    /// seen. The value set here is larger than the default, so a child process
+    /// that inherits it while the test runs is not constrained by it.
+    #[test]
+    fn the_ceilings_are_read_from_the_environment_once() {
+        let range = max_range_len();
+        let bytes = max_string_alloc_bytes();
+        let page = max_page_size();
+        let previous: Vec<_> = [
+            "SOLI_MAX_RANGE_LEN",
+            "SOLI_MAX_STRING_ALLOC_BYTES",
+            "SOLI_MAX_PAGE_SIZE",
+        ]
+        .iter()
+        .map(|name| (*name, std::env::var_os(name)))
+        .collect();
+        for (name, _) in &previous {
+            std::env::set_var(name, "4294967296");
+        }
+        let seen = (max_range_len(), max_string_alloc_bytes(), max_page_size());
+        for (name, value) in previous {
+            match value {
+                Some(v) => std::env::set_var(name, v),
+                None => std::env::remove_var(name),
+            }
+        }
+        assert_eq!(seen, (range, bytes, page));
     }
 
     #[test]

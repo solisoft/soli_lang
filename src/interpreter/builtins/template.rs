@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crate::serve::tenant::TenantCell;
@@ -20,7 +20,8 @@ use crate::interpreter::builtins::html;
 use crate::interpreter::builtins::i18n::helpers as i18n_helpers;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::value::{
-    stringify_to_string, value_to_json, Function, HashKey, HashPairs, NativeFunction, StrKey, Value,
+    stringify_to_string, value_to_json, Function, HashKey, HashPairs, NativeFunction, SoliStr,
+    StrKey, Value,
 };
 use crate::template::{html_response, TemplateCache};
 
@@ -70,6 +71,81 @@ pub fn is_dev_mode() -> bool {
 /// Clear the file mtime cache (for hot reload).
 pub fn clear_file_mtime_cache() {
     FILE_MTIME_CACHE.with(|cache| cache.borrow_mut().clear());
+    PUBLIC_URL_CACHE.with(|cache| cache.borrow_mut().urls.clear());
+}
+
+/// The versioned URLs `public_path()` built on this thread, by application and
+/// argument — production only (dev mode stats every call so an edited asset
+/// gets a new version at once).
+///
+/// A layout calls `public_path` a few times per page with the same literal
+/// paths. The mtime cache below spares the `stat`, but each call still copied
+/// the public directory out of its lock, joined a `PathBuf`, SipHashed it and
+/// formatted the URL — about 0.4 µs a call. Here a hit is one fast-hash lookup
+/// and a cheap string clone. The URL is exactly what the slow path returns; a
+/// file that is missing is not remembered, as before.
+struct PublicUrlCache {
+    /// [`PUBLIC_DIR_GENERATION`] when the entries were built: a later
+    /// `init_public_dir` (another public directory) drops them.
+    generation: u64,
+    urls: ahash::AHashMap<(crate::serve::tenant::TenantId, SoliStr), SoliStr>,
+}
+
+thread_local! {
+    static PUBLIC_URL_CACHE: RefCell<PublicUrlCache> = RefCell::new(PublicUrlCache {
+        generation: 0,
+        urls: ahash::AHashMap::default(),
+    });
+}
+
+/// Bumped by every `init_public_dir`, so no thread answers from URLs built
+/// against a previous public directory.
+static PUBLIC_DIR_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// `public_path(path)`: `/path?v=<mtime>` (or `&v=` when `path` already has a
+/// query), or `/path` when the file cannot be stat'ed.
+fn public_path_url(path: &SoliStr) -> SoliStr {
+    if is_dev_mode() {
+        return build_public_path_url(path).0;
+    }
+    let key = (crate::serve::tenant::current_id(), path.clone());
+    let generation = PUBLIC_DIR_GENERATION.load(Ordering::Relaxed);
+    let cached = PUBLIC_URL_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.generation != generation {
+            cache.generation = generation;
+            cache.urls.clear();
+        }
+        cache.urls.get(&key).cloned()
+    });
+    if let Some(url) = cached {
+        return url;
+    }
+    let (url, versioned) = build_public_path_url(path);
+    // Only a versioned URL is remembered: a missing file is looked for again,
+    // as the mtime cache does, so an asset added later gets its version.
+    if versioned {
+        PUBLIC_URL_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if cache.urls.len() >= FILE_MTIME_CACHE_MAX_SIZE {
+                cache.urls.clear();
+            }
+            cache.urls.insert(key, url.clone());
+        });
+    }
+    url
+}
+
+/// The uncached `public_path`, and whether the URL carries a version (the file
+/// was found). The mtime cache still spares the `stat` in production.
+fn build_public_path_url(path: &SoliStr) -> (SoliStr, bool) {
+    let public_dir = PUBLIC_DIR.get().unwrap_or_else(|| PathBuf::from("public"));
+    let full_path = public_dir.join(&**path);
+    match get_file_mtime_cached(&full_path) {
+        Ok(mtime) if path.contains('?') => (format!("/{}&v={}", path, mtime).into(), true),
+        Ok(mtime) => (format!("/{}?v={}", path, mtime).into(), true),
+        Err(_) => (format!("/{}", path).into(), false),
+    }
 }
 
 // Thread-local view helpers registry (functions from app/helpers/*.sl)
@@ -431,6 +507,7 @@ pub fn init_templates(views_dir: PathBuf) {
 /// Initialize the public directory for public_path() helper.
 pub fn init_public_dir(public_dir: PathBuf) {
     PUBLIC_DIR.set(public_dir);
+    PUBLIC_DIR_GENERATION.fetch_add(1, Ordering::Relaxed);
 }
 
 /// Clear the template cache (for hot reload).
@@ -997,18 +1074,7 @@ pub fn register_static_template_helpers(env: &mut Environment) {
                     ))
                 }
             };
-            let public_dir = PUBLIC_DIR.get().unwrap_or_else(|| PathBuf::from("public"));
-            let full_path = public_dir.join(&*path);
-            match get_file_mtime_cached(&full_path) {
-                Ok(mtime) => {
-                    if path.contains('?') {
-                        Ok(Value::String(format!("/{}&v={}", path, mtime).into()))
-                    } else {
-                        Ok(Value::String(format!("/{}?v={}", path, mtime).into()))
-                    }
-                }
-                Err(_) => Ok(Value::String(format!("/{}", path).into())),
-            }
+            Ok(Value::String(public_path_url(&path)))
         })),
     );
 
@@ -3057,6 +3123,39 @@ mod tests {
 
     fn empty_data() -> Value {
         Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
+    }
+
+    /// In production a repeat `public_path` is answered from the URL cache —
+    /// not from the mtime cache, not from the file — with exactly the URL the
+    /// slow path built. A missing file is not remembered, and pointing the
+    /// application at another public directory drops what was cached.
+    #[test]
+    fn public_path_answers_a_repeat_from_its_url_cache() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        std::fs::write(first.path().join("app.css"), "body{}").unwrap();
+        init_public_dir(first.path().to_path_buf());
+
+        let path = SoliStr::from("app.css");
+        let url = public_path_url(&path);
+        assert!(url.starts_with("/app.css?v="), "{url}");
+        assert_eq!(url, build_public_path_url(&path).0);
+
+        // Neither the mtime cache nor the file is consulted on a hit.
+        FILE_MTIME_CACHE.with(|cache| cache.borrow_mut().clear());
+        std::fs::remove_file(first.path().join("app.css")).unwrap();
+        assert_eq!(public_path_url(&path), url);
+        assert!(!build_public_path_url(&path).1, "the file is gone");
+
+        // A missing file stays unversioned and uncached.
+        let missing = SoliStr::from("missing.js");
+        assert_eq!(public_path_url(&missing), "/missing.js");
+        let key = (crate::serve::tenant::current_id(), missing);
+        assert!(PUBLIC_URL_CACHE.with(|cache| !cache.borrow().urls.contains_key(&key)));
+
+        // Another public directory: the cached URL is not served from it.
+        init_public_dir(second.path().to_path_buf());
+        assert_eq!(public_path_url(&path), "/app.css");
     }
 
     fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
