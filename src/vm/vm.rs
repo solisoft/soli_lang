@@ -1,7 +1,6 @@
 //! The bytecode virtual machine — stack-based execution engine.
 
 use ahash::AHashMap as HashMap;
-use ahash::RandomState as AHasher;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -2921,7 +2920,7 @@ impl Vm {
                 Op::Hash(n) => {
                     let n = n as usize;
                     let base = self.stack.len() - n * 2;
-                    let mut map = HashPairs::with_capacity_and_hasher(n, AHasher::default());
+                    let mut map = HashPairs::with_capacity(n);
                     let mut drained = self.stack.drain(base..);
                     for _ in 0..n {
                         let key = drained.next().unwrap();

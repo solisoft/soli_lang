@@ -80,7 +80,7 @@ struct ValueSet {
 impl ValueSet {
     fn with_capacity(n: usize) -> Self {
         Self {
-            hashed: HashSet::with_capacity_and_hasher(n, ahash::RandomState::new()),
+            hashed: HashSet::with_capacity_and_hasher(n, crate::interpreter::value::map_hasher()),
             other: Vec::new(),
         }
     }

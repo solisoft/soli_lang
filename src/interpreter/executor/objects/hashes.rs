@@ -3,8 +3,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use ahash::RandomState as AHasher;
-
 use crate::ast::{Expr, ExprKind};
 use crate::error::RuntimeError;
 use crate::interpreter::executor::{Interpreter, RuntimeResult};
@@ -13,8 +11,7 @@ use crate::interpreter::value::{HashKey, HashPairs, Value};
 impl Interpreter {
     /// Evaluate hash literal expression: {key: value, ...}
     pub(crate) fn evaluate_hash(&mut self, pairs: &[(Expr, Expr)]) -> RuntimeResult<Value> {
-        let mut entries: HashPairs =
-            HashPairs::with_capacity_and_hasher(pairs.len(), AHasher::default());
+        let mut entries: HashPairs = HashPairs::with_capacity(pairs.len());
         for (key_expr, value_expr) in pairs {
             let hash_key = self.evaluate_hash_key(key_expr)?;
             let value = self.evaluate(value_expr)?;

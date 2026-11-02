@@ -123,8 +123,7 @@ pub fn hash_method_borrowed(
             if !arguments.is_empty() {
                 return Some(Err(RuntimeError::wrong_arity(0, arguments.len(), span)));
             }
-            let mut inverted =
-                HashPairs::with_capacity_and_hasher(entries.len(), ahash::RandomState::default());
+            let mut inverted = HashPairs::with_capacity(entries.len());
             for (k, v) in entries.iter() {
                 let new_key = match v.to_hash_key() {
                     Some(key) => key,
@@ -311,8 +310,7 @@ pub fn hash_method_borrowed(
                 )));
             };
             let keys = keys.borrow();
-            let mut result =
-                HashPairs::with_capacity_and_hasher(keys.len(), ahash::RandomState::default());
+            let mut result = HashPairs::with_capacity(keys.len());
             for key in keys.iter() {
                 let Some(hash_key) = key.to_hash_key() else {
                     return Some(Err(RuntimeError::type_error(

@@ -344,6 +344,7 @@ pub fn empty_hash() -> Value {
 /// Storage for a Soli hash: insertion-ordered, linear up to eight entries and
 /// an `IndexMap` (ahash) beyond — see [`super::small_map`].
 pub type HashPairs = super::small_map::SmallMap;
+pub use super::small_map::map_hasher;
 
 #[inline]
 pub fn hash_get_value<'a>(hash: &'a HashPairs, key: &Value) -> Option<&'a Value> {
@@ -2507,7 +2508,7 @@ impl Instance {
         let capacity = fields.max(class.declared_field_count());
         Self {
             class,
-            fields: HashMap::with_capacity_and_hasher(capacity, Default::default()),
+            fields: HashMap::with_capacity_and_hasher(capacity, map_hasher()),
             original_fields: None,
             previous_changes: None,
         }

@@ -21,7 +21,6 @@ fn ws_message_to_string(value: &Value, fn_name: &str) -> Result<String, String> 
             .map_err(|e| format!("{}() could not serialize payload to JSON: {}", fn_name, e)),
     }
 }
-use ahash::RandomState as AHasher;
 use bytes::Bytes;
 
 /// An OpenAPI document declared in `config/routes.sl` with
@@ -1020,7 +1019,7 @@ fn param_node_to_value(node: ParamNode) -> Value {
     match node {
         ParamNode::Str(s) => Value::String(s.into()),
         ParamNode::Map(map) => {
-            let mut pairs = HashPairs::with_capacity_and_hasher(map.len(), AHasher::default());
+            let mut pairs = HashPairs::with_capacity(map.len());
             for (k, v) in map {
                 pairs.insert(HashKey::String(k.into()), param_node_to_value(v));
             }
@@ -1055,7 +1054,7 @@ pub fn nest_query_pairs(pairs: Vec<(String, String)>) -> HashPairs {
             }
         }
     }
-    let mut result = HashPairs::with_capacity_and_hasher(root.len(), AHasher::default());
+    let mut result = HashPairs::with_capacity(root.len());
     for (k, v) in root {
         result.insert(HashKey::String(k.into()), param_node_to_value(v));
     }
@@ -1205,7 +1204,7 @@ pub fn build_request_hash(
     let raw_cookie = headers.get("cookie").map(|s| s.as_str());
     let cookie_pairs = crate::interpreter::builtins::session::parse_cookie_pairs(raw_cookie);
     let cookies = Value::Hash(Rc::new(RefCell::new(cookie_pairs)));
-    let mut header_pairs = HashPairs::with_capacity_and_hasher(headers.len(), AHasher::default());
+    let mut header_pairs = HashPairs::with_capacity(headers.len());
     for (k, v) in headers {
         header_pairs.insert(HashKey::String(k.into()), Value::String(v.into()));
     }
@@ -1255,7 +1254,7 @@ pub fn build_request_hash_with_parsed(
     let params_value = if params.is_empty() {
         None
     } else {
-        let mut map = HashPairs::with_capacity_and_hasher(params.len(), AHasher::default());
+        let mut map = HashPairs::with_capacity(params.len());
         for (k, v) in params {
             map.insert(HashKey::String(k.into()), Value::String(v.into()));
         }
@@ -1309,7 +1308,7 @@ pub fn build_request_hash_with_parsed(
             + if parsed.files.is_some() { 1 } else { 0 }
             + if all_value.is_some() { 1 } else { 0 }
             + if !peer_ip.is_empty() { 1 } else { 0 };
-        let mut map = HashPairs::with_capacity_and_hasher(capacity, AHasher::default());
+        let mut map = HashPairs::with_capacity(capacity);
         map.insert(keys.method.clone(), Value::String(method.into()));
         map.insert(keys.path.clone(), Value::String(path.into()));
         if let Some(v) = params_value {
@@ -1399,10 +1398,7 @@ fn build_unified_params_refs(
     query_params: &HashPairs,
     parsed: &ParsedBody,
 ) -> HashPairs {
-    let mut all: HashPairs = HashPairs::with_capacity_and_hasher(
-        route_params.len() + query_params.len(),
-        AHasher::default(),
-    );
+    let mut all: HashPairs = HashPairs::with_capacity(route_params.len() + query_params.len());
 
     // Start with route params
     for (k, v) in route_params {
