@@ -553,6 +553,24 @@ impl Compiler {
         Ok(())
     }
 
+    /// Write a view's output: `arg`, escaped or raw, to the page. The ops push
+    /// nothing; a literal raw text is written from its constant.
+    pub(super) fn emit_template_write(
+        &mut self,
+        arg: &Expr,
+        escaped: bool,
+        line: usize,
+    ) -> CompileResult<()> {
+        if let (ExprKind::StringLiteral(text), false) = (&arg.kind, escaped) {
+            let idx = self.add_constant(Constant::String(text.as_str().into()));
+            self.emit(Op::TemplateWriteConst(idx), line);
+            return Ok(());
+        }
+        self.compile_expr(arg)?;
+        self.emit(Op::TemplateWrite(escaped), line);
+        Ok(())
+    }
+
     fn compile_call(
         &mut self,
         callee: &Expr,
@@ -606,19 +624,13 @@ impl Compiler {
                     return Ok(());
                 }
             }
-            if name == "__tpl_write" || name == "__tpl_write_raw" {
-                if let [Argument::Positional(arg)] = arguments {
-                    if let (ExprKind::StringLiteral(text), "__tpl_write_raw") =
-                        (&arg.kind, name.as_str())
-                    {
-                        let idx = self.add_constant(Constant::String(text.as_str().into()));
-                        self.emit(Op::TemplateWriteConst(idx), line);
-                        return Ok(());
-                    }
-                    self.compile_expr(arg)?;
-                    self.emit(Op::TemplateWrite(name == "__tpl_write"), line);
-                    return Ok(());
-                }
+            if let Some((arg, escaped)) = template_write_args(name, arguments) {
+                // Used as a value (a lambda's last statement, `x = …`): the
+                // write pushes nothing, so the call's value is pushed here. A
+                // write statement skips both (`compile_stmt`).
+                self.emit_template_write(arg, escaped, line)?;
+                self.emit(Op::Null, line);
+                return Ok(());
             }
         }
 
@@ -1917,6 +1929,32 @@ mod named_args_compile_tests {
 }
 
 /// In a view, `@name` is the local `name` (see `Compiler::template_mode`).
+/// The argument of a `__tpl_write(arg)` / `__tpl_write_raw(arg)` intrinsic
+/// call and whether it is escaped (`__tpl_write`, `<%= %>`).
+fn template_write_args<'a>(name: &str, arguments: &'a [Argument]) -> Option<(&'a Expr, bool)> {
+    let escaped = match name {
+        "__tpl_write" => true,
+        "__tpl_write_raw" => false,
+        _ => return None,
+    };
+    match arguments {
+        [Argument::Positional(arg)] => Some((arg, escaped)),
+        _ => None,
+    }
+}
+
+/// [`template_write_args`] for a whole expression: a direct call of either
+/// intrinsic, as `write_stmt` builds it.
+pub(super) fn template_write_call(expr: &Expr) -> Option<(&Expr, bool)> {
+    match &expr.kind {
+        ExprKind::Call { callee, arguments } => match &callee.kind {
+            ExprKind::Variable(name) => template_write_args(name, arguments),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 fn template_ivar(expr: &Expr) -> Option<Expr> {
     match &expr.kind {
         ExprKind::Member { object, name } if matches!(object.kind, ExprKind::This) => {

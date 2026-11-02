@@ -46,6 +46,16 @@ impl Compiler {
                     }
                     return Ok(());
                 }
+                // A view's write as a statement (`write_stmt`): the write
+                // op pushes nothing, so there is no value to pop.
+                if let Some((arg, escaped)) = super::compiler_exprs::template_write_call(expr) {
+                    let outer = std::mem::replace(&mut self.column, expr.span.column);
+                    let expr_line = expr.span.line as usize;
+                    self.cover_line(expr_line);
+                    let result = self.emit_template_write(arg, escaped, expr_line);
+                    self.column = outer;
+                    return result;
+                }
                 self.compile_expr(expr)?;
                 self.emit(Op::Pop, line);
             }

@@ -220,11 +220,13 @@ pub enum Op {
     // --- Templates ---
     /// Write a view's output: pops a value, appends it to `Vm::template_out`
     /// (HTML-escaped when the operand is true, as `<%= %>`; raw for `<%- %>`
-    /// and literal text), pushes Null. Emitted only for the `__tpl_write` /
-    /// `__tpl_write_raw` intrinsics a compiled template is made of.
+    /// and literal text), pushes nothing. Emitted only for the `__tpl_write` /
+    /// `__tpl_write_raw` intrinsics a compiled template is made of: as a
+    /// statement the op stands alone, and where the call is used as a value
+    /// the compiler pushes its Null after it.
     TemplateWrite(bool),
     /// Write a string constant to `Vm::template_out` as is (a template's
-    /// literal text) and push Null: no `Value` is built for the text.
+    /// literal text), pushing nothing: no `Value` is built for the text.
     TemplateWriteConst(u16),
     /// A template `for` loop's iterable, as the template renderer iterates it:
     /// pops a value and pushes a hash as an array of `[key, value]` pairs, a

@@ -1267,6 +1267,58 @@ mod tests {
         Ok(())
     }
 
+    /// A write is a statement of its own: no Null pushed for an `Op::Pop` to
+    /// discard after it, in the view's body and in a loop's alike.
+    #[test]
+    fn a_write_pushes_nothing_for_a_pop_to_discard() -> Result<(), String> {
+        use crate::vm::opcode::Op;
+        let nodes = parse_template(
+            "<p><%= title %></p><% for row in rows %><li><%- row.title %></li><% end %>",
+        )?;
+        let compiled = VmTemplate::compile(&nodes)?;
+        let Value::VmClosure(closure) = &compiled.closure else {
+            return Err("not a VM closure".to_string());
+        };
+        let code = &closure.proto.chunk.code;
+        let is_write = |op: &Op| matches!(op, Op::TemplateWrite(_) | Op::TemplateWriteConst(_));
+        assert_eq!(code.iter().filter(|op| is_write(op)).count(), 6, "{code:?}");
+        // The one Pop left is the loop's: `row` going out of scope at the end
+        // of each pass. Each of the six writes had its own.
+        assert_eq!(
+            code.iter().filter(|op| matches!(op, Op::Pop)).count(),
+            1,
+            "{code:?}"
+        );
+        assert!(
+            code.windows(2)
+                .all(|pair| !(is_write(&pair[0]) && matches!(pair[1], Op::Null))),
+            "{code:?}"
+        );
+        assert_renders_same(
+            "<p><%= title %></p><% for row in rows %><li><%- row.title %></li><% end %>",
+            &data(),
+        );
+        Ok(())
+    }
+
+    /// The intrinsic used as a value is nil, as a call that returns nothing,
+    /// and the write still happens: the compiler pushes the Null the op no
+    /// longer does.
+    #[test]
+    fn a_write_used_as_a_value_is_nil() -> Result<(), String> {
+        let nodes = parse_template(
+            "<% r = __tpl_write_raw(\"a\") %><% s = __tpl_write(\"<\") %><% t = __tpl_write_raw(count) %>\
+             [<%= r.nil? %>,<%= s.nil? %>,<%= t.nil? %>]",
+        )?;
+        let compiled = VmTemplate::compile(&nodes)?;
+        let html = compiled
+            .render(&mut view_vm(), &data())
+            .map_err(|e| e.to_string())?
+            .html;
+        assert_eq!(html, "a&lt;3[true,true,true]");
+        Ok(())
+    }
+
     /// A VM as serve builds one for a view: the form builder is Soli, so its
     /// functions run on the interpreter, and the template builtins are the
     /// globals a free name resolves in.
