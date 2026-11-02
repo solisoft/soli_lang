@@ -760,11 +760,11 @@ impl Interpreter {
                 }
                 Ok(Value::String(string_succ(text).into()))
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "String".to_string(),
-                property: method_name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "String".to_string(),
+                method_name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 

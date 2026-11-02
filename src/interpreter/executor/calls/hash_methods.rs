@@ -34,11 +34,11 @@ impl Interpreter {
             "delete_if" => self.hash_delete_if(entries, arguments, span),
             "all?" => self.hash_all(entries, arguments, span),
             "any?" => self.hash_any(entries, arguments, span),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "Hash".to_string(),
-                property: method_name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "Hash".to_string(),
+                method_name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 

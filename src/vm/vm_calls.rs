@@ -1608,11 +1608,11 @@ impl Vm {
         let Some(bound) = crate::interpreter::executor::access::member::bind_class_method_missing(
             &class, &class_val, name,
         ) else {
-            return Err(RuntimeError::NoSuchProperty {
-                value_type: class.name.clone(),
-                property: name.to_string(),
+            return Err(RuntimeError::no_such_property(
+                class.name.clone(),
+                name.to_string(),
                 span,
-            });
+            ));
         };
         let result = self.invoke_callable(bound, &user_args, span)?;
         self.stack.truncate(receiver_idx);
@@ -2427,11 +2427,11 @@ impl Vm {
                 interp.call_method(method, args, span)?
             }
             _ => {
-                return Err(RuntimeError::NoSuchProperty {
-                    value_type: receiver.type_name(),
-                    property: method_name.to_string(),
+                return Err(RuntimeError::no_such_property(
+                    receiver.type_name(),
+                    method_name.to_string(),
                     span,
-                })
+                ))
             }
         };
         self.push(result);

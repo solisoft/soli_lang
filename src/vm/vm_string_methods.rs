@@ -799,11 +799,11 @@ impl Vm {
             "blank?" => Ok(Value::Bool(s.trim().is_empty())),
             "present?" => Ok(Value::Bool(!s.trim().is_empty())),
             "inspect" => Ok(Value::String(format!("\"{}\"", s).into())),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "String".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "String".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 }

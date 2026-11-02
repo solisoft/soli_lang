@@ -496,10 +496,10 @@ impl Interpreter {
             // field is still an error — and only for an instance: the
             // receiver is re-evaluated to check, on this error path alone.
             // The VM does the same with `Op::GetPropertyOrNull`.
-            Err(RuntimeError::NoSuchProperty { ref property, .. })
+            Err(RuntimeError::NoSuchProperty(ref info))
                 if matches!(op, CompoundOp::Or | CompoundOp::And | CompoundOp::Coalesce)
                     && matches!(&target.kind, ExprKind::Member { name, object }
-                        if name == property
+                        if *name == info.property
                             && matches!(self.evaluate(object), Ok(Value::Instance(_)))) =>
             {
                 Value::Null

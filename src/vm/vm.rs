@@ -2402,11 +2402,11 @@ impl Vm {
                                 // qu'un gestionnaire tournait sur le VM.
                                 Value::Instance(_) => self.op_get_index(&receiver, &arg, span)?,
                                 _ => {
-                                    return Err(RuntimeError::NoSuchProperty {
-                                        value_type: receiver.type_name(),
-                                        property: "get".to_string(),
+                                    return Err(RuntimeError::no_such_property(
+                                        receiver.type_name(),
+                                        "get".to_string(),
                                         span,
-                                    })
+                                    ))
                                 }
                             };
                             self.push(value);
@@ -2428,11 +2428,11 @@ impl Vm {
                             self.push(Value::Bool(hash.borrow().contains_key(&StrKey(key))));
                         }
                         other => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "has_key".to_string(),
-                                span: self.current_span(),
-                            });
+                            return Err(RuntimeError::no_such_property(
+                                other.type_name(),
+                                "has_key".to_string(),
+                                self.current_span(),
+                            ));
                         }
                     }
                 }
@@ -2455,11 +2455,11 @@ impl Vm {
                             self.push(value);
                         }
                         other => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "delete".to_string(),
-                                span: self.current_span(),
-                            });
+                            return Err(RuntimeError::no_such_property(
+                                other.type_name(),
+                                "delete".to_string(),
+                                self.current_span(),
+                            ));
                         }
                     }
                 }
@@ -2541,11 +2541,11 @@ impl Vm {
                                 // qu'un gestionnaire tournait sur le VM.
                                 Value::Instance(_) => self.op_get_index(&receiver, &arg, span)?,
                                 _ => {
-                                    return Err(RuntimeError::NoSuchProperty {
-                                        value_type: receiver.type_name(),
-                                        property: "get".to_string(),
+                                    return Err(RuntimeError::no_such_property(
+                                        receiver.type_name(),
+                                        "get".to_string(),
                                         span,
-                                    })
+                                    ))
                                 }
                             }
                         }
@@ -2602,11 +2602,11 @@ impl Vm {
                     let result = match &self.stack[base + slot as usize] {
                         Value::Hash(hash) => Value::Bool(hash.borrow().contains_key(&StrKey(key))),
                         other => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "has_key".to_string(),
-                                span: self.current_span(),
-                            });
+                            return Err(RuntimeError::no_such_property(
+                                other.type_name(),
+                                "has_key".to_string(),
+                                self.current_span(),
+                            ));
                         }
                     };
                     self.push(result);
@@ -2627,11 +2627,11 @@ impl Vm {
                             .shift_remove(&StrKey(key))
                             .unwrap_or(Value::Null),
                         other => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "delete".to_string(),
-                                span: self.current_span(),
-                            });
+                            return Err(RuntimeError::no_such_property(
+                                other.type_name(),
+                                "delete".to_string(),
+                                self.current_span(),
+                            ));
                         }
                     };
                     self.push(result);
@@ -2719,11 +2719,11 @@ impl Vm {
                                 // qu'un gestionnaire tournait sur le VM.
                                 Value::Instance(_) => self.op_get_index(&receiver, &arg, span)?,
                                 _ => {
-                                    return Err(RuntimeError::NoSuchProperty {
-                                        value_type: receiver.type_name(),
-                                        property: "get".to_string(),
+                                    return Err(RuntimeError::no_such_property(
+                                        receiver.type_name(),
+                                        "get".to_string(),
                                         span,
-                                    })
+                                    ))
                                 }
                             };
                             self.push(value);
@@ -2758,11 +2758,11 @@ impl Vm {
                             Value::Bool(hash.borrow().contains_key(&StrKey(key)))
                         }
                         Some(other) => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "has_key".to_string(),
-                                span: self.current_span(),
-                            });
+                            return Err(RuntimeError::no_such_property(
+                                other.type_name(),
+                                "has_key".to_string(),
+                                self.current_span(),
+                            ));
                         }
                         None => {
                             return Err(RuntimeError::undefined_variable(
@@ -2799,11 +2799,11 @@ impl Vm {
                             self.push(value);
                         }
                         Some(other) => {
-                            return Err(RuntimeError::NoSuchProperty {
-                                value_type: other.type_name(),
-                                property: "delete".to_string(),
-                                span: self.current_span(),
-                            });
+                            return Err(RuntimeError::no_such_property(
+                                other.type_name(),
+                                "delete".to_string(),
+                                self.current_span(),
+                            ));
                         }
                         None => {
                             return Err(RuntimeError::undefined_variable(
@@ -3153,8 +3153,8 @@ impl Vm {
                     self.check_private_value(&object, &name)?;
                     let span = self.current_span();
                     let result = match self.op_get_property_member(&object, &name, span) {
-                        Err(RuntimeError::NoSuchProperty { ref property, .. })
-                            if matches!(object, Value::Instance(_)) && *property == name =>
+                        Err(RuntimeError::NoSuchProperty(ref info))
+                            if matches!(object, Value::Instance(_)) && info.property == name =>
                         {
                             Value::Null
                         }
@@ -3388,11 +3388,11 @@ impl Vm {
                             ));
                         }
                     } else {
-                        return Err(RuntimeError::NoSuchProperty {
-                            value_type: format!("super({})", superclass.name),
-                            property: name,
+                        return Err(RuntimeError::no_such_property(
+                            format!("super({})", superclass.name),
+                            name,
                             span,
-                        });
+                        ));
                     }
                 }
                 Op::Field(idx) | Op::ConstField(idx) => {
@@ -5124,11 +5124,11 @@ impl Vm {
                 let span = self.current_span();
                 self.op_get_index(receiver, &Value::String(key.into()), span)
             }
-            other => Err(RuntimeError::NoSuchProperty {
-                value_type: other.type_name(),
-                property: "get".to_string(),
-                span: self.current_span(),
-            }),
+            other => Err(RuntimeError::no_such_property(
+                other.type_name(),
+                "get".to_string(),
+                self.current_span(),
+            )),
         }
     }
 
@@ -5348,11 +5348,11 @@ impl Vm {
                 return self.op_set_index(receiver, &key, value, self.current_span());
             }
         }
-        Err(RuntimeError::NoSuchProperty {
-            value_type: receiver.type_name(),
-            property: "set".to_string(),
-            span: self.current_span(),
-        })
+        Err(RuntimeError::no_such_property(
+            receiver.type_name(),
+            "set".to_string(),
+            self.current_span(),
+        ))
     }
 
     fn op_set_index(

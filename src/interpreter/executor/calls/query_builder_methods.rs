@@ -129,11 +129,11 @@ impl Interpreter {
                 });
                 self.call_method(method, arguments, span)
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "QueryBuilder".to_string(),
-                property: method_name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "QueryBuilder".to_string(),
+                method_name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 

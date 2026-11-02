@@ -286,12 +286,11 @@ pub enum RuntimeError {
         span: Span,
     },
 
-    #[error("Cannot access property '{property}' on {value_type} at {span}")]
-    NoSuchProperty {
-        value_type: String,
-        property: String,
-        span: Span,
-    },
+    /// Boxed: two `String`s and a `Span` would make this the second-widest
+    /// variant (64 bytes) and set the size of every `Result<_, RuntimeError>`.
+    /// Build it with [`RuntimeError::no_such_property`].
+    #[error("{0}")]
+    NoSuchProperty(Box<NoSuchPropertyError>),
 
     #[error("Cannot instantiate '{0}' at {1}")]
     NotAClass(String, Span),
@@ -328,30 +327,69 @@ pub enum RuntimeError {
     #[error("{message} at {span}")]
     General { message: String, span: Span },
 
-    #[error("Breakpoint hit at {span}")]
-    Breakpoint {
-        span: Span,
-        /// JSON-serialized environment variables for debugging
-        env_json: String,
-        /// Stack trace captured at the moment of the breakpoint
-        stack_trace: Vec<String>,
-    },
+    /// A `debug()` breakpoint. Boxed with its captured environment: see
+    /// [`DebugCapture`]. Build it with [`RuntimeError::breakpoint`].
+    #[error("Breakpoint hit at {}", .0.span)]
+    Breakpoint(Box<DebugCapture>),
 
     /// Error with captured environment for debugging
     /// This allows accessing local variables in the dev error page REPL.
     /// Note: callers wrap an inner error via `e.to_string()`, which already
     /// includes its own " at {span}" suffix — so we display only `{message}`
     /// here to avoid producing "... at 92:20 at 92:20".
-    #[error("{message}")]
-    WithEnv {
-        message: String,
-        span: Span,
-        /// JSON-serialized environment variables for debugging
-        env_json: String,
-        /// Stack trace captured at the moment of the error
-        stack_trace: Vec<String>,
-    },
+    ///
+    /// Boxed: see [`DebugCapture`]. Build it with [`RuntimeError::with_env`].
+    #[error("{}", .0.message)]
+    WithEnv(Box<DebugCapture>),
 }
+
+/// The payload of [`RuntimeError::NoSuchProperty`].
+///
+/// It lives behind a `Box` so that `RuntimeError` stays small: every VM and
+/// interpreter helper returns `Result<_, RuntimeError>`, so the widest variant
+/// sets the size of each of those return values (they are returned through
+/// memory) and of the temporaries in `run_dispatch`'s stack frame. Building
+/// the error already allocates its two strings; the box is one more
+/// allocation on a path that is an error by definition.
+#[derive(Debug)]
+pub struct NoSuchPropertyError {
+    pub value_type: String,
+    pub property: String,
+    pub span: Span,
+}
+
+impl std::fmt::Display for NoSuchPropertyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Cannot access property '{}' on {} at {}",
+            self.property, self.value_type, self.span
+        )
+    }
+}
+
+/// The payload of [`RuntimeError::Breakpoint`] and [`RuntimeError::WithEnv`]:
+/// the environment and stack captured for the dev error page and its REPL.
+///
+/// Boxed for the same reason as [`NoSuchPropertyError`]: unboxed, these two
+/// variants were 88 bytes wide and made every `Result<_, RuntimeError>` 88
+/// bytes. They are built only when an error is about to reach the dev error
+/// page (or on a `debug()` breakpoint), never on a path a program takes
+/// while it runs normally. `message` is empty for a breakpoint.
+#[derive(Debug)]
+pub struct DebugCapture {
+    pub message: String,
+    pub span: Span,
+    /// JSON-serialized environment variables for debugging
+    pub env_json: String,
+    /// Stack trace captured at the moment of the error or breakpoint
+    pub stack_trace: Vec<String>,
+}
+
+// The point of the boxing above. 48 = the widest remaining variants (a
+// `String` or a `Value`, plus a `Span`: 40 bytes) and a tag. Widening a
+// variant past that should be a decision, not an accident.
+const _: () = assert!(std::mem::size_of::<RuntimeError>() <= 48);
 
 impl RuntimeError {
     /// Sentinel embedded in the error message when `Model.find` (or any
@@ -374,7 +412,8 @@ impl RuntimeError {
     /// error-wrapping layers (e.g. "Error calling method: __RecordNotFound__:...").
     pub fn is_record_not_found(&self) -> bool {
         let msg = match self {
-            Self::General { message, .. } | Self::WithEnv { message, .. } => message.as_str(),
+            Self::General { message, .. } => message.as_str(),
+            Self::WithEnv(capture) => capture.message.as_str(),
             _ => return false,
         };
         msg.contains(Self::RECORD_NOT_FOUND_MARKER)
@@ -383,7 +422,8 @@ impl RuntimeError {
     /// The user-facing message from a record-not-found error (marker stripped).
     pub fn record_not_found_message(&self) -> Option<String> {
         let msg = match self {
-            Self::General { message, .. } | Self::WithEnv { message, .. } => message.as_str(),
+            Self::General { message, .. } => message.as_str(),
+            Self::WithEnv(capture) => capture.message.as_str(),
             _ => return None,
         };
         msg.find(Self::RECORD_NOT_FOUND_MARKER)
@@ -400,7 +440,8 @@ impl RuntimeError {
     /// `Some` only when the error carries the forbidden marker.
     pub fn forbidden_message(&self) -> Option<String> {
         let msg = match self {
-            Self::General { message, .. } | Self::WithEnv { message, .. } => message.as_str(),
+            Self::General { message, .. } => message.as_str(),
+            Self::WithEnv(capture) => capture.message.as_str(),
             _ => return None,
         };
         msg.find(Self::FORBIDDEN_MARKER)
@@ -429,7 +470,8 @@ impl RuntimeError {
     /// The `(status, message)` a `halt(...)` raised, if this error is one.
     pub fn halt_parts(&self) -> Option<(u16, String)> {
         let msg = match self {
-            Self::General { message, .. } | Self::WithEnv { message, .. } => message.as_str(),
+            Self::General { message, .. } => message.as_str(),
+            Self::WithEnv(capture) => capture.message.as_str(),
             _ => return None,
         };
         let rest = &msg[msg.find(Self::HALT_MARKER)? + Self::HALT_MARKER.len()..];
@@ -481,13 +523,12 @@ impl RuntimeError {
             Self::WrongArity { span, .. } => *span,
             Self::TypeError { span, .. } => *span,
             Self::IndexOutOfBounds { span, .. } => *span,
-            Self::NoSuchProperty { span, .. } => *span,
+            Self::NoSuchProperty(info) => info.span,
             Self::NotAClass(_, span) => *span,
             Self::EngineFallback(_, span) => *span,
             Self::Thrown { span, .. } => *span,
             Self::General { span, .. } => *span,
-            Self::Breakpoint { span, .. } => *span,
-            Self::WithEnv { span, .. } => *span,
+            Self::Breakpoint(capture) | Self::WithEnv(capture) => capture.span,
         }
     }
 
@@ -514,7 +555,7 @@ impl RuntimeError {
 
     /// Check if this is a breakpoint error.
     pub fn is_breakpoint(&self) -> bool {
-        matches!(self, Self::Breakpoint { .. })
+        matches!(self, Self::Breakpoint(_))
     }
 
     /// A user-level `throw` in flight across a call boundary.
@@ -540,8 +581,7 @@ impl RuntimeError {
     /// Get the environment JSON from a breakpoint or WithEnv error.
     pub fn breakpoint_env_json(&self) -> Option<&str> {
         match self {
-            Self::Breakpoint { env_json, .. } => Some(env_json),
-            Self::WithEnv { env_json, .. } => Some(env_json),
+            Self::Breakpoint(capture) | Self::WithEnv(capture) => Some(&capture.env_json),
             _ => None,
         }
     }
@@ -553,19 +593,41 @@ impl RuntimeError {
         env_json: impl Into<String>,
         stack_trace: Vec<String>,
     ) -> Self {
-        Self::WithEnv {
+        Self::WithEnv(Box::new(DebugCapture {
             message: message.into(),
             span,
             env_json: env_json.into(),
             stack_trace,
-        }
+        }))
+    }
+
+    /// Create a breakpoint error with captured environment and stack trace
+    pub fn breakpoint(span: Span, env_json: String, stack_trace: Vec<String>) -> Self {
+        Self::Breakpoint(Box::new(DebugCapture {
+            message: String::new(),
+            span,
+            env_json,
+            stack_trace,
+        }))
+    }
+
+    /// Create a "Cannot access property" error.
+    /// Out of line on purpose: the box and the field moves stay in one
+    /// cold function instead of being inlined into every call site.
+    #[cold]
+    #[inline(never)]
+    pub fn no_such_property(value_type: String, property: String, span: Span) -> Self {
+        Self::NoSuchProperty(Box::new(NoSuchPropertyError {
+            value_type,
+            property,
+            span,
+        }))
     }
 
     /// Get the stack trace from a breakpoint or WithEnv error.
     pub fn breakpoint_stack_trace(&self) -> Option<&[String]> {
         match self {
-            Self::Breakpoint { stack_trace, .. } => Some(stack_trace),
-            Self::WithEnv { stack_trace, .. } => Some(stack_trace),
+            Self::Breakpoint(capture) | Self::WithEnv(capture) => Some(&capture.stack_trace),
             _ => None,
         }
     }
@@ -780,31 +842,46 @@ mod tests {
                 length: 0,
                 span: s,
             },
-            RuntimeError::NoSuchProperty {
-                value_type: "v".into(),
-                property: "p".into(),
-                span: s,
-            },
+            RuntimeError::no_such_property("v".into(), "p".into(), s),
             RuntimeError::NotAClass("X".into(), s),
             RuntimeError::General {
                 message: "m".into(),
                 span: s,
             },
-            RuntimeError::Breakpoint {
-                span: s,
-                env_json: "{}".into(),
-                stack_trace: vec![],
-            },
-            RuntimeError::WithEnv {
-                message: "m".into(),
-                span: s,
-                env_json: "{}".into(),
-                stack_trace: vec![],
-            },
+            RuntimeError::breakpoint(s, "{}".into(), vec![]),
+            RuntimeError::with_env("m", s, "{}", vec![]),
         ];
         for e in &cases {
             assert_eq!(e.span(), s, "span() mismatch for {e:?}");
         }
+    }
+
+    #[test]
+    fn boxed_variants_keep_their_display_text() {
+        // The payloads of these three moved behind a `Box` to shrink
+        // `RuntimeError`; what users and the dev error page read must not move.
+        let s = span(3, 7);
+        assert_eq!(
+            RuntimeError::no_such_property("Int".into(), "nope".into(), s).to_string(),
+            "Cannot access property 'nope' on Int at 3:7"
+        );
+        assert_eq!(
+            RuntimeError::breakpoint(s, "{}".into(), vec![]).to_string(),
+            "Breakpoint hit at 3:7"
+        );
+        assert_eq!(
+            RuntimeError::with_env("boom at 1:1", s, "{}", vec![]).to_string(),
+            "boom at 1:1"
+        );
+    }
+
+    #[test]
+    fn runtime_error_stays_small() {
+        // Every `Result<_, RuntimeError>` a VM helper returns is this wide.
+        assert!(std::mem::size_of::<RuntimeError>() <= 48);
+        assert!(
+            std::mem::size_of::<Result<crate::interpreter::value::Value, RuntimeError>>() <= 48
+        );
     }
 
     #[test]
@@ -937,11 +1014,7 @@ mod tests {
     #[test]
     fn breakpoint_is_breakpoint_and_exposes_env_and_trace() {
         let trace = vec!["frame_a".to_string(), "frame_b".to_string()];
-        let e = RuntimeError::Breakpoint {
-            span: span(1, 1),
-            env_json: r#"{"x":1}"#.to_string(),
-            stack_trace: trace.clone(),
-        };
+        let e = RuntimeError::breakpoint(span(1, 1), r#"{"x":1}"#.to_string(), trace.clone());
         assert!(e.is_breakpoint());
         assert_eq!(e.breakpoint_env_json(), Some(r#"{"x":1}"#));
         assert_eq!(e.breakpoint_stack_trace(), Some(trace.as_slice()));

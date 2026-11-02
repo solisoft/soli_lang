@@ -60,11 +60,11 @@ pub(crate) fn call_float_method_impl(
                 Value::Float(n - quotient * divisor),
             ]))))
         }
-        _ => Err(RuntimeError::NoSuchProperty {
-            value_type: "float".to_string(),
-            property: method_name.to_string(),
+        _ => Err(RuntimeError::no_such_property(
+            "float".to_string(),
+            method_name.to_string(),
             span,
-        }),
+        )),
     }
 }
 

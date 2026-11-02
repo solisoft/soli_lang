@@ -31,11 +31,11 @@ pub(crate) fn call_bool_method_impl(
 ) -> RuntimeResult<Value> {
     match method_name {
         "is_a?" => bool_is_a(arguments, span),
-        _ => Err(RuntimeError::NoSuchProperty {
-            value_type: "bool".to_string(),
-            property: method_name.to_string(),
+        _ => Err(RuntimeError::no_such_property(
+            "bool".to_string(),
+            method_name.to_string(),
             span,
-        }),
+        )),
     }
 }
 

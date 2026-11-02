@@ -424,11 +424,11 @@ impl Vm {
                     }
                     _ => {}
                 }
-                Err(RuntimeError::NoSuchProperty {
-                    value_type: inst_ref.class.name.clone(),
-                    property: name.to_string(),
+                Err(RuntimeError::no_such_property(
+                    inst_ref.class.name.clone(),
+                    name.to_string(),
                     span,
-                })
+                ))
             }
             Value::Class(class) => {
                 // A named scope on a model class comes first, as in the
@@ -617,11 +617,11 @@ impl Vm {
                 if let Some(native) = superclass.find_native_method(name) {
                     return Ok(Value::NativeFunction((*native).clone()));
                 }
-                Err(RuntimeError::NoSuchProperty {
-                    value_type: format!("super({})", superclass.name),
-                    property: name.to_string(),
+                Err(RuntimeError::no_such_property(
+                    format!("super({})", superclass.name),
+                    name.to_string(),
                     span,
-                })
+                ))
             }
             Value::Function(_) | Value::NativeFunction(_) => match name {
                 "nil?" => Ok(Value::Bool(false)),
@@ -629,11 +629,11 @@ impl Vm {
                 "present?" => Ok(Value::Bool(true)),
                 "class" => Ok(Value::String("Function".into())),
                 "inspect" => Ok(Value::String("<function>".into())),
-                _ => Err(RuntimeError::NoSuchProperty {
-                    value_type: object.type_name().to_string(),
-                    property: name.to_string(),
+                _ => Err(RuntimeError::no_such_property(
+                    object.type_name().to_string(),
+                    name.to_string(),
                     span,
-                }),
+                )),
             },
             // A bare member of a query builder (`Post.where(...).all`,
             // `.count`, a scope) resolves through the tree-walker's
@@ -642,11 +642,11 @@ impl Vm {
             // tree-walker does. This used to be an `EngineFallback`: harmless
             // before a write, a 500 after one.
             Value::QueryBuilder(_) => self.query_builder_property(object, name, span),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: object.type_name().to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                object.type_name().to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 

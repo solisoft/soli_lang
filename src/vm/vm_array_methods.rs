@@ -1314,11 +1314,11 @@ impl Vm {
                 let row: Vec<Value> = args.iter().map(|k| extract_pluck_field(first, k)).collect();
                 Ok(Value::Array(Rc::new(RefCell::new(row))))
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "Array".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "Array".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 }

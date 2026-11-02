@@ -842,11 +842,11 @@ impl Interpreter {
 
         if let Some(name) = &missing_hash_member {
             if matches!(callee_val, Value::Null) {
-                return Err(RuntimeError::NoSuchProperty {
-                    value_type: "Hash".to_string(),
-                    property: name.clone(),
+                return Err(RuntimeError::no_such_property(
+                    "Hash".to_string(),
+                    name.clone(),
                     span,
-                });
+                ));
             }
         }
 

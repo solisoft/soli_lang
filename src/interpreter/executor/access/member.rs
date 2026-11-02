@@ -597,11 +597,11 @@ impl Interpreter {
                             unreachable!()
                         }
                     }
-                    _ => Err(RuntimeError::NoSuchProperty {
-                        value_type: resolved.type_name(),
-                        property: name.to_string(),
+                    _ => Err(RuntimeError::no_such_property(
+                        resolved.type_name(),
+                        name.to_string(),
                         span,
-                    }),
+                    )),
                 }
             }
             Value::Instance(inst) => self.instance_member_access(inst, name, span),
@@ -625,11 +625,11 @@ impl Interpreter {
             Value::Function(_) | Value::NativeFunction(_) => {
                 Self::function_member_access(name, span, obj_val.type_name().to_string())
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: obj_val.type_name().to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                obj_val.type_name().to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -642,11 +642,11 @@ impl Interpreter {
             "present?" => Ok(Value::Bool(true)),
             "class" => Ok(Value::String("Function".into())),
             "inspect" => Ok(Value::String("<function>".into())),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: type_name,
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                type_name,
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -1895,11 +1895,11 @@ impl Interpreter {
             return Ok(Value::Null);
         }
 
-        Err(RuntimeError::NoSuchProperty {
-            value_type: class_name,
-            property: name.to_string(),
+        Err(RuntimeError::no_such_property(
+            class_name,
+            name.to_string(),
             span,
-        })
+        ))
     }
 
     fn class_member_access(
@@ -2315,11 +2315,11 @@ impl Interpreter {
             return Ok(bound);
         }
 
-        Err(RuntimeError::NoSuchProperty {
-            value_type: class.name.clone(),
-            property: name.to_string(),
+        Err(RuntimeError::no_such_property(
+            class.name.clone(),
+            name.to_string(),
             span,
-        })
+        ))
     }
 
     fn super_member_access(
@@ -2383,11 +2383,11 @@ impl Interpreter {
                 },
             )));
         }
-        Err(RuntimeError::NoSuchProperty {
-            value_type: superclass.name.clone(),
-            property: name.to_string(),
+        Err(RuntimeError::no_such_property(
+            superclass.name.clone(),
+            name.to_string(),
             span,
-        })
+        ))
     }
 
     fn array_member_access(&self, name: &str, span: Span, obj_val: Value) -> RuntimeResult<Value> {
@@ -2437,11 +2437,11 @@ impl Interpreter {
                     method_name: name.to_string(),
                 }))
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "Array".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "Array".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -2601,11 +2601,7 @@ impl Interpreter {
                     unreachable!()
                 }
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "QueryBuilder".to_string(),
-                property: name.to_string(),
-                span,
-            }),
+            _ => Err(RuntimeError::no_such_property("QueryBuilder".to_string(), name.to_string(), span)),
         }
     }
 
@@ -2662,11 +2658,7 @@ impl Interpreter {
                 receiver: Box::new(obj_val),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "String".to_string(),
-                property: name.to_string(),
-                span,
-            }),
+            _ => Err(RuntimeError::no_such_property("String".to_string(), name.to_string(), span)),
         }
     }
 
@@ -2726,11 +2718,11 @@ impl Interpreter {
                         span,
                     )
                 }
-                _ => Err(RuntimeError::NoSuchProperty {
-                    value_type: "DateTime".to_string(),
-                    property: name.to_string(),
+                _ => Err(RuntimeError::no_such_property(
+                    "DateTime".to_string(),
+                    name.to_string(),
                     span,
-                }),
+                )),
             },
         }
     }
@@ -2799,11 +2791,11 @@ impl Interpreter {
                 receiver: Box::new(Value::Int(n)),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "int".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "int".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -2852,11 +2844,11 @@ impl Interpreter {
                 receiver: Box::new(Value::Float(n)),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "float".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "float".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -2882,11 +2874,11 @@ impl Interpreter {
                 receiver: Box::new(Value::Bool(b)),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "bool".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "bool".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -2914,11 +2906,11 @@ impl Interpreter {
                 receiver: Box::new(Value::Null),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "null".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "null".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -2945,11 +2937,11 @@ impl Interpreter {
                 receiver: Box::new(Value::Symbol(s.to_string().into())),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "symbol".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "symbol".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
@@ -2994,11 +2986,11 @@ impl Interpreter {
                 receiver: Box::new(Value::Decimal(d.clone())),
                 method_name: name.to_string(),
             })),
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "decimal".to_string(),
-                property: name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "decimal".to_string(),
+                name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 

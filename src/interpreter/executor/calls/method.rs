@@ -800,11 +800,11 @@ impl Interpreter {
                 };
                 Ok(Value::Bool(class_name == "array" || class_name == "object"))
             }
-            _ => Err(RuntimeError::NoSuchProperty {
-                value_type: "Array".to_string(),
-                property: method_name.to_string(),
+            _ => Err(RuntimeError::no_such_property(
+                "Array".to_string(),
+                method_name.to_string(),
                 span,
-            }),
+            )),
         }
     }
 
